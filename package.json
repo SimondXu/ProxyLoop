@@ -1,0 +1,10 @@
+{
+  "name": "proxyloop",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Workspace coordination for ProxyLoop.",
+  "packageManager": "pnpm@10.31.0",
+  "scripts": {
+    "check:layout": "python3 scripts/validate_layout.py"
+  }
+}

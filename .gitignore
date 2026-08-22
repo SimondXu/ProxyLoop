@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node.js
+node_modules/
+.next/
+dist/
+coverage/
+
+# Runtime and local infrastructure
+.env
+.env.*
+!.env.example
+*.log
+data/local/
+artifacts/
+mlruns/
+postgres-data/
+temporal-data/
+
+# Large or sensitive ML artifacts
+*.safetensors
+*.gguf
+*.onnx
+*.pt
+*.pth
+checkpoints/
+recordings/
+
+# macOS and editors
+.DS_Store
+.idea/
+.vscode/

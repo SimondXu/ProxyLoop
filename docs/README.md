@@ -1,0 +1,19 @@
+# Documentation index
+
+## Product and architecture
+
+- [Telecom bill-optimization specification](specs/2026-08-21-telecom-bill-optimization-agent.md)
+- [Architecture overview](architecture.md)
+
+## Decisions
+
+- [Monorepo structure](decisions/2026-08-21-monorepo.md)
+- [Initial implementation defaults](decisions/2026-08-22-implementation-defaults.md)
+
+## Planning and research
+
+- [Initial project plan](planning/initial-project-plan.md)
+- [Progress log](planning/progress.md)
+- [Research foundations](research/foundations.md)
+
+The telecom specification is the v1 scope. `ProxyLoop` is the platform name, not a claim that telecom, auto negotiation, or other future verticals are already implemented.

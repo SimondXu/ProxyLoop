@@ -1,0 +1,25 @@
+version = 1
+revision = 3
+requires-python = "==3.12.*"
+
+[manifest]
+members = [
+    "proxyloop-api",
+    "proxyloop-contracts",
+    "proxyloop-runtime",
+]
+
+[[package]]
+name = "proxyloop-api"
+version = "0.0.0"
+source = { virtual = "services/api" }
+
+[[package]]
+name = "proxyloop-contracts"
+version = "0.0.0"
+source = { virtual = "packages/contracts" }
+
+[[package]]
+name = "proxyloop-runtime"
+version = "0.0.0"
+source = { virtual = "." }

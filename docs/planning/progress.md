@@ -1,0 +1,112 @@
+# Progress Log
+
+## Session: 2026-08-21
+
+### Phase 1: Requirements and Evidence Consolidation
+
+- **Status:** complete
+- Actions taken:
+  - Consolidated prior Pine capability, open-source, tau2, data, Fast/Slow, workflow, and voice research.
+  - Reconciled the Retail detour with the original telecom objective.
+  - Selected a fictional-provider telecom bill optimization vertical at the planning level.
+- Files created/modified:
+  - `docs/planning/initial-project-plan.md`
+  - `docs/research/foundations.md`
+  - `docs/planning/progress.md`
+
+### Phase 2: Architecture and Repository Design
+
+- **Status:** complete
+- Actions taken:
+  - Confirmed the target directory is empty and not yet a Git repository.
+  - Began defining monorepo boundaries and sources of truth.
+  - Verified current official support for `uv` workspaces, pnpm workspaces, Temporal durable workflows, Pydantic Evals dataset serialization, and LiveKit outbound SIP calls.
+  - Defined model boundaries, state ownership, canonical contracts, safety invariants, runtime/data/training flows, and deployment layers.
+  - Selected a polyglot monorepo with isolated runtime, ML, voice, and web dependency zones.
+- Files created/modified:
+  - `docs/architecture.md`
+  - `docs/decisions/2026-08-21-monorepo.md`
+
+### Phase 3: Build Roadmap and Validation Gates
+
+- **Status:** complete
+- Actions taken:
+  - Defined seven gated phases from repository contracts through portfolio hardening.
+  - Added ML, leakage, provider-ceiling, serving, durability, and channel gates.
+  - Documented timeline, budget controls, CI lanes, failure risks, and open decisions.
+- Files created/modified:
+  - `docs/specs/2026-08-21-telecom-bill-optimization-agent.md`
+
+### Phase 4: Documentation Delivery
+
+- **Status:** complete
+- Actions taken:
+  - Added a root README linking the planning artifacts.
+  - Completed a final consistency review for real-provider scope, tau2/Pine contamination, model responsibilities, environment isolation, and unsupported production claims.
+  - Verified all seven documentation files exist and are non-empty.
+- Files created/modified:
+  - `README.md`
+  - `docs/planning/initial-project-plan.md`
+  - `docs/research/foundations.md`
+  - `docs/planning/progress.md`
+
+## Session: 2026-08-22
+
+### Phase 5: Implementation Defaults and Model Update
+
+- **Status:** complete
+- Actions taken:
+  - Selected `ProxyLoop` as the public project identity; the first telecom vertical remains unchanged.
+  - Froze v1 at one selected postpaid mobile line while preserving a home-internet service-type extension.
+  - Replaced the provisional 7B-class model with `Qwen/Qwen3-4B-Instruct-2507` in non-thinking mode.
+  - Selected a 24GB CUDA QLoRA target with local MLX-LM smoke runs and a measured 48GB escalation gate.
+  - Selected OpenAI `gpt-5.6-terra`, MLflow OSS, and vLLM as the initial Slow, experiment, and promoted serving defaults.
+  - Added a decision record that separates selected defaults from measured project results.
+- Files created/modified:
+  - `README.md`
+  - `docs/planning/initial-project-plan.md`
+  - `docs/research/foundations.md`
+  - `docs/planning/progress.md`
+  - `docs/architecture.md`
+  - `docs/specs/2026-08-21-telecom-bill-optimization-agent.md`
+  - `docs/decisions/2026-08-21-monorepo.md`
+  - `docs/decisions/2026-08-22-implementation-defaults.md`
+
+## Test Results
+
+| Test | Input | Expected | Actual | Status |
+|---|---|---|---|---|
+| Repository inventory | `rg --files -uu` | Identify existing project files | No project files found | Pass |
+| Git status | `git status --short --branch` | Inspect repository state | Directory is not a Git repository | Informational |
+| Documentation presence | shell `test -s` over all deliverables | Every planned document exists and is non-empty | All documents present | Pass |
+| Scope consistency scan | `rg` for car lease, Retail, T-Mobile, production, leakage terms | Telecom remains primary; excluded/conditional terms are labeled | No contradictory primary scope found | Pass |
+| Implementation-default consistency scan | `rg` for old 7B/runtime/tracker choices and selected defaults | No stale unresolved 7B, W&B, or SGLang-first recommendation remains | Selected defaults are consistent across the plan, spec, architecture, and README | Pass |
+
+## Error Log
+
+| Timestamp | Error | Attempt | Resolution |
+|---|---|---:|---|
+| 2026-08-21 | `fatal: not a git repository` | 1 | Continue as documentation planning in an empty directory; do not initialize Git. |
+
+## 5-Question Reboot Check
+
+| Question | Answer |
+|---|---|
+| Where am I? | Planning documentation complete; Phase 0 setup ready to begin |
+| Where am I going? | Initialize repository and add the Phase 0 monorepo skeleton |
+| What's the goal? | Produce a build-ready Pine-like telecom agent blueprint |
+| What have I learned? | See `docs/research/foundations.md` |
+
+## Session: 2026-08-22 — Phase 0 Repository Setup
+
+- **Status:** complete
+- Actions taken:
+  - Bound the empty public GitHub repository as this workspace's `origin` without creating a commit or pushing.
+  - Renamed the public-facing identity to `ProxyLoop` while retaining fictional-provider telecom as v1.
+  - Moved planning and research records under `docs/` and added a documentation index.
+  - Created the initial monorepo directories, dependency-zone metadata, local-infrastructure configuration, repository hygiene files, and layout-only CI check.
+- Validation:
+  - `make check-layout`
+  - `uv lock` in `runtime/`
+  - `pnpm install --lockfile-only --ignore-scripts`
+| What have I done? | Delivered product spec, architecture, monorepo ADR, roadmap, findings, and progress records |

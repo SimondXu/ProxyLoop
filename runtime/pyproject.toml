@@ -1,0 +1,12 @@
+[project]
+name = "proxyloop-runtime"
+version = "0.0.0"
+description = "Runtime workspace for ProxyLoop domain contracts and services."
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[tool.uv.workspace]
+members = [
+  "packages/contracts",
+  "services/api",
+]

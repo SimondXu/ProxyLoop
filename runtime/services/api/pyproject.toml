@@ -1,0 +1,6 @@
+[project]
+name = "proxyloop-api"
+version = "0.0.0"
+description = "FastAPI control-plane service for ProxyLoop."
+requires-python = ">=3.12,<3.13"
+dependencies = []
