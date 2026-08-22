@@ -1,8 +1,8 @@
 # Phase 00B — Canonical Contracts and Contract Verification
 
-**Status**: Prepared, not started
+**Status**: In progress
 
-**Human gate**: Creating this contract does not authorize implementation. Activate only after explicit user approval.
+**Activation**: Explicitly approved by the user on 2026-08-22. Active branch: `feat/phase-00b-contracts`, based on merged `main` commit `d1d8710`.
 
 **Roadmap source**: Phase 0 in `docs/specs/2026-08-21-telecom-bill-optimization-agent.md`
 
@@ -17,6 +17,7 @@ Establish one framework-independent, versioned domain contract package and prove
 - `docs/architecture.md`
 - `docs/specs/2026-08-21-telecom-bill-optimization-agent.md`
 - `docs/decisions/2026-08-22-implementation-defaults.md`
+- `harness/context/phase-00b-preflight.md`
 - existing skeleton under `runtime/packages/contracts/`, `contracts/`, and `tests/contract/`
 
 ## In Scope

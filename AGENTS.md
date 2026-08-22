@@ -20,7 +20,8 @@ Do not treat a roadmap item as permission to implement it. Only an explicitly ap
 ## Current State
 
 - Repository foundation is complete.
-- Phase 00B, canonical contracts and contract verification, is prepared but not started.
+- Phase 00B, canonical contracts and contract verification, is in progress on `feat/phase-00b-contracts`.
+- Resolve and record the six required preflight decisions before writing domain models.
 - Product services, model training, external channels, and web UI are not implemented.
 
 ## Working Rules

@@ -8,7 +8,7 @@ The design separates a locally trained Fast Response Model from a hosted Slow Re
 
 ## Current status
 
-Phase 00A repository setup is complete: the monorepo boundaries, documentation, local-tooling configuration, and empty implementation zones are in place. The development harness is prepared, but Phase 00B canonical contracts have not started. Product services, model training, external channels, and a web UI are not implemented yet.
+Phase 00A repository setup and the development harness are complete. Phase 00B canonical contracts and contract verification are now in progress on `feat/phase-00b-contracts`, beginning with the required preflight decisions. Product services, model training, external channels, and a web UI are not implemented yet.
 
 ## Start here
 
@@ -25,7 +25,7 @@ Phase 00A repository setup is complete: the monorepo boundaries, documentation, 
 - [Execution plan](PLANS.md)
 - [Domain language](CONTEXT.md)
 - [Development harness](harness/README.md)
-- [Prepared Phase 00B contract](harness/build/phase-00b-contracts.md)
+- [Active Phase 00B contract](harness/build/phase-00b-contracts.md)
 
 ## Repository layout
 

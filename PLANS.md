@@ -7,7 +7,7 @@ This is the harness-level phase index. Detailed product requirements live in the
 | Phase | Outcome | Status | Gate artifact |
 |---|---|---|---|
 | 00A | Repository foundation and documentation | Complete | Initial repository setup and layout validation |
-| 00B | Canonical contracts and contract verification | Prepared, not started | `harness/build/phase-00b-contracts.md` |
+| 00B | Canonical contracts and contract verification | In progress | `harness/build/phase-00b-contracts.md` |
 | 01 | Fictional provider simulator and benchmark | Not started | To be prepared after 00B approval and completion |
 | 02 | Data factory and trajectory pilot | Not started | To be prepared after Phase 01 |
 | 03 | Baselines, SFT, and evaluation | Not started | To be prepared after Phase 02 |
@@ -55,6 +55,6 @@ These remain sequential or require an integration gate:
 
 Create one Codex Goal only for the single approved phase. The Goal should quote the phase objective and acceptance criteria, and should be marked complete only after evidence and independent review are recorded. Do not create a permanent “finish the whole repository” Goal or use a loop to bypass human gates.
 
-Recommended next Goal after approval:
+Active phase objective:
 
 > Complete Phase 00B exactly as specified in `harness/build/phase-00b-contracts.md`, record verification evidence, obtain an independent review, and stop at the phase gate without starting the simulator.

@@ -7,7 +7,7 @@ This file is append-only execution evidence. Record only commands actually run a
 | Phase | Status | Last evidence |
 |---|---|---|
 | 00A — repository foundation | Complete | Initial repository layout validated and published before this harness initialization |
-| 00B — canonical contracts | Prepared, not started | `harness/build/phase-00b-contracts.md` |
+| 00B — canonical contracts | In progress | Activated on `feat/phase-00b-contracts` from `d1d8710` |
 
 ## Entries
 
@@ -60,3 +60,15 @@ This file is append-only execution evidence. Record only commands actually run a
 - Official configuration reference: confirmed project-local configuration, `review_model`, `[agents.<role>]`, `config_file`, `description`, concurrency, model reasoning effort, and sandbox fields against the current Codex configuration reference.
 - `make preflight`: passed after remediation.
 - `codex features list`: passed and loaded the remediated repository configuration; the sandbox emitted the previously documented non-blocking PATH-alias warning.
+
+### 2026-08-22 — Phase 00B activation
+
+- Human gate: the user explicitly approved starting Phase 00B after pull request 1 was reviewed and squash merged.
+- Base: merged `main` commit `d1d8710f64cd54ff5c7d1472a21eab74fdacb17b`; the post-merge `Repository checks` workflow passed.
+- Active branch: `feat/phase-00b-contracts`.
+- Status changed from `Prepared, not started` to `In progress` in the phase contract, execution plan, repository instructions, README, and phase table.
+- Observed package/test baseline and all six open preflight decisions are recorded in `harness/context/phase-00b-preflight.md`.
+- Scope boundary: no domain model, generated artifact, simulator, service, workflow, model, channel, or UI implementation was started during activation.
+- Codex Goal: active and restricted to Phase 00B acceptance evidence, independent review, and a hard stop before Phase 01.
+- `make preflight`: passed on the activated branch.
+- `uv lock --project runtime --check`: passed with CPython 3.12.10 and the existing three-package runtime workspace.

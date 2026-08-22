@@ -24,6 +24,7 @@ REQUIRED_PATHS = (
     "harness/README.md",
     "harness/build/phase-00b-contracts.md",
     "harness/context/README.md",
+    "harness/context/phase-00b-preflight.md",
     "harness/code_review",
     "harness/build-log.md",
     "docs/README.md",

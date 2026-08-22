@@ -1,1 +1,1 @@
-"""Canonical contracts will be introduced in Phase 1."""
+"""Canonical ProxyLoop contracts, introduced in Phase 00B."""
