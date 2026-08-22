@@ -1,0 +1,24 @@
+model = "gpt-5.6-sol"
+model_reasoning_effort = "high"
+review_model = "gpt-5.6-terra"
+
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 3
+interrupt_message = true
+
+[agents.implementer]
+description = "Implements one explicitly owned, well-specified ProxyLoop code slice with repository-native verification."
+config_file = "agents/implementer.toml"
+
+[agents.reviewer]
+description = "Independently reviews ProxyLoop diffs and phase evidence without editing files."
+config_file = "agents/reviewer.toml"
+
+[agents.fast-worker]
+description = "Performs narrow, mechanical, high-volume ProxyLoop implementation tasks with exact boundaries."
+config_file = "agents/fast-worker.toml"
+
+[agents.explorer]
+description = "Maps a bounded ProxyLoop code question and returns file-and-symbol evidence without edits."
+config_file = "agents/explorer.toml"

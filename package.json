@@ -5,6 +5,7 @@
   "description": "Workspace coordination for ProxyLoop.",
   "packageManager": "pnpm@10.31.0",
   "scripts": {
-    "check:layout": "python3 scripts/validate_layout.py"
+    "check:layout": "python3 scripts/validate_layout.py",
+    "preflight": "make preflight"
   }
 }
