@@ -1,5 +1,3 @@
-name = "reviewer"
-description = "Independently reviews ProxyLoop diffs and phase evidence without editing files."
 model = "gpt-5.6-terra"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"

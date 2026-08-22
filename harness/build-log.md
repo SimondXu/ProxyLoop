@@ -49,3 +49,14 @@ This file is append-only execution evidence. Record only commands actually run a
 - `pnpm install --lockfile-only --ignore-scripts --offline`: passed without downloading dependencies or changing the lockfile.
 - CI: `.github/workflows/ci.yml` now runs the same `make preflight` gate for pull requests and pushes to `main`.
 - Commit, push, and pull request identifiers are reported in the pull request and task handoff after this log entry is finalized.
+
+### 2026-08-22 — Pull request 1 review remediation
+
+- Review target: `chore/development-harness` at `fe8084e`, pull request 1.
+- Blocking finding: the four role files existed, but `.codex/config.toml` did not declare `[agents.<role>]` entries with `config_file` and `description`; official Codex configuration therefore did not register the custom roles.
+- Remediation: registered all four roles in `.codex/config.toml`, kept role execution settings in their referenced config layers, and strengthened `scripts/validate_layout.py` to validate the declarations.
+- Improvement: changed the CI committed-diff whitespace check from `HEAD^` to the complete pull-request or push commit range so multi-commit changes are covered.
+- Durable review: `harness/code_review/pr-1.md`.
+- Official configuration reference: confirmed project-local configuration, `review_model`, `[agents.<role>]`, `config_file`, `description`, concurrency, model reasoning effort, and sandbox fields against the current Codex configuration reference.
+- `make preflight`: passed after remediation.
+- `codex features list`: passed and loaded the remediated repository configuration; the sandbox emitted the previously documented non-blocking PATH-alias warning.

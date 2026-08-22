@@ -90,10 +90,28 @@ def main() -> int:
         return 1
 
     for filename in AGENT_CONFIGS:
+        role_name = Path(filename).stem
+        role = agents_config.get(role_name)
+        if not isinstance(role, dict):
+            print(f".codex/config.toml must declare [agents.{role_name}].")
+            return 1
+        expected_config_file = f"agents/{filename}"
+        if role.get("config_file") != expected_config_file:
+            print(
+                f"agents.{role_name}.config_file must be {expected_config_file!r}."
+            )
+            return 1
+        if (
+            not isinstance(role.get("description"), str)
+            or not role["description"].strip()
+        ):
+            print(f"agents.{role_name}.description must be non-empty.")
+            return 1
+
         agent = read_toml(f".codex/agents/{filename}")
         missing_fields = [
             field
-            for field in ("name", "description", "developer_instructions")
+            for field in ("developer_instructions",)
             if not isinstance(agent.get(field), str) or not agent[field].strip()
         ]
         if missing_fields:
