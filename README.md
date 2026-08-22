@@ -8,7 +8,7 @@ The design separates a locally trained Fast Response Model from a hosted Slow Re
 
 ## Current status
 
-Phase 0 repository setup is complete: the monorepo boundaries, documentation, local-tooling configuration, and empty implementation zones are in place. Product services, model training, external channels, and a web UI are not implemented yet.
+Phase 00A repository setup is complete: the monorepo boundaries, documentation, local-tooling configuration, and empty implementation zones are in place. The development harness is prepared, but Phase 00B canonical contracts have not started. Product services, model training, external channels, and a web UI are not implemented yet.
 
 ## Start here
 
@@ -20,6 +20,12 @@ Phase 0 repository setup is complete: the monorepo boundaries, documentation, lo
 - [Initial project plan](docs/planning/initial-project-plan.md)
 - [Research findings](docs/research/foundations.md)
 - [Progress log](docs/planning/progress.md)
+- [Contribution and Git workflow](CONTRIBUTING.md)
+- [Development goals](GOALS.md)
+- [Execution plan](PLANS.md)
+- [Domain language](CONTEXT.md)
+- [Development harness](harness/README.md)
+- [Prepared Phase 00B contract](harness/build/phase-00b-contracts.md)
 
 ## Repository layout
 
@@ -34,7 +40,13 @@ infra/       Local infrastructure configuration and migrations
 tests/       Contract, integration, and end-to-end test lanes
 ```
 
-Run `make check-layout` to validate this Phase 0 structure. It does not claim to run product tests.
+Run `make check-layout` to validate the repository foundation and harness configuration. It does not claim to run product tests.
+
+## Development workflow
+
+Repository-level agent behavior is defined in [AGENTS.md](AGENTS.md), and the branch/commit/PR workflow is defined in [CONTRIBUTING.md](CONTRIBUTING.md). Work is organized as one explicitly approved phase at a time: prepare a phase contract, execute its red/green/verification loop, obtain an independent review for material changes, record evidence in [harness/build-log.md](harness/build-log.md), and stop at the gate.
+
+The default Codex role split is Sol high for root orchestration, Luna xhigh for clearly specified implementation, Terra high for independent review, and Luna medium for narrow mechanical work or bounded exploration. Luna max is an explicit escalation for complex implementation, not a standing default. Delegation is used only when explicitly requested; model choice never relaxes file ownership, safety, evidence, or approval requirements.
 
 ## Working product statement
 
