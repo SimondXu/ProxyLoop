@@ -8,6 +8,7 @@ This file is append-only execution evidence. Record only commands actually run a
 |---|---|---|
 | 00A — repository foundation | Complete | Initial repository layout validated and published before this harness initialization |
 | 00B — canonical contracts | Complete | `make preflight`: 17 tests plus format, lint, type, generation, drift, TypeScript, layout, locks, compile, and Compose passed |
+| 01A — deterministic Provider loop | Complete | Independent `make preflight`: 26 tests plus the complete repository gate passed; matching-forgery and no-mutation probes were rejected |
 
 ## Entries
 
@@ -95,3 +96,42 @@ This file is append-only execution evidence. Record only commands actually run a
 - Final independent rereview: the reviewer reran `make preflight` on the completed evidence state, observed the same 17 passing tests and full gate, confirmed required TypeScript discriminants, and approved Phase 00B with no unresolved blocking findings.
 - Scope audit: no Phase 01 simulator behavior or API, database, Temporal, model-call, training, channel, or UI implementation entered the diff.
 - Stop condition: Phase 00B is complete locally. Phase 01 remains not started and requires a new explicit user gate.
+
+### 2026-08-23 — Pull request 2 review and merge
+
+- Live GitHub state before merge: PR #2 was open, non-draft, `MERGEABLE`, and `CLEAN`; `phase-gate` and GitGuardian both passed.
+- Root review: complete source, tests, generators, dependency/CI changes, phase evidence, and durable independent review were inspected with no new blocking finding.
+- Fresh local `make preflight` on PR head passed the Phase 00B gate with 17 tests.
+- Squash merge: PR #2 merged to `main` as `98a751418271d0a16e6ec5c838cc2ffbff4745bf` at 2026-08-23T03:30:57Z.
+- Local `main` was fast-forwarded to the same commit before `feat/phase-01-provider-simulator` was created.
+
+### 2026-08-23 — Phase 01A deterministic Provider loop
+
+- Human gate: the user explicitly authorized Phase 01A implementation after PR #2 merge.
+- Scope: one fictional mobile Provider, one deterministic success episode, one offer state path, exact approval, Provider confirmation Evidence, deterministic completion verification, and JSON CLI only.
+- Red evidence: `uv run --project runtime --all-packages pytest tests/integration/test_phase_01a_simulator.py -q` failed during collection with `ModuleNotFoundError: proxyloop_provider_simulator` before implementation.
+- First green correction: strict canonical Python constructors rejected string UUID inputs; the implementation now constructs `UUID` values explicitly and serializes strings only at the JSON seam.
+- Final focused command: `uv run --project runtime --all-packages pytest tests/integration/test_phase_01a_simulator.py tests/contract/test_phase_01a_architecture.py -q` passed 8 tests.
+- `make simulator`: passed and emitted deterministic JSON for Provider `pine-mobile`, state history `available -> offered -> awaiting_approval -> confirmed`, exact approved Action Intent references, confirmation Evidence, and verifier-owned `decision=complete`.
+- Final `make preflight`: passed. Observed results were Ruff format 17 files, Ruff lint all checks passed, mypy 12 source files with no issues, pytest 25 passed, generated contract artifacts matched, TypeScript compiled, repository layout passed, uv resolved 26 packages from the committed lock, pnpm frozen/offline lock check passed, Python scripts compiled, and Docker Compose configuration validated.
+- Adversarial coverage: approval use at expiry leaves the Provider awaiting approval with no confirmation/Evidence; repeated offer issue is rejected without state mutation; forged Evidence and an evidenced forbidden change cannot produce completion.
+- Dependency audit: `telecom_domain` imports only standard library plus canonical contracts; `provider_simulator` additionally depends inward on `telecom_domain`; no service, persistence, workflow, channel, model, or ML dependency entered either package.
+- Root integration review: initial UUID, constraint/current-state, and evaluation-timing findings were remediated; durable details are in `harness/code_review/phase-01a-root.md`.
+- Independent review: not run. The root implementing orchestrator cannot independently approve its own change, so Phase 01A remains `Implementation complete; independent review pending`.
+- Explicitly unrun/out of scope: browser, API, authentication, PostgreSQL, Temporal, PydanticAI/model, training, benchmark, cloud, GPU, voice, phone, email, real-provider, deployment, and production E2E checks.
+- Stop condition: do not begin Phase 01B or any later roadmap phase until this implementation receives independent review and a new human gate.
+
+### 2026-08-23 — Phase 01A independent review and remediation
+
+- Initial independent decision: Request Changes. The reviewer demonstrated that a caller could forge a new confirmation identifier, recompute its hash, update the Evidence reference/hash consistently, and receive `complete` because verification did not consult the Provider's held state.
+- Documentation finding: README listed `make simulator` but incorrectly said the listed commands did not run a Provider simulator.
+- Remediation ownership: after explicit user authorization for subagents, a bounded implementer added a single confirmation-authority lookup seam, wired the real fictional Provider into verification, added the internally consistent forgery regression, and corrected README. No other phase or subsystem was added.
+- Remediation red evidence: the new regression initially failed with `TypeError: CompletionVerification.__init__() got an unexpected keyword argument 'confirmation_authority'` before the authority seam existed.
+- Implementer focused evidence: 9 Phase 01A tests passed; affected Ruff format/lint and mypy checks passed; `git diff --check` passed.
+- Independent rereview: Approve with no unresolved blocking findings. The reviewer reran the focused suite with 9 passing tests, `make preflight` with 26 passing tests and the complete repository gate, `make simulator`, and diff checks.
+- Adversarial rereview: the matching-forgery regression passed. A separate no-Provider-mutation probe returned `needs_replan` with `provider_confirmation_mismatch` and no Evidence identifier.
+- Durable review: `harness/code_review/phase-01a.md`.
+- Residual boundary: the in-memory simulator trusts the injected confirmation authority. Durable authenticated or signed external-Provider receipts remain future work, not a Phase 01A requirement.
+- Final root verification after durable evidence and status updates: `make preflight` passed with Ruff format on 17 files, Ruff lint, mypy on 12 source files, 26 tests, contract generation/drift, TypeScript, layout, uv/pnpm lock, Python compile, and Compose checks all passing.
+- Final root `make simulator`: passed and emitted the deterministic `pine-mobile` episode ending in Provider state `confirmed` and verifier decision `complete`.
+- Stop condition: Phase 01A is complete locally. Phase 01B and all later roadmap phases remain not started and require a new explicit human gate.

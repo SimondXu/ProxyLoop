@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "proxyloop-telecom-domain"
+version = "0.0.0"
+description = "Pure telecom authorization and completion rules for ProxyLoop."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "proxyloop-contracts==0.0.0",
+]
+
+[tool.uv.sources]
+proxyloop-contracts = { workspace = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/proxyloop_telecom_domain"]

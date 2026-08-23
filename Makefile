@@ -1,14 +1,16 @@
 .DEFAULT_GOAL := help
 
 .PHONY: help preflight check-layout validate format format-check lint typecheck \
-	unit-test test contracts contracts-check lock-check dev
+	unit-test test contracts contracts-check simulator lock-check dev
 
 PYTHON_RUN := uv run --project runtime --all-packages
 PYTHON_PATHS := runtime/packages/contracts/src runtime/packages/contracts/tests \
-	tests/contract scripts/generate_contracts.py scripts/validate_layout.py
+	runtime/packages/telecom_domain/src runtime/packages/provider_simulator/src \
+	tests/contract tests/integration scripts/generate_contracts.py \
+	scripts/validate_layout.py
 
 help:
-	@printf '%s\n' 'Targets: preflight, validate, format, format-check, lint, typecheck, test, contracts, contracts-check, check-layout, lock-check, dev'
+	@printf '%s\n' 'Targets: preflight, validate, format, format-check, lint, typecheck, test, contracts, contracts-check, simulator, check-layout, lock-check, dev'
 
 preflight: validate lock-check
 	python3 -m compileall -q scripts
@@ -32,7 +34,8 @@ lint:
 
 typecheck:
 	$(PYTHON_RUN) mypy --config-file runtime/pyproject.toml \
-		runtime/packages/contracts/src scripts/generate_contracts.py \
+		runtime/packages/contracts/src runtime/packages/telecom_domain/src \
+		runtime/packages/provider_simulator/src scripts/generate_contracts.py \
 		scripts/validate_layout.py
 
 unit-test:
@@ -46,6 +49,9 @@ contracts:
 contracts-check:
 	$(PYTHON_RUN) python scripts/generate_contracts.py --check
 	pnpm exec tsc --noEmit -p contracts/typescript/tsconfig.json
+
+simulator:
+	$(PYTHON_RUN) python -m proxyloop_provider_simulator
 
 lock-check:
 	uv lock --project runtime --check

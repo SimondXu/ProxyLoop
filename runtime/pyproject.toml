@@ -16,6 +16,8 @@ dev = [
 [tool.uv.workspace]
 members = [
   "packages/contracts",
+  "packages/provider_simulator",
+  "packages/telecom_domain",
   "services/api",
 ]
 
@@ -36,4 +38,5 @@ addopts = "-ra"
 testpaths = [
   "packages/contracts/tests",
   "../tests/contract",
+  "../tests/integration",
 ]

@@ -8,7 +8,7 @@ The design separates a locally trained Fast Response Model from a hosted Slow Re
 
 ## Current status
 
-Phase 00A repository setup and the development harness are complete. Phase 00B canonical contracts and contract verification have passed their local implementation and independent-review gate on `feat/phase-00b-contracts`. Phase 01 is not started. Product services, the provider simulator, model training, external channels, and a web UI are not implemented yet.
+Phase 00A repository setup and Phase 00B canonical contracts are complete and merged. Phase 01A's deterministic fictional-provider loop passes its local implementation, verification, and independent-review gate on `feat/phase-01-provider-simulator`; it is not committed or published yet. The full simulator benchmark remains deferred to Phase 01B. Product services, model training, external channels, and a web UI are not implemented.
 
 ## Start here
 
@@ -26,6 +26,7 @@ Phase 00A repository setup and the development harness are complete. Phase 00B c
 - [Domain language](CONTEXT.md)
 - [Development harness](harness/README.md)
 - [Completed Phase 00B contract](harness/build/phase-00b-contracts.md)
+- [Completed Phase 01A simulator contract](harness/build/phase-01a-provider-simulator.md)
 
 ## Repository layout
 
@@ -47,9 +48,10 @@ make format          Format Python contract and verification code
 make validate        Run format, lint, type, test, drift, and layout checks
 make contracts       Regenerate committed JSON Schema and TypeScript contracts
 make contracts-check Verify generated artifacts and compile the TypeScript fixture
+make simulator       Emit the deterministic Phase 01A success episode as JSON
 ```
 
-These commands validate the canonical contract boundary; they do not claim to run a product service, provider simulator, model, workflow, channel, or browser test.
+These commands validate the canonical contract boundary. `make simulator` also runs the Phase 01A deterministic fictional-provider simulator and emits its JSON episode; it does not run a product service, model, workflow engine, external channel, or browser test.
 
 ## Development workflow
 

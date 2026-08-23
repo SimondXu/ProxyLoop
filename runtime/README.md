@@ -1,3 +1,3 @@
 # Runtime
 
-This uv workspace will contain dependency-compatible Python domain packages and services. Only the contract and API package metadata exist in Phase 0; external SDK dependencies are deliberately deferred until their Phase 1 interfaces are specified.
+This uv workspace contains the canonical contracts and the pure Python Phase 01A telecom-domain/provider-simulator packages. The simulator runs synchronously and in memory; external SDK, API, database, workflow, model, and channel dependencies remain deferred.
