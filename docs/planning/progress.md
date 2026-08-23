@@ -151,3 +151,4 @@
 - Initial independent review found four blocking gate weaknesses in Evidence ownership, breadth enforcement, split conflict handling, and version fingerprints; Sol accepted and remediated all four.
 - Root review additionally removed semantic evaluator leakage from Provider messages. Independent rereview approved the complete diff with no unresolved blocking finding.
 - The post-remediation local equivalent gate passed 78 tests plus format, lint, mypy, contract drift, TypeScript, pnpm lock, layout, compile, Compose, diff, and benchmark checks. GitHub CI remains required for the sandbox-blocked authoritative uv lock check.
+- After permissions were restored, the authoritative local `make preflight` passed all gates, including uv lock resolution. PR #5 then passed `phase-gate` and GitGuardian; Sol completed final integration review and approved squash merge.

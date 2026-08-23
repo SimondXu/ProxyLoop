@@ -1,6 +1,6 @@
 # Phase 01B — Simulator Breadth and Benchmark Gate
 
-**Status**: Implementation complete; independent review passed; CI and Sol integration pending
+**Status**: Complete
 
 **Activation**: Explicitly approved by the user on 2026-08-23 after Phase 01A and the Sol-governed workflow were squash merged. Active branch: `feat/phase-01b-simulator-benchmark`, based on `main` commit `c6e7b33`.
 

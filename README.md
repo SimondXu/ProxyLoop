@@ -8,7 +8,7 @@ The design separates a locally trained Fast Response Model from a hosted Slow Re
 
 ## Current status
 
-Phase 00A repository setup, Phase 00B canonical contracts, and Phase 01A's deterministic fictional-provider loop are complete and squash merged. Phase 01B's simulator breadth and deterministic benchmark gate is active. Product services, trajectory generation, model training, external channels, and a web UI are not implemented.
+Phase 00A repository setup, Phase 00B canonical contracts, Phase 01A's deterministic fictional-provider loop, and Phase 01B's simulator breadth and benchmark gate are complete. Product services, trajectory generation, model training, external channels, and a web UI are not implemented.
 
 ## Start here
 
@@ -27,7 +27,7 @@ Phase 00A repository setup, Phase 00B canonical contracts, and Phase 01A's deter
 - [Development harness](harness/README.md)
 - [Completed Phase 00B contract](harness/build/phase-00b-contracts.md)
 - [Completed Phase 01A simulator contract](harness/build/phase-01a-provider-simulator.md)
-- [Active Phase 01B simulator benchmark contract](harness/build/phase-01b-simulator-benchmark.md)
+- [Completed Phase 01B simulator benchmark contract](harness/build/phase-01b-simulator-benchmark.md)
 
 ## Repository layout
 
