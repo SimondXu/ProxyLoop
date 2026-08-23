@@ -120,3 +120,15 @@
 - Remediated independent review findings covering UUIDv4/UTC schema parity, approval expiry, consequential-action schema conditions, and dependency enforcement.
 - `make preflight` passed with 17 tests and the complete repository-native gate.
 - Stopped before Phase 01; no simulator, service, workflow, model, channel, or UI implementation was started.
+
+### Phase 01A Activation
+
+- Squash merged Phase 00B through PR #2 as `98a7514` after live checks and a fresh local preflight passed.
+- Activated `feat/phase-01-provider-simulator` for one deterministic fictional-provider success loop.
+- Split the roadmap gate: 01A covers one JSON/CLI episode plus authorization/state/evidence tests; 01B retains benchmark breadth, scenario families, safe observations, split generation, and oracle comparisons.
+- Deferred frontend, API, PostgreSQL, Temporal, PydanticAI, channels, model downloads/training, and large benchmark/data work.
+- Implemented the deterministic Provider state path, exact approval gate, content-addressed confirmation Evidence, completion verifier, and JSON CLI.
+- Initial focused suite passed 8 tests and full `make preflight` passed 25 tests plus all repository-native gates.
+- Independent review found that an internally consistent forged confirmation/Evidence pair could complete because the verifier did not consult the Provider's held state. A bounded implementer remediation added the `ConfirmationAuthority` seam, Provider-backed lookup, and a matching-forgery regression.
+- Final focused suite passed 9 tests; independent rereview ran the complete gate with 26 tests, confirmed that no-Provider-mutation and matching-forgery probes are rejected, and approved Phase 01A with no unresolved blocking finding.
+- Phase 01A is complete locally and stops before the unauthorized Phase 01B benchmark expansion. It remains uncommitted and unpublished.
