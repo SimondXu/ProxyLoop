@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  layout:
+  phase-gate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,7 +17,17 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.12.10"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.4"
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.15.1"
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: uv sync --project runtime --all-packages --frozen
       - run: make preflight
       - name: Check committed diff whitespace
         if: github.event_name == 'pull_request'

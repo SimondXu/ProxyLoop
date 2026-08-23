@@ -1,6 +1,15 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
 [project]
 name = "proxyloop-contracts"
 version = "0.0.0"
 description = "Canonical domain and API contracts for ProxyLoop."
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+  "pydantic>=2.12,<3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/proxyloop_contracts"]

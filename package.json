@@ -6,6 +6,13 @@
   "packageManager": "pnpm@10.31.0",
   "scripts": {
     "check:layout": "python3 scripts/validate_layout.py",
+    "contracts:check": "uv run --project runtime --all-packages python scripts/generate_contracts.py --check",
+    "contracts:generate": "uv run --project runtime --all-packages python scripts/generate_contracts.py",
+    "contracts:typecheck": "tsc --noEmit -p contracts/typescript/tsconfig.json",
     "preflight": "make preflight"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "15.0.4",
+    "typescript": "7.0.2"
   }
 }

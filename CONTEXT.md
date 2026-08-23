@@ -72,6 +72,22 @@ _Avoid_: Model verdict, reward score
 The versioned operational record of a model invocation, its structured inputs and outputs, and reproducibility metadata, excluding hidden chain-of-thought.
 _Avoid_: Chain-of-thought, reasoning log
 
+**Contract Schema Version**:
+The identifier for the shape and meaning of a serialized ProxyLoop contract, independent of changes to any single Case or related entity.
+_Avoid_: Entity version, database migration
+
+**Entity Revision**:
+The optimistic sequence number of one immutable snapshot in a mutable business entity's history.
+_Avoid_: Schema version, timestamp
+
+**Money**:
+An exact monetary amount paired with its currency, used for prices, fees, credits, budgets, and totals.
+_Avoid_: Float, formatted price string
+
+**Material Terms**:
+The price, fees, credits, effective date, duration, expiry, and feature changes whose alteration can invalidate an action or approval.
+_Avoid_: Summary, offer text
+
 **Simulator Episode**:
 One isolated, reproducible Case interaction against a versioned fictional Provider scenario.
 _Avoid_: Conversation, test chat

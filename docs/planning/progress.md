@@ -110,3 +110,13 @@
   - `uv lock` in `runtime/`
   - `pnpm install --lockfile-only --ignore-scripts`
 | What have I done? | Delivered product spec, architecture, monorepo ADR, roadmap, findings, and progress records |
+
+## Session: 2026-08-22 — Phase 00B Canonical Contracts
+
+- **Status:** complete locally; not committed or published in this session
+- Implemented the 13 canonical domain contract documents as a strict, immutable, framework-independent Pydantic package.
+- Generated and committed-source-checked JSON Schema Draft 2020-12 and TypeScript declarations without a second hand-written domain model.
+- Added valid and invalid fixtures, Python/JSON Schema/TypeScript compatibility checks, generated-artifact drift detection, and a standard-library-plus-Pydantic architecture boundary.
+- Remediated independent review findings covering UUIDv4/UTC schema parity, approval expiry, consequential-action schema conditions, and dependency enforcement.
+- `make preflight` passed with 17 tests and the complete repository-native gate.
+- Stopped before Phase 01; no simulator, service, workflow, model, channel, or UI implementation was started.
