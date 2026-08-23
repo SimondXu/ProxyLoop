@@ -131,4 +131,12 @@
 - Initial focused suite passed 8 tests and full `make preflight` passed 25 tests plus all repository-native gates.
 - Independent review found that an internally consistent forged confirmation/Evidence pair could complete because the verifier did not consult the Provider's held state. A bounded implementer remediation added the `ConfirmationAuthority` seam, Provider-backed lookup, and a matching-forgery regression.
 - Final focused suite passed 9 tests; independent rereview ran the complete gate with 26 tests, confirmed that no-Provider-mutation and matching-forgery probes are rejected, and approved Phase 01A with no unresolved blocking finding.
-- Phase 01A is complete locally and stops before the unauthorized Phase 01B benchmark expansion. It remains uncommitted and unpublished.
+- At the initial local gate, Phase 01A was complete and stopped before the unauthorized Phase 01B benchmark expansion; its later publication is recorded below.
+
+### Sol-Governed Agent and Merge Workflow
+
+- Phase 01A was published through PR #3 and squash merged to `main` as `f7f3cf7` after independent review, `phase-gate`, GitGuardian, and Sol's final integration review passed.
+- The user continues to approve phase activation and scope expansion.
+- Within approved scope, Sol now decides when to delegate bounded work, reviews and integrates subagent output, owns the final PR decision, and may complete routine branch/commit/push/PR/squash-merge steps without separate user review.
+- Independent review remains required for material changes, but the reviewer advises Sol and does not own merge authority.
+- Independent governance review initially found stale prompt-level delegation gates and an ambiguous source-branch deletion rule. Both were remediated; final rereview approved the policy with no unresolved finding.

@@ -25,6 +25,7 @@
 - [ ] Complete diff reviewed
 - [ ] Independent review completed for material contract, security, authorization, completion, workflow, or channel changes
 - [ ] No unresolved blocking findings
+- [ ] Sol final integration review completed
 
 ## Documentation and evidence
 
