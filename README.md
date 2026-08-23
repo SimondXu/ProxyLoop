@@ -8,7 +8,7 @@ The design separates a locally trained Fast Response Model from a hosted Slow Re
 
 ## Current status
 
-Phase 00A repository setup, Phase 00B canonical contracts, Phase 01A's deterministic fictional-provider loop, and Phase 01B's simulator breadth and benchmark gate are complete. Product services, trajectory generation, model training, external channels, and a web UI are not implemented.
+Phase 00A repository setup, Phase 00B canonical contracts, Phase 01A's deterministic fictional-provider loop, and Phase 01B's simulator breadth and benchmark gate are complete. Phase 02's Data Factory and trajectory pilot has passed its local gate and independent review; PR CI, GitGuardian, and squash merge remain pending. Its human review sample is `pending_human` and `training_ready=false`. Phase 03 is inactive; product services, model training, external channels, and a web UI are not implemented.
 
 ## Start here
 
@@ -28,6 +28,7 @@ Phase 00A repository setup, Phase 00B canonical contracts, Phase 01A's determini
 - [Completed Phase 00B contract](harness/build/phase-00b-contracts.md)
 - [Completed Phase 01A simulator contract](harness/build/phase-01a-provider-simulator.md)
 - [Completed Phase 01B simulator benchmark contract](harness/build/phase-01b-simulator-benchmark.md)
+- [Phase 02 data-factory contract and local gate](harness/build/phase-02-data-factory.md)
 
 ## Repository layout
 
@@ -52,9 +53,11 @@ make contracts-check Verify generated artifacts and compile the TypeScript fixtu
 make simulator       Emit the deterministic Phase 01A success episode as JSON
 make benchmark       Emit the deterministic Phase 01B environment-ceiling report
 make benchmark-check Verify the committed split/report artifacts and Phase 01B gate
+make data-pilot      Emit the deterministic Phase 02 pilot cost/quality report
+make data-pilot-check Verify Phase 02 schema, manifest, quarantine, report, and sample drift
 ```
 
-These commands validate the canonical contract boundary and deterministic simulator gates. `make simulator` runs the Phase 01A success episode; `make benchmark` runs Phase 01B's scripted environment ceiling. Neither command runs a learned model, training/data factory, product service, workflow engine, external channel, or browser test.
+These commands validate the canonical contract boundary, deterministic simulator gates, and the Phase 02 Data Factory pilot. `make simulator` runs the Phase 01A success episode; `make benchmark` runs Phase 01B's scripted environment ceiling; `make data-pilot` regenerates the deterministic one-turn pilot report with zero external model calls. None runs a learned model, model training, product service, workflow engine, external channel, or browser test.
 
 ## Development workflow
 

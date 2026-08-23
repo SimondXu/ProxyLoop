@@ -1,0 +1,384 @@
+{
+  "$defs": {
+    "GenerationRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "generation_config_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Generation Config Hash",
+          "type": "string"
+        },
+        "prompt_template_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Prompt Template Hash",
+          "type": "string"
+        },
+        "simulator_version": {
+          "minLength": 1,
+          "title": "Simulator Version",
+          "type": "string"
+        },
+        "snapshots": {
+          "items": {
+            "$ref": "#/$defs/GeneratorSnapshot"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Snapshots",
+          "type": "array"
+        },
+        "split_manifest_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Split Manifest Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "simulator_version",
+        "split_manifest_hash",
+        "prompt_template_hash",
+        "generation_config_hash",
+        "snapshots"
+      ],
+      "title": "GenerationRecord",
+      "type": "object"
+    },
+    "GeneratorSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_id": {
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "estimated_external_cost_usd": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Estimated External Cost Usd",
+          "type": "number"
+        },
+        "external_input_token_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "External Input Token Count",
+          "type": "integer"
+        },
+        "external_model": {
+          "default": false,
+          "title": "External Model",
+          "type": "boolean"
+        },
+        "external_output_token_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "External Output Token Count",
+          "type": "integer"
+        },
+        "role": {
+          "enum": [
+            "teacher",
+            "provider",
+            "judge"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "adapter_id",
+        "version"
+      ],
+      "title": "GeneratorSnapshot",
+      "type": "object"
+    },
+    "LearningContent": {
+      "additionalProperties": false,
+      "properties": {
+        "assistant_response_text": {
+          "minLength": 1,
+          "title": "Assistant Response Text",
+          "type": "string"
+        },
+        "decision": {
+          "$ref": "#/$defs/TrajectoryDecision"
+        },
+        "observation": {
+          "additionalProperties": true,
+          "title": "Observation",
+          "type": "object"
+        }
+      },
+      "required": [
+        "observation",
+        "decision",
+        "assistant_response_text"
+      ],
+      "title": "LearningContent",
+      "type": "object"
+    },
+    "LicenseRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_use": {
+          "minLength": 1,
+          "title": "Allowed Use",
+          "type": "string"
+        },
+        "license_id": {
+          "minLength": 1,
+          "title": "License Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "approved",
+            "unapproved"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "license_id",
+        "status",
+        "allowed_use"
+      ],
+      "title": "LicenseRecord",
+      "type": "object"
+    },
+    "SourceProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "license": {
+          "$ref": "#/$defs/LicenseRecord"
+        },
+        "source_id": {
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_type": {
+          "const": "project_owned_simulator",
+          "title": "Source Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "source_type",
+        "license"
+      ],
+      "title": "SourceProvenance",
+      "type": "object"
+    },
+    "TrajectoryDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "minLength": 1,
+          "title": "Action",
+          "type": "string"
+        },
+        "completion_candidate": {
+          "title": "Completion Candidate",
+          "type": "boolean"
+        },
+        "offer_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Offer Id"
+        }
+      },
+      "required": [
+        "action",
+        "completion_candidate"
+      ],
+      "title": "TrajectoryDecision",
+      "type": "object"
+    },
+    "TrajectoryLineage": {
+      "additionalProperties": false,
+      "properties": {
+        "derivation_parent_id": {
+          "minLength": 1,
+          "title": "Derivation Parent Id",
+          "type": "string"
+        },
+        "entity_cluster": {
+          "minLength": 1,
+          "title": "Entity Cluster",
+          "type": "string"
+        },
+        "family_id": {
+          "minLength": 1,
+          "title": "Family Id",
+          "type": "string"
+        },
+        "family_version": {
+          "minLength": 1,
+          "title": "Family Version",
+          "type": "string"
+        },
+        "provider_configuration_id": {
+          "minLength": 1,
+          "title": "Provider Configuration Id",
+          "type": "string"
+        },
+        "provider_configuration_version": {
+          "minLength": 1,
+          "title": "Provider Configuration Version",
+          "type": "string"
+        },
+        "response_variant": {
+          "exclusiveMaximum": 4,
+          "minimum": 0,
+          "title": "Response Variant",
+          "type": "integer"
+        },
+        "split": {
+          "enum": [
+            "train",
+            "development",
+            "test"
+          ],
+          "title": "Split",
+          "type": "string"
+        }
+      },
+      "required": [
+        "derivation_parent_id",
+        "family_id",
+        "family_version",
+        "entity_cluster",
+        "provider_configuration_id",
+        "provider_configuration_version",
+        "split",
+        "response_variant"
+      ],
+      "title": "TrajectoryLineage",
+      "type": "object"
+    },
+    "TrajectoryVerification": {
+      "additionalProperties": false,
+      "properties": {
+        "completed": {
+          "title": "Completed",
+          "type": "boolean"
+        },
+        "evidence_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Ref"
+        },
+        "false_completion": {
+          "title": "False Completion",
+          "type": "boolean"
+        },
+        "reason_codes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "valid_outcome": {
+          "title": "Valid Outcome",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "valid_outcome",
+        "completed",
+        "false_completion",
+        "reason_codes"
+      ],
+      "title": "TrajectoryVerification",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "content_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Hash",
+      "type": "string"
+    },
+    "generation": {
+      "$ref": "#/$defs/GenerationRecord"
+    },
+    "learning_content": {
+      "$ref": "#/$defs/LearningContent"
+    },
+    "lineage": {
+      "$ref": "#/$defs/TrajectoryLineage"
+    },
+    "rejection_reasons": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Rejection Reasons",
+      "type": "array"
+    },
+    "review_state": {
+      "const": "pending_human",
+      "title": "Review State",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "semantic_fingerprint": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Semantic Fingerprint",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/SourceProvenance"
+    },
+    "trajectory_id": {
+      "minLength": 1,
+      "title": "Trajectory Id",
+      "type": "string"
+    },
+    "verification": {
+      "$ref": "#/$defs/TrajectoryVerification"
+    }
+  },
+  "required": [
+    "schema_version",
+    "trajectory_id",
+    "source",
+    "lineage",
+    "generation",
+    "learning_content",
+    "verification",
+    "review_state",
+    "content_hash",
+    "semantic_fingerprint"
+  ],
+  "title": "NormalizedTrajectory",
+  "type": "object"
+}

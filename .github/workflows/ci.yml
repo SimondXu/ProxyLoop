@@ -28,6 +28,7 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: uv sync --project runtime --all-packages --frozen
+      - run: uv sync --project ml --frozen
       - run: make preflight
       - name: Check committed diff whitespace
         if: github.event_name == 'pull_request'

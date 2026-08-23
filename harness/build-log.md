@@ -9,6 +9,8 @@ This file is append-only execution evidence. Record only commands actually run a
 | 00A — repository foundation | Complete | Initial repository layout validated and published before this harness initialization |
 | 00B — canonical contracts | Complete | `make preflight`: 17 tests plus format, lint, type, generation, drift, TypeScript, layout, locks, compile, and Compose passed |
 | 01A — deterministic Provider loop | Complete | Independent `make preflight`: 26 tests plus the complete repository gate passed; matching-forgery and no-mutation probes were rejected |
+| 01B — simulator breadth and benchmark | Complete | `make preflight`: 78 tests plus benchmark drift/gate, locks, and all repository checks passed; PR #5 CI and independent review approved |
+| 02 — Data Factory and trajectory pilot | Local gate approved; PR integration pending | Final local `make preflight`: 83 runtime + 12 ML tests, full repository gate, and independent final review approved |
 
 ## Entries
 
@@ -183,3 +185,37 @@ This file is append-only execution evidence. Record only commands actually run a
 - Final narrow independent review of the pytest runner fix: Approve. The reviewer confirmed the explicit runtime config collects all 78 intended suites, does not narrow discovery, and that the failure/remediation evidence is accurately recorded.
 - PR #5 publication gate: GitHub `phase-gate` passed in 33 seconds and GitGuardian Security Checks passed. The PR remained mergeable with no unresolved review finding.
 - Final Sol decision: Approve for squash merge. The complete PR diff, formal local preflight, independent review/rereview, generated artifact gate, dependency boundary, and CI evidence satisfy the Phase 01B contract.
+
+### 2026-08-23 — Phase 02 activation and preflight
+
+- Human gate: the user explicitly authorized Phase 02 Data Factory and trajectory pilot through independent review, CI, and squash merge.
+- Base: clean synchronized `main` commit `0d05ab2`; active branch `feat/phase-02-data-factory`.
+- Frozen scope: one-turn normalized schema, inherited Phase 01B family/entity/Provider splits, deterministic rollout/export, hard provenance/license/PII/deduplication/leakage/rejection checks, 128 accepted records, eight quarantine probes, cost/quality report, annotation guide, and a pending-human review sample.
+- Preserved boundary: no teacher/model API calls, Qwen/LFM work, training, learned evaluation, services, Temporal, external channels, or UI.
+- Baseline `make preflight`: passed before implementation. Ruff format checked 27 files; Ruff lint and mypy passed; pytest passed 78 tests; contract and benchmark drift checks, TypeScript, layout, runtime uv lock, pnpm frozen offline lock, Python compile, and Docker Compose configuration all passed.
+- Red architecture evidence: the first uv-focused command was blocked by the sandbox reading `/Users/edison/.cache/uv/sdists-v9/.git`; the repository's existing runtime virtual environment then ran `tests/contract/test_phase_02_architecture.py` and produced two expected failures plus one pass because `ml/pyproject.toml` and the Data Factory source package did not yet exist.
+- Red artifact evidence: `runtime/.venv/bin/pytest -c runtime/pyproject.toml tests/integration/test_phase_02_artifacts.py -q` produced two expected failures because the normalized schema and review-sample artifacts did not yet exist.
+
+### 2026-08-23 — Phase 02 independent-review remediation
+
+- Initial independent decision: Request Changes. The reviewer found that the cross-split fingerprint was not a frozen lexical normalization and omitted response text, while report audit values were literal declarations rather than derived evidence.
+- Remediation: public-content fingerprints now remove opaque identifiers and normalize Unicode, case, whitespace, and punctuation before hashing; assistant response text is included. A non-byte-identical cross-split case/whitespace/punctuation probe now collides with an existing train fingerprint and is quarantined. The check is documented as a lexical heuristic, not embedding or semantic equivalence.
+- Remediation: report provenance, accepted safety/dedup/leakage counts, quarantine reasons, external calls/tokens/cost, and automated status now derive from accepted/quarantined records and generator snapshots. A regression mutating source and external usage produces incomplete provenance, non-zero usage, and `automated_audit_status=failed`.
+- Remediation cleanup: removed only the run-created root scratch files `findings.md`, `task_plan.md`, and `progress.md`.
+- Durable review status: `harness/code_review/phase-02.md` records the findings and remediation; independent rereview remains pending.
+- Remediation verification: `make preflight` passed with runtime Ruff format on 29 paths, ML Ruff format on 5 paths, both Ruff lint checks, runtime mypy on 18 source files, ML mypy on 4 source files, 83 runtime tests, 11 ML tests, contract drift, TypeScript, Phase 01B benchmark, Phase 02 artifact drift, layout, runtime and ML uv locks (27 and 21 packages), frozen offline pnpm lock, script compilation, and Docker Compose configuration.
+- Pilot evidence after regeneration: `make data-pilot` reported 128 accepted and 8 quarantined candidates, inherited 80/24/24 splits, zero external calls/tokens/cost, 100% derived provenance completeness, `automated_audit_status=passed`, `human_review_status=pending_human`, and `training_ready=false`; `make data-pilot-check` passed.
+
+### 2026-08-23 — Phase 02 second-rereview remediation
+
+- Second independent rereview decision: Request Changes. Quarantine usage accounting lost raw generator snapshot usage whenever a candidate failed complete trajectory validation, such as missing source provenance.
+- Remediation: raw usage accounting now defensively reads only correctly typed `generation.snapshots`; missing or malformed surrounding provenance cannot erase independently available external calls, token counts, or cost. A regression deletes `source`, records one external call, nine input tokens, and non-zero cost, and proves `missing_provenance` quarantine, retained audit usage, and `automated_audit_status=failed`.
+- Regeneration and verification: regenerated Phase 02 artifacts and ran `make preflight`, which passed both Ruff checks, both mypy checks, 83 runtime tests, 12 ML tests, contract/TypeScript/Phase 01B/Phase 02 artifact gates, layout, both uv locks, offline pnpm lock, script compilation, Docker Compose configuration, and diff checks.
+- Durable review status: `harness/code_review/phase-02.md` remains pending independent rereview; this remediation is not an approval.
+
+### 2026-08-23 — Phase 02 local gate closeout
+
+- Final independent rereview: Approve with no unresolved local blocking finding. The durable record is `harness/code_review/phase-02.md`.
+- Final local evidence: `make preflight` passed with 83 runtime tests and 12 ML tests; both Ruff and mypy gates, contract and TypeScript checks, Phase 01B benchmark and Phase 02 artifact drift gates, layout, both uv locks, offline pnpm lock, script compilation, Docker Compose configuration, and diff checks passed.
+- Pilot boundary remains explicit: the review sample is `pending_human`, `training_ready=false`, external model calls/tokens/cost are zero, and Phase 03 is inactive.
+- Integration status: PR publication, CI, GitGuardian, Sol integration review, and squash merge have not yet run. Do not activate Phase 03 until Phase 02 is merged and the user provides a new explicit gate.

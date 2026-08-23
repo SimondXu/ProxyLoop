@@ -119,3 +119,23 @@ _Avoid_: Gold-label reader, trained model
 **Oracle Ceiling Report**:
 A deterministic environment report showing whether the Scripted Oracle Consumer can produce valid outcomes without false completion or leaked information.
 _Avoid_: Model score, production metric
+
+**Normalized Trajectory**:
+A versioned, reproducible record of model-facing observations, proposed decisions and responses, deterministic verification, and curation metadata for one Simulator Episode derivative.
+_Avoid_: Chat log, raw transcript, training example
+
+**Trajectory Derivation**:
+The lineage relationship from one immutable source Scenario Family and Entity Cluster through a specific Provider configuration and generation variant to a Normalized Trajectory.
+_Avoid_: Copy, augmentation ID, random seed
+
+**Trajectory Pilot**:
+A bounded set of Normalized Trajectories used to validate schema, lineage, safety filters, review effort, and cost before larger generation or training.
+_Avoid_: Training corpus, benchmark result, production dataset
+
+**Quarantined Candidate**:
+A trajectory candidate retained with explicit rejection reasons because it failed provenance, license, privacy, leakage, duplication, split, or verification checks.
+_Avoid_: Deleted sample, bad row, ignored failure
+
+**Human Review Sample**:
+A deterministic, redacted subset prepared for human annotation whose pending or completed review state is recorded explicitly.
+_Avoid_: Human-reviewed dataset, gold set
