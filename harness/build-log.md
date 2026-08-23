@@ -150,3 +150,34 @@ This file is append-only execution evidence. Record only commands actually run a
 - Final independent rereview: Approve with no unresolved finding. Durable details are in `harness/code_review/sol-governed-agent-workflow.md`.
 - Verification note: a restricted-sandbox `make preflight` attempt failed only because uv could not read `/Users/edison/.cache/uv/sdists-v9/.git`; rerunning with extended read access passed Ruff, mypy, 26 tests, contract drift, TypeScript, layout, locks, compile, and Compose.
 - Final Sol verification after the durable review artifact was added: `make preflight` passed again with 26 tests and every repository-native gate.
+
+### 2026-08-23 — Phase 01B activation and red gate
+
+- Human gate: the user explicitly requested the next task and authorized its completion; Phase 01B simulator breadth and benchmark is the only active implementation phase.
+- Frozen scope: 16 versioned scenario families, two deterministic fictional-Provider configurations, 32 scenarios, an allowlisted Safe Observation, family/entity-safe split manifest, scripted oracle, deterministic ceiling report, and adversarial environment checks.
+- Preserved boundary: Phase 02 trajectories/data factory, Qwen/LFM work, services, Temporal, external channels, and UI remain excluded.
+- Red architecture check: `runtime/.venv/bin/pytest -q tests/contract/test_phase_01b_architecture.py` produced one expected failure and one pass because `runtime/packages/agent_core/pyproject.toml` did not yet exist.
+- Environment note: the equivalent uv command was initially blocked from the external uv cache by the sandbox; escalation was rejected by the system approval/usage limit. The repository's existing `.venv` supplied the red evidence without dependency changes.
+- Delegation: Sol froze interfaces and assigned non-overlapping `agent_core` and Provider-environment implementation slices; subagents have no commit, publication, review-submission, or merge authority.
+
+### 2026-08-23 — Phase 01B implementation and initial review
+
+- Implemented a contracts-only `agent_core` package with an explicit Safe Observation allowlist and a scripted oracle that handles clarification, disclosure refusal, stale approval, transfer, missing confirmation Evidence, offer constraints, and the three supported business-action families.
+- Implemented 16 versioned data-defined scenario families over two deterministic fictional-Provider configurations, yielding 32 scenarios through one environment engine.
+- Added deterministic family/entity split generation with 10 train, 3 development, and 3 test families; both configuration derivatives of each family remain together.
+- Added the benchmark composition CLI, committed split/ceiling artifacts, structural leakage scan, report fingerprints, and `make benchmark` / `make benchmark-check` gates.
+- Integration red evidence: the first composed suite produced 40 passes and 2 failures because the oracle accepted the unsupported public change `account_cancellation`. The oracle action allowlist remediation brought the focused suite to 45 passes.
+- Initial independent decision: Request Changes. Four P1 findings showed that caller Evidence could be omitted, the aggregate gate did not hard-require 16 families/two configurations, conflicting family/entity derivatives were order-dependent, and version changes did not affect identities/fingerprints.
+- Root review additionally rejected Provider messages that copied private family descriptions because structural key scanning alone does not prevent semantic evaluator leakage.
+- Remediation: completion Evidence is now bound and returned only by the Provider environment; the caller has no Evidence-reference field. The hard gate includes exact breadth and split counts; split generation rejects family/entity conflicts before assignment; family/config versions enter scenario identity, manifest hash, report rows, and report fingerprint; public messages use factual Provider-facing text rather than evaluator descriptions.
+- Post-remediation focused suite: 52 passed.
+- Post-remediation local equivalent full gate: Ruff format checked 27 files; Ruff lint passed; mypy passed on 18 source files; pytest passed 78 tests; contract drift and TypeScript compile passed; pnpm frozen offline lock passed; layout, Python compile, Compose, diff checks, and benchmark artifact/gate checks passed.
+- `uv lock --project runtime --check` remains unverified locally because the sandbox cannot read the external uv cache and the system rejected escalation after its approval/usage limit was reached. The workspace-only lock entry was updated explicitly; CI must supply the authoritative uv lock check before merge.
+- Independent rereview: Approve with no unresolved blocking finding. The reviewer reran 59 focused tests, the benchmark artifact check, Ruff, mypy, layout, and diff checks. Durable findings and remediation are recorded in `harness/code_review/phase-01b.md`.
+- First authoritative `make preflight` after permissions were restored reached pytest and failed during collection because uv selected `runtime/` as the pytest root, so the repository-root `scripts` namespace was not importable. This was a test-runner path configuration failure, not a passing check.
+- Remediation: set pytest's explicit repository-root `pythonpath` to `..` in `runtime/pyproject.toml`; the complete authoritative gate must be rerun before publication.
+- The first remediation used the wrong relative base and the second `make preflight` failed at the same collection point. A read-only pytest probe confirmed `rootdir` is the repository root, so the setting was corrected from `..` to `.`; no test was reported as passing during either failed attempt.
+- The third `make preflight` exposed the actual cause: pytest launched from the repository root never auto-discovered the nested `runtime/pyproject.toml`, so neither path value had been active. The Makefile now passes `-c runtime/pyproject.toml` explicitly and the configured `pythonpath` is restored to `..`, relative to the runtime config root. The authoritative gate must still pass after this runner fix.
+- Focused runner verification after the explicit-config fix: `uv run --project runtime --all-packages pytest -c runtime/pyproject.toml -q` passed 78 tests.
+- Final authoritative `make preflight`: passed. Ruff format checked 27 files; Ruff lint passed; mypy passed on 18 source files; pytest passed 78 tests; contract drift, TypeScript, benchmark artifact/gate, layout, uv lock (27 resolved packages), pnpm frozen offline lock, Python compile, and Docker Compose checks all passed.
+- Final narrow independent review of the pytest runner fix: Approve. The reviewer confirmed the explicit runtime config collects all 78 intended suites, does not narrow discovery, and that the failure/remediation evidence is accurately recorded.

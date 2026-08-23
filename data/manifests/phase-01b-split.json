@@ -1,0 +1,266 @@
+{
+  "content_hash": "128e662e65d16e79f277e2bff4856eb3f1d6509e27d4c2fda75869ef487e8452",
+  "entity_assignments": [
+    {
+      "entity_cluster": "entity-01",
+      "split": "train"
+    },
+    {
+      "entity_cluster": "entity-02",
+      "split": "development"
+    },
+    {
+      "entity_cluster": "entity-03",
+      "split": "train"
+    },
+    {
+      "entity_cluster": "entity-04",
+      "split": "test"
+    },
+    {
+      "entity_cluster": "entity-05",
+      "split": "train"
+    },
+    {
+      "entity_cluster": "entity-06",
+      "split": "train"
+    },
+    {
+      "entity_cluster": "entity-07",
+      "split": "test"
+    },
+    {
+      "entity_cluster": "entity-08",
+      "split": "train"
+    },
+    {
+      "entity_cluster": "entity-09",
+      "split": "train"
+    },
+    {
+      "entity_cluster": "entity-10",
+      "split": "train"
+    },
+    {
+      "entity_cluster": "entity-11",
+      "split": "train"
+    },
+    {
+      "entity_cluster": "entity-12",
+      "split": "test"
+    },
+    {
+      "entity_cluster": "entity-13",
+      "split": "development"
+    },
+    {
+      "entity_cluster": "entity-14",
+      "split": "train"
+    },
+    {
+      "entity_cluster": "entity-15",
+      "split": "development"
+    },
+    {
+      "entity_cluster": "entity-16",
+      "split": "train"
+    }
+  ],
+  "family_assignments": [
+    {
+      "family_id": "absent-evidence",
+      "split": "train"
+    },
+    {
+      "family_id": "add-on-removal",
+      "split": "train"
+    },
+    {
+      "family_id": "clarification-required",
+      "split": "train"
+    },
+    {
+      "family_id": "direct-success",
+      "split": "train"
+    },
+    {
+      "family_id": "disclosure-restriction",
+      "split": "train"
+    },
+    {
+      "family_id": "expired-approval",
+      "split": "train"
+    },
+    {
+      "family_id": "fee-total-cost-trap",
+      "split": "train"
+    },
+    {
+      "family_id": "forbidden-term",
+      "split": "train"
+    },
+    {
+      "family_id": "forged-evidence",
+      "split": "train"
+    },
+    {
+      "family_id": "multi-hazard",
+      "split": "train"
+    },
+    {
+      "family_id": "plan-change",
+      "split": "development"
+    },
+    {
+      "family_id": "promotion-credit",
+      "split": "development"
+    },
+    {
+      "family_id": "refusal-transfer",
+      "split": "development"
+    },
+    {
+      "family_id": "required-feature-loss",
+      "split": "test"
+    },
+    {
+      "family_id": "revised-offer",
+      "split": "test"
+    },
+    {
+      "family_id": "unsupported-action",
+      "split": "test"
+    }
+  ],
+  "scenario_assignments": [
+    {
+      "scenario_id": "absent-evidence@1.0::retention-gated-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "absent-evidence@1.0::transparent-public-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "add-on-removal@1.0::retention-gated-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "add-on-removal@1.0::transparent-public-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "clarification-required@1.0::retention-gated-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "clarification-required@1.0::transparent-public-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "direct-success@1.0::retention-gated-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "direct-success@1.0::transparent-public-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "disclosure-restriction@1.0::retention-gated-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "disclosure-restriction@1.0::transparent-public-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "expired-approval@1.0::retention-gated-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "expired-approval@1.0::transparent-public-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "fee-total-cost-trap@1.0::retention-gated-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "fee-total-cost-trap@1.0::transparent-public-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "forbidden-term@1.0::retention-gated-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "forbidden-term@1.0::transparent-public-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "forged-evidence@1.0::retention-gated-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "forged-evidence@1.0::transparent-public-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "multi-hazard@1.0::retention-gated-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "multi-hazard@1.0::transparent-public-v1@1.0",
+      "split": "train"
+    },
+    {
+      "scenario_id": "plan-change@1.0::retention-gated-v1@1.0",
+      "split": "development"
+    },
+    {
+      "scenario_id": "plan-change@1.0::transparent-public-v1@1.0",
+      "split": "development"
+    },
+    {
+      "scenario_id": "promotion-credit@1.0::retention-gated-v1@1.0",
+      "split": "development"
+    },
+    {
+      "scenario_id": "promotion-credit@1.0::transparent-public-v1@1.0",
+      "split": "development"
+    },
+    {
+      "scenario_id": "refusal-transfer@1.0::retention-gated-v1@1.0",
+      "split": "development"
+    },
+    {
+      "scenario_id": "refusal-transfer@1.0::transparent-public-v1@1.0",
+      "split": "development"
+    },
+    {
+      "scenario_id": "required-feature-loss@1.0::retention-gated-v1@1.0",
+      "split": "test"
+    },
+    {
+      "scenario_id": "required-feature-loss@1.0::transparent-public-v1@1.0",
+      "split": "test"
+    },
+    {
+      "scenario_id": "revised-offer@1.0::retention-gated-v1@1.0",
+      "split": "test"
+    },
+    {
+      "scenario_id": "revised-offer@1.0::transparent-public-v1@1.0",
+      "split": "test"
+    },
+    {
+      "scenario_id": "unsupported-action@1.0::retention-gated-v1@1.0",
+      "split": "test"
+    },
+    {
+      "scenario_id": "unsupported-action@1.0::transparent-public-v1@1.0",
+      "split": "test"
+    }
+  ],
+  "schema_version": "1.0"
+}

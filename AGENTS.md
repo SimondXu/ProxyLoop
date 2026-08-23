@@ -22,7 +22,7 @@ Do not treat a roadmap item as permission to implement it. Only an explicitly ap
 - Repository foundation is complete.
 - Phase 00B, canonical contracts and contract verification, was squash merged to `main` as `98a7514`.
 - Phase 01A was independently reviewed and squash merged to `main` as `f7f3cf7`.
-- Phase 01B benchmark expansion is not started or authorized.
+- Phase 01B implementation passes its local gate and independent review on `feat/phase-01b-simulator-benchmark`; CI and Sol integration remain pending.
 - Product services, model training, external channels, and web UI are not implemented.
 
 ## Working Rules

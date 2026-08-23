@@ -140,3 +140,14 @@
 - Within approved scope, Sol now decides when to delegate bounded work, reviews and integrates subagent output, owns the final PR decision, and may complete routine branch/commit/push/PR/squash-merge steps without separate user review.
 - Independent review remains required for material changes, but the reviewer advises Sol and does not own merge authority.
 - Independent governance review initially found stale prompt-level delegation gates and an ambiguous source-branch deletion rule. Both were remediated; final rereview approved the policy with no unresolved finding.
+
+### Phase 01B Activation
+
+- The user explicitly activated the next roadmap task after the Phase 01A and workflow merges.
+- Phase 01B is frozen at 16 versioned scenario families across two deterministic fictional-Provider configurations, with a Safe Observation boundary, family/entity-safe split manifest, scripted oracle, ceiling report, and adversarial checks.
+- The environment ceiling requires all 32 scripted scenarios to produce valid outcomes, zero false completions, and zero private/gold-field leakage.
+- Phase 02 trajectory generation, Qwen/LFM evaluation or training, product services, Temporal, external channels, and UI remain out of scope.
+- Implementation produced 16 families across two configurations, a contracts-only Safe Observation package, deterministic family/entity split artifacts, and a 32-scenario scripted ceiling report.
+- Initial independent review found four blocking gate weaknesses in Evidence ownership, breadth enforcement, split conflict handling, and version fingerprints; Sol accepted and remediated all four.
+- Root review additionally removed semantic evaluator leakage from Provider messages. Independent rereview approved the complete diff with no unresolved blocking finding.
+- The post-remediation local equivalent gate passed 78 tests plus format, lint, mypy, contract drift, TypeScript, pnpm lock, layout, compile, Compose, diff, and benchmark checks. GitHub CI remains required for the sandbox-blocked authoritative uv lock check.

@@ -15,3 +15,4 @@ Active context:
 
 - `phase-00b-preflight.md`: observed contract-package baseline and the six decisions that must be resolved before domain model implementation.
 - `phase-01a-preflight.md`: observed post-contract baseline and the frozen deterministic Provider-loop seam.
+- `phase-01b-preflight.md`: observed post-Phase-01A baseline and the frozen simulator benchmark seam.

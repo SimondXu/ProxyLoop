@@ -8,7 +8,7 @@ The design separates a locally trained Fast Response Model from a hosted Slow Re
 
 ## Current status
 
-Phase 00A repository setup, Phase 00B canonical contracts, and Phase 01A's deterministic fictional-provider loop are complete and squash merged. The full simulator benchmark remains deferred to Phase 01B. Product services, model training, external channels, and a web UI are not implemented.
+Phase 00A repository setup, Phase 00B canonical contracts, and Phase 01A's deterministic fictional-provider loop are complete and squash merged. Phase 01B's simulator breadth and deterministic benchmark gate is active. Product services, trajectory generation, model training, external channels, and a web UI are not implemented.
 
 ## Start here
 
@@ -27,6 +27,7 @@ Phase 00A repository setup, Phase 00B canonical contracts, and Phase 01A's deter
 - [Development harness](harness/README.md)
 - [Completed Phase 00B contract](harness/build/phase-00b-contracts.md)
 - [Completed Phase 01A simulator contract](harness/build/phase-01a-provider-simulator.md)
+- [Active Phase 01B simulator benchmark contract](harness/build/phase-01b-simulator-benchmark.md)
 
 ## Repository layout
 
@@ -49,9 +50,11 @@ make validate        Run format, lint, type, test, drift, and layout checks
 make contracts       Regenerate committed JSON Schema and TypeScript contracts
 make contracts-check Verify generated artifacts and compile the TypeScript fixture
 make simulator       Emit the deterministic Phase 01A success episode as JSON
+make benchmark       Emit the deterministic Phase 01B environment-ceiling report
+make benchmark-check Verify the committed split/report artifacts and Phase 01B gate
 ```
 
-These commands validate the canonical contract boundary. `make simulator` also runs the Phase 01A deterministic fictional-provider simulator and emits its JSON episode; it does not run a product service, model, workflow engine, external channel, or browser test.
+These commands validate the canonical contract boundary and deterministic simulator gates. `make simulator` runs the Phase 01A success episode; `make benchmark` runs Phase 01B's scripted environment ceiling. Neither command runs a learned model, training/data factory, product service, workflow engine, external channel, or browser test.
 
 ## Development workflow
 
