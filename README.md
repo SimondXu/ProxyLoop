@@ -8,7 +8,7 @@ The design separates a locally trained Fast Response Model from a hosted Slow Re
 
 ## Current status
 
-Phase 00A repository setup, Phase 00B canonical contracts, Phase 01A's deterministic fictional-provider loop, and Phase 01B's simulator breadth and benchmark gate are complete. Phase 02's Data Factory and trajectory pilot has passed its local gate and independent review; PR CI, GitGuardian, and squash merge remain pending. Its human review sample is `pending_human` and `training_ready=false`. Phase 03 is inactive; product services, model training, external channels, and a web UI are not implemented.
+Phase 00A repository setup, Phase 00B canonical contracts, Phase 01A's deterministic fictional-provider loop, and Phase 01B's simulator breadth and benchmark gate are complete. Phase 02's Data Factory and trajectory pilot has passed its local gate and independent review; PR #6's initial CI and GitGuardian passed, and Sol approved squash merge after a final docs-only evidence commit and CI rerun. Its human review sample is `pending_human` and `training_ready=false`. Phase 03 is inactive; product services, model training, external channels, and a web UI are not implemented.
 
 ## Start here
 

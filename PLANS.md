@@ -10,7 +10,7 @@ This is the harness-level phase index. Detailed product requirements live in the
 | 00B | Canonical contracts and contract verification | Complete | `harness/build/phase-00b-contracts.md` |
 | 01A | Thin deterministic Provider loop | Complete | `harness/build/phase-01a-provider-simulator.md` |
 | 01B | Simulator breadth and benchmark gate | Complete | `harness/build/phase-01b-simulator-benchmark.md` |
-| 02 | Data factory and trajectory pilot | Local gate approved; PR CI/integration pending | `harness/build/phase-02-data-factory.md` |
+| 02 | Data factory and trajectory pilot | PR #6 initial CI/review approved; docs evidence commit, CI rerun, and squash merge pending | `harness/build/phase-02-data-factory.md` |
 | 03 | Baselines, SFT, and evaluation | Not started | To be prepared after Phase 02 |
 | 04 | Serving and control plane | Not started | To be prepared after Phase 03 |
 | 05 | Durable agent loop | Not started | To be prepared after Phase 04 |
@@ -58,6 +58,6 @@ Create one Codex Goal only for the single approved phase. The Goal should quote 
 
 Current gate:
 
-> Phase 02 implementation, local `make preflight`, and independent review are approved. The next gate is Phase 02 pull-request publication, CI, GitGuardian, Sol integration review, and squash merge. The redacted review sample remains `pending_human` and `training_ready=false`.
+> Phase 02 implementation, local `make preflight`, independent review, PR #6's initial `phase-gate`, GitGuardian, and Sol integration decision are approved. The remaining gate is the final docs-only evidence commit, its CI rerun, and squash merge. The redacted review sample remains `pending_human` and `training_ready=false`.
 
 Phase 03 baseline, teacher-backed expansion, model selection, training, and evaluation remain inactive and require a new explicit user gate.

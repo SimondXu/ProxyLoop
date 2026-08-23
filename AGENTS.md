@@ -23,7 +23,7 @@ Do not treat a roadmap item as permission to implement it. Only an explicitly ap
 - Phase 00B, canonical contracts and contract verification, was squash merged to `main` as `98a7514`.
 - Phase 01A was independently reviewed and squash merged to `main` as `f7f3cf7`.
 - Phase 01B simulator breadth and benchmark is complete, independently reviewed, and validated by the repository phase gate.
-- Phase 02 Data Factory and trajectory pilot implementation and independent local gate are approved on `feat/phase-02-data-factory`; PR CI, GitGuardian, integration review, and squash merge remain pending.
+- Phase 02 Data Factory and trajectory pilot implementation and independent local gate are approved on `feat/phase-02-data-factory`; PR #6's initial CI, GitGuardian, and Sol integration review passed. The final docs-only evidence commit, CI rerun, and squash merge remain pending.
 - Phase 03 remains inactive and requires a new explicit user gate after Phase 02 is merged.
 - Product services, model training, external channels, and web UI are not implemented.
 

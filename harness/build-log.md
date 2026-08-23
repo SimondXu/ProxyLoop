@@ -10,7 +10,7 @@ This file is append-only execution evidence. Record only commands actually run a
 | 00B — canonical contracts | Complete | `make preflight`: 17 tests plus format, lint, type, generation, drift, TypeScript, layout, locks, compile, and Compose passed |
 | 01A — deterministic Provider loop | Complete | Independent `make preflight`: 26 tests plus the complete repository gate passed; matching-forgery and no-mutation probes were rejected |
 | 01B — simulator breadth and benchmark | Complete | `make preflight`: 78 tests plus benchmark drift/gate, locks, and all repository checks passed; PR #5 CI and independent review approved |
-| 02 — Data Factory and trajectory pilot | Local gate approved; PR integration pending | Final local `make preflight`: 83 runtime + 12 ML tests, full repository gate, and independent final review approved |
+| 02 — Data Factory and trajectory pilot | PR #6 initial CI/review approved; final docs CI rerun and squash merge pending | Initial PR gate: `phase-gate` and GitGuardian passed; Sol approved after full local/integration review |
 
 ## Entries
 
@@ -218,4 +218,11 @@ This file is append-only execution evidence. Record only commands actually run a
 - Final independent rereview: Approve with no unresolved local blocking finding. The durable record is `harness/code_review/phase-02.md`.
 - Final local evidence: `make preflight` passed with 83 runtime tests and 12 ML tests; both Ruff and mypy gates, contract and TypeScript checks, Phase 01B benchmark and Phase 02 artifact drift gates, layout, both uv locks, offline pnpm lock, script compilation, Docker Compose configuration, and diff checks passed.
 - Pilot boundary remains explicit: the review sample is `pending_human`, `training_ready=false`, external model calls/tokens/cost are zero, and Phase 03 is inactive.
-- Integration status: PR publication, CI, GitGuardian, Sol integration review, and squash merge have not yet run. Do not activate Phase 03 until Phase 02 is merged and the user provides a new explicit gate.
+- Integration status at local closeout: PR publication, CI, GitGuardian, Sol integration review, and squash merge had not yet run. Do not activate Phase 03 until Phase 02 is merged and the user provides a new explicit gate.
+
+### 2026-08-23 — Phase 02 PR #6 initial publication gate
+
+- Live PR state: PR #6 head `9fd33e0`, base `0d05ab2`, open, non-draft, `MERGEABLE`, and `CLEAN`.
+- Initial publication checks: GitHub `phase-gate` succeeded in 41 seconds and GitGuardian succeeded.
+- Sol final integration decision: Approve for squash merge after the final docs-only evidence commit and its CI rerun. Sol reviewed the complete local and staged diff, final local `make preflight`, independent review evidence, and live PR state.
+- Remaining integration work: commit the final evidence-only documentation change, observe its CI rerun, then squash merge. The human review sample remains `pending_human`, `training_ready=false`, and Phase 03 remains inactive.

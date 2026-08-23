@@ -1,6 +1,6 @@
 # Phase 02 — Data Factory and Trajectory Pilot
 
-**Status**: Implementation and independent local gate approved; PR CI, GitGuardian, and squash merge pending.
+**Status**: PR #6 initial CI and GitGuardian passed; Sol approved squash merge after the final docs-only evidence commit and CI rerun. Merge pending.
 
 **Activation**: Explicitly approved by the user on 2026-08-23 after Phase 01B was squash merged as `0d05ab2`. Active branch: `feat/phase-02-data-factory`.
 
