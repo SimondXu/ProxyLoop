@@ -40,9 +40,37 @@ _Avoid_: Deal, plan, completion
 The versioned set of supported Case facts, with provenance and conflict status, available to decision components.
 _Avoid_: Memory, context blob, notes
 
+**Case Context Snapshot**:
+An immutable, version-pinned projection of authoritative Case state and event position from which decision-specific Model Views are derived; it is not itself a source of truth.
+_Avoid_: Shared memory, transcript, prompt state
+
+**Model View**:
+An explicit allowlisted projection of one Case Context Snapshot for either Fast turn policy or Slow work, including the pins needed to reject stale output.
+_Avoid_: Shared prompt, model memory, context dump
+
 **Strategy Packet**:
 A versioned, structured plan produced by the Slow Reasoner for bounded downstream use; it is not raw chain-of-thought.
 _Avoid_: Reasoning trace, prompt dump
+
+**Planning Basis**:
+The versioned material Case state whose change invalidates a Strategy Packet, including goals, constraints, authority, verified facts, offers, approval state, Provider configuration, and available capabilities.
+_Avoid_: Chat history, event count, prompt hash
+
+**Slow Work Request**:
+A version-pinned request for the Slow Reasoner to create or refresh strategy and propose bounded capability or action work for a Case.
+_Avoid_: Model handoff, background prompt, tool command
+
+**Slow Work Result**:
+A structured proposal returned for one Slow Work Request that remains inert unless its input pins are current and deterministic validation accepts it.
+_Avoid_: Executed plan, agent state, reasoning trace
+
+**Routing Decision**:
+The deterministic, version-pinned selection of Fast work, Slow work, approval wait, verification, or terminal handling for one Case event.
+_Avoid_: Model choice, handoff guess, confidence threshold
+
+**Capability Manifest**:
+The versioned allowlist of simulator or controlled external operations available for proposal and deterministic execution in one phase.
+_Avoid_: Tool list, MCP catalog, model skills
 
 **Fast Turn Decision**:
 A structured proposal for the next dialogue act, fact delta, escalation, or completion candidate during a bounded interaction.

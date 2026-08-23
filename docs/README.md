@@ -9,6 +9,7 @@
 
 - [Monorepo structure](decisions/2026-08-21-monorepo.md)
 - [Initial implementation defaults](decisions/2026-08-22-implementation-defaults.md)
+- [Fast/Slow orchestration and shared Case context](decisions/2026-08-23-fast-slow-orchestration.md)
 
 ## Planning and research
 

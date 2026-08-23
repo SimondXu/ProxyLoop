@@ -10,8 +10,10 @@ This is the harness-level phase index. Detailed product requirements live in the
 | 00B | Canonical contracts and contract verification | Complete | `harness/build/phase-00b-contracts.md` |
 | 01A | Thin deterministic Provider loop | Complete | `harness/build/phase-01a-provider-simulator.md` |
 | 01B | Simulator breadth and benchmark gate | Complete | `harness/build/phase-01b-simulator-benchmark.md` |
-| 02 | Data factory and trajectory pilot | PR #6 initial CI/review approved; docs evidence commit, CI rerun, and squash merge pending | `harness/build/phase-02-data-factory.md` |
-| 03 | Baselines, SFT, and evaluation | Not started | To be prepared after Phase 02 |
+| 02 | Data factory and trajectory pilot | Complete; squash merged as `f45b1ea` through PR #6 | `harness/build/phase-02-data-factory.md` |
+| 03A0 | Fast/Slow architecture and acceptance criteria | Local gate approved; PR, CI, and merge pending | `harness/build/phase-03a0-fast-slow-architecture.md` |
+| 03A1 | Multi-turn evaluation harness and untuned baselines | Not started | Prepared only after Phase 03A0 merge and a new user gate |
+| 03B | Open-data SFT, gap-driven project data, and evaluation | Not started | Decided from Phase 03A1 failure slices |
 | 04 | Serving and control plane | Not started | To be prepared after Phase 03 |
 | 05 | Durable agent loop | Not started | To be prepared after Phase 04 |
 | 06 | Controlled channels and UI | Not started | To be prepared after Phase 05 |
@@ -23,7 +25,9 @@ This is the harness-level phase index. Detailed product requirements live in the
 domain contracts
   -> simulator and deterministic verifier
   -> trajectory schema and data quality
-  -> model baselines and post-training
+  -> Fast/Slow routing and shared-state contract
+  -> multi-turn evaluation harness and untuned baselines
+  -> evidence-driven public/project data and post-training
   -> serving and business control plane
   -> Temporal durability and approvals
   -> controlled email/voice and UI
@@ -58,6 +62,6 @@ Create one Codex Goal only for the single approved phase. The Goal should quote 
 
 Current gate:
 
-> Phase 02 implementation, local `make preflight`, independent review, PR #6's initial `phase-gate`, GitGuardian, and Sol integration decision are approved. The remaining gate is the final docs-only evidence commit, its CI rerun, and squash merge. The redacted review sample remains `pending_human` and `training_ready=false`.
+> Phase 02 is squash merged as `f45b1ea`; its redacted review sample remains `pending_human` and `training_ready=false`. The user explicitly activated Phase 03A0 to freeze Fast/Slow routing, model-external Case context, authority ownership, stale-result handling, Qwen training boundaries, and Phase 03A1 acceptance criteria.
 
-Phase 03 baseline, teacher-backed expansion, model selection, training, and evaluation remain inactive and require a new explicit user gate.
+Phase 03A0 does not implement or call a model. Phase 03A1 evaluation implementation and all model downloads/calls, teacher-backed expansion, training, serving, product Agent, channels, and UI remain inactive and require new explicit user gates.

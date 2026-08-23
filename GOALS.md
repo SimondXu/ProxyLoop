@@ -12,6 +12,8 @@ The first vertical is fictional-provider, mobile-postpaid telecom bill optimizat
 - A fictional provider simulator supports reproducible, leakage-safe evaluation.
 - Fast Model candidates are selected from local benchmark evidence, not vendor claims alone.
 - Slow reasoning and Fast turn policy have explicit, replaceable interfaces.
+- A deterministic Router owns mandatory Fast/Slow scheduling against version-pinned, model-external Case state.
+- Fast and Slow may propose dialogue, strategy, or bounded work, but neither owns authorization, capability execution, business truth, or final completion.
 - Consequential side effects require deterministic policy checks and version-bound approval.
 - Durable retries, waits, duplicate callbacks, and worker restarts do not duplicate consequential actions.
 - Reported results distinguish measured evidence from proposed architecture and unverified external claims.

@@ -1,6 +1,6 @@
 # Phase 02 — Data Factory and Trajectory Pilot
 
-**Status**: PR #6 initial CI and GitGuardian passed; Sol approved squash merge after the final docs-only evidence commit and CI rerun. Merge pending.
+**Status**: Complete. Independently reviewed, CI/GitGuardian validated, and squash merged through PR #6 as `f45b1ea`.
 
 **Activation**: Explicitly approved by the user on 2026-08-23 after Phase 01B was squash merged as `0d05ab2`. Active branch: `feat/phase-02-data-factory`.
 
@@ -71,4 +71,4 @@ The Data Factory owns normalization, lineage, curation checks, pilot generation,
 
 ## Stop Condition
 
-After the Phase 02 pull request passes CI and Sol's final integration review and is squash merged, stop. Phase 03 baselines, teacher-backed data expansion, model selection, training, and evaluation require a new explicit user gate.
+Phase 02 is complete. Its records remain Data Factory regression evidence rather than a training-ready corpus. Phase 03A0 was activated separately to freeze architecture; later evaluation implementation, model calls, training, and data expansion require their own explicit gates.
