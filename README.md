@@ -8,7 +8,7 @@ The design separates a locally trained Fast Response Model from a hosted Slow Re
 
 ## Current status
 
-Phase 00A repository setup and Phase 00B canonical contracts are complete and merged. Phase 01A's deterministic fictional-provider loop passes its local implementation, verification, and independent-review gate on `feat/phase-01-provider-simulator`; it is not committed or published yet. The full simulator benchmark remains deferred to Phase 01B. Product services, model training, external channels, and a web UI are not implemented.
+Phase 00A repository setup, Phase 00B canonical contracts, and Phase 01A's deterministic fictional-provider loop are complete and squash merged. The full simulator benchmark remains deferred to Phase 01B. Product services, model training, external channels, and a web UI are not implemented.
 
 ## Start here
 
@@ -57,7 +57,7 @@ These commands validate the canonical contract boundary. `make simulator` also r
 
 Repository-level agent behavior is defined in [AGENTS.md](AGENTS.md), and the branch/commit/PR workflow is defined in [CONTRIBUTING.md](CONTRIBUTING.md). Work is organized as one explicitly approved phase at a time: prepare a phase contract, execute its red/green/verification loop, obtain an independent review for material changes, record evidence in [harness/build-log.md](harness/build-log.md), and stop at the gate.
 
-The default Codex role split is Sol high for root orchestration, Luna xhigh for clearly specified implementation, Terra high for independent review, and Luna medium for narrow mechanical work or bounded exploration. Luna max is an explicit escalation for complex implementation, not a standing default. Delegation is used only when explicitly requested; model choice never relaxes file ownership, safety, evidence, or approval requirements.
+The default Codex role split is Sol high for root orchestration, Luna xhigh for clearly specified implementation, Terra high for independent review, and Luna medium for narrow mechanical work or bounded exploration. Luna max is an explicit escalation for complex implementation, not a standing default. Sol assigns subagents when useful, reconciles their work, and owns final PR approval and merge; model choice never relaxes file ownership, safety, evidence, or phase-scope requirements.
 
 ## Working product statement
 

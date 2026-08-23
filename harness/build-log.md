@@ -135,3 +135,18 @@ This file is append-only execution evidence. Record only commands actually run a
 - Final root verification after durable evidence and status updates: `make preflight` passed with Ruff format on 17 files, Ruff lint, mypy on 12 source files, 26 tests, contract generation/drift, TypeScript, layout, uv/pnpm lock, Python compile, and Compose checks all passing.
 - Final root `make simulator`: passed and emitted the deterministic `pine-mobile` episode ending in Provider state `confirmed` and verifier decision `complete`.
 - Stop condition: Phase 01A is complete locally. Phase 01B and all later roadmap phases remain not started and require a new explicit human gate.
+
+### 2026-08-23 — Sol-governed delegation and merge workflow
+
+- Human decision: the user delegated subagent selection and routine Git integration to the root Sol orchestrator.
+- Transition evidence: Sol reviewed Phase 01A's complete diff and independent-review artifact, created PR #3, observed `phase-gate` and GitGuardian pass, and squash merged it to `main` as `f7f3cf7` without requiring a separate user PR review.
+- Delegation policy: Sol may assign bounded implementer, reviewer, explorer, or fast-worker tasks when useful; a separate user authorization for each subagent is no longer required.
+- Review policy: independent reviewers provide findings and recommendations for material changes, while Sol reconciles the evidence and owns the final approve or request-changes decision.
+- Git policy: after a phase or bounded repository change is approved, Sol may create the branch, commit, push, open the PR, and squash merge after required gates pass without asking the user to review the PR.
+- Cleanup boundary: deleting a fully merged short-lived branch is routine only after Sol confirms a clean worktree, a pushed branch, a merged PR, and no unique unpushed work; deleting unmerged work remains destructive and user-gated.
+- Preserved human gates: new phases and scope expansion still require user approval, as do deployment, release publication, real external contact, credential use, destructive operations, force-push, and shared-history rewrites.
+- Initial independent review: Request Changes because reusable prompts retained the old per-delegation user gate and merged-branch deletion was not distinguished from destructive branch deletion.
+- Remediation: aligned root and subagent prompts with Sol-governed delegation, kept all Git publication operations prohibited for subagents, and limited automatic branch cleanup to confirmed merged/recoverable short-lived branches.
+- Final independent rereview: Approve with no unresolved finding. Durable details are in `harness/code_review/sol-governed-agent-workflow.md`.
+- Verification note: a restricted-sandbox `make preflight` attempt failed only because uv could not read `/Users/edison/.cache/uv/sdists-v9/.git`; rerunning with extended read access passed Ruff, mypy, 26 tests, contract drift, TypeScript, layout, locks, compile, and Compose.
+- Final Sol verification after the durable review artifact was added: `make preflight` passed again with 26 tests and every repository-native gate.

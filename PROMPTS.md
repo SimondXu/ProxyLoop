@@ -1,6 +1,6 @@
 # ProxyLoop Harness Prompts
 
-These prompts are reusable operator templates. Replace bracketed values with the active phase or owned slice. They do not grant permission to commit, push, deploy, or start later phases.
+These prompts are reusable operator templates. Replace bracketed values with the active phase or owned slice. They do not activate a phase or expand scope. Once the user approves a bounded phase or change, root Sol follows `AGENTS.md` for delegation and routine Git integration; subagents never commit, push, review-submit, or merge.
 
 ## Orient the Root Orchestrator
 
@@ -25,12 +25,13 @@ and a stop condition. Do not implement the phase.
 Execute only [phase] from [phase file]. Follow AGENTS.md and karpathy-guidelines.
 Start with preflight and the smallest failing check. Make the minimum implementation,
 run focused then risk-proportionate verification, update the build log with real evidence,
-and stop at the phase gate. Do not commit, push, deploy, or begin the next phase.
+and stop at the phase gate. Root Sol may complete the branch/commit/push/PR/review/merge
+workflow after the gates pass. Do not deploy or begin the next phase.
 ```
 
 ## Delegate Implementation
 
-Use only when the user has explicitly requested delegation or parallel agents.
+Use when root Sol decides a bounded implementation slice materially benefits from delegation.
 The default implementer is Luna xhigh. Override it to Luna max only for complex multi-file implementation whose architecture and acceptance criteria are already frozen.
 
 ```text
@@ -43,7 +44,7 @@ Return changed files, commands run, results, assumptions, and remaining risks.
 
 ## Delegate a Narrow Mechanical Task
 
-Use only when the user has explicitly requested delegation or parallel agents.
+Use when root Sol identifies a narrow mechanical slice with exact file ownership and verification.
 
 ```text
 Assign fast-worker this bounded mechanical task: [task and exact paths]. Do not redesign
@@ -58,7 +59,8 @@ Review the current diff against [phase file], AGENTS.md, and repository conventi
 Use code-reviewer discipline. Prioritize correctness, authorization/completion semantics,
 contract compatibility, test gaps, and maintainability. Do not edit. Report actionable findings
 with file and line evidence; explicitly say when there are no blocking findings and identify
-verification that remains unrun.
+verification that remains unrun. Return an Approve or Request Changes recommendation to Sol;
+do not edit, commit, push, submit a GitHub review, or merge.
 ```
 
 ## Remediate Review Findings
@@ -75,5 +77,6 @@ affected checks, and update harness/build-log.md. Do not expand phase scope.
 Audit [phase] for completion. Confirm every acceptance criterion with a file, test, or command
 result; distinguish automated, manual, blocked, and unrun checks. Confirm independent review
 and build-log evidence. If anything is missing, leave the phase incomplete. If complete, report
-the gate and stop without starting the next phase.
+the recommendation to Sol. Sol owns the final integration review and merge decision. Stop without
+starting the next phase.
 ```

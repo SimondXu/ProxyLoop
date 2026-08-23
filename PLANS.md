@@ -36,7 +36,7 @@ The web UI is not the first implementation phase. A disposable visual prototype 
 
 Phase 00B is intentionally narrow and mostly sequential because every downstream area depends on the same canonical contracts.
 
-After contracts stabilize, these workstreams can run in parallel when the user explicitly requests delegation:
+After contracts stabilize, Sol may run these workstreams in parallel when their ownership is independent and delegation materially improves execution:
 
 - simulator transition engine and scenario authoring;
 - deterministic verifier and adversarial test fixtures;

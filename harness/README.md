@@ -21,13 +21,17 @@ harness/
 3. Create or update one Codex Goal for that phase only.
 4. Execute preflight, red, green, justified refactor, and verification.
 5. Obtain an independent review for material changes.
-6. Record evidence in `build-log.md` and stop at the gate.
-7. Prepare the next phase only after explicit approval.
+6. Record pre-merge verification and review evidence in `build-log.md`.
+7. Sol may commit, push, and open the pull request for the approved scope without a separate user review.
+8. Sol reconciles the final diff, independent findings, and CI, makes the final PR decision, and squash merges when the gate passes.
+9. Report the merge result and prepare the next phase only after explicit user approval.
+
+Subagent selection is an orchestration decision. Sol may assign bounded implementation, exploration, mechanical, or independent-review work whenever it materially improves execution or evidence quality. The user approves the phase and scope; the user does not need to approve each delegation or routine Git operation within that scope.
 
 Status labels are exact:
 
 - `Prepared, not started`: the contract exists but implementation is not authorized.
 - `In progress`: the user approved the phase and implementation has begun.
 - `Blocked`: a named dependency prevents meaningful progress.
-- `At review`: implementation and developer verification are complete.
-- `Complete`: every acceptance criterion has evidence and required review is resolved.
+- `At review`: implementation and developer verification are complete; independent review or Sol's final integration decision remains open.
+- `Complete`: every acceptance criterion has evidence, required review is resolved, Sol's final integration gate passes, and the bounded change is merged when a repository remote is available.

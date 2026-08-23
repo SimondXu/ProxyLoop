@@ -21,7 +21,7 @@ Do not treat a roadmap item as permission to implement it. Only an explicitly ap
 
 - Repository foundation is complete.
 - Phase 00B, canonical contracts and contract verification, was squash merged to `main` as `98a7514`.
-- Phase 01A passes its local implementation, verification, and independent-review gate on `feat/phase-01-provider-simulator`; it is not committed or published yet.
+- Phase 01A was independently reviewed and squash merged to `main` as `f7f3cf7`.
 - Phase 01B benchmark expansion is not started or authorized.
 - Product services, model training, external channels, and web UI are not implemented.
 
@@ -31,7 +31,8 @@ Do not treat a roadmap item as permission to implement it. Only an explicitly ap
 - Use the smallest change that satisfies the active phase acceptance criteria.
 - Do not begin the next phase automatically after completing the current one.
 - Preserve existing user work and unrelated changes.
-- Do not commit, push, publish, deploy, or contact external parties without explicit user approval.
+- Once the user approves a bounded phase or repository change, Sol may create its branch, commit, push, open and review its pull request, squash merge it, and clean up its fully merged short-lived branch without separate approval for each Git step.
+- Explicit user approval is still required to expand scope, activate the next phase, deploy or publish a release, contact real external parties, use credentials, perform destructive operations, force-push, or rewrite shared history. Validated cleanup of a fully merged short-lived branch is the only branch-deletion exception.
 - Never add real provider credentials, consumer PII, or production secrets.
 - A model may propose an action or completion candidate; deterministic policy and evidence checks own authorization and completion.
 
@@ -44,10 +45,12 @@ For an approved phase:
 3. Green: implement the minimum code needed to pass it.
 4. Refactor: only when it removes demonstrated complexity or duplication.
 5. Verify: run focused checks, then the broader checks justified by risk.
-6. Review: use an independent reviewer for material code or contract changes.
+6. Review: use an independent reviewer for material code or contract changes; the reviewer supplies findings and a recommendation to Sol.
 7. Remediate: fix accepted findings and rerun affected checks.
-8. Evidence: append commands and outcomes to `harness/build-log.md`.
-9. Stop: report the phase gate; wait for approval before expanding scope.
+8. Evidence: append pre-merge commands and outcomes to `harness/build-log.md`.
+9. Publish: for the approved scope, Sol may commit, push, and open the pull request.
+10. Integrate: Sol reviews the final diff, verification, independent-review evidence, and CI, then makes the final approve or request-changes decision and squash merges when the gate passes.
+11. Stop: report the phase gate; wait for approval before expanding scope.
 
 Never report a check as passed if it was not run. Separate passed checks from blocked, skipped, manual, browser, cloud, GPU, voice, and external-channel checks.
 
@@ -69,13 +72,14 @@ The installed `fix` skill assumes Yarn commands that this pnpm/uv repository doe
 - Treat `main` as the last integrated, validated state; do not implement or commit directly on it.
 - Use one short-lived branch per phase, feature, fix, documentation change, or experiment, following `CONTRIBUTING.md` naming rules.
 - Keep one bounded concern per pull request and do not begin the next phase in the same branch.
-- Run `make preflight`, review the complete diff, and obtain any required independent review before requesting merge.
-- Prefer squash merge and delete the merged branch so `main` keeps one clear commit per bounded change.
-- Branch creation, commit, push, PR creation, merge, deployment, and publication still require explicit user authorization. Never force-push or rewrite shared history unless the user explicitly requests the exact operation.
+- Run `make preflight`, review the complete diff, and obtain any required independent review before merge.
+- Prefer squash merge so `main` keeps one clear commit per bounded change. Deleting the short-lived source branch is routine cleanup only after Sol confirms the PR is merged, the worktree is clean, the branch was pushed, and no unique unpushed work would be lost.
+- For a user-approved bounded phase or change, Sol owns branch creation, commit, push, PR creation, final review, and merge. These routine Git steps do not require separate user review or authorization.
+- Never deploy, publish a release, force-push, rewrite shared history, delete an unmerged branch, or perform another destructive Git operation unless the user explicitly requests that exact operation.
 
 ## Agent Roles
 
-The root orchestrator uses Sol for architecture, integration, trade-offs, and final decisions. Delegate only when the user explicitly asks for delegation or parallel agents.
+The root orchestrator uses Sol for architecture, integration, trade-offs, and final decisions. Sol decides when subagents materially improve implementation speed, independent evidence, or review quality; the user does not need to request delegation explicitly.
 
 - `implementer`: Luna xhigh, write-enabled, one clearly owned and well-specified implementation slice.
 - `reviewer`: Terra, read-only, independent acceptance-criteria and diff review.
@@ -85,10 +89,12 @@ The root orchestrator uses Sol for architecture, integration, trade-offs, and fi
 Rules for delegated work:
 
 - At most three subagents run concurrently.
+- Delegate only concrete, bounded work with a useful independent execution path; Sol may work directly when delegation would add no value.
 - Assign explicit, non-overlapping file ownership.
 - Tell write-enabled agents they are not alone in the repository and must not revert other edits.
-- The implementing agent does not approve its own work.
-- The root orchestrator integrates results and owns the final verification statement.
+- The implementing subagent does not review or approve its own work.
+- Independent reviewer conclusions are evidence and recommendations; they do not merge changes or replace Sol's judgment.
+- The root Sol orchestrator reviews and integrates subagent output, owns the final verification statement, makes the PR approval decision, and executes merge when the gate passes.
 - Luna max is an explicit per-task escalation for complex multi-file implementation after architecture and acceptance criteria are frozen; it is not a standing default.
 - Sol retains decisions about shared architecture, authorization policy, canonical contract semantics, and phase completion. Luna may implement those decisions but must not invent them.
 

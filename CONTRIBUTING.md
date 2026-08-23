@@ -8,10 +8,12 @@ ProxyLoop uses short-lived branches and reviewable pull requests to keep `main` 
 - Do not implement, commit, force-push, or rewrite history directly on `main`.
 - Start work from an up-to-date `main` and merge through a pull request.
 - Prefer squash merge so one bounded change produces one clear commit on `main`.
-- Delete the source branch after merge.
+- Delete the short-lived source branch after confirmed merge only when the worktree is clean, the branch was pushed, and no unique unpushed work would be lost; this validated cleanup is part of routine integration.
 - Never merge secrets, real consumer PII, provider credentials, generated model weights, local datasets, recordings, or machine-specific state.
 
 GitHub branch protection should eventually require a pull request and passing CI for `main`. A mandatory approval count can be added when the repository has another regular reviewer; it is optional for a solo portfolio repository.
+
+For a bounded phase or repository change already approved by the user, the root Sol orchestrator owns the routine Git workflow through squash merge and validated merged-branch cleanup. The user is not the default pull-request reviewer and does not need to separately approve branch creation, commit, push, PR creation, merge, or safe cleanup of that merged short-lived branch. A new user decision is required when scope expands or when work would deploy, publish a release, contact real external parties, use credentials, rewrite history, delete unmerged work, or perform another destructive operation.
 
 ## Branch Naming
 
@@ -41,12 +43,13 @@ Use one branch for one phase, feature, fix, documentation change, or experiment.
    make preflight
    ```
 
-7. Review the complete diff and confirm that generated, sensitive, local, or unrelated files are absent.
+7. Sol reviews the complete diff and confirms that generated, sensitive, local, or unrelated files are absent.
 8. Commit with a Conventional Commit message.
 9. Push the branch and open a pull request using the repository template.
-10. Resolve review findings and rerun affected checks.
-11. Squash merge only when required checks and phase acceptance criteria pass.
-12. Delete the merged branch and start later work from the updated `main`.
+10. Obtain independent review when the change is material, resolve accepted findings, and rerun affected checks.
+11. Sol reviews the final diff, independent evidence, and CI, then makes the final approve or request-changes decision.
+12. Sol squash merges only when required checks and phase acceptance criteria pass.
+13. After confirming merge and recoverability, delete the merged short-lived branch and return to the updated `main`.
 
 ## Commit Messages
 
@@ -86,7 +89,7 @@ Every pull request should explain:
 - security, privacy, data, migration, and rollback risks;
 - whether documentation, generated artifacts, or phase evidence changed.
 
-Material contract, security, authorization, completion, workflow, or external-channel changes require an independent review. The implementation agent must not approve its own work.
+Material contract, security, authorization, completion, workflow, or external-channel changes require an independent review. The implementing subagent must not review its own work. The independent reviewer reports findings and a recommendation; Sol owns the final PR decision and merge.
 
 ## Versioned and Local Content
 
