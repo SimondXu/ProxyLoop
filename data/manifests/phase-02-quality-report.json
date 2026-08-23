@@ -1,0 +1,41 @@
+{
+  "accepted_count": 128,
+  "accepted_cross_split_leakage_count": 0,
+  "accepted_exact_duplicate_count": 0,
+  "accepted_forbidden_field_count": 0,
+  "accepted_pii_violation_count": 0,
+  "automated_audit_status": "passed",
+  "candidate_count": 136,
+  "estimated_external_cost_usd": 0.0,
+  "expansion_decision": "conditional_data_factory_expansion",
+  "external_input_token_count": 0,
+  "external_model_call_count": 0,
+  "external_output_token_count": 0,
+  "human_review_status": "pending_human",
+  "limitations": [
+    "one-turn scripted trajectories only",
+    "deterministic lexical heuristic, not embedding or semantic equivalence",
+    "human review sample is pending"
+  ],
+  "provenance_completeness_percent": 100.0,
+  "quarantined_count": 8,
+  "quarantined_reason_counts": {
+    "cross_split_semantic_collision": 1,
+    "exact_duplicate": 1,
+    "forbidden_model_field": 1,
+    "invalid_verifier_outcome": 1,
+    "missing_provenance": 1,
+    "pii_detected": 1,
+    "split_mismatch": 1,
+    "unapproved_license": 1
+  },
+  "report_fingerprint": "7b9214990ce3604d204e40f785fe0098ca243826b262d8fe80913abbebcb59aa",
+  "schema_version": "1.0",
+  "semantic_fingerprint_method": "deterministic-lexical-public-content-case-whitespace-punctuation-v1",
+  "split_counts": {
+    "development": 24,
+    "test": 24,
+    "train": 80
+  },
+  "training_ready": false
+}

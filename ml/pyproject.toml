@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "proxyloop-data-pipeline"
+version = "0.0.0"
+description = "Deterministic trajectory normalization and audit pipeline for ProxyLoop."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "proxyloop-agent-core==0.0.0",
+  "proxyloop-contracts==0.0.0",
+  "proxyloop-provider-simulator==0.0.0",
+  "proxyloop-telecom-domain==0.0.0",
+  "pydantic>=2.12,<3",
+]
+
+[dependency-groups]
+dev = [
+  "mypy>=1.18,<2",
+  "pytest>=8.4,<9",
+  "ruff>=0.13,<1",
+]
+
+[tool.uv.sources]
+proxyloop-agent-core = { path = "../runtime/packages/agent_core", editable = true }
+proxyloop-contracts = { path = "../runtime/packages/contracts", editable = true }
+proxyloop-provider-simulator = { path = "../runtime/packages/provider_simulator", editable = true }
+proxyloop-telecom-domain = { path = "../runtime/packages/telecom_domain", editable = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["data_pipeline/src/proxyloop_data_pipeline"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+pythonpath = ["data_pipeline/src", ".."]
+testpaths = ["ml/tests"]

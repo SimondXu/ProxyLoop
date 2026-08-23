@@ -85,6 +85,8 @@ The research MVP bypasses Temporal, Gmail, and LiveKit. It runs `Fast/Slow consu
 - `ml/serving`: vLLM deployment configuration for the promoted Linux/CUDA path. Apple-local serving remains a development adapter behind the same gateway contract.
 - Large datasets, audio, and checkpoints live in object storage; Git stores schemas, manifests, small fixtures, and reports.
 
+Phase 02 implements the first narrow Data Factory seam as a separate CPU-only `ml/` project. It consumes Phase 01B Safe Observation and Provider-environment interfaces through local path dependencies, exports only small drift-checked metadata artifacts, and cannot be imported by runtime packages or services. Its initial 128-record one-turn scripted pilot validates reproducibility and curation gates; it is explicitly not a training-ready corpus or a learned-model result.
+
 ## Model Responsibilities
 
 ### Slow Reasoner
@@ -205,6 +207,8 @@ All mutable objects use optimistic versions. An approval is valid only for the e
 8. Train the Fast Model on policy fields plus response text, with loss masking/weighting measured explicitly.
 9. Evaluate on family/entity/provider-held-out cases, multiple seeds, and paired baselines.
 10. Promote a model only after policy, safety, serving, and regression gates pass.
+
+The Phase 02 pilot stops after step 7. Its deterministic scripted consumer substitutes for a paid teacher only to verify the Data Factory interface and records zero external token cost; teacher-backed expansion and every training/evaluation step remain separately gated.
 
 ## Safety and Reliability Invariants
 

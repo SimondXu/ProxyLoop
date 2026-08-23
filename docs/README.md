@@ -16,4 +16,8 @@
 - [Progress log](planning/progress.md)
 - [Research foundations](research/foundations.md)
 
+## Data
+
+- [Phase 02 annotation guide](data/phase-02-annotation-guide.md)
+
 The telecom specification is the v1 scope. `ProxyLoop` is the platform name, not a claim that telecom, auto negotiation, or other future verticals are already implemented.
