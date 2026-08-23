@@ -8,7 +8,7 @@ The design separates a locally trained Fast Response Model from a hosted Slow Re
 
 ## Current status
 
-Phase 00A repository setup and the development harness are complete. Phase 00B canonical contracts and contract verification are now in progress on `feat/phase-00b-contracts`, beginning with the required preflight decisions. Product services, model training, external channels, and a web UI are not implemented yet.
+Phase 00A repository setup and the development harness are complete. Phase 00B canonical contracts and contract verification have passed their local implementation and independent-review gate on `feat/phase-00b-contracts`. Phase 01 is not started. Product services, the provider simulator, model training, external channels, and a web UI are not implemented yet.
 
 ## Start here
 
@@ -25,7 +25,7 @@ Phase 00A repository setup and the development harness are complete. Phase 00B c
 - [Execution plan](PLANS.md)
 - [Domain language](CONTEXT.md)
 - [Development harness](harness/README.md)
-- [Active Phase 00B contract](harness/build/phase-00b-contracts.md)
+- [Completed Phase 00B contract](harness/build/phase-00b-contracts.md)
 
 ## Repository layout
 
@@ -40,7 +40,16 @@ infra/       Local infrastructure configuration and migrations
 tests/       Contract, integration, and end-to-end test lanes
 ```
 
-Run `make check-layout` to validate the repository foundation and harness configuration. It does not claim to run product tests.
+Run `make preflight` for the complete repository gate, or use the focused Phase 00B commands:
+
+```text
+make format          Format Python contract and verification code
+make validate        Run format, lint, type, test, drift, and layout checks
+make contracts       Regenerate committed JSON Schema and TypeScript contracts
+make contracts-check Verify generated artifacts and compile the TypeScript fixture
+```
+
+These commands validate the canonical contract boundary; they do not claim to run a product service, provider simulator, model, workflow, channel, or browser test.
 
 ## Development workflow
 

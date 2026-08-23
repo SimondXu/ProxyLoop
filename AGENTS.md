@@ -20,8 +20,8 @@ Do not treat a roadmap item as permission to implement it. Only an explicitly ap
 ## Current State
 
 - Repository foundation is complete.
-- Phase 00B, canonical contracts and contract verification, is in progress on `feat/phase-00b-contracts`.
-- Resolve and record the six required preflight decisions before writing domain models.
+- Phase 00B, canonical contracts and contract verification, is complete on `feat/phase-00b-contracts` and awaits the user's Git publication decision.
+- Phase 01 is not started or authorized.
 - Product services, model training, external channels, and web UI are not implemented.
 
 ## Working Rules
@@ -104,7 +104,7 @@ docker compose config --quiet
 git diff --check
 ```
 
-Phase 00B must add repository-native lint, type-check, unit-test, schema-generation, and contract-drift commands before it can pass.
+Phase 00B established repository-native lint, type-check, unit-test, schema-generation, and contract-drift commands. Later phases must extend the gate only for behavior they actually add.
 
 ## Harness Boundaries
 

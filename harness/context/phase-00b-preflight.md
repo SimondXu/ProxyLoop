@@ -1,6 +1,6 @@
 # Phase 00B Preflight Context
 
-**Status**: In progress
+**Status**: Complete; decisions implemented and verified
 
 **Checked**: 2026-08-22
 
@@ -19,23 +19,30 @@ These statements describe the checkout at branch activation. They are not implem
 
 ## Required Decision Record
 
-Resolve each item before writing domain models. Record primary sources, selected versions, rejected alternatives, and the verification command.
+The six decisions were frozen before domain model implementation in `docs/decisions/2026-08-22-contract-wire-format.md`.
 
 | Decision | Status | Output |
 |---|---|---|
-| TypeScript generator and reproducible version | Open | Phase context or ADR |
-| Identifier representation at JSON boundaries | Open | Phase context or ADR |
-| Timestamp and timezone serialization | Open | Phase context or ADR |
-| Contract schema version versus entity revision | Open | Phase context or ADR |
-| Decimal, money, and currency representation | Open | Phase context or ADR |
-| Generated-artifact provenance and drift command | Open | Phase context or ADR |
+| TypeScript generator and reproducible version | Accepted | `json-schema-to-typescript==15.0.4`; TypeScript `7.0.2`; exact pnpm lock |
+| Identifier representation at JSON boundaries | Accepted | ProxyLoop UUIDv4 strings; external references remain opaque strings |
+| Timestamp and timezone serialization | Accepted | RFC 3339, timezone required, UTC `Z` output only |
+| Contract schema version versus entity revision | Accepted | `schema_version="1.0"`; positive `revision`; immutable snapshots |
+| Decimal, money, and currency representation | Accepted | signed integer minor units plus uppercase three-letter currency |
+| Generated-artifact provenance and drift command | Accepted | generated headers/metadata; `make contracts`; `make contracts-check` |
+
+## Sources Checked
+
+- Pydantic JSON Schema and strict-model documentation, checked 2026-08-22.
+- json-schema-to-typescript CLI and options, checked 2026-08-22.
+- npm registry stable versions for json-schema-to-typescript and TypeScript, checked 2026-08-22.
+- JSON Schema Draft 2020-12, RFC 3339, and RFC 9562, checked 2026-08-22.
 
 ## First Execution Slice
 
-1. Inspect current Python, Node, uv, and pnpm locks and available repository commands.
-2. Compare one or two reproducible Python-to-TypeScript generation paths using current primary documentation.
-3. Freeze the six decisions together so identifiers, timestamps, money, revisions, generated schemas, and TypeScript types do not drift independently.
-4. Add the smallest failing contract tests only after those decisions are recorded.
+1. Add the smallest failing tests for strict inputs, UTC timestamps, money, revisions, approval binding, evidence authority, and completion authority.
+2. Implement the canonical Pydantic models behind one strict contract interface.
+3. Generate and drift-check JSON Schema plus TypeScript from that source.
+4. Prove the representative Case fixture at all three seams.
 
 ## Boundaries
 

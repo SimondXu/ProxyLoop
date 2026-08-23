@@ -1,6 +1,6 @@
 # Phase 00B — Canonical Contracts and Contract Verification
 
-**Status**: In progress
+**Status**: Complete — local gate passed 2026-08-22; Phase 01 not started
 
 **Activation**: Explicitly approved by the user on 2026-08-22. Active branch: `feat/phase-00b-contracts`, based on merged `main` commit `d1d8710`.
 
@@ -17,6 +17,7 @@ Establish one framework-independent, versioned domain contract package and prove
 - `docs/architecture.md`
 - `docs/specs/2026-08-21-telecom-bill-optimization-agent.md`
 - `docs/decisions/2026-08-22-implementation-defaults.md`
+- `docs/decisions/2026-08-22-contract-wire-format.md`
 - `harness/context/phase-00b-preflight.md`
 - existing skeleton under `runtime/packages/contracts/`, `contracts/`, and `tests/contract/`
 
@@ -131,19 +132,19 @@ An independent Terra reviewer must compare the diff and evidence against this fi
 
 ## Acceptance Criteria
 
-- [ ] The canonical package installs reproducibly from the committed lock state.
-- [ ] Contract names and meanings match `CONTEXT.md`; no duplicate synonym models exist.
-- [ ] Models reject unknown fields and invalid local invariants with deterministic errors.
-- [ ] Approvals bind to the intended Case revision, action, material terms, and expiry.
-- [ ] A model output alone cannot constitute Evidence or a Completion Decision.
-- [ ] One representative payload validates in Python and against generated JSON Schema, and is accepted by the generated TypeScript boundary.
-- [ ] Representative invalid fixtures fail for the intended reason.
-- [ ] Generated JSON Schema and TypeScript artifacts have a reproducible generation and drift command.
-- [ ] Architecture tests prevent FastAPI, Temporal, database, channel, and model SDK imports in the canonical package.
-- [ ] Repository-native format, lint, type, test, and contract checks pass.
-- [ ] No simulator, API, database, workflow, channel, model-call, training, or UI implementation entered the diff.
-- [ ] Verification evidence is recorded in `harness/build-log.md`.
-- [ ] Independent review has no unresolved blocking findings.
+- [x] The canonical package installs reproducibly from the committed lock state.
+- [x] Contract names and meanings match `CONTEXT.md`; no duplicate synonym models exist.
+- [x] Models reject unknown fields and invalid local invariants with deterministic errors.
+- [x] Approvals bind to the intended Case revision, action, material terms, and expiry.
+- [x] A model output alone cannot constitute Evidence or a Completion Decision.
+- [x] One representative payload validates in Python and against generated JSON Schema, and is accepted by the generated TypeScript boundary.
+- [x] Representative invalid fixtures fail for the intended reason.
+- [x] Generated JSON Schema and TypeScript artifacts have a reproducible generation and drift command.
+- [x] Architecture tests allow only the Python standard library and Pydantic in the canonical package.
+- [x] Repository-native format, lint, type, test, and contract checks pass.
+- [x] No simulator, API, database, workflow, channel, model-call, training, or UI implementation entered the diff.
+- [x] Verification evidence is recorded in `harness/build-log.md`.
+- [x] Independent review has no unresolved blocking findings.
 
 ## Stop Condition
 

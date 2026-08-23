@@ -1,0 +1,2068 @@
+{
+  "$defs": {
+    "ActionIntent": {
+      "additionalProperties": false,
+      "dependentSchemas": {
+        "action_type": {
+          "if": {
+            "properties": {
+              "action_type": {
+                "const": "accept_offer"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "approval_required": {
+                "const": true
+              },
+              "material_terms": {
+                "minItems": 1
+              },
+              "offer_ref": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            },
+            "required": [
+              "offer_ref"
+            ]
+          }
+        }
+      },
+      "properties": {
+        "action_type": {
+          "$ref": "#/$defs/ActionType"
+        },
+        "approval_required": {
+          "title": "Approval Required",
+          "type": "boolean"
+        },
+        "authorization_state": {
+          "const": "proposed",
+          "default": "proposed",
+          "title": "Authorization State",
+          "type": "string"
+        },
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "case_revision": {
+          "minimum": 1,
+          "title": "Case Revision",
+          "type": "integer"
+        },
+        "constraint_set_revision": {
+          "minimum": 1,
+          "title": "Constraint Set Revision",
+          "type": "integer"
+        },
+        "contract_type": {
+          "const": "action_intent",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "idempotency_key": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "intent_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Intent Id",
+          "type": "string"
+        },
+        "material_terms": {
+          "items": {
+            "$ref": "#/$defs/MaterialTerm"
+          },
+          "title": "Material Terms",
+          "type": "array"
+        },
+        "material_terms_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Material Terms Hash",
+          "type": "string"
+        },
+        "offer_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OfferReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "strategy_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Strategy Id",
+          "type": "string"
+        },
+        "strategy_revision": {
+          "minimum": 1,
+          "title": "Strategy Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "intent_id",
+        "case_id",
+        "case_revision",
+        "strategy_id",
+        "strategy_revision",
+        "constraint_set_revision",
+        "action_type",
+        "material_terms",
+        "material_terms_hash",
+        "approval_required",
+        "idempotency_key",
+        "created_at"
+      ],
+      "title": "ActionIntent",
+      "type": "object"
+    },
+    "ActionType": {
+      "enum": [
+        "send_message",
+        "request_clarification",
+        "disclose_information",
+        "accept_offer",
+        "end_interaction"
+      ],
+      "title": "ActionType",
+      "type": "string"
+    },
+    "ApprovalDecision": {
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "expired"
+      ],
+      "title": "ApprovalDecision",
+      "type": "string"
+    },
+    "ApprovalRequest": {
+      "additionalProperties": false,
+      "dependentSchemas": {
+        "action_type": {
+          "if": {
+            "properties": {
+              "action_type": {
+                "const": "accept_offer"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "offer_ref": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            },
+            "required": [
+              "offer_ref"
+            ]
+          }
+        },
+        "decision": {
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "decision": {
+                    "const": "pending"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "decided_at": {
+                    "type": "null"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "decision": {
+                    "enum": [
+                      "approved",
+                      "rejected"
+                    ]
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "decided_at": {
+                    "not": {
+                      "type": "null"
+                    }
+                  }
+                },
+                "required": [
+                  "decided_at"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "properties": {
+        "action_intent_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Action Intent Id",
+          "type": "string"
+        },
+        "action_intent_revision": {
+          "minimum": 1,
+          "title": "Action Intent Revision",
+          "type": "integer"
+        },
+        "action_type": {
+          "$ref": "#/$defs/ActionType"
+        },
+        "approval_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Approval Id",
+          "type": "string"
+        },
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "case_revision": {
+          "minimum": 1,
+          "title": "Case Revision",
+          "type": "integer"
+        },
+        "constraint_set_revision": {
+          "minimum": 1,
+          "title": "Constraint Set Revision",
+          "type": "integer"
+        },
+        "contract_type": {
+          "const": "approval_request",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "decided_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Decided At"
+        },
+        "decision": {
+          "$ref": "#/$defs/ApprovalDecision",
+          "default": "pending"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "material_terms_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Material Terms Hash",
+          "type": "string"
+        },
+        "offer_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OfferReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "requested_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Requested At",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "strategy_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Strategy Id",
+          "type": "string"
+        },
+        "strategy_revision": {
+          "minimum": 1,
+          "title": "Strategy Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "approval_id",
+        "case_id",
+        "case_revision",
+        "action_intent_id",
+        "action_intent_revision",
+        "action_type",
+        "strategy_id",
+        "strategy_revision",
+        "constraint_set_revision",
+        "material_terms_hash",
+        "requested_at",
+        "expires_at"
+      ],
+      "title": "ApprovalRequest",
+      "type": "object"
+    },
+    "BillSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "add_ons": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Add Ons",
+          "type": "array"
+        },
+        "captured_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Captured At",
+          "type": "string"
+        },
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "contract_type": {
+          "const": "bill_snapshot",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "line_items": {
+          "items": {
+            "$ref": "#/$defs/LineItem"
+          },
+          "title": "Line Items",
+          "type": "array"
+        },
+        "monthly_total": {
+          "$ref": "#/$defs/Money"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "snapshot_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Snapshot Id",
+          "type": "string"
+        },
+        "term_months": {
+          "minimum": 0,
+          "title": "Term Months",
+          "type": "integer"
+        },
+        "usage": {
+          "$ref": "#/$defs/UsageProfile"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "snapshot_id",
+        "case_id",
+        "captured_at",
+        "monthly_total",
+        "line_items",
+        "add_ons",
+        "term_months",
+        "usage",
+        "evidence_ids"
+      ],
+      "title": "BillSnapshot",
+      "type": "object"
+    },
+    "Case": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_snapshot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BillSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "constraint_set_revision": {
+          "minimum": 1,
+          "title": "Constraint Set Revision",
+          "type": "integer"
+        },
+        "constraints": {
+          "items": {
+            "$ref": "#/$defs/Constraint"
+          },
+          "title": "Constraints",
+          "type": "array"
+        },
+        "consumer_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Consumer Id",
+          "type": "string"
+        },
+        "contract_type": {
+          "const": "case",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "delegated_authority": {
+          "$ref": "#/$defs/DelegatedAuthority"
+        },
+        "goal": {
+          "$ref": "#/$defs/ConsumerGoal"
+        },
+        "phase": {
+          "$ref": "#/$defs/CasePhase"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "case_id",
+        "consumer_id",
+        "phase",
+        "constraint_set_revision",
+        "created_at",
+        "updated_at",
+        "goal",
+        "constraints",
+        "delegated_authority"
+      ],
+      "title": "Case",
+      "type": "object"
+    },
+    "CasePhase": {
+      "enum": [
+        "initiated",
+        "strategy",
+        "negotiating",
+        "awaiting_approval",
+        "candidate_complete",
+        "complete",
+        "closed"
+      ],
+      "title": "CasePhase",
+      "type": "string"
+    },
+    "CompletionClaim": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_message_ids": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Evidence Message Ids",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "not_done",
+            "candidate"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "evidence_message_ids"
+      ],
+      "title": "CompletionClaim",
+      "type": "object"
+    },
+    "CompletionDecision": {
+      "additionalProperties": false,
+      "dependentSchemas": {
+        "decision": {
+          "if": {
+            "properties": {
+              "decision": {
+                "const": "complete"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "evidence_ids": {
+                "minItems": 1
+              },
+              "missing_evidence": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      },
+      "properties": {
+        "candidate_model_trace_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidate Model Trace Id"
+        },
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "case_revision": {
+          "minimum": 1,
+          "title": "Case Revision",
+          "type": "integer"
+        },
+        "completion_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Completion Id",
+          "type": "string"
+        },
+        "contract_type": {
+          "const": "completion_decision",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "decision": {
+          "$ref": "#/$defs/CompletionOutcome"
+        },
+        "evaluated_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Evaluated At",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "missing_evidence": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Missing Evidence",
+          "type": "array"
+        },
+        "reason_codes": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "verifier_name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Verifier Name",
+          "type": "string"
+        },
+        "verifier_version": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Verifier Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "completion_id",
+        "case_id",
+        "case_revision",
+        "decision",
+        "verifier_name",
+        "verifier_version",
+        "evaluated_at",
+        "evidence_ids",
+        "missing_evidence",
+        "reason_codes"
+      ],
+      "title": "CompletionDecision",
+      "type": "object"
+    },
+    "CompletionOutcome": {
+      "enum": [
+        "continue",
+        "needs_user",
+        "needs_replan",
+        "candidate_complete",
+        "complete"
+      ],
+      "title": "CompletionOutcome",
+      "type": "string"
+    },
+    "Constraint": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "classification": {
+          "$ref": "#/$defs/ConstraintClassification"
+        },
+        "constraint_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Constraint Id",
+          "type": "string"
+        },
+        "contract_type": {
+          "const": "constraint",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Priority"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "statement": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        },
+        "valid_from": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Valid From",
+          "type": "string"
+        },
+        "valid_until": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valid Until"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "constraint_id",
+        "case_id",
+        "classification",
+        "statement",
+        "source",
+        "valid_from"
+      ],
+      "title": "Constraint",
+      "type": "object"
+    },
+    "ConstraintClassification": {
+      "enum": [
+        "hard",
+        "soft"
+      ],
+      "title": "ConstraintClassification",
+      "type": "string"
+    },
+    "ConsumerGoal": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "contract_type": {
+          "const": "consumer_goal",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "deadline": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deadline"
+        },
+        "desired_outcome": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Desired Outcome",
+          "type": "string"
+        },
+        "forbidden_changes": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Forbidden Changes",
+          "type": "array"
+        },
+        "goal_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Goal Id",
+          "type": "string"
+        },
+        "required_features": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Required Features",
+          "type": "array"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "target_monthly_total": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Money"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "updated_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "goal_id",
+        "case_id",
+        "created_at",
+        "updated_at",
+        "desired_outcome",
+        "required_features",
+        "forbidden_changes"
+      ],
+      "title": "ConsumerGoal",
+      "type": "object"
+    },
+    "DelegatedAuthority": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_actions": {
+          "items": {
+            "$ref": "#/$defs/ActionType"
+          },
+          "title": "Allowed Actions",
+          "type": "array"
+        },
+        "allowed_disclosures": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Allowed Disclosures",
+          "type": "array"
+        },
+        "approval_required_actions": {
+          "items": {
+            "$ref": "#/$defs/ActionType"
+          },
+          "title": "Approval Required Actions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "allowed_actions",
+        "approval_required_actions",
+        "allowed_disclosures"
+      ],
+      "title": "DelegatedAuthority",
+      "type": "object"
+    },
+    "DialogueAct": {
+      "enum": [
+        "clarify",
+        "counter",
+        "confirm",
+        "challenge",
+        "escalate",
+        "close"
+      ],
+      "title": "DialogueAct",
+      "type": "string"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "captured_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Captured At",
+          "type": "string"
+        },
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "contract_type": {
+          "const": "evidence",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "evidence_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "media_type": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media Type"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_ref": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Source Ref",
+          "type": "string"
+        },
+        "source_type": {
+          "$ref": "#/$defs/EvidenceType"
+        }
+      },
+      "required": [
+        "contract_type",
+        "schema_version",
+        "evidence_id",
+        "case_id",
+        "source_type",
+        "source_ref",
+        "content_hash",
+        "observed_at",
+        "captured_at"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "EvidenceRequirement": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "evidence_type": {
+          "$ref": "#/$defs/EvidenceType"
+        }
+      },
+      "required": [
+        "evidence_type",
+        "description"
+      ],
+      "title": "EvidenceRequirement",
+      "type": "object"
+    },
+    "EvidenceType": {
+      "enum": [
+        "provider_message",
+        "provider_event",
+        "confirmation",
+        "bill",
+        "simulator_transition"
+      ],
+      "title": "EvidenceType",
+      "type": "string"
+    },
+    "FactLedger": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "contract_type": {
+          "const": "fact_ledger",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/FactRecord"
+          },
+          "title": "Entries",
+          "type": "array"
+        },
+        "ledger_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Ledger Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "ledger_id",
+        "case_id",
+        "created_at",
+        "updated_at",
+        "entries"
+      ],
+      "title": "FactLedger",
+      "type": "object"
+    },
+    "FactRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "fact_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Fact Id",
+          "type": "string"
+        },
+        "key": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "recorded_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Recorded At",
+          "type": "string"
+        },
+        "source_message_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Message Id"
+        },
+        "status": {
+          "$ref": "#/$defs/FactStatus"
+        },
+        "value": {
+          "$ref": "#/$defs/FactValue"
+        }
+      },
+      "required": [
+        "fact_id",
+        "key",
+        "value",
+        "status",
+        "confidence",
+        "recorded_at"
+      ],
+      "title": "FactRecord",
+      "type": "object"
+    },
+    "FactStatus": {
+      "enum": [
+        "candidate",
+        "verified",
+        "rejected"
+      ],
+      "title": "FactStatus",
+      "type": "string"
+    },
+    "FactUpdate": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "key": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "source_message_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Source Message Id",
+          "type": "string"
+        },
+        "status": {
+          "const": "candidate",
+          "default": "candidate",
+          "title": "Status",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/FactValue"
+        }
+      },
+      "required": [
+        "key",
+        "value",
+        "source_message_id",
+        "confidence"
+      ],
+      "title": "FactUpdate",
+      "type": "object"
+    },
+    "FactValue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Money"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "boolean"
+        }
+      ]
+    },
+    "FastTurnDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "action_intent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ActionIntent"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "case_revision": {
+          "minimum": 1,
+          "title": "Case Revision",
+          "type": "integer"
+        },
+        "completion_claim": {
+          "$ref": "#/$defs/CompletionClaim"
+        },
+        "contract_type": {
+          "const": "fast_turn_decision",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "decision_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Decision Id",
+          "type": "string"
+        },
+        "dialogue_act": {
+          "$ref": "#/$defs/DialogueAct"
+        },
+        "fact_updates": {
+          "items": {
+            "$ref": "#/$defs/FactUpdate"
+          },
+          "title": "Fact Updates",
+          "type": "array"
+        },
+        "reasoner_request": {
+          "$ref": "#/$defs/ReasonerRequest"
+        },
+        "response_text": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Response Text",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "strategy_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Strategy Id",
+          "type": "string"
+        },
+        "strategy_revision": {
+          "minimum": 1,
+          "title": "Strategy Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "contract_type",
+        "schema_version",
+        "decision_id",
+        "case_id",
+        "case_revision",
+        "strategy_id",
+        "strategy_revision",
+        "created_at",
+        "dialogue_act",
+        "fact_updates",
+        "reasoner_request",
+        "completion_claim",
+        "response_text"
+      ],
+      "title": "FastTurnDecision",
+      "type": "object"
+    },
+    "LineItem": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "$ref": "#/$defs/Money"
+        },
+        "category": {
+          "$ref": "#/$defs/LineItemCategory"
+        },
+        "name": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "category",
+        "amount"
+      ],
+      "title": "LineItem",
+      "type": "object"
+    },
+    "LineItemCategory": {
+      "enum": [
+        "service",
+        "addon",
+        "fee",
+        "tax",
+        "credit"
+      ],
+      "title": "LineItemCategory",
+      "type": "string"
+    },
+    "MaterialTerm": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "title": "MaterialTerm",
+      "type": "object"
+    },
+    "ModelResult": {
+      "enum": [
+        "succeeded",
+        "rejected",
+        "failed"
+      ],
+      "title": "ModelResult",
+      "type": "string"
+    },
+    "ModelTrace": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_version": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Adapter Version",
+          "type": "string"
+        },
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "completed_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Completed At",
+          "type": "string"
+        },
+        "contract_type": {
+          "const": "model_trace",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "input_schema_version": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Input Schema Version",
+          "type": "string"
+        },
+        "input_tokens": {
+          "minimum": 0,
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "latency_ms": {
+          "minimum": 0,
+          "title": "Latency Ms",
+          "type": "integer"
+        },
+        "model": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "model_version": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Model Version",
+          "type": "string"
+        },
+        "output_ref": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Ref"
+        },
+        "output_schema_version": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Output Schema Version",
+          "type": "string"
+        },
+        "output_tokens": {
+          "minimum": 0,
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "prompt_version": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "provider": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "result": {
+          "$ref": "#/$defs/ModelResult"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "safety_flags": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Safety Flags",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "started_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Started At",
+          "type": "string"
+        },
+        "trace_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Trace Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "trace_id",
+        "case_id",
+        "started_at",
+        "completed_at",
+        "provider",
+        "model",
+        "model_version",
+        "adapter_version",
+        "prompt_version",
+        "input_schema_version",
+        "output_schema_version",
+        "latency_ms",
+        "input_tokens",
+        "output_tokens",
+        "result",
+        "safety_flags"
+      ],
+      "title": "ModelTrace",
+      "type": "object"
+    },
+    "Money": {
+      "additionalProperties": false,
+      "properties": {
+        "amount_minor": {
+          "title": "Amount Minor",
+          "type": "integer"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        }
+      },
+      "required": [
+        "amount_minor",
+        "currency"
+      ],
+      "title": "Money",
+      "type": "object"
+    },
+    "OfferReference": {
+      "additionalProperties": false,
+      "properties": {
+        "offer_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Offer Id",
+          "type": "string"
+        },
+        "offer_revision": {
+          "minimum": 1,
+          "title": "Offer Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "offer_id",
+        "offer_revision"
+      ],
+      "title": "OfferReference",
+      "type": "object"
+    },
+    "ProviderOffer": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "contract_type": {
+          "const": "provider_offer",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "features": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Features",
+          "type": "array"
+        },
+        "fees": {
+          "items": {
+            "$ref": "#/$defs/LineItem"
+          },
+          "title": "Fees",
+          "type": "array"
+        },
+        "monthly_price": {
+          "$ref": "#/$defs/Money"
+        },
+        "offer_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Offer Id",
+          "type": "string"
+        },
+        "provider_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "term_months": {
+          "minimum": 0,
+          "title": "Term Months",
+          "type": "integer"
+        },
+        "total_cost": {
+          "$ref": "#/$defs/Money"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "offer_id",
+        "case_id",
+        "provider_id",
+        "created_at",
+        "expires_at",
+        "monthly_price",
+        "total_cost",
+        "fees",
+        "features",
+        "term_months",
+        "evidence_ids"
+      ],
+      "title": "ProviderOffer",
+      "type": "object"
+    },
+    "ReasonerRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "needed": {
+          "title": "Needed",
+          "type": "boolean"
+        },
+        "reason_code": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Reason Code",
+          "type": "string"
+        }
+      },
+      "required": [
+        "needed",
+        "reason_code"
+      ],
+      "title": "ReasonerRequest",
+      "type": "object"
+    },
+    "StrategyPacket": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_disclosures": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Allowed Disclosures",
+          "type": "array"
+        },
+        "approval_required_disclosures": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Approval Required Disclosures",
+          "type": "array"
+        },
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "case_revision": {
+          "minimum": 1,
+          "title": "Case Revision",
+          "type": "integer"
+        },
+        "concession_ladder": {
+          "items": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Concession Ladder",
+          "type": "array"
+        },
+        "contract_type": {
+          "const": "strategy_packet",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "current_subgoal": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Current Subgoal",
+          "type": "string"
+        },
+        "escalation_conditions": {
+          "items": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Escalation Conditions",
+          "type": "array"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "fact_ledger_revision": {
+          "minimum": 1,
+          "title": "Fact Ledger Revision",
+          "type": "integer"
+        },
+        "fallback_outcomes": {
+          "items": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Fallback Outcomes",
+          "type": "array"
+        },
+        "hard_constraint_ids": {
+          "items": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Hard Constraint Ids",
+          "type": "array"
+        },
+        "primary_objective": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Primary Objective",
+          "type": "string"
+        },
+        "ranked_preference_ids": {
+          "items": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Ranked Preference Ids",
+          "type": "array"
+        },
+        "replan_conditions": {
+          "items": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Replan Conditions",
+          "type": "array"
+        },
+        "required_completion_evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRequirement"
+          },
+          "title": "Required Completion Evidence",
+          "type": "array"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "strategy_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Strategy Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "strategy_id",
+        "case_id",
+        "case_revision",
+        "fact_ledger_revision",
+        "created_at",
+        "expires_at",
+        "primary_objective",
+        "current_subgoal",
+        "hard_constraint_ids",
+        "ranked_preference_ids",
+        "allowed_disclosures",
+        "approval_required_disclosures",
+        "concession_ladder",
+        "fallback_outcomes",
+        "required_completion_evidence",
+        "escalation_conditions",
+        "replan_conditions"
+      ],
+      "title": "StrategyPacket",
+      "type": "object"
+    },
+    "UsageProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "data_megabytes": {
+          "minimum": 0,
+          "title": "Data Megabytes",
+          "type": "integer"
+        },
+        "sms_count": {
+          "minimum": 0,
+          "title": "Sms Count",
+          "type": "integer"
+        },
+        "voice_minutes": {
+          "minimum": 0,
+          "title": "Voice Minutes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "voice_minutes",
+        "sms_count",
+        "data_megabytes"
+      ],
+      "title": "UsageProfile",
+      "type": "object"
+    }
+  },
+  "$id": "https://proxyloop.local/schemas/proxyloop-contracts-1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Canonical Phase 00B wire contracts generated from the framework-independent Pydantic package.",
+  "discriminator": {
+    "mapping": {
+      "action_intent": "#/$defs/ActionIntent",
+      "approval_request": "#/$defs/ApprovalRequest",
+      "bill_snapshot": "#/$defs/BillSnapshot",
+      "case": "#/$defs/Case",
+      "completion_decision": "#/$defs/CompletionDecision",
+      "constraint": "#/$defs/Constraint",
+      "consumer_goal": "#/$defs/ConsumerGoal",
+      "evidence": "#/$defs/Evidence",
+      "fact_ledger": "#/$defs/FactLedger",
+      "fast_turn_decision": "#/$defs/FastTurnDecision",
+      "model_trace": "#/$defs/ModelTrace",
+      "provider_offer": "#/$defs/ProviderOffer",
+      "strategy_packet": "#/$defs/StrategyPacket"
+    },
+    "propertyName": "contract_type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Case"
+    },
+    {
+      "$ref": "#/$defs/ConsumerGoal"
+    },
+    {
+      "$ref": "#/$defs/Constraint"
+    },
+    {
+      "$ref": "#/$defs/BillSnapshot"
+    },
+    {
+      "$ref": "#/$defs/FactLedger"
+    },
+    {
+      "$ref": "#/$defs/StrategyPacket"
+    },
+    {
+      "$ref": "#/$defs/FastTurnDecision"
+    },
+    {
+      "$ref": "#/$defs/ProviderOffer"
+    },
+    {
+      "$ref": "#/$defs/ActionIntent"
+    },
+    {
+      "$ref": "#/$defs/ApprovalRequest"
+    },
+    {
+      "$ref": "#/$defs/Evidence"
+    },
+    {
+      "$ref": "#/$defs/CompletionDecision"
+    },
+    {
+      "$ref": "#/$defs/ModelTrace"
+    }
+  ],
+  "title": "ProxyLoop Contract Document",
+  "x-drift-command": "make contracts-check",
+  "x-generated-by": "scripts/generate_contracts.py",
+  "x-regeneration-command": "make contracts",
+  "x-schema-version": "1.0",
+  "x-source": "runtime/packages/contracts/src/proxyloop_contracts"
+}

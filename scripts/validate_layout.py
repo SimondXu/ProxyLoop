@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """Validate the tracked repository foundation and Codex harness."""
 
-from pathlib import Path
-import sys
 import tomllib
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_PATHS = (
@@ -32,18 +30,24 @@ REQUIRED_PATHS = (
     "docs/architecture.md",
     "docs/decisions/2026-08-21-monorepo.md",
     "docs/decisions/2026-08-22-implementation-defaults.md",
+    "docs/decisions/2026-08-22-contract-wire-format.md",
     "docs/planning/initial-project-plan.md",
     "docs/planning/progress.md",
     "docs/research/foundations.md",
     "apps/web",
     "runtime/packages/contracts/pyproject.toml",
+    "runtime/packages/contracts/src/proxyloop_contracts/py.typed",
     "runtime/services/api/pyproject.toml",
     "ml/data_pipeline",
     "voice/worker",
-    "contracts/jsonschema",
+    "contracts/jsonschema/proxyloop-contracts.schema.json",
+    "contracts/typescript/proxyloop-contracts.d.ts",
+    "contracts/typescript/valid-case.fixture.ts",
+    "contracts/typescript/tsconfig.json",
     "data/manifests",
     "infra/compose",
     "tests/contract",
+    "tests/fixtures/case.valid.json",
 )
 
 AGENT_CONFIGS = (
@@ -98,9 +102,7 @@ def main() -> int:
             return 1
         expected_config_file = f"agents/{filename}"
         if role.get("config_file") != expected_config_file:
-            print(
-                f"agents.{role_name}.config_file must be {expected_config_file!r}."
-            )
+            print(f"agents.{role_name}.config_file must be {expected_config_file!r}.")
             return 1
         if (
             not isinstance(role.get("description"), str)
@@ -110,13 +112,9 @@ def main() -> int:
             return 1
 
         agent = read_toml(f".codex/agents/{filename}")
-        missing_fields = [
-            field
-            for field in ("developer_instructions",)
-            if not isinstance(agent.get(field), str) or not agent[field].strip()
-        ]
-        if missing_fields:
-            print(f"{filename} is missing required fields: {', '.join(missing_fields)}")
+        instructions = agent.get("developer_instructions")
+        if not isinstance(instructions, str) or not instructions.strip():
+            print(f"{filename} is missing required field: developer_instructions")
             return 1
         expected = EXPECTED_AGENT_SETTINGS[filename]
         actual = (
