@@ -8,7 +8,7 @@ The design separates a locally trained Fast Response Model from a hosted Slow Re
 
 ## Current status
 
-Phase 00A repository setup, Phase 00B canonical contracts, Phase 01A's deterministic fictional-provider loop, and Phase 01B's simulator breadth and benchmark gate are complete. Phase 02's Data Factory and trajectory pilot has passed its local gate and independent review; PR #6's initial CI and GitGuardian passed, and Sol approved squash merge after a final docs-only evidence commit and CI rerun. Its human review sample is `pending_human` and `training_ready=false`. Phase 03 is inactive; product services, model training, external channels, and a web UI are not implemented.
+Phase 00A repository setup, Phase 00B canonical contracts, Phase 01A's deterministic fictional-provider loop, Phase 01B's simulator breadth, and Phase 02's Data Factory pilot are complete. Phase 02 was squash merged as `f45b1ea`; its human review sample remains `pending_human` and `training_ready=false`. Phase 03A0 is an active documentation gate that freezes Fast/Slow routing, shared Case state, authority, and training boundaries before evaluation implementation. Model calls/training, product services, external channels, and a web UI are not implemented.
 
 ## Start here
 
@@ -29,6 +29,7 @@ Phase 00A repository setup, Phase 00B canonical contracts, Phase 01A's determini
 - [Completed Phase 01A simulator contract](harness/build/phase-01a-provider-simulator.md)
 - [Completed Phase 01B simulator benchmark contract](harness/build/phase-01b-simulator-benchmark.md)
 - [Phase 02 data-factory contract and local gate](harness/build/phase-02-data-factory.md)
+- [Phase 03A0 Fast/Slow architecture gate](harness/build/phase-03a0-fast-slow-architecture.md)
 
 ## Repository layout
 

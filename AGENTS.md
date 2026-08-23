@@ -23,8 +23,9 @@ Do not treat a roadmap item as permission to implement it. Only an explicitly ap
 - Phase 00B, canonical contracts and contract verification, was squash merged to `main` as `98a7514`.
 - Phase 01A was independently reviewed and squash merged to `main` as `f7f3cf7`.
 - Phase 01B simulator breadth and benchmark is complete, independently reviewed, and validated by the repository phase gate.
-- Phase 02 Data Factory and trajectory pilot implementation and independent local gate are approved on `feat/phase-02-data-factory`; PR #6's initial CI, GitGuardian, and Sol integration review passed. The final docs-only evidence commit, CI rerun, and squash merge remain pending.
-- Phase 03 remains inactive and requires a new explicit user gate after Phase 02 is merged.
+- Phase 02 Data Factory and trajectory pilot was independently reviewed, passed CI/GitGuardian, and was squash merged to `main` as `f45b1ea` through PR #6. Its human review sample remains `pending_human` and `training_ready=false`.
+- Phase 03A0 Fast/Slow architecture and acceptance-criteria gate is the only active bounded phase. It changes documentation and deterministic drift evidence only.
+- Phase 03A1 evaluation implementation, Phase 03B model training/data expansion, product services, external channels, and web UI remain inactive and require new explicit gates.
 - Product services, model training, external channels, and web UI are not implemented.
 
 ## Working Rules

@@ -10,7 +10,8 @@ This file is append-only execution evidence. Record only commands actually run a
 | 00B — canonical contracts | Complete | `make preflight`: 17 tests plus format, lint, type, generation, drift, TypeScript, layout, locks, compile, and Compose passed |
 | 01A — deterministic Provider loop | Complete | Independent `make preflight`: 26 tests plus the complete repository gate passed; matching-forgery and no-mutation probes were rejected |
 | 01B — simulator breadth and benchmark | Complete | `make preflight`: 78 tests plus benchmark drift/gate, locks, and all repository checks passed; PR #5 CI and independent review approved |
-| 02 — Data Factory and trajectory pilot | PR #6 initial CI/review approved; final docs CI rerun and squash merge pending | Initial PR gate: `phase-gate` and GitGuardian passed; Sol approved after full local/integration review |
+| 02 — Data Factory and trajectory pilot | Complete | PR #6 passed independent review, CI, GitGuardian, and Sol integration review; squash merged as `f45b1ea` |
+| 03A0 — Fast/Slow architecture gate | Local gate approved; publication pending | Independent rereview approved and final `make preflight` passed with 94 runtime/contract/integration and 12 ML tests |
 
 ## Entries
 
@@ -226,3 +227,29 @@ This file is append-only execution evidence. Record only commands actually run a
 - Initial publication checks: GitHub `phase-gate` succeeded in 41 seconds and GitGuardian succeeded.
 - Sol final integration decision: Approve for squash merge after the final docs-only evidence commit and its CI rerun. Sol reviewed the complete local and staged diff, final local `make preflight`, independent review evidence, and live PR state.
 - Remaining integration work: commit the final evidence-only documentation change, observe its CI rerun, then squash merge. The human review sample remains `pending_human`, `training_ready=false`, and Phase 03 remains inactive.
+
+### 2026-08-23 — Phase 02 integration completion
+
+- PR #6's final documentation evidence commit passed the required repository checks and the bounded change was squash merged to `main` as `f45b1ea` (`feat(data): add phase 02 trajectory pilot (#6)`).
+- Local `main` was clean and synchronized with `origin/main`; the short-lived Phase 02 branch was cleaned after confirming no unique unpushed work.
+- The committed pilot boundary did not change: `human_review_status=pending_human`, `training_ready=false`, and the one-turn records are Data Factory regression evidence rather than a Qwen training corpus.
+
+### 2026-08-23 — Phase 03A0 activation and preflight
+
+- Human gate: the user explicitly authorized the Fast/Slow architecture revision and executable acceptance criteria before any Phase 03A1 implementation or model work.
+- Base: clean synchronized `main` commit `f45b1ea`; active branch `docs/phase-03a0-fast-slow-architecture`.
+- Frozen scope: deterministic Router, model-external Case Context Snapshot, separate Fast/Slow views, planning-basis and stale-result semantics, serialized Case writes/side effects, capability/approval/execution/completion ownership, Qwen training boundary, and the next implementation gate.
+- Preserved boundary: no runtime contract/source, model call/download, training, teacher/data expansion, API, PostgreSQL, Temporal, product Agent, UI, MCP, Gmail, LiveKit, telephony, real Provider contact, credentials, or consumer PII.
+- Baseline `make preflight`: passed before Phase 03A0 deliverable edits. Ruff format/lint and mypy passed for runtime and ML; pytest passed 83 runtime and 12 ML tests; contract/TypeScript, Phase 01B benchmark, Phase 02 artifact, layout, runtime/ML lock, offline pnpm lock, script compile, and Docker Compose checks passed.
+
+### 2026-08-23 — Phase 03A0 local gate closeout
+
+- Architecture decision: froze separate Fast/Slow interfaces behind a deterministic Router and model-external Case Context Snapshot; one authority each owns routing, strategy proposal, turn proposal, policy, approval, capability execution, Case state, and final completion.
+- Router remediation: independent review initially requested changes because completion, Evidence, approval, and Slow triggers overlapped. The final top-to-bottom algorithm emits exactly one outcome: `terminal`, `verify_only`, `wait_for_approval`, `slow_refresh`, `fast_now_and_slow_refresh`, or `fast_now`.
+- Boundary remediation: added drift coverage for Pine's public self-description versus ProxyLoop decisions, Fast/Slow view exclusions, advisory Fast `reasoner_request`, executor revalidation, evaluation-before-training, Router precedence, disabled Fast Action Intent, and bounded Qwen targets.
+- Independent rereview: Approve with no remaining Critical or Important finding. Durable findings and remediation are recorded in `harness/code_review/phase-03a0.md`.
+- Focused evidence: `python3 -m pytest -q tests/contract/test_phase_03a0_architecture.py` passed 11 tests; `make check-layout` and `git diff --check` passed.
+- Formal-gate corrections: the first `make preflight` stopped at Ruff formatting for the new test; after formatting, a sandboxed rerun was blocked from the existing uv cache; the first extended-access rerun then exposed Ruff import/line-length lint findings. These attempts were not reported as passes. The test was mechanically formatted and lint-corrected before the final run.
+- Final authoritative `make preflight`: passed. Runtime and ML Ruff format/lint passed; runtime mypy passed on 18 files and ML mypy on 4; runtime/contract/integration pytest passed 94 tests and ML pytest passed 12; contract and TypeScript drift, Phase 01B benchmark, Phase 02 artifact, layout, runtime/ML uv locks, frozen offline pnpm install, script compilation, Docker Compose configuration, and diff checks all passed.
+- Preserved boundary: no runtime canonical contract/schema/type, dataset, dependency/lockfile, model call/download, training, product service, API, Temporal, UI, MCP, email, telephony, credential, PII, or real-Provider implementation was changed or activated.
+- Publication status: local gate approved; PR, CI, GitGuardian, final Sol integration decision, squash merge, and merged-branch cleanup remain pending.

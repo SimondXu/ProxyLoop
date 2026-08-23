@@ -79,15 +79,30 @@ The checkpoint is selected as the implementation default, not assumed to be succ
 
 ## Fast/Slow Coordination
 
-### Slow Reasoner triggers
+### Authority and shared state
+
+Fast and Slow are separate model interfaces coordinated by a deterministic Router. They never call one another, share hidden chain-of-thought or KV cache, mutate Case state, authorize side effects, or decide final completion.
+
+Both receive allowlisted views derived from one immutable, model-external Case Context Snapshot. Fast receives a bounded recent-event window plus the current valid Strategy Packet and verified facts. Slow receives a broader safe Case view, relevant visible-event history or deterministic summary, domain policy, and the current simulator capability manifest. Every output echoes version and planning-basis pins so stale results can be traced and rejected.
+
+One Case may have parallel Fast/Slow reads, but it has one serialized state-write and side-effect lane. The text research MVP may wait synchronously for mandatory Slow refresh; later voice work may use bounded concurrent Fast acknowledgement while Slow works.
+
+### Deterministic routing and Slow triggers
+
+The Router selects `fast_now`, `slow_refresh`, `fast_now_and_slow_refresh`, `wait_for_approval`, `verify_only`, or `terminal` with deterministic reason codes. A Fast `reasoner_request` is advisory and cannot bypass mandatory routing policy.
+
+Outcomes are mutually exclusive and evaluated in order: an already verified terminal Case uses `terminal`; new Evidence or a completion candidate uses `verify_only`; a blocking current Approval Request uses `wait_for_approval`; mandatory Slow work uses `slow_refresh`, except that an explicitly permitted non-consequential acknowledgement may use `fast_now_and_slow_refresh`; an ordinary turn under a current compatible strategy uses `fast_now`. Deterministic handler results append a new event before the Router runs again.
 
 - case initialization;
-- changed user goal or hard constraint;
+- changed user goal, hard constraint, or Delegated Authority;
 - provider refusal or materially new offer structure;
 - stalled dialogue or repeated turn;
-- Fast Model low-confidence/high-risk request;
-- candidate completion requiring strategy validation;
-- expired or stale strategy packet.
+- conflicting verified facts;
+- accepted Fast Model low-confidence/high-risk request;
+- proposed consequential action;
+- verifier `needs_replan`, or candidate completion with missing, expired, or incompatible strategy/basis;
+- expired or planning-basis-incompatible Strategy Packet;
+- new Evidence that may change strategy or completion.
 
 The initial target is for Slow calls to occur on no more than 20%–30% of dialogue turns. This is an evaluation target, not a hard product truth; the routing spike may revise it.
 
@@ -100,6 +115,8 @@ Fast Model training covers:
 - reasoner-trigger classification;
 - candidate-completion classification;
 - concise response generation conditioned on the strategy.
+
+Fast Model training does not cover strategy generation, multi-step tool selection or argument planning, MCP/phone execution, long-term memory, approval, consequential acceptance, Evidence verification, final completion, credentials, or workflow durability. The existing optional `FastTurnDecision.action_intent` field remains wire-compatible, but Phase 03A1 Fast requests and accepted outputs require it to be `null`.
 
 The training pipeline must measure whether response tokens dominate the loss. If necessary it uses field-aware examples, loss masks/weights, or separate auxiliary datasets so policy fields are not reduced to decorative JSON.
 
@@ -128,6 +145,8 @@ raw immutable source
 ```
 
 Each record stores source/license, base scenario family, entity cluster, derivation parent, teacher/provider/judge model snapshots, prompt/config hashes, simulator version, verifier result, review state, rejection reasons, and content hash.
+
+The Phase 02 one-turn pilot validates the Data Factory interface only. Before any teacher-backed expansion or training-corpus claim, the project freezes the multi-turn evaluation protocol and held-out manifests, runs untuned Fast with Slow disabled/enabled, and records failure slices. Public-data SFT comes next only for learnable Fast-policy gaps; project-specific generation is targeted to gaps that remain.
 
 ### Leakage controls
 
@@ -270,18 +289,47 @@ Deliverables:
 
 Gate: provenance completeness is 100%; cross-split leakage scan is clean; pilot quality and cost justify expansion.
 
-### Phase 3: Baseline, SFT, and Evaluation — 2–3 weeks
+### Phase 3A0: Fast/Slow Architecture Gate
+
+Deliverables:
+
+- deterministic Router outcomes, priorities, and mandatory Slow triggers;
+- model-external Case Context Snapshot and separate Fast/Slow Model Views;
+- planning-basis, event-cursor, Slow-work, stale-result, and serialized-write semantics;
+- capability, policy, approval, execution, Evidence, and completion ownership;
+- bounded Qwen Fast training target and prohibited responsibilities;
+- Phase 3A1 implementation prerequisites and acceptance criteria.
+
+Gate: architecture responsibilities have one authority each; Pine public statements and ProxyLoop proposals are separated; no model, training, runtime service, external capability, or product implementation begins.
+
+### Phase 3A1: Multi-Turn Evaluation Harness and Untuned Baselines
+
+Deliverables:
+
+- implemented Case coordinator, Router, Fast/Slow interfaces, and deterministic local adapters;
+- simulator-only Capability Manifest and serialized capability executor;
+- complete multi-turn episode/event export;
+- frozen development, family/entity/provider-held-out, and safety manifests;
+- untuned Fast with Slow disabled/enabled, scripted-oracle, and frontier-reference baselines;
+- structured-output, policy, safety, end-to-end, latency, cost, and failure-slice reports.
+
+Gate: the evaluation environment attributes failures to model behavior rather than routing, stale state, missing capabilities, or simulator defects; baseline evidence decides whether open-data SFT is justified.
+
+### Phase 3B: Open-Data SFT, Gap Data, and Evaluation
 
 Deliverables:
 
 - base-model selection report;
-- four required baselines;
+- public-data source/license/role/contamination audit;
+- open-data-only SFT baseline when Phase 3A1 shows learnable Fast gaps;
+- project-specific generation only for measured residual failure slices;
+- four required Fast/Slow baselines;
 - QLoRA/SFT training and reproducible configs;
 - learning curves across data/family sizes;
 - policy, safety, end-to-end, latency, cost, and statistical reports;
 - model and dataset cards.
 
-Gate: practical family-held-out improvement without safety regression; confidence interval and failure slices reported. A provisional target is at least roughly 5 percentage points of useful improvement, but the final threshold is frozen before full training based on pilot power analysis.
+Gate: practical family-held-out improvement over the frozen untuned baseline without safety regression; confidence interval, source ablation, and failure slices are reported. A provisional target is at least roughly 5 percentage points of useful improvement, but the final threshold is frozen before full training based on pilot power analysis.
 
 ### Phase 4: Serving and Control Plane — 1–2 weeks
 

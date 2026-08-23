@@ -17,3 +17,4 @@ Active context:
 - `phase-01a-preflight.md`: observed post-contract baseline and the frozen deterministic Provider-loop seam.
 - `phase-01b-preflight.md`: observed post-Phase-01A baseline and the frozen simulator benchmark seam.
 - `phase-02-preflight.md`: observed post-Phase-01B baseline and the frozen normalized trajectory/Data Factory seam.
+- `phase-03a0-preflight.md`: observed post-Phase-02 architecture gaps, public Pine evidence boundary, and frozen Fast/Slow/shared-state decisions.
