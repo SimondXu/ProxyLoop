@@ -91,3 +91,31 @@ _Avoid_: Summary, offer text
 **Simulator Episode**:
 One isolated, reproducible Case interaction against a versioned fictional Provider scenario.
 _Avoid_: Conversation, test chat
+
+**Scenario Family**:
+A versioned group of simulator situations that share one business or safety behavior and must remain together across benchmark splits.
+_Avoid_: Test case, prompt template
+
+**Entity Cluster**:
+The grouping key that keeps related synthetic Consumer, account, bill, and scenario derivatives in one benchmark split.
+_Avoid_: User ID, database shard
+
+**Provider Configuration**:
+A versioned fictional policy and response profile interpreted by the deterministic Provider engine.
+_Avoid_: Real carrier, model persona
+
+**Safe Observation**:
+The explicit allowlisted view of current Case and public Provider information available to a decision component, excluding private Provider state and evaluator data.
+_Avoid_: Raw state, prompt dump
+
+**Split Manifest**:
+The reproducible assignment of Scenario Families and Entity Clusters to train, development, or test partitions, including its content fingerprint.
+_Avoid_: Random sample, file list
+
+**Scripted Oracle Consumer**:
+A deterministic reference policy that acts only on Safe Observations to test whether the environment exposes enough information for valid decisions.
+_Avoid_: Gold-label reader, trained model
+
+**Oracle Ceiling Report**:
+A deterministic environment report showing whether the Scripted Oracle Consumer can produce valid outcomes without false completion or leaked information.
+_Avoid_: Model score, production metric

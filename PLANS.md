@@ -9,7 +9,7 @@ This is the harness-level phase index. Detailed product requirements live in the
 | 00A | Repository foundation and documentation | Complete | Initial repository setup and layout validation |
 | 00B | Canonical contracts and contract verification | Complete | `harness/build/phase-00b-contracts.md` |
 | 01A | Thin deterministic Provider loop | Complete | `harness/build/phase-01a-provider-simulator.md` |
-| 01B | Simulator breadth and benchmark gate | Not started | Prepare only after Phase 01A approval and completion |
+| 01B | Simulator breadth and benchmark gate | Complete | `harness/build/phase-01b-simulator-benchmark.md` |
 | 02 | Data factory and trajectory pilot | Not started | To be prepared after Phase 01 |
 | 03 | Baselines, SFT, and evaluation | Not started | To be prepared after Phase 02 |
 | 04 | Serving and control plane | Not started | To be prepared after Phase 03 |
@@ -58,6 +58,6 @@ Create one Codex Goal only for the single approved phase. The Goal should quote 
 
 Most recently completed phase objective:
 
-> Complete Phase 01A exactly as specified in `harness/build/phase-01a-provider-simulator.md`: one deterministic fictional-provider loop, adversarial authorization/evidence tests, reproducible JSON CLI, complete verification evidence, and an independent review.
+> Complete Phase 01B exactly as specified in `harness/build/phase-01b-simulator-benchmark.md`: 16 family/entity-safe scenario families across two fictional-Provider configurations, a non-leaking Safe Observation boundary, a scripted environment ceiling, deterministic benchmark artifacts, adversarial verification, and independent review.
 
-No implementation phase is active. Phase 01B benchmark expansion is not authorized and requires a new explicit user gate.
+No implementation phase is active. Phase 02 data-factory and trajectory work is the next roadmap task and requires a new explicit user gate.

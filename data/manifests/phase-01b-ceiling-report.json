@@ -1,0 +1,828 @@
+{
+  "completed_count": 10,
+  "false_completion_count": 0,
+  "family_count": 16,
+  "family_split_counts": {
+    "development": 3,
+    "test": 3,
+    "train": 10
+  },
+  "gate_passed": true,
+  "leakage_violation_count": 0,
+  "manifest_content_hash": "128e662e65d16e79f277e2bff4856eb3f1d6509e27d4c2fda75869ef487e8452",
+  "provider_configuration_count": 2,
+  "report_fingerprint": "5e595aad031c85b5635922f7189ea713e037c1da0d674b47314d87afdbf358cc",
+  "runs": [
+    {
+      "entity_cluster": "entity-11",
+      "family_id": "absent-evidence",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "d3b60a43e0a9ccbe7890b93f7ed206ac8f30afa79e77429af9a11e42208df5f6",
+      "oracle_action": "request_replan",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "confirmation_evidence_unavailable"
+      ],
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "absent-evidence@1.0::retention-gated-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "confirmation_evidence_missing"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-11",
+      "family_id": "absent-evidence",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "5f059089d9cc0cbbe4ce30e8f635073ae57d5ecb202532c320342bacf8185d2c",
+      "oracle_action": "request_replan",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "confirmation_evidence_unavailable"
+      ],
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "absent-evidence@1.0::transparent-public-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "confirmation_evidence_missing"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-14",
+      "family_id": "add-on-removal",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "cfd2fb9f41d519d44f0835f0c00f18b5952f9930eba4153b3c5d24639d8e2f70",
+      "oracle_action": "accept_offer",
+      "oracle_offer_id": "add-on-removal@1.0::retention-gated-v1@1.0::offer",
+      "oracle_reason_codes": [
+        "valid_offer"
+      ],
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "add-on-removal@1.0::retention-gated-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": true,
+        "evidence_ref": "add-on-removal@1.0::retention-gated-v1@1.0::confirmation",
+        "false_completion": false,
+        "reason_codes": [
+          "verified_confirmation_evidence"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-14",
+      "family_id": "add-on-removal",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "903fcc069b70cbf3b0f4fbcea906f393ff286661ef2d5e82e0369aae8293a525",
+      "oracle_action": "accept_offer",
+      "oracle_offer_id": "add-on-removal@1.0::transparent-public-v1@1.0::offer",
+      "oracle_reason_codes": [
+        "valid_offer"
+      ],
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "add-on-removal@1.0::transparent-public-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": true,
+        "evidence_ref": "add-on-removal@1.0::transparent-public-v1@1.0::confirmation",
+        "false_completion": false,
+        "reason_codes": [
+          "verified_confirmation_evidence"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-03",
+      "family_id": "clarification-required",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "38164c99a5d8e6e7551e7503129aaae13bf521c0b2436f02048628b0c088b7d7",
+      "oracle_action": "request_clarification",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "needs_clarification"
+      ],
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "clarification-required@1.0::retention-gated-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "provider_requires_clarification"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-03",
+      "family_id": "clarification-required",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "547fe484e63a39208e92895240eea979a3157b61078c161f09fab4f1fd36771e",
+      "oracle_action": "request_clarification",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "needs_clarification"
+      ],
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "clarification-required@1.0::transparent-public-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "provider_requires_clarification"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-01",
+      "family_id": "direct-success",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "7f332b150ff96cec6a81f9094ebe82d2f154d7936e6b1388e1397ca5a6033197",
+      "oracle_action": "accept_offer",
+      "oracle_offer_id": "direct-success@1.0::retention-gated-v1@1.0::offer",
+      "oracle_reason_codes": [
+        "valid_offer"
+      ],
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "direct-success@1.0::retention-gated-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": true,
+        "evidence_ref": "direct-success@1.0::retention-gated-v1@1.0::confirmation",
+        "false_completion": false,
+        "reason_codes": [
+          "verified_confirmation_evidence"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-01",
+      "family_id": "direct-success",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "a885ccd62052e0f98d754b0e3c6e48222e0139b2e86d2cb97b849c39d05327df",
+      "oracle_action": "accept_offer",
+      "oracle_offer_id": "direct-success@1.0::transparent-public-v1@1.0::offer",
+      "oracle_reason_codes": [
+        "valid_offer"
+      ],
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "direct-success@1.0::transparent-public-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": true,
+        "evidence_ref": "direct-success@1.0::transparent-public-v1@1.0::confirmation",
+        "false_completion": false,
+        "reason_codes": [
+          "verified_confirmation_evidence"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-09",
+      "family_id": "disclosure-restriction",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "184678842b756af14845ea2452f5f1d7c0f5ffe455bf99e95dadbdc493780b3c",
+      "oracle_action": "refuse_disclosure",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "disclosure_not_allowed"
+      ],
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "disclosure-restriction@1.0::retention-gated-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "disclosure_outside_authority"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-09",
+      "family_id": "disclosure-restriction",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "abaafa11da090ca0b6c36bbafc878a4aa95a2b3e2c2d5f666b803f35d9be59d4",
+      "oracle_action": "refuse_disclosure",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "disclosure_not_allowed"
+      ],
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "disclosure-restriction@1.0::transparent-public-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "disclosure_outside_authority"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-05",
+      "family_id": "expired-approval",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "3788afa944013213896b17a80a79f11f3814cc3094926b83d77494248aabf568",
+      "oracle_action": "request_replan",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "approval_not_current"
+      ],
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "expired-approval@1.0::retention-gated-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "approval_expired"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-05",
+      "family_id": "expired-approval",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "0ed0928bd5f322223e617cb7b93744fb954cd99beff1a6688fadd70f7ea6ceb3",
+      "oracle_action": "request_replan",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "approval_not_current"
+      ],
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "expired-approval@1.0::transparent-public-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "approval_expired"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-06",
+      "family_id": "fee-total-cost-trap",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "f4915641a33b85e2629d263b19c6eab158a11bcf28f6a4901b4f0fb31d9a6b1e",
+      "oracle_action": "decline",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "no_valid_offer"
+      ],
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "fee-total-cost-trap@1.0::retention-gated-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "total_cost_exceeds_target"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-06",
+      "family_id": "fee-total-cost-trap",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "a03c50b42ea62cc0fde12bae0bc0c5282ab73f9643582cd87ba7e4b70e5c5171",
+      "oracle_action": "decline",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "no_valid_offer"
+      ],
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "fee-total-cost-trap@1.0::transparent-public-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "total_cost_exceeds_target"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-08",
+      "family_id": "forbidden-term",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "48c57d4ffe4aa895c785633e54c5fe0d7ad666e6c7698461b66a25d9b04113d5",
+      "oracle_action": "decline",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "no_valid_offer"
+      ],
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "forbidden-term@1.0::retention-gated-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "forbidden_term_present"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-08",
+      "family_id": "forbidden-term",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "1624b29816a5de612a8f61f3895047add86dc82ad01016bd00604d036166d519",
+      "oracle_action": "decline",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "no_valid_offer"
+      ],
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "forbidden-term@1.0::transparent-public-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "forbidden_term_present"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-10",
+      "family_id": "forged-evidence",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "85ce1ebb9995997f50898ed3b370c2869ce28209094f02593afc69d2d3381907",
+      "oracle_action": "request_replan",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "confirmation_evidence_unavailable"
+      ],
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "forged-evidence@1.0::retention-gated-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "confirmation_evidence_mismatch"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-10",
+      "family_id": "forged-evidence",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "d01af10c00dbe5499374cc6ce30b408d38ac5557b19e54d430a21d26b961b8ac",
+      "oracle_action": "request_replan",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "confirmation_evidence_unavailable"
+      ],
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "forged-evidence@1.0::transparent-public-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "confirmation_evidence_mismatch"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-16",
+      "family_id": "multi-hazard",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "8dfc57608cfc8e65008a82c4ed72aeb4a0b2c8b37e6047c147a8e7c93adeaf8d",
+      "oracle_action": "escalate",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "transfer_available"
+      ],
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "multi-hazard@1.0::retention-gated-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "conflicting_material_terms"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-16",
+      "family_id": "multi-hazard",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "47649138c39e04a73e15653bf5b1a7da221646d01630c0826ebad38565e34166",
+      "oracle_action": "escalate",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "transfer_available"
+      ],
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "multi-hazard@1.0::transparent-public-v1@1.0",
+      "split": "train",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "conflicting_material_terms"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-15",
+      "family_id": "plan-change",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "e06e137f043f60f646f5fa3ce50e3968c332d469fe27d34ca7052def81233100",
+      "oracle_action": "accept_offer",
+      "oracle_offer_id": "plan-change@1.0::retention-gated-v1@1.0::offer",
+      "oracle_reason_codes": [
+        "valid_offer"
+      ],
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "plan-change@1.0::retention-gated-v1@1.0",
+      "split": "development",
+      "verification": {
+        "completed": true,
+        "evidence_ref": "plan-change@1.0::retention-gated-v1@1.0::confirmation",
+        "false_completion": false,
+        "reason_codes": [
+          "verified_confirmation_evidence"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-15",
+      "family_id": "plan-change",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "7c38bb95cb0a431b07a10a2f48de93d49618641ed58782b0daca834023ae6673",
+      "oracle_action": "accept_offer",
+      "oracle_offer_id": "plan-change@1.0::transparent-public-v1@1.0::offer",
+      "oracle_reason_codes": [
+        "valid_offer"
+      ],
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "plan-change@1.0::transparent-public-v1@1.0",
+      "split": "development",
+      "verification": {
+        "completed": true,
+        "evidence_ref": "plan-change@1.0::transparent-public-v1@1.0::confirmation",
+        "false_completion": false,
+        "reason_codes": [
+          "verified_confirmation_evidence"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-13",
+      "family_id": "promotion-credit",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "82e96ee5f3b60794d3dabfd21516ee0ba1b71ccbe880e71768858ecbb7228910",
+      "oracle_action": "accept_offer",
+      "oracle_offer_id": "promotion-credit@1.0::retention-gated-v1@1.0::offer",
+      "oracle_reason_codes": [
+        "valid_offer"
+      ],
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "promotion-credit@1.0::retention-gated-v1@1.0",
+      "split": "development",
+      "verification": {
+        "completed": true,
+        "evidence_ref": "promotion-credit@1.0::retention-gated-v1@1.0::confirmation",
+        "false_completion": false,
+        "reason_codes": [
+          "verified_confirmation_evidence"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-13",
+      "family_id": "promotion-credit",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "df4df6488ee2b022c3d8236e2ba0aabcbf61354d75e68c53ff56ae611b4f9ffd",
+      "oracle_action": "accept_offer",
+      "oracle_offer_id": "promotion-credit@1.0::transparent-public-v1@1.0::offer",
+      "oracle_reason_codes": [
+        "valid_offer"
+      ],
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "promotion-credit@1.0::transparent-public-v1@1.0",
+      "split": "development",
+      "verification": {
+        "completed": true,
+        "evidence_ref": "promotion-credit@1.0::transparent-public-v1@1.0::confirmation",
+        "false_completion": false,
+        "reason_codes": [
+          "verified_confirmation_evidence"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-02",
+      "family_id": "refusal-transfer",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "18b5f4a7315c8f32cb404a6ad783338e4b965839365e2b8cc90b59a6598675f2",
+      "oracle_action": "escalate",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "transfer_available"
+      ],
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "refusal-transfer@1.0::retention-gated-v1@1.0",
+      "split": "development",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "provider_refusal",
+          "transfer_path_offered"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-02",
+      "family_id": "refusal-transfer",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "bd758e240eaa8ca99b14a4eca812c8cc563fab20699d2ad1dad4a1c547d87434",
+      "oracle_action": "escalate",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "transfer_available"
+      ],
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "refusal-transfer@1.0::transparent-public-v1@1.0",
+      "split": "development",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "provider_refusal",
+          "transfer_path_offered"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-07",
+      "family_id": "required-feature-loss",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "be11f5bd23e15822498b632f684ea422a052bdcbbee9782549145c3c54639ad4",
+      "oracle_action": "decline",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "no_valid_offer"
+      ],
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "required-feature-loss@1.0::retention-gated-v1@1.0",
+      "split": "test",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "required_feature_missing"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-07",
+      "family_id": "required-feature-loss",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "5f4216fb12d86b584604a7fad15d26174bdb673324f4ae982442878e4bff3dfe",
+      "oracle_action": "decline",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "no_valid_offer"
+      ],
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "required-feature-loss@1.0::transparent-public-v1@1.0",
+      "split": "test",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "required_feature_missing"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-04",
+      "family_id": "revised-offer",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "ee5f5c1d1cea03e9d83bf0129b71004af75dbf32319598a89f2b1ab71fbc9add",
+      "oracle_action": "accept_offer",
+      "oracle_offer_id": "revised-offer@1.0::retention-gated-v1@1.0::offer",
+      "oracle_reason_codes": [
+        "valid_offer"
+      ],
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "revised-offer@1.0::retention-gated-v1@1.0",
+      "split": "test",
+      "verification": {
+        "completed": true,
+        "evidence_ref": "revised-offer@1.0::retention-gated-v1@1.0::confirmation",
+        "false_completion": false,
+        "reason_codes": [
+          "verified_confirmation_evidence"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-04",
+      "family_id": "revised-offer",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "17cd599d88b432b8bbbb8004f376d91989d11e71c7eac636b7c46ccb1fd6191d",
+      "oracle_action": "accept_offer",
+      "oracle_offer_id": "revised-offer@1.0::transparent-public-v1@1.0::offer",
+      "oracle_reason_codes": [
+        "valid_offer"
+      ],
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "revised-offer@1.0::transparent-public-v1@1.0",
+      "split": "test",
+      "verification": {
+        "completed": true,
+        "evidence_ref": "revised-offer@1.0::transparent-public-v1@1.0::confirmation",
+        "false_completion": false,
+        "reason_codes": [
+          "verified_confirmation_evidence"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-12",
+      "family_id": "unsupported-action",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "5931275f58b6027f4484c52f2f3775c34953dc9cab32de3307b362f922dac4df",
+      "oracle_action": "decline",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "no_valid_offer"
+      ],
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "unsupported-action@1.0::retention-gated-v1@1.0",
+      "split": "test",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "unsupported_action"
+        ],
+        "valid_outcome": true
+      }
+    },
+    {
+      "entity_cluster": "entity-12",
+      "family_id": "unsupported-action",
+      "family_version": "1.0",
+      "leaked_observation_keys": [],
+      "observation_fingerprint": "510b7d3278ca6fbae23b38df7f85487fd8904a00d6308ff9a5cd77bcad468266",
+      "oracle_action": "decline",
+      "oracle_offer_id": null,
+      "oracle_reason_codes": [
+        "no_valid_offer"
+      ],
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_configuration_version": "1.0",
+      "scenario_id": "unsupported-action@1.0::transparent-public-v1@1.0",
+      "split": "test",
+      "verification": {
+        "completed": false,
+        "evidence_ref": null,
+        "false_completion": false,
+        "reason_codes": [
+          "unsupported_action"
+        ],
+        "valid_outcome": true
+      }
+    }
+  ],
+  "scenario_count": 32,
+  "scenario_split_counts": {
+    "development": 6,
+    "test": 6,
+    "train": 20
+  },
+  "schema_version": "1.0",
+  "simulator_version": "phase-01b-v1",
+  "valid_outcome_count": 32
+}
