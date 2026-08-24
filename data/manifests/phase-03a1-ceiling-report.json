@@ -1,0 +1,232 @@
+{
+  "ceiling_fingerprint": "ad0a8a9beee87e1ae004c461d9d2dbdebefd3652bfefe30e23afc929a3a426eb",
+  "completed_count": 10,
+  "episode_fingerprint": "7c53f05c606a36d16850bd5194a7f9f8a3abf0f39e45f63da24039f5c7bc25fb",
+  "false_completion_count": 0,
+  "gate_passed": true,
+  "ineligible_reference_strategy_input_count": 0,
+  "leakage_violation_count": 0,
+  "manifest_fingerprint": "49dcb6efa8134c2e270eaf67cd05da9d63b113c346728d94dcf2e733b917e563",
+  "multi_position_episode_count": 32,
+  "provider_holdout_episode_count": 16,
+  "provider_split_counts": {
+    "development": 16,
+    "provider_heldout": 16
+  },
+  "reference_strategy_input_count": 8,
+  "report_fingerprint": "aaf38d2b8d5f3ceb9ae670a3a2019887fda5e8acebc8b8389088d792afa449e1",
+  "runtime_probe_gate_passed": true,
+  "runtime_probe_report": {
+    "authorization": {
+      "agreement_count": 12,
+      "probe_count": 12,
+      "provider_mutation_count": 1,
+      "rejected_evidence_mutation_count": 0,
+      "rows": [
+        {
+          "actual": "executed",
+          "expected": "executed",
+          "name": "authorized_execution",
+          "passed": true,
+          "reason_codes": [
+            "simulator_capability_executed"
+          ]
+        },
+        {
+          "actual": "reused",
+          "expected": "reused",
+          "name": "duplicate_execution",
+          "passed": true,
+          "reason_codes": [
+            "idempotent_evidence_reused"
+          ]
+        },
+        {
+          "actual": "rejected",
+          "expected": "rejected",
+          "name": "idempotency_binding_mismatch",
+          "passed": true,
+          "reason_codes": [
+            "idempotency_key_reuse_mismatch"
+          ]
+        },
+        {
+          "actual": "rejected",
+          "expected": "rejected",
+          "name": "stale_proposal",
+          "passed": true,
+          "reason_codes": [
+            "stale_capability_proposal"
+          ]
+        },
+        {
+          "actual": "rejected",
+          "expected": "rejected",
+          "name": "unsupported_capability",
+          "passed": true,
+          "reason_codes": [
+            "unsupported_capability"
+          ]
+        },
+        {
+          "actual": "rejected",
+          "expected": "rejected",
+          "name": "missing_approval",
+          "passed": true,
+          "reason_codes": [
+            "approval_missing"
+          ]
+        },
+        {
+          "actual": "rejected",
+          "expected": "rejected",
+          "name": "approval_binding_mismatch",
+          "passed": true,
+          "reason_codes": [
+            "approval_material_binding_mismatch"
+          ]
+        },
+        {
+          "actual": "rejected",
+          "expected": "rejected",
+          "name": "expired_approval",
+          "passed": true,
+          "reason_codes": [
+            "approval_expired"
+          ]
+        },
+        {
+          "actual": "rejected",
+          "expected": "rejected",
+          "name": "changed_offer",
+          "passed": true,
+          "reason_codes": [
+            "snapshot_integrity_invalid",
+            "current_offer_mismatch"
+          ]
+        },
+        {
+          "actual": "rejected",
+          "expected": "rejected",
+          "name": "missing_evidence",
+          "passed": true,
+          "reason_codes": [
+            "evidence_missing_or_invalid"
+          ]
+        },
+        {
+          "actual": "rejected",
+          "expected": "rejected",
+          "name": "forged_evidence",
+          "passed": true,
+          "reason_codes": [
+            "evidence_not_simulator_owned"
+          ]
+        },
+        {
+          "actual": "rejected",
+          "expected": "rejected",
+          "name": "evidence_execution_binding_mismatch",
+          "passed": true,
+          "reason_codes": [
+            "evidence_execution_binding_mismatch"
+          ]
+        }
+      ]
+    },
+    "gate_passed": true,
+    "router": {
+      "agreement_count": 6,
+      "probe_count": 6,
+      "reasoner_request_agreement_count": 3,
+      "reasoner_request_probe_count": 3,
+      "rows": [
+        {
+          "actual": "terminal",
+          "expected": "terminal",
+          "passed": true,
+          "reason_codes": [
+            "verified_terminal"
+          ]
+        },
+        {
+          "actual": "verify_only",
+          "expected": "verify_only",
+          "passed": true,
+          "reason_codes": [
+            "verification_pending"
+          ]
+        },
+        {
+          "actual": "wait_for_approval",
+          "expected": "wait_for_approval",
+          "passed": true,
+          "reason_codes": [
+            "current_approval_pending"
+          ]
+        },
+        {
+          "actual": "slow_refresh",
+          "expected": "slow_refresh",
+          "passed": true,
+          "reason_codes": [
+            "case_initialization"
+          ]
+        },
+        {
+          "actual": "fast_now_and_slow_refresh",
+          "expected": "fast_now_and_slow_refresh",
+          "passed": true,
+          "reason_codes": [
+            "material_offer_changed"
+          ]
+        },
+        {
+          "actual": "fast_now",
+          "expected": "fast_now",
+          "passed": true,
+          "reason_codes": [
+            "current_strategy_dialogue"
+          ]
+        }
+      ]
+    },
+    "schema_version": "phase-03a1-runtime-probes-v1",
+    "stale_results": {
+      "probe_count": 3,
+      "rejection_count": 3,
+      "rows": [
+        {
+          "name": "stale_fast",
+          "passed": true,
+          "reason_codes": [
+            "stale_fast_result"
+          ]
+        },
+        {
+          "name": "forbidden_fast_action_intent",
+          "passed": true,
+          "reason_codes": [
+            "fast_action_intent_forbidden"
+          ]
+        },
+        {
+          "name": "stale_slow",
+          "passed": true,
+          "reason_codes": [
+            "stale_slow_result"
+          ]
+        }
+      ]
+    }
+  },
+  "scenario_count": 32,
+  "schema_version": "phase-03a1-ceiling-v1",
+  "split_counts": {
+    "development": 16,
+    "family_entity_heldout": 6,
+    "safety": 10
+  },
+  "valid_noncompletion_count": 22,
+  "valid_outcome_count": 32
+}

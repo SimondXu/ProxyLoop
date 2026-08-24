@@ -16,7 +16,17 @@ export type ProxyLoopContractDocument =
   | ApprovalRequest
   | Evidence
   | CompletionDecision
-  | ModelTrace;
+  | ModelTrace
+  | ModelInputPins
+  | PlanningBasis
+  | VisibleCaseEvent
+  | CapabilityManifest
+  | CaseContextSnapshot
+  | FastModelView
+  | SlowReasonerView
+  | RoutingDecision
+  | SlowWorkRequest
+  | SlowWorkResult;
 export type AddOns = string[];
 export type CapturedAt = string;
 export type CaseId = string;
@@ -220,6 +230,119 @@ export type SafetyFlags = string[];
 export type SchemaVersion12 = "1.0";
 export type StartedAt = string;
 export type TraceId = string;
+export type CapabilityManifestVersion = string;
+export type CaseId13 = string;
+export type CaseRevision5 = number;
+export type ConstraintSetRevision3 = number;
+export type ContractType13 = "model_input_pins";
+export type EventCursor = number;
+export type FactLedgerRevision1 = number;
+export type PlanningBasisFingerprint = string;
+export type ProviderConfigRef = string;
+export type Revision11 = number;
+export type SchemaVersion13 = "1.0";
+export type StrategyId4 = string | null;
+export type StrategyRevision3 = number;
+export type ApprovalStateFingerprint = string;
+export type CapabilityManifestFingerprint = string;
+export type ConstraintsFingerprint = string;
+export type ContractType14 = "planning_basis";
+export type DelegatedAuthorityFingerprint = string;
+export type GoalFingerprint = string;
+export type MaterialOffersFingerprint = string;
+export type PlanningBasisFingerprint1 = string;
+export type ProviderConfigFingerprint = string;
+export type Revision12 = number;
+export type SchemaVersion14 = "1.0";
+export type VerifiedFactsFingerprint = string;
+export type EventActor = "consumer" | "provider" | "system";
+export type CaseId14 = string;
+export type Content = string;
+export type ContractType15 = "visible_case_event";
+export type EventCursor1 = number;
+export type EventId = string;
+export type EventType = string;
+export type OccurredAt = string;
+export type Revision13 = number;
+export type SchemaVersion15 = "1.0";
+export type AllowedActionTypes = ActionType[];
+export type CapabilityId = string;
+export type Description1 = string;
+export type ExpiresAt4 = string | null;
+export type Namespace = "simulator";
+export type Version = string;
+export type Capabilities = CapabilityDefinition[];
+export type ContractType16 = "capability_manifest";
+export type ExpiresAt5 = string;
+export type IssuedAt = string;
+export type ManifestVersion = string;
+export type Namespace1 = "simulator";
+export type Revision14 = number;
+export type SchemaVersion16 = "1.0";
+export type ActionIntents = ActionIntent[];
+export type ApprovalRequests = ApprovalRequest[];
+export type ContractType17 = "case_context_snapshot";
+export type EventCursor2 = number;
+export type Evidence1 = Evidence[];
+export type Offers = ProviderOffer[];
+export type PendingExecution = boolean;
+export type PendingSlowWork = boolean;
+export type ProviderConfigRef1 = string;
+export type Revision15 = number;
+export type SchemaVersion17 = "1.0";
+export type VisibleEvents = VisibleCaseEvent[];
+export type AllowedDialogueActs = DialogueAct[];
+export type AllowedDisclosures2 = string[];
+export type CaseId15 = string;
+export type Constraints1 = Constraint[];
+export type ContractType18 = "fast_model_view";
+export type PendingSlowWork1 = boolean;
+export type RecentEvents = VisibleCaseEvent[];
+export type Revision16 = number;
+export type SchemaVersion18 = "1.0";
+export type VerifiedFacts = FactRecord[];
+export type ApprovalRequests1 = ApprovalRequest[];
+export type CaseId16 = string;
+export type Constraints2 = Constraint[];
+export type ContractType19 = "slow_reasoner_view";
+export type Offers1 = ProviderOffer[];
+export type ProviderConfigRef2 = string;
+export type ReasonCode1 = string;
+export type RecentEvents1 = VisibleCaseEvent[];
+export type Revision17 = number;
+export type SchemaVersion19 = "1.0";
+export type VerifiedFacts1 = FactRecord[];
+export type ContractType20 = "routing_decision";
+export type CreatedAt7 = string;
+export type RoutingOutcome =
+  "terminal" | "verify_only" | "wait_for_approval" | "slow_refresh" | "fast_now_and_slow_refresh" | "fast_now";
+export type ReasonCodes1 = string[];
+export type Revision18 = number;
+export type SchemaVersion20 = "1.0";
+export type CaseId17 = string;
+export type ContractType21 = "slow_work_request";
+export type CreatedAt8 = string;
+export type ReasonCode2 = string;
+export type RequestId = string;
+export type Revision19 = number;
+export type SchemaVersion21 = "1.0";
+export type ActionProposals = ActionIntent[];
+export type Name2 = string;
+export type Arguments = CapabilityArgument[];
+export type CapabilityId1 = string;
+export type Namespace2 = "simulator";
+export type Version1 = string;
+export type CreatedAt9 = string;
+export type ExpiresAt6 = string | null;
+export type ProposalId = string;
+export type CapabilityProposals = CapabilityProposal[];
+export type CaseId18 = string;
+export type ContractType22 = "slow_work_result";
+export type CreatedAt10 = string;
+export type RequestId1 = string;
+export type ResultId = string;
+export type Revision20 = number;
+export type SchemaVersion22 = "1.0";
 
 export interface Case {
   bill_snapshot?: BillSnapshot | null;
@@ -486,4 +609,198 @@ export interface ModelTrace {
   schema_version: SchemaVersion12;
   started_at: StartedAt;
   trace_id: TraceId;
+}
+/**
+ * The complete version pin set accepted by a model adapter.
+ */
+export interface ModelInputPins {
+  capability_manifest_version: CapabilityManifestVersion;
+  case_id: CaseId13;
+  case_revision: CaseRevision5;
+  constraint_set_revision: ConstraintSetRevision3;
+  contract_type: ContractType13;
+  event_cursor: EventCursor;
+  fact_ledger_revision: FactLedgerRevision1;
+  planning_basis_fingerprint: PlanningBasisFingerprint;
+  provider_config_ref: ProviderConfigRef;
+  revision: Revision11;
+  schema_version: SchemaVersion13;
+  strategy_id?: StrategyId4;
+  strategy_revision?: StrategyRevision3;
+}
+/**
+ * Strongly typed fingerprints for every material strategy input.
+ */
+export interface PlanningBasis {
+  approval_state_fingerprint: ApprovalStateFingerprint;
+  capability_manifest_fingerprint: CapabilityManifestFingerprint;
+  constraints_fingerprint: ConstraintsFingerprint;
+  contract_type: ContractType14;
+  delegated_authority_fingerprint: DelegatedAuthorityFingerprint;
+  goal_fingerprint: GoalFingerprint;
+  material_offers_fingerprint: MaterialOffersFingerprint;
+  planning_basis_fingerprint: PlanningBasisFingerprint1;
+  provider_config_fingerprint: ProviderConfigFingerprint;
+  revision: Revision12;
+  schema_version: SchemaVersion14;
+  verified_facts_fingerprint: VerifiedFactsFingerprint;
+}
+/**
+ * A leakage-safe event that may be projected to a model.
+ */
+export interface VisibleCaseEvent {
+  actor: EventActor;
+  case_id: CaseId14;
+  content: Content;
+  contract_type: ContractType15;
+  event_cursor: EventCursor1;
+  event_id: EventId;
+  event_type: EventType;
+  occurred_at: OccurredAt;
+  revision: Revision13;
+  schema_version: SchemaVersion15;
+}
+/**
+ * The sole, simulator-only action vocabulary visible to models.
+ */
+export interface CapabilityManifest {
+  capabilities: Capabilities;
+  contract_type: ContractType16;
+  expires_at: ExpiresAt5;
+  issued_at: IssuedAt;
+  manifest_version: ManifestVersion;
+  namespace: Namespace1;
+  revision: Revision14;
+  schema_version: SchemaVersion16;
+}
+/**
+ * One simulator capability advertised by a manifest.
+ */
+export interface CapabilityDefinition {
+  allowed_action_types: AllowedActionTypes;
+  capability_id: CapabilityId;
+  description: Description1;
+  expires_at?: ExpiresAt4;
+  namespace?: Namespace;
+  version: Version;
+}
+/**
+ * Immutable model-external Case state at one event cursor.
+ */
+export interface CaseContextSnapshot {
+  action_intents?: ActionIntents;
+  approval_requests?: ApprovalRequests;
+  capability_manifest: CapabilityManifest;
+  case: Case;
+  completion_decision?: CompletionDecision | null;
+  contract_type: ContractType17;
+  event_cursor: EventCursor2;
+  evidence?: Evidence1;
+  fact_ledger: FactLedger;
+  offers?: Offers;
+  pending_execution?: PendingExecution;
+  pending_slow_work?: PendingSlowWork;
+  pins: ModelInputPins;
+  planning_basis: PlanningBasis;
+  provider_config_ref: ProviderConfigRef1;
+  revision: Revision15;
+  schema_version: SchemaVersion17;
+  strategy?: StrategyPacket | null;
+  visible_events?: VisibleEvents;
+}
+/**
+ * Explicit allowlist for the low-latency model.
+ */
+export interface FastModelView {
+  allowed_dialogue_acts: AllowedDialogueActs;
+  allowed_disclosures: AllowedDisclosures2;
+  case_id: CaseId15;
+  constraints: Constraints1;
+  contract_type: ContractType18;
+  goal: ConsumerGoal;
+  latest_provider_event?: VisibleCaseEvent | null;
+  pending_slow_work?: PendingSlowWork1;
+  pins: ModelInputPins;
+  planning_basis: PlanningBasis;
+  recent_events?: RecentEvents;
+  revision: Revision16;
+  schema_version: SchemaVersion18;
+  strategy?: StrategyPacket | null;
+  verified_facts: VerifiedFacts;
+}
+/**
+ * Explicit allowlist for the bounded Slow reasoner.
+ */
+export interface SlowReasonerView {
+  approval_requests?: ApprovalRequests1;
+  capability_manifest: CapabilityManifest;
+  case_id: CaseId16;
+  constraints: Constraints2;
+  contract_type: ContractType19;
+  delegated_authority: DelegatedAuthority;
+  goal: ConsumerGoal;
+  offers?: Offers1;
+  pins: ModelInputPins;
+  planning_basis: PlanningBasis;
+  provider_config_ref: ProviderConfigRef2;
+  reason_code: ReasonCode1;
+  recent_events?: RecentEvents1;
+  revision: Revision17;
+  schema_version: SchemaVersion19;
+  strategy?: StrategyPacket | null;
+  verified_facts: VerifiedFacts1;
+}
+export interface RoutingDecision {
+  contract_type: ContractType20;
+  created_at: CreatedAt7;
+  outcome: RoutingOutcome;
+  pins: ModelInputPins;
+  reason_codes: ReasonCodes1;
+  revision: Revision18;
+  schema_version: SchemaVersion20;
+}
+export interface SlowWorkRequest {
+  case_id: CaseId17;
+  contract_type: ContractType21;
+  created_at: CreatedAt8;
+  pins: ModelInputPins;
+  planning_basis: PlanningBasis;
+  reason_code: ReasonCode2;
+  request_id: RequestId;
+  revision: Revision19;
+  schema_version: SchemaVersion21;
+  view: SlowReasonerView;
+}
+export interface SlowWorkResult {
+  action_proposals?: ActionProposals;
+  capability_proposals?: CapabilityProposals;
+  case_id: CaseId18;
+  contract_type: ContractType22;
+  created_at: CreatedAt10;
+  pins: ModelInputPins;
+  planning_basis: PlanningBasis;
+  request_id: RequestId1;
+  result_id: ResultId;
+  revision: Revision20;
+  schema_version: SchemaVersion22;
+  strategy_proposal?: StrategyPacket | null;
+}
+/**
+ * A model proposal; it has no authorization or execution authority.
+ */
+export interface CapabilityProposal {
+  arguments?: Arguments;
+  capability: CapabilityReference;
+  created_at: CreatedAt9;
+  expires_at?: ExpiresAt6;
+  proposal_id: ProposalId;
+}
+export interface CapabilityArgument {
+  name: Name2;
+  value: FactValue;
+}
+export interface CapabilityReference {
+  capability_id: CapabilityId1;
+  namespace: Namespace2;
+  version: Version1;
 }

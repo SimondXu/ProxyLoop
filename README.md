@@ -8,7 +8,7 @@ The design separates a locally trained Fast Response Model from a hosted Slow Re
 
 ## Current status
 
-Phase 00A repository setup, Phase 00B canonical contracts, Phase 01A's deterministic fictional-provider loop, Phase 01B's simulator breadth, and Phase 02's Data Factory pilot are complete. Phase 02 was squash merged as `f45b1ea`; its human review sample remains `pending_human` and `training_ready=false`. Phase 03A0 is an active documentation gate that freezes Fast/Slow routing, shared Case state, authority, and training boundaries before evaluation implementation. Model calls/training, product services, external channels, and a web UI are not implemented.
+Phase 00A repository setup, Phase 00B canonical contracts, Phase 01A's deterministic fictional-provider loop, Phase 01B's simulator breadth, Phase 02's Data Factory pilot, and Phase 03A0's Fast/Slow architecture gate are complete. Phase 03A0 was squash merged as `54afcb8`; Phase 02's human review sample remains `pending_human` and `training_ready=false`. Phase 03A1-H is the active deterministic multi-turn evaluation-harness gate. Model-backed baselines follow only after that Harness merges; training, product services, external channels, and a web UI are not implemented.
 
 ## Start here
 

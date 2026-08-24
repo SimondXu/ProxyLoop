@@ -43,4 +43,4 @@ The independent reviewer confirmed that the Router now chooses one mutually excl
 - `git diff --check`: passed;
 - final `make preflight`: passed with 94 runtime/contract/integration tests and 12 ML tests, plus all format, lint, mypy, schema/type drift, Phase 01B benchmark, Phase 02 artifact, layout, lock, offline install, compile, and Compose gates.
 
-CI, GitGuardian, PR state, and merge remain publication gates owned by Sol.
+Publication completed after this independent review: PR #7 passed `phase-gate` and GitGuardian, and Sol squash merged it to `main` as `54afcb8`.

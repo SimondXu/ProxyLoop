@@ -2,19 +2,21 @@
 
 .PHONY: help preflight check-layout validate format format-check lint typecheck \
 	unit-test test contracts contracts-check simulator benchmark benchmark-check \
-	data-pilot data-pilot-check lock-check dev
+	data-pilot data-pilot-check harness harness-check lock-check dev
 
 PYTHON_RUN := uv run --project runtime --all-packages
 ML_PYTHON_RUN := uv run --project ml
 PYTHON_PATHS := runtime/packages/contracts/src runtime/packages/contracts/tests \
 	runtime/packages/agent_core/src \
 	runtime/packages/telecom_domain/src runtime/packages/provider_simulator/src \
+	runtime/packages/provider_simulator/tests \
 	tests/contract tests/integration scripts/generate_contracts.py \
-	scripts/run_phase_01b_benchmark.py scripts/validate_layout.py
+	scripts/run_phase_01b_benchmark.py scripts/run_phase_03a1_harness.py \
+	scripts/validate_layout.py
 ML_PYTHON_PATHS := ml/data_pipeline/src ml/tests scripts/run_phase_02_data_pilot.py
 
 help:
-	@printf '%s\n' 'Targets: preflight, validate, format, format-check, lint, typecheck, test, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, check-layout, lock-check, dev'
+	@printf '%s\n' 'Targets: preflight, validate, format, format-check, lint, typecheck, test, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, harness, harness-check, check-layout, lock-check, dev'
 
 preflight: validate lock-check
 	python3 -m compileall -q scripts
@@ -44,16 +46,18 @@ typecheck:
 		runtime/packages/contracts/src runtime/packages/agent_core/src \
 		runtime/packages/telecom_domain/src \
 		runtime/packages/provider_simulator/src scripts/generate_contracts.py \
-		scripts/run_phase_01b_benchmark.py scripts/validate_layout.py
+		scripts/run_phase_01b_benchmark.py scripts/run_phase_03a1_harness.py \
+		scripts/validate_layout.py
 	$(ML_PYTHON_RUN) mypy --config-file ml/pyproject.toml \
 		ml/data_pipeline/src scripts/run_phase_02_data_pilot.py
 
 unit-test:
 	$(PYTHON_RUN) pytest -c runtime/pyproject.toml -q \
-		runtime/packages/contracts/tests tests/contract tests/integration
+		runtime/packages/contracts/tests runtime/packages/provider_simulator/tests \
+		tests/contract tests/integration
 	$(ML_PYTHON_RUN) pytest -c ml/pyproject.toml ml/tests -q
 
-test: unit-test contracts-check benchmark-check data-pilot-check
+test: unit-test contracts-check benchmark-check data-pilot-check harness-check
 
 contracts:
 	$(PYTHON_RUN) python scripts/generate_contracts.py
@@ -76,6 +80,12 @@ data-pilot:
 
 data-pilot-check:
 	$(ML_PYTHON_RUN) python scripts/run_phase_02_data_pilot.py --check
+
+harness:
+	$(PYTHON_RUN) python scripts/run_phase_03a1_harness.py --write
+
+harness-check:
+	$(PYTHON_RUN) python scripts/run_phase_03a1_harness.py --check
 
 lock-check:
 	uv lock --project runtime --check
