@@ -24,7 +24,7 @@ def imported_roots(source: Path) -> set[str]:
     return roots
 
 
-def test_phase_03a1_erratum_local_gate_does_not_activate_phase_03b() -> None:
+def test_phase_03a1_erratum_completion_does_not_activate_phase_03b() -> None:
     agents = document("AGENTS.md")
     plans = document("PLANS.md")
     harness = document("harness/build/phase-03a1-harness.md")
@@ -35,11 +35,11 @@ def test_phase_03a1_erratum_local_gate_does_not_activate_phase_03b() -> None:
     assert "Phase 03A1-E evaluation erratum" in agents
     assert "| 03A1-H |" in plans and "Complete; squash merged" in plans
     assert "| 03A1-B |" in plans and "Complete; full gate passed" in plans
-    assert "| 03A1-E |" in plans and "Local gate approved" in plans
+    assert "| 03A1-E |" in plans and "Complete; terminal Provider blocker" in plans
     assert "| 03B |" in plans and "Not started" in plans
     assert "**Status**: Complete; squash merged" in harness
     assert "**Status**: Complete; frozen model matrix executed" in baselines
-    assert "**Status**: Local gate approved" in erratum
+    assert "**Status**: Complete with a terminal Provider blocker" in erratum
 
 
 def test_phase_03a1_harness_required_implementation_surface_exists() -> None:

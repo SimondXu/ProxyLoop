@@ -1,7 +1,7 @@
 # Phase 03A1-E — Evaluation Erratum and Leakage-Safe Second Run
 
-**Status**: Local gate approved with a terminal Provider blocker; PR integration
-pending. Phase 03B remains inactive.
+**Status**: Complete with a terminal Provider blocker; local, independent, and
+PR #10 gates passed. Phase 03B remains inactive.
 
 **Base**: Phase 03A1-B completed through PR #9. Its original learned scores are
 retained as calibration evidence because evaluator defects prevent treating the
