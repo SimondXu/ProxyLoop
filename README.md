@@ -8,7 +8,7 @@ The design separates a locally trained Fast Response Model from a hosted Slow Re
 
 ## Current status
 
-Phase 00A repository setup, Phase 00B canonical contracts, Phase 01A's deterministic fictional-provider loop, Phase 01B's simulator breadth, Phase 02's Data Factory pilot, and Phase 03A0's Fast/Slow architecture gate are complete. Phase 03A0 was squash merged as `54afcb8`; Phase 02's human review sample remains `pending_human` and `training_ready=false`. Phase 03A1-H is the active deterministic multi-turn evaluation-harness gate. Model-backed baselines follow only after that Harness merges; training, product services, external channels, and a web UI are not implemented.
+Phase 00A repository setup, Phase 00B canonical contracts, Phase 01A's deterministic fictional-provider loop, Phase 01B's simulator breadth, Phase 02's Data Factory pilot, Phase 03A0's Fast/Slow architecture gate, and Phase 03A1-H's deterministic multi-turn Harness are complete. The Harness was squash merged as `e08c9b6` through PR #8; Phase 02's human review sample remains `pending_human` and `training_ready=false`. Phase 03A1-B is the sole active gate for untuned Qwen/frontier baselines. Training, product services, external channels, and a web UI are not implemented.
 
 ## Start here
 
@@ -30,6 +30,8 @@ Phase 00A repository setup, Phase 00B canonical contracts, Phase 01A's determini
 - [Completed Phase 01B simulator benchmark contract](harness/build/phase-01b-simulator-benchmark.md)
 - [Phase 02 data-factory contract and local gate](harness/build/phase-02-data-factory.md)
 - [Phase 03A0 Fast/Slow architecture gate](harness/build/phase-03a0-fast-slow-architecture.md)
+- [Phase 03A1 deterministic Harness](harness/build/phase-03a1-harness.md)
+- [Phase 03A1 untuned Baselines](harness/build/phase-03a1-baselines.md)
 
 ## Repository layout
 

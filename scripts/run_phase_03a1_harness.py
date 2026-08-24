@@ -627,7 +627,7 @@ def _episode_execution_context(
 
 
 @dataclass
-class _EpisodeCapabilityAdapter:
+class EpisodeCapabilityAdapter:
     environment: MultiTurnProviderEnvironment
     attempt: SimulatorCapabilityAttempt
     canonical_offer_id: str | None
@@ -669,6 +669,66 @@ class _EpisodeCapabilityAdapter:
     def _commit(self) -> None:
         self.transition = self.environment.submit_capability_attempt(self.attempt)
         self.commits += 1
+
+
+@dataclass(frozen=True, slots=True)
+class Phase03A1ModelFixture:
+    """Typed model-visible snapshot plus evaluator-only episode identity.
+
+    The assignment and reference action stay outside the snapshot. Baseline
+    runners may use them only after the adapter returns to classify failures.
+    """
+
+    scenario: BenchmarkScenario
+    episode_id: str
+    split: str
+    provider_split: str
+    safety_only: bool
+    snapshot: CaseContextSnapshot
+    reference_capability_id: str
+    reference_offer_id: str | None
+
+
+def build_phase03a1_model_fixtures(
+    scenarios: Iterable[BenchmarkScenario] = BENCHMARK_SCENARIOS,
+) -> tuple[Phase03A1ModelFixture, ...]:
+    """Build immutable evaluation fixtures without serializing evaluator labels."""
+
+    scenario_list = tuple(sorted(scenarios, key=lambda item: item.scenario_id))
+    manifest = generate_phase03a1_manifest(scenario_list)
+    case = Phase01AEpisode.success().case
+    fixtures: list[Phase03A1ModelFixture] = []
+    for scenario in scenario_list:
+        environment = MultiTurnProviderEnvironment(scenario)
+        opening = environment.start()
+        decision = ScriptedOracleConsumer().decide(
+            _safe_observation(case, opening.turn)
+        )
+        attempt = SimulatorCapabilityAttempt(
+            capability_id=f"simulator.{decision.action.value}",
+            offer_id=decision.offer_id,
+            idempotency_key=f"baseline:{scenario.scenario_id}",
+        )
+        snapshot, _, _, _ = _episode_execution_context(
+            case=case,
+            scenario=scenario,
+            opening=opening.turn,
+            attempt=attempt,
+        )
+        assignment = manifest.assignment_for(scenario.scenario_id)
+        fixtures.append(
+            Phase03A1ModelFixture(
+                scenario=scenario,
+                episode_id=f"episode-{scenario.scenario_id}",
+                split=assignment.split,
+                provider_split=assignment.provider_split,
+                safety_only=assignment.safety_only,
+                snapshot=snapshot,
+                reference_capability_id=attempt.capability_id,
+                reference_offer_id=attempt.offer_id,
+            )
+        )
+    return tuple(fixtures)
 
 
 @dataclass
@@ -1085,7 +1145,7 @@ def _run_episode(
         opening=opening.turn,
         attempt=attempt,
     )
-    capability_adapter = _EpisodeCapabilityAdapter(
+    capability_adapter = EpisodeCapabilityAdapter(
         environment=environment,
         attempt=attempt,
         canonical_offer_id=(

@@ -1,6 +1,6 @@
 # Phase 03A1-H — Deterministic Multi-Turn Evaluation Harness
 
-**Status**: Local gate approved; PR, CI, and squash merge pending.
+**Status**: Complete; squash merged as `e08c9b6` through PR #8.
 
 **Activation**: Explicitly approved by the user on 2026-08-23 after Phase 03A0 was squash merged as `54afcb8`. Active branch: `feat/phase-03a1-harness`.
 

@@ -25,8 +25,9 @@ Do not treat a roadmap item as permission to implement it. Only an explicitly ap
 - Phase 01B simulator breadth and benchmark is complete, independently reviewed, and validated by the repository phase gate.
 - Phase 02 Data Factory and trajectory pilot was independently reviewed, passed CI/GitGuardian, and was squash merged to `main` as `f45b1ea` through PR #6. Its human review sample remains `pending_human` and `training_ready=false`.
 - Phase 03A0 Fast/Slow architecture and acceptance-criteria gate was independently reviewed, passed CI/GitGuardian, and was squash merged to `main` as `54afcb8` through PR #7.
-- Phase 03A1 Harness is the only active bounded phase. It implements deterministic orchestration, simulator-only capabilities, multi-turn evaluation episodes, frozen manifests, and scripted-oracle environment evidence before any model-backed baseline.
-- Phase 03A1 model-backed baselines remain sequentially gated behind the merged Harness PR. Phase 03B training/data expansion, product services, external channels, and web UI remain inactive and require new explicit gates.
+- Phase 03A1-H deterministic multi-turn Harness was squash merged as `e08c9b6` through PR #8.
+- Phase 03A1-B untuned Qwen/frontier baselines is the only active bounded phase.
+- Phase 03B model training/data expansion, product services, external channels, and web UI remain inactive and require new explicit gates.
 - Product services, model training, external channels, and web UI are not implemented.
 
 ## Working Rules

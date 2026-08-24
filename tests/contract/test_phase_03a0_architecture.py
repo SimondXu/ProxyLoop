@@ -212,5 +212,5 @@ def test_phase_03a0_records_phase_status_and_phase02_merge() -> None:
     assert "Phase 03A0" in plans
     assert "f45b1ea" in plans
     assert "Phase 03A0" in plans and "Complete" in plans
-    assert "Phase 03A1-H" in plans and "Local gate approved" in plans
+    assert "Phase 03A1-H" in plans and "e08c9b6" in plans
     assert "| 03B |" in plans and "Not started" in plans

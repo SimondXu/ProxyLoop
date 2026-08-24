@@ -2,7 +2,8 @@
 
 .PHONY: help preflight check-layout validate format format-check lint typecheck \
 	unit-test test contracts contracts-check simulator benchmark benchmark-check \
-	data-pilot data-pilot-check harness harness-check lock-check dev
+	data-pilot data-pilot-check harness harness-check baselines baselines-check \
+	lock-check dev
 
 PYTHON_RUN := uv run --project runtime --all-packages
 ML_PYTHON_RUN := uv run --project ml
@@ -13,10 +14,11 @@ PYTHON_PATHS := runtime/packages/contracts/src runtime/packages/contracts/tests 
 	tests/contract tests/integration scripts/generate_contracts.py \
 	scripts/run_phase_01b_benchmark.py scripts/run_phase_03a1_harness.py \
 	scripts/validate_layout.py
-ML_PYTHON_PATHS := ml/data_pipeline/src ml/tests scripts/run_phase_02_data_pilot.py
+ML_PYTHON_PATHS := ml/data_pipeline/src ml/evaluation/src ml/tests \
+	scripts/run_phase_02_data_pilot.py scripts/run_phase_03a1_baselines.py
 
 help:
-	@printf '%s\n' 'Targets: preflight, validate, format, format-check, lint, typecheck, test, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, harness, harness-check, check-layout, lock-check, dev'
+	@printf '%s\n' 'Targets: preflight, validate, format, format-check, lint, typecheck, test, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, check-layout, lock-check, dev'
 
 preflight: validate lock-check
 	python3 -m compileall -q scripts
@@ -49,7 +51,8 @@ typecheck:
 		scripts/run_phase_01b_benchmark.py scripts/run_phase_03a1_harness.py \
 		scripts/validate_layout.py
 	$(ML_PYTHON_RUN) mypy --config-file ml/pyproject.toml \
-		ml/data_pipeline/src scripts/run_phase_02_data_pilot.py
+		ml/data_pipeline/src ml/evaluation/src scripts/run_phase_02_data_pilot.py \
+		scripts/run_phase_03a1_baselines.py
 
 unit-test:
 	$(PYTHON_RUN) pytest -c runtime/pyproject.toml -q \
@@ -57,7 +60,7 @@ unit-test:
 		tests/contract tests/integration
 	$(ML_PYTHON_RUN) pytest -c ml/pyproject.toml ml/tests -q
 
-test: unit-test contracts-check benchmark-check data-pilot-check harness-check
+test: unit-test contracts-check benchmark-check data-pilot-check harness-check baselines-check
 
 contracts:
 	$(PYTHON_RUN) python scripts/generate_contracts.py
@@ -86,6 +89,11 @@ harness:
 
 harness-check:
 	$(PYTHON_RUN) python scripts/run_phase_03a1_harness.py --check
+
+baselines: baselines-check
+
+baselines-check:
+	$(ML_PYTHON_RUN) python -m scripts.run_phase_03a1_baselines --check
 
 lock-check:
 	uv lock --project runtime --check
