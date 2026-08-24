@@ -285,3 +285,10 @@ This file is append-only execution evidence. Record only commands actually run a
 - Final authoritative `make preflight`: passed with 128 runtime/contract/integration tests and 12 ML tests plus all format, lint, mypy, schema/type drift, Phase 01B/02/03A1 artifact, layout, lock, offline install, compile, Compose, and diff gates.
 - Final independent Terra rereview: Approve with no unresolved Critical or Important finding. Terra independently reran the same complete `make preflight` successfully. Durable findings and remediation are recorded in `harness/code_review/phase-03a1-harness.md`.
 - Publication status: local gate approved. PR, remote CI, GitGuardian, Sol integration decision, squash merge, cleanup, and post-merge verification remain pending; 03A1-B has not started.
+
+### 2026-08-23 — Phase 03A1 Harness PR #8 initial publication gate
+
+- PR #8 at head `5f8d609` is open, non-draft, `MERGEABLE`, and `CLEAN` against `main`; its 35-file diff matches the reviewed local commit.
+- Initial publication checks passed: GitHub `phase-gate` in 46 seconds and GitGuardian Security Checks in 1 second.
+- Sol reviewed the final head, complete file list and diff statistics, local and independent preflight evidence, final Terra approval, generated artifacts, authority/held-out boundaries, and prohibited scope. Final decision: Approve for squash merge after this evidence-only commit passes its CI rerun.
+- Remaining integration work: push this build-log evidence, observe the final CI/GitGuardian rerun, then squash merge and clean the fully merged short-lived branch. Phase 03A1-B has not started; no model download/call, training, data expansion, product service, channel, or UI is authorized by this gate.
