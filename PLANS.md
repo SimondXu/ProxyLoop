@@ -13,7 +13,7 @@ This is the harness-level phase index. Detailed product requirements live in the
 | 02 | Data factory and trajectory pilot | Complete; squash merged as `f45b1ea` through PR #6 | `harness/build/phase-02-data-factory.md` |
 | 03A0 | Fast/Slow architecture and acceptance criteria | Complete; squash merged as `54afcb8` through PR #7 | `harness/build/phase-03a0-fast-slow-architecture.md` |
 | 03A1-H | Deterministic multi-turn evaluation harness | Complete; squash merged as `e08c9b6` through PR #8 | `harness/build/phase-03a1-harness.md` |
-| 03A1-B | Untuned Qwen/frontier baselines | In progress | `harness/build/phase-03a1-baselines.md` |
+| 03A1-B | Untuned Qwen/Terra baselines | Complete; full gate passed through PR #9 | `harness/build/phase-03a1-baselines.md` |
 | 03B | Open-data SFT, gap-driven project data, and evaluation | Not started | Decided from Phase 03A1 failure slices |
 | 04 | Serving and control plane | Not started | To be prepared after Phase 03 |
 | 05 | Durable agent loop | Not started | To be prepared after Phase 04 |
@@ -65,6 +65,8 @@ Current gate:
 
 > Phase 03A0 remains complete at `54afcb8`.
 >
-> Phase 03A1-H is squash merged as `e08c9b6` through PR #8. The user explicitly activated Phase 03A1-B as the sole current gate for model-backed untuned baselines.
+> Phase 03A1-H is squash merged as `e08c9b6` through PR #8. Phase 03A1-B completed its frozen model matrix, independent review, and PR #9 gates.
 
-Phase 03A1-B may download the frozen public Qwen checkpoint and make strictly bounded frontier calls after the credential and cost gates. It must reuse the merged Router, Case coordinator, model views, simulator-only capabilities, multi-turn environment, frozen manifests, and scripted ceiling. Teacher-backed expansion, training, serving, product Agent, channels, UI, and Phase 03B remain inactive.
+No implementation phase is active. The failure slices require a separate human
+decision before Phase 03B may begin. Teacher-backed expansion, training,
+serving, product Agent, channels, and UI remain inactive.

@@ -1,6 +1,7 @@
 # Phase 03A1-B — Untuned Model Baselines
 
-**Status**: In progress.
+**Status**: Complete; frozen model matrix executed, independently reviewed, and
+PR #9 CI/GitGuardian gates passed.
 
 **Activation**: Explicitly approved by the user on 2026-08-23 as the second
 sequential Phase 03A1 pull request, after the deterministic Harness was squash

@@ -24,19 +24,19 @@ def imported_roots(source: Path) -> set[str]:
     return roots
 
 
-def test_phase_03a1_baselines_are_the_only_active_gate() -> None:
+def test_phase_03a1_is_complete_without_activating_phase_03b() -> None:
     agents = document("AGENTS.md")
     plans = document("PLANS.md")
     harness = document("harness/build/phase-03a1-harness.md")
     baselines = document("harness/build/phase-03a1-baselines.md")
 
     assert "e08c9b6" in agents + plans + harness + baselines
-    assert "Phase 03A1-B untuned Qwen/frontier baselines is the only active" in agents
+    assert "No implementation phase is active" in agents
     assert "| 03A1-H |" in plans and "Complete; squash merged" in plans
-    assert "| 03A1-B |" in plans and "In progress" in plans
+    assert "| 03A1-B |" in plans and "Complete; full gate passed" in plans
     assert "| 03B |" in plans and "Not started" in plans
     assert "**Status**: Complete; squash merged" in harness
-    assert "**Status**: In progress." in baselines
+    assert "**Status**: Complete; frozen model matrix executed" in baselines
 
 
 def test_phase_03a1_harness_required_implementation_surface_exists() -> None:
