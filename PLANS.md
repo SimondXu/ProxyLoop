@@ -15,6 +15,8 @@ This is the harness-level phase index. Detailed product requirements live in the
 | 03A1-H | Deterministic multi-turn evaluation harness | Complete; squash merged as `e08c9b6` through PR #8 | `harness/build/phase-03a1-harness.md` |
 | 03A1-B | Untuned Qwen/Terra baselines | Complete; full gate passed through PR #9 | `harness/build/phase-03a1-baselines.md` |
 | 03A1-E | Evaluation erratum and leakage-safe second run | Complete; terminal Provider blocker; PR #10 gates passed | `harness/build/phase-03a1-evaluation-erratum.md` |
+| 03A1-R | Hosted baseline reliability rerun | Complete; corrected full matrix; r4 ready | `harness/build/phase-03a1-hosted-rerun.md` |
+| 03A1-V | Evaluation-validity six-episode smoke | Complete; 5/6 diagnostic, evaluator mismatch isolated | `harness/build/phase-03a1-evaluation-validity-smoke.md` |
 | 03B | Open-data SFT, gap-driven project data, and evaluation | Not started | Decided from Phase 03A1 failure slices |
 | 04 | Serving and control plane | Not started | To be prepared after Phase 03 |
 | 05 | Durable agent loop | Not started | To be prepared after Phase 04 |
@@ -71,6 +73,29 @@ Current gate:
 Phase 03A1-E completed its bounded gate with an honest terminal Provider blocker. The
 immutable r2 evidence records one unknown-cost hosted failure and a global
 zero-call abort; the source-bound r3 report corrects attribution offline with
-zero new external dispatches. PR #10 passed phase-gate and GitGuardian. Phase
-03A1-E cannot train, expand training data, or activate Phase 03B. Teacher-backed
-expansion, serving, product Agent, channels, and UI remain inactive.
+zero new external dispatches. PR #10 passed phase-gate and GitGuardian.
+
+Phase 03A1-R completed its bounded gate after correcting the model-facing Slow
+union from unsupported `oneOf`/`discriminator` to OpenAI-supported `anyOf`.
+The failed pre-correction r4 is preserved as a separate attempt artifact. Both
+zero-retry probes and all four frozen hosted conditions completed through 29qg
+with response identities and complete usage accounting; canonical r4 records
+`phase_completion_ready=true`. This is an evidence-completeness result, not a
+model-quality or training-readiness decision. Phase 03A1-V then isolated the
+discovered model/oracle input mismatch and structured-output ambiguities on six
+representative episodes: the same model path improved from 0/6 to 5/6 after
+prompt/input parity, while the remaining fee case depends on a twelve-month
+cost predicate absent from the visible goal. No implementation phase is active.
+Phase 03B, teacher-backed expansion, serving, product Agent, channels, and UI
+require a new explicit gate.
+
+Recommended next decision, not an active phase:
+
+1. Define one authoritative offer-compliance rule for recurring price, fees,
+   twelve-month total, required features, and forbidden changes.
+2. Project the same public compliance inputs into the model and scripted-oracle
+   views; keep authorization and completion deterministic.
+3. Add adversarial contract tests proving model, oracle, and Provider verifier
+   cannot disagree because of hidden predicates.
+4. Rerun the 32-episode medium condition only. Run high reasoning or activate
+   Phase 03B only if the corrected medium evidence shows a genuine model gap.

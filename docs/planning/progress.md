@@ -152,3 +152,37 @@
 - Root review additionally removed semantic evaluator leakage from Provider messages. Independent rereview approved the complete diff with no unresolved blocking finding.
 - The post-remediation local equivalent gate passed 78 tests plus format, lint, mypy, contract drift, TypeScript, pnpm lock, layout, compile, Compose, diff, and benchmark checks. GitHub CI remains required for the sandbox-blocked authoritative uv lock check.
 - After permissions were restored, the authoritative local `make preflight` passed all gates, including uv lock resolution. PR #5 then passed `phase-gate` and GitGuardian; Sol completed final integration review and approved squash merge.
+
+## Session: 2026-08-24 — Phase 03A1 Hosted Reliability and Evaluation Validity
+
+- **Status:** complete locally; no next phase activated
+- Corrected the hosted Slow structured-output Schema from the unsupported
+  discriminated `oneOf` form to the OpenAI-compatible `anyOf` form while
+  preserving strict output validation.
+- Completed both formal probes and all four frozen medium/high hosted
+  conditions through 29qg with response identities and complete usage
+  accounting. The canonical r4 report records
+  `phase_completion_ready=true`; this means evidence collection completed, not
+  that model quality passed.
+- Investigated the implausible r4 quality result with a separate six-episode
+  r5 validity smoke covering accept, decline, clarification, replan,
+  escalation, and disclosure refusal. No r2, r3, or r4 artifact was rewritten.
+- With the same local Qwen Fast model and hosted Terra Slow model, public-state
+  parity, explicit dynamic-field semantics, and explicit completion-evidence
+  guidance improved the selected baseline from 0/6 to 5/6 end-to-end valid.
+  Slow semantic validity improved from 2/6 to 6/6 and Qwen Fast returned
+  `not_done` in 6/6 reached calls.
+- The remaining fee case revealed that the Provider verifier and scripted
+  oracle enforce twelve-month-total predicates absent from the model-visible
+  Consumer Goal and Constraints. The result is therefore an evaluation-contract
+  mismatch, not clean evidence that Terra cannot reason about the offer.
+- All six diagnostic Terra calls returned auditable usage through 29qg. The
+  conservative usage-accounted cost was USD 0.117456; no official OpenAI
+  fallback or retry was used.
+- Final `make preflight` passed 138 runtime/contract/integration tests, 105 ML
+  tests, r4/r5 integrity checks, Ruff, strict mypy, TypeScript drift, layout,
+  lock, compile, and Docker Compose gates.
+- Phase 03B remains inactive. The recommended next bounded gate is to define
+  one authoritative offer-compliance policy, expose its necessary public inputs
+  symmetrically to model and oracle, and rerun medium only before considering
+  high-reasoning evaluation or SFT.

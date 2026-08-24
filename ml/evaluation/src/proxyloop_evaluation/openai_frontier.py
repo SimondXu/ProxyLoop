@@ -17,11 +17,12 @@ import hashlib
 import importlib
 import json
 import os
+import re
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from proxyloop_agent_core import FastAdapterResult
 from proxyloop_contracts import (
@@ -29,7 +30,7 @@ from proxyloop_contracts import (
     SlowWorkRequest,
     SlowWorkResult,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from .fast_output import FastModelOutput, compile_fast_output
 from .slow_output import SlowModelOutput, compile_slow_output
@@ -160,6 +161,19 @@ class FrontierCallRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class FrontierErrorEvidence:
+    """Allowlisted Provider failure metadata with no request or header content."""
+
+    error_class: str
+    status_code: int | None
+    request_id: str | None
+    provider_code: str | None
+    provider_type: str | None
+    provider_param: str | None
+    call_index: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class PromptBundle:
     """A Chat Completions input plus prompt/schema fingerprints."""
 
@@ -179,6 +193,15 @@ class PromptBundle:
 
 class FastStructuredOutput(FastModelOutput):
     """Shared strict semantic Fast proposal used by hosted structured output."""
+
+
+class ProviderProbeOutput(BaseModel):
+    """Tiny non-evaluation structured response used by the r4 transport gate."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    ok: Literal[True]
+    label: str
 
 
 class OpenAIFrontierAdapter:
@@ -220,6 +243,8 @@ class OpenAIFrontierAdapter:
         self._calls_started = 0
         self._last_call: FrontierCallRecord | None = None
         self._last_structured_output: str | None = None
+        self._last_error: FrontierErrorEvidence | None = None
+        self._error_history: list[FrontierErrorEvidence] = []
 
     @property
     def last_call(self) -> FrontierCallRecord | None:
@@ -232,6 +257,14 @@ class OpenAIFrontierAdapter:
     @property
     def last_structured_output(self) -> str | None:
         return self._last_structured_output
+
+    @property
+    def last_error(self) -> FrontierErrorEvidence | None:
+        return self._last_error
+
+    @property
+    def error_history(self) -> tuple[FrontierErrorEvidence, ...]:
+        return tuple(self._error_history)
 
     @property
     def cost_estimate(self) -> FrontierCostEstimate:
@@ -257,6 +290,7 @@ class OpenAIFrontierAdapter:
             parsed = _parsed_output(response, FastStructuredOutput)
             self._last_structured_output = _structured_output_text(parsed)
         except Exception as exc:
+            self._capture_error(exc)
             self._finish(
                 record,
                 status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
@@ -270,6 +304,7 @@ class OpenAIFrontierAdapter:
         try:
             decision = compile_fast_output(view, parsed)
         except Exception as exc:
+            self._capture_error(exc)
             self._finish(
                 record,
                 status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
@@ -298,6 +333,7 @@ class OpenAIFrontierAdapter:
             parsed = _parsed_output(response, SlowModelOutput)
             self._last_structured_output = _structured_output_text(parsed)
         except Exception as exc:
+            self._capture_error(exc)
             self._finish(
                 record,
                 status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
@@ -311,6 +347,7 @@ class OpenAIFrontierAdapter:
         try:
             result = compile_slow_output(request, parsed)
         except Exception as exc:
+            self._capture_error(exc)
             self._finish(
                 record,
                 status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
@@ -324,6 +361,7 @@ class OpenAIFrontierAdapter:
         try:
             _validate_slow_binding(request, result)
         except Exception as exc:
+            self._capture_error(exc)
             self._finish(
                 record,
                 status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
@@ -337,6 +375,37 @@ class OpenAIFrontierAdapter:
         self._finish(record, status=FrontierCallStatus.SUCCEEDED)
         return result
 
+    def probe(self, *, label: str) -> ProviderProbeOutput:
+        """Run one fixed, non-evaluation structured transport/usage probe."""
+
+        bundle = build_probe_prompt(label)
+        response, record = self._invoke(bundle)
+        raw = _raw_message_content(response)
+        if raw is not None:
+            self._last_structured_output = raw[:16384]
+        try:
+            parsed = cast(
+                ProviderProbeOutput,
+                _parsed_output(response, ProviderProbeOutput),
+            )
+            if parsed.label != label:
+                raise ValueError("probe response label does not match the request")
+            self._last_structured_output = _structured_output_text(parsed)
+        except Exception as exc:
+            self._capture_error(exc)
+            self._finish(
+                record,
+                status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
+                error=type(exc).__name__,
+            )
+            raise FrontierResponseValidationError(
+                "frontier probe response failed strict validation",
+                status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
+                validation_stage="probe_schema",
+            ) from exc
+        self._finish(record, status=FrontierCallStatus.SUCCEEDED)
+        return parsed
+
     def build_fast_prompt(self, view: FastModelView) -> PromptBundle:
         return build_fast_prompt(view)
 
@@ -344,6 +413,7 @@ class OpenAIFrontierAdapter:
         return build_slow_prompt(request)
 
     def _invoke(self, bundle: PromptBundle) -> tuple[object, FrontierCallRecord]:
+        self._last_error = None
         estimate = self.cost_estimate
         if estimate.maximum_cost_usd - self.usd_ceiling > 1e-12:
             record = self._not_run_record(
@@ -397,6 +467,7 @@ class OpenAIFrontierAdapter:
                 )
                 self._client = client
             except Exception as exc:
+                self._capture_error(exc)
                 record = self._not_run_record(
                     bundle,
                     status=FrontierCallStatus.NOT_RUN_MODEL_UNAVAILABLE,
@@ -419,6 +490,7 @@ class OpenAIFrontierAdapter:
                 response_format=bundle.output_model,
             )
         except Exception as exc:
+            self._capture_error(exc)
             record = FrontierCallRecord(
                 status=FrontierCallStatus.FAILED_PROVIDER_CALL,
                 requested_model=FRONTIER_MODEL,
@@ -454,6 +526,7 @@ class OpenAIFrontierAdapter:
                 latency_ms=max(0, round((time.perf_counter() - started) * 1000)),
             )
         except FrontierResponseValidationError as exc:
+            self._capture_error(exc, response=response)
             record = FrontierCallRecord(
                 status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
                 requested_model=FRONTIER_MODEL,
@@ -479,7 +552,29 @@ class OpenAIFrontierAdapter:
             self._last_call = record
             raise
         self._last_call = record
+        if record.response_id is None:
+            self._capture_error_evidence(
+                FrontierErrorEvidence(
+                    error_class="MissingResponseId",
+                    status_code=None,
+                    request_id=None,
+                    provider_code=None,
+                    provider_type=None,
+                    provider_param=None,
+                    call_index=self._calls_started,
+                )
+            )
+            self._finish(
+                record,
+                status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
+                error="response ID metadata is missing",
+            )
+            raise FrontierResponseValidationError(
+                "frontier response did not include response ID metadata",
+                status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
+            )
         if record.response_model is None:
+            self._capture_metadata_error("MissingResponseModel")
             self._finish(
                 record,
                 status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
@@ -493,6 +588,7 @@ class OpenAIFrontierAdapter:
             record.response_model == FRONTIER_MODEL
             or record.response_model.startswith(f"{FRONTIER_MODEL}-")
         ):
+            self._capture_metadata_error("ResponseModelMismatch")
             self._finish(
                 record,
                 status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
@@ -506,6 +602,7 @@ class OpenAIFrontierAdapter:
             record.input_tokens > self.input_token_cap
             or record.output_tokens > self.output_token_cap
         ):
+            self._capture_metadata_error("UsageCapExceeded")
             self._finish(
                 record,
                 status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
@@ -543,6 +640,37 @@ class OpenAIFrontierAdapter:
         )
         self._last_call = record
         return record
+
+    def _capture_error(
+        self,
+        error: BaseException,
+        *,
+        response: object | None = None,
+    ) -> None:
+        self._capture_error_evidence(
+            _provider_error_evidence(
+                error,
+                response=response,
+                call_index=self._calls_started or None,
+            )
+        )
+
+    def _capture_metadata_error(self, error_class: str) -> None:
+        self._capture_error_evidence(
+            FrontierErrorEvidence(
+                error_class=error_class,
+                status_code=None,
+                request_id=None,
+                provider_code=None,
+                provider_type=None,
+                provider_param=None,
+                call_index=self._calls_started or None,
+            )
+        )
+
+    def _capture_error_evidence(self, detail: FrontierErrorEvidence) -> None:
+        self._last_error = detail
+        self._error_history.append(detail)
 
     def _finish(
         self,
@@ -644,6 +772,30 @@ def build_slow_prompt(request: SlowWorkRequest) -> PromptBundle:
         },
     )
     return _bundle(messages, schema, SlowModelOutput)
+
+
+def build_probe_prompt(label: str) -> PromptBundle:
+    """Build a fixed synthetic probe that contains no evaluation payload."""
+
+    if not label or len(label) > 64:
+        raise ValueError("probe label must contain 1-64 characters")
+    schema = cast(dict[str, object], ProviderProbeOutput.model_json_schema())
+    messages: tuple[dict[str, object], ...] = (
+        {
+            "role": "system",
+            "content": "Return the requested strict probe object and nothing else.",
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                {"ok": True, "label": label},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        },
+    )
+    return _bundle(messages, schema, ProviderProbeOutput)
 
 
 def _bundle(
@@ -788,6 +940,50 @@ def _optional_nonnegative_integer(value: object) -> int | None:
     return value
 
 
+def _provider_error_evidence(
+    error: BaseException,
+    *,
+    response: object | None = None,
+    call_index: int | None = None,
+) -> FrontierErrorEvidence:
+    body = getattr(error, "body", None)
+    detail: Mapping[object, object] | None = body if isinstance(body, Mapping) else None
+    if detail is not None and isinstance(detail.get("error"), Mapping):
+        detail = cast(Mapping[object, object], detail["error"])
+
+    def text_field(name: str) -> str | None:
+        if detail is None:
+            return None
+        value = detail.get(name)
+        return _sanitize_provider_text(value) if isinstance(value, str) else None
+
+    status = getattr(error, "status_code", None)
+    status_code = (
+        status if isinstance(status, int) and not isinstance(status, bool) else None
+    )
+    request_id = getattr(error, "request_id", None)
+    if not isinstance(request_id, str):
+        request_id = _optional_string(_field(response, "_request_id"))
+    return FrontierErrorEvidence(
+        error_class=type(error).__name__,
+        status_code=status_code,
+        request_id=_sanitize_provider_text(request_id) if request_id else None,
+        provider_code=text_field("code"),
+        provider_type=text_field("type"),
+        provider_param=text_field("param"),
+        call_index=call_index,
+    )
+
+
+def _sanitize_provider_text(value: str) -> str:
+    bounded = value[:512]
+    secret = os.environ.get(FRONTIER_API_KEY_ENV)
+    if secret:
+        bounded = bounded.replace(secret, "[REDACTED]")
+    bounded = re.sub(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]", bounded)
+    return re.sub(r"\bsk-[A-Za-z0-9_-]{8,}\b", "[REDACTED]", bounded)
+
+
 def _fingerprint(value: object) -> str:
     canonical = json.dumps(
         value,
@@ -811,12 +1007,15 @@ __all__ = [
     "FrontierCallRecord",
     "FrontierCallStatus",
     "FrontierCostEstimate",
+    "FrontierErrorEvidence",
     "FrontierProviderCallError",
     "FrontierResponseValidationError",
     "FrontierUnavailableError",
     "OpenAIFrontierAdapter",
     "PromptBundle",
+    "ProviderProbeOutput",
     "build_fast_prompt",
+    "build_probe_prompt",
     "build_slow_prompt",
     "estimate_frontier_cost",
 ]

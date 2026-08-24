@@ -28,6 +28,9 @@ Do not treat a roadmap item as permission to implement it. Only an explicitly ap
 - Phase 03A1-H deterministic multi-turn Harness was squash merged as `e08c9b6` through PR #8.
 - Phase 03A1-B untuned Qwen/Terra baselines completed its frozen model matrix, independent review, and PR #9 CI/GitGuardian gates.
 - Phase 03A1-E evaluation erratum and leakage-safe second run completed its local/independent gates with an honest terminal Provider blocker and passed PR #10 CI/GitGuardian. Its r3 report is a source-bound offline re-attribution of immutable r2 evidence, not a retry or training run.
+- Phase 03A1-R hosted baseline reliability rerun completed its full corrected r4 matrix. The original unsupported `oneOf`/`discriminator` attempt is preserved separately; the canonical r4 uses OpenAI-supported `anyOf`, has complete usage accounting, and records `phase_completion_ready=true`.
+- Phase 03A1-V evaluation-validity smoke completed its six-episode diagnostic. With the same Qwen/Terra models, prompt/input parity improved the selected baseline from 0/6 to 5/6 end-to-end valid; the remaining fee case exposes a hidden evaluator predicate. Its r5 artifact is diagnostic evidence, not a training or quality gate.
+- No implementation phase is active. The next bounded phase requires explicit user approval.
 - Phase 03B model training/data expansion, product services, external channels, and web UI remain inactive and require new explicit gates.
 - Product services, model training, external channels, and web UI are not implemented.
 

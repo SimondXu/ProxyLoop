@@ -63,10 +63,7 @@ class NonOfferCapabilityModelOutput(StrictOutput):
     ]
 
 
-CapabilityModelOutput = Annotated[
-    AcceptOfferCapabilityModelOutput | NonOfferCapabilityModelOutput,
-    Field(discriminator="capability"),
-]
+CapabilityModelOutput = AcceptOfferCapabilityModelOutput | NonOfferCapabilityModelOutput
 
 
 class SlowModelOutput(StrictOutput):

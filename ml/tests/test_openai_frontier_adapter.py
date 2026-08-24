@@ -424,6 +424,9 @@ def test_lazy_sdk_client_disables_retries_and_attempt_failure_is_auditable(
     assert adapter.last_call is not None
     assert adapter.last_call.actual_cost_usd is None
     assert adapter.last_call.status is FrontierCallStatus.FAILED_PROVIDER_CALL
+    assert adapter.last_error is not None
+    assert adapter.last_error.error_class == "TimeoutError"
+    assert adapter.last_error.status_code is None
 
 
 def test_attempted_provider_failure_is_failed_not_not_run() -> None:
