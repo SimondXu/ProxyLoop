@@ -20,13 +20,16 @@ from .runner import (
     run_frontier_condition,
 )
 from .slow_output import (
+    AcceptOfferCapabilityModelOutput,
     CapabilityModelOutput,
+    NonOfferCapabilityModelOutput,
     SlowModelOutput,
     StrategyModelOutput,
     compile_slow_output,
 )
 
 __all__ = [
+    "AcceptOfferCapabilityModelOutput",
     "BaselineCondition",
     "BaselineReport",
     "CapabilityModelOutput",
@@ -34,6 +37,7 @@ __all__ = [
     "EpisodeBaselineResult",
     "FastModelOutput",
     "ModelProvenance",
+    "NonOfferCapabilityModelOutput",
     "PromptProvenance",
     "RunStatus",
     "SlowModelOutput",

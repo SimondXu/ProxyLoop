@@ -137,6 +137,9 @@ class QwenMLXMetadata:
     output_tokens: int | None
     error_code: str | None = None
     error_message: str | None = None
+    json_valid: bool = False
+    schema_valid: bool = False
+    canonical_valid: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -408,6 +411,7 @@ class QwenMLXAdapter:
                 output_tokens=output.output_tokens,
                 error_code="json_object_required",
                 error_message="Fast output must be a JSON object",
+                json_valid=True,
             )
         if "action_intent" not in parsed or parsed["action_intent"] is not None:
             return self._result(
@@ -419,9 +423,24 @@ class QwenMLXAdapter:
                 output_tokens=output.output_tokens,
                 error_code="fast_action_intent_forbidden",
                 error_message="Phase 03A1 Fast action_intent must be explicitly null",
+                json_valid=True,
             )
         try:
             model_output = FastModelOutput.model_validate_json(raw)
+        except Exception as error:
+            return self._result(
+                prompt,
+                status=QwenMLXStatus.INVALID_OUTPUT,
+                elapsed_ms=_elapsed_ms(started),
+                raw_output=bounded_raw,
+                input_tokens=output.input_tokens,
+                output_tokens=output.output_tokens,
+                error_code="schema_validation_error",
+                error_message=_bounded_error(error),
+                json_valid=True,
+            )
+
+        try:
             decision = compile_fast_output(view, model_output)
         except Exception as error:
             return self._result(
@@ -433,6 +452,8 @@ class QwenMLXAdapter:
                 output_tokens=output.output_tokens,
                 error_code="canonical_validation_error",
                 error_message=_bounded_error(error),
+                json_valid=True,
+                schema_valid=True,
             )
 
         return self._result(
@@ -443,6 +464,9 @@ class QwenMLXAdapter:
             adapter_result=FastAdapterResult(pins=view.pins, decision=decision),
             input_tokens=output.input_tokens,
             output_tokens=output.output_tokens,
+            json_valid=True,
+            schema_valid=True,
+            canonical_valid=True,
         )
 
     def decide(self, view: FastModelView) -> FastAdapterResult:
@@ -535,6 +559,9 @@ class QwenMLXAdapter:
         adapter_result: FastAdapterResult | None = None,
         error_code: str | None = None,
         error_message: str | None = None,
+        json_valid: bool = False,
+        schema_valid: bool = False,
+        canonical_valid: bool = False,
     ) -> QwenMLXGenerationResult:
         return QwenMLXGenerationResult(
             metadata=QwenMLXMetadata(
@@ -557,6 +584,9 @@ class QwenMLXAdapter:
                 output_tokens=output_tokens,
                 error_code=error_code,
                 error_message=error_message,
+                json_valid=json_valid,
+                schema_valid=schema_valid,
+                canonical_valid=canonical_valid,
             ),
             adapter_result=adapter_result,
         )

@@ -46,7 +46,7 @@ from proxyloop_evaluation.openai_frontier import (
 from proxyloop_evaluation.qwen_mlx import QwenMLXAdapter
 from proxyloop_evaluation.runner import _run_frontier_sequence, run_frontier_condition
 from proxyloop_evaluation.slow_output import (
-    CapabilityModelOutput,
+    NonOfferCapabilityModelOutput,
     SlowModelOutput,
     StrategyModelOutput,
 )
@@ -221,8 +221,7 @@ def _slow_output() -> SlowModelOutput:
         strategy=StrategyModelOutput(
             primary_objective="Safely pursue the consumer goal.",
             current_subgoal="Handle the latest provider turn.",
-            hard_constraint_ids=(),
-            ranked_preference_ids=(),
+            ranked_preference_positions=(),
             allowed_disclosures=(),
             approval_required_disclosures=(),
             concession_ladder=("Preserve hard constraints.",),
@@ -236,7 +235,7 @@ def _slow_output() -> SlowModelOutput:
             escalation_conditions=("Material terms change.",),
             replan_conditions=("Planning basis changes.",),
         ),
-        capability_proposals=(),
+        next_capability=None,
     )
 
 
@@ -300,18 +299,11 @@ class _QueuedClient:
 
 
 def _fixture_slow_output(*, capability_id: str) -> SlowModelOutput:
-    fixture = build_phase03a1_model_fixtures()[0]
-    hard_ids = tuple(
-        item.constraint_id
-        for item in fixture.snapshot.case.constraints
-        if item.classification.value == "hard"
-    )
     return SlowModelOutput(
         strategy=StrategyModelOutput(
             primary_objective="Safely pursue the consumer goal.",
             current_subgoal="Handle the latest fictional Provider turn.",
-            hard_constraint_ids=hard_ids,
-            ranked_preference_ids=(),
+            ranked_preference_positions=(),
             allowed_disclosures=(),
             approval_required_disclosures=(),
             concession_ladder=("Preserve all hard constraints.",),
@@ -325,8 +317,8 @@ def _fixture_slow_output(*, capability_id: str) -> SlowModelOutput:
             escalation_conditions=("Material terms change.",),
             replan_conditions=("Planning basis changes.",),
         ),
-        capability_proposals=(
-            CapabilityModelOutput(capability_id=capability_id, offer_id=None),
+        next_capability=NonOfferCapabilityModelOutput(
+            capability=capability_id.removeprefix("simulator."),
         ),
     )
 
@@ -600,11 +592,11 @@ def test_fast_action_intent_and_slow_invented_reference_are_rejected() -> None:
 
     request = _slow_request()
     invalid_strategy = _slow_output().strategy.model_copy(
-        update={"hard_constraint_ids": (UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),)}
+        update={"ranked_preference_positions": (0,)}
     )
     invalid_slow = SlowModelOutput(
         strategy=invalid_strategy,
-        capability_proposals=(),
+        next_capability=None,
     )
     slow_adapter = OpenAIFrontierAdapter(
         client=_fake_client(invalid_slow),
@@ -616,6 +608,7 @@ def test_fast_action_intent_and_slow_invented_reference_are_rejected() -> None:
     with pytest.raises(FrontierResponseValidationError) as slow_error:
         slow_adapter.reason(request)
     assert slow_error.value.status is FrontierCallStatus.FAILED_INVALID_RESPONSE
+    assert slow_error.value.validation_stage == "semantic"
 
 
 def test_cost_estimator_uses_frozen_rates_and_call_cap() -> None:

@@ -370,3 +370,69 @@ This file is append-only execution evidence. Record only commands actually run a
 - Root's complete post-remediation `make preflight` passed with 135 runtime/contract/integration and 43 ML tests plus every repository-native gate. Independent Terra rereview returned Approve with no new Critical or Important finding and independently passed the same full preflight without a hosted request.
 - The repaired PR #9 then passed both GitHub `phase-gate` and GitGuardian. Repository status was closed to Phase 03A1 complete with no active implementation phase; Phase 03B remains explicitly inactive.
 - Independent Terra review approved the status closeout with no Critical or Important finding and independently passed the full 135 + 43 preflight without a hosted request.
+
+### 2026-08-24 — Phase 03A1-E evaluation erratum local gate
+
+- Human gate and scope: the user approved a corrected second evaluation attempt
+  and disclosure of the frozen fictional payloads to the configured 29qg
+  endpoint. No training, data expansion, product Agent, channel, UI, deployment,
+  or Phase 03B work was authorized.
+- Evaluator correction: r2 separates Provider JSON, output schema, semantic
+  compile, canonical binding, authorization/execution, Provider outcome, and
+  end-to-end validity. Exact reference match is diagnostic. Model fixtures do
+  not preload oracle ActionIntent or ApprovalRequest state, and consequential
+  continuation remains exactly bound through Policy, Approval, Executor,
+  Evidence, and Verifier.
+- Fresh deterministic evidence: 32 disjoint r2 multi-turn episodes and the
+  scripted ceiling passed with 32/32 end-to-end-valid outcomes, zero false
+  authoritative completion, and zero leakage. Raw Fast/Slow outputs are bounded
+  and semantically replayed through fake no-network adapters.
+- Local untuned Qwen: 32/32 JSON/schema/canonical outputs; three safe
+  non-completions and 29 unsupported completion candidates. Fast
+  `action_intent` stayed null and no candidate became authoritative completion.
+  Slow-off produced 32/32 typed `slow_unavailable` safe non-completions with zero
+  model calls.
+- Hosted terminal evidence: the first medium Slow request started but returned
+  no auditable response or usage. R2 records one `failed_provider_call`, unknown
+  actual cost, and incomplete accounting. The global abort prevented all three
+  remaining hosted conditions from starting; each has zero calls and
+  `not_run_budget_rejected`. No retry was issued.
+- Post-dispatch version boundary: independent review found that the raw r2 report
+  also attached a false `router_outcome_mismatch`. R2 remains immutable with
+  source fingerprint `499b62b7e0a6e1148652dcaf1bdc6538a6893c1aaa4d2476b5680b603770afa6`.
+  The separately versioned r3 report corrects attribution only by offline replay,
+  binds the r2 fingerprint and source timestamp, preserves raw/call evidence,
+  records source hosted calls=1, new external dispatches=0, offline replay
+  conditions=4, evaluator version, and the executed Qwen output cap=512.
+- Independent review history: the first Terra review requested changes for one
+  Critical report-readiness integrity defect and two Important Qwen/Router
+  attribution defects. A second review requested one Important timestamp fix.
+  After Red/Green remediation and source-bound r3 derivation, final Terra
+  decision was Approve with no unresolved Critical or Important finding. The
+  durable record is `harness/code_review/phase-03a1-evaluation-erratum.md`.
+- Focused final evidence: 25 r3/runner tests passed; r3 offline checker, Ruff,
+  strict mypy, and `git diff --check` passed. The reviewer made no model/API call
+  and did not read credentials.
+- Final authoritative local `make preflight`: passed with 135 runtime/contract/
+  integration tests and 89 ML tests. Runtime/ML Ruff and mypy, contract and
+  TypeScript drift, Phase 01B/02/03A1-H/03A1-B/03A1-E artifact replay, layout,
+  both uv locks, frozen offline pnpm, script compilation, Docker Compose, and
+  diff gates all passed.
+- Local outcome: Phase 03A1-E is approved for PR integration with an honest
+  terminal Provider blocker; `phase_completion_ready=false`. This is sufficient
+  for the phase's truthful-blocker acceptance criterion, but it is not a model
+  matrix success and does not activate Phase 03B.
+
+### 2026-08-24 — Phase 03A1-E PR #10 publication gate
+
+- Initial PR state: PR #10 at head `f96f7f7`, base `f5c43d8`, open, non-draft,
+  `MERGEABLE`, with a clean bounded 37-file phase diff.
+- GitHub checks passed on the reviewed head: repository `phase-gate` in 54
+  seconds and GitGuardian Security Checks in 1 second.
+- Sol final integration review: Approve after the status/evidence-only closeout
+  commit passes its CI rerun. Sol reviewed the full file scope, final local
+  `make preflight`, r2/r3 source binding, terminal blocker semantics, independent
+  Terra approval, and prohibited-scope boundary.
+- Remaining integration work: push this closeout evidence, observe the final
+  CI/GitGuardian rerun, then squash merge and clean the fully merged short-lived
+  branch. Phase 03B remains inactive.

@@ -224,7 +224,9 @@ def test_action_intent_and_infrastructure_fields_are_rejected() -> None:
         view
     )
     assert extra_result.status is QwenMLXStatus.INVALID_OUTPUT
-    assert extra_result.metadata.error_code == "canonical_validation_error"
+    assert extra_result.metadata.error_code == "schema_validation_error"
+    assert extra_result.metadata.json_valid is True
+    assert extra_result.metadata.schema_valid is False
 
 
 def test_missing_mlx_dependency_is_typed_and_never_scripted(

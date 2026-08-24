@@ -113,6 +113,16 @@ class FrontierBudgetExceededError(FrontierAdapterError):
 class FrontierResponseValidationError(FrontierAdapterError):
     """The provider response was not an exact canonical structured result."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: FrontierCallStatus,
+        validation_stage: str = "provider_response",
+    ) -> None:
+        super().__init__(message, status=status)
+        self.validation_stage = validation_stage
+
 
 class FrontierProviderCallError(FrontierAdapterError):
     """A hosted request started but returned no trustworthy usage/result."""
@@ -137,6 +147,8 @@ class FrontierCallRecord:
     response_model: str | None
     response_model_version: str | None
     response_id: str | None
+    requested_reasoning_effort: str
+    reasoning_tokens: int | None
     input_tokens: int
     output_tokens: int
     latency_ms: int | None
@@ -238,9 +250,24 @@ class OpenAIFrontierAdapter:
         self._last_structured_output = None
         bundle = build_fast_prompt(view)
         response, record = self._invoke(bundle)
+        raw = _raw_message_content(response)
+        if raw is not None:
+            self._last_structured_output = raw[:16384]
         try:
             parsed = _parsed_output(response, FastStructuredOutput)
             self._last_structured_output = _structured_output_text(parsed)
+        except Exception as exc:
+            self._finish(
+                record,
+                status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
+                error=str(exc),
+            )
+            raise FrontierResponseValidationError(
+                f"frontier Fast response failed output-schema validation: {exc}",
+                status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
+                validation_stage="schema",
+            ) from exc
+        try:
             decision = compile_fast_output(view, parsed)
         except Exception as exc:
             self._finish(
@@ -251,6 +278,7 @@ class OpenAIFrontierAdapter:
             raise FrontierResponseValidationError(
                 f"frontier Fast response failed canonical validation: {exc}",
                 status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
+                validation_stage="canonical",
             ) from exc
         self._finish(record, status=FrontierCallStatus.SUCCEEDED)
         return FastAdapterResult(pins=view.pins, decision=decision)
@@ -263,10 +291,37 @@ class OpenAIFrontierAdapter:
         self._last_structured_output = None
         bundle = build_slow_prompt(request)
         response, record = self._invoke(bundle)
+        raw = _raw_message_content(response)
+        if raw is not None:
+            self._last_structured_output = raw[:16384]
         try:
             parsed = _parsed_output(response, SlowModelOutput)
             self._last_structured_output = _structured_output_text(parsed)
+        except Exception as exc:
+            self._finish(
+                record,
+                status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
+                error=str(exc),
+            )
+            raise FrontierResponseValidationError(
+                f"frontier Slow response failed output-schema validation: {exc}",
+                status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
+                validation_stage="schema",
+            ) from exc
+        try:
             result = compile_slow_output(request, parsed)
+        except Exception as exc:
+            self._finish(
+                record,
+                status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
+                error=str(exc),
+            )
+            raise FrontierResponseValidationError(
+                f"frontier Slow response failed semantic validation: {exc}",
+                status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
+                validation_stage="semantic",
+            ) from exc
+        try:
             _validate_slow_binding(request, result)
         except Exception as exc:
             self._finish(
@@ -275,8 +330,9 @@ class OpenAIFrontierAdapter:
                 error=str(exc),
             )
             raise FrontierResponseValidationError(
-                f"frontier Slow response failed canonical validation: {exc}",
+                f"frontier Slow response failed canonical binding: {exc}",
                 status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
+                validation_stage="canonical",
             ) from exc
         self._finish(record, status=FrontierCallStatus.SUCCEEDED)
         return result
@@ -369,6 +425,8 @@ class OpenAIFrontierAdapter:
                 response_model=None,
                 response_model_version=None,
                 response_id=None,
+                requested_reasoning_effort=self.reasoning_effort,
+                reasoning_tokens=None,
                 input_tokens=0,
                 output_tokens=0,
                 latency_ms=max(
@@ -392,6 +450,7 @@ class OpenAIFrontierAdapter:
                 response,
                 bundle=bundle,
                 estimate=estimate,
+                requested_reasoning_effort=self.reasoning_effort,
                 latency_ms=max(0, round((time.perf_counter() - started) * 1000)),
             )
         except FrontierResponseValidationError as exc:
@@ -403,6 +462,8 @@ class OpenAIFrontierAdapter:
                     _field(response, "model_version")
                 ),
                 response_id=_optional_string(_field(response, "id")),
+                requested_reasoning_effort=self.reasoning_effort,
+                reasoning_tokens=None,
                 input_tokens=0,
                 output_tokens=0,
                 latency_ms=max(
@@ -469,6 +530,8 @@ class OpenAIFrontierAdapter:
             response_model=None,
             response_model_version=None,
             response_id=None,
+            requested_reasoning_effort=self.reasoning_effort,
+            reasoning_tokens=None,
             input_tokens=0,
             output_tokens=0,
             latency_ms=None,
@@ -561,10 +624,13 @@ def build_slow_prompt(request: SlowWorkRequest) -> PromptBundle:
         {
             "role": "system",
             "content": (
-                "Return one strict semantic Slow strategy and zero or more "
-                "simulator capability proposals. Infrastructure IDs, timestamps, "
-                "pins, and inert ActionIntent proposals are compiled outside the "
-                "model. Propose only; do not authorize or execute."
+                "Return one strict semantic Slow strategy and one optional "
+                "next_capability. Hard-constraint IDs, soft-preference IDs, offer "
+                "IDs, timestamps, pins, and inert ActionIntent proposals are "
+                "compiled outside the model. ranked_preference_positions and "
+                "accept_offer.offer_position are zero-based positions in the "
+                "visible constraint/offer lists. Propose only; do not authorize "
+                "or execute."
             ),
         },
         {
@@ -634,6 +700,13 @@ def _parsed_output(response: object, model: type[BaseModel]) -> Any:
     return parsed
 
 
+def _raw_message_content(response: object) -> str | None:
+    choices = _field(response, "choices")
+    first = choices[0] if isinstance(choices, Sequence) and choices else None
+    content = _field(_field(first, "message"), "content")
+    return content if isinstance(content, str) and content else None
+
+
 def _structured_output_text(value: BaseModel) -> str:
     return json.dumps(
         value.model_dump(mode="json"),
@@ -648,11 +721,16 @@ def _record_response(
     *,
     bundle: PromptBundle,
     estimate: FrontierCostEstimate,
+    requested_reasoning_effort: str,
     latency_ms: int,
 ) -> FrontierCallRecord:
     usage = _field(response, "usage")
     input_tokens = _integer_field(usage, "prompt_tokens")
     output_tokens = _integer_field(usage, "completion_tokens")
+    details = _field(usage, "completion_tokens_details")
+    reasoning_tokens = _optional_nonnegative_integer(
+        _field(details, "reasoning_tokens")
+    )
     actual_cost = (
         input_tokens * INPUT_PRICE_USD_PER_MILLION / 1_000_000
         + output_tokens * OUTPUT_PRICE_USD_PER_MILLION / 1_000_000
@@ -667,6 +745,8 @@ def _record_response(
         response_model=response_model,
         response_model_version=response_model_version,
         response_id=_optional_string(_field(response, "id")),
+        requested_reasoning_effort=requested_reasoning_effort,
+        reasoning_tokens=reasoning_tokens,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         latency_ms=latency_ms,
@@ -695,6 +775,17 @@ def _integer_field(value: object, name: str) -> int:
 
 def _optional_string(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+def _optional_nonnegative_integer(value: object) -> int | None:
+    if value is None:
+        return None
+    if type(value) is not int or value < 0:
+        raise FrontierResponseValidationError(
+            "Chat Completions reasoning token usage is invalid",
+            status=FrontierCallStatus.FAILED_INVALID_RESPONSE,
+        )
+    return value
 
 
 def _fingerprint(value: object) -> str:

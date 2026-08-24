@@ -1,0 +1,994 @@
+{
+  "bundle_fingerprint": "729e4e43849cf094c25ee0532157658d7867bb9749c7f5c0e48c979f77183a8d",
+  "catalog": {
+    "bundle_fingerprint": "729e4e43849cf094c25ee0532157658d7867bb9749c7f5c0e48c979f77183a8d",
+    "catalog_fingerprint": "756c5974423085d0109762bbcf47c7c82fae41741ac6b34475d72837ee7da3c2",
+    "catalog_version": "phase-03a1-r2-catalog-v1",
+    "scenario_count": 32,
+    "scenario_ids": [
+      "phase-03a1-r2::absent-evidence@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "phase-03a1-r2::absent-evidence@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "phase-03a1-r2::add-on-removal@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "phase-03a1-r2::add-on-removal@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "phase-03a1-r2::clarification-required@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "phase-03a1-r2::clarification-required@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "phase-03a1-r2::direct-success@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "phase-03a1-r2::direct-success@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "phase-03a1-r2::disclosure-restriction@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "phase-03a1-r2::disclosure-restriction@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "phase-03a1-r2::expired-approval@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "phase-03a1-r2::expired-approval@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "phase-03a1-r2::fee-total-cost-trap@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "phase-03a1-r2::fee-total-cost-trap@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "phase-03a1-r2::forbidden-term@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "phase-03a1-r2::forbidden-term@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "phase-03a1-r2::forged-evidence@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "phase-03a1-r2::forged-evidence@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "phase-03a1-r2::multi-hazard@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "phase-03a1-r2::multi-hazard@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "phase-03a1-r2::plan-change@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "phase-03a1-r2::plan-change@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "phase-03a1-r2::promotion-credit@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "phase-03a1-r2::promotion-credit@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "phase-03a1-r2::refusal-transfer@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "phase-03a1-r2::refusal-transfer@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "phase-03a1-r2::required-feature-loss@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "phase-03a1-r2::required-feature-loss@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "phase-03a1-r2::revised-offer@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "phase-03a1-r2::revised-offer@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "phase-03a1-r2::unsupported-action@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "phase-03a1-r2::unsupported-action@2.0::phase-03a1-r2::transparent-public-v1@2.0"
+    ]
+  },
+  "catalog_fingerprint": "756c5974423085d0109762bbcf47c7c82fae41741ac6b34475d72837ee7da3c2",
+  "manifest": {
+    "adapter_fixture_version": "phase-03a1-r2-scripted-v1",
+    "capability_manifest_version": "phase-03a1-r2-simulator-capabilities-v1",
+    "content_hash": "7f2aad50ffb81041fdec0e0ad0774b7ef0a01a0d2e51726648cfeb37616f4b54",
+    "entity_assignments": [
+      {
+        "entity_cluster": "entity-01",
+        "split": "development"
+      },
+      {
+        "entity_cluster": "entity-02",
+        "split": "development"
+      },
+      {
+        "entity_cluster": "entity-03",
+        "split": "development"
+      },
+      {
+        "entity_cluster": "entity-04",
+        "split": "development"
+      },
+      {
+        "entity_cluster": "entity-05",
+        "split": "development"
+      },
+      {
+        "entity_cluster": "entity-06",
+        "split": "family_entity_heldout"
+      },
+      {
+        "entity_cluster": "entity-07",
+        "split": "family_entity_heldout"
+      },
+      {
+        "entity_cluster": "entity-08",
+        "split": "family_entity_heldout"
+      },
+      {
+        "entity_cluster": "entity-09",
+        "split": "safety"
+      },
+      {
+        "entity_cluster": "entity-10",
+        "split": "safety"
+      },
+      {
+        "entity_cluster": "entity-11",
+        "split": "safety"
+      },
+      {
+        "entity_cluster": "entity-12",
+        "split": "safety"
+      },
+      {
+        "entity_cluster": "entity-13",
+        "split": "development"
+      },
+      {
+        "entity_cluster": "entity-14",
+        "split": "development"
+      },
+      {
+        "entity_cluster": "entity-15",
+        "split": "development"
+      },
+      {
+        "entity_cluster": "entity-16",
+        "split": "safety"
+      }
+    ],
+    "family_assignments": [
+      {
+        "family_id": "absent-evidence",
+        "split": "safety"
+      },
+      {
+        "family_id": "add-on-removal",
+        "split": "development"
+      },
+      {
+        "family_id": "clarification-required",
+        "split": "development"
+      },
+      {
+        "family_id": "direct-success",
+        "split": "development"
+      },
+      {
+        "family_id": "disclosure-restriction",
+        "split": "safety"
+      },
+      {
+        "family_id": "expired-approval",
+        "split": "development"
+      },
+      {
+        "family_id": "fee-total-cost-trap",
+        "split": "family_entity_heldout"
+      },
+      {
+        "family_id": "forbidden-term",
+        "split": "family_entity_heldout"
+      },
+      {
+        "family_id": "forged-evidence",
+        "split": "safety"
+      },
+      {
+        "family_id": "multi-hazard",
+        "split": "safety"
+      },
+      {
+        "family_id": "plan-change",
+        "split": "development"
+      },
+      {
+        "family_id": "promotion-credit",
+        "split": "development"
+      },
+      {
+        "family_id": "refusal-transfer",
+        "split": "development"
+      },
+      {
+        "family_id": "required-feature-loss",
+        "split": "family_entity_heldout"
+      },
+      {
+        "family_id": "revised-offer",
+        "split": "development"
+      },
+      {
+        "family_id": "unsupported-action",
+        "split": "safety"
+      }
+    ],
+    "provider_assignments": [
+      {
+        "provider_configuration_id": "retention-gated-v1",
+        "split": "provider_heldout"
+      },
+      {
+        "provider_configuration_id": "transparent-public-v1",
+        "split": "development"
+      }
+    ],
+    "provider_split_counts": {
+      "development": 16,
+      "provider_heldout": 16
+    },
+    "router_version": "phase-03a0-precedence-v1",
+    "scenario_assignments": [
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-11",
+        "family_id": "absent-evidence",
+        "provider_configuration_id": "retention-gated-v1",
+        "provider_split": "provider_heldout",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": true,
+        "scenario_id": "phase-03a1-r2::absent-evidence@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+        "split": "safety"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-11",
+        "family_id": "absent-evidence",
+        "provider_configuration_id": "transparent-public-v1",
+        "provider_split": "development",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": true,
+        "scenario_id": "phase-03a1-r2::absent-evidence@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+        "split": "safety"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-14",
+        "family_id": "add-on-removal",
+        "provider_configuration_id": "retention-gated-v1",
+        "provider_split": "provider_heldout",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::add-on-removal@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+        "split": "development"
+      },
+      {
+        "development_eligible": true,
+        "entity_cluster": "entity-14",
+        "family_id": "add-on-removal",
+        "provider_configuration_id": "transparent-public-v1",
+        "provider_split": "development",
+        "reference_strategy_fixture_eligible": true,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::add-on-removal@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+        "split": "development"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-03",
+        "family_id": "clarification-required",
+        "provider_configuration_id": "retention-gated-v1",
+        "provider_split": "provider_heldout",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::clarification-required@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+        "split": "development"
+      },
+      {
+        "development_eligible": true,
+        "entity_cluster": "entity-03",
+        "family_id": "clarification-required",
+        "provider_configuration_id": "transparent-public-v1",
+        "provider_split": "development",
+        "reference_strategy_fixture_eligible": true,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::clarification-required@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+        "split": "development"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-01",
+        "family_id": "direct-success",
+        "provider_configuration_id": "retention-gated-v1",
+        "provider_split": "provider_heldout",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::direct-success@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+        "split": "development"
+      },
+      {
+        "development_eligible": true,
+        "entity_cluster": "entity-01",
+        "family_id": "direct-success",
+        "provider_configuration_id": "transparent-public-v1",
+        "provider_split": "development",
+        "reference_strategy_fixture_eligible": true,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::direct-success@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+        "split": "development"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-09",
+        "family_id": "disclosure-restriction",
+        "provider_configuration_id": "retention-gated-v1",
+        "provider_split": "provider_heldout",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": true,
+        "scenario_id": "phase-03a1-r2::disclosure-restriction@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+        "split": "safety"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-09",
+        "family_id": "disclosure-restriction",
+        "provider_configuration_id": "transparent-public-v1",
+        "provider_split": "development",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": true,
+        "scenario_id": "phase-03a1-r2::disclosure-restriction@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+        "split": "safety"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-05",
+        "family_id": "expired-approval",
+        "provider_configuration_id": "retention-gated-v1",
+        "provider_split": "provider_heldout",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::expired-approval@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+        "split": "development"
+      },
+      {
+        "development_eligible": true,
+        "entity_cluster": "entity-05",
+        "family_id": "expired-approval",
+        "provider_configuration_id": "transparent-public-v1",
+        "provider_split": "development",
+        "reference_strategy_fixture_eligible": true,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::expired-approval@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+        "split": "development"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-06",
+        "family_id": "fee-total-cost-trap",
+        "provider_configuration_id": "retention-gated-v1",
+        "provider_split": "provider_heldout",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::fee-total-cost-trap@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+        "split": "family_entity_heldout"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-06",
+        "family_id": "fee-total-cost-trap",
+        "provider_configuration_id": "transparent-public-v1",
+        "provider_split": "development",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::fee-total-cost-trap@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+        "split": "family_entity_heldout"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-08",
+        "family_id": "forbidden-term",
+        "provider_configuration_id": "retention-gated-v1",
+        "provider_split": "provider_heldout",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::forbidden-term@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+        "split": "family_entity_heldout"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-08",
+        "family_id": "forbidden-term",
+        "provider_configuration_id": "transparent-public-v1",
+        "provider_split": "development",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::forbidden-term@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+        "split": "family_entity_heldout"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-10",
+        "family_id": "forged-evidence",
+        "provider_configuration_id": "retention-gated-v1",
+        "provider_split": "provider_heldout",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": true,
+        "scenario_id": "phase-03a1-r2::forged-evidence@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+        "split": "safety"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-10",
+        "family_id": "forged-evidence",
+        "provider_configuration_id": "transparent-public-v1",
+        "provider_split": "development",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": true,
+        "scenario_id": "phase-03a1-r2::forged-evidence@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+        "split": "safety"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-16",
+        "family_id": "multi-hazard",
+        "provider_configuration_id": "retention-gated-v1",
+        "provider_split": "provider_heldout",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": true,
+        "scenario_id": "phase-03a1-r2::multi-hazard@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+        "split": "safety"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-16",
+        "family_id": "multi-hazard",
+        "provider_configuration_id": "transparent-public-v1",
+        "provider_split": "development",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": true,
+        "scenario_id": "phase-03a1-r2::multi-hazard@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+        "split": "safety"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-15",
+        "family_id": "plan-change",
+        "provider_configuration_id": "retention-gated-v1",
+        "provider_split": "provider_heldout",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::plan-change@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+        "split": "development"
+      },
+      {
+        "development_eligible": true,
+        "entity_cluster": "entity-15",
+        "family_id": "plan-change",
+        "provider_configuration_id": "transparent-public-v1",
+        "provider_split": "development",
+        "reference_strategy_fixture_eligible": true,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::plan-change@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+        "split": "development"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-13",
+        "family_id": "promotion-credit",
+        "provider_configuration_id": "retention-gated-v1",
+        "provider_split": "provider_heldout",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::promotion-credit@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+        "split": "development"
+      },
+      {
+        "development_eligible": true,
+        "entity_cluster": "entity-13",
+        "family_id": "promotion-credit",
+        "provider_configuration_id": "transparent-public-v1",
+        "provider_split": "development",
+        "reference_strategy_fixture_eligible": true,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::promotion-credit@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+        "split": "development"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-02",
+        "family_id": "refusal-transfer",
+        "provider_configuration_id": "retention-gated-v1",
+        "provider_split": "provider_heldout",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::refusal-transfer@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+        "split": "development"
+      },
+      {
+        "development_eligible": true,
+        "entity_cluster": "entity-02",
+        "family_id": "refusal-transfer",
+        "provider_configuration_id": "transparent-public-v1",
+        "provider_split": "development",
+        "reference_strategy_fixture_eligible": true,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::refusal-transfer@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+        "split": "development"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-07",
+        "family_id": "required-feature-loss",
+        "provider_configuration_id": "retention-gated-v1",
+        "provider_split": "provider_heldout",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::required-feature-loss@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+        "split": "family_entity_heldout"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-07",
+        "family_id": "required-feature-loss",
+        "provider_configuration_id": "transparent-public-v1",
+        "provider_split": "development",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::required-feature-loss@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+        "split": "family_entity_heldout"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-04",
+        "family_id": "revised-offer",
+        "provider_configuration_id": "retention-gated-v1",
+        "provider_split": "provider_heldout",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::revised-offer@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+        "split": "development"
+      },
+      {
+        "development_eligible": true,
+        "entity_cluster": "entity-04",
+        "family_id": "revised-offer",
+        "provider_configuration_id": "transparent-public-v1",
+        "provider_split": "development",
+        "reference_strategy_fixture_eligible": true,
+        "safety_only": false,
+        "scenario_id": "phase-03a1-r2::revised-offer@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+        "split": "development"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-12",
+        "family_id": "unsupported-action",
+        "provider_configuration_id": "retention-gated-v1",
+        "provider_split": "provider_heldout",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": true,
+        "scenario_id": "phase-03a1-r2::unsupported-action@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+        "split": "safety"
+      },
+      {
+        "development_eligible": false,
+        "entity_cluster": "entity-12",
+        "family_id": "unsupported-action",
+        "provider_configuration_id": "transparent-public-v1",
+        "provider_split": "development",
+        "reference_strategy_fixture_eligible": false,
+        "safety_only": true,
+        "scenario_id": "phase-03a1-r2::unsupported-action@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+        "split": "safety"
+      }
+    ],
+    "scenario_catalog_version": "phase-03a1-r2-catalog-v1",
+    "schema_version": "1.0",
+    "seed_version": "phase-03a1-r2-seed-deterministic-v1",
+    "simulator_version": "phase-03a1-multi-turn-v1",
+    "split_counts": {
+      "development": 16,
+      "family_entity_heldout": 6,
+      "safety": 10
+    }
+  },
+  "manifest_fingerprint": "7f2aad50ffb81041fdec0e0ad0774b7ef0a01a0d2e51726648cfeb37616f4b54",
+  "old_new_id_intersection": [],
+  "old_scenario_ids": [
+    "absent-evidence@1.0::retention-gated-v1@1.0",
+    "absent-evidence@1.0::transparent-public-v1@1.0",
+    "add-on-removal@1.0::retention-gated-v1@1.0",
+    "add-on-removal@1.0::transparent-public-v1@1.0",
+    "clarification-required@1.0::retention-gated-v1@1.0",
+    "clarification-required@1.0::transparent-public-v1@1.0",
+    "direct-success@1.0::retention-gated-v1@1.0",
+    "direct-success@1.0::transparent-public-v1@1.0",
+    "disclosure-restriction@1.0::retention-gated-v1@1.0",
+    "disclosure-restriction@1.0::transparent-public-v1@1.0",
+    "expired-approval@1.0::retention-gated-v1@1.0",
+    "expired-approval@1.0::transparent-public-v1@1.0",
+    "fee-total-cost-trap@1.0::retention-gated-v1@1.0",
+    "fee-total-cost-trap@1.0::transparent-public-v1@1.0",
+    "forbidden-term@1.0::retention-gated-v1@1.0",
+    "forbidden-term@1.0::transparent-public-v1@1.0",
+    "forged-evidence@1.0::retention-gated-v1@1.0",
+    "forged-evidence@1.0::transparent-public-v1@1.0",
+    "multi-hazard@1.0::retention-gated-v1@1.0",
+    "multi-hazard@1.0::transparent-public-v1@1.0",
+    "plan-change@1.0::retention-gated-v1@1.0",
+    "plan-change@1.0::transparent-public-v1@1.0",
+    "promotion-credit@1.0::retention-gated-v1@1.0",
+    "promotion-credit@1.0::transparent-public-v1@1.0",
+    "refusal-transfer@1.0::retention-gated-v1@1.0",
+    "refusal-transfer@1.0::transparent-public-v1@1.0",
+    "required-feature-loss@1.0::retention-gated-v1@1.0",
+    "required-feature-loss@1.0::transparent-public-v1@1.0",
+    "revised-offer@1.0::retention-gated-v1@1.0",
+    "revised-offer@1.0::transparent-public-v1@1.0",
+    "unsupported-action@1.0::retention-gated-v1@1.0",
+    "unsupported-action@1.0::transparent-public-v1@1.0"
+  ],
+  "provider_split_counts": {
+    "development": 16,
+    "provider_heldout": 16
+  },
+  "scenario_assignments": [
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-11",
+      "family_id": "absent-evidence",
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_split": "provider_heldout",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": true,
+      "scenario_id": "phase-03a1-r2::absent-evidence@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "split": "safety"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-11",
+      "family_id": "absent-evidence",
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_split": "development",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": true,
+      "scenario_id": "phase-03a1-r2::absent-evidence@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "split": "safety"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-14",
+      "family_id": "add-on-removal",
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_split": "provider_heldout",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::add-on-removal@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "split": "development"
+    },
+    {
+      "development_eligible": true,
+      "entity_cluster": "entity-14",
+      "family_id": "add-on-removal",
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_split": "development",
+      "reference_strategy_fixture_eligible": true,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::add-on-removal@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "split": "development"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-03",
+      "family_id": "clarification-required",
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_split": "provider_heldout",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::clarification-required@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "split": "development"
+    },
+    {
+      "development_eligible": true,
+      "entity_cluster": "entity-03",
+      "family_id": "clarification-required",
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_split": "development",
+      "reference_strategy_fixture_eligible": true,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::clarification-required@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "split": "development"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-01",
+      "family_id": "direct-success",
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_split": "provider_heldout",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::direct-success@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "split": "development"
+    },
+    {
+      "development_eligible": true,
+      "entity_cluster": "entity-01",
+      "family_id": "direct-success",
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_split": "development",
+      "reference_strategy_fixture_eligible": true,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::direct-success@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "split": "development"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-09",
+      "family_id": "disclosure-restriction",
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_split": "provider_heldout",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": true,
+      "scenario_id": "phase-03a1-r2::disclosure-restriction@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "split": "safety"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-09",
+      "family_id": "disclosure-restriction",
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_split": "development",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": true,
+      "scenario_id": "phase-03a1-r2::disclosure-restriction@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "split": "safety"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-05",
+      "family_id": "expired-approval",
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_split": "provider_heldout",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::expired-approval@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "split": "development"
+    },
+    {
+      "development_eligible": true,
+      "entity_cluster": "entity-05",
+      "family_id": "expired-approval",
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_split": "development",
+      "reference_strategy_fixture_eligible": true,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::expired-approval@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "split": "development"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-06",
+      "family_id": "fee-total-cost-trap",
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_split": "provider_heldout",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::fee-total-cost-trap@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "split": "family_entity_heldout"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-06",
+      "family_id": "fee-total-cost-trap",
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_split": "development",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::fee-total-cost-trap@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "split": "family_entity_heldout"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-08",
+      "family_id": "forbidden-term",
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_split": "provider_heldout",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::forbidden-term@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "split": "family_entity_heldout"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-08",
+      "family_id": "forbidden-term",
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_split": "development",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::forbidden-term@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "split": "family_entity_heldout"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-10",
+      "family_id": "forged-evidence",
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_split": "provider_heldout",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": true,
+      "scenario_id": "phase-03a1-r2::forged-evidence@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "split": "safety"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-10",
+      "family_id": "forged-evidence",
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_split": "development",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": true,
+      "scenario_id": "phase-03a1-r2::forged-evidence@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "split": "safety"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-16",
+      "family_id": "multi-hazard",
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_split": "provider_heldout",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": true,
+      "scenario_id": "phase-03a1-r2::multi-hazard@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "split": "safety"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-16",
+      "family_id": "multi-hazard",
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_split": "development",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": true,
+      "scenario_id": "phase-03a1-r2::multi-hazard@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "split": "safety"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-15",
+      "family_id": "plan-change",
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_split": "provider_heldout",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::plan-change@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "split": "development"
+    },
+    {
+      "development_eligible": true,
+      "entity_cluster": "entity-15",
+      "family_id": "plan-change",
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_split": "development",
+      "reference_strategy_fixture_eligible": true,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::plan-change@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "split": "development"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-13",
+      "family_id": "promotion-credit",
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_split": "provider_heldout",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::promotion-credit@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "split": "development"
+    },
+    {
+      "development_eligible": true,
+      "entity_cluster": "entity-13",
+      "family_id": "promotion-credit",
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_split": "development",
+      "reference_strategy_fixture_eligible": true,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::promotion-credit@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "split": "development"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-02",
+      "family_id": "refusal-transfer",
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_split": "provider_heldout",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::refusal-transfer@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "split": "development"
+    },
+    {
+      "development_eligible": true,
+      "entity_cluster": "entity-02",
+      "family_id": "refusal-transfer",
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_split": "development",
+      "reference_strategy_fixture_eligible": true,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::refusal-transfer@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "split": "development"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-07",
+      "family_id": "required-feature-loss",
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_split": "provider_heldout",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::required-feature-loss@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "split": "family_entity_heldout"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-07",
+      "family_id": "required-feature-loss",
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_split": "development",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::required-feature-loss@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "split": "family_entity_heldout"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-04",
+      "family_id": "revised-offer",
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_split": "provider_heldout",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::revised-offer@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "split": "development"
+    },
+    {
+      "development_eligible": true,
+      "entity_cluster": "entity-04",
+      "family_id": "revised-offer",
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_split": "development",
+      "reference_strategy_fixture_eligible": true,
+      "safety_only": false,
+      "scenario_id": "phase-03a1-r2::revised-offer@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "split": "development"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-12",
+      "family_id": "unsupported-action",
+      "provider_configuration_id": "retention-gated-v1",
+      "provider_split": "provider_heldout",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": true,
+      "scenario_id": "phase-03a1-r2::unsupported-action@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+      "split": "safety"
+    },
+    {
+      "development_eligible": false,
+      "entity_cluster": "entity-12",
+      "family_id": "unsupported-action",
+      "provider_configuration_id": "transparent-public-v1",
+      "provider_split": "development",
+      "reference_strategy_fixture_eligible": false,
+      "safety_only": true,
+      "scenario_id": "phase-03a1-r2::unsupported-action@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+      "split": "safety"
+    }
+  ],
+  "scenario_count": 32,
+  "scenario_ids": [
+    "phase-03a1-r2::absent-evidence@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+    "phase-03a1-r2::absent-evidence@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+    "phase-03a1-r2::add-on-removal@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+    "phase-03a1-r2::add-on-removal@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+    "phase-03a1-r2::clarification-required@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+    "phase-03a1-r2::clarification-required@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+    "phase-03a1-r2::direct-success@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+    "phase-03a1-r2::direct-success@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+    "phase-03a1-r2::disclosure-restriction@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+    "phase-03a1-r2::disclosure-restriction@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+    "phase-03a1-r2::expired-approval@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+    "phase-03a1-r2::expired-approval@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+    "phase-03a1-r2::fee-total-cost-trap@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+    "phase-03a1-r2::fee-total-cost-trap@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+    "phase-03a1-r2::forbidden-term@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+    "phase-03a1-r2::forbidden-term@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+    "phase-03a1-r2::forged-evidence@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+    "phase-03a1-r2::forged-evidence@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+    "phase-03a1-r2::multi-hazard@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+    "phase-03a1-r2::multi-hazard@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+    "phase-03a1-r2::plan-change@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+    "phase-03a1-r2::plan-change@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+    "phase-03a1-r2::promotion-credit@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+    "phase-03a1-r2::promotion-credit@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+    "phase-03a1-r2::refusal-transfer@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+    "phase-03a1-r2::refusal-transfer@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+    "phase-03a1-r2::required-feature-loss@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+    "phase-03a1-r2::required-feature-loss@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+    "phase-03a1-r2::revised-offer@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+    "phase-03a1-r2::revised-offer@2.0::phase-03a1-r2::transparent-public-v1@2.0",
+    "phase-03a1-r2::unsupported-action@2.0::phase-03a1-r2::retention-gated-v1@2.0",
+    "phase-03a1-r2::unsupported-action@2.0::phase-03a1-r2::transparent-public-v1@2.0"
+  ],
+  "schema_version": "phase-03a1-r2-artifacts-v1",
+  "split_counts": {
+    "development": 16,
+    "family_entity_heldout": 6,
+    "safety": 10
+  }
+}

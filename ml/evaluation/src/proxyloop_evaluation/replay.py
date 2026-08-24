@@ -17,12 +17,16 @@ from scripts.run_phase_03a1_harness import (
 )
 
 from .fast_output import FastModelOutput, compile_fast_output
+from .legacy_slow_output import (
+    LegacySlowModelOutput,
+    build_legacy_slow_prompt,
+    compile_legacy_slow_output,
+)
 from .models import BaselineCondition, BaselineReport, RunStatus
 from .openai_frontier import (
     FRONTIER_MODEL,
     FrontierCallStatus,
     build_fast_prompt,
-    build_slow_prompt,
 )
 from .qwen_mlx import (
     QWEN_CHAT_TEMPLATE_FINGERPRINT,
@@ -33,7 +37,6 @@ from .qwen_mlx import (
     QWEN_TOKENIZER_FINGERPRINT,
     QwenMLXAdapter,
 )
-from .slow_output import SlowModelOutput, compile_slow_output
 
 
 def _fingerprint(value: object) -> str:
@@ -266,7 +269,7 @@ def _replay_frontier(
                 reason_code=slow_route.reason_codes[0],
                 created_at=PROBE_NOW,
             )
-            slow_prompt = build_slow_prompt(request)
+            slow_prompt = build_legacy_slow_prompt(request)
             if not row.hosted_calls or (
                 row.hosted_calls[0].prompt_fingerprint != slow_prompt.prompt_fingerprint
             ):
@@ -363,8 +366,8 @@ def _replay_frontier(
             ):
                 errors.append(f"{row.episode_id}: frontier output fingerprint mismatch")
             try:
-                slow_semantic = SlowModelOutput.model_validate_json(slow_raw)
-                slow_result = compile_slow_output(request, slow_semantic)
+                slow_semantic = LegacySlowModelOutput.model_validate_json(slow_raw)
+                slow_result = compile_legacy_slow_output(request, slow_semantic)
                 planned = _with_strategy(initial, slow_result)
             except Exception as error:
                 if row.schema_valid:

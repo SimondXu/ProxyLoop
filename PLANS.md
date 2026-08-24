@@ -14,6 +14,7 @@ This is the harness-level phase index. Detailed product requirements live in the
 | 03A0 | Fast/Slow architecture and acceptance criteria | Complete; squash merged as `54afcb8` through PR #7 | `harness/build/phase-03a0-fast-slow-architecture.md` |
 | 03A1-H | Deterministic multi-turn evaluation harness | Complete; squash merged as `e08c9b6` through PR #8 | `harness/build/phase-03a1-harness.md` |
 | 03A1-B | Untuned Qwen/Terra baselines | Complete; full gate passed through PR #9 | `harness/build/phase-03a1-baselines.md` |
+| 03A1-E | Evaluation erratum and leakage-safe second run | Complete; terminal Provider blocker; PR #10 gates passed | `harness/build/phase-03a1-evaluation-erratum.md` |
 | 03B | Open-data SFT, gap-driven project data, and evaluation | Not started | Decided from Phase 03A1 failure slices |
 | 04 | Serving and control plane | Not started | To be prepared after Phase 03 |
 | 05 | Durable agent loop | Not started | To be prepared after Phase 04 |
@@ -67,6 +68,9 @@ Current gate:
 >
 > Phase 03A1-H is squash merged as `e08c9b6` through PR #8. Phase 03A1-B completed its frozen model matrix, independent review, and PR #9 gates.
 
-No implementation phase is active. The failure slices require a separate human
-decision before Phase 03B may begin. Teacher-backed expansion, training,
-serving, product Agent, channels, and UI remain inactive.
+Phase 03A1-E completed its bounded gate with an honest terminal Provider blocker. The
+immutable r2 evidence records one unknown-cost hosted failure and a global
+zero-call abort; the source-bound r3 report corrects attribution offline with
+zero new external dispatches. PR #10 passed phase-gate and GitGuardian. Phase
+03A1-E cannot train, expand training data, or activate Phase 03B. Teacher-backed
+expansion, serving, product Agent, channels, and UI remain inactive.

@@ -27,7 +27,7 @@ Do not treat a roadmap item as permission to implement it. Only an explicitly ap
 - Phase 03A0 Fast/Slow architecture and acceptance-criteria gate was independently reviewed, passed CI/GitGuardian, and was squash merged to `main` as `54afcb8` through PR #7.
 - Phase 03A1-H deterministic multi-turn Harness was squash merged as `e08c9b6` through PR #8.
 - Phase 03A1-B untuned Qwen/Terra baselines completed its frozen model matrix, independent review, and PR #9 CI/GitGuardian gates.
-- No implementation phase is active.
+- Phase 03A1-E evaluation erratum and leakage-safe second run completed its local/independent gates with an honest terminal Provider blocker and passed PR #10 CI/GitGuardian. Its r3 report is a source-bound offline re-attribution of immutable r2 evidence, not a retry or training run.
 - Phase 03B model training/data expansion, product services, external channels, and web UI remain inactive and require new explicit gates.
 - Product services, model training, external channels, and web UI are not implemented.
 
