@@ -31,7 +31,9 @@ def fingerprint(value: object) -> str:
 
 
 def report_fingerprint(report: BaselineReport) -> str:
-    payload = report.model_dump(mode="json")
+    # Preserve the exact historical fingerprint when later optional evidence
+    # fields are added to the parser but absent from the committed v1 report.
+    payload = report.model_dump(mode="json", exclude_unset=True)
     payload.pop("report_fingerprint")
     return fingerprint(payload)
 
@@ -227,7 +229,10 @@ def write_report(root: Path, report: BaselineReport) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
-            report.model_dump(mode="json"), ensure_ascii=False, sort_keys=True, indent=2
+            report.model_dump(mode="json", exclude_unset=True),
+            ensure_ascii=False,
+            sort_keys=True,
+            indent=2,
         )
         + "\n",
         encoding="utf-8",

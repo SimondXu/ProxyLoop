@@ -1,0 +1,64 @@
+{
+  "bundle_fingerprint": "729e4e43849cf094c25ee0532157658d7867bb9749c7f5c0e48c979f77183a8d",
+  "catalog_fingerprint": "756c5974423085d0109762bbcf47c7c82fae41741ac6b34475d72837ee7da3c2",
+  "ceiling_fingerprint": "9070d937c4ee48a7bd8ef57445c07a7c1bc57df7c3b832a708d8297baa862f12",
+  "completed_count": 10,
+  "episode_fingerprint": "312f341725f6e2e816811be1d54bec73077accd2f561362bb1b32d8527499fde",
+  "false_completion_count": 0,
+  "gate_passed": true,
+  "hosted_configuration": {
+    "base_url": "https://29qg.com/v1",
+    "conditions": [
+      {
+        "call_cap": 32,
+        "condition": "untuned_fast_frontier_slow_medium",
+        "fast_adapter": "local-qwen",
+        "input_token_cap": 8192,
+        "maximum_cost_microusd": 3670016,
+        "output_token_cap": 4096,
+        "reasoning_effort": "medium",
+        "slow_adapter": "gpt-5.6-terra"
+      },
+      {
+        "call_cap": 32,
+        "condition": "untuned_fast_frontier_slow_high",
+        "fast_adapter": "local-qwen",
+        "input_token_cap": 8192,
+        "maximum_cost_microusd": 3670016,
+        "output_token_cap": 4096,
+        "reasoning_effort": "high",
+        "slow_adapter": "gpt-5.6-terra"
+      },
+      {
+        "call_cap": 64,
+        "condition": "frontier_reference_medium",
+        "fast_adapter": "gpt-5.6-terra",
+        "input_token_cap": 8192,
+        "maximum_cost_microusd": 7340032,
+        "output_token_cap": 4096,
+        "reasoning_effort": "medium",
+        "slow_adapter": "gpt-5.6-terra"
+      },
+      {
+        "call_cap": 64,
+        "condition": "frontier_reference_high",
+        "fast_adapter": "gpt-5.6-terra",
+        "input_token_cap": 8192,
+        "maximum_cost_microusd": 7340032,
+        "output_token_cap": 4096,
+        "reasoning_effort": "high",
+        "slow_adapter": "gpt-5.6-terra"
+      }
+    ],
+    "global_unknown_cost_abort": true,
+    "hosted_budget_ceiling_microusd": 22020096,
+    "model": "gpt-5.6-terra",
+    "sdk_retries": 0
+  },
+  "leakage_violation_count": 0,
+  "manifest_fingerprint": "7f2aad50ffb81041fdec0e0ad0774b7ef0a01a0d2e51726648cfeb37616f4b54",
+  "provider_mutation_count": 10,
+  "scenario_count": 32,
+  "schema_version": "phase-03a1-r2-artifacts-v1",
+  "valid_outcome_count": 32
+}

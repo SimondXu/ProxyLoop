@@ -1,11 +1,16 @@
-"""Shared model-facing Slow proposal and deterministic canonical compiler."""
+"""Frozen v1 Slow decoder/compiler used only to replay historical evidence.
+
+New model calls must use :mod:`proxyloop_evaluation.slow_output`.  This module
+preserves the exact Phase 03A1-B semantic shape and prompt fingerprint so the
+already-committed calibration report remains independently replayable after the
+r2 contract correction.
+"""
 
 from __future__ import annotations
 
 import hashlib
 import json
 from datetime import timedelta
-from typing import Annotated, Literal
 from uuid import UUID
 
 from proxyloop_contracts import (
@@ -26,17 +31,18 @@ from proxyloop_contracts import (
 from proxyloop_contracts.contracts import EvidenceRequirement
 from pydantic import BaseModel, ConfigDict, Field
 
+from .openai_frontier import PromptBundle
 
-class StrictOutput(BaseModel):
+
+class _StrictOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
 
-class StrategyModelOutput(StrictOutput):
+class StrategyModelOutput(_StrictOutput):
     primary_objective: str = Field(min_length=1, max_length=4000)
     current_subgoal: str = Field(min_length=1, max_length=4000)
-    ranked_preference_positions: tuple[Annotated[int, Field(ge=0)], ...] = Field(
-        max_length=32
-    )
+    hard_constraint_ids: tuple[UUID, ...] = Field(max_length=32)
+    ranked_preference_ids: tuple[UUID, ...] = Field(max_length=32)
     allowed_disclosures: tuple[str, ...] = Field(max_length=32)
     approval_required_disclosures: tuple[str, ...] = Field(max_length=32)
     concession_ladder: tuple[str, ...] = Field(max_length=32)
@@ -48,54 +54,26 @@ class StrategyModelOutput(StrictOutput):
     replan_conditions: tuple[str, ...] = Field(max_length=32)
 
 
-class AcceptOfferCapabilityModelOutput(StrictOutput):
-    capability: Literal["accept_offer"]
-    offer_position: int = Field(ge=0)
+class CapabilityModelOutput(_StrictOutput):
+    capability_id: str = Field(min_length=1, max_length=256)
+    offer_id: UUID | None
 
 
-class NonOfferCapabilityModelOutput(StrictOutput):
-    capability: Literal[
-        "request_clarification",
-        "escalate",
-        "request_replan",
-        "refuse_disclosure",
-        "decline",
-    ]
-
-
-CapabilityModelOutput = Annotated[
-    AcceptOfferCapabilityModelOutput | NonOfferCapabilityModelOutput,
-    Field(discriminator="capability"),
-]
-
-
-class SlowModelOutput(StrictOutput):
+class SlowModelOutput(_StrictOutput):
     strategy: StrategyModelOutput
-    next_capability: CapabilityModelOutput | None = None
+    capability_proposals: tuple[CapabilityModelOutput, ...] = Field(max_length=4)
 
 
-def compile_slow_output(
+LegacySlowModelOutput = SlowModelOutput
+
+
+def compile_legacy_slow_output(
     request: SlowWorkRequest,
     output: SlowModelOutput,
 ) -> SlowWorkResult:
-    """Compile inert semantic work against the trusted current Slow view."""
-
     _validate_semantic_references(request, output)
     strategy_id = _stable_uuid4(
         f"strategy:{request.request_id}:{_canonical(output.strategy)}"
-    )
-    hard_constraint_ids = tuple(
-        item.constraint_id
-        for item in request.view.constraints
-        if item.classification is ConstraintClassification.HARD
-    )
-    soft_constraints = tuple(
-        item
-        for item in request.view.constraints
-        if item.classification is ConstraintClassification.SOFT
-    )
-    _validate_preference_positions(
-        output.strategy.ranked_preference_positions, soft_constraints
     )
     strategy = StrategyPacket(
         contract_type="strategy_packet",
@@ -107,20 +85,7 @@ def compile_slow_output(
         fact_ledger_revision=request.pins.fact_ledger_revision,
         created_at=request.created_at,
         expires_at=request.created_at + timedelta(minutes=30),
-        primary_objective=output.strategy.primary_objective,
-        current_subgoal=output.strategy.current_subgoal,
-        hard_constraint_ids=hard_constraint_ids,
-        ranked_preference_ids=tuple(
-            soft_constraints[position].constraint_id
-            for position in output.strategy.ranked_preference_positions
-        ),
-        allowed_disclosures=output.strategy.allowed_disclosures,
-        approval_required_disclosures=output.strategy.approval_required_disclosures,
-        concession_ladder=output.strategy.concession_ladder,
-        fallback_outcomes=output.strategy.fallback_outcomes,
-        required_completion_evidence=output.strategy.required_completion_evidence,
-        escalation_conditions=output.strategy.escalation_conditions,
-        replan_conditions=output.strategy.replan_conditions,
+        **output.strategy.model_dump(mode="python"),
     )
     capabilities: list[CapabilityProposal] = []
     actions: list[ActionIntent] = []
@@ -128,31 +93,15 @@ def compile_slow_output(
         item.capability_id: item
         for item in request.view.capability_manifest.capabilities
     }
-    offers = tuple(request.view.offers)
-    proposed = output.next_capability
-    if proposed is not None:
-        capability_id = f"simulator.{proposed.capability}"
-        definition = definitions.get(capability_id)
-        if definition is None or len(definition.allowed_action_types) != 1:
-            raise ValueError("Slow output proposed an unsupported capability")
-        action_type = definition.allowed_action_types[0]
-        offer = _selected_offer(proposed, offers)
-        if (
-            proposed.capability == "accept_offer"
-            and action_type is not ActionType.ACCEPT_OFFER
-        ):
-            raise ValueError("accept_offer capability must map to accept_offer action")
-        if (
-            proposed.capability != "accept_offer"
-            and action_type is ActionType.ACCEPT_OFFER
-        ):
-            raise ValueError("non-offer capability cannot map to accept_offer action")
+    offers = {item.offer_id: item for item in request.view.offers}
+    for index, proposed in enumerate(output.capability_proposals):
+        definition = definitions[proposed.capability_id]
         proposal_id = _stable_uuid4(
-            f"capability:{request.request_id}:0:{_canonical(proposed)}"
+            f"capability:{request.request_id}:{index}:{_canonical(proposed)}"
         )
         arguments = (
-            (CapabilityArgument(name="offer_id", value=str(offer.offer_id)),)
-            if offer is not None
+            (CapabilityArgument(name="offer_id", value=str(proposed.offer_id)),)
+            if proposed.offer_id is not None
             else ()
         )
         capability = CapabilityProposal(
@@ -166,6 +115,8 @@ def compile_slow_output(
             created_at=request.created_at,
             expires_at=request.created_at + timedelta(minutes=5),
         )
+        action_type = definition.allowed_action_types[0]
+        offer = offers.get(proposed.offer_id) if proposed.offer_id is not None else None
         terms = _material_terms(offer) if offer is not None else ()
         intent = ActionIntent(
             contract_type="action_intent",
@@ -189,7 +140,7 @@ def compile_slow_output(
                 action_type
                 in request.view.delegated_authority.approval_required_actions
             ),
-            idempotency_key=f"slow:{request.request_id}:0",
+            idempotency_key=f"slow:{request.request_id}:{index}",
             created_at=request.created_at,
             expires_at=request.created_at + timedelta(minutes=5),
         )
@@ -213,35 +164,80 @@ def compile_slow_output(
     )
 
 
+def build_legacy_slow_prompt(request: SlowWorkRequest) -> PromptBundle:
+    payload = request.model_dump(mode="json")
+    schema = SlowModelOutput.model_json_schema()
+    messages: tuple[dict[str, object], ...] = (
+        {
+            "role": "system",
+            "content": (
+                "Return one strict semantic Slow strategy and zero or more "
+                "simulator capability proposals. Infrastructure IDs, timestamps, "
+                "pins, and inert ActionIntent proposals are compiled outside the "
+                "model. Propose only; do not authorize or execute."
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                {"typed_slow_request": payload},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        },
+    )
+    return PromptBundle(
+        messages=messages,
+        output_schema=schema,
+        prompt_fingerprint=_fingerprint(messages),
+        schema_fingerprint=_fingerprint(schema),
+        output_model=SlowModelOutput,
+    )
+
+
 def _validate_semantic_references(
     request: SlowWorkRequest,
     output: SlowModelOutput,
 ) -> None:
-    allowed_disclosures = set(request.view.delegated_authority.allowed_disclosures)
-    if not set(output.strategy.allowed_disclosures) <= allowed_disclosures:
+    hard = {
+        item.constraint_id
+        for item in request.view.constraints
+        if item.classification is ConstraintClassification.HARD
+    }
+    soft = {
+        item.constraint_id
+        for item in request.view.constraints
+        if item.classification is ConstraintClassification.SOFT
+    }
+    if not set(output.strategy.hard_constraint_ids) <= hard:
+        raise ValueError("Slow strategy invented a hard constraint reference")
+    if not set(output.strategy.ranked_preference_ids) <= soft:
+        raise ValueError("Slow strategy invented a preference reference")
+    allowed = set(request.view.delegated_authority.allowed_disclosures)
+    if not set(output.strategy.allowed_disclosures) <= allowed:
         raise ValueError("Slow strategy proposed an unauthorized disclosure")
-    if not set(output.strategy.approval_required_disclosures) <= allowed_disclosures:
+    if not set(output.strategy.approval_required_disclosures) <= allowed:
         raise ValueError("Slow strategy proposed an unknown approval disclosure")
-
-
-def _validate_preference_positions(
-    positions: tuple[int, ...], soft_constraints: tuple[object, ...]
-) -> None:
-    if len(set(positions)) != len(positions):
-        raise ValueError("duplicate preference position")
-    if any(position < 0 or position >= len(soft_constraints) for position in positions):
-        raise ValueError("preference position is out of range")
-
-
-def _selected_offer(
-    proposed: CapabilityModelOutput,
-    offers: tuple[ProviderOffer, ...],
-) -> ProviderOffer | None:
-    if isinstance(proposed, AcceptOfferCapabilityModelOutput):
-        if proposed.offer_position >= len(offers):
-            raise ValueError("offer position is out of range")
-        return offers[proposed.offer_position]
-    return None
+    definitions = {
+        item.capability_id: item
+        for item in request.view.capability_manifest.capabilities
+    }
+    offers = {item.offer_id for item in request.view.offers}
+    seen: set[tuple[str, UUID | None]] = set()
+    for proposal in output.capability_proposals:
+        key = (proposal.capability_id, proposal.offer_id)
+        if key in seen:
+            raise ValueError("Slow output duplicated a capability proposal")
+        seen.add(key)
+        definition = definitions.get(proposal.capability_id)
+        if definition is None or len(definition.allowed_action_types) != 1:
+            raise ValueError("Slow output proposed an unsupported capability")
+        action_type = definition.allowed_action_types[0]
+        if action_type is ActionType.ACCEPT_OFFER and proposal.offer_id not in offers:
+            raise ValueError("accept_offer requires a current canonical offer")
+        if action_type is not ActionType.ACCEPT_OFFER and proposal.offer_id is not None:
+            raise ValueError("non-offer capability cannot bind an offer")
 
 
 def _material_terms(offer: object) -> tuple[MaterialTerm, ...]:
@@ -256,12 +252,7 @@ def _material_terms(offer: object) -> tuple[MaterialTerm, ...]:
 
 def _material_terms_hash(terms: tuple[MaterialTerm, ...]) -> str:
     return canonical_fingerprint(
-        tuple(
-            sorted(
-                terms,
-                key=lambda item: (str(item.name), str(item.value)),
-            )
-        )
+        tuple(sorted(terms, key=lambda item: (str(item.name), str(item.value))))
     )
 
 
@@ -274,6 +265,17 @@ def _canonical(value: BaseModel) -> str:
     )
 
 
+def _fingerprint(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+
 def _stable_uuid4(value: str) -> UUID:
     raw = bytearray(hashlib.sha256(value.encode("utf-8")).digest()[:16])
     raw[6] = (raw[6] & 0x0F) | 0x40
@@ -282,10 +284,7 @@ def _stable_uuid4(value: str) -> UUID:
 
 
 __all__ = [
-    "AcceptOfferCapabilityModelOutput",
-    "CapabilityModelOutput",
-    "NonOfferCapabilityModelOutput",
-    "SlowModelOutput",
-    "StrategyModelOutput",
-    "compile_slow_output",
+    "LegacySlowModelOutput",
+    "build_legacy_slow_prompt",
+    "compile_legacy_slow_output",
 ]

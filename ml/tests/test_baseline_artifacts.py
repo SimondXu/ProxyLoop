@@ -7,8 +7,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from proxyloop_agent_core import CaseCoordinator, DeterministicRouter, RouteRequest
 from proxyloop_evaluation import BaselineReport, check_baseline_artifacts, runner
-from proxyloop_evaluation.artifacts import report_fingerprint, write_report
+from proxyloop_evaluation.artifacts import fingerprint, report_fingerprint, write_report
+from proxyloop_evaluation.legacy_slow_output import build_legacy_slow_prompt
 from proxyloop_evaluation.models import BaselineCondition, RunStatus
 from proxyloop_evaluation.openai_frontier import OpenAIFrontierAdapter
 from proxyloop_evaluation.qwen_mlx import QwenMLXAdapter
@@ -22,7 +24,7 @@ from proxyloop_evaluation.runner import (
     run_slow_off_ablation,
 )
 
-from scripts.run_phase_03a1_harness import build_phase03a1_model_fixtures
+from scripts.run_phase_03a1_harness import PROBE_NOW, build_phase03a1_model_fixtures
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -46,7 +48,10 @@ def _write_refingerprinted(path: Path, payload: dict[str, object]) -> None:
     report = report.model_copy(
         update={"report_fingerprint": report_fingerprint(report)}
     )
-    path.write_text(json.dumps(report.model_dump(mode="json")), encoding="utf-8")
+    path.write_text(
+        json.dumps(report.model_dump(mode="json", exclude_unset=True)),
+        encoding="utf-8",
+    )
 
 
 def _write_failed_frontier_report(target_root: Path) -> Path:
@@ -66,6 +71,7 @@ def _write_failed_frontier_report(target_root: Path) -> Path:
             default_factory=lambda: SimpleNamespace(completions=RaisingResponses())
         )
 
+    fixture = build_phase03a1_model_fixtures()[0]
     failed = run_frontier_condition(
         OpenAIFrontierAdapter(
             client=RaisingClient(),
@@ -76,8 +82,44 @@ def _write_failed_frontier_report(target_root: Path) -> Path:
         ),
         condition=BaselineCondition.UNTUNED_FAST_FRONTIER_SLOW,
         qwen=QwenMLXAdapter(generator=lambda _: "{}"),
-        fixtures=(build_phase03a1_model_fixtures()[0],),
+        fixtures=(fixture,),
     ).model_copy(update={"hosted_max_cost_microusd": FAST_SLOW_HOSTED_MAX_MICROUSD})
+    initial = runner._without_strategy(fixture.snapshot)
+    slow_route = DeterministicRouter().route(
+        RouteRequest(snapshot=initial, created_at=PROBE_NOW)
+    )
+    request = CaseCoordinator().build_slow_request(
+        initial,
+        reason_code=slow_route.reason_codes[0],
+        created_at=PROBE_NOW,
+    )
+    legacy_prompt = build_legacy_slow_prompt(request)
+    row = failed.episodes[0]
+    call = row.hosted_calls[0].model_copy(
+        update={
+            "prompt_fingerprint": legacy_prompt.prompt_fingerprint,
+            "schema_fingerprint": legacy_prompt.schema_fingerprint,
+        }
+    )
+    row = row.model_copy(
+        update={
+            "input_fingerprint": fingerprint(
+                {"slow": legacy_prompt.prompt_fingerprint, "fast": None}
+            ),
+            "hosted_calls": (call,),
+        }
+    )
+    prompt = failed.prompt_provenance[0].model_copy(
+        update={
+            "prompt_fingerprint": legacy_prompt.prompt_fingerprint,
+            "output_schema_version": (
+                f"SlowModelOutput:{legacy_prompt.schema_fingerprint}"
+            ),
+        }
+    )
+    failed = failed.model_copy(
+        update={"episodes": (row,), "prompt_provenance": (prompt,)}
+    )
     aborted = not_run_condition(
         BaselineCondition.FRONTIER_REFERENCE,
         "not attempted after a provider failure made actual hosted cost unknown",

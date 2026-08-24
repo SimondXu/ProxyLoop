@@ -552,6 +552,8 @@ def _hosted_call_evidence(record: FrontierCallRecord) -> HostedCallEvidence:
         response_model=record.response_model,
         response_model_version=record.response_model_version,
         response_id=record.response_id,
+        requested_reasoning_effort=record.requested_reasoning_effort,
+        reasoning_tokens=record.reasoning_tokens,
         prompt_fingerprint=record.prompt_fingerprint,
         schema_fingerprint=record.schema_fingerprint,
         input_tokens=record.input_tokens,
