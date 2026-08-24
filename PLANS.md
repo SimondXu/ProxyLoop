@@ -11,8 +11,9 @@ This is the harness-level phase index. Detailed product requirements live in the
 | 01A | Thin deterministic Provider loop | Complete | `harness/build/phase-01a-provider-simulator.md` |
 | 01B | Simulator breadth and benchmark gate | Complete | `harness/build/phase-01b-simulator-benchmark.md` |
 | 02 | Data factory and trajectory pilot | Complete; squash merged as `f45b1ea` through PR #6 | `harness/build/phase-02-data-factory.md` |
-| 03A0 | Fast/Slow architecture and acceptance criteria | Local gate approved; PR, CI, and merge pending | `harness/build/phase-03a0-fast-slow-architecture.md` |
-| 03A1 | Multi-turn evaluation harness and untuned baselines | Not started | Prepared only after Phase 03A0 merge and a new user gate |
+| 03A0 | Fast/Slow architecture and acceptance criteria | Complete; squash merged as `54afcb8` through PR #7 | `harness/build/phase-03a0-fast-slow-architecture.md` |
+| 03A1-H | Deterministic multi-turn evaluation harness | Local gate approved; PR, CI, and squash merge pending | `harness/build/phase-03a1-harness.md` |
+| 03A1-B | Untuned Qwen/frontier baselines | Not started; begins only after 03A1-H merge | Prepared by the Harness failure-attribution gate |
 | 03B | Open-data SFT, gap-driven project data, and evaluation | Not started | Decided from Phase 03A1 failure slices |
 | 04 | Serving and control plane | Not started | To be prepared after Phase 03 |
 | 05 | Durable agent loop | Not started | To be prepared after Phase 04 |
@@ -62,6 +63,6 @@ Create one Codex Goal only for the single approved phase. The Goal should quote 
 
 Current gate:
 
-> Phase 02 is squash merged as `f45b1ea`; its redacted review sample remains `pending_human` and `training_ready=false`. The user explicitly activated Phase 03A0 to freeze Fast/Slow routing, model-external Case context, authority ownership, stale-result handling, Qwen training boundaries, and Phase 03A1 acceptance criteria.
+> Phase 03A0 is squash merged as `54afcb8`. The user explicitly activated Phase 03A1 as two sequential pull requests: first the deterministic Harness, then model-backed untuned baselines after the Harness merge and environment-validity gate.
 
-Phase 03A0 does not implement or call a model. Phase 03A1 evaluation implementation and all model downloads/calls, teacher-backed expansion, training, serving, product Agent, channels, and UI remain inactive and require new explicit user gates.
+Phase 03A1-H does not download or call Qwen/frontier models. It must prove the Router, Case coordinator, model views, stale-result handling, simulator-only capabilities, multi-turn environment, frozen manifests, scripted oracle, and evaluation artifact drift checks locally. Phase 03A1-B, teacher-backed expansion, training, serving, product Agent, channels, and UI remain inactive until their stated gates.

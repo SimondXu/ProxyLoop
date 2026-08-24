@@ -11,7 +11,8 @@ This file is append-only execution evidence. Record only commands actually run a
 | 01A — deterministic Provider loop | Complete | Independent `make preflight`: 26 tests plus the complete repository gate passed; matching-forgery and no-mutation probes were rejected |
 | 01B — simulator breadth and benchmark | Complete | `make preflight`: 78 tests plus benchmark drift/gate, locks, and all repository checks passed; PR #5 CI and independent review approved |
 | 02 — Data Factory and trajectory pilot | Complete | PR #6 passed independent review, CI, GitGuardian, and Sol integration review; squash merged as `f45b1ea` |
-| 03A0 — Fast/Slow architecture gate | Local gate approved; publication pending | Independent rereview approved and final `make preflight` passed with 94 runtime/contract/integration and 12 ML tests |
+| 03A0 — Fast/Slow architecture gate | Complete | PR #7 passed independent review, CI, and GitGuardian; squash merged as `54afcb8` |
+| 03A1-H — deterministic evaluation harness | In progress | Activated from clean synchronized `main` at `54afcb8`; merged-main baseline `make preflight` passed |
 
 ## Entries
 
@@ -260,3 +261,27 @@ This file is append-only execution evidence. Record only commands actually run a
 - Initial publication checks: GitHub `phase-gate` passed in 37 seconds and GitGuardian Security Checks passed in 1 second.
 - Sol reviewed the complete 18-file PR diff, clean local worktree, independent review/rereview evidence, final local `make preflight`, required artifacts, scope boundary, and live merge state. Final decision: Approve for squash merge after this docs-only evidence commit passes its CI rerun.
 - Remaining integration work: push this evidence-only commit, observe the final CI/GitGuardian rerun, then squash merge and clean the fully merged short-lived branch. Phase 03A1 and every model call/download, benchmark, training, data expansion, product service, channel, and UI remain inactive.
+
+### 2026-08-23 — Phase 03A0 integration completion
+
+- PR #7's final evidence commit passed `phase-gate` and GitGuardian and was squash merged to `main` as `54afcb8` (`docs(architecture): freeze fast/slow orchestration (#7)`).
+- Local `main` was clean and synchronized with `origin/main`; the short-lived Phase 03A0 branch was cleaned after confirming no unique unpushed work.
+- Post-merge `make preflight` passed with 94 runtime/contract/integration tests and 12 ML tests plus every repository-native gate.
+
+### 2026-08-23 — Phase 03A1 Harness activation and preflight
+
+- Human gate: the user explicitly authorized Phase 03A1 as two sequential pull requests and requested Luna xhigh implementation under Sol direction plus independent Terra high review.
+- Base: clean synchronized `main` commit `54afcb8`; active branch: `feat/phase-03a1-harness`.
+- Baseline `make preflight`: passed before deliverable edits with 94 runtime/contract/integration tests, 12 ML tests, and every format, lint, type, contract/type drift, Phase 01B/02 artifact, layout, lock, offline install, compile, and Compose gate.
+- Frozen Harness boundary: deterministic contracts, Case coordination, Router, model views/interfaces, stale-result/CAS, simulator-only capabilities, multi-turn episodes, frozen manifests, scripted-oracle ceiling, and artifact drift evidence only.
+- Preserved boundary: no Qwen/frontier dependency, download, API/model call, prompt tuning, training, generated-data expansion, FastAPI, PostgreSQL, Temporal, product Agent, channel, UI, real Provider, credential, or consumer PII work.
+
+### 2026-08-23 — Phase 03A1 Harness independent-review remediation
+
+- Initial Terra decision: Request Changes. The review found two Critical and five Important issues: formal episodes bypassed the sole Executor, adapters could mutate before Evidence validation, episode artifacts leaked oracle labels, Provider-held-out eligibility was nominal, coordinator CAS/Slow binding was incomplete, bounded Fast filtering was language-specific, and approval routing trusted a caller boolean.
+- First remediation routed every formal episode through prepared-Evidence atomic execution, bound Evidence/idempotency/offer/approval/material terms, removed complete-episode label leakage, added executable eligibility fields, serialized snapshot CAS/latest reroute, strict Slow validation, a fixed Fast template, and latest-visible-event approval derivation.
+- First focused rereview: Request Changes with no Critical and two Important findings. Held-out scenarios still reached Scripted Slow despite eligibility metadata, and Executor idempotency was not atomic across concurrent calls.
+- Final remediation made manifest eligibility an execution selector before Slow request construction, added a zero-ineligible-Slow ceiling gate, serialized the complete Executor critical section with `RLock`, added a Barrier-aligned concurrent duplicate regression, converted adapter evidence to canonical ModelTrace records, and tested all eight material Planning Basis mutations.
+- Final authoritative `make preflight`: passed with 128 runtime/contract/integration tests and 12 ML tests plus all format, lint, mypy, schema/type drift, Phase 01B/02/03A1 artifact, layout, lock, offline install, compile, Compose, and diff gates.
+- Final independent Terra rereview: Approve with no unresolved Critical or Important finding. Terra independently reran the same complete `make preflight` successfully. Durable findings and remediation are recorded in `harness/code_review/phase-03a1-harness.md`.
+- Publication status: local gate approved. PR, remote CI, GitGuardian, Sol integration decision, squash merge, cleanup, and post-merge verification remain pending; 03A1-B has not started.

@@ -204,11 +204,13 @@ def test_phase_03a0_records_phase_status_and_phase02_merge() -> None:
     context = document("harness/context/phase-03a0-preflight.md")
     plans = document("PLANS.md")
 
-    assert "**Status**: Local gate approved; PR, CI, and squash merge pending." in build
+    assert "**Status**: Complete;" in build
+    assert "54afcb8" in build
     assert "f45b1ea" in build
     assert "f45b1ea" in context
     assert "Phase 03A0" in context
     assert "Phase 03A0" in plans
     assert "f45b1ea" in plans
-    assert "Phase 03A0" in plans and "active" in plans
-    assert "Phase 03" in plans and "inactive" in plans
+    assert "Phase 03A0" in plans and "Complete" in plans
+    assert "Phase 03A1-H" in plans and "Local gate approved" in plans
+    assert "| 03B |" in plans and "Not started" in plans

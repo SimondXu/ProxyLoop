@@ -18,3 +18,4 @@ Active context:
 - `phase-01b-preflight.md`: observed post-Phase-01A baseline and the frozen simulator benchmark seam.
 - `phase-02-preflight.md`: observed post-Phase-01B baseline and the frozen normalized trajectory/Data Factory seam.
 - `phase-03a0-preflight.md`: observed post-Phase-02 architecture gaps, public Pine evidence boundary, and frozen Fast/Slow/shared-state decisions.
+- `phase-03a1-preflight.md`: observed post-Phase-03A0 implementation surface, frozen Harness seams, baseline attribution rules, and excluded model/training work.

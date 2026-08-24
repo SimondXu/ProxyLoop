@@ -2,7 +2,7 @@
 
 ## Status
 
-Direction approved by the user; acceptance remains pending the Phase 03A0 review, preflight, CI, and merge gate. Runtime contracts and implementations remain gated by Phase 03A1.
+Accepted. Phase 03A0 passed independent review, preflight, CI, and GitGuardian, then squash merged to `main` as `54afcb8` through PR #7. Runtime contracts and implementations remain gated by Phase 03A1.
 
 ## Context
 

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from enum import StrEnum
+from itertools import pairwise
 from typing import Annotated, Any, Literal
 
 from pydantic import ConfigDict, Field, TypeAdapter, model_validator
@@ -97,6 +100,21 @@ class ModelResult(StrEnum):
     SUCCEEDED = "succeeded"
     REJECTED = "rejected"
     FAILED = "failed"
+
+
+class RoutingOutcome(StrEnum):
+    TERMINAL = "terminal"
+    VERIFY_ONLY = "verify_only"
+    WAIT_FOR_APPROVAL = "wait_for_approval"
+    SLOW_REFRESH = "slow_refresh"
+    FAST_NOW_AND_SLOW_REFRESH = "fast_now_and_slow_refresh"
+    FAST_NOW = "fast_now"
+
+
+class EventActor(StrEnum):
+    CONSUMER = "consumer"
+    PROVIDER = "provider"
+    SYSTEM = "system"
 
 
 class Money(ContractModel):
@@ -599,6 +617,542 @@ class Case(VersionedContract):
         return self
 
 
+class ModelInputPins(VersionedContract):
+    """The complete version pin set accepted by a model adapter."""
+
+    contract_type: Literal["model_input_pins"]
+    case_id: EntityId
+    case_revision: Revision
+    constraint_set_revision: Revision
+    fact_ledger_revision: Revision
+    strategy_id: EntityId | None = None
+    strategy_revision: NonNegativeInt = 0
+    planning_basis_fingerprint: Sha256
+    event_cursor: NonNegativeInt
+    provider_config_ref: ExternalRef
+    capability_manifest_version: ExternalRef
+
+    @model_validator(mode="after")
+    def strategy_identity_must_be_explicit(self) -> ModelInputPins:
+        if (self.strategy_id is None) != (self.strategy_revision == 0):
+            raise ValueError(
+                "strategy_id and strategy_revision must both be empty or versioned"
+            )
+        return self
+
+
+class PlanningBasis(VersionedContract):
+    """Strongly typed fingerprints for every material strategy input."""
+
+    contract_type: Literal["planning_basis"]
+    goal_fingerprint: Sha256
+    constraints_fingerprint: Sha256
+    delegated_authority_fingerprint: Sha256
+    verified_facts_fingerprint: Sha256
+    material_offers_fingerprint: Sha256
+    approval_state_fingerprint: Sha256
+    provider_config_fingerprint: Sha256
+    capability_manifest_fingerprint: Sha256
+    planning_basis_fingerprint: Sha256
+
+    @model_validator(mode="after")
+    def aggregate_fingerprint_must_bind_every_component(self) -> PlanningBasis:
+        expected = planning_basis_fingerprint(
+            goal_fingerprint=self.goal_fingerprint,
+            constraints_fingerprint=self.constraints_fingerprint,
+            delegated_authority_fingerprint=self.delegated_authority_fingerprint,
+            verified_facts_fingerprint=self.verified_facts_fingerprint,
+            material_offers_fingerprint=self.material_offers_fingerprint,
+            approval_state_fingerprint=self.approval_state_fingerprint,
+            provider_config_fingerprint=self.provider_config_fingerprint,
+            capability_manifest_fingerprint=self.capability_manifest_fingerprint,
+        )
+        if self.planning_basis_fingerprint != expected:
+            raise ValueError(
+                "planning_basis_fingerprint must bind every material component"
+            )
+        return self
+
+
+def planning_basis_fingerprint(
+    *,
+    goal_fingerprint: str,
+    constraints_fingerprint: str,
+    delegated_authority_fingerprint: str,
+    verified_facts_fingerprint: str,
+    material_offers_fingerprint: str,
+    approval_state_fingerprint: str,
+    provider_config_fingerprint: str,
+    capability_manifest_fingerprint: str,
+) -> str:
+    """Compute the canonical aggregate hash for material strategy state."""
+
+    payload = {
+        "approval_state_fingerprint": approval_state_fingerprint,
+        "capability_manifest_fingerprint": capability_manifest_fingerprint,
+        "constraints_fingerprint": constraints_fingerprint,
+        "delegated_authority_fingerprint": delegated_authority_fingerprint,
+        "goal_fingerprint": goal_fingerprint,
+        "material_offers_fingerprint": material_offers_fingerprint,
+        "provider_config_fingerprint": provider_config_fingerprint,
+        "verified_facts_fingerprint": verified_facts_fingerprint,
+    }
+    canonical = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def canonical_fingerprint(value: Any) -> str:
+    """Hash a canonical JSON-safe contract value or collection of values."""
+
+    def json_value(item: Any) -> Any:
+        if isinstance(item, ContractModel):
+            return item.model_dump(mode="json")
+        if isinstance(item, (tuple, list)):
+            return [json_value(child) for child in item]
+        if isinstance(item, dict):
+            return {str(key): json_value(child) for key, child in item.items()}
+        return item
+
+    canonical = json.dumps(
+        json_value(value),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+class VisibleCaseEvent(VersionedContract):
+    """A leakage-safe event that may be projected to a model."""
+
+    contract_type: Literal["visible_case_event"]
+    event_id: EntityId
+    case_id: EntityId
+    event_cursor: NonNegativeInt
+    occurred_at: UtcDateTime
+    actor: EventActor
+    event_type: ExternalRef
+    content: HumanText
+
+
+class CapabilityDefinition(ContractModel):
+    """One simulator capability advertised by a manifest."""
+
+    capability_id: ExternalRef
+    version: ExternalRef
+    description: HumanText
+    namespace: Literal["simulator"] = "simulator"
+    allowed_action_types: tuple[ActionType, ...]
+    expires_at: UtcDateTime | None = None
+
+
+class CapabilityReference(ContractModel):
+    namespace: Literal["simulator"]
+    capability_id: ExternalRef
+    version: ExternalRef
+
+    @model_validator(mode="after")
+    def capability_must_be_simulator_owned(self) -> CapabilityReference:
+        if not self.capability_id.startswith("simulator."):
+            raise ValueError("capability id must belong to the simulator namespace")
+        return self
+
+
+class CapabilityArgument(ContractModel):
+    name: ExternalRef
+    value: FactValue
+
+
+class CapabilityProposal(ContractModel):
+    """A model proposal; it has no authorization or execution authority."""
+
+    proposal_id: EntityId
+    capability: CapabilityReference
+    arguments: tuple[CapabilityArgument, ...] = ()
+    created_at: UtcDateTime
+    expires_at: UtcDateTime | None = None
+
+    @model_validator(mode="after")
+    def proposal_window_and_arguments_must_be_valid(self) -> CapabilityProposal:
+        argument_names = tuple(item.name for item in self.arguments)
+        if len(set(argument_names)) != len(argument_names):
+            raise ValueError("capability proposal cannot contain duplicate arguments")
+        if self.expires_at is not None:
+            require_time_order(self.created_at, self.expires_at, "expires_at")
+        return self
+
+
+class CapabilityManifest(VersionedContract):
+    """The sole, simulator-only action vocabulary visible to models."""
+
+    contract_type: Literal["capability_manifest"]
+    namespace: Literal["simulator"]
+    manifest_version: ExternalRef
+    issued_at: UtcDateTime
+    expires_at: UtcDateTime
+    capabilities: tuple[CapabilityDefinition, ...]
+
+    @model_validator(mode="after")
+    def capabilities_must_be_unique_and_current(self) -> CapabilityManifest:
+        require_time_order(self.issued_at, self.expires_at, "expires_at")
+        ids = tuple(item.capability_id for item in self.capabilities)
+        if len(set(ids)) != len(ids):
+            raise ValueError(
+                "capability manifest cannot contain duplicate capability ids"
+            )
+        for capability in self.capabilities:
+            if not capability.capability_id.startswith("simulator."):
+                raise ValueError("capability id must belong to the simulator namespace")
+            if capability.expires_at is not None:
+                require_time_order(
+                    self.issued_at,
+                    capability.expires_at,
+                    "capability expires_at",
+                )
+                if capability.expires_at > self.expires_at:
+                    raise ValueError(
+                        "capability expires_at cannot exceed manifest expiry"
+                    )
+        return self
+
+
+class CaseContextSnapshot(VersionedContract):
+    """Immutable model-external Case state at one event cursor."""
+
+    contract_type: Literal["case_context_snapshot"]
+    case: Case
+    fact_ledger: FactLedger
+    strategy: StrategyPacket | None = None
+    offers: tuple[ProviderOffer, ...] = ()
+    action_intents: tuple[ActionIntent, ...] = ()
+    approval_requests: tuple[ApprovalRequest, ...] = ()
+    evidence: tuple[Evidence, ...] = ()
+    completion_decision: CompletionDecision | None = None
+    visible_events: tuple[VisibleCaseEvent, ...] = ()
+    event_cursor: NonNegativeInt
+    planning_basis: PlanningBasis
+    pins: ModelInputPins
+    provider_config_ref: ExternalRef
+    capability_manifest: CapabilityManifest
+    pending_slow_work: bool = False
+    pending_execution: bool = False
+
+    @model_validator(mode="after")
+    def snapshot_references_must_match(self) -> CaseContextSnapshot:
+        case_id = self.case.case_id
+        if self.fact_ledger.case_id != case_id:
+            raise ValueError("fact ledger must reference the containing case")
+        if self.strategy is not None and self.strategy.case_id != case_id:
+            raise ValueError("strategy must reference the containing case")
+        if any(item.case_id != case_id for item in self.offers):
+            raise ValueError("offers must reference the containing case")
+        if any(item.case_id != case_id for item in self.action_intents):
+            raise ValueError("action intents must reference the containing case")
+        if any(item.case_id != case_id for item in self.approval_requests):
+            raise ValueError("approval requests must reference the containing case")
+        if any(item.case_id != case_id for item in self.evidence):
+            raise ValueError("evidence must reference the containing case")
+        if (
+            self.completion_decision is not None
+            and self.completion_decision.case_id != case_id
+        ):
+            raise ValueError("completion decision must reference the containing case")
+        if any(item.case_id != case_id for item in self.visible_events):
+            raise ValueError("visible events must reference the containing case")
+
+        cursors = tuple(item.event_cursor for item in self.visible_events)
+        if any(current <= previous for previous, current in pairwise(cursors)):
+            raise ValueError("visible event cursors must be strictly increasing")
+        if self.visible_events and cursors[-1] != self.event_cursor:
+            raise ValueError("event_cursor must equal the latest visible event cursor")
+        if not self.visible_events and self.event_cursor != 0:
+            raise ValueError("empty visible event history must have event_cursor zero")
+        times = tuple(item.occurred_at for item in self.visible_events)
+        if any(current < previous for previous, current in pairwise(times)):
+            raise ValueError("visible event timestamps must be ordered")
+
+        expected = {
+            "case_id": case_id,
+            "case_revision": self.case.revision,
+            "constraint_set_revision": self.case.constraint_set_revision,
+            "fact_ledger_revision": self.fact_ledger.revision,
+            "strategy_id": self.strategy.strategy_id if self.strategy else None,
+            "strategy_revision": self.strategy.revision if self.strategy else 0,
+            "event_cursor": self.event_cursor,
+            "provider_config_ref": self.provider_config_ref,
+            "capability_manifest_version": self.capability_manifest.manifest_version,
+            "planning_basis_fingerprint": (
+                self.planning_basis.planning_basis_fingerprint
+            ),
+        }
+        actual = {
+            "case_id": self.pins.case_id,
+            "case_revision": self.pins.case_revision,
+            "constraint_set_revision": self.pins.constraint_set_revision,
+            "fact_ledger_revision": self.pins.fact_ledger_revision,
+            "strategy_id": self.pins.strategy_id,
+            "strategy_revision": self.pins.strategy_revision,
+            "event_cursor": self.pins.event_cursor,
+            "provider_config_ref": self.pins.provider_config_ref,
+            "capability_manifest_version": self.pins.capability_manifest_version,
+            "planning_basis_fingerprint": self.pins.planning_basis_fingerprint,
+        }
+        if actual != expected:
+            raise ValueError("snapshot pins must exactly match snapshot state")
+
+        verified_facts = tuple(
+            sorted(
+                (
+                    item
+                    for item in self.fact_ledger.entries
+                    if item.status is FactStatus.VERIFIED
+                ),
+                key=lambda item: str(item.fact_id),
+            )
+        )
+        planning_components = {
+            "goal_fingerprint": canonical_fingerprint(self.case.goal),
+            "constraints_fingerprint": canonical_fingerprint(
+                tuple(
+                    sorted(
+                        self.case.constraints,
+                        key=lambda item: str(item.constraint_id),
+                    )
+                )
+            ),
+            "delegated_authority_fingerprint": canonical_fingerprint(
+                self.case.delegated_authority
+            ),
+            "verified_facts_fingerprint": canonical_fingerprint(verified_facts),
+            "material_offers_fingerprint": canonical_fingerprint(
+                tuple(sorted(self.offers, key=lambda item: str(item.offer_id)))
+            ),
+            "approval_state_fingerprint": canonical_fingerprint(
+                tuple(
+                    sorted(
+                        self.approval_requests,
+                        key=lambda item: str(item.approval_id),
+                    )
+                )
+            ),
+            "provider_config_fingerprint": canonical_fingerprint(
+                self.provider_config_ref
+            ),
+            "capability_manifest_fingerprint": canonical_fingerprint(
+                self.capability_manifest
+            ),
+        }
+        actual_components = {
+            key: getattr(self.planning_basis, key) for key in planning_components
+        }
+        if actual_components != planning_components:
+            raise ValueError(
+                "planning basis components must match material snapshot state"
+            )
+        return self
+
+
+class FastModelView(VersionedContract):
+    """Explicit allowlist for the low-latency model."""
+
+    contract_type: Literal["fast_model_view"]
+    case_id: EntityId
+    pins: ModelInputPins
+    planning_basis: PlanningBasis
+    goal: ConsumerGoal
+    constraints: tuple[Constraint, ...]
+    verified_facts: tuple[FactRecord, ...]
+    strategy: StrategyPacket | None = None
+    recent_events: tuple[VisibleCaseEvent, ...] = ()
+    latest_provider_event: VisibleCaseEvent | None = None
+    pending_slow_work: bool = False
+    allowed_dialogue_acts: tuple[DialogueAct, ...]
+    allowed_disclosures: tuple[ExternalRef, ...]
+
+    @model_validator(mode="after")
+    def view_must_be_current_and_verified(self) -> FastModelView:
+        if self.case_id != self.pins.case_id:
+            raise ValueError("Fast view case_id must match pins")
+        if self.goal.case_id != self.case_id:
+            raise ValueError("Fast view goal must reference the containing case")
+        if any(item.case_id != self.case_id for item in self.constraints):
+            raise ValueError("Fast view constraints must reference the containing case")
+        if (
+            self.pins.planning_basis_fingerprint
+            != self.planning_basis.planning_basis_fingerprint
+        ):
+            raise ValueError("Fast view planning basis must match pins")
+        if any(item.status is not FactStatus.VERIFIED for item in self.verified_facts):
+            raise ValueError("Fast view may expose verified facts only")
+        if self.strategy is None and self.pins.strategy_id is not None:
+            raise ValueError("Fast view must include the strategy named by its pins")
+        if self.strategy is not None and (
+            self.strategy.case_id != self.case_id
+            or self.strategy.strategy_id != self.pins.strategy_id
+            or self.strategy.revision != self.pins.strategy_revision
+        ):
+            raise ValueError("Fast view strategy must match current pins")
+        return self
+
+
+class SlowReasonerView(VersionedContract):
+    """Explicit allowlist for the bounded Slow reasoner."""
+
+    contract_type: Literal["slow_reasoner_view"]
+    case_id: EntityId
+    pins: ModelInputPins
+    planning_basis: PlanningBasis
+    goal: ConsumerGoal
+    constraints: tuple[Constraint, ...]
+    delegated_authority: DelegatedAuthority
+    verified_facts: tuple[FactRecord, ...]
+    offers: tuple[ProviderOffer, ...] = ()
+    approval_requests: tuple[ApprovalRequest, ...] = ()
+    strategy: StrategyPacket | None = None
+    recent_events: tuple[VisibleCaseEvent, ...] = ()
+    capability_manifest: CapabilityManifest
+    provider_config_ref: ExternalRef
+    reason_code: ExternalRef
+
+    @model_validator(mode="after")
+    def view_must_be_current_and_verified(self) -> SlowReasonerView:
+        if self.case_id != self.pins.case_id:
+            raise ValueError("Slow view case_id must match pins")
+        if self.goal.case_id != self.case_id:
+            raise ValueError("Slow view goal must reference the containing case")
+        if any(item.case_id != self.case_id for item in self.constraints):
+            raise ValueError("Slow view constraints must reference the containing case")
+        if self.provider_config_ref != self.pins.provider_config_ref:
+            raise ValueError("Slow view provider config must match pins")
+        if (
+            self.capability_manifest.manifest_version
+            != self.pins.capability_manifest_version
+        ):
+            raise ValueError("Slow view capability manifest must match pins")
+        if (
+            self.pins.planning_basis_fingerprint
+            != self.planning_basis.planning_basis_fingerprint
+        ):
+            raise ValueError("Slow view planning basis must match pins")
+        if any(item.status is not FactStatus.VERIFIED for item in self.verified_facts):
+            raise ValueError("Slow view may expose verified facts only")
+        if any(item.case_id != self.case_id for item in self.offers):
+            raise ValueError("Slow view offers must reference the containing case")
+        if any(item.case_id != self.case_id for item in self.approval_requests):
+            raise ValueError("Slow view approvals must reference the containing case")
+        if self.strategy is None and self.pins.strategy_id is not None:
+            raise ValueError("Slow view must include the strategy named by its pins")
+        if self.strategy is not None and (
+            self.strategy.case_id != self.case_id
+            or self.strategy.strategy_id != self.pins.strategy_id
+            or self.strategy.revision != self.pins.strategy_revision
+        ):
+            raise ValueError("Slow view strategy must match current pins")
+        return self
+
+
+class RoutingDecision(VersionedContract):
+    contract_type: Literal["routing_decision"]
+    outcome: RoutingOutcome
+    reason_codes: tuple[ExternalRef, ...]
+    pins: ModelInputPins
+    created_at: UtcDateTime
+
+    @model_validator(mode="after")
+    def reason_codes_must_be_unique(self) -> RoutingDecision:
+        if not self.reason_codes:
+            raise ValueError("routing decision requires deterministic reason codes")
+        if len(set(self.reason_codes)) != len(self.reason_codes):
+            raise ValueError("routing decision cannot contain duplicate reason codes")
+        return self
+
+
+class SlowWorkRequest(VersionedContract):
+    contract_type: Literal["slow_work_request"]
+    request_id: EntityId
+    case_id: EntityId
+    pins: ModelInputPins
+    planning_basis: PlanningBasis
+    view: SlowReasonerView
+    reason_code: ExternalRef
+    created_at: UtcDateTime
+
+    @model_validator(mode="after")
+    def request_must_echo_current_state(self) -> SlowWorkRequest:
+        if self.case_id != self.pins.case_id or self.case_id != self.view.case_id:
+            raise ValueError("Slow request case references must match")
+        if (
+            self.pins.planning_basis_fingerprint
+            != self.planning_basis.planning_basis_fingerprint
+        ):
+            raise ValueError("Slow request planning basis must match pins")
+        if self.view.pins != self.pins:
+            raise ValueError("Slow request view must echo current pins")
+        return self
+
+
+class SlowWorkResult(VersionedContract):
+    contract_type: Literal["slow_work_result"]
+    result_id: EntityId
+    request_id: EntityId
+    case_id: EntityId
+    pins: ModelInputPins
+    planning_basis: PlanningBasis
+    strategy_proposal: StrategyPacket | None = None
+    capability_proposals: tuple[CapabilityProposal, ...] = ()
+    action_proposals: tuple[ActionIntent, ...] = ()
+    created_at: UtcDateTime
+
+    @model_validator(mode="after")
+    def result_must_be_a_version_bound_proposal(self) -> SlowWorkResult:
+        if self.case_id != self.pins.case_id:
+            raise ValueError("Slow result case_id must match pins")
+        if (
+            self.pins.planning_basis_fingerprint
+            != self.planning_basis.planning_basis_fingerprint
+        ):
+            raise ValueError("Slow result planning basis must match pins")
+        if (
+            self.strategy_proposal is not None
+            and self.strategy_proposal.case_id != self.case_id
+        ):
+            raise ValueError("strategy proposal must reference the containing case")
+        proposal_ids = tuple(item.proposal_id for item in self.capability_proposals)
+        if len(set(proposal_ids)) != len(proposal_ids):
+            raise ValueError("Slow result cannot duplicate capability proposals")
+        action_ids = tuple(item.intent_id for item in self.action_proposals)
+        if len(set(action_ids)) != len(action_ids):
+            raise ValueError("Slow result cannot duplicate action proposals")
+        expected_strategy_id = (
+            self.strategy_proposal.strategy_id
+            if self.strategy_proposal is not None
+            else self.pins.strategy_id
+        )
+        expected_strategy_revision = (
+            self.strategy_proposal.revision
+            if self.strategy_proposal is not None
+            else self.pins.strategy_revision
+        )
+        for action in self.action_proposals:
+            if action.case_id != self.case_id:
+                raise ValueError("action proposal must reference the containing case")
+            if action.authorization_state != "proposed":
+                raise ValueError("Slow result cannot authorize an action")
+            if action.case_revision != self.pins.case_revision:
+                raise ValueError("action proposal case revision must match pins")
+            if action.constraint_set_revision != self.pins.constraint_set_revision:
+                raise ValueError("action proposal constraint revision must match pins")
+            if (
+                action.strategy_id != expected_strategy_id
+                or action.strategy_revision != expected_strategy_revision
+            ):
+                raise ValueError(
+                    "action proposal strategy must match the current "
+                    "or proposed strategy"
+                )
+        return self
+
+
 CANONICAL_MODELS: tuple[type[ContractModel], ...] = (
     Case,
     ConsumerGoal,
@@ -613,6 +1167,16 @@ CANONICAL_MODELS: tuple[type[ContractModel], ...] = (
     Evidence,
     CompletionDecision,
     ModelTrace,
+    ModelInputPins,
+    PlanningBasis,
+    VisibleCaseEvent,
+    CapabilityManifest,
+    CaseContextSnapshot,
+    FastModelView,
+    SlowReasonerView,
+    RoutingDecision,
+    SlowWorkRequest,
+    SlowWorkResult,
 )
 
 ContractDocument = Annotated[
@@ -628,7 +1192,17 @@ ContractDocument = Annotated[
     | ApprovalRequest
     | Evidence
     | CompletionDecision
-    | ModelTrace,
+    | ModelTrace
+    | ModelInputPins
+    | PlanningBasis
+    | VisibleCaseEvent
+    | CapabilityManifest
+    | CaseContextSnapshot
+    | FastModelView
+    | SlowReasonerView
+    | RoutingDecision
+    | SlowWorkRequest
+    | SlowWorkResult,
     Field(discriminator="contract_type"),
 ]
 CONTRACT_ADAPTER: TypeAdapter[ContractDocument] = TypeAdapter(ContractDocument)

@@ -473,6 +473,227 @@
       "title": "BillSnapshot",
       "type": "object"
     },
+    "CapabilityArgument": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/FactValue"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "title": "CapabilityArgument",
+      "type": "object"
+    },
+    "CapabilityDefinition": {
+      "additionalProperties": false,
+      "description": "One simulator capability advertised by a manifest.",
+      "properties": {
+        "allowed_action_types": {
+          "items": {
+            "$ref": "#/$defs/ActionType"
+          },
+          "title": "Allowed Action Types",
+          "type": "array"
+        },
+        "capability_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "namespace": {
+          "const": "simulator",
+          "default": "simulator",
+          "title": "Namespace",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "capability_id",
+        "version",
+        "description",
+        "allowed_action_types"
+      ],
+      "title": "CapabilityDefinition",
+      "type": "object"
+    },
+    "CapabilityManifest": {
+      "additionalProperties": false,
+      "description": "The sole, simulator-only action vocabulary visible to models.",
+      "properties": {
+        "capabilities": {
+          "items": {
+            "$ref": "#/$defs/CapabilityDefinition"
+          },
+          "title": "Capabilities",
+          "type": "array"
+        },
+        "contract_type": {
+          "const": "capability_manifest",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "issued_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Issued At",
+          "type": "string"
+        },
+        "manifest_version": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Manifest Version",
+          "type": "string"
+        },
+        "namespace": {
+          "const": "simulator",
+          "title": "Namespace",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "namespace",
+        "manifest_version",
+        "issued_at",
+        "expires_at",
+        "capabilities"
+      ],
+      "title": "CapabilityManifest",
+      "type": "object"
+    },
+    "CapabilityProposal": {
+      "additionalProperties": false,
+      "description": "A model proposal; it has no authorization or execution authority.",
+      "properties": {
+        "arguments": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CapabilityArgument"
+          },
+          "title": "Arguments",
+          "type": "array"
+        },
+        "capability": {
+          "$ref": "#/$defs/CapabilityReference"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "proposal_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Proposal Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "proposal_id",
+        "capability",
+        "created_at"
+      ],
+      "title": "CapabilityProposal",
+      "type": "object"
+    },
+    "CapabilityReference": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "namespace": {
+          "const": "simulator",
+          "title": "Namespace",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "namespace",
+        "capability_id",
+        "version"
+      ],
+      "title": "CapabilityReference",
+      "type": "object"
+    },
     "Case": {
       "additionalProperties": false,
       "properties": {
@@ -563,6 +784,139 @@
         "delegated_authority"
       ],
       "title": "Case",
+      "type": "object"
+    },
+    "CaseContextSnapshot": {
+      "additionalProperties": false,
+      "description": "Immutable model-external Case state at one event cursor.",
+      "properties": {
+        "action_intents": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ActionIntent"
+          },
+          "title": "Action Intents",
+          "type": "array"
+        },
+        "approval_requests": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ApprovalRequest"
+          },
+          "title": "Approval Requests",
+          "type": "array"
+        },
+        "capability_manifest": {
+          "$ref": "#/$defs/CapabilityManifest"
+        },
+        "case": {
+          "$ref": "#/$defs/Case"
+        },
+        "completion_decision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompletionDecision"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "contract_type": {
+          "const": "case_context_snapshot",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "event_cursor": {
+          "minimum": 0,
+          "title": "Event Cursor",
+          "type": "integer"
+        },
+        "evidence": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "fact_ledger": {
+          "$ref": "#/$defs/FactLedger"
+        },
+        "offers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ProviderOffer"
+          },
+          "title": "Offers",
+          "type": "array"
+        },
+        "pending_execution": {
+          "default": false,
+          "title": "Pending Execution",
+          "type": "boolean"
+        },
+        "pending_slow_work": {
+          "default": false,
+          "title": "Pending Slow Work",
+          "type": "boolean"
+        },
+        "pins": {
+          "$ref": "#/$defs/ModelInputPins"
+        },
+        "planning_basis": {
+          "$ref": "#/$defs/PlanningBasis"
+        },
+        "provider_config_ref": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Provider Config Ref",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "strategy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StrategyPacket"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "visible_events": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/VisibleCaseEvent"
+          },
+          "title": "Visible Events",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "case",
+        "fact_ledger",
+        "event_cursor",
+        "planning_basis",
+        "pins",
+        "provider_config_ref",
+        "capability_manifest"
+      ],
+      "title": "CaseContextSnapshot",
       "type": "object"
     },
     "CasePhase": {
@@ -1009,6 +1363,15 @@
       "title": "DialogueAct",
       "type": "string"
     },
+    "EventActor": {
+      "enum": [
+        "consumer",
+        "provider",
+        "system"
+      ],
+      "title": "EventActor",
+      "type": "string"
+    },
     "Evidence": {
       "additionalProperties": false,
       "properties": {
@@ -1317,6 +1680,122 @@
         }
       ]
     },
+    "FastModelView": {
+      "additionalProperties": false,
+      "description": "Explicit allowlist for the low-latency model.",
+      "properties": {
+        "allowed_dialogue_acts": {
+          "items": {
+            "$ref": "#/$defs/DialogueAct"
+          },
+          "title": "Allowed Dialogue Acts",
+          "type": "array"
+        },
+        "allowed_disclosures": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Allowed Disclosures",
+          "type": "array"
+        },
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "constraints": {
+          "items": {
+            "$ref": "#/$defs/Constraint"
+          },
+          "title": "Constraints",
+          "type": "array"
+        },
+        "contract_type": {
+          "const": "fast_model_view",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "goal": {
+          "$ref": "#/$defs/ConsumerGoal"
+        },
+        "latest_provider_event": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VisibleCaseEvent"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "pending_slow_work": {
+          "default": false,
+          "title": "Pending Slow Work",
+          "type": "boolean"
+        },
+        "pins": {
+          "$ref": "#/$defs/ModelInputPins"
+        },
+        "planning_basis": {
+          "$ref": "#/$defs/PlanningBasis"
+        },
+        "recent_events": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/VisibleCaseEvent"
+          },
+          "title": "Recent Events",
+          "type": "array"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "strategy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StrategyPacket"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "verified_facts": {
+          "items": {
+            "$ref": "#/$defs/FactRecord"
+          },
+          "title": "Verified Facts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "case_id",
+        "pins",
+        "planning_basis",
+        "goal",
+        "constraints",
+        "verified_facts",
+        "allowed_dialogue_acts",
+        "allowed_disclosures"
+      ],
+      "title": "FastModelView",
+      "type": "object"
+    },
     "FastTurnDecision": {
       "additionalProperties": false,
       "properties": {
@@ -1472,6 +1951,105 @@
         "value"
       ],
       "title": "MaterialTerm",
+      "type": "object"
+    },
+    "ModelInputPins": {
+      "additionalProperties": false,
+      "description": "The complete version pin set accepted by a model adapter.",
+      "properties": {
+        "capability_manifest_version": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Capability Manifest Version",
+          "type": "string"
+        },
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "case_revision": {
+          "minimum": 1,
+          "title": "Case Revision",
+          "type": "integer"
+        },
+        "constraint_set_revision": {
+          "minimum": 1,
+          "title": "Constraint Set Revision",
+          "type": "integer"
+        },
+        "contract_type": {
+          "const": "model_input_pins",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "event_cursor": {
+          "minimum": 0,
+          "title": "Event Cursor",
+          "type": "integer"
+        },
+        "fact_ledger_revision": {
+          "minimum": 1,
+          "title": "Fact Ledger Revision",
+          "type": "integer"
+        },
+        "planning_basis_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Planning Basis Fingerprint",
+          "type": "string"
+        },
+        "provider_config_ref": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Provider Config Ref",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "strategy_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Strategy Id"
+        },
+        "strategy_revision": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Strategy Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "case_id",
+        "case_revision",
+        "constraint_set_revision",
+        "fact_ledger_revision",
+        "planning_basis_fingerprint",
+        "event_cursor",
+        "provider_config_ref",
+        "capability_manifest_version"
+      ],
+      "title": "ModelInputPins",
       "type": "object"
     },
     "ModelResult": {
@@ -1675,6 +2253,88 @@
       "title": "OfferReference",
       "type": "object"
     },
+    "PlanningBasis": {
+      "additionalProperties": false,
+      "description": "Strongly typed fingerprints for every material strategy input.",
+      "properties": {
+        "approval_state_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Approval State Fingerprint",
+          "type": "string"
+        },
+        "capability_manifest_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Capability Manifest Fingerprint",
+          "type": "string"
+        },
+        "constraints_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Constraints Fingerprint",
+          "type": "string"
+        },
+        "contract_type": {
+          "const": "planning_basis",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "delegated_authority_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Delegated Authority Fingerprint",
+          "type": "string"
+        },
+        "goal_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Goal Fingerprint",
+          "type": "string"
+        },
+        "material_offers_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Material Offers Fingerprint",
+          "type": "string"
+        },
+        "planning_basis_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Planning Basis Fingerprint",
+          "type": "string"
+        },
+        "provider_config_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Provider Config Fingerprint",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "verified_facts_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Verified Facts Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "goal_fingerprint",
+        "constraints_fingerprint",
+        "delegated_authority_fingerprint",
+        "verified_facts_fingerprint",
+        "material_offers_fingerprint",
+        "approval_state_fingerprint",
+        "provider_config_fingerprint",
+        "capability_manifest_fingerprint",
+        "planning_basis_fingerprint"
+      ],
+      "title": "PlanningBasis",
+      "type": "object"
+    },
     "ProviderOffer": {
       "additionalProperties": false,
       "properties": {
@@ -1798,6 +2458,347 @@
         "reason_code"
       ],
       "title": "ReasonerRequest",
+      "type": "object"
+    },
+    "RoutingDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_type": {
+          "const": "routing_decision",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/$defs/RoutingOutcome"
+        },
+        "pins": {
+          "$ref": "#/$defs/ModelInputPins"
+        },
+        "reason_codes": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "outcome",
+        "reason_codes",
+        "pins",
+        "created_at"
+      ],
+      "title": "RoutingDecision",
+      "type": "object"
+    },
+    "RoutingOutcome": {
+      "enum": [
+        "terminal",
+        "verify_only",
+        "wait_for_approval",
+        "slow_refresh",
+        "fast_now_and_slow_refresh",
+        "fast_now"
+      ],
+      "title": "RoutingOutcome",
+      "type": "string"
+    },
+    "SlowReasonerView": {
+      "additionalProperties": false,
+      "description": "Explicit allowlist for the bounded Slow reasoner.",
+      "properties": {
+        "approval_requests": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ApprovalRequest"
+          },
+          "title": "Approval Requests",
+          "type": "array"
+        },
+        "capability_manifest": {
+          "$ref": "#/$defs/CapabilityManifest"
+        },
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "constraints": {
+          "items": {
+            "$ref": "#/$defs/Constraint"
+          },
+          "title": "Constraints",
+          "type": "array"
+        },
+        "contract_type": {
+          "const": "slow_reasoner_view",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "delegated_authority": {
+          "$ref": "#/$defs/DelegatedAuthority"
+        },
+        "goal": {
+          "$ref": "#/$defs/ConsumerGoal"
+        },
+        "offers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ProviderOffer"
+          },
+          "title": "Offers",
+          "type": "array"
+        },
+        "pins": {
+          "$ref": "#/$defs/ModelInputPins"
+        },
+        "planning_basis": {
+          "$ref": "#/$defs/PlanningBasis"
+        },
+        "provider_config_ref": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Provider Config Ref",
+          "type": "string"
+        },
+        "reason_code": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "recent_events": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/VisibleCaseEvent"
+          },
+          "title": "Recent Events",
+          "type": "array"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "strategy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StrategyPacket"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "verified_facts": {
+          "items": {
+            "$ref": "#/$defs/FactRecord"
+          },
+          "title": "Verified Facts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "case_id",
+        "pins",
+        "planning_basis",
+        "goal",
+        "constraints",
+        "delegated_authority",
+        "verified_facts",
+        "capability_manifest",
+        "provider_config_ref",
+        "reason_code"
+      ],
+      "title": "SlowReasonerView",
+      "type": "object"
+    },
+    "SlowWorkRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "contract_type": {
+          "const": "slow_work_request",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "pins": {
+          "$ref": "#/$defs/ModelInputPins"
+        },
+        "planning_basis": {
+          "$ref": "#/$defs/PlanningBasis"
+        },
+        "reason_code": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "request_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "view": {
+          "$ref": "#/$defs/SlowReasonerView"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "request_id",
+        "case_id",
+        "pins",
+        "planning_basis",
+        "view",
+        "reason_code",
+        "created_at"
+      ],
+      "title": "SlowWorkRequest",
+      "type": "object"
+    },
+    "SlowWorkResult": {
+      "additionalProperties": false,
+      "properties": {
+        "action_proposals": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ActionIntent"
+          },
+          "title": "Action Proposals",
+          "type": "array"
+        },
+        "capability_proposals": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CapabilityProposal"
+          },
+          "title": "Capability Proposals",
+          "type": "array"
+        },
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "contract_type": {
+          "const": "slow_work_result",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "pins": {
+          "$ref": "#/$defs/ModelInputPins"
+        },
+        "planning_basis": {
+          "$ref": "#/$defs/PlanningBasis"
+        },
+        "request_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "result_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Result Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "strategy_proposal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StrategyPacket"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "result_id",
+        "request_id",
+        "case_id",
+        "pins",
+        "planning_basis",
+        "created_at"
+      ],
+      "title": "SlowWorkResult",
       "type": "object"
     },
     "StrategyPacket": {
@@ -1995,6 +2996,79 @@
       ],
       "title": "UsageProfile",
       "type": "object"
+    },
+    "VisibleCaseEvent": {
+      "additionalProperties": false,
+      "description": "A leakage-safe event that may be projected to a model.",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/EventActor"
+        },
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "contract_type": {
+          "const": "visible_case_event",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "event_cursor": {
+          "minimum": 0,
+          "title": "Event Cursor",
+          "type": "integer"
+        },
+        "event_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_type": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Event Type",
+          "type": "string"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "event_id",
+        "case_id",
+        "event_cursor",
+        "occurred_at",
+        "actor",
+        "event_type",
+        "content"
+      ],
+      "title": "VisibleCaseEvent",
+      "type": "object"
     }
   },
   "$id": "https://proxyloop.local/schemas/proxyloop-contracts-1.0.json",
@@ -2005,16 +3079,26 @@
       "action_intent": "#/$defs/ActionIntent",
       "approval_request": "#/$defs/ApprovalRequest",
       "bill_snapshot": "#/$defs/BillSnapshot",
+      "capability_manifest": "#/$defs/CapabilityManifest",
       "case": "#/$defs/Case",
+      "case_context_snapshot": "#/$defs/CaseContextSnapshot",
       "completion_decision": "#/$defs/CompletionDecision",
       "constraint": "#/$defs/Constraint",
       "consumer_goal": "#/$defs/ConsumerGoal",
       "evidence": "#/$defs/Evidence",
       "fact_ledger": "#/$defs/FactLedger",
+      "fast_model_view": "#/$defs/FastModelView",
       "fast_turn_decision": "#/$defs/FastTurnDecision",
+      "model_input_pins": "#/$defs/ModelInputPins",
       "model_trace": "#/$defs/ModelTrace",
+      "planning_basis": "#/$defs/PlanningBasis",
       "provider_offer": "#/$defs/ProviderOffer",
-      "strategy_packet": "#/$defs/StrategyPacket"
+      "routing_decision": "#/$defs/RoutingDecision",
+      "slow_reasoner_view": "#/$defs/SlowReasonerView",
+      "slow_work_request": "#/$defs/SlowWorkRequest",
+      "slow_work_result": "#/$defs/SlowWorkResult",
+      "strategy_packet": "#/$defs/StrategyPacket",
+      "visible_case_event": "#/$defs/VisibleCaseEvent"
     },
     "propertyName": "contract_type"
   },
@@ -2057,6 +3141,36 @@
     },
     {
       "$ref": "#/$defs/ModelTrace"
+    },
+    {
+      "$ref": "#/$defs/ModelInputPins"
+    },
+    {
+      "$ref": "#/$defs/PlanningBasis"
+    },
+    {
+      "$ref": "#/$defs/VisibleCaseEvent"
+    },
+    {
+      "$ref": "#/$defs/CapabilityManifest"
+    },
+    {
+      "$ref": "#/$defs/CaseContextSnapshot"
+    },
+    {
+      "$ref": "#/$defs/FastModelView"
+    },
+    {
+      "$ref": "#/$defs/SlowReasonerView"
+    },
+    {
+      "$ref": "#/$defs/RoutingDecision"
+    },
+    {
+      "$ref": "#/$defs/SlowWorkRequest"
+    },
+    {
+      "$ref": "#/$defs/SlowWorkResult"
     }
   ],
   "title": "ProxyLoop Contract Document",
