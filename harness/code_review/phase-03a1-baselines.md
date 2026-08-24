@@ -108,3 +108,16 @@ contract and build log disclose that basis and no current consumer presents it
 as billed cost. The repository validates returned Terra-family metadata and
 rejects explicit remapping; it does not independently attest the proxy's hidden
 physical backend.
+
+## PR CI Remediation Rereview
+
+PR #9's first `phase-gate` exposed that a static import inside the optional
+client-construction path still made mypy require `openai` in CI's default ML
+environment. Root reproduced the error in an isolated default `uv sync`, changed
+the seam to `importlib.import_module("openai")`, and retained all credential,
+base-URL, zero-retry, typed-unavailable, and no-fallback behavior.
+
+The independent reviewer returned **Approve**, with no new Critical or Important
+finding. Terra independently reran `make preflight`: 135
+runtime/contract/integration and 43 ML tests plus every repository-native gate
+passed. No hosted request was made.

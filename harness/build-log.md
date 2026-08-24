@@ -360,3 +360,11 @@ This file is append-only execution evidence. Record only commands actually run a
 - Root focused artifact verification passed with 10 tests. Root then ran the complete repository-native `make preflight`: 135 runtime/contract/integration tests and 43 ML tests passed, together with all format, lint, mypy, contract/type drift, artifact replay, layout, lock, offline pnpm, compile, Compose, and diff gates.
 - Final independent rereview: Approve with no unresolved Critical or Important finding. Terra independently ran the same 10 artifact tests and complete `make preflight` successfully and made no model/API request.
 - Evidence boundary retained: the proxy's returned snapshot metadata is validated and explicit model-family remapping is rejected, but the repository does not independently prove the third-party proxy's hidden physical backend. Usage-accounted cost remains explicitly distinct from a provider invoice.
+
+### 2026-08-24 — Phase 03A1 PR #9 CI environment remediation
+
+- The first PR #9 `phase-gate` run failed at ML mypy because CI intentionally installs the default ML dependency set without the optional `evaluation` extra, while a static lazy-path `from openai import OpenAI` still required the absent SDK at type-check time. Local preflight had the extra installed and therefore did not expose the mismatch. GitGuardian passed.
+- An isolated temporary ML environment created with the same default `uv sync --project ml --frozen` reproduced the exact `import-not-found` error on `openai_frontier.py`.
+- Minimal remediation changed only the optional runtime import seam to `importlib.import_module("openai")`, matching the existing Qwen lazy-import boundary; CI remains free of model SDK installation and runtime packages remain unaffected. The architecture regression now asserts the dynamic import.
+- The isolated CI-equivalent mypy command then passed. Thirteen Terra adapter tests and seven Baselines architecture tests also passed before the full repository gate was rerun.
+- Root's complete post-remediation `make preflight` passed with 135 runtime/contract/integration and 43 ML tests plus every repository-native gate. Independent Terra rereview returned Approve with no new Critical or Important finding and independently passed the same full preflight without a hosted request.

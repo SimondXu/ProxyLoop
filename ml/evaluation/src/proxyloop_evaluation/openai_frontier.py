@@ -6,14 +6,15 @@ request, validates the returned canonical contract without repair or retry,
 and exposes the last call record for the evaluator.  It has no policy,
 approval, execution, or completion authority.
 
-The OpenAI SDK is imported only when a real client is needed.  Tests can inject
-a fake ``responses.create`` client and therefore never need credentials or
-network access.
+The OpenAI SDK is imported only when a real client is needed. Tests can inject
+a fake ``chat.completions.parse`` client and therefore never need credentials
+or network access.
 """
 
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 import time
@@ -330,9 +331,10 @@ class OpenAIFrontierAdapter:
             try:
                 # Keep the provider SDK optional and out of the import path for
                 # all deterministic tests and runtime packages.
-                from openai import OpenAI
+                openai_module = cast(Any, importlib.import_module("openai"))
+                openai_client = openai_module.OpenAI
 
-                client = OpenAI(
+                client = openai_client(
                     api_key=os.environ[FRONTIER_API_KEY_ENV],
                     base_url=FRONTIER_BASE_URL,
                     max_retries=0,

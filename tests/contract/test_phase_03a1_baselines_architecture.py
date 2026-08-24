@@ -52,7 +52,7 @@ def test_model_sdk_imports_are_lazy_and_confined_to_evaluation() -> None:
     qwen = (EVALUATION / "qwen_mlx.py").read_text(encoding="utf-8")
     frontier = (EVALUATION / "openai_frontier.py").read_text(encoding="utf-8")
     assert "importlib" in qwen and "mlx_lm" in qwen
-    assert "from openai import OpenAI" in frontier
+    assert 'importlib.import_module("openai")' in frontier
     assert "imported only when a real client is needed" in frontier
 
 
