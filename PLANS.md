@@ -12,8 +12,8 @@ This is the harness-level phase index. Detailed product requirements live in the
 | 01B | Simulator breadth and benchmark gate | Complete | `harness/build/phase-01b-simulator-benchmark.md` |
 | 02 | Data factory and trajectory pilot | Complete; squash merged as `f45b1ea` through PR #6 | `harness/build/phase-02-data-factory.md` |
 | 03A0 | Fast/Slow architecture and acceptance criteria | Complete; squash merged as `54afcb8` through PR #7 | `harness/build/phase-03a0-fast-slow-architecture.md` |
-| 03A1-H | Deterministic multi-turn evaluation harness | Local gate approved; PR, CI, and squash merge pending | `harness/build/phase-03a1-harness.md` |
-| 03A1-B | Untuned Qwen/frontier baselines | Not started; begins only after 03A1-H merge | Prepared by the Harness failure-attribution gate |
+| 03A1-H | Deterministic multi-turn evaluation harness | Complete; squash merged as `e08c9b6` through PR #8 | `harness/build/phase-03a1-harness.md` |
+| 03A1-B | Untuned Qwen/Terra baselines | Complete; full gate passed through PR #9 | `harness/build/phase-03a1-baselines.md` |
 | 03B | Open-data SFT, gap-driven project data, and evaluation | Not started | Decided from Phase 03A1 failure slices |
 | 04 | Serving and control plane | Not started | To be prepared after Phase 03 |
 | 05 | Durable agent loop | Not started | To be prepared after Phase 04 |
@@ -63,6 +63,10 @@ Create one Codex Goal only for the single approved phase. The Goal should quote 
 
 Current gate:
 
-> Phase 03A0 is squash merged as `54afcb8`. The user explicitly activated Phase 03A1 as two sequential pull requests: first the deterministic Harness, then model-backed untuned baselines after the Harness merge and environment-validity gate.
+> Phase 03A0 remains complete at `54afcb8`.
+>
+> Phase 03A1-H is squash merged as `e08c9b6` through PR #8. Phase 03A1-B completed its frozen model matrix, independent review, and PR #9 gates.
 
-Phase 03A1-H does not download or call Qwen/frontier models. It must prove the Router, Case coordinator, model views, stale-result handling, simulator-only capabilities, multi-turn environment, frozen manifests, scripted oracle, and evaluation artifact drift checks locally. Phase 03A1-B, teacher-backed expansion, training, serving, product Agent, channels, and UI remain inactive until their stated gates.
+No implementation phase is active. The failure slices require a separate human
+decision before Phase 03B may begin. Teacher-backed expansion, training,
+serving, product Agent, channels, and UI remain inactive.
