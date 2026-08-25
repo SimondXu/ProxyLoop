@@ -112,7 +112,6 @@ def test_phase_03a1_runtime_has_no_model_provider_dependencies_or_imports() -> N
     runtime_root = ROOT / "runtime"
     forbidden = {
         "mlx",
-        "openai",
         "pydantic_ai",
         "torch",
         "transformers",
@@ -132,7 +131,10 @@ def test_phase_03a1_runtime_has_no_model_provider_dependencies_or_imports() -> N
                 name = re.split(r"[<>=!~\[\s]", dependency, maxsplit=1)[0]
                 dependency_names.add(name.replace("-", "_").casefold())
 
+    # Phase 04B explicitly introduces one runtime-owned OpenAI-compatible
+    # adapter; the Phase 03A1 prohibition still covers ML/training SDKs.
     assert not forbidden & dependency_names
+    assert "openai" in dependency_names
     assert not forbidden & imported_roots(runtime_root / "packages")
 
 

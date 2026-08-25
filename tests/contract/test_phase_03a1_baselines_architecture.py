@@ -41,13 +41,16 @@ def test_runtime_lock_remains_free_of_model_dependencies() -> None:
     with (ROOT / "runtime" / "pyproject.toml").open("rb") as project_file:
         runtime = tomllib.load(project_file)
     serialized = str(runtime).casefold()
-    for dependency in ("mlx", "openai", "transformers", "torch", "vllm"):
+    for dependency in ("mlx", "transformers", "torch", "vllm"):
         assert dependency not in serialized
 
 
 def test_model_sdk_imports_are_lazy_and_confined_to_evaluation() -> None:
     runtime_imports = imported_roots(ROOT / "runtime")
-    assert not runtime_imports & {"mlx", "mlx_lm", "openai", "transformers"}
+    # Phase 04B is the approved exception for the runtime-owned adapter; ML
+    # SDKs remain confined to their existing evaluation surface.
+    assert not runtime_imports & {"mlx", "mlx_lm", "transformers"}
+    assert "openai" in runtime_imports
 
     qwen = (EVALUATION / "qwen_mlx.py").read_text(encoding="utf-8")
     frontier = (EVALUATION / "openai_frontier.py").read_text(encoding="utf-8")

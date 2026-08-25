@@ -34,7 +34,8 @@ Do not treat a roadmap item as permission to implement it. Only an explicitly ap
 - Phase 03A1-R/V was squash merged through PR #11 as `e501e0f`; the CI phase-gate and GitGuardian checks passed.
 - Phase 04A Thin Agent Runtime is complete and independently approved on the short-lived `feat/phase-04a-thin-agent-runtime` branch from `e501e0f`. Its executable contract is `harness/build/phase-04a-thin-agent-runtime.md`, its durable review is `harness/code_review/phase-04a-thin-agent-runtime.md`, and its activation baseline is `harness/context/phase-04a-preflight.md`.
 - Phase 04A is limited to a local FastAPI, simulator-backed thin loop with an in-memory Case store interface, deterministic authorization/execution/completion, and one multi-turn integration path. More evaluation, training, PostgreSQL, Temporal, real tools or Providers, auth/channels/voice/UI, deployment, and release remain inactive.
-- No implementation phase is active after Phase 04A. Phase 03B, training, PostgreSQL, Temporal, real tools or Providers, deployment, channels, voice, UI, and release require a new explicit gate.
+- Phase 04B Model-backed Thin Agent Runtime is the single active bounded implementation phase. It is limited to one runtime-owned OpenAI-compatible typed Fast/Slow adapter, mocked transport, fail-closed model errors, explicit opt-in configuration, a local server command, and a localhost black-box smoke while retaining the fictional Provider and deterministic authority boundaries.
+- A real model smoke remains optional/manual and is not authorized. Phase 03A1 continuation, r6/r7, Phase 03B, training, PostgreSQL, Temporal, real tools or Providers, deployment, channels, voice, UI, and release remain inactive.
 - Phase 03B model training/data expansion, product services, external channels, and web UI remain inactive and require new explicit gates.
 - Product services, model training, external channels, and web UI are not implemented.
 

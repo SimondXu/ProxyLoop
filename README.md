@@ -8,7 +8,7 @@ The design separates a locally trained Fast Response Model from a hosted Slow Re
 
 ## Current status
 
-Phase 00A through Phase 03A1-V are complete. Phase 03A1-R/V was squash merged through PR #11 as `e501e0f`, with the CI phase-gate and GitGuardian checks passed. The corrected r4 hosted matrix completed through 29qg with auditable usage. A six-episode r5 validity smoke using the same Qwen/Terra path improved the selected baseline from 0/6 to 5/6 after model-view and prompt-contract parity; its remaining failure isolated a hidden twelve-month-cost evaluator predicate. This is diagnostic evidence, not a training-quality claim. Phase 04A Thin Agent Runtime is complete and independently approved; its scope was a local, simulator-backed FastAPI loop with a replaceable in-memory Case store, deterministic policy/approval/execution/completion, and one multi-turn integration path. No implementation phase is active. More evaluation, training, PostgreSQL, Temporal, real tools or Providers, channels, voice, UI, deployment, and release remain inactive and require a new explicit gate.
+Phase 00A through Phase 03A1-V are complete. Phase 03A1-R/V was squash merged through PR #11 as `e501e0f`, with the CI phase-gate and GitGuardian checks passed. The corrected r4 hosted matrix completed through 29qg with auditable usage. A six-episode r5 validity smoke using the same Qwen/Terra path improved the selected baseline from 0/6 to 5/6 after model-view and prompt-contract parity; its remaining failure isolated a hidden twelve-month-cost evaluator predicate. This is diagnostic evidence, not a training-quality claim. Phase 04A Thin Agent Runtime is complete and independently approved. Phase 04B Model-backed Thin Agent Runtime is the active bounded phase: one runtime-owned OpenAI-compatible typed adapter, mocked transport, fail-closed model errors, explicit opt-in configuration, and a localhost server while retaining deterministic authority boundaries. More evaluation, training, PostgreSQL, Temporal, real tools or Providers, channels, voice, UI, deployment, and release remain inactive and require a new explicit gate.
 
 ## Start here
 
@@ -36,6 +36,23 @@ Phase 00A through Phase 03A1-V are complete. Phase 03A1-R/V was squash merged th
 - [Phase 03A1 evaluation-validity smoke](harness/build/phase-03a1-evaluation-validity-smoke.md)
 - [Completed Phase 04A Thin Agent Runtime](harness/build/phase-04a-thin-agent-runtime.md)
 - [Phase 04A independent review](harness/code_review/phase-04a-thin-agent-runtime.md)
+
+Run the local scripted Runtime server with:
+
+```text
+make runtime-server
+```
+
+It binds `127.0.0.1:8000`. Model mode is explicit and requires
+`PROXYLOOP_MODEL_API_KEY`, `PROXYLOOP_MODEL_BASE_URL`, and
+`PROXYLOOP_MODEL_NAME` in the process environment:
+
+```text
+uv run --project runtime --all-packages python -m proxyloop_api.server --mode model
+```
+
+The server does not load `.env` files. No real model smoke is part of the
+automated gate.
 
 ## Repository layout
 

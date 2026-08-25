@@ -18,6 +18,7 @@ This is the harness-level phase index. Detailed product requirements live in the
 | 03A1-R | Hosted baseline reliability rerun | Complete; corrected full matrix; r4 ready | `harness/build/phase-03a1-hosted-rerun.md` |
 | 03A1-V | Evaluation-validity six-episode smoke | Complete; 5/6 diagnostic, evaluator mismatch isolated | `harness/build/phase-03a1-evaluation-validity-smoke.md` |
 | 04A | Thin Agent Runtime | Complete; independently approved | `harness/build/phase-04a-thin-agent-runtime.md` |
+| 04B | Model-backed Thin Agent Runtime | Local gate approved; PR/CI/GitGuardian/merge pending | `harness/build/phase-04b-model-backed-runtime.md` |
 | 03B | Open-data SFT, gap-driven project data, and evaluation | Not started | Decided from Phase 03A1 failure slices |
 | 04 | Serving and control plane | Not started | To be prepared after Phase 03 |
 | 05 | Durable agent loop | Not started | To be prepared after Phase 04 |
@@ -96,10 +97,14 @@ Case store interface, typed Fast/Slow routing, deterministic policy,
 version-bound approvals, at-most-once fictional-Provider execution, Evidence,
 completion verification, and one multi-turn integration path.
 
-No implementation phase is active after Phase 04A. Phase 03B, training,
-PostgreSQL, Temporal, real tools or Providers, authentication, channels,
-voice, UI, deployment, and release remain inactive and require a new explicit
-gate.
+Phase 04B Model-backed Thin Agent Runtime is the single active bounded
+implementation phase. It adds one runtime-owned OpenAI-compatible typed
+Fast/Slow adapter, mocked-transport failure gates, explicit opt-in model mode,
+a local server command, and a localhost HTTP black-box smoke while retaining
+the fictional Provider and deterministic authority boundaries. A real model
+smoke is optional/manual and is not authorized. Phase 03A1 continuation,
+r6/r7, Phase 03B, training, PostgreSQL, Temporal, real tools or Providers,
+authentication, channels, voice, UI, deployment, and release remain inactive.
 
 Phase 04A recorded the offer-compliance result that had previously been an
 open recommendation: one authoritative shared policy now consumes the same
