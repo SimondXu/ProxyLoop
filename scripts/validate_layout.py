@@ -20,6 +20,8 @@ REQUIRED_PATHS = (
     ".codex/agents/explorer.toml",
     ".github/pull_request_template.md",
     "harness/README.md",
+    "harness/status.toml",
+    "harness/log/README.md",
     "harness/build/phase-00b-contracts.md",
     "harness/build/phase-01a-provider-simulator.md",
     "harness/build/phase-01b-simulator-benchmark.md",
@@ -132,15 +134,21 @@ EXPECTED_AGENT_SETTINGS = {
     "explorer.toml": ("gpt-5.6-luna", "medium", "read-only"),
 }
 
+MAX_PROJECT_AGENTS_BYTES = 12_000
+MIN_AGENT_CONCURRENCY = 4
+MAX_AGENT_CONCURRENCY = 8
+
 REQUIRED_ROUTING_MARKERS = {
     "AGENTS.md": (
-        "## Context and Evidence Routing",
+        "## Adaptive Delegation",
+        "## Skill Routing",
         'fork_turns="none"',
-        "Reuse an existing subagent",
+        "safety ceiling",
     ),
     "PROMPTS.md": (
-        "## Delegate Bounded Exploration",
-        "complete build-log history",
+        "## Decide Delegation",
+        "## Delegate Exploration",
+        "ceiling, not a target",
     ),
 }
 
@@ -156,6 +164,71 @@ def read_toml(relative_path: str) -> dict[str, object]:
         return tomllib.load(config_file)
 
 
+def validate_harness_status(
+    status: dict[str, object], *, root: Path = ROOT
+) -> str | None:
+    """Return a validation error for the canonical Harness status, if any."""
+    schema_version = status.get("schema_version")
+    if (
+        not isinstance(schema_version, int)
+        or isinstance(schema_version, bool)
+        or schema_version != 1
+    ):
+        return "harness/status.toml must use schema_version = 1."
+
+    phase_state = status.get("product_phase_state")
+    if phase_state not in {
+        "idle",
+        "prepared",
+        "in_progress",
+        "blocked",
+        "at_review",
+        "complete",
+    }:
+        return "harness/status.toml has an invalid product_phase_state."
+
+    active_phase = status.get("active_product_phase")
+    active_contract = status.get("active_contract")
+    next_phase_authorized = status.get("next_phase_authorized")
+    if not isinstance(active_phase, str) or not isinstance(active_contract, str):
+        return "harness/status.toml active phase and contract must be strings."
+    if not isinstance(next_phase_authorized, bool):
+        return "harness/status.toml next_phase_authorized must be a boolean."
+
+    if phase_state == "idle":
+        if active_phase or active_contract or next_phase_authorized:
+            return (
+                "An idle harness status cannot activate a phase, contract, "
+                "or next phase."
+            )
+        return None
+
+    if not active_phase.strip():
+        return "A non-idle harness status must name active_product_phase."
+    if not active_contract.strip():
+        return "A non-idle harness status must name active_contract."
+
+    contract_path = Path(active_contract)
+    if (
+        contract_path.is_absolute()
+        or contract_path.parts[:2] != ("harness", "build")
+        or contract_path.suffix != ".md"
+        or ".." in contract_path.parts
+    ):
+        return "active_contract must be a Markdown file under harness/build/."
+    contract_candidate = root / contract_path
+    try:
+        resolved_contract = contract_candidate.resolve(strict=True)
+        resolved_build_root = (root / "harness/build").resolve(strict=True)
+    except OSError:
+        return f"active_contract does not exist: {active_contract}."
+    if not resolved_contract.is_relative_to(resolved_build_root):
+        return "active_contract must resolve within harness/build/."
+    if not resolved_contract.is_file():
+        return f"active_contract is not a file: {active_contract}."
+    return None
+
+
 def main() -> int:
     missing = [path for path in REQUIRED_PATHS if not (ROOT / path).exists()]
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -165,6 +238,14 @@ def main() -> int:
         return 1
     if not readme.startswith("# ProxyLoop\n"):
         print("README.md must identify the project as ProxyLoop.")
+        return 1
+
+    agents_document = (ROOT / "AGENTS.md").read_bytes()
+    if len(agents_document) > MAX_PROJECT_AGENTS_BYTES:
+        print(
+            "AGENTS.md must keep durable instructions under "
+            f"{MAX_PROJECT_AGENTS_BYTES} bytes; found {len(agents_document)}."
+        )
         return 1
 
     for relative_path, markers in REQUIRED_ROUTING_MARKERS.items():
@@ -186,8 +267,21 @@ def main() -> int:
     if not isinstance(agents_config, dict):
         print(".codex/config.toml must define an [agents] table.")
         return 1
-    if agents_config.get("max_concurrent_threads_per_session") != 3:
-        print("Codex subagent concurrency must remain bounded at three.")
+    concurrency = agents_config.get("max_concurrent_threads_per_session")
+    if (
+        not isinstance(concurrency, int)
+        or isinstance(concurrency, bool)
+        or not MIN_AGENT_CONCURRENCY <= concurrency <= MAX_AGENT_CONCURRENCY
+    ):
+        print(
+            "Codex subagent concurrency must be a safety ceiling between "
+            f"{MIN_AGENT_CONCURRENCY} and {MAX_AGENT_CONCURRENCY}."
+        )
+        return 1
+
+    status_error = validate_harness_status(read_toml("harness/status.toml"))
+    if status_error:
+        print(status_error)
         return 1
 
     for filename in AGENT_CONFIGS:
@@ -208,6 +302,13 @@ def main() -> int:
             return 1
 
         agent = read_toml(f".codex/agents/{filename}")
+        if agent.get("name") != role_name:
+            print(f"{filename} must declare name = {role_name!r}.")
+            return 1
+        agent_description = agent.get("description")
+        if not isinstance(agent_description, str) or not agent_description.strip():
+            print(f"{filename} is missing required field: description")
+            return 1
         instructions = agent.get("developer_instructions")
         if not isinstance(instructions, str) or not instructions.strip():
             print(f"{filename} is missing required field: developer_instructions")

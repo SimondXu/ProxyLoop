@@ -10,14 +10,11 @@ def document(relative_path: str) -> str:
 
 
 def test_hosted_rerun_is_closed_and_training_stays_inactive() -> None:
-    agents = document("AGENTS.md")
     plans = document("PLANS.md")
     contract = document("harness/build/phase-03a1-hosted-rerun.md")
 
-    assert "Phase 03A1-R hosted baseline reliability rerun completed" in agents
-    assert "No implementation phase is active" in agents
     assert "| 03A1-R |" in plans and "Complete; corrected full matrix" in plans
-    assert "| 03B |" in plans and "Not started" in plans
+    assert "| 03B |" in plans and "NO_GO_STOP_PHASE03B" in plans
     assert "**Status**: Complete with the corrected full hosted matrix" in contract
     assert "`phase_completion_ready=true`" in contract
     assert "No SFT, QLoRA, DPO, RL" in contract

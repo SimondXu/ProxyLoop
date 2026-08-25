@@ -34,10 +34,10 @@ Use one branch for one phase, feature, fix, documentation change, or experiment.
 
 1. Update local `main` without rewriting local work.
 2. Create a descriptive branch from `main`.
-3. Read `AGENTS.md`, `GOALS.md`, `CONTEXT.md`, `PLANS.md`, and the active `harness/build/phase-*.md` file.
+3. Read `harness/status.toml`, the active phase contract when one exists, and only the goal, domain, plan, source, and test documents relevant to the bounded change.
 4. Make the smallest change that satisfies the approved scope.
 5. Run focused checks while developing.
-6. Run the repository preflight before commit:
+6. Run the repository preflight once the bounded diff is stable and before commit:
 
    ```bash
    make preflight

@@ -8,7 +8,7 @@ The design separates a project-owned Fast Response Model candidate from a hosted
 
 ## Current status
 
-Phase 00A through Phase 03A1-V are complete. Phase 03A1-R/V was squash merged through PR #11 as `e501e0f`, with the CI phase-gate and GitGuardian checks passed. The corrected r4 hosted matrix completed through 29qg with auditable usage. A six-episode r5 validity smoke using the same Qwen/Terra path improved the selected baseline from 0/6 to 5/6 after model-view and prompt-contract parity; its remaining failure isolated a hidden twelve-month-cost evaluator predicate. This is diagnostic evidence, not a training-quality claim. Phase 04A Thin Agent Runtime is complete and independently approved. Phase 04B Model-backed Thin Agent Runtime was squash merged through PR #13 as `6daa1bc`: one runtime-owned OpenAI-compatible typed adapter, mocked transport, fail-closed model errors, explicit opt-in configuration, and a localhost server while retaining deterministic authority boundaries. Phase 03B is complete and squash merged as PR #15 (`f441335` short): the one frozen training run and one canonical B evaluation are recorded, but clean Terra and Sol concluded `NO_GO_STOP_PHASE03B` from the combined Arm B schema/canonical/E2E `0/6`, six invalid JSON outputs, mostly unassessable apparent safety zeros, unsupported `4/6`, and `arm_b_hard_gates_pass=false`; that boolean is only a necessary detector-based safety summary, not sufficient for Go, evaluability, task quality, or promotion. The bounded local Web demo was squash merged through PR #18 as `ef2ce53`; its post-merge Repository checks passed and its fully merged short-lived branch was safely removed locally and remotely. The preserved legacy UI worktree/branch remains local-only. Its current scope is one Runtime-backed fictional telecom conversation, not a production UI or Pine clone claim. The Local Conversation Intake UX was independently approved and squash merged through PR #20 as `02466df`; post-merge Repository checks passed and its fully merged short-lived branch was removed locally and remotely. It adds four explicit fictional facts and exact Runtime-snapshot verification without activating production UI. No implementation phase is active after this closeout. PostgreSQL, Temporal, real tools or Providers, channels, voice, deployment, and release remain inactive.
+No product, evaluation, training, deployment, or release phase is active. The Local Conversation Intake UX is integrated, Phase 03B remains a final `NO_GO_STOP_PHASE03B`, and no additional training, data expansion, rerun, or promotion is authorized. See [`harness/status.toml`](harness/status.toml) for current authorization boundaries and [`PLANS.md`](PLANS.md) for phase and integration history.
 
 ## Start here
 
@@ -24,7 +24,8 @@ Phase 00A through Phase 03A1-V are complete. Phase 03A1-R/V was squash merged th
 - [Development goals](GOALS.md)
 - [Execution plan](PLANS.md)
 - [Domain language](CONTEXT.md)
-- [Development harness](harness/README.md)
+- [Current Harness state](harness/status.toml)
+- [Development Harness](harness/README.md)
 - [Completed Phase 00B contract](harness/build/phase-00b-contracts.md)
 - [Completed Phase 01A simulator contract](harness/build/phase-01a-provider-simulator.md)
 - [Completed Phase 01B simulator benchmark contract](harness/build/phase-01b-simulator-benchmark.md)
@@ -73,10 +74,11 @@ infra/       Local infrastructure configuration and migrations
 tests/       Contract, integration, and end-to-end test lanes
 ```
 
-Run `make preflight` for the complete repository gate, or use the focused Phase 00B commands:
+Run `make preflight-fast` for a quick Harness and diff check while iterating, use the relevant focused target for changed behavior, and run `make preflight` once for the complete final repository gate:
 
 ```text
 make format          Format Python contract and verification code
+make preflight-fast  Validate Harness layout, Python syntax, and Git whitespace
 make validate        Run format, lint, type, test, drift, and layout checks
 make contracts       Regenerate committed JSON Schema and TypeScript contracts
 make contracts-check Verify generated artifacts and compile the TypeScript fixture

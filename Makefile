@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help preflight check-layout validate format format-check lint typecheck \
+.PHONY: help preflight preflight-fast check-layout validate format format-check lint typecheck \
 	unit-test test contracts contracts-check simulator benchmark benchmark-check \
 	data-pilot data-pilot-check harness harness-check baselines baselines-check \
 	errata errata-check hosted-rerun-source-check hosted-rerun-check \
@@ -29,11 +29,16 @@ ML_PYTHON_PATHS := ml/data_pipeline/src ml/evaluation/src ml/tests \
 	scripts/prepare_phase03b_experiment.py scripts/run_phase03b_smoke.py
 
 help:
-	@printf '%s\n' 'Targets: preflight, validate, format, format-check, lint, typecheck, test, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, check-layout, lock-check, runtime-server, dev'
+	@printf '%s\n' 'Targets: preflight, preflight-fast, validate, format, format-check, lint, typecheck, test, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, check-layout, lock-check, runtime-server, dev'
 
 preflight: validate lock-check
 	python3 -m compileall -q scripts
 	docker compose config --quiet
+
+preflight-fast: check-layout
+	python3 -m compileall -q scripts
+	git diff --check
+	git diff --cached --check
 
 check-layout:
 	python3 scripts/validate_layout.py

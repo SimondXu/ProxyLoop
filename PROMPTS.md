@@ -1,101 +1,100 @@
 # ProxyLoop Harness Prompts
 
-These prompts are reusable operator templates. Replace bracketed values with the active phase or owned slice. They do not activate a phase or expand scope. Once the user approves a bounded phase or change, root Sol follows `AGENTS.md` for delegation and routine Git integration; subagents never commit, push, review-submit, or merge.
+These are optional operator templates. They do not activate a phase, require delegation, or expand scope. Root Sol follows `AGENTS.md` and `harness/status.toml`; subagents never commit, push, review-submit, or merge.
 
-## Orient the Root Orchestrator
+## Orient Root Sol
 
 ```text
-On first orientation, after resume/compaction, or after material repository drift, read
-AGENTS.md, GOALS.md, CONTEXT.md, PLANS.md, and the active harness/build phase file.
-From harness/build-log.md read the phase-status table, current-phase/change entries, and
-newest relevant entry blocks rather than the complete history. Then read the relevant
-code/tests. Report the current phase, gate, dirty files, assumptions, and smallest next
-action. Do not edit yet.
+Read harness/status.toml first. Read the active contract only if one exists. Select GOALS,
+CONTEXT, or PLANS only when the task concerns product outcome, domain semantics, or phase
+history. Inspect dirty files and the relevant code/tests. Report current authorization,
+assumptions, risks, and the smallest next action before editing.
+```
+
+## Decide Delegation
+
+```text
+Before spawning, identify independent lanes and compare their value with coordination cost.
+Delegate only bounded work that isolates noisy context, runs independently, benefits from a
+specialized role, or provides independent review. Work directly when the task is small, tightly
+coupled, ambiguous, or concerns architecture, authorization, canonical contracts/evaluators,
+security, scope, or a phase gate. Start with the smallest useful team; the configured concurrency
+is a ceiling, not a target.
 ```
 
 ## Prepare a Phase
 
 ```text
-Prepare [phase] as an executable build contract. Trace every acceptance criterion to the
-product specification and current repository evidence. Define in-scope work, non-goals,
-dependencies, red/green/refactor steps, focused and broad verification, review evidence,
-and a stop condition. Do not implement the phase.
+Prepare [phase] as one executable contract. Trace acceptance criteria to the product
+specification and current repository evidence. Define scope, non-goals, dependencies,
+red/green steps, focused and final verification, independent review, evidence location,
+and the stop condition. Do not implement or activate the phase.
 ```
 
 ## Execute an Approved Phase
 
 ```text
-Execute only [phase] from [phase file]. Follow AGENTS.md and karpathy-guidelines.
-Start with preflight and the smallest failing check. Make the minimum implementation,
-run focused then risk-proportionate verification, update the build log with real evidence,
-and stop at the phase gate. Root Sol may complete the branch/commit/push/PR/review/merge
-workflow after the gates pass. Do not deploy or begin the next phase.
+Execute only [phase] from [phase file]. Start with the smallest failing check, implement the
+minimum compatible behavior, and use focused checks until the diff is stable. Obtain material
+independent review, batch accepted remediation, perform final Browser/manual verification when
+applicable, then run one final make preflight. Record concise evidence in one harness/log file.
+Do not deploy or begin the next phase.
+```
+
+## Delegate Exploration
+
+Use for a bounded cross-directory map, call-chain or data-lineage trace, test-impact search, artifact inventory, or noisy log analysis.
+
+```text
+Investigate exactly: [question]. Scope/non-goals: [bounds]. Known paths: [paths or unknown].
+Work read-only in a fresh bounded context. Return the explorer evidence card required by
+.codex/agents/explorer.toml. Escalate conflicts or decisions involving architecture,
+authorization, canonical contracts/evaluators, security, scope, or phase completion to Sol.
 ```
 
 ## Delegate Implementation
 
-Use when root Sol decides a bounded implementation slice materially benefits from delegation.
-The default implementer is Luna xhigh. Override it to Luna max only for complex multi-file implementation whose architecture and acceptance criteria are already frozen.
+Use after Sol freezes interfaces, behavior, ownership, acceptance criteria, and verification.
+
+Multiple implementers may run in parallel when they own independent requirements and non-overlapping files or modules. Give each writer a separate packet. Sol must assign every shared file to exactly one writer, freeze shared interfaces first, and define the integration order and final cross-slice verification.
 
 ```text
-Assign the implementer exactly this owned slice: [files/responsibility]. You are not alone
-in the repository: do not revert or overwrite other edits, and adapt to concurrent changes.
-Read the active phase contract and relevant code/tests. Use the smallest verifiable change.
-Do not touch shared architecture or contracts outside the owned slice. Do not commit or push.
-Return changed files, commands run, results, assumptions, and remaining risks.
+Own only [files/responsibility]. Preserve user and concurrent edits. Implement [frozen behavior]
+with the smallest compatible patch and run [focused checks]. Do not redesign interfaces or
+change contracts outside the owned slice. Return files changed, commands and exact results,
+assumptions, and remaining risks. Do not commit or push.
 ```
 
-## Delegate Bounded Exploration
-
-Use for an independent cross-directory map, call-chain or data-lineage trace, test-impact
-search, artifact inventory, or noisy log inspection. Prefer fresh context
-(`fork_turns="none"` when supported) and reuse the same explorer for clarification before
-repeating discovery.
+## Delegate Mechanical Work
 
 ```text
-Investigate this exact question: [question]. Work read-only. Constraints: [scope and
-non-goals]. Known paths: [paths or "unknown"]. Read only the minimal evidence set needed;
-do not reread every root document or the complete build-log history. Return the explorer
-evidence card required by .codex/agents/explorer.toml. Escalate conflicts or decisions
-about architecture, authorization, canonical contracts/evaluators, security, scope, or
-phase completion to Sol.
-```
-
-## Delegate a Narrow Mechanical Task
-
-Use when root Sol identifies a narrow mechanical slice with exact file ownership and verification.
-
-```text
-Assign fast-worker this bounded mechanical task: [task and exact paths]. Do not redesign
-interfaces, policy, authorization, or canonical contracts. You are not alone in the repository;
-do not revert other edits. Run the named focused check and report only evidence. Do not commit.
+Apply this already-specified mechanical change: [task], only in [paths]. Preserve other edits,
+do not infer new behavior, and run [exact check]. Stop on ambiguity and return concise evidence.
 ```
 
 ## Independent Review
 
 ```text
-Review the current diff against [phase file], AGENTS.md, and repository conventions.
-Use code-reviewer discipline. Prioritize correctness, authorization/completion semantics,
-contract compatibility, test gaps, and maintainability. Do not edit. Report actionable findings
-with file and line evidence; explicitly say when there are no blocking findings and identify
-verification that remains unrun. Return an Approve or Request Changes recommendation to Sol;
-do not edit, commit, push, submit a GitHub review, or merge.
+Review the stable complete diff against [contract/requirements]. Work read-only and defect-first.
+Check correctness, authorization/completion semantics, contract compatibility, adjacent same-class
+cases, security, test gaps, and scope. Return all actionable findings in one pass where practical,
+with precise file references and an Approve or Request Changes recommendation. Identify blocked,
+manual, skipped, and unrun verification. Root Sol owns the final integration decision.
 ```
 
-## Remediate Review Findings
+## Remediate Review
 
 ```text
-Evaluate each review finding against code and the active acceptance criteria. Fix accepted
-findings with the smallest compatible patch, explain rejected findings with evidence, rerun
-affected checks, and update harness/build-log.md. Do not expand phase scope.
+Evaluate all findings against primary code and acceptance criteria. Batch accepted fixes, explain
+rejected findings with evidence, and rerun only affected checks. Request re-review only for material
+semantic changes or unresolved findings. Do not expand scope or update evidence after every tiny fix.
 ```
 
-## Phase Completion Check
+## Completion Check
 
 ```text
-Audit [phase] for completion. Confirm every acceptance criterion with a file, test, or command
-result; distinguish automated, manual, blocked, and unrun checks. Confirm independent review
-and build-log evidence. If anything is missing, leave the phase incomplete. If complete, report
-the recommendation to Sol. Sol owns the final integration review and merge decision. Stop without
-starting the next phase.
+Confirm every acceptance criterion with a file, test, command, review, or explicitly manual result.
+Distinguish passed, blocked, skipped, and unrun checks. Confirm final preflight and concise change-log
+evidence. Leave the change incomplete if any required item is missing. Stop without activating the
+next phase.
 ```
