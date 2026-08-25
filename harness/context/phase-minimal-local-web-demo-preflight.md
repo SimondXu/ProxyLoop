@@ -2,9 +2,9 @@
 
 Date: 2026-08-25
 
-This file records activation, implementation, independent-review, and PR-gate
-evidence. It does not claim merge, branch cleanup, browser rerun after final
-remediation, or phase closeout.
+This file records activation, implementation, independent-review, PR-gate, and
+post-merge closeout evidence. It does not claim a browser rerun after final
+remediation.
 
 ## Boundaries observed
 
@@ -128,7 +128,7 @@ Terra's second rereview found no P0, P1, or P2 findings across six cumulative
 remediations and returned `APPROVE_PHASE_GATE`. Browser smoke was not rerun
 after the final remediation; the earlier complete journey/browser/mobile smoke
 remains the recorded browser evidence. PR #18 passed CI/GitGuardian and Sol
-approved it for squash merge; merge and phase closeout remain pending.
+approved it for squash merge.
 
 ## Final PR gate
 
@@ -136,4 +136,13 @@ PR #18 (`https://github.com/SimondXu/ProxyLoop/pull/18`) passed its fresh-instal
 phase gate in `2m29s`; GitGuardian Security Checks passed; head commit was
 `9aa8869`. Sol reviewed the PR file scope, local final preflight, Terra's
 `APPROVE_PHASE_GATE`, browser evidence, and PR checks, then decided
-`APPROVE_FOR_SQUASH_MERGE`. Merge and branch cleanup have not occurred.
+`APPROVE_FOR_SQUASH_MERGE`.
+
+## Post-merge closeout
+
+PR #18 was squash merged as `ef2ce53`. The post-merge
+`main@ef2ce53` Repository checks passed in the recorded `2m27s`. The fully
+merged `feat/minimal-local-web-demo` branch was safely removed locally and
+remotely. The legacy UI worktree/branch remains local-only and preserved at
+`b8d7ee5`, including its three untracked planning scratch files. No
+implementation phase is active after this closeout.

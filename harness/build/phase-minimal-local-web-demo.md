@@ -1,8 +1,9 @@
 # Minimal local Web demo
 
-**Status**: Local implementation and independent review complete on
-`feat/minimal-local-web-demo`. PR #18 passed CI/GitGuardian and Sol approved it
-for squash merge.
+**Status**: Complete; squash merged through PR #18 as `ef2ce53`. Post-merge
+Repository checks passed, the fully merged short-lived branch was safely
+removed locally and remotely, and the legacy local-only UI worktree/branch
+remains preserved. No implementation phase is active after this closeout.
 
 ## Objective
 
