@@ -1,9 +1,10 @@
 # Phase 04B — Model-backed Thin Agent Runtime
 
-**Status**: Local implementation gate complete and independently approved;
-PR/CI/GitGuardian/squash-merge integration pending. Explicitly approved on
-2026-08-25 from synchronized `main` at `75974da` on
-`feat/phase-04b-model-backed-runtime`.
+**Status**: Complete. Independently approved, passed CI/GitGuardian on both PR
+heads, and squash merged through PR #13 as `6daa1bc`. The merged `main` passed
+the complete post-merge preflight and push CI; the fully merged short branch
+was safely cleaned. Explicitly approved on 2026-08-25 from synchronized `main`
+at `75974da`.
 
 ## Objective
 
@@ -147,8 +148,12 @@ for routing, authorization, side effects, business truth, and completion.
   `ml/`, `data/evaluation/`, and historical Phase 03A1 artifacts have no diff.
 - Durable independent review:
   `harness/code_review/phase-04b-model-backed-runtime.md`.
-- PR #13 initial head `bfe9915` passed the hosted `phase-gate` and GitGuardian
-  checks. Sol reviewed the complete 29-file PR diff and approved squash merge
-  subject to this evidence-only commit passing the same hosted checks again.
+- PR #13 initial head `bfe9915` and evidence-only head `0f65238` passed the
+  hosted `phase-gate` and GitGuardian checks. Sol reviewed the complete 29-file
+  PR diff and approved squash merge.
+- PR #13 was squash merged as `6daa1bc`. The merged `main` passed the complete
+  Runtime 184 / ML 115 preflight and its push CI. Local and remote
+  `feat/phase-04b-model-backed-runtime` branches were deleted only after tree
+  equivalence, clean-worktree, pushed-head, and merged-PR checks passed.
 - No implementation phase is active after Phase 04B. No next phase is
   activated by this closeout.

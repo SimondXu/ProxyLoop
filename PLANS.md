@@ -2,7 +2,9 @@
 
 This is the harness-level phase index. Detailed product requirements live in the specification, and executable acceptance criteria live in the selected `harness/build/phase-*.md` file.
 
-Phase 04A was a separately gated early thin-runtime slice. Its completion does not mean that the broader Phase 04 serving and control-plane phase has started; Phase 04 remains inactive until a new explicit gate.
+Phase 04A and Phase 04B were separately gated early thin-runtime slices. Their
+completion does not mean that the broader Phase 04 serving and control-plane
+phase has started; Phase 04 remains inactive until a new explicit gate.
 
 ## Status
 
@@ -20,8 +22,8 @@ Phase 04A was a separately gated early thin-runtime slice. Its completion does n
 | 03A1-R | Hosted baseline reliability rerun | Complete; corrected full matrix; r4 ready | `harness/build/phase-03a1-hosted-rerun.md` |
 | 03A1-V | Evaluation-validity six-episode smoke | Complete; 5/6 diagnostic, evaluator mismatch isolated | `harness/build/phase-03a1-evaluation-validity-smoke.md` |
 | 04A | Thin Agent Runtime | Complete; independently approved | `harness/build/phase-04a-thin-agent-runtime.md` |
-| 04B | Model-backed Thin Agent Runtime | Integration-ready; independent review and initial PR #13 gates passed | `harness/build/phase-04b-model-backed-runtime.md` |
-| 03B | Open-data SFT, gap-driven project data, and evaluation | Not started | Decided from Phase 03A1 failure slices |
+| 04B | Model-backed Thin Agent Runtime | Complete; squash merged as `6daa1bc` through PR #13 | `harness/build/phase-04b-model-backed-runtime.md` |
+| 03B | Open-data SFT, gap-driven project data, and evaluation | Proposed readiness plan; not activated; Decided from Phase 03A1 failure slices | `docs/planning/phase-03b-qwen-qlora-experiment.md` |
 | 04 | Serving and control plane | Not started | To be prepared after Phase 03 |
 | 05 | Durable agent loop | Not started | To be prepared after Phase 04 |
 | 06 | Controlled channels and UI | Not started | To be prepared after Phase 05 |
@@ -99,15 +101,23 @@ Case store interface, typed Fast/Slow routing, deterministic policy,
 version-bound approvals, at-most-once fictional-Provider execution, Evidence,
 completion verification, and one multi-turn integration path.
 
-Phase 04B Model-backed Thin Agent Runtime implementation and independent review
-are complete. It adds one runtime-owned OpenAI-compatible typed
+Phase 04B Model-backed Thin Agent Runtime is complete and squash merged through
+PR #13 as `6daa1bc`. It adds one runtime-owned OpenAI-compatible typed
 Fast/Slow adapter, mocked-transport failure gates, explicit opt-in model mode,
 a local server command, and a localhost HTTP black-box smoke while retaining
 the fictional Provider and deterministic authority boundaries. A real model
 smoke is optional/manual and is not authorized. No implementation phase is
-active after Phase 04B. Phase 03A1 continuation,
-r6/r7, Phase 03B, training, PostgreSQL, Temporal, real tools or Providers,
-authentication, channels, voice, UI, deployment, and release remain inactive.
+active after Phase 04B.
+
+The proposed Phase 03B plan commits the project direction to one controlled
+Qwen3-4B QLoRA smoke and a same-model untuned-versus-tuned comparison after
+data readiness passes. It does not activate the phase. The readiness gate
+decides whether the existing data are valid enough to train; the smoke gate
+decides whether to expand data/training; the final held-out gate decides
+whether a tuned model is promoted. Phase 03A1 continuation, r6/r7, training,
+data expansion, model downloads/calls, PostgreSQL, Temporal, real tools or
+Providers, authentication, channels, voice, UI, deployment, and release remain
+inactive until separately approved.
 
 Phase 04A recorded the offer-compliance result that had previously been an
 open recommendation: one authoritative shared policy now consumes the same

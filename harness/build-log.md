@@ -825,3 +825,52 @@ This file is append-only execution evidence. Record only commands actually run a
 - No external model/API call occurred, no credential or `.env` was read, and
   `ml/`, `data/evaluation/`, `data/manifests/`, and historical Phase 03A1
   artifacts remain unchanged. No next phase is active.
+
+### 2026-08-25 — Phase 04B merge and synchronized-main closeout
+
+- Evidence-only PR head `0f65238` passed GitGuardian Security Checks in eight
+  seconds and the repository `phase-gate` in 1 minute 26 seconds.
+- PR #13 was squash merged to `main` as `6daa1bc`. Sol fetched the merged head,
+  confirmed the short-branch tree was identical to `origin/main`, and
+  fast-forwarded local `main` without rewriting history.
+- Post-merge `make preflight` on synchronized `main` passed with Runtime 184
+  tests and ML 115 tests plus every repository-native format, lint, strict
+  mypy, contract/type drift, Phase 01B/02/03A1 artifact, layout, lock, frozen
+  offline pnpm, compile, Compose, and diff gate.
+- The GitHub `Repository checks` push run for `main@6daa1bc` completed
+  successfully. The local and remote
+  `feat/phase-04b-model-backed-runtime` branches were safely deleted only after
+  merge, clean-worktree, pushed-head, no-unique-work, and tree-equivalence
+  checks. The pre-existing Phase 03A1 stash remained untouched.
+- Phase 04B is complete. No implementation phase is active, and this closeout
+  does not authorize Phase 03B, training, data expansion, a real-model smoke,
+  PostgreSQL, Temporal, real tools/Providers, channels, voice, UI, deployment,
+  or release.
+
+### 2026-08-25 — Architecture documentation and Phase 03B experiment handoff
+
+- Human scope: update the completed Phase 04B documentation, reconcile the
+  previously discussed Agent architecture document, and prepare a compact
+  Phase 03B fine-tuning handoff for a fresh session. This was docs-only and did
+  not activate Phase 03B.
+- The existing `docs/agent-architecture-alignment` branch was brought forward
+  to `main@6daa1bc` without rebasing or rewriting its published history. The
+  architecture now distinguishes implemented Runtime/ML surfaces from target
+  services and records the concrete Phase 04B OpenAI-compatible adapter rather
+  than claiming a generic model gateway exists.
+- The proposed Phase 03B plan commits the experiment direction to a bounded
+  Qwen3-4B QLoRA smoke and same-model untuned-versus-tuned comparison after
+  readiness passes. It keeps human review, evaluation validity, held-out
+  isolation, safety gates, power analysis, expansion, and model promotion as
+  explicit sequential decisions.
+- The first `make preflight` was not a pass: Runtime reached one failing
+  Phase 03A0 documentation-contract test because the Phase 03B plan row no
+  longer contained the required phrase `Decided from Phase 03A1 failure
+  slices`. The phrase was restored without changing the test or phase meaning.
+- The corrected complete `make preflight` passed with Runtime 184 tests and ML
+  115 tests plus every repository-native format, lint, strict mypy,
+  contract/type drift, Phase 01B/02/03A1 artifact, layout, lock, frozen offline
+  pnpm, compile, Compose, and diff gate.
+- No product code, test, contract, dataset, ML artifact, `.env`, credential,
+  model, Provider, training, or external service was changed or invoked. No
+  implementation phase is active.

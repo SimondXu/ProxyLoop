@@ -46,9 +46,9 @@ flowchart TD
 
 The diagram is a target shape, not an inventory of implemented services. Repository status is:
 
-- **Implemented**: canonical contracts, the fictional Provider simulator, deterministic `agent_core` routing and policy boundaries, and a local simulator-backed FastAPI Case loop with in-memory state.
+- **Implemented**: canonical contracts, the fictional Provider simulator, deterministic `agent_core` routing and policy boundaries, a local simulator-backed FastAPI Case loop with in-memory state, and one explicitly configured runtime-owned OpenAI-compatible Fast/Slow adapter.
 - **Research-only, not product-runtime serving**: the Phase 02 Data Factory pilot and Phase 03A1 evaluation/baseline runners and artifacts.
-- **Target**: `apps/web`, PostgreSQL, Temporal workflow workers, a model gateway, external connectors, voice, and promoted-model serving.
+- **Target**: `apps/web`, PostgreSQL, Temporal workflow workers, external connectors, voice, and promoted-model serving. A separate model-gateway service is introduced only if deployment or a second runtime consumer proves that boundary necessary.
 - **Deferred and inactive**: training, durable cross-process work, real Providers or tools, authentication, channels, UI, deployment, and release until separately gated.
 
 The current research runtime bypasses PostgreSQL, Temporal, Gmail, MCP, and LiveKit. It uses an in-memory event log, immutable Case snapshots, synchronous local model-adapter calls, and one serialized Case write/side-effect lane. The Fast/Slow contracts preserve a later bounded concurrent path without claiming concurrent or durable execution today.
@@ -75,10 +75,10 @@ The current research runtime bypasses PostgreSQL, Temporal, Gmail, MCP, and Live
 
 ### Agent Intelligence
 
-- Target `runtime/services/model_gateway`: separate provider-neutral Fast and Slow model interfaces. The models never call one another or mutate Case state.
 - Current `runtime/packages/agent_core`: model-decision coordination, Case-context projections, deterministic Router, Safe Observation Adapter, policy and capability gates, strategy validation, stale-result handling, fact-update validation, and completion-candidate validation.
+- Current `runtime/packages/openai_adapter`: one concrete OpenAI-compatible Structured Outputs implementation of the existing typed Fast and Slow protocols. It compiles semantic model output against trusted pins and remains proposal-only; it is not a provider registry or generic gateway.
 - Current `runtime/services/api.ThinAgentRuntime`: owns the complete local application loop around `agent_core`. Extract a transport-neutral application-runtime seam only when a second transport or durable worker needs to reuse that loop; moving it now would add a boundary without a second consumer.
-- PydanticAI may implement typed hosted-model calls, but it does not own workflow durability, authorization, or business state.
+- A later deployment may extract model serving behind a process boundary, but it must preserve the same typed protocols. No model SDK or serving process owns workflow durability, authorization, side effects, Evidence, or business state.
 
 ### Provider and Channel Layer
 
@@ -90,9 +90,9 @@ The current research runtime bypasses PostgreSQL, Temporal, Gmail, MCP, and Live
 ### ML and Data Layer
 
 - `ml/data_pipeline`: ingestion, normalization, synthetic rollout generation, quality filters, lineage, leakage detection, and split manifests.
-- `ml/training`: base-model experiments, QLoRA/SFT, loss configuration, checkpoints, and reproducibility metadata.
+- Target `ml/training`: base-model experiments, QLoRA/SFT, loss configuration, checkpoints, and reproducibility metadata. Training has not started.
 - `ml/evaluation`: policy-field, end-to-end, safety, cost, latency, and statistical evaluation.
-- `ml/serving`: vLLM deployment configuration for the promoted Linux/CUDA path. Apple-local serving remains a development adapter behind the same gateway contract.
+- Target `ml/serving`: vLLM deployment configuration for a promoted Linux/CUDA path. Apple-local inference remains a development path behind the typed Fast protocol.
 - Large datasets, audio, and checkpoints live in object storage; Git stores schemas, manifests, small fixtures, and reports.
 
 Phase 02 implements the first narrow Data Factory seam as a separate CPU-only `ml/` project. It consumes Phase 01B Safe Observation and Provider-environment interfaces through local path dependencies, exports only small drift-checked metadata artifacts, and cannot be imported by runtime packages or services. Its initial 128-record one-turn scripted pilot validates reproducibility and curation gates; it is explicitly not a training-ready corpus or a learned-model result.
