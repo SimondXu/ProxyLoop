@@ -23,6 +23,12 @@ from proxyloop_contracts import (
     ProviderOffer,
 )
 
+from .offer_policy import (
+    OfferComplianceContext,
+    OfferComplianceTerms,
+    offer_compliance_violations,
+)
+
 
 class ApprovalUseError(ValueError):
     """An approval cannot authorize the requested execution."""
@@ -223,26 +229,34 @@ def verify_completion(request: CompletionVerification) -> CompletionDecision:
     if bill_snapshot is None:
         reject("missing_bill_snapshot")
     else:
-        if request.offer.monthly_price.currency != bill_snapshot.monthly_total.currency:
-            reject("currency_mismatch")
-        if (
-            request.offer.monthly_price.amount_minor
-            >= bill_snapshot.monthly_total.amount_minor
-        ):
-            reject("recurring_price_not_reduced")
-
-    target = request.case.goal.target_monthly_total
-    if target is not None and (
-        request.offer.monthly_price.currency != target.currency
-        or request.offer.monthly_price.amount_minor > target.amount_minor
-    ):
-        reject("target_monthly_total_not_met")
-    if not set(request.case.goal.required_features) <= set(request.offer.features):
-        reject("required_feature_missing")
-    if set(request.case.goal.forbidden_changes) & set(
-        request.confirmation.applied_changes
-    ):
-        reject("forbidden_change_applied")
+        target = request.case.goal.target_monthly_total
+        policy_context = OfferComplianceContext(
+            evaluated_at=request.evaluated_at,
+            current_monthly_minor=bill_snapshot.monthly_total.amount_minor,
+            currency=bill_snapshot.monthly_total.currency,
+            target_monthly_minor=target.amount_minor if target is not None else None,
+            target_currency=target.currency if target is not None else None,
+            required_features=tuple(
+                str(value) for value in request.case.goal.required_features
+            ),
+            forbidden_changes=tuple(
+                str(value) for value in request.case.goal.forbidden_changes
+            ),
+        )
+        policy_terms = OfferComplianceTerms(
+            monthly_price_minor=request.offer.monthly_price.amount_minor,
+            total_cost_12_months_minor=request.offer.total_cost.amount_minor,
+            currency=request.offer.monthly_price.currency,
+            fees_minor=sum(item.amount.amount_minor for item in request.offer.fees),
+            features=tuple(str(value) for value in request.offer.features),
+            applied_changes=request.confirmation.applied_changes,
+            expires_at=request.offer.expires_at,
+        )
+        policy_reason_map = {
+            "forbidden_change_present": "forbidden_change_applied",
+        }
+        for violation in offer_compliance_violations(policy_context, policy_terms):
+            reject(policy_reason_map.get(violation, violation))
 
     expected_offer_ref = OfferReference(
         offer_id=request.offer.offer_id,

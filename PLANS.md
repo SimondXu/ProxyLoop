@@ -17,6 +17,7 @@ This is the harness-level phase index. Detailed product requirements live in the
 | 03A1-E | Evaluation erratum and leakage-safe second run | Complete; terminal Provider blocker; PR #10 gates passed | `harness/build/phase-03a1-evaluation-erratum.md` |
 | 03A1-R | Hosted baseline reliability rerun | Complete; corrected full matrix; r4 ready | `harness/build/phase-03a1-hosted-rerun.md` |
 | 03A1-V | Evaluation-validity six-episode smoke | Complete; 5/6 diagnostic, evaluator mismatch isolated | `harness/build/phase-03a1-evaluation-validity-smoke.md` |
+| 04A | Thin Agent Runtime | Complete; independently approved | `harness/build/phase-04a-thin-agent-runtime.md` |
 | 03B | Open-data SFT, gap-driven project data, and evaluation | Not started | Decided from Phase 03A1 failure slices |
 | 04 | Serving and control plane | Not started | To be prepared after Phase 03 |
 | 05 | Durable agent loop | Not started | To be prepared after Phase 04 |
@@ -85,17 +86,23 @@ model-quality or training-readiness decision. Phase 03A1-V then isolated the
 discovered model/oracle input mismatch and structured-output ambiguities on six
 representative episodes: the same model path improved from 0/6 to 5/6 after
 prompt/input parity, while the remaining fee case depends on a twelve-month
-cost predicate absent from the visible goal. No implementation phase is active.
-Phase 03B, teacher-backed expansion, serving, product Agent, channels, and UI
-require a new explicit gate.
+cost predicate absent from the visible goal. Phase 03A1-R/V was then squash
+merged through PR #11 as `e501e0f`; its CI phase-gate and GitGuardian checks
+passed.
 
-Recommended next decision, not an active phase:
+Phase 04A Thin Agent Runtime is complete and independently approved. Its
+bounded scope was a local FastAPI, simulator-backed loop with an in-memory
+Case store interface, typed Fast/Slow routing, deterministic policy,
+version-bound approvals, at-most-once fictional-Provider execution, Evidence,
+completion verification, and one multi-turn integration path.
 
-1. Define one authoritative offer-compliance rule for recurring price, fees,
-   twelve-month total, required features, and forbidden changes.
-2. Project the same public compliance inputs into the model and scripted-oracle
-   views; keep authorization and completion deterministic.
-3. Add adversarial contract tests proving model, oracle, and Provider verifier
-   cannot disagree because of hidden predicates.
-4. Rerun the 32-episode medium condition only. Run high reasoning or activate
-   Phase 03B only if the corrected medium evidence shows a genuine model gap.
+No implementation phase is active after Phase 04A. Phase 03B, training,
+PostgreSQL, Temporal, real tools or Providers, authentication, channels,
+voice, UI, deployment, and release remain inactive and require a new explicit
+gate.
+
+Phase 04A recorded the offer-compliance result that had previously been an
+open recommendation: one authoritative shared policy now consumes the same
+explicit public inputs for Provider verification and the scripted oracle,
+with shared fixtures and parity/adversarial tests. This result is complete
+and does not authorize another evaluation run or a new implementation phase.

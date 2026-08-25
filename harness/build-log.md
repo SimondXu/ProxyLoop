@@ -675,3 +675,53 @@ This file is append-only execution evidence. Record only commands actually run a
 - This closeout does not assert PR, CI, GitGuardian, commit, push, or merge
   completion. Training, PostgreSQL, Temporal, real tools/Providers,
   deployment, and UI remain inactive.
+
+### 2026-08-24 — Phase 04A implementation gates and independent re-review pending
+
+- Luna's runtime-focused implementation report records 10 Phase 04A tests
+  passed, API Ruff and mypy passed, and `make preflight` with Runtime 162 and
+  ML 115 tests passed.
+- Luna's policy-focused report records 86 relevant tests passed, mypy over 21
+  files and Ruff passed, benchmark/hosted-rerun/validity-smoke checks passed,
+  and `ml/uv.lock` byte-identical to `HEAD`.
+- Sol's focused integration run records 24 combined tests passed.
+- Sol's final `make preflight` records Runtime 162 and ML 115 tests passed,
+  with contracts, artifacts, layout, locks, frozen offline pnpm, and Compose
+  checks passed.
+- Sol's `git diff --check` passed. The canonical r4 SHA-256 remains
+  `d051a830e05ee193da9118978fc32d7eacae582b6422b4e01c65ed0af9e40827`; the
+  canonical r5 SHA-256 remains
+  `2fec386cdc962c2a612a0d8eabe43ee8f3e2f038f2da1a52ac87c9a40b602107`. No
+  `ml/` or historical artifact diff was observed.
+- Terra's first independent review returned Request Changes with two Critical,
+  four Important, and one Minor finding. Remediation is reported complete;
+  final independent re-review is still pending. No final Terra approval
+  artifact is recorded here.
+- Phase 04A remains the single active phase. These are implementation-gate
+  results only; Phase 04A is not marked complete and no subsequent phase is
+  activated. Training, further evaluation, PostgreSQL, Temporal, real tools
+  or Providers, deployment, channels, voice, and UI remain inactive.
+
+### 2026-08-24 — Phase 04A final independent review and closeout
+
+- Terra's first independent review returned Request Changes with two Critical,
+  four Important, and one Minor finding. The implementation remediation was
+  completed before the second review.
+- Terra's second independent read-only review returned **Approve**. The
+  focused second-review run passed 67 tests and included an additional
+  execution-claim CAS injection check at the Case version boundary.
+- Terra confirmed the final repository evidence: `make preflight` passed with
+  Runtime 162 and ML 115 tests; contracts, artifacts, layout, locks, frozen
+  offline pnpm, and Compose checks passed.
+- Canonical r4 SHA-256 remains
+  `d051a830e05ee193da9118978fc32d7eacae582b6422b4e01c65ed0af9e40827`; the
+  canonical r5 SHA-256 remains
+  `2fec386cdc962c2a612a0d8eabe43ee8f3e2f038f2da1a52ac87c9a40b602107`. No
+  `ml/` or historical Phase 03A1 artifact diff was observed.
+- Durable review: `harness/code_review/phase-04a-thin-agent-runtime.md`.
+- The review was read-only: no model/API call, credential read, Git
+  publication, deployment, or external service action occurred.
+- Phase 04A is complete and independently approved. No implementation phase
+  is active after it; Phase 03B, training, PostgreSQL, Temporal, real tools or
+  Providers, deployment, channels, voice, UI, and release remain inactive and
+  require a new explicit gate.

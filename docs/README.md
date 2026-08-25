@@ -27,4 +27,10 @@
 - [Phase 03A1 evaluation-validity smoke](../harness/build/phase-03a1-evaluation-validity-smoke.md)
 - [Append-only build and verification log](../harness/build-log.md)
 
+## Phase 04A gate
+
+- [Phase 04A Thin Agent Runtime contract](../harness/build/phase-04a-thin-agent-runtime.md)
+- [Phase 04A activation preflight](../harness/context/phase-04a-preflight.md)
+- [Phase 04A independent review](../harness/code_review/phase-04a-thin-agent-runtime.md)
+
 The telecom specification is the v1 scope. `ProxyLoop` is the platform name, not a claim that telecom, auto negotiation, or other future verticals are already implemented.

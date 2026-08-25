@@ -150,6 +150,13 @@ class BenchmarkScenario:
 CASE_OBSERVED_AT = datetime(2026, 8, 23, 12, 0, tzinfo=UTC)
 APPROVAL_EXPIRES_AT = CASE_OBSERVED_AT + timedelta(minutes=30)
 
+# Shared public Phase 01A/01B fixture inputs for the offer-compliance seam.
+CASE_CURRENT_MONTHLY_TOTAL_MINOR = 9_200
+CASE_TARGET_MONTHLY_TOTAL_MINOR = 7_500
+CASE_CURRENCY = "USD"
+CASE_REQUIRED_FEATURES = ("mobile_hotspot",)
+CASE_FORBIDDEN_CHANGES = ("device_financing_change",)
+
 
 SCENARIO_FAMILIES: tuple[ScenarioFamily, ...] = (
     ScenarioFamily(
@@ -505,6 +512,11 @@ CONFIGURATIONS = PROVIDER_CONFIGURATIONS
 __all__ = [
     "APPROVAL_EXPIRES_AT",
     "BENCHMARK_SCENARIOS",
+    "CASE_CURRENCY",
+    "CASE_CURRENT_MONTHLY_TOTAL_MINOR",
+    "CASE_FORBIDDEN_CHANGES",
+    "CASE_REQUIRED_FEATURES",
+    "CASE_TARGET_MONTHLY_TOTAL_MINOR",
     "CONFIGURATIONS",
     "FAMILIES",
     "PROVIDER_CONFIGURATIONS",
