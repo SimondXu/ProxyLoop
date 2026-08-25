@@ -1,7 +1,8 @@
 # Minimal local Web demo
 
 **Status**: Local implementation and independent review complete on
-`feat/minimal-local-web-demo`; CI, merge, and phase closeout are pending.
+`feat/minimal-local-web-demo`. PR #18 passed CI/GitGuardian and Sol approved it
+for squash merge.
 
 ## Objective
 

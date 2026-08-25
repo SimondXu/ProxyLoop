@@ -75,9 +75,9 @@ canonical contracts, evaluator meaning, security boundaries, or a phase gate.
 - The one frozen QLoRA training run and one canonical Arm B evaluation are complete as descriptive evidence. The No-Go combines Arm B schema/canonical/E2E `0/6`, six invalid JSON outputs, mostly unassessable apparent safety zeros, unsupported `4/6`, and `arm_b_hard_gates_pass=false`. That boolean is only a necessary detector-based safety summary, not sufficient for Go, evaluability, task quality, or promotion. No data expansion, additional training, model rerun, adapter promotion, deployment, or next phase is authorized. Phase 03A1 continuation, r6/r7, PostgreSQL, Temporal, real tools or Providers, deployment, channels, voice, and UI remain inactive.
 - Product services, model training, and external channels are not implemented.
   The bounded local Web demo on `feat/minimal-local-web-demo` has local
-  implementation and independent review complete; CI, merge, and phase
-  closeout remain pending. It does not alter the inactive production
-  UI/channel/deployment boundaries.
+  implementation and independent review complete. PR #18 passed
+  CI/GitGuardian and Sol approved it for squash merge. It does not alter the
+  inactive production UI/channel/deployment boundaries.
 
 ## Working Rules
 

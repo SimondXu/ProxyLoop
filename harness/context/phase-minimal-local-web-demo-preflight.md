@@ -2,9 +2,9 @@
 
 Date: 2026-08-25
 
-This file records activation, implementation, and independent-review evidence.
-It does not claim CI, merge, browser rerun after final remediation, or phase
-closeout.
+This file records activation, implementation, independent-review, and PR-gate
+evidence. It does not claim merge, branch cleanup, browser rerun after final
+remediation, or phase closeout.
 
 ## Boundaries observed
 
@@ -86,8 +86,8 @@ approval boundary, local arbitrary-correction handling, and a Verified receipt
 with one matching Evidence ID and execution count `1`. Console warning/error
 output was empty; at `375x812`, `scrollWidth` was `375` with no horizontal
 overflow. Servers, tab, viewport, and temporary dependency symlinks were
-cleaned. No screenshot artifact was committed. Review, CI, and merge remain
-pending.
+cleaned. No screenshot artifact was committed. This pre-PR evidence predates
+the final PR gate recorded below.
 
 ## Terra remediation evidence
 
@@ -105,8 +105,8 @@ Runtime `184`, ML `177`, and all repository gates including Web lint,
 typecheck, test, and build passing. An earlier sandbox attempt hit the local
 uv-cache permission boundary; an intermediate run without the temporary
 dependency aid hit the existing root `tsc/json2ts` lookup failure. The final
-run used the existing dependency tree read-only. Terra rereview, CI, and merge
-remain pending.
+run used the existing dependency tree read-only. The later PR gate is recorded
+below.
 
 The final five additional tests include empty and whitespace Evidence-ID
 rejection in both payload parsing and receipt verification, plus an event
@@ -127,5 +127,13 @@ to a separate later `contracts-check` command.
 Terra's second rereview found no P0, P1, or P2 findings across six cumulative
 remediations and returned `APPROVE_PHASE_GATE`. Browser smoke was not rerun
 after the final remediation; the earlier complete journey/browser/mobile smoke
-remains the recorded browser evidence. CI, merge, and phase closeout remain
-pending.
+remains the recorded browser evidence. PR #18 passed CI/GitGuardian and Sol
+approved it for squash merge; merge and phase closeout remain pending.
+
+## Final PR gate
+
+PR #18 (`https://github.com/SimondXu/ProxyLoop/pull/18`) passed its fresh-install
+phase gate in `2m29s`; GitGuardian Security Checks passed; head commit was
+`9aa8869`. Sol reviewed the PR file scope, local final preflight, Terra's
+`APPROVE_PHASE_GATE`, browser evidence, and PR checks, then decided
+`APPROVE_FOR_SQUASH_MERGE`. Merge and branch cleanup have not occurred.

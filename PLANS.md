@@ -23,7 +23,7 @@ phase has started; Phase 04 remains inactive until a new explicit gate.
 | 03A1-V | Evaluation-validity six-episode smoke | Complete; 5/6 diagnostic, evaluator mismatch isolated | `harness/build/phase-03a1-evaluation-validity-smoke.md` |
 | 04A | Thin Agent Runtime | Complete; independently approved | `harness/build/phase-04a-thin-agent-runtime.md` |
 | 04B | Model-backed Thin Agent Runtime | Complete; squash merged as `6daa1bc` through PR #13 | `harness/build/phase-04b-model-backed-runtime.md` |
-| Minimal local Web demo | Thin Runtime-backed conversation UI | Local implementation and independent review complete on `feat/minimal-local-web-demo`; CI, merge, and phase closeout pending | `harness/build/phase-minimal-local-web-demo.md` |
+| Minimal local Web demo | Thin Runtime-backed conversation UI | Local implementation and independent review complete; PR #18 passed CI/GitGuardian and Sol approved it for squash merge | `harness/build/phase-minimal-local-web-demo.md` |
 | 03B | Open-data SFT, gap-driven project data, and evaluation | Complete; final `NO_GO_STOP_PHASE03B`; squash merged as PR #15 (`f441335` short); no promotion or expansion; Decided from Phase 03A1 failure slices | `harness/build/phase-03b-qwen-qlora-smoke.md` |
 | 04 | Serving and control plane | Not started | To be prepared after Phase 03 |
 | 05 | Durable agent loop | Not started | To be prepared after Phase 04 |
@@ -122,9 +122,9 @@ for experiment Go, evaluability, task quality, or promotion. No additional
 training, data expansion, model rerun, promotion, deployment, or next phase is
 authorized. No ML/roadmap implementation phase is active. A separate bounded
 local Web demo has local implementation and independent review complete on
-`feat/minimal-local-web-demo` under its own contract; CI, merge, and phase
-closeout remain pending. It does not activate serving, channels, or production
-UI. Phase 03A1
+`feat/minimal-local-web-demo` under its own contract; PR #18 passed
+CI/GitGuardian and Sol approved it for squash merge. It does not activate
+serving, channels, or production UI. Phase 03A1
 continuation, r6/r7, model downloads,
 PostgreSQL, Temporal, real tools or Providers, authentication, channels, voice,
 production UI, deployment, and release remain inactive.

@@ -1485,3 +1485,14 @@ This file is append-only execution evidence. Record only commands actually run a
 - Terra's final rereview found no P0, P1, or P2 findings across six cumulative
   remediations and returned `APPROVE_PHASE_GATE`. This is an independent review
   recommendation, not a merge or phase-closeout claim.
+
+### 2026-08-25 — PR #18 integration gate and Sol decision
+
+- PR #18 (`https://github.com/SimondXu/ProxyLoop/pull/18`) passed the fresh-
+  install phase gate in `2m29s`; GitGuardian Security Checks passed; head commit
+  was `9aa8869`.
+- Sol reviewed the PR file scope, local final preflight, Terra's
+  `APPROVE_PHASE_GATE`, browser evidence, and PR checks. The integration
+  decision is `APPROVE_FOR_SQUASH_MERGE`.
+- Merge and branch cleanup have not occurred. No merged, cleaned, or phase-
+  closed state is claimed.

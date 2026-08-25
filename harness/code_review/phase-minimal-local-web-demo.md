@@ -1,7 +1,7 @@
 # Minimal local Web demo review
 
-**Status**: Independent rereview complete; `APPROVE_PHASE_GATE`. CI, merge, and
-phase closeout remain pending.
+**Status**: Independent rereview complete; `APPROVE_PHASE_GATE`. PR #18 passed
+CI/GitGuardian and Sol approved it for squash merge.
 
 ## Initial Terra review
 
@@ -70,4 +70,5 @@ Webpack build, and all repository gates passing. The earlier full journey,
 Browser, and mobile smoke remains the browser evidence; Browser smoke was not
 rerun after the final Evidence-ID/Task-Brief remediation.
 
-No CI, commit, push, PR, merge, or phase closeout is claimed by this artifact.
+PR #18 passed its fresh-install phase gate and GitGuardian checks. No merge,
+branch cleanup, or phase closeout is claimed by this artifact.
