@@ -1671,3 +1671,27 @@ This file is append-only execution evidence. Record only commands actually run a
   evidence-only commit passes its own fresh PR-head checks.
 - Merge, source/squash tree verification, branch cleanup, post-merge `main`
   CI, and phase closeout remain pending.
+
+### 2026-08-25 — Local Conversation Intake UX PR #20 post-merge closeout
+
+- PR #20 final evidence head `b3e13ef` passed GitGuardian Security Checks and
+  the fresh Repository `phase-gate` through Actions run `32883504165`.
+- Sol approved squash merge. GitHub records PR #20 merged at
+  `2026-08-25T18:26:42Z` as
+  `02466df4e77801bb51a9c1da6cbdb0e29465d0a6`; the source and squash trees were
+  identical.
+- Post-merge Repository checks run `32883786070` completed successfully on
+  exact `main@02466df`. Local `main` was synchronized with `origin/main`.
+- The fully merged `feat/local-conversation-intake-ux` branch was removed
+  locally and remotely after confirming no unique unpushed work would be lost.
+  The legacy UI worktree remained local-only at `b8d7ee5` with exactly its
+  three original untracked planning files.
+- This closeout changes only current-state and evidence documentation. It does
+  not activate Phase 04, PostgreSQL, Temporal, model training or promotion,
+  real tools or Providers, authentication, channels, voice, production UI,
+  deployment, or release. No implementation phase is active.
+- On `docs/pr20-post-merge-closeout`, `git diff --check`, `make check-layout`,
+  and the complete `make preflight` passed before publication. The full gate
+  included Runtime `201 passed`, ML `177 passed`, Web `29 passed`, Web
+  lint/typecheck/build, contract and experiment artifact checks, lock checks,
+  offline pnpm lockfile verification, Python compilation, and Compose config.
