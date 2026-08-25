@@ -1,9 +1,9 @@
 # Local conversation intake UX
 
-**Status**: Local implementation and independent review complete on
-`feat/local-conversation-intake-ux` from `main@0d0acb3`; integration is through
-PR #20. The phase remains active until that PR merges; the merge closes this
-phase without activating another.
+**Status**: Complete. Independently approved, passed final PR-head
+CI/GitGuardian, and squash merged through PR #20 as `02466df`; post-merge
+Repository checks passed and the fully merged short-lived branch was removed
+locally and remotely. No implementation phase is active after this closeout.
 
 ## Objective
 
