@@ -43,6 +43,13 @@ from proxyloop_openai_adapter import (
 )
 from proxyloop_provider_simulator.episode import Phase01AEpisode
 
+CREATE_CASE_REQUEST = {
+    "current_monthly_total": {"amount_minor": 9200, "currency": "USD"},
+    "target_monthly_total": {"amount_minor": 7500, "currency": "USD"},
+    "mobile_hotspot_required": True,
+    "device_financing_change_forbidden": True,
+}
+
 
 @dataclass
 class _Message:
@@ -201,7 +208,7 @@ def test_api_model_error_is_stable_and_does_not_create_approval() -> None:
             transport=httpx.ASGITransport(app=create_app(runtime)),
             base_url="http://testserver",
         ) as client:
-            return await client.post("/cases")
+            return await client.post("/cases", json=CREATE_CASE_REQUEST)
 
     response = asyncio.run(request())
 
@@ -349,7 +356,9 @@ def test_localhost_server_black_box_scripted_flow() -> None:
         with httpx.Client(base_url=f"http://127.0.0.1:{port}") as client:
             while time.monotonic() < deadline:
                 try:
-                    response = client.post("/cases", timeout=0.5)
+                    response = client.post(
+                        "/cases", json=CREATE_CASE_REQUEST, timeout=0.5
+                    )
                     if response.status_code == 201:
                         break
                 except httpx.HTTPError:

@@ -11,10 +11,21 @@ const offer = {
   term_months: 1,
 };
 
+const caseRecord = {
+  bill_snapshot: { monthly_total: { amount_minor: 9200, currency: "USD" }, usage: {} },
+  case_id: "11111111-1111-4111-8111-111111111111",
+  constraints: [{ classification: "hard", statement: "Do not change device financing." }],
+  goal: {
+    forbidden_changes: ["device_financing_change"],
+    required_features: ["mobile_hotspot"],
+    target_monthly_total: { amount_minor: 7500, currency: "USD" },
+  },
+};
+
 function payload(overrides: Partial<RuntimePayload> = {}): RuntimePayload {
   return {
     approval: null,
-    case: {},
+    case: caseRecord,
     case_id: "11111111-1111-4111-8111-111111111111",
     completion: { decision: "not_done", evidence_ids: [] },
     event_cursor: 1,
@@ -23,14 +34,7 @@ function payload(overrides: Partial<RuntimePayload> = {}): RuntimePayload {
     revision: 2,
     route: "slow_refresh",
     snapshot: {
-      case: {
-        bill_snapshot: { monthly_total: { amount_minor: 9200, currency: "USD" }, usage: {} },
-        goal: {
-          forbidden_changes: ["device_financing_change"],
-          required_features: ["mobile_hotspot"],
-          target_monthly_total: { amount_minor: 7500, currency: "USD" },
-        },
-      },
+      case: caseRecord,
       offers: [offer],
     },
     ...overrides,
@@ -52,6 +56,27 @@ vi.mock("../../lib/runtime-client", async () => {
 });
 
 describe("ConversationWorkspace", () => {
+  async function completeLocalIntake(create = true, financing = "yes", expectReady = true) {
+    const composer = screen.getByPlaceholderText("Message ProxyLoop");
+    fireEvent.change(composer, { target: { value: "Lower my mobile bill" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "$92" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "$75" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "yes" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: financing } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    if (expectReady) {
+      expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeEnabled();
+    }
+    if (create) {
+      fireEvent.click(screen.getByRole("button", { name: "Create fictional Case" }));
+      await waitFor(() => expect(screen.getByRole("heading", { name: "Here is what I will work from." })).toBeInTheDocument());
+    }
+  }
+
   it.each([
     "Help me plan a vacation",
     "What is my phone price?",
@@ -75,6 +100,96 @@ describe("ConversationWorkspace", () => {
     "Save on my phone bill",
   ])("accepts supported mobile-bill intent: %s", (text) => {
     expect(isSupportedMobileBillIntent(text)).toBe(true);
+  });
+
+  it("keeps edits unresolved until a valid correction, then sends corrected facts", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const correctedCase = {
+      ...caseRecord,
+      bill_snapshot: {
+        ...caseRecord.bill_snapshot,
+        monthly_total: { amount_minor: 8000, currency: "USD" },
+      },
+    };
+    vi.mocked(runtime.createCase).mockResolvedValue(payload({
+      case: correctedCase,
+      snapshot: { case: correctedCase, offers: [offer] },
+    }));
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(false);
+    const createButton = screen.getByRole("button", { name: "Create fictional Case" });
+    const editButtons = screen.getAllByRole("button", { name: "Edit" });
+    fireEvent.click(editButtons[0]);
+    expect(createButton).toBeDisabled();
+
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "$74" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/stay above the confirmed target/);
+    expect(createButton).toBeDisabled();
+    expect(screen.getByText("$92.00")).toBeInTheDocument();
+    expect(runtime.createCase).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "$80" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(createButton).toBeEnabled();
+    fireEvent.click(createButton);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Here is what I will work from." })).toBeInTheDocument());
+    expect(runtime.createCase).toHaveBeenCalledWith({
+      currentMonthlyTotal: { amount_minor: 8000, currency: "USD" },
+      targetMonthlyTotal: { amount_minor: 7500, currency: "USD" },
+      mobileHotspotRequired: true,
+      deviceFinancingChangeForbidden: true,
+    });
+  });
+
+  it("accepts financing no change as a positive confirmation", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(false, "no change");
+    expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Create fictional Case" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Here is what I will work from." })).toBeInTheDocument());
+    expect(runtime.createCase).toHaveBeenCalledWith(expect.objectContaining({
+      deviceFinancingChangeForbidden: true,
+    }));
+  });
+
+  it("rejects contradictory financing no-change language locally", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(false, "no change, but I want to change device financing", false);
+
+    expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/Device financing must remain unchanged/);
+    expect(runtime.createCase).not.toHaveBeenCalled();
+  });
+
+  it("rejects Terra's contradictory financing no-change regression locally", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(false, "no change, but please modify device financing", false);
+
+    expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeDisabled();
+    expect(runtime.createCase).not.toHaveBeenCalled();
+  });
+
+  it("rejects contradictory hotspot language locally", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    render(<ConversationWorkspace />);
+    const composer = screen.getByPlaceholderText("Message ProxyLoop");
+    fireEvent.change(composer, { target: { value: "Lower my mobile bill" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "$92" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "$75" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "yes, remove mobile hotspot" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/Mobile hotspot must remain required/);
+    expect(runtime.createCase).not.toHaveBeenCalled();
   });
 
   it("keeps the conversation primary and completes only through the Runtime flow", async () => {
@@ -102,10 +217,7 @@ describe("ConversationWorkspace", () => {
 
     render(<ConversationWorkspace />);
     await waitFor(() => expect(screen.getByPlaceholderText("Message ProxyLoop")).toBeEnabled());
-
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "Lower my mobile bill" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-    expect(await screen.findByRole("heading", { name: "Here is what I will work from." })).toBeInTheDocument();
+    await completeLocalIntake();
 
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Accept these exact fictional terms?" })).toBeInTheDocument());
@@ -147,9 +259,8 @@ describe("ConversationWorkspace", () => {
 
     render(<ConversationWorkspace />);
     await waitFor(() => expect(screen.getByPlaceholderText("Message ProxyLoop")).toBeEnabled());
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "Lower my mobile bill" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-    fireEvent.click(await screen.findByRole("button", { name: /Keep both unchanged/ }));
+    await completeLocalIntake();
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Approve exact terms" }));
 
     expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
@@ -173,8 +284,8 @@ describe("ConversationWorkspace", () => {
     }));
 
     render(<ConversationWorkspace />);
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "Lower my mobile bill" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await completeLocalIntake(false);
+    fireEvent.click(screen.getByRole("button", { name: "Create fictional Case" }));
 
     expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Keep both unchanged/ })).not.toBeInTheDocument();
@@ -200,9 +311,8 @@ describe("ConversationWorkspace", () => {
     }));
 
     render(<ConversationWorkspace />);
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "Lower my mobile bill" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-    fireEvent.click(await screen.findByRole("button", { name: /Keep both unchanged/ }));
+    await completeLocalIntake();
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
 
     expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve exact terms" })).not.toBeInTheDocument();
@@ -230,9 +340,41 @@ describe("ConversationWorkspace", () => {
     }));
 
     render(<ConversationWorkspace />);
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "Lower my mobile bill" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-    fireEvent.click(await screen.findByRole("button", { name: /Keep both unchanged/ }));
+    await completeLocalIntake();
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+
+    expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve exact terms" })).not.toBeInTheDocument();
+    expect(runtime.decideApproval).not.toHaveBeenCalled();
+  });
+
+  it("blocks a structurally valid event response that drifts an intake Money fact", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    const driftedCase = {
+      ...caseRecord,
+      bill_snapshot: {
+        ...caseRecord.bill_snapshot,
+        monthly_total: { amount_minor: 9300, currency: "USD" },
+      },
+    };
+    vi.mocked(runtime.appendConsumerEvent).mockResolvedValue(payload({
+      approval: {
+        action_intent_revision: 1,
+        approval_id: "22222222-2222-4222-8222-222222222222",
+        case_revision: 2,
+        decision: "pending",
+        expires_at: "2026-08-25T13:00:00Z",
+        material_terms_hash: "hash-1",
+      },
+      revision: 4,
+      route: "wait_for_approval",
+      snapshot: { case: driftedCase, offers: [offer] },
+    }));
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake();
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
 
     expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve exact terms" })).not.toBeInTheDocument();
@@ -245,9 +387,9 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.createCase).mockReturnValue(pendingCreate.promise);
 
     render(<ConversationWorkspace />);
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "Lower my mobile bill" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-    await screen.findByText(/I'll create a local Case now/);
+    await completeLocalIntake(false);
+    fireEvent.click(screen.getByRole("button", { name: "Create fictional Case" }));
+    await screen.findByText(/sending the four confirmed intake facts/);
     fireEvent.click(screen.getByRole("button", { name: /New task/ }));
 
     await act(async () => {
@@ -278,8 +420,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.decideApproval).mockReturnValue(pendingApproval.promise);
 
     render(<ConversationWorkspace />);
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "Lower my mobile bill" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await completeLocalIntake();
     fireEvent.click(await screen.findByRole("button", { name: /Keep both unchanged/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Approve exact terms" }));
     fireEvent.click(screen.getByRole("button", { name: /New task/ }));
@@ -296,6 +437,39 @@ describe("ConversationWorkspace", () => {
     });
 
     expect(screen.queryByRole("heading", { name: "Completed with supporting Evidence" })).not.toBeInTheDocument();
+  });
+
+  it("ignores an event response that resolves after restart", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const pendingEvent = deferred<RuntimePayload>();
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReturnValue(pendingEvent.promise);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake();
+    fireEvent.click(await screen.findByRole("button", { name: /Keep both unchanged/ }));
+    fireEvent.click(screen.getByRole("button", { name: /New task/ }));
+
+    await act(async () => {
+      pendingEvent.resolve(payload({
+        approval: {
+          action_intent_revision: 1,
+          approval_id: "22222222-2222-4222-8222-222222222222",
+          case_revision: 2,
+          decision: "pending",
+          expires_at: "2026-08-25T13:00:00Z",
+          material_terms_hash: "hash-1",
+        },
+        revision: 4,
+        route: "wait_for_approval",
+      }));
+      await pendingEvent.promise;
+    });
+
+    expect(screen.queryByRole("heading", { name: "Here is what I will work from." })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve exact terms" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Completed with supporting Evidence" })).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Message ProxyLoop")).toBeEnabled();
   });
 });
 

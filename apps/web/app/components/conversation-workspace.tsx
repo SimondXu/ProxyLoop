@@ -10,8 +10,10 @@ import {
   decideApproval,
   hasValidPendingApproval,
   hasValidTaskBrief,
+  type IntakeFacts,
   type JsonObject,
   RuntimeClientError,
+  type RuntimeMoney,
   type RuntimePayload,
 } from "../../lib/runtime-client";
 import { StatusBadge } from "./status-badge";
@@ -19,6 +21,7 @@ import { StatusBadge } from "./status-badge";
 type WorkspacePhase =
   | "loading"
   | "blank"
+  | "intake"
   | "confirm"
   | "working"
   | "approval"
@@ -26,6 +29,20 @@ type WorkspacePhase =
   | "blocked";
 
 type Message = { id: number; role: "assistant" | "user"; text: string };
+type IntakeField = "current" | "target" | "hotspot" | "financing";
+type IntakeDraft = {
+  currentMonthlyTotal: RuntimeMoney | null;
+  targetMonthlyTotal: RuntimeMoney | null;
+  mobileHotspotRequired: true | null;
+  deviceFinancingChangeForbidden: true | null;
+};
+
+const EMPTY_INTAKE: IntakeDraft = {
+  currentMonthlyTotal: null,
+  targetMonthlyTotal: null,
+  mobileHotspotRequired: null,
+  deviceFinancingChangeForbidden: null,
+};
 
 const CONFIRMATION_EVENT =
   "Keep mobile hotspot and device financing unchanged. Continue with the fictional offer.";
@@ -40,6 +57,105 @@ export function isSupportedMobileBillIntent(text: string): boolean {
     BILLING_CONTEXT_TERMS.test(text) &&
     REDUCTION_OUTCOME_TERMS.test(text)
   );
+}
+
+function firstMissingIntakeField(draft: IntakeDraft): IntakeField | null {
+  if (draft.currentMonthlyTotal === null) return "current";
+  if (draft.targetMonthlyTotal === null) return "target";
+  if (draft.mobileHotspotRequired === null) return "hotspot";
+  if (draft.deviceFinancingChangeForbidden === null) return "financing";
+  return null;
+}
+
+function intakePrompt(field: IntakeField): string {
+  if (field === "current") {
+    return "What is your current monthly bill total in USD? Use a value such as $92.00.";
+  }
+  if (field === "target") {
+    return "What monthly total would you like to reach in USD? The fictional $72 offer requires a target from $72 up to your current bill.";
+  }
+  if (field === "hotspot") {
+    return "Do you need mobile hotspot access kept? Reply yes or no. This local journey requires it to stay on.";
+  }
+  return "Should device financing remain unchanged? Reply yes or no. This local journey cannot change financing.";
+}
+
+function parseUsdMoney(text: string): RuntimeMoney | null {
+  if (/[€£¥]|\b(?:EUR|CAD|GBP|JPY)\b/i.test(text) || /-\s*\$?\s*\d/.test(text)) {
+    return null;
+  }
+  const matches = [...text.matchAll(/(?:\$\s*(\d{1,4}(?:,\d{3})*(?:\.\d{1,2})?)(?![\dA-Za-z.])|(\d{1,4}(?:,\d{3})*(?:\.\d{1,2})?)\s*USD\b)/gi)];
+  if (matches.length !== 1) return null;
+  const raw = matches[0][1] ?? matches[0][2];
+  if (!raw) return null;
+  const normalised = raw.replaceAll(",", "");
+  const [whole, fraction = ""] = normalised.split(".");
+  const amountMinor = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+  return Number.isSafeInteger(amountMinor) && amountMinor >= 0
+    ? { amount_minor: amountMinor, currency: "USD" }
+    : null;
+}
+
+function parseBooleanFact(text: string, field: "hotspot" | "financing"): true | null {
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .replace(/^[.,!?;:]+|[.,!?;:]+$/g, "")
+    .trim()
+    .replace(/\s+/g, " ");
+  if (field === "financing") {
+    const confirmations = new Set([
+      "yes",
+      "true",
+      "unchanged",
+      "no change",
+      "no changes",
+      "keep unchanged",
+      "keep it unchanged",
+    ]);
+    return confirmations.has(normalized) ? true : null;
+  }
+  const confirmations = new Set(["yes", "true", "required", "keep it"]);
+  return confirmations.has(normalized) ? true : null;
+}
+
+function intakeFacts(draft: IntakeDraft): IntakeFacts | null {
+  if (
+    draft.currentMonthlyTotal === null ||
+    draft.targetMonthlyTotal === null ||
+    draft.mobileHotspotRequired !== true ||
+    draft.deviceFinancingChangeForbidden !== true
+  ) {
+    return null;
+  }
+  return {
+    currentMonthlyTotal: draft.currentMonthlyTotal,
+    targetMonthlyTotal: draft.targetMonthlyTotal,
+    mobileHotspotRequired: true,
+    deviceFinancingChangeForbidden: true,
+  };
+}
+
+function intakeValueError(field: IntakeField, draft: IntakeDraft): string | null {
+  const current = draft.currentMonthlyTotal?.amount_minor;
+  const target = draft.targetMonthlyTotal?.amount_minor;
+  if (field === "current") {
+    if (current !== undefined && current <= 7200) {
+      return "The current bill must be greater than $72.00 for this fictional offer.";
+    }
+    return current !== undefined && target !== undefined && target >= current
+      ? "The current bill must stay above the confirmed target. Enter a higher current USD amount."
+      : null;
+  }
+  if (field === "target") {
+    if (target !== undefined && target < 7200) {
+      return "The target must be at least $72.00.";
+    }
+    if (target !== undefined && current !== undefined && target >= current) {
+      return "The target must stay below the confirmed current bill. Enter a lower USD amount.";
+    }
+  }
+  return null;
 }
 
 function objectAt(value: unknown, key: string): JsonObject | null {
@@ -139,6 +255,83 @@ function UserMessage({ children }: { children: ReactNode }) {
         <div className="message-bubble">{children}</div>
       </div>
     </article>
+  );
+}
+
+function DraftTaskBrief({
+  draft,
+  activeField,
+  intakeError,
+  busy,
+  onEdit,
+  onCreate,
+}: {
+  draft: IntakeDraft;
+  activeField: IntakeField | null;
+  intakeError: string | null;
+  busy: boolean;
+  onEdit: (field: IntakeField) => void;
+  onCreate: () => void;
+}) {
+  const facts = [
+    {
+      field: "current" as const,
+      label: "Current monthly total",
+      value: draft.currentMonthlyTotal === null ? "Missing" : formatMoney(draft.currentMonthlyTotal),
+    },
+    {
+      field: "target" as const,
+      label: "Target monthly total",
+      value: draft.targetMonthlyTotal === null ? "Missing" : formatMoney(draft.targetMonthlyTotal),
+    },
+    {
+      field: "hotspot" as const,
+      label: "Mobile hotspot required",
+      value: draft.mobileHotspotRequired === true ? "Confirmed · required" : "Missing",
+    },
+    {
+      field: "financing" as const,
+      label: "Device financing change forbidden",
+      value: draft.deviceFinancingChangeForbidden === true ? "Confirmed · unchanged" : "Missing",
+    },
+  ];
+  const ready =
+    activeField === null &&
+    intakeError === null &&
+    intakeFacts(draft) !== null &&
+    intakeValueError("current", draft) === null &&
+    intakeValueError("target", draft) === null;
+
+  return (
+    <section aria-labelledby="draft-task-brief-title" className="chat-artifact draft-task-brief">
+      <div className="artifact-heading">
+        <div>
+          <span className="artifact-kicker">Local intake · Draft Task Brief</span>
+          <h2 id="draft-task-brief-title">Confirm the facts before creating a Case.</h2>
+        </div>
+        <StatusBadge tone={ready ? "complete" : "neutral"}>{ready ? "Ready" : "Needs input"}</StatusBadge>
+      </div>
+      <dl className="artifact-facts draft-facts">
+        {facts.map((fact) => (
+          <div key={fact.field}>
+            <dt>{fact.label}</dt>
+            <dd>
+              <span>{fact.value}</span>
+              <button className="fact-edit" disabled={busy} onClick={() => onEdit(fact.field)} type="button">
+                {activeField === fact.field ? "Editing" : "Edit"}
+              </button>
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p className="artifact-note">
+        These facts stay local until you choose the explicit create action. The Runtime will receive exactly these four fields.
+      </p>
+      <button className="primary-button" disabled={!ready || busy} onClick={onCreate} type="button">
+        {busy ? "Creating fictional Case…" : "Create fictional Case"}
+        <span aria-hidden="true">→</span>
+      </button>
+    </section>
   );
 }
 
@@ -335,6 +528,10 @@ function RuntimeErrorState({ error, onRestart }: { error: string; onRestart: () 
 export function ConversationWorkspace() {
   const [phase, setPhase] = useState<WorkspacePhase>("blank");
   const [payload, setPayload] = useState<RuntimePayload | null>(null);
+  const [confirmedFacts, setConfirmedFacts] = useState<IntakeFacts | null>(null);
+  const [intake, setIntake] = useState<IntakeDraft>(EMPTY_INTAKE);
+  const [activeField, setActiveField] = useState<IntakeField | null>(null);
+  const [intakeError, setIntakeError] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -348,21 +545,22 @@ export function ConversationWorkspace() {
     setMessages((current) => [...current, { id, role, text }]);
   }
 
-  async function loadCase() {
+  async function loadCase(facts: IntakeFacts) {
     const requestId = sessionId.current + 1;
     sessionId.current = requestId;
     setPhase("loading");
     setBusy(true);
     setError(null);
     try {
-      const created = await createCase();
+      const created = await createCase(facts);
       if (requestId !== sessionId.current) return;
-      if (!hasValidTaskBrief(created)) {
+      if (!hasValidTaskBrief(created, facts)) {
         throw new RuntimeClientError(
-          "The local Runtime did not return the facts needed for a truthful Task Brief. Refresh or restart the demo.",
+          "The local Runtime returned a Case that does not match your confirmed facts. No verified Task Brief is shown; restart the local demo.",
           "invalid",
         );
       }
+      setConfirmedFacts(facts);
       setPayload(created);
       setPhase("confirm");
     } catch (caught) {
@@ -379,10 +577,75 @@ export function ConversationWorkspace() {
     setMessages([]);
     setDraft("");
     setPayload(null);
+    setConfirmedFacts(null);
+    setIntake(EMPTY_INTAKE);
+    setActiveField(null);
+    setIntakeError(null);
     setError(null);
     setBusy(false);
     setPhase("blank");
     nextMessageId.current = 1;
+  }
+
+  function editIntakeField(field: IntakeField) {
+    if (phase !== "intake" || busy) return;
+    setActiveField(field);
+    setIntakeError(null);
+    addMessage("assistant", intakePrompt(field));
+  }
+
+  function createIntakeCase() {
+    const facts = intakeFacts(intake);
+    if (
+      !facts ||
+      intakeValueError("current", intake) !== null ||
+      intakeValueError("target", intake) !== null ||
+      busy
+    ) return;
+    addMessage("assistant", "I am sending the four confirmed intake facts to the local Runtime now.");
+    void loadCase(facts);
+  }
+
+  function submitIntakeValue(text: string) {
+    const field = activeField ?? firstMissingIntakeField(intake);
+    if (!field) return;
+    let next = intake;
+    if (field === "current" || field === "target") {
+      const value = parseUsdMoney(text);
+      if (value === null) {
+        setIntakeError("Use one non-negative USD value such as $92.00. Other currencies, negative values, or ambiguous amounts stay local.");
+        addMessage("assistant", "I could not confirm that USD amount. Please enter one value such as $92.00.");
+        return;
+      }
+      next = field === "current"
+        ? { ...intake, currentMonthlyTotal: value }
+        : { ...intake, targetMonthlyTotal: value };
+      const valueError = intakeValueError(field, next);
+      if (valueError) {
+        setIntakeError(valueError);
+        addMessage("assistant", valueError);
+        return;
+      }
+    } else {
+      const value = parseBooleanFact(text, field);
+      if (value !== true) {
+        const label = field === "hotspot" ? "Mobile hotspot must remain required" : "Device financing must remain unchanged";
+        setIntakeError(`${label}. Reply yes to confirm this fixed constraint.`);
+        addMessage("assistant", `${label}. Reply yes to confirm, or edit another local fact.`);
+        return;
+      }
+      next = field === "hotspot"
+        ? { ...intake, mobileHotspotRequired: true }
+        : { ...intake, deviceFinancingChangeForbidden: true };
+    }
+    setIntake(next);
+    setIntakeError(null);
+    const nextField = firstMissingIntakeField(next);
+    setActiveField(nextField);
+    addMessage(
+      "assistant",
+      nextField ? intakePrompt(nextField) : "All four facts are confirmed locally. Review the Draft Task Brief, then choose Create fictional Case when it matches.",
+    );
   }
 
   async function confirmConstraint() {
@@ -395,12 +658,13 @@ export function ConversationWorkspace() {
     try {
       const waiting = await appendConsumerEvent(payload.case_id, CONFIRMATION_EVENT, payload.revision);
       if (requestId !== sessionId.current) return;
-      setPayload(waiting);
-      if (hasValidTaskBrief(waiting) && hasValidPendingApproval(waiting)) {
+      if (confirmedFacts && hasValidTaskBrief(waiting, confirmedFacts) && hasValidPendingApproval(waiting)) {
+        setPayload(waiting);
         setPhase("approval");
       } else {
+        setPayload(null);
         setPhase("blocked");
-        setError("The Runtime returned an incomplete offer or approval. No approval is available; restart the demo.");
+        setError("The Runtime returned missing or mismatched intake facts. No approval is available; restart the local Runtime, then choose New task.");
       }
     } catch (caught) {
       if (requestId !== sessionId.current) return;
@@ -416,7 +680,7 @@ export function ConversationWorkspace() {
     const requestId = sessionId.current;
     const waiting = payload;
     const approval = waiting.approval;
-    if (!approval || !hasValidPendingApproval(waiting)) return;
+    if (!approval || !confirmedFacts || !hasValidTaskBrief(waiting, confirmedFacts) || !hasValidPendingApproval(waiting)) return;
     setBusy(true);
     setError(null);
     try {
@@ -426,12 +690,13 @@ export function ConversationWorkspace() {
         expectedRevision: waiting.revision,
       });
       if (requestId !== sessionId.current) return;
-      setPayload(completed);
-      if (completionHasVerifiedEvidence(completed)) {
+      if (confirmedFacts && hasValidTaskBrief(completed, confirmedFacts) && completionHasVerifiedEvidence(completed)) {
+        setPayload(completed);
         setPhase("receipt");
       } else {
+        setPayload(null);
         setPhase("blocked");
-        setError("The Runtime reached a terminal response without verifiable completion Evidence. No success is shown; restart or refresh.");
+        setError("The Runtime response did not preserve the confirmed intake facts or verifiable completion Evidence. No success is shown; restart the local Runtime, then choose New task.");
       }
     } catch (caught) {
       if (requestId !== sessionId.current) return;
@@ -456,20 +721,25 @@ export function ConversationWorkspace() {
         );
         return;
       }
-      addMessage("assistant", "I'll create a local Case now, then show the Runtime-backed facts before sending any consumer event.");
-      void loadCase();
+      setPhase("intake");
+      setActiveField("current");
+      addMessage("assistant", intakePrompt("current"));
+      return;
+    }
+    if (phase === "intake") {
+      submitIntakeValue(text);
       return;
     }
     if (phase === "confirm") {
-      addMessage("assistant", "For this local demo, the Case has one supported constraint confirmation. Use the button on the Task Brief, or restart if a fact needs to change.");
+      addMessage("assistant", "This Case is immutable after creation. To change a confirmed fact, restart the local Runtime, then choose New task.");
       return;
     }
     if (phase === "approval") {
-      addMessage("assistant", "This Case is waiting for the exact approval shown above. Arbitrary corrections cannot mutate the created Case here; restart safely or continue the existing approval.");
+      addMessage("assistant", "This Case is waiting for the exact approval shown above. To correct a confirmed fact, restart the local Runtime, then choose New task; this demo has no mutation endpoint.");
       return;
     }
     if (phase === "receipt") {
-      addMessage("assistant", "This Case is complete and read-only. Start a new local demo to explore another run.");
+      addMessage("assistant", "This Case is complete and read-only. To correct a confirmed fact, restart the local Runtime, then choose New task.");
       return;
     }
     addMessage("assistant", "The local Runtime is blocked, so I did not continue. Restart the demo to obtain a fresh Case.");
@@ -485,7 +755,9 @@ export function ConversationWorkspace() {
           ? "Blocked"
           : phase === "loading"
             ? "Connecting"
-            : "Needs input";
+            : phase === "intake"
+              ? "Drafting"
+              : "Needs input";
 
   return (
     <div className="conversation-workspace">
@@ -517,6 +789,19 @@ export function ConversationWorkspace() {
             ? <UserMessage key={message.id}><p>{message.text}</p></UserMessage>
             : <AssistantMessage key={message.id}><p>{message.text}</p></AssistantMessage>)}
 
+          {(phase === "intake" || phase === "loading") ? (
+            <AssistantMessage>
+              <DraftTaskBrief
+                activeField={activeField}
+                busy={busy}
+                draft={intake}
+                intakeError={intakeError}
+                onCreate={createIntakeCase}
+                onEdit={editIntakeField}
+              />
+            </AssistantMessage>
+          ) : null}
+
           {payload && (phase === "confirm" || phase === "working" || phase === "approval" || phase === "receipt" || phase === "blocked") ? (
             <AssistantMessage><TaskBriefArtifact payload={payload} onConfirm={phase === "confirm" && !busy ? confirmConstraint : undefined} /></AssistantMessage>
           ) : null}
@@ -531,6 +816,14 @@ export function ConversationWorkspace() {
             </AssistantMessage>
           ) : null}
 
+          {intakeError ? (
+            <AssistantMessage>
+              <section aria-live="polite" className="intake-inline-error" role="alert">
+                <strong>Draft stays local</strong>
+                <p>{intakeError}</p>
+              </section>
+            </AssistantMessage>
+          ) : null}
           {payload && phase === "receipt" ? <AssistantMessage><ReceiptArtifact payload={payload} /></AssistantMessage> : null}
           {error ? <AssistantMessage><RuntimeErrorState error={error} onRestart={restart} /></AssistantMessage> : null}
         </div>

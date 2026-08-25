@@ -7,8 +7,9 @@ from uuid import UUID
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from proxyloop_contracts import Money
 from proxyloop_openai_adapter import OpenAICompatibleAdapterError
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .repository import CaseConflictError, CaseNotFoundError
 from .runtime import ModelRuntimeError, RuntimeResult, ThinAgentRuntime
@@ -29,6 +30,45 @@ class ApprovalCommand(BaseModel):
     expected_revision: int | None = Field(default=None, ge=1)
     expected_case_revision: int | None = Field(default=None, ge=1)
     expected_action_intent_revision: int | None = Field(default=None, ge=1)
+
+
+class CreateCaseRequest(BaseModel):
+    """API-local intake facts; the canonical Case remains Runtime-owned."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    current_monthly_total: Money
+    target_monthly_total: Money
+    mobile_hotspot_required: Literal[True]
+    device_financing_change_forbidden: Literal[True]
+
+    @field_validator(
+        "mobile_hotspot_required", "device_financing_change_forbidden", mode="before"
+    )
+    @classmethod
+    def require_strict_true(cls, value: object) -> object:
+        if type(value) is not bool or value is not True:
+            raise ValueError("must be the boolean true")
+        return value
+
+    @model_validator(mode="after")
+    def supports_fixed_offer(self) -> CreateCaseRequest:
+        if self.current_monthly_total.currency != "USD":
+            raise ValueError("current_monthly_total must use USD")
+        if self.target_monthly_total.currency != "USD":
+            raise ValueError("target_monthly_total must use USD")
+        if self.current_monthly_total.amount_minor <= 7200:
+            raise ValueError("current_monthly_total must be greater than 7200 cents")
+        if self.target_monthly_total.amount_minor < 7200:
+            raise ValueError("target_monthly_total must be at least 7200 cents")
+        if (
+            self.target_monthly_total.amount_minor
+            >= self.current_monthly_total.amount_minor
+        ):
+            raise ValueError(
+                "target_monthly_total must be less than current_monthly_total"
+            )
+        return self
 
 
 def create_app(runtime: ThinAgentRuntime | None = None) -> FastAPI:
@@ -73,8 +113,15 @@ def create_app(runtime: ThinAgentRuntime | None = None) -> FastAPI:
         )
 
     @api.post("/cases", status_code=201)
-    def create_case() -> dict[str, Any]:
-        return _result_payload(service.create_case())
+    def create_case(command: CreateCaseRequest) -> dict[str, Any]:
+        return _result_payload(
+            service.create_case(
+                current_monthly_total=command.current_monthly_total,
+                target_monthly_total=command.target_monthly_total,
+                mobile_hotspot_required=command.mobile_hotspot_required,
+                device_financing_change_forbidden=command.device_financing_change_forbidden,
+            )
+        )
 
     @api.get("/cases/{case_id}")
     def get_case(case_id: UUID) -> dict[str, Any]:
@@ -179,4 +226,10 @@ def _result_payload(result: RuntimeResult) -> dict[str, Any]:
 app = create_app()
 
 
-__all__ = ["ApprovalCommand", "EventCommand", "app", "create_app"]
+__all__ = [
+    "ApprovalCommand",
+    "CreateCaseRequest",
+    "EventCommand",
+    "app",
+    "create_app",
+]

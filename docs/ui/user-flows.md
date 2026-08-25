@@ -3,7 +3,10 @@
 ```text
 blank conversation
   -> user describes lower-bill outcome
-  -> Runtime-created Case snapshot
+  -> local progressive intake: current bill, target bill, hotspot, financing
+  -> local Draft Task Brief with missing/confirmed rows and Edit actions
+  -> explicit Create fictional Case action
+  -> Runtime-created Case root/snapshot verified against the draft
   -> inline Task Brief and proactive constraint question
   -> user confirms hotspot + device financing constraint
   -> one consumer event to the Runtime
@@ -13,10 +16,20 @@ blank conversation
 ```
 
 The first natural-language message establishes the conversation intent in the
-UI. The only consumer event sent by this demo is the explicit constraint
-confirmation. The event and approval calls are made through
+UI. Supported input starts a local progressive intake and does not create a
+Case. USD amounts are parsed strictly, and false fixed constraints,
+unsupported currencies, negative values, malformed values, and incompatible
+fixed-offer amounts stay local with retry guidance. The only consumer event
+sent by this demo is the explicit constraint confirmation. The event and approval calls are made through
 `lib/runtime-client.ts`; no client-generated revision or completion identifier
 is accepted as authority.
+
+The API request contains exactly `current_monthly_total`,
+`target_monthly_total`, `mobile_hotspot_required: true`, and
+`device_financing_change_forbidden: true`. The Web verifies the returned root
+Case and `snapshot.case` contain the same Case identity, exact Money values,
+required/forbidden sets, and `Do not change device financing.` hard constraint.
+The same invariant is applied to later snapshot-bearing responses.
 
 Before creating a Case, the blank conversation applies a small English lexical
 gate: the request must independently mention a mobile, cell, or phone context,
@@ -29,9 +42,10 @@ for arbitrary or Chinese input.
 
 If the Runtime returns HTTP 409/503, network failure, non-JSON, or a malformed
 payload, the conversation stays open with a retry/restart/refresh explanation.
-If a pending approval receives an arbitrary correction, the UI records it only
-as a local note and says that changing the created Case is unsupported in this
-demo.
+If a created Case receives an arbitrary correction, the UI records it only as a
+local note and says to restart the local Runtime, then choose `New task`.
+Changing the created Case is unsupported in this demo because its fixture IDs
+are fixed.
 
 Every create, confirmation-event, and approval request is bound to the current
 conversation session. Restarting clears the session and invalidates late

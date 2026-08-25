@@ -77,8 +77,12 @@ canonical contracts, evaluator meaning, security boundaries, or a phase gate.
   The bounded local Web demo was squash merged through PR #18 as `ef2ce53`;
   the post-merge Repository checks passed and its fully merged short-lived
   branch was safely removed locally and remotely. The legacy local-only UI
-  worktree/branch remains preserved. No implementation phase is active after
-  this closeout, and the demo does not alter the inactive production
+  worktree/branch remains preserved. The explicitly authorized Local
+  Conversation Intake UX is the only active implementation phase on
+  `feat/local-conversation-intake-ux`; local implementation and independent
+  review are complete, while PR integration remains pending. Its contract is
+  `harness/build/phase-local-conversation-intake-ux.md`. It remains a bounded
+  local fictional-telecom extension and does not activate production
   UI/channel/deployment boundaries.
 
 ## Working Rules

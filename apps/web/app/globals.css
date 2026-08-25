@@ -130,9 +130,13 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .artifact-facts div, .approval-inline-terms div { border-top: 1px solid #e6ebe7; padding: 10px 0; }
 .artifact-facts dt, .approval-inline-terms dt { color: var(--muted-ink); font-size: .72rem; }
 .artifact-facts dd, .approval-inline-terms dd { font-size: .84rem; font-weight: 730; margin: 2px 0 0; }
+.draft-facts dd { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
+.fact-edit { background: transparent; border: 0; color: var(--accent-dark); cursor: pointer; font-size: .72rem; font-weight: 740; padding: 2px 0; text-decoration: underline; }
+.fact-edit:disabled { cursor: not-allowed; }
 .artifact-note { color: var(--muted-ink); font-size: .77rem; line-height: 1.55; margin: 16px 0 0; }
 .primary-button, .secondary-button { align-items: center; border: 1px solid transparent; border-radius: 999px; cursor: pointer; display: inline-flex; font-size: .86rem; font-weight: 730; gap: 8px; justify-content: center; min-height: 43px; padding: 9px 15px; }
 .primary-button { background: var(--accent); color: white; margin-top: 17px; }
+.draft-task-brief > .primary-button { white-space: nowrap; }
 .primary-button:hover { background: var(--accent-dark); }
 .secondary-button { background: transparent; border-color: var(--line); color: var(--ink); }
 .secondary-button:hover { background: var(--surface-tint); }
@@ -169,6 +173,9 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .runtime-error strong { display: block; font-size: .85rem; }
 .runtime-error p { font-size: .78rem; margin: 5px 0 0; }
 .runtime-error .secondary-button { color: var(--danger); margin-top: 12px; }
+.intake-inline-error { background: var(--warning-soft); border: 1px solid #e8d8aa; border-radius: var(--radius-small); color: var(--warning); padding: 13px 15px; }
+.intake-inline-error strong { display: block; font-size: .84rem; }
+.intake-inline-error p { font-size: .78rem; margin: 4px 0 0; }
 
 .conversation-composer { align-items: flex-end; background: var(--surface); border: 1px solid #b7c5b9; border-radius: 16px; bottom: 16px; box-shadow: 0 18px 35px rgba(16, 35, 26, .14); display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) auto; margin: auto 18px 18px; padding: 10px; position: sticky; z-index: 5; }
 .conversation-composer textarea { background: transparent; border: 0; border-radius: 8px; max-height: 120px; min-height: 44px; padding: 11px 5px; resize: none; }
