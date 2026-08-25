@@ -1526,3 +1526,148 @@ This file is append-only execution evidence. Record only commands actually run a
   not rerun Browser checks or activate product, evaluation, training,
   persistence, Provider, channel, voice, deployment, or release work.
 - No implementation phase is active after this closeout.
+
+### 2026-08-25 — Local Conversation Intake UX activation and Gate 0
+
+- User gate: after the independent PR #18 docs closeout, activate one bounded
+  localhost fictional-telecom intake extension while retaining all deferred
+  capabilities on the long-term roadmap.
+- The branch `feat/local-conversation-intake-ux` was created from synchronized
+  `main@0d0acb3`. This is the only active implementation phase; its executable
+  contract is `harness/build/phase-local-conversation-intake-ux.md`.
+- Read-only Gate 0 mapped the empty `POST /cases` boundary, fixed deterministic
+  Case fixture, canonical Money/goal/bill/constraint fields, immutable event
+  path, fixed `$72` fictional offer, exact approval/Evidence/completion checks,
+  and current Web state/client/tests. An independent bounded explorer's lineage
+  evidence was reconciled against the primary source by Sol.
+- Gate decision: `GO_NARROW_SEAM`. One strict API-local four-field request can
+  rebuild and validate the existing canonical Case without changing public
+  contracts, Provider, authorization, approval, Evidence, execution, or
+  completion semantics. Fixed fixture IDs remain an explicit Runtime-restart
+  boundary for post-create correction.
+- Focused pre-implementation baseline passed:
+  `tests/integration/test_phase_04a_agent_runtime.py` and
+  `tests/integration/test_phase_04b_model_runtime.py` reported
+  `29 passed in 1.80s`.
+- Product implementation, Browser smoke, independent review, full preflight,
+  commit, push, PR, CI, merge, and cleanup have not occurred yet.
+
+### 2026-08-25 — Local Conversation Intake UX implementation and Sol verification
+
+- One Luna xhigh implementer completed the frozen API/Runtime/Web/test/UI-doc
+  slice. Sol read every changed source file and the complete diff. No package,
+  lockfile, canonical schema, Provider, persistence/identity, auth, model,
+  channel, deployment, or infrastructure surface changed.
+- Exact focused Runtime command excluding only the localhost black-box test:
+  `UV_CACHE_DIR=/tmp/proxyloop-intake-uv-cache uv run --project runtime pytest
+  -q tests/integration/test_phase_04a_agent_runtime.py
+  tests/integration/test_phase_04b_model_runtime.py -k
+  'not localhost_server_black_box'` reported `45 passed, 1 deselected`.
+  Exact collection reported `45/46 tests collected (1 deselected)`.
+- Final Web lint and typecheck exited 0. Vitest reported
+  `2 files / 27 tests passed`. Next 16.2.9 Webpack production build compiled,
+  typechecked, and generated static `/` and `/_not-found` routes.
+- The first ordinary-sandbox `make preflight` attempt reached Runtime
+  `200 passed, 1 failed`; the sole failure was the existing localhost
+  black-box test's `PermissionError` while binding `127.0.0.1`. It stopped at
+  `unit-test` and is recorded as an environment failure, not a passing gate.
+- Final post-remediation `UV_CACHE_DIR=/tmp/proxyloop-intake-uv-cache make
+  preflight` outside the socket restriction exited 0: Runtime `201`, ML `177`,
+  Web `27`, and all Ruff, mypy, contracts, generated TypeScript, artifact,
+  layout, uv-lock, frozen offline pnpm, compile, Compose, build, and diff gates
+  passed.
+
+### 2026-08-25 — Local Conversation Intake UX Browser and review evidence
+
+- Real localhost Browser smoke verified unsupported input stayed local; the
+  four facts filled a visibly local Draft Task Brief; create remained disabled
+  before explicit confirmation and during editing; `$74` was rejected against
+  a `$75` target; corrected `$100` was sent and returned as a verified Runtime
+  Task Brief; post-create correction named the Runtime-restart/New-task
+  boundary; exact approval of the `$72` fictional offer produced a Verified
+  receipt with one matching Evidence ID and execution count `1`.
+- A temporary non-production HTTP stub returned a structurally valid root
+  `$92` / snapshot `$93` mismatch. The UI blocked with zero verified Task Brief
+  or Approval actions. After review remediation, a final real-Runtime run kept
+  the contradictory sentence `no change, but I want to change device
+  financing` local with create disabled; explicit `yes` then completed the
+  verified `$92 -> $72` journey.
+- Desktop and `375x812` Draft/receipt checks had document/body
+  `scrollWidth=375` and zero overflowing visible elements. Browser console
+  warning/error output was empty.
+- Tabs, viewport, Runtime/Web servers, the temporary fault stub, and both
+  current-worktree dependency symlinks were cleaned. Generated
+  `next-env.d.ts` dev-path noise was restored. The legacy UI worktree remains
+  at `b8d7ee5` with exactly its original three untracked planning files.
+- Initial independent Terra review returned `REQUEST_CHANGES`: one substantive
+  P1 contradictory-language bug, one P1 evidence-record/count concern, one P2
+  missing event stale-response test, and one P2 inaccurate Retry doc. Sol
+  accepted and remediated the parser, durable evidence, event test, and docs.
+  Exact runner/collector output resolved the static count concern. Final Terra
+  rereview, commit, push, PR, CI, merge, and branch cleanup remain pending.
+
+### 2026-08-25 — Final financing-parser remediation and second rereview gate
+
+- Terra's first rereview confirmed the evidence, event stale-response, and
+  Retry-documentation findings resolved, but returned `REQUEST_CHANGES` for one
+  remaining P1: the negative-synonym check could miss `modify` in a sentence
+  prefixed by `no change`.
+- The same implementer replaced financing free-text positive detection with a
+  normalized whole-answer allowlist. Both the original contradictory `change`
+  sentence and Terra's exact `no change, but please modify device financing`
+  sentence now stay local with create disabled; positive `yes` and `no change`
+  remain covered.
+- Final Web lint/typecheck/build exited 0 and Vitest reported
+  `2 files / 28 tests passed`. Final full preflight exited 0 with Runtime
+  `201`, ML `177`, Web `28`, and all repository gates passing.
+- Final in-app Browser verification of Terra's exact `modify` sentence showed
+  create disabled, zero verified Task Briefs, the local fixed-constraint alert,
+  and no console warnings/errors. The temporary Web process, tab, dependency
+  symlinks, and generated `next-env.d.ts` dev-path noise were cleaned.
+- Second rereview by the same Terra reviewer, commit, push, PR, CI, merge, and
+  branch cleanup remain pending.
+
+### 2026-08-25 — Final hotspot-parser remediation and rereview gate
+
+- Terra's second rereview confirmed all prior findings resolved but returned
+  `REQUEST_CHANGES` for one analogous P1: free-text hotspot confirmation could
+  accept `yes, remove mobile hotspot`.
+- The same implementer moved both fixed boolean confirmations to normalized
+  whole-answer allowlists and added the exact hotspot sentence as a fail-closed
+  regression. Create remains disabled and no Runtime call is made.
+- Final Web lint/typecheck/build exited 0 and Vitest reported
+  `2 files / 29 tests passed`. Final full `make preflight` exited 0 with Runtime
+  `201`, ML `177`, Web `29`, and all repository gates passing.
+- Final in-app Browser verification of the exact hotspot sentence left the
+  hotspot fact missing, create disabled, only the local fixed-constraint alert
+  visible, no verified Task Brief present, and no console warnings/errors.
+- The temporary Web process, isolated Browser tab, dependency symlinks, and
+  generated `next-env.d.ts` dev-path noise were cleaned. Final same-Terra
+  rereview, commit, push, PR, CI, merge, and branch cleanup remain pending.
+
+### 2026-08-25 — Local Conversation Intake UX independent approval
+
+- The same Terra reviewer inspected the current complete diff after hotspot
+  remediation, found no P0/P1/P2 findings, and returned
+  `APPROVE_PHASE_GATE`.
+- The reviewer confirmed both fixed booleans use normalized whole-answer
+  allowlists and retained the previously reviewed API/Case/drift/approval/
+  Evidence/completion/stale-response conclusions. The reviewer did not rerun
+  commands or Browser in this final pass.
+- Sol's final local gate remains Runtime `201`, ML `177`, Web `29`, complete
+  `make preflight`, and exact in-app Browser fail-closed evidence. Commit,
+  PR-head CI/GitGuardian, merge, cleanup, and post-merge checks remain pending.
+
+### 2026-08-25 — Local Conversation Intake UX PR #20 initial integration gate
+
+- The 19-file bounded implementation/evidence commit `d432975` was pushed on
+  `feat/local-conversation-intake-ux`, and PR #20 was opened against `main`.
+  Root planning scratch remained untracked and excluded.
+- PR #20 head `d432975` passed GitGuardian Security Checks in `1s` and the
+  Repository `phase-gate` in `2m16s` through Actions run `32883127501`.
+- Sol reviewed the complete source, complete staged diff, exact file scope,
+  final local checks and Browser evidence, Terra's `APPROVE_PHASE_GATE`, and
+  the initial PR checks. The decision is `APPROVE_FOR_SQUASH_MERGE` after this
+  evidence-only commit passes its own fresh PR-head checks.
+- Merge, source/squash tree verification, branch cleanup, post-merge `main`
+  CI, and phase closeout remain pending.

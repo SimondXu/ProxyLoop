@@ -44,7 +44,9 @@ from proxyloop_contracts import (
     FactLedger,
     FactStatus,
     FastTurnDecision,
+    LineItemCategory,
     ModelInputPins,
+    Money,
     OfferReference,
     PlanningBasis,
     ProviderOffer,
@@ -186,10 +188,24 @@ class ThinAgentRuntime:
         self._lanes: dict[UUID, RLock] = {}
         self._executors: dict[UUID, CapabilityExecutor] = {}
 
-    def create_case(self) -> RuntimeResult:
+    def create_case(
+        self,
+        *,
+        current_monthly_total: Money | None = None,
+        target_monthly_total: Money | None = None,
+        mobile_hotspot_required: Literal[True] = True,
+        device_financing_change_forbidden: Literal[True] = True,
+    ) -> RuntimeResult:
         created_at = self._clock_now()
         episode = Phase01AEpisode.success()
         case = _case_at(episode.case, created_at)
+        case = _case_with_intake(
+            case,
+            current_monthly_total=current_monthly_total,
+            target_monthly_total=target_monthly_total,
+            mobile_hotspot_required=mobile_hotspot_required,
+            device_financing_change_forbidden=device_financing_change_forbidden,
+        )
         provider = FictionalMobileProvider()
         offer, offer_evidence = provider.issue_offer(
             case,
@@ -986,6 +1002,73 @@ def _case_at(case: Case, created_at: datetime) -> Case:
             "bill_snapshot": bill,
         }
     )
+
+
+def _case_with_intake(
+    case: Case,
+    *,
+    current_monthly_total: Money | None,
+    target_monthly_total: Money | None,
+    mobile_hotspot_required: Literal[True],
+    device_financing_change_forbidden: Literal[True],
+) -> Case:
+    bill = case.bill_snapshot
+    if bill is None:
+        raise ValueError("case requires a bill snapshot")
+    current = current_monthly_total or bill.monthly_total
+    target = target_monthly_total or case.goal.target_monthly_total
+    if mobile_hotspot_required is not True:
+        raise ValueError("mobile_hotspot_required must be true")
+    if device_financing_change_forbidden is not True:
+        raise ValueError("device_financing_change_forbidden must be true")
+    if current.currency != "USD" or target is None or target.currency != "USD":
+        raise ValueError("intake Money values must use USD")
+    if current.amount_minor <= 7200:
+        raise ValueError("current_monthly_total must be greater than 7200 cents")
+    if target.amount_minor < 7200 or target.amount_minor >= current.amount_minor:
+        raise ValueError("target_monthly_total is incompatible with the fixed offer")
+
+    service_items = [
+        item for item in bill.line_items if item.category is LineItemCategory.SERVICE
+    ]
+    add_on_items = [
+        item for item in bill.line_items if item.category is LineItemCategory.ADDON
+    ]
+    if (
+        len(service_items) != 1
+        or len(add_on_items) != 1
+        or add_on_items[0].amount.amount_minor != 1000
+        or add_on_items[0].amount.currency != "USD"
+    ):
+        raise ValueError("case fixture must retain the $10 premium add-on")
+    updated_line_items = tuple(
+        item.model_copy(
+            update={
+                "amount": Money(
+                    amount_minor=current.amount_minor - 1000,
+                    currency=current.currency,
+                )
+            }
+        )
+        if item.category is LineItemCategory.SERVICE
+        else item
+        for item in bill.line_items
+    )
+    updated_bill = bill.model_copy(
+        update={
+            "monthly_total": current,
+            "line_items": updated_line_items,
+        }
+    )
+    updated_goal = case.goal.model_copy(update={"target_monthly_total": target})
+    if tuple(updated_goal.required_features) != ("mobile_hotspot",):
+        raise ValueError("case fixture must retain the mobile hotspot requirement")
+    if tuple(updated_goal.forbidden_changes) != ("device_financing_change",):
+        raise ValueError("case fixture must retain the financing constraint")
+    updated = case.model_copy(
+        update={"bill_snapshot": updated_bill, "goal": updated_goal}
+    )
+    return Case.model_validate(updated.model_dump())
 
 
 def _ledger(case_id: UUID, created_at: datetime) -> FactLedger:

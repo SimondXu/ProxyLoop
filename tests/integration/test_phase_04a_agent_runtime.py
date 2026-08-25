@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
@@ -20,6 +21,12 @@ from proxyloop_api import (
 
 BASE_TIME = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
 CASE_ID = UUID("11111111-1111-4111-8111-111111111111")
+CREATE_CASE_REQUEST = {
+    "current_monthly_total": {"amount_minor": 9200, "currency": "USD"},
+    "target_monthly_total": {"amount_minor": 7500, "currency": "USD"},
+    "mobile_hotspot_required": True,
+    "device_financing_change_forbidden": True,
+}
 
 
 class SequenceClock:
@@ -43,7 +50,7 @@ async def _test_thin_runtime_completes_multiturn_approval_flow() -> None:
         transport=httpx.ASGITransport(app=create_app(runtime)),
         base_url="http://testserver",
     ) as client:
-        created = await client.post("/cases")
+        created = await client.post("/cases", json=CREATE_CASE_REQUEST)
         assert created.status_code == 201
         opening = created.json()
         assert opening["route"] == "slow_refresh"
@@ -146,13 +153,130 @@ async def _test_api_missing_case_and_stale_revision() -> None:
         assert missing.status_code == 404
         assert missing.json() == {"detail": "case not found"}
 
-        created = (await client.post("/cases")).json()
+        created = (await client.post("/cases", json=CREATE_CASE_REQUEST)).json()
         stale = await client.post(
             f"/cases/{created['case_id']}/events",
             json={"content": "stale", "expected_revision": 999},
         )
         assert stale.status_code == 409
         assert stale.json() == {"detail": "case snapshot revision is stale"}
+
+
+def test_api_create_maps_exact_intake_facts_and_event_preserves_them() -> None:
+    asyncio.run(_test_api_create_maps_exact_intake_facts_and_event_preserves_them())
+
+
+async def _test_api_create_maps_exact_intake_facts_and_event_preserves_them() -> None:
+    runtime = ThinAgentRuntime()
+    request = {
+        **CREATE_CASE_REQUEST,
+        "current_monthly_total": {"amount_minor": 10_000, "currency": "USD"},
+        "target_monthly_total": {"amount_minor": 7_300, "currency": "USD"},
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(runtime)),
+        base_url="http://testserver",
+    ) as client:
+        created = await client.post("/cases", json=request)
+        assert created.status_code == 201
+        body = created.json()
+        for case in (body["case"], body["snapshot"]["case"]):
+            assert case["case_id"] == body["case_id"]
+            assert case["bill_snapshot"]["monthly_total"] == {
+                "amount_minor": 10_000,
+                "currency": "USD",
+            }
+            assert case["bill_snapshot"]["line_items"] == [
+                {
+                    "name": "Postpaid mobile service",
+                    "category": "service",
+                    "amount": {"amount_minor": 9_000, "currency": "USD"},
+                },
+                {
+                    "name": "Premium data add-on",
+                    "category": "addon",
+                    "amount": {"amount_minor": 1_000, "currency": "USD"},
+                },
+            ]
+            assert case["goal"]["target_monthly_total"] == {
+                "amount_minor": 7_300,
+                "currency": "USD",
+            }
+            assert case["goal"]["required_features"] == ["mobile_hotspot"]
+            assert case["goal"]["forbidden_changes"] == ["device_financing_change"]
+            assert (
+                case["constraints"][0]["statement"] == "Do not change device financing."
+            )
+
+        event = await client.post(
+            f"/cases/{body['case_id']}/events",
+            json={"content": "Please review the offer."},
+        )
+        assert event.status_code == 200
+        assert event.json()["snapshot"]["case"]["bill_snapshot"]["monthly_total"] == {
+            "amount_minor": 10_000,
+            "currency": "USD",
+        }
+        assert event.json()["snapshot"]["case"]["goal"]["target_monthly_total"] == {
+            "amount_minor": 7_300,
+            "currency": "USD",
+        }
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda request: request.pop("current_monthly_total"),
+        lambda request: request.pop("target_monthly_total"),
+        lambda request: request.pop("mobile_hotspot_required"),
+        lambda request: request.pop("device_financing_change_forbidden"),
+        lambda request: request.update(extra_fact=True),
+        lambda request: request.update(mobile_hotspot_required=False),
+        lambda request: request.update(mobile_hotspot_required=1),
+        lambda request: request.update(device_financing_change_forbidden=False),
+        lambda request: request.update(device_financing_change_forbidden=1),
+        lambda request: request.update(
+            current_monthly_total={"amount_minor": 9200, "currency": "EUR"}
+        ),
+        lambda request: request.update(
+            target_monthly_total={"amount_minor": 7300, "currency": "EUR"}
+        ),
+        lambda request: request.update(
+            current_monthly_total={"amount_minor": 7200, "currency": "USD"}
+        ),
+        lambda request: request.update(
+            target_monthly_total={"amount_minor": 7100, "currency": "USD"}
+        ),
+        lambda request: request.update(
+            target_monthly_total={"amount_minor": 9200, "currency": "USD"}
+        ),
+        lambda request: request.update(
+            current_monthly_total={"amount_minor": "9200", "currency": "USD"}
+        ),
+        lambda request: request.update(
+            target_monthly_total={"amount_minor": -1, "currency": "USD"}
+        ),
+    ],
+)
+def test_api_rejects_unsupported_intake_without_storing_a_case(
+    mutate: Callable[[dict[str, object]], object],
+) -> None:
+    asyncio.run(_test_api_rejects_unsupported_intake_without_storing_a_case(mutate))
+
+
+async def _test_api_rejects_unsupported_intake_without_storing_a_case(
+    mutate: Callable[[dict[str, object]], object],
+) -> None:
+    runtime = ThinAgentRuntime()
+    request = dict(CREATE_CASE_REQUEST)
+    mutate(request)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(runtime)),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post("/cases", json=request)
+    assert response.status_code == 422
+    assert runtime.repository.get(CASE_ID) is None
 
 
 def test_external_event_type_cannot_forge_provider_or_approval_event() -> None:
@@ -165,7 +289,7 @@ async def _test_external_event_type_is_rejected() -> None:
         transport=httpx.ASGITransport(app=create_app(runtime)),
         base_url="http://testserver",
     ) as client:
-        created = (await client.post("/cases")).json()
+        created = (await client.post("/cases", json=CREATE_CASE_REQUEST)).json()
         before = runtime.repository.get(UUID(created["case_id"]))
         assert before is not None
         forged = await client.post(

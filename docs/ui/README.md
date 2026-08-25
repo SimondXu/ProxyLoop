@@ -10,13 +10,22 @@ It does not add a BFF, state-management framework, model call, login, real
 Provider, account action, persistence, workflow engine, channel, voice path,
 deployment, or production Pine clone claim.
 
-The demo creates a Case from the Runtime, derives the displayed facts from the
-returned Case/snapshot, sends one consumer event only after the user confirms
-the hotspot and device-financing constraint, and sends approval with the exact
-revision values returned in the pending response. A receipt is marked
+The demo first collects the current bill, target bill, required mobile hotspot,
+and forbidden financing change in a local Draft Task Brief. It does not call
+the Runtime while the brief is incomplete or merely drafted. One explicit
+`Create fictional Case` action sends exactly those four facts to the API-local
+intake boundary. The Runtime then owns the canonical Case; the Web verifies
+both the root Case and nested snapshot against the confirmed draft before
+showing the verified Task Brief. It sends one consumer event only after the
+user confirms the hotspot and device-financing constraint, and sends approval
+with the exact revision values returned in the pending response. A receipt is marked
 Verified only when the Runtime says `complete`, execution count is one, and
 every returned completion Evidence ID matches an Evidence item in that same
 response.
+
+After Case creation, confirmed intake facts are immutable in this local demo.
+Changing one requires restarting the local Runtime and choosing `New task`;
+there is no PATCH, persistence, or second-Case mutation path.
 
 See [research.md](research.md) for the evidence boundary, [user-flows.md](user-flows.md)
 for the journey, and [state-matrix.md](state-matrix.md) for fail-closed states.

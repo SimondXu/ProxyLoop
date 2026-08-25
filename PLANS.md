@@ -24,6 +24,7 @@ phase has started; Phase 04 remains inactive until a new explicit gate.
 | 04A | Thin Agent Runtime | Complete; independently approved | `harness/build/phase-04a-thin-agent-runtime.md` |
 | 04B | Model-backed Thin Agent Runtime | Complete; squash merged as `6daa1bc` through PR #13 | `harness/build/phase-04b-model-backed-runtime.md` |
 | Minimal local Web demo | Thin Runtime-backed conversation UI | Complete; squash merged through PR #18 as `ef2ce53`; post-merge Repository checks passed | `harness/build/phase-minimal-local-web-demo.md` |
+| Local Conversation Intake UX | Four-fact Runtime-owned fictional Case intake and exact Web snapshot verification | Local implementation and independent review complete; integration through PR #20; phase stops on merge | `harness/build/phase-local-conversation-intake-ux.md` |
 | 03B | Open-data SFT, gap-driven project data, and evaluation | Complete; final `NO_GO_STOP_PHASE03B`; squash merged as PR #15 (`f441335` short); no promotion or expansion; Decided from Phase 03A1 failure slices | `harness/build/phase-03b-qwen-qlora-smoke.md` |
 | 04 | Serving and control plane | Not started | To be prepared after Phase 03 |
 | 05 | Durable agent loop | Not started | To be prepared after Phase 04 |
@@ -124,8 +125,13 @@ authorized. No ML/roadmap implementation phase is active. The separate bounded
 local Web demo was squash merged through PR #18 as `ef2ce53`; its post-merge
 Repository checks passed, its fully merged short-lived branch was safely
 removed locally and remotely, and the legacy local-only UI worktree/branch
-remains preserved. No implementation phase is active after this closeout. The
-demo does not activate serving, channels, or production UI. Phase 03A1
+remains preserved. The explicitly authorized Local Conversation Intake UX has
+local implementation and independent review complete; PR integration remains
+through PR #20, and its merge closes this phase without activating another. It
+is limited to four confirmed
+fictional-telecom facts, one Runtime-owned Case, and exact Web snapshot
+verification. The demo does not activate serving, channels, or production UI.
+Phase 03A1
 continuation, r6/r7, model downloads,
 PostgreSQL, Temporal, real tools or Providers, authentication, channels, voice,
 production UI, deployment, and release remain inactive.

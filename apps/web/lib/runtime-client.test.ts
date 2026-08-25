@@ -4,11 +4,31 @@ import {
   completionHasVerifiedEvidence,
   createCase,
   decideApproval,
+  hasValidTaskBrief,
+  type IntakeFacts,
 } from "./runtime-client";
+
+const facts: IntakeFacts = {
+  currentMonthlyTotal: { amount_minor: 9200, currency: "USD" },
+  targetMonthlyTotal: { amount_minor: 7500, currency: "USD" },
+  mobileHotspotRequired: true,
+  deviceFinancingChangeForbidden: true,
+};
+
+const caseRecord = {
+  bill_snapshot: { monthly_total: facts.currentMonthlyTotal },
+  case_id: "11111111-1111-4111-8111-111111111111",
+  constraints: [{ classification: "hard", statement: "Do not change device financing." }],
+  goal: {
+    forbidden_changes: ["device_financing_change"],
+    required_features: ["mobile_hotspot"],
+    target_monthly_total: facts.targetMonthlyTotal,
+  },
+};
 
 const basePayload = {
   approval: null,
-  case: {},
+  case: caseRecord,
   case_id: "11111111-1111-4111-8111-111111111111",
   completion: { decision: "not_done", evidence_ids: [] },
   event_cursor: 1,
@@ -16,7 +36,7 @@ const basePayload = {
   execution_count: 0,
   revision: 2,
   route: "slow_refresh",
-  snapshot: {},
+  snapshot: { case: caseRecord },
 };
 
 afterEach(() => {
@@ -28,7 +48,7 @@ describe("runtime client", () => {
   it("rejects malformed success payloads", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not json", { status: 200 })));
 
-    await expect(createCase()).rejects.toMatchObject({
+    await expect(createCase(facts)).rejects.toMatchObject({
       kind: "invalid",
     });
   });
@@ -38,7 +58,7 @@ describe("runtime client", () => {
       new Response(JSON.stringify({ ...basePayload, evidence: [{ evidence_id: evidenceId }] }), { status: 200 }),
     ));
 
-    await expect(createCase()).rejects.toMatchObject({ kind: "invalid" });
+    await expect(createCase(facts)).rejects.toMatchObject({ kind: "invalid" });
   });
 
   it.each([
@@ -47,16 +67,55 @@ describe("runtime client", () => {
   ] as const)("fails closed for HTTP %s", async (status, kind) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status })));
 
-    await expect(createCase()).rejects.toMatchObject({ kind, status });
+    await expect(createCase(facts)).rejects.toMatchObject({ kind, status });
   });
 
   it("fails closed when the local Runtime cannot be reached", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
-    await expect(createCase()).rejects.toMatchObject({
+    await expect(createCase(facts)).rejects.toMatchObject({
       kind: "network",
       status: null,
     });
+  });
+
+  it("serializes exactly the four confirmed intake facts", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(basePayload), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createCase(facts);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/runtime/cases",
+      expect.objectContaining({
+        body: JSON.stringify({
+          current_monthly_total: facts.currentMonthlyTotal,
+          target_monthly_total: facts.targetMonthlyTotal,
+          mobile_hotspot_required: true,
+          device_financing_change_forbidden: true,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("fails closed for root, snapshot, draft, and later fact disagreement", () => {
+    expect(hasValidTaskBrief(basePayload, facts)).toBe(true);
+    expect(hasValidTaskBrief({ ...basePayload, case_id: "other" }, facts)).toBe(false);
+    expect(hasValidTaskBrief({
+      ...basePayload,
+      snapshot: { case: { ...caseRecord, case_id: "other" } },
+    }, facts)).toBe(false);
+    expect(hasValidTaskBrief({
+      ...basePayload,
+      case: { ...caseRecord, goal: { ...caseRecord.goal, target_monthly_total: { amount_minor: 7400, currency: "USD" } } },
+    }, facts)).toBe(false);
+    expect(hasValidTaskBrief({
+      ...basePayload,
+      snapshot: { case: { ...caseRecord, bill_snapshot: { monthly_total: { amount_minor: 9300, currency: "USD" } } } },
+    }, facts)).toBe(false);
   });
 
   it("sends the returned approval pins without inventing revisions", async () => {

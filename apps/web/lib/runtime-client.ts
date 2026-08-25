@@ -30,6 +30,18 @@ export type RuntimePayload = {
   [key: string]: unknown;
 };
 
+export type RuntimeMoney = {
+  amount_minor: number;
+  currency: "USD";
+};
+
+export type IntakeFacts = {
+  currentMonthlyTotal: RuntimeMoney;
+  targetMonthlyTotal: RuntimeMoney;
+  mobileHotspotRequired: true;
+  deviceFinancingChangeForbidden: true;
+};
+
 type RuntimeErrorKind = "http" | "invalid" | "network";
 
 export class RuntimeClientError extends Error {
@@ -98,19 +110,86 @@ export function isValidMoney(value: unknown): value is JsonObject {
   );
 }
 
-export function hasValidTaskBrief(payload: RuntimePayload): boolean {
-  const currentCase = objectValue(payload.snapshot, "case");
+function isUsdMoney(value: unknown): value is RuntimeMoney {
+  return (
+    isValidMoney(value) &&
+    value.currency === "USD" &&
+    typeof value.amount_minor === "number"
+  );
+}
+
+function sameMoney(actual: unknown, expected: RuntimeMoney): boolean {
+  return (
+    isUsdMoney(actual) &&
+    actual.amount_minor === expected.amount_minor &&
+    actual.currency === expected.currency
+  );
+}
+
+function exactStrings(value: unknown, expected: readonly string[]): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length === expected.length &&
+    value.every((item, index) => item === expected[index])
+  );
+}
+
+function hasMatchingHardConstraint(currentCase: JsonObject): boolean {
+  const constraints = arrayValue(currentCase, "constraints");
+  return (
+    constraints.length === 1 &&
+    constraints.some((item) => {
+      const constraint = isObject(item) ? item : null;
+      return (
+        constraint !== null &&
+        constraint.classification === "hard" &&
+        constraint.statement === "Do not change device financing."
+      );
+    })
+  );
+}
+
+function hasMatchingCase(
+  payload: RuntimePayload,
+  currentCase: JsonObject,
+  expected: IntakeFacts,
+): boolean {
   const goal = objectValue(currentCase, "goal");
   const bill = objectValue(currentCase, "bill_snapshot");
   return (
-    isNonEmptyString(payload.case_id) &&
-    isPositiveInteger(payload.revision) &&
+    currentCase.case_id === payload.case_id &&
     goal !== null &&
     bill !== null &&
-    isValidMoney(goal.target_monthly_total) &&
-    isValidMoney(bill.monthly_total) &&
-    isNonEmptyStringArray(goal.required_features) &&
-    isNonEmptyStringArray(goal.forbidden_changes)
+    sameMoney(goal.target_monthly_total, expected.targetMonthlyTotal) &&
+    sameMoney(bill.monthly_total, expected.currentMonthlyTotal) &&
+    exactStrings(goal.required_features, ["mobile_hotspot"]) &&
+    exactStrings(goal.forbidden_changes, ["device_financing_change"]) &&
+    hasMatchingHardConstraint(currentCase)
+  );
+}
+
+export function hasValidTaskBrief(
+  payload: RuntimePayload,
+  expected?: IntakeFacts,
+): boolean {
+  const rootCase = payload.case;
+  const snapshotCase = objectValue(payload.snapshot, "case");
+  const expectedFacts = expected ?? {
+    currentMonthlyTotal: objectValue(snapshotCase, "bill_snapshot")
+      ?.monthly_total as RuntimeMoney,
+    targetMonthlyTotal: objectValue(
+      objectValue(snapshotCase, "goal"),
+      "target_monthly_total",
+    ) as RuntimeMoney,
+    mobileHotspotRequired: true,
+    deviceFinancingChangeForbidden: true,
+  };
+  return (
+    isNonEmptyString(payload.case_id) &&
+    isPositiveInteger(payload.revision) &&
+    snapshotCase !== null &&
+    hasMatchingCase(payload, rootCase, expectedFacts) &&
+    hasMatchingCase(payload, snapshotCase, expectedFacts)
   );
 }
 
@@ -227,8 +306,16 @@ async function request(path: string, init?: RequestInit): Promise<RuntimePayload
   return parsePayload(body);
 }
 
-export function createCase(): Promise<RuntimePayload> {
-  return request("/cases", { method: "POST" });
+export function createCase(facts: IntakeFacts): Promise<RuntimePayload> {
+  return request("/cases", {
+    body: JSON.stringify({
+      current_monthly_total: facts.currentMonthlyTotal,
+      target_monthly_total: facts.targetMonthlyTotal,
+      mobile_hotspot_required: facts.mobileHotspotRequired,
+      device_financing_change_forbidden: facts.deviceFinancingChangeForbidden,
+    }),
+    method: "POST",
+  });
 }
 
 export function appendConsumerEvent(
