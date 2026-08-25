@@ -13,6 +13,7 @@ This file is append-only execution evidence. Record only commands actually run a
 | 02 — Data Factory and trajectory pilot | Complete | PR #6 passed independent review, CI, GitGuardian, and Sol integration review; squash merged as `f45b1ea` |
 | 03A0 — Fast/Slow architecture gate | Complete | PR #7 passed independent review, CI, and GitGuardian; squash merged as `54afcb8` |
 | 03A1-H — deterministic evaluation harness | In progress | Activated from clean synchronized `main` at `54afcb8`; merged-main baseline `make preflight` passed |
+| 04B — model-backed thin runtime | In progress | Activated from synchronized `main@75974da`; unmodified baseline `make preflight` passed with Runtime 162 and ML 115 tests |
 
 ## Entries
 
@@ -725,3 +726,102 @@ This file is append-only execution evidence. Record only commands actually run a
   is active after it; Phase 03B, training, PostgreSQL, Temporal, real tools or
   Providers, deployment, channels, voice, UI, and release remain inactive and
   require a new explicit gate.
+
+### 2026-08-25 — Phase 04B activation and frozen preflight
+
+- Human gate: the user explicitly approved Phase 04B Model-backed Thin Agent
+  Runtime and required Sol-only architecture/integration, Luna xhigh
+  implementation, and independent Terra high review.
+- Refreshed base: local and remote `main` are synchronized at `75974da`, the
+  Phase 04A squash merge from PR #12. The clean active branch is
+  `feat/phase-04b-model-backed-runtime`.
+- Preserved work: one old Phase 03A1 validity-smoke stash remains untouched.
+  The separately pushed architecture-documentation branch at `2ed4a90` is not
+  the Phase 04B base and has not been merged into this branch.
+- Frozen seam: existing `FastAdapter`/`SlowAdapter` protocols and canonical
+  contracts remain the Runtime interface. One runtime-owned OpenAI-compatible
+  Structured Outputs path may be added; no provider registry, plugin system,
+  generic gateway, or Runtime-to-ML dependency is allowed.
+- Evaluation reuse decision: `ml/evaluation/openai_frontier.py` remains
+  evaluation-only because it binds Phase 03A1 provider/model, budget, cost,
+  attestation, replay, artifact, and ML-private compiler behavior. It will not
+  be imported, moved, or copied wholesale into Runtime.
+- Baseline `make preflight`: passed before Phase 04B deliverable edits with 162
+  runtime/contract/integration tests and 115 ML tests, plus Runtime/ML Ruff,
+  strict mypy, contract/TypeScript drift, Phase 01B/02/03A1 artifact checks,
+  layout, both uv locks, frozen offline pnpm, script compilation, Docker
+  Compose, and Git diff checks.
+- External boundary: no model/API call was made, no credential or `.env` was
+  read, and the optional manual real-model smoke remains unauthorized.
+- Frozen exclusions: no Phase 03A1 continuation, r6/r7, training, PostgreSQL,
+  Temporal, real tool/Provider, authentication, channel, voice, UI, deployment,
+  release, credential, or PII work.
+
+### 2026-08-25 — Phase 04B implementation, Sol remediation, and local gate
+
+- Delegation: after Sol froze the adapter seam, acceptance criteria, file
+  ownership, and verification plan, one Luna xhigh implementer owned all
+  product code/tests. Luna was explicitly prohibited from touching Sol harness
+  files, `ml/`, historical artifacts, `.env`, credentials, Git publication, or
+  external model/API calls.
+- Red evidence: the initial Phase 04B architecture check produced two failures
+  and one pass because the runtime adapter package and executable server did
+  not exist.
+- Initial implementation: added one runtime-owned OpenAI-compatible Chat
+  Completions Structured Outputs adapter, strict semantic DTOs and deterministic
+  compilers, stable typed failure categories, explicit scripted/model
+  configuration, a localhost server command, fake-transport integration tests,
+  and a real TCP/HTTP scripted black-box flow.
+- Sol initial integration findings: failed or stale Slow work could leave a
+  half-created deterministic Case; stale Slow, explicit refusal, and SDK
+  timeout/zero-retry construction required direct regression coverage; Runtime
+  should use the repository's already validated OpenAI 2.51.0 behavior surface
+  rather than a second 1.x path.
+- Sol finding remediation: repository creation now occurs only after Slow
+  success and coordinator acceptance; tests prove Slow transport/stale failures
+  persist no Case or authority state and Fast stale failure creates no approval
+  or Provider confirmation; refusal and production client settings are covered;
+  Runtime pins `openai==2.51.0`.
+- Sol pre-review verification: the Phase 04B focused suite passed 16 tests;
+  affected Ruff and strict mypy passed; `git diff --check` passed. Sol's complete
+  `make preflight` passed with Runtime 178 and ML 115 tests plus every
+  repository-native format, lint, type, contract/type drift, artifact, layout,
+  lock, offline pnpm, compile, Compose, and diff gate.
+- Initial independent Terra review: Request Changes with no Critical and one
+  Important finding. `nan`, `inf`, and `-inf` timeout values could bypass the
+  positive check and enter model serving.
+- Review remediation: process configuration and the adapter constructor now
+  require a finite positive timeout. Six parameterized cases produced four
+  failures and two passes against the old behavior and all pass after the fix.
+- Final independent Terra rereview: Approve with no remaining Critical,
+  Important, or Minor finding. Terra independently passed 32 focused Phase
+  04B/04A tests and complete `make preflight` with Runtime 184 and ML 115 tests.
+  Durable review: `harness/code_review/phase-04b-model-backed-runtime.md`.
+- Sol post-remediation focused verification passed 22 tests. After the durable
+  review evidence was complete, Sol's final `make preflight` passed with
+  Runtime 184 and ML 115 tests plus every repository-native format, lint, type,
+  contract/type drift, artifact, layout, lock, offline pnpm, compile, Compose,
+  and diff gate.
+- Scope audit: no `ml/`, `data/evaluation/`, `data/manifests/`, `.env`,
+  credential, Phase 03A1 artifact, training, database, Temporal, real
+  tool/Provider, authentication, channel, voice, UI, deployment, or release
+  diff/action occurred. No external model/API request was made.
+- Local status: Phase 04B implementation and independent review gates are
+  approved. PR publication, CI phase-gate, GitGuardian, squash merge, merged
+  branch cleanup, and final synchronized-main verification remain pending.
+
+### 2026-08-25 — Phase 04B initial PR gate and Sol integration decision
+
+- Publication: commit `bfe9915` was pushed on
+  `feat/phase-04b-model-backed-runtime` and opened as bounded PR #13 against
+  `main`.
+- Hosted evidence on initial PR head: GitGuardian Security Checks passed in one
+  second and the repository `phase-gate` passed in 1 minute 20 seconds.
+- Sol reviewed the complete 29-file PR diff, clean synchronized branch, final
+  local Runtime 184 / ML 115 preflight, scope audit, dependency and lock
+  changes, durable Terra approval, and live hosted gate state. Final decision:
+  Approve for squash merge after this evidence-only commit passes its CI and
+  GitGuardian rerun.
+- No external model/API call occurred, no credential or `.env` was read, and
+  `ml/`, `data/evaluation/`, `data/manifests/`, and historical Phase 03A1
+  artifacts remain unchanged. No next phase is active.

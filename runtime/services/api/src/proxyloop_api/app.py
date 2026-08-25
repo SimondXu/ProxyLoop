@@ -7,10 +7,11 @@ from uuid import UUID
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from proxyloop_openai_adapter import OpenAICompatibleAdapterError
 from pydantic import BaseModel, ConfigDict, Field
 
 from .repository import CaseConflictError, CaseNotFoundError
-from .runtime import RuntimeResult, ThinAgentRuntime
+from .runtime import ModelRuntimeError, RuntimeResult, ThinAgentRuntime
 
 
 class EventCommand(BaseModel):
@@ -41,6 +42,35 @@ def create_app(runtime: ThinAgentRuntime | None = None) -> FastAPI:
     @api.exception_handler(CaseConflictError)
     async def handle_conflict(_request: Any, exc: CaseConflictError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @api.exception_handler(OpenAICompatibleAdapterError)
+    async def handle_model_error(
+        _request: Any, exc: OpenAICompatibleAdapterError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": {
+                    "code": f"model_{exc.kind.value}",
+                    "message": "model operation failed safely",
+                }
+            },
+        )
+
+    @api.exception_handler(ModelRuntimeError)
+    async def handle_model_runtime_error(
+        _request: Any, exc: ModelRuntimeError
+    ) -> JSONResponse:
+        del exc
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": {
+                    "code": "model_result_rejected",
+                    "message": "model proposal was rejected safely",
+                }
+            },
+        )
 
     @api.post("/cases", status_code=201)
     def create_case() -> dict[str, Any]:

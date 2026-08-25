@@ -20,6 +20,7 @@ members = [
   "packages/contracts",
   "packages/provider_simulator",
   "packages/telecom_domain",
+  "packages/openai_adapter",
   "services/api",
 ]
 
