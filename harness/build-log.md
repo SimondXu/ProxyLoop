@@ -1657,3 +1657,17 @@ This file is append-only execution evidence. Record only commands actually run a
 - Sol's final local gate remains Runtime `201`, ML `177`, Web `29`, complete
   `make preflight`, and exact in-app Browser fail-closed evidence. Commit,
   PR-head CI/GitGuardian, merge, cleanup, and post-merge checks remain pending.
+
+### 2026-08-25 — Local Conversation Intake UX PR #20 initial integration gate
+
+- The 19-file bounded implementation/evidence commit `d432975` was pushed on
+  `feat/local-conversation-intake-ux`, and PR #20 was opened against `main`.
+  Root planning scratch remained untracked and excluded.
+- PR #20 head `d432975` passed GitGuardian Security Checks in `1s` and the
+  Repository `phase-gate` in `2m16s` through Actions run `32883127501`.
+- Sol reviewed the complete source, complete staged diff, exact file scope,
+  final local checks and Browser evidence, Terra's `APPROVE_PHASE_GATE`, and
+  the initial PR checks. The decision is `APPROVE_FOR_SQUASH_MERGE` after this
+  evidence-only commit passes its own fresh PR-head checks.
+- Merge, source/squash tree verification, branch cleanup, post-merge `main`
+  CI, and phase closeout remain pending.

@@ -1,9 +1,9 @@
 # Local conversation intake UX
 
 **Status**: Local implementation and independent review complete on
-`feat/local-conversation-intake-ux` from `main@0d0acb3`; PR integration is
-pending. This remains the only active implementation phase until integration
-closes.
+`feat/local-conversation-intake-ux` from `main@0d0acb3`; integration is through
+PR #20. The phase remains active until that PR merges; the merge closes this
+phase without activating another.
 
 ## Objective
 

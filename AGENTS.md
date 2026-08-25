@@ -78,9 +78,9 @@ canonical contracts, evaluator meaning, security boundaries, or a phase gate.
   the post-merge Repository checks passed and its fully merged short-lived
   branch was safely removed locally and remotely. The legacy local-only UI
   worktree/branch remains preserved. The explicitly authorized Local
-  Conversation Intake UX is the only active implementation phase on
-  `feat/local-conversation-intake-ux`; local implementation and independent
-  review are complete, while PR integration remains pending. Its contract is
+  Conversation Intake UX implementation and independent review are complete;
+  integration is through PR #20. The phase remains active until that PR
+  merges; its merge closes the phase and does not activate another. Its contract is
   `harness/build/phase-local-conversation-intake-ux.md`. It remains a bounded
   local fictional-telecom extension and does not activate production
   UI/channel/deployment boundaries.

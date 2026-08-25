@@ -182,5 +182,10 @@ preflight again reports Runtime `201`, ML `177`, and Web `29`.
 The same Terra reviewer inspected the current complete diff after final
 remediation, found no P0/P1/P2 findings, and returned
 `APPROVE_PHASE_GATE`. The reviewer did not rerun commands or Browser in the
-final pass. Commit, PR-head CI/GitGuardian, merge, branch cleanup, and
-post-merge `main` checks remain pending.
+final pass.
+
+PR #20's initial head `d432975` passed GitGuardian Security Checks in `1s` and
+the Repository `phase-gate` in `2m16s` (Actions run `32883127501`). Sol's
+integration decision is `APPROVE_FOR_SQUASH_MERGE` after this evidence commit
+passes its own fresh PR-head checks. Merge, branch cleanup, and post-merge
+`main` checks remain pending.
