@@ -132,6 +132,24 @@ EXPECTED_AGENT_SETTINGS = {
     "explorer.toml": ("gpt-5.6-luna", "medium", "read-only"),
 }
 
+REQUIRED_ROUTING_MARKERS = {
+    "AGENTS.md": (
+        "## Context and Evidence Routing",
+        'fork_turns="none"',
+        "Reuse an existing subagent",
+    ),
+    "PROMPTS.md": (
+        "## Delegate Bounded Exploration",
+        "complete build-log history",
+    ),
+}
+
+REQUIRED_EXPLORER_MARKERS = (
+    "minimal evidence set",
+    "Sol must read",
+    "Escalation needed",
+)
+
 
 def read_toml(relative_path: str) -> dict[str, object]:
     with (ROOT / relative_path).open("rb") as config_file:
@@ -148,6 +166,16 @@ def main() -> int:
     if not readme.startswith("# ProxyLoop\n"):
         print("README.md must identify the project as ProxyLoop.")
         return 1
+
+    for relative_path, markers in REQUIRED_ROUTING_MARKERS.items():
+        content = (ROOT / relative_path).read_text(encoding="utf-8")
+        missing_markers = [marker for marker in markers if marker not in content]
+        if missing_markers:
+            print(
+                f"{relative_path} is missing required token-routing guidance: "
+                f"{missing_markers}."
+            )
+            return 1
 
     codex_config = read_toml(".codex/config.toml")
     if codex_config.get("model") != "gpt-5.6-sol":
@@ -195,6 +223,18 @@ def main() -> int:
                 f"{filename} must use model/effort/sandbox {expected}; found {actual}."
             )
             return 1
+        if filename == "explorer.toml":
+            missing_markers = [
+                marker
+                for marker in REQUIRED_EXPLORER_MARKERS
+                if marker not in instructions
+            ]
+            if missing_markers:
+                print(
+                    "explorer.toml is missing required evidence-card guidance: "
+                    f"{missing_markers}."
+                )
+                return 1
 
     print("Repository foundation and Codex harness are valid.")
     return 0

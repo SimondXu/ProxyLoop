@@ -12,8 +12,14 @@ This file is append-only execution evidence. Record only commands actually run a
 | 01B — simulator breadth and benchmark | Complete | `make preflight`: 78 tests plus benchmark drift/gate, locks, and all repository checks passed; PR #5 CI and independent review approved |
 | 02 — Data Factory and trajectory pilot | Complete | PR #6 passed independent review, CI, GitGuardian, and Sol integration review; squash merged as `f45b1ea` |
 | 03A0 — Fast/Slow architecture gate | Complete | PR #7 passed independent review, CI, and GitGuardian; squash merged as `54afcb8` |
-| 03A1-H — deterministic evaluation harness | In progress | Activated from clean synchronized `main` at `54afcb8`; merged-main baseline `make preflight` passed |
-| 04B — model-backed thin runtime | In progress | Activated from synchronized `main@75974da`; unmodified baseline `make preflight` passed with Runtime 162 and ML 115 tests |
+| 03A1-H — deterministic evaluation harness | Complete | Squash merged through PR #8 as `e08c9b6` |
+| 03A1-B — untuned hosted baselines | Complete | PR #9 passed independent review and CI/GitGuardian gates |
+| 03A1-E — leakage-safe evaluation erratum | Complete — Provider blocked | PR #10 passed independent review and CI/GitGuardian with terminal Provider blocker preserved |
+| 03A1-R/V — hosted reliability and validity | Complete | PR #11 passed CI/GitGuardian and squash merged as `e501e0f` |
+| 03B — Qwen QLoRA smoke | Complete — No-Go | PR #15 passed CI/GitGuardian and squash merged as `f441335`; final decision `NO_GO_STOP_PHASE03B` |
+| 04A — thin agent runtime | Complete | PR #12 squash merged as `75974da` after independent review and repository gates |
+| 04B — model-backed thin runtime | Complete | PR #13 passed CI/GitGuardian and squash merged as `6daa1bc` |
+| Current implementation phase | None active | A new explicit human gate is required before implementation, evaluation, training, deployment, or release work |
 
 ## Entries
 
@@ -1314,3 +1320,30 @@ This file is append-only execution evidence. Record only commands actually run a
   `APPROVE_DOC_CLOSEOUT` with no blocking findings.
 - No model execution or training was run. No docs PR, CI run, or merge has
   occurred for this closeout branch.
+
+### 2026-08-25 — Codex token-routing harness update
+
+- Human gate: the user requested implementing the previously discussed harness
+  changes to preserve Sol's strongest decision-making while reducing repeated
+  context and subagent token use. No product or implementation phase was
+  activated.
+- Root context routing now distinguishes first orientation/material drift from
+  delegated slices, replaces full historical build-log rereads with status,
+  current-change, and newest-relevant evidence reads, and keeps architecture,
+  authorization, canonical semantics, conflicts, and final gates with Sol.
+- Explorer routing now defaults to fresh bounded context, minimal task packets,
+  agent reuse for clarification, and a compact evidence card with explicit
+  escalation triggers. The reusable prompt template exposes the same contract.
+- Unchanged execution capacity: root remains Sol high, independent review
+  remains Terra high, Luna implementer/explorer/fast-worker settings remain
+  unchanged, and the concurrency cap remains three. No model or reasoning
+  setting was downgraded.
+- `make check-layout`, `python3 -m compileall -q scripts`, and
+  `git diff --check` passed in the focused gate. Layout validation now fails
+  closed if the routing sections or explorer evidence-card contract drift.
+- Complete `make preflight` exited 0 with Runtime `184 passed`, ML `177 passed`,
+  and all repository format, lint, strict mypy, contract/type drift, Phase
+  01B/02/03A1/03B artifact, layout, lock, offline pnpm, compile, Compose, and
+  diff gates passing.
+- No subagent, external model/API call, credential, product code, training,
+  deployment, commit, push, PR, CI, or merge was used or performed.

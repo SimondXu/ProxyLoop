@@ -4,7 +4,8 @@ This file is the repository-level operating contract for Codex and delegated age
 
 ## Read Order
 
-Before changing files, read:
+On first orientation, after a compacted/resumed session, or after a material
+phase, branch, or repository-state change, read:
 
 1. `AGENTS.md`
 2. `GOALS.md`
@@ -12,10 +13,45 @@ Before changing files, read:
 4. `PLANS.md`
 5. the single active file under `harness/build/`
 6. any phase-specific material under `harness/context/`
-7. `harness/build-log.md`
+7. the `harness/build-log.md` phase-status table, entries named by the active
+   phase or current bounded change, and the newest relevant entry blocks
 8. the relevant source files and tests
 
+Do not reread unchanged canonical documents for every delegated slice. Do not
+scan the complete append-only build-log history unless an unresolved claim,
+artifact, regression, or audit requires older evidence. Delegated agents follow
+their task packet and read only the smallest evidence set needed for that task.
+
 Do not treat a roadmap item as permission to implement it. Only an explicitly approved phase is active.
+
+## Context and Evidence Routing
+
+Sol owns the durable working context and final judgment. Keep these decisions
+in the root context: shared architecture and interfaces, authorization and
+completion policy, canonical contract or evaluator semantics, conflicting
+evidence, scope changes, and phase-gate decisions. Sol must read the final diff
+and the evidence used to make any approval or completion claim.
+
+Delegate read-only exploration when a concrete question requires cross-directory
+mapping, call-chain or data-lineage tracing, test-impact discovery, artifact
+inventory, or noisy log inspection that can be summarized independently. Sol
+should investigate directly when the answer is contained in one to three tightly
+related files or when the question itself requires one of the retained decisions
+above.
+
+Prefer a fresh, bounded context for explorers and reviewers
+(`fork_turns="none"` when the caller supports it). Pass the smallest self-contained
+task packet: objective, constraints, known paths, exact questions, expected
+evidence format, and escalation triggers. When a user decision cannot be
+summarized safely, pass only the smallest recent context that contains it. Reuse
+the same subagent for clarification before repeating the same discovery with a
+new agent.
+
+Explorers return evidence cards, not transcripts: a direct answer, precise
+path/symbol or path/line support, checks run or unrun, conflicts and unknowns,
+and a short "Sol must read" list. Escalate to Sol instead of resolving ambiguity
+when evidence conflicts or the task reaches architecture, authorization,
+canonical contracts, evaluator meaning, security boundaries, or a phase gate.
 
 ## Current State
 
@@ -104,6 +140,8 @@ Rules for delegated work:
 
 - At most three subagents run concurrently.
 - Delegate only concrete, bounded work with a useful independent execution path; Sol may work directly when delegation would add no value.
+- Prefer fresh, bounded context and a self-contained task packet; do not pass the full root transcript by default.
+- Reuse an existing subagent for follow-up questions before spawning another agent for the same discovery.
 - Assign explicit, non-overlapping file ownership.
 - Tell write-enabled agents they are not alone in the repository and must not revert other edits.
 - The implementing subagent does not review or approve its own work.
