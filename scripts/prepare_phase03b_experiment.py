@@ -23,7 +23,10 @@ from proxyloop_evaluation.qwen_mlx import (
 def _load_local_tokenizer(model_path: Path) -> tuple[Any, str]:
     """Load only the tokenizer, with network access explicitly disabled."""
 
-    from transformers import AutoTokenizer, __version__
+    from transformers import (  # type: ignore[import-not-found,unused-ignore]
+        AutoTokenizer,
+        __version__,
+    )
 
     return (
         AutoTokenizer.from_pretrained(str(model_path), local_files_only=True),

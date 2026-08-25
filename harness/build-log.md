@@ -1268,3 +1268,19 @@ This file is append-only execution evidence. Record only commands actually run a
 - The same final local validation recorded `git diff --cached --check` and
   `git diff --check` passing. This is local evidence only; it does not claim
   CI, GitGuardian, merge, or publication.
+
+### 2026-08-25 — Phase 03B CI portability remediation evidence
+
+- PR #15 first head `1e14c89` had GitGuardian passing, but its phase-gate
+  failed at ML strict mypy on Linux because optional `mlx.core` and
+  `transformers` were unavailable.
+- The accepted remediation was limited to precise `import-not-found`/unused-
+  ignore annotations on those two function-local imports. No dependency, lock,
+  behavior, result, or test change was made.
+- After the fix, local `make preflight` exited 0 with Runtime `184`, ML `177`,
+  and all repository format, lint, mypy, contracts/types, artifact, layout,
+  lock, offline pnpm, compile, and Compose gates passing. Clean Terra
+  independently returned `APPROVE_FIX`; focused strict mypy over the two files
+  passed, and `git diff --check` passed.
+- CI rerun and push have not occurred; this entry makes no CI/GitGuardian/merge
+  claim beyond the recorded first-head GitGuardian result.

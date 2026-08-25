@@ -85,3 +85,14 @@ After the documentation-only P1 remediation, clean Terra returned
 limitation remains P2 and non-blocking. Terra recommends retaining the final
 `NO_GO_STOP_PHASE03B` decision and the frozen evaluator/results; no rerun or
 post-hoc implementation change is recommended.
+
+## CI portability fix review
+
+Clean Terra independently returned `APPROVE_FIX` for the CI portability
+remediation. PR #15 head `1e14c89` failed Linux ML strict mypy only because the
+optional local-execution imports `mlx.core` and `transformers` were unavailable.
+The exact boundary is two function-local import annotations for
+`import-not-found` (with local unused-ignore compatibility). No dependency,
+lock, behavior, result, or test change is permitted or recorded. Local focused
+strict mypy passed for both files and local preflight passed; CI rerun and push
+remain pending.

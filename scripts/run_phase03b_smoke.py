@@ -487,7 +487,7 @@ def _peak_rss_bytes() -> int:
 
 def _mlx_peak_memory_bytes() -> int | None:
     try:
-        import mlx.core as mx
+        import mlx.core as mx  # type: ignore[import-not-found,unused-ignore]
     except ImportError:
         return None
     for name in ("get_peak_memory", "get_active_memory"):
