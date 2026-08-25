@@ -5,13 +5,16 @@ description = "FastAPI control-plane service for ProxyLoop."
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "fastapi>=0.116,<1",
+  "uvicorn>=0.35,<1",
   "proxyloop-agent-core==0.0.0",
+  "proxyloop-openai-adapter==0.0.0",
   "proxyloop-provider-simulator==0.0.0",
   "proxyloop-telecom-domain==0.0.0",
 ]
 
 [tool.uv.sources]
 proxyloop-agent-core = { workspace = true }
+proxyloop-openai-adapter = { workspace = true }
 proxyloop-provider-simulator = { workspace = true }
 proxyloop-telecom-domain = { workspace = true }
 

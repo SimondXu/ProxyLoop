@@ -15,6 +15,7 @@ from proxyloop_agent_core import (
     CapabilityExecutionStatus,
     CapabilityExecutor,
     CaseCoordinator,
+    CoordinatorStatus,
     FastAdapter,
     PreparedSimulatorExecution,
     RouteRequest,
@@ -86,6 +87,14 @@ class RuntimeResult:
     approval: ApprovalRequest | None = None
     evidence: tuple[Evidence, ...] = ()
     execution_count: int = 0
+
+
+class ModelRuntimeError(RuntimeError):
+    """A model proposal was rejected before deterministic policy could act."""
+
+    def __init__(self, source: str) -> None:
+        self.source = source
+        super().__init__(f"{source} model result was rejected safely")
 
 
 class _PreparedProviderExecution:
@@ -213,7 +222,6 @@ class ThinAgentRuntime:
             events=(provider_event,),
             provider=provider,
         )
-        self.repository.create(state)
         outcome = CaseCoordinator(snapshot=snapshot).advance(
             RouteRequest(
                 snapshot=snapshot,
@@ -223,10 +231,12 @@ class ThinAgentRuntime:
             ),
             slow=self._slow,
         )
-        if outcome.slow_result is None or outcome.slow_result.strategy_proposal is None:
-            raise RuntimeError(
-                "the deterministic Slow adapter did not install a strategy"
-            )
+        if (
+            outcome.status is not CoordinatorStatus.ACCEPTED
+            or outcome.slow_result is None
+            or outcome.slow_result.strategy_proposal is None
+        ):
+            raise ModelRuntimeError("slow")
         strategy_snapshot = _snapshot(
             case=case,
             ledger=snapshot.fact_ledger,
@@ -241,14 +251,12 @@ class ThinAgentRuntime:
             phase=CasePhase.STRATEGY,
             manifest=snapshot.capability_manifest,
         )
-        self.repository.replace(
-            case.case_id,
-            expected_revision=snapshot.revision,
-            state=CaseRuntimeState(
+        self.repository.create(
+            CaseRuntimeState(
                 snapshot=strategy_snapshot,
                 events=(provider_event,),
-                provider=provider,
-            ),
+                provider=state.provider,
+            )
         )
         return RuntimeResult(
             snapshot=strategy_snapshot,
@@ -331,6 +339,11 @@ class ThinAgentRuntime:
             ),
             fast=self._fast,
         )
+        if (
+            outcome.status is not CoordinatorStatus.ACCEPTED
+            or outcome.fast_decision is None
+        ):
+            raise ModelRuntimeError("fast")
         policy_snapshot = event_snapshot
         approval: ApprovalRequest | None = None
         if event_snapshot.offers and not offer_compliance_violations_for_case(
@@ -1097,6 +1110,7 @@ def _check_expected_revision(
 __all__ = [
     "CaseConflictError",
     "CaseNotFoundError",
+    "ModelRuntimeError",
     "RuntimeResult",
     "ThinAgentRuntime",
     "offer_compliance_violations_for_case",
