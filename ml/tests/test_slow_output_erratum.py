@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -223,6 +224,19 @@ def test_slow_output_cannot_represent_two_capability_proposals() -> None:
                 "next_capability": None,
             }
         )
+
+
+def test_slow_output_schema_uses_openai_supported_anyof_union() -> None:
+    schema = SlowModelOutput.model_json_schema()
+    serialized = json.dumps(schema, sort_keys=True)
+
+    assert '"oneOf"' not in serialized
+    assert '"discriminator"' not in serialized
+    assert schema["properties"]["next_capability"]["anyOf"] == [
+        {"$ref": "#/$defs/AcceptOfferCapabilityModelOutput"},
+        {"$ref": "#/$defs/NonOfferCapabilityModelOutput"},
+        {"type": "null"},
+    ]
 
 
 def test_non_accept_capability_cannot_carry_an_offer_position() -> None:

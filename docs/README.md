@@ -21,4 +21,10 @@
 
 - [Phase 02 annotation guide](data/phase-02-annotation-guide.md)
 
+## Latest evaluation evidence
+
+- [Phase 03A1 hosted baseline reliability rerun](../harness/build/phase-03a1-hosted-rerun.md)
+- [Phase 03A1 evaluation-validity smoke](../harness/build/phase-03a1-evaluation-validity-smoke.md)
+- [Append-only build and verification log](../harness/build-log.md)
+
 The telecom specification is the v1 scope. `ProxyLoop` is the platform name, not a claim that telecom, auto negotiation, or other future verticals are already implemented.

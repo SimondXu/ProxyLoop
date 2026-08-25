@@ -341,12 +341,17 @@ def _semantic_projection(summary: EvaluationSummaryV2) -> dict[str, Any]:
     payload.pop("latency_p50_ms", None)
     payload.pop("latency_p90_ms", None)
     payload.pop("hosted_max_cost_microusd", None)
+    for prompt in payload["prompt_provenance"]:
+        output_schema_version = prompt.get("output_schema_version")
+        if isinstance(output_schema_version, str):
+            prompt["output_schema_version"] = output_schema_version.partition(":")[0]
     for row in payload["episodes"]:
         row.pop("latency_ms", None)
         row.pop("validation_error", None)
         for call in row["hosted_calls"]:
             call.pop("latency_ms", None)
             call.pop("estimated_cost_microusd", None)
+            call.pop("schema_fingerprint", None)
     return payload
 
 

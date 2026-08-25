@@ -436,3 +436,242 @@ This file is append-only execution evidence. Record only commands actually run a
 - Remaining integration work: push this closeout evidence, observe the final
   CI/GitGuardian rerun, then squash merge and clean the fully merged short-lived
   branch. Phase 03B remains inactive.
+
+### 2026-08-24 — Phase 03A1-R activation and pre-Provider gate
+
+- Human gate: after reviewing the merged Phase 03A1-E terminal Provider
+  blocker, the user explicitly requested the recommended reliable Terra hosted
+  baseline rerun. Scope remains evaluation evidence only; Phase 03B, training,
+  data expansion, product services, database, real tools/Providers, deployment,
+  channels, and UI remain inactive.
+- Integrated base: clean synchronized `main` at `a91943c`; active branch
+  `experiment/phase-03a1-hosted-rerun`.
+- Frozen evidence boundary: r2 file SHA-256
+  `dbfb88c72317046b587ca63142adf71cf0f9b27d4b8f6bcb56e071bf290506b3`
+  and report fingerprint
+  `499b62b7e0a6e1148652dcaf1bdc6538a6893c1aaa4d2476b5680b603770afa6`;
+  r3 file SHA-256
+  `c5ed4955bf598db2807a30aa1795fdf886f5b2cf6de2d27ec17541dc10bbcd72`
+  and report fingerprint
+  `a80e9f2677753c6efb7286706a60703d4d56472941ee88189b88833504477e6c`.
+- Red evidence: the new architecture check initially produced the intended
+  result, two failures and one pass, because the separate hosted-rerun module,
+  command, artifact path, and Make gate did not exist.
+- Minimal implementation: a new r4 module binds immutable r2/r3 sources, runs
+  a fixed non-evaluation medium/high structured probe, records allowlisted
+  error metadata, blocks the matrix after any failed probe, reuses the three
+  authoritative r3 local conditions, executes only the four frozen hosted
+  conditions, reconciles external dispatches/cost/readiness, and replays the
+  nested matrix offline. Existing r2/r3 writers and files were not modified.
+- Adapter safety: zero SDK retries remains frozen. Persisted error detail is
+  limited to exception class, HTTP status, request ID, and Provider
+  code/type/param. Arbitrary Provider messages, headers, request bodies,
+  credentials, and raw exception representations are excluded.
+- Focused remediation gate: 43 ML tests and 10 runtime architecture tests
+  passed. Changed-file Ruff, `git diff --check`, and strict mypy over the new
+  adapter/module/script passed.
+- Broad offline gate: 138 runtime/contract/integration tests and 94 ML tests
+  passed. Full ML format/lint and `git diff --check` passed. The existing
+  Phase 03A1-E offline checker passed with the terminally blocked r2/r3 report.
+- Provider credential gate: `.env` remains ignored and mode `0600`, but
+  `PROXYLOOP_FRONTIER_API_KEY` is absent from both `.env` and the active process.
+  The real probe command rejected before adapter construction with exit 2 and
+  the explicit missing-credential message. No Phase 03A1-R external dispatch or
+  cost occurred.
+- Layout check is not reported as passed: it truthfully fails only because
+  `data/evaluation/phase-03a1-r4-hosted-rerun-report.json` cannot exist before
+  the blocked Provider probe. Full `make preflight`, hosted matrix, review
+  closeout, PR, CI/GitGuardian, and integration remain pending.
+- Initial independent pre-Provider review: Request Changes with two Important
+  findings and one Minor workflow finding. A response with valid usage but no
+  response ID could fail before its terminal evidence was serialized; arbitrary
+  Provider error messages could echo request/secret material; and pre-dispatch
+  validation needed a source-only gate that did not require r4.
+- Review remediation: missing response IDs now produce auditable
+  `failed_invalid_response` evidence with retained usage/accounted cost and stop
+  all follow-on probes; arbitrary Provider messages were removed from both
+  evidence schemas; request-echo/multiple-secret and missing-ID regressions were
+  added; and `hosted-rerun-source-check` now validates immutable sources,
+  budget arithmetic, probe fingerprints, and the frozen execution contract
+  without requiring r4. The probe report binds its execution-contract
+  fingerprint so later code/dependency drift blocks the matrix.
+- Second independent review: Request Changes with one Important finding. A
+  matrix adapter's mutable `last_error` could lose an earlier known-cost
+  failure when a later call succeeded. Remediation added append-only per-call
+  error history with condition scope and 1-based call index, plus a regression
+  proving a later success cannot overwrite `MissingResponseId`.
+- Third independent review: Request Changes with one Important finding. The r4
+  checker did not yet reconcile history rows against actual failed calls.
+  Remediation added bidirectional `(scope, call_index)` reconciliation and
+  refingerprinted deletion, wrong-index, duplicate, unknown-scope, and orphan
+  rejection. Probe-embedded errors must also match global history.
+- Final independent Terra decision: Approve with no unresolved Critical or
+  Important finding. The durable pre-Provider review is
+  `harness/code_review/phase-03a1-hosted-rerun-pre-provider.md`.
+- Final pre-Provider offline evidence: 138 runtime/contract/integration tests
+  and 100 ML tests passed. Full runtime/ML Ruff format and lint, strict mypy
+  (25 runtime and 23 ML source files), diff checks, script compilation, Docker
+  Compose config, both uv lock checks, frozen offline pnpm lock check, the Phase
+  03A1-E source/replay check, and the Phase 03A1-R source-only gate passed.
+  Immutable r2/r3 file hashes remain unchanged. Layout still fails only on the
+  intentionally absent r4 artifact. No Provider call or cost occurred.
+
+### 2026-08-24 — Phase 03A1-R hosted execution and terminal gate
+
+- The user asked to finish the existing r4 path without further overengineering,
+  confirmed the 29qg credential/base URL were present locally, and stated that
+  Provider-side hard cost controls own spend. No cost cap or evaluation contract
+  was widened.
+- Local credential-format correction: `.env` contained colon-delimited
+  `api:<secret>` and `base_url:<url>` lines rather than shell assignments. The
+  first launcher incorrectly injected the whole API line and received HTTP 401.
+  It did not reach inference or return usage. The exact 245 KB artifact is
+  preserved as `phase-03a1-r4-attempt-01-auth-misconfigured.json` with SHA-256
+  `633e4121e0adfd95e37ed678af4368f20331e6af6d2c2fca1542b8bf3b67726d`;
+  no credential value is persisted.
+- Correctly parsed Provider probes: medium and high each returned
+  `gpt-5.6-terra-2026-07-09`, a response ID, 105 input and 27 output tokens, and
+  960 usage-accounted microusd. `probe_ready=true`; total probe dispatches=2 and
+  actual usage-accounted cost=1,920 microusd.
+- Frozen matrix outcome: the first `untuned_fast_frontier_slow_medium` Slow call
+  was dispatched, then returned HTTP 400 `BadRequestError`, Provider type
+  `invalid_request_error`, parameter `response_format`, and no response ID or
+  usage. R4 records `failed_provider_call`, `actual_cost_unknown`, and incomplete
+  accounting. The global abort left Qwen+Terra high and both Terra-reference
+  conditions at zero calls with `not_run_budget_rejected`.
+- Canonical r4 SHA-256 is
+  `e4735b496bfdad6f04c460be1c998b1f04732af946d99e95ad5d7299e2df8e34`.
+  Offline artifact replay/tamper validation passed; r2/r3 hashes remain
+  unchanged. `phase_completion_ready=false` is an honest matrix blocker, not a
+  model-quality conclusion. No r5, prompt/schema repair, training, or Phase 03B
+  work begins in this phase.
+- Root final `make preflight`: passed with 138 runtime/contract/integration tests
+  and 100 ML tests plus all format, lint, strict mypy, contract/type drift,
+  Phase 01B/02/03A1 artifact replay, layout, both locks, frozen offline pnpm,
+  script compilation, Docker Compose, and diff gates.
+- Final independent Terra review: Approve with no Critical or Important
+  finding. Terra independently reran the same complete `make preflight`,
+  confirmed both artifact hashes, dispatch/cost/readiness reconciliation,
+  immutable r2/r3, zero-call aborts, and closed phase status, and made no
+  Provider/API call. Durable review:
+  `harness/code_review/phase-03a1-hosted-rerun.md`.
+
+### 2026-08-24 — Phase 03A1-R Structured Outputs remediation and completed matrix
+
+- Human gate: the user explicitly approved changing the Slow response Schema
+  to the official OpenAI-supported form, required 29qg-first execution with
+  official OpenAI only as fallback, and requested the complete test/matrix run.
+- Root cause: `CapabilityModelOutput` used a Pydantic discriminated union that
+  emitted `oneOf` plus `discriminator`. Official OpenAI Terra rejected the exact
+  original `SlowModelOutput` with HTTP 400 on `response_format`, then accepted
+  the otherwise-identical Schema after that union was represented as `anyOf`.
+  The earlier gpt-4o-mini diagnostic showed the same validator behavior; those
+  diagnostic calls are not evaluation evidence or part of r4 accounting.
+- Red/Green: the new Schema regression failed on the original `oneOf`, then
+  passed after removing only `Field(discriminator="capability")`. Existing
+  strict Literal/extra-field semantics remained covered. Historical r2/r3
+  semantic replay now compares semantic Schema identity without requiring a
+  current wire-Schema fingerprint to equal the immutable historical one; report
+  self-fingerprints continue to protect recorded provenance.
+- 29qg-first confirmation: the corrected full `SlowModelOutput` returned
+  `gpt-5.6-terra-2026-07-09`, a response ID, `finish_reason=stop`, a parsed
+  Pydantic result, and complete usage of 546 input plus 92 output tokens. No
+  official OpenAI fallback was used after this successful 29qg confirmation.
+- Preservation: the original valid r4 terminal-blocker artifact was moved
+  intact to `phase-03a1-r4-attempt-02-unsupported-schema.json`, SHA-256
+  `e4735b496bfdad6f04c460be1c998b1f04732af946d99e95ad5d7299e2df8e34`.
+  R2/R3 remain byte-identical with SHA-256
+  `dbfb88c72317046b587ca63142adf71cf0f9b27d4b8f6bcb56e071bf290506b3`
+  and `c5ed4955bf598db2807a30aa1795fdf886f5b2cf6de2d27ec17541dc10bbcd72`.
+- Canonical execution: both formal probes and all four frozen medium/high
+  hosted conditions completed through 29qg. R4 records probe dispatches=2,
+  matrix dispatches=146, total new external dispatches=148, complete accounting,
+  and 3,114,128 usage-accounted microusd. Canonical r4 SHA-256 is
+  `d051a830e05ee193da9118978fc32d7eacae582b6422b4e01c65ed0af9e40827`;
+  report fingerprint is
+  `af37054e3fd6b5fe956ea58b21ef8467fd2ad0b551956057bca54dd75b216bc2`.
+- Matrix quality evidence: Qwen+Terra medium/high had 10/32 and 8/32 valid Slow
+  semantics, 2 and 1 reference matches, and zero end-to-end-valid episodes.
+  Terra-reference medium/high had 8/32 and 10/32 valid Slow semantics, with
+  3 and 1 end-to-end-valid/reference-matching episodes. Every hosted condition
+  recorded zero false completions and zero policy violations. These are failure
+  slices for a later training decision, not a quality pass.
+- Final root `make preflight`: passed with 138 runtime/contract/integration
+  tests and 101 ML tests, plus runtime/ML Ruff, strict mypy, contract and
+  TypeScript drift checks, Phase 01B/02/03A1-H/03A1-B/03A1-E/r4 replay and
+  tamper gates, layout, both uv locks, frozen offline pnpm, script compilation,
+  Docker Compose, and diff checks. Canonical r4 is valid and records
+  `phase_completion_ready=true`.
+- Review boundary: the earlier independent Terra approval covers only the
+  preserved unsupported-Schema attempt. Post-remediation independent review,
+  PR/CI/GitGuardian, commit, push, and merge have not run in this remediation.
+  Phase 03B remains inactive pending a separate human decision.
+
+### 2026-08-24 — Phase 03A1-V evaluation-validity smoke
+
+- Human gate: the user asked to follow the proposed diagnostic next step and
+  identify why the corrected hosted matrix still produced implausibly low
+  success, while avoiding over-engineering.
+- Scope: one frozen r2 fixture for each of accept, decline, clarification,
+  replan, escalation, and disclosure refusal; 29qg `gpt-5.6-terra` medium plus
+  the existing local Qwen Fast model. No retry, high-reasoning run, full
+  matrix, official OpenAI fallback, training, or product work was dispatched.
+- Red/Green: `ml/tests/test_validity_smoke.py` initially failed because the
+  isolated diagnostic module did not exist. The minimum implementation added
+  only public Provider-state parity, explicit dynamic-field semantics, and an
+  explicit verifier-evidence requirement for Fast completion claims. Focused
+  regression passed 35 tests.
+- Result: the selected canonical-r4 baseline was 0/6 end-to-end valid, 2/6
+  Slow semantic valid, 2/6 raw capability exact, and 1/6 Provider exact. The
+  r5 smoke was 5/6 end-to-end valid, 6/6 Slow semantic valid, 5/6 raw
+  capability exact, 5/6 Provider exact, and 6/6 Qwen Fast `not_done`, with
+  zero policy violations.
+- Remaining disagreement: the fee fixture's visible goal constrains recurring
+  monthly price, but the Provider verifier and scripted oracle enforce separate
+  twelve-month-total predicates that are not present in the model-visible goal
+  or constraints. Terra's acceptance produced the sole invalid Provider
+  outcome/false completion. This is evaluation-contract evidence, not an
+  unambiguous model reasoning failure.
+- Provider evidence: all six Terra calls returned auditable identities and
+  usage through 29qg. Recorded conservative usage-accounted cost was 117,456
+  microusd. R5 SHA-256 is
+  `2fec386cdc962c2a612a0d8eabe43ee8f3e2f038f2da1a52ac87c9a40b602107`;
+  report fingerprint is
+  `e6a9072bd9790f6c801962a2f41c1274ab2179d5bb0fb19c3b5c9580497124fd`.
+  Canonical r4 remained byte-identical at
+  `d051a830e05ee193da9118978fc32d7eacae582b6422b4e01c65ed0af9e40827`.
+- Final `make preflight`: passed with 138 runtime/contract/integration tests,
+  105 ML tests, runtime/ML Ruff and strict mypy, contract/TypeScript drift,
+  Phase 01B/02/03A1-H/03A1-B/03A1-E/r4/r5 artifact checks, layout, both uv
+  locks, frozen offline pnpm, script compilation, Docker Compose, and diff
+  checks.
+- Terminal status: Phase 03A1-V is complete. No implementation phase is active;
+  Phase 03B remains inactive pending a separate human decision.
+
+### 2026-08-24 — Phase 03A1-R/V final independent closeout
+
+- Terra final independent re-review decision: `Approve`, with no unresolved
+  Critical or Important findings.
+- Terra actually ran 47 Phase R/V, adapter, and schema focused tests, plus
+  `make hosted-rerun-source-check`, `make hosted-rerun-check`, and
+  `make validity-smoke-check`; all passed.
+- Terra made no Provider/API call, generator/model call, or Git operation and
+  did not read `.env`.
+- Root independently ran the complete `make preflight`, which exited 0 with
+  138 runtime tests passed and 115 ML tests passed. Root's gate also passed
+  all format, lint, strict mypy, contract, TypeScript, artifact, layout, uv
+  lock, offline pnpm, `compileall`, Docker Compose, and diff checks. This is
+  root execution evidence, not a Terra observation.
+- The remediated R5 checker typed-validates the embedded summary and
+  recomputes or binds model-call count, hosted maximum cost, actual cost and
+  accounting, failure slices, model/prompt provenance, and fixed disclosure
+  text. Refingerprinted tamper tests cover headline metrics, selection,
+  references, summary cost, model-call count, disclosure text, failure
+  slices, model provenance, and nested R4 evidence.
+- Canonical R4 SHA-256 remains
+  `d051a830e05ee193da9118978fc32d7eacae582b6422b4e01c65ed0af9e40827`;
+  canonical R5 SHA-256 remains
+  `2fec386cdc962c2a612a0d8eabe43ee8f3e2f038f2da1a52ac87c9a40b602107`.
+- This closeout does not assert PR, CI, GitGuardian, commit, push, or merge
+  completion. Training, PostgreSQL, Temporal, real tools/Providers,
+  deployment, and UI remain inactive.

@@ -8,7 +8,7 @@ The design separates a locally trained Fast Response Model from a hosted Slow Re
 
 ## Current status
 
-Phase 00A repository setup, Phase 00B canonical contracts, Phase 01A's deterministic fictional-provider loop, Phase 01B's simulator breadth, Phase 02's Data Factory pilot, Phase 03A0's Fast/Slow architecture gate, and both Phase 03A1 evaluation gates are complete. The deterministic Harness was squash merged as `e08c9b6` through PR #8; the untuned Qwen/Terra baseline matrix completed its independent review and PR #9 gates. Phase 02's human review sample remains `pending_human` and `training_ready=false`. No implementation phase is active; training, product services, external channels, and a web UI are not implemented.
+Phase 00A through Phase 03A1-V are complete. The deterministic Harness was squash merged as `e08c9b6` through PR #8, the untuned Qwen/Terra baseline matrix completed PR #9, and the evaluation erratum completed PR #10. The corrected r4 hosted matrix then completed through 29qg with auditable usage. A six-episode r5 validity smoke using the same Qwen/Terra path improved the selected baseline from 0/6 to 5/6 after model-view and prompt-contract parity; its remaining failure isolated a hidden twelve-month-cost evaluator predicate. This is diagnostic evidence, not a training-quality claim. Phase 02's human review sample remains `pending_human` and `training_ready=false`. No implementation phase is active; training, product services, external channels, and a web UI are not implemented.
 
 ## Start here
 
@@ -32,6 +32,8 @@ Phase 00A repository setup, Phase 00B canonical contracts, Phase 01A's determini
 - [Phase 03A0 Fast/Slow architecture gate](harness/build/phase-03a0-fast-slow-architecture.md)
 - [Phase 03A1 deterministic Harness](harness/build/phase-03a1-harness.md)
 - [Phase 03A1 untuned Baselines](harness/build/phase-03a1-baselines.md)
+- [Phase 03A1 hosted baseline reliability rerun](harness/build/phase-03a1-hosted-rerun.md)
+- [Phase 03A1 evaluation-validity smoke](harness/build/phase-03a1-evaluation-validity-smoke.md)
 
 ## Repository layout
 
@@ -58,6 +60,8 @@ make benchmark       Emit the deterministic Phase 01B environment-ceiling report
 make benchmark-check Verify the committed split/report artifacts and Phase 01B gate
 make data-pilot      Emit the deterministic Phase 02 pilot cost/quality report
 make data-pilot-check Verify Phase 02 schema, manifest, quarantine, report, and sample drift
+make hosted-rerun-check Verify the source-bound Phase 03A1 r4 hosted report
+make validity-smoke-check Verify the source-bound Phase 03A1 r5 diagnostic report
 ```
 
 These commands validate the canonical contract boundary, deterministic simulator gates, and the Phase 02 Data Factory pilot. `make simulator` runs the Phase 01A success episode; `make benchmark` runs Phase 01B's scripted environment ceiling; `make data-pilot` regenerates the deterministic one-turn pilot report with zero external model calls. None runs a learned model, model training, product service, workflow engine, external channel, or browser test.
