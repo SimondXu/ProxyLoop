@@ -4,7 +4,8 @@
 	unit-test test contracts contracts-check simulator benchmark benchmark-check \
 	data-pilot data-pilot-check harness harness-check baselines baselines-check \
 	errata errata-check hosted-rerun-source-check hosted-rerun-check \
-  validity-smoke-check lock-check runtime-server dev
+	validity-smoke-check phase03b-readiness-check phase03b-experiment-check \
+	lock-check runtime-server dev
 
 PYTHON_RUN := uv run --project runtime --all-packages
 ML_PYTHON_RUN := uv run --project ml
@@ -23,10 +24,12 @@ ML_PYTHON_PATHS := ml/data_pipeline/src ml/evaluation/src ml/tests \
 	scripts/run_phase_03a1_evaluation_erratum.py \
 	scripts/run_phase_03a1_evaluation_erratum_models.py \
 	scripts/run_phase_03a1_hosted_rerun.py \
-	scripts/run_phase_03a1_validity_smoke.py
+	scripts/run_phase_03a1_validity_smoke.py \
+	scripts/prepare_phase03b_readiness.py \
+	scripts/prepare_phase03b_experiment.py scripts/run_phase03b_smoke.py
 
 help:
-	@printf '%s\n' 'Targets: preflight, validate, format, format-check, lint, typecheck, test, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, validity-smoke-check, check-layout, lock-check, runtime-server, dev'
+	@printf '%s\n' 'Targets: preflight, validate, format, format-check, lint, typecheck, test, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, check-layout, lock-check, runtime-server, dev'
 
 preflight: validate lock-check
 	python3 -m compileall -q scripts
@@ -66,7 +69,9 @@ typecheck:
 		scripts/run_phase_03a1_evaluation_erratum.py \
 		scripts/run_phase_03a1_evaluation_erratum_models.py \
 		scripts/run_phase_03a1_hosted_rerun.py \
-		scripts/run_phase_03a1_validity_smoke.py
+		scripts/run_phase_03a1_validity_smoke.py \
+		scripts/prepare_phase03b_readiness.py \
+		scripts/prepare_phase03b_experiment.py scripts/run_phase03b_smoke.py
 
 unit-test:
 	$(PYTHON_RUN) pytest -c runtime/pyproject.toml -q \
@@ -75,7 +80,7 @@ unit-test:
 		tests/contract tests/integration
 	$(ML_PYTHON_RUN) pytest -c ml/pyproject.toml ml/tests -q
 
-test: unit-test contracts-check benchmark-check data-pilot-check harness-check baselines-check errata-check hosted-rerun-check validity-smoke-check
+test: unit-test contracts-check benchmark-check data-pilot-check harness-check baselines-check errata-check hosted-rerun-check validity-smoke-check phase03b-readiness-check phase03b-experiment-check
 
 contracts:
 	$(PYTHON_RUN) python scripts/generate_contracts.py
@@ -124,6 +129,12 @@ hosted-rerun-check:
 
 validity-smoke-check:
 	$(ML_PYTHON_RUN) python -m scripts.run_phase_03a1_validity_smoke --check
+
+phase03b-readiness-check:
+	$(ML_PYTHON_RUN) python scripts/prepare_phase03b_readiness.py --check
+
+phase03b-experiment-check:
+	$(ML_PYTHON_RUN) python -m scripts.prepare_phase03b_experiment --check
 
 lock-check:
 	uv lock --project runtime --check

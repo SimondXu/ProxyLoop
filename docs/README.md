@@ -39,12 +39,28 @@
 - [Phase 04B activation preflight](../harness/context/phase-04b-preflight.md)
 - [Phase 04B independent review](../harness/code_review/phase-04b-model-backed-runtime.md)
 
-## Proposed next experiment
+## Phase 03B Gate 1 closeout
 
-- [Phase 03B Qwen3-4B QLoRA readiness and comparison plan](planning/phase-03b-qwen-qlora-experiment.md)
+- [Phase 03B Qwen3-4B controlled-smoke executable contract](../harness/build/phase-03b-qwen-qlora-smoke.md)
+- [Phase 03B readiness preflight](../harness/context/phase-03b-readiness-preflight.md)
+- [Phase 03B final comparison](../data/experiments/phase-03b-qlora-smoke/results/comparison.md)
+- [Phase 03B final clean Terra review](../harness/code_review/phase-03b-qwen-qlora-smoke.md)
 
-The Phase 03B document is a proposed handoff, not an active implementation
-gate. It authorizes no training, model download/call, data expansion, or new
-evaluation artifact by itself.
+The Phase 03B contract is now closeout-only. The one frozen QLoRA training run
+and one canonical Arm B evaluation are recorded as descriptive evidence. Clean
+Terra returned `NO_GO_STOP_PHASE03B`, accepted by Sol, from Arm B
+schema/canonical/E2E `0/6`, six invalid JSON outputs, mostly unassessable
+apparent safety zeros, unsupported `4/6`, and `arm_b_hard_gates_pass=false`.
+That boolean is only a necessary detector-based safety summary, not sufficient
+for Go, evaluability, task quality, or promotion. No additional training, data
+expansion, model rerun, promotion, deployment, or next phase is authorized.
+
+## Original Phase 03B proposal
+
+- [Original Qwen3-4B QLoRA readiness and comparison proposal](planning/phase-03b-qwen-qlora-experiment.md)
+
+This planning document is retained as the original proposal and background. It
+is not the current executable contract and does not independently authorize
+model execution, training, downloads, external calls, or data expansion.
 
 The telecom specification is the v1 scope. `ProxyLoop` is the platform name, not a claim that telecom, auto negotiation, or other future verticals are already implemented.

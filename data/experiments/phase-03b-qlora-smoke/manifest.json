@@ -1,0 +1,95 @@
+{
+  "base_checkpoint": {
+    "chat_template_fingerprint": "40c21f34cf67d8c760ef72f8ad3ae5afad514299d4b06e91dd9a8d705af7b541",
+    "checkpoint_fingerprint": "941705797578fb931fdef40b55c03ae60274b48fe03f1626f01197b52394de50",
+    "model": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+    "model_revision": "50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b",
+    "source_lineage": "Qwen/Qwen3-4B-Instruct-2507",
+    "source_revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
+    "tokenizer_fingerprint": "5b06e759eb78534dbbf01b5ffc3faa43c9607921494151f7ca758b352f08722b"
+  },
+  "compiler": {
+    "fast_schema": "FastModelOutput@1.0",
+    "no_slow_calls": true,
+    "no_test_file": true,
+    "policy_version": "proxyloop-telecom-offer-policy-v1",
+    "prompt_subclass": "Phase03BQwenAdapter",
+    "version": "phase-03b-fast-compiler-v2"
+  },
+  "decoding": {
+    "fingerprint": "7b55c8eece1b7ab9f169d22ad60364c86f9eb7df256f71c055a8ff19b3c1562a",
+    "max_tokens": 512,
+    "seed": 0,
+    "temperature": 0.0
+  },
+  "hashes": {
+    "input": "9d137f3771f45f6ef6d8ec644a71a59730ade8822287b7c7b3559f0db3a4b215",
+    "prompt": "f2d9262fb519c62a87a31720074f92f95a0cf9eef6f16cb25d271bd814d2d068",
+    "qlora_config": "182cc008c60ee044703b128f673f7103ebf5c7baa70ca6cd46eb91eefb7a05d9",
+    "schema": "df535a0f9af2e3e5a42b6e20a2d849c17c6a0ef01d3011fdff28bd6b35da4823",
+    "source_records": "7391997989c2dd36ca4ecbf6b78e1257dcebf1330dec9a1adc235b6094637129",
+    "target": "f453fb0d1dee76db860d22bdd70e7c6b382d53445e7415619697d026c475df0a",
+    "train_jsonl": "515b7a7890b40e9eddea8da94746d882f310c4290292b8df5f4a38b1852bb806",
+    "valid_jsonl": "8b7ce0f4f9ed2497f74fea9256034519ee3435bf2cac7d08a5159cb58b040efb"
+  },
+  "resource_profile": {
+    "batch_size": 1,
+    "dropout": 0,
+    "eval_every": 10,
+    "gradient_accumulation_steps": 4,
+    "iterations": 40,
+    "layers": 8,
+    "learning_rate": 1e-05,
+    "max_sequence_length": 2048,
+    "rank": 8,
+    "report_every": 5,
+    "scale": 16,
+    "seed": 0
+  },
+  "review": {
+    "historical_phase02_human_review": "pending_human",
+    "packet_fingerprint": "f174b9e9623de4778ec37cde1dd0bf896f318aef0c30f716e6fd6180d65a0674",
+    "packet_path": "data/reviews/phase-03b-train-dev-review-packet.json",
+    "status": "sol_approved_independent_agent_review"
+  },
+  "scenario_counts": {
+    "development": 6,
+    "development_families": 3,
+    "total": 26,
+    "train": 20,
+    "train_families": 10
+  },
+  "schema_version": "phase-03b-qwen-fast-example-v1",
+  "source": {
+    "accepted_total": 128,
+    "development_records": 24,
+    "phase02_manifest_fingerprint": "11a8dead41ce4098df522742b163bd8eb6552f25455f09bb93b6dce7b9344258",
+    "test_records": 24,
+    "train_records": 80,
+    "variant_policy": "response_variant_0_one_per_scenario"
+  },
+  "token_fit": {
+    "checkpoint_fingerprint": "941705797578fb931fdef40b55c03ae60274b48fe03f1626f01197b52394de50",
+    "max_sequence_length": 2048,
+    "method": "transformers.AutoTokenizer local_files_only; MLX-LM ChatDataset-equivalent apply_chat_template(tools=None); no truncation",
+    "observed": {
+      "evaluation_prompt_tokens": {
+        "max": 775,
+        "max_row": "train.jsonl:3",
+        "min": 688
+      },
+      "full_training_sequence_tokens": {
+        "max": 850,
+        "max_row": "train.jsonl:3",
+        "min": 752
+      },
+      "rows": 26
+    },
+    "remediation": "semantic_compact_projection_no_truncation",
+    "status": "verified_local_tokenizer",
+    "tokenizer_fingerprint": "5b06e759eb78534dbbf01b5ffc3faa43c9607921494151f7ca758b352f08722b",
+    "tokenizer_library": "transformers",
+    "tokenizer_version": "5.15.1",
+    "truncation": false
+  }
+}
