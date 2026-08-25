@@ -263,8 +263,9 @@ artifacts, dependencies/locks, or any test-split content.
 Gate 0 previously reached `READY_FOR_QLORA_SMOKE` after Stage 0A/0B
 remediation and independent review. The fresh canonical Arm A rerun recorded
 the real evaluator gaps and the complete repository preflight passed. The
-current state is closeout-only: the one frozen QLoRA run and one canonical Arm B
-evaluation are complete as descriptive evidence. Clean Terra returned
+current state is complete and squash merged as PR #15 (`f441335` short): the
+one frozen QLoRA run and one canonical Arm B evaluation are complete as
+descriptive evidence. Clean Terra returned
 `NO_GO_STOP_PHASE03B`, accepted by Sol, from the combined schema/canonical/E2E
 `0/6`, six invalid JSON outputs, mostly unassessable apparent safety zeros,
 unsupported `4/6`, and `arm_b_hard_gates_pass=false`. This does not authorize
@@ -273,5 +274,5 @@ wider model matrix.
 The Phase 02 historical review remains `pending_human` /
 `training_ready=false`; no Agent review is human review.
 
-No model execution is active; Phase 03B is closeout-only and is not yet merged
-or CI-complete.
+No model execution is active; Phase 03B is complete and squash merged as PR #15
+(`f441335` short). No additional phase is active or authorized.

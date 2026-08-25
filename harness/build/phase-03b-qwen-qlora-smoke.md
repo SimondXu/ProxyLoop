@@ -1,11 +1,13 @@
 # Phase 03B — Qwen3-4B Untuned vs QLoRA Controlled Smoke
 
-**Status**: Closeout-only. The one frozen QLoRA training run and one canonical
-Arm B evaluation are recorded as descriptive evidence. Clean Terra returned
-`NO_GO_STOP_PHASE03B`, accepted by Sol, from Arm B schema/canonical/E2E `0/6`,
-six invalid JSON outputs, mostly unassessable apparent safety zeros, unsupported
-`4/6`, and `arm_b_hard_gates_pass=false`. No additional model execution,
-training, data expansion, promotion, deployment, or next phase is authorized.
+**Status**: Complete; squash merged as PR #15 (`f441335` short). The one frozen
+QLoRA training run and one canonical Arm B evaluation are recorded as
+descriptive evidence. Clean Terra returned `NO_GO_STOP_PHASE03B`, accepted by
+Sol, from Arm B schema/canonical/E2E `0/6`, six invalid JSON outputs, mostly
+unassessable apparent safety zeros, unsupported `4/6`, and
+`arm_b_hard_gates_pass=false`. No additional model execution, training, data
+expansion, promotion, deployment, or next phase is authorized; no
+implementation phase is active.
 
 ## Objective
 
@@ -218,8 +220,8 @@ Otherwise report `NEEDS_BOUNDED_REMEDIATION` or `NOT_READY` and do not train.
 - The remediation is independently reviewed, a fresh canonical Arm A result
   has been produced, and the complete repository preflight passed. The one
   frozen QLoRA training run and one canonical Arm B evaluation then completed
-  as descriptive evidence. The current state is closeout-only with final
-  decision `NO_GO_STOP_PHASE03B`.
+  as descriptive evidence. The current state is complete and squash merged as
+  PR #15 (`f441335` short), with final decision `NO_GO_STOP_PHASE03B`.
 
 ### Fresh canonical Arm A evidence
 

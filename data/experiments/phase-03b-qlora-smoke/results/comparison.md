@@ -1,6 +1,7 @@
 # Phase 03B Qwen3-4B Untuned vs QLoRA Smoke
 
-Status: `NO_GO_STOP_PHASE03B`.
+Status: `Complete; NO_GO_STOP_PHASE03B`; squash merged as PR #15
+(`f441335` short).
 
 This is a descriptive comparison of six development scenarios across three
 scenario families. It is not a statistical significance test or a population
@@ -61,7 +62,8 @@ enumeration.
 - The observed training loss decrease is not a task-quality conclusion.
 - Final decision: `NO_GO_STOP_PHASE03B`.
 - Do not expand data, train again, rerun either model, promote the adapter, or
-  deploy it. Phase 03B is closeout-only.
+  deploy it. Phase 03B is complete and squash merged as PR #15 (`f441335`
+  short); no implementation phase is active.
 
 ## Review boundaries
 
