@@ -48,8 +48,8 @@ The diagram is a target shape, not an inventory of implemented services. Reposit
 
 - **Implemented**: canonical contracts, the fictional Provider simulator, deterministic `agent_core` routing and policy boundaries, a local simulator-backed FastAPI Case loop with in-memory state, and one explicitly configured runtime-owned OpenAI-compatible Fast/Slow adapter.
 - **Research-only, not product-runtime serving**: the Phase 02 Data Factory pilot and Phase 03A1 evaluation/baseline runners and artifacts.
-- **Target**: `apps/web`, PostgreSQL, Temporal workflow workers, external connectors, voice, and promoted-model serving. A separate model-gateway service is introduced only if deployment or a second runtime consumer proves that boundary necessary.
-- **Deferred and inactive**: training, durable cross-process work, real Providers or tools, authentication, channels, UI, deployment, and release until separately gated.
+- **Implemented bounded local slice**: `apps/web` keeps conversation as the primary workspace and calls the existing local FastAPI Thin Runtime through one Next rewrite and one narrow runtime client. It renders Runtime-derived Case facts, one offer, exact approval pins, and a receipt only after the completion Evidence predicate passes.
+- **Target/deferred**: PostgreSQL, Temporal workflow workers, external connectors, voice, promoted-model serving, authentication, channels, production UI, deployment, and release remain separately gated. This local slice does not make a production Pine clone claim.
 
 The current research runtime bypasses PostgreSQL, Temporal, Gmail, MCP, and LiveKit. It uses an in-memory event log, immutable Case snapshots, synchronous local model-adapter calls, and one serialized Case write/side-effect lane. The Fast/Slow contracts preserve a later bounded concurrent path without claiming concurrent or durable execution today.
 
@@ -57,8 +57,9 @@ The current research runtime bypasses PostgreSQL, Temporal, Gmail, MCP, and Live
 
 ### Experience Layer
 
-- Target `apps/web`: Next.js user interface for case creation, constraint review, approvals, timeline, offer comparison, and evidence receipt.
-- The UI never communicates directly with model providers, Gmail, SIP carriers, or the simulator.
+- `apps/web`: bounded Next.js conversation-first interface for the fictional telecom Case. It keeps Task Brief, Progress, Offer, Approval, and Evidence receipt artifacts inline in one conversation.
+- `apps/web/next.config.ts` rewrites `/api/runtime/:path*` to the local FastAPI service at `127.0.0.1:8000`; `apps/web/lib/runtime-client.ts` is the only Web-to-Runtime seam.
+- The UI never communicates directly with model providers, Gmail, SIP carriers, or Provider internals. It does not infer success from assistant text: approval pins and completion Evidence come from the Runtime response.
 
 ### Control Plane
 

@@ -1347,3 +1347,141 @@ This file is append-only execution evidence. Record only commands actually run a
   diff gates passing.
 - No subagent, external model/API call, credential, product code, training,
   deployment, commit, push, PR, CI, or merge was used or performed.
+
+### 2026-08-25 — Minimal local Web demo implementation evidence
+
+- Scope: `feat/minimal-local-web-demo` from `main@d2cda56`; changed only the
+  owned Web, docs, phase-contract/context, status, and lockfile surfaces. The
+  root untracked planning files remain untouched. No backend, contracts, ML,
+  credentials, `.env`, external model, old-worktree branch, commit, push, PR,
+  or merge action occurred.
+- Red evidence before implementation: `pnpm --filter @proxyloop/web lint`
+  returned `No projects matched the filters` because `apps/web` contained only
+  `.gitkeep`.
+- `pnpm install --lockfile-only --ignore-scripts --offline` passed and updated
+  the workspace lockfile without downloading. A full offline install was not
+  possible because the local pnpm store lacked
+  `json-schema-to-typescript-15.0.4.tgz` and `@next/env-16.2.9.tgz`; no network
+  fallback was attempted.
+- Focused Web checks passed using the existing dependency tree from the old
+  worktree as a read-only verification aid (temporary symlink removed before
+  handoff): ESLint 9.39.3, TypeScript `tsc --noEmit -p apps/web/tsconfig.json`,
+  and Vitest `2 files / 8 tests passed`. The old worktree was not edited.
+- `git diff --check` passed. `make preflight` first hit the missing local root
+  Node binaries, then passed after temporarily exposing the existing local
+  dependency tree read-only: Runtime `184 passed`, ML `177 passed`, contracts,
+  artifacts, layout, locks, compile, Compose, and diff gates all passed.
+- `pnpm --filter @proxyloop/web lint/typecheck/test/build` were not run to a
+  native exit because the current workspace install is unavailable offline;
+  the direct focused equivalents above passed. Next production build was
+  attempted with the temporary dependency symlink and failed closed because
+  Turbopack rejects a `node_modules` symlink outside its filesystem root.
+  Browser smoke and live Runtime/Web process checks remain unrun.
+
+- After the final blank-conversation correction (the first consumer message now
+  creates the Runtime Case instead of creating one on mount), the focused Web
+  checks were rerun with the same read-only dependency-tree aid: ESLint and
+  TypeScript exited 0; Vitest reported `2 files / 8 tests passed`. The
+  workspace remains free of generated `node_modules` symlinks.
+
+- Correction after the intent-gate remediation: the intermediate note above
+  saying native Web scripts were unavailable is superseded for this local
+  verification environment; it remains as historical evidence. The three
+  native commands `pnpm --filter @proxyloop/web lint`,
+  `pnpm --filter @proxyloop/web typecheck`, and
+  `pnpm --filter @proxyloop/web test` all exited 0. Vitest reported `2 files /
+  9 tests passed`, including the unsupported-initial-intent test.
+- The explicit Webpack build command
+  `pnpm --filter @proxyloop/web exec next build --webpack` exited 0. Next
+  compiled successfully and prerendered `/` and `/_not-found` as static
+  routes. This correction records only local native Web evidence; it does not
+  claim a browser smoke, `make preflight` rerun, independent review, or CI.
+
+- Sol's final native Web verification then recorded
+  `pnpm --filter @proxyloop/web lint` exited 0,
+  `pnpm --filter @proxyloop/web test` exited 0 with `2 files / 9 tests`, and
+  `pnpm --filter @proxyloop/web build` exited 0; the `build` script is
+  `next build --webpack` and generated static `/` and `/_not-found` routes.
+  Sol initially ran build and typecheck in parallel; typecheck transiently
+  failed with `TS6053` while the build replaced `.next/types`. A sequential
+  typecheck rerun after the build exited 0. This is a validation-order race,
+  not a source failure.
+- Sol's final `make preflight` exited 0: Runtime `184`, ML `177`, and the
+  format/lint/mypy/contracts/artifacts/layout/uv-lock/offline-frozen-pnpm/
+  compile/Compose/diff gates passed.
+- In-app Browser smoke used Runtime `127.0.0.1:8000` and Web
+  `127.0.0.1:3012`. Unsupported vacation input stayed local; supported
+  `Lower my mobile bill` showed Runtime-derived `$92` current, `$75` target,
+  hotspot, and no device-financing change; one confirmation event produced a
+  `$72` fictional offer with pending exact approval; an arbitrary pending
+  correction stayed local and approval remained pending; exact approval
+  produced a Verified receipt only with one matching completion Evidence and
+  `execution_count` 1. Browser console warning/error output was empty. At
+  `375x812`, document `scrollWidth` was `375` with no horizontal overflow.
+  Servers, tab, viewport, and temporary dependency symlinks were cleaned up.
+  No screenshot artifact was committed; independent review, CI, and merge
+  remain pending.
+
+### 2026-08-25 — Terra review remediation evidence
+
+- Terra's independent review returned `REQUEST_CHANGES` with four P1 findings:
+  missing repository Web gate, malformed Task Brief/approval fail-closed
+  validation, an over-broad initial intent gate, and stale async responses
+  after restart. Sol accepted all four findings. The durable review record is
+  `harness/code_review/phase-minimal-local-web-demo.md`; rereview remains
+  pending.
+- Remediation stayed within Web, Makefile, docs, phase evidence, and review
+  ownership. It added `make web-check` in the required order and connected it
+  to `validate`; added explicit Money/Task Brief/pending Approval predicates;
+  split intent matching into telecom + billing context + reduction outcome;
+  and bound create/event/approval awaits to a monotonic session id with restart
+  invalidation. Tests now cover malformed Task Brief/offer, negative and
+  positive intent examples, and create/approval restart races.
+- `make web-check` exited 0 sequentially: Web lint, typecheck, Vitest `2 files
+  / 17 tests passed`, and `next build --webpack` generated static `/` and
+  `/_not-found`. `git diff --check` exited 0.
+- Final `make preflight` exited 0 with Runtime `184`, ML `177`, and format,
+  lint, mypy, contracts, artifacts, layout, uv locks, frozen offline pnpm,
+  compile, Compose, diff, and the Web gate passing. An earlier ordinary
+  sandbox attempt was blocked by uv-cache permissions; an intermediate run
+  without the temporary dependency aid failed at the existing root
+  `tsc/json2ts` lookup after Runtime `182` and two contract-test failures. The
+  final run used the existing dependency tree read-only and passed.
+- No browser smoke was rerun for this remediation. No rereview approval, CI,
+  commit, push, PR, or merge is claimed; final recommendation remains pending.
+
+### Evidence clarification — intermediate preflight failure
+
+- The intermediate command was one escalated `make preflight` invocation run
+  without the temporary root dependency symlink. Its Runtime pytest phase
+  completed with `182 passed, 2 failed`.
+- The two failed tests were
+  `test_generated_types_accept_exact_representative_fixture`, whose subprocess
+  `pnpm exec tsc --noEmit -p contracts/typescript/tsconfig.json` reported
+  `Command "tsc" not found`, and `test_generated_artifacts_have_no_drift`,
+  whose `scripts/generate_contracts.py --check` subprocess `pnpm exec json2ts`
+  reported `Command "json2ts" not found`.
+- Because `unit-test` returned nonzero, Make stopped at that phase and did not
+  continue to a later standalone `contracts-check` invocation. Thus the prior
+  shorthand “root tsc/json2ts lookup after Runtime 182 and two contract-test
+  failures” describes the causes inside those two failed pytest cases, not a
+  second later command. The final preflight used the read-only dependency aid
+  and passed; the failures remain recorded as historical evidence.
+
+### 2026-08-25 — Final Evidence-ID/Task-Brief remediation and Terra approval
+
+- The final source remediation rejected empty and whitespace-only `evidence_id`
+  values in both Runtime payload parsing and completion receipt verification.
+  Event responses now require both a valid Task Brief and a valid pending
+  offer/approval before entering the Approval state. Added regressions cover
+  both ID forms and a response with valid offer/approval but a missing Task
+  Brief; it remains blocked without an approval action.
+- Sol's final source verification passed Web lint/typecheck and Vitest `2 files
+  / 20 tests`. Complete `make preflight` passed with Runtime `184`, ML `177`,
+  the Webpack build, and all repository gates.
+- The earlier full journey, in-app Browser, and mobile smoke passed. Browser
+  smoke was not rerun after this final remediation. CI, commit, PR, merge, and
+  phase closeout have not occurred.
+- Terra's final rereview found no P0, P1, or P2 findings across six cumulative
+  remediations and returned `APPROVE_PHASE_GATE`. This is an independent review
+  recommendation, not a merge or phase-closeout claim.

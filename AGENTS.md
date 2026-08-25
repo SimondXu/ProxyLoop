@@ -73,7 +73,11 @@ canonical contracts, evaluator meaning, security boundaries, or a phase gate.
 - Phase 04B Model-backed Thin Agent Runtime was independently reviewed, passed both PR-head CI/GitGuardian gates, and was squash merged through PR #13 as `6daa1bc`. Its bounded scope is one runtime-owned OpenAI-compatible typed Fast/Slow adapter, mocked transport, fail-closed model errors, explicit opt-in configuration, a local server command, and a localhost black-box smoke while retaining the fictional Provider and deterministic authority boundaries.
 - Phase 03B is complete and squash merged as PR #15 (`f441335` short) from `experiment/phase-03b-readiness-remediation`. Its executable contract is `harness/build/phase-03b-qwen-qlora-smoke.md`, its readiness evidence is `harness/context/phase-03b-readiness-preflight.md`, and its final comparison is `data/experiments/phase-03b-qlora-smoke/results/comparison.md`. The final decision is `NO_GO_STOP_PHASE03B`; no implementation phase is active.
 - The one frozen QLoRA training run and one canonical Arm B evaluation are complete as descriptive evidence. The No-Go combines Arm B schema/canonical/E2E `0/6`, six invalid JSON outputs, mostly unassessable apparent safety zeros, unsupported `4/6`, and `arm_b_hard_gates_pass=false`. That boolean is only a necessary detector-based safety summary, not sufficient for Go, evaluability, task quality, or promotion. No data expansion, additional training, model rerun, adapter promotion, deployment, or next phase is authorized. Phase 03A1 continuation, r6/r7, PostgreSQL, Temporal, real tools or Providers, deployment, channels, voice, and UI remain inactive.
-- Product services, model training, external channels, and web UI are not implemented.
+- Product services, model training, and external channels are not implemented.
+  The bounded local Web demo on `feat/minimal-local-web-demo` has local
+  implementation and independent review complete; CI, merge, and phase
+  closeout remain pending. It does not alter the inactive production
+  UI/channel/deployment boundaries.
 
 ## Working Rules
 
