@@ -74,10 +74,12 @@ canonical contracts, evaluator meaning, security boundaries, or a phase gate.
 - Phase 03B is complete and squash merged as PR #15 (`f441335` short) from `experiment/phase-03b-readiness-remediation`. Its executable contract is `harness/build/phase-03b-qwen-qlora-smoke.md`, its readiness evidence is `harness/context/phase-03b-readiness-preflight.md`, and its final comparison is `data/experiments/phase-03b-qlora-smoke/results/comparison.md`. The final decision is `NO_GO_STOP_PHASE03B`; no implementation phase is active.
 - The one frozen QLoRA training run and one canonical Arm B evaluation are complete as descriptive evidence. The No-Go combines Arm B schema/canonical/E2E `0/6`, six invalid JSON outputs, mostly unassessable apparent safety zeros, unsupported `4/6`, and `arm_b_hard_gates_pass=false`. That boolean is only a necessary detector-based safety summary, not sufficient for Go, evaluability, task quality, or promotion. No data expansion, additional training, model rerun, adapter promotion, deployment, or next phase is authorized. Phase 03A1 continuation, r6/r7, PostgreSQL, Temporal, real tools or Providers, deployment, channels, voice, and UI remain inactive.
 - Product services, model training, and external channels are not implemented.
-  The bounded local Web demo on `feat/minimal-local-web-demo` has local
-  implementation and independent review complete. PR #18 passed
-  CI/GitGuardian and Sol approved it for squash merge. It does not alter the
-  inactive production UI/channel/deployment boundaries.
+  The bounded local Web demo was squash merged through PR #18 as `ef2ce53`;
+  the post-merge Repository checks passed and its fully merged short-lived
+  branch was safely removed locally and remotely. The legacy local-only UI
+  worktree/branch remains preserved. No implementation phase is active after
+  this closeout, and the demo does not alter the inactive production
+  UI/channel/deployment boundaries.
 
 ## Working Rules
 

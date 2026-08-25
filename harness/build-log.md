@@ -1496,3 +1496,33 @@ This file is append-only execution evidence. Record only commands actually run a
   decision is `APPROVE_FOR_SQUASH_MERGE`.
 - Merge and branch cleanup have not occurred. No merged, cleaned, or phase-
   closed state is claimed.
+
+### 2026-08-25 — PR #18 post-merge docs closeout
+
+- Live local and GitHub evidence confirmed PR #18 was squash merged as
+  `ef2ce536aab162f364b78939a08b993342c5af47`.
+- The post-merge `main@ef2ce53` Repository checks passed in the recorded
+  `2m27s`.
+- The fully merged `feat/minimal-local-web-demo` branch was safely removed
+  locally and remotely.
+- The legacy UI worktree remains local-only at
+  `/private/tmp/proxyloop-ui-worktree` on `feat/pine-inspired-ui-prototype` at
+  `b8d7ee5`, with its three untracked planning scratch files preserved.
+- `git diff --check` and `make check-layout` passed on the docs-only diff.
+- The first ordinary `make preflight` attempt reproduced the recorded local
+  dependency limitation: Runtime reported `182 passed, 2 failed` because root
+  `pnpm exec tsc` and `pnpm exec json2ts` could not find their binaries. A
+  read-only dependency-PATH retry was then blocked by the sandbox at the uv
+  cache boundary. A later escalated root-bin PATH run passed Runtime `184`, ML
+  `177`, contracts, artifacts, and layout before Web lint stopped because the
+  current worktree had no package-level `node_modules` resolution.
+- The final `make preflight` reused the preserved dependency tree through two
+  temporary, current-worktree-only symlinks. It exited 0 with Runtime `184`, ML
+  `177`, Web lint/typecheck, Vitest `2 files / 20 tests`, Webpack production
+  build, contracts/artifacts/layout, lock, compile, Compose, and diff gates
+  passing. Both temporary symlinks were verified and removed afterward; the
+  legacy worktree remained unchanged.
+- This closeout changes current-state and evidence documentation only. It does
+  not rerun Browser checks or activate product, evaluation, training,
+  persistence, Provider, channel, voice, deployment, or release work.
+- No implementation phase is active after this closeout.

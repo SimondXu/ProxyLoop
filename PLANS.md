@@ -23,7 +23,7 @@ phase has started; Phase 04 remains inactive until a new explicit gate.
 | 03A1-V | Evaluation-validity six-episode smoke | Complete; 5/6 diagnostic, evaluator mismatch isolated | `harness/build/phase-03a1-evaluation-validity-smoke.md` |
 | 04A | Thin Agent Runtime | Complete; independently approved | `harness/build/phase-04a-thin-agent-runtime.md` |
 | 04B | Model-backed Thin Agent Runtime | Complete; squash merged as `6daa1bc` through PR #13 | `harness/build/phase-04b-model-backed-runtime.md` |
-| Minimal local Web demo | Thin Runtime-backed conversation UI | Local implementation and independent review complete; PR #18 passed CI/GitGuardian and Sol approved it for squash merge | `harness/build/phase-minimal-local-web-demo.md` |
+| Minimal local Web demo | Thin Runtime-backed conversation UI | Complete; squash merged through PR #18 as `ef2ce53`; post-merge Repository checks passed | `harness/build/phase-minimal-local-web-demo.md` |
 | 03B | Open-data SFT, gap-driven project data, and evaluation | Complete; final `NO_GO_STOP_PHASE03B`; squash merged as PR #15 (`f441335` short); no promotion or expansion; Decided from Phase 03A1 failure slices | `harness/build/phase-03b-qwen-qlora-smoke.md` |
 | 04 | Serving and control plane | Not started | To be prepared after Phase 03 |
 | 05 | Durable agent loop | Not started | To be prepared after Phase 04 |
@@ -120,11 +120,12 @@ apparent safety zeros, unsupported `4/6`, and `arm_b_hard_gates_pass=false`.
 That boolean is only a necessary detector-based safety summary, not sufficient
 for experiment Go, evaluability, task quality, or promotion. No additional
 training, data expansion, model rerun, promotion, deployment, or next phase is
-authorized. No ML/roadmap implementation phase is active. A separate bounded
-local Web demo has local implementation and independent review complete on
-`feat/minimal-local-web-demo` under its own contract; PR #18 passed
-CI/GitGuardian and Sol approved it for squash merge. It does not activate
-serving, channels, or production UI. Phase 03A1
+authorized. No ML/roadmap implementation phase is active. The separate bounded
+local Web demo was squash merged through PR #18 as `ef2ce53`; its post-merge
+Repository checks passed, its fully merged short-lived branch was safely
+removed locally and remotely, and the legacy local-only UI worktree/branch
+remains preserved. No implementation phase is active after this closeout. The
+demo does not activate serving, channels, or production UI. Phase 03A1
 continuation, r6/r7, model downloads,
 PostgreSQL, Temporal, real tools or Providers, authentication, channels, voice,
 production UI, deployment, and release remain inactive.
