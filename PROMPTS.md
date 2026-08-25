@@ -5,9 +5,12 @@ These prompts are reusable operator templates. Replace bracketed values with the
 ## Orient the Root Orchestrator
 
 ```text
-Read AGENTS.md, GOALS.md, CONTEXT.md, PLANS.md, the active harness/build phase file,
-harness/build-log.md, and the relevant code/tests. Report the current phase, its gate,
-dirty files, assumptions, and the smallest next action. Do not edit yet.
+On first orientation, after resume/compaction, or after material repository drift, read
+AGENTS.md, GOALS.md, CONTEXT.md, PLANS.md, and the active harness/build phase file.
+From harness/build-log.md read the phase-status table, current-phase/change entries, and
+newest relevant entry blocks rather than the complete history. Then read the relevant
+code/tests. Report the current phase, gate, dirty files, assumptions, and smallest next
+action. Do not edit yet.
 ```
 
 ## Prepare a Phase
@@ -40,6 +43,22 @@ in the repository: do not revert or overwrite other edits, and adapt to concurre
 Read the active phase contract and relevant code/tests. Use the smallest verifiable change.
 Do not touch shared architecture or contracts outside the owned slice. Do not commit or push.
 Return changed files, commands run, results, assumptions, and remaining risks.
+```
+
+## Delegate Bounded Exploration
+
+Use for an independent cross-directory map, call-chain or data-lineage trace, test-impact
+search, artifact inventory, or noisy log inspection. Prefer fresh context
+(`fork_turns="none"` when supported) and reuse the same explorer for clarification before
+repeating discovery.
+
+```text
+Investigate this exact question: [question]. Work read-only. Constraints: [scope and
+non-goals]. Known paths: [paths or "unknown"]. Read only the minimal evidence set needed;
+do not reread every root document or the complete build-log history. Return the explorer
+evidence card required by .codex/agents/explorer.toml. Escalate conflicts or decisions
+about architecture, authorization, canonical contracts/evaluators, security, scope, or
+phase completion to Sol.
 ```
 
 ## Delegate a Narrow Mechanical Task
