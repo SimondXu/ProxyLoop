@@ -1284,3 +1284,33 @@ This file is append-only execution evidence. Record only commands actually run a
   passed, and `git diff --check` passed.
 - CI rerun and push have not occurred; this entry makes no CI/GitGuardian/merge
   claim beyond the recorded first-head GitGuardian result.
+
+### 2026-08-25 — Phase 03B post-merge synchronized-main closeout
+
+- PR #15 (`https://github.com/SimondXu/ProxyLoop/pull/15`) first failed its
+  phase-gate at head `1e14c89` on Linux optional-import mypy; the precise
+  two-import annotation remediation was applied without dependency, lock,
+  behavior, result, or test changes.
+- Final PR #15 head `8557fd36a2d68b0a996a3ff4b0132671abd67573` passed the final
+  phase-gate in `2m3s`; GitGuardian passed. It was squash merged at
+  `2026-08-25T11:39:15Z` as `f441335441ce7380131cbcd448088320c3c50e95`.
+- `main`, `origin/main`, and `HEAD` all resolve to the exact squash commit;
+  the worktree is clean. The local experiment branch was deleted by the merge
+  flow, and `git fetch --prune origin` confirmed the remote experiment branch
+  deletion and pruned tracking ref. The existing stash remains untouched.
+- Phase 03B is complete with final decision `NO_GO_STOP_PHASE03B`. No
+  additional training, data expansion, model rerun, promotion, deployment, or
+  next phase is authorized; no implementation phase is active.
+
+### 2026-08-25 — Phase 03B docs closeout branch evidence
+
+- From `f441335441ce7380131cbcd448088320c3c50e95`, the docs closeout branch
+  `docs/phase-03b-closeout` changed only the eight current-state/evidence docs:
+  `AGENTS.md`, `PLANS.md`, `README.md`, `docs/README.md`, the Phase 03B
+  contract, the Phase 03B readiness preflight, `comparison.md`, and this
+  build log.
+- Full local `make preflight` exited 0 with Runtime `184`, ML `177`, and all
+  repository gates passing. `git diff --check` passed. Clean Terra returned
+  `APPROVE_DOC_CLOSEOUT` with no blocking findings.
+- No model execution or training was run. No docs PR, CI run, or merge has
+  occurred for this closeout branch.

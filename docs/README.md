@@ -39,21 +39,22 @@
 - [Phase 04B activation preflight](../harness/context/phase-04b-preflight.md)
 - [Phase 04B independent review](../harness/code_review/phase-04b-model-backed-runtime.md)
 
-## Phase 03B Gate 1 closeout
+## Phase 03B completed closeout
 
 - [Phase 03B Qwen3-4B controlled-smoke executable contract](../harness/build/phase-03b-qwen-qlora-smoke.md)
 - [Phase 03B readiness preflight](../harness/context/phase-03b-readiness-preflight.md)
 - [Phase 03B final comparison](../data/experiments/phase-03b-qlora-smoke/results/comparison.md)
 - [Phase 03B final clean Terra review](../harness/code_review/phase-03b-qwen-qlora-smoke.md)
 
-The Phase 03B contract is now closeout-only. The one frozen QLoRA training run
-and one canonical Arm B evaluation are recorded as descriptive evidence. Clean
-Terra returned `NO_GO_STOP_PHASE03B`, accepted by Sol, from Arm B
-schema/canonical/E2E `0/6`, six invalid JSON outputs, mostly unassessable
-apparent safety zeros, unsupported `4/6`, and `arm_b_hard_gates_pass=false`.
-That boolean is only a necessary detector-based safety summary, not sufficient
-for Go, evaluability, task quality, or promotion. No additional training, data
-expansion, model rerun, promotion, deployment, or next phase is authorized.
+Phase 03B is complete and squash merged as PR #15 (`f441335` short). The one
+frozen QLoRA training run and one canonical Arm B evaluation are recorded as
+descriptive evidence. Clean Terra returned `NO_GO_STOP_PHASE03B`, accepted by
+Sol, from Arm B schema/canonical/E2E `0/6`, six invalid JSON outputs, mostly
+unassessable apparent safety zeros, unsupported `4/6`, and
+`arm_b_hard_gates_pass=false`. That boolean is only a necessary detector-based
+safety summary, not sufficient for Go, evaluability, task quality, or
+promotion. No additional training, data expansion, model rerun, promotion,
+deployment, or next phase is authorized; no implementation phase is active.
 
 ## Original Phase 03B proposal
 

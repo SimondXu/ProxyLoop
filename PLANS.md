@@ -23,7 +23,7 @@ phase has started; Phase 04 remains inactive until a new explicit gate.
 | 03A1-V | Evaluation-validity six-episode smoke | Complete; 5/6 diagnostic, evaluator mismatch isolated | `harness/build/phase-03a1-evaluation-validity-smoke.md` |
 | 04A | Thin Agent Runtime | Complete; independently approved | `harness/build/phase-04a-thin-agent-runtime.md` |
 | 04B | Model-backed Thin Agent Runtime | Complete; squash merged as `6daa1bc` through PR #13 | `harness/build/phase-04b-model-backed-runtime.md` |
-| 03B | Open-data SFT, gap-driven project data, and evaluation | Closeout-only; final `NO_GO_STOP_PHASE03B`; training and canonical B evaluation complete as descriptive evidence; no promotion or expansion; Decided from Phase 03A1 failure slices | `harness/build/phase-03b-qwen-qlora-smoke.md` |
+| 03B | Open-data SFT, gap-driven project data, and evaluation | Complete; final `NO_GO_STOP_PHASE03B`; squash merged as PR #15 (`f441335` short); no promotion or expansion; Decided from Phase 03A1 failure slices | `harness/build/phase-03b-qwen-qlora-smoke.md` |
 | 04 | Serving and control plane | Not started | To be prepared after Phase 03 |
 | 05 | Durable agent loop | Not started | To be prepared after Phase 04 |
 | 06 | Controlled channels and UI | Not started | To be prepared after Phase 05 |
@@ -107,15 +107,16 @@ Fast/Slow adapter, mocked-transport failure gates, explicit opt-in model mode,
 a local server command, and a localhost HTTP black-box smoke while retaining
 the fictional Provider and deterministic authority boundaries.
 
-Phase 03B is now closeout-only. The one frozen six-scenario, 40-iteration
-QLoRA training run and one canonical B evaluation completed as descriptive
-evidence. Clean Terra returned `NO_GO_STOP_PHASE03B`, accepted by Sol, based on
+Phase 03B is complete and squash merged as PR #15 (`f441335` short). The one
+frozen six-scenario, 40-iteration QLoRA training run and one canonical B
+evaluation completed as descriptive evidence. Clean Terra returned
+`NO_GO_STOP_PHASE03B`, accepted by Sol, based on
 Arm B schema/canonical/E2E `0/6`, six invalid JSON outputs, mostly unassessable
 apparent safety zeros, unsupported `4/6`, and `arm_b_hard_gates_pass=false`.
 That boolean is only a necessary detector-based safety summary, not sufficient
 for experiment Go, evaluability, task quality, or promotion. No additional
 training, data expansion, model rerun, promotion, deployment, or next phase is
-authorized. Phase 03A1
+authorized. No implementation phase is active. Phase 03A1
 continuation, r6/r7, model downloads,
 PostgreSQL, Temporal, real tools or Providers, authentication, channels, voice,
 UI, deployment, and release remain inactive.
