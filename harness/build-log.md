@@ -809,3 +809,19 @@ This file is append-only execution evidence. Record only commands actually run a
 - Local status: Phase 04B implementation and independent review gates are
   approved. PR publication, CI phase-gate, GitGuardian, squash merge, merged
   branch cleanup, and final synchronized-main verification remain pending.
+
+### 2026-08-25 — Phase 04B initial PR gate and Sol integration decision
+
+- Publication: commit `bfe9915` was pushed on
+  `feat/phase-04b-model-backed-runtime` and opened as bounded PR #13 against
+  `main`.
+- Hosted evidence on initial PR head: GitGuardian Security Checks passed in one
+  second and the repository `phase-gate` passed in 1 minute 20 seconds.
+- Sol reviewed the complete 29-file PR diff, clean synchronized branch, final
+  local Runtime 184 / ML 115 preflight, scope audit, dependency and lock
+  changes, durable Terra approval, and live hosted gate state. Final decision:
+  Approve for squash merge after this evidence-only commit passes its CI and
+  GitGuardian rerun.
+- No external model/API call occurred, no credential or `.env` was read, and
+  `ml/`, `data/evaluation/`, `data/manifests/`, and historical Phase 03A1
+  artifacts remain unchanged. No next phase is active.
