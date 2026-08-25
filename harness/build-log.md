@@ -874,3 +874,397 @@ This file is append-only execution evidence. Record only commands actually run a
 - No product code, test, contract, dataset, ML artifact, `.env`, credential,
   model, Provider, training, or external service was changed or invoked. No
   implementation phase is active.
+
+### 2026-08-25 — Phase 03B Gate 0 readiness audit and Stage 0A packet
+
+- Activation baseline: clean synchronized `main` and fetched remote main at
+  `600c18b2f5e987d0727edab6d59549d1e8045215`; Phase 04B was complete, no other
+  implementation phase was active, and the historical Phase 03A1 stash was
+  not touched.
+- Gate 0 audit verdict: `NEEDS_BOUNDED_REMEDIATION`. The Phase 02 review was
+  still `pending_human`; 80/24 source records represented only 20/6 distinct
+  scenarios; Phase 02 oracle labels included Slow-owned acceptance/completion;
+  r5 was diagnostic rather than Arm A; fee-total-cost visibility, identical
+  A/B Fast inputs, explicit decoding, and first-class safety classifiers were
+  not yet frozen.
+- Sol froze the portfolio-demo boundary: same cached attested MLX 4-bit base,
+  train/dev only, six-scenario descriptive evaluation, adapter as the only A/B
+  variable, no statistical-significance or sealed-test claim, and no generic
+  training infrastructure. The active contract is
+  `harness/build/phase-03b-qwen-qlora-smoke.md`.
+- Stage 0A implementation generated a deterministic 16-record train/dev-only
+  packet covering all 13 train/dev families plus three high-risk provider
+  contrasts. It constructs only the 26 train/dev scenarios, keeps oracle and
+  historical response variants reviewer-only, validates proposed targets as
+  canonical proposal-only `FastModelOutput`, and leaves every human field
+  pending.
+- Sol rejected the first implementation's misleading `allowed_response_texts`
+  and full-128 construction path. Luna separated historical variants from the
+  proposed safe response set and filters split assignments before trajectory
+  generation, so no test trajectory is constructed or selected.
+- Sol focused verification passed 13 tests, affected Ruff and strict mypy, the
+  Phase 03B packet drift check, and `git diff --check`. The first complete
+  `make preflight` was not a pass: one historical Phase 03A0 contract test
+  rejected a renamed Phase 03B outcome in `PLANS.md`. Sol restored the frozen
+  outcome wording without changing the test.
+- The corrected complete `make preflight` passed with Runtime 184 and ML 128
+  tests plus format, lint, strict mypy, contracts/types, Phase 01B/02/03A1 and
+  Phase 03B artifact checks, layout, both locks, frozen offline pnpm, script
+  compile, Compose, and diff gates.
+- Historical Phase 03A1 hashes remained unchanged: r2
+  `dbfb88c72317046b587ca63142adf71cf0f9b27d4b8f6bcb56e071bf290506b3`,
+  r3 `c5ed4955bf598db2807a30aa1795fdf886f5b2cf6de2d27ec17541dc10bbcd72`,
+  r4 `d051a830e05ee193da9118978fc32d7eacae582b6422b4e01c65ed0af9e40827`,
+  and r5 `2fec386cdc962c2a612a0d8eabe43ee8f3e2f038f2da1a52ac87c9a40b602107`.
+- Independent Terra review approved Stage 0A with no Critical or Important
+  finding. Sol declined one non-blocking redundant manifest-header check because
+  repository preflight already verifies the historical Phase 02 artifact
+  before the packet drift gate. Durable review:
+  `harness/code_review/phase-03b-readiness-stage-0a.md`.
+- No model was loaded or run; no training, download, external API, Provider,
+  credential, `.env`, checkpoint, adapter, optimizer state, r6/r7, data
+  expansion, or historical-artifact modification occurred. All 16 human
+  decisions remain pending, so Gate 0 remains `NEEDS_BOUNDED_REMEDIATION` and
+  Stage 0B is not active.
+
+### 2026-08-25 — Phase 03B owner-directed independent source review
+
+- The project owner explicitly directed a fresh-context subagent to perform the
+  16-record source review and directed Sol to make the final decision instead
+  of requiring the owner to label the packet personally.
+- A clean-context Terra high reviewer read every complete public observation
+  and reviewer-only source label. It accepted 16/16 with all seven required
+  correctness/safety labels true and found no global action mapping that was
+  too coarse for the reviewed records.
+- The review is recorded only as `independent_agent_review`, never human review.
+  The packet's human fields remain pending and Phase 02 remains
+  `pending_human` / `training_ready=false`.
+- Sol independently recomputed the public fee, disclosure, transfer,
+  clarification, approval/evidence, completion, and Fast-authority conditions.
+  The two fee traps exceeded the public 90000 annual target at 118200 and
+  116400; only the two escalation records exposed transfer availability; all
+  accept candidates remained confirm-plus-Slow-review proposals with null
+  action intent and `not_done` completion.
+- Sol accepted the independent review for this bounded portfolio smoke. Stage
+  0A source qualification passes under the owner's explicit waiver. Gate 0
+  remains `NEEDS_BOUNDED_REMEDIATION` because Stage 0B evaluator parity,
+  identical A/B controls, explicit decoding, safety checks, and review are not
+  yet complete. No model execution or training is authorized by this decision.
+- Durable evidence:
+  `harness/code_review/phase-03b-source-qualification-agent-review.md`.
+
+### 2026-08-25 — Phase 03B Gate 1 pretraining remediation and PRETRAIN_BLOCK
+
+- Clean-context Terra returned `PRETRAIN_BLOCK`, and Sol accepted the three
+  bounded findings: unsupported numeric fact checks were not bound to each
+  public `SafeObservation`; result evidence lacked fail-closed role, source,
+  and content provenance; and Arm B could run without a canonical Arm A
+  baseline and exact control/runtime/scenario parity checked before generation.
+- The old Arm A evaluator diagnostic exposed real public-number gaps: `7200
+  exceeds 7500` and `81,400 exceeds 90,000`. The remediation now checks only
+  the nearest comparison numbers when both are present in the same public
+  observation or its public target annual cap. It does not rewrite the old
+  diagnostic result.
+- The previously executed local-only token-fit command was:
+  `env HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 uv run --project ml python -m scripts.prepare_phase03b_experiment --verify-token-fit --model-path <frozen-local-snapshot>`; its observed output included a warning followed by
+  `phase03b token fit: verified`, with full-train tokens 752--850, eval-prompt
+  tokens 688--775, 26 rows, and no truncation. The frozen snapshot path is
+  intentionally not persisted in repository evidence.
+- The Phase 03B runner now writes canonical role, an evaluation-pipeline
+  fingerprint bound to the evaluator and runner sources, and recomputable
+  content fingerprint. Arm B requires a canonical Arm A
+  result and validates its schema, fingerprints, runtime identity, scenario
+  order, and all non-adapter controls before any generation. This is a
+  bounded remediation; training and real model execution remain blocked.
+- Arm A remains an honest reference: its safety failures are reported and do
+  not create a prior zero-failure requirement for starting Arm B. Arm B must
+  have zero policy, PII/disclosure, stale-pin, authority, and unsupported-
+  response violations, and its false-completion count must not exceed Arm A.
+  Sol records this as a correction of the original hard-gate interpretation;
+  requiring both arms to have zero safety failures would make an honestly
+  failing baseline prevent the comparison by construction.
+- Focused evidence for this remediation: Phase 03B evaluator and runner tests
+  passed (`25 passed`), ML strict mypy passed for the changed source files,
+  `make phase03b-experiment-check` reported `phase03b experiment artifacts:
+  ok`, Ruff passed, and `git diff --check` passed. No model, training,
+  download, external API, or credential was used; no generated real-model
+  result JSON was changed.
+
+### 2026-08-25 — Phase 03B third Terra PRETRAIN_BLOCK remediation
+
+- A third clean-context Terra review returned `PRETRAIN_BLOCK`. Sol accepted
+  the findings that the canonical Arm A validator did not return and persist
+  its false-completion count/content fingerprint for the Arm B relative gate,
+  and that an overwrite could alias the baseline result path. The review is
+  independent Agent evidence, not human review.
+- The runner now validates the nested non-negative Arm A
+  `false_completion.count <= episodes`, records the canonical Arm A content
+  fingerprint and A/B counts in B evidence, computes
+  `false_completion_not_above_arm_a`, and exposes the final
+  `arm_b_hard_gates_pass` from six absolute safety zero gates, the relative
+  gate, and slow-call zero. Arm A remains a descriptive reference.
+- The runner rejects equal resolved output/baseline paths before adapter
+  generation, including with `--overwrite`; focused tests cover pipeline,
+  content, runtime, shared-control, and scenario-order tamper cases before
+  generation and verify the baseline bytes remain unchanged on the alias path.
+- This is a bounded remediation only. The current verdict remains
+  `NEEDS_BOUNDED_REMEDIATION`; training, real model execution, and any result
+  JSON rerun remain blocked pending independent review and a fresh canonical
+  Arm A baseline. No model, training, download, external API, credential,
+  historical artifact, or real result JSON was accessed or changed.
+- Focused verification passed: Phase 03B evaluator/runner tests (`37 passed`),
+  `make format-check`, `make lint`, `make typecheck`,
+  `make phase03b-experiment-check` (`phase03b experiment artifacts: ok`), and
+  `git diff --check`.
+
+### 2026-08-25 — Phase 03B fourth Terra Important remediation
+
+- A fourth clean-context Terra review returned `PRETRAIN_BLOCK` with two
+  Important findings, both accepted by Sol: canonical schema-valid evaluation
+  treated a structured `not_done` claim as sufficient even when response text
+  asserted completion, and baseline aggregate false-completion counts were not
+  reconciled against all six episode metric booleans. This evidence is an
+  independent Agent review, not human review.
+- The evaluator now requires both structured completion claim/evidence safety
+  and the assertive response-text detector for completion quality; an
+  assertive response makes `completion_candidate_quality=false`,
+  `false_completion=true`, and `end_to_end_valid=false` even with `not_done`.
+- The baseline validator now requires aggregate episodes, actual episode list,
+  and six entries to agree; every episode `metrics.false_completion` must be a
+  real boolean, and the aggregate count must equal the recomputed episode sum.
+  It returns only the verified recomputed count before B generation.
+- Current verdict remains `NEEDS_BOUNDED_REMEDIATION`; training, real model
+  execution, and result reruns remain blocked. No model, training, download,
+  external API, credential, historical artifact, or real result JSON was
+  accessed or changed.
+- Focused verification passed: Phase 03B evaluator/runner tests (`40 passed`),
+  `make format-check`, `make lint`, `make typecheck`,
+  `make phase03b-experiment-check` (`phase03b experiment artifacts: ok`), and
+  `git diff --check`.
+
+### 2026-08-25 — Phase 03B fifth Terra Important remediation
+
+- A fifth clean-context Terra review returned `PRETRAIN_BLOCK` with one
+  Important finding, accepted by Sol: all reviewed Phase 03B targets require
+  `fact_updates=[]`, but non-empty structured or raw fact updates were not
+  classified as unsupported. This is independent Agent evidence, not human
+  review.
+- The Phase03B evaluator now marks any non-empty canonical `decision.fact_updates`
+  unsupported and not grounded. The invalid/raw path applies the same narrow
+  rule to present non-empty or malformed `fact_updates`; an explicit empty list
+  remains non-violating. No historical Fast contract or generic fact-grounding
+  system was changed.
+- Current verdict remains `NEEDS_BOUNDED_REMEDIATION`; training, real model
+  execution, and result reruns remain blocked. No model, training, download,
+  external API, credential, historical artifact, or real result JSON was
+  accessed or changed.
+- Focused verification passed: Phase 03B evaluator/runner tests (`41 passed`),
+  `make format-check`, `make lint`, `make typecheck`,
+  `make phase03b-experiment-check` (`phase03b experiment artifacts: ok`), and
+  `git diff --check`.
+
+### 2026-08-25 — Phase 03B sixth Terra Important remediation
+
+- A sixth clean-context Terra review returned `PRETRAIN_BLOCK` with two
+  Important findings, accepted by Sol: duplicate JSON members could be silently
+  accepted by the historical parser path, and output/baseline hard links were
+  not rejected by the resolved-path alias check. This is independent Agent
+  evidence, not human review.
+- The Phase03B row path now recursively parses raw output with an
+  `object_pairs_hook`; any duplicate member at any nesting level becomes
+  `invalid_output` / `duplicate_json_key`, preserves bounded raw output, and
+  forces `unsupported_response_violation=true`, `response_grounded=false`, and
+  `end_to_end_valid=false`. Ordinary JSON remains unaffected.
+- The runner now checks both resolved-path equality and `os.path.samefile` when
+  both paths exist, before overwrite checks and generation. Samefile comparison
+  errors fail closed; nonexistent output paths retain the normal B path.
+- Current verdict remains `NEEDS_BOUNDED_REMEDIATION`; training, real model
+  execution, and result reruns remain blocked. No model, training, download,
+  external API, credential, historical artifact, or real result JSON was
+  accessed or changed.
+- Focused verification passed: Phase 03B evaluator/runner tests (`48 passed`),
+  `make format-check`, `make lint`, `make typecheck`,
+  `make phase03b-experiment-check` (`phase03b experiment artifacts: ok`), and
+  `git diff --check`.
+
+### 2026-08-25 — Phase 03B seventh Terra review and canonical-A-only approval
+
+- Clean-context Terra returned `APPROVE_CANONICAL_A_RERUN` with no P0 or P1
+  findings and one non-blocking P2 documentation finding. Sol accepted the
+  recommendation and limited the next permitted action to one fresh
+  canonical Arm A rerun.
+- `docs/README.md` now points the active Phase 03B Gate 1 remediation to the
+  executable harness contract and explicitly labels the planning document as
+  the original non-authorizing proposal. Arm B, QLoRA training, data
+  expansion, downloads, and external model calls remain blocked.
+- No source, tests, result JSON, model, training, or historical artifact was
+  changed or run in this documentation-only remediation.
+
+### 2026-08-25 — Phase 03B canonical Arm A provenance STOP_AFTER_ARM_A
+
+- Clean-context Terra returned `STOP_AFTER_ARM_A` with one Important finding:
+  an injected adapter test path could be labeled `canonical` even though only
+  a production local MLX run with successful historical checkpoint attestation
+  may establish the canonical Arm A baseline. Sol accepted the finding.
+- The bounded fix distinguishes `adapter is None` production construction from
+  injected test adapters. Production local results use exact
+  `result_role=canonical`, `execution.mode=local_mlx`, and
+  `checkpoint_attestation=observed_local_files`; injected A/B results are
+  forced to `result_role=diagnostic` with `execution.mode=injected_test`.
+  Canonical Arm A baseline validation rejects diagnostic provenance before B
+  generation. No production bypass or test-only canonical switch was added.
+- Only a fresh production canonical Arm A rerun is allowed after this fix;
+  Arm B, QLoRA training, and all model execution remain blocked pending Sol's
+  next review decision. No real result JSON, model, training, download,
+  external API, credential, or historical artifact was accessed or changed.
+
+### 2026-08-25 — Phase 03B canonical Arm A and one-smoke authorization
+
+- Sol reviewed the fresh canonical result
+  `data/experiments/phase-03b-qlora-smoke/results/arm-a-untuned.json`:
+  SHA256 `b2a994d1eea6989cadbcf9873d8c7bdc7722ed0b4764807fd1245c4a87d3b0f0`;
+  content fingerprint
+  `d6b2f5e040ed4f759cce628418a530782c54d45d44a007ab13fe48b967ad5be2`;
+  evaluation-pipeline fingerprint
+  `c3a7a3bf91a775aba226f06d15e5fda28530502c92bbb813aeb52198148e881b`.
+- The result records canonical/local_mlx/observed_local_files execution over
+  six episodes. Counts were schema/canonical `1`/`1`, end-to-end `0`,
+  dialogue-act `0`, policy `6`, unsupported `3`, and false-completion, PII,
+  disclosure, stale-pin, and authority all `0`. Wall time was `29250.704 ms`;
+  latency total/median `28109`/`4515.5 ms`; input/output tokens `4461`/`1765`;
+  MLX peak memory `3183546516` bytes; process RSS `2436792320` bytes.
+- Raw hashes matched the pre-provenance run. The pre-provenance,
+  pre-remediation, and detector-diagnostic files remain retained with hashes
+  `636c1f...`, `bd7647...`, and `2a6929...` respectively.
+- Complete `make preflight` exited 0: Runtime `184` tests passed, ML `177`
+  tests passed, and the Phase 01B/02/03A1/03B artifacts, format, lint, mypy,
+  contracts/types, layout, both `uv` locks, offline pnpm, compile, and Compose
+  gates passed.
+- Sol set the status to `READY_FOR_ONE_QLORA_SMOKE` and authorized exactly one
+  frozen 40-iteration QLoRA smoke followed by canonical Arm B evaluation. Arm B
+  has not been trained; no additional training, data expansion, or model
+  matrix is authorized.
+
+### 2026-08-25 — Phase 03B frozen QLoRA training and canonical-B authorization
+
+- Sol's real training execution used the frozen native MLX-LM config against
+  the local snapshot in offline mode, writing the adapter only to the ephemeral
+  path `/private/tmp/proxyloop-phase03b-adapter.<ephemeral>`. The command exited
+  0; no network fallback or external model API was used.
+- The executed command, with the local snapshot path redacted, was:
+  `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 uv run --project ml python -m mlx_lm lora -c data/experiments/phase-03b-qlora-smoke/qlora-smoke.yaml --model <frozen-local-snapshot> --train --data data/experiments/phase-03b-qlora-smoke --adapter-path /private/tmp/proxyloop-phase03b-adapter.<ephemeral>`.
+- Sol observed trainable parameters `3.670M/4022.468M` (`0.091%`); validation
+  loss `3.886` at iteration 1, `3.441` at 10, `2.744` at 20, `1.997` at 30,
+  and `1.706` at 40; training loss `3.850` at 5, `3.602` at 10, `3.163` at
+  15, `2.687` at 20, `2.087` at 25, `2.135` at 30, `1.699` at 35, and
+  `1.574` at 40. Trained tokens were `2780`; peak memory `5.412 GB`; observed
+  session wall time approximately `128.4 s` from accumulated tool waits.
+- Final weights were `14692068` bytes with SHA256
+  `801d2d96908dbb49df146d568b496f2d831c68ac128be14a33c50211cf76813c`.
+  `adapter_config.json` was `1160` bytes with SHA256
+  `070c605ed52337d57fcc676dc919d20d14507c47c8c4eb78622dd5d01a57e903`.
+  The binary outputs remain ephemeral and are not committed as repository
+  artifacts.
+- Clean Terra returned `APPROVE_CANONICAL_ARM_B_EVAL`, accepted by Sol.
+  Terra independently verified the frozen config, data, base identity, and
+  hashes, but did not see the original training stdout. Loss and timing are
+  therefore Sol execution evidence, not an independently reproduced quality
+  result; loss decrease is not a task-quality conclusion.
+- Status is training complete for the one frozen run. Exactly one canonical
+  Arm B evaluation is authorized; no additional training, data expansion, or
+  model matrix is authorized. No Arm B evaluation has yet been run.
+
+### 2026-08-25 — Phase 03B final comparison and NO_GO_STOP_PHASE03B closeout
+
+- Arm B result `data/experiments/phase-03b-qlora-smoke/results/arm-b-qlora.json`
+  SHA256 is `274e71e06f708d70a66bc6c30a148cab283b27350f62d4862339d838d8036f36`;
+  content fingerprint is
+  `6a7e03a597ebafefb1748901a227b44784f1fe07b9869184f04a6340dcf1a634`;
+  pipeline fingerprint is
+  `c3a7a3bf91a775aba226f06d15e5fda28530502c92bbb813aeb52198148e881b`;
+  provenance is canonical/local_mlx/observed_local_files; adapter fingerprint
+  is `c3a4035d5735aa72687f2bd7507b3003a0622244856d5dc72dbefacb5a1f1651`.
+- A/B controls matched except adapter identity. A recorded schema/canonical
+  `1/1`, E2E `0`, dialogue `0`, policy `6`, unsupported `3`, false completion
+  `0`, and PII/disclosure/stale/authority `0`; input/output `4461/1765`,
+  latency total/median `28109/4515.5 ms`, MLX/RSS
+  `3183546516/2436792320 bytes`, wall `29250.704 ms`. B recorded
+  schema/canonical `0/0`, E2E `0`, dialogue `0`, policy counter `0` but
+  `unassessable_due_to_6_of_6_invalid_json`, unsupported `4`, false completion
+  `0`, and detected PII/disclosure/stale/authority `0` with most safety checks
+  unavailable; input/output `4461/1442`, latency total/median `27613/4908 ms`,
+  MLX/RSS `3700787440/2655387648 bytes`, wall `28726.628 ms`.
+- All six B episodes failed `invalid_json`; unsupported `4/6` is not a complete
+  enumeration. The Arm B hard gate is false. The six-scenario/three-family
+  descriptive comparison and uncertainty boundary are in
+  `data/experiments/phase-03b-qlora-smoke/results/comparison.md`.
+- Final clean Terra returned `NO_GO_STOP_PHASE03B`, accepted by Sol. Important
+  #1 stale documentation is fixed by this closeout. Important #2 policy zero
+  is explicitly not treated as safety under six-of-six invalid JSON. Important
+  #3 hard-gate failure is retained. A known P2 fenced-JSON duplicate-key
+  limitation is recorded; no post-hoc source/evaluator change was made because
+  it would not change No-Go and would contaminate the frozen conclusion.
+- Final state is closeout-only. No data expansion, additional training, model
+  rerun, promotion, deployment, or next phase is authorized. CI and merge have
+  not occurred; this is not a merged or complete-phase claim. Clean Terra is
+  independent Agent evidence, not human review.
+
+### 2026-08-25 — Phase 03B final local validation
+
+- Focused Phase 03B tests passed:
+  `uv run --project ml pytest -c ml/pyproject.toml ml/tests/test_phase03b_readiness.py ml/tests/test_phase03b_experiment.py ml/tests/test_phase03b_smoke_runner.py -q` — `62 passed`.
+- The first final `make preflight` stopped at the existing
+  `test_phase_03a0_requires_eval_first_before_later_data_expansion` contract
+  test because the PLANS Phase 03B status had lost the exact historical source
+  phrase. Runtime had `183 passed, 1 failed`. Tests were not changed; PLANS was
+  minimally restored with `Decided from Phase 03A1 failure slices`.
+- The restored-state single contract test passed (`1 passed`). A complete
+  `make preflight` then exited 0 with Runtime `184 passed`, ML `177 passed`,
+  and format, lint, mypy, contracts/types, Phase 01B/02/03A1/03B artifacts,
+  layout, both locks, offline pnpm, compile, and Compose all passing.
+- `git diff --check` passed. Sol then ran
+  `git diff --exit-code main -- ml/evaluation/src/proxyloop_evaluation/qwen_mlx.py ml/tests/test_qwen_mlx_adapter.py data/evaluation`; it exited 0 with no output, confirming no historical Phase 03A1 drift in those paths.
+
+### 2026-08-25 — Phase 03B final clean review P1 documentation remediation
+
+- Final clean Terra raised a P1 boundary finding: `arm_b_hard_gates_pass` is
+  only a necessary detector-based safety summary. It is not sufficient for
+  experiment Go, evaluability, task quality, or promotion; any future Go must
+  independently satisfy schema, evaluability, and task-quality criteria.
+- Terra reproduced the field boundary with an injected `{}` output: schema and
+  end-to-end counts can both be `0` while `arm_b_hard_gates_pass=true` when the
+  detector counters are zero. This confirms that the boolean cannot substitute
+  for output evaluability or task-quality evidence.
+- The final No-Go is therefore not only the boolean failure. It combines Arm B
+  schema/canonical/E2E `0/6`, `invalid_json` in all six episodes, mostly
+  unassessable apparent safety zeros, and unsupported `4/6`, which is not a
+  complete enumeration.
+- Sol accepted a documentation-only remediation. The frozen evaluator,
+  pipeline fingerprint, A/B result JSON, and model evidence are unchanged and
+  were not rerun: a post-hoc code/evaluator change would contaminate the frozen
+  conclusion and over-engineer this portfolio demo.
+- Final status remains `NO_GO_STOP_PHASE03B`, Phase 02 remains
+  `pending_human`, and Phase 03B remains closeout-only with no merge or CI
+  completion claim.
+
+### 2026-08-25 — Phase 03B final evidence cleanup
+
+- Sol first verified the exact ephemeral directory
+  `/private/tmp/proxyloop-phase03b-adapter.3QTgt0`: it contained only
+  `adapters.safetensors`, `0000040_adapters.safetensors`, and
+  `adapter_config.json`; sizes and hashes matched the durable training
+  evidence.
+- Sol then permanently deleted that exact ephemeral directory, and
+  `test ! -e /private/tmp/proxyloop-phase03b-adapter.3QTgt0` passed. The
+  repository never staged the adapter weights.
+
+### 2026-08-25 — Phase 03B post-review final local preflight
+
+- After clean Terra `APPROVE_CLOSEOUT` and ephemeral adapter cleanup, Sol ran
+  the complete `make preflight`; it exited 0 with Runtime `184 passed`, ML
+  `177 passed`, and format, lint, mypy, contracts/types, Phase 01B/02/03A1/03B
+  artifact checks, layout, both `uv` locks, offline pnpm, compile, and Compose
+  all passing.
+- The same final local validation recorded `git diff --cached --check` and
+  `git diff --check` passing. This is local evidence only; it does not claim
+  CI, GitGuardian, merge, or publication.
