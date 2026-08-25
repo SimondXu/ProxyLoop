@@ -25,18 +25,17 @@ def imported_roots(source: Path) -> set[str]:
 
 
 def test_phase_03a1_erratum_completion_does_not_activate_phase_03b() -> None:
-    agents = document("AGENTS.md")
     plans = document("PLANS.md")
     harness = document("harness/build/phase-03a1-harness.md")
     baselines = document("harness/build/phase-03a1-baselines.md")
     erratum = document("harness/build/phase-03a1-evaluation-erratum.md")
 
-    assert "e08c9b6" in agents + plans + harness + baselines
-    assert "Phase 03A1-E evaluation erratum" in agents
+    assert "e08c9b6" in plans + harness + baselines
+    assert "03A1-E" in plans and "Evaluation erratum" in plans
     assert "| 03A1-H |" in plans and "Complete; squash merged" in plans
     assert "| 03A1-B |" in plans and "Complete; full gate passed" in plans
     assert "| 03A1-E |" in plans and "Complete; terminal Provider blocker" in plans
-    assert "| 03B |" in plans and "Not started" in plans
+    assert "| 03B |" in plans and "NO_GO_STOP_PHASE03B" in plans
     assert "**Status**: Complete; squash merged" in harness
     assert "**Status**: Complete; frozen model matrix executed" in baselines
     assert "**Status**: Complete with a terminal Provider blocker" in erratum

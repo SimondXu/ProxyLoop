@@ -1,186 +1,122 @@
 # ProxyLoop Agent Instructions
 
-This file is the repository-level operating contract for Codex and delegated agents. Product requirements remain authoritative in the linked specification; this file controls how implementation work is prepared, executed, reviewed, and evidenced.
+This file is the repository-level operating contract for Codex and delegated agents. Product requirements remain authoritative in the linked specification. This file contains durable operating rules; volatile phase state lives in `harness/status.toml`.
 
-## Read Order
+## Orientation and Context
 
-On first orientation, after a compacted/resumed session, or after a material
-phase, branch, or repository-state change, read:
+On first orientation, after resume or compaction, or after material repository drift:
 
-1. `AGENTS.md`
-2. `GOALS.md`
-3. `CONTEXT.md`
-4. `PLANS.md`
-5. the single active file under `harness/build/`
-6. any phase-specific material under `harness/context/`
-7. the `harness/build-log.md` phase-status table, entries named by the active
-   phase or current bounded change, and the newest relevant entry blocks
-8. the relevant source files and tests
+1. Read `harness/status.toml`.
+2. If a product phase is active, read its single contract under `harness/build/` and only the phase-specific evidence it names.
+3. Read `GOALS.md` for product-outcome questions, `CONTEXT.md` for domain-language or contract-semantics questions, and `PLANS.md` for roadmap or phase-gate questions. Do not load all three by default when the task does not need them.
+4. Read the relevant source files and tests.
+5. Read historical contracts, reviews, or build-log entries only when a current claim, regression, or audit requires them.
 
-Do not reread unchanged canonical documents for every delegated slice. Do not
-scan the complete append-only build-log history unless an unresolved claim,
-artifact, regression, or audit requires older evidence. Delegated agents follow
-their task packet and read only the smallest evidence set needed for that task.
+Do not treat a roadmap item as permission to implement it. Only a user-approved phase or bounded repository change is active.
 
-Do not treat a roadmap item as permission to implement it. Only an explicitly approved phase is active.
+## Authority and Safety
 
-## Context and Evidence Routing
+- Keep at most one product implementation phase active.
+- Use the smallest change that satisfies the approved acceptance criteria; do not begin the next phase automatically.
+- Preserve user work and unrelated changes.
+- Once the user approves a bounded ProxyLoop phase or repository change, root Sol may create a branch, commit, push, open and review the pull request, squash merge it, and clean up its fully merged short-lived branch without separate approval for each routine Git step.
+- A new explicit user decision is required to expand scope, activate another phase, deploy, publish a release, contact real external parties, use credentials, perform destructive operations, force-push, rewrite shared history, or delete unmerged work.
+- Never add real Provider credentials, consumer PII, production secrets, or unreviewed generated model artifacts.
+- Models may propose actions or completion candidates; deterministic policy and evidence checks own authorization and completion.
 
-Sol owns the durable working context and final judgment. Keep these decisions
-in the root context: shared architecture and interfaces, authorization and
-completion policy, canonical contract or evaluator semantics, conflicting
-evidence, scope changes, and phase-gate decisions. Sol must read the final diff
-and the evidence used to make any approval or completion claim.
+## Sol-Retained Decisions
 
-Delegate read-only exploration when a concrete question requires cross-directory
-mapping, call-chain or data-lineage tracing, test-impact discovery, artifact
-inventory, or noisy log inspection that can be summarized independently. Sol
-should investigate directly when the answer is contained in one to three tightly
-related files or when the question itself requires one of the retained decisions
-above.
+Root Sol owns shared architecture and interfaces, authorization and completion policy, canonical contract and evaluator semantics, security boundaries, conflicting evidence, scope changes, phase gates, final diff review, and every completion or integration claim.
 
-Prefer a fresh, bounded context for explorers and reviewers
-(`fork_turns="none"` when the caller supports it). Pass the smallest self-contained
-task packet: objective, constraints, known paths, exact questions, expected
-evidence format, and escalation triggers. When a user decision cannot be
-summarized safely, pass only the smallest recent context that contains it. Reuse
-the same subagent for clarification before repeating the same discovery with a
-new agent.
+Sol must inspect the primary evidence for those decisions. Subagent output is navigation, implementation, or independent review evidence; it does not replace Sol's judgment.
 
-Explorers return evidence cards, not transcripts: a direct answer, precise
-path/symbol or path/line support, checks run or unrun, conflicts and unknowns,
-and a short "Sol must read" list. Escalate to Sol instead of resolving ambiguity
-when evidence conflicts or the task reaches architecture, authorization,
-canonical contracts, evaluator meaning, security boundaries, or a phase gate.
+## Adaptive Delegation
 
-## Current State
+Sol may proactively use subagents when doing so materially improves quality, latency, or context isolation. The user does not need to request delegation separately.
 
-- Repository foundation is complete.
-- Phase 00B, canonical contracts and contract verification, was squash merged to `main` as `98a7514`.
-- Phase 01A was independently reviewed and squash merged to `main` as `f7f3cf7`.
-- Phase 01B simulator breadth and benchmark is complete, independently reviewed, and validated by the repository phase gate.
-- Phase 02 Data Factory and trajectory pilot was independently reviewed, passed CI/GitGuardian, and was squash merged to `main` as `f45b1ea` through PR #6. Its human review sample remains `pending_human` and `training_ready=false`.
-- Phase 03A0 Fast/Slow architecture and acceptance-criteria gate was independently reviewed, passed CI/GitGuardian, and was squash merged to `main` as `54afcb8` through PR #7.
-- Phase 03A1-H deterministic multi-turn Harness was squash merged as `e08c9b6` through PR #8.
-- Phase 03A1-B untuned Qwen/Terra baselines completed its frozen model matrix, independent review, and PR #9 CI/GitGuardian gates.
-- Phase 03A1-E evaluation erratum and leakage-safe second run completed its local/independent gates with an honest terminal Provider blocker and passed PR #10 CI/GitGuardian. Its r3 report is a source-bound offline re-attribution of immutable r2 evidence, not a retry or training run.
-- Phase 03A1-R hosted baseline reliability rerun completed its full corrected r4 matrix. The original unsupported `oneOf`/`discriminator` attempt is preserved separately; the canonical r4 uses OpenAI-supported `anyOf`, has complete usage accounting, and records `phase_completion_ready=true`.
-- Phase 03A1-V evaluation-validity smoke completed its six-episode diagnostic. With the same Qwen/Terra models, prompt/input parity improved the selected baseline from 0/6 to 5/6 end-to-end valid; the remaining fee case exposes a hidden evaluator predicate. Its r5 artifact is diagnostic evidence, not a training or quality gate.
-- The Phase 03A1-R/V closeout recorded `No implementation phase is active` before the explicit Phase 04A activation gate.
-- Phase 03A1-R/V was squash merged through PR #11 as `e501e0f`; the CI phase-gate and GitGuardian checks passed.
-- Phase 04A Thin Agent Runtime is complete and independently approved on the short-lived `feat/phase-04a-thin-agent-runtime` branch from `e501e0f`. Its executable contract is `harness/build/phase-04a-thin-agent-runtime.md`, its durable review is `harness/code_review/phase-04a-thin-agent-runtime.md`, and its activation baseline is `harness/context/phase-04a-preflight.md`.
-- Phase 04A is limited to a local FastAPI, simulator-backed thin loop with an in-memory Case store interface, deterministic authorization/execution/completion, and one multi-turn integration path. More evaluation, training, PostgreSQL, Temporal, real tools or Providers, auth/channels/voice/UI, deployment, and release remain inactive.
-- Phase 04B Model-backed Thin Agent Runtime was independently reviewed, passed both PR-head CI/GitGuardian gates, and was squash merged through PR #13 as `6daa1bc`. Its bounded scope is one runtime-owned OpenAI-compatible typed Fast/Slow adapter, mocked transport, fail-closed model errors, explicit opt-in configuration, a local server command, and a localhost black-box smoke while retaining the fictional Provider and deterministic authority boundaries.
-- Phase 03B is complete and squash merged as PR #15 (`f441335` short) from `experiment/phase-03b-readiness-remediation`. Its executable contract is `harness/build/phase-03b-qwen-qlora-smoke.md`, its readiness evidence is `harness/context/phase-03b-readiness-preflight.md`, and its final comparison is `data/experiments/phase-03b-qlora-smoke/results/comparison.md`. The final decision is `NO_GO_STOP_PHASE03B`; no implementation phase is active.
-- The one frozen QLoRA training run and one canonical Arm B evaluation are complete as descriptive evidence. The No-Go combines Arm B schema/canonical/E2E `0/6`, six invalid JSON outputs, mostly unassessable apparent safety zeros, unsupported `4/6`, and `arm_b_hard_gates_pass=false`. That boolean is only a necessary detector-based safety summary, not sufficient for Go, evaluability, task quality, or promotion. No data expansion, additional training, model rerun, adapter promotion, deployment, or next phase is authorized. Phase 03A1 continuation, r6/r7, PostgreSQL, Temporal, real tools or Providers, deployment, channels, voice, and UI remain inactive.
-- Product services, model training, and external channels are not implemented.
-  The bounded local Web demo was squash merged through PR #18 as `ef2ce53`;
-  the post-merge Repository checks passed and its fully merged short-lived
-  branch was safely removed locally and remotely. The legacy local-only UI
-  worktree/branch remains preserved. The Local Conversation Intake UX was
-  independently approved, passed final PR-head CI/GitGuardian, and was squash
-  merged through PR #20 as `02466df`; post-merge Repository checks passed and
-  its fully merged short-lived branch was removed locally and remotely. Its
-  contract is `harness/build/phase-local-conversation-intake-ux.md`. It remains
-  a bounded local fictional-telecom extension and does not activate production
-  UI/channel/deployment boundaries. No implementation phase is active after
-  this closeout.
+Delegate when at least one of these is true:
 
-## Working Rules
+- the work contains two or more independent evidence or implementation lanes;
+- exploration, logs, test output, artifact inventories, or large-file analysis would pollute the root context;
+- a bounded mechanical slice has exact ownership and a verification command;
+- a specialized model, tool surface, or independent reviewer provides distinct value;
+- parallel execution shortens a real critical path without overlapping writes.
 
-- Keep at most one implementation phase active.
-- Use the smallest change that satisfies the active phase acceptance criteria.
-- Do not begin the next phase automatically after completing the current one.
-- Preserve existing user work and unrelated changes.
-- Once the user approves a bounded phase or repository change, Sol may create its branch, commit, push, open and review its pull request, squash merge it, and clean up its fully merged short-lived branch without separate approval for each Git step.
-- Explicit user approval is still required to expand scope, activate the next phase, deploy or publish a release, contact real external parties, use credentials, perform destructive operations, force-push, or rewrite shared history. Validated cleanup of a fully merged short-lived branch is the only branch-deletion exception.
-- Never add real provider credentials, consumer PII, or production secrets.
-- A model may propose an action or completion candidate; deterministic policy and evidence checks own authorization and completion.
+Sol should work directly when the answer is in one to three tightly related files, the task is small or highly coupled, boundaries are still ambiguous, delegation would duplicate the same reads, or the task concerns a Sol-retained decision.
 
-## Development Loop
+Start with the smallest useful team and expand only after finding an evidence gap or an additional independent lane. `max_concurrent_threads_per_session` is a safety ceiling, not a target or a per-task agent budget:
 
-For an approved phase:
+- normal discovery: zero to two explorers;
+- broad independent inventory: burst up to the configured ceiling after Sol defines non-overlapping questions;
+- implementation: allow multiple writers for independent requirements when file or module ownership is non-overlapping, shared interfaces are frozen, and Sol defines shared-file ownership plus the integration order; otherwise keep one writer until those boundaries are clear;
+- review: one independent reviewer after the diff and acceptance criteria are stable.
 
-1. Preflight: inspect current state, assumptions, dependencies, and dirty files.
-2. Red: add or identify the smallest failing check that represents the requirement.
-3. Green: implement the minimum code needed to pass it.
-4. Refactor: only when it removes demonstrated complexity or duplication.
-5. Verify: run focused checks, then the broader checks justified by risk.
-6. Review: use an independent reviewer for material code or contract changes; the reviewer supplies findings and a recommendation to Sol.
-7. Remediate: fix accepted findings and rerun affected checks.
-8. Evidence: append pre-merge commands and outcomes to `harness/build-log.md`.
-9. Publish: for the approved scope, Sol may commit, push, and open the pull request.
-10. Integrate: Sol reviews the final diff, verification, independent-review evidence, and CI, then makes the final approve or request-changes decision and squash merges when the gate passes.
-11. Stop: report the phase gate; wait for approval before expanding scope.
+Use these project roles:
 
-Never report a check as passed if it was not run. Separate passed checks from blocked, skipped, manual, browser, cloud, GPU, voice, and external-channel checks.
+- `explorer`: Luna medium, read-only repository mapping and evidence cards;
+- `fast-worker`: Luna medium, mechanical generation, formatting, fixtures, or exact repetitive edits that require no behavior or interface judgment;
+- `implementer`: Luna xhigh, a well-specified implementation slice after interfaces and acceptance criteria are frozen;
+- `reviewer`: Terra high, read-only defect-first review and adversarial checks.
+
+Prefer fresh bounded subagent contexts (`fork_turns="none"` when supported). Every task packet must contain the objective, scope and non-goals, known paths, exact questions or owned files, expected output, verification, and escalation triggers. Reuse an existing subagent for clarification before repeating the same discovery.
+
+Explorers return an evidence card rather than a transcript: direct answer, precise path and symbol or line support, checks run or unrun, conflicts and unknowns, and a short `Sol must read` list. Escalate instead of resolving ambiguity involving architecture, authorization, canonical contracts or evaluators, security, scope, or a phase gate.
 
 ## Skill Routing
 
-- `karpathy-guidelines`: default discipline for implementation and refactoring.
-- `codebase-design`: contract boundaries, deep modules, and interface placement.
-- `domain-modeling`: changes to the ubiquitous language in `CONTEXT.md`.
-- `code-reviewer`: independent local-diff or pull-request review.
-- `diagnosing-bugs`: failures, regressions, and performance diagnosis.
-- `vercel-react-best-practices`: React/Next.js implementation or review.
-- `design-taste-frontend`: user-approved frontend product work.
-- `update-docs` or `write-dev-spec`: documentation affected by code or design decisions.
+Skills are on-demand procedures, while custom agents are delegated roles with separate context, model, tools, or permissions. Do not substitute one mechanism for the other.
 
-The installed `fix` skill assumes Yarn commands that this pnpm/uv repository does not use. Do not invoke it automatically; use repository-native checks instead.
+- Use a Skill when the user names it or the task clearly matches its description; explicit mention is not required for a clear match.
+- At task start and whenever the work changes phase or shape, scan the available Skill descriptions again so a newly relevant Skill is not missed.
+- Choose the most specific workflow Skill that covers the current stage. Add a complementary domain Skill only when it contributes a distinct procedure or body of knowledge. There is no hard Skill-count limit, but do not stack overlapping workflows for ceremony.
+- If two Skills overlap, prefer the narrower repository-compatible one. If neither fits cleanly, follow repository-native commands directly and state the mismatch.
+- Use progressive disclosure: read the selected `SKILL.md` completely, then load only the references or assets it routes to for the current variant.
+- Do not suppress a useful Skill merely to save tokens. Control cost through precise triggering, non-overlap, and on-demand references.
+
+Repository-specific routing:
+
+- `karpathy-guidelines`: implementation and refactoring discipline.
+- `diagnosing-bugs`: reported failures, regressions, or performance diagnosis.
+- `codebase-design`: interface placement, module depth, and architecture seams.
+- `domain-modeling`: deliberate changes to the ubiquitous language in `CONTEXT.md`.
+- `vercel-react-best-practices`: React and Next.js implementation or performance review.
+- `design-taste-frontend`: landing pages, portfolios, or an explicitly approved visual redesign; not ordinary ProxyLoop product-flow changes.
+- `write-dev-spec`: architecture, ADR, runbook, or developer-spec work. The installed `update-docs` Skill targets the Next.js documentation repository and is not a default ProxyLoop docs workflow.
+
+The installed `fix` Skill assumes Yarn and is not repository-compatible. Use pnpm/uv targets from this repository. Project reviewer instructions already contain the required defect-first workflow; do not load a second generic review Skill unless the user explicitly requests it or the review target needs its distinct remote-PR procedure.
+
+## Development and Verification Loop
+
+For an approved phase or bounded change:
+
+1. Preflight: inspect status, scope, dependencies, dirty files, and the smallest relevant checks.
+2. Red: add or identify the smallest failing check when practical.
+3. Green: implement the minimum compatible change.
+4. Refactor only to remove demonstrated complexity or duplication.
+5. Run focused checks while the behavior is changing.
+6. When the diff is stable, obtain independent review for material code, contract, authorization, security, workflow, or external-channel changes.
+7. Batch accepted findings, rerun affected checks, and request re-review only for material semantic changes or unresolved findings.
+8. Run Browser or manual verification only after the affected behavior is stable.
+9. Run `make preflight` once as the final local repository gate; rerun it only after a material change to covered behavior or artifacts.
+10. Record concise pre-merge evidence in one bounded-change log under `harness/log/`, then integrate and stop at the gate.
+
+Never report a check as passed if it was not run. Separate passed checks from blocked, skipped, manual, Browser, cloud, GPU, voice, and external-channel work.
 
 ## Git Workflow
 
-- Treat `main` as the last integrated, validated state; do not implement or commit directly on it.
-- Use one short-lived branch per phase, feature, fix, documentation change, or experiment, following `CONTRIBUTING.md` naming rules.
-- Keep one bounded concern per pull request and do not begin the next phase in the same branch.
-- Run `make preflight`, review the complete diff, and obtain any required independent review before merge.
-- Prefer squash merge so `main` keeps one clear commit per bounded change. Deleting the short-lived source branch is routine cleanup only after Sol confirms the PR is merged, the worktree is clean, the branch was pushed, and no unique unpushed work would be lost.
-- For a user-approved bounded phase or change, Sol owns branch creation, commit, push, PR creation, final review, and merge. These routine Git steps do not require separate user review or authorization.
-- Never deploy, publish a release, force-push, rewrite shared history, delete an unmerged branch, or perform another destructive Git operation unless the user explicitly requests that exact operation.
-
-## Agent Roles
-
-The root orchestrator uses Sol for architecture, integration, trade-offs, and final decisions. Sol decides when subagents materially improve implementation speed, independent evidence, or review quality; the user does not need to request delegation explicitly.
-
-- `implementer`: Luna xhigh, write-enabled, one clearly owned and well-specified implementation slice.
-- `reviewer`: Terra, read-only, independent acceptance-criteria and diff review.
-- `fast-worker`: Luna, write-enabled, narrow mechanical or repetitive tasks only.
-- `explorer`: Luna, read-only, bounded repository discovery.
-
-Rules for delegated work:
-
-- At most three subagents run concurrently.
-- Delegate only concrete, bounded work with a useful independent execution path; Sol may work directly when delegation would add no value.
-- Prefer fresh, bounded context and a self-contained task packet; do not pass the full root transcript by default.
-- Reuse an existing subagent for follow-up questions before spawning another agent for the same discovery.
-- Assign explicit, non-overlapping file ownership.
-- Tell write-enabled agents they are not alone in the repository and must not revert other edits.
-- The implementing subagent does not review or approve its own work.
-- Independent reviewer conclusions are evidence and recommendations; they do not merge changes or replace Sol's judgment.
-- The root Sol orchestrator reviews and integrates subagent output, owns the final verification statement, makes the PR approval decision, and executes merge when the gate passes.
-- Luna max is an explicit per-task escalation for complex multi-file implementation after architecture and acceptance criteria are frozen; it is not a standing default.
-- Sol retains decisions about shared architecture, authorization policy, canonical contract semantics, and phase completion. Luna may implement those decisions but must not invent them.
-
-## Repository Verification
-
-Use the checks that exist for the current phase:
-
-```bash
-make preflight
-make check-layout
-uv lock --project runtime --check
-pnpm install --lockfile-only --ignore-scripts --offline
-docker compose config --quiet
-git diff --check
-```
-
-Phase 00B established repository-native lint, type-check, unit-test, schema-generation, and contract-drift commands. Later phases must extend the gate only for behavior they actually add.
+- Treat `main` as the last integrated validated state; do not implement or commit directly on it.
+- Use one short-lived branch per phase, feature, fix, docs change, or experiment, following `CONTRIBUTING.md`.
+- Keep one bounded concern per pull request.
+- Sol reviews the complete final diff, verification, independent-review evidence, and CI before merge.
+- Prefer squash merge. Delete a fully merged short-lived branch only after confirming the worktree is clean, the branch was pushed, and no unique unpushed work would be lost.
 
 ## Harness Boundaries
 
-- `harness/build/`: executable phase contracts, one file per phase or gate.
-- `harness/context/`: small, phase-specific evidence that does not belong in product docs.
-- `harness/code_review/`: durable review artifacts for material gates.
-- `harness/build-log.md`: append-only execution evidence and phase status.
+- `harness/status.toml`: single current-state source.
+- `harness/build/`: executable phase contracts.
+- `harness/context/`: small phase-specific evidence and decision inputs.
+- `harness/code_review/`: durable material review artifacts.
+- `harness/log/`: one concise execution log per bounded change.
+- `harness/build-log.md`: historical evidence through the Harness v2 migration; do not scan or append it by default.
 
-The Codex development harness is not the product evaluation harness. Simulator scenarios, model evaluations, reward logic, and benchmark artifacts belong under `ml/`, `runtime/`, `data/`, or `tests/` as defined by the architecture.
+The Codex development Harness is not the product evaluation Harness. Simulator scenarios, model evaluations, reward logic, benchmarks, and training artifacts belong under `ml/`, `runtime/`, `data/`, or `tests/` as defined by the architecture.

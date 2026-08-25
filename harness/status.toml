@@ -1,0 +1,23 @@
+schema_version = 1
+product_phase_state = "idle"
+active_product_phase = ""
+active_contract = ""
+next_phase_authorized = false
+integration_baseline = "main"
+updated_at = "2026-08-25"
+
+[boundaries]
+summary = "No product, evaluation, training, deployment, or release phase is active."
+inactive = [
+  "Phase 03A1 continuation or r6/r7",
+  "additional model training, data expansion, rerun, or promotion",
+  "PostgreSQL or Temporal",
+  "real tools or Providers",
+  "authentication, channels, voice, or production UI",
+  "deployment or release",
+]
+
+[history]
+phase_index = "PLANS.md"
+legacy_execution_log = "harness/build-log.md"
+current_logs = "harness/log/"

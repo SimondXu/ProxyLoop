@@ -2,6 +2,8 @@
 
 This is the harness-level phase index. Detailed product requirements live in the specification, and executable acceptance criteria live in the selected `harness/build/phase-*.md` file.
 
+Canonical current authorization and active-phase state live in `harness/status.toml`. This file is the historical roadmap and phase index, not the live state source.
+
 Phase 04A and Phase 04B were separately gated early thin-runtime slices. Their
 completion does not mean that the broader Phase 04 serving and control-plane
 phase has started; Phase 04 remains inactive until a new explicit gate.
@@ -73,7 +75,7 @@ These remain sequential or require an integration gate:
 
 ## Goal Usage
 
-Create one Codex Goal only for the single approved phase. The Goal should quote the phase objective and acceptance criteria, and should be marked complete only after evidence and independent review are recorded. Do not create a permanent “finish the whole repository” Goal or use a loop to bypass human gates.
+Create a Codex Goal only when the user explicitly requests Goal tracking for an approved bounded objective. Do not create a permanent “finish the whole repository” Goal or use a loop to bypass human gates. Normal phase state lives in `harness/status.toml`.
 
 Current gate:
 

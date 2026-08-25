@@ -4,21 +4,21 @@ review_model = "gpt-5.6-terra"
 
 [agents]
 enabled = true
-max_concurrent_threads_per_session = 3
+max_concurrent_threads_per_session = 6
 interrupt_message = true
 
 [agents.implementer]
-description = "Implements one explicitly owned, well-specified ProxyLoop code slice with repository-native verification."
+description = "Use after Sol freezes interfaces and acceptance criteria to implement one owned ProxyLoop code slice with focused verification."
 config_file = "agents/implementer.toml"
 
 [agents.reviewer]
-description = "Independently reviews ProxyLoop diffs and advises root Sol without editing or merging."
+description = "Use after a material ProxyLoop diff stabilizes for independent defect-first review without editing or merging."
 config_file = "agents/reviewer.toml"
 
 [agents.fast-worker]
-description = "Performs narrow, mechanical, high-volume ProxyLoop implementation tasks with exact boundaries."
+description = "Use for judgment-free mechanical ProxyLoop generation, formatting, fixtures, or repetitive edits with exact files and a named verification command."
 config_file = "agents/fast-worker.toml"
 
 [agents.explorer]
-description = "Maps a bounded ProxyLoop code question and returns file-and-symbol evidence without edits."
+description = "Use for bounded cross-file mapping, lineage, test-impact, artifact, or noisy-log questions that should stay out of Sol's context."
 config_file = "agents/explorer.toml"

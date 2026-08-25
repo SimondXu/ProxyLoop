@@ -1,6 +1,6 @@
 # ProxyLoop Build Log
 
-This file is append-only execution evidence. Record only commands actually run and outcomes actually observed. Proposed checks belong in the phase contract, not in this log.
+This is the immutable historical execution log through the Harness v2 migration. New bounded changes record concise evidence in `harness/log/<change>.md`; do not append here by default. Read this file only for a named historical claim or audit.
 
 ## Phase Status
 
