@@ -4,11 +4,11 @@
 
 ProxyLoop is a portfolio-grade agent platform designed to research, negotiate, follow up, and pursue verifiable completion for consumer tasks. Its first vertical is fictional-provider telecom bill optimization; auto-deal negotiation is a planned future vertical.
 
-The design separates a locally trained Fast Response Model from a hosted Slow Reasoner, and keeps authorization, side effects, and final completion outside the models. It is intentionally simulator-first: no real-carrier contact, credentials, or production-completion claim is included in this repository.
+The design separates a project-owned Fast Response Model candidate from a hosted Slow Reasoner, and keeps authorization, side effects, and final completion outside the models. Qwen3-4B post-training is proposed but has not started. The repository is intentionally simulator-first: no real-carrier contact, credentials, or production-completion claim is included.
 
 ## Current status
 
-Phase 00A through Phase 03A1-V are complete. Phase 03A1-R/V was squash merged through PR #11 as `e501e0f`, with the CI phase-gate and GitGuardian checks passed. The corrected r4 hosted matrix completed through 29qg with auditable usage. A six-episode r5 validity smoke using the same Qwen/Terra path improved the selected baseline from 0/6 to 5/6 after model-view and prompt-contract parity; its remaining failure isolated a hidden twelve-month-cost evaluator predicate. This is diagnostic evidence, not a training-quality claim. Phase 04A Thin Agent Runtime is complete and independently approved. Phase 04B Model-backed Thin Agent Runtime implementation and independent review are complete: one runtime-owned OpenAI-compatible typed adapter, mocked transport, fail-closed model errors, explicit opt-in configuration, and a localhost server while retaining deterministic authority boundaries. No implementation phase is active after Phase 04B. More evaluation, training, PostgreSQL, Temporal, real tools or Providers, channels, voice, UI, deployment, and release remain inactive and require a new explicit gate.
+Phase 00A through Phase 03A1-V are complete. Phase 03A1-R/V was squash merged through PR #11 as `e501e0f`, with the CI phase-gate and GitGuardian checks passed. The corrected r4 hosted matrix completed through 29qg with auditable usage. A six-episode r5 validity smoke using the same Qwen/Terra path improved the selected baseline from 0/6 to 5/6 after model-view and prompt-contract parity; its remaining failure isolated a hidden twelve-month-cost evaluator predicate. This is diagnostic evidence, not a training-quality claim. Phase 04A Thin Agent Runtime is complete and independently approved. Phase 04B Model-backed Thin Agent Runtime was squash merged through PR #13 as `6daa1bc`: one runtime-owned OpenAI-compatible typed adapter, mocked transport, fail-closed model errors, explicit opt-in configuration, and a localhost server while retaining deterministic authority boundaries. No implementation phase is active. Phase 03B has a proposed Qwen3-4B QLoRA experiment plan but is not activated; training, data expansion, PostgreSQL, Temporal, real tools or Providers, channels, voice, UI, deployment, and release still require explicit gates.
 
 ## Start here
 
@@ -36,6 +36,8 @@ Phase 00A through Phase 03A1-V are complete. Phase 03A1-R/V was squash merged th
 - [Phase 03A1 evaluation-validity smoke](harness/build/phase-03a1-evaluation-validity-smoke.md)
 - [Completed Phase 04A Thin Agent Runtime](harness/build/phase-04a-thin-agent-runtime.md)
 - [Phase 04A independent review](harness/code_review/phase-04a-thin-agent-runtime.md)
+- [Completed Phase 04B Model-backed Thin Agent Runtime](harness/build/phase-04b-model-backed-runtime.md)
+- [Proposed Phase 03B Qwen3-4B QLoRA experiment](docs/planning/phase-03b-qwen-qlora-experiment.md)
 
 Run the local scripted Runtime server with:
 

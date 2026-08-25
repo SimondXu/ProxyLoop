@@ -44,33 +44,41 @@ flowchart TD
     REG --> FR
 ```
 
-The research MVP bypasses PostgreSQL, Temporal, Gmail, MCP, and LiveKit. It uses an in-memory event log, immutable Case snapshots, parallel-capable model reads, and one serialized Case write/side-effect lane. Mandatory Slow refresh may complete synchronously before Fast proceeds; the interfaces preserve a later bounded concurrent path without requiring full-duplex voice infrastructure.
+The diagram is a target shape, not an inventory of implemented services. Repository status is:
+
+- **Implemented**: canonical contracts, the fictional Provider simulator, deterministic `agent_core` routing and policy boundaries, a local simulator-backed FastAPI Case loop with in-memory state, and one explicitly configured runtime-owned OpenAI-compatible Fast/Slow adapter.
+- **Research-only, not product-runtime serving**: the Phase 02 Data Factory pilot and Phase 03A1 evaluation/baseline runners and artifacts.
+- **Target**: `apps/web`, PostgreSQL, Temporal workflow workers, external connectors, voice, and promoted-model serving. A separate model-gateway service is introduced only if deployment or a second runtime consumer proves that boundary necessary.
+- **Deferred and inactive**: training, durable cross-process work, real Providers or tools, authentication, channels, UI, deployment, and release until separately gated.
+
+The current research runtime bypasses PostgreSQL, Temporal, Gmail, MCP, and LiveKit. It uses an in-memory event log, immutable Case snapshots, synchronous local model-adapter calls, and one serialized Case write/side-effect lane. The Fast/Slow contracts preserve a later bounded concurrent path without claiming concurrent or durable execution today.
 
 ## Architectural Layers
 
 ### Experience Layer
 
-- `apps/web`: Next.js user interface for case creation, constraint review, approvals, timeline, offer comparison, and evidence receipt.
+- Target `apps/web`: Next.js user interface for case creation, constraint review, approvals, timeline, offer comparison, and evidence receipt.
 - The UI never communicates directly with model providers, Gmail, SIP carriers, or the simulator.
 
 ### Control Plane
 
-- `runtime/services/api`: FastAPI endpoints, authentication boundary, webhook ingress, case queries, and approval commands.
-- Validates all external input against versioned contracts before persisting or signaling workflows.
-- Does not execute long-running model or channel work inside HTTP requests.
+- Current `runtime/services/api`: FastAPI endpoints and `ThinAgentRuntime`, which compose the local synchronous Case loop, in-memory repository, approvals, simulator execution, Evidence, and completion verification.
+- Current endpoints validate request and domain input against versioned contracts before applying local state transitions.
+- In the target system, this layer becomes the authentication and webhook boundary and delegates long-running model or channel work outside HTTP requests.
 
 ### Durable Orchestration
 
-- `runtime/services/workflow_worker`: Temporal workflows and activities.
+- Target `runtime/services/workflow_worker`: Temporal workflows and activities.
 - Workflow responsibility: case phase, timers, signals, retries, approval waits, cancellation, and continue-as-new policy.
 - Activity responsibility: model calls, Postgres operations, email operations, provider simulation, and telephony.
 - Temporal history is not the authoritative business database.
 
 ### Agent Intelligence
 
-- `runtime/services/model_gateway`: separate provider-neutral Fast and Slow model interfaces. The models never call one another or mutate Case state.
-- `runtime/packages/agent_core`: the deep Case-coordination module, Case-context projections, deterministic Router, Safe Observation Adapter, policy gates, strategy validation, stale-result handling, fact updates, and completion-candidate validation.
-- PydanticAI may implement typed hosted-model calls, but it does not own workflow durability, authorization, or business state.
+- Current `runtime/packages/agent_core`: model-decision coordination, Case-context projections, deterministic Router, Safe Observation Adapter, policy and capability gates, strategy validation, stale-result handling, fact-update validation, and completion-candidate validation.
+- Current `runtime/packages/openai_adapter`: one concrete OpenAI-compatible Structured Outputs implementation of the existing typed Fast and Slow protocols. It compiles semantic model output against trusted pins and remains proposal-only; it is not a provider registry or generic gateway.
+- Current `runtime/services/api.ThinAgentRuntime`: owns the complete local application loop around `agent_core`. Extract a transport-neutral application-runtime seam only when a second transport or durable worker needs to reuse that loop; moving it now would add a boundary without a second consumer.
+- A later deployment may extract model serving behind a process boundary, but it must preserve the same typed protocols. No model SDK or serving process owns workflow durability, authorization, side effects, Evidence, or business state.
 
 ### Provider and Channel Layer
 
@@ -82,9 +90,9 @@ The research MVP bypasses PostgreSQL, Temporal, Gmail, MCP, and LiveKit. It uses
 ### ML and Data Layer
 
 - `ml/data_pipeline`: ingestion, normalization, synthetic rollout generation, quality filters, lineage, leakage detection, and split manifests.
-- `ml/training`: base-model experiments, QLoRA/SFT, loss configuration, checkpoints, and reproducibility metadata.
+- Target `ml/training`: base-model experiments, QLoRA/SFT, loss configuration, checkpoints, and reproducibility metadata. Training has not started.
 - `ml/evaluation`: policy-field, end-to-end, safety, cost, latency, and statistical evaluation.
-- `ml/serving`: vLLM deployment configuration for the promoted Linux/CUDA path. Apple-local serving remains a development adapter behind the same gateway contract.
+- Target `ml/serving`: vLLM deployment configuration for a promoted Linux/CUDA path. Apple-local inference remains a development path behind the typed Fast protocol.
 - Large datasets, audio, and checkpoints live in object storage; Git stores schemas, manifests, small fixtures, and reports.
 
 Phase 02 implements the first narrow Data Factory seam as a separate CPU-only `ml/` project. It consumes Phase 01B Safe Observation and Provider-environment interfaces through local path dependencies, exports only small drift-checked metadata artifacts, and cannot be imported by runtime packages or services. Its initial 128-record one-turn scripted pilot validates reproducibility and curation gates; it is explicitly not a training-ready corpus or a learned-model result.
@@ -114,7 +122,7 @@ Slow may also return bounded clarification, escalation, capability, or Action In
 
 ### Fast Response Model
 
-The Fast Response Model is the only model trained by the project. The initial checkpoint is `Qwen/Qwen3-4B-Instruct-2507`, used in its native non-thinking mode. It receives a safe, bounded view:
+The Fast Response Model is the only model the project intends to train; training has not started. The initial checkpoint is `Qwen/Qwen3-4B-Instruct-2507`, used in its native non-thinking mode. It receives a safe, bounded view:
 
 - consumer brief;
 - current valid `StrategyPacket`;
@@ -181,6 +189,8 @@ A planning-basis fingerprint binds the Strategy Packet to material goal, constra
 
 The complete decision and evidence boundary is frozen in `docs/decisions/2026-08-23-fast-slow-orchestration.md`.
 
+`CapabilityManifest` is the sole model-facing vocabulary for executable actions. Approval state, executor dispatch, adapter configuration, and Evidence rules remain deterministic internal mechanisms rather than model "skills." The current runtime has one simulator capability family, so it does not introduce a parallel skills registry or a speculative internal capability catalog.
+
 ## Core Domain Contracts
 
 The canonical contract layer defines these Pydantic contracts before service code:
@@ -199,7 +209,7 @@ The canonical contract layer defines these Pydantic contracts before service cod
 - `CompletionDecision`: deterministic verifier result and missing evidence.
 - `ModelTrace`: model/data/prompt versions, latency, token usage, result, and safety flags.
 
-Phase 03A1 must add implementation contracts for `CaseContextSnapshot`, Fast/Slow Model Views, `RoutingDecision`, `SlowWorkRequest`, `SlowWorkResult`, planning-basis pins, and `CapabilityManifest`. Their architecture is frozen in Phase 03A0, but no canonical wire shape is claimed until the Phase 03A1 contract gate implements and generates it.
+Phase 03A1 implemented and generated the canonical wire contracts for `CaseContextSnapshot`, Fast/Slow Model Views, `RoutingDecision`, `SlowWorkRequest`, `SlowWorkResult`, planning-basis pins, and `CapabilityManifest`. Their architecture was frozen in Phase 03A0 and is now enforced by contract-generation and drift checks.
 
 All mutable objects use optimistic versions. An approval is valid only for the exact case, strategy, constraint set, and offer version it references.
 
@@ -214,7 +224,13 @@ All mutable objects use optimistic versions. An approval is valid only for the e
 | Experiment runs and promoted model metadata | MLflow OSS | SQLite/local artifacts for the first experiments; database-backed registry and S3-compatible artifacts for integrated deployment. |
 | Prompt context | Ephemeral model request | Reconstructed from approved business state; never authoritative. |
 
-## Core Runtime Flow
+## Agent Decision Loop
+
+This contract-level flow is the agent architecture; it is not a chain of autonomous Planner, Thinker, and Verifier agents. Its bounded loop is:
+
+`Observe -> Route -> Propose (Fast dialogue / Slow strategy) -> Validate -> Policy / Approval -> Execute -> Evidence -> Verify -> Complete / Wait / Replan`
+
+Phase 04A currently demonstrates the fixed simulator offer path: it installs the initial validated Slow strategy, returns Fast decisions, and deterministically derives the one accept-offer intent from current compliant Case state. Later phases must separately gate broader fact merging, action proposals, durable work, and real adapters.
 
 1. A Consumer, Provider, simulator, approval, or executor event is appended to the Case event log.
 2. The coordinator projects an immutable `CaseContextSnapshot` with business revisions, event cursor, planning basis, pending work, and capability-manifest version.
