@@ -13,6 +13,11 @@ from .domain import (
     validate_approval_use,
     verify_completion,
 )
+from .offer_policy import (
+    OfferComplianceContext,
+    OfferComplianceTerms,
+    offer_compliance_violations,
+)
 
 __all__ = [
     "AppliedOfferConfirmation",
@@ -21,8 +26,11 @@ __all__ = [
     "ApprovalUseError",
     "CompletionVerification",
     "ConfirmationAuthority",
+    "OfferComplianceContext",
+    "OfferComplianceTerms",
     "confirmation_hash",
     "material_terms_hash",
+    "offer_compliance_violations",
     "offer_material_terms",
     "validate_approval_use",
     "verify_completion",

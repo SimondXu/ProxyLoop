@@ -12,6 +12,8 @@ PYTHON_PATHS := runtime/packages/contracts/src runtime/packages/contracts/tests 
 	runtime/packages/agent_core/src \
 	runtime/packages/telecom_domain/src runtime/packages/provider_simulator/src \
 	runtime/packages/provider_simulator/tests \
+	runtime/packages/telecom_domain/tests \
+	runtime/services/api/src \
 	tests/contract tests/integration scripts/generate_contracts.py \
 	scripts/run_phase_01b_benchmark.py scripts/run_phase_03a1_harness.py \
 	scripts/validate_layout.py
@@ -52,6 +54,7 @@ typecheck:
 	$(PYTHON_RUN) mypy --config-file runtime/pyproject.toml \
 		runtime/packages/contracts/src runtime/packages/agent_core/src \
 		runtime/packages/telecom_domain/src \
+		runtime/services/api/src \
 		runtime/packages/provider_simulator/src scripts/generate_contracts.py \
 		scripts/run_phase_01b_benchmark.py scripts/run_phase_03a1_harness.py \
 		scripts/validate_layout.py
@@ -66,6 +69,7 @@ typecheck:
 unit-test:
 	$(PYTHON_RUN) pytest -c runtime/pyproject.toml -q \
 		runtime/packages/contracts/tests runtime/packages/provider_simulator/tests \
+		runtime/packages/telecom_domain/tests \
 		tests/contract tests/integration
 	$(ML_PYTHON_RUN) pytest -c ml/pyproject.toml ml/tests -q
 

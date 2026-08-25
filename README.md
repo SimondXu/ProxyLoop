@@ -8,7 +8,7 @@ The design separates a locally trained Fast Response Model from a hosted Slow Re
 
 ## Current status
 
-Phase 00A through Phase 03A1-V are complete. The deterministic Harness was squash merged as `e08c9b6` through PR #8, the untuned Qwen/Terra baseline matrix completed PR #9, and the evaluation erratum completed PR #10. The corrected r4 hosted matrix then completed through 29qg with auditable usage. A six-episode r5 validity smoke using the same Qwen/Terra path improved the selected baseline from 0/6 to 5/6 after model-view and prompt-contract parity; its remaining failure isolated a hidden twelve-month-cost evaluator predicate. This is diagnostic evidence, not a training-quality claim. Phase 02's human review sample remains `pending_human` and `training_ready=false`. No implementation phase is active; training, product services, external channels, and a web UI are not implemented.
+Phase 00A through Phase 03A1-V are complete. Phase 03A1-R/V was squash merged through PR #11 as `e501e0f`, with the CI phase-gate and GitGuardian checks passed. The corrected r4 hosted matrix completed through 29qg with auditable usage. A six-episode r5 validity smoke using the same Qwen/Terra path improved the selected baseline from 0/6 to 5/6 after model-view and prompt-contract parity; its remaining failure isolated a hidden twelve-month-cost evaluator predicate. This is diagnostic evidence, not a training-quality claim. Phase 04A Thin Agent Runtime is complete and independently approved; its scope was a local, simulator-backed FastAPI loop with a replaceable in-memory Case store, deterministic policy/approval/execution/completion, and one multi-turn integration path. No implementation phase is active. More evaluation, training, PostgreSQL, Temporal, real tools or Providers, channels, voice, UI, deployment, and release remain inactive and require a new explicit gate.
 
 ## Start here
 
@@ -34,6 +34,8 @@ Phase 00A through Phase 03A1-V are complete. The deterministic Harness was squas
 - [Phase 03A1 untuned Baselines](harness/build/phase-03a1-baselines.md)
 - [Phase 03A1 hosted baseline reliability rerun](harness/build/phase-03a1-hosted-rerun.md)
 - [Phase 03A1 evaluation-validity smoke](harness/build/phase-03a1-evaluation-validity-smoke.md)
+- [Completed Phase 04A Thin Agent Runtime](harness/build/phase-04a-thin-agent-runtime.md)
+- [Phase 04A independent review](harness/code_review/phase-04a-thin-agent-runtime.md)
 
 ## Repository layout
 

@@ -3,9 +3,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 
+from proxyloop_telecom_domain import (
+    OfferComplianceContext,
+    OfferComplianceTerms,
+    offer_compliance_violations,
+)
+
 from .scenarios import (
+    CASE_CURRENCY,
+    CASE_CURRENT_MONTHLY_TOTAL_MINOR,
+    CASE_FORBIDDEN_CHANGES,
+    CASE_REQUIRED_FEATURES,
+    CASE_TARGET_MONTHLY_TOTAL_MINOR,
     BenchmarkScenario,
     ProviderTurn,
     PublicOffer,
@@ -187,9 +199,9 @@ class ProviderEnvironment:
         elif decision.offer_id != offer.offer_id:
             reasons.append("offer_reference_mismatch")
         if offer is not None:
-            reasons.extend(_offer_constraint_violations(offer))
-        if offer is not None and offer.expires_at <= turn.observed_at:
-            reasons.append("offer_expired")
+            reasons.extend(
+                _offer_constraint_violations(offer, observed_at=turn.observed_at)
+            )
         if not turn.confirmation_evidence_available:
             reasons.append("confirmation_evidence_missing")
         elif turn.confirmation_evidence_ref is None:
@@ -222,16 +234,37 @@ def _normalise_action(action: EnvironmentAction | str) -> EnvironmentAction | No
         return None
 
 
-def _offer_constraint_violations(offer: PublicOffer) -> list[str]:
-    reasons: list[str] = []
-    if offer.monthly_price_minor > 7_500:
-        reasons.append("monthly_target_exceeded")
-    if offer.total_cost_12_months_minor > 7_500 * 12:
-        reasons.append("total_cost_target_exceeded")
-    if "mobile_hotspot" not in offer.features:
-        reasons.append("required_feature_missing")
-    if "device_financing_change" in offer.applied_changes:
-        reasons.append("forbidden_term_present")
+def _offer_constraint_violations(
+    offer: PublicOffer, *, observed_at: datetime
+) -> list[str]:
+    context = OfferComplianceContext(
+        evaluated_at=observed_at,
+        current_monthly_minor=CASE_CURRENT_MONTHLY_TOTAL_MINOR,
+        currency=CASE_CURRENCY,
+        target_monthly_minor=CASE_TARGET_MONTHLY_TOTAL_MINOR,
+        target_currency=CASE_CURRENCY,
+        required_features=CASE_REQUIRED_FEATURES,
+        forbidden_changes=CASE_FORBIDDEN_CHANGES,
+    )
+    terms = OfferComplianceTerms(
+        monthly_price_minor=offer.monthly_price_minor,
+        total_cost_12_months_minor=offer.total_cost_12_months_minor,
+        currency=offer.currency,
+        fees_minor=offer.fees_minor,
+        features=offer.features,
+        applied_changes=offer.applied_changes,
+        expires_at=offer.expires_at,
+    )
+    legacy_reason_codes = {
+        "recurring_price_not_reduced": "monthly_target_exceeded",
+        "target_monthly_total_not_met": "monthly_target_exceeded",
+        "total_cost_exceeds_current": "total_cost_target_exceeded",
+        "forbidden_change_present": "forbidden_term_present",
+    }
+    reasons = [
+        legacy_reason_codes.get(reason, reason)
+        for reason in offer_compliance_violations(context, terms)
+    ]
     if "account_cancellation" in offer.applied_changes:
         reasons.append("unsupported_action")
     return reasons
