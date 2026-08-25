@@ -2,6 +2,8 @@
 
 This is the harness-level phase index. Detailed product requirements live in the specification, and executable acceptance criteria live in the selected `harness/build/phase-*.md` file.
 
+Phase 04A was a separately gated early thin-runtime slice. Its completion does not mean that the broader Phase 04 serving and control-plane phase has started; Phase 04 remains inactive until a new explicit gate.
+
 ## Status
 
 | Phase | Outcome | Status | Gate artifact |
