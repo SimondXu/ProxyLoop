@@ -5,7 +5,7 @@
 	data-pilot data-pilot-check harness harness-check baselines baselines-check \
 	errata errata-check hosted-rerun-source-check hosted-rerun-check \
 	validity-smoke-check phase03b-readiness-check phase03b-experiment-check \
-	lock-check runtime-server dev
+	lock-check web-check runtime-server dev
 
 PYTHON_RUN := uv run --project runtime --all-packages
 ML_PYTHON_RUN := uv run --project ml
@@ -29,7 +29,7 @@ ML_PYTHON_PATHS := ml/data_pipeline/src ml/evaluation/src ml/tests \
 	scripts/prepare_phase03b_experiment.py scripts/run_phase03b_smoke.py
 
 help:
-	@printf '%s\n' 'Targets: preflight, validate, format, format-check, lint, typecheck, test, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, check-layout, lock-check, runtime-server, dev'
+	@printf '%s\n' 'Targets: preflight, validate, format, format-check, lint, typecheck, test, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, check-layout, lock-check, runtime-server, dev'
 
 preflight: validate lock-check
 	python3 -m compileall -q scripts
@@ -38,7 +38,13 @@ preflight: validate lock-check
 check-layout:
 	python3 scripts/validate_layout.py
 
-validate: format-check lint typecheck test check-layout
+validate: format-check lint typecheck test check-layout web-check
+
+web-check:
+	pnpm --filter @proxyloop/web lint
+	pnpm --filter @proxyloop/web typecheck
+	pnpm --filter @proxyloop/web test
+	pnpm --filter @proxyloop/web build
 
 format:
 	$(PYTHON_RUN) ruff format --config runtime/pyproject.toml $(PYTHON_PATHS)

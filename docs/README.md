@@ -4,6 +4,7 @@
 
 - [Telecom bill-optimization specification](specs/2026-08-21-telecom-bill-optimization-agent.md)
 - [Architecture overview](architecture.md)
+- [Local Web demo UI notes](ui/README.md)
 
 ## Decisions
 
@@ -38,6 +39,14 @@
 - [Completed Phase 04B Model-backed Thin Agent Runtime](../harness/build/phase-04b-model-backed-runtime.md)
 - [Phase 04B activation preflight](../harness/context/phase-04b-preflight.md)
 - [Phase 04B independent review](../harness/code_review/phase-04b-model-backed-runtime.md)
+
+## Minimal local Web demo
+
+- [UI research boundary and reuse audit](ui/research.md)
+- [Conversation flow](ui/user-flows.md)
+- [Runtime-backed state matrix](ui/state-matrix.md)
+- [Bounded Web demo executable contract](../harness/build/phase-minimal-local-web-demo.md)
+- [Web demo activation preflight](../harness/context/phase-minimal-local-web-demo-preflight.md)
 
 ## Phase 03B completed closeout
 
