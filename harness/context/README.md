@@ -13,6 +13,9 @@ Do not copy the PRD, architecture document, source code, hidden chain-of-thought
 
 Active context:
 
+- `phase-06a-preflight.md`: observed post-Phase-05A Web/Runtime baseline,
+  existing recovery wire seam, browser command ownership, monotonic-state rules,
+  and the separate Phase 06B boundary.
 - `phase-05a-preflight.md`: observed post-04D Runtime/PostgreSQL baseline,
   current Temporal SDK semantics, inward Runtime seam, orchestration-only state,
   command idempotency, and fault-injection boundary.
