@@ -4,8 +4,10 @@ import importlib
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from threading import Barrier
+from types import SimpleNamespace
 from uuid import UUID
 
 import psycopg
@@ -18,6 +20,18 @@ from proxyloop_api import (
     PostgresCaseRepository,
     ThinAgentRuntime,
     runtime_from_environment,
+)
+from proxyloop_contracts import DialogueAct, EvidenceType
+from proxyloop_contracts.contracts import (
+    CompletionClaim,
+    EvidenceRequirement,
+    ReasonerRequest,
+)
+from proxyloop_openai_adapter import (
+    FastModelOutput,
+    OpenAICompatibleAdapter,
+    SlowModelOutput,
+    StrategyModelOutput,
 )
 from psycopg.types.json import Jsonb
 
@@ -46,6 +60,72 @@ class _FinalWriteFailureRepository(PostgresCaseRepository):
             expected_revision=expected_revision,
             state=state,
         )
+
+
+@dataclass
+class _Message:
+    parsed: object | None
+    refusal: str | None = None
+
+
+@dataclass
+class _Choice:
+    message: _Message
+
+
+class _Response:
+    def __init__(self, parsed: object, *, model: str = "runtime-model") -> None:
+        self.id = "response-1"
+        self.model = model
+        self.choices = [_Choice(_Message(parsed))]
+
+
+class _FakeCompletions:
+    def __init__(self, responses: list[object]) -> None:
+        self.responses = iter(responses)
+        self.calls: list[dict[str, object]] = []
+
+    def parse(self, **kwargs: object) -> object:
+        self.calls.append(kwargs)
+        return next(self.responses)
+
+
+class _FakeClient:
+    def __init__(self, completions: _FakeCompletions) -> None:
+        self.chat = SimpleNamespace(completions=completions)
+
+
+def _slow_output() -> SlowModelOutput:
+    return SlowModelOutput(
+        strategy=StrategyModelOutput(
+            primary_objective="Reduce the monthly bill safely.",
+            current_subgoal="Review the current fictional Provider offer.",
+            ranked_preference_positions=(),
+            allowed_disclosures=(),
+            approval_required_disclosures=(),
+            concession_ladder=("Preserve hard constraints.",),
+            fallback_outcomes=("Return control to the Consumer.",),
+            required_completion_evidence=(
+                EvidenceRequirement(
+                    evidence_type=EvidenceType.CONFIRMATION,
+                    description="Provider confirmation",
+                ),
+            ),
+            escalation_conditions=("Material terms change.",),
+            replan_conditions=("Planning basis changes.",),
+        )
+    )
+
+
+def _fast_output() -> FastModelOutput:
+    return FastModelOutput(
+        dialogue_act=DialogueAct.CLARIFY,
+        fact_updates=(),
+        reasoner_request=ReasonerRequest(needed=False, reason_code="none"),
+        completion_claim=CompletionClaim(status="not_done", evidence_message_ids=()),
+        response_text="I am checking that and will update you.",
+        action_intent=None,
+    )
 
 
 @pytest.fixture()
@@ -145,6 +225,66 @@ def test_postgres_round_trips_runtime_state_and_reconstructs_provider(
     assert rejected_state is not None
     assert rejected_state.snapshot == rejected.snapshot
     assert rejected_state.provider.state.value == "awaiting_approval"
+
+
+def test_postgres_explicit_model_to_scripted_switch_continues_case(
+    repository: PostgresCaseRepository,
+) -> None:
+    database_url = os.environ["PROXYLOOP_TEST_DATABASE_URL"]
+    fake_transport = _FakeCompletions(
+        [_Response(_slow_output()), _Response(_fast_output())]
+    )
+    fake_adapter = OpenAICompatibleAdapter(
+        model="runtime-model",
+        base_url="https://example.invalid/v1",
+        api_key="test-only",
+        client=_FakeClient(fake_transport),
+    )
+    model_runtime = ThinAgentRuntime(
+        repository,
+        clock=_clock(BASE_TIME, BASE_TIME + timedelta(minutes=1)),
+        fast=fake_adapter,
+        slow=fake_adapter,
+    )
+    created = model_runtime.create_case()
+    waiting = model_runtime.append_event(CASE_ID, content="Review the offer.")
+    assert created.snapshot.case.case_id == CASE_ID
+    assert waiting.approval is not None
+    assert model_runtime.adapter_mode == "model"
+    assert model_runtime.storage_mode == "postgres"
+    assert len(fake_transport.calls) == 2
+    assert [call["model"] for call in fake_transport.calls] == [
+        "runtime-model",
+        "runtime-model",
+    ]
+
+    switched_runtime = ThinAgentRuntime(
+        PostgresCaseRepository(database_url),
+        clock=_clock(BASE_TIME + timedelta(minutes=2)),
+    )
+    persisted = switched_runtime.repository.get(CASE_ID)
+    assert persisted is not None
+    assert persisted.snapshot == waiting.snapshot
+    assert switched_runtime.adapter_mode == "scripted"
+    assert switched_runtime.storage_mode == "postgres"
+
+    continued = switched_runtime.approve(
+        CASE_ID,
+        waiting.approval.approval_id,
+        expected_revision=waiting.snapshot.revision,
+    )
+    assert continued.snapshot.completion_decision is not None
+    assert continued.execution_count == 1
+
+
+def test_postgres_readiness_probe_is_read_only_select_one(
+    repository: PostgresCaseRepository,
+) -> None:
+    database_url = os.environ["PROXYLOOP_TEST_DATABASE_URL"]
+    repository.check_readiness()
+    with psycopg.connect(database_url) as connection:
+        row = connection.execute(f"SELECT count(*) FROM {TABLE}").fetchone()
+    assert row == (0,)
 
 
 def test_postgres_restart_reaches_terminal_once_and_repeats_without_write(

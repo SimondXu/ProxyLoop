@@ -4,9 +4,9 @@ This is the harness-level phase index. Detailed product requirements live in the
 
 Canonical current authorization and active-phase state live in `harness/status.toml`. This file is the historical roadmap and phase index, not the live state source.
 
-Phase 04A, Phase 04B, and the bounded Phase 04C persistence slice are
-separately gated early control-plane work. Their completion does not mean that
-the broader Phase 04 serving and control-plane phase is complete.
+Phase 04A, Phase 04B, Phase 04C persistence, and Phase 04D control-plane
+operations are separately gated control-plane slices. Their completion does
+not promote a model or make a production-serving claim.
 
 ## Status
 
@@ -26,11 +26,12 @@ the broader Phase 04 serving and control-plane phase is complete.
 | 04A | Thin Agent Runtime | Complete; independently approved | `harness/build/phase-04a-thin-agent-runtime.md` |
 | 04B | Model-backed Thin Agent Runtime | Complete; squash merged as `6daa1bc` through PR #13 | `harness/build/phase-04b-model-backed-runtime.md` |
 | 04C | Persistent Case Store | Complete; independently approved in PR #23 | `harness/build/phase-04c-persistent-case-store.md` |
+| 04D | Control-Plane Operations and Failure Evidence | Complete; independently approved; integration pending | `harness/build/phase-04d-control-plane-operations.md` |
 | Minimal local Web demo | Thin Runtime-backed conversation UI | Complete; squash merged through PR #18 as `ef2ce53`; post-merge Repository checks passed | `harness/build/phase-minimal-local-web-demo.md` |
 | Local Conversation Intake UX | Four-fact Runtime-owned fictional Case intake and exact Web snapshot verification | Complete; squash merged through PR #20 as `02466df`; post-merge Repository checks passed | `harness/build/phase-local-conversation-intake-ux.md` |
 | 03B | Open-data SFT, gap-driven project data, and evaluation | Complete; final `NO_GO_STOP_PHASE03B`; squash merged as PR #15 (`f441335` short); no promotion or expansion; Decided from Phase 03A1 failure slices | `harness/build/phase-03b-qwen-qlora-smoke.md` |
-| 04 | Broader serving and control plane | Not complete; bounded 04A/04B/04C done | Remaining serving, trace, load, fallback, and promotion gates require later authorization |
-| 05 | Durable agent loop | Not started | To be prepared after Phase 04 |
+| 04 | Broader serving and control plane | Bounded 04A/04B/04C/04D complete; promoted serving deferred | Real-model serving, OOM/capacity, promotion, and production rollout remain separately gated |
+| 05A | Durable agent loop / Temporal | Gate only; not started or authorized | May be proposed after 04D closeout; requires a new explicit phase decision |
 | 06 | Controlled channels and UI | Not started | To be prepared after Phase 05 |
 | 07 | Portfolio hardening | Not started | To be prepared after Phase 06 |
 
@@ -115,6 +116,21 @@ Fast/Slow adapter, mocked-transport failure gates, explicit opt-in model mode,
 a local server command, and a localhost HTTP black-box smoke while retaining
 the fictional Provider and deterministic authority boundaries.
 
+Phase 04C Persistent Case Store is complete and squash merged through PR #23 as
+`e64fa85`. It adds explicit opt-in PostgreSQL aggregate persistence, revision
+compare-and-swap, strict decode/reconstruction, and deterministic fictional
+Provider restart/recovery evidence behind the unchanged Case repository and
+HTTP interfaces.
+
+Phase 04D Control-Plane Operations and Failure Evidence is complete locally
+and independently approved. It adds correlated allowlisted JSON operation
+records, process liveness, read-only configured-storage readiness, stable
+redacted failure categories, a credential-free local diagnostic profile, and
+an explicit fake-model-to-scripted PostgreSQL switch proof. These are local
+operational observations, not promoted-serving, production-capacity, real
+Provider, deployment, or production-readiness claims. Phase 05A remains an
+unauthorized gate; Temporal has not started.
+
 Phase 03B is complete and squash merged as PR #15 (`f441335` short). The one
 frozen six-scenario, 40-iteration QLoRA training run and one canonical B
 evaluation completed as descriptive evidence. Clean Terra returned
@@ -134,10 +150,10 @@ through PR #20 as `02466df`, post-merge Repository checks, and fully merged
 branch cleanup. It is limited to four confirmed
 fictional-telecom facts, one Runtime-owned Case, and exact Web snapshot
 verification. The demo does not activate serving, channels, or production UI.
-No implementation phase is active after this closeout.
+No implementation phase is active after the Phase 04D closeout.
 Phase 03A1
 continuation, r6/r7, model downloads,
-PostgreSQL, Temporal, real tools or Providers, authentication, channels, voice,
+additional PostgreSQL work, Temporal, real tools or Providers, authentication, channels, voice,
 production UI, deployment, and release remain inactive.
 
 Phase 04A recorded the offer-compliance result that had previously been an
