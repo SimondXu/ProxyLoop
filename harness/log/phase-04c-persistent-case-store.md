@@ -3,8 +3,8 @@
 **Date**: 2026-08-25
 **Baseline**: synchronized `main` at `abe6e50`
 **Branch**: `feat/phase-04c-persistent-control-plane`
-**Status**: Local implementation, independent review, and final repository gate
-complete; hosted gates pending.
+**Status**: Bounded product phase complete and returned to idle. PR #23 remains
+subject to final closeout-commit hosted checks before squash merge.
 
 ## Delivered
 
@@ -40,10 +40,15 @@ complete; hosted gates pending.
   kept out of the infrastructure-independent base gate; the separate real
   PostgreSQL gate passed all 22 of them and related stable-error tests.
 
-## Remaining gate evidence
+## Hosted and integration evidence
 
-- Hosted `phase-gate` and GitGuardian: pending PR.
-- Squash merge and safe short-branch cleanup: pending hosted success.
+- PR #23 initial implementation commit `6901cde`: hosted `phase-gate` passed in
+  2m52s and GitGuardian passed.
+- The final Harness closeout commit must pass the same hosted gates before
+  squash merge; the PR check run and merge record remain authoritative for that
+  post-log integration evidence.
+- Only the fully merged short branch may be cleaned. The preserved legacy UI
+  prototype worktree/branch remains unrelated and untouched.
 
 ## Stop boundary
 

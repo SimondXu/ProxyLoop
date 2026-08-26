@@ -4,9 +4,9 @@ This is the harness-level phase index. Detailed product requirements live in the
 
 Canonical current authorization and active-phase state live in `harness/status.toml`. This file is the historical roadmap and phase index, not the live state source.
 
-Phase 04A, Phase 04B, and the currently active bounded Phase 04C persistence
-slice are separately gated early control-plane work. Their completion does not
-mean that the broader Phase 04 serving and control-plane phase is complete.
+Phase 04A, Phase 04B, and the bounded Phase 04C persistence slice are
+separately gated early control-plane work. Their completion does not mean that
+the broader Phase 04 serving and control-plane phase is complete.
 
 ## Status
 
@@ -25,11 +25,11 @@ mean that the broader Phase 04 serving and control-plane phase is complete.
 | 03A1-V | Evaluation-validity six-episode smoke | Complete; 5/6 diagnostic, evaluator mismatch isolated | `harness/build/phase-03a1-evaluation-validity-smoke.md` |
 | 04A | Thin Agent Runtime | Complete; independently approved | `harness/build/phase-04a-thin-agent-runtime.md` |
 | 04B | Model-backed Thin Agent Runtime | Complete; squash merged as `6daa1bc` through PR #13 | `harness/build/phase-04b-model-backed-runtime.md` |
-| 04C | Persistent Case Store | In progress; explicitly approved from `main` at `abe6e50` | `harness/build/phase-04c-persistent-case-store.md` |
+| 04C | Persistent Case Store | Complete; independently approved in PR #23 | `harness/build/phase-04c-persistent-case-store.md` |
 | Minimal local Web demo | Thin Runtime-backed conversation UI | Complete; squash merged through PR #18 as `ef2ce53`; post-merge Repository checks passed | `harness/build/phase-minimal-local-web-demo.md` |
 | Local Conversation Intake UX | Four-fact Runtime-owned fictional Case intake and exact Web snapshot verification | Complete; squash merged through PR #20 as `02466df`; post-merge Repository checks passed | `harness/build/phase-local-conversation-intake-ux.md` |
 | 03B | Open-data SFT, gap-driven project data, and evaluation | Complete; final `NO_GO_STOP_PHASE03B`; squash merged as PR #15 (`f441335` short); no promotion or expansion; Decided from Phase 03A1 failure slices | `harness/build/phase-03b-qwen-qlora-smoke.md` |
-| 04 | Broader serving and control plane | Not complete; bounded 04A/04B done and 04C active | Remaining serving, trace, load, fallback, and promotion gates require later authorization |
+| 04 | Broader serving and control plane | Not complete; bounded 04A/04B/04C done | Remaining serving, trace, load, fallback, and promotion gates require later authorization |
 | 05 | Durable agent loop | Not started | To be prepared after Phase 04 |
 | 06 | Controlled channels and UI | Not started | To be prepared after Phase 05 |
 | 07 | Portfolio hardening | Not started | To be prepared after Phase 06 |

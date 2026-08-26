@@ -1,8 +1,9 @@
 # Phase 04C — Persistent Case Store
 
-**Status**: In progress. Explicitly approved on 2026-08-25 from synchronized
-`main` at `abe6e50`. This is one bounded Phase 04 control-plane slice; it does
-not complete the broader Serving and Control Plane phase or authorize Phase 05.
+**Status**: Complete. Explicitly approved on 2026-08-25 from synchronized
+`main` at `abe6e50` and independently approved in PR #23.
+This is one bounded Phase 04 control-plane slice; it does not complete the
+broader Serving and Control Plane phase or authorize Phase 05.
 
 ## Objective
 
