@@ -5,12 +5,25 @@ from __future__ import annotations
 import math
 import os
 from collections.abc import Mapping
+from dataclasses import dataclass
 
+from proxyloop_case_runtime import (
+    CaseRepository,
+    InMemoryCaseRepository,
+    PostgresCaseRepository,
+    ThinAgentRuntime,
+)
 from proxyloop_openai_adapter import OpenAICompatibleAdapter
+from proxyloop_workflow_worker import (
+    TemporalCaseClient,
+    temporal_settings_from_environment,
+)
 
-from .postgres_repository import PostgresCaseRepository
-from .repository import CaseRepository, InMemoryCaseRepository
-from .runtime import ThinAgentRuntime
+
+@dataclass(frozen=True, slots=True)
+class RuntimeServices:
+    runtime: ThinAgentRuntime
+    temporal_client: TemporalCaseClient | None = None
 
 
 def runtime_from_environment(
@@ -59,4 +72,31 @@ def runtime_from_environment(
     return ThinAgentRuntime(repository, fast=adapter, slow=adapter)
 
 
-__all__ = ["runtime_from_environment"]
+async def services_from_environment(
+    *,
+    mode: str | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> RuntimeServices:
+    """Build the explicit direct or Temporal service bundle without fallback."""
+
+    values = os.environ if environ is None else environ
+    orchestration_mode = values.get("PROXYLOOP_ORCHESTRATION_MODE", "direct")
+    if orchestration_mode == "direct":
+        return RuntimeServices(runtime_from_environment(mode=mode, environ=values))
+    if orchestration_mode != "temporal":
+        raise ValueError("PROXYLOOP_ORCHESTRATION_MODE must be direct or temporal")
+    selected_runtime_mode = mode or values.get("PROXYLOOP_RUNTIME_MODE", "scripted")
+    if selected_runtime_mode != "scripted":
+        raise ValueError("Temporal orchestration requires scripted Runtime mode")
+    if values.get("PROXYLOOP_STORAGE_MODE", "memory") != "postgres":
+        raise ValueError("Temporal orchestration requires PostgreSQL storage")
+    runtime = runtime_from_environment(mode="scripted", environ=values)
+    settings = temporal_settings_from_environment(values)
+    temporal_client = await TemporalCaseClient.connect(settings)
+    readiness = await temporal_client.check_readiness()
+    if not readiness.ready:
+        raise RuntimeError("Temporal dependency is not ready")
+    return RuntimeServices(runtime=runtime, temporal_client=temporal_client)
+
+
+__all__ = ["RuntimeServices", "runtime_from_environment", "services_from_environment"]

@@ -5,8 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .repository import StorageUnavailableError
-from .runtime import ThinAgentRuntime
+from proxyloop_case_runtime import StorageUnavailableError, ThinAgentRuntime
 
 
 @dataclass(frozen=True, slots=True)

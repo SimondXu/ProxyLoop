@@ -20,6 +20,23 @@ non-empty `PROXYLOOP_DATABASE_URL` and persists one strict, versioned Case
 aggregate with revision compare-and-swap. Model selection remains independent
 of storage selection.
 
+Durable orchestration is a separate explicit opt-in. It requires scripted mode,
+PostgreSQL, and a reachable Temporal service; there is no fallback to direct
+execution:
+
+```text
+docker compose up -d postgres temporal
+PROXYLOOP_ORCHESTRATION_MODE=temporal \
+PROXYLOOP_RUNTIME_MODE=scripted \
+PROXYLOOP_STORAGE_MODE=postgres \
+PROXYLOOP_DATABASE_URL=postgresql://proxyloop:proxyloop@127.0.0.1:5432/proxyloop \
+uv run --project runtime --all-packages proxyloop-workflow-worker
+```
+
+Run the API with the same variables in another process. Temporal owns command
+ordering, waits, timers, bounded retry, worker recovery, and Continue-As-New;
+PostgreSQL remains the sole Case/approval/Evidence/receipt source of truth.
+
 The local control plane exposes `GET /health/live` for process-only liveness and
 `GET /health/ready` for a memory check or PostgreSQL `SELECT 1`. It emits one
 allowlisted operation record per Case or health request through non-retaining JSON
@@ -44,3 +61,15 @@ PROXYLOOP_TEST_DATABASE_URL=postgresql://proxyloop:proxyloop@127.0.0.1:55432/pro
 The check refuses to run without `PROXYLOOP_TEST_DATABASE_URL`; it verifies
 that the connected database is exactly `proxyloop_test` before cleaning test
 rows.
+
+The Phase 05A gate additionally requires a test Temporal address and covers
+live Update-with-Start, retries before and after a PostgreSQL commit, worker
+replacement, Continue-As-New, history replay, duplicate callbacks, and SDK
+time-skipping:
+
+```text
+docker compose --profile postgres-test up -d postgres-test temporal
+PROXYLOOP_TEST_DATABASE_URL=postgresql://proxyloop:proxyloop@127.0.0.1:55432/proxyloop_test \
+PROXYLOOP_TEST_TEMPORAL_ADDRESS=127.0.0.1:7233 \
+make phase05a-check
+```

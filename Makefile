@@ -5,18 +5,20 @@
 	data-pilot data-pilot-check harness harness-check baselines baselines-check \
 	errata errata-check hosted-rerun-source-check hosted-rerun-check \
 	validity-smoke-check phase03b-readiness-check phase03b-experiment-check \
-	lock-check postgres-check phase04d-check phase04d-profile-check web-check \
+	lock-check postgres-check phase04d-check phase04d-profile-check phase05a-check web-check \
 	runtime-server dev
 
 PYTHON_RUN := uv run --project runtime --all-packages
 ML_PYTHON_RUN := uv run --project ml
 PYTHON_PATHS := runtime/packages/contracts/src runtime/packages/contracts/tests \
 	runtime/packages/agent_core/src \
+	runtime/packages/case_runtime/src \
 	runtime/packages/openai_adapter/src \
 	runtime/packages/telecom_domain/src runtime/packages/provider_simulator/src \
 	runtime/packages/provider_simulator/tests \
 	runtime/packages/telecom_domain/tests \
 	runtime/services/api/src \
+	runtime/services/workflow_worker/src \
 	tests/contract tests/integration scripts/generate_contracts.py \
 	scripts/run_phase_01b_benchmark.py scripts/run_phase_03a1_harness.py \
 	scripts/run_phase_04d_control_plane_profile.py \
@@ -31,7 +33,7 @@ ML_PYTHON_PATHS := ml/data_pipeline/src ml/evaluation/src ml/tests \
 	scripts/prepare_phase03b_experiment.py scripts/run_phase03b_smoke.py
 
 help:
-	@printf '%s\n' 'Targets: preflight, preflight-fast, validate, format, format-check, lint, typecheck, test, postgres-check, phase04d-check, phase04d-profile-check, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, check-layout, lock-check, runtime-server, dev'
+	@printf '%s\n' 'Targets: preflight, preflight-fast, validate, format, format-check, lint, typecheck, test, postgres-check, phase04d-check, phase04d-profile-check, phase05a-check, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, check-layout, lock-check, runtime-server, dev'
 
 preflight: validate lock-check
 	python3 -m compileall -q scripts
@@ -70,9 +72,11 @@ lint:
 typecheck:
 	$(PYTHON_RUN) mypy --config-file runtime/pyproject.toml \
 		runtime/packages/contracts/src runtime/packages/agent_core/src \
+		runtime/packages/case_runtime/src \
 		runtime/packages/openai_adapter/src \
 		runtime/packages/telecom_domain/src \
 		runtime/services/api/src \
+		runtime/services/workflow_worker/src \
 		runtime/packages/provider_simulator/src scripts/generate_contracts.py \
 		scripts/run_phase_01b_benchmark.py scripts/run_phase_03a1_harness.py \
 		scripts/run_phase_04d_control_plane_profile.py scripts/validate_layout.py
@@ -163,6 +167,16 @@ phase04d-check:
 
 phase04d-profile-check:
 	$(PYTHON_RUN) python scripts/run_phase_04d_control_plane_profile.py --check
+
+phase05a-check:
+	@test -n "$(PROXYLOOP_TEST_DATABASE_URL)" || (echo 'PROXYLOOP_TEST_DATABASE_URL is required' >&2; exit 1)
+	@test -n "$(PROXYLOOP_TEST_TEMPORAL_ADDRESS)" || (echo 'PROXYLOOP_TEST_TEMPORAL_ADDRESS is required' >&2; exit 1)
+	PROXYLOOP_TEST_DATABASE_URL="$(PROXYLOOP_TEST_DATABASE_URL)" \
+		PROXYLOOP_TEST_TEMPORAL_ADDRESS="$(PROXYLOOP_TEST_TEMPORAL_ADDRESS)" \
+		$(PYTHON_RUN) pytest -c runtime/pyproject.toml -q \
+		tests/integration/test_phase_05a_case_runtime.py \
+		tests/integration/test_phase_05a_temporal_api.py \
+		tests/integration/test_phase_05a_temporal_workflow.py
 
 runtime-server:
 	$(PYTHON_RUN) python -m proxyloop_api.server --host 127.0.0.1 --port 8000

@@ -31,7 +31,7 @@ not promote a model or make a production-serving claim.
 | Local Conversation Intake UX | Four-fact Runtime-owned fictional Case intake and exact Web snapshot verification | Complete; squash merged through PR #20 as `02466df`; post-merge Repository checks passed | `harness/build/phase-local-conversation-intake-ux.md` |
 | 03B | Open-data SFT, gap-driven project data, and evaluation | Complete; final `NO_GO_STOP_PHASE03B`; squash merged as PR #15 (`f441335` short); no promotion or expansion; Decided from Phase 03A1 failure slices | `harness/build/phase-03b-qwen-qlora-smoke.md` |
 | 04 | Broader serving and control plane | Bounded 04A/04B/04C/04D complete; promoted serving deferred | Real-model serving, OOM/capacity, promotion, and production rollout remain separately gated |
-| 05A | Durable agent loop / Temporal | Gate only; not started or authorized | May be proposed after 04D closeout; requires a new explicit phase decision |
+| 05A | Durable agent loop / Temporal | Complete; independently approved | `harness/build/phase-05a-temporal-case-workflow.md` |
 | 06 | Controlled channels and UI | Not started | To be prepared after Phase 05 |
 | 07 | Portfolio hardening | Not started | To be prepared after Phase 06 |
 
@@ -128,8 +128,9 @@ records, process liveness, read-only configured-storage readiness, stable
 redacted failure categories, a credential-free local diagnostic profile, and
 an explicit fake-model-to-scripted PostgreSQL switch proof. These are local
 operational observations, not promoted-serving, production-capacity, real
-Provider, deployment, or production-readiness claims. Phase 05A remains an
-unauthorized gate; Temporal has not started.
+Provider, deployment, or production-readiness claims. Phase 05A is complete
+and independently approved. It adds the bounded scripted/PostgreSQL Temporal
+CaseWorkflow without authorizing any real external effect or Phase 06 work.
 
 Phase 03B is complete and squash merged as PR #15 (`f441335` short). The one
 frozen six-scenario, 40-iteration QLoRA training run and one canonical B
@@ -150,10 +151,10 @@ through PR #20 as `02466df`, post-merge Repository checks, and fully merged
 branch cleanup. It is limited to four confirmed
 fictional-telecom facts, one Runtime-owned Case, and exact Web snapshot
 verification. The demo does not activate serving, channels, or production UI.
-No implementation phase is active after the Phase 04D closeout.
+No implementation phase is active after the Phase 05A closeout.
 Phase 03A1
 continuation, r6/r7, model downloads,
-additional PostgreSQL work, Temporal, real tools or Providers, authentication, channels, voice,
+additional PostgreSQL work beyond Phase 05A, real tools or Providers, authentication, channels, voice,
 production UI, deployment, and release remain inactive.
 
 Phase 04A recorded the offer-compliance result that had previously been an
