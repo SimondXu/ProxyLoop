@@ -35,6 +35,7 @@ not promote a model or make a production-serving claim.
 | 06A | Durable Web Case resume and progress | Complete; independently approved | `harness/build/phase-06a-durable-web-resume.md` |
 | 06B1 | Local controlled mailbox | Complete; synthetic-only and independently approved | `harness/build/phase-06b1-local-controlled-mailbox.md` |
 | 06B2 | Real controlled integration | Not started; separate user gate | Real Provider/email/MCP/credentials remain unauthorized |
+| 07A | Reproducible Local Portfolio Demo | Complete; locally verified and independently approved bounded subphase | `harness/build/phase-07a-reproducible-local-portfolio-demo.md` |
 | 07 | Portfolio hardening | Not started | To be prepared after Phase 06 |
 
 ## Critical Dependency Chain
@@ -152,8 +153,7 @@ completed independent review, final PR-head CI/GitGuardian, squash merge
 through PR #20 as `02466df`, post-merge Repository checks, and fully merged
 branch cleanup. It is limited to four confirmed
 fictional-telecom facts, one Runtime-owned Case, and exact Web snapshot
-verification. The demo does not activate serving, channels, or production UI.
-Phase 06A Durable Web Case resume and progress is complete locally and
+verification. Phase 06A Durable Web Case resume and progress is complete locally and
 independently approved. It preserves the existing conversation intake while
 adding a strict browser Case locator, one exact pending-command retry,
 readiness plus PostgreSQL GET-first recovery, monotonic projection handling,
@@ -161,7 +161,15 @@ bounded visible polling, truthful expiry/finalizing/reconnect states, and a
 final authoritative Evidence read. Phase 06B1 Local controlled mailbox is
 complete locally and independently approved: one synthetic, credential-free
 mailbox with PostgreSQL channel authority and Temporal dispatch under the
-unchanged Web flow. No product phase is active. Phase 06B2 and all real
+unchanged Web flow. Phase 07A packages the existing Web Case,
+PostgreSQL/Temporal Runtime, worker, and synthetic mailbox into one
+credential-free local startup path. Its Web Case and synthetic `local_mailbox`
+scenes remain intentionally separate: the Web does not invoke or render the
+channel route, and the channel scene reads compact authoritative state through
+the existing PostgreSQL seam. The bounded recovery command reuses the accepted
+Phase 06B1 lost-response/idempotent retry path. Desktop/mobile Browser evidence
+and full-stack restart recovery passed locally, and final independent review
+approved the bounded slice. No product phase is active. Phase 06B2 and all real
 Provider/email/MCP/credential/voice paths remain separate unauthorized gates.
 Phase 03A1
 continuation, r6/r7, model downloads,

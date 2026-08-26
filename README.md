@@ -8,7 +8,13 @@ The design separates a project-owned Fast Response Model candidate from a hosted
 
 ## Current status
 
-No product, evaluation, training, deployment, or release phase is active. The Local Conversation Intake UX is integrated, Phase 03B remains a final `NO_GO_STOP_PHASE03B`, and no additional training, data expansion, rerun, or promotion is authorized. See [`harness/status.toml`](harness/status.toml) for current authorization boundaries and [`PLANS.md`](PLANS.md) for phase and integration history.
+Phase 07A is complete locally and independently approved, and the Harness has
+returned to idle. The Local Conversation Intake UX, durable Web Case flow,
+PostgreSQL/Temporal Runtime, and synthetic `local_mailbox` are integrated;
+Phase 03B remains a final `NO_GO_STOP_PHASE03B`. No additional
+training, data expansion, rerun, model promotion, real channel, deployment, or
+release is authorized. See [`harness/status.toml`](harness/status.toml) for
+current authorization boundaries and [`PLANS.md`](PLANS.md) for phase history.
 
 ## Start here
 
@@ -17,6 +23,7 @@ No product, evaluation, training, deployment, or release phase is active. The Lo
 - [Monorepo decision](docs/decisions/2026-08-21-monorepo.md)
 - [Implementation defaults](docs/decisions/2026-08-22-implementation-defaults.md)
 - [Documentation index](docs/README.md)
+- [Phase 07A portfolio evidence](docs/portfolio-demo.md)
 - [Initial project plan](docs/planning/initial-project-plan.md)
 - [Research findings](docs/research/foundations.md)
 - [Progress log](docs/planning/progress.md)
@@ -61,10 +68,91 @@ uv run --project runtime --all-packages python -m proxyloop_api.server --mode mo
 The server does not load `.env` files. No real model smoke is part of the
 automated gate.
 
+## Reproducible local portfolio demo
+
+Prerequisites are Docker with Compose, `uv`, `pnpm`, and the repository's
+already-installed dependencies. The demo uses only loopback ports, the
+repository's local PostgreSQL fixture credentials, the deterministic scripted
+Runtime, the synthetic mailbox, and the fictional Provider simulator. It does
+not download or call a model and does not contact Gmail, Voice, or an external
+Provider.
+
+Start the complete local stack from a clean checkout:
+
+```text
+make portfolio-demo
+```
+
+The command starts the existing Compose PostgreSQL and Temporal server,
+then the host workflow worker, FastAPI Runtime, and existing Next.js Web app.
+Startup prints the Web URL, Runtime readiness URL, Temporal address, log
+directory, stop command, and the fixed scene order:
+
+1. Scene A — use the Web conversation to confirm the four telecom facts,
+   approve the exact offer, and observe one fictional Provider execution and
+   authoritative completion Evidence.
+2. Stop and reset the local demo state, then restart `make portfolio-demo` to
+   bring up a fresh stack for the independent channel scene.
+3. Scene B — from a second terminal, run `make portfolio-demo-channel` to create a fresh scripted Case,
+   post the signed raw-byte `local_mailbox` fixture, replay it exactly, observe
+   one accepted synthetic delivery, post the delivered callback, and verify
+   browser-projection isolation from PostgreSQL authority.
+
+Normal stop is bounded and preserves PostgreSQL data:
+
+```text
+make portfolio-demo-stop
+```
+
+To remove only the named demo volume and start Scene B from a fresh state, use
+the explicit reset command. It prints its exact scope before removing
+the Phase 07A-only `proxyloop-portfolio-demo_postgres-data` volume:
+
+```text
+make portfolio-demo-reset
+```
+
+Reset stops the stack. Run `make portfolio-demo` again in the first terminal,
+wait for the printed readiness information, and then run `make portfolio-demo-channel`
+from a second terminal.
+
+The focused real-local recovery check reuses the accepted Phase 06B1
+lost-response/idempotent retry path against PostgreSQL and Temporal:
+
+```text
+make portfolio-demo-recovery
+```
+
+Expected Scene B results are one server-correlated inbox identity, one outbox
+delivery identity, exact duplicate deduplication, one accepted synthetic
+Provider reference, one delivered callback/receipt, two authoritative channel
+Evidence records, and no channel content/provider reference/artifact hash in
+the browser Case projection. Synthetic acceptance and delivery are local
+observations only; they do not prove real-provider delivery, production
+exactly-once effects, or production readiness.
+
+Troubleshooting: if startup reports an unavailable port or dependency, inspect
+the printed log directory and
+`docker compose --project-name proxyloop-portfolio-demo ps`, then run
+`make portfolio-demo-stop` before retrying. If Scene B reports that state is
+not fresh, stop/reset, restart `make portfolio-demo`, and rerun Scene B. The recovery command
+also needs the primary Temporal service from `make portfolio-demo`; it creates
+and stops only the temporary `postgres-test` service for its focused check.
+
+Implemented and locally verified are the deterministic scripted Case,
+PostgreSQL authority, Temporal ordering/retry/recovery, fictional Provider, and
+synthetic mailbox boundary. Browser/manual checks completed at 1280x900 and
+375x812 with no horizontal overflow or warning/error console output; stopping
+and restarting the stack while preserving the isolated volume recovered the
+same verified Case, single execution, and Evidence receipt. Gmail is a future proposed
+seam at the API verification/channel-adapter boundary. Voice is a future
+proposed seam at the deferred LiveKit/SIP channel worker. Both require separate
+policy, credential, security, retention, and evaluation gates.
+
 ## Repository layout
 
 ```text
-apps/        Next.js user experience (deferred)
+apps/        Next.js conversation-first local Web experience
 runtime/     Python contracts and durable-agent services
 ml/          Independent data, training, evaluation, and serving environment
 voice/       Deferred LiveKit/SIP worker environment
@@ -95,7 +183,7 @@ These commands validate the canonical contract boundary, deterministic simulator
 
 ## Development workflow
 
-Repository-level agent behavior is defined in [AGENTS.md](AGENTS.md), and the branch/commit/PR workflow is defined in [CONTRIBUTING.md](CONTRIBUTING.md). Work is organized as one explicitly approved phase at a time: prepare a phase contract, execute its red/green/verification loop, obtain an independent review for material changes, record evidence in [harness/build-log.md](harness/build-log.md), and stop at the gate.
+Repository-level agent behavior is defined in [AGENTS.md](AGENTS.md), and the branch/commit/PR workflow is defined in [CONTRIBUTING.md](CONTRIBUTING.md). Work is organized as one explicitly approved phase at a time: prepare a phase contract, execute its red/green/verification loop, obtain an independent review for material changes, record current evidence under [harness/log/](harness/log/), and stop at the gate.
 
 The default Codex role split is Sol high for root orchestration, Luna xhigh for clearly specified implementation, Terra high for independent review, and Luna medium for narrow mechanical work or bounded exploration. Luna max is an explicit escalation for complex implementation, not a standing default. Sol assigns subagents when useful, reconciles their work, and owns final PR approval and merge; model choice never relaxes file ownership, safety, evidence, or phase-scope requirements.
 

@@ -321,6 +321,24 @@ Dashboards should separate model quality from infrastructure reliability:
 - optional LiveKit worker and owned test number;
 - OpenTelemetry-compatible traces and metrics.
 
+Phase 07A currently packages a credential-free local subset of this target
+shape: the existing Next.js Web, FastAPI Runtime in explicit
+scripted/PostgreSQL/Temporal mode, PostgreSQL, Temporal server, and host
+workflow worker. A small host supervisor owns only those local process
+lifecycles, uses the isolated `proxyloop-portfolio-demo` Compose project, and
+keeps Compose as the infrastructure owner. Scene A is the
+existing Web Case flow. Scene B is a separate API-only synthetic
+`local_mailbox` fixture driver that reads compact allowlisted channel state
+through the existing PostgreSQL repository seam and checks that the browser
+projection excludes channel material. This package does not claim real
+Provider delivery, production exactly-once effects, production readiness, or
+completion of the broader Integrated Portfolio Demo target.
+
+The future Gmail seam remains proposed at the API verification/channel-adapter
+boundary. The future Voice seam remains proposed at the deferred LiveKit/SIP
+channel worker. Both are unauthorized until separate policy, credential,
+security, retention, and evaluation gates are approved.
+
 ## Extension Points
 
 - New providers implement a versioned provider-policy and plan-catalog adapter.
