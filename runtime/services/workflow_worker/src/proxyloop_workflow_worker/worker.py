@@ -12,6 +12,7 @@ from temporalio.worker import Worker
 from .activities import (
     CaseCommandActivityAdapter,
     activity_for_adapter,
+    channel_activity_for_adapter,
     runtime_from_environment,
 )
 from .client import TemporalCaseClient
@@ -32,7 +33,10 @@ def create_worker(
         client,
         task_queue=settings.task_queue,
         workflows=[CaseWorkflow],
-        activities=[activity_for_adapter(selected_adapter)],
+        activities=[
+            activity_for_adapter(selected_adapter),
+            channel_activity_for_adapter(selected_adapter),
+        ],
     )
 
 

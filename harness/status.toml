@@ -7,15 +7,15 @@ integration_baseline = "main"
 updated_at = "2026-08-26"
 
 [boundaries]
-summary = "Phase 06A durable Web Case resume and progress is complete and independently approved. Phase 06B controlled channels remains unauthorized."
+summary = "Phase 06B1 local controlled mailbox is complete and independently approved. Phase 06B2 and every real channel remain unauthorized."
 inactive = [
   "Phase 03A1 continuation or r6/r7",
   "additional model training, data expansion, rerun, or promotion",
-  "additional PostgreSQL schema, query, migration, or broader serving work",
+  "PostgreSQL work beyond the completed Phase 06B1 channel binding, inbox, outbox, and delivery receipt state",
   "promoted-model serving, real-model load, OOM, production p95, or automatic fallback work",
-  "Temporal work beyond the completed Phase 05A CaseWorkflow and Phase 06A Web integration",
-  "real tools or Providers",
-  "authentication, channels, voice, or production UI",
+  "Temporal work beyond the completed Phase 06B1 local mailbox commands, dispatch, retry, and reconciliation",
+  "real tools, Providers, email, MCP, SMS, or external network channels",
+  "authentication, real channels, voice, or production UI",
   "deployment or release",
 ]
 

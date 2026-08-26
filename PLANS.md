@@ -33,7 +33,8 @@ not promote a model or make a production-serving claim.
 | 04 | Broader serving and control plane | Bounded 04A/04B/04C/04D complete; promoted serving deferred | Real-model serving, OOM/capacity, promotion, and production rollout remain separately gated |
 | 05A | Durable agent loop / Temporal | Complete; independently approved | `harness/build/phase-05a-temporal-case-workflow.md` |
 | 06A | Durable Web Case resume and progress | Complete; independently approved | `harness/build/phase-06a-durable-web-resume.md` |
-| 06B | Controlled channels | Not started; separate user gate | To be prepared only after Phase 06A |
+| 06B1 | Local controlled mailbox | Complete; synthetic-only and independently approved | `harness/build/phase-06b1-local-controlled-mailbox.md` |
+| 06B2 | Real controlled integration | Not started; separate user gate | Real Provider/email/MCP/credentials remain unauthorized |
 | 07 | Portfolio hardening | Not started | To be prepared after Phase 06 |
 
 ## Critical Dependency Chain
@@ -157,9 +158,11 @@ independently approved. It preserves the existing conversation intake while
 adding a strict browser Case locator, one exact pending-command retry,
 readiness plus PostgreSQL GET-first recovery, monotonic projection handling,
 bounded visible polling, truthful expiry/finalizing/reconnect states, and a
-final authoritative Evidence read. Phase 06B controlled channels remains a
-separate unauthorized gate. No implementation phase is active after the Phase
-06A closeout.
+final authoritative Evidence read. Phase 06B1 Local controlled mailbox is
+complete locally and independently approved: one synthetic, credential-free
+mailbox with PostgreSQL channel authority and Temporal dispatch under the
+unchanged Web flow. No product phase is active. Phase 06B2 and all real
+Provider/email/MCP/credential/voice paths remain separate unauthorized gates.
 Phase 03A1
 continuation, r6/r7, model downloads,
 additional PostgreSQL work beyond Phase 05A, real tools or Providers, authentication, channels, voice,

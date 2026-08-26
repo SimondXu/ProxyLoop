@@ -7,6 +7,7 @@ members = [
     "proxyloop-agent-core",
     "proxyloop-api",
     "proxyloop-case-runtime",
+    "proxyloop-connectors",
     "proxyloop-contracts",
     "proxyloop-openai-adapter",
     "proxyloop-provider-simulator",
@@ -391,6 +392,7 @@ version = "0.0.0"
 source = { editable = "packages/case_runtime" }
 dependencies = [
     { name = "proxyloop-agent-core" },
+    { name = "proxyloop-connectors" },
     { name = "proxyloop-contracts" },
     { name = "proxyloop-provider-simulator" },
     { name = "proxyloop-telecom-domain" },
@@ -401,12 +403,18 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "proxyloop-agent-core", editable = "packages/agent_core" },
+    { name = "proxyloop-connectors", editable = "packages/connectors" },
     { name = "proxyloop-contracts", editable = "packages/contracts" },
     { name = "proxyloop-provider-simulator", editable = "packages/provider_simulator" },
     { name = "proxyloop-telecom-domain", editable = "packages/telecom_domain" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
     { name = "pydantic", specifier = ">=2.11,<3" },
 ]
+
+[[package]]
+name = "proxyloop-connectors"
+version = "0.0.0"
+source = { editable = "packages/connectors" }
 
 [[package]]
 name = "proxyloop-contracts"

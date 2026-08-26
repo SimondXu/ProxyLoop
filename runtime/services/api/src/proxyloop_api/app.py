@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 from contextlib import suppress
+from datetime import UTC, datetime
 from time import perf_counter
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request, Response
@@ -12,15 +14,24 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from proxyloop_case_runtime import (
+    CHANNEL_COMMAND_SCHEMA_VERSION,
     SCRIPTED_CASE_ID,
     CaseCommandType,
     CaseConflictError,
     CaseNotFoundError,
     CaseTransitionRef,
+    ChannelConflictError,
+    ChannelDependencyUnavailableError,
     ModelRuntimeError,
     RuntimeResult,
     StorageUnavailableError,
     ThinAgentRuntime,
+)
+from proxyloop_connectors import (
+    SCHEMA_VERSION,
+    LocalMailboxEventKind,
+    LocalMailboxVerificationError,
+    verify_local_mailbox_event,
 )
 from proxyloop_contracts import Money
 from proxyloop_openai_adapter import OpenAICompatibleAdapterError
@@ -170,6 +181,57 @@ def create_app(
             },
         )
 
+    @api.exception_handler(ChannelDependencyUnavailableError)
+    async def handle_channel_dependency_unavailable(
+        request: Request, _exc: ChannelDependencyUnavailableError
+    ) -> JSONResponse:
+        request.state.operation_error_category = "channel_dependency_unavailable"
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": {
+                    "code": "channel_dependency_unavailable",
+                    "message": "channel dependency unavailable",
+                }
+            },
+        )
+
+    @api.exception_handler(ChannelConflictError)
+    async def handle_channel_conflict(
+        request: Request, exc: ChannelConflictError
+    ) -> JSONResponse:
+        category = _channel_conflict_category(exc)
+        request.state.operation_error_category = category
+        status = 422 if category in {"stale_unknown_event", "unknown_binding"} else 409
+        return JSONResponse(
+            status_code=status,
+            content={
+                "detail": {
+                    "code": category,
+                    "message": _channel_failure_message(category),
+                }
+            },
+        )
+
+    @api.exception_handler(LocalMailboxVerificationError)
+    async def handle_channel_verification(
+        request: Request, exc: LocalMailboxVerificationError
+    ) -> JSONResponse:
+        category = exc.category
+        if category not in {
+            "invalid_fixture_authenticity",
+            "stale_unknown_event",
+            "malformed_channel_event",
+            "unknown_binding",
+        }:
+            category = "invalid_fixture_authenticity"
+        request.state.operation_error_category = category
+        status = 401 if category == "invalid_fixture_authenticity" else 422
+        return JSONResponse(
+            status_code=status,
+            content={"detail": {"code": category, "message": "channel event rejected"}},
+        )
+
     @api.exception_handler(OpenAICompatibleAdapterError)
     async def handle_model_error(
         request: Request, exc: OpenAICompatibleAdapterError
@@ -211,6 +273,39 @@ def create_app(
             return JSONResponse(status_code=404, content={"detail": "case not found"})
         if category in {"case_conflict", "approval_expired"}:
             return JSONResponse(status_code=409, content={"detail": category})
+        if category in {
+            "channel_replay_mismatch",
+            "channel_conflict",
+        }:
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "detail": {
+                        "code": category,
+                        "message": _channel_failure_message(category),
+                    }
+                },
+            )
+        if category in {"stale_unknown_event", "unknown_binding"}:
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "detail": {
+                        "code": category,
+                        "message": _channel_failure_message(category),
+                    }
+                },
+            )
+        if category == "channel_dependency_unavailable":
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "detail": {
+                        "code": category,
+                        "message": "channel dependency unavailable",
+                    }
+                },
+            )
         if category == "invalid_command":
             return JSONResponse(
                 status_code=422,
@@ -403,6 +498,99 @@ def create_app(
         _annotate_result(request, result)
         return _result_payload(result)
 
+    @api.post("/channels/local_mailbox/events")
+    async def local_mailbox_event(request: Request) -> dict[str, Any]:
+        """Accept only the synthetic raw-byte mailbox fixture."""
+
+        request.state.operation_name = "local_mailbox_event"
+        received_at = datetime.now(UTC)
+        raw_bytes = await request.body()
+        event = verify_local_mailbox_event(
+            raw_bytes,
+            request.headers,
+            received_at,
+            require_fresh=False,
+        )
+        request.state.channel_kind = "local_mailbox"
+        request.state.channel_event_kind = event.kind.value
+        if temporal_client is None:
+            raise ChannelDependencyUnavailableError(
+                "local mailbox requires the explicit Temporal mode"
+            )
+        repository = getattr(service, "repository", None)
+        reserve = getattr(repository, "reserve_channel_event", None)
+        if not callable(reserve):
+            raise ChannelDependencyUnavailableError(
+                "local mailbox requires PostgreSQL channel persistence"
+            )
+        inbox = reserve(event, received_at=received_at)
+        request.state.case_id = str(inbox.case_id)
+        state = service.repository.get(inbox.case_id)
+        if state is None:
+            raise CaseNotFoundError("case not found")
+        prior = next(
+            (item for item in state.transitions if item.command_id == inbox.command_id),
+            None,
+        )
+        if (
+            inbox.deduplicated
+            and inbox.processing_state == "applied"
+            and prior is not None
+        ):
+            request.state.revision = prior.after_revision
+            request.state.delivery_state = prior.delivery_status
+            return _channel_result_payload(
+                event, prior.model_copy(update={"deduplicated": True})
+            )
+        if event.kind is LocalMailboxEventKind.PROVIDER_MESSAGE:
+            command_type = CaseCommandType.INGEST_CHANNEL_EVENT
+        else:
+            command_type = CaseCommandType.RECORD_CHANNEL_DELIVERY
+        command_values: dict[str, Any] = {
+            "schema_version": CHANNEL_COMMAND_SCHEMA_VERSION,
+            "command_id": inbox.command_id,
+            "case_id": inbox.case_id,
+            "command_type": command_type,
+            "expected_revision": state.snapshot.revision,
+            "channel_occurred_at": event.occurred_at,
+            "channel_kind": "local_mailbox",
+            "binding_ref": event.binding_ref,
+            "event_id": event.event_id,
+        }
+        if event.kind is LocalMailboxEventKind.PROVIDER_MESSAGE:
+            if event.content is None:
+                raise LocalMailboxVerificationError("malformed_channel_event")
+            command_values.update(
+                {
+                    "content_hash": hashlib.sha256(
+                        event.content.encode("utf-8")
+                    ).hexdigest(),
+                    "payload_hash": event.raw_payload_hash,
+                }
+            )
+        else:
+            if (
+                event.delivery_id is None
+                or event.provider_message_id is None
+                or event.delivery_status is None
+            ):
+                raise LocalMailboxVerificationError("malformed_channel_event")
+            command_values.update(
+                {
+                    "delivery_id": event.delivery_id,
+                    "provider_message_id": event.provider_message_id,
+                    "delivery_status": event.delivery_status,
+                    "artifact_hash": event.raw_payload_hash,
+                    "payload_hash": event.raw_payload_hash,
+                }
+            )
+        transition = await temporal_client.apply_command(
+            CaseCommandRequest(**command_values)
+        )
+        request.state.revision = transition.after_revision
+        request.state.delivery_state = transition.delivery_status
+        return _channel_result_payload(event, transition)
+
     api.state.operation_recorder = operation_recorder
     api.state.orchestration_mode = (
         "temporal" if temporal_client is not None else "direct"
@@ -482,6 +670,9 @@ def _operation_record(
         error_category=getattr(request.state, "operation_error_category", "none"),
         status=status,
         latency_ms=max(0.0, latency_ms),
+        channel_kind=getattr(request.state, "channel_kind", None),
+        channel_event_kind=getattr(request.state, "channel_event_kind", None),
+        delivery_state=getattr(request.state, "delivery_state", None),
     )
 
 
@@ -555,6 +746,27 @@ def _conflict_category(exc: CaseConflictError) -> str:
     return "stale_cas" if "stale" in str(exc) else "case_conflict"
 
 
+def _channel_conflict_category(exc: BaseException) -> str:
+    """Convert known channel details into a stable, redacted category."""
+
+    value = str(exc).lower()
+    if "channel_replay_mismatch" in value or "replay mismatch" in value:
+        return "channel_replay_mismatch"
+    if "stale_unknown_event" in value or "stale unknown event" in value:
+        return "stale_unknown_event"
+    if "unknown_binding" in value or "unknown binding" in value:
+        return "unknown_binding"
+    return "channel_conflict"
+
+
+def _channel_failure_message(category: str) -> str:
+    if category in {"stale_unknown_event", "unknown_binding"}:
+        return "channel event rejected"
+    if category == "channel_replay_mismatch":
+        return "channel event replay rejected"
+    return "channel conflict"
+
+
 def _result_payload(result: RuntimeResult) -> dict[str, Any]:
     snapshot = result.snapshot
     completion = snapshot.completion_decision
@@ -584,7 +796,7 @@ def _result_payload(result: RuntimeResult) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "case_id": str(snapshot.case.case_id),
         "case": snapshot.case.model_dump(mode="json"),
-        "snapshot": snapshot.model_dump(mode="json"),
+        "snapshot": _browser_snapshot_payload(snapshot),
         "revision": snapshot.revision,
         "event_cursor": snapshot.event_cursor,
         "route": route,
@@ -596,6 +808,71 @@ def _result_payload(result: RuntimeResult) -> dict[str, Any]:
     if result.fast_decision is not None:
         payload["fast"] = result.fast_decision.model_dump(mode="json")
     return payload
+
+
+def _browser_snapshot_payload(snapshot: Any) -> dict[str, Any]:
+    """Project the canonical snapshot without exposing local-mailbox material."""
+
+    payload = cast(dict[str, Any], snapshot.model_dump(mode="json"))
+    payload["visible_events"] = [
+        event
+        for event in payload["visible_events"]
+        if not _is_channel_visible_event(event)
+    ]
+    payload["evidence"] = [
+        evidence
+        for evidence in payload["evidence"]
+        if not _is_channel_evidence(evidence)
+    ]
+    return payload
+
+
+def _is_channel_visible_event(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    return value.get("actor") == "provider" and value.get("event_type") in {
+        "provider_message",
+        "provider_event",
+    }
+
+
+def _is_channel_evidence(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    source_type = value.get("source_type")
+    source_ref = value.get("source_ref")
+    if source_type == "provider_message":
+        return _is_uuid4_reference(source_ref)
+    return source_type == "provider_event"
+
+
+def _is_uuid4_reference(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        parsed = UUID(value)
+    except ValueError:
+        return False
+    return parsed.version == 4 and str(parsed) == value
+
+
+def _channel_result_payload(
+    event: Any,
+    transition: CaseTransitionRef,
+) -> dict[str, Any]:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "event_id": str(event.event_id),
+        "command_id": str(transition.command_id),
+        "case_id": str(transition.case_id),
+        "revision": transition.after_revision,
+        "event_cursor": transition.event_cursor,
+        "deduplicated": transition.deduplicated,
+        "delivery_id": str(transition.delivery_id)
+        if transition.delivery_id is not None
+        else None,
+        "delivery_status": transition.delivery_status,
+    }
 
 
 app = create_app()

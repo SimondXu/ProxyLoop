@@ -35,6 +35,13 @@ ERROR_CATEGORIES = frozenset(
         "temporal_unavailable",
         "dependency_not_ready",
         "internal_error",
+        "invalid_fixture_authenticity",
+        "stale_unknown_event",
+        "malformed_channel_event",
+        "unknown_binding",
+        "channel_replay_mismatch",
+        "channel_conflict",
+        "channel_dependency_unavailable",
     }
 )
 
@@ -55,6 +62,9 @@ OPERATION_RECORD_FIELDS = frozenset(
         "error_category",
         "status",
         "latency_ms",
+        "channel_kind",
+        "channel_event_kind",
+        "delivery_state",
     }
 )
 
@@ -78,6 +88,9 @@ class OperationRecord:
     error_category: str
     status: int
     latency_ms: float
+    channel_kind: str | None = None
+    channel_event_kind: str | None = None
+    delivery_state: str | None = None
 
     def __post_init__(self) -> None:
         if self.error_category not in ERROR_CATEGORIES:

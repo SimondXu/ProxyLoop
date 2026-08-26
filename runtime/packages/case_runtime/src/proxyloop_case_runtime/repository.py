@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from threading import RLock
 from typing import Protocol
 from uuid import UUID
@@ -52,6 +53,72 @@ class CaseConflictError(RuntimeError):
 
 class StorageUnavailableError(RuntimeError):
     """The configured Case storage dependency could not be reached."""
+
+
+class ChannelConflictError(CaseConflictError):
+    """A channel event or delivery does not match authoritative state."""
+
+
+class ChannelDependencyUnavailableError(StorageUnavailableError):
+    """The channel persistence/dispatch dependency is unavailable."""
+
+
+@dataclass(frozen=True, slots=True)
+class ChannelBindingRecord:
+    channel_kind: str
+    binding_ref: str
+    case_id: UUID
+    local_ref: str
+    remote_ref: str
+    allowed_directions: tuple[str, ...]
+    active: bool
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class InboxReceiptRecord:
+    channel_kind: str
+    event_id: UUID
+    payload_hash: str
+    binding_ref: str
+    case_id: UUID
+    command_id: UUID
+    first_seen_at: datetime
+    event_kind: str
+    processing_state: str
+    content: str | None = None
+    deduplicated: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class OutboxRecord:
+    delivery_id: UUID
+    idempotency_key: str
+    case_id: UUID
+    binding_ref: str
+    source_event_id: UUID
+    source_command_id: UUID
+    source_case_revision: int
+    source_strategy_id: UUID | None
+    source_strategy_revision: int
+    source_event_cursor: int
+    body: str
+    body_hash: str
+    state: str = "pending"
+    provider_message_id: str | None = None
+    attempt_count: int = 0
+    last_failure_category: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DeliveryReceiptRecord:
+    delivery_id: UUID
+    provider_message_id: str
+    observation_state: str
+    artifact_hash: str
+    observed_at: datetime
+    captured_at: datetime
+    evidence_id: UUID
 
 
 class CaseRepository(Protocol):
@@ -113,6 +180,12 @@ __all__ = [
     "CaseNotFoundError",
     "CaseRepository",
     "CaseRuntimeState",
+    "ChannelBindingRecord",
+    "ChannelConflictError",
+    "ChannelDependencyUnavailableError",
+    "DeliveryReceiptRecord",
     "InMemoryCaseRepository",
+    "InboxReceiptRecord",
+    "OutboxRecord",
     "StorageUnavailableError",
 ]

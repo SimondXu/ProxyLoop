@@ -46,12 +46,12 @@ flowchart TD
 
 The diagram is a target shape, not an inventory of implemented services. Repository status is:
 
-- **Implemented**: canonical contracts, the fictional Provider simulator, deterministic `agent_core` routing and policy boundaries, a transport-neutral Case application Runtime, a local FastAPI Case adapter with direct memory mode by default, one opt-in PostgreSQL aggregate adapter, one explicitly configured OpenAI-compatible Fast/Slow adapter for direct mode, and one explicit scripted/PostgreSQL Temporal CaseWorkflow mode.
+- **Implemented**: canonical contracts, the fictional Provider simulator, deterministic `agent_core` routing and policy boundaries, a transport-neutral Case application Runtime, a local FastAPI Case adapter with direct memory mode by default, one opt-in PostgreSQL aggregate adapter, one explicitly configured OpenAI-compatible Fast/Slow adapter for direct mode, one explicit scripted/PostgreSQL Temporal CaseWorkflow mode, and a bounded credential-free `local_mailbox` connector with PostgreSQL-owned channel receipts and outbox state.
 - **Research-only, not product-runtime serving**: the Phase 02 Data Factory pilot and Phase 03A1 evaluation/baseline runners and artifacts.
 - **Implemented bounded local slice**: `apps/web` keeps conversation as the primary workspace and calls the existing local FastAPI Thin Runtime through one Next rewrite and one narrow runtime client. It renders Runtime-derived Case facts, one offer, exact approval pins, and a receipt only after the completion Evidence predicate passes.
-- **Target/deferred**: normalized production data models and migrations, real-effect outbox/reconciliation, external connectors, voice, promoted-model serving, authentication, channels, production UI, deployment, and release remain separately gated. This local slice does not make a production Pine clone claim.
+- **Target/deferred**: normalized production data models and migrations, real-effect outbox/reconciliation, external provider/email/MCP connectors, voice, promoted-model serving, authentication, production UI, deployment, and release remain separately gated. The `local_mailbox` slice is synthetic and does not make a production Pine clone claim.
 
-The current research runtime uses an in-memory Case repository in default direct mode and may explicitly opt into a synchronous PostgreSQL adapter that stores one strict, versioned JSONB aggregate with revision compare-and-swap. A separate explicit Temporal mode requires scripted decisions and PostgreSQL; it durably orders commands, waits, timers, retries, worker recovery, and Continue-As-New while PostgreSQL remains the only business truth. The slice still bypasses Gmail, MCP, and LiveKit. Its idempotency and recovery claims apply only to the deterministic fictional Provider; it does not claim exactly-once real external effects. Configuration never falls back automatically.
+The current research runtime uses an in-memory Case repository in default direct mode and may explicitly opt into a synchronous PostgreSQL adapter that stores one strict, versioned JSONB aggregate with revision compare-and-swap. A separate explicit Temporal mode requires scripted decisions and PostgreSQL; it durably orders commands, waits, timers, retries, worker recovery, and Continue-As-New while PostgreSQL remains the only business truth. The bounded `local_mailbox` mode adds strict raw-fixture verification, server-owned binding, inbox deduplication, atomic Case-plus-first-outbox writes, and compact delivery activities; PostgreSQL remains authoritative for channel receipts and outbox state. The slice still bypasses Gmail, MCP, and LiveKit. Its idempotency and recovery claims apply only to the deterministic fictional Provider and local fixture; it does not claim exactly-once real external effects. Configuration never falls back automatically.
 
 ## Architectural Layers
 
@@ -63,15 +63,15 @@ The current research runtime uses an in-memory Case repository in default direct
 
 ### Control Plane
 
-- Current `runtime/services/api`: FastAPI endpoints, readiness, and operation observation. It directly invokes the shared Case Runtime by default and dispatches POST commands through Temporal only in explicit Temporal mode; GET remains a PostgreSQL projection.
+- Current `runtime/services/api`: FastAPI endpoints, readiness, operation observation, and the credential-free `POST /channels/local_mailbox/events` fixture boundary. It directly invokes the shared Case Runtime by default and dispatches POST commands through Temporal only in explicit Temporal mode; GET remains a PostgreSQL projection.
 - Current endpoints validate request and domain input against versioned contracts before applying local state transitions.
 - In the target system, this layer becomes the authentication and webhook boundary and delegates long-running model or channel work outside HTTP requests.
 
 ### Durable Orchestration
 
-- Current bounded `runtime/services/workflow_worker`: one scripted fictional-Provider `CaseWorkflow`, PostgreSQL activity adapter, Update-with-Start client, readiness, and worker entry point.
+- Current bounded `runtime/services/workflow_worker`: one scripted fictional-Provider `CaseWorkflow`, PostgreSQL activity adapter, Update-with-Start client, readiness, worker entry point, and a deterministic local-mailbox delivery activity using compact delivery references.
 - Workflow responsibility in this slice: command ordering, approval wait/expiry timer, bounded retry, worker recovery, and Continue-As-New control state.
-- Activity responsibility in this slice: invoke the shared application Runtime against PostgreSQL and the deterministic fictional Provider. Real model, email, provider, and telephony activities remain deferred.
+- Activity responsibility in this slice: invoke the shared application Runtime against PostgreSQL and the deterministic fictional Provider, and send through the credential-free local-mailbox adapter. Real model, email, provider, and telephony activities remain deferred.
 - Temporal history is not the authoritative business database.
 
 ### Agent Intelligence
@@ -84,7 +84,7 @@ The current research runtime uses an in-memory Case repository in default direct
 ### Provider and Channel Layer
 
 - `runtime/packages/provider_simulator`: fictional telecom provider, plan catalog, account/bill state, retention policy, provider personas, and deterministic mutations.
-- `runtime/packages/connectors`: email and other asynchronous channel adapters added after the ML MVP.
+- `runtime/packages/connectors`: strict credential-free `local_mailbox` fixture verification plus deterministic send/lookup and fault-injection adapters. Real email and other asynchronous channel adapters remain deferred.
 - `voice/worker`: LiveKit agent and SIP integration added only after text-policy gates pass.
 - Channel adapters translate events; they do not decide negotiation strategy or case completion.
 
@@ -218,7 +218,7 @@ All mutable objects use optimistic versions. An approval is valid only for the e
 
 | State | Authoritative owner | Notes |
 |---|---|---|
-| Cases, constraints, offers, approvals, evidence, command receipts, fact ledger, event log, context projection | Local memory store in default direct mode; PostgreSQL versioned aggregate in explicit Temporal mode | Business source of truth and audit surface. Temporal carries only compact transition references. Production normalization, migrations, and outbox remain deferred. |
+| Cases, constraints, offers, approvals, evidence, command receipts, fact ledger, event log, context projection, channel bindings, inbox/outbox/delivery receipts | Local memory store in default direct mode; PostgreSQL versioned aggregate plus channel tables in explicit Temporal/local-mailbox mode | Business source of truth and audit surface. Temporal carries only compact transition references. Production normalization, migrations, and real external-effect reconciliation remain deferred. |
 | Timers, retries, waits, workflow phase | Temporal | Stores IDs and control state, not a second business database. |
 | Provider simulator episode | Simulator store | Resettable and versioned per benchmark episode. |
 | Raw/curated datasets, audio, checkpoints | Object storage | Addressed by immutable manifest and content hash. |

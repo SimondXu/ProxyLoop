@@ -67,6 +67,11 @@ jobs:
           PROXYLOOP_TEST_DATABASE_URL: postgresql://proxyloop:proxyloop@127.0.0.1:5432/proxyloop_test
           PROXYLOOP_TEST_TEMPORAL_ADDRESS: 127.0.0.1:7233
         run: make phase05a-check
+      - name: Phase 06B1 local mailbox integration
+        env:
+          PROXYLOOP_TEST_DATABASE_URL: postgresql://proxyloop:proxyloop@127.0.0.1:5432/proxyloop_test
+          PROXYLOOP_TEST_TEMPORAL_ADDRESS: 127.0.0.1:7233
+        run: make phase06b1-check
       - name: Check committed diff whitespace
         if: github.event_name == 'pull_request'
         run: git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"

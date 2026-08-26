@@ -2,6 +2,7 @@
 
 from .commands import (
     CASE_COMMAND_SCHEMA_VERSION,
+    CHANNEL_COMMAND_SCHEMA_VERSION,
     CaseCommand,
     CaseCommandType,
     CaseTransitionRef,
@@ -12,7 +13,13 @@ from .repository import (
     CaseNotFoundError,
     CaseRepository,
     CaseRuntimeState,
+    ChannelBindingRecord,
+    ChannelConflictError,
+    ChannelDependencyUnavailableError,
+    DeliveryReceiptRecord,
+    InboxReceiptRecord,
     InMemoryCaseRepository,
+    OutboxRecord,
     StorageUnavailableError,
 )
 from .runtime import (
@@ -27,6 +34,7 @@ from .runtime import (
 
 __all__ = [
     "CASE_COMMAND_SCHEMA_VERSION",
+    "CHANNEL_COMMAND_SCHEMA_VERSION",
     "SCRIPTED_CASE_ID",
     "AdapterMode",
     "CaseCommand",
@@ -36,8 +44,14 @@ __all__ = [
     "CaseRepository",
     "CaseRuntimeState",
     "CaseTransitionRef",
+    "ChannelBindingRecord",
+    "ChannelConflictError",
+    "ChannelDependencyUnavailableError",
+    "DeliveryReceiptRecord",
     "InMemoryCaseRepository",
+    "InboxReceiptRecord",
     "ModelRuntimeError",
+    "OutboxRecord",
     "PostgresCaseRepository",
     "RuntimeProfile",
     "RuntimeResult",

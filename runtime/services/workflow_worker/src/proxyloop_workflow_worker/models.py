@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import RFC_4122, UUID
 
 from proxyloop_case_runtime.commands import (
+    CHANNEL_COMMAND_SCHEMA_VERSION,
     CaseCommand,
     CaseCommandType,
     CaseTransitionRef,
 )
 from proxyloop_contracts import Money
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-WORKFLOW_SCHEMA_VERSION: Literal["phase-05a-v1"] = "phase-05a-v1"
+WORKFLOW_SCHEMA_VERSION: Literal["phase-05a-v1", "phase-06b1-v1"] = "phase-05a-v1"
 
 
 def _require_uuid4(value: UUID, field_name: str) -> UUID:
@@ -26,7 +27,7 @@ def _require_uuid4(value: UUID, field_name: str) -> UUID:
 class CaseWorkflowInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
-    schema_version: Literal["phase-05a-v1"] = WORKFLOW_SCHEMA_VERSION
+    schema_version: Literal["phase-05a-v1", "phase-06b1-v1"] = WORKFLOW_SCHEMA_VERSION
     case_id: UUID
     run_generation: int = Field(default=0, ge=0)
     commands_in_run: int = Field(default=0, ge=0)
@@ -48,7 +49,7 @@ class CaseCommandRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
-    schema_version: Literal["phase-05a-v1"] = WORKFLOW_SCHEMA_VERSION
+    schema_version: Literal["phase-05a-v1", "phase-06b1-v1"] = WORKFLOW_SCHEMA_VERSION
     command_id: UUID
     case_id: UUID
     command_type: CaseCommandType
@@ -64,6 +65,16 @@ class CaseCommandRequest(BaseModel):
     expected_case_revision: int | None = Field(default=None, ge=1)
     expected_action_intent_revision: int | None = Field(default=None, ge=1)
     approval_expires_at: datetime | None = None
+    channel_occurred_at: datetime | None = None
+    channel_kind: Literal["local_mailbox"] | None = None
+    binding_ref: Literal["fictional-provider-local-mailbox"] | None = None
+    event_id: UUID | None = None
+    content_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    payload_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    delivery_id: UUID | None = None
+    provider_message_id: str | None = Field(default=None, min_length=1, max_length=256)
+    delivery_status: Literal["delivered", "bounced"] | None = None
+    artifact_hash: str | None = Field(default=None, min_length=64, max_length=64)
 
     @field_validator("command_id", "case_id", "approval_id")
     @classmethod
@@ -85,27 +96,82 @@ class CaseCommandRequest(BaseModel):
             )
         return value
 
+    @field_validator("channel_occurred_at")
+    @classmethod
+    def channel_time_is_utc(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (
+            value.tzinfo is None or value.utcoffset() != timedelta(0)
+        ):
+            raise ValueError(
+                "channel_occurred_at must be a timezone-aware UTC datetime"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def channel_time_shape(self) -> CaseCommandRequest:
+        is_channel = self.command_type in {
+            CaseCommandType.INGEST_CHANNEL_EVENT,
+            CaseCommandType.RECORD_CHANNEL_DELIVERY,
+        }
+        if is_channel != (self.channel_occurred_at is not None):
+            raise ValueError(
+                "channel_occurred_at is required only for channel commands"
+            )
+        return self
+
     @classmethod
     def from_command(cls, command: CaseCommand) -> CaseCommandRequest:
-        return cls.model_validate(command.model_dump(exclude={"occurred_at"}))
+        values = command.model_dump(exclude={"occurred_at"})
+        if command.command_type in {
+            CaseCommandType.INGEST_CHANNEL_EVENT,
+            CaseCommandType.RECORD_CHANNEL_DELIVERY,
+        }:
+            values["channel_occurred_at"] = command.occurred_at
+        return cls.model_validate(values)
 
     def to_command(self, occurred_at: datetime) -> CaseCommand:
         if occurred_at.tzinfo is None or occurred_at.astimezone(UTC) != occurred_at:
             raise ValueError("Workflow time must be a timezone-aware UTC datetime")
-        if self.command_type is CaseCommandType.EXPIRE_APPROVAL:
+        if self.command_type in {
+            CaseCommandType.INGEST_CHANNEL_EVENT,
+            CaseCommandType.RECORD_CHANNEL_DELIVERY,
+        }:
+            if self.channel_occurred_at is None:
+                raise ValueError("channel command requires an occurred time")
+            command_time = self.channel_occurred_at
+        elif self.command_type is CaseCommandType.EXPIRE_APPROVAL:
             if self.approval_expires_at is None:
                 raise ValueError("expire_approval requires an expiry")
             command_time = self.approval_expires_at
         else:
             command_time = occurred_at
+        values = self.model_dump(exclude={"channel_occurred_at"})
         return CaseCommand(
             occurred_at=command_time,
-            **self.model_dump(),
+            **values,
         )
 
 
+class ChannelDeliveryRequest(BaseModel):
+    """Compact Temporal carry for one persisted Outbox delivery."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+    schema_version: Literal["phase-06b1-v1"] = CHANNEL_COMMAND_SCHEMA_VERSION
+    case_id: UUID
+    delivery_id: UUID
+    idempotency_key: str = Field(min_length=1, max_length=256)
+
+    @field_validator("case_id", "delivery_id")
+    @classmethod
+    def ids_are_uuid4(cls, value: UUID) -> UUID:
+        return _require_uuid4(value, "channel delivery id")
+
+
 __all__ = [
+    "CHANNEL_COMMAND_SCHEMA_VERSION",
     "WORKFLOW_SCHEMA_VERSION",
     "CaseCommandRequest",
     "CaseWorkflowInput",
+    "ChannelDeliveryRequest",
 ]

@@ -134,6 +134,11 @@ def _failure_category(exc: BaseException) -> str:
         "approval_expired",
         "state_invalid",
         "model_path",
+        "channel_replay_mismatch",
+        "stale_unknown_event",
+        "unknown_binding",
+        "channel_conflict",
+        "channel_dependency_unavailable",
     }
     current: BaseException | None = exc
     while current is not None:

@@ -17,12 +17,13 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ApplicationError
 
-from .models import CaseCommandRequest, CaseWorkflowInput
+from .models import CaseCommandRequest, CaseWorkflowInput, ChannelDeliveryRequest
 
 WORKFLOW_NAME = "CaseWorkflow"
 WORKFLOW_ID_PREFIX = "proxyloop-case/"
 UPDATE_NAME = "apply_case_command"
 ACTIVITY_NAME = "apply_case_command_activity"
+CHANNEL_DELIVERY_ACTIVITY_NAME = "dispatch_channel_delivery_activity"
 COMMAND_ID_PREFIX = "case-command/"
 DEFAULT_CONTINUE_AS_NEW_AFTER = 32
 
@@ -240,6 +241,22 @@ class CaseWorkflow:
                     type="state_invalid",
                     non_retryable=True,
                 ) from exc
+        if (
+            command.command_type is CaseCommandType.INGEST_CHANNEL_EVENT
+            and transition.delivery_id is not None
+        ):
+            await workflow.execute_activity(
+                CHANNEL_DELIVERY_ACTIVITY_NAME,
+                ChannelDeliveryRequest(
+                    case_id=command.case_id,
+                    delivery_id=transition.delivery_id,
+                    idempotency_key=str(transition.delivery_id),
+                ),
+                start_to_close_timeout=ACTIVITY_START_TO_CLOSE,
+                schedule_to_close_timeout=ACTIVITY_SCHEDULE_TO_CLOSE,
+                retry_policy=ACTIVITY_RETRY_POLICY,
+                activity_id=f"channel-delivery/{transition.delivery_id}",
+            )
         return transition
 
     async def _expire_pending(self) -> None:
@@ -311,6 +328,7 @@ __all__ = [
     "ACTIVITY_RETRY_POLICY",
     "ACTIVITY_SCHEDULE_TO_CLOSE",
     "ACTIVITY_START_TO_CLOSE",
+    "CHANNEL_DELIVERY_ACTIVITY_NAME",
     "COMMAND_ID_PREFIX",
     "DEFAULT_CONTINUE_AS_NEW_AFTER",
     "NON_RETRYABLE_ERROR_TYPES",

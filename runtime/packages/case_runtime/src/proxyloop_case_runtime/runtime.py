@@ -7,10 +7,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from threading import RLock
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from proxyloop_agent_core import (
+    BOUNDED_FAST_STATUS_TEXT,
     CapabilityExecutionRequest,
     CapabilityExecutionStatus,
     CapabilityExecutor,
@@ -23,6 +24,7 @@ from proxyloop_agent_core import (
     ScriptedSlowAdapter,
     SlowAdapter,
 )
+from proxyloop_connectors import BINDING_REF, CHANNEL_KIND
 from proxyloop_contracts import (
     ActionIntent,
     ActionType,
@@ -69,6 +71,8 @@ from proxyloop_telecom_domain import (
 )
 
 from .commands import (
+    CASE_COMMAND_SCHEMA_VERSION,
+    CHANNEL_COMMAND_SCHEMA_VERSION,
     CaseCommand,
     CaseCommandType,
     CaseTransitionRef,
@@ -79,12 +83,18 @@ from .repository import (
     CaseNotFoundError,
     CaseRepository,
     CaseRuntimeState,
+    ChannelConflictError,
+    ChannelDependencyUnavailableError,
+    DeliveryReceiptRecord,
     InMemoryCaseRepository,
+    OutboxRecord,
 )
 
 RuntimeDecision = Literal["approved", "rejected"]
 AdapterMode = Literal["scripted", "model"]
 StorageMode = Literal["memory", "postgres"]
+TransitionSchemaVersion = Literal["phase-05a-v1", "phase-06b1-v1"]
+DeliveryStatus = Literal["pending", "accepted", "delivered", "bounced"]
 RUNTIME_PROVIDER_CONFIG = "pine-mobile:runtime-v1"
 RUNTIME_MANIFEST_VERSION = "phase-04a-runtime-v1"
 SCRIPTED_CASE_ID = Phase01AEpisode.success().case.case_id
@@ -275,6 +285,10 @@ class ThinAgentRuntime:
                     occurred_at=command.occurred_at,
                     command_fingerprint=command_fingerprint,
                 )
+            elif command.command_type is CaseCommandType.INGEST_CHANNEL_EVENT:
+                self.ingest_channel_event(command)
+            elif command.command_type is CaseCommandType.RECORD_CHANNEL_DELIVERY:
+                self.record_channel_delivery(command)
             else:
                 if (
                     command.approval_id is None
@@ -338,6 +352,332 @@ class ThinAgentRuntime:
             ),
             execution_count=state.execution_count,
         )
+
+    def ingest_channel_event(self, command: CaseCommand) -> RuntimeResult:
+        """Project one verified local-mailbox message and durable reply."""
+
+        if command.command_type is not CaseCommandType.INGEST_CHANNEL_EVENT:
+            raise ValueError("command is not a channel ingestion")
+        if (
+            command.event_id is None
+            or command.content_hash is None
+            or command.payload_hash is None
+            or command.channel_kind != CHANNEL_KIND
+            or command.binding_ref != BINDING_REF
+        ):
+            raise ValueError("channel ingestion command is incomplete")
+        repository = _channel_repository(self.repository)
+        inbox = repository.get_inbox_receipt(command.event_id)
+        if inbox is None or inbox.command_id != command.command_id:
+            raise ChannelConflictError("channel inbox reservation is invalid")
+        if inbox.payload_hash != command.payload_hash:
+            raise ChannelConflictError("channel replay mismatch")
+        content = command.content or inbox.content
+        if content is None:
+            raise ChannelConflictError("channel content is unavailable")
+        if hashlib.sha256(content.encode("utf-8")).hexdigest() != command.content_hash:
+            raise ChannelConflictError("channel content hash mismatch")
+        with self._lane(command.case_id):
+            state = self._require(command.case_id)
+            snapshot = state.snapshot
+            _check_expected_revision(snapshot, command.expected_revision)
+            if inbox.case_id != command.case_id or inbox.binding_ref != BINDING_REF:
+                raise ChannelConflictError("channel binding does not match Case")
+            if inbox.processing_state != "reserved":
+                raise ChannelConflictError("channel inbox reservation is not pending")
+            if snapshot.completion_decision is not None or snapshot.pending_execution:
+                raise ChannelConflictError("case is not available for channel event")
+            if any(
+                approval.decision is ApprovalDecision.PENDING
+                for approval in snapshot.approval_requests
+            ):
+                raise ChannelConflictError("case is awaiting approval")
+            event_time = max(
+                command.occurred_at, snapshot.visible_events[-1].occurred_at
+            )
+            event = _event(
+                command.case_id,
+                cursor=snapshot.event_cursor + 1,
+                occurred_at=event_time,
+                event_type="provider_message",
+                content=content,
+                seed=f"channel-message:{command.event_id}",
+                actor=EventActor.PROVIDER,
+            )
+            message_evidence = Evidence(
+                contract_type="evidence",
+                schema_version="1.0",
+                evidence_id=_stable_uuid(
+                    f"channel-message-evidence:{command.event_id}"
+                ),
+                case_id=command.case_id,
+                source_type=EvidenceType.PROVIDER_MESSAGE,
+                source_ref=str(command.event_id),
+                content_hash=command.content_hash,
+                observed_at=event_time,
+                captured_at=event_time,
+                media_type="text/plain",
+            )
+            next_snapshot = _snapshot(
+                case=snapshot.case,
+                ledger=snapshot.fact_ledger,
+                strategy=snapshot.strategy,
+                offers=snapshot.offers,
+                action_intents=snapshot.action_intents,
+                approvals=snapshot.approval_requests,
+                evidence=(*snapshot.evidence, message_evidence),
+                completion=None,
+                events=(*snapshot.visible_events, event),
+                snapshot_revision=snapshot.revision + 1,
+                phase=snapshot.case.phase,
+                manifest=snapshot.capability_manifest,
+            )
+            outcome = CaseCoordinator(snapshot=next_snapshot).advance(
+                RouteRequest(
+                    snapshot=next_snapshot,
+                    created_at=event_time,
+                    triggering_event=event,
+                ),
+                fast=self._fast,
+            )
+            if (
+                outcome.status is not CoordinatorStatus.ACCEPTED
+                or outcome.fast_decision is None
+                or outcome.fast_decision.response_text != BOUNDED_FAST_STATUS_TEXT
+            ):
+                raise ModelRuntimeError("fast")
+            if snapshot.strategy is None or ActionType.SEND_MESSAGE not in (
+                snapshot.case.delegated_authority.allowed_actions
+            ):
+                raise ChannelConflictError("channel send is not authorized")
+            delivery_id = _stable_uuid(f"channel-delivery:{command.event_id}")
+            idempotency_key = str(delivery_id)
+            body = BOUNDED_FAST_STATUS_TEXT
+            strategy = snapshot.strategy
+            outbox = OutboxRecord(
+                delivery_id=delivery_id,
+                idempotency_key=idempotency_key,
+                case_id=command.case_id,
+                binding_ref=BINDING_REF,
+                source_event_id=command.event_id,
+                source_command_id=command.command_id,
+                source_case_revision=snapshot.pins.case_revision,
+                source_strategy_id=strategy.strategy_id,
+                source_strategy_revision=strategy.revision,
+                source_event_cursor=next_snapshot.event_cursor,
+                body=body,
+                body_hash=hashlib.sha256(body.encode()).hexdigest(),
+            )
+            transition = _transition_ref(
+                command_id=command.command_id,
+                command_type=command.command_type,
+                before_revision=snapshot.revision,
+                snapshot=next_snapshot,
+                route="fast_now",
+                command_fingerprint=semantic_command_fingerprint(command),
+                delivery_id=delivery_id,
+                delivery_status="pending",
+                schema_version=CHANNEL_COMMAND_SCHEMA_VERSION,
+            )
+            updated = CaseRuntimeState(
+                snapshot=next_snapshot,
+                events=(*state.events, event),
+                provider=state.provider,
+                execution_count=state.execution_count,
+                execution_source_pins=state.execution_source_pins,
+                execution_intent=state.execution_intent,
+                execution_approval=state.execution_approval,
+                execution_proposal=state.execution_proposal,
+                transitions=(*state.transitions, transition),
+                last_fast_decision=outcome.fast_decision,
+            )
+            repository.replace_with_channel_outbox(
+                command.case_id,
+                expected_revision=snapshot.revision,
+                state=updated,
+                outbox=outbox,
+                inbox_event_id=command.event_id,
+            )
+            return RuntimeResult(
+                snapshot=next_snapshot,
+                route="fast_now",
+                fast_decision=outcome.fast_decision,
+                execution_count=updated.execution_count,
+            )
+
+    def record_channel_delivery(self, command: CaseCommand) -> RuntimeResult:
+        """Project one authoritative local delivery callback."""
+
+        if command.command_type is not CaseCommandType.RECORD_CHANNEL_DELIVERY:
+            raise ValueError("command is not a channel delivery")
+        if (
+            command.event_id is None
+            or command.delivery_id is None
+            or command.provider_message_id is None
+            or command.delivery_status is None
+            or command.artifact_hash is None
+        ):
+            raise ValueError("channel delivery command is incomplete")
+        repository = _channel_repository(self.repository)
+        inbox = repository.get_inbox_receipt(command.event_id)
+        outbox = repository.get_outbox_record(command.delivery_id)
+        if inbox is None or inbox.command_id != command.command_id:
+            raise ChannelConflictError("channel inbox reservation is invalid")
+        if inbox.payload_hash != command.payload_hash:
+            raise ChannelConflictError("channel replay mismatch")
+        if outbox is None or outbox.case_id != command.case_id:
+            raise ChannelConflictError("channel delivery binding does not match Case")
+        if (
+            outbox.binding_ref != command.binding_ref
+            or outbox.provider_message_id != command.provider_message_id
+            or inbox.processing_state != "reserved"
+        ):
+            raise ChannelConflictError("channel delivery binding is invalid")
+        prior_receipt = repository.get_delivery_receipt(command.delivery_id)
+        if prior_receipt is None:
+            # Recheck after the Case lane so a concurrent callback that won
+            # the receipt write is observed as an exact duplicate.
+            with self._lane(command.case_id):
+                prior_receipt = repository.get_delivery_receipt(command.delivery_id)
+        if prior_receipt is not None:
+            if (
+                prior_receipt.provider_message_id != command.provider_message_id
+                or prior_receipt.observation_state != command.delivery_status
+                or prior_receipt.artifact_hash != command.artifact_hash
+            ):
+                raise ChannelConflictError("delivery observation regressed")
+            with self._lane(command.case_id):
+                state = self._require(command.case_id)
+                snapshot = state.snapshot
+                _check_expected_revision(snapshot, command.expected_revision)
+                transition = _transition_ref(
+                    command_id=command.command_id,
+                    command_type=command.command_type,
+                    before_revision=snapshot.revision,
+                    snapshot=snapshot,
+                    route="fast_now",
+                    command_fingerprint=semantic_command_fingerprint(command),
+                    delivery_id=command.delivery_id,
+                    delivery_status=command.delivery_status,
+                    schema_version=CHANNEL_COMMAND_SCHEMA_VERSION,
+                )
+                updated = CaseRuntimeState(
+                    snapshot=snapshot,
+                    events=state.events,
+                    provider=state.provider,
+                    execution_count=state.execution_count,
+                    execution_source_pins=state.execution_source_pins,
+                    execution_intent=state.execution_intent,
+                    execution_approval=state.execution_approval,
+                    execution_proposal=state.execution_proposal,
+                    transitions=(*state.transitions, transition),
+                    last_fast_decision=state.last_fast_decision,
+                )
+                repository.replace_with_delivery_receipt(
+                    command.case_id,
+                    expected_revision=snapshot.revision,
+                    state=updated,
+                    inbox_event_id=command.event_id,
+                    receipt=prior_receipt,
+                    outbox_state=command.delivery_status,
+                )
+                return RuntimeResult(
+                    snapshot=snapshot,
+                    route="fast_now",
+                    execution_count=updated.execution_count,
+                )
+        with self._lane(command.case_id):
+            state = self._require(command.case_id)
+            snapshot = state.snapshot
+            _check_expected_revision(snapshot, command.expected_revision)
+            event_time = max(
+                command.occurred_at, snapshot.visible_events[-1].occurred_at
+            )
+            event = _event(
+                command.case_id,
+                cursor=snapshot.event_cursor + 1,
+                occurred_at=event_time,
+                event_type="provider_event",
+                content=(
+                    "The fictional Provider delivered the local reply."
+                    if command.delivery_status == "delivered"
+                    else "The fictional Provider bounced the local reply."
+                ),
+                seed=f"channel-delivery:{command.delivery_id}:{command.delivery_status}",
+                actor=EventActor.PROVIDER,
+            )
+            evidence = Evidence(
+                contract_type="evidence",
+                schema_version="1.0",
+                evidence_id=_stable_uuid(
+                    f"channel-delivery-evidence:{command.delivery_id}:{command.delivery_status}"
+                ),
+                case_id=command.case_id,
+                source_type=EvidenceType.PROVIDER_EVENT,
+                source_ref=command.provider_message_id,
+                content_hash=command.artifact_hash,
+                observed_at=event_time,
+                captured_at=event_time,
+                media_type="application/json",
+            )
+            next_snapshot = _snapshot(
+                case=snapshot.case,
+                ledger=snapshot.fact_ledger,
+                strategy=snapshot.strategy,
+                offers=snapshot.offers,
+                action_intents=snapshot.action_intents,
+                approvals=snapshot.approval_requests,
+                evidence=(*snapshot.evidence, evidence),
+                completion=snapshot.completion_decision,
+                events=(*snapshot.visible_events, event),
+                snapshot_revision=snapshot.revision + 1,
+                phase=snapshot.case.phase,
+                manifest=snapshot.capability_manifest,
+            )
+            transition = _transition_ref(
+                command_id=command.command_id,
+                command_type=command.command_type,
+                before_revision=snapshot.revision,
+                snapshot=next_snapshot,
+                route="fast_now",
+                command_fingerprint=semantic_command_fingerprint(command),
+                delivery_id=command.delivery_id,
+                delivery_status=command.delivery_status,
+                schema_version=CHANNEL_COMMAND_SCHEMA_VERSION,
+            )
+            updated = CaseRuntimeState(
+                snapshot=next_snapshot,
+                events=(*state.events, event),
+                provider=state.provider,
+                execution_count=state.execution_count,
+                execution_source_pins=state.execution_source_pins,
+                execution_intent=state.execution_intent,
+                execution_approval=state.execution_approval,
+                execution_proposal=state.execution_proposal,
+                transitions=(*state.transitions, transition),
+                last_fast_decision=state.last_fast_decision,
+            )
+            repository.replace_with_delivery_receipt(
+                command.case_id,
+                expected_revision=snapshot.revision,
+                state=updated,
+                inbox_event_id=command.event_id,
+                receipt=DeliveryReceiptRecord(
+                    delivery_id=command.delivery_id,
+                    provider_message_id=command.provider_message_id,
+                    observation_state=command.delivery_status,
+                    artifact_hash=command.artifact_hash,
+                    observed_at=event_time,
+                    captured_at=event_time,
+                    evidence_id=evidence.evidence_id,
+                ),
+                outbox_state=command.delivery_status,
+            )
+            return RuntimeResult(
+                snapshot=next_snapshot,
+                route="fast_now",
+                execution_count=updated.execution_count,
+            )
 
     def create_case(
         self,
@@ -1577,6 +1917,9 @@ def _transition_ref(
     route: RoutingDecision | str,
     approval: ApprovalRequest | None = None,
     command_fingerprint: str | None = None,
+    delivery_id: UUID | None = None,
+    delivery_status: DeliveryStatus | None = None,
+    schema_version: TransitionSchemaVersion = CASE_COMMAND_SCHEMA_VERSION,
 ) -> CaseTransitionRef:
     pending = (
         approval
@@ -1595,6 +1938,7 @@ def _transition_ref(
     route_outcome = getattr(route, "outcome", None)
     route_text = str(getattr(route_outcome, "value", route))
     return CaseTransitionRef(
+        schema_version=schema_version,
         command_id=command_id,
         case_id=snapshot.case.case_id,
         command_type=command_type,
@@ -1605,6 +1949,8 @@ def _transition_ref(
         approval_id=pending.approval_id if pending is not None else None,
         approval_expires_at=pending.expires_at if pending is not None else None,
         command_fingerprint=command_fingerprint,
+        delivery_id=delivery_id,
+        delivery_status=delivery_status,
         terminal=snapshot.completion_decision is not None
         or snapshot.case.phase in {CasePhase.COMPLETE, CasePhase.CLOSED},
     )
@@ -1616,6 +1962,21 @@ def _check_expected_revision(
 ) -> None:
     if expected_revision is not None and expected_revision != snapshot.revision:
         raise CaseConflictError("case snapshot revision is stale")
+
+
+def _channel_repository(repository: CaseRepository) -> Any:
+    required = (
+        "get_inbox_receipt",
+        "get_outbox_record",
+        "get_delivery_receipt",
+        "replace_with_channel_outbox",
+        "replace_with_delivery_receipt",
+    )
+    if not all(callable(getattr(repository, item, None)) for item in required):
+        raise ChannelDependencyUnavailableError(
+            "local mailbox requires PostgreSQL channel persistence"
+        )
+    return repository
 
 
 def _infer_adapter_mode(fast: FastAdapter, slow: SlowAdapter) -> AdapterMode:
