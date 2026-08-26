@@ -26,7 +26,7 @@ not promote a model or make a production-serving claim.
 | 04A | Thin Agent Runtime | Complete; independently approved | `harness/build/phase-04a-thin-agent-runtime.md` |
 | 04B | Model-backed Thin Agent Runtime | Complete; squash merged as `6daa1bc` through PR #13 | `harness/build/phase-04b-model-backed-runtime.md` |
 | 04C | Persistent Case Store | Complete; independently approved in PR #23 | `harness/build/phase-04c-persistent-case-store.md` |
-| 04D | Control-Plane Operations and Failure Evidence | Complete; independently approved; integration pending | `harness/build/phase-04d-control-plane-operations.md` |
+| 04D | Control-Plane Operations and Failure Evidence | Complete; independently approved; squash merged as `4258b95` through PR #24 | `harness/build/phase-04d-control-plane-operations.md` |
 | Minimal local Web demo | Thin Runtime-backed conversation UI | Complete; squash merged through PR #18 as `ef2ce53`; post-merge Repository checks passed | `harness/build/phase-minimal-local-web-demo.md` |
 | Local Conversation Intake UX | Four-fact Runtime-owned fictional Case intake and exact Web snapshot verification | Complete; squash merged through PR #20 as `02466df`; post-merge Repository checks passed | `harness/build/phase-local-conversation-intake-ux.md` |
 | 03B | Open-data SFT, gap-driven project data, and evaluation | Complete; final `NO_GO_STOP_PHASE03B`; squash merged as PR #15 (`f441335` short); no promotion or expansion; Decided from Phase 03A1 failure slices | `harness/build/phase-03b-qwen-qlora-smoke.md` |
