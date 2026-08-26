@@ -23,7 +23,8 @@ class CaseRuntimeState:
     """One process-local Case record.
 
     The canonical snapshot and event log are immutable values.  The Provider is
-    intentionally a process-local adapter state until a durable store exists.
+    a process-local simulator adapter; durable stores reconstruct it from the
+    validated canonical state rather than serializing its private attributes.
     """
 
     snapshot: CaseContextSnapshot

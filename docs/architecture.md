@@ -46,12 +46,12 @@ flowchart TD
 
 The diagram is a target shape, not an inventory of implemented services. Repository status is:
 
-- **Implemented**: canonical contracts, the fictional Provider simulator, deterministic `agent_core` routing and policy boundaries, a local simulator-backed FastAPI Case loop with in-memory state, and one explicitly configured runtime-owned OpenAI-compatible Fast/Slow adapter.
+- **Implemented**: canonical contracts, the fictional Provider simulator, deterministic `agent_core` routing and policy boundaries, a local simulator-backed FastAPI Case loop with memory storage by default, one opt-in PostgreSQL Case aggregate adapter, and one explicitly configured runtime-owned OpenAI-compatible Fast/Slow adapter.
 - **Research-only, not product-runtime serving**: the Phase 02 Data Factory pilot and Phase 03A1 evaluation/baseline runners and artifacts.
 - **Implemented bounded local slice**: `apps/web` keeps conversation as the primary workspace and calls the existing local FastAPI Thin Runtime through one Next rewrite and one narrow runtime client. It renders Runtime-derived Case facts, one offer, exact approval pins, and a receipt only after the completion Evidence predicate passes.
-- **Target/deferred**: PostgreSQL, Temporal workflow workers, external connectors, voice, promoted-model serving, authentication, channels, production UI, deployment, and release remain separately gated. This local slice does not make a production Pine clone claim.
+- **Target/deferred**: normalized production data models and migrations, Temporal workflow workers, real-effect outbox/reconciliation, external connectors, voice, promoted-model serving, authentication, channels, production UI, deployment, and release remain separately gated. This local slice does not make a production Pine clone claim.
 
-The current research runtime bypasses PostgreSQL, Temporal, Gmail, MCP, and LiveKit. It uses an in-memory event log, immutable Case snapshots, synchronous local model-adapter calls, and one serialized Case write/side-effect lane. The Fast/Slow contracts preserve a later bounded concurrent path without claiming concurrent or durable execution today.
+The current research runtime uses an in-memory Case repository by default and may explicitly opt into a synchronous PostgreSQL adapter that stores one strict, versioned JSONB aggregate with revision compare-and-swap. It still bypasses Temporal, Gmail, MCP, and LiveKit. Its restart and recovery claims apply only to the deterministic fictional Provider; it does not claim exactly-once real external effects. The Fast/Slow contracts preserve a later bounded concurrent path without claiming production durable execution today.
 
 ## Architectural Layers
 
@@ -63,7 +63,7 @@ The current research runtime bypasses PostgreSQL, Temporal, Gmail, MCP, and Live
 
 ### Control Plane
 
-- Current `runtime/services/api`: FastAPI endpoints and `ThinAgentRuntime`, which compose the local synchronous Case loop, in-memory repository, approvals, simulator execution, Evidence, and completion verification.
+- Current `runtime/services/api`: FastAPI endpoints and `ThinAgentRuntime`, which compose the local synchronous Case loop, memory/PostgreSQL repository adapters, approvals, simulator execution, Evidence, and completion verification.
 - Current endpoints validate request and domain input against versioned contracts before applying local state transitions.
 - In the target system, this layer becomes the authentication and webhook boundary and delegates long-running model or channel work outside HTTP requests.
 
@@ -218,7 +218,7 @@ All mutable objects use optimistic versions. An approval is valid only for the e
 
 | State | Authoritative owner | Notes |
 |---|---|---|
-| Cases, constraints, offers, approvals, evidence, fact ledger, event log, context projection | Local in-memory Case store for research; PostgreSQL plus workflow events later | Business source of truth and audit surface. Supplies immutable snapshots and event cursors; models cannot mutate it. |
+| Cases, constraints, offers, approvals, evidence, fact ledger, event log, context projection | Local memory store by default; opt-in PostgreSQL versioned aggregate for the fictional Runtime slice | Business source of truth and audit surface. Supplies immutable snapshots and event cursors; models cannot mutate it. Production normalization, migrations, outbox, and workflow-event integration remain deferred. |
 | Timers, retries, waits, workflow phase | Temporal | Stores IDs and control state, not a second business database. |
 | Provider simulator episode | Simulator store | Resettable and versioned per benchmark episode. |
 | Raw/curated datasets, audio, checkpoints | Object storage | Addressed by immutable manifest and content hash. |
@@ -300,7 +300,7 @@ Dashboards should separate model quality from infrastructure reliability:
 
 ### Research MVP
 
-- Local/CI simulator process and in-memory Case event store;
+- Local/CI simulator process with memory storage by default and optional PostgreSQL Case aggregate persistence;
 - deterministic Router, context projector, and serialized Case write/execution lane;
 - Fast and Slow interfaces with local deterministic adapters and optional measured model adapters;
 - simulator-only capability manifest;

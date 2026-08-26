@@ -5,6 +5,7 @@ description = "FastAPI control-plane service for ProxyLoop."
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "fastapi>=0.116,<1",
+  "psycopg[binary]>=3.2,<4",
   "uvicorn>=0.35,<1",
   "proxyloop-agent-core==0.0.0",
   "proxyloop-openai-adapter==0.0.0",

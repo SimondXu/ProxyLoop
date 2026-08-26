@@ -2,6 +2,7 @@
 
 from .app import app, create_app
 from .config import runtime_from_environment
+from .postgres_repository import PostgresCaseRepository
 from .repository import (
     CaseConflictError,
     CaseNotFoundError,
@@ -18,6 +19,7 @@ __all__ = [
     "CaseRuntimeState",
     "InMemoryCaseRepository",
     "ModelRuntimeError",
+    "PostgresCaseRepository",
     "RuntimeResult",
     "ThinAgentRuntime",
     "app",

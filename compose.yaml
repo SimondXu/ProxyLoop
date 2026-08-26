@@ -17,6 +17,23 @@ services:
       timeout: 5s
       retries: 10
 
+  postgres-test:
+    image: postgres:17-alpine
+    profiles: ["postgres-test"]
+    environment:
+      POSTGRES_DB: proxyloop_test
+      POSTGRES_USER: proxyloop
+      POSTGRES_PASSWORD: proxyloop
+    ports:
+      - "${POSTGRES_TEST_PORT:-55432}:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
   temporal:
     image: temporalio/auto-setup:1.28.1
     depends_on:
