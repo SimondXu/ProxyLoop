@@ -4,15 +4,15 @@ active_product_phase = ""
 active_contract = ""
 next_phase_authorized = false
 integration_baseline = "main"
-updated_at = "2026-08-25"
+updated_at = "2026-08-26"
 
 [boundaries]
-summary = "No product, evaluation, training, deployment, or release phase is active."
+summary = "Phase 04D is complete and returned to idle. Phase 05A is an unauthorized gate; Temporal has not started."
 inactive = [
   "Phase 03A1 continuation or r6/r7",
   "additional model training, data expansion, rerun, or promotion",
-  "additional PostgreSQL schema, query, migration, or broader Phase 04 serving work",
-  "promoted-model serving, load, OOM, p95, or rollback work",
+  "additional PostgreSQL schema, query, migration, or broader serving work",
+  "promoted-model serving, real-model load, OOM, production p95, or automatic fallback work",
   "Temporal or Phase 05 durable workflows",
   "real tools or Providers",
   "authentication, channels, voice, or production UI",

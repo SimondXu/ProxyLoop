@@ -45,6 +45,10 @@ class CaseConflictError(RuntimeError):
     """An optimistic update used a stale snapshot revision."""
 
 
+class StorageUnavailableError(RuntimeError):
+    """The configured Case storage dependency could not be reached."""
+
+
 class CaseRepository(Protocol):
     """Minimal persistence interface used by ``ThinAgentRuntime``."""
 
@@ -105,4 +109,5 @@ __all__ = [
     "CaseRepository",
     "CaseRuntimeState",
     "InMemoryCaseRepository",
+    "StorageUnavailableError",
 ]

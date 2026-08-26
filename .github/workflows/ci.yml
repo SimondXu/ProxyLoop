@@ -48,6 +48,10 @@ jobs:
         env:
           PROXYLOOP_TEST_DATABASE_URL: postgresql://proxyloop:proxyloop@127.0.0.1:5432/proxyloop_test
         run: make postgres-check
+      - name: Phase 04D control-plane operation checks
+        run: make phase04d-check
+      - name: Phase 04D local diagnostic profile
+        run: make phase04d-profile-check
       - name: Check committed diff whitespace
         if: github.event_name == 'pull_request'
         run: git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"

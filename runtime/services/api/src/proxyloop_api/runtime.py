@@ -77,8 +77,18 @@ from .repository import (
 )
 
 RuntimeDecision = Literal["approved", "rejected"]
+AdapterMode = Literal["scripted", "model"]
+StorageMode = Literal["memory", "postgres"]
 RUNTIME_PROVIDER_CONFIG = "pine-mobile:runtime-v1"
 RUNTIME_MANIFEST_VERSION = "phase-04a-runtime-v1"
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeProfile:
+    """Explicit process selection metadata exposed by the control plane."""
+
+    adapter_mode: AdapterMode
+    storage_mode: StorageMode
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,6 +197,18 @@ class ThinAgentRuntime:
         self._lanes_lock = RLock()
         self._lanes: dict[UUID, RLock] = {}
         self._executors: dict[UUID, CapabilityExecutor] = {}
+        self.profile = RuntimeProfile(
+            adapter_mode=_infer_adapter_mode(self._fast, self._slow),
+            storage_mode=_infer_storage_mode(self.repository),
+        )
+
+    @property
+    def adapter_mode(self) -> AdapterMode:
+        return self.profile.adapter_mode
+
+    @property
+    def storage_mode(self) -> StorageMode:
+        return self.profile.storage_mode
 
     def create_case(
         self,
@@ -1190,11 +1212,26 @@ def _check_expected_revision(
         raise CaseConflictError("case snapshot revision is stale")
 
 
+def _infer_adapter_mode(fast: FastAdapter, slow: SlowAdapter) -> AdapterMode:
+    if isinstance(fast, ScriptedFastAdapter) and isinstance(slow, ScriptedSlowAdapter):
+        return "scripted"
+    return "model"
+
+
+def _infer_storage_mode(repository: CaseRepository) -> StorageMode:
+    if isinstance(repository, InMemoryCaseRepository):
+        return "memory"
+    return "postgres"
+
+
 __all__ = [
+    "AdapterMode",
     "CaseConflictError",
     "CaseNotFoundError",
     "ModelRuntimeError",
+    "RuntimeProfile",
     "RuntimeResult",
+    "StorageMode",
     "ThinAgentRuntime",
     "offer_compliance_violations_for_case",
 ]

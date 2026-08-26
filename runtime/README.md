@@ -20,6 +20,20 @@ non-empty `PROXYLOOP_DATABASE_URL` and persists one strict, versioned Case
 aggregate with revision compare-and-swap. Model selection remains independent
 of storage selection.
 
+The local control plane exposes `GET /health/live` for process-only liveness and
+`GET /health/ready` for a memory check or PostgreSQL `SELECT 1`. It emits one
+allowlisted operation record per Case or health request through non-retaining JSON
+structured logging by default, without request bodies, prompts, credentials,
+database URLs, headers, or exception text. Tests may inject an in-memory recorder.
+The Phase 04D diagnostic profile is credential-free and local-only:
+
+```text
+make phase04d-profile-check
+```
+
+The profile is diagnostic evidence, not a production capacity, real-model
+latency, OOM, autoscaling, or promoted-serving claim.
+
 The disposable integration gate requires an explicit test-only database URL:
 
 ```text

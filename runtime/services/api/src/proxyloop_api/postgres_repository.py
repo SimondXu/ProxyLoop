@@ -34,6 +34,7 @@ from .repository import (
     CaseConflictError,
     CaseNotFoundError,
     CaseRuntimeState,
+    StorageUnavailableError,
 )
 
 _STORAGE_VERSION: Literal[1] = 1
@@ -99,7 +100,9 @@ class PostgresCaseRepository:
         except CaseConflictError:
             raise
         except psycopg.Error:
-            raise RuntimeError("PostgreSQL Case storage operation failed") from None
+            raise StorageUnavailableError(
+                "PostgreSQL Case storage operation failed"
+            ) from None
         return state
 
     def get(self, case_id: UUID) -> CaseRuntimeState | None:
@@ -115,7 +118,9 @@ class PostgresCaseRepository:
                 )
                 row = cursor.fetchone()
         except psycopg.Error:
-            raise RuntimeError("PostgreSQL Case storage operation failed") from None
+            raise StorageUnavailableError(
+                "PostgreSQL Case storage operation failed"
+            ) from None
         if row is None:
             return None
         return self._decode_state(case_id, row[0], row[1])
@@ -161,7 +166,26 @@ class PostgresCaseRepository:
         except (CaseConflictError, CaseNotFoundError):
             raise
         except psycopg.Error:
-            raise RuntimeError("PostgreSQL Case storage operation failed") from None
+            raise StorageUnavailableError(
+                "PostgreSQL Case storage operation failed"
+            ) from None
+
+    def check_readiness(self) -> None:
+        """Run the read-only dependency probe used by the control plane."""
+
+        try:
+            with (
+                self._connect() as connection,
+                connection.transaction(),
+                connection.cursor() as cursor,
+            ):
+                cursor.execute("SELECT 1")
+                if cursor.fetchone() != (1,):
+                    raise StorageUnavailableError("PostgreSQL readiness probe failed")
+        except StorageUnavailableError:
+            raise
+        except psycopg.Error:
+            raise StorageUnavailableError("PostgreSQL readiness probe failed") from None
 
     def _connect(self) -> Any:
         return psycopg.connect(self._database_url, row_factory=tuple_row)
@@ -184,7 +208,7 @@ class PostgresCaseRepository:
                             """
                 )
         except psycopg.Error:
-            raise RuntimeError(
+            raise StorageUnavailableError(
                 "PostgreSQL Case storage schema initialization failed"
             ) from None
 
