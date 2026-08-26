@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Literal
 
-from proxyloop_contracts import Money
+from proxyloop_contracts import Money, canonical_fingerprint
 from pydantic import UUID4, BaseModel, ConfigDict, Field, model_validator
 
 CASE_COMMAND_SCHEMA_VERSION: Literal["phase-05a-v1"] = "phase-05a-v1"
@@ -134,6 +134,9 @@ class CaseTransitionRef(BaseModel):
     route: str = Field(min_length=1, max_length=128)
     approval_id: UUID4 | None = None
     approval_expires_at: datetime | None = None
+    # Optional so receipts written before Phase 06A remain decodable.  Such
+    # receipts are deliberately not reusable by ``apply_command``.
+    command_fingerprint: str | None = Field(default=None, min_length=1)
     terminal: bool
     deduplicated: bool = False
 
@@ -156,9 +159,22 @@ class CaseTransitionRef(BaseModel):
         return self
 
 
+def semantic_command_fingerprint(command: CaseCommand) -> str:
+    """Return the stable identity of a command, excluding workflow time.
+
+    ``occurred_at`` is assigned by the Workflow and may differ on a retry;
+    every other validated command field is part of the semantic request.
+    """
+
+    return canonical_fingerprint(
+        command.model_dump(mode="json", exclude={"occurred_at"})
+    )
+
+
 __all__ = [
     "CASE_COMMAND_SCHEMA_VERSION",
     "CaseCommand",
     "CaseCommandType",
     "CaseTransitionRef",
+    "semantic_command_fingerprint",
 ]

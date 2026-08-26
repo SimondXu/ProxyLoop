@@ -7,13 +7,13 @@ integration_baseline = "main"
 updated_at = "2026-08-26"
 
 [boundaries]
-summary = "Phase 05A Temporal CaseWorkflow is complete and returned to idle. Phase 06 remains unauthorized."
+summary = "Phase 06A durable Web Case resume and progress is complete and independently approved. Phase 06B controlled channels remains unauthorized."
 inactive = [
   "Phase 03A1 continuation or r6/r7",
   "additional model training, data expansion, rerun, or promotion",
   "additional PostgreSQL schema, query, migration, or broader serving work",
   "promoted-model serving, real-model load, OOM, production p95, or automatic fallback work",
-  "Temporal work beyond the completed fictional scripted Phase 05A CaseWorkflow",
+  "Temporal work beyond the completed Phase 05A CaseWorkflow and Phase 06A Web integration",
   "real tools or Providers",
   "authentication, channels, voice, or production UI",
   "deployment or release",

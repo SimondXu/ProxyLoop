@@ -12,8 +12,14 @@ blank conversation
   -> one consumer event to the Runtime
   -> Runtime Progress / Offer / pending Approval
   -> exact approval pins returned by Runtime
-  -> verifier-backed Evidence receipt or blocked state
+  -> verifier-backed Evidence receipt after authoritative GET, or blocked state
 ```
+
+On mount or reconnect, a versioned local locator first checks
+`GET /health/ready` and then reads `GET /cases/{case_id}`. Network/503 preserves
+the locator and exact pending command; 404 reports a bounded store mismatch. A
+pending create, event, or approval keeps one lowercase UUIDv4
+`Idempotency-Key` and exact request body across an uncertain retry.
 
 The first natural-language message establishes the conversation intent in the
 UI. Supported input starts a local progressive intake and does not create a
@@ -21,8 +27,9 @@ Case. USD amounts are parsed strictly, and false fixed constraints,
 unsupported currencies, negative values, malformed values, and incompatible
 fixed-offer amounts stay local with retry guidance. The only consumer event
 sent by this demo is the explicit constraint confirmation. The event and approval calls are made through
-`lib/runtime-client.ts`; no client-generated revision or completion identifier
-is accepted as authority.
+`lib/runtime-client.ts`; no client-generated revision, Case identifier, or
+completion identifier is accepted as authority. Every POST is followed by an
+authoritative Case read before its effect is presented as stable.
 
 The API request contains exactly `current_monthly_total`,
 `target_monthly_total`, `mobile_hotspot_required: true`, and
@@ -48,6 +55,7 @@ Changing the created Case is unsupported in this demo because its fixture IDs
 are fixed.
 
 Every create, confirmation-event, and approval request is bound to the current
-conversation session. Restarting clears the session and invalidates late
-responses, so an old Case, approval, or receipt cannot reappear in the new
-conversation.
+conversation session. Restarting clears the local presentation and locator but
+does not claim to delete the PostgreSQL Case. Responses apply monotonically by
+Case, revision, and event cursor, so an old Case, approval, or receipt cannot
+regress the current conversation.

@@ -17,6 +17,9 @@ pnpm --filter @proxyloop/web dev
 ```
 
 The Web layer does not add authentication, a generic BFF, model calls, real
-Providers, persistence, workflow durability, or static demo completion data.
-Its local journey is a bounded implementation slice, not a production UI or a
-Pine clone claim.
+Providers, authoritative Case persistence, or a workflow engine. The browser
+stores only a versioned local locator, confirmed facts, and one exact pending
+command for retry; durable recovery still requires the existing Temporal and
+PostgreSQL Runtime profile. It does not provide workflow durability itself or
+static demo completion data. Its local journey is a bounded implementation
+slice, not a production UI or a Pine clone claim.

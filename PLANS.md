@@ -32,7 +32,8 @@ not promote a model or make a production-serving claim.
 | 03B | Open-data SFT, gap-driven project data, and evaluation | Complete; final `NO_GO_STOP_PHASE03B`; squash merged as PR #15 (`f441335` short); no promotion or expansion; Decided from Phase 03A1 failure slices | `harness/build/phase-03b-qwen-qlora-smoke.md` |
 | 04 | Broader serving and control plane | Bounded 04A/04B/04C/04D complete; promoted serving deferred | Real-model serving, OOM/capacity, promotion, and production rollout remain separately gated |
 | 05A | Durable agent loop / Temporal | Complete; independently approved | `harness/build/phase-05a-temporal-case-workflow.md` |
-| 06 | Controlled channels and UI | Not started | To be prepared after Phase 05 |
+| 06A | Durable Web Case resume and progress | Complete; independently approved | `harness/build/phase-06a-durable-web-resume.md` |
+| 06B | Controlled channels | Not started; separate user gate | To be prepared only after Phase 06A |
 | 07 | Portfolio hardening | Not started | To be prepared after Phase 06 |
 
 ## Critical Dependency Chain
@@ -151,7 +152,14 @@ through PR #20 as `02466df`, post-merge Repository checks, and fully merged
 branch cleanup. It is limited to four confirmed
 fictional-telecom facts, one Runtime-owned Case, and exact Web snapshot
 verification. The demo does not activate serving, channels, or production UI.
-No implementation phase is active after the Phase 05A closeout.
+Phase 06A Durable Web Case resume and progress is complete locally and
+independently approved. It preserves the existing conversation intake while
+adding a strict browser Case locator, one exact pending-command retry,
+readiness plus PostgreSQL GET-first recovery, monotonic projection handling,
+bounded visible polling, truthful expiry/finalizing/reconnect states, and a
+final authoritative Evidence read. Phase 06B controlled channels remains a
+separate unauthorized gate. No implementation phase is active after the Phase
+06A closeout.
 Phase 03A1
 continuation, r6/r7, model downloads,
 additional PostgreSQL work beyond Phase 05A, real tools or Providers, authentication, channels, voice,

@@ -68,7 +68,12 @@ from proxyloop_telecom_domain import (
     verify_completion,
 )
 
-from .commands import CaseCommand, CaseCommandType, CaseTransitionRef
+from .commands import (
+    CaseCommand,
+    CaseCommandType,
+    CaseTransitionRef,
+    semantic_command_fingerprint,
+)
 from .repository import (
     CaseConflictError,
     CaseNotFoundError,
@@ -218,7 +223,9 @@ class ThinAgentRuntime:
         existing = self.repository.get(command.case_id)
         receipt = _find_transition(existing, command.command_id)
         if receipt is not None:
+            _check_receipt_fingerprint(receipt, command)
             return receipt.model_copy(update={"deduplicated": True})
+        command_fingerprint = semantic_command_fingerprint(command)
         try:
             if command.command_type is CaseCommandType.CREATE_CASE:
                 if (
@@ -238,6 +245,7 @@ class ThinAgentRuntime:
                     command_id=command.command_id,
                     expected_case_id=command.case_id,
                     occurred_at=command.occurred_at,
+                    command_fingerprint=command_fingerprint,
                 )
             elif command.command_type is CaseCommandType.APPEND_EVENT:
                 if command.content is None or command.event_type is None:
@@ -249,6 +257,7 @@ class ThinAgentRuntime:
                     expected_revision=command.expected_revision,
                     command_id=command.command_id,
                     occurred_at=command.occurred_at,
+                    command_fingerprint=command_fingerprint,
                 )
             elif command.command_type is CaseCommandType.DECIDE_APPROVAL:
                 if command.approval_id is None or command.decision is None:
@@ -264,6 +273,7 @@ class ThinAgentRuntime:
                     ),
                     command_id=command.command_id,
                     occurred_at=command.occurred_at,
+                    command_fingerprint=command_fingerprint,
                 )
             else:
                 if (
@@ -278,17 +288,20 @@ class ThinAgentRuntime:
                     expected_revision=command.expected_revision,
                     expires_at=command.approval_expires_at,
                     command_id=command.command_id,
+                    command_fingerprint=command_fingerprint,
                 )
         except CaseConflictError:
             raced = self.repository.get(command.case_id)
             receipt = _find_transition(raced, command.command_id)
             if receipt is not None:
+                _check_receipt_fingerprint(receipt, command)
                 return receipt.model_copy(update={"deduplicated": True})
             raise
         applied = self.repository.get(command.case_id)
         receipt = _find_transition(applied, command.command_id)
         if receipt is None:
             raise RuntimeError("applied Case command has no transition receipt")
+        _check_receipt_fingerprint(receipt, command)
         return receipt
 
     def current_result(
@@ -336,6 +349,7 @@ class ThinAgentRuntime:
         command_id: UUID | None = None,
         expected_case_id: UUID | None = None,
         occurred_at: datetime | None = None,
+        command_fingerprint: str | None = None,
     ) -> RuntimeResult:
         created_at = occurred_at if occurred_at is not None else self._clock_now()
         episode = Phase01AEpisode.success()
@@ -419,6 +433,7 @@ class ThinAgentRuntime:
                     before_revision=None,
                     snapshot=strategy_snapshot,
                     route=route,
+                    command_fingerprint=command_fingerprint,
                 ),
             )
             if command_id is not None
@@ -447,6 +462,7 @@ class ThinAgentRuntime:
         expected_revision: int | None = None,
         command_id: UUID | None = None,
         occurred_at: datetime | None = None,
+        command_fingerprint: str | None = None,
     ) -> RuntimeResult:
         with self._lane(case_id):
             return self._append_event_serialized(
@@ -456,6 +472,7 @@ class ThinAgentRuntime:
                 expected_revision=expected_revision,
                 command_id=command_id,
                 occurred_at=occurred_at,
+                command_fingerprint=command_fingerprint,
             )
 
     def _append_event_serialized(
@@ -467,6 +484,7 @@ class ThinAgentRuntime:
         expected_revision: int | None,
         command_id: UUID | None,
         occurred_at: datetime | None,
+        command_fingerprint: str | None,
     ) -> RuntimeResult:
         state = self._require(case_id)
         snapshot = state.snapshot
@@ -575,6 +593,7 @@ class ThinAgentRuntime:
                     snapshot=policy_snapshot,
                     route=route,
                     approval=approval,
+                    command_fingerprint=command_fingerprint,
                 ),
             )
         updated = CaseRuntimeState(
@@ -630,6 +649,7 @@ class ThinAgentRuntime:
         expected_action_intent_revision: int | None = None,
         command_id: UUID | None = None,
         occurred_at: datetime | None = None,
+        command_fingerprint: str | None = None,
     ) -> RuntimeResult:
         with self._lane(case_id):
             return self._approve_serialized(
@@ -641,6 +661,7 @@ class ThinAgentRuntime:
                 expected_action_intent_revision=expected_action_intent_revision,
                 command_id=command_id,
                 occurred_at=occurred_at,
+                command_fingerprint=command_fingerprint,
             )
 
     def _approve_serialized(
@@ -654,6 +675,7 @@ class ThinAgentRuntime:
         expected_action_intent_revision: int | None,
         command_id: UUID | None,
         occurred_at: datetime | None,
+        command_fingerprint: str | None,
     ) -> RuntimeResult:
         state = self._require(case_id)
         snapshot = state.snapshot
@@ -685,6 +707,7 @@ class ThinAgentRuntime:
                     state,
                     evaluated_at=now,
                     command_id=command_id,
+                    command_fingerprint=command_fingerprint,
                 )
             return self._repeat_approved(state, approval, command_id=command_id)
         if approval.decision is not ApprovalDecision.PENDING:
@@ -703,6 +726,7 @@ class ThinAgentRuntime:
                 approval,
                 decided_at,
                 command_id=command_id,
+                command_fingerprint=command_fingerprint,
             )
         decided = approval.model_copy(
             update={
@@ -757,6 +781,7 @@ class ThinAgentRuntime:
             claim_state,
             evaluated_at=decided_at,
             command_id=command_id,
+            command_fingerprint=command_fingerprint,
         )
 
     def expire_approval(
@@ -767,6 +792,7 @@ class ThinAgentRuntime:
         expected_revision: int,
         expires_at: datetime,
         command_id: UUID,
+        command_fingerprint: str | None = None,
     ) -> RuntimeResult:
         """Persist the exact canonical approval-expiry transition."""
 
@@ -824,6 +850,7 @@ class ThinAgentRuntime:
                 before_revision=snapshot.revision,
                 snapshot=expired_snapshot,
                 route="fast_now",
+                command_fingerprint=command_fingerprint,
             )
             updated = CaseRuntimeState(
                 snapshot=expired_snapshot,
@@ -850,6 +877,7 @@ class ThinAgentRuntime:
         *,
         evaluated_at: datetime,
         command_id: UUID | None,
+        command_fingerprint: str | None,
     ) -> RuntimeResult:
         snapshot = state.snapshot
         case_id = snapshot.case.case_id
@@ -943,6 +971,7 @@ class ThinAgentRuntime:
                     snapshot=final_snapshot,
                     route="terminal",
                     approval=approval,
+                    command_fingerprint=command_fingerprint,
                 ),
             )
         final_state = CaseRuntimeState(
@@ -978,6 +1007,7 @@ class ThinAgentRuntime:
         decided_at: datetime,
         *,
         command_id: UUID | None,
+        command_fingerprint: str | None,
     ) -> RuntimeResult:
         decided = approval.model_copy(
             update={
@@ -1019,6 +1049,7 @@ class ThinAgentRuntime:
                     snapshot=snapshot,
                     route="fast_now",
                     approval=decided,
+                    command_fingerprint=command_fingerprint,
                 ),
             )
         updated = CaseRuntimeState(
@@ -1526,6 +1557,17 @@ def _find_transition(
     )
 
 
+def _check_receipt_fingerprint(
+    receipt: CaseTransitionRef,
+    command: CaseCommand,
+) -> None:
+    expected = semantic_command_fingerprint(command)
+    if receipt.command_fingerprint is None:
+        raise CaseConflictError("legacy command receipt cannot be reused safely")
+    if receipt.command_fingerprint != expected:
+        raise CaseConflictError("command id was reused for a different command")
+
+
 def _transition_ref(
     *,
     command_id: UUID,
@@ -1534,6 +1576,7 @@ def _transition_ref(
     snapshot: CaseContextSnapshot,
     route: RoutingDecision | str,
     approval: ApprovalRequest | None = None,
+    command_fingerprint: str | None = None,
 ) -> CaseTransitionRef:
     pending = (
         approval
@@ -1561,6 +1604,7 @@ def _transition_ref(
         route=route_text,
         approval_id=pending.approval_id if pending is not None else None,
         approval_expires_at=pending.expires_at if pending is not None else None,
+        command_fingerprint=command_fingerprint,
         terminal=snapshot.completion_decision is not None
         or snapshot.case.phase in {CasePhase.COMPLETE, CasePhase.CLOSED},
     )

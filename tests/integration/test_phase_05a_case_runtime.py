@@ -14,6 +14,7 @@ from proxyloop_case_runtime import (
     CaseCommandType,
     CaseConflictError,
     CaseRepository,
+    CaseRuntimeState,
     InMemoryCaseRepository,
     PostgresCaseRepository,
     ThinAgentRuntime,
@@ -134,6 +135,59 @@ def test_command_receipts_deduplicate_full_scripted_flow() -> None:
         )
         == 2
     )
+
+
+def test_same_command_id_with_different_semantics_fails_before_mutation() -> None:
+    repository = InMemoryCaseRepository()
+    runtime = _runtime(repository, BASE_TIME)
+    runtime.apply_command(_create_command())
+
+    changed_body = _create_command().model_copy(
+        update={
+            "target_monthly_total": Money(amount_minor=7400, currency="USD"),
+        }
+    )
+    with pytest.raises(CaseConflictError, match="different command"):
+        runtime.apply_command(changed_body)
+
+    state = repository.get(SCRIPTED_CASE_ID)
+    assert state is not None
+    assert len(state.transitions) == 1
+    assert state.snapshot.revision == 2
+
+    changed_type = _event_command().model_copy(update={"command_id": CREATE_COMMAND_ID})
+    with pytest.raises(CaseConflictError, match="different command"):
+        runtime.apply_command(changed_type)
+
+    state_after_type_mismatch = repository.get(SCRIPTED_CASE_ID)
+    assert state_after_type_mismatch is not None
+    assert state_after_type_mismatch.snapshot.revision == 2
+    assert len(state_after_type_mismatch.transitions) == 1
+
+
+def test_legacy_receipt_is_decodable_but_not_reusable() -> None:
+    repository = InMemoryCaseRepository()
+    runtime = _runtime(repository, BASE_TIME)
+    runtime.apply_command(_create_command())
+    state = repository.get(SCRIPTED_CASE_ID)
+    assert state is not None
+    legacy = CaseRuntimeState(
+        snapshot=state.snapshot,
+        events=state.events,
+        provider=state.provider,
+        execution_count=state.execution_count,
+        transitions=(
+            state.transitions[0].model_copy(update={"command_fingerprint": None}),
+        ),
+    )
+    repository.replace(
+        SCRIPTED_CASE_ID,
+        expected_revision=state.snapshot.revision,
+        state=legacy,
+    )
+
+    with pytest.raises(CaseConflictError, match="legacy command receipt"):
+        runtime.apply_command(_create_command())
 
 
 def test_expiry_command_writes_canonical_system_transition_once() -> None:

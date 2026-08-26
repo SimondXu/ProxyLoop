@@ -1,10 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  appendConsumerEvent,
+  checkReadiness,
+  clearPersistedWorkspace,
   completionHasVerifiedEvidence,
   createCase,
   decideApproval,
+  getCase,
   hasValidTaskBrief,
+  isValidPersistedWorkspace,
+  loadPersistedWorkspace,
+  RUNTIME_STORAGE_KEY,
+  savePersistedWorkspace,
   type IntakeFacts,
 } from "./runtime-client";
 
@@ -40,6 +48,7 @@ const basePayload = {
 };
 
 afterEach(() => {
+  window.localStorage.clear();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -96,8 +105,199 @@ describe("runtime client", () => {
           mobile_hotspot_required: true,
           device_financing_change_forbidden: true,
         }),
+        headers: expect.objectContaining({ "Idempotency-Key": expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/) }),
         method: "POST",
       }),
+    );
+  });
+
+  it("sends the caller-provided lowercase UUIDv4 key on each existing POST helper", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify(basePayload), { status: 200 })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const keys = [
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+      "33333333-3333-4333-8333-333333333333",
+    ];
+
+    await createCase(facts, { idempotencyKey: keys[0] });
+    await appendConsumerEvent("case", "confirm", 2, { idempotencyKey: keys[1] });
+    await decideApproval("case", "approval", {
+      expectedActionIntentRevision: 1,
+      expectedCaseRevision: 2,
+      expectedRevision: 4,
+    }, { idempotencyKey: keys[2] });
+
+    expect(fetchMock.mock.calls.map(([, init]) => (init as RequestInit).headers)).toEqual(
+      keys.map((key) => expect.objectContaining({ "Idempotency-Key": key })),
+    );
+  });
+
+  it("reads the Case and preserves only a strict versioned local envelope", async () => {
+    const pendingCommand = {
+      kind: "append_event" as const,
+      idempotencyKey: "22222222-2222-4222-8222-222222222222",
+      requestBody: {
+        content: "Keep mobile hotspot and device financing unchanged.",
+        event_type: "consumer_message",
+        expected_revision: 2,
+      },
+      caseId: basePayload.case_id,
+      expectedRevision: 2,
+      approvalId: null,
+      expectedCaseRevision: null,
+      expectedActionIntentRevision: null,
+    };
+    const state = {
+      schemaVersion: 1 as const,
+      caseId: basePayload.case_id,
+      confirmedFacts: facts,
+      pendingCommand,
+    };
+    expect(isValidPersistedWorkspace(state)).toBe(true);
+    savePersistedWorkspace(state);
+    expect(window.localStorage.getItem(RUNTIME_STORAGE_KEY)).toBe(JSON.stringify(state));
+    expect(loadPersistedWorkspace()).toEqual(state);
+
+    const invalid = { ...state, unexpected: "untrusted" };
+    window.localStorage.setItem(RUNTIME_STORAGE_KEY, JSON.stringify(invalid));
+    expect(loadPersistedWorkspace()).toBeNull();
+    clearPersistedWorkspace();
+    expect(window.localStorage.getItem(RUNTIME_STORAGE_KEY)).toBeNull();
+  });
+
+  it("rejects pending commands whose body, pins, or Case locator disagree", () => {
+    const pendingEvent = {
+      kind: "append_event" as const,
+      idempotencyKey: "22222222-2222-4222-8222-222222222222",
+      requestBody: {
+        content: "Keep mobile hotspot and device financing unchanged.",
+        event_type: "consumer_message",
+        expected_revision: 2,
+      },
+      caseId: basePayload.case_id,
+      expectedRevision: 2,
+      approvalId: null,
+      expectedCaseRevision: null,
+      expectedActionIntentRevision: null,
+    };
+    const state = {
+      schemaVersion: 1 as const,
+      caseId: basePayload.case_id,
+      confirmedFacts: facts,
+      pendingCommand: pendingEvent,
+    };
+    expect(isValidPersistedWorkspace(state)).toBe(true);
+    expect(isValidPersistedWorkspace({
+      ...state,
+      pendingCommand: {
+        ...pendingEvent,
+        requestBody: { ...pendingEvent.requestBody, expected_revision: 3 },
+      },
+    })).toBe(false);
+    expect(isValidPersistedWorkspace({ ...state, caseId: "33333333-3333-4333-8333-333333333333" })).toBe(false);
+
+    const pendingApproval = {
+      kind: "decide_approval" as const,
+      idempotencyKey: "33333333-3333-4333-8333-333333333333",
+      requestBody: {
+        decision: "approved",
+        expected_action_intent_revision: 1,
+        expected_case_revision: 2,
+        expected_revision: 4,
+      },
+      caseId: basePayload.case_id,
+      expectedRevision: 4,
+      approvalId: "22222222-2222-4222-8222-222222222222",
+      expectedCaseRevision: 2,
+      expectedActionIntentRevision: 1,
+    };
+    expect(isValidPersistedWorkspace({ ...state, pendingCommand: pendingApproval })).toBe(true);
+    expect(isValidPersistedWorkspace({
+      ...state,
+      pendingCommand: {
+        ...pendingApproval,
+        requestBody: { ...pendingApproval.requestBody, expected_action_intent_revision: 2 },
+      },
+    })).toBe(false);
+
+    const pendingCreate = {
+      kind: "create_case" as const,
+      idempotencyKey: "44444444-4444-4444-8444-444444444444",
+      requestBody: {
+        current_monthly_total: facts.currentMonthlyTotal,
+        target_monthly_total: facts.targetMonthlyTotal,
+        mobile_hotspot_required: true,
+        device_financing_change_forbidden: true,
+      },
+      caseId: null,
+      expectedRevision: null,
+      approvalId: null,
+      expectedCaseRevision: null,
+      expectedActionIntentRevision: null,
+    };
+    const createState = { ...state, caseId: null, pendingCommand: pendingCreate };
+    expect(isValidPersistedWorkspace(createState)).toBe(true);
+    expect(isValidPersistedWorkspace({
+      ...createState,
+      pendingCommand: {
+        ...pendingCreate,
+        requestBody: {
+          ...pendingCreate.requestBody,
+          target_monthly_total: { amount_minor: 7400, currency: "USD" },
+        },
+      },
+    })).toBe(false);
+  });
+
+  it("gets readiness without exposing arbitrary error bodies", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      status: "ok",
+      ready: true,
+      dependency: "postgres",
+      adapter_mode: "scripted",
+      storage_mode: "postgres",
+      orchestration_mode: "temporal",
+      secret: "must not escape the narrow readiness shape",
+    }), { status: 200 })));
+
+    await expect(checkReadiness()).resolves.toEqual({
+      status: "ok",
+      ready: true,
+      dependency: "postgres",
+      adapter_mode: "scripted",
+      storage_mode: "postgres",
+      orchestration_mode: "temporal",
+      error_category: "none",
+    });
+  });
+
+  it("returns the stable category for an unavailable readiness response", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      status: "unavailable",
+      ready: false,
+      dependency: "postgres",
+      detail: { code: "dependency_not_ready", message: "redacted" },
+    }), { status: 503 })));
+
+    await expect(checkReadiness()).resolves.toMatchObject({
+      ready: false,
+      error_category: "dependency_not_ready",
+    });
+  });
+
+  it("reads a Case through the narrow GET helper", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(basePayload), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getCase(basePayload.case_id)).resolves.toEqual(basePayload);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/runtime/cases/11111111-1111-4111-8111-111111111111",
+      expect.objectContaining({ method: "GET" }),
     );
   });
 

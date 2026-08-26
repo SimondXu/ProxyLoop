@@ -1,17 +1,27 @@
 "use client";
 
 import type { FormEvent, ReactNode } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   appendConsumerEvent,
+  appendConsumerEventRequestBody,
+  checkReadiness,
+  clearPersistedWorkspace,
   completionHasVerifiedEvidence,
   createCase,
+  createCaseRequestBody,
   decideApproval,
+  decideApprovalRequestBody,
+  getCase,
   hasValidPendingApproval,
   hasValidTaskBrief,
   type IntakeFacts,
   type JsonObject,
+  loadPersistedWorkspace,
+  savePersistedWorkspace,
+  type PersistedPendingCommand,
+  type PersistedWorkspaceState,
   RuntimeClientError,
   type RuntimeMoney,
   type RuntimePayload,
@@ -20,11 +30,14 @@ import { StatusBadge } from "./status-badge";
 
 type WorkspacePhase =
   | "loading"
+  | "restoring"
   | "blank"
   | "intake"
   | "confirm"
   | "working"
+  | "finalizing"
   | "approval"
+  | "expired"
   | "receipt"
   | "blocked";
 
@@ -436,10 +449,12 @@ function ApprovalArtifact({
   payload,
   onApprove,
   busy,
+  deadlinePassed,
 }: {
   payload: RuntimePayload;
   onApprove: () => void;
   busy: boolean;
+  deadlinePassed: boolean;
 }) {
   const approval = payload.approval;
   if (!approval || !hasValidPendingApproval(payload)) return null;
@@ -469,8 +484,8 @@ function ApprovalArtifact({
         The approval request uses the Runtime&apos;s returned Case revision and
         Action Intent revision. The UI does not create or increment either value.
       </p>
-      <button className="primary-button" disabled={busy} id="approval-primary-action" onClick={onApprove} type="button">
-        {busy ? "Sending exact approval…" : "Approve exact terms"}
+      <button className="primary-button" disabled={busy || deadlinePassed} id="approval-primary-action" onClick={onApprove} type="button">
+        {deadlinePassed ? "Approval deadline reached" : busy ? "Sending exact approval…" : "Approve exact terms"}
         <span aria-hidden="true">→</span>
       </button>
     </section>
@@ -515,12 +530,22 @@ function ReceiptArtifact({ payload }: { payload: RuntimePayload }) {
   );
 }
 
-function RuntimeErrorState({ error, onRestart }: { error: string; onRestart: () => void }) {
+function RuntimeErrorState({ error, onRestart, onRetry }: { error: string; onRestart: () => void; onRetry?: () => void }) {
   return (
     <section aria-live="assertive" className="runtime-error" role="alert">
       <strong>Runtime state not verified</strong>
       <p>{error}</p>
+      {onRetry ? <button className="secondary-button" onClick={onRetry} type="button">Reconnect and read Case</button> : null}
       <button className="secondary-button" onClick={onRestart} type="button">Restart local demo</button>
+    </section>
+  );
+}
+
+function ExpiredArtifact() {
+  return (
+    <section aria-live="polite" className="runtime-error" role="status">
+      <strong>Approval expired</strong>
+      <p>The Runtime authoritatively marked this approval expired. No offer was accepted.</p>
     </section>
   );
 }
@@ -536,13 +561,254 @@ export function ConversationWorkspace() {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [approvalDeadlinePassed, setApprovalDeadlinePassed] = useState(false);
   const nextMessageId = useRef(1);
   const sessionId = useRef(0);
+  const payloadRef = useRef<RuntimePayload | null>(null);
+  const storageRef = useRef<PersistedWorkspaceState | null>(null);
+  const [hasStoredState, setHasStoredState] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
+  const pollCount = useRef(0);
+
+  function writeStorage(state: PersistedWorkspaceState | null) {
+    storageRef.current = state;
+    setHasStoredState(state !== null);
+    if (state === null) {
+      clearPersistedWorkspace();
+      return;
+    }
+    savePersistedWorkspace(state);
+  }
+
+  function updateStoredState(
+    changes: Partial<PersistedWorkspaceState>,
+  ): PersistedWorkspaceState {
+    const current = storageRef.current ?? {
+      schemaVersion: 1 as const,
+      caseId: null,
+      confirmedFacts: confirmedFacts ?? {
+        currentMonthlyTotal: { amount_minor: 0, currency: "USD" },
+        targetMonthlyTotal: { amount_minor: 0, currency: "USD" },
+        mobileHotspotRequired: true,
+        deviceFinancingChangeForbidden: true,
+      },
+      pendingCommand: null,
+    };
+    const next = { ...current, ...changes };
+    writeStorage(next);
+    return next;
+  }
+
+  function acceptPayload(next: RuntimePayload, facts: IntakeFacts): boolean {
+    if (!hasValidTaskBrief(next, facts)) return false;
+    const current = payloadRef.current;
+    if (current !== null) {
+      if (current.case_id !== next.case_id) return false;
+      if (
+        next.revision < current.revision ||
+        (next.revision === current.revision && next.event_cursor < current.event_cursor)
+      ) {
+        return false;
+      }
+    }
+    payloadRef.current = next;
+    setPayload(next);
+    return true;
+  }
+
+  function phaseForPayload(next: RuntimePayload): WorkspacePhase {
+    if (next.completion.decision === "complete") {
+      return completionHasVerifiedEvidence(next) ? "receipt" : "blocked";
+    }
+    const approval = next.approval;
+    if (approval?.decision === "expired") return "expired";
+    if (next.snapshot.pending_execution === true) return "finalizing";
+    if (approval?.decision === "pending") {
+      return hasValidPendingApproval(next) ? "approval" : "blocked";
+    }
+    if (approval?.decision && approval.decision !== "pending") return "blocked";
+    return "confirm";
+  }
+
+  function pendingCommand(
+    command: Omit<PersistedPendingCommand, "idempotencyKey"> & { idempotencyKey?: string },
+  ): PersistedPendingCommand {
+    const existing = storageRef.current?.pendingCommand;
+    if (
+      existing !== null && existing !== undefined &&
+      existing.kind === command.kind &&
+      (command.kind === "create_case" || existing.caseId === command.caseId) &&
+      JSON.stringify(existing.requestBody) === JSON.stringify(command.requestBody)
+    ) {
+      return existing;
+    }
+    return { ...command, idempotencyKey: command.idempotencyKey ?? crypto.randomUUID() };
+  }
+
+  function clearPending(command: PersistedPendingCommand) {
+    const current = storageRef.current;
+    if (current?.pendingCommand?.idempotencyKey !== command.idempotencyKey) return;
+    writeStorage({ ...current, pendingCommand: null });
+  }
 
   function addMessage(role: Message["role"], text: string) {
     const id = nextMessageId.current;
     nextMessageId.current += 1;
     setMessages((current) => [...current, { id, role, text }]);
+  }
+
+  function pendingResolved(command: PersistedPendingCommand, next: RuntimePayload): boolean {
+    if (command.kind === "create_case") return next.case_id === storageRef.current?.caseId;
+    if (command.expectedRevision === null) return true;
+    if (next.revision <= command.expectedRevision) return false;
+    if (command.kind === "append_event") return next.snapshot.pending_execution !== true;
+    return next.approval?.decision !== "pending" || completionHasVerifiedEvidence(next);
+  }
+
+  async function readAuthoritativeCase(
+    caseId: string,
+    facts: IntakeFacts,
+    requestId: number,
+  ): Promise<RuntimePayload> {
+    const recovered = await getCase(caseId);
+    if (requestId !== sessionId.current) return recovered;
+    if (!acceptPayload(recovered, facts)) {
+      throw new RuntimeClientError(
+        "The local Runtime returned a stale or mismatched Case. No unverified state is shown.",
+        "invalid",
+      );
+    }
+    const nextPhase = phaseForPayload(recovered);
+    if (nextPhase === "blocked") {
+      throw new RuntimeClientError(
+        "The local Runtime returned a state that cannot be shown as an approval or verified completion.",
+        "invalid",
+      );
+    }
+    if (nextPhase !== phase) pollCount.current = 0;
+    setPhase(nextPhase);
+    const pending = storageRef.current?.pendingCommand;
+    if (pending && pendingResolved(pending, recovered)) clearPending(pending);
+    return recovered;
+  }
+
+  async function restorePersisted(state: PersistedWorkspaceState, requestId: number) {
+    pollCount.current = 0;
+    setPhase("restoring");
+    setBusy(true);
+    setError(null);
+    try {
+      const readiness = await checkReadiness();
+      if (!readiness.ready) {
+        throw new RuntimeClientError(
+          "The local Runtime is not ready yet. Your saved Case and pending command remain preserved.",
+          "http",
+          503,
+          readiness.error_category === "none" ? "dependency_not_ready" : readiness.error_category as RuntimeClientError["category"],
+        );
+      }
+      if (
+        readiness.orchestration_mode !== "temporal" ||
+        readiness.storage_mode !== "postgres" ||
+        readiness.adapter_mode !== "scripted"
+      ) {
+        throw new RuntimeClientError(
+          "Recovery requires the durable Temporal/PostgreSQL/scripted Runtime profile. The direct Runtime makes no restart-recovery claim.",
+          "invalid",
+          null,
+          "dependency_not_ready",
+        );
+      }
+      if (requestId !== sessionId.current) return;
+      if (state.caseId !== null) {
+        await readAuthoritativeCase(state.caseId, state.confirmedFacts, requestId);
+        if (requestId !== sessionId.current) return;
+      }
+      const pending = storageRef.current?.pendingCommand;
+      if (pending === null || pending === undefined) return;
+      if (pending.kind === "create_case") {
+        if (state.caseId !== null) return;
+        const created = await createCase(state.confirmedFacts, { idempotencyKey: pending.idempotencyKey });
+        if (requestId !== sessionId.current) return;
+        if (!hasValidTaskBrief(created, state.confirmedFacts)) throw new RuntimeClientError(
+          "The local Runtime returned a mismatched Case. No verified Task Brief is shown.",
+          "invalid",
+        );
+        updateStoredState({
+          caseId: created.case_id,
+          pendingCommand: { ...pending, caseId: created.case_id },
+        });
+        await readAuthoritativeCase(created.case_id, state.confirmedFacts, requestId);
+      } else if (pending.kind === "append_event" && pending.caseId !== null) {
+        if (pending.expectedRevision === null || typeof pending.requestBody.content !== "string") {
+          throw new RuntimeClientError("The saved pending command is invalid. No retry was sent.", "invalid");
+        }
+        const event = await appendConsumerEvent(
+          pending.caseId,
+          pending.requestBody.content,
+          pending.expectedRevision,
+          { idempotencyKey: pending.idempotencyKey },
+        );
+        if (requestId !== sessionId.current) return;
+        if (!hasValidTaskBrief(event, state.confirmedFacts)) throw new RuntimeClientError(
+          "The local Runtime returned a mismatched Case. No verified state is shown.",
+          "invalid",
+        );
+        await readAuthoritativeCase(pending.caseId, state.confirmedFacts, requestId);
+      } else if (pending.kind === "decide_approval" && pending.caseId !== null && pending.approvalId !== null) {
+        if (
+          pending.expectedRevision === null ||
+          pending.expectedCaseRevision === null ||
+          pending.expectedActionIntentRevision === null
+        ) {
+          throw new RuntimeClientError("The saved pending command is invalid. No retry was sent.", "invalid");
+        }
+        const decision = await decideApproval(
+          pending.caseId,
+          pending.approvalId,
+          {
+            expectedRevision: pending.expectedRevision,
+            expectedCaseRevision: pending.expectedCaseRevision,
+            expectedActionIntentRevision: pending.expectedActionIntentRevision,
+          },
+          { idempotencyKey: pending.idempotencyKey },
+        );
+        if (requestId !== sessionId.current) return;
+        if (!hasValidTaskBrief(decision, state.confirmedFacts)) throw new RuntimeClientError(
+          "The local Runtime returned a mismatched Case. No verified state is shown.",
+          "invalid",
+        );
+        await readAuthoritativeCase(pending.caseId, state.confirmedFacts, requestId);
+      }
+    } catch (caught) {
+      if (requestId !== sessionId.current) return;
+      const pendingKey = state.pendingCommand?.idempotencyKey;
+      if (caught instanceof RuntimeClientError && caught.status === 409 && state.caseId !== null) {
+        try {
+          await readAuthoritativeCase(state.caseId, state.confirmedFacts, requestId);
+          if (pendingKey !== undefined && storageRef.current?.pendingCommand?.idempotencyKey === pendingKey) {
+            const current = storageRef.current;
+            if (current !== null) writeStorage({ ...current, pendingCommand: null });
+            setError("The Runtime rejected this stale command. I read the current Case and discarded that retry.");
+          }
+          return;
+        } catch (reconciled) {
+          caught = reconciled;
+        }
+      }
+      setPhase("blocked");
+      setError(caught instanceof Error ? caught.message : "The local Runtime could not restore this Case safely.");
+    } finally {
+      if (requestId === sessionId.current) setBusy(false);
+    }
+  }
+
+  function reconnect() {
+    const stored = storageRef.current;
+    if (stored === null || (stored.caseId === null && stored.pendingCommand === null)) return;
+    const requestId = sessionId.current + 1;
+    sessionId.current = requestId;
+    void restorePersisted(stored, requestId);
   }
 
   async function loadCase(facts: IntakeFacts) {
@@ -551,8 +817,27 @@ export function ConversationWorkspace() {
     setPhase("loading");
     setBusy(true);
     setError(null);
+    pollCount.current = 0;
+    const previous = storageRef.current?.pendingCommand;
+    const knownCreateCaseId = previous?.kind === "create_case"
+      ? storageRef.current?.caseId ?? null
+      : null;
+    const command = pendingCommand({
+      kind: "create_case",
+      requestBody: createCaseRequestBody(facts),
+      caseId: knownCreateCaseId,
+      expectedRevision: null,
+      approvalId: null,
+      expectedCaseRevision: null,
+      expectedActionIntentRevision: null,
+    });
+    updateStoredState({
+      caseId: command.caseId,
+      confirmedFacts: facts,
+      pendingCommand: command,
+    });
     try {
-      const created = await createCase(facts);
+      const created = await createCase(facts, { idempotencyKey: command.idempotencyKey });
       if (requestId !== sessionId.current) return;
       if (!hasValidTaskBrief(created, facts)) {
         throw new RuntimeClientError(
@@ -561,11 +846,14 @@ export function ConversationWorkspace() {
         );
       }
       setConfirmedFacts(facts);
-      setPayload(created);
-      setPhase("confirm");
+      updateStoredState({
+        caseId: created.case_id,
+        pendingCommand: { ...command, caseId: created.case_id },
+      });
+      await readAuthoritativeCase(created.case_id, facts, requestId);
     } catch (caught) {
       if (requestId !== sessionId.current) return;
-      setPhase("blocked");
+      setPhase("intake");
       setError(caught instanceof Error ? caught.message : "The local Runtime failed safely. Refresh or restart the demo.");
     } finally {
       if (requestId === sessionId.current) setBusy(false);
@@ -577,15 +865,89 @@ export function ConversationWorkspace() {
     setMessages([]);
     setDraft("");
     setPayload(null);
+    payloadRef.current = null;
     setConfirmedFacts(null);
     setIntake(EMPTY_INTAKE);
     setActiveField(null);
     setIntakeError(null);
     setError(null);
+    setApprovalDeadlinePassed(false);
+    writeStorage(null);
     setBusy(false);
     setPhase("blank");
     nextMessageId.current = 1;
+    pollCount.current = 0;
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      const stored = loadPersistedWorkspace();
+      if (cancelled || stored === null || (stored.caseId === null && stored.pendingCommand === null)) return;
+      storageRef.current = stored;
+      setHasStoredState(true);
+      setConfirmedFacts(stored.confirmedFacts);
+      setIntake({
+        currentMonthlyTotal: stored.confirmedFacts.currentMonthlyTotal,
+        targetMonthlyTotal: stored.confirmedFacts.targetMonthlyTotal,
+        mobileHotspotRequired: true,
+        deviceFinancingChangeForbidden: true,
+      });
+      const requestId = sessionId.current + 1;
+      sessionId.current = requestId;
+      void restorePersisted(stored, requestId);
+    });
+    return () => {
+      cancelled = true;
+      sessionId.current += 1;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => setIsVisible(document.visibilityState === "visible");
+    handleVisibilityChange();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
+  useEffect(() => {
+    const approval = payload?.approval;
+    if (!isVisible || phase !== "approval" || !payload || !confirmedFacts || !approval || approval.decision !== "pending") {
+      return;
+    }
+    const expiresAt = Date.parse(stringAt(approval, "expires_at") ?? "");
+    if (!Number.isFinite(expiresAt)) return;
+    if (pollCount.current >= 5) return;
+    const delay = pollCount.current === 0 ? Math.max(0, expiresAt - Date.now()) : 1500;
+    const timer = window.setTimeout(() => {
+      if (pollCount.current >= 5) return;
+      pollCount.current += 1;
+      setApprovalDeadlinePassed(true);
+      setError("The local approval deadline has passed. Reading the authoritative Runtime state now.");
+      void readAuthoritativeCase(payload.case_id, confirmedFacts, sessionId.current).catch((caught) => {
+        if (caught instanceof Error) setError(caught.message);
+      });
+    }, delay);
+    return () => window.clearTimeout(timer);
+  // The callback intentionally reads the current session ref; adding it would
+  // restart the deadline timer on every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmedFacts, isVisible, payload, phase]);
+
+  useEffect(() => {
+    const shouldPoll = phase === "restoring" || phase === "working" || phase === "finalizing";
+    if (!isVisible || !shouldPoll || !payload || !confirmedFacts) return;
+    if (pollCount.current >= 5) return;
+    const timer = window.setTimeout(() => {
+      pollCount.current += 1;
+      void readAuthoritativeCase(payload.case_id, confirmedFacts, sessionId.current).catch((caught) => {
+        if (caught instanceof Error) setError(caught.message);
+      });
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmedFacts, isVisible, payload, phase]);
 
   function editIntakeField(field: IntakeField) {
     if (phase !== "intake" || busy) return;
@@ -650,24 +1012,45 @@ export function ConversationWorkspace() {
 
   async function confirmConstraint() {
     if (!payload || busy) return;
+    const facts = confirmedFacts;
+    if (!facts || !hasValidTaskBrief(payload, facts)) return;
     const requestId = sessionId.current;
+    pollCount.current = 0;
     setBusy(true);
     setError(null);
     addMessage("user", "Keep mobile hotspot and device financing unchanged.");
     setPhase("working");
+    const body = appendConsumerEventRequestBody(CONFIRMATION_EVENT, payload.revision);
+    const command = pendingCommand({
+      kind: "append_event",
+      requestBody: body,
+      caseId: payload.case_id,
+      expectedRevision: payload.revision,
+      approvalId: null,
+      expectedCaseRevision: null,
+      expectedActionIntentRevision: null,
+    });
+    updateStoredState({ caseId: payload.case_id, confirmedFacts: facts, pendingCommand: command });
     try {
-      const waiting = await appendConsumerEvent(payload.case_id, CONFIRMATION_EVENT, payload.revision);
+      const waiting = await appendConsumerEvent(payload.case_id, CONFIRMATION_EVENT, payload.revision, {
+        idempotencyKey: command.idempotencyKey,
+      });
       if (requestId !== sessionId.current) return;
-      if (confirmedFacts && hasValidTaskBrief(waiting, confirmedFacts) && hasValidPendingApproval(waiting)) {
-        setPayload(waiting);
-        setPhase("approval");
-      } else {
-        setPayload(null);
-        setPhase("blocked");
-        setError("The Runtime returned missing or mismatched intake facts. No approval is available; restart the local Runtime, then choose New task.");
-      }
+      if (!hasValidTaskBrief(waiting, facts)) throw new RuntimeClientError(
+        "The Runtime returned missing or mismatched intake facts. No approval is available.",
+        "invalid",
+      );
+      await readAuthoritativeCase(waiting.case_id, facts, requestId);
     } catch (caught) {
       if (requestId !== sessionId.current) return;
+      if (caught instanceof RuntimeClientError && caught.status === 409) {
+        try {
+          await readAuthoritativeCase(payload.case_id, facts, requestId);
+          return;
+        } catch (reconciled) {
+          caught = reconciled;
+        }
+      }
       setPhase("confirm");
       setError(caught instanceof Error ? caught.message : "The Runtime failed safely. Retry or restart the demo.");
     } finally {
@@ -682,24 +1065,53 @@ export function ConversationWorkspace() {
     const approval = waiting.approval;
     if (!approval || !confirmedFacts || !hasValidTaskBrief(waiting, confirmedFacts) || !hasValidPendingApproval(waiting)) return;
     setBusy(true);
+    pollCount.current = 0;
     setError(null);
+    if (approvalDeadlinePassed || Date.parse(stringAt(approval, "expires_at") ?? "") <= Date.now()) {
+      setApprovalDeadlinePassed(true);
+      setBusy(false);
+      void readAuthoritativeCase(waiting.case_id, confirmedFacts, requestId).catch((caught) => {
+        if (requestId === sessionId.current) setError(caught instanceof Error ? caught.message : "The Runtime could not confirm the approval state.");
+      });
+      return;
+    }
+    const body = decideApprovalRequestBody({
+      expectedActionIntentRevision: approval.action_intent_revision,
+      expectedCaseRevision: approval.case_revision,
+      expectedRevision: waiting.revision,
+    });
+    const command = pendingCommand({
+      kind: "decide_approval",
+      requestBody: body,
+      caseId: waiting.case_id,
+      expectedRevision: waiting.revision,
+      approvalId: approval.approval_id,
+      expectedCaseRevision: approval.case_revision,
+      expectedActionIntentRevision: approval.action_intent_revision,
+    });
+    updateStoredState({ caseId: waiting.case_id, confirmedFacts, pendingCommand: command });
     try {
       const completed = await decideApproval(waiting.case_id, approval.approval_id, {
         expectedActionIntentRevision: approval.action_intent_revision,
         expectedCaseRevision: approval.case_revision,
         expectedRevision: waiting.revision,
-      });
+      }, { idempotencyKey: command.idempotencyKey });
       if (requestId !== sessionId.current) return;
-      if (confirmedFacts && hasValidTaskBrief(completed, confirmedFacts) && completionHasVerifiedEvidence(completed)) {
-        setPayload(completed);
-        setPhase("receipt");
-      } else {
-        setPayload(null);
-        setPhase("blocked");
-        setError("The Runtime response did not preserve the confirmed intake facts or verifiable completion Evidence. No success is shown; restart the local Runtime, then choose New task.");
-      }
+      if (!hasValidTaskBrief(completed, confirmedFacts)) throw new RuntimeClientError(
+        "The Runtime response did not preserve the confirmed intake facts. No success is shown.",
+        "invalid",
+      );
+      await readAuthoritativeCase(completed.case_id, confirmedFacts, requestId);
     } catch (caught) {
       if (requestId !== sessionId.current) return;
+      if (caught instanceof RuntimeClientError && caught.status === 409) {
+        try {
+          await readAuthoritativeCase(waiting.case_id, confirmedFacts, requestId);
+          return;
+        } catch (reconciled) {
+          caught = reconciled;
+        }
+      }
       setPhase("approval");
       setError(caught instanceof Error ? caught.message : "The Runtime failed safely. Retry or restart the demo.");
     } finally {
@@ -747,8 +1159,14 @@ export function ConversationWorkspace() {
 
   const status = phase === "receipt"
     ? "Verified"
+    : phase === "expired"
+      ? "Expired"
     : phase === "approval"
       ? "Needs approval"
+      : phase === "finalizing"
+        ? "Finalizing"
+        : phase === "restoring"
+          ? "Restoring"
       : phase === "working"
         ? "Working"
         : phase === "blocked"
@@ -768,7 +1186,7 @@ export function ConversationWorkspace() {
           <span>Lower my mobile bill</span>
           <small>{status}</small>
         </button>
-        <p className="sidebar-boundary">One fictional telecom journey. The Runtime is local and process-bound.</p>
+          <p className="sidebar-boundary">One fictional telecom journey. The Runtime is authoritative; the browser stores only a locator and one safe retry.</p>
       </aside>
 
       <section aria-labelledby="conversation-title" className="conversation-panel">
@@ -777,7 +1195,7 @@ export function ConversationWorkspace() {
             <span className="conversation-overline">Fictional telecom task</span>
             <h1 id="conversation-title">Lower my mobile bill</h1>
           </div>
-          <StatusBadge tone={phase === "receipt" ? "complete" : phase === "blocked" ? "blocked" : phase === "working" ? "working" : "neutral"}>{status}</StatusBadge>
+          <StatusBadge tone={phase === "receipt" ? "complete" : phase === "blocked" || phase === "expired" ? "blocked" : phase === "working" || phase === "finalizing" ? "working" : "neutral"}>{status}</StatusBadge>
         </header>
 
         <div aria-live="polite" aria-relevant="additions" className="conversation-thread" role="log">
@@ -802,19 +1220,20 @@ export function ConversationWorkspace() {
             </AssistantMessage>
           ) : null}
 
-          {payload && (phase === "confirm" || phase === "working" || phase === "approval" || phase === "receipt" || phase === "blocked") ? (
+          {payload && (phase === "confirm" || phase === "working" || phase === "finalizing" || phase === "approval" || phase === "receipt" || phase === "expired" || phase === "blocked") ? (
             <AssistantMessage><TaskBriefArtifact payload={payload} onConfirm={phase === "confirm" && !busy ? confirmConstraint : undefined} /></AssistantMessage>
           ) : null}
 
-          {payload && phase === "working" ? <AssistantMessage><ProgressArtifact /></AssistantMessage> : null}
+          {payload && (phase === "working" || phase === "finalizing") ? <AssistantMessage><ProgressArtifact label={phase === "finalizing" ? "Finalizing the approved fictional transition" : undefined} /></AssistantMessage> : null}
 
-          {payload && (phase === "approval" || phase === "receipt") ? (
+          {payload && (phase === "approval" || phase === "receipt" || phase === "finalizing" || phase === "expired") ? (
             <AssistantMessage>
               <p>The Runtime returned one offer that satisfies the confirmed guardrails. Nothing is accepted until you approve the exact request.</p>
               <OfferArtifact payload={payload} />
-              {phase === "approval" ? <ApprovalArtifact busy={busy} onApprove={approveExactTerms} payload={payload} /> : null}
+              {phase === "approval" ? <ApprovalArtifact busy={busy} deadlinePassed={approvalDeadlinePassed} onApprove={approveExactTerms} payload={payload} /> : null}
             </AssistantMessage>
           ) : null}
+          {phase === "expired" ? <AssistantMessage><ExpiredArtifact /></AssistantMessage> : null}
 
           {intakeError ? (
             <AssistantMessage>
@@ -825,7 +1244,7 @@ export function ConversationWorkspace() {
             </AssistantMessage>
           ) : null}
           {payload && phase === "receipt" ? <AssistantMessage><ReceiptArtifact payload={payload} /></AssistantMessage> : null}
-          {error ? <AssistantMessage><RuntimeErrorState error={error} onRestart={restart} /></AssistantMessage> : null}
+          {error ? <AssistantMessage><RuntimeErrorState error={error} onRestart={restart} onRetry={hasStoredState ? reconnect : undefined} /></AssistantMessage> : null}
         </div>
 
         <form className="conversation-composer" onSubmit={submitMessage}>
