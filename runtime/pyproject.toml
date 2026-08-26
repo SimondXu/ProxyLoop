@@ -19,6 +19,7 @@ members = [
   "packages/agent_core",
   "packages/case_runtime",
   "packages/contracts",
+  "packages/connectors",
   "packages/provider_simulator",
   "packages/telecom_domain",
   "packages/openai_adapter",

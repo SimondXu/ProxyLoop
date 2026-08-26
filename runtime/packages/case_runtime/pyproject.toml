@@ -6,6 +6,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
   "psycopg[binary]>=3.2,<4",
   "proxyloop-agent-core==0.0.0",
+  "proxyloop-connectors==0.0.0",
   "proxyloop-contracts==0.0.0",
   "proxyloop-provider-simulator==0.0.0",
   "proxyloop-telecom-domain==0.0.0",
@@ -14,6 +15,7 @@ dependencies = [
 
 [tool.uv.sources]
 proxyloop-agent-core = { workspace = true }
+proxyloop-connectors = { workspace = true }
 proxyloop-contracts = { workspace = true }
 proxyloop-provider-simulator = { workspace = true }
 proxyloop-telecom-domain = { workspace = true }

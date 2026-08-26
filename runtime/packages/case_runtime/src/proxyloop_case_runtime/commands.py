@@ -10,6 +10,7 @@ from proxyloop_contracts import Money, canonical_fingerprint
 from pydantic import UUID4, BaseModel, ConfigDict, Field, model_validator
 
 CASE_COMMAND_SCHEMA_VERSION: Literal["phase-05a-v1"] = "phase-05a-v1"
+CHANNEL_COMMAND_SCHEMA_VERSION: Literal["phase-06b1-v1"] = "phase-06b1-v1"
 
 
 class CaseCommandType(StrEnum):
@@ -17,6 +18,8 @@ class CaseCommandType(StrEnum):
     APPEND_EVENT = "append_event"
     DECIDE_APPROVAL = "decide_approval"
     EXPIRE_APPROVAL = "expire_approval"
+    INGEST_CHANNEL_EVENT = "ingest_channel_event"
+    RECORD_CHANNEL_DELIVERY = "record_channel_delivery"
 
 
 class CaseCommand(BaseModel):
@@ -24,7 +27,9 @@ class CaseCommand(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
-    schema_version: Literal["phase-05a-v1"] = CASE_COMMAND_SCHEMA_VERSION
+    schema_version: Literal["phase-05a-v1", "phase-06b1-v1"] = (
+        CASE_COMMAND_SCHEMA_VERSION
+    )
     command_id: UUID4
     case_id: UUID4
     command_type: CaseCommandType
@@ -41,6 +46,15 @@ class CaseCommand(BaseModel):
     expected_case_revision: int | None = Field(default=None, ge=1)
     expected_action_intent_revision: int | None = Field(default=None, ge=1)
     approval_expires_at: datetime | None = None
+    channel_kind: Literal["local_mailbox"] | None = None
+    binding_ref: Literal["fictional-provider-local-mailbox"] | None = None
+    event_id: UUID4 | None = None
+    content_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    payload_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    delivery_id: UUID4 | None = None
+    provider_message_id: str | None = Field(default=None, min_length=1, max_length=256)
+    delivery_status: Literal["delivered", "bounced"] | None = None
+    artifact_hash: str | None = Field(default=None, min_length=64, max_length=64)
 
     @model_validator(mode="after")
     def validate_command_shape(self) -> CaseCommand:
@@ -69,7 +83,61 @@ class CaseCommand(BaseModel):
             self.expected_action_intent_revision,
             self.approval_expires_at,
         )
-        if self.command_type is CaseCommandType.CREATE_CASE:
+        channel_fields = (
+            self.channel_kind,
+            self.binding_ref,
+            self.event_id,
+            self.content_hash,
+            self.payload_hash,
+            self.delivery_id,
+            self.provider_message_id,
+            self.delivery_status,
+            self.artifact_hash,
+        )
+        if self.command_type in {
+            CaseCommandType.INGEST_CHANNEL_EVENT,
+            CaseCommandType.RECORD_CHANNEL_DELIVERY,
+        }:
+            if self.schema_version != CHANNEL_COMMAND_SCHEMA_VERSION:
+                raise ValueError("channel commands require the phase-06b1 schema")
+            if self.channel_kind != "local_mailbox" or self.binding_ref != (
+                "fictional-provider-local-mailbox"
+            ):
+                raise ValueError("channel command binding is invalid")
+            if any(
+                value is not None
+                for value in (
+                    *create_fields,
+                    self.event_type,
+                    *approval_fields,
+                )
+            ):
+                raise ValueError("channel command contains fields for another command")
+            if self.command_type is CaseCommandType.INGEST_CHANNEL_EVENT:
+                if (
+                    self.event_id is None
+                    or self.content_hash is None
+                    or self.payload_hash is None
+                    or self.delivery_id is not None
+                    or self.provider_message_id is not None
+                    or self.delivery_status is not None
+                    or self.artifact_hash is not None
+                ):
+                    raise ValueError("ingest_channel_event has invalid fields")
+            elif (
+                self.event_id is None
+                or self.delivery_id is None
+                or self.provider_message_id is None
+                or self.delivery_status is None
+                or self.artifact_hash is None
+                or self.content is not None
+                or self.content_hash is not None
+                or self.payload_hash is None
+            ):
+                raise ValueError("record_channel_delivery has invalid fields")
+        elif self.schema_version != CASE_COMMAND_SCHEMA_VERSION:
+            raise ValueError("legacy commands require the phase-05a schema")
+        elif self.command_type is CaseCommandType.CREATE_CASE:
             if any(value is None for value in create_fields):
                 raise ValueError("create_case requires all four intake facts")
             if self.expected_revision is not None:
@@ -78,12 +146,15 @@ class CaseCommand(BaseModel):
                 self.content is not None
                 or self.event_type is not None
                 or any(value is not None for value in approval_fields)
+                or any(value is not None for value in channel_fields)
             ):
                 raise ValueError("create_case contains fields for another command")
         elif self.command_type is CaseCommandType.APPEND_EVENT:
             if self.content is None or self.event_type != "consumer_message":
                 raise ValueError("append_event requires consumer_message content")
-            if any(value is not None for value in (*create_fields, *approval_fields)):
+            if any(
+                value is not None for value in (*create_fields, *approval_fields)
+            ) or any(value is not None for value in channel_fields):
                 raise ValueError("append_event contains fields for another command")
         elif self.command_type is CaseCommandType.DECIDE_APPROVAL:
             if self.approval_id is None or self.decision is None:
@@ -91,10 +162,12 @@ class CaseCommand(BaseModel):
             if self.approval_expires_at is not None:
                 raise ValueError("decide_approval cannot set approval expiry")
             if any(value is not None for value in create_fields) or (
-                self.content is not None or self.event_type is not None
+                self.content is not None
+                or self.event_type is not None
+                or any(value is not None for value in channel_fields)
             ):
                 raise ValueError("decide_approval contains fields for another command")
-        else:
+        elif self.command_type is CaseCommandType.EXPIRE_APPROVAL:
             if (
                 self.approval_id is None
                 or self.expected_revision is None
@@ -111,6 +184,7 @@ class CaseCommand(BaseModel):
                     self.event_type,
                     self.expected_case_revision,
                     self.expected_action_intent_revision,
+                    *channel_fields,
                 )
             ):
                 raise ValueError("expire_approval contains fields for another command")
@@ -124,7 +198,9 @@ class CaseTransitionRef(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
-    schema_version: Literal["phase-05a-v1"] = CASE_COMMAND_SCHEMA_VERSION
+    schema_version: Literal["phase-05a-v1", "phase-06b1-v1"] = (
+        CASE_COMMAND_SCHEMA_VERSION
+    )
     command_id: UUID4
     case_id: UUID4
     command_type: CaseCommandType
@@ -137,6 +213,10 @@ class CaseTransitionRef(BaseModel):
     # Optional so receipts written before Phase 06A remain decodable.  Such
     # receipts are deliberately not reusable by ``apply_command``.
     command_fingerprint: str | None = Field(default=None, min_length=1)
+    delivery_id: UUID4 | None = None
+    delivery_status: Literal["pending", "accepted", "delivered", "bounced"] | None = (
+        None
+    )
     terminal: bool
     deduplicated: bool = False
 
@@ -173,6 +253,7 @@ def semantic_command_fingerprint(command: CaseCommand) -> str:
 
 __all__ = [
     "CASE_COMMAND_SCHEMA_VERSION",
+    "CHANNEL_COMMAND_SCHEMA_VERSION",
     "CaseCommand",
     "CaseCommandType",
     "CaseTransitionRef",

@@ -6,9 +6,15 @@ import hashlib
 import json
 from datetime import datetime
 from typing import Any, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import psycopg
+from proxyloop_connectors import (
+    BINDING_REF,
+    CHANNEL_KIND,
+    FRESHNESS_WINDOW,
+    VerifiedLocalMailboxEvent,
+)
 from proxyloop_contracts import (
     ActionIntent,
     ApprovalDecision,
@@ -36,12 +42,21 @@ from .repository import (
     CaseConflictError,
     CaseNotFoundError,
     CaseRuntimeState,
+    ChannelBindingRecord,
+    ChannelConflictError,
+    DeliveryReceiptRecord,
+    InboxReceiptRecord,
+    OutboxRecord,
     StorageUnavailableError,
 )
 
 _STORAGE_VERSION: Literal[1] = 1
 _TABLE_NAME = "proxyloop_case_runtime_states"
 _PROVIDER_CONFIG_REF = "pine-mobile:runtime-v1"
+_BINDINGS_TABLE = "proxyloop_channel_bindings"
+_INBOX_TABLE = "proxyloop_channel_inbox_receipts"
+_OUTBOX_TABLE = "proxyloop_channel_outbox_records"
+_DELIVERY_TABLE = "proxyloop_channel_delivery_receipts"
 
 
 class _CaseStorageEnvelope(BaseModel):
@@ -114,6 +129,25 @@ class PostgresCaseRepository:
                 )
                 if cursor.rowcount != 1:
                     raise CaseConflictError("case already exists")
+                cursor.execute(
+                    f"""
+                    INSERT INTO {_BINDINGS_TABLE}
+                        (binding_ref, channel_kind, case_id, local_ref, remote_ref,
+                         allowed_directions, active, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (binding_ref) DO NOTHING
+                    """,
+                    (
+                        BINDING_REF,
+                        CHANNEL_KIND,
+                        case_id,
+                        "fictional-provider-local-mailbox",
+                        f"case/{case_id}",
+                        Jsonb(["inbound", "outbound"]),
+                        True,
+                        state.snapshot.case.created_at,
+                    ),
+                )
         except CaseConflictError:
             raise
         except psycopg.Error:
@@ -204,6 +238,544 @@ class PostgresCaseRepository:
         except psycopg.Error:
             raise StorageUnavailableError("PostgreSQL readiness probe failed") from None
 
+    def get_channel_binding(
+        self, binding_ref: str = BINDING_REF
+    ) -> ChannelBindingRecord | None:
+        try:
+            with (
+                self._connect() as connection,
+                connection.transaction(),
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(
+                    f"""
+                    SELECT channel_kind, binding_ref, case_id, local_ref, remote_ref,
+                           allowed_directions, active, created_at
+                    FROM {_BINDINGS_TABLE}
+                    WHERE binding_ref = %s
+                    """,
+                    (binding_ref,),
+                )
+                row = cursor.fetchone()
+        except psycopg.Error:
+            raise StorageUnavailableError(
+                "PostgreSQL channel operation failed"
+            ) from None
+        return _binding_from_row(row) if row is not None else None
+
+    def reserve_channel_event(
+        self,
+        event: VerifiedLocalMailboxEvent,
+        *,
+        received_at: datetime,
+    ) -> InboxReceiptRecord:
+        """Reserve one event identity before dispatching its Case command."""
+
+        if received_at.tzinfo is None or received_at.utcoffset() is None:
+            raise ValueError("received_at must be timezone-aware")
+        try:
+            with (
+                self._connect() as connection,
+                connection.transaction(),
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(
+                    f"""
+                    SELECT channel_kind, event_id, payload_hash, binding_ref, case_id,
+                           command_id, first_seen_at, event_kind, processing_state,
+                           content
+                    FROM {_INBOX_TABLE}
+                    WHERE channel_kind = %s AND event_id = %s
+                    FOR UPDATE
+                    """,
+                    (CHANNEL_KIND, event.event_id),
+                )
+                existing = cursor.fetchone()
+                if existing is not None:
+                    prior = _inbox_from_row(existing, deduplicated=True)
+                    if prior.payload_hash != event.raw_payload_hash:
+                        raise ChannelConflictError("channel_replay_mismatch")
+                    return prior
+                if (
+                    event.fixture_timestamp is None
+                    or abs(received_at - event.fixture_timestamp) > FRESHNESS_WINDOW
+                    or abs(received_at - event.occurred_at) > FRESHNESS_WINDOW
+                ):
+                    raise ChannelConflictError("stale_unknown_event")
+                cursor.execute(
+                    f"""
+                    SELECT channel_kind, binding_ref, case_id, local_ref, remote_ref,
+                           allowed_directions, active, created_at
+                    FROM {_BINDINGS_TABLE}
+                    WHERE binding_ref = %s
+                    FOR SHARE
+                    """,
+                    (event.binding_ref,),
+                )
+                binding_row = cursor.fetchone()
+                if binding_row is None:
+                    raise ChannelConflictError("unknown_binding")
+                binding = _binding_from_row(binding_row)
+                if not binding.active:
+                    raise ChannelConflictError("channel_conflict")
+                command_id = uuid4()
+                cursor.execute(
+                    f"""
+                    INSERT INTO {_INBOX_TABLE}
+                        (channel_kind, event_id, payload_hash, binding_ref, case_id,
+                         command_id, first_seen_at, event_kind, processing_state,
+                         content)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (channel_kind, event_id) DO NOTHING
+                    """,
+                    (
+                        CHANNEL_KIND,
+                        event.event_id,
+                        event.raw_payload_hash,
+                        event.binding_ref,
+                        binding.case_id,
+                        command_id,
+                        received_at,
+                        event.kind.value,
+                        "reserved",
+                        event.content,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    cursor.execute(
+                        f"""
+                        SELECT channel_kind, event_id, payload_hash, binding_ref,
+                               case_id,
+                               command_id, first_seen_at, event_kind, processing_state,
+                               content
+                        FROM {_INBOX_TABLE}
+                        WHERE channel_kind = %s AND event_id = %s
+                        FOR UPDATE
+                        """,
+                        (CHANNEL_KIND, event.event_id),
+                    )
+                    raced = cursor.fetchone()
+                    if raced is None:
+                        raise StorageUnavailableError(
+                            "channel inbox reservation was lost"
+                        )
+                    prior = _inbox_from_row(raced, deduplicated=True)
+                    if prior.payload_hash != event.raw_payload_hash:
+                        raise ChannelConflictError("channel_replay_mismatch")
+                    return prior
+                return InboxReceiptRecord(
+                    channel_kind=CHANNEL_KIND,
+                    event_id=event.event_id,
+                    payload_hash=event.raw_payload_hash,
+                    binding_ref=event.binding_ref,
+                    case_id=binding.case_id,
+                    command_id=command_id,
+                    first_seen_at=received_at,
+                    event_kind=event.kind.value,
+                    processing_state="reserved",
+                    content=event.content,
+                )
+        except (CaseConflictError, CaseNotFoundError):
+            raise
+        except psycopg.Error:
+            raise StorageUnavailableError(
+                "PostgreSQL channel operation failed"
+            ) from None
+
+    def get_inbox_receipt(self, event_id: UUID) -> InboxReceiptRecord | None:
+        try:
+            with (
+                self._connect() as connection,
+                connection.transaction(),
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(
+                    f"""
+                    SELECT channel_kind, event_id, payload_hash, binding_ref, case_id,
+                           command_id, first_seen_at, event_kind, processing_state,
+                           content
+                    FROM {_INBOX_TABLE}
+                    WHERE channel_kind = %s AND event_id = %s
+                    """,
+                    (CHANNEL_KIND, event_id),
+                )
+                row = cursor.fetchone()
+        except psycopg.Error:
+            raise StorageUnavailableError(
+                "PostgreSQL channel operation failed"
+            ) from None
+        return _inbox_from_row(row) if row is not None else None
+
+    def get_outbox_record(self, delivery_id: UUID) -> OutboxRecord | None:
+        try:
+            with (
+                self._connect() as connection,
+                connection.transaction(),
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(
+                    f"""
+                    SELECT delivery_id, idempotency_key, case_id, binding_ref,
+                           source_event_id, source_command_id, source_case_revision,
+                           source_strategy_id, source_strategy_revision,
+                           source_event_cursor, body, body_hash, state,
+                           provider_message_id, attempt_count, last_failure_category
+                    FROM {_OUTBOX_TABLE}
+                    WHERE delivery_id = %s
+                    """,
+                    (delivery_id,),
+                )
+                row = cursor.fetchone()
+        except psycopg.Error:
+            raise StorageUnavailableError(
+                "PostgreSQL channel operation failed"
+            ) from None
+        return _outbox_from_row(row) if row is not None else None
+
+    def get_delivery_receipt(self, delivery_id: UUID) -> DeliveryReceiptRecord | None:
+        try:
+            with (
+                self._connect() as connection,
+                connection.transaction(),
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(
+                    f"""
+                    SELECT delivery_id, provider_message_id, observation_state,
+                           artifact_hash, observed_at, captured_at, evidence_id
+                    FROM {_DELIVERY_TABLE}
+                    WHERE delivery_id = %s
+                    ORDER BY observed_at DESC
+                    LIMIT 1
+                    """,
+                    (delivery_id,),
+                )
+                row = cursor.fetchone()
+        except psycopg.Error:
+            raise StorageUnavailableError(
+                "PostgreSQL channel operation failed"
+            ) from None
+        return _delivery_from_row(row) if row is not None else None
+
+    def record_delivery_observation(
+        self,
+        delivery_id: UUID,
+        *,
+        idempotency_key: str,
+        state: str,
+        provider_message_id: str | None,
+        failure_category: str | None = None,
+    ) -> OutboxRecord:
+        """Persist an adapter observation without changing Case revision."""
+
+        if state not in {
+            "accepted",
+            "failed_retryable",
+            "failed_terminal",
+            "unknown",
+        }:
+            raise ValueError("unsupported delivery observation state")
+        try:
+            with (
+                self._connect() as connection,
+                connection.transaction(),
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(
+                    f"""
+                    SELECT delivery_id, idempotency_key, case_id, binding_ref,
+                           source_event_id, source_command_id, source_case_revision,
+                           source_strategy_id, source_strategy_revision,
+                           source_event_cursor, body, body_hash, state,
+                           provider_message_id, attempt_count, last_failure_category
+                    FROM {_OUTBOX_TABLE}
+                    WHERE delivery_id = %s AND idempotency_key = %s
+                    FOR UPDATE
+                    """,
+                    (delivery_id, idempotency_key),
+                )
+                existing = cursor.fetchone()
+                if existing is None:
+                    raise CaseNotFoundError("outbox delivery not found")
+                prior = _outbox_from_row(existing)
+                if (
+                    prior.provider_message_id is not None
+                    and provider_message_id is not None
+                    and prior.provider_message_id != provider_message_id
+                ):
+                    raise CaseConflictError("delivery provider message changed")
+                if not _delivery_observation_is_monotonic(prior.state, state):
+                    raise CaseConflictError("delivery observation regressed")
+                if prior.state in {"delivered", "bounced"}:
+                    return prior
+                cursor.execute(
+                    f"""
+                    UPDATE {_OUTBOX_TABLE}
+                    SET state = %s,
+                        provider_message_id = COALESCE(%s, provider_message_id),
+                        attempt_count = attempt_count + 1,
+                        last_failure_category = %s,
+                        updated_at = now()
+                    WHERE delivery_id = %s AND idempotency_key = %s
+                    """,
+                    (
+                        state,
+                        provider_message_id,
+                        failure_category,
+                        delivery_id,
+                        idempotency_key,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise CaseNotFoundError("outbox delivery not found")
+                cursor.execute(
+                    f"""
+                    SELECT delivery_id, idempotency_key, case_id, binding_ref,
+                           source_event_id, source_command_id, source_case_revision,
+                           source_strategy_id, source_strategy_revision,
+                           source_event_cursor, body, body_hash, state,
+                           provider_message_id, attempt_count, last_failure_category
+                    FROM {_OUTBOX_TABLE}
+                    WHERE delivery_id = %s
+                    """,
+                    (delivery_id,),
+                )
+                row = cursor.fetchone()
+        except (CaseNotFoundError, CaseConflictError):
+            raise
+        except psycopg.Error:
+            raise StorageUnavailableError(
+                "PostgreSQL channel operation failed"
+            ) from None
+        if row is None:
+            raise CaseNotFoundError("outbox delivery not found")
+        return _outbox_from_row(row)
+
+    def replace_with_channel_outbox(
+        self,
+        case_id: UUID,
+        *,
+        expected_revision: int,
+        state: CaseRuntimeState,
+        outbox: OutboxRecord,
+        inbox_event_id: UUID,
+    ) -> CaseRuntimeState:
+        """CAS the Case, insert its first outbox row, and apply inbox together."""
+
+        if outbox.case_id != case_id or state.snapshot.case.case_id != case_id:
+            raise CaseConflictError("channel Case binding does not match")
+        payload = self._encode_state(state)
+        try:
+            with (
+                self._connect() as connection,
+                connection.transaction(),
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(
+                    f"""
+                    UPDATE {_TABLE_NAME}
+                    SET revision = %s, payload = %s, updated_at = now()
+                    WHERE case_id = %s AND revision = %s
+                    """,
+                    (
+                        state.snapshot.revision,
+                        Jsonb(payload),
+                        case_id,
+                        expected_revision,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise CaseConflictError("case snapshot revision is stale")
+                cursor.execute(
+                    f"""
+                    INSERT INTO {_OUTBOX_TABLE}
+                        (delivery_id, idempotency_key, case_id, binding_ref,
+                         source_event_id, source_command_id, source_case_revision,
+                         source_strategy_id, source_strategy_revision,
+                         source_event_cursor, body, body_hash, state,
+                         provider_message_id, attempt_count, last_failure_category)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s)
+                    """,
+                    (
+                        outbox.delivery_id,
+                        outbox.idempotency_key,
+                        outbox.case_id,
+                        outbox.binding_ref,
+                        outbox.source_event_id,
+                        outbox.source_command_id,
+                        outbox.source_case_revision,
+                        outbox.source_strategy_id,
+                        outbox.source_strategy_revision,
+                        outbox.source_event_cursor,
+                        outbox.body,
+                        outbox.body_hash,
+                        outbox.state,
+                        outbox.provider_message_id,
+                        outbox.attempt_count,
+                        outbox.last_failure_category,
+                    ),
+                )
+                cursor.execute(
+                    f"""
+                    UPDATE {_INBOX_TABLE}
+                    SET processing_state = 'applied'
+                    WHERE channel_kind = %s AND event_id = %s
+                      AND case_id = %s AND processing_state = 'reserved'
+                    """,
+                    (CHANNEL_KIND, inbox_event_id, case_id),
+                )
+                if cursor.rowcount != 1:
+                    raise CaseConflictError("channel inbox reservation is not pending")
+        except (CaseConflictError, CaseNotFoundError):
+            raise
+        except psycopg.errors.UniqueViolation:
+            raise CaseConflictError("channel outbox already exists") from None
+        except psycopg.Error:
+            raise StorageUnavailableError(
+                "PostgreSQL channel operation failed"
+            ) from None
+        return state
+
+    def replace_with_delivery_receipt(
+        self,
+        case_id: UUID,
+        *,
+        expected_revision: int,
+        state: CaseRuntimeState,
+        inbox_event_id: UUID,
+        receipt: DeliveryReceiptRecord,
+        outbox_state: str,
+    ) -> CaseRuntimeState:
+        """CAS Case, append receipt, update Outbox, and mark Inbox atomically."""
+
+        if state.snapshot.case.case_id != case_id:
+            raise CaseConflictError("delivery Case binding does not match")
+        payload = self._encode_state(state)
+        try:
+            with (
+                self._connect() as connection,
+                connection.transaction(),
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(
+                    f"""
+                    SELECT delivery_id, idempotency_key, case_id, binding_ref,
+                           source_event_id, source_command_id, source_case_revision,
+                           source_strategy_id, source_strategy_revision,
+                           source_event_cursor, body, body_hash, state,
+                           provider_message_id, attempt_count, last_failure_category
+                    FROM {_OUTBOX_TABLE}
+                    WHERE delivery_id = %s AND case_id = %s
+                    FOR UPDATE
+                    """,
+                    (receipt.delivery_id, case_id),
+                )
+                outbox_row = cursor.fetchone()
+                if outbox_row is None:
+                    raise CaseNotFoundError("outbox delivery not found")
+                prior_outbox = _outbox_from_row(outbox_row)
+                if prior_outbox.provider_message_id != receipt.provider_message_id:
+                    raise CaseConflictError("delivery provider message changed")
+                if not _delivery_observation_is_monotonic(
+                    prior_outbox.state, outbox_state
+                ):
+                    raise CaseConflictError("delivery observation regressed")
+                cursor.execute(
+                    f"""
+                    SELECT delivery_id, provider_message_id, observation_state,
+                           artifact_hash, observed_at, captured_at, evidence_id
+                    FROM {_DELIVERY_TABLE}
+                    WHERE delivery_id = %s
+                    FOR UPDATE
+                    """,
+                    (receipt.delivery_id,),
+                )
+                prior_receipt_row = cursor.fetchone()
+                prior_receipt = (
+                    _delivery_from_row(prior_receipt_row)
+                    if prior_receipt_row is not None
+                    else None
+                )
+                if prior_receipt is not None and prior_receipt != receipt:
+                    raise CaseConflictError("delivery observation regressed")
+                if prior_receipt is None and prior_outbox.state in {
+                    "delivered",
+                    "bounced",
+                }:
+                    raise CaseConflictError("delivery observation regressed")
+                cursor.execute(
+                    f"""
+                    UPDATE {_TABLE_NAME}
+                    SET revision = %s, payload = %s, updated_at = now()
+                    WHERE case_id = %s AND revision = %s
+                    """,
+                    (
+                        state.snapshot.revision,
+                        Jsonb(payload),
+                        case_id,
+                        expected_revision,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise CaseConflictError("case snapshot revision is stale")
+                cursor.execute(
+                    f"""
+                    UPDATE {_OUTBOX_TABLE}
+                    SET state = %s, provider_message_id = %s,
+                        updated_at = now()
+                    WHERE delivery_id = %s AND case_id = %s
+                    """,
+                    (
+                        outbox_state,
+                        receipt.provider_message_id,
+                        receipt.delivery_id,
+                        case_id,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise CaseNotFoundError("outbox delivery not found")
+                if prior_receipt is None:
+                    cursor.execute(
+                        f"""
+                        INSERT INTO {_DELIVERY_TABLE}
+                            (delivery_id, provider_message_id, observation_state,
+                             artifact_hash, observed_at, captured_at, evidence_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            receipt.delivery_id,
+                            receipt.provider_message_id,
+                            receipt.observation_state,
+                            receipt.artifact_hash,
+                            receipt.observed_at,
+                            receipt.captured_at,
+                            receipt.evidence_id,
+                        ),
+                    )
+                cursor.execute(
+                    f"""
+                    UPDATE {_INBOX_TABLE}
+                    SET processing_state = 'applied'
+                    WHERE channel_kind = %s AND event_id = %s
+                      AND case_id = %s AND processing_state = 'reserved'
+                    """,
+                    (CHANNEL_KIND, inbox_event_id, case_id),
+                )
+                if cursor.rowcount != 1:
+                    raise CaseConflictError("channel inbox reservation is not pending")
+        except (CaseConflictError, CaseNotFoundError):
+            raise
+        except psycopg.errors.UniqueViolation:
+            raise CaseConflictError(
+                "channel delivery observation already exists"
+            ) from None
+        except psycopg.Error:
+            raise StorageUnavailableError(
+                "PostgreSQL channel operation failed"
+            ) from None
+        return state
+
     def _connect(self) -> Any:
         return psycopg.connect(self._database_url, row_factory=tuple_row)
 
@@ -223,6 +795,93 @@ class PostgresCaseRepository:
                                 updated_at timestamptz NOT NULL DEFAULT now()
                             )
                             """
+                )
+                cursor.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS {_BINDINGS_TABLE} (
+                        binding_ref text PRIMARY KEY,
+                        channel_kind text NOT NULL,
+                        case_id uuid NOT NULL UNIQUE,
+                        local_ref text NOT NULL,
+                        remote_ref text NOT NULL,
+                        allowed_directions jsonb NOT NULL,
+                        active boolean NOT NULL,
+                        created_at timestamptz NOT NULL
+                    )
+                    """
+                )
+                cursor.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS {_INBOX_TABLE} (
+                        channel_kind text NOT NULL,
+                        event_id uuid NOT NULL,
+                        payload_hash text NOT NULL,
+                        binding_ref text NOT NULL
+                            REFERENCES {_BINDINGS_TABLE}(binding_ref),
+                        case_id uuid NOT NULL,
+                        command_id uuid NOT NULL UNIQUE,
+                        first_seen_at timestamptz NOT NULL,
+                        event_kind text NOT NULL,
+                        processing_state text NOT NULL,
+                        result jsonb,
+                        PRIMARY KEY (channel_kind, event_id)
+                    )
+                    """
+                )
+                cursor.execute(
+                    f"""
+                    ALTER TABLE {_INBOX_TABLE}
+                    ADD COLUMN IF NOT EXISTS content text
+                    """
+                )
+                cursor.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS {_OUTBOX_TABLE} (
+                        delivery_id uuid PRIMARY KEY,
+                        idempotency_key text NOT NULL UNIQUE,
+                        case_id uuid NOT NULL,
+                        binding_ref text NOT NULL
+                            REFERENCES {_BINDINGS_TABLE}(binding_ref),
+                        source_event_id uuid NOT NULL,
+                        source_command_id uuid NOT NULL,
+                        source_case_revision bigint NOT NULL,
+                        source_strategy_id uuid,
+                        source_strategy_revision bigint NOT NULL,
+                        source_event_cursor bigint NOT NULL,
+                        body text NOT NULL,
+                        body_hash text NOT NULL,
+                        state text NOT NULL,
+                        provider_message_id text,
+                        attempt_count bigint NOT NULL DEFAULT 0,
+                        last_failure_category text,
+                        created_at timestamptz NOT NULL DEFAULT now(),
+                        updated_at timestamptz NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+                cursor.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS {_DELIVERY_TABLE} (
+                        delivery_id uuid NOT NULL
+                            REFERENCES {_OUTBOX_TABLE}(delivery_id),
+                        provider_message_id text NOT NULL,
+                        observation_state text NOT NULL,
+                        artifact_hash text NOT NULL,
+                        observed_at timestamptz NOT NULL,
+                        captured_at timestamptz NOT NULL,
+                        evidence_id uuid NOT NULL,
+                        PRIMARY KEY (
+                            delivery_id, provider_message_id, observation_state
+                        )
+                        )
+                    """
+                )
+                cursor.execute(
+                    f"""
+                    CREATE UNIQUE INDEX IF NOT EXISTS
+                        {_DELIVERY_TABLE}_delivery_id_idx
+                    ON {_DELIVERY_TABLE} (delivery_id)
+                    """
                 )
         except psycopg.Error:
             raise StorageUnavailableError(
@@ -304,6 +963,96 @@ def _verify_provider_state(
         raise ValueError("Provider confirmation does not match the Case snapshot")
     if state.provider.confirmation_evidence != reconstructed.confirmation_evidence:
         raise ValueError("Provider Evidence does not match the Case snapshot")
+
+
+def _binding_from_row(row: tuple[Any, ...]) -> ChannelBindingRecord:
+    directions = row[5]
+    if not isinstance(directions, list) or not all(
+        isinstance(item, str) for item in directions
+    ):
+        raise RuntimeError("stored channel binding directions are invalid")
+    return ChannelBindingRecord(
+        channel_kind=str(row[0]),
+        binding_ref=str(row[1]),
+        case_id=row[2],
+        local_ref=str(row[3]),
+        remote_ref=str(row[4]),
+        allowed_directions=tuple(directions),
+        active=bool(row[6]),
+        created_at=row[7],
+    )
+
+
+def _inbox_from_row(
+    row: tuple[Any, ...], *, deduplicated: bool = False
+) -> InboxReceiptRecord:
+    return InboxReceiptRecord(
+        channel_kind=str(row[0]),
+        event_id=row[1],
+        payload_hash=str(row[2]),
+        binding_ref=str(row[3]),
+        case_id=row[4],
+        command_id=row[5],
+        first_seen_at=row[6],
+        event_kind=str(row[7]),
+        processing_state=str(row[8]),
+        content=row[9],
+        deduplicated=deduplicated,
+    )
+
+
+def _outbox_from_row(row: tuple[Any, ...]) -> OutboxRecord:
+    return OutboxRecord(
+        delivery_id=row[0],
+        idempotency_key=str(row[1]),
+        case_id=row[2],
+        binding_ref=str(row[3]),
+        source_event_id=row[4],
+        source_command_id=row[5],
+        source_case_revision=int(row[6]),
+        source_strategy_id=row[7],
+        source_strategy_revision=int(row[8]),
+        source_event_cursor=int(row[9]),
+        body=str(row[10]),
+        body_hash=str(row[11]),
+        state=str(row[12]),
+        provider_message_id=row[13],
+        attempt_count=int(row[14]),
+        last_failure_category=row[15],
+    )
+
+
+def _delivery_from_row(row: tuple[Any, ...]) -> DeliveryReceiptRecord:
+    return DeliveryReceiptRecord(
+        delivery_id=row[0],
+        provider_message_id=str(row[1]),
+        observation_state=str(row[2]),
+        artifact_hash=str(row[3]),
+        observed_at=row[4],
+        captured_at=row[5],
+        evidence_id=row[6],
+    )
+
+
+def _delivery_observation_is_monotonic(current: str, incoming: str) -> bool:
+    if current == incoming:
+        return True
+    if incoming in {"delivered", "bounced"}:
+        return current not in {"delivered", "bounced"}
+    if current in {"delivered", "bounced", "accepted"}:
+        return False
+    if current == "unknown":
+        return incoming == "accepted"
+    if current == "failed_terminal":
+        return False
+    if current == "failed_retryable":
+        return incoming in {"accepted", "failed_terminal"}
+    return current == "pending" and incoming in {
+        "accepted",
+        "failed_retryable",
+        "failed_terminal",
+        "unknown",
+    }
 
 
 def _reconstruct_provider(envelope: _CaseStorageEnvelope) -> FictionalMobileProvider:
