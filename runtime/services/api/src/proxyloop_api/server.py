@@ -20,7 +20,7 @@ def main() -> None:
     args = parser.parse_args()
     try:
         runtime = runtime_from_environment(mode=args.mode)
-    except ValueError as exc:
+    except (ValueError, RuntimeError) as exc:
         parser.error(str(exc))
     uvicorn.run(create_app(runtime), host=args.host, port=args.port, log_level="error")
 

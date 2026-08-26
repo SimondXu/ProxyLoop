@@ -5,7 +5,7 @@
 	data-pilot data-pilot-check harness harness-check baselines baselines-check \
 	errata errata-check hosted-rerun-source-check hosted-rerun-check \
 	validity-smoke-check phase03b-readiness-check phase03b-experiment-check \
-	lock-check web-check runtime-server dev
+	lock-check postgres-check web-check runtime-server dev
 
 PYTHON_RUN := uv run --project runtime --all-packages
 ML_PYTHON_RUN := uv run --project ml
@@ -29,7 +29,7 @@ ML_PYTHON_PATHS := ml/data_pipeline/src ml/evaluation/src ml/tests \
 	scripts/prepare_phase03b_experiment.py scripts/run_phase03b_smoke.py
 
 help:
-	@printf '%s\n' 'Targets: preflight, preflight-fast, validate, format, format-check, lint, typecheck, test, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, check-layout, lock-check, runtime-server, dev'
+	@printf '%s\n' 'Targets: preflight, preflight-fast, validate, format, format-check, lint, typecheck, test, postgres-check, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, check-layout, lock-check, runtime-server, dev'
 
 preflight: validate lock-check
 	python3 -m compileall -q scripts
@@ -151,6 +151,10 @@ lock-check:
 	uv lock --project runtime --check
 	uv lock --project ml --check
 	pnpm install --lockfile-only --frozen-lockfile --ignore-scripts --offline
+
+postgres-check:
+	@test -n "$(PROXYLOOP_TEST_DATABASE_URL)" || (echo 'PROXYLOOP_TEST_DATABASE_URL is required' >&2; exit 1)
+	PROXYLOOP_TEST_DATABASE_URL="$(PROXYLOOP_TEST_DATABASE_URL)" $(PYTHON_RUN) pytest -c runtime/pyproject.toml -q tests/integration/test_phase_04c_persistent_case_store.py
 
 runtime-server:
 	$(PYTHON_RUN) python -m proxyloop_api.server --host 127.0.0.1 --port 8000

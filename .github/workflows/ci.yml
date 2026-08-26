@@ -11,6 +11,20 @@ permissions:
 jobs:
   phase-gate:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: proxyloop_test
+          POSTGRES_USER: proxyloop
+          POSTGRES_PASSWORD: proxyloop
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U proxyloop -d proxyloop_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,6 +44,10 @@ jobs:
       - run: uv sync --project runtime --all-packages --frozen
       - run: uv sync --project ml --frozen
       - run: make preflight
+      - name: Phase 04C PostgreSQL integration
+        env:
+          PROXYLOOP_TEST_DATABASE_URL: postgresql://proxyloop:proxyloop@127.0.0.1:5432/proxyloop_test
+        run: make postgres-check
       - name: Check committed diff whitespace
         if: github.event_name == 'pull_request'
         run: git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"

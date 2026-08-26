@@ -13,3 +13,20 @@ mode is an explicit opt-in and requires process configuration for
 `PROXYLOOP_MODEL_API_KEY`, `PROXYLOOP_MODEL_BASE_URL`, and
 `PROXYLOOP_MODEL_NAME`; the server never loads `.env` files. Automated tests
 inject a fake transport and do not call an external model.
+
+Storage is independently selected with `PROXYLOOP_STORAGE_MODE=memory` (the
+default) or `PROXYLOOP_STORAGE_MODE=postgres`. PostgreSQL mode requires a
+non-empty `PROXYLOOP_DATABASE_URL` and persists one strict, versioned Case
+aggregate with revision compare-and-swap. Model selection remains independent
+of storage selection.
+
+The disposable integration gate requires an explicit test-only database URL:
+
+```text
+docker compose --profile postgres-test up -d postgres-test
+PROXYLOOP_TEST_DATABASE_URL=postgresql://proxyloop:proxyloop@127.0.0.1:55432/proxyloop_test make postgres-check
+```
+
+The check refuses to run without `PROXYLOOP_TEST_DATABASE_URL`; it verifies
+that the connected database is exactly `proxyloop_test` before cleaning test
+rows.
