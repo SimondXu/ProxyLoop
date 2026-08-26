@@ -46,12 +46,12 @@ flowchart TD
 
 The diagram is a target shape, not an inventory of implemented services. Repository status is:
 
-- **Implemented**: canonical contracts, the fictional Provider simulator, deterministic `agent_core` routing and policy boundaries, a local simulator-backed FastAPI Case loop with memory storage by default, one opt-in PostgreSQL Case aggregate adapter, and one explicitly configured runtime-owned OpenAI-compatible Fast/Slow adapter.
+- **Implemented**: canonical contracts, the fictional Provider simulator, deterministic `agent_core` routing and policy boundaries, a transport-neutral Case application Runtime, a local FastAPI Case adapter with direct memory mode by default, one opt-in PostgreSQL aggregate adapter, one explicitly configured OpenAI-compatible Fast/Slow adapter for direct mode, and one explicit scripted/PostgreSQL Temporal CaseWorkflow mode.
 - **Research-only, not product-runtime serving**: the Phase 02 Data Factory pilot and Phase 03A1 evaluation/baseline runners and artifacts.
 - **Implemented bounded local slice**: `apps/web` keeps conversation as the primary workspace and calls the existing local FastAPI Thin Runtime through one Next rewrite and one narrow runtime client. It renders Runtime-derived Case facts, one offer, exact approval pins, and a receipt only after the completion Evidence predicate passes.
-- **Target/deferred**: normalized production data models and migrations, Temporal workflow workers, real-effect outbox/reconciliation, external connectors, voice, promoted-model serving, authentication, channels, production UI, deployment, and release remain separately gated. This local slice does not make a production Pine clone claim.
+- **Target/deferred**: normalized production data models and migrations, real-effect outbox/reconciliation, external connectors, voice, promoted-model serving, authentication, channels, production UI, deployment, and release remain separately gated. This local slice does not make a production Pine clone claim.
 
-The current research runtime uses an in-memory Case repository by default and may explicitly opt into a synchronous PostgreSQL adapter that stores one strict, versioned JSONB aggregate with revision compare-and-swap. It still bypasses Temporal, Gmail, MCP, and LiveKit. Its restart and recovery claims apply only to the deterministic fictional Provider; it does not claim exactly-once real external effects. The Fast/Slow contracts preserve a later bounded concurrent path without claiming production durable execution today. The API also exposes process-only liveness, read-only local storage readiness, and one allowlisted operation record per HTTP operation through non-retaining JSON structured logging by default; scripted/model and memory/PostgreSQL selection remain explicit and never fall back automatically.
+The current research runtime uses an in-memory Case repository in default direct mode and may explicitly opt into a synchronous PostgreSQL adapter that stores one strict, versioned JSONB aggregate with revision compare-and-swap. A separate explicit Temporal mode requires scripted decisions and PostgreSQL; it durably orders commands, waits, timers, retries, worker recovery, and Continue-As-New while PostgreSQL remains the only business truth. The slice still bypasses Gmail, MCP, and LiveKit. Its idempotency and recovery claims apply only to the deterministic fictional Provider; it does not claim exactly-once real external effects. Configuration never falls back automatically.
 
 ## Architectural Layers
 
@@ -63,22 +63,22 @@ The current research runtime uses an in-memory Case repository by default and ma
 
 ### Control Plane
 
-- Current `runtime/services/api`: FastAPI endpoints and `ThinAgentRuntime`, which compose the local synchronous Case loop, memory/PostgreSQL repository adapters, approvals, simulator execution, Evidence, and completion verification.
+- Current `runtime/services/api`: FastAPI endpoints, readiness, and operation observation. It directly invokes the shared Case Runtime by default and dispatches POST commands through Temporal only in explicit Temporal mode; GET remains a PostgreSQL projection.
 - Current endpoints validate request and domain input against versioned contracts before applying local state transitions.
 - In the target system, this layer becomes the authentication and webhook boundary and delegates long-running model or channel work outside HTTP requests.
 
 ### Durable Orchestration
 
-- Target `runtime/services/workflow_worker`: Temporal workflows and activities.
-- Workflow responsibility: case phase, timers, signals, retries, approval waits, cancellation, and continue-as-new policy.
-- Activity responsibility: model calls, Postgres operations, email operations, provider simulation, and telephony.
+- Current bounded `runtime/services/workflow_worker`: one scripted fictional-Provider `CaseWorkflow`, PostgreSQL activity adapter, Update-with-Start client, readiness, and worker entry point.
+- Workflow responsibility in this slice: command ordering, approval wait/expiry timer, bounded retry, worker recovery, and Continue-As-New control state.
+- Activity responsibility in this slice: invoke the shared application Runtime against PostgreSQL and the deterministic fictional Provider. Real model, email, provider, and telephony activities remain deferred.
 - Temporal history is not the authoritative business database.
 
 ### Agent Intelligence
 
 - Current `runtime/packages/agent_core`: model-decision coordination, Case-context projections, deterministic Router, Safe Observation Adapter, policy and capability gates, strategy validation, stale-result handling, fact-update validation, and completion-candidate validation.
 - Current `runtime/packages/openai_adapter`: one concrete OpenAI-compatible Structured Outputs implementation of the existing typed Fast and Slow protocols. It compiles semantic model output against trusted pins and remains proposal-only; it is not a provider registry or generic gateway.
-- Current `runtime/services/api.ThinAgentRuntime`: owns the complete local application loop around `agent_core`. Extract a transport-neutral application-runtime seam only when a second transport or durable worker needs to reuse that loop; moving it now would add a boundary without a second consumer.
+- Current `runtime/packages/case_runtime`: owns the complete transport-neutral application loop, repository interfaces/adapters, command receipts, expiry transition, and current-result projection used by both API and Temporal activity. API compatibility modules re-export the prior imports.
 - A later deployment may extract model serving behind a process boundary, but it must preserve the same typed protocols. No model SDK or serving process owns workflow durability, authorization, side effects, Evidence, or business state.
 
 ### Provider and Channel Layer
@@ -218,7 +218,7 @@ All mutable objects use optimistic versions. An approval is valid only for the e
 
 | State | Authoritative owner | Notes |
 |---|---|---|
-| Cases, constraints, offers, approvals, evidence, fact ledger, event log, context projection | Local memory store by default; opt-in PostgreSQL versioned aggregate for the fictional Runtime slice | Business source of truth and audit surface. Supplies immutable snapshots and event cursors; models cannot mutate it. Production normalization, migrations, outbox, and workflow-event integration remain deferred. |
+| Cases, constraints, offers, approvals, evidence, command receipts, fact ledger, event log, context projection | Local memory store in default direct mode; PostgreSQL versioned aggregate in explicit Temporal mode | Business source of truth and audit surface. Temporal carries only compact transition references. Production normalization, migrations, and outbox remain deferred. |
 | Timers, retries, waits, workflow phase | Temporal | Stores IDs and control state, not a second business database. |
 | Provider simulator episode | Simulator store | Resettable and versioned per benchmark episode. |
 | Raw/curated datasets, audio, checkpoints | Object storage | Addressed by immutable manifest and content hash. |
@@ -267,8 +267,8 @@ Phase 02 validated only ingestion, normalization, curation, and export plumbing 
 - Model output never bypasses deterministic authorization and disclosure gates.
 - Model output with stale context or planning-basis pins is never delivered, merged, or executed.
 - The capability manifest is the sole advertised action vocabulary; unavailable MCP/channel capabilities cannot appear in accepted model work.
-- Side-effecting activities require an outbox record, provider event ID when available, and an idempotency key.
-- Temporal retries must not create duplicate emails, calls, approvals, plan changes, or credits.
+- Real side-effecting activities require an outbox record, provider event ID when available, and an idempotency key; that mechanism remains deferred.
+- Phase 05A Temporal retries use PostgreSQL command receipts to avoid duplicate fictional-Provider execution, approvals, and Evidence. No equivalent real-effect exactly-once claim is made.
 - A stale strategy or approval cannot authorize a changed offer.
 - Fast Model completion is always a candidate; the external verifier has final authority.
 - Production feedback enters a quarantine/review queue and never flows directly into training.

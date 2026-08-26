@@ -1,7 +1,7 @@
 """FastAPI entry point for ProxyLoop's Phase 04A thin runtime."""
 
 from .app import app, create_app
-from .config import runtime_from_environment
+from .config import RuntimeServices, runtime_from_environment, services_from_environment
 from .operations import (
     CORRELATION_ID_HEADER,
     OPERATION_RECORD_FIELDS,
@@ -47,6 +47,7 @@ __all__ = [
     "ReadinessResult",
     "RuntimeProfile",
     "RuntimeResult",
+    "RuntimeServices",
     "StorageMode",
     "StorageUnavailableError",
     "ThinAgentRuntime",
@@ -54,4 +55,5 @@ __all__ = [
     "check_readiness",
     "create_app",
     "runtime_from_environment",
+    "services_from_environment",
 ]

@@ -28,6 +28,11 @@ ERROR_CATEGORIES = frozenset(
         "request_invalid",
         "stale_cas",
         "case_conflict",
+        "approval_expired",
+        "invalid_command",
+        "state_invalid",
+        "model_path",
+        "temporal_unavailable",
         "dependency_not_ready",
         "internal_error",
     }

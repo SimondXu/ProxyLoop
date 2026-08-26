@@ -4,15 +4,31 @@ from __future__ import annotations
 
 from contextlib import suppress
 from time import perf_counter
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from proxyloop_case_runtime import (
+    SCRIPTED_CASE_ID,
+    CaseCommandType,
+    CaseConflictError,
+    CaseNotFoundError,
+    CaseTransitionRef,
+    ModelRuntimeError,
+    RuntimeResult,
+    StorageUnavailableError,
+    ThinAgentRuntime,
+)
 from proxyloop_contracts import Money
 from proxyloop_openai_adapter import OpenAICompatibleAdapterError
+from proxyloop_workflow_worker import (
+    CaseCommandRequest,
+    TemporalDispatchError,
+    TemporalReadinessResult,
+)
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .operations import (
@@ -22,12 +38,12 @@ from .operations import (
     OperationRecorder,
 )
 from .readiness import check_readiness, liveness_payload, readiness_payload
-from .repository import (
-    CaseConflictError,
-    CaseNotFoundError,
-    StorageUnavailableError,
-)
-from .runtime import ModelRuntimeError, RuntimeResult, ThinAgentRuntime
+
+
+class TemporalCommandClient(Protocol):
+    async def apply_command(self, command: CaseCommandRequest) -> CaseTransitionRef: ...
+
+    async def check_readiness(self) -> TemporalReadinessResult: ...
 
 
 class EventCommand(BaseModel):
@@ -90,6 +106,7 @@ def create_app(
     runtime: ThinAgentRuntime | None = None,
     *,
     recorder: OperationRecorder | None = None,
+    temporal_client: TemporalCommandClient | None = None,
 ) -> FastAPI:
     service = runtime if runtime is not None else ThinAgentRuntime()
     operation_recorder = (
@@ -184,30 +201,118 @@ def create_app(
             },
         )
 
+    @api.exception_handler(TemporalDispatchError)
+    async def handle_temporal_error(
+        request: Request, exc: TemporalDispatchError
+    ) -> JSONResponse:
+        category = exc.category
+        request.state.operation_error_category = category
+        if category == "case_not_found":
+            return JSONResponse(status_code=404, content={"detail": "case not found"})
+        if category in {"case_conflict", "approval_expired"}:
+            return JSONResponse(status_code=409, content={"detail": category})
+        if category == "invalid_command":
+            return JSONResponse(
+                status_code=422,
+                content={"detail": {"code": category, "message": "command rejected"}},
+            )
+        if category == "state_invalid":
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "detail": {
+                        "code": category,
+                        "message": "stored Case state failed validation",
+                    }
+                },
+            )
+        if category == "model_path":
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "detail": {
+                        "code": category,
+                        "message": "model execution is unavailable in Temporal mode",
+                    }
+                },
+            )
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": {
+                    "code": "temporal_unavailable",
+                    "message": "orchestration dependency unavailable",
+                }
+            },
+        )
+
     @api.get("/health/live")
     def health_live(request: Request) -> dict[str, object]:
         request.state.operation_name = "health_live"
-        return liveness_payload(service)
+        payload = liveness_payload(service)
+        if temporal_client is not None:
+            payload["orchestration_mode"] = "temporal"
+        return payload
 
     @api.get("/health/ready")
-    def health_ready(request: Request) -> JSONResponse:
+    async def health_ready(request: Request) -> JSONResponse:
         request.state.operation_name = "health_ready"
         result = check_readiness(service)
         if not result.ready:
             request.state.operation_error_category = result.error_category
-        return JSONResponse(
-            status_code=200 if result.ready else 503,
-            content=readiness_payload(service, result),
-        )
+            return JSONResponse(
+                status_code=503,
+                content=readiness_payload(service, result),
+            )
+        payload = readiness_payload(service, result)
+        if temporal_client is None:
+            return JSONResponse(status_code=200, content=payload)
+        temporal_result = await temporal_client.check_readiness()
+        payload["orchestration_mode"] = "temporal"
+        payload["dependency"] = temporal_result.dependency
+        if not temporal_result.ready:
+            request.state.operation_error_category = temporal_result.error_category
+            payload.update(
+                {
+                    "status": "unavailable",
+                    "ready": False,
+                    "detail": {
+                        "code": "dependency_not_ready",
+                        "message": "configured dependency is not ready",
+                    },
+                }
+            )
+            return JSONResponse(status_code=503, content=payload)
+        return JSONResponse(status_code=200, content=payload)
 
     @api.post("/cases", status_code=201)
-    def create_case(request: Request, command: CreateCaseRequest) -> dict[str, Any]:
-        result = service.create_case(
-            current_monthly_total=command.current_monthly_total,
-            target_monthly_total=command.target_monthly_total,
-            mobile_hotspot_required=command.mobile_hotspot_required,
-            device_financing_change_forbidden=command.device_financing_change_forbidden,
-        )
+    async def create_case(
+        request: Request, command: CreateCaseRequest
+    ) -> dict[str, Any]:
+        if temporal_client is None:
+            result = service.create_case(
+                current_monthly_total=command.current_monthly_total,
+                target_monthly_total=command.target_monthly_total,
+                mobile_hotspot_required=command.mobile_hotspot_required,
+                device_financing_change_forbidden=(
+                    command.device_financing_change_forbidden
+                ),
+            )
+        else:
+            transition = await temporal_client.apply_command(
+                CaseCommandRequest(
+                    command_id=_command_id(request),
+                    case_id=SCRIPTED_CASE_ID,
+                    command_type=CaseCommandType.CREATE_CASE,
+                    current_monthly_total=command.current_monthly_total,
+                    target_monthly_total=command.target_monthly_total,
+                    mobile_hotspot_required=command.mobile_hotspot_required,
+                    device_financing_change_forbidden=(
+                        command.device_financing_change_forbidden
+                    ),
+                )
+            )
+            result = service.current_result(SCRIPTED_CASE_ID, transition=transition)
         _annotate_result(request, result)
         return _result_payload(result)
 
@@ -234,40 +339,88 @@ def create_app(
         return _result_payload(result)
 
     @api.post("/cases/{case_id}/events")
-    def append_event(
+    async def append_event(
         request: Request,
         command: EventCommand,
         case_id: UUID,
     ) -> dict[str, Any]:
-        result = service.append_event(
-            case_id,
-            content=command.content,
-            event_type=command.event_type,
-            expected_revision=command.expected_revision,
-        )
+        if temporal_client is None:
+            result = service.append_event(
+                case_id,
+                content=command.content,
+                event_type=command.event_type,
+                expected_revision=command.expected_revision,
+            )
+        else:
+            transition = await temporal_client.apply_command(
+                CaseCommandRequest(
+                    command_id=_command_id(request),
+                    case_id=case_id,
+                    command_type=CaseCommandType.APPEND_EVENT,
+                    content=command.content,
+                    event_type=command.event_type,
+                    expected_revision=command.expected_revision,
+                )
+            )
+            result = service.current_result(case_id, transition=transition)
         _annotate_result(request, result)
         return _result_payload(result)
 
     @api.post("/cases/{case_id}/approvals/{approval_id}")
-    def decide_approval(
+    async def decide_approval(
         request: Request,
         command: ApprovalCommand,
         case_id: UUID,
         approval_id: UUID,
     ) -> dict[str, Any]:
-        result = service.approve(
-            case_id,
-            approval_id,
-            decision=command.decision,
-            expected_revision=command.expected_revision,
-            expected_case_revision=command.expected_case_revision,
-            expected_action_intent_revision=command.expected_action_intent_revision,
-        )
+        if temporal_client is None:
+            result = service.approve(
+                case_id,
+                approval_id,
+                decision=command.decision,
+                expected_revision=command.expected_revision,
+                expected_case_revision=command.expected_case_revision,
+                expected_action_intent_revision=(
+                    command.expected_action_intent_revision
+                ),
+            )
+        else:
+            transition = await temporal_client.apply_command(
+                CaseCommandRequest(
+                    command_id=_command_id(request),
+                    case_id=case_id,
+                    command_type=CaseCommandType.DECIDE_APPROVAL,
+                    approval_id=approval_id,
+                    decision=command.decision,
+                    expected_revision=command.expected_revision,
+                    expected_case_revision=command.expected_case_revision,
+                    expected_action_intent_revision=(
+                        command.expected_action_intent_revision
+                    ),
+                )
+            )
+            result = service.current_result(case_id, transition=transition)
         _annotate_result(request, result)
         return _result_payload(result)
 
     api.state.operation_recorder = operation_recorder
+    api.state.orchestration_mode = (
+        "temporal" if temporal_client is not None else "direct"
+    )
     return api
+
+
+def _command_id(request: Request) -> UUID:
+    value = request.headers.get("Idempotency-Key")
+    if value is None:
+        return uuid4()
+    try:
+        parsed = UUID(value)
+    except ValueError as exc:
+        raise TemporalDispatchError("invalid_command") from exc
+    if parsed.version != 4 or str(parsed) != value:
+        raise TemporalDispatchError("invalid_command")
+    return parsed
 
 
 def _annotate_result(request: Request, result: RuntimeResult) -> None:
