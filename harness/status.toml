@@ -4,13 +4,13 @@ active_product_phase = ""
 active_contract = ""
 next_phase_authorized = false
 integration_baseline = "main"
-updated_at = "2026-08-26"
+updated_at = "2026-09-21"
 
 [boundaries]
-summary = "Phase 07A reproducible local portfolio demo is complete locally and independently approved. Phase 06B2, full Phase 07, and every real channel remain unauthorized."
+summary = "Phase 03C Stage 0 (evaluator fix and untuned Qwen3-8B re-baseline) is complete locally and independently approved; see harness/log/phase-03c-stage0-rebaseline.md. Phase 03C Stage 1 hosted spend, Stage 2 cloud GPU training, Phase 06B2, full Phase 07, and every real channel remain unauthorized."
 inactive = [
   "Phase 03A1 continuation or r6/r7",
-  "additional model training, data expansion, rerun, or promotion",
+  "any model training, data expansion, or promotion; Phase 03A1/03B artifact rewrites (Stage 0 writes only new phase-03c artifacts)",
   "PostgreSQL work beyond the completed Phase 06B1 and Phase 07A local demo state",
   "promoted-model serving, real-model load, OOM, production p95, or automatic fallback work",
   "Temporal work beyond the completed Phase 06B1 behavior and Phase 07A local recovery demonstration",
