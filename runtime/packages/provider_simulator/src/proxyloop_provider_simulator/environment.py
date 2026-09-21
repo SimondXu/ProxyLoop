@@ -14,14 +14,11 @@ from proxyloop_telecom_domain import (
 
 from .scenarios import (
     CASE_CURRENCY,
-    CASE_CURRENT_MONTHLY_TOTAL_MINOR,
-    CASE_FORBIDDEN_CHANGES,
-    CASE_REQUIRED_FEATURES,
-    CASE_TARGET_MONTHLY_TOTAL_MINOR,
     BenchmarkScenario,
     ProviderTurn,
     PublicOffer,
     ScenarioAction,
+    ScenarioParameters,
 )
 
 
@@ -200,7 +197,11 @@ class ProviderEnvironment:
             reasons.append("offer_reference_mismatch")
         if offer is not None:
             reasons.extend(
-                _offer_constraint_violations(offer, observed_at=turn.observed_at)
+                _offer_constraint_violations(
+                    offer,
+                    params=self._scenario.parameters,
+                    observed_at=turn.observed_at,
+                )
             )
         if not turn.confirmation_evidence_available:
             reasons.append("confirmation_evidence_missing")
@@ -235,16 +236,16 @@ def _normalise_action(action: EnvironmentAction | str) -> EnvironmentAction | No
 
 
 def _offer_constraint_violations(
-    offer: PublicOffer, *, observed_at: datetime
+    offer: PublicOffer, *, params: ScenarioParameters, observed_at: datetime
 ) -> list[str]:
     context = OfferComplianceContext(
         evaluated_at=observed_at,
-        current_monthly_minor=CASE_CURRENT_MONTHLY_TOTAL_MINOR,
+        current_monthly_minor=params.current_monthly_minor,
         currency=CASE_CURRENCY,
-        target_monthly_minor=CASE_TARGET_MONTHLY_TOTAL_MINOR,
+        target_monthly_minor=params.target_monthly_minor,
         target_currency=CASE_CURRENCY,
-        required_features=CASE_REQUIRED_FEATURES,
-        forbidden_changes=CASE_FORBIDDEN_CHANGES,
+        required_features=params.required_features,
+        forbidden_changes=params.forbidden_changes,
     )
     terms = OfferComplianceTerms(
         monthly_price_minor=offer.monthly_price_minor,
