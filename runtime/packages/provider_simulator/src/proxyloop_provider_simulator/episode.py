@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -35,6 +36,7 @@ from proxyloop_telecom_domain import (
 )
 
 from .provider import FictionalMobileProvider, OfferState
+from .scenarios import DEFAULT_PARAMS, ScenarioParameters
 
 CASE_CREATED_AT = datetime(2026, 8, 23, 12, 0, tzinfo=UTC)
 OFFER_ISSUED_AT = datetime(2026, 8, 23, 12, 1, tzinfo=UTC)
@@ -254,8 +256,26 @@ def run_success_episode() -> EpisodeResult:
     return episode.result()
 
 
-def _build_case() -> Case:
+_FROZEN_DESIRED_OUTCOME = (
+    "Reduce the recurring bill without losing mobile hotspot access."
+)
+_ADD_ON_LINE_MINOR = 1_000
+
+
+def build_case(params: ScenarioParameters) -> Case:
+    """Build the public consumer Case for one scenario parameter set.
+
+    ``build_case(DEFAULT_PARAMS)`` reproduces the frozen Phase 01A fixture
+    exactly; other parameters keep the same identifiers and timestamps and
+    only change the goal, constraints, and bill amounts.
+    """
+
     case_id = UUID("11111111-1111-4111-8111-111111111111")
+    if params == DEFAULT_PARAMS:
+        desired_outcome = _FROZEN_DESIRED_OUTCOME
+    else:
+        feature = params.required_features[0].replace("_", " ")
+        desired_outcome = f"Reduce the recurring bill without losing {feature}."
     return Case(
         contract_type="case",
         schema_version="1.0",
@@ -274,27 +294,15 @@ def _build_case() -> Case:
             revision=1,
             created_at=CASE_CREATED_AT,
             updated_at=CASE_CREATED_AT,
-            desired_outcome=(
-                "Reduce the recurring bill without losing mobile hotspot access."
+            desired_outcome=desired_outcome,
+            target_monthly_total=Money(
+                amount_minor=params.target_monthly_minor, currency="USD"
             ),
-            target_monthly_total=Money(amount_minor=7500, currency="USD"),
-            required_features=("mobile_hotspot",),
-            forbidden_changes=("device_financing_change",),
+            required_features=params.required_features,
+            forbidden_changes=params.forbidden_changes,
             deadline=datetime(2026, 9, 1, 12, 0, tzinfo=UTC),
         ),
-        constraints=(
-            Constraint(
-                contract_type="constraint",
-                schema_version="1.0",
-                constraint_id=UUID("44444444-4444-4444-8444-444444444444"),
-                case_id=case_id,
-                revision=1,
-                classification=ConstraintClassification.HARD,
-                statement="Do not change device financing.",
-                source="consumer_input",
-                valid_from=CASE_CREATED_AT,
-            ),
-        ),
+        constraints=_hard_constraints(params, case_id),
         delegated_authority=DelegatedAuthority(
             allowed_actions=(ActionType.SEND_MESSAGE, ActionType.REQUEST_CLARIFICATION),
             approval_required_actions=(ActionType.ACCEPT_OFFER,),
@@ -307,19 +315,10 @@ def _build_case() -> Case:
             case_id=case_id,
             revision=1,
             captured_at=CASE_CREATED_AT,
-            monthly_total=Money(amount_minor=9200, currency="USD"),
-            line_items=(
-                LineItem(
-                    name="Postpaid mobile service",
-                    category=LineItemCategory.SERVICE,
-                    amount=Money(amount_minor=8200, currency="USD"),
-                ),
-                LineItem(
-                    name="Premium data add-on",
-                    category=LineItemCategory.ADDON,
-                    amount=Money(amount_minor=1000, currency="USD"),
-                ),
+            monthly_total=Money(
+                amount_minor=params.current_monthly_minor, currency="USD"
             ),
+            line_items=_bill_line_items(params.current_monthly_minor),
             add_ons=("premium_data",),
             term_months=0,
             usage=UsageProfile(
@@ -330,3 +329,68 @@ def _build_case() -> Case:
             evidence_ids=(UUID("66666666-6666-4666-8666-666666666666"),),
         ),
     )
+
+
+_FROZEN_CONSTRAINT_ID = UUID("44444444-4444-4444-8444-444444444444")
+_CONSTRAINT_STATEMENTS = {
+    "device_financing_change": "Do not change device financing.",
+    "contract_term_extension": "Do not extend the contract term.",
+}
+
+
+def _hard_constraints(
+    params: ScenarioParameters, case_id: UUID
+) -> tuple[Constraint, ...]:
+    """One HARD constraint per forbidden change; the default keeps the frozen id."""
+
+    return tuple(
+        Constraint(
+            contract_type="constraint",
+            schema_version="1.0",
+            constraint_id=(
+                _FROZEN_CONSTRAINT_ID
+                if params == DEFAULT_PARAMS
+                else _stable_uuid4(f"constraint:{params.seed}:{token}")
+            ),
+            case_id=case_id,
+            revision=1,
+            classification=ConstraintClassification.HARD,
+            statement=_CONSTRAINT_STATEMENTS.get(
+                token, f"Do not apply the change: {token.replace('_', ' ')}."
+            ),
+            source="consumer_input",
+            valid_from=CASE_CREATED_AT,
+        )
+        for token in params.forbidden_changes
+    )
+
+
+def _stable_uuid4(value: str) -> UUID:
+    raw = bytearray(hashlib.sha256(value.encode("utf-8")).digest()[:16])
+    raw[6] = (raw[6] & 0x0F) | 0x40
+    raw[8] = (raw[8] & 0x3F) | 0x80
+    return UUID(bytes=bytes(raw))
+
+
+def _bill_line_items(current_monthly_minor: int) -> tuple[LineItem, ...]:
+    """Split the monthly total into service plus the premium data add-on."""
+
+    return (
+        LineItem(
+            name="Postpaid mobile service",
+            category=LineItemCategory.SERVICE,
+            amount=Money(
+                amount_minor=current_monthly_minor - _ADD_ON_LINE_MINOR,
+                currency="USD",
+            ),
+        ),
+        LineItem(
+            name="Premium data add-on",
+            category=LineItemCategory.ADDON,
+            amount=Money(amount_minor=_ADD_ON_LINE_MINOR, currency="USD"),
+        ),
+    )
+
+
+def _build_case() -> Case:
+    return build_case(DEFAULT_PARAMS)

@@ -1,0 +1,33 @@
+{
+  "schema_version": "phase-03c-scenario-invariants-v1",
+  "seed_range": {
+    "first": 1,
+    "last": 1000,
+    "count": 1000
+  },
+  "total_instances": 32000,
+  "accepted_count": 32000,
+  "quarantined_count": 0,
+  "family_counts": {
+    "absent-evidence": 2000,
+    "add-on-removal": 2000,
+    "clarification-required": 2000,
+    "direct-success": 2000,
+    "disclosure-restriction": 2000,
+    "expired-approval": 2000,
+    "fee-total-cost-trap": 2000,
+    "forbidden-term": 2000,
+    "forged-evidence": 2000,
+    "multi-hazard": 2000,
+    "plan-change": 2000,
+    "promotion-credit": 2000,
+    "refusal-transfer": 2000,
+    "required-feature-loss": 2000,
+    "revised-offer": 2000,
+    "unsupported-action": 2000
+  },
+  "reason_counts": {},
+  "quarantined": [],
+  "content_fingerprint": "77d6df417bd4b15475069a2c6b86afe9b232fd8f582ca2d52405c589b20a0caf",
+  "parameters_fingerprint": "41390f7c61ae600eef732edaf0ff1994f98f75db99b7331199ddca7cd6cc0b14"
+}
