@@ -1,4 +1,4 @@
-# Phase 07A portfolio evidence
+# Portfolio demo (Phase 07A)
 
 This page is the evidence-backed portfolio narrative for the bounded local
 demo. The resume bullets remain wording drafts; their named local checks and
@@ -23,6 +23,56 @@ independent review passed.
 
 These drafts do not claim production scale, real-channel delivery, promoted
 models, or exactly-once external effects.
+
+## Running the demo
+
+Prerequisites are Docker with Compose, `uv`, `pnpm`, and the repository's
+installed dependencies. The demo uses only loopback ports, the repository's
+local PostgreSQL fixture credentials, the deterministic scripted Runtime, the
+synthetic mailbox, and the fictional Provider simulator. It does not download
+or call a model and does not contact Gmail, Voice, or an external Provider.
+
+```text
+make portfolio-demo
+```
+
+starts the Compose PostgreSQL and Temporal server (project name
+`proxyloop-portfolio-demo`), then the host workflow worker, the FastAPI
+Runtime, and a production build of the Next.js Web app. Startup prints the Web
+URL, Runtime readiness URL, Temporal address, log directory, stop command, and
+the fixed scene order. In the reference run the services bound PostgreSQL on
+55433, Temporal on 7234, Runtime on 8000, and Web on 3000.
+
+1. **Scene A** — use the Web conversation to confirm the four telecom facts,
+   approve the exact offer, and observe one fictional Provider execution and
+   authoritative completion Evidence.
+2. Stop and reset (`make portfolio-demo-reset`), then restart
+   `make portfolio-demo` so Scene B starts from fresh state. Reset prints its
+   scope before removing only the `proxyloop-portfolio-demo_postgres-data`
+   volume.
+3. **Scene B** — from a second terminal run `make portfolio-demo-channel`. It
+   creates a fresh scripted Case, posts the signed raw-byte `local_mailbox`
+   fixture, replays it exactly, observes one accepted synthetic delivery,
+   posts the delivered callback, and verifies browser-projection isolation
+   from PostgreSQL authority.
+
+Expected Scene B results: one server-correlated inbox identity, one outbox
+delivery identity, exact duplicate deduplication, one accepted synthetic
+Provider reference, one delivered callback/receipt, two authoritative channel
+Evidence records, and no channel content, provider reference, or artifact hash
+in the browser Case projection.
+
+`make portfolio-demo-stop` is bounded and preserves PostgreSQL data.
+`make portfolio-demo-recovery` reuses the accepted Phase 06B1
+lost-response/idempotent retry path against PostgreSQL and Temporal; it needs
+the primary Temporal service from `make portfolio-demo` and creates and stops
+only the temporary `postgres-test` service.
+
+Troubleshooting: if startup reports an unavailable port or dependency, inspect
+the printed log directory and
+`docker compose --project-name proxyloop-portfolio-demo ps`, then run
+`make portfolio-demo-stop` before retrying. If Scene B reports that state is
+not fresh, stop/reset, restart `make portfolio-demo`, and rerun Scene B.
 
 ## Demo narration
 

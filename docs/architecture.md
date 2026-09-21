@@ -123,7 +123,7 @@ Slow may also return bounded clarification, escalation, capability, or Action In
 
 ### Fast Response Model
 
-The Fast Response Model is the only model the project intends to train; training has not started. The initial checkpoint is `Qwen/Qwen3-4B-Instruct-2507`, used in its native non-thinking mode. It receives a safe, bounded view:
+The Fast Response Model is the only model the project intends to train. One bounded Phase 03B QLoRA smoke ran on it and returned `NO_GO_STOP_PHASE03B`; no promoted or production checkpoint exists, and the serving path currently uses either the deterministic scripted policy or an untuned OpenAI-compatible endpoint in explicit model mode. The initial checkpoint was `Qwen/Qwen3-4B-Instruct-2507` in its native non-thinking mode; the prepared Phase 03C redo targets `Qwen/Qwen3-8B` with non-thinking mode forced (`docs/decisions/2026-08-22-implementation-defaults.md`, amendment 2026-09-21). It receives a safe, bounded view:
 
 - consumer brief;
 - current valid `StrategyPacket`;

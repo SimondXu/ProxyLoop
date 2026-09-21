@@ -28,7 +28,7 @@ Included in the staged roadmap:
 - LFM2.5-2.6B and smaller/larger Qwen checkpoints as benchmark challengers where defined;
 - hosted Slow Reasoner behind a typed adapter;
 - simulator, data factory, SFT/QLoRA, evaluation, serving, control plane, durable workflow, and controlled demo channels;
-- a later approval/timeline UI after the core contracts, simulator, and evaluation path exist.
+- a bounded local conversation UI (delivered as the Next.js Web demo, intake UX, and Phase 06A durable resume); production UI remains gated.
 
 ## Non-Goals
 

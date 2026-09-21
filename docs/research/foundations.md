@@ -27,19 +27,17 @@
 
 ## Technical Decisions
 
-| Decision | Rationale |
-|---|---|
-| Monorepo | The simulator, contracts, dataset builders, model service, workflow worker, API, and web UI share schemas and evaluation fixtures. Atomic changes and one CI graph outweigh the cost at this team size. |
-| `uv` for Python and `pnpm` for TypeScript | Keeps native package managers for each ecosystem and avoids forcing Python into a JavaScript-oriented build system. |
-| Root `Makefile` plus Docker Compose | Provides a small cross-language command surface and reproducible local infrastructure without introducing Nx/Turborepo prematurely. |
-| Python-first domain core | The simulator, training, evaluation, agent policy, API, and Temporal SDK are all Python-centric. |
-| Generated frontend API types | Pydantic/OpenAPI remains the backend contract source; TypeScript clients are generated rather than duplicated by hand. |
-| Fast checkpoint: `Qwen/Qwen3-4B-Instruct-2507` | The official checkpoint is 4B, Apache-2.0, non-thinking-only, and directly documented for vLLM/SGLang serving. A project-owned smoke benchmark still decides whether it meets policy and latency gates. |
-| Canonical QLoRA target: one 24GB CUDA GPU | Start with an 8K training sequence cap and 4-bit QLoRA; move to 48GB only after a measured OOM or throughput failure. MLX-LM remains a local M4 Pro smoke path. |
-| Slow Reasoner: OpenAI `gpt-5.6-terra` | Current OpenAI guidance positions Terra as the intelligence/cost balance; it supports reasoning control, structured outputs, and function calling. The gateway remains provider-neutral. |
-| MLflow OSS | Local/self-hosted tracking and registry make the ML lifecycle reproducible without making a hosted SaaS account part of the demo. |
-| Canonical serving runtime: vLLM | Use vLLM for the Linux/CUDA deployment and its OpenAI-compatible structured outputs. SGLang is not maintained in v1; Apple-local serving is a development adapter, not the promoted runtime. |
-| Immutable data manifests and object storage | Dataset/model lineage matters more than adopting multiple overlapping data tools at the start. |
+The decisions originally tabulated here (monorepo, `uv`/`pnpm`, Makefile plus
+Compose, Python-first core, generated frontend types, Qwen3-4B Fast
+checkpoint, 24GB QLoRA target, `gpt-5.6-terra` Slow Reasoner, MLflow OSS,
+vLLM, immutable manifests) are recorded once, with rationale and status, in
+the dated ADRs:
+
+- [`docs/decisions/2026-08-21-monorepo.md`](../decisions/2026-08-21-monorepo.md)
+- [`docs/decisions/2026-08-22-implementation-defaults.md`](../decisions/2026-08-22-implementation-defaults.md)
+
+Those files are authoritative; this document keeps only the research findings
+and resources that fed them.
 
 ## Issues Encountered
 

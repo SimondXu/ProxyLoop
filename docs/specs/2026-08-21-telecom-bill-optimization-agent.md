@@ -252,6 +252,8 @@ Also record a frontier-only upper-cost baseline and a scripted/oracle environmen
 
 ## Delivery Plan
 
+> Historical. The phase numbering below is the original 2026-08-21 proposal. The executed phase index (00A/00B, 01A/01B, 02, 03A0, 03A1-*, 03B, 04A–04D, 05A, 06A/06B1, 07A) and current gate state live in `PLANS.md` and `harness/status.toml`; where they differ, those files win.
+
 ### Phase 0: Repository and Contracts — 3–5 days
 
 Deliverables:

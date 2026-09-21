@@ -1,188 +1,112 @@
 # Progress Log
 
-## Session: 2026-08-21
+Concise chronological record of what has been delivered, keyed to merged PRs.
+Live authorization state is `harness/status.toml`; the phase index and gate
+artifacts are `PLANS.md`; per-phase verification evidence is `harness/log/`
+(Phase 04C onward) and `harness/build-log.md` (earlier phases). This file does
+not restate those; it answers "where are we and how did we get here".
 
-### Phase 1: Requirements and Evidence Consolidation
+## Current state (checked 2026-09-21)
 
-- **Status:** complete
-- Actions taken:
-  - Consolidated prior Pine capability, open-source, tau2, data, Fast/Slow, workflow, and voice research.
-  - Reconciled the Retail detour with the original telecom objective.
-  - Selected a fictional-provider telecom bill optimization vertical at the planning level.
-- Files created/modified:
-  - `docs/planning/initial-project-plan.md`
-  - `docs/research/foundations.md`
-  - `docs/planning/progress.md`
+- Harness: `idle`. Last completed bounded phase: **07A Reproducible Local
+  Portfolio Demo** (PR #29, `763a1a9`, 2026-08-26).
+- Integrated on `main`: canonical contracts, deterministic fictional-Provider
+  simulator and benchmark, Phase 02 data pilot, Fast/Slow routing, multi-turn
+  evaluation Harness with untuned baselines, one closed QLoRA experiment
+  (`NO_GO_STOP_PHASE03B`), FastAPI Thin Agent Runtime (scripted and explicit
+  model mode), PostgreSQL Case store, control-plane operations, Temporal
+  `CaseWorkflow`, Next.js conversation intake with durable resume, synthetic
+  `local_mailbox` channel, and one credential-free `make portfolio-demo` stack.
+- Not started / unauthorized: Phase 06B2 (real Provider/email/MCP/credential
+  channels), full Phase 07 hardening, voice, authentication, production UI,
+  promoted-model serving, deployment, and any further training or rerun.
+- Known placeholders: `runtime/services/model_gateway/`, `voice/worker/`, and
+  `infra/{compose,migrations,observability,temporal}/` contain only
+  `.gitkeep`; real infra wiring is the root `compose.yaml`.
+- Test surface at the last gate: Runtime 291 passed + 33 guarded
+  infrastructure skips (303 collected), ML 177 passed, Web 47 vitest tests,
+  plus contract/artifact drift checks (`make preflight`).
 
-### Phase 2: Architecture and Repository Design
+## 2026-08-21 — Planning
 
-- **Status:** complete
-- Actions taken:
-  - Confirmed the target directory is empty and not yet a Git repository.
-  - Began defining monorepo boundaries and sources of truth.
-  - Verified current official support for `uv` workspaces, pnpm workspaces, Temporal durable workflows, Pydantic Evals dataset serialization, and LiveKit outbound SIP calls.
-  - Defined model boundaries, state ownership, canonical contracts, safety invariants, runtime/data/training flows, and deployment layers.
-  - Selected a polyglot monorepo with isolated runtime, ML, voice, and web dependency zones.
-- Files created/modified:
-  - `docs/architecture.md`
-  - `docs/decisions/2026-08-21-monorepo.md`
+- Consolidated research, chose the fictional-provider telecom vertical, wrote
+  the specification, architecture, monorepo ADR, and initial plan. Details in
+  `docs/planning/initial-project-plan.md`.
 
-### Phase 3: Build Roadmap and Validation Gates
+## 2026-08-22 — Repository foundation and contracts
 
-- **Status:** complete
-- Actions taken:
-  - Defined seven gated phases from repository contracts through portfolio hardening.
-  - Added ML, leakage, provider-ceiling, serving, durability, and channel gates.
-  - Documented timeline, budget controls, CI lanes, failure risks, and open decisions.
-- Files created/modified:
-  - `docs/specs/2026-08-21-telecom-bill-optimization-agent.md`
+- Selected the `ProxyLoop` identity and implementation defaults
+  (`docs/decisions/2026-08-22-implementation-defaults.md`).
+- Phase 00A: monorepo skeleton, dependency zones, layout CI (`81d28b3`, PR #1).
+- Phase 00B: 13 canonical Pydantic contracts with generated JSON Schema and
+  TypeScript, fixtures, and drift checks (`98a7514`, PR #2).
 
-### Phase 4: Documentation Delivery
+## 2026-08-23 — Simulator, benchmark, data pilot, Fast/Slow freeze
 
-- **Status:** complete
-- Actions taken:
-  - Added a root README linking the planning artifacts.
-  - Completed a final consistency review for real-provider scope, tau2/Pine contamination, model responsibilities, environment isolation, and unsupported production claims.
-  - Verified all seven documentation files exist and are non-empty.
-- Files created/modified:
-  - `README.md`
-  - `docs/planning/initial-project-plan.md`
-  - `docs/research/foundations.md`
-  - `docs/planning/progress.md`
+- Phase 01A: deterministic Provider loop, exact approval gate,
+  content-addressed Evidence, `ConfirmationAuthority` forgery guard (PR #3).
+- Sol-governed delegation/merge workflow adopted (PR #4).
+- Phase 01B: 16 scenario families × 2 configurations, Safe Observation
+  boundary, split manifest, 32-scenario scripted ceiling (PR #5).
+- Phase 02: normalized trajectory schema, one-turn pilot with quality and
+  quarantine reports, annotation guide (PR #6).
+- Phase 03A0: Fast/Slow orchestration and shared Case context frozen as
+  `docs/decisions/2026-08-23-fast-slow-orchestration.md` (PR #7).
+- Phase 03A1-H: deterministic multi-turn evaluation Harness (PR #8).
 
-## Session: 2026-08-22
+## 2026-08-24 — Baselines, erratum, hosted rerun, validity smoke, Runtime 04A
 
-### Phase 5: Implementation Defaults and Model Update
+- Phase 03A1-B: untuned Qwen/Terra baselines (PR #9).
+- Phase 03A1-E: evaluation erratum and leakage-safe r2/r3 with a terminal
+  Provider blocker recorded honestly (PR #10).
+- Phase 03A1-R/V: Slow output union corrected to `anyOf`, full hosted r4
+  matrix completed, six-episode r5 validity smoke improved the baseline from
+  0/6 to 5/6 after prompt/input parity; the remaining fee case is an
+  evaluation-contract mismatch (PR #11).
+- Phase 04A: Thin Agent Runtime — FastAPI service, in-memory Case repository,
+  typed Fast/Slow routing, deterministic offer policy shared with the oracle,
+  version-bound approvals, at-most-once fictional execution, Evidence, and
+  completion verification (PR #12).
 
-- **Status:** complete
-- Actions taken:
-  - Selected `ProxyLoop` as the public project identity; the first telecom vertical remains unchanged.
-  - Froze v1 at one selected postpaid mobile line while preserving a home-internet service-type extension.
-  - Replaced the provisional 7B-class model with `Qwen/Qwen3-4B-Instruct-2507` in non-thinking mode.
-  - Selected a 24GB CUDA QLoRA target with local MLX-LM smoke runs and a measured 48GB escalation gate.
-  - Selected OpenAI `gpt-5.6-terra`, MLflow OSS, and vLLM as the initial Slow, experiment, and promoted serving defaults.
-  - Added a decision record that separates selected defaults from measured project results.
-- Files created/modified:
-  - `README.md`
-  - `docs/planning/initial-project-plan.md`
-  - `docs/research/foundations.md`
-  - `docs/planning/progress.md`
-  - `docs/architecture.md`
-  - `docs/specs/2026-08-21-telecom-bill-optimization-agent.md`
-  - `docs/decisions/2026-08-21-monorepo.md`
-  - `docs/decisions/2026-08-22-implementation-defaults.md`
+## 2026-08-25 — Model adapter, QLoRA closeout, Web demo, persistence
 
-## Test Results
+- Phase 04B: OpenAI-compatible Fast/Slow adapter, explicit `--mode model`,
+  mocked-transport failure gates, localhost black-box smoke (PR #13).
+- Phase 03B: one frozen six-scenario 40-iteration QLoRA smoke and one
+  canonical Arm B evaluation; clean Terra review returned
+  `NO_GO_STOP_PHASE03B` (Arm B 0/6 valid, `arm_b_hard_gates_pass=false`); no
+  expansion or promotion authorized (PR #15, closeout PR #16).
+- Minimal local Web demo: Runtime-backed Next.js conversation UI (PR #18).
+- Local Conversation Intake UX: four confirmed fictional-telecom facts, one
+  Runtime-owned Case, exact Web snapshot verification (PR #20).
+- Harness v2 agent/skill routing tightened (PRs #17, #22).
+- Phase 04C: opt-in PostgreSQL aggregate persistence with revision CAS,
+  strict decode, and restart/recovery evidence (PR #23).
 
-| Test | Input | Expected | Actual | Status |
-|---|---|---|---|---|
-| Repository inventory | `rg --files -uu` | Identify existing project files | No project files found | Pass |
-| Git status | `git status --short --branch` | Inspect repository state | Directory is not a Git repository | Informational |
-| Documentation presence | shell `test -s` over all deliverables | Every planned document exists and is non-empty | All documents present | Pass |
-| Scope consistency scan | `rg` for car lease, Retail, T-Mobile, production, leakage terms | Telecom remains primary; excluded/conditional terms are labeled | No contradictory primary scope found | Pass |
-| Implementation-default consistency scan | `rg` for old 7B/runtime/tracker choices and selected defaults | No stale unresolved 7B, W&B, or SGLang-first recommendation remains | Selected defaults are consistent across the plan, spec, architecture, and README | Pass |
+## 2026-08-26 — Control plane, Temporal, durable Web, mailbox, demo
 
-## Error Log
+- Phase 04D: correlated JSON operation records, liveness/readiness, redacted
+  failure categories, credential-free diagnostic profile, fake-model to
+  scripted/PostgreSQL switch proof (PR #24, docs PR #25).
+- Phase 05A: Temporal `CaseWorkflow` in `runtime/services/workflow_worker`
+  with command ordering, retries, and recovery over PostgreSQL (PR #26).
+- Phase 06A: durable Web Case resume — strict browser locator, one exact
+  pending-command retry via `Idempotency-Key`, readiness plus GET-first
+  recovery, monotonic projection guard, bounded polling, truthful
+  expired/finalizing/reconnect states (PR #27).
+- Phase 06B1: synthetic `local_mailbox` in `runtime/packages/connectors` —
+  HMAC-signed raw-byte fixtures, PostgreSQL inbox/outbox authority, Temporal
+  dispatch, delivered callback, two channel Evidence records (PR #28).
+- Phase 07A: `make portfolio-demo` / `-stop` / `-reset` / `-channel` /
+  `-recovery` supervising Compose PostgreSQL + Temporal, worker, Runtime, and
+  production Web; two separate demo scenes; portfolio narrative in
+  `docs/portfolio-demo.md` (PR #29). Harness returned to `idle`.
 
-| Timestamp | Error | Attempt | Resolution |
-|---|---|---:|---|
-| 2026-08-21 | `fatal: not a git repository` | 1 | Continue as documentation planning in an empty directory; do not initialize Git. |
-
-## 5-Question Reboot Check
+## Reboot check
 
 | Question | Answer |
 |---|---|
-| Where am I? | Planning documentation complete; Phase 0 setup ready to begin |
-| Where am I going? | Initialize repository and add the Phase 0 monorepo skeleton |
-| What's the goal? | Produce a build-ready Pine-like telecom agent blueprint |
-| What have I learned? | See `docs/research/foundations.md` |
-
-## Session: 2026-08-22 — Phase 0 Repository Setup
-
-- **Status:** complete
-- Actions taken:
-  - Bound the empty public GitHub repository as this workspace's `origin` without creating a commit or pushing.
-  - Renamed the public-facing identity to `ProxyLoop` while retaining fictional-provider telecom as v1.
-  - Moved planning and research records under `docs/` and added a documentation index.
-  - Created the initial monorepo directories, dependency-zone metadata, local-infrastructure configuration, repository hygiene files, and layout-only CI check.
-- Validation:
-  - `make check-layout`
-  - `uv lock` in `runtime/`
-  - `pnpm install --lockfile-only --ignore-scripts`
-| What have I done? | Delivered product spec, architecture, monorepo ADR, roadmap, findings, and progress records |
-
-## Session: 2026-08-22 — Phase 00B Canonical Contracts
-
-- **Status:** complete locally; not committed or published in this session
-- Implemented the 13 canonical domain contract documents as a strict, immutable, framework-independent Pydantic package.
-- Generated and committed-source-checked JSON Schema Draft 2020-12 and TypeScript declarations without a second hand-written domain model.
-- Added valid and invalid fixtures, Python/JSON Schema/TypeScript compatibility checks, generated-artifact drift detection, and a standard-library-plus-Pydantic architecture boundary.
-- Remediated independent review findings covering UUIDv4/UTC schema parity, approval expiry, consequential-action schema conditions, and dependency enforcement.
-- `make preflight` passed with 17 tests and the complete repository-native gate.
-- Stopped before Phase 01; no simulator, service, workflow, model, channel, or UI implementation was started.
-
-### Phase 01A Activation
-
-- Squash merged Phase 00B through PR #2 as `98a7514` after live checks and a fresh local preflight passed.
-- Activated `feat/phase-01-provider-simulator` for one deterministic fictional-provider success loop.
-- Split the roadmap gate: 01A covers one JSON/CLI episode plus authorization/state/evidence tests; 01B retains benchmark breadth, scenario families, safe observations, split generation, and oracle comparisons.
-- Deferred frontend, API, PostgreSQL, Temporal, PydanticAI, channels, model downloads/training, and large benchmark/data work.
-- Implemented the deterministic Provider state path, exact approval gate, content-addressed confirmation Evidence, completion verifier, and JSON CLI.
-- Initial focused suite passed 8 tests and full `make preflight` passed 25 tests plus all repository-native gates.
-- Independent review found that an internally consistent forged confirmation/Evidence pair could complete because the verifier did not consult the Provider's held state. A bounded implementer remediation added the `ConfirmationAuthority` seam, Provider-backed lookup, and a matching-forgery regression.
-- Final focused suite passed 9 tests; independent rereview ran the complete gate with 26 tests, confirmed that no-Provider-mutation and matching-forgery probes are rejected, and approved Phase 01A with no unresolved blocking finding.
-- At the initial local gate, Phase 01A was complete and stopped before the unauthorized Phase 01B benchmark expansion; its later publication is recorded below.
-
-### Sol-Governed Agent and Merge Workflow
-
-- Phase 01A was published through PR #3 and squash merged to `main` as `f7f3cf7` after independent review, `phase-gate`, GitGuardian, and Sol's final integration review passed.
-- The user continues to approve phase activation and scope expansion.
-- Within approved scope, Sol now decides when to delegate bounded work, reviews and integrates subagent output, owns the final PR decision, and may complete routine branch/commit/push/PR/squash-merge steps without separate user review.
-- Independent review remains required for material changes, but the reviewer advises Sol and does not own merge authority.
-- Independent governance review initially found stale prompt-level delegation gates and an ambiguous source-branch deletion rule. Both were remediated; final rereview approved the policy with no unresolved finding.
-
-### Phase 01B Activation
-
-- The user explicitly activated the next roadmap task after the Phase 01A and workflow merges.
-- Phase 01B is frozen at 16 versioned scenario families across two deterministic fictional-Provider configurations, with a Safe Observation boundary, family/entity-safe split manifest, scripted oracle, ceiling report, and adversarial checks.
-- The environment ceiling requires all 32 scripted scenarios to produce valid outcomes, zero false completions, and zero private/gold-field leakage.
-- Phase 02 trajectory generation, Qwen/LFM evaluation or training, product services, Temporal, external channels, and UI remain out of scope.
-- Implementation produced 16 families across two configurations, a contracts-only Safe Observation package, deterministic family/entity split artifacts, and a 32-scenario scripted ceiling report.
-- Initial independent review found four blocking gate weaknesses in Evidence ownership, breadth enforcement, split conflict handling, and version fingerprints; Sol accepted and remediated all four.
-- Root review additionally removed semantic evaluator leakage from Provider messages. Independent rereview approved the complete diff with no unresolved blocking finding.
-- The post-remediation local equivalent gate passed 78 tests plus format, lint, mypy, contract drift, TypeScript, pnpm lock, layout, compile, Compose, diff, and benchmark checks. GitHub CI remains required for the sandbox-blocked authoritative uv lock check.
-- After permissions were restored, the authoritative local `make preflight` passed all gates, including uv lock resolution. PR #5 then passed `phase-gate` and GitGuardian; Sol completed final integration review and approved squash merge.
-
-## Session: 2026-08-24 — Phase 03A1 Hosted Reliability and Evaluation Validity
-
-- **Status:** complete locally; no next phase activated
-- Corrected the hosted Slow structured-output Schema from the unsupported
-  discriminated `oneOf` form to the OpenAI-compatible `anyOf` form while
-  preserving strict output validation.
-- Completed both formal probes and all four frozen medium/high hosted
-  conditions through 29qg with response identities and complete usage
-  accounting. The canonical r4 report records
-  `phase_completion_ready=true`; this means evidence collection completed, not
-  that model quality passed.
-- Investigated the implausible r4 quality result with a separate six-episode
-  r5 validity smoke covering accept, decline, clarification, replan,
-  escalation, and disclosure refusal. No r2, r3, or r4 artifact was rewritten.
-- With the same local Qwen Fast model and hosted Terra Slow model, public-state
-  parity, explicit dynamic-field semantics, and explicit completion-evidence
-  guidance improved the selected baseline from 0/6 to 5/6 end-to-end valid.
-  Slow semantic validity improved from 2/6 to 6/6 and Qwen Fast returned
-  `not_done` in 6/6 reached calls.
-- The remaining fee case revealed that the Provider verifier and scripted
-  oracle enforce twelve-month-total predicates absent from the model-visible
-  Consumer Goal and Constraints. The result is therefore an evaluation-contract
-  mismatch, not clean evidence that Terra cannot reason about the offer.
-- All six diagnostic Terra calls returned auditable usage through 29qg. The
-  conservative usage-accounted cost was USD 0.117456; no official OpenAI
-  fallback or retry was used.
-- Final `make preflight` passed 138 runtime/contract/integration tests, 105 ML
-  tests, r4/r5 integrity checks, Ruff, strict mypy, TypeScript drift, layout,
-  lock, compile, and Docker Compose gates.
-- Phase 03B remains inactive. The recommended next bounded gate is to define
-  one authoritative offer-compliance policy, expose its necessary public inputs
-  symmetrically to model and oracle, and rerun medium only before considering
-  high-reasoning evaluation or SFT.
+| Where am I? | Harness idle after Phase 07A; all bounded phases through 07A merged on `main`. |
+| Where am I going? | Nothing is authorized. The next candidates are Phase 06B2 (real controlled integration) or the remainder of Phase 07 hardening; each needs an explicit user gate and a new `harness/build/phase-*.md` contract. |
+| What's the goal? | A portfolio-grade, simulator-first durable consumer negotiation agent with verifiable completion; no production or real-carrier claim. |
+| What have I learned? | Untuned hosted Slow reasoning reaches 5/6 once model and oracle see the same public inputs; the bounded 4B QLoRA smoke did not produce valid structured output and was stopped. See `harness/build/phase-03a1-evaluation-validity-smoke.md` and `harness/build/phase-03b-qwen-qlora-smoke.md`. |

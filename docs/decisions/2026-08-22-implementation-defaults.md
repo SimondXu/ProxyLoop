@@ -42,3 +42,26 @@ Official references:
 - https://developers.openai.com/api/docs/models/gpt-5.6-terra
 - https://mlflow.org/docs/latest/self-hosting/architecture/tracking-server/
 - https://docs.vllm.ai/en/latest/features/structured_outputs/
+
+## Amendment 2026-09-21 — Fast checkpoint moved to Qwen3-8B
+
+The user redirected the Fast checkpoint from `Qwen/Qwen3-4B-Instruct-2507`
+to **`Qwen/Qwen3-8B`** for the Phase 03C redo. Facts recorded at the time of
+the decision:
+
+- Hugging Face lists no `Qwen3-8B-Instruct-2507`; `Qwen/Qwen3-8B` is the
+  hybrid thinking/non-thinking model, so non-thinking mode must be forced
+  with `enable_thinking=False` at training and inference and `<think>`
+  output is an evaluator failure. The original 4B rationale ("non-thinking-only
+  removes hidden reasoning latency") no longer applies automatically.
+- Training hardware default changes from "one 24GB CUDA GPU, 4-bit QLoRA" to
+  one 80 GB-class GPU with bf16 LoRA; a 24 GB card would require 4-bit QLoRA
+  on 8B and reintroduce the quantised-base mismatch with bf16 vLLM serving.
+- Serving memory and latency roughly double versus 4B; the promoted-serving
+  gates in this document apply unchanged.
+- This is a checkpoint choice, not a measured result. The Phase 03B `NO_GO`
+  was caused by prompt, parser, data, and scale problems, not by model size
+  (`docs/research/2026-09-21-phase-03b-post-training-review.md`).
+
+The rows above are retained as the 2026-08-22 defaults; where they conflict
+with this amendment, the amendment wins.
