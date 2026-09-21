@@ -9,12 +9,17 @@ approves its exact pins, and receives a verifier-backed Evidence receipt.
 Unsupported first messages remain local with a scope explanation; the small
 English lexical gate is not general language understanding.
 
-Run the Runtime and Web processes separately:
+Run the Runtime and Web processes separately for iterative work:
 
 ```text
 make runtime-server
 pnpm --filter @proxyloop/web dev
 ```
+
+For the full durable stack (Compose PostgreSQL and Temporal, workflow worker,
+Runtime, production Web build) use `make portfolio-demo`; see
+[`docs/portfolio-demo.md`](../docs/portfolio-demo.md). `make web-check` runs
+lint, typecheck, vitest, and the production build.
 
 The Web layer does not add authentication, a generic BFF, model calls, real
 Providers, authoritative Case persistence, or a workflow engine. The browser
