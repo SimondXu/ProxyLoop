@@ -1,8 +1,8 @@
 # ProxyLoop Harness Prompts
 
-These are optional operator templates. They do not activate a phase, require delegation, or expand scope. Root Sol follows `AGENTS.md` and `harness/status.toml`; subagents never commit, push, review-submit, or merge.
+These are optional operator templates. They do not activate a phase, require delegation, or expand scope. The root orchestrator follows `AGENTS.md` and `harness/status.toml`; subagents never commit, push, review-submit, or merge.
 
-## Orient Root Sol
+## Orient the Root Orchestrator
 
 ```text
 Read harness/status.toml first. Read the active contract only if one exists. Select GOALS,
@@ -48,15 +48,15 @@ Use for a bounded cross-directory map, call-chain or data-lineage trace, test-im
 ```text
 Investigate exactly: [question]. Scope/non-goals: [bounds]. Known paths: [paths or unknown].
 Work read-only in a fresh bounded context. Return the explorer evidence card required by
-.codex/agents/explorer.toml. Escalate conflicts or decisions involving architecture,
-authorization, canonical contracts/evaluators, security, scope, or phase completion to Sol.
+the explorer role definition (.codex/agents/explorer.toml or .claude/agents/explorer.md). Escalate conflicts or decisions involving architecture,
+authorization, canonical contracts/evaluators, security, scope, or phase completion to the root orchestrator.
 ```
 
 ## Delegate Implementation
 
-Use after Sol freezes interfaces, behavior, ownership, acceptance criteria, and verification.
+Use after the root orchestrator freezes interfaces, behavior, ownership, acceptance criteria, and verification.
 
-Multiple implementers may run in parallel when they own independent requirements and non-overlapping files or modules. Give each writer a separate packet. Sol must assign every shared file to exactly one writer, freeze shared interfaces first, and define the integration order and final cross-slice verification.
+Multiple implementers may run in parallel when they own independent requirements and non-overlapping files or modules. Give each writer a separate packet. The root orchestrator must assign every shared file to exactly one writer, freeze shared interfaces first, and define the integration order and final cross-slice verification.
 
 ```text
 Own only [files/responsibility]. Preserve user and concurrent edits. Implement [frozen behavior]
@@ -79,7 +79,7 @@ Review the stable complete diff against [contract/requirements]. Work read-only 
 Check correctness, authorization/completion semantics, contract compatibility, adjacent same-class
 cases, security, test gaps, and scope. Return all actionable findings in one pass where practical,
 with precise file references and an Approve or Request Changes recommendation. Identify blocked,
-manual, skipped, and unrun verification. Root Sol owns the final integration decision.
+manual, skipped, and unrun verification. The root orchestrator owns the final integration decision.
 ```
 
 ## Remediate Review

@@ -25,12 +25,12 @@
 - [ ] Complete diff reviewed
 - [ ] Independent review completed for material contract, security, authorization, completion, workflow, or channel changes
 - [ ] No unresolved blocking findings
-- [ ] Sol final integration review completed
+- [ ] Root orchestrator final integration review completed
 
 ## Documentation and evidence
 
 - [ ] Documentation reflects the implemented behavior
-- [ ] `harness/build-log.md` contains real phase evidence when applicable
+- [ ] `harness/log/<change>.md` contains real verification evidence when applicable
 - [ ] Unverified claims and manual follow-ups are explicit
 
 ## Final checklist

@@ -1,6 +1,6 @@
 # ProxyLoop Development Harness
 
-This directory is the development control surface used by Codex and human reviewers. It turns the product roadmap into bounded contracts, exposes one canonical current state, and records concise review and verification evidence.
+This directory is the development control surface used by coding agents (Codex, Claude Code) and human reviewers. It turns the product roadmap into bounded contracts, exposes one canonical current state, and records concise review and verification evidence.
 
 It is separate from the product evaluation Harness. Simulator scenarios, reward logic, model benchmarks, training data, and evaluation reports belong in the product directories described by `docs/architecture.md`.
 
@@ -25,12 +25,12 @@ harness/
 5. Batch accepted remediation and rerun affected checks.
 6. Run final manual or Browser checks when applicable, followed by one final `make preflight`.
 7. Record concise pre-merge evidence in one file under `log/`.
-8. Sol may commit, push, open the pull request, reconcile CI and independent findings, squash merge, and perform validated merged-branch cleanup for the approved scope.
+8. The root orchestrator may commit, push, open the pull request, reconcile CI and independent findings, squash merge, and perform validated merged-branch cleanup for the approved scope.
 9. Return `status.toml` to idle and stop. Another product phase still requires explicit user approval.
 
 Create or update a Codex Goal only when the user explicitly requests Goal tracking. A normal bounded phase is governed by `status.toml`, its phase contract, and its change log.
 
-Subagent selection is an orchestration decision. Sol may proactively delegate bounded work according to `AGENTS.md`; the user approves phase and scope rather than every delegation. The configured concurrency value is a ceiling, not a required team size or total task budget.
+Subagent selection is an orchestration decision. The root orchestrator may proactively delegate bounded work according to `AGENTS.md`; the user approves phase and scope rather than every delegation. The configured concurrency value is a ceiling, not a required team size or total task budget.
 
 Status labels are exact:
 
