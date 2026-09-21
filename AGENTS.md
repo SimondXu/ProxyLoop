@@ -1,6 +1,8 @@
 # ProxyLoop Agent Instructions
 
-This file is the repository-level operating contract for Codex and delegated agents. Product requirements remain authoritative in the linked specification. This file contains durable operating rules; volatile phase state lives in `harness/status.toml`.
+This file is the repository-level operating contract for coding agents and their delegated subagents. It is tool-agnostic: Codex reads it directly, and Claude Code reads it through the `@AGENTS.md` import in `CLAUDE.md`. Product requirements remain authoritative in the linked specification. This file contains durable operating rules; volatile phase state lives in `harness/status.toml`.
+
+The **root orchestrator** is the top-level session that owns decisions and integration, whichever tool runs it: the Codex root session (Codex configuration and historical evidence under `harness/` call it `Sol`) or the Claude Code main conversation. Tool-specific model, effort, sandbox, and concurrency settings live in `.codex/config.toml` plus `.codex/agents/` and in `.claude/agents/` plus `CLAUDE.md`; this file defines roles and rules only.
 
 ## Orientation and Context
 
@@ -19,20 +21,20 @@ Do not treat a roadmap item as permission to implement it. Only a user-approved 
 - Keep at most one product implementation phase active.
 - Use the smallest change that satisfies the approved acceptance criteria; do not begin the next phase automatically.
 - Preserve user work and unrelated changes.
-- Once the user approves a bounded ProxyLoop phase or repository change, root Sol may create a branch, commit, push, open and review the pull request, squash merge it, and clean up its fully merged short-lived branch without separate approval for each routine Git step.
+- Once the user approves a bounded ProxyLoop phase or repository change, the root orchestrator may create a branch, commit, push, open and review the pull request, squash merge it, and clean up its fully merged short-lived branch without separate approval for each routine Git step.
 - A new explicit user decision is required to expand scope, activate another phase, deploy, publish a release, contact real external parties, use credentials, perform destructive operations, force-push, rewrite shared history, or delete unmerged work.
 - Never add real Provider credentials, consumer PII, production secrets, or unreviewed generated model artifacts.
 - Models may propose actions or completion candidates; deterministic policy and evidence checks own authorization and completion.
 
-## Sol-Retained Decisions
+## Root-Orchestrator-Retained Decisions
 
-Root Sol owns shared architecture and interfaces, authorization and completion policy, canonical contract and evaluator semantics, security boundaries, conflicting evidence, scope changes, phase gates, final diff review, and every completion or integration claim.
+The root orchestrator owns shared architecture and interfaces, authorization and completion policy, canonical contract and evaluator semantics, security boundaries, conflicting evidence, scope changes, phase gates, final diff review, and every completion or integration claim.
 
-Sol must inspect the primary evidence for those decisions. Subagent output is navigation, implementation, or independent review evidence; it does not replace Sol's judgment.
+The root orchestrator must inspect the primary evidence for those decisions. Subagent output is navigation, implementation, or independent review evidence; it does not replace the root orchestrator's judgment.
 
 ## Adaptive Delegation
 
-Sol may proactively use subagents when doing so materially improves quality, latency, or context isolation. The user does not need to request delegation separately.
+The root orchestrator may proactively use subagents when doing so materially improves quality, latency, or context isolation. The user does not need to request delegation separately.
 
 Delegate when at least one of these is true:
 
@@ -42,25 +44,26 @@ Delegate when at least one of these is true:
 - a specialized model, tool surface, or independent reviewer provides distinct value;
 - parallel execution shortens a real critical path without overlapping writes.
 
-Sol should work directly when the answer is in one to three tightly related files, the task is small or highly coupled, boundaries are still ambiguous, delegation would duplicate the same reads, or the task concerns a Sol-retained decision.
+The root orchestrator should work directly when the answer is in one to three tightly related files, the task is small or highly coupled, boundaries are still ambiguous, delegation would duplicate the same reads, or the task concerns a root-orchestrator-retained decision.
 
-Start with the smallest useful team and expand only after finding an evidence gap or an additional independent lane. `max_concurrent_threads_per_session` is a safety ceiling, not a target or a per-task agent budget:
+Start with the smallest useful team and expand only after finding an evidence gap or an additional independent lane. The tool's configured concurrency ceiling (`max_concurrent_threads_per_session` in Codex, the cap stated in `CLAUDE.md` for Claude Code) is a safety ceiling, not a target or a per-task agent budget:
 
 - normal discovery: zero to two explorers;
-- broad independent inventory: burst up to the configured ceiling after Sol defines non-overlapping questions;
-- implementation: allow multiple writers for independent requirements when file or module ownership is non-overlapping, shared interfaces are frozen, and Sol defines shared-file ownership plus the integration order; otherwise keep one writer until those boundaries are clear;
+- broad independent inventory: burst up to the configured ceiling after the root orchestrator defines non-overlapping questions;
+- implementation: allow multiple writers for independent requirements when file or module ownership is non-overlapping, shared interfaces are frozen, and the root orchestrator defines shared-file ownership plus the integration order; otherwise keep one writer until those boundaries are clear;
 - review: one independent reviewer after the diff and acceptance criteria are stable.
 
-Use these project roles:
+Use these project roles; each is defined once per tool (`.codex/agents/<role>.toml`, `.claude/agents/<role>.md`) with the same name and contract:
 
-- `explorer`: Luna medium, read-only repository mapping and evidence cards;
-- `fast-worker`: Luna medium, mechanical generation, formatting, fixtures, or exact repetitive edits that require no behavior or interface judgment;
-- `implementer`: Luna xhigh, a well-specified implementation slice after interfaces and acceptance criteria are frozen;
-- `reviewer`: Terra high, read-only defect-first review and adversarial checks.
+- `explorer`: read-only repository mapping that returns an evidence card, on a fast model at medium effort;
+- `fast-worker`: mechanical generation, formatting, fixtures, or exact repetitive edits that require no behavior or interface judgment, on a fast model at medium effort;
+- `implementer`: a well-specified implementation slice after interfaces and acceptance criteria are frozen, on the strongest available model at the tool's highest routine effort;
+- `reviewer`: read-only defect-first review and adversarial checks, on a strong model at high effort, never the same session that wrote the diff;
+- `architect`: the strongest available model at elevated effort, for an architecture or interface proposal, a cross-cutting design trade-off, or a problem the root orchestrator or an `implementer` has already failed to resolve once. It proposes; the root orchestrator still owns the decision. Codex has no separate configuration for this role and uses Luna max or the root session directly.
 
-Prefer fresh bounded subagent contexts (`fork_turns="none"` when supported). Every task packet must contain the objective, scope and non-goals, known paths, exact questions or owned files, expected output, verification, and escalation triggers. Reuse an existing subagent for clarification before repeating the same discovery.
+Prefer fresh bounded subagent contexts (Codex: `fork_turns="none"` when supported; Claude Code subagents always start fresh). Every task packet must contain the objective, scope and non-goals, known paths, exact questions or owned files, expected output, verification, and escalation triggers. Reuse an existing subagent for clarification before repeating the same discovery.
 
-Explorers return an evidence card rather than a transcript: direct answer, precise path and symbol or line support, checks run or unrun, conflicts and unknowns, and a short `Sol must read` list. Escalate instead of resolving ambiguity involving architecture, authorization, canonical contracts or evaluators, security, scope, or a phase gate.
+Explorers return an evidence card rather than a transcript: direct answer, precise path and symbol or line support, checks run or unrun, conflicts and unknowns, and a short `Root must read` list. Escalate instead of resolving ambiguity involving architecture, authorization, canonical contracts or evaluators, security, scope, or a phase gate.
 
 ## Skill Routing
 
@@ -80,10 +83,10 @@ Repository-specific routing:
 - `codebase-design`: interface placement, module depth, and architecture seams.
 - `domain-modeling`: deliberate changes to the ubiquitous language in `CONTEXT.md`.
 - `vercel-react-best-practices`: React and Next.js implementation or performance review.
-- `design-taste-frontend`: landing pages, portfolios, or an explicitly approved visual redesign; not ordinary ProxyLoop product-flow changes.
+- `design-taste-frontend` (Codex) / `frontend-design` (Claude Code): landing pages, portfolios, or an explicitly approved visual redesign; not ordinary ProxyLoop product-flow changes.
 - `write-dev-spec`: architecture, ADR, runbook, or developer-spec work. The installed `update-docs` Skill targets the Next.js documentation repository and is not a default ProxyLoop docs workflow.
 
-The installed `fix` Skill assumes Yarn and is not repository-compatible. Use pnpm/uv targets from this repository. Project reviewer instructions already contain the required defect-first workflow; do not load a second generic review Skill unless the user explicitly requests it or the review target needs its distinct remote-PR procedure.
+The installed `fix` Skill assumes Yarn and is not repository-compatible. Use `make format`, `make lint`, `make typecheck`, `make test`, and `make preflight` from this repository. Project reviewer instructions already contain the required defect-first workflow for the phase gate; a tool's built-in review command may be used as an additional mid-development pass but does not replace the recorded independent review. Tool-specific skill names and built-in commands are mapped in `CLAUDE.md` for Claude Code.
 
 ## Development and Verification Loop
 
@@ -107,7 +110,7 @@ Never report a check as passed if it was not run. Separate passed checks from bl
 - Treat `main` as the last integrated validated state; do not implement or commit directly on it.
 - Use one short-lived branch per phase, feature, fix, docs change, or experiment, following `CONTRIBUTING.md`.
 - Keep one bounded concern per pull request.
-- Sol reviews the complete final diff, verification, independent-review evidence, and CI before merge.
+- The root orchestrator reviews the complete final diff, verification, independent-review evidence, and CI before merge.
 - Prefer squash merge. Delete a fully merged short-lived branch only after confirming the worktree is clean, the branch was pushed, and no unique unpushed work would be lost.
 
 ## Harness Boundaries

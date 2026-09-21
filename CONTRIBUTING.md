@@ -1,6 +1,6 @@
 # Contributing to ProxyLoop
 
-ProxyLoop uses short-lived branches and reviewable pull requests to keep `main` stable and the phase history easy to understand. The repository is currently a portfolio project, but the same workflow applies to human and Codex contributions.
+ProxyLoop uses short-lived branches and reviewable pull requests to keep `main` stable and the phase history easy to understand. The repository is currently a portfolio project, but the same workflow applies to human, Codex, and Claude Code contributions.
 
 ## Main Branch Policy
 
@@ -13,7 +13,7 @@ ProxyLoop uses short-lived branches and reviewable pull requests to keep `main` 
 
 GitHub branch protection should eventually require a pull request and passing CI for `main`. A mandatory approval count can be added when the repository has another regular reviewer; it is optional for a solo portfolio repository.
 
-For a bounded phase or repository change already approved by the user, the root Sol orchestrator owns the routine Git workflow through squash merge and validated merged-branch cleanup. The user is not the default pull-request reviewer and does not need to separately approve branch creation, commit, push, PR creation, merge, or safe cleanup of that merged short-lived branch. A new user decision is required when scope expands or when work would deploy, publish a release, contact real external parties, use credentials, rewrite history, delete unmerged work, or perform another destructive operation.
+For a bounded phase or repository change already approved by the user, the root orchestrator owns the routine Git workflow through squash merge and validated merged-branch cleanup. The user is not the default pull-request reviewer and does not need to separately approve branch creation, commit, push, PR creation, merge, or safe cleanup of that merged short-lived branch. A new user decision is required when scope expands or when work would deploy, publish a release, contact real external parties, use credentials, rewrite history, delete unmerged work, or perform another destructive operation.
 
 ## Branch Naming
 
@@ -43,12 +43,12 @@ Use one branch for one phase, feature, fix, documentation change, or experiment.
    make preflight
    ```
 
-7. Sol reviews the complete diff and confirms that generated, sensitive, local, or unrelated files are absent.
+7. The root orchestrator reviews the complete diff and confirms that generated, sensitive, local, or unrelated files are absent.
 8. Commit with a Conventional Commit message.
 9. Push the branch and open a pull request using the repository template.
 10. Obtain independent review when the change is material, resolve accepted findings, and rerun affected checks.
-11. Sol reviews the final diff, independent evidence, and CI, then makes the final approve or request-changes decision.
-12. Sol squash merges only when required checks and phase acceptance criteria pass.
+11. The root orchestrator reviews the final diff, independent evidence, and CI, then makes the final approve or request-changes decision.
+12. The root orchestrator squash merges only when required checks and phase acceptance criteria pass.
 13. After confirming merge and recoverability, delete the merged short-lived branch and return to the updated `main`.
 
 ## Commit Messages
@@ -89,10 +89,10 @@ Every pull request should explain:
 - security, privacy, data, migration, and rollback risks;
 - whether documentation, generated artifacts, or phase evidence changed.
 
-Material contract, security, authorization, completion, workflow, or external-channel changes require an independent review. The implementing subagent must not review its own work. The independent reviewer reports findings and a recommendation; Sol owns the final PR decision and merge.
+Material contract, security, authorization, completion, workflow, or external-channel changes require an independent review. The implementing subagent must not review its own work. The independent reviewer reports findings and a recommendation; the root orchestrator owns the final PR decision and merge.
 
 ## Versioned and Local Content
 
-Version project source, tests, small redacted fixtures, schemas, documentation, `.codex/` project configuration, and curated harness evidence.
+Version project source, tests, small redacted fixtures, schemas, documentation, `.codex/` and `.claude/` project configuration, and curated harness evidence.
 
 Keep local or generated content out of Git: `.env*`, dependency directories, virtual environments, caches, coverage output, local databases, provider credentials, PII, raw datasets, model weights, checkpoints, experiment stores, recordings, and large artifacts. Add a specific `.gitignore` rule when a new tool creates repeatable local output; do not hide an entire source or configuration directory to silence an unclear change.
