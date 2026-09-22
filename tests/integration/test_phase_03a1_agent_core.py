@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -36,6 +37,7 @@ from proxyloop_contracts import (
     Case,
     CaseContextSnapshot,
     CasePhase,
+    DelegatedAuthority,
     DialogueAct,
     EventActor,
     Evidence,
@@ -45,6 +47,7 @@ from proxyloop_contracts import (
     FactStatus,
     FastTurnDecision,
     ModelInputPins,
+    Money,
     PlanningBasis,
     ProviderOffer,
     RoutingOutcome,
@@ -57,6 +60,7 @@ from proxyloop_contracts import (
 )
 from proxyloop_contracts.contracts import EvidenceRequirement, ReasonerRequest
 from proxyloop_provider_simulator.episode import Phase01AEpisode
+from proxyloop_telecom_domain import offer_material_terms
 
 NOW = datetime(2026, 8, 23, 12, 20, tzinfo=UTC)
 CASE_ID = UUID("11111111-1111-4111-8111-111111111111")
@@ -754,6 +758,285 @@ def test_capability_executor_rejects_unbound_evidence_before_commit() -> None:
     assert outcome.status is CapabilityExecutionStatus.REJECTED
     assert outcome.reason_codes == ("evidence_execution_binding_mismatch",)
     assert adapter.commits == 0
+
+
+def _approved_execution() -> tuple[
+    CaseContextSnapshot, Phase01AEpisode, CapabilityProposal
+]:
+    snapshot, episode = _snapshot()
+    episode.request_approval()
+    episode.approve()
+    snapshot = _with_approval(snapshot, episode.approval_request)
+    assert episode.action_intent is not None
+    assert episode.action_intent.offer_ref is not None
+    proposal = CapabilityProposal(
+        proposal_id=UUID("ffffffff-ffff-4fff-8fff-ffffffffffff"),
+        capability=CapabilityReference(
+            namespace="simulator",
+            capability_id="simulator.accept_fictional_offer",
+            version="1.0",
+        ),
+        arguments=(
+            CapabilityArgument(
+                name="offer_id",
+                value=str(episode.action_intent.offer_ref.offer_id),
+            ),
+        ),
+        created_at=NOW - timedelta(minutes=1),
+        expires_at=NOW + timedelta(minutes=5),
+    )
+    return snapshot, episode, proposal
+
+
+def _rebuilt(snapshot: CaseContextSnapshot, **fields: object) -> CaseContextSnapshot:
+    """Return a valid snapshot with ``fields`` replaced and basis/pins recomputed."""
+    merged = {**snapshot.__dict__, **fields}
+    basis = _basis(
+        case=merged["case"],
+        ledger=merged["fact_ledger"],
+        offers=merged["offers"],
+        approvals=merged["approval_requests"],
+        provider_config_ref=merged["provider_config_ref"],
+        manifest=merged["capability_manifest"],
+    )
+    pins = merged["pins"].model_copy(
+        update={
+            "case_revision": merged["case"].revision,
+            "planning_basis_fingerprint": basis.planning_basis_fingerprint,
+        }
+    )
+    return CaseContextSnapshot(**{**merged, "planning_basis": basis, "pins": pins})
+
+
+def _execution_request(
+    snapshot: CaseContextSnapshot,
+    proposal: CapabilityProposal,
+    intent: ActionIntent,
+    approval: ApprovalRequest | None,
+) -> CapabilityExecutionRequest:
+    return CapabilityExecutionRequest(
+        snapshot=snapshot,
+        source_pins=snapshot.pins,
+        proposal=proposal,
+        action_intent=intent,
+        approval=approval,
+        executed_at=NOW,
+    )
+
+
+def test_capability_executor_consumes_an_approval_once() -> None:
+    snapshot, episode, proposal = _approved_execution()
+    assert episode.action_intent is not None
+    adapter = _Capability()
+    executor = CapabilityExecutor(adapter)
+
+    first = executor.execute(
+        _execution_request(
+            snapshot, proposal, episode.action_intent, episode.approval_request
+        )
+    )
+    assert first.status is CapabilityExecutionStatus.EXECUTED
+
+    fresh_key = episode.action_intent.model_copy(
+        update={"idempotency_key": "other-key"}
+    )
+    second = executor.execute(
+        _execution_request(snapshot, proposal, fresh_key, episode.approval_request)
+    )
+    assert second.status is CapabilityExecutionStatus.REJECTED
+    assert second.reason_codes == ("approval_already_consumed",)
+    assert adapter.invocations == 1
+
+
+def test_capability_executor_reuses_evidence_for_the_same_approval_and_key() -> None:
+    snapshot, episode, proposal = _approved_execution()
+    assert episode.action_intent is not None
+    adapter = _Capability()
+    executor = CapabilityExecutor(adapter)
+    request = _execution_request(
+        snapshot, proposal, episode.action_intent, episode.approval_request
+    )
+
+    first = executor.execute(request)
+    repeated = executor.execute(request)
+
+    assert first.status is CapabilityExecutionStatus.EXECUTED
+    assert repeated.status is CapabilityExecutionStatus.REUSED
+    assert repeated.reason_codes == ("idempotent_evidence_reused",)
+    assert repeated.evidence is first.evidence
+    assert adapter.invocations == 1
+
+
+def test_capability_executor_rejects_changed_offer_terms_under_same_revision() -> None:
+    snapshot, episode, proposal = _approved_execution()
+    assert episode.action_intent is not None
+    assert episode.action_intent.offer_ref is not None
+    offer = snapshot.offers[0]
+    repriced = offer.model_copy(
+        update={
+            "monthly_price": Money(
+                amount_minor=offer.monthly_price.amount_minor + 100,
+                currency=offer.monthly_price.currency,
+            )
+        }
+    )
+    assert repriced.revision == episode.action_intent.offer_ref.offer_revision
+    request = _execution_request(
+        _rebuilt(snapshot, offers=(repriced,)),
+        proposal,
+        episode.action_intent,
+        episode.approval_request,
+    )
+
+    guarded = _Capability()
+    rejected = CapabilityExecutor(
+        guarded, terms_derivation=offer_material_terms
+    ).execute(request)
+    assert rejected.status is CapabilityExecutionStatus.REJECTED
+    assert "current_offer_terms_mismatch" in rejected.reason_codes
+    assert guarded.invocations == 0
+
+    # Without an injected derivation the executor keeps trusting the intent's
+    # own terms; callers that need the check must inject it.
+    unguarded = _Capability()
+    executed = CapabilityExecutor(unguarded).execute(request)
+    assert executed.status is CapabilityExecutionStatus.EXECUTED
+    assert unguarded.invocations == 1
+
+
+def _deny_approval_missing(
+    snapshot: CaseContextSnapshot,
+    episode: Phase01AEpisode,
+    proposal: CapabilityProposal,
+) -> CapabilityExecutionRequest:
+    assert episode.action_intent is not None
+    return _execution_request(snapshot, proposal, episode.action_intent, None)
+
+
+def _deny_approval_expired(
+    snapshot: CaseContextSnapshot,
+    episode: Phase01AEpisode,
+    proposal: CapabilityProposal,
+) -> CapabilityExecutionRequest:
+    assert episode.action_intent is not None
+    assert episode.approval_request is not None
+    expired = episode.approval_request.model_copy(update={"expires_at": NOW})
+    return _execution_request(snapshot, proposal, episode.action_intent, expired)
+
+
+def _deny_approval_binding(
+    snapshot: CaseContextSnapshot,
+    episode: Phase01AEpisode,
+    proposal: CapabilityProposal,
+) -> CapabilityExecutionRequest:
+    assert episode.action_intent is not None
+    assert episode.approval_request is not None
+    other_terms = episode.approval_request.model_copy(
+        update={"material_terms_hash": "0" * 64}
+    )
+    return _execution_request(snapshot, proposal, episode.action_intent, other_terms)
+
+
+def _deny_unsupported_capability(
+    snapshot: CaseContextSnapshot,
+    episode: Phase01AEpisode,
+    proposal: CapabilityProposal,
+) -> CapabilityExecutionRequest:
+    assert episode.action_intent is not None
+    unknown = proposal.model_copy(
+        update={
+            "capability": CapabilityReference(
+                namespace="simulator",
+                capability_id="simulator.cancel_fictional_line",
+                version="1.0",
+            )
+        }
+    )
+    return _execution_request(
+        snapshot, unknown, episode.action_intent, episode.approval_request
+    )
+
+
+def _deny_case_revision(
+    snapshot: CaseContextSnapshot,
+    episode: Phase01AEpisode,
+    proposal: CapabilityProposal,
+) -> CapabilityExecutionRequest:
+    assert episode.action_intent is not None
+    advanced = _rebuilt(snapshot, case=snapshot.case.model_copy(update={"revision": 2}))
+    return _execution_request(
+        advanced, proposal, episode.action_intent, episode.approval_request
+    )
+
+
+def _deny_delegated_authority(
+    snapshot: CaseContextSnapshot,
+    episode: Phase01AEpisode,
+    proposal: CapabilityProposal,
+) -> CapabilityExecutionRequest:
+    assert episode.action_intent is not None
+    authority = snapshot.case.delegated_authority
+    narrowed = snapshot.case.model_copy(
+        update={
+            "delegated_authority": DelegatedAuthority(
+                allowed_actions=authority.allowed_actions,
+                approval_required_actions=(),
+                allowed_disclosures=authority.allowed_disclosures,
+            )
+        }
+    )
+    return _execution_request(
+        _rebuilt(snapshot, case=narrowed),
+        proposal,
+        episode.action_intent,
+        episode.approval_request,
+    )
+
+
+@pytest.mark.parametrize(
+    ("build", "reason"),
+    [
+        pytest.param(_deny_approval_missing, "approval_missing", id="approval_missing"),
+        pytest.param(_deny_approval_expired, "approval_expired", id="approval_expired"),
+        pytest.param(
+            _deny_approval_binding,
+            "approval_material_binding_mismatch",
+            id="approval_material_binding_mismatch",
+        ),
+        pytest.param(
+            _deny_unsupported_capability,
+            "unsupported_capability",
+            id="unsupported_capability",
+        ),
+        pytest.param(
+            _deny_case_revision,
+            "action_case_revision_mismatch",
+            id="action_case_revision_mismatch",
+        ),
+        pytest.param(
+            _deny_delegated_authority,
+            "delegated_authority_denied",
+            id="delegated_authority_denied",
+        ),
+    ],
+)
+def test_capability_executor_rejects_unauthorized_requests(
+    build: Callable[
+        [CaseContextSnapshot, Phase01AEpisode, CapabilityProposal],
+        CapabilityExecutionRequest,
+    ],
+    reason: str,
+) -> None:
+    snapshot, episode, proposal = _approved_execution()
+    adapter = _Capability()
+
+    outcome = CapabilityExecutor(adapter).execute(build(snapshot, episode, proposal))
+
+    assert outcome.status is CapabilityExecutionStatus.REJECTED
+    # Exactly the named reason: a second code would mean the request was
+    # rejected for a confounding reason (for example an invalid snapshot).
+    assert outcome.reason_codes == (reason,)
+    assert adapter.invocations == 0
 
 
 def test_coordinator_serializes_snapshot_compare_and_swap() -> None:
