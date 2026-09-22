@@ -258,7 +258,9 @@ def token_stats(
 def hf_token_counter(tokenizer_path: Path) -> TokenCounter:
     """Count tokens of the templated conversation with ``enable_thinking=False``."""
 
-    from transformers import AutoTokenizer
+    from transformers import (  # type: ignore[import-not-found,unused-ignore]
+        AutoTokenizer,
+    )
 
     tokenizer = AutoTokenizer.from_pretrained(str(tokenizer_path))
 
