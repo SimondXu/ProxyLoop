@@ -256,8 +256,11 @@ class CaseWorkflow:
                         type="state_invalid",
                         non_retryable=True,
                     )
-                self._last_transition = transition
-                self._reset_expiry_backoff()
+                if not self._adopt_transition(transition):
+                    workflow.logger.debug(
+                        "update receipt not adopted: revision %d",
+                        transition.after_revision,
+                    )
                 self._commands_in_run += 1
                 self._continue_requested = (
                     self._commands_in_run >= self._continue_as_new_after
@@ -375,13 +378,34 @@ class CaseWorkflow:
                     category,
                 )
                 return
-            self._last_transition = transition
-            self._reset_expiry_backoff()
+            if not self._adopt_transition(transition):
+                workflow.logger.debug(
+                    "expiry receipt not adopted: revision %d",
+                    transition.after_revision,
+                )
             self._commands_in_run += 1
             self._continue_requested = (
                 self._commands_in_run >= self._continue_as_new_after
             )
             self._wake_version += 1
+
+    def _adopt_transition(self, transition: CaseTransitionRef) -> bool:
+        """Replace the last transition only when the receipt is newer.
+
+        Revision order alone decides. A replayed older command returns its
+        stored receipt, and adopting it would roll the Workflow back and
+        disarm a pending approval's expiry timer. ``deduplicated`` is not a
+        rejection criterion: an activity retry after a committed but
+        unreported first attempt also returns a ``deduplicated`` receipt,
+        and that one is strictly newer and must be adopted.
+        """
+
+        current = self._last_transition
+        if current is not None and transition.after_revision <= current.after_revision:
+            return False
+        self._last_transition = transition
+        self._reset_expiry_backoff()
+        return True
 
     def _reset_expiry_backoff(self) -> None:
         self._expiry_failures = 0
