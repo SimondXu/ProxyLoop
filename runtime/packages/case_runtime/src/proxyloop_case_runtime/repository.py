@@ -19,7 +19,7 @@ from proxyloop_contracts import (
 )
 from proxyloop_provider_simulator.provider import FictionalMobileProvider
 
-from .commands import CaseTransitionRef
+from .commands import CaseTransitionRef, ExecutionClaimRecord
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +41,13 @@ class CaseRuntimeState:
     execution_proposal: CapabilityProposal | None = None
     transitions: tuple[CaseTransitionRef, ...] = ()
     last_fast_decision: FastTurnDecision | None = None
+    execution_claim: ExecutionClaimRecord | None = None
+
+    def __post_init__(self) -> None:
+        if (self.execution_claim is not None) != self.snapshot.pending_execution:
+            raise ValueError(
+                "execution claim must be present exactly while execution is pending"
+            )
 
 
 class CaseNotFoundError(LookupError):

@@ -431,6 +431,135 @@ def test_temporal_client_allowlists_channel_failure_categories(category: str) ->
     assert _failure_category(error) == category
 
 
+class _FailFinalWriteOnceChannelRepository(_ChannelRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.fail_final_write = True
+
+    def replace(
+        self,
+        case_id: UUID,
+        *,
+        expected_revision: int,
+        state: CaseRuntimeState,
+    ) -> CaseRuntimeState:
+        if state.snapshot.completion_decision is not None and self.fail_final_write:
+            self.fail_final_write = False
+            raise CaseConflictError("injected final CAS conflict")
+        return super().replace(
+            case_id,
+            expected_revision=expected_revision,
+            state=state,
+        )
+
+
+def test_delivery_callback_is_refused_while_execution_claim_is_pending() -> None:
+    repository = _FailFinalWriteOnceChannelRepository()
+    now = [BASE_TIME]
+    runtime = ThinAgentRuntime(repository, clock=lambda: now[0])
+    runtime.apply_command(_create_command())
+    event = _message_event(uuid4())
+    inbox = repository.reserve_channel_event(event, received_at=BASE_TIME)
+    ingest = CaseCommand(
+        schema_version="phase-06b1-v1",
+        command_id=inbox.command_id,
+        case_id=SCRIPTED_CASE_ID,
+        command_type=CaseCommandType.INGEST_CHANNEL_EVENT,
+        occurred_at=event.occurred_at,
+        expected_revision=2,
+        channel_kind=CHANNEL_KIND,
+        binding_ref=BINDING_REF,
+        event_id=event.event_id,
+        content_hash=hashlib.sha256(event.content.encode()).hexdigest(),
+        payload_hash=event.raw_payload_hash,
+    )
+    applied = runtime.apply_command(ingest)
+    assert applied.delivery_id is not None
+    accepted = repository.get_outbox_record(applied.delivery_id)
+    assert accepted is not None
+    repository.outbox[applied.delivery_id] = replace(
+        accepted,
+        state="accepted",
+        provider_message_id="local-provider-test",
+    )
+
+    now[0] = BASE_TIME + timedelta(minutes=1)
+    waiting = runtime.append_event(SCRIPTED_CASE_ID, content="Review the offer.")
+    assert waiting.approval is not None
+    approval_command = CaseCommand(
+        command_id=uuid4(),
+        case_id=SCRIPTED_CASE_ID,
+        command_type=CaseCommandType.DECIDE_APPROVAL,
+        occurred_at=BASE_TIME + timedelta(minutes=2),
+        expected_revision=waiting.snapshot.revision,
+        approval_id=waiting.approval.approval_id,
+        decision="approved",
+    )
+    with pytest.raises(CaseConflictError, match="final CAS"):
+        runtime.apply_command(approval_command)
+    claimed = repository.get(SCRIPTED_CASE_ID)
+    assert claimed is not None
+    assert claimed.snapshot.pending_execution is True
+    claim_revision = claimed.snapshot.revision
+
+    delivery_event = _message_event(uuid4(), kind=LocalMailboxEventKind.DELIVERY)
+    delivery_inbox = repository.reserve_channel_event(
+        delivery_event, received_at=BASE_TIME
+    )
+    callback = CaseCommand(
+        schema_version="phase-06b1-v1",
+        command_id=delivery_inbox.command_id,
+        case_id=SCRIPTED_CASE_ID,
+        command_type=CaseCommandType.RECORD_CHANNEL_DELIVERY,
+        occurred_at=BASE_TIME,
+        expected_revision=claim_revision,
+        channel_kind=CHANNEL_KIND,
+        binding_ref=BINDING_REF,
+        event_id=delivery_event.event_id,
+        delivery_id=applied.delivery_id,
+        provider_message_id="local-provider-test",
+        delivery_status="delivered",
+        artifact_hash=hashlib.sha256(b"artifact").hexdigest(),
+        payload_hash=delivery_event.raw_payload_hash,
+    )
+    with pytest.raises(ChannelConflictError, match="not available for channel"):
+        runtime.apply_command(callback)
+    still_pending = repository.get(SCRIPTED_CASE_ID)
+    assert still_pending is not None
+    assert still_pending.snapshot.revision == claim_revision
+    assert still_pending.snapshot.pending_execution is True
+    assert still_pending.execution_claim is not None
+    assert repository.receipts == []
+
+    now[0] = BASE_TIME + timedelta(minutes=3)
+    completed = runtime.apply_command(approval_command)
+    assert completed.terminal is True
+    assert completed.deduplicated is False
+
+    replayed_event = _message_event(uuid4(), kind=LocalMailboxEventKind.DELIVERY)
+    replayed_inbox = repository.reserve_channel_event(
+        replayed_event, received_at=BASE_TIME
+    )
+    replayed = callback.model_copy(
+        update={
+            "command_id": replayed_inbox.command_id,
+            "event_id": replayed_event.event_id,
+            "expected_revision": completed.after_revision,
+            "payload_hash": replayed_event.raw_payload_hash,
+        }
+    )
+    delivered = runtime.apply_command(replayed)
+    assert delivered.after_revision == completed.after_revision + 1
+    assert delivered.delivery_status == "delivered"
+    final = repository.get(SCRIPTED_CASE_ID)
+    assert final is not None
+    assert final.snapshot.pending_execution is False
+    assert final.execution_claim is None
+    assert final.execution_count == 1
+    assert final.snapshot.completion_decision is not None
+    assert len(repository.receipts) == 1
+
+
 def test_channel_delivery_rejects_replayed_callback_payload() -> None:
     repository = _ChannelRepository()
     runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)

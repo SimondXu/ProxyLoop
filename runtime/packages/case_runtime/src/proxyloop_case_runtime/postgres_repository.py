@@ -23,6 +23,7 @@ from proxyloop_contracts import (
     CapabilityProposal,
     CapabilityReference,
     CaseContextSnapshot,
+    CasePhase,
     CompletionOutcome,
     Evidence,
     EvidenceType,
@@ -37,7 +38,7 @@ from psycopg.rows import tuple_row
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from .commands import CaseTransitionRef
+from .commands import CaseTransitionRef, ExecutionClaimRecord
 from .repository import (
     CaseConflictError,
     CaseNotFoundError,
@@ -74,11 +75,14 @@ class _CaseStorageEnvelope(BaseModel):
     execution_proposal: CapabilityProposal | None = None
     transitions: tuple[CaseTransitionRef, ...] = ()
     last_fast_decision: FastTurnDecision | None = None
+    execution_claim: ExecutionClaimRecord | None = None
 
     @model_validator(mode="after")
     def state_history_matches_snapshot(self) -> _CaseStorageEnvelope:
         if self.events != self.snapshot.visible_events:
             raise ValueError("stored event history does not match snapshot")
+        if (self.execution_claim is not None) != self.snapshot.pending_execution:
+            raise ValueError("stored execution claim does not match pending state")
         command_ids: set[UUID] = set()
         prior_revision = 0
         for transition in self.transitions:
@@ -902,6 +906,7 @@ class PostgresCaseRepository:
                 execution_proposal=state.execution_proposal,
                 transitions=state.transitions,
                 last_fast_decision=state.last_fast_decision,
+                execution_claim=state.execution_claim,
             )
             _verify_provider_state(state, envelope)
         except (ValidationError, ValueError, RuntimeError):
@@ -938,6 +943,7 @@ class PostgresCaseRepository:
             execution_proposal=envelope.execution_proposal,
             transitions=envelope.transitions,
             last_fast_decision=envelope.last_fast_decision,
+            execution_claim=envelope.execution_claim,
         )
 
 
@@ -1095,7 +1101,16 @@ def _reconstruct_provider(envelope: _CaseStorageEnvelope) -> FictionalMobileProv
             _verify_no_execution_fields(envelope)
         return provider
 
-    if snapshot.completion_decision.decision is not CompletionOutcome.COMPLETE:
+    if snapshot.completion_decision.decision is not CompletionOutcome.COMPLETE and (
+        snapshot.case.phase is not CasePhase.CANDIDATE_COMPLETE
+        or snapshot.pending_execution
+    ):
+        # A completed execution whose verifier returned a continuation outcome
+        # is still a real, single Provider commit and must stay reconstructible.
+        # Defensive: unreachable with the deterministic simulator, because the
+        # claim enforces claimed_at == decided_at == confirmed_at and
+        # decided_at < offer.expires_at, so re-verification at claim time is
+        # always COMPLETE.
         raise ValueError("only verified terminal Cases can be reconstructed")
     if approval is None or intent is None:
         raise ValueError("terminal Case is missing approval state")
@@ -1190,6 +1205,15 @@ def _verify_pending_fields(
     expected_proposal = _capability_proposal(offer, approval.decided_at)
     if envelope.execution_proposal != expected_proposal:
         raise ValueError("pending execution proposal is not deterministic")
+    claim = envelope.execution_claim
+    if claim is None:
+        raise ValueError("pending execution is missing its claim record")
+    if claim.approval_id != approval.approval_id:
+        raise ValueError("pending execution claim does not reference the approval")
+    if claim.claimed_at != approval.decided_at:
+        raise ValueError("pending execution claim time does not match the decision")
+    if claim.before_revision != snapshot.revision - 1:
+        raise ValueError("pending execution claim revision is not the claim write")
 
 
 def _evidence_by_id(

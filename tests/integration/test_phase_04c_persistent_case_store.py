@@ -21,7 +21,8 @@ from proxyloop_api import (
     ThinAgentRuntime,
     runtime_from_environment,
 )
-from proxyloop_contracts import DialogueAct, EvidenceType
+from proxyloop_case_runtime import CaseCommand, CaseCommandType
+from proxyloop_contracts import CasePhase, CompletionOutcome, DialogueAct, EvidenceType
 from proxyloop_contracts.contracts import (
     CompletionClaim,
     EvidenceRequirement,
@@ -375,6 +376,148 @@ def test_postgres_pending_claim_recovers_after_final_write_failure(
         )
         == 1
     )
+
+
+APPROVAL_COMMAND_ID = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+
+
+def _failed_pinned_approval(
+    database_url: str,
+) -> tuple[ThinAgentRuntime, CaseCommand]:
+    """Claim an approval whose final write fails once; return the exact command."""
+
+    failing = _FinalWriteFailureRepository(database_url)
+    runtime = ThinAgentRuntime(
+        failing,
+        clock=_clock(
+            BASE_TIME,
+            BASE_TIME + timedelta(minutes=1),
+            BASE_TIME + timedelta(minutes=2),
+        ),
+    )
+    waiting_snapshot, approval = _waiting(runtime)
+    command = CaseCommand(
+        command_id=APPROVAL_COMMAND_ID,
+        case_id=CASE_ID,
+        command_type=CaseCommandType.DECIDE_APPROVAL,
+        occurred_at=BASE_TIME + timedelta(minutes=2),
+        expected_revision=waiting_snapshot.revision,
+        approval_id=approval.approval_id,
+        decision="approved",
+        expected_case_revision=approval.case_revision,
+        expected_action_intent_revision=approval.action_intent_revision,
+    )
+    with pytest.raises(CaseConflictError, match="final CAS"):
+        runtime.apply_command(command)
+    pending = PostgresCaseRepository(database_url).get(CASE_ID)
+    assert pending is not None
+    assert pending.snapshot.pending_execution is True
+    assert pending.execution_count == 0
+    assert pending.provider.state.value == "awaiting_approval"
+    return runtime, command
+
+
+def _assert_single_persisted_commit(database_url: str) -> CaseRuntimeState:
+    stored = PostgresCaseRepository(database_url).get(CASE_ID)
+    assert stored is not None
+    assert stored.snapshot.pending_execution is False
+    assert stored.execution_claim is None
+    assert stored.execution_count == 1
+    assert stored.provider.state.value == "confirmed"
+    assert [item.value for item in stored.provider.state_history].count(
+        "confirmed"
+    ) == 1
+    assert [item.source_type.value for item in stored.snapshot.evidence].count(
+        "confirmation"
+    ) == 1
+    assert [item.source_type.value for item in stored.snapshot.evidence].count(
+        "simulator_transition"
+    ) == 1
+    again = PostgresCaseRepository(database_url).get(CASE_ID)
+    assert again is not None
+    _assert_non_provider_fields_equal(stored, again)
+    assert again.execution_claim == stored.execution_claim
+    return stored
+
+
+def test_postgres_pinned_same_command_retry_converges_on_same_instance(
+    repository: PostgresCaseRepository,
+) -> None:
+    database_url = os.environ["PROXYLOOP_TEST_DATABASE_URL"]
+    runtime, command = _failed_pinned_approval(database_url)
+    pending = PostgresCaseRepository(database_url).get(CASE_ID)
+    assert pending is not None
+
+    retried = runtime.apply_command(command)
+    assert retried.terminal is True
+    assert retried.deduplicated is False
+    assert retried.before_revision == command.expected_revision
+    stored = _assert_single_persisted_commit(database_url)
+    assert stored.snapshot.completion_decision is not None
+    assert stored.snapshot.completion_decision.decision is CompletionOutcome.COMPLETE
+    assert len(stored.transitions) == 1
+    # The persisted claim record is what admitted the old pin above.
+    assert pending.execution_claim is not None
+    assert pending.execution_claim.command_id == APPROVAL_COMMAND_ID
+    assert pending.execution_claim.before_revision == command.expected_revision
+
+    duplicate = runtime.apply_command(command)
+    assert duplicate.deduplicated is True
+    assert duplicate.model_copy(update={"deduplicated": False}) == retried
+
+
+def test_postgres_pinned_same_command_retry_converges_on_fresh_instance(
+    repository: PostgresCaseRepository,
+) -> None:
+    database_url = os.environ["PROXYLOOP_TEST_DATABASE_URL"]
+    _, command = _failed_pinned_approval(database_url)
+
+    fresh = ThinAgentRuntime(
+        PostgresCaseRepository(database_url),
+        clock=_clock(BASE_TIME + timedelta(minutes=3)),
+    )
+    retried = fresh.apply_command(command)
+    assert retried.terminal is True
+    assert retried.deduplicated is False
+    assert retried.before_revision == command.expected_revision
+    stored = _assert_single_persisted_commit(database_url)
+    assert stored.snapshot.completion_decision is not None
+    assert stored.snapshot.completion_decision.decision is CompletionOutcome.COMPLETE
+
+    later = ThinAgentRuntime(
+        PostgresCaseRepository(database_url),
+        clock=_clock(BASE_TIME + timedelta(minutes=4)),
+    )
+    duplicate = later.apply_command(command)
+    assert duplicate.deduplicated is True
+    assert duplicate.model_copy(update={"deduplicated": False}) == retried
+
+
+def test_postgres_late_recovery_persists_complete_at_claim_time(
+    repository: PostgresCaseRepository,
+) -> None:
+    database_url = os.environ["PROXYLOOP_TEST_DATABASE_URL"]
+    _, command = _failed_pinned_approval(database_url)
+    assert command.approval_id is not None
+
+    late = ThinAgentRuntime(
+        PostgresCaseRepository(database_url),
+        clock=_clock(BASE_TIME + timedelta(hours=2)),
+    )
+    recovered = late.approve(CASE_ID, command.approval_id)
+    assert recovered.execution_count == 1
+    completion = recovered.snapshot.completion_decision
+    assert completion is not None
+    assert completion.decision is CompletionOutcome.COMPLETE
+    assert "offer_expired" not in completion.reason_codes
+    assert completion.evaluated_at == BASE_TIME + timedelta(minutes=2)
+    assert recovered.snapshot.case.phase is CasePhase.COMPLETE
+
+    stored = _assert_single_persisted_commit(database_url)
+    assert stored.snapshot.completion_decision == completion
+    assert stored.snapshot.case.phase is CasePhase.COMPLETE
+    with pytest.raises(CaseConflictError, match="case is terminal"):
+        late.append_event(CASE_ID, content="After completion.")
 
 
 def test_postgres_rejects_pending_execution_count_tampering(

@@ -500,3 +500,120 @@ def test_pending_approval_claim_conflict_does_not_transition_provider() -> None:
     assert state.snapshot.event_cursor == 1
     assert state.snapshot.approval_requests == ()
     assert state.provider.state.value == "offered"
+
+
+def test_exact_pinned_retry_completes_pending_claim_after_final_write_failure() -> None:
+    asyncio.run(_test_exact_pinned_retry_completes_pending_claim())
+
+
+async def _test_exact_pinned_retry_completes_pending_claim() -> None:
+    repository = FailFinalClaimRepository()
+    runtime = ThinAgentRuntime(repository)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(runtime)),
+        base_url="http://testserver",
+    ) as client:
+        created = await client.post("/cases", json=CREATE_CASE_REQUEST)
+        assert created.status_code == 201
+        case_id = created.json()["case_id"]
+        turn = await client.post(
+            f"/cases/{case_id}/events",
+            json={"content": "Please review the current offer."},
+        )
+        assert turn.status_code == 200
+        waiting = turn.json()
+        approval = waiting["approval"]
+        headers = {"Idempotency-Key": str(uuid4())}
+        body = {
+            "decision": "approved",
+            "expected_revision": waiting["revision"],
+            "expected_case_revision": approval["case_revision"],
+            "expected_action_intent_revision": approval["action_intent_revision"],
+        }
+        url = f"/cases/{case_id}/approvals/{approval['approval_id']}"
+
+        first = await client.post(url, json=body, headers=headers)
+        assert first.status_code == 409
+        assert first.json() == {"detail": "injected final CAS conflict"}
+        claimed = repository.get(UUID(case_id))
+        assert claimed is not None
+        assert claimed.snapshot.pending_execution is True
+        assert claimed.execution_count == 0
+
+        retry = await client.post(url, json=body, headers=headers)
+        assert retry.status_code == 200, retry.json()
+        completed = retry.json()
+        assert completed["completion"]["decision"] == "complete"
+        assert completed["execution_count"] == 1
+        assert [item["source_type"] for item in completed["evidence"]].count(
+            "confirmation"
+        ) == 1
+
+        state = repository.get(UUID(case_id))
+        assert state is not None
+        assert state.snapshot.pending_execution is False
+        assert state.execution_count == 1
+        assert [item.source_type.value for item in state.snapshot.evidence].count(
+            "confirmation"
+        ) == 1
+        assert [item.value for item in state.provider.state_history].count(
+            "confirmed"
+        ) == 1
+
+
+def test_late_pin_less_recovery_verifies_at_claim_time() -> None:
+    asyncio.run(_test_late_pin_less_recovery_verifies_at_claim_time())
+
+
+async def _test_late_pin_less_recovery_verifies_at_claim_time() -> None:
+    repository = FailFinalClaimRepository()
+    runtime = ThinAgentRuntime(
+        repository,
+        clock=SequenceClock(
+            BASE_TIME,
+            BASE_TIME + timedelta(minutes=1),
+            BASE_TIME + timedelta(minutes=2),
+            BASE_TIME + timedelta(hours=2),
+        ),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(runtime)),
+        base_url="http://testserver",
+    ) as client:
+        created = await client.post("/cases", json=CREATE_CASE_REQUEST)
+        assert created.status_code == 201
+        case_id = created.json()["case_id"]
+        turn = await client.post(
+            f"/cases/{case_id}/events",
+            json={"content": "Please review the current offer."},
+        )
+        assert turn.status_code == 200
+        approval = turn.json()["approval"]
+        url = f"/cases/{case_id}/approvals/{approval['approval_id']}"
+
+        first = await client.post(
+            url,
+            json={"decision": "approved", "expected_revision": turn.json()["revision"]},
+        )
+        assert first.status_code == 409
+        assert first.json() == {"detail": "injected final CAS conflict"}
+
+        late = await client.post(url, json={"decision": "approved"})
+        assert late.status_code == 200, late.json()
+        recovered = late.json()
+        assert recovered["completion"]["decision"] == "complete"
+        assert "offer_expired" not in recovered["completion"]["reason_codes"]
+        assert recovered["case"]["phase"] == "complete"
+        assert recovered["execution_count"] == 1
+
+        readable = await client.get(f"/cases/{case_id}")
+        assert readable.status_code == 200
+        assert readable.json()["route"] == "terminal"
+        assert readable.json()["completion"]["decision"] == "complete"
+
+        terminal_event = await client.post(
+            f"/cases/{case_id}/events",
+            json={"content": "Do something else after completion."},
+        )
+        assert terminal_event.status_code == 409
+        assert terminal_event.json() == {"detail": "case is terminal"}

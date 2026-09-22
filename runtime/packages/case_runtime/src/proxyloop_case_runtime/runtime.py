@@ -76,6 +76,7 @@ from .commands import (
     CaseCommand,
     CaseCommandType,
     CaseTransitionRef,
+    ExecutionClaimRecord,
     semantic_command_fingerprint,
 )
 from .repository import (
@@ -572,6 +573,7 @@ class ThinAgentRuntime:
                     execution_proposal=state.execution_proposal,
                     transitions=(*state.transitions, transition),
                     last_fast_decision=state.last_fast_decision,
+                    execution_claim=state.execution_claim,
                 )
                 repository.replace_with_delivery_receipt(
                     command.case_id,
@@ -590,6 +592,11 @@ class ThinAgentRuntime:
             state = self._require(command.case_id)
             snapshot = state.snapshot
             _check_expected_revision(snapshot, command.expected_revision)
+            if snapshot.pending_execution:
+                # A first callback must not rewrite the aggregate while an
+                # execution claim is pending; it is replayed once the claim
+                # completes.
+                raise ChannelConflictError("case is not available for channel event")
             event_time = max(
                 command.occurred_at, snapshot.visible_events[-1].occurred_at
             )
@@ -1019,7 +1026,24 @@ class ThinAgentRuntime:
     ) -> RuntimeResult:
         state = self._require(case_id)
         snapshot = state.snapshot
-        _check_expected_revision(snapshot, expected_revision)
+        claim = state.execution_claim
+        if (
+            snapshot.pending_execution
+            and claim is not None
+            and claim.approval_id == approval_id
+        ):
+            # A claim is pending for this approval: the Provider may already be
+            # committed, so the revision pin the client took before the claim
+            # write is still acceptable for the same command.
+            _check_claim_retry(
+                claim,
+                snapshot,
+                expected_revision=expected_revision,
+                command_id=command_id,
+                command_fingerprint=command_fingerprint,
+            )
+        else:
+            _check_expected_revision(snapshot, expected_revision)
         approval = next(
             (
                 item
@@ -1041,11 +1065,12 @@ class ThinAgentRuntime:
         if approval.decision is ApprovalDecision.APPROVED:
             if decision != "approved":
                 raise CaseConflictError("approval is already terminal")
-            now = occurred_at if occurred_at is not None else self._clock_now()
+            if occurred_at is None:
+                # Keep the clock contract; the claim carries the time basis.
+                self._clock_now()
             if snapshot.pending_execution:
                 return self._execute_claim(
                     state,
-                    evaluated_at=now,
                     command_id=command_id,
                     command_fingerprint=command_fingerprint,
                 )
@@ -1111,6 +1136,13 @@ class ThinAgentRuntime:
             execution_approval=decided,
             execution_proposal=proposal,
             transitions=state.transitions,
+            execution_claim=ExecutionClaimRecord(
+                approval_id=decided.approval_id,
+                before_revision=snapshot.revision,
+                claimed_at=decided_at,
+                command_id=command_id,
+                command_fingerprint=command_fingerprint,
+            ),
         )
         self.repository.replace(
             case_id,
@@ -1119,7 +1151,6 @@ class ThinAgentRuntime:
         )
         return self._execute_claim(
             claim_state,
-            evaluated_at=decided_at,
             command_id=command_id,
             command_fingerprint=command_fingerprint,
         )
@@ -1215,12 +1246,17 @@ class ThinAgentRuntime:
         self,
         state: CaseRuntimeState,
         *,
-        evaluated_at: datetime,
         command_id: UUID | None,
         command_fingerprint: str | None,
     ) -> RuntimeResult:
         snapshot = state.snapshot
         case_id = snapshot.case.case_id
+        claim = state.execution_claim
+        if claim is None:
+            raise RuntimeError("pending execution has no claim record")
+        # Verification and execution use the claim time, not the retry time,
+        # so a late re-drive reaches the same decision as the original claim.
+        evaluated_at = claim.claimed_at
         approval = state.execution_approval or next(
             item
             for item in snapshot.approval_requests
@@ -1237,12 +1273,16 @@ class ThinAgentRuntime:
             approval,
             approval.decided_at or evaluated_at,
         )
-        executor = self._executors.setdefault(
-            case_id,
-            CapabilityExecutor(adapter),
-        )
-        execution = executor.execute(
-            CapabilityExecutionRequest(
+        if state.provider.confirmation is not None:
+            # The same in-memory Provider was already committed by the attempt
+            # whose final write failed; derive the execution Evidence without
+            # touching the Provider again.
+            execution_evidence = adapter.prepare(
+                proposal,
+                idempotency_key=intent.idempotency_key,
+            ).evidence
+        else:
+            request = CapabilityExecutionRequest(
                 snapshot=snapshot,
                 source_pins=state.execution_source_pins or snapshot.pins,
                 proposal=proposal,
@@ -1250,14 +1290,31 @@ class ThinAgentRuntime:
                 approval=approval,
                 executed_at=approval.decided_at or evaluated_at,
             )
-        )
-        if execution.status not in {
-            CapabilityExecutionStatus.EXECUTED,
-            CapabilityExecutionStatus.REUSED,
-        }:
-            raise CaseConflictError("deterministic capability execution was rejected")
-        if execution.evidence is None:
-            raise RuntimeError("executor returned no Evidence after execution")
+            executor = self._executors.setdefault(
+                case_id,
+                CapabilityExecutor(adapter),
+            )
+            execution = executor.execute(request)
+            if (
+                execution.status is CapabilityExecutionStatus.REUSED
+                and state.provider.confirmation is None
+            ):
+                # The cached executor is bound to a discarded Provider object
+                # (for example after a reconstruction from storage); its
+                # idempotency memory must not stand in for a real commit.
+                executor = CapabilityExecutor(adapter)
+                self._executors[case_id] = executor
+                execution = executor.execute(request)
+            if execution.status not in {
+                CapabilityExecutionStatus.EXECUTED,
+                CapabilityExecutionStatus.REUSED,
+            }:
+                raise CaseConflictError(
+                    "deterministic capability execution was rejected"
+                )
+            if execution.evidence is None:
+                raise RuntimeError("executor returned no Evidence after execution")
+            execution_evidence = execution.evidence
         confirmation = state.provider.confirmation
         confirmation_evidence = state.provider.confirmation_evidence
         if confirmation is None or confirmation_evidence is None:
@@ -1290,7 +1347,7 @@ class ThinAgentRuntime:
             approvals=(approval,),
             evidence=(
                 *snapshot.evidence,
-                execution.evidence,
+                execution_evidence,
                 confirmation_evidence,
             ),
             completion=completion,
@@ -1307,7 +1364,7 @@ class ThinAgentRuntime:
                 _transition_ref(
                     command_id=command_id,
                     command_type=CaseCommandType.DECIDE_APPROVAL,
-                    before_revision=snapshot.revision - 1,
+                    before_revision=claim.before_revision,
                     snapshot=final_snapshot,
                     route="terminal",
                     approval=approval,
@@ -1336,7 +1393,7 @@ class ThinAgentRuntime:
             .advance(RouteRequest(snapshot=final_snapshot, created_at=evaluated_at))
             .route,
             approval=approval,
-            evidence=(execution.evidence, confirmation_evidence),
+            evidence=(execution_evidence, confirmation_evidence),
             execution_count=final_state.execution_count,
         )
 
@@ -1961,6 +2018,31 @@ def _check_expected_revision(
     expected_revision: int | None,
 ) -> None:
     if expected_revision is not None and expected_revision != snapshot.revision:
+        raise CaseConflictError("case snapshot revision is stale")
+
+
+def _check_claim_retry(
+    claim: ExecutionClaimRecord,
+    snapshot: CaseContextSnapshot,
+    *,
+    expected_revision: int | None,
+    command_id: UUID | None,
+    command_fingerprint: str | None,
+) -> None:
+    """Admit a command that may complete a pending execution claim.
+
+    The same command (same id, same semantics) may still carry the revision
+    pin it took before the claim write.  Any other command must pin the
+    current revision or nothing.
+    """
+
+    if command_id == claim.command_id:
+        if command_fingerprint != claim.command_fingerprint:
+            raise CaseConflictError("command id was reused for a different command")
+        accepted = {None, claim.before_revision, snapshot.revision}
+    else:
+        accepted = {None, snapshot.revision}
+    if expected_revision not in accepted:
         raise CaseConflictError("case snapshot revision is stale")
 
 
