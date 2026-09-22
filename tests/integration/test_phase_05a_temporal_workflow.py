@@ -69,6 +69,24 @@ class _FaultingAdapter(CaseCommandActivityAdapter):
         return transition
 
 
+class _AppendPostCommitFaultingAdapter(CaseCommandActivityAdapter):
+    """Fail the first ``APPEND_EVENT`` attempt after its commit only."""
+
+    def __init__(self, runtime: ThinAgentRuntime) -> None:
+        super().__init__(runtime)
+        self.append_attempts = 0
+
+    def apply_command(self, command: CaseCommand) -> CaseTransitionRef:
+        transition = super().apply_command(command)
+        if command.command_type is CaseCommandType.APPEND_EVENT:
+            self.append_attempts += 1
+            if self.append_attempts == 1:
+                raise ApplicationError(
+                    "injected post-commit", type="storage_unavailable"
+                )
+        return transition
+
+
 class _ExhaustingAdapter(CaseCommandActivityAdapter):
     def __init__(self, runtime: ThinAgentRuntime, blocked_command_id: UUID) -> None:
         super().__init__(runtime)
@@ -970,5 +988,191 @@ def test_time_skipping_non_retryable_expiry_failure_does_not_spin() -> None:
             assert state is not None
             assert state.snapshot.approval_requests[0].decision.value == "pending"
             assert len(state.transitions) == 2
+
+    asyncio.run(scenario())
+
+
+async def _pending_approval_in_second_run(
+    environment: WorkflowEnvironment, temporal: TemporalCaseClient
+) -> tuple[CaseCommandRequest, CaseCommandRequest, CaseTransitionRef]:
+    # Temporal deduplicates an Update ID inside one run before the handler
+    # runs, so a replayed command only reaches ``apply_case_command`` (and
+    # the Runtime's stored receipt) once the Workflow has continued as new.
+    create_request = _create_request()
+    created = await temporal.apply_command(create_request)
+    handle = environment.client.get_workflow_handle(
+        temporal.workflow_id(SCRIPTED_CASE_ID)
+    )
+    first_run_id = (
+        await handle.describe()
+    ).raw_description.workflow_execution_info.execution.run_id
+    append_request = CaseCommandRequest(
+        command_id=uuid4(),
+        case_id=SCRIPTED_CASE_ID,
+        command_type=CaseCommandType.APPEND_EVENT,
+        content="Review the fictional offer.",
+        event_type="consumer_message",
+        expected_revision=created.after_revision,
+    )
+    waiting = await temporal.apply_command(append_request)
+    assert waiting.approval_id is not None
+    assert waiting.approval_expires_at is not None
+    for _ in range(100):
+        current_run_id = (
+            await handle.describe()
+        ).raw_description.workflow_execution_info.execution.run_id
+        if current_run_id != first_run_id:
+            break
+        await asyncio.sleep(0.01)
+    assert current_run_id != first_run_id
+    return create_request, append_request, waiting
+
+
+# "append" is guard-only: its dedup receipt equals the pending transition,
+# so it also passes pre-fix; "create" is the regression that failed on main.
+@pytest.mark.parametrize("replayed", ["create", "append"])
+def test_time_skipping_deduplicated_replay_keeps_pending_expiry(
+    replayed: str,
+) -> None:
+    database_url = _database_url()
+    _truncate(database_url)
+
+    async def scenario() -> None:
+        environment = await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        )
+        async with environment:
+            task_queue = f"proxyloop-phase05a-dedup-{uuid4()}"
+            settings = TemporalSettings(
+                task_queue=task_queue,
+                continue_as_new_after=2,
+            )
+            runtime = ThinAgentRuntime(PostgresCaseRepository(database_url))
+            temporal = TemporalCaseClient(environment.client, settings)
+            worker = Worker(
+                environment.client,
+                task_queue=task_queue,
+                workflows=[CaseWorkflow],
+                activities=[activity_for_adapter(CaseCommandActivityAdapter(runtime))],
+            )
+            async with worker:
+                (
+                    create_request,
+                    append_request,
+                    waiting,
+                ) = await _pending_approval_in_second_run(environment, temporal)
+                older = create_request if replayed == "create" else append_request
+                replay = await temporal.apply_command(older)
+                assert replay.deduplicated is True
+                assert replay.command_id == older.command_id
+                assert replay.after_revision <= waiting.after_revision
+
+                await environment.sleep(timedelta(hours=2))
+                for _ in range(100):
+                    state = runtime.repository.get(SCRIPTED_CASE_ID)
+                    if (
+                        state is not None
+                        and state.snapshot.approval_requests[0].decision.value
+                        == "expired"
+                    ):
+                        break
+                    await asyncio.sleep(0.01)
+                assert (
+                    await _workflow_status(environment, temporal)
+                    is WorkflowExecutionStatus.RUNNING
+                )
+
+            state = runtime.repository.get(SCRIPTED_CASE_ID)
+            assert state is not None
+            approval = state.snapshot.approval_requests[0]
+            assert approval.decision.value == "expired"
+            assert approval.decided_at == approval.expires_at
+            assert (
+                len(
+                    [
+                        event
+                        for event in state.snapshot.visible_events
+                        if event.event_type == "approval_expired"
+                    ]
+                )
+                == 1
+            )
+            assert len(state.transitions) == 3
+
+    asyncio.run(scenario())
+
+
+def test_time_skipping_post_commit_retry_receipt_keeps_pending_expiry() -> None:
+    database_url = _database_url()
+    _truncate(database_url)
+
+    async def scenario() -> None:
+        environment = await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        )
+        async with environment:
+            task_queue = f"proxyloop-phase05a-retry-receipt-{uuid4()}"
+            settings = TemporalSettings(task_queue=task_queue)
+            runtime = ThinAgentRuntime(PostgresCaseRepository(database_url))
+            temporal = TemporalCaseClient(environment.client, settings)
+            adapter = _AppendPostCommitFaultingAdapter(runtime)
+            worker = Worker(
+                environment.client,
+                task_queue=task_queue,
+                workflows=[CaseWorkflow],
+                activities=[activity_for_adapter(adapter)],
+            )
+            async with worker:
+                created = await temporal.apply_command(_create_request())
+                # The first attempt commits then fails to report; the activity
+                # retry returns the stored receipt, which is newer than the
+                # create receipt and must become the Workflow's last transition.
+                waiting = await temporal.apply_command(
+                    CaseCommandRequest(
+                        command_id=uuid4(),
+                        case_id=SCRIPTED_CASE_ID,
+                        command_type=CaseCommandType.APPEND_EVENT,
+                        content="Review the fictional offer.",
+                        event_type="consumer_message",
+                        expected_revision=created.after_revision,
+                    )
+                )
+                assert adapter.append_attempts == 2
+                assert waiting.deduplicated is True
+                assert waiting.approval_id is not None
+                assert waiting.approval_expires_at is not None
+                assert waiting.after_revision > created.after_revision
+
+                await environment.sleep(timedelta(hours=2))
+                for _ in range(100):
+                    state = runtime.repository.get(SCRIPTED_CASE_ID)
+                    if (
+                        state is not None
+                        and state.snapshot.approval_requests[0].decision.value
+                        == "expired"
+                    ):
+                        break
+                    await asyncio.sleep(0.01)
+                assert (
+                    await _workflow_status(environment, temporal)
+                    is WorkflowExecutionStatus.RUNNING
+                )
+
+            state = runtime.repository.get(SCRIPTED_CASE_ID)
+            assert state is not None
+            approval = state.snapshot.approval_requests[0]
+            assert approval.decision.value == "expired"
+            assert approval.decided_at == approval.expires_at
+            assert (
+                len(
+                    [
+                        event
+                        for event in state.snapshot.visible_events
+                        if event.event_type == "approval_expired"
+                    ]
+                )
+                == 1
+            )
+            assert len(state.transitions) == 3
 
     asyncio.run(scenario())
