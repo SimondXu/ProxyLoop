@@ -2,7 +2,7 @@
 
 The teacher sends exactly the Phase 03C Fast prompt that
 ``Phase03CQwenAdapter.build_prompt`` produces for the configured
-``prompt_version`` (Stage 1b default v4), so training prompts cannot drift
+``prompt_version`` (Stage 1c default v6), so training prompts cannot drift
 from evaluation prompts.  It samples ``k`` independent Chat Completions calls
 per view, returns the raw JSON-object strings for strict downstream parsing,
 and keeps a per-model ledger whose USD figures are an accounted estimate: the
@@ -12,7 +12,11 @@ user-maintained ``ml/configs/teacher-rates.json``.
 The OpenAI SDK is imported only when no client is injected.  Tests inject a
 fake ``chat.completions.create`` client and never need credentials or network
 access.  There are no retries, no streaming, and no policy or completion
-authority here.
+authority here.  One circuit breaker exists: a hard relay error (401/403) or
+``CONSECUTIVE_FAILURE_LIMIT`` failed calls in a row sets ``stop_reason`` and
+every later ``sample`` call raises ``TeacherStoppedError`` before reserving
+or sending anything, so an outage cannot burn the whole budget at the
+worst-case failed-call charge.
 """
 
 from __future__ import annotations
@@ -22,10 +26,11 @@ import importlib
 import json
 import math
 import os
+import threading
 import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Final, cast
 
 from proxyloop_contracts import FastModelView
 
@@ -33,6 +38,7 @@ from .fast_output import FastModelOutput
 from .openai_frontier import (
     FRONTIER_API_KEY_ENV,
     FRONTIER_BASE_URL,
+    FrontierAdapterError,
     FrontierBudgetExceededError,
     FrontierCallRecord,
     FrontierCallStatus,
@@ -52,9 +58,16 @@ TEACHER_ACCOUNTING_LABEL = (
     "estimate; relay prices not exposed; rates from ml/configs/teacher-rates.json; "
     "failed calls and calls with missing usage are charged at the pre-call worst "
     "case, so a relay outage inflates the estimate and the ledger must be reset "
-    "deliberately before a rerun"
+    "deliberately before a rerun: --reset-failed-charges rebuilds it from the "
+    "samples JSONL, keeping each succeeded call's recorded estimate and counting "
+    "failed calls at zero"
 )
 TEACHER_TIMEOUT_SECONDS = 60
+# Circuit breaker: these relay responses mean every further call will fail
+# the same way, so the batch stops instead of paying the worst case per call.
+HARD_ERROR_STATUS_CODES: Final = frozenset({401, 403})
+HARD_ERROR_CLASSES: Final = frozenset({"AuthenticationError", "PermissionDeniedError"})
+CONSECUTIVE_FAILURE_LIMIT: Final = 5
 # Pre-call worst case: prompt characters divided by this many characters per
 # token, plus the full output budget.  Deliberately coarse and conservative.
 PROMPT_CHARS_PER_TOKEN = 3
@@ -74,6 +87,21 @@ class TeacherBudgetExceededError(FrontierBudgetExceededError):
         completed: tuple[TeacherSample, ...] = (),
     ) -> None:
         super().__init__(message, status=FrontierCallStatus.NOT_RUN_BUDGET_EXCEEDED)
+        self.completed = completed
+
+
+class TeacherStoppedError(FrontierAdapterError):
+    """The circuit breaker tripped; the remaining calls were never sent."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: str,
+        completed: tuple[TeacherSample, ...] = (),
+    ) -> None:
+        super().__init__(message, status=FrontierCallStatus.FAILED_PROVIDER_CALL)
+        self.reason = reason
         self.completed = completed
 
 
@@ -126,53 +154,103 @@ class TeacherModelTotals:
 
 @dataclass(slots=True)
 class TeacherLedger:
-    """Accumulated per-model usage and estimated USD across all sampled calls."""
+    """Accumulated per-model usage and estimated USD across all sampled calls.
+
+    Thread-safe: concurrent samplers share one ledger, and a call is admitted
+    only by ``reserve`` (worst case, atomic with the ceiling check) and then
+    settled by ``record`` to the actual cost, so N workers can never jointly
+    exceed ``usd_ceiling``.
+    """
 
     usd_ceiling: float
     rates_path: Path = DEFAULT_TEACHER_RATES_PATH
     per_model: dict[str, TeacherModelTotals] = field(default_factory=dict)
+    reserved_usd: float = 0.0
+    # Why the last sampling run over this ledger stopped early (``None`` when
+    # it ran to completion): ``budget_exceeded``, ``hard_error:<class>``, or
+    # ``consecutive_failures``.  Set by the sampling pipeline, not here.
+    stop_reason: str | None = None
+    _lock: threading.RLock = field(
+        default_factory=threading.RLock, repr=False, compare=False
+    )
 
     @property
     def total_estimated_usd(self) -> float:
-        return sum(item.estimated_usd for item in self.per_model.values())
+        with self._lock:
+            return sum(item.estimated_usd for item in self.per_model.values())
 
     @property
     def total_calls(self) -> int:
-        return sum(item.calls for item in self.per_model.values())
+        with self._lock:
+            return sum(item.calls for item in self.per_model.values())
 
     def would_exceed(self, worst_case_usd: float) -> bool:
-        return self.total_estimated_usd + worst_case_usd - self.usd_ceiling > 1e-12
+        with self._lock:
+            return (
+                self.total_estimated_usd
+                + self.reserved_usd
+                + worst_case_usd
+                - self.usd_ceiling
+                > 1e-12
+            )
 
-    def record(self, record: FrontierCallRecord) -> None:
-        totals = self.per_model.setdefault(record.requested_model, TeacherModelTotals())
-        totals.calls += 1
-        if record.status is FrontierCallStatus.SUCCEEDED:
-            totals.succeeded += 1
-        else:
-            totals.failed += 1
-        totals.input_tokens += record.input_tokens
-        totals.output_tokens += record.output_tokens
-        totals.estimated_usd += record.estimated_cost_usd
+    def reserve(self, worst_case_usd: float) -> bool:
+        """Admit one call by holding its worst case; ``False`` sends nothing."""
+
+        with self._lock:
+            if self.would_exceed(worst_case_usd):
+                return False
+            self.reserved_usd += worst_case_usd
+            return True
+
+    def release(self, reserved_usd: float) -> None:
+        """Give back a reservation whose call was never started."""
+
+        with self._lock:
+            self._settle(reserved_usd)
+
+    def _settle(self, reserved_usd: float) -> None:
+        # Caller holds the lock.  Snap float residue so a fully settled
+        # ledger reports exactly zero outstanding reservation.
+        remaining = self.reserved_usd - reserved_usd
+        self.reserved_usd = remaining if remaining > 1e-12 else 0.0
+
+    def record(self, record: FrontierCallRecord, *, reserved_usd: float = 0.0) -> None:
+        with self._lock:
+            self._settle(reserved_usd)
+            totals = self.per_model.setdefault(
+                record.requested_model, TeacherModelTotals()
+            )
+            totals.calls += 1
+            if record.status is FrontierCallStatus.SUCCEEDED:
+                totals.succeeded += 1
+            else:
+                totals.failed += 1
+            totals.input_tokens += record.input_tokens
+            totals.output_tokens += record.output_tokens
+            totals.estimated_usd += record.estimated_cost_usd
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "accounting": TEACHER_ACCOUNTING_LABEL,
-            "rates_path": TEACHER_RATES_LABEL,
-            "usd_ceiling": self.usd_ceiling,
-            "total_calls": self.total_calls,
-            "total_estimated_usd": self.total_estimated_usd,
-            "per_model": {
-                model: {
-                    "calls": totals.calls,
-                    "succeeded": totals.succeeded,
-                    "failed": totals.failed,
-                    "input_tokens": totals.input_tokens,
-                    "output_tokens": totals.output_tokens,
-                    "estimated_usd": totals.estimated_usd,
-                }
-                for model, totals in sorted(self.per_model.items())
-            },
-        }
+        with self._lock:
+            return {
+                "accounting": TEACHER_ACCOUNTING_LABEL,
+                "rates_path": TEACHER_RATES_LABEL,
+                "usd_ceiling": self.usd_ceiling,
+                "total_calls": self.total_calls,
+                "total_estimated_usd": self.total_estimated_usd,
+                "stop_reason": self.stop_reason,
+                "per_model": {
+                    model: {
+                        "calls": totals.calls,
+                        "succeeded": totals.succeeded,
+                        "failed": totals.failed,
+                        "input_tokens": totals.input_tokens,
+                        "output_tokens": totals.output_tokens,
+                        "estimated_usd": totals.estimated_usd,
+                    }
+                    for model, totals in sorted(self.per_model.items())
+                },
+            }
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,10 +321,21 @@ class RelayTeacherAdapter:
         self._prompt_adapter = prompt_builder(prompt_version)
         self._schema_fingerprint = _fingerprint(FastModelOutput.model_json_schema())
         self._calls_started = 0
+        self._consecutive_failures = 0
+        self._stop_reason: str | None = None
+        # Guards lazy client creation, the call counter, and the circuit
+        # breaker across workers.
+        self._lock = threading.Lock()
 
     @property
     def calls_started(self) -> int:
         return self._calls_started
+
+    @property
+    def stop_reason(self) -> str | None:
+        """Why the circuit breaker tripped, or ``None`` while calls may go on."""
+
+        return self._stop_reason
 
     @property
     def schema_fingerprint(self) -> str:
@@ -291,14 +380,26 @@ class RelayTeacherAdapter:
         worst_case = self.worst_case_call_usd(view)
         samples: list[TeacherSample] = []
         for call_index in range(k):
-            if self.ledger.would_exceed(worst_case):
+            if self._stop_reason is not None:
+                raise TeacherStoppedError(
+                    f"teacher stopped: {self._stop_reason}",
+                    reason=self._stop_reason,
+                    completed=tuple(samples),
+                )
+            # Reserve the worst case atomically with the ceiling check; the
+            # call settles it to the actual cost (or keeps it on failure).
+            if not self.ledger.reserve(worst_case):
                 raise TeacherBudgetExceededError(
                     f"teacher ledger ${self.ledger.total_estimated_usd:.6f} plus "
                     f"worst-case call ${worst_case:.6f} exceeds ceiling "
                     f"${self.usd_ceiling:.6f}",
                     completed=tuple(samples),
                 )
-            client = self._ensure_client()
+            try:
+                client = self._ensure_client()
+            except BaseException:
+                self.ledger.release(worst_case)
+                raise
             samples.append(
                 self._call(
                     client,
@@ -317,6 +418,10 @@ class RelayTeacherAdapter:
         )
 
     def _ensure_client(self) -> object:
+        with self._lock:
+            return self._ensure_client_locked()
+
+    def _ensure_client_locked(self) -> object:
         if self._client is not None:
             return self._client
         if not os.environ.get(self.api_key_env):
@@ -351,7 +456,9 @@ class RelayTeacherAdapter:
         prompt_fingerprint: str,
         worst_case: float,
     ) -> TeacherSample:
-        self._calls_started += 1
+        with self._lock:
+            self._calls_started += 1
+            calls_started = self._calls_started
         started = time.perf_counter()
         try:
             response = cast(Any, client).chat.completions.create(
@@ -363,7 +470,7 @@ class RelayTeacherAdapter:
             )
         except Exception as exc:
             evidence = _redact(
-                _provider_error_evidence(exc, call_index=self._calls_started),
+                _provider_error_evidence(exc, call_index=calls_started),
                 os.environ.get(self.api_key_env),
             )
             record = self._failed_record(
@@ -373,7 +480,8 @@ class RelayTeacherAdapter:
                 prompt_fingerprint=prompt_fingerprint,
                 worst_case=worst_case,
             )
-            self.ledger.record(record)
+            self.ledger.record(record, reserved_usd=worst_case)
+            self._note_failure(evidence)
             return TeacherSample(
                 call_index=call_index,
                 content=None,
@@ -398,12 +506,13 @@ class RelayTeacherAdapter:
                 worst_case=worst_case,
                 response=response,
             )
-            self.ledger.record(record)
+            self.ledger.record(record, reserved_usd=worst_case)
+            self._note_failure(None)
             return TeacherSample(
                 call_index=call_index,
                 content=None,
                 record=record,
-                error=_local_error("MissingContent", call_index=self._calls_started),
+                error=_local_error("MissingContent", call_index=calls_started),
                 finish_reason=finish_reason,
                 usage_missing=usage_missing,
             )
@@ -418,12 +527,13 @@ class RelayTeacherAdapter:
                 worst_case=worst_case,
                 response=response,
             )
-            self.ledger.record(record)
+            self.ledger.record(record, reserved_usd=worst_case)
+            self._note_success()
             return TeacherSample(
                 call_index=call_index,
                 content=content,
                 record=record,
-                error=_local_error("MissingUsage", call_index=self._calls_started),
+                error=_local_error("MissingUsage", call_index=calls_started),
                 finish_reason=finish_reason,
                 usage_missing=True,
             )
@@ -451,13 +561,31 @@ class RelayTeacherAdapter:
             prompt_fingerprint=prompt_fingerprint,
             schema_fingerprint=self._schema_fingerprint,
         )
-        self.ledger.record(record)
+        self.ledger.record(record, reserved_usd=worst_case)
+        self._note_success()
         return TeacherSample(
             call_index=call_index,
             content=content,
             record=record,
             finish_reason=finish_reason,
         )
+
+    def _note_success(self) -> None:
+        with self._lock:
+            self._consecutive_failures = 0
+
+    def _note_failure(self, evidence: FrontierErrorEvidence | None) -> None:
+        with self._lock:
+            self._consecutive_failures += 1
+            if self._stop_reason is not None:
+                return
+            if evidence is not None and (
+                evidence.status_code in HARD_ERROR_STATUS_CODES
+                or evidence.error_class in HARD_ERROR_CLASSES
+            ):
+                self._stop_reason = f"hard_error:{evidence.error_class}"
+            elif self._consecutive_failures >= CONSECUTIVE_FAILURE_LIMIT:
+                self._stop_reason = "consecutive_failures"
 
     def _failed_record(
         self,
@@ -555,7 +683,10 @@ def _fingerprint(value: object) -> str:
 
 
 __all__ = [
+    "CONSECUTIVE_FAILURE_LIMIT",
     "DEFAULT_TEACHER_RATES_PATH",
+    "HARD_ERROR_CLASSES",
+    "HARD_ERROR_STATUS_CODES",
     "PROMPT_CHARS_PER_TOKEN",
     "TEACHER_ACCOUNTING_LABEL",
     "TEACHER_TIMEOUT_SECONDS",
@@ -567,5 +698,6 @@ __all__ = [
     "TeacherRate",
     "TeacherSample",
     "TeacherSampleBatch",
+    "TeacherStoppedError",
     "load_teacher_rate",
 ]

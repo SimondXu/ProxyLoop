@@ -15,7 +15,10 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
-from proxyloop_evaluation.phase03c_experiment import PromptVersion
+from proxyloop_evaluation.phase03c_experiment import (
+    PHASE03C_COMPILER_VERSIONS,
+    PromptVersion,
+)
 from proxyloop_evaluation.phase03c_prompt_set import (
     PROMPT_SET_MANIFEST_PATH,
     STAGE1B_PROMPT_VERSION,
@@ -32,7 +35,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--check", action="store_true")
     parser.add_argument(
-        "--prompt-version", choices=("v3", "v4"), default=STAGE1B_PROMPT_VERSION
+        "--prompt-version",
+        choices=tuple(PHASE03C_COMPILER_VERSIONS),
+        default=STAGE1B_PROMPT_VERSION,
     )
     args = parser.parse_args(argv)
     path = ROOT / PROMPT_SET_MANIFEST_PATH

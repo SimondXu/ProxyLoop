@@ -1,0 +1,17 @@
+{
+  "accounting": "estimate; relay prices not exposed; rates from ml/configs/teacher-rates.json; failed calls and calls with missing usage are charged at the pre-call worst case, so a relay outage inflates the estimate and the ledger must be reset deliberately before a rerun",
+  "per_model": {
+    "claude-sonnet-5": {
+      "calls": 300,
+      "estimated_usd": 4.503861000000001,
+      "failed": 0,
+      "input_tokens": 923052,
+      "output_tokens": 115647,
+      "succeeded": 300
+    }
+  },
+  "rates_path": "ml/configs/teacher-rates.json",
+  "total_calls": 300,
+  "total_estimated_usd": 4.503861000000001,
+  "usd_ceiling": 6.0
+}

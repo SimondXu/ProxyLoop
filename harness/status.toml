@@ -7,7 +7,7 @@ integration_baseline = "main"
 updated_at = "2026-09-21"
 
 [boundaries]
-summary = "Phase 03C Stage 1b teacher pipeline and 200-prompt pilot are complete (Go for claude-sonnet-5 on prompt v4; ledger USD 9.55 of 15); see harness/log/phase-03c-stage1b-teacher-pilot.md. Stage 1c full generation (<= USD 150), Stage 2 cloud GPU training, Phase 06B2, full Phase 07, and every real channel remain unauthorized."
+summary = "Phase 03C Stage 1c full teacher generation is complete (7,196 accepted rows over all 10 train families, prompt v6, training_ready true); see harness/log/phase-03c-stage1c-full-generation.md. Stage 2 training (needs a CUDA box), Stage 3, Phase 06B2, full Phase 07, and every real channel remain unauthorized."
 inactive = [
   "Phase 03A1 continuation or r6/r7",
   "any model training, data expansion, or promotion; Phase 03A1/03B artifact rewrites (Stage 0 writes only new phase-03c artifacts)",

@@ -78,10 +78,14 @@ PHASE03B_ARM_SOURCES: Final[dict[str, Path]] = {
 
 PHASE03C_COMPILER_VERSION: Final = "phase-03c-fast-compiler-v3"
 PHASE03C_COMPILER_VERSION_V4: Final = "phase-03c-fast-compiler-v4"
-PromptVersion = Literal["v3", "v4"]
+PHASE03C_COMPILER_VERSION_V5: Final = "phase-03c-fast-compiler-v5"
+PHASE03C_COMPILER_VERSION_V6: Final = "phase-03c-fast-compiler-v6"
+PromptVersion = Literal["v3", "v4", "v5", "v6"]
 PHASE03C_COMPILER_VERSIONS: Final[dict[PromptVersion, str]] = {
     "v3": PHASE03C_COMPILER_VERSION,
     "v4": PHASE03C_COMPILER_VERSION_V4,
+    "v5": PHASE03C_COMPILER_VERSION_V5,
+    "v6": PHASE03C_COMPILER_VERSION_V6,
 }
 PHASE03C_POLICY_VERSION: Final = PHASE03B_POLICY_VERSION
 PHASE03C_ERRATUM_SCHEMA_VERSION: Final = "phase-03c-parser-erratum-v1"
@@ -119,6 +123,88 @@ DECISION_CONVENTION_BLOCK: Final = (
     '7. otherwise -> "counter", {"needed": false, "reason_code": "none"}.\n'
     "Set fact_updates to [] and action_intent to null in every case."
 )
+# v5 = v4 with three wording edits from the Stage 1b pilot findings (rule 6
+# states the total-vs-cap comparison, rule 7 says offer non-compliance is
+# never a replan, and a final line forbids echoing a requested disclosure
+# field name).  v4 bytes are frozen by the Stage 1b pilot artifacts.
+DECISION_CONVENTION_BLOCK_V5: Final = (
+    "DECISION_CONVENTION: pick dialogue_act and reasoner_request from the "
+    "Provider state and the offer's compliance with the goal, in this order:\n"
+    '1. needs_clarification true -> dialogue_act "clarify", reasoner_request '
+    '{"needed": false, "reason_code": "none"}.\n'
+    "2. requested_disclosures contains anything outside allowed_disclosures -> "
+    '"challenge", {"needed": false, "reason_code": "none"}.\n'
+    '3. approval_current false -> "counter", {"needed": true, "reason_code": '
+    '"provider_state_requires_replan"}.\n'
+    '4. transfer_available true -> "escalate", {"needed": false, "reason_code": '
+    '"none"}.\n'
+    '5. confirmation_evidence_available false -> "counter", {"needed": true, '
+    '"reason_code": "provider_state_requires_replan"}.\n'
+    "6. otherwise, if an offer meets every check (monthly_price_minor <= "
+    "target_monthly_total_minor, total_cost_12_months_minor <= "
+    "target_monthly_total_minor*12, all required_features present, no "
+    "forbidden_changes applied, no unsupported change such as "
+    'account_cancellation) -> "confirm", {"needed": true, "reason_code": '
+    '"offer_candidate_requires_slow_review"}; a confirm is a proposal for Slow '
+    "review, never an acceptance. In response_text state both numbers and the "
+    'comparison, for example "total 112700 vs cap 81600 (6800*12): exceeds", '
+    "before your conclusion; if the total is greater than the cap the offer "
+    "fails.\n"
+    "7. otherwise (the offer fails any check in rule 6: a forbidden change "
+    "applied, a required feature missing, a fee that pushes the total over the "
+    'cap, an unsupported change, or a price above target) -> "counter", '
+    '{"needed": false, "reason_code": "none"}; offer non-compliance is never a '
+    "replan and never needs the reasoner.\n"
+    "Set fact_updates to [] and action_intent to null in every case.\n"
+    "Never repeat the name of a requested disclosure field (any value in "
+    'requested_disclosures) in response_text; refer to it as "that information".'
+)
+# v6 = v5 with two wording edits from the Stage 1c full-run finding (the v5
+# rule 7 clause "never needs the reasoner" made the teacher skip rule 5 when
+# a view had both missing confirmation evidence and a non-compliant offer):
+# the header says to apply the first matching rule and stop, with rules 1-5
+# taking precedence, and rule 7 defers to any Provider-state rule that already
+# matched.  v5 bytes are frozen by the Stage 1c re-pilot artifacts.
+DECISION_CONVENTION_BLOCK_V6: Final = (
+    "DECISION_CONVENTION: pick dialogue_act and reasoner_request from the "
+    "Provider state and the offer's compliance with the goal, in this order: "
+    "Apply the first rule that matches and stop; rules 1-5 are Provider-state "
+    "rules and take precedence over the offer checks in rules 6-7.\n"
+    '1. needs_clarification true -> dialogue_act "clarify", reasoner_request '
+    '{"needed": false, "reason_code": "none"}.\n'
+    "2. requested_disclosures contains anything outside allowed_disclosures -> "
+    '"challenge", {"needed": false, "reason_code": "none"}.\n'
+    '3. approval_current false -> "counter", {"needed": true, "reason_code": '
+    '"provider_state_requires_replan"}.\n'
+    '4. transfer_available true -> "escalate", {"needed": false, "reason_code": '
+    '"none"}.\n'
+    '5. confirmation_evidence_available false -> "counter", {"needed": true, '
+    '"reason_code": "provider_state_requires_replan"}.\n'
+    "6. otherwise, if an offer meets every check (monthly_price_minor <= "
+    "target_monthly_total_minor, total_cost_12_months_minor <= "
+    "target_monthly_total_minor*12, all required_features present, no "
+    "forbidden_changes applied, no unsupported change such as "
+    'account_cancellation) -> "confirm", {"needed": true, "reason_code": '
+    '"offer_candidate_requires_slow_review"}; a confirm is a proposal for Slow '
+    "review, never an acceptance. In response_text state both numbers and the "
+    'comparison, for example "total 112700 vs cap 81600 (6800*12): exceeds", '
+    "before your conclusion; if the total is greater than the cap the offer "
+    "fails.\n"
+    "7. otherwise (the offer fails any check in rule 6: a forbidden change "
+    "applied, a required feature missing, a fee that pushes the total over the "
+    'cap, an unsupported change, or a price above target) -> "counter", '
+    '{"needed": false, "reason_code": "none"}; an offer that fails rule 6 is '
+    "countered without the reasoner unless a Provider-state rule 1-5 already "
+    "matched.\n"
+    "Set fact_updates to [] and action_intent to null in every case.\n"
+    "Never repeat the name of a requested disclosure field (any value in "
+    'requested_disclosures) in response_text; refer to it as "that information".'
+)
+DECISION_CONVENTION_BLOCKS: Final[dict[PromptVersion, str]] = {
+    "v4": DECISION_CONVENTION_BLOCK,
+    "v5": DECISION_CONVENTION_BLOCK_V5,
+    "v6": DECISION_CONVENTION_BLOCK_V6,
+}
 PROMPT_TOKEN_LIMIT: Final = 2048
 PHASE03C_ADAPTER_VERSION: Final = "phase-03c-qwen-mlx-v3"
 
@@ -265,8 +351,10 @@ class Phase03CQwenAdapter(Phase03BQwenAdapter):
         Attempt 01 of the 8B smoke replaced the 03B OUTPUT_SHAPE hint with the
         schema alone and lost ``fact_updates: []``; keeping the 03B text
         byte-for-byte and only adding to it is what the contract asks for.
-        v4 inserts ``DECISION_CONVENTION_BLOCK`` after the reason-code line;
-        the system text is identical for both versions.
+        v4 inserts ``DECISION_CONVENTION_BLOCK`` after the reason-code line,
+        v5 inserts ``DECISION_CONVENTION_BLOCK_V5`` there, and v6 inserts
+        ``DECISION_CONVENTION_BLOCK_V6``; the system text is identical for
+        every version.
         """
 
         v2 = super().build_prompt(view)
@@ -278,13 +366,14 @@ class Phase03CQwenAdapter(Phase03BQwenAdapter):
         marker = "COMPACT_FAST_VIEW:\n"
         if v2.user.count(marker) != 1:
             raise ValueError("Phase 03B user prompt marker drifted")
+        block = DECISION_CONVENTION_BLOCKS.get(self._prompt_version)
         user = v2.user.replace(
             marker,
             "OUTPUT_JSON_SCHEMA:\n"
             + _canonical_json(FastModelOutput.model_json_schema())
             + "\n"
             + REASON_CODE_LINE
-            + ("\n" + DECISION_CONVENTION_BLOCK if self._prompt_version == "v4" else "")
+            + ("\n" + block if block is not None else "")
             + "\n"
             + marker,
         )
@@ -1178,12 +1267,16 @@ def row_metrics_dict(row: Phase03CExecutedRow) -> dict[str, object]:
     return asdict(row.metrics)
 
 
-# Stage 0 (v3) rows are required; a v4 row per checkpoint is optional.
+# Stage 0 (v3) rows are required; a v4, v5, or v6 row per checkpoint is optional.
 SMOKE_RESULT_FILES: Final[dict[tuple[str, PromptVersion], str]] = {
     ("8b", "v3"): "arm-a-untuned-8b-v3.json",
     ("4b", "v3"): "arm-a-untuned-4b-v3.json",
     ("8b", "v4"): "arm-a-untuned-8b-v4.json",
     ("4b", "v4"): "arm-a-untuned-4b-v4.json",
+    ("8b", "v5"): "arm-a-untuned-8b-v5.json",
+    ("4b", "v5"): "arm-a-untuned-4b-v5.json",
+    ("8b", "v6"): "arm-a-untuned-8b-v6.json",
+    ("4b", "v6"): "arm-a-untuned-4b-v6.json",
 }
 
 
@@ -1311,12 +1404,17 @@ def check_smoke_results(root: Path = ROOT) -> tuple[str, ...]:
 
 __all__ = [
     "DECISION_CONVENTION_BLOCK",
+    "DECISION_CONVENTION_BLOCKS",
+    "DECISION_CONVENTION_BLOCK_V5",
+    "DECISION_CONVENTION_BLOCK_V6",
     "ERRATA_DIR",
     "PHASE03B_ARM_SOURCES",
     "PHASE03C_ADAPTER_VERSION",
     "PHASE03C_COMPILER_VERSION",
     "PHASE03C_COMPILER_VERSIONS",
     "PHASE03C_COMPILER_VERSION_V4",
+    "PHASE03C_COMPILER_VERSION_V5",
+    "PHASE03C_COMPILER_VERSION_V6",
     "PHASE03C_DIR",
     "PHASE03C_ERRATUM_SCHEMA_VERSION",
     "PHASE03C_EVALUATOR_SOURCE_FINGERPRINT",

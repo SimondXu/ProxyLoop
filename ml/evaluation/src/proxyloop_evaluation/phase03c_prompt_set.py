@@ -64,9 +64,10 @@ from proxyloop_evaluation.qwen_mlx import QwenPrompt, _assert_safe_keys
 
 PROMPT_SET_SCHEMA_VERSION: Final = "phase-03c-prompt-set-v1"
 PROMPT_SET_MANIFEST_PATH: Final = Path("data/manifests/phase-03c-prompt-set.json")
-# Stage 1b renders with v4 (v3 plus the decision-convention block); Stage 0
-# artifacts stay on v3.
-STAGE1B_PROMPT_VERSION: Final[PromptVersion] = "v4"
+# Stage 1c renders with v6 (the rule-precedence fix of the v5 block); the
+# committed v4 pilot, v5 re-pilot, and Stage 0 v3 artifacts keep their own
+# versions.
+STAGE1B_PROMPT_VERSION: Final[PromptVersion] = "v6"
 DEFAULT_TRAIN_SEEDS: Final = range(1, 101)
 # Within-family development split: the contract's "~400 prompts" from the
 # 900-949 pool, i.e. its first ten seeds.
@@ -302,7 +303,7 @@ def render_prompt_view(
     return view
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=len(PHASE03C_COMPILER_VERSIONS))
 def prompt_builder(
     prompt_version: PromptVersion = STAGE1B_PROMPT_VERSION,
 ) -> Phase03CQwenAdapter:
@@ -526,6 +527,17 @@ def write_prompt_set_manifest(
     return rows
 
 
+def prompt_set_compiler_version(path: Path) -> str:
+    """The ``compiler_version`` the manifest's fingerprints were rendered with."""
+
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(document, dict) or not isinstance(
+        document.get("compiler_version"), str
+    ):
+        raise ValueError(f"unsupported prompt set manifest: {path}")
+    return str(document["compiler_version"])
+
+
 def load_prompt_set_manifest(path: Path) -> tuple[PromptSetRow, ...]:
     """Read the committed rows back without re-rendering anything."""
 
@@ -603,6 +615,7 @@ __all__ = [
     "check_prompt_set_manifest",
     "load_prompt_set_manifest",
     "prompt_builder",
+    "prompt_set_compiler_version",
     "prompt_set_manifest",
     "render_prompt",
     "render_prompt_view",
