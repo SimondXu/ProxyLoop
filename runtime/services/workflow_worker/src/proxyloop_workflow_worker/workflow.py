@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from proxyloop_case_runtime.commands import (
@@ -15,7 +15,8 @@ from proxyloop_case_runtime.commands import (
 )
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ApplicationError
+from temporalio.exceptions import ActivityError, ApplicationError
+from temporalio.exceptions import TimeoutError as ActivityTimeoutError
 
 from .models import CaseCommandRequest, CaseWorkflowInput, ChannelDeliveryRequest
 
@@ -44,6 +45,8 @@ ACTIVITY_RETRY_POLICY = RetryPolicy(
     ),
 )
 NON_RETRYABLE_ERROR_TYPES = ACTIVITY_RETRY_POLICY.non_retryable_error_types
+EXPIRY_RETRY_INITIAL_BACKOFF = timedelta(seconds=15)
+EXPIRY_RETRY_MAXIMUM_BACKOFF = timedelta(minutes=5)
 
 
 def workflow_id_for_case(case_id: UUID) -> str:
@@ -93,6 +96,42 @@ def _invalid_command(message: str = "command rejected") -> ApplicationError:
     )
 
 
+def _expiry_failure_category(error: BaseException) -> tuple[str, bool]:
+    """Name the innermost activity failure without exposing exception text.
+
+    Returns the category and whether the failure is non-retryable: either the
+    category is in the activity retry policy's non-retryable list or the
+    innermost ``ApplicationError`` was raised with ``non_retryable=True``.
+    """
+
+    category: str | None = None
+    flagged_non_retryable = False
+    timed_out = False
+    current: BaseException | None = error
+    while current is not None:
+        if isinstance(current, ApplicationError) and current.type:
+            category = current.type
+            flagged_non_retryable = current.non_retryable
+        elif isinstance(current, ActivityTimeoutError):
+            timed_out = True
+        current = current.__cause__
+    if category is None:
+        return ("activity_timeout" if timed_out else "activity_failed"), False
+    non_retryable = flagged_non_retryable or category in (
+        NON_RETRYABLE_ERROR_TYPES or ()
+    )
+    return category, non_retryable
+
+
+def _expiry_retry_backoff(failures: int) -> timedelta:
+    # Cap the exponent before multiplying so a long outage cannot overflow.
+    doublings = min(max(failures - 1, 0), 5)
+    return min(
+        EXPIRY_RETRY_INITIAL_BACKOFF * (1 << doublings),
+        EXPIRY_RETRY_MAXIMUM_BACKOFF,
+    )
+
+
 def _coerce_request(value: object) -> CaseCommandRequest:
     if isinstance(value, CaseCommandRequest):
         return value
@@ -128,6 +167,9 @@ class CaseWorkflow:
         self._active_handlers = 0
         self._activity_in_flight = False
         self._continue_requested = False
+        self._expiry_failures = 0
+        self._expiry_retry_at: datetime | None = None
+        self._expiry_abandoned_for: tuple[UUID, datetime] | None = None
 
     @workflow.run
     async def run(self, input: CaseWorkflowInput) -> None:
@@ -149,11 +191,18 @@ class CaseWorkflow:
                 pending is not None
                 and pending.approval_id is not None
                 and pending.approval_expires_at is not None
+                and self._expiry_abandoned_for
+                != (pending.approval_id, pending.approval_expires_at)
             ):
                 remaining = pending.approval_expires_at - workflow.now()
+                timeout_summary = "case approval expiry"
                 if remaining <= timedelta(0):
-                    await self._expire_pending()
-                    continue
+                    retry_at = self._expiry_retry_at
+                    if retry_at is None or retry_at <= workflow.now():
+                        await self._expire_pending()
+                        continue
+                    remaining = retry_at - workflow.now()
+                    timeout_summary = "case approval expiry retry"
                 try:
 
                     def wake_changed(observed_version: int = observed) -> bool:
@@ -165,7 +214,7 @@ class CaseWorkflow:
                     await workflow.wait_condition(
                         wake_changed,
                         timeout=remaining,
-                        timeout_summary="case approval expiry",
+                        timeout_summary=timeout_summary,
                     )
                 except TimeoutError:
                     await self._expire_pending()
@@ -208,6 +257,7 @@ class CaseWorkflow:
                         non_retryable=True,
                     )
                 self._last_transition = transition
+                self._reset_expiry_backoff()
                 self._commands_in_run += 1
                 self._continue_requested = (
                     self._commands_in_run >= self._continue_as_new_after
@@ -293,19 +343,50 @@ class CaseWorkflow:
                 approval_expires_at=current.approval_expires_at,
             )
             expiry_command = expiry_request.to_command(current.approval_expires_at)
-            transition = await self._execute_command(expiry_command)
-            if transition.case_id != case_id:
-                raise ApplicationError(
-                    "invalid activity result",
-                    type="state_invalid",
-                    non_retryable=True,
+            try:
+                transition = await self._execute_command(expiry_command)
+                if transition.case_id != case_id:
+                    raise ApplicationError(
+                        "invalid activity result",
+                        type="state_invalid",
+                        non_retryable=True,
+                    )
+            except (ActivityError, ApplicationError) as error:
+                # The expiry timer must never fail the run: a failed run cannot
+                # be recreated under REJECT_DUPLICATE, so later Updates would
+                # be lost for the whole Case.
+                category, non_retryable = _expiry_failure_category(error)
+                if non_retryable:
+                    # The aggregate moved without this Workflow; the next
+                    # Update carries the truth, so do not re-arm this timer.
+                    self._expiry_abandoned_for = (
+                        current.approval_id,
+                        current.approval_expires_at,
+                    )
+                    workflow.logger.warning("approval expiry abandoned: %s", category)
+                    return
+                self._expiry_failures += 1
+                self._expiry_retry_at = workflow.now() + _expiry_retry_backoff(
+                    self._expiry_failures
                 )
+                workflow.logger.warning(
+                    "approval expiry attempt %d failed: %s",
+                    self._expiry_failures,
+                    category,
+                )
+                return
             self._last_transition = transition
+            self._reset_expiry_backoff()
             self._commands_in_run += 1
             self._continue_requested = (
                 self._commands_in_run >= self._continue_as_new_after
             )
             self._wake_version += 1
+
+    def _reset_expiry_backoff(self) -> None:
+        self._expiry_failures = 0
+        self._expiry_retry_at = None
+        self._expiry_abandoned_for = None
 
     def _continue_as_new(self) -> None:
         case_id = self._case_id
