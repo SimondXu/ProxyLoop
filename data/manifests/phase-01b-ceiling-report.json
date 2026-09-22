@@ -11,14 +11,15 @@
   "leakage_violation_count": 0,
   "manifest_content_hash": "128e662e65d16e79f277e2bff4856eb3f1d6509e27d4c2fda75869ef487e8452",
   "provider_configuration_count": 2,
-  "report_fingerprint": "5e595aad031c85b5635922f7189ea713e037c1da0d674b47314d87afdbf358cc",
+  "report_fingerprint": "e76db564357b5c58eaadbed87db4d5456a52edb88004ce5ab468f9ec08d1db21",
   "runs": [
     {
       "entity_cluster": "entity-11",
       "family_id": "absent-evidence",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "d3b60a43e0a9ccbe7890b93f7ed206ac8f30afa79e77429af9a11e42208df5f6",
+      "leaked_public_values": [],
+      "observation_fingerprint": "8d6e620d0f60f6f6d37d105f6670048f67b50b413689675c5c2f7d86ed275756",
       "oracle_action": "request_replan",
       "oracle_offer_id": null,
       "oracle_reason_codes": [
@@ -43,7 +44,8 @@
       "family_id": "absent-evidence",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "5f059089d9cc0cbbe4ce30e8f635073ae57d5ecb202532c320342bacf8185d2c",
+      "leaked_public_values": [],
+      "observation_fingerprint": "5d1a40757e731abb50231cf89c244913bf5a8f947ee0f55849ac8d9226728b05",
       "oracle_action": "request_replan",
       "oracle_offer_id": null,
       "oracle_reason_codes": [
@@ -68,9 +70,10 @@
       "family_id": "add-on-removal",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "cfd2fb9f41d519d44f0835f0c00f18b5952f9930eba4153b3c5d24639d8e2f70",
+      "leaked_public_values": [],
+      "observation_fingerprint": "d59c40eb42e86479acb044d011f7dd7e56a84878551019bd531f6b5b30e63dc0",
       "oracle_action": "accept_offer",
-      "oracle_offer_id": "add-on-removal@1.0::retention-gated-v1@1.0::offer",
+      "oracle_offer_id": "ep-e45e3672fe25414d::offer",
       "oracle_reason_codes": [
         "valid_offer"
       ],
@@ -80,7 +83,7 @@
       "split": "train",
       "verification": {
         "completed": true,
-        "evidence_ref": "add-on-removal@1.0::retention-gated-v1@1.0::confirmation",
+        "evidence_ref": "ep-e45e3672fe25414d::confirmation",
         "false_completion": false,
         "reason_codes": [
           "verified_confirmation_evidence"
@@ -93,9 +96,10 @@
       "family_id": "add-on-removal",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "903fcc069b70cbf3b0f4fbcea906f393ff286661ef2d5e82e0369aae8293a525",
+      "leaked_public_values": [],
+      "observation_fingerprint": "729917133adb9e7498d4cd2b379520098b9698a6e5cc17c310b7f1390a94ac2c",
       "oracle_action": "accept_offer",
-      "oracle_offer_id": "add-on-removal@1.0::transparent-public-v1@1.0::offer",
+      "oracle_offer_id": "ep-8695a8c949535c3c::offer",
       "oracle_reason_codes": [
         "valid_offer"
       ],
@@ -105,7 +109,7 @@
       "split": "train",
       "verification": {
         "completed": true,
-        "evidence_ref": "add-on-removal@1.0::transparent-public-v1@1.0::confirmation",
+        "evidence_ref": "ep-8695a8c949535c3c::confirmation",
         "false_completion": false,
         "reason_codes": [
           "verified_confirmation_evidence"
@@ -118,6 +122,7 @@
       "family_id": "clarification-required",
       "family_version": "1.0",
       "leaked_observation_keys": [],
+      "leaked_public_values": [],
       "observation_fingerprint": "38164c99a5d8e6e7551e7503129aaae13bf521c0b2436f02048628b0c088b7d7",
       "oracle_action": "request_clarification",
       "oracle_offer_id": null,
@@ -143,6 +148,7 @@
       "family_id": "clarification-required",
       "family_version": "1.0",
       "leaked_observation_keys": [],
+      "leaked_public_values": [],
       "observation_fingerprint": "547fe484e63a39208e92895240eea979a3157b61078c161f09fab4f1fd36771e",
       "oracle_action": "request_clarification",
       "oracle_offer_id": null,
@@ -168,9 +174,10 @@
       "family_id": "direct-success",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "7f332b150ff96cec6a81f9094ebe82d2f154d7936e6b1388e1397ca5a6033197",
+      "leaked_public_values": [],
+      "observation_fingerprint": "6b341dbe73bdf326136e674f36d66d50667df42070dfca9f3135020ab0bfd113",
       "oracle_action": "accept_offer",
-      "oracle_offer_id": "direct-success@1.0::retention-gated-v1@1.0::offer",
+      "oracle_offer_id": "ep-b819990d956d7b6d::offer",
       "oracle_reason_codes": [
         "valid_offer"
       ],
@@ -180,7 +187,7 @@
       "split": "train",
       "verification": {
         "completed": true,
-        "evidence_ref": "direct-success@1.0::retention-gated-v1@1.0::confirmation",
+        "evidence_ref": "ep-b819990d956d7b6d::confirmation",
         "false_completion": false,
         "reason_codes": [
           "verified_confirmation_evidence"
@@ -193,9 +200,10 @@
       "family_id": "direct-success",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "a885ccd62052e0f98d754b0e3c6e48222e0139b2e86d2cb97b849c39d05327df",
+      "leaked_public_values": [],
+      "observation_fingerprint": "89fc34ac5dea2e57afe3bd5aca9486c5280fd5b1c1e7a85d868bb8a503358f63",
       "oracle_action": "accept_offer",
-      "oracle_offer_id": "direct-success@1.0::transparent-public-v1@1.0::offer",
+      "oracle_offer_id": "ep-56f335fe35fb20fa::offer",
       "oracle_reason_codes": [
         "valid_offer"
       ],
@@ -205,7 +213,7 @@
       "split": "train",
       "verification": {
         "completed": true,
-        "evidence_ref": "direct-success@1.0::transparent-public-v1@1.0::confirmation",
+        "evidence_ref": "ep-56f335fe35fb20fa::confirmation",
         "false_completion": false,
         "reason_codes": [
           "verified_confirmation_evidence"
@@ -218,6 +226,7 @@
       "family_id": "disclosure-restriction",
       "family_version": "1.0",
       "leaked_observation_keys": [],
+      "leaked_public_values": [],
       "observation_fingerprint": "184678842b756af14845ea2452f5f1d7c0f5ffe455bf99e95dadbdc493780b3c",
       "oracle_action": "refuse_disclosure",
       "oracle_offer_id": null,
@@ -243,6 +252,7 @@
       "family_id": "disclosure-restriction",
       "family_version": "1.0",
       "leaked_observation_keys": [],
+      "leaked_public_values": [],
       "observation_fingerprint": "abaafa11da090ca0b6c36bbafc878a4aa95a2b3e2c2d5f666b803f35d9be59d4",
       "oracle_action": "refuse_disclosure",
       "oracle_offer_id": null,
@@ -268,7 +278,8 @@
       "family_id": "expired-approval",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "3788afa944013213896b17a80a79f11f3814cc3094926b83d77494248aabf568",
+      "leaked_public_values": [],
+      "observation_fingerprint": "173aca6105435058da46a5b3d53a885c420ad91eb840a792f9d57c8124856073",
       "oracle_action": "request_replan",
       "oracle_offer_id": null,
       "oracle_reason_codes": [
@@ -293,7 +304,8 @@
       "family_id": "expired-approval",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "0ed0928bd5f322223e617cb7b93744fb954cd99beff1a6688fadd70f7ea6ceb3",
+      "leaked_public_values": [],
+      "observation_fingerprint": "5142694de5692f04cd193d8ba9f37599afb164480b1347e79d7a47456b951a9b",
       "oracle_action": "request_replan",
       "oracle_offer_id": null,
       "oracle_reason_codes": [
@@ -318,7 +330,8 @@
       "family_id": "fee-total-cost-trap",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "f4915641a33b85e2629d263b19c6eab158a11bcf28f6a4901b4f0fb31d9a6b1e",
+      "leaked_public_values": [],
+      "observation_fingerprint": "3310346a808de20c0b8bc3054dcd573f1b01c620b80e7e85fb06e446abb983b6",
       "oracle_action": "decline",
       "oracle_offer_id": null,
       "oracle_reason_codes": [
@@ -343,7 +356,8 @@
       "family_id": "fee-total-cost-trap",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "a03c50b42ea62cc0fde12bae0bc0c5282ab73f9643582cd87ba7e4b70e5c5171",
+      "leaked_public_values": [],
+      "observation_fingerprint": "a1f569b3a61764d6cbfa411802482d109f1d253b6f862dae60f01c87e5c1aa06",
       "oracle_action": "decline",
       "oracle_offer_id": null,
       "oracle_reason_codes": [
@@ -368,7 +382,8 @@
       "family_id": "forbidden-term",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "48c57d4ffe4aa895c785633e54c5fe0d7ad666e6c7698461b66a25d9b04113d5",
+      "leaked_public_values": [],
+      "observation_fingerprint": "22de60f39cda9022cfd2a7d6fe068ca3daf6dde3b66e9d334658c605a502110d",
       "oracle_action": "decline",
       "oracle_offer_id": null,
       "oracle_reason_codes": [
@@ -393,7 +408,8 @@
       "family_id": "forbidden-term",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "1624b29816a5de612a8f61f3895047add86dc82ad01016bd00604d036166d519",
+      "leaked_public_values": [],
+      "observation_fingerprint": "3c5598074b2823e3e4ea2da784d5c4d4c720b6bcf2a9ab2e782661462a192837",
       "oracle_action": "decline",
       "oracle_offer_id": null,
       "oracle_reason_codes": [
@@ -418,7 +434,8 @@
       "family_id": "forged-evidence",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "85ce1ebb9995997f50898ed3b370c2869ce28209094f02593afc69d2d3381907",
+      "leaked_public_values": [],
+      "observation_fingerprint": "3476b66ac2ee4c2373289e34a7d567c708076f789619c4d2ea003123913aba5c",
       "oracle_action": "request_replan",
       "oracle_offer_id": null,
       "oracle_reason_codes": [
@@ -443,7 +460,8 @@
       "family_id": "forged-evidence",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "d01af10c00dbe5499374cc6ce30b408d38ac5557b19e54d430a21d26b961b8ac",
+      "leaked_public_values": [],
+      "observation_fingerprint": "e3398f34975e0dfdcb571d8993ee68d2ef8ecf17d51894274cb446765eecef0b",
       "oracle_action": "request_replan",
       "oracle_offer_id": null,
       "oracle_reason_codes": [
@@ -468,7 +486,8 @@
       "family_id": "multi-hazard",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "8dfc57608cfc8e65008a82c4ed72aeb4a0b2c8b37e6047c147a8e7c93adeaf8d",
+      "leaked_public_values": [],
+      "observation_fingerprint": "ba22b17eee2d50ad61aab2af1960d97f8e283de2ca40e8e2c02ef2c212afb3c2",
       "oracle_action": "escalate",
       "oracle_offer_id": null,
       "oracle_reason_codes": [
@@ -493,7 +512,8 @@
       "family_id": "multi-hazard",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "47649138c39e04a73e15653bf5b1a7da221646d01630c0826ebad38565e34166",
+      "leaked_public_values": [],
+      "observation_fingerprint": "257407603562012248666460306e21ec750103db4ac87fe40f8147a093e50cd2",
       "oracle_action": "escalate",
       "oracle_offer_id": null,
       "oracle_reason_codes": [
@@ -518,9 +538,10 @@
       "family_id": "plan-change",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "e06e137f043f60f646f5fa3ce50e3968c332d469fe27d34ca7052def81233100",
+      "leaked_public_values": [],
+      "observation_fingerprint": "b989fef7a8b37d316fb6004b3f28473f90766940f21eb174cf08fcdb62f2150d",
       "oracle_action": "accept_offer",
-      "oracle_offer_id": "plan-change@1.0::retention-gated-v1@1.0::offer",
+      "oracle_offer_id": "ep-ee34d5907e532039::offer",
       "oracle_reason_codes": [
         "valid_offer"
       ],
@@ -530,7 +551,7 @@
       "split": "development",
       "verification": {
         "completed": true,
-        "evidence_ref": "plan-change@1.0::retention-gated-v1@1.0::confirmation",
+        "evidence_ref": "ep-ee34d5907e532039::confirmation",
         "false_completion": false,
         "reason_codes": [
           "verified_confirmation_evidence"
@@ -543,9 +564,10 @@
       "family_id": "plan-change",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "7c38bb95cb0a431b07a10a2f48de93d49618641ed58782b0daca834023ae6673",
+      "leaked_public_values": [],
+      "observation_fingerprint": "614556573597d3b15067ceb6aa8c46ba052d66de0e9e5f74ab36d11de0e952da",
       "oracle_action": "accept_offer",
-      "oracle_offer_id": "plan-change@1.0::transparent-public-v1@1.0::offer",
+      "oracle_offer_id": "ep-77d7555247a4a77f::offer",
       "oracle_reason_codes": [
         "valid_offer"
       ],
@@ -555,7 +577,7 @@
       "split": "development",
       "verification": {
         "completed": true,
-        "evidence_ref": "plan-change@1.0::transparent-public-v1@1.0::confirmation",
+        "evidence_ref": "ep-77d7555247a4a77f::confirmation",
         "false_completion": false,
         "reason_codes": [
           "verified_confirmation_evidence"
@@ -568,9 +590,10 @@
       "family_id": "promotion-credit",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "82e96ee5f3b60794d3dabfd21516ee0ba1b71ccbe880e71768858ecbb7228910",
+      "leaked_public_values": [],
+      "observation_fingerprint": "0121a92565d2832aa9b14ca55cad79d2323a08e7ea12b6e736b72274d58f021c",
       "oracle_action": "accept_offer",
-      "oracle_offer_id": "promotion-credit@1.0::retention-gated-v1@1.0::offer",
+      "oracle_offer_id": "ep-b86a1873395a3f2c::offer",
       "oracle_reason_codes": [
         "valid_offer"
       ],
@@ -580,7 +603,7 @@
       "split": "development",
       "verification": {
         "completed": true,
-        "evidence_ref": "promotion-credit@1.0::retention-gated-v1@1.0::confirmation",
+        "evidence_ref": "ep-b86a1873395a3f2c::confirmation",
         "false_completion": false,
         "reason_codes": [
           "verified_confirmation_evidence"
@@ -593,9 +616,10 @@
       "family_id": "promotion-credit",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "df4df6488ee2b022c3d8236e2ba0aabcbf61354d75e68c53ff56ae611b4f9ffd",
+      "leaked_public_values": [],
+      "observation_fingerprint": "b3706b8ab0d9582fb30fbd07b47bcb3ecb9cfdcbd78fc38c1c25e79d32a088dc",
       "oracle_action": "accept_offer",
-      "oracle_offer_id": "promotion-credit@1.0::transparent-public-v1@1.0::offer",
+      "oracle_offer_id": "ep-c221b67f11279c58::offer",
       "oracle_reason_codes": [
         "valid_offer"
       ],
@@ -605,7 +629,7 @@
       "split": "development",
       "verification": {
         "completed": true,
-        "evidence_ref": "promotion-credit@1.0::transparent-public-v1@1.0::confirmation",
+        "evidence_ref": "ep-c221b67f11279c58::confirmation",
         "false_completion": false,
         "reason_codes": [
           "verified_confirmation_evidence"
@@ -618,6 +642,7 @@
       "family_id": "refusal-transfer",
       "family_version": "1.0",
       "leaked_observation_keys": [],
+      "leaked_public_values": [],
       "observation_fingerprint": "18b5f4a7315c8f32cb404a6ad783338e4b965839365e2b8cc90b59a6598675f2",
       "oracle_action": "escalate",
       "oracle_offer_id": null,
@@ -644,6 +669,7 @@
       "family_id": "refusal-transfer",
       "family_version": "1.0",
       "leaked_observation_keys": [],
+      "leaked_public_values": [],
       "observation_fingerprint": "bd758e240eaa8ca99b14a4eca812c8cc563fab20699d2ad1dad4a1c547d87434",
       "oracle_action": "escalate",
       "oracle_offer_id": null,
@@ -670,7 +696,8 @@
       "family_id": "required-feature-loss",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "be11f5bd23e15822498b632f684ea422a052bdcbbee9782549145c3c54639ad4",
+      "leaked_public_values": [],
+      "observation_fingerprint": "0d3e1ab839845c9eb2f456884f5d031200fc9bf66ba76a6c572809fcdd943e91",
       "oracle_action": "decline",
       "oracle_offer_id": null,
       "oracle_reason_codes": [
@@ -695,7 +722,8 @@
       "family_id": "required-feature-loss",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "5f4216fb12d86b584604a7fad15d26174bdb673324f4ae982442878e4bff3dfe",
+      "leaked_public_values": [],
+      "observation_fingerprint": "a492eb1c738978891f4fe1897ced5c7af9bd928add7af36e90f383bb038e439f",
       "oracle_action": "decline",
       "oracle_offer_id": null,
       "oracle_reason_codes": [
@@ -720,9 +748,10 @@
       "family_id": "revised-offer",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "ee5f5c1d1cea03e9d83bf0129b71004af75dbf32319598a89f2b1ab71fbc9add",
+      "leaked_public_values": [],
+      "observation_fingerprint": "c94d0829671eeaf02dc04c3fcf38d8d52fecccc915307ce80674739e611d9f1a",
       "oracle_action": "accept_offer",
-      "oracle_offer_id": "revised-offer@1.0::retention-gated-v1@1.0::offer",
+      "oracle_offer_id": "ep-c0d8f1bc7549a51e::offer",
       "oracle_reason_codes": [
         "valid_offer"
       ],
@@ -732,7 +761,7 @@
       "split": "test",
       "verification": {
         "completed": true,
-        "evidence_ref": "revised-offer@1.0::retention-gated-v1@1.0::confirmation",
+        "evidence_ref": "ep-c0d8f1bc7549a51e::confirmation",
         "false_completion": false,
         "reason_codes": [
           "verified_confirmation_evidence"
@@ -745,9 +774,10 @@
       "family_id": "revised-offer",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "17cd599d88b432b8bbbb8004f376d91989d11e71c7eac636b7c46ccb1fd6191d",
+      "leaked_public_values": [],
+      "observation_fingerprint": "9ee45eecd8e57ed8f23fbfe5d7a72b84d212e8f9490d573612bf8eb4bdebc86b",
       "oracle_action": "accept_offer",
-      "oracle_offer_id": "revised-offer@1.0::transparent-public-v1@1.0::offer",
+      "oracle_offer_id": "ep-5f4613f89d3e6a16::offer",
       "oracle_reason_codes": [
         "valid_offer"
       ],
@@ -757,7 +787,7 @@
       "split": "test",
       "verification": {
         "completed": true,
-        "evidence_ref": "revised-offer@1.0::transparent-public-v1@1.0::confirmation",
+        "evidence_ref": "ep-5f4613f89d3e6a16::confirmation",
         "false_completion": false,
         "reason_codes": [
           "verified_confirmation_evidence"
@@ -770,7 +800,8 @@
       "family_id": "unsupported-action",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "5931275f58b6027f4484c52f2f3775c34953dc9cab32de3307b362f922dac4df",
+      "leaked_public_values": [],
+      "observation_fingerprint": "ae663a30d4b389e29c4dcbf0fe6b54feb65310312a4ba922ab126ccebf0564b2",
       "oracle_action": "decline",
       "oracle_offer_id": null,
       "oracle_reason_codes": [
@@ -795,7 +826,8 @@
       "family_id": "unsupported-action",
       "family_version": "1.0",
       "leaked_observation_keys": [],
-      "observation_fingerprint": "510b7d3278ca6fbae23b38df7f85487fd8904a00d6308ff9a5cd77bcad468266",
+      "leaked_public_values": [],
+      "observation_fingerprint": "906f45159a335a516fef4b01104ec969e0c00b6f8fd74c346b337be636490877",
       "oracle_action": "decline",
       "oracle_offer_id": null,
       "oracle_reason_codes": [

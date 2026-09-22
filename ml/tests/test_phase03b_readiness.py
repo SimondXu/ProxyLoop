@@ -245,6 +245,33 @@ def test_artifact_is_current_and_detects_drift(tmp_path: Path) -> None:
     assert check_packet_artifact(drifted) == ("artifact_drift",)
 
 
+def test_source_manifest_fingerprint_is_read_from_the_committed_phase02_manifest() -> (
+    None
+):
+    """Audit D3-4: the packet binds to the committed Phase 02 manifest, not to a
+    literal that a rewrite could carry along."""
+
+    committed = json.loads(readiness.PHASE02_MANIFEST_PATH.read_text(encoding="utf-8"))
+    assert readiness.source_manifest_fingerprint() == committed["manifest_fingerprint"]
+    assert (
+        build_packet()["source_manifest_fingerprint"]
+        == committed["manifest_fingerprint"]
+    )
+    assert "SOURCE_MANIFEST_FINGERPRINT" not in vars(readiness)
+
+
+def test_packet_model_input_carries_no_private_value() -> None:
+    from proxyloop_provider_simulator.leakage import (
+        leaked_private_values,
+        private_tokens,
+    )
+    from proxyloop_provider_simulator.scenarios import BENCHMARK_SCENARIOS
+
+    tokens = private_tokens(BENCHMARK_SCENARIOS)
+    for record in build_packet()["records"]:
+        assert leaked_private_values(record["model_input"], tokens) == ()
+
+
 def _keys(value: object) -> set[str]:
     if isinstance(value, dict):
         return set(value) | {key for child in value.values() for key in _keys(child)}

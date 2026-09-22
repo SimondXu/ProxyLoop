@@ -8,7 +8,12 @@ from types import SimpleNamespace
 
 import pytest
 from proxyloop_agent_core import CaseCoordinator, DeterministicRouter, RouteRequest
-from proxyloop_evaluation import BaselineReport, check_baseline_artifacts, runner
+from proxyloop_evaluation import (
+    BaselineReport,
+    check_baseline_artifacts,
+    check_baseline_artifacts_historical,
+    runner,
+)
 from proxyloop_evaluation.artifacts import fingerprint, report_fingerprint, write_report
 from proxyloop_evaluation.legacy_slow_output import build_legacy_slow_prompt
 from proxyloop_evaluation.models import BaselineCondition, RunStatus
@@ -136,8 +141,14 @@ def _write_failed_frontier_report(target_root: Path) -> Path:
 
 
 def test_committed_baseline_artifacts_are_bound_and_truthful() -> None:
-    ok, errors = check_baseline_artifacts(ROOT)
+    # r1 is historical: its own bindings hold on the historical gate, while
+    # the legacy replay gate still enforces the binding to the Harness
+    # episodes that were regenerated after r1 (opaque public ids).
+    ok, errors = check_baseline_artifacts_historical(ROOT)
     assert ok, errors
+    legacy_ok, legacy_errors = check_baseline_artifacts(ROOT)
+    assert not legacy_ok
+    assert "baseline episode fingerprint does not match Harness" in legacy_errors
 
 
 def test_compose_report_records_actual_utc_generation_time(
@@ -201,12 +212,15 @@ def test_hosted_cost_ceiling_tamper_fails_offline_check(tmp_path: Path) -> None:
     assert any("hosted maximum cost drift" in error for error in errors)
 
 
-def test_failed_provider_artifact_replays_attempt_and_global_abort(
+def test_failed_provider_artifact_passes_the_historical_truthfulness_gate(
     tmp_path: Path,
 ) -> None:
     _write_failed_frontier_report(tmp_path)
 
-    ok, errors = check_baseline_artifacts(tmp_path)
+    # The failed-attempt and global-abort truthfulness rules live in the
+    # non-replay part of the gate; the legacy replay of this r1-era report
+    # against the regenerated Harness episodes is covered by the tamper test.
+    ok, errors = check_baseline_artifacts_historical(tmp_path)
 
     assert ok, errors
 

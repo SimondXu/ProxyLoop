@@ -13,6 +13,7 @@ from proxyloop_evaluation import (
     qwen_report,
     write_report,
 )
+from proxyloop_evaluation.artifacts import harness_episode_state
 from proxyloop_evaluation.openai_frontier import FRONTIER_API_KEY_ENV
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,6 +68,7 @@ def main() -> int:
         ok, errors = check_baseline_artifacts_historical(ROOT)
         if ok:
             print("Phase 03A1 r1 baseline artifacts are intact (not replayed).")
+            print(f"harness episodes: {harness_episode_state(ROOT)}")
             return 0
         for error in errors:
             print(error)

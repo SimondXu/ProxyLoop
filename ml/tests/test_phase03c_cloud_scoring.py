@@ -39,15 +39,18 @@ from proxyloop_evaluation.phase03c_training.dataset import (
 from proxyloop_evaluation.qwen_spec import QWEN3_8B_BF16_SPEC
 
 from scripts.build_phase03c_cloud_bundle import (
+    COMMITTED_BUNDLE_DATASET_FINGERPRINT,
     DEV_EVAL_FILENAME,
     HELDOUT_FILENAME,
     MANIFEST_FILENAME,
+    PROMPT_SET_CONTENT_STATES,
     SCHEMA_FILENAME,
     TRAIN_FILENAME,
     VALID_FILENAME,
     build_dev_eval_rows,
     build_heldout_rows,
     check_bundle,
+    check_bundle_with_state,
     heldout_families,
     render_eval_row,
     write_bundle,
@@ -577,18 +580,45 @@ def test_write_and_check_bundle(
             path, prompt_set_path=ROOT / PROMPT_SET_MANIFEST_PATH, heldout_seeds=(950,)
         )
 
+    def check_state(path: Path) -> tuple[str, tuple[str, ...]]:
+        _, state, drifted = check_bundle_with_state(
+            path, prompt_set_path=ROOT / PROMPT_SET_MANIFEST_PATH, heldout_seeds=(950,)
+        )
+        return state, drifted
+
     assert check(out_dir) == ()
-    # The check works without the git-ignored JSONL files ...
+    assert check_state(out_dir) == ("unchanged", ())
+    # A present dev-eval/heldout file whose prompts differ from the current
+    # renderings is a prompt-identity failure ...
+    heldout_lines = (out_dir / HELDOUT_FILENAME).read_text().splitlines()
+    tampered_row = json.loads(heldout_lines[0])
+    tampered_row["prompt_fingerprint"] = "0" * 64
+    (out_dir / HELDOUT_FILENAME).write_text(
+        "\n".join([json.dumps(tampered_row), *heldout_lines[1:]]) + "\n"
+    )
+    assert check(out_dir) == (
+        f"file_drift:{HELDOUT_FILENAME}",
+        f"prompt_identity:{HELDOUT_FILENAME}",
+    )
+    (out_dir / HELDOUT_FILENAME).write_text("\n".join(heldout_lines) + "\n")
+    assert check(out_dir) == ()
+    # ... the check works without the git-ignored JSONL files ...
     (out_dir / TRAIN_FILENAME).unlink()
     (out_dir / DEV_EVAL_FILENAME).unlink()
     assert check(out_dir) == ()
-    # ... and reports drift in the manifest or in a present file.
+    # ... a recorded hash that no longer matches the re-rendered dev-eval or
+    # held-out rows is a labelled state, but the manifest must still bind
+    # itself and a present file must still match its recorded hash.
     manifest = json.loads((out_dir / MANIFEST_FILENAME).read_text())
     manifest["files"][HELDOUT_FILENAME]["sha256"] = "0" * 64
     (out_dir / MANIFEST_FILENAME).write_text(json.dumps(manifest))
     assert check(out_dir) == (
-        f"manifest_drift:{HELDOUT_FILENAME}",
+        "manifest_fingerprint",
         f"file_drift:{HELDOUT_FILENAME}",
+    )
+    assert check_state(out_dir) == (
+        "drifted_since_bundle",
+        (f"rendered:{HELDOUT_FILENAME}",),
     )
     files = cast(dict[str, dict[str, object]], document["files"])
     manifest["files"][HELDOUT_FILENAME]["sha256"] = files[HELDOUT_FILENAME]["sha256"]
@@ -597,6 +627,30 @@ def test_write_and_check_bundle(
         handle.write("{}\n")
     assert check(out_dir) == (f"file_drift:{VALID_FILENAME}",)
     assert check(tmp_path / "nowhere")[0].startswith("missing_manifest")
+
+
+def test_committed_bundle_is_intact_and_reports_prompt_set_drift() -> None:
+    """The committed Stage 2 bundle manifest binds itself and its prompt-only
+    files; the prompt set regenerated after it (opaque ids) is a state."""
+
+    problems, state, drifted = check_bundle_with_state(
+        ROOT / "data/experiments/phase-03c/cloud-bundle",
+        prompt_set_path=ROOT / PROMPT_SET_MANIFEST_PATH,
+        heldout_seeds=tuple(range(950, 960)),
+    )
+    assert problems == ()
+    # The bundle's identity is pinned: a tampered-and-resigned manifest
+    # cannot pass while the git-ignored JSONL rows are absent.
+    manifest_path = ROOT / "data/experiments/phase-03c/cloud-bundle" / MANIFEST_FILENAME
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["dataset_fingerprint"] == COMMITTED_BUNDLE_DATASET_FINGERPRINT
+    # Membership, not the exact tuple: a legitimate rebuild reads ``unchanged``.
+    assert state in PROMPT_SET_CONTENT_STATES
+    assert set(drifted) <= {
+        "prompt_set_content_fingerprint",
+        f"rendered:{DEV_EVAL_FILENAME}",
+        f"rendered:{HELDOUT_FILENAME}",
+    }
 
 
 def _arm(n: int, act: int, **counts: int) -> dict[str, object]:

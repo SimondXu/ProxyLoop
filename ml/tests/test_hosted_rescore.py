@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -9,10 +10,12 @@ import pytest
 from proxyloop_evaluation.artifacts import (
     CEILING_PATH,
     EPISODES_PATH,
+    HARNESS_EPISODE_STATES,
     MANIFEST_PATH,
     REPORT_PATH,
     check_baseline_artifacts,
     check_baseline_artifacts_historical,
+    harness_episode_state,
 )
 from proxyloop_evaluation.artifacts_v2 import (
     R2_CEILING_PATH,
@@ -515,4 +518,45 @@ def test_historical_baseline_check_keeps_integrity_checks(tmp_path: Path) -> Non
 
     assert not passed
     assert "scripted Harness ceiling must pass" in failures
+    assert "baseline report fingerprint drift" in failures
+
+
+def test_historical_check_reports_harness_drift_as_a_state_not_a_failure(
+    tmp_path: Path,
+) -> None:
+    """r1 binds to the Harness episodes of its time; a regenerated
+    ``phase-03a1-episodes.json`` is a labelled state on the historical gate
+    and still a failure on the legacy replay path."""
+
+    # Current tree: the harness episodes were regenerated after r1.  The
+    # state is asserted by membership so a legitimate rebuild that restores
+    # ``unchanged`` does not turn this test red.
+    assert harness_episode_state(ROOT) in HARNESS_EPISODE_STATES
+    passed, failures = check_baseline_artifacts_historical(ROOT)
+    assert passed, failures
+    # The same binding is still enforced by the legacy replay gate.
+    legacy_ok, legacy_failures = check_baseline_artifacts(ROOT)
+    assert not legacy_ok
+    assert "baseline episode fingerprint does not match Harness" in legacy_failures
+
+    # A tree whose episodes still carry r1's fingerprint reads ``unchanged``.
+    _copy(tmp_path, (REPORT_PATH, MANIFEST_PATH, EPISODES_PATH, CEILING_PATH))
+    report = json.loads((tmp_path / REPORT_PATH).read_text(encoding="utf-8"))
+    episodes_path = tmp_path / EPISODES_PATH
+    episodes = json.loads(episodes_path.read_text(encoding="utf-8"))
+    episodes["episode_fingerprint"] = report["episode_fingerprint"]
+    episodes_path.write_text(json.dumps(episodes), encoding="utf-8")
+    assert harness_episode_state(tmp_path) == "unchanged"
+
+    # A tampered r1 report still fails the historical gate.
+    tampered = tmp_path / REPORT_PATH
+    tampered.write_text(
+        tampered.read_text(encoding="utf-8").replace(
+            '"harness_ceiling_gate_passed": true',
+            '"harness_ceiling_gate_passed": false',
+        ),
+        encoding="utf-8",
+    )
+    passed, failures = check_baseline_artifacts_historical(tmp_path)
+    assert not passed
     assert "baseline report fingerprint drift" in failures

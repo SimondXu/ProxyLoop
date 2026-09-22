@@ -583,3 +583,81 @@ def test_current_safety_families_exclude_families_that_do_not_test_safety() -> N
     assert len(safety) == 6
     assert {assignment.split for assignment in safety} == {"safety"}
     assert {assignment.family_id for assignment in safety} == SAFETY_FAMILIES
+
+
+def test_public_turn_ids_carry_no_private_value() -> None:
+    """Audit D1-1: ``offer_id``/``turn_id``/``confirmation_evidence_ref`` are
+    opaque; only the evaluator key ``scenario_id`` stays content-bearing."""
+
+    from proxyloop_provider_simulator.leakage import (
+        leaked_private_values,
+        private_tokens,
+    )
+
+    tokens = private_tokens(BENCHMARK_SCENARIOS)
+    for scenario in BENCHMARK_SCENARIOS:
+        public = ProviderEnvironment(scenario).observe().to_dict()
+        del public["scenario_id"]
+        assert leaked_private_values(public, tokens) == ()
+        assert scenario.provider_turn.turn_id.endswith("::turn-1")
+        if scenario.expected_offer_id is not None:
+            assert (
+                scenario.expected_offer_id == scenario.provider_turn.offers[0].offer_id
+            )
+        if scenario.expected_evidence_ref is not None:
+            assert (
+                scenario.expected_evidence_ref
+                == scenario.provider_turn.confirmation_evidence_ref
+            )
+    assert len({item.provider_turn.turn_id for item in BENCHMARK_SCENARIOS}) == 32
+
+
+def test_leakage_scan_reads_json_encoded_inside_string_values() -> None:
+    """Audit D3-2: key-only guards stop at ``str``; the value scan does not."""
+
+    from proxyloop_provider_simulator.leakage import (
+        leaked_private_values,
+        private_tokens,
+    )
+
+    tokens = private_tokens(BENCHMARK_SCENARIOS)
+    nested = {"x": json.dumps({"offer_id": "direct-success@1.0::x"})}
+    assert leaked_private_values(nested, tokens) != ()
+    assert leaked_private_values({"x": "DIRECT-SUCCESS"}, tokens) != ()
+    assert leaked_private_values(
+        {"x": json.dumps({"hazard": "fee_total_cost_trap"})}, tokens
+    ) == ("fee_total_cost_trap",)
+    # Public vocabulary the model legitimately sees or emits is not a leak.
+    assert (
+        leaked_private_values(
+            {"applied_changes": ["plan_change"], "action": "accept_offer"}, tokens
+        )
+        == ()
+    )
+
+
+def test_follow_up_turn_ids_keep_the_turn_index_structure() -> None:
+    from proxyloop_provider_simulator.multi_turn import (
+        MultiTurnProviderEnvironment,
+        SimulatorCapabilityAttempt,
+    )
+
+    scenario = next(
+        item for item in BENCHMARK_SCENARIOS if item.hazard == "direct_success"
+    )
+    environment = MultiTurnProviderEnvironment(scenario)
+    opening = environment.start()
+    offer = opening.offers[0]
+    transition = environment.submit_capability_attempt(
+        SimulatorCapabilityAttempt(
+            capability_id="simulator.accept_offer",
+            offer_id=offer.offer_id,
+            idempotency_key="accept-once",
+        )
+    )
+    episode_ref = opening.turn.turn_id.rsplit("::", 1)[0]
+    assert episode_ref.startswith("ep-")
+    assert opening.turn.turn_id == f"{episode_ref}::turn-1"
+    assert transition.provider_turn.turn.turn_id == f"{episode_ref}::turn-2"
+    assert offer.offer_id == f"{episode_ref}::offer"
+    assert transition.verification.evidence_ref == f"{episode_ref}::confirmation"

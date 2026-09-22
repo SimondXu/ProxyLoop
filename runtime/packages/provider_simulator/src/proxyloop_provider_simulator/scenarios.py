@@ -677,8 +677,12 @@ def _build_scenario(
         f"{configuration.configuration_id}@{configuration.version}"
         f"{params.id_suffix}"
     )
-    offer_id = f"{scenario_id}::offer"
-    evidence_ref = f"{scenario_id}::confirmation"
+    # Public ids are opaque at birth: ``scenario_id`` stays the evaluator join
+    # key (never serialized into a ``SafeObservation``), while everything a
+    # model can see derives from a content-free episode reference (audit D1-1).
+    episode_ref = _episode_ref(scenario_id)
+    offer_id = f"{episode_ref}::offer"
+    evidence_ref = f"{episode_ref}::confirmation"
     base_price = params.base_price_minor + configuration.price_delta_minor
     message = f"{configuration.message_prefix} {_public_message(family.hazard, params)}"
     expires_at = CASE_OBSERVED_AT + timedelta(minutes=params.expires_in_minutes)
@@ -742,7 +746,7 @@ def _build_scenario(
 
     turn = ProviderTurn(
         schema_version="1.0",
-        turn_id=f"{scenario_id}::turn-1",
+        turn_id=f"{episode_ref}::turn-1",
         scenario_id=scenario_id,
         provider_id="pine-mobile",
         revision=1,
@@ -775,6 +779,21 @@ def _build_scenario(
         private_reason_codes=reason_codes,
         parameters=params,
     )
+
+
+def _episode_ref(scenario_id: str) -> str:
+    """Content-free public reference for one scenario instance.
+
+    Content-free, not unlinkable: an unsalted truncated SHA-256 of the
+    scenario id is reversible by a dictionary over the catalogue.  It keeps
+    the family/configuration/scenario tokens out of model-facing values; it
+    is not a secret.  ``multi_turn`` derives follow-up ids by replacing the
+    ``::turn-<n>`` suffix, so the ``<episode_ref>::<part>`` structure is part
+    of the id.
+    """
+
+    digest = hashlib.sha256(scenario_id.encode("utf-8")).hexdigest()[:16]
+    return f"ep-{digest}"
 
 
 def _dedupe_tokens(values: tuple[str, ...]) -> tuple[str, ...]:

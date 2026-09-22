@@ -155,6 +155,9 @@ harness-check:
 baselines: baselines-check
 
 # r1 replay through the current evaluator; historical, not part of `make test`.
+# This legacy replay fails on the current tree by design: it binds r1 to the
+# Harness episodes of its time, which were regenerated with opaque public ids.
+# `baselines-historical-check` reports that drift as a state instead.
 baselines-check:
 	$(ML_PYTHON_RUN) python -m scripts.run_phase_03a1_baselines --check
 

@@ -52,6 +52,29 @@ def test_leakage_scanner_rejects_nested_gold_and_private_keys() -> None:
     assert {"expected_action", "database_state"} <= FORBIDDEN_OBSERVATION_KEYS
 
 
+def test_every_run_has_no_leaked_public_value_and_the_gate_counts_them() -> None:
+    """Audit D1-1/D1-13: the leakage gate scans string values, not only keys."""
+
+    from scripts.run_phase_01b_benchmark import _leakage_count
+
+    report = build_benchmark_report()
+    runs = report["runs"]
+    assert isinstance(runs, list)
+    assert all(run["leaked_public_values"] == [] for run in runs)
+    assert _leakage_count({**runs[0], "leaked_public_values": ["direct-success"]}) == 1
+    assert _leakage_count({**runs[0], "leaked_public_values": []}) == 0
+    assert (
+        _leakage_count(
+            {
+                key: value
+                for key, value in runs[0].items()
+                if key != "leaked_public_values"
+            }
+        )
+        == 1
+    )
+
+
 def test_report_fingerprint_changes_if_a_result_is_tampered() -> None:
     report = build_benchmark_report()
     tampered = deepcopy(report)

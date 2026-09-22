@@ -27,9 +27,13 @@ from proxyloop_provider_simulator.scenarios import (
 )
 
 # SHA-256 of the 32 frozen scenarios (ids, provider turns, private expected
-# semantics) as of main 120e102, before Stage 1a. DEFAULT_PARAMS must keep it.
+# semantics) as of main 120e102, before Stage 1a, re-pinned after the public
+# ids became opaque (audit D1-1): only ``turn_id``, ``offer_id``,
+# ``confirmation_evidence_ref``, ``expected_offer_id``, and
+# ``expected_evidence_ref`` moved from ``425c7afb...``.  DEFAULT_PARAMS must
+# keep it.
 FROZEN_CATALOGUE_FINGERPRINT = (
-    "425c7afbf64a8506afca8a855f75f9ac7d3d2e124b04237efe2f1fdc46f21d1f"
+    "82fd702e060a4d54ad0480b747b2b963dd2561c8178cf675c39659cedb710fb4"
 )
 # SHA-256 of ``Phase01AEpisode.success().case.model_dump_json()``: the
 # historical Phase 01A Case that ``build_case(DEFAULT_PARAMS)`` must reproduce.
@@ -87,7 +91,12 @@ def _turn_without_message_and_ids(item: BenchmarkScenario) -> dict[str, object]:
 
     turn = item.provider_turn.to_dict()
     turn.pop("message")
-    masked = json.dumps(turn).replace(item.scenario_id, "<scenario-id>")
+    episode_ref = item.provider_turn.turn_id.rsplit("::", 1)[0]
+    masked = (
+        json.dumps(turn)
+        .replace(item.scenario_id, "<scenario-id>")
+        .replace(episode_ref, "<episode-ref>")
+    )
     result: dict[str, object] = json.loads(masked)
     return result
 
@@ -221,7 +230,10 @@ def test_seeded_scenario_ids_carry_the_seed_and_reflect_parameters() -> None:
     assert scenario.scenario_id == f"{base_id}::p42"
     assert scenario.parameters == params
     offer = scenario.provider_turn.offers[0]
-    assert offer.offer_id == f"{scenario.scenario_id}::offer"
+    episode_ref = scenario.provider_turn.turn_id.rsplit("::", 1)[0]
+    assert episode_ref.startswith("ep-")
+    assert scenario.scenario_id not in episode_ref
+    assert offer.offer_id == f"{episode_ref}::offer"
     assert offer.monthly_price_minor == (
         params.base_price_minor + configuration.price_delta_minor
     )
@@ -232,7 +244,7 @@ def test_seeded_scenario_ids_carry_the_seed_and_reflect_parameters() -> None:
     assert offer.expires_at == CASE_OBSERVED_AT + timedelta(
         minutes=params.expires_in_minutes
     )
-    assert scenario.provider_turn.turn_id == f"{scenario.scenario_id}::turn-1"
+    assert scenario.provider_turn.turn_id == f"{episode_ref}::turn-1"
     assert scenario.expected_offer_id == offer.offer_id
 
 

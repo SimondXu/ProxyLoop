@@ -111,6 +111,37 @@ def test_forbidden_scenario_label_is_quarantined() -> None:
     assert rejected[0]["reason_codes"] == ["forbidden_model_field"]
 
 
+def test_accepted_learning_content_carries_no_private_value() -> None:
+    """Audit D3-1: the model-facing rows name no family, configuration, or
+    scenario in any string value, including ``offer_id``."""
+
+    from proxyloop_provider_simulator.leakage import (
+        leaked_private_values,
+        private_tokens,
+    )
+
+    tokens = private_tokens(BENCHMARK_SCENARIOS)
+    bundle = build_pilot()
+    assert len(bundle.accepted) == 128
+    for record in bundle.accepted:
+        content = record.learning_content.model_dump(mode="json")
+        assert leaked_private_values(content, tokens) == (), record.trajectory_id
+
+
+def test_private_value_inside_a_string_is_quarantined() -> None:
+    import json
+
+    raw = build_pilot().accepted[0].model_dump(mode="python")
+    raw["learning_content"]["observation"]["provider_message"] = json.dumps(  # type: ignore[index]
+        {"offer_id": "direct-success@1.0::transparent-public-v1@1.0::offer"}
+    )
+
+    accepted, rejected = curate_candidates([raw])
+
+    assert not accepted
+    assert rejected[0]["reason_codes"] == ["private_value_leak"]
+
+
 def test_lexical_fingerprint_collides_on_case_whitespace_and_punctuation() -> None:
     bundle = build_pilot()
     train = next(

@@ -78,6 +78,7 @@ from proxyloop_contracts.contracts import (
     ReasonerRequest,
 )
 from proxyloop_provider_simulator.episode import Phase01AEpisode
+from proxyloop_provider_simulator.leakage import leaked_private_values, private_tokens
 from proxyloop_provider_simulator.multi_turn import (
     MultiTurnProviderEnvironment,
     MultiTurnTransition,
@@ -164,6 +165,9 @@ def _scripted_model_trace(
         output_ref=output_fingerprint,
         safety_flags=(),
     ).model_dump(mode="json")
+
+
+PRIVATE_TOKENS = private_tokens(BENCHMARK_SCENARIOS)
 
 
 def _leaked_keys(value: object) -> tuple[str, ...]:
@@ -1134,10 +1138,13 @@ def _run_episode(
     observation_payload = observation.to_dict()
     oracle_decision = ScriptedOracleConsumer().decide(observation)
 
+    # The idempotency key is exported into the public episode; derive it from
+    # the content-free episode reference, not the scenario id (audit D1-1).
+    episode_ref = opening.turn.turn_id.rsplit("::", 1)[0]
     attempt = SimulatorCapabilityAttempt(
         capability_id=f"simulator.{oracle_decision.action.value}",
         offer_id=oracle_decision.offer_id,
-        idempotency_key=f"oracle:{scenario.scenario_id}",
+        idempotency_key=f"oracle:{episode_ref}",
     )
     snapshot, proposal, action_intent, approval = _episode_execution_context(
         case=case,
@@ -1224,6 +1231,11 @@ def _run_episode(
         },
     }
     row["leaked_public_keys"] = list(_leaked_keys(row))
+    # Value-level scan of the exported public episode only: the row's
+    # evaluation-side ids (``episode_id``) are not model-facing.
+    row["leaked_public_values"] = list(
+        leaked_private_values(public_episode, PRIVATE_TOKENS)
+    )
     return {**row, "episode_fingerprint": _fingerprint(row)}
 
 
@@ -1347,7 +1359,11 @@ def _build_ceiling(
     false_completion = sum(
         1 for transition in transitions if transition["false_completion"] is True
     )
-    leakage = sum(len(cast(list[object], row["leaked_public_keys"])) for row in rows)
+    leakage = sum(
+        len(cast(list[object], row["leaked_public_keys"]))
+        + len(cast(list[object], row["leaked_public_values"]))
+        for row in rows
+    )
     multi_position = sum(
         1
         for episode in public_episodes
