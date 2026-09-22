@@ -18,14 +18,13 @@ from .scenarios import (
     BenchmarkScenario,
     ProviderTurn,
     PublicOffer,
-    ScenarioAction,
     ScenarioParameters,
 )
 
 # Label of the verifier semantics implemented by ``_verify_decision``.  Offline
 # rescores of hosted evidence bind to it so a later verifier change is visible
 # in the derived artifact's ``evaluator_version``.
-PROVIDER_VERIFIER_VERSION = "phase-01b-verifier-v1-label"
+PROVIDER_VERIFIER_VERSION = "phase-01b-verifier-v2-state"
 
 
 class EnvironmentState(StrEnum):
@@ -160,32 +159,65 @@ class ProviderEnvironment:
         if action is EnvironmentAction.ACCEPT_OFFER:
             return self._verify_acceptance(decision, turn)
 
+        # Every non-completion action is verified against the public turn
+        # state, never against the scenario's reference label.  The label only
+        # selects the rationale codes when the action happens to be the
+        # reference one, which keeps the scripted-oracle artifacts stable.
         false_completion = decision.completion_candidate
-        expected = self._scenario.expected_action
-        if action.value != expected.value:
-            reason_codes: tuple[str, ...] = ("unexpected_action",)
-            if false_completion:
-                reason_codes += ("completion_candidate_on_non_completion",)
+        if action is EnvironmentAction.ESCALATE:
+            state_valid = turn.transfer_available
+            failure_code = "transfer_unavailable"
+        elif action is EnvironmentAction.REQUEST_CLARIFICATION:
+            state_valid = turn.clarification_required
+            failure_code = "clarification_not_required"
+        elif action is EnvironmentAction.REFUSE_DISCLOSURE:
+            state_valid = turn.disclosure_restricted
+            failure_code = "disclosure_not_restricted"
+        elif action in (
+            EnvironmentAction.DECLINE_OFFER,
+            EnvironmentAction.REQUEST_REPLAN,
+        ):
+            state_valid = not self._acceptance_state_valid(turn)
+            failure_code = "acceptance_available"
+        else:
+            # A new EnvironmentAction member must get an explicit predicate;
+            # it never inherits the acceptance rule silently.
             return ScenarioVerification(
                 valid_outcome=False,
                 completed=False,
                 false_completion=false_completion,
-                reason_codes=reason_codes,
+                reason_codes=("invalid_action",),
             )
 
-        reason_codes = self._scenario.private_reason_codes
-        if action is EnvironmentAction.ESCALATE and not turn.transfer_available:
-            return ScenarioVerification(
-                valid_outcome=False,
-                completed=False,
-                false_completion=false_completion,
-                reason_codes=("transfer_unavailable",),
-            )
+        if not state_valid:
+            reason_codes: tuple[str, ...] = (failure_code,)
+        elif action.value == self._scenario.expected_action.value:
+            reason_codes = self._scenario.private_reason_codes
+        else:
+            reason_codes = ("state_verified_noncompletion",)
+        if false_completion:
+            reason_codes += ("completion_candidate_on_non_completion",)
         return ScenarioVerification(
-            valid_outcome=not false_completion,
+            valid_outcome=state_valid and not false_completion,
             completed=False,
             false_completion=false_completion,
             reason_codes=reason_codes,
+        )
+
+    def _acceptance_state_valid(self, turn: ProviderTurn) -> bool:
+        """Whether the turn's offer could be accepted under the state rules."""
+
+        offer = turn.offers[0] if turn.offers else None
+        return (
+            offer is not None
+            and turn.approval_current
+            and not _offer_constraint_violations(
+                offer,
+                params=self._scenario.parameters,
+                observed_at=turn.observed_at,
+            )
+            and turn.confirmation_evidence_available
+            and turn.confirmation_evidence_ref is not None
         )
 
     def _verify_acceptance(
@@ -193,8 +225,6 @@ class ProviderEnvironment:
     ) -> ScenarioVerification:
         reasons: list[str] = []
         offer = turn.offers[0] if turn.offers else None
-        if self._scenario.expected_action is not ScenarioAction.ACCEPT_OFFER:
-            reasons.append("acceptance_not_expected")
         if not turn.approval_current:
             reasons.append("approval_not_current")
         if offer is None:
@@ -215,8 +245,6 @@ class ProviderEnvironment:
             reasons.append("confirmation_evidence_ref_missing")
 
         if reasons:
-            if "acceptance_not_expected" in reasons:
-                reasons.append("false_completion")
             return ScenarioVerification(
                 valid_outcome=False,
                 completed=False,
