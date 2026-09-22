@@ -1,0 +1,29 @@
+adapter_path: "data/experiments/phase-03c/training/smoke/adapters"
+batch_size: 1
+data: "data/experiments/phase-03c/training/smoke/data"
+fine_tune_type: "lora"
+grad_accumulation_steps: 2
+grad_checkpoint: true
+iters: 4
+learning_rate: 0.00015
+lora_parameters:
+  dropout: 0.05
+  rank: 8
+  scale: 8.0
+lr_schedule:
+  arguments: [0.00015, 1, 0.0]
+  name: "cosine_decay"
+  warmup: 1
+  warmup_init: 0.0
+mask_prompt: true
+max_seq_length: 2048
+model: "/Users/edison/.cache/huggingface/hub/models--mlx-community--Qwen3-4B-Instruct-2507-4bit/snapshots/50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b"
+num_layers: -1
+optimizer: "adamw"
+save_every: 2
+seed: 0
+steps_per_eval: 2
+steps_per_report: 2
+test: false
+train: true
+val_batches: 4

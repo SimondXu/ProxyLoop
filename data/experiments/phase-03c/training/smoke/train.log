@@ -1,0 +1,36 @@
+Loading configuration file data/experiments/phase-03c/training/smoke/config.yaml
+Loading pretrained model
+Loading datasets
+Training
+Trainable parameters: 0.411% (16.515M/4022.468M)
+Starting training..., iters: 4
+[WARNING] Some sequences are longer than 2048 tokens. The longest sentence 2057 will be truncated to 2048. Consider pre-splitting your data to save memory.
+
+Calculating loss...:   0%|          | 0/4 [00:00<?, ?it/s]
+Calculating loss...:  25%|██▌       | 1/4 [00:02<00:08,  2.93s/it]
+Calculating loss...:  50%|█████     | 2/4 [00:05<00:05,  2.92s/it]
+Calculating loss...:  75%|███████▌  | 3/4 [00:08<00:02,  2.91s/it]
+Calculating loss...: 100%|██████████| 4/4 [00:11<00:00,  2.89s/it]
+Calculating loss...: 100%|██████████| 4/4 [00:11<00:00,  2.90s/it]
+Iter 1: Val loss 3.556, Val took 11.622s
+
+Calculating loss...:   0%|          | 0/4 [00:00<?, ?it/s]
+Calculating loss...:  25%|██▌       | 1/4 [00:02<00:08,  2.96s/it]
+Calculating loss...:  50%|█████     | 2/4 [00:05<00:05,  2.93s/it]
+Calculating loss...:  75%|███████▌  | 3/4 [00:08<00:02,  2.93s/it]
+Calculating loss...: 100%|██████████| 4/4 [00:11<00:00,  2.97s/it]
+Calculating loss...: 100%|██████████| 4/4 [00:11<00:00,  2.96s/it]
+Iter 2: Val loss 3.591, Val took 11.836s
+Iter 2: Train loss 2.393, Learning Rate 0.000e+00, It/sec 0.096, Tokens/sec 14.627, Trained Tokens 305, Peak mem 6.405 GB
+Iter 2: Saved adapter weights to data/experiments/phase-03c/training/smoke/adapters/adapters.safetensors and data/experiments/phase-03c/training/smoke/adapters/0000002_adapters.safetensors.
+
+Calculating loss...:   0%|          | 0/4 [00:00<?, ?it/s]
+Calculating loss...:  25%|██▌       | 1/4 [00:03<00:09,  3.02s/it]
+Calculating loss...:  50%|█████     | 2/4 [00:06<00:06,  3.04s/it]
+Calculating loss...:  75%|███████▌  | 3/4 [00:09<00:03,  3.02s/it]
+Calculating loss...: 100%|██████████| 4/4 [00:12<00:00,  3.06s/it]
+Calculating loss...: 100%|██████████| 4/4 [00:12<00:00,  3.05s/it]
+Iter 4: Val loss 3.583, Val took 12.192s
+Iter 4: Train loss 2.186, Learning Rate 1.500e-04, It/sec 0.095, Tokens/sec 12.354, Trained Tokens 566, Peak mem 6.603 GB
+Iter 4: Saved adapter weights to data/experiments/phase-03c/training/smoke/adapters/adapters.safetensors and data/experiments/phase-03c/training/smoke/adapters/0000004_adapters.safetensors.
+Saved final weights to data/experiments/phase-03c/training/smoke/adapters/adapters.safetensors.

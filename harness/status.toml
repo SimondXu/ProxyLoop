@@ -1,13 +1,13 @@
 schema_version = 1
-product_phase_state = "idle"
-active_product_phase = ""
-active_contract = ""
+product_phase_state = "blocked"
+active_product_phase = "03C-stage2"
+active_contract = "harness/build/phase-03c-fast-model-distillation.md"
 next_phase_authorized = false
 integration_baseline = "main"
 updated_at = "2026-09-21"
 
 [boundaries]
-summary = "Phase 03C Stage 1c full teacher generation is complete (7,196 accepted rows over all 10 train families, prompt v6, training_ready true); see harness/log/phase-03c-stage1c-full-generation.md. Stage 2 training (needs a CUDA box), Stage 3, Phase 06B2, full Phase 07, and every real channel remain unauthorized."
+summary = "Phase 03C Stage 2 is active but blocked on external execution: the cloud training package and bundle are ready for the user to run on a rented CUDA box (see harness/context/phase-03c-stage2-preflight.md). Stage 3 decision waits for the returned artifacts. Phase 06B2, full Phase 07, and every real channel remain unauthorized."
 inactive = [
   "Phase 03A1 continuation or r6/r7",
   "any model training, data expansion, or promotion; Phase 03A1/03B artifact rewrites (Stage 0 writes only new phase-03c artifacts)",

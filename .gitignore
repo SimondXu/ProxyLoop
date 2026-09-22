@@ -45,3 +45,11 @@ recordings/
 # The full Stage 1c run's raw samples (~15 MB) stay local too; pilot-dir raw samples remain committed.
 data/experiments/phase-03c/teacher*/*-accepted.jsonl
 data/experiments/phase-03c/teacher-full*/*-samples.jsonl
+# Phase 03C cloud bundle: prompts and teacher text stay local; bundle-manifest.json and schema.json are committed.
+data/experiments/phase-03c/cloud-bundle/*.jsonl
+
+# Phase 03C Stage 2 local training: adapters, weights, and the chat JSONL (teacher text) stay local; manifests and configs are committed.
+data/experiments/phase-03c/training/**/adapters/
+data/experiments/phase-03c/training/**/*.safetensors
+data/experiments/phase-03c/training/**/*.jsonl
+!data/experiments/phase-03c/training/*/train.log

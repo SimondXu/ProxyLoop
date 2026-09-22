@@ -1,0 +1,206 @@
+{
+  "adapter_files": {
+    "0000002_adapters.safetensors": {
+      "sha256": "d3fd2e91c7e16a56177e906d372a2de5de93480a69db3b569af590342cc6c16b",
+      "size": 66114656
+    },
+    "0000004_adapters.safetensors": {
+      "sha256": "7278a0da3d3361a3c38498da5e19a250b5e9c21ba46e580cc449375fb7369bcf",
+      "size": 66114656
+    },
+    "adapter_config.json": {
+      "sha256": "fdc210c2678699e579e866355a01a84daff47ef0f9b819ea213fd6ca313dd72c",
+      "size": 1340
+    },
+    "adapters.safetensors": {
+      "sha256": "7278a0da3d3361a3c38498da5e19a250b5e9c21ba46e580cc449375fb7369bcf",
+      "size": 66114656
+    }
+  },
+  "base_checkpoint": {
+    "chat_template_fingerprint": "40c21f34cf67d8c760ef72f8ad3ae5afad514299d4b06e91dd9a8d705af7b541",
+    "checkpoint_fingerprint": "941705797578fb931fdef40b55c03ae60274b48fe03f1626f01197b52394de50",
+    "enable_thinking": null,
+    "model": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+    "model_revision": "50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b",
+    "quantization": "4bit",
+    "source_lineage": "Qwen/Qwen3-4B-Instruct-2507",
+    "source_revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
+    "tokenizer_fingerprint": "5b06e759eb78534dbbf01b5ffc3faa43c9607921494151f7ca758b352f08722b"
+  },
+  "command": [
+    "/Users/edison/Desktop/projects/pine-clone/ml/.venv/bin/python3",
+    "-m",
+    "mlx_lm",
+    "lora",
+    "--config",
+    "data/experiments/phase-03c/training/smoke/config.yaml",
+    "--train"
+  ],
+  "config": {
+    "adapter_path": "data/experiments/phase-03c/training/smoke/adapters",
+    "batch_size": 1,
+    "data": "data/experiments/phase-03c/training/smoke/data",
+    "fine_tune_type": "lora",
+    "grad_accumulation_steps": 2,
+    "grad_checkpoint": true,
+    "iters": 4,
+    "learning_rate": 0.00015,
+    "lora_parameters": {
+      "dropout": 0.05,
+      "rank": 8,
+      "scale": 8.0
+    },
+    "lr_schedule": {
+      "arguments": [
+        0.00015,
+        1,
+        0.0
+      ],
+      "name": "cosine_decay",
+      "warmup": 1,
+      "warmup_init": 0.0
+    },
+    "mask_prompt": true,
+    "max_seq_length": 2048,
+    "model": "/Users/edison/.cache/huggingface/hub/models--mlx-community--Qwen3-4B-Instruct-2507-4bit/snapshots/50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b",
+    "num_layers": -1,
+    "optimizer": "adamw",
+    "save_every": 2,
+    "seed": 0,
+    "steps_per_eval": 2,
+    "steps_per_report": 2,
+    "test": false,
+    "train": true,
+    "val_batches": 4
+  },
+  "config_hash": "fb2c812fc8ec78e135804e985eca1034540aed0dfbb17d57e94639094c8334af",
+  "dataset": {
+    "compiler_version": "phase-03c-fast-compiler-v6",
+    "dir": "data/experiments/phase-03c/training/smoke/source-data",
+    "fingerprint": "e58ed2d2152ce6c956edccc4ab003b7c3ff70c05cd2511740a5e5535720003d7",
+    "prompt_version": "v6",
+    "split_counts": {
+      "development": 400,
+      "train": 214
+    },
+    "token_stats": {
+      "max": 2155,
+      "max_seq_length": 2048,
+      "min": 1850,
+      "over_max_seq_length": 51,
+      "over_max_seq_length_prompt_ids": [
+        "absent-evidence@1.0::retention-gated-v1@1.0::p3::pos1",
+        "absent-evidence@1.0::retention-gated-v1@1.0::p56::pos2",
+        "absent-evidence@1.0::retention-gated-v1@1.0::p44::pos2",
+        "absent-evidence@1.0::retention-gated-v1@1.0::p58::pos1",
+        "absent-evidence@1.0::retention-gated-v1@1.0::p58::pos1",
+        "absent-evidence@1.0::retention-gated-v1@1.0::p65::pos2",
+        "absent-evidence@1.0::retention-gated-v1@1.0::p98::pos1",
+        "absent-evidence@1.0::transparent-public-v1@1.0::p25::pos1",
+        "absent-evidence@1.0::retention-gated-v1@1.0::p69::pos2",
+        "absent-evidence@1.0::transparent-public-v1@1.0::p20::pos2",
+        "absent-evidence@1.0::transparent-public-v1@1.0::p20::pos2",
+        "absent-evidence@1.0::transparent-public-v1@1.0::p25::pos2",
+        "absent-evidence@1.0::transparent-public-v1@1.0::p50::pos1",
+        "absent-evidence@1.0::transparent-public-v1@1.0::p77::pos1",
+        "expired-approval@1.0::retention-gated-v1@1.0::p3::pos1",
+        "expired-approval@1.0::transparent-public-v1@1.0::p13::pos1",
+        "expired-approval@1.0::transparent-public-v1@1.0::p19::pos1",
+        "expired-approval@1.0::transparent-public-v1@1.0::p6::pos2",
+        "expired-approval@1.0::transparent-public-v1@1.0::p91::pos2",
+        "fee-total-cost-trap@1.0::retention-gated-v1@1.0::p34::pos1"
+      ],
+      "p95": 2060,
+      "rows": 614,
+      "total": 1203425
+    }
+  },
+  "deviation": "local-mlx-lora-instead-of-cloud-trl-peft",
+  "exit_code": 0,
+  "fingerprint": "2dd57ee5cfac7a590dcf88361648c9b34e64a1bf22412f1badc3a8faf342823e",
+  "gpu": "apple-m4-pro-unified",
+  "losses": {
+    "final_train_loss": 2.186,
+    "final_val_loss": 3.583,
+    "saved_iters": [
+      2,
+      4
+    ],
+    "train_loss": [
+      {
+        "iter": 2,
+        "learning_rate": 0.0,
+        "train_loss": 2.393,
+        "trained_tokens": 305
+      },
+      {
+        "iter": 4,
+        "learning_rate": 0.00015,
+        "train_loss": 2.186,
+        "trained_tokens": 566
+      }
+    ],
+    "val_loss": [
+      {
+        "iter": 1,
+        "val_loss": 3.556
+      },
+      {
+        "iter": 2,
+        "val_loss": 3.591
+      },
+      {
+        "iter": 4,
+        "val_loss": 3.583
+      }
+    ]
+  },
+  "machine": {
+    "cpu_brand": "Apple M4 Pro",
+    "machine": "arm64",
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "python": "3.12.10"
+  },
+  "packages": {
+    "mlx": "0.32.1",
+    "mlx-lm": "0.31.3",
+    "numpy": "2.5.2",
+    "pydantic": "2.13.4",
+    "transformers": "5.15.1"
+  },
+  "plan": {
+    "decay_steps": 1,
+    "iters": 4,
+    "optimizer_steps": 2,
+    "steps_per_eval": 2,
+    "train_rows": 8,
+    "warmup_steps": 1
+  },
+  "recipe": {
+    "batch_size": 1,
+    "epochs": 3,
+    "eval_every_optimizer_steps": 1,
+    "grad_accumulation_steps": 2,
+    "grad_checkpoint": true,
+    "learning_rate": 0.00015,
+    "lora_alpha": 64,
+    "lora_dropout": 0.05,
+    "lora_rank": 8,
+    "lora_scale": 8.0,
+    "max_seq_length": 2048,
+    "num_layers": -1,
+    "seed": 0,
+    "val_batches": 4,
+    "warmup_fraction": 0.03
+  },
+  "run_id": "smoke",
+  "schema_version": "phase-03c-training-run-v1",
+  "selection": {
+    "dev_evals": [],
+    "rule": "max dev oracle_act_agreement with policy_violation == 0, ties by lower unsupported_response_violation, then earlier step; never by loss",
+    "selected_step": null
+  },
+  "smoke": true,
+  "wall_time_s": 79.349
+}

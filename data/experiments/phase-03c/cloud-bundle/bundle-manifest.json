@@ -1,0 +1,148 @@
+{
+  "accepted_source": {
+    "path": "data/experiments/phase-03c/teacher-full-v6/claude-sonnet-5-accepted.jsonl",
+    "sha256": "25b29f9490b8efe1e1e7146ef40aaf2b955c4fbdd1d4dcbc3a26a18f936a6a08",
+    "teacher_manifest_sha256": "ce4e2b3d210ed3d5289208da49e6692aa7e24ba40336a8bda5ea2af8798590b8"
+  },
+  "base_model": {
+    "dtype": "bfloat16",
+    "enable_thinking": false,
+    "license": "apache-2.0",
+    "local_mlx_export": "Qwen/Qwen3-8B-MLX-bf16",
+    "local_mlx_revision": "6766fd4b8101fa4201cc55c5a2e464f3d301f792",
+    "model": "Qwen/Qwen3-8B",
+    "revision": "b968826d9c46dd6066d109eabc6255188de91218"
+  },
+  "compiler_version": "phase-03c-fast-compiler-v6",
+  "counts": {
+    "dev_eval": 400,
+    "heldout": 240,
+    "train": 7196,
+    "valid": 400
+  },
+  "dataset_fingerprint": "ab86aa43efd1de8a57d72465d7d2db2856e951da866ee8512bdf5968ace47993",
+  "family_counts": {
+    "dev_eval": {
+      "absent-evidence": 40,
+      "add-on-removal": 40,
+      "clarification-required": 40,
+      "direct-success": 40,
+      "disclosure-restriction": 40,
+      "expired-approval": 40,
+      "fee-total-cost-trap": 40,
+      "forbidden-term": 40,
+      "forged-evidence": 40,
+      "multi-hazard": 40
+    },
+    "heldout": {
+      "plan-change": 40,
+      "promotion-credit": 40,
+      "refusal-transfer": 40,
+      "required-feature-loss": 40,
+      "revised-offer": 40,
+      "unsupported-action": 40
+    },
+    "train": {
+      "absent-evidence": 736,
+      "add-on-removal": 720,
+      "clarification-required": 797,
+      "direct-success": 708,
+      "disclosure-restriction": 421,
+      "expired-approval": 795,
+      "fee-total-cost-trap": 744,
+      "forbidden-term": 792,
+      "forged-evidence": 700,
+      "multi-hazard": 783
+    }
+  },
+  "files": {
+    "dev-eval.jsonl": {
+      "bytes": 7215070,
+      "rows": 400,
+      "sha256": "1c86c393a0c7703fdd327eb4e3f06e261cb2fd4a49b9c9ebb19c391a4d7c355b"
+    },
+    "heldout.jsonl": {
+      "bytes": 4373700,
+      "rows": 240,
+      "sha256": "f9a720339716f602cb0565abf53502d6ed47533a75e50d2a4b6bc334ac0a8d7d"
+    },
+    "schema.json": {
+      "bytes": 3886,
+      "rows": null,
+      "sha256": "2c6aa29ce4a530ff2fe72e1795b2c772113073ad642e810436441e12b914df4e"
+    },
+    "train.jsonl": {
+      "bytes": 69142649,
+      "rows": 7196,
+      "sha256": "dd8f621d47921a34688c94a0e46d959efbf8412bef487799f9870d8b44673c53"
+    },
+    "valid.jsonl": {
+      "bytes": 3723526,
+      "rows": 400,
+      "sha256": "38a202204943245e937a8fd76fd3bb82e1343d8cb256794f1851927cca986603"
+    }
+  },
+  "git": {
+    "commit": "36a7916b9fbcdf0bfcb6307ab7cd224e17af7b53",
+    "dirty": true
+  },
+  "heldout": {
+    "families": {
+      "plan-change": "development",
+      "promotion-credit": "development",
+      "refusal-transfer": "development",
+      "required-feature-loss": "test",
+      "revised-offer": "test",
+      "unsupported-action": "test"
+    },
+    "seeds": {
+      "count": 10,
+      "first": 950,
+      "last": 959
+    },
+    "split_counts": {
+      "development": 120,
+      "test": 120
+    }
+  },
+  "max_length": 2048,
+  "prompt_set": {
+    "content_fingerprint": "51eded654f58dc1bc1dfa02617f95cec093fdb4117c5f472e6f419fd014f6149",
+    "path": "data/manifests/phase-03c-prompt-set.json"
+  },
+  "prompt_version": "v6",
+  "schema_fingerprint": "df535a0f9af2e3e5a42b6e20a2d849c17c6a0ef01d3011fdff28bd6b35da4823",
+  "schema_version": "phase-03c-cloud-bundle-v1",
+  "token_stats": {
+    "max": 2228,
+    "max_length": 2048,
+    "min": 1850,
+    "over_max_length": 2279,
+    "over_max_length_prompt_ids": [
+      "absent-evidence@1.0::retention-gated-v1@1.0::p3::pos2",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p3::pos2",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p2::pos1",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p2::pos1",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p4::pos1",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p5::pos1",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p5::pos1",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p6::pos1",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p5::pos2",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p5::pos2",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p6::pos2",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p6::pos2",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p7::pos2",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p8::pos2",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p8::pos1",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p8::pos1",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p9::pos1",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p9::pos2",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p11::pos1",
+      "absent-evidence@1.0::retention-gated-v1@1.0::p12::pos2"
+    ],
+    "p95": 2123,
+    "rows": 7596,
+    "total": 15240243
+  },
+  "train_prompt_count": 3685
+}
