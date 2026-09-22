@@ -1,7 +1,7 @@
 {
   "ceiling_fingerprint": "ad0a8a9beee87e1ae004c461d9d2dbdebefd3652bfefe30e23afc929a3a426eb",
   "completed_count": 10,
-  "episode_fingerprint": "7c53f05c606a36d16850bd5194a7f9f8a3abf0f39e45f63da24039f5c7bc25fb",
+  "episode_fingerprint": "35fcde24aa586b5845b42173bb4a213a5a513b3b4457f57b8d6c53356e1610eb",
   "false_completion_count": 0,
   "gate_passed": true,
   "ineligible_reference_strategy_input_count": 0,
@@ -14,7 +14,7 @@
     "provider_heldout": 16
   },
   "reference_strategy_input_count": 8,
-  "report_fingerprint": "aaf38d2b8d5f3ceb9ae670a3a2019887fda5e8acebc8b8389088d792afa449e1",
+  "report_fingerprint": "e0d522a63b056de2b57230acc026b7cc77455e5cbf4fdf9d3936f4741d17dc9a",
   "runtime_probe_gate_passed": true,
   "runtime_probe_report": {
     "authorization": {

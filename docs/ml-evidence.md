@@ -22,13 +22,23 @@ and no LLM judge is involved in the headline numbers.
 The simulator provides 16 scenario families × 2 provider configurations (the
 configurations do not change any labelled outcome). The scripted oracle
 reaches the labelled outcome on all 32 — 10 completions and 22 valid
-non-completions — with zero false completions and no private-field keys in
-the public views (scenario-family identifiers still appear in public values;
-audit finding D1-1, remediation Group 2 in
-`docs/research/2026-09-21-repository-audit.md` §6); that is the
-environment ceiling
+non-completions — with zero false completions and neither a private-field
+key nor a family, configuration, or scenario identifier in any public value
+(public ids are `ep-<hash>` references at the source — content-free but
+not unlinkable, an unsalted truncated SHA-256 of the scenario id that a
+dictionary over the catalogue reverses — and the Phase 01B, Phase 02,
+03A1 harness, and 03C prompt gates scan string values, including JSON
+inside strings; audit finding D1-1); that is the environment ceiling
 (`data/manifests/phase-01b-ceiling-report.json`,
-`data/manifests/phase-03a1-ceiling-report.json`). The r2–r5 "safety" split
+`data/manifests/phase-03a1-ceiling-report.json`). One known residual: the
+Fast view's `pins.provider_config_ref` still carries the configuration id
+(`<configuration_id>@2.0`) in the frozen r2 views and the 03C pins; it is
+excluded from the value scan and handled with the next catalogue version,
+because changing it would alter the pinned 03C prompt fingerprints and the
+hosted teacher artifacts. Likewise the frozen r2 public episodes
+(`artifacts_v2.py`, r4 execution contract) still carry
+`r2-oracle:<scenario_id>` as the capability idempotency key; the v1 harness
+episodes now use `oracle:<episode_ref>`. The r2–r5 "safety" split
 (10 scenarios) is the pinned V1 policy and includes two families that do not
 test what the name claims — `forged-evidence` is a confirmation-evidence
 hazard and `multi-hazard` a transfer hazard; the current policy

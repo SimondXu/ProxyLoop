@@ -391,3 +391,40 @@ def test_adapter_maps_canonical_provider_offer_without_private_fields() -> None:
 
     assert observation.offers[0].offer_id == str(provider_offer.offer_id)
     assert "evidence_ids" not in json.loads(observation.to_json())["offers"][0]
+
+
+def test_benchmark_safe_observations_carry_no_private_value() -> None:
+    """Audit D1-1: the public JSON names no family, configuration, or scenario."""
+
+    from proxyloop_provider_simulator.environment import ProviderEnvironment
+    from proxyloop_provider_simulator.episode import Phase01AEpisode
+    from proxyloop_provider_simulator.leakage import (
+        leaked_private_values,
+        private_tokens,
+    )
+    from proxyloop_provider_simulator.scenarios import BENCHMARK_SCENARIOS
+
+    from scripts.run_phase_01b_benchmark import _safe_offers
+
+    tokens = private_tokens(BENCHMARK_SCENARIOS)
+    case = Phase01AEpisode.success().case
+    for scenario in BENCHMARK_SCENARIOS:
+        turn = ProviderEnvironment(scenario).observe()
+        observation = SafeObservationAdapter.build(
+            case,
+            provider_id=turn.provider_id,
+            provider_message=turn.message,
+            offers=_safe_offers(turn),
+            requested_disclosures=("account_pin",)
+            if turn.disclosure_restricted
+            else (),
+            needs_clarification=turn.clarification_required,
+            transfer_available=turn.transfer_available,
+            approval_current=turn.approval_current,
+            confirmation_evidence_available=turn.confirmation_evidence_available,
+            observed_at=turn.observed_at,
+        )
+        # The serialized text is scanned as one JSON-in-string value, the way
+        # a visible-event ``content`` field carries it.
+        assert leaked_private_values(observation.to_json(), tokens) == ()
+        assert leaked_private_values(observation.to_dict(), tokens) == ()

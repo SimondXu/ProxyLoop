@@ -16,6 +16,8 @@ from proxyloop_evaluation import qwen_mlx
 from proxyloop_evaluation.fast_output import FastModelOutput, compile_fast_output
 from proxyloop_evaluation.phase03b_experiment import (
     EXPERIMENT_DIR,
+    PHASE02_PROVENANCE_FIELDS,
+    PHASE02_SOURCE_STATES,
     PHASE03B_PUBLIC_MARKER,
     QLORA_CONFIG_PATH,
     QLORA_CONFIG_TEXT,
@@ -37,6 +39,7 @@ from proxyloop_evaluation.phase03b_experiment import (
     detect_unsupported_response_facts,
     evaluate_fast_result,
     freeze_phase03b_controls,
+    phase02_source_state,
     run_controlled_smoke,
 )
 from proxyloop_evaluation.phase03b_readiness import proposed_fast_target
@@ -211,6 +214,80 @@ def test_phase03b_real_load_is_local_adapter_only_and_greedy_seeded(
     assert arm_a.adapter_path is None
     assert arm_b.adapter_path == str(adapter_path)
     assert arm_a.adapter_fingerprint != arm_b.adapter_fingerprint
+
+
+def test_phase02_source_drift_is_a_state_and_tampering_still_fails(
+    tmp_path: Path,
+) -> None:
+    """The 03B smoke is historical: its three Phase 02 provenance fields are
+    checked as recorded and their drift against the regenerated Phase 02
+    artifacts is a labelled state, never repaired by rewriting the manifest."""
+
+    state, drifted = phase02_source_state()
+    # Membership, not the exact tuple: regenerating the Phase 02 artifacts
+    # back to what 03B recorded would legitimately read ``unchanged``.
+    assert state in PHASE02_SOURCE_STATES
+    assert set(drifted) <= {
+        f"{section}.{field}" for section, field in PHASE02_PROVENANCE_FIELDS
+    }
+    assert check_phase03b_artifacts() == ()
+
+    # A copy whose recorded provenance equals the current derivation reads
+    # ``unchanged``; a copy with a tampered internal hash still fails.
+    directory = tmp_path / "data/experiments/phase-03b-qlora-smoke"
+    directory.mkdir(parents=True)
+    for name in ("train.jsonl", "valid.jsonl", "manifest.json", QLORA_CONFIG_PATH.name):
+        (directory / name).write_bytes((EXPERIMENT_DIR / name).read_bytes())
+    committed = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    current = build_phase03b_manifest()
+    for section, field in (
+        ("source", "phase02_manifest_fingerprint"),
+        ("review", "packet_fingerprint"),
+        ("hashes", "source_records"),
+    ):
+        committed[section][field] = current[section][field]
+    (directory / "manifest.json").write_text(
+        json.dumps(committed, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    # A re-run records the rebuilt manifest's fingerprint in its arm results;
+    # that zero-literal binding is what stops a rewritten provenance field
+    # from passing as "recorded".
+    results = directory / "results"
+    results.mkdir()
+    rebuilt = canonical_fingerprint(committed)
+    for arm in sorted((EXPERIMENT_DIR / "results").glob("arm-*.json")):
+        payload = json.loads(arm.read_text(encoding="utf-8"))
+        payload["controls"]["manifest_fingerprint"] = rebuilt
+        (results / arm.name).write_text(json.dumps(payload), encoding="utf-8")
+    assert phase02_source_state(tmp_path) == ("unchanged", ())
+    assert check_phase03b_artifacts(tmp_path) == ()
+
+    # Rewriting a provenance field without re-running breaks that binding.
+    laundered = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    laundered["source"]["phase02_manifest_fingerprint"] = "f" * 64
+    (directory / "manifest.json").write_text(
+        json.dumps(laundered, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    unbound = check_phase03b_artifacts(tmp_path)
+    assert unbound
+    assert all(error.startswith("manifest_fingerprint_unbound:") for error in unbound)
+    (directory / "manifest.json").write_text(
+        json.dumps(committed, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    tampered = dict(committed)
+    tampered["hashes"] = {**committed["hashes"], "train_jsonl": "0" * 64}
+    (directory / "manifest.json").write_text(
+        json.dumps(tampered, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    assert "artifact_drift:manifest.json" in check_phase03b_artifacts(tmp_path)
+    with (directory / "train.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write('{"messages": []}\n')
+    assert "artifact_drift:train.jsonl" in check_phase03b_artifacts(tmp_path)
 
 
 def test_artifact_has_20_train_6_valid_and_no_test_file() -> None:

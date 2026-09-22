@@ -60,6 +60,7 @@ from proxyloop_evaluation.phase03c_scenarios import (
     harvest_positions,
     parameters_fingerprint,
 )
+from proxyloop_evaluation.prompt_guard import assert_view_private_value_free
 from proxyloop_evaluation.qwen_mlx import QwenPrompt, _assert_safe_keys
 
 PROMPT_SET_SCHEMA_VERSION: Final = "phase-03c-prompt-set-v1"
@@ -300,6 +301,9 @@ def render_prompt_view(
         build_parameterised_snapshot(scenario, position)
     )
     _assert_safe_keys(_model_input_keys(view))
+    # Audit D3-2: string values too (the rendered sections are checked by
+    # ``Phase03CQwenAdapter.build_prompt``).
+    assert_view_private_value_free(view)
     return view
 
 

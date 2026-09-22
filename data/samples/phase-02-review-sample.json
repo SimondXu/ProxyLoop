@@ -30,7 +30,7 @@
       "trajectory_id": "add-on-removal@1.0::retention-gated-v1@1.0::trajectory-1",
       "verification": {
         "completed": true,
-        "evidence_ref": "add-on-removal@1.0::retention-gated-v1@1.0::confirmation",
+        "evidence_ref": "ep-e45e3672fe25414d::confirmation",
         "false_completion": false,
         "reason_codes": [
           "verified_confirmation_evidence"
@@ -68,7 +68,7 @@
       "trajectory_id": "direct-success@1.0::retention-gated-v1@1.0::trajectory-1",
       "verification": {
         "completed": true,
-        "evidence_ref": "direct-success@1.0::retention-gated-v1@1.0::confirmation",
+        "evidence_ref": "ep-b819990d956d7b6d::confirmation",
         "false_completion": false,
         "reason_codes": [
           "verified_confirmation_evidence"
@@ -203,7 +203,7 @@
       "trajectory_id": "plan-change@1.0::retention-gated-v1@1.0::trajectory-1",
       "verification": {
         "completed": true,
-        "evidence_ref": "plan-change@1.0::retention-gated-v1@1.0::confirmation",
+        "evidence_ref": "ep-ee34d5907e532039::confirmation",
         "false_completion": false,
         "reason_codes": [
           "verified_confirmation_evidence"
@@ -222,7 +222,7 @@
       "trajectory_id": "promotion-credit@1.0::retention-gated-v1@1.0::trajectory-1",
       "verification": {
         "completed": true,
-        "evidence_ref": "promotion-credit@1.0::retention-gated-v1@1.0::confirmation",
+        "evidence_ref": "ep-b86a1873395a3f2c::confirmation",
         "false_completion": false,
         "reason_codes": [
           "verified_confirmation_evidence"
@@ -280,7 +280,7 @@
       "trajectory_id": "revised-offer@1.0::retention-gated-v1@1.0::trajectory-1",
       "verification": {
         "completed": true,
-        "evidence_ref": "revised-offer@1.0::retention-gated-v1@1.0::confirmation",
+        "evidence_ref": "ep-c0d8f1bc7549a51e::confirmation",
         "false_completion": false,
         "reason_codes": [
           "verified_confirmation_evidence"
@@ -309,7 +309,7 @@
     }
   ],
   "review_status": "pending_human",
-  "sample_fingerprint": "8e12be0d362547ea645e99ae1ef80ba3f304fae4d784048fb1cfc725ba36079e",
+  "sample_fingerprint": "c9af068e9e3c8ccd7c9be3ae3001c3ada0e6ac311847eeb2699b930847170fb8",
   "schema_version": "1.0",
   "selection_method": "lowest_trajectory_id_per_family"
 }

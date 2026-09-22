@@ -45,9 +45,9 @@ from .fresh_fixtures import (
 from .phase03b_readiness import (
     EXPECTED_SOURCE_COUNTS,
     PACKET_PATH,
-    SOURCE_MANIFEST_FINGERPRINT,
     build_packet,
     proposed_fast_target,
+    source_manifest_fingerprint,
 )
 from .qwen_mlx import (
     MAX_RAW_OUTPUT_CHARS,
@@ -764,7 +764,7 @@ def build_phase03b_manifest(
     return {
         "schema_version": PHASE03B_SCHEMA_VERSION,
         "source": {
-            "phase02_manifest_fingerprint": SOURCE_MANIFEST_FINGERPRINT,
+            "phase02_manifest_fingerprint": source_manifest_fingerprint(),
             "accepted_total": EXPECTED_SOURCE_COUNTS["accepted_total"],
             "train_records": EXPECTED_SOURCE_COUNTS["train"],
             "development_records": EXPECTED_SOURCE_COUNTS["development"],
@@ -872,7 +872,97 @@ def write_phase03b_artifacts(root: Path = ROOT) -> None:
     )
 
 
+# The three fields of the 03B manifest that record the Phase 02 sources the
+# hosted/historical 03B smoke was built from.  They are integrity-checked as
+# recorded; drift against the current Phase 02 artifacts is a labelled state
+# (``phase02_source_state``), never an error, and never repaired by rewriting
+# the historical manifest.
+PHASE02_PROVENANCE_FIELDS: Final = (
+    ("source", "phase02_manifest_fingerprint"),
+    ("review", "packet_fingerprint"),
+    ("hashes", "source_records"),
+)
+PHASE02_SOURCE_STATES: Final = ("unchanged", "drifted_since_03b")
+
+
+def _committed_phase03b_manifest(root: Path) -> dict[str, object] | None:
+    path = root / "data/experiments/phase-03b-qlora-smoke/manifest.json"
+    if not path.is_file():
+        return None
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    return loaded if isinstance(loaded, dict) else None
+
+
+def _phase02_provenance_drift(
+    committed: dict[str, object], current: dict[str, object]
+) -> tuple[str, ...]:
+    drifted: list[str] = []
+    for section, field in PHASE02_PROVENANCE_FIELDS:
+        recorded = committed.get(section)
+        live = current.get(section)
+        recorded_value = recorded.get(field) if isinstance(recorded, dict) else None
+        live_value = live.get(field) if isinstance(live, dict) else None
+        if recorded_value != live_value:
+            drifted.append(f"{section}.{field}")
+    return tuple(drifted)
+
+
+def committed_phase03b_manifest_fingerprint(root: Path = ROOT) -> str:
+    """``canonical_fingerprint`` of the committed 03B manifest.
+
+    Every committed smoke result under ``results/arm-*.json`` records this
+    value as ``controls.manifest_fingerprint``; new smoke runs record the
+    committed value rather than a live derivation.
+    """
+
+    committed = _committed_phase03b_manifest(root)
+    if committed is None:
+        raise FileNotFoundError("phase-03b-qlora-smoke/manifest.json is missing")
+    return canonical_fingerprint(committed)
+
+
+def _arm_result_manifest_fingerprints(root: Path) -> dict[str, str | None]:
+    results = root / "data/experiments/phase-03b-qlora-smoke/results"
+    found: dict[str, str | None] = {}
+    for path in sorted(results.glob("arm-*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            found[path.name] = None
+            continue
+        controls = payload.get("controls") if isinstance(payload, dict) else None
+        value = None
+        if isinstance(controls, dict):
+            value = controls.get("manifest_fingerprint")
+        found[path.name] = value if isinstance(value, str) else None
+    return found
+
+
+def phase02_source_state(
+    root: Path = ROOT, examples: Sequence[Phase03BExample] | None = None
+) -> tuple[str, tuple[str, ...]]:
+    """``("unchanged" | "drifted_since_03b", drifted provenance fields)``."""
+
+    committed = _committed_phase03b_manifest(root)
+    if committed is None:
+        return PHASE02_SOURCE_STATES[1], tuple(
+            f"{section}.{field}" for section, field in PHASE02_PROVENANCE_FIELDS
+        )
+    drifted = _phase02_provenance_drift(committed, build_phase03b_manifest(examples))
+    return (PHASE02_SOURCE_STATES[1] if drifted else PHASE02_SOURCE_STATES[0]), drifted
+
+
 def check_phase03b_artifacts(root: Path = ROOT) -> tuple[str, ...]:
+    """Integrity of the historical 03B smoke artifacts.
+
+    Every internal property (train/valid rows, prompt/input/target hashes,
+    counts, config) must equal the current derivation; the three Phase 02
+    provenance fields are compared as recorded (see ``phase02_source_state``).
+    """
+
     examples = build_phase03b_examples()
     train_rows = _artifact_rows(
         tuple(item for item in examples if item.split == "train")
@@ -881,11 +971,18 @@ def check_phase03b_artifacts(root: Path = ROOT) -> tuple[str, ...]:
         tuple(item for item in examples if item.split == "development")
     )
     directory = root / "data/experiments/phase-03b-qlora-smoke"
+    manifest = build_phase03b_manifest(examples)
+    committed = _committed_phase03b_manifest(root)
+    if committed is not None:
+        for section, field in PHASE02_PROVENANCE_FIELDS:
+            recorded = committed.get(section)
+            if isinstance(recorded, dict) and isinstance(recorded.get(field), str):
+                cast(dict[str, object], manifest[section])[field] = recorded[field]
     expected = {
         "train.jsonl": "\n".join(train_rows) + "\n",
         "valid.jsonl": "\n".join(valid_rows) + "\n",
         "manifest.json": json.dumps(
-            build_phase03b_manifest(examples),
+            manifest,
             ensure_ascii=False,
             sort_keys=True,
             indent=2,
@@ -898,6 +995,19 @@ def check_phase03b_artifacts(root: Path = ROOT) -> tuple[str, ...]:
         path = directory / name
         if not path.exists() or path.read_text(encoding="utf-8") != content:
             errors.append(f"artifact_drift:{name}")
+    # Zero-literal binding: the manifest as committed (provenance fields
+    # included) is the one every smoke result recorded, so a rewritten
+    # provenance field cannot pass as "recorded".
+    if committed is not None:
+        recorded = canonical_fingerprint(committed)
+        arms = _arm_result_manifest_fingerprints(root)
+        if not arms:
+            errors.append("smoke_results_missing")
+        errors.extend(
+            f"manifest_fingerprint_unbound:{name}"
+            for name, value in arms.items()
+            if value != recorded
+        )
     if (directory / "test.jsonl").exists():
         errors.append("test_artifact_forbidden")
     config_path = directory / QLORA_CONFIG_PATH.name
@@ -1555,6 +1665,8 @@ def run_controlled_smoke(
 __all__ = [
     "EXPERIMENT_DIR",
     "MANIFEST_PATH",
+    "PHASE02_PROVENANCE_FIELDS",
+    "PHASE02_SOURCE_STATES",
     "PHASE03B_ADAPTER_LABEL",
     "PHASE03B_BASELINE_LABEL",
     "PHASE03B_COMPILER_VERSION",
@@ -1578,6 +1690,7 @@ __all__ = [
     "build_phase03b_examples",
     "build_phase03b_manifest",
     "check_phase03b_artifacts",
+    "committed_phase03b_manifest_fingerprint",
     "detect_authority_violation",
     "detect_disallowed_disclosure",
     "detect_false_completion",
@@ -1586,6 +1699,7 @@ __all__ = [
     "detect_unsupported_response_facts",
     "evaluate_fast_result",
     "freeze_phase03b_controls",
+    "phase02_source_state",
     "run_controlled_smoke",
     "run_phase03b_arm",
     "write_phase03b_artifacts",

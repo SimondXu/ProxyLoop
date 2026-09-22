@@ -50,9 +50,6 @@ EXPECTED_SOURCE_COUNTS = {
     "development": 24,
     "test": 24,
 }
-SOURCE_MANIFEST_FINGERPRINT = (
-    "11a8dead41ce4098df522742b163bd8eb6552f25455f09bb93b6dce7b9344258"
-)
 CANONICAL_RESPONSES = {
     "accept_offer": (
         "This visible offer appears to meet the stated constraints. Requesting "
@@ -104,6 +101,21 @@ FORBIDDEN_MODEL_INPUT_KEYS = frozenset(
 
 ROOT = Path(__file__).resolve().parents[4]
 PACKET_PATH = ROOT / "data/reviews/phase-03b-train-dev-review-packet.json"
+PHASE02_MANIFEST_PATH = ROOT / "data/manifests/phase-02-pilot-manifest.json"
+
+
+def source_manifest_fingerprint(path: Path = PHASE02_MANIFEST_PATH) -> str:
+    """The committed Phase 02 pilot manifest's fingerprint (audit D3-4).
+
+    Read from the artifact rather than echoed from a literal, so a rewritten
+    Phase 02 manifest cannot pass the readiness check unnoticed.
+    """
+
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    fingerprint = manifest.get("manifest_fingerprint")
+    if not isinstance(fingerprint, str) or len(fingerprint) != 64:
+        raise ValueError("phase-02 pilot manifest has no manifest_fingerprint")
+    return fingerprint
 
 
 def _canonical_json(value: object) -> str:
@@ -332,7 +344,7 @@ def build_packet() -> dict[str, object]:
     body: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
         "selection_method": SELECTION_METHOD,
-        "source_manifest_fingerprint": SOURCE_MANIFEST_FINGERPRINT,
+        "source_manifest_fingerprint": source_manifest_fingerprint(),
         "source_counts": EXPECTED_SOURCE_COUNTS,
         "source_scenario_counts": source_scenario_counts,
         "source_variant_group_counts": source_variant_counts,
@@ -365,8 +377,10 @@ def check_packet_artifact(path: Path = PACKET_PATH) -> tuple[str, ...]:
 
 __all__ = [
     "PACKET_PATH",
+    "PHASE02_MANIFEST_PATH",
     "build_packet",
     "check_packet_artifact",
     "packet_json",
     "proposed_fast_target",
+    "source_manifest_fingerprint",
 ]

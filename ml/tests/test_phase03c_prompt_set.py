@@ -31,7 +31,7 @@ from proxyloop_evaluation.phase03c_prompt_set import (
     write_prompt_set_manifest,
 )
 from proxyloop_evaluation.phase03c_scenarios import harvest_positions
-from proxyloop_evaluation.qwen_mlx import _FORBIDDEN_KEYS
+from proxyloop_evaluation.qwen_mlx import _FORBIDDEN_KEYS, QwenPrompt
 from proxyloop_provider_simulator.scenarios import BENCHMARK_SCENARIOS
 from proxyloop_provider_simulator.splits import generate_split_manifest
 
@@ -208,6 +208,81 @@ def test_position_two_view_carries_the_follow_up_turn() -> None:
     )
     assert view_two.recent_events[0].content == scenario.provider_turn.message
     assert render_prompt(view_one).fingerprint != render_prompt(view_two).fingerprint
+
+
+def test_rendered_view_and_prompt_carry_no_private_value() -> None:
+    """Audit D3-2: the value scan covers the view JSON (minus the known
+    ``pins.provider_config_ref`` residual) and the rendered prompt sections."""
+
+    from proxyloop_evaluation.prompt_guard import (
+        assert_prompt_private_value_free,
+        assert_view_private_value_free,
+        view_scan_payload,
+    )
+    from proxyloop_provider_simulator.leakage import (
+        leaked_private_values,
+        private_tokens,
+    )
+
+    tokens = private_tokens(BENCHMARK_SCENARIOS)
+    scenario = BENCHMARK_SCENARIOS[0]
+    for position in harvest_positions(scenario):
+        view = render_prompt_view(scenario, position)
+        payload = view_scan_payload(view)
+        assert "provider_config_ref" not in payload["pins"]
+        assert leaked_private_values(payload, tokens) == ()
+        prompt = render_prompt(view)
+        assert leaked_private_values(prompt.system, tokens) == ()
+        assert leaked_private_values(prompt.user, tokens) == ()
+        assert_view_private_value_free(view)
+        assert_prompt_private_value_free(prompt)
+        assert scenario.family_id not in prompt.rendered
+        assert scenario.configuration_id not in prompt.rendered
+
+
+def test_prompt_guard_rejects_a_private_value_inside_event_content() -> None:
+    from proxyloop_evaluation.prompt_guard import (
+        PrivateValueLeakError,
+        assert_prompt_private_value_free,
+        assert_view_private_value_free,
+    )
+
+    def with_observation(view, **fields):  # type: ignore[no-untyped-def]
+        assert view.latest_provider_event is not None
+        marker, body = view.latest_provider_event.content.split("\n", 1)
+        observation = {**json.loads(body), **fields}
+        event = view.latest_provider_event.model_copy(
+            update={"content": marker + "\n" + json.dumps(observation, sort_keys=True)}
+        )
+        return view.model_copy(
+            update={"latest_provider_event": event, "recent_events": (event,)}
+        )
+
+    scenario = BENCHMARK_SCENARIOS[0]
+    position = harvest_positions(scenario)[0]
+    view = render_prompt_view(scenario, position)
+    adapter = Phase03CQwenAdapter(generator=lambda _: "{}")
+
+    # An id inside the JSON-in-string event content: caught at the view.  The
+    # compact view drops offer ids, so the rendered prompt itself stays clean.
+    offers = json.loads(view.latest_provider_event.content.split("\n", 1)[1])["offers"]
+    offers[0]["offer_id"] = f"{scenario.scenario_id}::offer"
+    leaked_view = with_observation(view, offers=offers)
+    with pytest.raises(PrivateValueLeakError, match=scenario.family_id):
+        assert_view_private_value_free(leaked_view)
+    assert scenario.family_id not in adapter.build_prompt(leaked_view).rendered
+
+    # A value the compact view renders: caught by the adapter before the
+    # prompt is returned.
+    rendered_leak = with_observation(
+        view, provider_message=f"Quote for {scenario.configuration_id}."
+    )
+    with pytest.raises(PrivateValueLeakError, match="user"):
+        adapter.build_prompt(rendered_leak)
+    with pytest.raises(PrivateValueLeakError, match=scenario.family_id):
+        assert_prompt_private_value_free(
+            QwenPrompt(system="x", user=f"see {scenario.scenario_id}", fingerprint="f")
+        )
 
 
 def test_default_params_snapshot_equals_frozen_public_snapshot() -> None:

@@ -74,6 +74,15 @@ def test_fresh_bundle_fingerprint_is_order_invariant_and_version_bound() -> None
     )
 
 
+def test_fresh_bundle_fingerprint_is_pinned_to_the_r2_r5_value() -> None:
+    """The r2 catalogue derives its ids from family/configuration ids, not from
+    the v1 public ids, so opaque v1 ids leave r2-r5 evidence byte-identical."""
+
+    assert build_fresh_phase03a1_bundle().metadata.bundle_fingerprint == (
+        "729e4e43849cf094c25ee0532157658d7867bb9749c7f5c0e48c979f77183a8d"
+    )
+
+
 def test_fresh_manifest_exposes_all_split_ids_without_crossing_boundaries() -> None:
     scenarios = build_fresh_phase03a1_scenarios()
     manifest = build_fresh_phase03a1_manifest(scenarios)
