@@ -19,7 +19,7 @@ not promote a model or make a production-serving claim.
 | 02 | Data factory and trajectory pilot | Complete; squash merged as `f45b1ea` through PR #6 | `harness/build/phase-02-data-factory.md` |
 | 03A0 | Fast/Slow architecture and acceptance criteria | Complete; squash merged as `54afcb8` through PR #7 | `harness/build/phase-03a0-fast-slow-architecture.md` |
 | 03A1-H | Deterministic multi-turn evaluation harness | Complete; squash merged as `e08c9b6` through PR #8 | `harness/build/phase-03a1-harness.md` |
-| 03A1-B | Untuned Qwen/Terra baselines | Complete; full gate passed through PR #9 | `harness/build/phase-03a1-baselines.md` |
+| 03A1-B | Untuned Qwen/Terra baselines | Complete with erratum: the r1 Slow prompts carried the oracle's accept label on the 10 accept episodes (AC#4/#8 not met, audit D2-4); superseded by 03A1-E; PR #9 | `harness/build/phase-03a1-baselines.md` |
 | 03A1-E | Evaluation erratum and leakage-safe second run | Complete; terminal Provider blocker; PR #10 gates passed | `harness/build/phase-03a1-evaluation-erratum.md` |
 | 03A1-R | Hosted baseline reliability rerun | Complete; corrected full matrix; r4 ready | `harness/build/phase-03a1-hosted-rerun.md` |
 | 03A1-V | Evaluation-validity six-episode smoke | Complete; 5/6 diagnostic, evaluator mismatch isolated | `harness/build/phase-03a1-evaluation-validity-smoke.md` |
@@ -102,7 +102,8 @@ with response identities and complete usage accounting; canonical r4 records
 model-quality or training-readiness decision. Phase 03A1-V then isolated the
 discovered model/oracle input mismatch and structured-output ambiguities on six
 representative episodes: the same model path improved from 0/6 to 5/6 after
-prompt/input parity, while the remaining fee case depends on a twelve-month
+prompt/input parity that also placed the oracle's decision rules in the system
+prompt (rule-following, audit D2-1), while the remaining fee case depends on a twelve-month
 cost predicate absent from the visible goal. Phase 03A1-R/V was then squash
 merged through PR #11 as `e501e0f`; its CI phase-gate and GitGuardian checks
 passed.
@@ -179,5 +180,9 @@ production UI, deployment, and release remain inactive.
 Phase 04A recorded the offer-compliance result that had previously been an
 open recommendation: one authoritative shared policy now consumes the same
 explicit public inputs for Provider verification and the scripted oracle,
-with shared fixtures and parity/adversarial tests. This result is complete
+with shared fixtures and parity/adversarial tests. The evaluation harness's
+default oracle at its call sites is still the legacy predicate (it agrees
+with the shared policy on all 32 committed scenarios; audit B1-5,
+remediation Group 2 in `docs/research/2026-09-21-repository-audit.md` §6).
+This result is complete
 and does not authorize another evaluation run or a new implementation phase.

@@ -9,7 +9,11 @@ approves its exact pins, and receives a verifier-backed Evidence receipt.
 Unsupported first messages remain local with a scope explanation; the small
 English lexical gate is not general language understanding.
 
-Run the Runtime and Web processes separately for iterative work:
+Run the Runtime and Web processes separately for iterative work. This direct
+mode, in its default in-memory configuration, holds one Case per Runtime
+process, ignores
+`Idempotency-Key`, and cannot resume a Case after a page reload; use
+`make portfolio-demo` for the durable profile:
 
 ```text
 make runtime-server

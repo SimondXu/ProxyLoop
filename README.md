@@ -34,7 +34,8 @@ ports, and prints the Web URL plus the two-scene order:
    and the same Case comes back from PostgreSQL/Temporal.
 2. **Scene B — controlled channel.** After `make portfolio-demo-reset` and a
    fresh `make portfolio-demo`, run `make portfolio-demo-channel` in a second
-   terminal. It posts a signed synthetic provider e-mail, replays it, and
+   terminal. It posts a SHA-256-fingerprinted synthetic provider e-mail (unkeyed
+   integrity check, not authentication), replays it, and
    proves dedup, one delivery, one callback, two channel Evidence records, and
    that none of it leaks into the browser projection.
 
@@ -63,7 +64,7 @@ flowchart LR
         PG[(PostgreSQL<br/>Case + channel authority)]
         TEMP[Temporal server]
     end
-    WEB -- "/cases, /approvals (Idempotency-Key)" --> API
+    WEB -- "/cases, /approvals (Idempotency-Key, durable profile)" --> API
     API --> WF
     WF <--> TEMP
     WF --> CORE
@@ -84,9 +85,13 @@ The design choices that matter:
   policy gate checks against current Case state before anything happens.
 - **Approvals are version-bound.** An approval pins the exact offer revision;
   a stale or drifted approval is rejected, not silently re-applied.
-- **At-most-once execution, evidence-gated completion.** The executor records
-  content-addressed Evidence, and the verifier consults the provider's held
-  state — a forged confirmation cannot complete a Case.
+- **Approval-bound execution, evidence-gated completion.** Each approval
+  executes at most once per Runtime process (executor ledger) and a
+  persisted execution claim lets an interrupted command finish rather than
+  re-execute in the durable profile; the fictional Provider's own state
+  machine is the last line. The executor records content-addressed Evidence,
+  and the verifier consults the provider's held state for accepted offers —
+  a forged confirmation cannot complete a Case.
 - **PostgreSQL is business truth; Temporal is orchestration.** The workflow
   orders commands, waits, retries, and recovers, but never owns Case state.
   Revision compare-and-swap protects every write.
@@ -108,7 +113,7 @@ vocabulary: [CONTEXT.md](CONTEXT.md).
 | PostgreSQL Case store with revision CAS; liveness/readiness; redacted operation records | Implemented |
 | Temporal `CaseWorkflow` with ordering, retries, and recovery | Implemented |
 | Next.js conversation UI with four-fact intake and durable resume | Implemented |
-| Synthetic `local_mailbox` channel (signed fixtures, inbox/outbox, dedup, callbacks) | Implemented |
+| Synthetic `local_mailbox` channel (SHA-256-fingerprinted fixtures, inbox/outbox, dedup, callbacks) | Implemented |
 | Multi-turn evaluation harness and untuned hosted baselines | Implemented (research) |
 | Post-training of the Fast model | One bounded QLoRA smoke ran and was stopped (`NO_GO`) — see [ML evidence](docs/ml-evidence.md) |
 | Real e-mail / MCP / provider integration, voice, auth, deployment | Not started, separately gated |

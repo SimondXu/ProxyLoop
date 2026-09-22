@@ -1,5 +1,10 @@
 # Consumer Telecom Bill Optimization Agent
 
+> Amendment 2026-09-21: the Fast checkpoint target moved from
+> `Qwen/Qwen3-4B-Instruct-2507` to `Qwen/Qwen3-8B` (non-thinking mode forced);
+> see `docs/decisions/2026-08-22-implementation-defaults.md`. References to
+> Qwen3-4B below describe the original plan and the Phase 03A1/03B results.
+
 ## Summary
 
 Build a consumer agent that can analyze a mobile bill, plan a negotiation, conduct low-latency dialogue against a fictional provider, and continue until it obtains a verifiable bill-reduction outcome or a documented failure. The project demonstrates an end-to-end ML lifecycle by generating and curating consumer-agent trajectories, fine-tuning one Qwen3-4B Fast Response Model, evaluating it on leakage-safe held-out scenarios, serving it behind a typed interface, and integrating it into a durable agent workflow after the model gates pass. Home internet remains a later schema-compatible extension.

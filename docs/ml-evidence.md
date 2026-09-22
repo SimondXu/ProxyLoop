@@ -12,12 +12,18 @@ redirected to `Qwen/Qwen3-8B` on 2026-09-21 for the prepared redo) and a
 `SlowWorkResult`) that deterministic code checks against Case state before
 anything happens. Because the outputs are structured decisions, they can be
 scored exactly against a scripted oracle and a verifier that inspects the
-simulated provider's real state — no LLM judge is involved in the headline
+simulated provider's real state for accepted offers and compares every other
+outcome with the oracle's label — no LLM judge is involved in the headline
 numbers.
 
-The simulator provides 16 scenario families × 2 provider configurations. The
-scripted oracle completes all 32 with zero false completions and zero
-private-field leakage; that is the environment ceiling
+The simulator provides 16 scenario families × 2 provider configurations (the
+configurations do not change any labelled outcome). The scripted oracle
+reaches the labelled outcome on all 32 — 10 completions and 22 valid
+non-completions — with zero false completions and no private-field keys in
+the public views (scenario-family identifiers still appear in public values;
+audit finding D1-1, remediation Group 2 in
+`docs/research/2026-09-21-repository-audit.md` §6); that is the
+environment ceiling
 (`data/manifests/phase-01b-ceiling-report.json`,
 `data/manifests/phase-03a1-ceiling-report.json`).
 
@@ -28,16 +34,18 @@ private-field leakage; that is the environment ceiling
 | Phase 03A1-B (r1) | untuned Qwen Fast + hosted Slow, first full matrix | superseded by the erratum below | `data/evaluation/phase-03a1-baselines-report.json` |
 | Phase 03A1-E (r2/r3) | leakage-safe rerun; one hosted failure of unknown cost recorded, attribution corrected offline | untuned Qwen: 32/32 schema-valid JSON on the schema-embedding prompt | `phase-03a1-r2-*`, `phase-03a1-r3-*` |
 | Phase 03A1-R (r4) | full hosted matrix after fixing the Slow output union (`oneOf` → `anyOf`) | evidence complete; hosted E2E low (best condition 3/32) | `data/evaluation/phase-03a1-r4-hosted-rerun-report.json` |
-| Phase 03A1-V (r5) | six-episode diagnostic of why r4 was implausibly low | 0/6 → **5/6** E2E after giving model and oracle the same public inputs; the last case is an evaluation-contract mismatch (a 12-month fee predicate the model could not see); USD 0.117 hosted spend | `data/evaluation/phase-03a1-r5-validity-smoke-report.json` |
+| Phase 03A1-V (r5) | six-episode diagnostic of why r4 was implausibly low | 0/6 → **5/6** E2E after giving the model the oracle's public inputs **and its decision rules** in the system prompt — rule-following under oracle-rule parity, not independent reasoning (audit D2-1); the last case is an evaluation-contract mismatch (a 12-month fee predicate the model could not see); ≈USD 0.117 estimated from token usage × an assumed tariff | `data/evaluation/phase-03a1-r5-validity-smoke-report.json` |
 | Phase 03B | one 40-iteration QLoRA smoke on 20 examples, 6-scenario A/B | A 1/6, B 0/6 schema-valid; decision **`NO_GO_STOP_PHASE03B`** | `data/experiments/phase-03b-qlora-smoke/results/comparison.md` |
 
 ## What these results mean
 
-- **The evaluation harness works and found its own bug.** r4's low hosted
-  numbers were traced to the model and the oracle seeing different inputs;
-  after parity the same model went to 5/6. The remaining miss exposed a
-  predicate the oracle enforced but the consumer goal never stated. Both are
-  recorded as erratum artifacts, not overwritten.
+- **The evaluation harness found its own input-parity bug.** r4's low hosted
+  numbers were traced to the model and the oracle seeing different inputs.
+  The r5 rerun gave the model the oracle's inputs and its rule table, and the
+  same model went to 5/6: evidence that it follows stated rules, not that it
+  rediscovers them. The remaining miss exposed a predicate the oracle
+  enforced but the consumer goal never stated. Both are recorded as erratum
+  artifacts, not overwritten.
 - **Untuned Qwen3-4B produces valid structured output when the prompt embeds
   the schema** (32/32 in r2/r4). Format is not the model's bottleneck.
 - **The Phase 03B smoke does not tell us whether fine-tuning helps.** A
