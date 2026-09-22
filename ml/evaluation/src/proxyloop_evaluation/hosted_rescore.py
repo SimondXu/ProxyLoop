@@ -99,14 +99,37 @@ _ROW_DIFF_FIELDS = ("end_to_end_valid", "provider_outcome_valid", "failure_codes
 # Every verifier change (``PROVIDER_VERIFIER_VERSION`` bump) records its
 # expected row changes here, so a tampered r4 row cannot be laundered through
 # ``make hosted-rescore`` without the delta moving.
+#
+# ``phase-01b-verifier-v2-state``: the state-based verifier accepts a
+# ``request_replan`` on a turn whose offer is not acceptable (forbidden term,
+# required feature missing) instead of failing it for differing from the
+# reference label.  Four r4 rows carry exactly that proposal; the clarification
+# requests on turns that require none stay invalid.
+_R2_EPISODE_PREFIX = "episode-r2-phase-03a1-r2::"
+_R2_CONFIGURATION_PREFIX = "::phase-03a1-r2::"
+_FORBIDDEN_TERM_RETENTION = (
+    f"{_R2_EPISODE_PREFIX}forbidden-term@2.0"
+    f"{_R2_CONFIGURATION_PREFIX}retention-gated-v1@2.0"
+)
+_FORBIDDEN_TERM_TRANSPARENT = (
+    f"{_R2_EPISODE_PREFIX}forbidden-term@2.0"
+    f"{_R2_CONFIGURATION_PREFIX}transparent-public-v1@2.0"
+)
+_REQUIRED_FEATURE_LOSS_RETENTION = (
+    f"{_R2_EPISODE_PREFIX}required-feature-loss@2.0"
+    f"{_R2_CONFIGURATION_PREFIX}retention-gated-v1@2.0"
+)
 _EXPECTED_ROWS_CHANGED_VS_R4: dict[str, tuple[str, ...]] = {
     "scripted_oracle_ceiling_r2": (),
     "untuned_fast_reference_strategy_r2": (),
     "untuned_fast_slow_off_r2": (),
-    "untuned_fast_frontier_slow_medium": (),
-    "untuned_fast_frontier_slow_high": (),
+    "untuned_fast_frontier_slow_medium": (
+        _FORBIDDEN_TERM_RETENTION,
+        _REQUIRED_FEATURE_LOSS_RETENTION,
+    ),
+    "untuned_fast_frontier_slow_high": (_REQUIRED_FEATURE_LOSS_RETENTION,),
     "frontier_reference_medium": (),
-    "frontier_reference_high": (),
+    "frontier_reference_high": (_FORBIDDEN_TERM_TRANSPARENT,),
 }
 
 

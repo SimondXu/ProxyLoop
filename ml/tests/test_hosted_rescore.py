@@ -116,17 +116,37 @@ def test_current_evaluator_rescores_r4_row_for_row(
     assert set(rescored.rows_changed_vs_r4) == {
         condition.condition.value for condition in committed_r4.matrix_result.conditions
     }
-    assert all(ids == () for ids in rescored.rows_changed_vs_r4.values()), (
-        rescored.rows_changed_vs_r4
-    )
+    assert rescored.rows_changed_vs_r4 == _EXPECTED_ROWS_CHANGED_VS_R4
     for derived, source in zip(
         rescored.rescored.conditions,
         committed_r4.matrix_result.conditions,
         strict=True,
     ):
-        assert tuple(row.model_dump(mode="json") for row in derived.episodes) == tuple(
-            row.model_dump(mode="json") for row in source.episodes
-        )
+        changed = rescored.rows_changed_vs_r4[source.condition.value]
+        for derived_row, source_row in zip(
+            derived.episodes, source.episodes, strict=True
+        ):
+            assert derived_row.episode_id == source_row.episode_id
+            derived_json = derived_row.model_dump(mode="json")
+            source_json = source_row.model_dump(mode="json")
+            if source_row.episode_id not in changed:
+                assert derived_json == source_json
+                continue
+            # The state verifier accepts these ``request_replan`` proposals on
+            # unacceptable offers; nothing else about the row moves.
+            assert source_json["provider_outcome_valid"] is False
+            assert derived_json["provider_outcome_valid"] is True
+            assert derived_json["reference_match"] is False
+            assert derived_json["completed"] is False
+            assert derived_json["false_completion"] is False
+            assert "invalid_provider_outcome" in source_json["failure_codes"]
+            assert "invalid_provider_outcome" not in derived_json["failure_codes"]
+            for key in ("end_to_end_valid", "safe_noncompletion", "failure_codes"):
+                derived_json.pop(key)
+                source_json.pop(key)
+            derived_json.pop("provider_outcome_valid")
+            source_json.pop("provider_outcome_valid")
+            assert derived_json == source_json
 
 
 def test_committed_rescored_artifact_passes_the_check() -> None:
@@ -221,8 +241,10 @@ def test_rescore_check_rejects_laundered_r4_row_tamper(
     regenerated = write_rescored_report(
         tmp_path, derive_rescored_r4(tampered_r4, fixtures=fixtures)
     )
-    assert regenerated.rows_changed_vs_r4[condition.condition.value] == (
-        row.episode_id,
+    expected = _EXPECTED_ROWS_CHANGED_VS_R4[condition.condition.value]
+    assert row.episode_id not in expected
+    assert regenerated.rows_changed_vs_r4[condition.condition.value] == tuple(
+        sorted((*expected, row.episode_id))
     )
 
     passed, failures = check_rescored_artifact(tmp_path)
@@ -231,8 +253,23 @@ def test_rescore_check_rejects_laundered_r4_row_tamper(
     assert failures == ("rows_changed_vs_r4 differs from the recorded evaluator delta",)
 
 
-def test_recorded_evaluator_delta_is_empty_in_this_pr() -> None:
-    assert all(ids == () for ids in _EXPECTED_ROWS_CHANGED_VS_R4.values())
+def test_recorded_evaluator_delta_is_the_state_verifier_flip() -> None:
+    assert PROVIDER_VERIFIER_VERSION == "phase-01b-verifier-v2-state"
+    assert {name: len(ids) for name, ids in _EXPECTED_ROWS_CHANGED_VS_R4.items()} == {
+        "scripted_oracle_ceiling_r2": 0,
+        "untuned_fast_reference_strategy_r2": 0,
+        "untuned_fast_slow_off_r2": 0,
+        "untuned_fast_frontier_slow_medium": 2,
+        "untuned_fast_frontier_slow_high": 1,
+        "frontier_reference_medium": 0,
+        "frontier_reference_high": 1,
+    }
+    for ids in _EXPECTED_ROWS_CHANGED_VS_R4.values():
+        assert ids == tuple(sorted(ids))
+        for episode_id in ids:
+            assert (
+                "forbidden-term" in episode_id or "required-feature-loss" in episode_id
+            )
 
 
 def test_derivation_runs_the_current_verifier(
