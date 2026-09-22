@@ -1,0 +1,28 @@
+{
+  "filter_order": [
+    "strict_json_schema",
+    "target_agreement",
+    "verifier_replay",
+    "detectors",
+    "second_family_agreement"
+  ],
+  "per_filter": {
+    "call_failed": 4,
+    "dedup": 28,
+    "detectors": 76,
+    "strict_json_schema": 200,
+    "target_agreement": 499
+  },
+  "per_reason": {
+    "call_failed:failed_provider_call": 4,
+    "dedup:exact_duplicate": 28,
+    "detectors:disclosure": 2,
+    "detectors:unsupported_facts": 74,
+    "strict_json_schema:invalid_json": 200,
+    "target_agreement:dialogue_act": 408,
+    "target_agreement:reasoner_needed": 91
+  },
+  "quarantined_total": 807,
+  "samples_path": "claude-sonnet-5-samples.jsonl",
+  "schema_version": "phase-03c-teacher-manifest-v1"
+}

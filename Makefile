@@ -37,10 +37,10 @@ ML_PYTHON_PATHS := ml/data_pipeline/src ml/evaluation/src ml/tests \
 	scripts/prepare_phase03b_experiment.py scripts/run_phase03b_smoke.py \
 	scripts/prepare_phase03c_errata.py scripts/run_phase03c_smoke.py \
 	scripts/run_phase03c_scenario_invariants.py scripts/build_phase03c_prompt_set.py \
-	scripts/run_phase03c_teacher_pilot.py
+	scripts/run_phase03c_teacher_pilot.py scripts/run_phase03c_teacher_generation.py
 
 help:
-	@printf '%s\n' 'Targets: preflight, preflight-fast, validate, format, format-check, lint, typecheck, test, postgres-check, phase04d-check, phase04d-profile-check, phase05a-check, phase06b1-check, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, phase03c-smoke-check, phase03c-invariants, phase03c-invariants-check, phase03c-prompt-set-check, phase03c-teacher-pilot-check, check-layout, lock-check, runtime-server, portfolio-demo, portfolio-demo-stop, portfolio-demo-reset, portfolio-demo-channel, portfolio-demo-recovery, dev'
+	@printf '%s\n' 'Targets: preflight, preflight-fast, validate, format, format-check, lint, typecheck, test, postgres-check, phase04d-check, phase04d-profile-check, phase05a-check, phase06b1-check, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, phase03c-smoke-check, phase03c-invariants, phase03c-invariants-check, phase03c-prompt-set-check, phase03c-teacher-pilot-check, phase03c-teacher-generation-check, check-layout, lock-check, runtime-server, portfolio-demo, portfolio-demo-stop, portfolio-demo-reset, portfolio-demo-channel, portfolio-demo-recovery, dev'
 
 preflight: validate lock-check
 	python3 -m compileall -q scripts
@@ -100,7 +100,7 @@ typecheck:
 		scripts/prepare_phase03b_experiment.py scripts/run_phase03b_smoke.py \
 		scripts/prepare_phase03c_errata.py scripts/run_phase03c_smoke.py \
 		scripts/run_phase03c_scenario_invariants.py scripts/build_phase03c_prompt_set.py \
-	scripts/run_phase03c_teacher_pilot.py
+		scripts/run_phase03c_teacher_pilot.py scripts/run_phase03c_teacher_generation.py
 
 unit-test:
 	$(PYTHON_RUN) pytest -c runtime/pyproject.toml -q \
@@ -109,7 +109,7 @@ unit-test:
 		tests/contract tests/integration
 	$(ML_PYTHON_RUN) pytest -c ml/pyproject.toml ml/tests -q
 
-test: unit-test contracts-check benchmark-check data-pilot-check harness-check baselines-check errata-check hosted-rerun-check validity-smoke-check phase03b-readiness-check phase03b-experiment-check phase03c-smoke-check phase03c-invariants-check phase03c-prompt-set-check phase03c-teacher-pilot-check
+test: unit-test contracts-check benchmark-check data-pilot-check harness-check baselines-check errata-check hosted-rerun-check validity-smoke-check phase03b-readiness-check phase03b-experiment-check phase03c-smoke-check phase03c-invariants-check phase03c-prompt-set-check phase03c-teacher-pilot-check phase03c-teacher-generation-check
 
 contracts:
 	$(PYTHON_RUN) python scripts/generate_contracts.py
@@ -185,6 +185,9 @@ phase03c-prompt-set-check:
 
 phase03c-teacher-pilot-check:
 	$(ML_PYTHON_RUN) python -m scripts.run_phase03c_teacher_pilot --check
+
+phase03c-teacher-generation-check:
+	$(ML_PYTHON_RUN) python -m scripts.run_phase03c_teacher_generation --check
 
 lock-check:
 	uv lock --project runtime --check

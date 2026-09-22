@@ -14,16 +14,23 @@ Fast completion and is not forced onto it.
 from __future__ import annotations
 
 import json
+import os
 import random
+import threading
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Final
 
 from proxyloop_evaluation.fast_output import FastModelOutput
+from proxyloop_evaluation.openai_frontier import FrontierCallStatus
 from proxyloop_evaluation.phase03b_readiness import FORBIDDEN_MODEL_INPUT_KEYS
-from proxyloop_evaluation.phase03c_experiment import PromptVersion
+from proxyloop_evaluation.phase03c_experiment import (
+    PHASE03C_COMPILER_VERSIONS,
+    PromptVersion,
+)
 from proxyloop_evaluation.phase03c_prompt_set import (
     STAGE1B_PROMPT_VERSION,
     PromptSetRow,
@@ -52,6 +59,7 @@ from proxyloop_evaluation.relay_teacher import (
     TeacherLedger,
     TeacherModelTotals,
     TeacherSample,
+    TeacherStoppedError,
 )
 from proxyloop_provider_simulator.scenarios import BENCHMARK_SCENARIOS
 from proxyloop_provider_simulator.splits import generate_split_manifest
@@ -65,8 +73,10 @@ MANIFEST_FILENAME: Final = "phase-03c-teacher-manifest.json"
 QUARANTINE_FILENAME: Final = "phase-03c-teacher-quarantine.json"
 QUALITY_REPORT_FILENAME: Final = "phase-03c-teacher-quality-report.json"
 PILOT_REPORT_FILENAME: Final = "phase-03c-teacher-pilot-report.json"
+GENERATION_REPORT_FILENAME: Final = "phase-03c-teacher-generation-report.json"
 TEACHER_MANIFEST_SCHEMA_VERSION: Final = "phase-03c-teacher-manifest-v1"
 PILOT_REPORT_SCHEMA_VERSION: Final = "phase-03c-teacher-pilot-report-v1"
+GENERATION_REPORT_SCHEMA_VERSION: Final = "phase-03c-teacher-generation-report-v1"
 DECISION_RULE_VERSION: Final = "phase-03c-pilot-v1"
 ACCEPTED_TARGET: Final = 2_500
 MAX_KEPT_PER_PROMPT: Final = 2
@@ -75,6 +85,7 @@ CALL_FAILED: Final = "call_failed"
 SPLIT_GUARD: Final = "split_guard"
 PROMPT_DRIFT: Final = "prompt_drift"
 PROGRESS_EVERY: Final = 20
+BUDGET_STOP_REASON: Final = "budget_exceeded"
 # Contract thresholds over the total-sample denominator.  The contract's
 # literal F2 is act + ``needed`` agreement (``f2_act_needed_rate``); training
 # acceptance uses the full reasoner-request equality (``f2_rate``).
@@ -107,10 +118,15 @@ def quality_report_path(out_dir: Path, model: str) -> Path:
 
 
 def _write_json(path: Path, document: object) -> None:
+    """Write via a sibling temp file and ``os.replace`` so a crash mid-write
+    never leaves a truncated ledger or report behind."""
+
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    temp = path.with_name(path.name + ".tmp")
+    temp.write_text(
         json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
+    os.replace(temp, path)
 
 
 def _int(value: object) -> int:
@@ -127,19 +143,24 @@ def _float(value: object) -> float:
 
 
 def select_pilot_rows(
-    rows: Sequence[PromptSetRow], per_family: int = 20, seed: int = 0
+    rows: Sequence[PromptSetRow],
+    per_family: int = 20,
+    seed: int = 0,
+    families: Sequence[str] | None = None,
 ) -> tuple[PromptSetRow, ...]:
     """``per_family`` train prompts per train family, balanced over strata.
 
     Strata are (configuration, position); ``per_family`` is split evenly over
     the four strata with any remainder assigned round-robin.  Rows are sorted
     by ``prompt_id`` before ``random.Random(seed)`` samples them, so the
-    selection is deterministic for a given manifest.
+    selection is deterministic for a given manifest.  ``families`` restricts
+    the result to those train families (a targeted re-pilot); the seeded
+    stream is still consumed for every family in order, so a family's rows
+    are exactly the ones the unrestricted selection would pick.
     """
 
     if per_family < 1:
         raise ValueError("per_family must be positive")
-    rng = random.Random(seed)
     by_family: dict[str, dict[tuple[str, int], list[PromptSetRow]]] = defaultdict(
         lambda: defaultdict(list)
     )
@@ -148,6 +169,11 @@ def select_pilot_rows(
             by_family[row.family_id][(row.configuration_id, row.position_index)].append(
                 row
             )
+    wanted = set(by_family) if families is None else set(families)
+    unknown = sorted(wanted - set(by_family))
+    if unknown:
+        raise ValueError(f"unknown train families: {unknown}")
+    rng = random.Random(seed)
     selected: list[PromptSetRow] = []
     for family_id in sorted(by_family):
         strata = by_family[family_id]
@@ -158,9 +184,61 @@ def select_pilot_rows(
             pool = strata[key]
             if len(pool) < want:
                 raise ValueError(f"family {family_id} stratum {key} has {len(pool)}")
-            selected.extend(rng.sample(pool, want))
+            drawn = rng.sample(pool, want)
+            if family_id in wanted:
+                selected.extend(drawn)
     selected.sort(key=lambda item: item.prompt_id)
     return tuple(selected)
+
+
+def rerender_rows(
+    rows: Sequence[PromptSetRow], *, prompt_version: PromptVersion
+) -> tuple[PromptSetRow, ...]:
+    """The same rows with ``prompt_fingerprint`` rendered by ``prompt_version``.
+
+    The committed manifest carries one version's fingerprints; sampling or
+    checking artifacts of another version (the v4 pilot after the manifest
+    moved to v5) re-renders only the selected rows.
+    """
+
+    return tuple(
+        replace(
+            row,
+            prompt_fingerprint=render_prompt(
+                build_candidate_context(row).view, prompt_version=prompt_version
+            ).fingerprint,
+        )
+        for row in rows
+    )
+
+
+def rows_for_prompt_version(
+    rows: Sequence[PromptSetRow],
+    *,
+    prompt_version: PromptVersion,
+    manifest_compiler_version: str,
+) -> tuple[PromptSetRow, ...]:
+    """``rows`` as-is when the manifest already matches, else re-rendered."""
+
+    if manifest_compiler_version == PHASE03C_COMPILER_VERSIONS[prompt_version]:
+        return tuple(rows)
+    return rerender_rows(rows, prompt_version=prompt_version)
+
+
+def report_prompt_version(report: dict[str, object]) -> PromptVersion:
+    """The prompt version a committed report was produced with.
+
+    Reports written before Stage 1c carry no version field; they are the v4
+    pilot artifacts and are never rewritten, so a missing field means v4.
+    """
+
+    stored = report.get("prompt_version", "v4")
+    if not isinstance(stored, str) or stored not in PHASE03C_COMPILER_VERSIONS:
+        raise ValueError(f"unknown prompt_version in report: {stored!r}")
+    expected = PHASE03C_COMPILER_VERSIONS[stored]
+    if report.get("compiler_version", expected) != expected:
+        raise ValueError("report prompt_version and compiler_version disagree")
+    return stored
 
 
 # --- sampling ----------------------------------------------------------------
@@ -177,6 +255,7 @@ class SampleRun:
     prompts_sampled: int
     calls_written: int
     budget_stopped: bool
+    stop_reason: str | None = None
 
 
 def _sample_line(
@@ -247,7 +326,52 @@ def load_ledger(path: Path, *, usd_ceiling: float) -> TeacherLedger:
             output_tokens=_int(totals.get("output_tokens")),
             estimated_usd=_float(totals.get("estimated_usd")),
         )
+    stop_reason = document.get("stop_reason")
+    ledger.stop_reason = stop_reason if isinstance(stop_reason, str) else None
     return ledger
+
+
+def reset_failed_charges(
+    samples_paths: Sequence[Path], ledger_path: Path, *, usd_ceiling: float
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Rebuild the ledger from the raw JSONL and write it back.
+
+    Every call is counted; a succeeded call keeps its recorded tokens and
+    ``estimated_cost_usd`` (a ``MissingUsage`` success keeps the worst case it
+    was charged), a failed call is charged zero.  This is the deliberate reset
+    after an outage charged thousands of failed calls at the pre-call worst
+    case.  Returns the ledger documents before and after.
+    """
+
+    before = load_ledger(ledger_path, usd_ceiling=usd_ceiling)
+    after = TeacherLedger(usd_ceiling=usd_ceiling, stop_reason=before.stop_reason)
+    for path in samples_paths:
+        for sample in load_samples(path):
+            totals = after.per_model.setdefault(sample.model, TeacherModelTotals())
+            totals.calls += 1
+            if sample.record.get("status") == FrontierCallStatus.SUCCEEDED:
+                totals.succeeded += 1
+                totals.input_tokens += _int(sample.record.get("input_tokens"))
+                totals.output_tokens += _int(sample.record.get("output_tokens"))
+                totals.estimated_usd += _float(sample.record.get("estimated_cost_usd"))
+            else:
+                totals.failed += 1
+    _write_json(ledger_path, after.to_dict())
+    return before.to_dict(), after.to_dict()
+
+
+@dataclass(slots=True)
+class _SampleState:
+    """Counters shared by the sampling workers; every field is lock-guarded."""
+
+    lock: threading.Lock = field(default_factory=threading.Lock)
+    stop: threading.Event = field(default_factory=threading.Event)
+    skipped: int = 0
+    sampled: int = 0
+    written: int = 0
+    done: int = 0
+    budget_stopped: bool = False
+    stop_reason: str | None = None
 
 
 def sample_teacher(
@@ -258,6 +382,7 @@ def sample_teacher(
     out_dir: Path,
     ledger: TeacherLedger,
     progress: ProgressCallback | None = None,
+    concurrency: int = 1,
 ) -> SampleRun:
     """Sample ``k`` completions per row into ``<model>-samples.jsonl``.
 
@@ -267,72 +392,128 @@ def sample_teacher(
     A budget stop keeps the samples completed for the current row, writes the
     ledger, and returns ``budget_stopped=True``; the ledger is rewritten after
     every row so an interrupted run still leaves a valid ledger on disk.
+
+    ``concurrency`` workers take one prompt each (a prompt's ``k`` calls stay
+    sequential inside its worker); the JSONL writer and ledger file are
+    written under one lock, and the ledger's own reservation makes the
+    ceiling hold across workers.  A budget stop, the teacher's circuit
+    breaker (``TeacherStoppedError``: a 401/403 or five consecutive failed
+    calls), or a ``prompt_drift`` error stops every worker before it starts
+    another prompt; the reason is recorded in the ledger as ``stop_reason``
+    and the prompts never started are never charged.
     """
 
     if teacher.ledger is not ledger:
         raise ValueError("teacher must share the ledger that is written to disk")
+    if type(concurrency) is not int or concurrency < 1:
+        raise ValueError("concurrency must be a positive integer")
     out_dir.mkdir(parents=True, exist_ok=True)
     path = samples_path(out_dir, teacher.model)
     ledger_path = out_dir / LEDGER_FILENAME
     progress_by_prompt = _existing_progress(path)
-    skipped = sampled = written = 0
-    budget_stopped = False
+    # Materialise every entry before the workers start so the defaultdict is
+    # never mutated concurrently.
+    entries = {row.prompt_id: progress_by_prompt[row.prompt_id] for row in rows}
+    state = _SampleState()
+    total = len(rows)
+    # A stale reason from an earlier interrupted run does not describe this one.
+    ledger.stop_reason = None
+
+    def _finish_row(sampled: bool) -> None:
+        # Caller holds ``state.lock``.
+        state.done += 1
+        if (
+            sampled
+            and state.stop_reason is None
+            and progress is not None
+            and state.done % PROGRESS_EVERY == 0
+        ):
+            progress(state.done, total)
+
     with path.open("a", encoding="utf-8") as handle:
-        for index, row in enumerate(rows, start=1):
-            entry = progress_by_prompt[row.prompt_id]
+
+        def work(row: PromptSetRow) -> None:
+            if state.stop.is_set():
+                return
+            entry = entries[row.prompt_id]
             missing = k - entry.succeeded
             if missing <= 0:
-                skipped += 1
-                continue
-            context = build_candidate_context(row)
-            prompt_fingerprint = render_prompt(
-                context.view, prompt_version=teacher.prompt_version
-            ).fingerprint
-            if prompt_fingerprint != row.prompt_fingerprint:
-                raise ValueError(f"prompt_drift:{row.prompt_id}")
+                with state.lock:
+                    state.skipped += 1
+                    _finish_row(sampled=False)
+                return
             try:
-                batch = teacher.sample(context.view, k=missing, seed_tag=row.prompt_id)
-                samples: tuple[TeacherSample, ...] = batch.samples
-            except TeacherBudgetExceededError as exc:
-                samples = exc.completed
-                budget_stopped = True
-            offset = entry.next_call_index
-            for sample in samples:
-                sample = replace(sample, call_index=offset + sample.call_index)
-                handle.write(
-                    json.dumps(
-                        _sample_line(
-                            row=row,
-                            model=teacher.model,
-                            sample=sample,
-                            prompt_fingerprint=prompt_fingerprint,
-                            schema_fingerprint=teacher.schema_fingerprint,
-                        ),
-                        sort_keys=True,
+                context = build_candidate_context(row)
+                prompt_fingerprint = render_prompt(
+                    context.view, prompt_version=teacher.prompt_version
+                ).fingerprint
+                if prompt_fingerprint != row.prompt_fingerprint:
+                    raise ValueError(f"prompt_drift:{row.prompt_id}")
+                stop_reason: str | None = None
+                try:
+                    batch = teacher.sample(
+                        context.view, k=missing, seed_tag=row.prompt_id
                     )
-                    + "\n"
-                )
-                entry.call_indices.add(sample.call_index)
-                if sample.content is not None:
-                    entry.succeeded += 1
-                written += 1
-            handle.flush()
-            _write_json(ledger_path, ledger.to_dict())
-            if samples:
-                sampled += 1
-            if budget_stopped:
-                break
-            if progress is not None and index % PROGRESS_EVERY == 0:
-                progress(index, len(rows))
+                    samples: tuple[TeacherSample, ...] = batch.samples
+                    # The breaker may have tripped on this batch's last call
+                    # or in another worker while this batch was in flight.
+                    stop_reason = teacher.stop_reason
+                except TeacherBudgetExceededError as exc:
+                    samples = exc.completed
+                    stop_reason = BUDGET_STOP_REASON
+                except TeacherStoppedError as exc:
+                    samples = exc.completed
+                    stop_reason = exc.reason
+            except BaseException:
+                state.stop.set()
+                raise
+            with state.lock:
+                if stop_reason is not None:
+                    if state.stop_reason is None:
+                        state.stop_reason = stop_reason
+                        ledger.stop_reason = stop_reason
+                    state.budget_stopped |= stop_reason == BUDGET_STOP_REASON
+                    state.stop.set()
+                offset = entry.next_call_index
+                for sample in samples:
+                    sample = replace(sample, call_index=offset + sample.call_index)
+                    handle.write(
+                        json.dumps(
+                            _sample_line(
+                                row=row,
+                                model=teacher.model,
+                                sample=sample,
+                                prompt_fingerprint=prompt_fingerprint,
+                                schema_fingerprint=teacher.schema_fingerprint,
+                            ),
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    )
+                    entry.call_indices.add(sample.call_index)
+                    if sample.content is not None:
+                        entry.succeeded += 1
+                    state.written += 1
+                handle.flush()
+                _write_json(ledger_path, ledger.to_dict())
+                if samples:
+                    state.sampled += 1
+                _finish_row(sampled=bool(samples))
+
+        with ThreadPoolExecutor(max_workers=concurrency) as pool:
+            futures = [pool.submit(work, row) for row in rows]
+        for future in futures:
+            future.result()
     _write_json(ledger_path, ledger.to_dict())
     return SampleRun(
         model=teacher.model,
         samples_path=path,
         prompts_requested=len(rows),
-        prompts_skipped=skipped,
-        prompts_sampled=sampled,
-        calls_written=written,
-        budget_stopped=budget_stopped,
+        prompts_skipped=state.skipped,
+        prompts_sampled=state.sampled,
+        calls_written=state.written,
+        budget_stopped=state.budget_stopped,
+        stop_reason=state.stop_reason,
     )
 
 
@@ -789,6 +970,8 @@ def pilot_report(
     seed: int,
     k: int,
     models: Sequence[str],
+    families: Sequence[str] | None = None,
+    prompt_version: PromptVersion = STAGE1B_PROMPT_VERSION,
 ) -> dict[str, object]:
     """Per-model F1 / F2 / F1-F4 rates, per-family F2, cost, and decision.
 
@@ -797,9 +980,51 @@ def pilot_report(
     used for training acceptance.  Both use successful calls as denominator;
     failed calls are counted separately so relay errors do not masquerade as
     teacher quality.  F5 is optional and not part of the pilot rates.  The
-    selection parameters are stored so ``--check`` can rebuild the same rows.
+    selection parameters and prompt version are stored so ``--check`` can
+    rebuild the same rows with the same prompt.
     """
 
+    per_model = _per_model_rates(rows, samples_paths, ledger)
+    decisions = [
+        str(rates["decision"])
+        for rates in per_model.values()
+        if isinstance(rates, dict)
+    ]
+    selection: dict[str, object] = {"per_family": per_family, "seed": seed, "k": k}
+    if families is not None:
+        selection["families"] = sorted(families)
+    return {
+        "schema_version": PILOT_REPORT_SCHEMA_VERSION,
+        "decision_rule_version": DECISION_RULE_VERSION,
+        "decision_rule": {
+            "go": {
+                "f1_rate_min": GO_F1_MIN,
+                "f2_act_needed_rate_min": GO_F2_ACT_NEEDED_MIN,
+                "f1_f4_rate_min": GO_F1_F4_MIN,
+            },
+            "stop": {"f2_act_needed_rate_below": STOP_F2_ACT_NEEDED_BELOW},
+            "otherwise": "Hold",
+        },
+        "selection": selection,
+        "prompt_version": prompt_version,
+        "compiler_version": PHASE03C_COMPILER_VERSIONS[prompt_version],
+        "models": list(models),
+        "prompt_count": len(rows),
+        "samples_files": [path.name for path in samples_paths],
+        "per_model": per_model,
+        "estimated_usd_total": ledger.get("total_estimated_usd"),
+        "usd_ceiling": ledger.get("usd_ceiling"),
+        "accounting": ledger.get("accounting"),
+        "stop_reason": ledger.get("stop_reason"),
+        "decision": overall_decision(decisions),
+    }
+
+
+def _per_model_rates(
+    rows: Sequence[PromptSetRow],
+    samples_paths: Sequence[Path],
+    ledger: dict[str, object],
+) -> dict[str, object]:
     rows_by_id = {row.prompt_id: row for row in rows}
     contexts: dict[str, CandidateContext] = {}
     by_model: dict[str, list[RawSample]] = defaultdict(list)
@@ -819,39 +1044,88 @@ def pilot_report(
             totals.get("estimated_usd") if isinstance(totals, dict) else None
         )
         per_model[model] = rates
-    decisions = [
-        str(rates["decision"])
-        for rates in per_model.values()
-        if isinstance(rates, dict)
-    ]
+    return per_model
+
+
+# --- full generation report --------------------------------------------------
+
+
+def generation_report(
+    rows: Sequence[PromptSetRow],
+    samples_path: Path,
+    ledger: dict[str, object],
+    curated: CurationResult,
+    *,
+    k: int,
+    model: str,
+    concurrency: int,
+) -> dict[str, object]:
+    """The Stage 1c full-generation summary for one model over all train rows.
+
+    Counts and F rates come from the raw samples (same computation as the
+    pilot, minus the pilot's Go/Stop ``decision``); accepted rows, per-family
+    acceptance, ``training_ready``, and family coverage come from the curation
+    result.  The report self-describes completeness: ``prompts_complete`` is
+    the number of rows holding ``k`` successful samples, ``run_complete`` is
+    true only when every row does, and ``stop_reason`` / ``budget_stopped``
+    come from the ledger.  No Go/Stop decision: the gate is ``training_ready``
+    plus the root orchestrator's review.
+    """
+
+    train_ids = _train_family_ids()
+    per_model = _per_model_rates(rows, [samples_path], ledger)
+    rates = per_model.get(model)
+    if not isinstance(rates, dict):
+        raise ValueError(f"no samples for {model!r} in {samples_path}")
+    rates = {key: value for key, value in rates.items() if key != "decision"}
+    progress = _existing_progress(samples_path)
+    prompts_complete = sum(
+        1
+        for row in rows
+        if row.prompt_id in progress and progress[row.prompt_id].succeeded >= k
+    )
+    stop_reason = ledger.get("stop_reason")
+    accepted_per_family = dict(
+        sorted(Counter(item.row.family_id for item in curated.accepted).items())
+    )
     return {
-        "schema_version": PILOT_REPORT_SCHEMA_VERSION,
-        "decision_rule_version": DECISION_RULE_VERSION,
-        "decision_rule": {
-            "go": {
-                "f1_rate_min": GO_F1_MIN,
-                "f2_act_needed_rate_min": GO_F2_ACT_NEEDED_MIN,
-                "f1_f4_rate_min": GO_F1_F4_MIN,
-            },
-            "stop": {"f2_act_needed_rate_below": STOP_F2_ACT_NEEDED_BELOW},
-            "otherwise": "Hold",
-        },
-        "selection": {"per_family": per_family, "seed": seed, "k": k},
-        "models": list(models),
+        "schema_version": GENERATION_REPORT_SCHEMA_VERSION,
+        "model": model,
+        "prompt_version": curated.prompt_version,
+        "compiler_version": PHASE03C_COMPILER_VERSIONS[curated.prompt_version],
+        "selection": {"split": "train", "k": k, "concurrency": concurrency},
         "prompt_count": len(rows),
-        "samples_files": [path.name for path in samples_paths],
-        "per_model": per_model,
-        "estimated_usd_total": ledger.get("total_estimated_usd"),
-        "usd_ceiling": ledger.get("usd_ceiling"),
-        "accounting": ledger.get("accounting"),
-        "decision": overall_decision(decisions),
+        "samples_file": samples_path.name,
+        "prompts_sampled": rates["prompts"],
+        "prompts_complete": prompts_complete,
+        "run_complete": prompts_complete == len(rows),
+        "budget_stopped": stop_reason == BUDGET_STOP_REASON,
+        "stop_reason": stop_reason,
+        "rates": rates,
+        "accepted_count": curated.quality_report["accepted_count"],
+        "accepted_prompts": curated.quality_report["accepted_prompts"],
+        "accepted_target": ACCEPTED_TARGET,
+        "accepted_per_family": accepted_per_family,
+        "accepted_families_coverage": {
+            "covered": sorted(accepted_per_family),
+            "missing": sorted(train_ids - set(accepted_per_family)),
+            "train_family_count": len(train_ids),
+        },
+        "quarantine_per_filter": curated.quarantine["per_filter"],
+        "quarantine_per_reason": curated.quarantine["per_reason"],
+        "training_ready_criteria": curated.quality_report["training_ready_criteria"],
+        "training_ready": curated.training_ready,
+        "ledger": ledger,
     }
 
 
 __all__ = [
     "ACCEPTED_SUFFIX",
     "ACCEPTED_TARGET",
+    "BUDGET_STOP_REASON",
     "DECISION_RULE_VERSION",
+    "GENERATION_REPORT_FILENAME",
+    "GENERATION_REPORT_SCHEMA_VERSION",
     "LEDGER_FILENAME",
     "MANIFEST_FILENAME",
     "MAX_KEPT_PER_PROMPT",
@@ -869,6 +1143,7 @@ __all__ = [
     "accepted_path",
     "compute_training_ready",
     "curate_candidates",
+    "generation_report",
     "load_ledger",
     "load_samples",
     "manifest_path",
@@ -877,6 +1152,10 @@ __all__ = [
     "pilot_report",
     "quality_report_path",
     "quarantine_path",
+    "report_prompt_version",
+    "rerender_rows",
+    "reset_failed_charges",
+    "rows_for_prompt_version",
     "sample_teacher",
     "samples_path",
     "select_pilot_rows",

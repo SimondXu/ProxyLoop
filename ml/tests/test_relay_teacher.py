@@ -18,8 +18,10 @@ from proxyloop_evaluation.openai_frontier import (
 )
 from proxyloop_evaluation.phase03c_experiment import (
     DECISION_CONVENTION_BLOCK,
+    DECISION_CONVENTION_BLOCK_V5,
+    DECISION_CONVENTION_BLOCK_V6,
     PHASE03C_COMPILER_VERSION,
-    PHASE03C_COMPILER_VERSION_V4,
+    PHASE03C_COMPILER_VERSION_V6,
     Phase03CQwenAdapter,
     _fingerprint,
     development_examples,
@@ -121,18 +123,20 @@ def test_rates_file_is_the_placeholder_upper_bound() -> None:
         load_teacher_rate("unknown-model", DEFAULT_TEACHER_RATES_PATH)
 
 
-def test_sample_sends_exact_v4_prompt_k_times(view: FastModelView) -> None:
+def test_sample_sends_exact_v6_prompt_k_times(view: FastModelView) -> None:
     client = _client(_ok("{}"), _ok("{}"), _ok("{}"))
     adapter = _adapter(client, temperature=0.9, max_output_tokens=321)
 
     batch = adapter.sample(view, k=3, seed_tag="dev-0")
 
-    assert adapter.prompt_version == "v4"
-    assert adapter.compiler_version == PHASE03C_COMPILER_VERSION_V4
+    assert adapter.prompt_version == "v6"
+    assert adapter.compiler_version == PHASE03C_COMPILER_VERSION_V6
     expected = Phase03CQwenAdapter(
-        generator=lambda _: "{}", prompt_version="v4"
+        generator=lambda _: "{}", prompt_version="v6"
     ).build_prompt(view)
-    assert DECISION_CONVENTION_BLOCK in expected.user
+    assert DECISION_CONVENTION_BLOCK_V6 in expected.user
+    assert DECISION_CONVENTION_BLOCK_V5 not in expected.user
+    assert DECISION_CONVENTION_BLOCK not in expected.user
     assert len(client.completions.calls) == 3
     for call in client.completions.calls:
         assert call["model"] == MODEL
@@ -209,7 +213,7 @@ def test_ceiling_rejects_before_the_call_that_would_exceed(
     view: FastModelView,
 ) -> None:
     prompt = Phase03CQwenAdapter(
-        generator=lambda _: "{}", prompt_version="v4"
+        generator=lambda _: "{}", prompt_version="v6"
     ).build_prompt(view)
     prompt_tokens = -(
         -(len(prompt.system) + len(prompt.user)) // PROMPT_CHARS_PER_TOKEN

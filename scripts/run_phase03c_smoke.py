@@ -1,9 +1,10 @@
-"""Run one bounded Phase 03C untuned Fast arm with the v3 or v4 prompt.
+"""Run one bounded Phase 03C untuned Fast arm with the v3, v4, v5, or v6 prompt.
 
 Stage 0 only re-baselines untuned checkpoints (``--arm a``); tuned arms are a
 later stage.  ``--model 8b`` is the re-baseline, ``--model 4b`` the one-time
 reference row on the historical 4-bit base.  ``--prompt-version`` defaults to
-the Stage 0 v3 prompt; v4 adds the Stage 1b decision-convention block.
+the Stage 0 v3 prompt; v4 adds the Stage 1b decision-convention block, v5
+its Stage 1c wording fix, and v6 the rule-precedence fix.
 Results are descriptive six-episode smokes and never a Go/No-Go on their own.
 """
 
@@ -38,6 +39,7 @@ from proxyloop_evaluation.phase03b_experiment import (  # noqa: E402
     build_phase03b_manifest,
 )
 from proxyloop_evaluation.phase03c_experiment import (  # noqa: E402
+    PHASE03C_COMPILER_VERSIONS,
     PHASE03C_EVALUATOR_SOURCE_FINGERPRINT,
     PROMPT_TOKEN_LIMIT,
     Phase03CExecutedRow,
@@ -93,7 +95,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model", choices=tuple(MODEL_SPECS), required=True)
     parser.add_argument("--model-path", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--prompt-version", choices=("v3", "v4"), default="v3")
+    parser.add_argument(
+        "--prompt-version", choices=tuple(PHASE03C_COMPILER_VERSIONS), default="v3"
+    )
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument(
         "--verify-token-fit",

@@ -19,10 +19,16 @@ from proxyloop_evaluation.phase03b_experiment import (
 )
 from proxyloop_evaluation.phase03c_experiment import (
     DECISION_CONVENTION_BLOCK,
+    DECISION_CONVENTION_BLOCK_V5,
+    DECISION_CONVENTION_BLOCK_V6,
     PHASE03B_ARM_SOURCES,
     PHASE03C_COMPILER_VERSION,
     PHASE03C_COMPILER_VERSION_V4,
+    PHASE03C_COMPILER_VERSION_V5,
+    PHASE03C_COMPILER_VERSION_V6,
+    PHASE03C_COMPILER_VERSIONS,
     REASON_CODE_LINE,
+    SMOKE_RESULT_FILES,
     Phase03CQwenAdapter,
     analyze_raw_output,
     check_parser_errata,
@@ -375,7 +381,159 @@ def test_v4_prompt_is_v3_plus_the_decision_convention_block(
         )
         assert v4.fingerprint != v3.fingerprint
     with pytest.raises(ValueError, match="prompt_version"):
-        Phase03CQwenAdapter(generator=lambda _: "{}", prompt_version="v5")  # type: ignore[arg-type]
+        Phase03CQwenAdapter(generator=lambda _: "{}", prompt_version="v7")  # type: ignore[arg-type]
+
+
+# The v4 block bytes the Stage 1b pilot artifacts were produced with, the v5
+# block bytes of the Stage 1c re-pilot, and the v3 prompt text bound by Stage
+# 0; none may move when a later version is added.
+V4_BLOCK_SHA256 = "96628b1dd058694701ebe1a89c20b3a326948c511fa8c7e09bced3cdb6b528d0"
+V5_BLOCK_SHA256 = "d23afb5763c099734d5220b0003f21fdbeab873c1a5b4e7a33cf521bd2dce1c7"
+V3_DEV0_PROMPT_FINGERPRINT = (
+    "e8f984f30626f012d7a6667924591cc04064ca55ec851e0cbe129d90d91cefec"
+)
+V4_DEV0_PROMPT_FINGERPRINT = (
+    "49b1f98f4c3cd918c6b4190602c968fb467a488b83ba3904285f9c45a822e22d"
+)
+V5_DEV0_PROMPT_FINGERPRINT = (
+    "dbb1384604f7efd7ae597a693fb465bdfe53590dd9359a011308f833536eafa4"
+)
+
+
+def test_v5_block_is_v4_with_exactly_three_wording_edits(
+    dev_examples: tuple[Phase03BExample, ...],
+) -> None:
+    rule6_old = "review, never an acceptance.\n"
+    rule6_new = (
+        "review, never an acceptance. In response_text state both numbers and "
+        'the comparison, for example "total 112700 vs cap 81600 (6800*12): '
+        'exceeds", before your conclusion; if the total is greater than the cap '
+        "the offer fails.\n"
+    )
+    rule7_old = '7. otherwise -> "counter", {"needed": false, "reason_code": "none"}.\n'
+    rule7_new = (
+        "7. otherwise (the offer fails any check in rule 6: a forbidden change "
+        "applied, a required feature missing, a fee that pushes the total over "
+        'the cap, an unsupported change, or a price above target) -> "counter", '
+        '{"needed": false, "reason_code": "none"}; offer non-compliance is never '
+        "a replan and never needs the reasoner.\n"
+    )
+    disclosure_line = (
+        "\nNever repeat the name of a requested disclosure field (any value in "
+        'requested_disclosures) in response_text; refer to it as "that information".'
+    )
+    assert DECISION_CONVENTION_BLOCK.count(rule6_old) == 1
+    assert DECISION_CONVENTION_BLOCK.count(rule7_old) == 1
+    assert DECISION_CONVENTION_BLOCK.endswith(
+        "Set fact_updates to [] and action_intent to null in every case."
+    )
+    derived = (
+        DECISION_CONVENTION_BLOCK.replace(rule6_old, rule6_new).replace(
+            rule7_old, rule7_new
+        )
+        + disclosure_line
+    )
+    assert derived == DECISION_CONVENTION_BLOCK_V5
+    assert DECISION_CONVENTION_BLOCK_V5.count("\n") == 9
+    # Everything outside the three edits is byte-identical.
+    v4_lines = DECISION_CONVENTION_BLOCK.split("\n")
+    v5_lines = DECISION_CONVENTION_BLOCK_V5.split("\n")
+    assert v5_lines[:6] == v4_lines[:6]
+    assert v5_lines[8] == v4_lines[8]
+    assert v5_lines[6].startswith(v4_lines[6])
+    assert v5_lines[7] != v4_lines[7]
+    assert len(v5_lines) == len(v4_lines) + 1
+
+    assert PHASE03C_COMPILER_VERSION_V5 == "phase-03c-fast-compiler-v5"
+    assert PHASE03C_COMPILER_VERSIONS == {
+        "v3": PHASE03C_COMPILER_VERSION,
+        "v4": PHASE03C_COMPILER_VERSION_V4,
+        "v5": PHASE03C_COMPILER_VERSION_V5,
+        "v6": PHASE03C_COMPILER_VERSION_V6,
+    }
+    assert SMOKE_RESULT_FILES[("8b", "v5")] == "arm-a-untuned-8b-v5.json"
+    assert SMOKE_RESULT_FILES[("4b", "v5")] == "arm-a-untuned-4b-v5.json"
+    v4_adapter = Phase03CQwenAdapter(generator=lambda _: "{}", prompt_version="v4")
+    v5_adapter = Phase03CQwenAdapter(generator=lambda _: "{}", prompt_version="v5")
+    assert v5_adapter.prompt_version == "v5"
+    assert v5_adapter.compiler_version == PHASE03C_COMPILER_VERSION_V5
+    for example in dev_examples:
+        v4 = v4_adapter.build_prompt(example.view)
+        v5 = v5_adapter.build_prompt(example.view)
+        assert v5.system == v4.system
+        assert v5.user == v4.user.replace(
+            DECISION_CONVENTION_BLOCK, DECISION_CONVENTION_BLOCK_V5, 1
+        )
+        assert v5.user.count(DECISION_CONVENTION_BLOCK_V5) == 1
+        assert v5.fingerprint != v4.fingerprint
+
+
+def test_v6_block_is_v5_with_exactly_two_wording_edits(
+    dev_examples: tuple[Phase03BExample, ...],
+) -> None:
+    header_old = "in this order:\n"
+    header_new = (
+        "in this order: Apply the first rule that matches and stop; rules 1-5 "
+        "are Provider-state rules and take precedence over the offer checks in "
+        "rules 6-7.\n"
+    )
+    rule7_old = (
+        "; offer non-compliance is never a replan and never needs the reasoner.\n"
+    )
+    rule7_new = (
+        "; an offer that fails rule 6 is countered without the reasoner unless a "
+        "Provider-state rule 1-5 already matched.\n"
+    )
+    assert DECISION_CONVENTION_BLOCK_V5.count(header_old) == 1
+    assert DECISION_CONVENTION_BLOCK_V5.count(rule7_old) == 1
+    derived = DECISION_CONVENTION_BLOCK_V5.replace(header_old, header_new).replace(
+        rule7_old, rule7_new
+    )
+    assert derived == DECISION_CONVENTION_BLOCK_V6
+    # Same line count; every line but the header and rule 7 is byte-identical.
+    v5_lines = DECISION_CONVENTION_BLOCK_V5.split("\n")
+    v6_lines = DECISION_CONVENTION_BLOCK_V6.split("\n")
+    assert len(v6_lines) == len(v5_lines) == 10
+    assert v6_lines[0].startswith(v5_lines[0])
+    assert v6_lines[1:7] == v5_lines[1:7]
+    assert v6_lines[7] != v5_lines[7]
+    assert v6_lines[8:] == v5_lines[8:]
+
+    assert PHASE03C_COMPILER_VERSION_V6 == "phase-03c-fast-compiler-v6"
+    assert PHASE03C_COMPILER_VERSIONS["v6"] == PHASE03C_COMPILER_VERSION_V6
+    assert SMOKE_RESULT_FILES[("8b", "v6")] == "arm-a-untuned-8b-v6.json"
+    assert SMOKE_RESULT_FILES[("4b", "v6")] == "arm-a-untuned-4b-v6.json"
+    v5_adapter = Phase03CQwenAdapter(generator=lambda _: "{}", prompt_version="v5")
+    v6_adapter = Phase03CQwenAdapter(generator=lambda _: "{}", prompt_version="v6")
+    assert v6_adapter.prompt_version == "v6"
+    assert v6_adapter.compiler_version == PHASE03C_COMPILER_VERSION_V6
+    for example in dev_examples:
+        v5 = v5_adapter.build_prompt(example.view)
+        v6 = v6_adapter.build_prompt(example.view)
+        assert v6.system == v5.system
+        assert v6.user == v5.user.replace(
+            DECISION_CONVENTION_BLOCK_V5, DECISION_CONVENTION_BLOCK_V6, 1
+        )
+        assert v6.user.count(DECISION_CONVENTION_BLOCK_V6) == 1
+        assert v6.fingerprint != v5.fingerprint
+
+
+def test_v3_v4_and_v5_prompt_bytes_are_unchanged_by_v6() -> None:
+    assert (
+        hashlib.sha256(DECISION_CONVENTION_BLOCK.encode("utf-8")).hexdigest()
+        == V4_BLOCK_SHA256
+    )
+    assert (
+        hashlib.sha256(DECISION_CONVENTION_BLOCK_V5.encode("utf-8")).hexdigest()
+        == V5_BLOCK_SHA256
+    )
+    view = development_examples()[0].view
+    v3 = Phase03CQwenAdapter(generator=lambda _: "{}", prompt_version="v3")
+    v4 = Phase03CQwenAdapter(generator=lambda _: "{}", prompt_version="v4")
+    v5 = Phase03CQwenAdapter(generator=lambda _: "{}", prompt_version="v5")
+    assert v3.build_prompt(view).fingerprint == V3_DEV0_PROMPT_FINGERPRINT
+    assert v4.build_prompt(view).fingerprint == V4_DEV0_PROMPT_FINGERPRINT
+    assert v5.build_prompt(view).fingerprint == V5_DEV0_PROMPT_FINGERPRINT
 
 
 def test_v3_prompt_fingerprints_match_the_committed_stage0_controls(

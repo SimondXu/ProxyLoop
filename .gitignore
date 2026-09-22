@@ -42,4 +42,6 @@ recordings/
 .vscode/
 
 # Phase 03C teacher: accepted training JSONL stays local; raw pilot samples, reports, and ledgers are committed.
-data/experiments/phase-03c/teacher/*-accepted.jsonl
+# The full Stage 1c run's raw samples (~15 MB) stay local too; pilot-dir raw samples remain committed.
+data/experiments/phase-03c/teacher*/*-accepted.jsonl
+data/experiments/phase-03c/teacher-full*/*-samples.jsonl

@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import inspect
 import json
+import threading
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
+from typing import ClassVar
 
 import pytest
 from proxyloop_data_pipeline.teacher_pipeline import (
@@ -20,6 +23,9 @@ from proxyloop_data_pipeline.teacher_pipeline import (
     load_samples,
     pilot_decision,
     pilot_report,
+    report_prompt_version,
+    reset_failed_charges,
+    rows_for_prompt_version,
     sample_teacher,
     samples_path,
     select_pilot_rows,
@@ -30,7 +36,12 @@ from proxyloop_evaluation.phase03b_readiness import (
     FORBIDDEN_MODEL_INPUT_KEYS,
     proposed_fast_target,
 )
-from proxyloop_evaluation.phase03c_experiment import DECISION_CONVENTION_BLOCK
+from proxyloop_evaluation.phase03c_experiment import (
+    DECISION_CONVENTION_BLOCK,
+    DECISION_CONVENTION_BLOCK_V5,
+    DECISION_CONVENTION_BLOCK_V6,
+    PHASE03C_COMPILER_VERSIONS,
+)
 from proxyloop_evaluation.phase03c_prompt_set import (
     PROMPT_SET_MANIFEST_PATH,
     PromptSetRow,
@@ -49,7 +60,11 @@ from proxyloop_evaluation.phase03c_teacher_filters import (
     build_candidate_context,
     filter_verifier_replay,
 )
-from proxyloop_evaluation.relay_teacher import RelayTeacherAdapter, TeacherLedger
+from proxyloop_evaluation.relay_teacher import (
+    CONSECUTIVE_FAILURE_LIMIT,
+    RelayTeacherAdapter,
+    TeacherLedger,
+)
 from proxyloop_provider_simulator.scenarios import BENCHMARK_SCENARIOS
 from proxyloop_provider_simulator.splits import generate_split_manifest
 
@@ -227,7 +242,7 @@ def test_perfect_teacher_passes_every_filter_and_pilot_is_go(
     assert pilot["decision"] == "Go"
 
 
-def test_accepted_records_carry_v4_prompt_provenance_and_no_forbidden_keys(
+def test_accepted_records_carry_v6_prompt_provenance_and_no_forbidden_keys(
     rows: tuple[PromptSetRow, ...],
     contexts: dict[str, CandidateContext],
     tmp_path: Path,
@@ -254,8 +269,10 @@ def test_accepted_records_carry_v4_prompt_provenance_and_no_forbidden_keys(
     record = records[0]
     context = contexts[record["prompt_id"]]
     prompt = render_prompt(context.view)
-    assert result.prompt_version == "v4"
-    assert DECISION_CONVENTION_BLOCK in prompt.user
+    assert result.prompt_version == "v6"
+    assert DECISION_CONVENTION_BLOCK_V6 in prompt.user
+    assert DECISION_CONVENTION_BLOCK_V5 not in prompt.user
+    assert DECISION_CONVENTION_BLOCK not in prompt.user
     assert record["messages"][0] == {"role": "system", "content": prompt.system}
     assert record["messages"][1] == {"role": "user", "content": prompt.user}
     assert record["messages"][2]["content"] == perfect_content(context.row)
@@ -698,7 +715,7 @@ def test_reason_code_mismatch_counts_as_act_needed_f2_but_not_full_f2(
     assert rates["decision"] == "Hold"
 
 
-def test_v3_teacher_against_the_v4_manifest_is_prompt_drift(
+def test_v3_teacher_against_the_v6_manifest_is_prompt_drift(
     rows: tuple[PromptSetRow, ...],
     contexts: dict[str, CandidateContext],
     tmp_path: Path,
@@ -750,3 +767,521 @@ def test_prompt_drift_is_quarantined_never_accepted(
     assert len(result.accepted) == 19
     assert result.quarantine["per_filter"] == {"prompt_drift": 1}
     assert lines[0]["prompt_id"] not in {item.row.prompt_id for item in result.accepted}
+
+
+# --- Stage 1c: concurrency, targeted re-pilot, stored prompt version ---------
+
+
+@dataclass
+class _SlowCompletions(_Completions):
+    """The fake relay with a 10 ms round trip so workers actually overlap."""
+
+    def create(self, **kwargs: object) -> SimpleNamespace:
+        time.sleep(0.01)
+        return super().create(**kwargs)
+
+
+def slow_client(contexts: dict[str, CandidateContext]) -> _Client:
+    fast = fake_client(contexts)
+    return _Client(_SlowCompletions(fast.completions.by_user_prompt))
+
+
+@pytest.fixture(scope="module")
+def forty_rows(all_rows: tuple[PromptSetRow, ...]) -> tuple[PromptSetRow, ...]:
+    return select_pilot_rows(all_rows, per_family=4, seed=0)
+
+
+@pytest.fixture(scope="module")
+def forty_contexts(
+    forty_rows: tuple[PromptSetRow, ...],
+) -> dict[str, CandidateContext]:
+    return {row.prompt_id: build_candidate_context(row) for row in forty_rows}
+
+
+def test_concurrent_sampling_matches_the_sequential_run(
+    forty_rows: tuple[PromptSetRow, ...],
+    forty_contexts: dict[str, CandidateContext],
+    tmp_path: Path,
+) -> None:
+    assert len(forty_rows) == 40
+    k = 2
+    sequential = TeacherLedger(usd_ceiling=5.0)
+    sample_teacher(
+        forty_rows,
+        adapter(fake_client(forty_contexts), sequential),
+        k=k,
+        out_dir=tmp_path / "sequential",
+        ledger=sequential,
+    )
+
+    ledger = TeacherLedger(usd_ceiling=5.0)
+    client = slow_client(forty_contexts)
+    progress_calls: list[tuple[int, int]] = []
+    started = time.perf_counter()
+    run = sample_teacher(
+        forty_rows,
+        adapter(client, ledger),
+        k=k,
+        out_dir=tmp_path / "concurrent",
+        ledger=ledger,
+        progress=lambda done, total: progress_calls.append((done, total)),
+        concurrency=8,
+    )
+    elapsed = time.perf_counter() - started
+
+    # 80 calls x 10 ms sequentially is >= 0.8 s; eight workers overlap.
+    assert elapsed < 0.6
+    assert run.prompts_sampled == 40 and run.prompts_skipped == 0
+    assert run.calls_written == 80 == len(client.completions.calls)
+    assert not run.budget_stopped
+    samples = load_samples(samples_path(tmp_path / "concurrent", MODEL))
+    per_prompt = Counter(s.prompt_id for s in samples)
+    assert per_prompt == dict.fromkeys((row.prompt_id for row in forty_rows), k)
+    assert {
+        tuple(sorted(s.call_index for s in samples if s.prompt_id == p))
+        for p in per_prompt
+    } == {(0, 1)}
+    assert all(s.content is not None for s in samples)
+    assert ledger.to_dict() == sequential.to_dict()
+    assert ledger.reserved_usd == 0.0
+    written = json.loads((tmp_path / "concurrent" / LEDGER_FILENAME).read_text())
+    assert written == sequential.to_dict()
+    assert progress_calls == [(20, 40), (40, 40)]
+    # Curation sees the same accepted set regardless of write order.
+    concurrent = curate_candidates(
+        forty_rows, samples_path(tmp_path / "concurrent", MODEL)
+    )
+    ordered = curate_candidates(
+        forty_rows, samples_path(tmp_path / "sequential", MODEL)
+    )
+    assert {item.row.prompt_id for item in concurrent.accepted} == {
+        item.row.prompt_id for item in ordered.accepted
+    }
+    assert concurrent.quarantine == ordered.quarantine
+
+    # A resumed concurrent run makes zero calls.
+    resume_client = slow_client(forty_contexts)
+    resumed = load_ledger(tmp_path / "concurrent" / LEDGER_FILENAME, usd_ceiling=5.0)
+    again = sample_teacher(
+        forty_rows,
+        adapter(resume_client, resumed),
+        k=k,
+        out_dir=tmp_path / "concurrent",
+        ledger=resumed,
+        concurrency=8,
+    )
+    assert resume_client.completions.calls == []
+    assert again.prompts_skipped == 40 and again.prompts_sampled == 0
+
+
+def test_concurrent_workers_cannot_jointly_exceed_the_ceiling(
+    forty_rows: tuple[PromptSetRow, ...],
+    forty_contexts: dict[str, CandidateContext],
+    tmp_path: Path,
+) -> None:
+    k = 2
+    probe = adapter(fake_client(forty_contexts), TeacherLedger(usd_ceiling=1.0))
+    worst = max(probe.worst_case_call_usd(c.view) for c in forty_contexts.values())
+    per_call = 1_500 * 3.0 / 1e6 + 120 * 15.0 / 1e6
+    # Room for about ten prompts (twenty real calls) plus one reservation.
+    ceiling = 20 * per_call + worst - 1e-9
+    ledger = TeacherLedger(usd_ceiling=ceiling)
+    client = slow_client(forty_contexts)
+
+    run = sample_teacher(
+        forty_rows,
+        adapter(client, ledger),
+        k=k,
+        out_dir=tmp_path,
+        ledger=ledger,
+        concurrency=8,
+    )
+
+    assert run.budget_stopped is True
+    assert ledger.total_estimated_usd <= ceiling
+    assert ledger.reserved_usd == 0.0
+    calls = len(client.completions.calls)
+    assert calls == ledger.total_calls == run.calls_written
+    # Reservations are conservative: in-flight worst cases count against the
+    # cap, so eight workers admit no more calls than the sequential twenty.
+    assert 8 <= calls <= 20
+    assert ledger.total_estimated_usd == pytest.approx(calls * per_call)
+    samples = load_samples(samples_path(tmp_path, MODEL))
+    assert len(samples) == calls
+    assert all(s.content is not None for s in samples)
+    # Every worker stopped before taking another prompt.
+    assert run.prompts_sampled <= calls
+    assert run.prompts_skipped == 0
+    assert run.prompts_sampled < 40
+    document = json.loads((tmp_path / LEDGER_FILENAME).read_text())
+    assert document["total_calls"] == calls
+    assert document["total_estimated_usd"] <= ceiling
+
+
+class AuthenticationError(RuntimeError):
+    """Shaped like the SDK's 401: a status code and a redactable body."""
+
+    status_code = 401
+    body: ClassVar[dict[str, object]] = {
+        "error": {"code": "invalid_api_key", "type": "authentication_error"}
+    }
+
+
+class RelayError(RuntimeError):
+    status_code = 502
+
+
+@dataclass
+class _HardErrorCompletions(_SlowCompletions):
+    """The slow fake relay that answers ``successes`` calls, then raises.
+
+    Admission is counted under a lock so six overlapping workers see exactly
+    ``successes`` successful calls before the outage starts.
+    """
+
+    successes: int = 3
+    error: type[Exception] = AuthenticationError
+    attempted: int = 0
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+    def create(self, **kwargs: object) -> SimpleNamespace:
+        with self._lock:
+            index = self.attempted
+            self.attempted += 1
+        if index >= self.successes:
+            time.sleep(0.01)
+            with self._lock:
+                self.calls.append(kwargs)
+            raise self.error("relay rejected the key")
+        return super().create(**kwargs)
+
+
+def test_hard_error_trips_the_breaker_and_uncharged_prompts_stay_unsampled(
+    forty_rows: tuple[PromptSetRow, ...],
+    forty_contexts: dict[str, CandidateContext],
+    tmp_path: Path,
+) -> None:
+    workers, k = 6, 2
+    ledger = TeacherLedger(usd_ceiling=5.0)
+    table = fake_client(forty_contexts).completions.by_user_prompt
+    client = _Client(_HardErrorCompletions(table, successes=3))
+    teacher = adapter(client, ledger)
+
+    run = sample_teacher(
+        forty_rows,
+        teacher,
+        k=k,
+        out_dir=tmp_path,
+        ledger=ledger,
+        concurrency=workers,
+    )
+
+    calls = len(client.completions.calls)
+    # The first 401 trips the breaker; only calls already in flight follow.
+    assert 4 <= calls <= 3 + workers * k
+    assert run.stop_reason == "hard_error:AuthenticationError"
+    assert teacher.stop_reason == "hard_error:AuthenticationError"
+    assert run.budget_stopped is False
+    assert run.prompts_sampled < 40 and run.prompts_skipped == 0
+    assert run.calls_written == calls
+    # The ledger holds exactly the attempted calls: nothing was reserved or
+    # charged for the prompts that were never started.
+    assert ledger.total_calls == calls
+    assert ledger.reserved_usd == 0.0
+    assert ledger.per_model[MODEL].succeeded == 3
+    assert ledger.per_model[MODEL].failed == calls - 3
+    assert ledger.stop_reason == "hard_error:AuthenticationError"
+    document = json.loads((tmp_path / LEDGER_FILENAME).read_text())
+    assert document["total_calls"] == calls
+    assert document["stop_reason"] == "hard_error:AuthenticationError"
+    samples = load_samples(samples_path(tmp_path, MODEL))
+    assert len(samples) == calls
+    assert sum(sample.content is not None for sample in samples) == 3
+    failed = [sample for sample in samples if sample.content is None]
+    assert all(sample.record["error"] == "AuthenticationError" for sample in failed)
+    assert load_ledger(tmp_path / LEDGER_FILENAME, usd_ceiling=5.0).stop_reason == (
+        "hard_error:AuthenticationError"
+    )
+
+    # A resumed run over a healthy relay clears the reason and completes.
+    resumed = load_ledger(tmp_path / LEDGER_FILENAME, usd_ceiling=5.0)
+    again = sample_teacher(
+        forty_rows,
+        adapter(fake_client(forty_contexts), resumed),
+        k=k,
+        out_dir=tmp_path,
+        ledger=resumed,
+        concurrency=workers,
+    )
+    assert again.stop_reason is None and resumed.stop_reason is None
+    assert json.loads((tmp_path / LEDGER_FILENAME).read_text())["stop_reason"] is None
+    per_prompt = Counter(
+        s.prompt_id for s in load_samples(samples_path(tmp_path, MODEL)) if s.content
+    )
+    assert per_prompt == dict.fromkeys((row.prompt_id for row in forty_rows), k)
+
+
+def test_consecutive_failures_trip_the_breaker(
+    forty_rows: tuple[PromptSetRow, ...],
+    forty_contexts: dict[str, CandidateContext],
+    tmp_path: Path,
+) -> None:
+    workers, k = 6, 2
+    ledger = TeacherLedger(usd_ceiling=5.0)
+    table = fake_client(forty_contexts).completions.by_user_prompt
+    client = _Client(_HardErrorCompletions(table, successes=2, error=RelayError))
+
+    run = sample_teacher(
+        forty_rows,
+        adapter(client, ledger),
+        k=k,
+        out_dir=tmp_path,
+        ledger=ledger,
+        concurrency=workers,
+    )
+
+    calls = len(client.completions.calls)
+    assert run.stop_reason == "consecutive_failures"
+    floor = 2 + CONSECUTIVE_FAILURE_LIMIT
+    assert floor <= calls <= floor + workers * k
+    assert ledger.total_calls == calls
+    assert ledger.per_model[MODEL].failed == calls - 2
+    assert json.loads((tmp_path / LEDGER_FILENAME).read_text())["stop_reason"] == (
+        "consecutive_failures"
+    )
+
+
+def test_reset_failed_charges_keeps_succeeded_estimates_and_zeroes_failures(
+    forty_rows: tuple[PromptSetRow, ...],
+    forty_contexts: dict[str, CandidateContext],
+    tmp_path: Path,
+) -> None:
+    # 57 succeeded calls (as in the Stage 1c full run) followed by failures.
+    k = 2
+    ledger = TeacherLedger(usd_ceiling=5.0)
+    table = fake_client(forty_contexts).completions.by_user_prompt
+    client = _Client(_HardErrorCompletions(table, successes=57, error=RelayError))
+    sample_teacher(
+        forty_rows, adapter(client, ledger), k=k, out_dir=tmp_path, ledger=ledger
+    )
+    calls = len(client.completions.calls)
+    failed = calls - 57
+    assert failed >= CONSECUTIVE_FAILURE_LIMIT
+    per_call = 1_500 * 3.0 / 1e6 + 120 * 15.0 / 1e6
+    samples = load_samples(samples_path(tmp_path, MODEL))
+    worst_charged = sum(
+        float(str(s.record["estimated_cost_usd"])) for s in samples if s.content is None
+    )
+    assert worst_charged > failed * per_call
+    assert ledger.total_estimated_usd == pytest.approx(57 * per_call + worst_charged)
+
+    ledger_path = tmp_path / LEDGER_FILENAME
+    before, after = reset_failed_charges(
+        [samples_path(tmp_path, MODEL)], ledger_path, usd_ceiling=5.0
+    )
+    assert before["total_calls"] == after["total_calls"] == calls
+    assert before["total_estimated_usd"] == pytest.approx(57 * per_call + worst_charged)
+    assert after["total_estimated_usd"] == pytest.approx(57 * per_call)
+    assert after["per_model"][MODEL] == {
+        "calls": calls,
+        "succeeded": 57,
+        "failed": failed,
+        "input_tokens": 57 * 1_500,
+        "output_tokens": 57 * 120,
+        "estimated_usd": pytest.approx(57 * per_call),
+    }
+    assert after["stop_reason"] == "consecutive_failures"
+    assert after["usd_ceiling"] == 5.0
+    assert "reset" in str(after["accounting"])
+    assert json.loads(ledger_path.read_text()) == json.loads(json.dumps(after))
+    restored = load_ledger(ledger_path, usd_ceiling=5.0)
+    assert restored.total_calls == calls
+    assert restored.total_estimated_usd == pytest.approx(57 * per_call)
+    # Idempotent: a second reset changes nothing.
+    assert (
+        reset_failed_charges(
+            [samples_path(tmp_path, MODEL)], ledger_path, usd_ceiling=5.0
+        )[1]
+        == after
+    )
+
+
+def test_sample_teacher_rejects_a_non_positive_concurrency(
+    rows: tuple[PromptSetRow, ...],
+    contexts: dict[str, CandidateContext],
+    tmp_path: Path,
+) -> None:
+    ledger = TeacherLedger(usd_ceiling=5.0)
+    with pytest.raises(ValueError, match="concurrency"):
+        sample_teacher(
+            rows,
+            adapter(fake_client(contexts), ledger),
+            k=1,
+            out_dir=tmp_path,
+            ledger=ledger,
+            concurrency=0,
+        )
+
+
+def test_select_pilot_rows_families_is_a_subset_of_the_full_selection(
+    all_rows: tuple[PromptSetRow, ...],
+) -> None:
+    full = select_pilot_rows(all_rows, per_family=20, seed=0)
+    targeted_families = [
+        "fee-total-cost-trap",
+        "forbidden-term",
+        "disclosure-restriction",
+        "direct-success",
+        "multi-hazard",
+    ]
+    assert set(targeted_families) <= TRAIN_FAMILIES
+    targeted = select_pilot_rows(
+        all_rows, per_family=20, seed=0, families=targeted_families
+    )
+    assert len(targeted) == 100
+    assert Counter(row.family_id for row in targeted) == dict.fromkeys(
+        targeted_families, 20
+    )
+    # The same prompts the full pilot drew for those families, in id order.
+    assert targeted == tuple(
+        row for row in full if row.family_id in set(targeted_families)
+    )
+    assert select_pilot_rows(all_rows, per_family=20, seed=0, families=()) == ()
+    with pytest.raises(ValueError, match="unknown train families"):
+        select_pilot_rows(all_rows, per_family=20, seed=0, families=["nope"])
+
+
+def test_report_prompt_version_defaults_missing_to_v4() -> None:
+    assert report_prompt_version({}) == "v4"
+    assert report_prompt_version({"prompt_version": "v5"}) == "v5"
+    assert report_prompt_version({"prompt_version": "v6"}) == "v6"
+    assert (
+        report_prompt_version(
+            {"prompt_version": "v4", "compiler_version": "phase-03c-fast-compiler-v4"}
+        )
+        == "v4"
+    )
+    with pytest.raises(ValueError, match="unknown prompt_version"):
+        report_prompt_version({"prompt_version": "v9"})
+    with pytest.raises(ValueError, match="disagree"):
+        report_prompt_version(
+            {"prompt_version": "v5", "compiler_version": "phase-03c-fast-compiler-v4"}
+        )
+
+
+def test_rows_for_prompt_version_re_renders_only_when_the_manifest_differs(
+    rows: tuple[PromptSetRow, ...],
+) -> None:
+    same = rows_for_prompt_version(
+        rows,
+        prompt_version="v6",
+        manifest_compiler_version=PHASE03C_COMPILER_VERSIONS["v6"],
+    )
+    assert same == rows
+    v4_rows = rows_for_prompt_version(
+        rows,
+        prompt_version="v4",
+        manifest_compiler_version=PHASE03C_COMPILER_VERSIONS["v6"],
+    )
+    assert [row.prompt_id for row in v4_rows] == [row.prompt_id for row in rows]
+    for v4_row, row in zip(v4_rows, rows, strict=True):
+        assert v4_row.prompt_fingerprint != row.prompt_fingerprint
+        view = build_candidate_context(row).view
+        assert (
+            v4_row.prompt_fingerprint
+            == render_prompt(view, prompt_version="v4").fingerprint
+        )
+
+
+def test_committed_v4_pilot_report_has_no_prompt_version_and_still_checks(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    report = json.loads(
+        (
+            ROOT / "data/experiments/phase-03c/teacher" / PILOT_REPORT_FILENAME
+        ).read_text()
+    )
+    assert "prompt_version" not in report and "compiler_version" not in report
+    assert report_prompt_version(report) == "v4"
+    assert run_phase03c_teacher_pilot.main(["--check"]) == 0
+    assert "recomputed from raw samples" in capsys.readouterr().out
+
+
+def test_targeted_re_pilot_stores_families_and_version_and_checks(
+    all_rows: tuple[PromptSetRow, ...],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import sys
+
+    from proxyloop_evaluation.openai_frontier import FRONTIER_API_KEY_ENV
+
+    families = ["forbidden-term", "fee-total-cost-trap"]
+    pilot = select_pilot_rows(all_rows, per_family=2, seed=0, families=families)
+    pilot_contexts = {row.prompt_id: build_candidate_context(row) for row in pilot}
+    monkeypatch.setenv(FRONTIER_API_KEY_ENV, "sk-test-only-not-a-real-key")
+    monkeypatch.setitem(
+        sys.modules,
+        "openai",
+        SimpleNamespace(OpenAI=lambda **kwargs: fake_client(pilot_contexts)),
+    )
+    out_dir = tmp_path / "teacher-v6"
+    args = [
+        "--out-dir",
+        str(out_dir),
+        "--per-family",
+        "2",
+        "--models",
+        MODEL,
+        "--families",
+        *families,
+        "--concurrency",
+        "4",
+    ]
+
+    assert run_phase03c_teacher_pilot.main(["--k", "2", *args]) == 0
+    assert f"{MODEL}: sampled 4, skipped 0, calls 8" in capsys.readouterr().err
+    report = json.loads((out_dir / PILOT_REPORT_FILENAME).read_text())
+    assert report["selection"] == {
+        "per_family": 2,
+        "seed": 0,
+        "k": 2,
+        "families": sorted(families),
+    }
+    assert report["prompt_version"] == "v6"
+    assert report["compiler_version"] == PHASE03C_COMPILER_VERSIONS["v6"]
+    assert report["prompt_count"] == 4
+    assert set(report["per_model"][MODEL]["per_family"]) == set(families)
+    # ``--check`` rebuilds the rows from the stored families, not the CLI.
+    assert run_phase03c_teacher_pilot.main(["--check", "--out-dir", str(out_dir)]) == 0
+    assert "recomputed from raw samples" in capsys.readouterr().out
+    tampered = dict(report)
+    tampered["selection"] = {"per_family": 2, "seed": 0, "k": 2}
+    (out_dir / PILOT_REPORT_FILENAME).write_text(json.dumps(tampered))
+    assert run_phase03c_teacher_pilot.main(["--check", "--out-dir", str(out_dir)]) == 1
+    assert "prompt_count_drift" in capsys.readouterr().out
+    tampered = dict(report)
+    tampered["prompt_version"] = "v4"
+    (out_dir / PILOT_REPORT_FILENAME).write_text(json.dumps(tampered))
+    assert run_phase03c_teacher_pilot.main(["--check", "--out-dir", str(out_dir)]) == 1
+    assert "prompt_version_invalid" in capsys.readouterr().out
+
+
+def test_dry_run_honours_families_and_prompt_version(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert (
+        run_phase03c_teacher_pilot.main(
+            [
+                "--dry-run",
+                "--families",
+                "fee-total-cost-trap",
+                "forbidden-term",
+                "--prompt-version",
+                "v4",
+            ]
+        )
+        == 0
+    )
+    assert "pilot prompts: 40 (k=3)" in capsys.readouterr().out

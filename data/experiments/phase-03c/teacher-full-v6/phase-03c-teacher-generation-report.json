@@ -1,0 +1,165 @@
+{
+  "accepted_count": 7196,
+  "accepted_families_coverage": {
+    "covered": [
+      "absent-evidence",
+      "add-on-removal",
+      "clarification-required",
+      "direct-success",
+      "disclosure-restriction",
+      "expired-approval",
+      "fee-total-cost-trap",
+      "forbidden-term",
+      "forged-evidence",
+      "multi-hazard"
+    ],
+    "missing": [],
+    "train_family_count": 10
+  },
+  "accepted_per_family": {
+    "absent-evidence": 736,
+    "add-on-removal": 720,
+    "clarification-required": 797,
+    "direct-success": 708,
+    "disclosure-restriction": 421,
+    "expired-approval": 795,
+    "fee-total-cost-trap": 744,
+    "forbidden-term": 792,
+    "forged-evidence": 700,
+    "multi-hazard": 783
+  },
+  "accepted_prompts": 3685,
+  "accepted_target": 2500,
+  "budget_stopped": false,
+  "compiler_version": "phase-03c-fast-compiler-v6",
+  "ledger": {
+    "accounting": "estimate; relay prices not exposed; rates from ml/configs/teacher-rates.json; failed calls and calls with missing usage are charged at the pre-call worst case, so a relay outage inflates the estimate and the ledger must be reset deliberately before a rerun: --reset-failed-charges rebuilds it from the samples JSONL, keeping each succeeded call's recorded estimate and counting failed calls at zero",
+    "per_model": {
+      "claude-sonnet-5": {
+        "calls": 8003,
+        "estimated_usd": 121.59263100000035,
+        "failed": 4,
+        "input_tokens": 25069262,
+        "output_tokens": 3089138,
+        "succeeded": 7999
+      }
+    },
+    "rates_path": "ml/configs/teacher-rates.json",
+    "stop_reason": "hard_error:PermissionDeniedError",
+    "total_calls": 8003,
+    "total_estimated_usd": 121.59263100000035,
+    "usd_ceiling": 140.0
+  },
+  "model": "claude-sonnet-5",
+  "prompt_count": 4000,
+  "prompt_version": "v6",
+  "prompts_complete": 3999,
+  "prompts_sampled": 4000,
+  "quarantine_per_filter": {
+    "call_failed": 4,
+    "dedup": 28,
+    "detectors": 76,
+    "strict_json_schema": 200,
+    "target_agreement": 499
+  },
+  "quarantine_per_reason": {
+    "call_failed:failed_provider_call": 4,
+    "dedup:exact_duplicate": 28,
+    "detectors:disclosure": 2,
+    "detectors:unsupported_facts": 74,
+    "strict_json_schema:invalid_json": 200,
+    "target_agreement:dialogue_act": 408,
+    "target_agreement:reasoner_needed": 91
+  },
+  "rates": {
+    "calls": 8003,
+    "calls_failed": 4,
+    "estimated_usd": 121.59263100000035,
+    "f1_f4_pass": 7224,
+    "f1_f4_rate": 0.9031128891111389,
+    "f1_pass": 7799,
+    "f1_rate": 0.9749968746093262,
+    "f2_act_needed_pass": 7300,
+    "f2_act_needed_rate": 0.9126140767595949,
+    "f2_given_f1_rate": 0.936017438133094,
+    "f2_pass": 7300,
+    "f2_rate": 0.9126140767595949,
+    "failure_reasons": {
+      "detectors:disclosure": 2,
+      "detectors:unsupported_facts": 74,
+      "strict_json_schema:invalid_json": 200,
+      "target_agreement:dialogue_act": 408,
+      "target_agreement:reasoner_needed": 91
+    },
+    "per_family": {
+      "absent-evidence": {
+        "f2_act_needed_rate": 0.945,
+        "f2_rate": 0.945,
+        "samples": 800
+      },
+      "add-on-removal": {
+        "f2_act_needed_rate": 0.92375,
+        "f2_rate": 0.92375,
+        "samples": 800
+      },
+      "clarification-required": {
+        "f2_act_needed_rate": 1.0,
+        "f2_rate": 1.0,
+        "samples": 800
+      },
+      "direct-success": {
+        "f2_act_needed_rate": 0.89125,
+        "f2_rate": 0.89125,
+        "samples": 800
+      },
+      "disclosure-restriction": {
+        "f2_act_needed_rate": 0.5325,
+        "f2_rate": 0.5325,
+        "samples": 800
+      },
+      "expired-approval": {
+        "f2_act_needed_rate": 1.0,
+        "f2_rate": 1.0,
+        "samples": 800
+      },
+      "fee-total-cost-trap": {
+        "f2_act_needed_rate": 0.9375,
+        "f2_rate": 0.9375,
+        "samples": 800
+      },
+      "forbidden-term": {
+        "f2_act_needed_rate": 1.0,
+        "f2_rate": 1.0,
+        "samples": 800
+      },
+      "forged-evidence": {
+        "f2_act_needed_rate": 0.8961201501877347,
+        "f2_rate": 0.8961201501877347,
+        "samples": 799
+      },
+      "multi-hazard": {
+        "f2_act_needed_rate": 1.0,
+        "f2_rate": 1.0,
+        "samples": 800
+      }
+    },
+    "prompts": 4000,
+    "samples": 7999
+  },
+  "run_complete": false,
+  "samples_file": "claude-sonnet-5-samples.jsonl",
+  "schema_version": "phase-03c-teacher-generation-report-v1",
+  "selection": {
+    "concurrency": 6,
+    "k": 2,
+    "split": "train"
+  },
+  "stop_reason": "hard_error:PermissionDeniedError",
+  "training_ready": true,
+  "training_ready_criteria": {
+    "accepted_at_least_target": true,
+    "ledger_within_cap": true,
+    "zero_cross_split_families": true,
+    "zero_forbidden_model_input_keys": true
+  }
+}

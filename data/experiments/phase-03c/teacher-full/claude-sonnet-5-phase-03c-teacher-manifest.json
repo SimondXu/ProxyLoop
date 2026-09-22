@@ -1,0 +1,45 @@
+{
+  "accepted_count": 3,
+  "family_counts": {
+    "absent-evidence": 3
+  },
+  "rows": [
+    {
+      "call_index": 0,
+      "content_hash": "1b7b8584e47eb0e5369bb2d60a00e98c5069a9c9614289c074281e4b915ac511",
+      "family_id": "absent-evidence",
+      "lexical_fingerprint": "a75c9b2f8d0b727ae72007ee74f50e47e4f1e0eccbb4ddae98b80363ea6a58ae",
+      "model": "claude-sonnet-5",
+      "position_index": 1,
+      "prompt_fingerprint": "50dd5d30ca8083c4b4e83227dc0e55397f3c369c14e4ad9bc9ffb6e9dcf6ec50",
+      "prompt_id": "absent-evidence@1.0::retention-gated-v1@1.0::p5::pos1",
+      "second_family_act_agrees": null,
+      "seed": 5
+    },
+    {
+      "call_index": 1,
+      "content_hash": "a2279e39723558574983652b37c80b526cbb4715b52431ef300fc18323ff413b",
+      "family_id": "absent-evidence",
+      "lexical_fingerprint": "6e2a51adeb37dbaffaf988dc22f0ba8e502cd6a3e89aa7d227e0d1974235c63c",
+      "model": "claude-sonnet-5",
+      "position_index": 1,
+      "prompt_fingerprint": "50dd5d30ca8083c4b4e83227dc0e55397f3c369c14e4ad9bc9ffb6e9dcf6ec50",
+      "prompt_id": "absent-evidence@1.0::retention-gated-v1@1.0::p5::pos1",
+      "second_family_act_agrees": null,
+      "seed": 5
+    },
+    {
+      "call_index": 0,
+      "content_hash": "74d85ff1a120b7fb48d4e729c0cf7abaff8e5352902a67f99fed5d5ed7086063",
+      "family_id": "absent-evidence",
+      "lexical_fingerprint": "f18afcbeb86d76a05aa96d82d5caca1a81abe26caaef3c60e8dbda6c32ea497e",
+      "model": "claude-sonnet-5",
+      "position_index": 2,
+      "prompt_fingerprint": "58f883ebea60a52116991f20de4284b21db2297cc7bf2ec47dd958cd035e8b9f",
+      "prompt_id": "absent-evidence@1.0::retention-gated-v1@1.0::p9::pos2",
+      "second_family_act_agrees": null,
+      "seed": 9
+    }
+  ],
+  "schema_version": "phase-03c-teacher-manifest-v1"
+}

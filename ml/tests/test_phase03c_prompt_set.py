@@ -13,7 +13,7 @@ from proxyloop_evaluation.phase03b_experiment import (
 )
 from proxyloop_evaluation.phase03c_experiment import (
     PHASE03C_COMPILER_VERSION,
-    PHASE03C_COMPILER_VERSION_V4,
+    PHASE03C_COMPILER_VERSION_V6,
     Phase03CQwenAdapter,
 )
 from proxyloop_evaluation.phase03c_prompt_set import (
@@ -108,16 +108,16 @@ def test_build_prompt_set_matches_committed_prefix(
     assert all(by_id[row.prompt_id] == row for row in rows)
 
 
-def test_committed_manifest_is_rendered_with_the_stage1b_v4_prompt() -> None:
+def test_committed_manifest_is_rendered_with_the_stage1c_v6_prompt() -> None:
     document = json.loads((ROOT / PROMPT_SET_MANIFEST_PATH).read_text("utf-8"))
-    assert STAGE1B_PROMPT_VERSION == "v4"
-    assert document["compiler_version"] == PHASE03C_COMPILER_VERSION_V4
+    assert STAGE1B_PROMPT_VERSION == "v6"
+    assert document["compiler_version"] == PHASE03C_COMPILER_VERSION_V6
 
 
 def test_sampled_rows_re_render_to_the_same_fingerprints(
     committed_rows: tuple[PromptSetRow, ...],
 ) -> None:
-    adapter = Phase03CQwenAdapter(generator=lambda _: "{}", prompt_version="v4")
+    adapter = Phase03CQwenAdapter(generator=lambda _: "{}", prompt_version="v6")
     v3_adapter = Phase03CQwenAdapter(generator=lambda _: "{}")
     for row in _sample(committed_rows):
         scenario, position = resolve_row(row)
@@ -233,7 +233,7 @@ def test_manifest_write_check_and_tamper(tmp_path: Path) -> None:
     assert load_prompt_set_manifest(path) == rows
     document = json.loads(path.read_text(encoding="utf-8"))
     assert document["schema_version"] == PROMPT_SET_SCHEMA_VERSION
-    assert document["compiler_version"] == PHASE03C_COMPILER_VERSION_V4
+    assert document["compiler_version"] == PHASE03C_COMPILER_VERSION_V6
     assert document["split_manifest_content_hash"] == SPLIT_MANIFEST.content_hash
     assert document["split_counts"] == {"development": 40, "train": 40}
     assert document["position_counts"] == {"1": 40, "2": 40}
@@ -286,16 +286,16 @@ def test_manifest_records_and_checks_the_prompt_version(tmp_path: Path) -> None:
         )
         == ()
     )
-    v4_rows = build_prompt_set(train_seeds=(1,), dev_seeds=(900,))
-    assert [row.prompt_id for row in v3_rows] == [row.prompt_id for row in v4_rows]
+    v6_rows = build_prompt_set(train_seeds=(1,), dev_seeds=(900,))
+    assert [row.prompt_id for row in v3_rows] == [row.prompt_id for row in v6_rows]
     assert [row.input_fingerprint for row in v3_rows] == [
-        row.input_fingerprint for row in v4_rows
+        row.input_fingerprint for row in v6_rows
     ]
     assert all(
-        v3.prompt_fingerprint != v4.prompt_fingerprint
-        for v3, v4 in zip(v3_rows, v4_rows, strict=True)
+        v3.prompt_fingerprint != v6.prompt_fingerprint
+        for v3, v6 in zip(v3_rows, v6_rows, strict=True)
     )
-    # Checking a v3 manifest against the Stage 1b default (v4) drifts on the
+    # Checking a v3 manifest against the Stage 1c default (v6) drifts on the
     # compiler version, the content fingerprint, and every row.
     assert check_prompt_set_manifest(path, train_seeds=(1,), dev_seeds=(900,)) == (
         "manifest_drift:compiler_version",
