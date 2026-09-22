@@ -39,7 +39,7 @@ from proxyloop_workflow_worker.workflow import (
 )
 from temporalio import activity
 from temporalio.api.workflowservice.v1 import RegisterNamespaceRequest
-from temporalio.client import Client, WorkflowUpdateStage
+from temporalio.client import Client, WorkflowExecutionStatus, WorkflowUpdateStage
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
@@ -79,6 +79,37 @@ class _ExhaustingAdapter(CaseCommandActivityAdapter):
         if command.command_id == self.blocked_command_id:
             self.blocked_attempts += 1
             raise ApplicationError("injected unavailable", type="storage_unavailable")
+        return super().apply_command(command)
+
+
+class _ExpiryFaultingAdapter(CaseCommandActivityAdapter):
+    """Fail inside the EXPIRE_APPROVAL activity only, until the switch flips."""
+
+    def __init__(
+        self,
+        runtime: ThinAgentRuntime,
+        *,
+        error_type: str,
+        non_retryable: bool = False,
+    ) -> None:
+        super().__init__(runtime)
+        self.error_type = error_type
+        self.non_retryable = non_retryable
+        self.faulting = True
+        self.expiry_attempts = 0
+        self.other_commands: list[UUID] = []
+
+    def apply_command(self, command: CaseCommand) -> CaseTransitionRef:
+        if command.command_type is CaseCommandType.EXPIRE_APPROVAL:
+            self.expiry_attempts += 1
+            if self.faulting:
+                raise ApplicationError(
+                    "injected expiry fault",
+                    type=self.error_type,
+                    non_retryable=self.non_retryable,
+                )
+        else:
+            self.other_commands.append(command.command_id)
         return super().apply_command(command)
 
 
@@ -747,5 +778,197 @@ def test_time_skipping_approval_update_races_expiry_without_stale_execution() ->
                 for event in state.snapshot.visible_events
             )
             assert len(state.transitions) == 3
+
+    asyncio.run(scenario())
+
+
+async def _pending_approval(temporal: TemporalCaseClient) -> CaseTransitionRef:
+    created = await temporal.apply_command(_create_request())
+    waiting = await temporal.apply_command(
+        CaseCommandRequest(
+            command_id=uuid4(),
+            case_id=SCRIPTED_CASE_ID,
+            command_type=CaseCommandType.APPEND_EVENT,
+            content="Review the fictional offer.",
+            event_type="consumer_message",
+            expected_revision=created.after_revision,
+        )
+    )
+    assert waiting.approval_id is not None
+    assert waiting.approval_expires_at is not None
+    return waiting
+
+
+async def _wait_for_expiry_attempts(
+    adapter: _ExpiryFaultingAdapter, expected: int
+) -> None:
+    # Activity retry backoff (1+2+4+8 s) runs on the server clock; poll in
+    # real time rather than skipping, so a skip cannot time the activity out.
+    for _ in range(600):
+        if adapter.expiry_attempts >= expected:
+            break
+        await asyncio.sleep(0.05)
+    assert adapter.expiry_attempts == expected
+
+
+async def _workflow_status(
+    environment: WorkflowEnvironment, temporal: TemporalCaseClient
+) -> WorkflowExecutionStatus | None:
+    handle = environment.client.get_workflow_handle(
+        temporal.workflow_id(SCRIPTED_CASE_ID)
+    )
+    return (await handle.describe()).status
+
+
+async def _later_distinct_update_reaches_runtime(
+    adapter: _ExpiryFaultingAdapter,
+    temporal: TemporalCaseClient,
+    waiting: CaseTransitionRef,
+) -> None:
+    # No non-expiry command is valid while the approval is pending, so the
+    # liveness proof is that the Update is executed by the Workflow and
+    # rejected by the Runtime (``case_conflict``), not lost to a FAILED run.
+    seen = len(adapter.other_commands)
+    later = CaseCommandRequest(
+        command_id=uuid4(),
+        case_id=SCRIPTED_CASE_ID,
+        command_type=CaseCommandType.APPEND_EVENT,
+        content="A later distinct consumer message.",
+        event_type="consumer_message",
+        expected_revision=waiting.after_revision,
+    )
+    with pytest.raises(TemporalDispatchError) as raised:
+        await temporal.apply_command(later)
+    assert raised.value.category == "case_conflict"
+    assert adapter.other_commands[seen:] == [later.command_id]
+
+
+def test_time_skipping_expiry_retry_exhaustion_keeps_workflow_alive() -> None:
+    database_url = _database_url()
+    _truncate(database_url)
+
+    async def scenario() -> None:
+        environment = await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        )
+        async with environment:
+            task_queue = f"proxyloop-phase05a-expiry-fault-{uuid4()}"
+            settings = TemporalSettings(task_queue=task_queue)
+            runtime = ThinAgentRuntime(PostgresCaseRepository(database_url))
+            temporal = TemporalCaseClient(environment.client, settings)
+            adapter = _ExpiryFaultingAdapter(runtime, error_type="storage_unavailable")
+            worker = Worker(
+                environment.client,
+                task_queue=task_queue,
+                workflows=[CaseWorkflow],
+                activities=[activity_for_adapter(adapter)],
+            )
+            async with worker:
+                waiting = await _pending_approval(temporal)
+                assert waiting.approval_expires_at is not None
+                # Skip to just past the expiry only: a longer skip would also
+                # fire the Workflow-level retry timers and repeat the round.
+                await environment.sleep(
+                    waiting.approval_expires_at
+                    - await environment.get_current_time()
+                    + timedelta(seconds=1)
+                )
+                await _wait_for_expiry_attempts(adapter, 5)
+                assert (
+                    await _workflow_status(environment, temporal)
+                    is WorkflowExecutionStatus.RUNNING
+                )
+                state = runtime.repository.get(SCRIPTED_CASE_ID)
+                assert state is not None
+                assert state.snapshot.approval_requests[0].decision.value == "pending"
+                await _later_distinct_update_reaches_runtime(adapter, temporal, waiting)
+                assert adapter.expiry_attempts == 5
+
+                adapter.faulting = False
+                # One exhausted round backs off for 15 s before the next. The
+                # time-skipping server advances on the wall clock while no skip
+                # is in progress, so the switch must flip within that 15 s
+                # window (measured gap: well under 1 s) or a further round runs.
+                await environment.sleep(timedelta(minutes=6))
+                await _wait_for_expiry_attempts(adapter, 6)
+                for _ in range(100):
+                    state = runtime.repository.get(SCRIPTED_CASE_ID)
+                    if (
+                        state is not None
+                        and state.snapshot.approval_requests[0].decision.value
+                        == "expired"
+                    ):
+                        break
+                    await asyncio.sleep(0.01)
+                await environment.sleep(timedelta(hours=1))
+                assert adapter.expiry_attempts == 6
+                assert (
+                    await _workflow_status(environment, temporal)
+                    is WorkflowExecutionStatus.RUNNING
+                )
+
+            state = runtime.repository.get(SCRIPTED_CASE_ID)
+            assert state is not None
+            approval = state.snapshot.approval_requests[0]
+            assert approval.decision.value == "expired"
+            assert approval.decided_at == approval.expires_at
+            assert (
+                len(
+                    [
+                        event
+                        for event in state.snapshot.visible_events
+                        if event.event_type == "approval_expired"
+                    ]
+                )
+                == 1
+            )
+            assert len(state.transitions) == 3
+
+    asyncio.run(scenario())
+
+
+def test_time_skipping_non_retryable_expiry_failure_does_not_spin() -> None:
+    database_url = _database_url()
+    _truncate(database_url)
+
+    async def scenario() -> None:
+        environment = await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        )
+        async with environment:
+            task_queue = f"proxyloop-phase05a-expiry-conflict-{uuid4()}"
+            settings = TemporalSettings(task_queue=task_queue)
+            runtime = ThinAgentRuntime(PostgresCaseRepository(database_url))
+            temporal = TemporalCaseClient(environment.client, settings)
+            adapter = _ExpiryFaultingAdapter(
+                runtime, error_type="case_conflict", non_retryable=True
+            )
+            worker = Worker(
+                environment.client,
+                task_queue=task_queue,
+                workflows=[CaseWorkflow],
+                activities=[activity_for_adapter(adapter)],
+            )
+            async with worker:
+                waiting = await _pending_approval(temporal)
+                await environment.sleep(timedelta(hours=2))
+                await _wait_for_expiry_attempts(adapter, 1)
+                assert (
+                    await _workflow_status(environment, temporal)
+                    is WorkflowExecutionStatus.RUNNING
+                )
+                await _later_distinct_update_reaches_runtime(adapter, temporal, waiting)
+                await environment.sleep(timedelta(hours=1))
+                await asyncio.sleep(0.5)
+                assert adapter.expiry_attempts == 1
+                assert (
+                    await _workflow_status(environment, temporal)
+                    is WorkflowExecutionStatus.RUNNING
+                )
+
+            state = runtime.repository.get(SCRIPTED_CASE_ID)
+            assert state is not None
+            assert state.snapshot.approval_requests[0].decision.value == "pending"
+            assert len(state.transitions) == 2
 
     asyncio.run(scenario())
