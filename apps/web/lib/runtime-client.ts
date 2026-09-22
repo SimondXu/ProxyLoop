@@ -568,7 +568,7 @@ function statusMessage(category: RuntimeErrorCategory): string {
     return "The saved Case is no longer available in the local Runtime. Reset this local task to continue.";
   }
   if (category === "case_conflict") {
-    return "The local Case changed concurrently. I will read its current authoritative state before continuing.";
+    return "The Case moved while this request was in flight. I read the current state; retry if the action is still offered.";
   }
   if (category === "approval_expired") {
     return "The Runtime reports that this approval has expired. No approval was sent again.";
@@ -579,7 +579,10 @@ function statusMessage(category: RuntimeErrorCategory): string {
   if (category === "temporal_unavailable") {
     return "The local orchestration attempt is still unresolved. Your Case and safe retry remain preserved; reconnect to read authoritative state.";
   }
-  if (category === "state_invalid" || category === "request_invalid" || category === "model_result_rejected") {
+  if (category === "model_result_rejected") {
+    return "The Runtime refused this turn (category: model_result_rejected). Reconnect and read the Case, or restart the demo.";
+  }
+  if (category === "state_invalid" || category === "request_invalid") {
     return "The local Runtime rejected this state safely. No unverified result is shown.";
   }
   return "The local Runtime request failed safely. Reconnect and retry when ready.";

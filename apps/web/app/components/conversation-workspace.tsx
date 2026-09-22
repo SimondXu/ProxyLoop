@@ -351,9 +351,11 @@ function DraftTaskBrief({
 function TaskBriefArtifact({
   payload,
   onConfirm,
+  blockedLabel,
 }: {
   payload: RuntimePayload;
   onConfirm?: () => void;
+  blockedLabel?: string;
 }) {
   const goal = goalRecord(payload);
   const bill = billRecord(payload);
@@ -386,7 +388,7 @@ function TaskBriefArtifact({
         onClick={onConfirm}
         type="button"
       >
-        {onConfirm ? "Keep both unchanged and continue" : "Constraint confirmed"}
+        {onConfirm ? "Keep both unchanged and continue" : blockedLabel ?? "Constraint confirmed"}
         <span aria-hidden="true">→</span>
       </button>
     </section>
@@ -450,11 +452,13 @@ function ApprovalArtifact({
   onApprove,
   busy,
   deadlinePassed,
+  blocked,
 }: {
   payload: RuntimePayload;
   onApprove: () => void;
   busy: boolean;
   deadlinePassed: boolean;
+  blocked: boolean;
 }) {
   const approval = payload.approval;
   if (!approval || !hasValidPendingApproval(payload)) return null;
@@ -484,8 +488,8 @@ function ApprovalArtifact({
         The approval request uses the Runtime&apos;s returned Case revision and
         Action Intent revision. The UI does not create or increment either value.
       </p>
-      <button className="primary-button" disabled={busy || deadlinePassed} id="approval-primary-action" onClick={onApprove} type="button">
-        {deadlinePassed ? "Approval deadline reached" : busy ? "Sending exact approval…" : "Approve exact terms"}
+      <button className="primary-button" disabled={busy || deadlinePassed || blocked} id="approval-primary-action" onClick={onApprove} type="button">
+        {deadlinePassed ? "Approval deadline reached" : blocked ? "Reconnect to continue" : busy ? "Sending exact approval…" : "Approve exact terms"}
         <span aria-hidden="true">→</span>
       </button>
     </section>
@@ -568,7 +572,21 @@ export function ConversationWorkspace() {
   const storageRef = useRef<PersistedWorkspaceState | null>(null);
   const [hasStoredState, setHasStoredState] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
+  // Set only when a 409 reconcile did not advance the revision and the stale
+  // retry was dropped (E-1): the primary action then needs a fresh read first.
+  const [staleRetryDropped, setStaleRetryDropped] = useState(false);
   const pollCount = useRef(0);
+  const pollBudgetExhaustedReported = useRef(false);
+
+  function clearFailure() {
+    setError(null);
+    setStaleRetryDropped(false);
+  }
+
+  function resetPollBudget() {
+    pollCount.current = 0;
+    pollBudgetExhaustedReported.current = false;
+  }
 
   function writeStorage(state: PersistedWorkspaceState | null) {
     storageRef.current = state;
@@ -662,7 +680,8 @@ export function ConversationWorkspace() {
     if (command.expectedRevision === null) return true;
     if (next.revision <= command.expectedRevision) return false;
     if (command.kind === "append_event") return next.snapshot.pending_execution !== true;
-    return next.approval?.decision !== "pending" || completionHasVerifiedEvidence(next);
+    return next.snapshot.pending_execution !== true &&
+      (next.approval?.decision !== "pending" || completionHasVerifiedEvidence(next));
   }
 
   async function readAuthoritativeCase(
@@ -685,7 +704,7 @@ export function ConversationWorkspace() {
         "invalid",
       );
     }
-    if (nextPhase !== phase) pollCount.current = 0;
+    if (nextPhase !== phase) resetPollBudget();
     setPhase(nextPhase);
     const pending = storageRef.current?.pendingCommand;
     if (pending && pendingResolved(pending, recovered)) clearPending(pending);
@@ -693,10 +712,10 @@ export function ConversationWorkspace() {
   }
 
   async function restorePersisted(state: PersistedWorkspaceState, requestId: number) {
-    pollCount.current = 0;
+    resetPollBudget();
     setPhase("restoring");
     setBusy(true);
-    setError(null);
+    clearFailure();
     try {
       const readiness = await checkReadiness();
       if (!readiness.ready) {
@@ -816,8 +835,8 @@ export function ConversationWorkspace() {
     sessionId.current = requestId;
     setPhase("loading");
     setBusy(true);
-    setError(null);
-    pollCount.current = 0;
+    clearFailure();
+    resetPollBudget();
     const previous = storageRef.current?.pendingCommand;
     const knownCreateCaseId = previous?.kind === "create_case"
       ? storageRef.current?.caseId ?? null
@@ -870,13 +889,13 @@ export function ConversationWorkspace() {
     setIntake(EMPTY_INTAKE);
     setActiveField(null);
     setIntakeError(null);
-    setError(null);
+    clearFailure();
     setApprovalDeadlinePassed(false);
     writeStorage(null);
     setBusy(false);
     setPhase("blank");
     nextMessageId.current = 1;
-    pollCount.current = 0;
+    resetPollBudget();
   }
 
   useEffect(() => {
@@ -938,7 +957,13 @@ export function ConversationWorkspace() {
   useEffect(() => {
     const shouldPoll = phase === "restoring" || phase === "working" || phase === "finalizing";
     if (!isVisible || !shouldPoll || !payload || !confirmedFacts) return;
-    if (pollCount.current >= 5) return;
+    if (pollCount.current >= 5) {
+      if (!pollBudgetExhaustedReported.current) {
+        pollBudgetExhaustedReported.current = true;
+        setError("Still waiting for the authoritative result after 5 reads. The Runtime may have an execution in progress or stuck; reconnect to read the Case again.");
+      }
+      return;
+    }
     const timer = window.setTimeout(() => {
       pollCount.current += 1;
       void readAuthoritativeCase(payload.case_id, confirmedFacts, sessionId.current).catch((caught) => {
@@ -1015,9 +1040,9 @@ export function ConversationWorkspace() {
     const facts = confirmedFacts;
     if (!facts || !hasValidTaskBrief(payload, facts)) return;
     const requestId = sessionId.current;
-    pollCount.current = 0;
+    resetPollBudget();
     setBusy(true);
-    setError(null);
+    clearFailure();
     addMessage("user", "Keep mobile hotspot and device financing unchanged.");
     setPhase("working");
     const body = appendConsumerEventRequestBody(CONFIRMATION_EVENT, payload.revision);
@@ -1045,7 +1070,13 @@ export function ConversationWorkspace() {
       if (requestId !== sessionId.current) return;
       if (caught instanceof RuntimeClientError && caught.status === 409) {
         try {
-          await readAuthoritativeCase(payload.case_id, facts, requestId);
+          const reconciled = await readAuthoritativeCase(payload.case_id, facts, requestId);
+          if (requestId !== sessionId.current) return;
+          if (reconciled.revision <= payload.revision) {
+            clearPending(command);
+            setStaleRetryDropped(true);
+            setError(caught.message);
+          }
           return;
         } catch (reconciled) {
           caught = reconciled;
@@ -1065,8 +1096,8 @@ export function ConversationWorkspace() {
     const approval = waiting.approval;
     if (!approval || !confirmedFacts || !hasValidTaskBrief(waiting, confirmedFacts) || !hasValidPendingApproval(waiting)) return;
     setBusy(true);
-    pollCount.current = 0;
-    setError(null);
+    resetPollBudget();
+    clearFailure();
     if (approvalDeadlinePassed || Date.parse(stringAt(approval, "expires_at") ?? "") <= Date.now()) {
       setApprovalDeadlinePassed(true);
       setBusy(false);
@@ -1106,7 +1137,13 @@ export function ConversationWorkspace() {
       if (requestId !== sessionId.current) return;
       if (caught instanceof RuntimeClientError && caught.status === 409) {
         try {
-          await readAuthoritativeCase(waiting.case_id, confirmedFacts, requestId);
+          const reconciled = await readAuthoritativeCase(waiting.case_id, confirmedFacts, requestId);
+          if (requestId !== sessionId.current) return;
+          if (reconciled.revision <= waiting.revision) {
+            clearPending(command);
+            setStaleRetryDropped(true);
+            setError(caught.message);
+          }
           return;
         } catch (reconciled) {
           caught = reconciled;
@@ -1221,7 +1258,7 @@ export function ConversationWorkspace() {
           ) : null}
 
           {payload && (phase === "confirm" || phase === "working" || phase === "finalizing" || phase === "approval" || phase === "receipt" || phase === "expired" || phase === "blocked") ? (
-            <AssistantMessage><TaskBriefArtifact payload={payload} onConfirm={phase === "confirm" && !busy ? confirmConstraint : undefined} /></AssistantMessage>
+            <AssistantMessage><TaskBriefArtifact blockedLabel={staleRetryDropped ? "Reconnect to continue" : undefined} onConfirm={phase === "confirm" && !busy && !staleRetryDropped ? confirmConstraint : undefined} payload={payload} /></AssistantMessage>
           ) : null}
 
           {payload && (phase === "working" || phase === "finalizing") ? <AssistantMessage><ProgressArtifact label={phase === "finalizing" ? "Finalizing the approved fictional transition" : undefined} /></AssistantMessage> : null}
@@ -1230,7 +1267,7 @@ export function ConversationWorkspace() {
             <AssistantMessage>
               <p>The Runtime returned one offer that satisfies the confirmed guardrails. Nothing is accepted until you approve the exact request.</p>
               <OfferArtifact payload={payload} />
-              {phase === "approval" ? <ApprovalArtifact busy={busy} deadlinePassed={approvalDeadlinePassed} onApprove={approveExactTerms} payload={payload} /> : null}
+              {phase === "approval" ? <ApprovalArtifact blocked={staleRetryDropped} busy={busy} deadlinePassed={approvalDeadlinePassed} onApprove={approveExactTerms} payload={payload} /> : null}
             </AssistantMessage>
           ) : null}
           {phase === "expired" ? <AssistantMessage><ExpiredArtifact /></AssistantMessage> : null}

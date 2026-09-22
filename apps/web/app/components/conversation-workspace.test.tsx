@@ -1077,6 +1077,208 @@ describe("ConversationWorkspace", () => {
     });
     expect(screen.getByRole("heading", { name: "Finalizing the approved fictional transition" })).toBeInTheDocument();
   });
+
+  it("surfaces a 409 on the constraint event when the reconcile read does not advance the revision", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockRejectedValueOnce(new runtime.RuntimeClientError(
+      "The Runtime refused this turn (category: model_result_rejected). Reconnect and read the Case, or restart the demo.",
+      "http",
+      409,
+      "model_result_rejected",
+    ));
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.mocked(runtime.getCase).mockResolvedValue(payload());
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("model_result_rejected");
+    expect(runtime.getCase).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("button", { name: /Keep both unchanged/ })).not.toBeInTheDocument();
+    expect(document.getElementById("task-brief-confirm")).toBeDisabled();
+    expect(document.getElementById("task-brief-confirm")).toHaveTextContent("Reconnect to continue");
+    expect(runtime.loadPersistedWorkspace()?.pendingCommand).toBeNull();
+
+    vi.mocked(runtime.checkReadiness).mockResolvedValue({
+      status: "ok", ready: true, dependency: "postgres", adapter_mode: "scripted",
+      storage_mode: "postgres", orchestration_mode: "temporal", error_category: "none",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect and read Case" }));
+    expect(await screen.findByRole("button", { name: /Keep both unchanged/ })).toBeEnabled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(runtime.getCase).toHaveBeenCalledTimes(3);
+    expect(runtime.appendConsumerEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the constraint button and the exact retry after a transient non-409 failure", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockRejectedValueOnce(new runtime.RuntimeClientError(
+      "The local Runtime request failed safely. Reconnect and retry when ready.",
+      "network",
+    ));
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("failed safely");
+    const stored = runtime.loadPersistedWorkspace()?.pendingCommand;
+    expect(stored?.kind).toBe("append_event");
+    // A transient failure is not a dropped retry: the primary action stays
+    // available and re-sends the exact same command.
+    const button = await screen.findByRole("button", { name: /Keep both unchanged/ });
+    expect(button).toBeEnabled();
+    vi.mocked(runtime.appendConsumerEvent).mockResolvedValueOnce(payload({ revision: 2 }));
+    fireEvent.click(button);
+    await waitFor(() => expect(runtime.appendConsumerEvent).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(runtime.appendConsumerEvent).mock.calls[1]).toEqual([
+      stored?.caseId,
+      stored?.requestBody.content,
+      stored?.expectedRevision,
+      { idempotencyKey: stored?.idempotencyKey },
+    ]);
+  });
+
+  it("surfaces an explicit still-waiting error with reconnect after five finalizing reads", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const finalizing = payload({
+      event_cursor: 2,
+      revision: 6,
+      route: "fast_now",
+      snapshot: { ...payload().snapshot, pending_execution: true },
+    });
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockResolvedValue(finalizing);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.useFakeTimers();
+    vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...finalizing }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+      for (let i = 0; i < 6; i += 1) await Promise.resolve();
+    });
+    expect(screen.getByRole("heading", { name: "Finalizing the approved fictional transition" })).toBeInTheDocument();
+    const readsBeforePolling = vi.mocked(runtime.getCase).mock.calls.length;
+
+    for (let poll = 0; poll < 8; poll += 1) {
+      await act(async () => {
+        vi.advanceTimersByTime(1500);
+        for (let i = 0; i < 4; i += 1) await Promise.resolve();
+      });
+    }
+    expect(vi.mocked(runtime.getCase).mock.calls.length - readsBeforePolling).toBe(5);
+    expect(screen.getByRole("alert")).toHaveTextContent("Still waiting for the authoritative result after 5 reads");
+    expect(screen.getByRole("heading", { name: "Finalizing the approved fictional transition" })).toBeInTheDocument();
+
+    vi.mocked(runtime.checkReadiness).mockResolvedValue({
+      status: "ok", ready: true, dependency: "postgres", adapter_mode: "scripted",
+      storage_mode: "postgres", orchestration_mode: "temporal", error_category: "none",
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Reconnect and read Case" }));
+      for (let i = 0; i < 6; i += 1) await Promise.resolve();
+    });
+    // Reconnect reads the Case (6th read), then replays the kept exact
+    // append_event retry and reads once more after it.
+    expect(vi.mocked(runtime.getCase).mock.calls.length - readsBeforePolling).toBe(7);
+    expect(vi.mocked(runtime.appendConsumerEvent).mock.calls).toHaveLength(2);
+    expect(vi.mocked(runtime.appendConsumerEvent).mock.calls[1]?.[3]).toEqual(
+      vi.mocked(runtime.appendConsumerEvent).mock.calls[0]?.[3],
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Finalizing the approved fictional transition" })).toBeInTheDocument();
+  });
+
+  it("keeps and replays the exact pending approval while the approved execution is still pending", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const claimed = payload({
+      approval: {
+        action_intent_revision: 1,
+        approval_id: "22222222-2222-4222-8222-222222222222",
+        case_revision: 2,
+        decision: "approved",
+        expires_at: NORMAL_PENDING_APPROVAL_EXPIRES_AT,
+        material_terms_hash: "hash-1",
+      },
+      event_cursor: 3,
+      revision: 5,
+      route: "fast_now",
+      snapshot: { ...payload().snapshot, pending_execution: true },
+    });
+    const completed = payload({
+      completion: { decision: "complete", evidence_ids: ["evidence-1"] },
+      evidence: [{ evidence_id: "evidence-1" }],
+      execution_count: 1,
+      event_cursor: 4,
+      revision: 7,
+      route: "terminal",
+    });
+    const stored = {
+      kind: "decide_approval" as const,
+      idempotencyKey: "33333333-3333-4333-8333-333333333333",
+      requestBody: {
+        decision: "approved",
+        expected_action_intent_revision: 1,
+        expected_case_revision: 2,
+        expected_revision: 4,
+      },
+      caseId: payload().case_id,
+      expectedRevision: 4,
+      approvalId: "22222222-2222-4222-8222-222222222222",
+      expectedCaseRevision: 2,
+      expectedActionIntentRevision: 1,
+    };
+    runtime.savePersistedWorkspace({
+      schemaVersion: 1,
+      caseId: payload().case_id,
+      confirmedFacts: {
+        currentMonthlyTotal: { amount_minor: 9200, currency: "USD" },
+        targetMonthlyTotal: { amount_minor: 7500, currency: "USD" },
+        mobileHotspotRequired: true,
+        deviceFinancingChangeForbidden: true,
+      },
+      pendingCommand: stored,
+    });
+    vi.mocked(runtime.checkReadiness).mockResolvedValue({
+      status: "ok", ready: true, dependency: "postgres", adapter_mode: "scripted",
+      storage_mode: "postgres", orchestration_mode: "temporal", error_category: "none",
+    });
+    vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...claimed }));
+    vi.mocked(runtime.decideApproval).mockReset().mockResolvedValue(claimed);
+    vi.useFakeTimers();
+
+    render(<ConversationWorkspace />);
+    await act(async () => {
+      for (let i = 0; i < 12; i += 1) await Promise.resolve();
+    });
+    expect(screen.getByRole("heading", { name: "Finalizing the approved fictional transition" })).toBeInTheDocument();
+    expect(vi.mocked(runtime.decideApproval).mock.calls).toHaveLength(1);
+    expect(vi.mocked(runtime.decideApproval).mock.calls[0]).toEqual([
+      stored.caseId,
+      stored.approvalId,
+      {
+        expectedActionIntentRevision: stored.requestBody.expected_action_intent_revision,
+        expectedCaseRevision: stored.requestBody.expected_case_revision,
+        expectedRevision: stored.requestBody.expected_revision,
+      },
+      { idempotencyKey: stored.idempotencyKey },
+    ]);
+    expect(runtime.loadPersistedWorkspace()?.pendingCommand?.idempotencyKey).toBe(stored.idempotencyKey);
+
+    vi.mocked(runtime.getCase).mockResolvedValue(completed);
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      for (let i = 0; i < 4; i += 1) await Promise.resolve();
+    });
+    expect(screen.getByRole("heading", { name: "Completed with supporting Evidence" })).toBeInTheDocument();
+    expect(vi.mocked(runtime.decideApproval).mock.calls).toHaveLength(1);
+    expect(runtime.loadPersistedWorkspace()?.pendingCommand).toBeNull();
+  });
 });
 
 function deferred<T>() {
