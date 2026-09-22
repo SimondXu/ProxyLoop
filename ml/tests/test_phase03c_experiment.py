@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import pytest
+from proxyloop_contracts import canonical_fingerprint
 from proxyloop_evaluation.fast_parse import (
     DuplicateJSONKeyError,
     extract_fast_json,
@@ -17,8 +18,10 @@ from proxyloop_evaluation.phase03b_experiment import (
     evaluate_fast_result,
 )
 from proxyloop_evaluation.phase03c_experiment import (
+    DECISION_CONVENTION_BLOCK,
     PHASE03B_ARM_SOURCES,
     PHASE03C_COMPILER_VERSION,
+    PHASE03C_COMPILER_VERSION_V4,
     REASON_CODE_LINE,
     Phase03CQwenAdapter,
     analyze_raw_output,
@@ -340,6 +343,58 @@ def test_v3_prompt_embeds_schema_and_reason_code_line_without_oracle_fields(
         assert forbidden not in view_json
 
 
+def test_v4_prompt_is_v3_plus_the_decision_convention_block(
+    dev_examples: tuple[Phase03BExample, ...],
+) -> None:
+    v3_adapter = Phase03CQwenAdapter(generator=lambda _: "{}")
+    v4_adapter = Phase03CQwenAdapter(generator=lambda _: "{}", prompt_version="v4")
+    assert v3_adapter.prompt_version == "v3"
+    assert v3_adapter.compiler_version == PHASE03C_COMPILER_VERSION
+    assert v4_adapter.prompt_version == "v4"
+    assert v4_adapter.compiler_version == PHASE03C_COMPILER_VERSION_V4
+    assert PHASE03C_COMPILER_VERSION_V4 != PHASE03C_COMPILER_VERSION
+    assert DECISION_CONVENTION_BLOCK.startswith("DECISION_CONVENTION:")
+    assert DECISION_CONVENTION_BLOCK.count("\n") == 8
+    for example in dev_examples:
+        v3 = v3_adapter.build_prompt(example.view)
+        v4 = v4_adapter.build_prompt(example.view)
+        assert v4.system == v3.system
+        assert DECISION_CONVENTION_BLOCK not in v3.user
+        # The block sits after the reason-code line and before the view; the
+        # rest of the user prompt is byte-identical.
+        assert v4.user == v3.user.replace(
+            REASON_CODE_LINE + "\n",
+            REASON_CODE_LINE + "\n" + DECISION_CONVENTION_BLOCK + "\n",
+            1,
+        )
+        assert v4.user.count(DECISION_CONVENTION_BLOCK) == 1
+        assert (
+            v4.user.index(REASON_CODE_LINE)
+            < v4.user.index(DECISION_CONVENTION_BLOCK)
+            < v4.user.index("COMPACT_FAST_VIEW:\n")
+        )
+        assert v4.fingerprint != v3.fingerprint
+    with pytest.raises(ValueError, match="prompt_version"):
+        Phase03CQwenAdapter(generator=lambda _: "{}", prompt_version="v5")  # type: ignore[arg-type]
+
+
+def test_v3_prompt_fingerprints_match_the_committed_stage0_controls(
+    dev_examples: tuple[Phase03BExample, ...],
+) -> None:
+    """v4 is additive: the v3 fingerprints bound by Stage 0 do not move."""
+
+    adapter = Phase03CQwenAdapter(generator=lambda _: "{}")
+    result = json.loads(
+        (
+            ROOT / "data/experiments/phase-03c/results/arm-a-untuned-8b-v3.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert result["controls"]["compiler_version"] == PHASE03C_COMPILER_VERSION
+    assert result["controls"]["prompt_fingerprints"] == [
+        adapter.build_prompt(example.view).fingerprint for example in dev_examples
+    ]
+
+
 def test_v3_controls_are_frozen_per_checkpoint(
     dev_examples: tuple[Phase03BExample, ...],
 ) -> None:
@@ -361,6 +416,16 @@ def test_v3_controls_are_frozen_per_checkpoint(
     )
     assert controls_8b.compiler_version == PHASE03C_COMPILER_VERSION
     assert controls_8b.prompt_fingerprints == controls_4b.prompt_fingerprints
+    controls_v4 = freeze_phase03c_controls(
+        dev_examples,
+        manifest_fingerprint="manifest-pin",
+        base_attestation=adapter_8b.checkpoint_attestation,
+        prompt_version="v4",
+    )
+    assert controls_v4.compiler_version == PHASE03C_COMPILER_VERSION_V4
+    assert controls_v4.prompt_fingerprints != controls_8b.prompt_fingerprints
+    assert controls_v4.input_fingerprints == controls_8b.input_fingerprints
+    assert controls_v4.schema_fingerprint == controls_8b.schema_fingerprint
     assert controls_8b.input_fingerprints == controls_4b.input_fingerprints
     assert controls_8b.base_attestation != controls_4b.base_attestation
     assert adapter_8b.model_spec.enable_thinking is False
@@ -612,6 +677,7 @@ def test_runner_writes_descriptive_result_and_binds_v3_controls(
     assert payload["result_role"] == "diagnostic"
     assert payload["execution"]["mode"] == "injected_test"
     assert payload["model"] == "8b"
+    assert payload["prompt_version"] == "v3"
     assert payload["controls"]["compiler_version"] == PHASE03C_COMPILER_VERSION
     assert payload["controls"]["base_checkpoint"]["enable_thinking"] is False
     assert payload["controls"]["base_checkpoint"]["model"] == QWEN3_8B_BF16_SPEC.model
@@ -630,6 +696,34 @@ def test_runner_writes_descriptive_result_and_binds_v3_controls(
     with pytest.raises(FileExistsError):
         run_phase03c_smoke.run_smoke(
             model="8b", model_path=tmp_path, output_path=output, adapter=adapter
+        )
+
+
+def test_runner_binds_v4_controls_when_asked(
+    tmp_path: Path, dev_examples: tuple[Phase03BExample, ...]
+) -> None:
+    v4_adapter = Phase03CQwenAdapter(
+        generator=lambda _: "{}", model_spec=QWEN3_8B_BF16_SPEC, prompt_version="v4"
+    )
+    payload = run_phase03c_smoke.run_smoke(
+        model="8b",
+        model_path=tmp_path,
+        output_path=tmp_path / "v4.json",
+        prompt_version="v4",
+        adapter=v4_adapter,
+    )
+    assert payload["prompt_version"] == "v4"
+    assert payload["controls"]["compiler_version"] == PHASE03C_COMPILER_VERSION_V4
+    assert payload["controls"]["prompt_fingerprints"] == [
+        v4_adapter.build_prompt(example.view).fingerprint for example in dev_examples
+    ]
+    assert "with the v4 prompt" in payload["description"]
+    with pytest.raises(ValueError, match="prompt version"):
+        run_phase03c_smoke.run_smoke(
+            model="8b",
+            model_path=tmp_path,
+            output_path=tmp_path / "mismatch.json",
+            adapter=v4_adapter,
         )
 
 
@@ -671,6 +765,45 @@ def test_smoke_result_check_fails_closed_on_missing_or_stray_files(
         "arm-a-untuned-8b-v3-extra.json",
     )
     (results / "arm-a-untuned-8b-v3-extra.json").unlink()
+    # A v4 row is optional, but when present it must carry v4 controls.
+    v4_adapter = Phase03CQwenAdapter(
+        generator=lambda _: "{}", model_spec=QWEN3_8B_BF16_SPEC, prompt_version="v4"
+    )
+    v4_payload = run_phase03c_smoke.run_smoke(
+        model="8b",
+        model_path=tmp_path,
+        output_path=tmp_path / "scratch-v4.json",
+        prompt_version="v4",
+        adapter=v4_adapter,
+    )
+    v4_payload["result_role"] = "canonical"
+    v4_payload["execution"] = {
+        "mode": "local_mlx",
+        "checkpoint_attestation": "observed_local_files",
+    }
+    v4_payload.pop("result_content_fingerprint")
+    v4_payload["result_content_fingerprint"] = canonical_fingerprint(v4_payload)
+    v4_path = results / "arm-a-untuned-8b-v4.json"
+    v4_path.write_text(json.dumps(v4_payload), encoding="utf-8")
+    assert check_smoke_results(tmp_path) == ()
+    mislabelled = json.loads(v4_path.read_text("utf-8"))
+    mislabelled["prompt_version"] = "v3"
+    mislabelled.pop("result_content_fingerprint")
+    mislabelled["result_content_fingerprint"] = canonical_fingerprint(mislabelled)
+    v4_path.write_text(json.dumps(mislabelled), encoding="utf-8")
+    assert check_smoke_results(tmp_path) == (
+        "prompt_version:data/experiments/phase-03c/results/arm-a-untuned-8b-v4.json",
+    )
+    v3_copy = json.loads((results / "arm-a-untuned-8b-v3.json").read_text("utf-8"))
+    v4_path.write_text(json.dumps(v3_copy), encoding="utf-8")
+    problems = check_smoke_results(tmp_path)
+    assert set(problems) == {
+        "compiler_version:data/experiments/phase-03c/results/arm-a-untuned-8b-v4.json",
+        "prompt_version:data/experiments/phase-03c/results/arm-a-untuned-8b-v4.json",
+        "prompt_fingerprints:data/experiments/phase-03c/results/"
+        "arm-a-untuned-8b-v4.json",
+    }
+    v4_path.unlink()
     swapped = json.loads((results / "arm-a-untuned-8b-v3.json").read_text("utf-8"))
     swapped["controls"]["base_checkpoint"]["quantization"] = "4bit"
     (results / "arm-a-untuned-8b-v3.json").write_text(json.dumps(swapped), "utf-8")

@@ -1,0 +1,30 @@
+{
+  "accepted_count": 4,
+  "accepted_families": [
+    "clarification-required",
+    "forbidden-term",
+    "multi-hazard"
+  ],
+  "accepted_prompts": 4,
+  "accepted_target": 2500,
+  "cross_split_families": [],
+  "forbidden_model_input_key_rows": 0,
+  "ledger_total_estimated_usd": 9.552361499999993,
+  "ledger_usd_ceiling": 15.0,
+  "max_kept_per_prompt": 2,
+  "models": [
+    "gemini-3.5-flash"
+  ],
+  "prompts_sampled": 200,
+  "quarantined_total": 596,
+  "samples_total": 600,
+  "schema_version": "phase-03c-teacher-manifest-v1",
+  "second_family_filter_active": false,
+  "training_ready": false,
+  "training_ready_criteria": {
+    "accepted_at_least_target": false,
+    "ledger_within_cap": true,
+    "zero_cross_split_families": true,
+    "zero_forbidden_model_input_keys": true
+  }
+}
