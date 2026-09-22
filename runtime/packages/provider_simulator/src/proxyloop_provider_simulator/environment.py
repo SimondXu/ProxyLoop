@@ -22,6 +22,11 @@ from .scenarios import (
     ScenarioParameters,
 )
 
+# Label of the verifier semantics implemented by ``_verify_decision``.  Offline
+# rescores of hosted evidence bind to it so a later verifier change is visible
+# in the derived artifact's ``evaluator_version``.
+PROVIDER_VERIFIER_VERSION = "phase-01b-verifier-v1-label"
+
 
 class EnvironmentState(StrEnum):
     READY = "ready"
@@ -277,6 +282,7 @@ def _dedupe(values: list[str]) -> tuple[str, ...]:
 
 
 __all__ = [
+    "PROVIDER_VERIFIER_VERSION",
     "EnvironmentAction",
     "EnvironmentDecision",
     "EnvironmentState",

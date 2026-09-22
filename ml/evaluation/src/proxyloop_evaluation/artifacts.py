@@ -42,7 +42,20 @@ def _load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def check_baseline_artifacts(root: Path) -> tuple[bool, tuple[str, ...]]:
+def check_baseline_artifacts_historical(root: Path) -> tuple[bool, tuple[str, ...]]:
+    """Integrity-only gate for the superseded r1 report: no evaluator replay.
+
+    r1 is historical evidence; its fingerprints, provenance bindings, and
+    truthfulness claims are still checked, but its rows are no longer re-read
+    through the current evaluator (``replay_report``).
+    """
+
+    return check_baseline_artifacts(root, replay=False)
+
+
+def check_baseline_artifacts(
+    root: Path, *, replay: bool = True
+) -> tuple[bool, tuple[str, ...]]:
     """Validate shape, provenance bindings, truthfulness, and exact fingerprint."""
 
     errors: list[str] = []
@@ -199,17 +212,18 @@ def check_baseline_artifacts(root: Path) -> tuple[bool, tuple[str, ...]]:
             "frontier reference must remain unattempted after unknown hosted cost"
         )
 
-    from .replay import replay_report
+    if replay:
+        from .replay import replay_report
 
-    errors.extend(
-        replay_report(
-            root,
-            report,
-            manifest=manifest,
-            episodes=episodes,
-            ceiling=ceiling,
+        errors.extend(
+            replay_report(
+                root,
+                report,
+                manifest=manifest,
+                episodes=episodes,
+                ceiling=ceiling,
+            )
         )
-    )
 
     expected_ready = all(
         condition.run_status is RunStatus.SUCCEEDED
@@ -243,6 +257,7 @@ __all__ = [
     "REPORT_PATH",
     "canonical_json",
     "check_baseline_artifacts",
+    "check_baseline_artifacts_historical",
     "fingerprint",
     "report_fingerprint",
     "write_report",
