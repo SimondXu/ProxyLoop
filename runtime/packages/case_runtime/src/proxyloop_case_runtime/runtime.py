@@ -1292,7 +1292,7 @@ class ThinAgentRuntime:
             )
             executor = self._executors.setdefault(
                 case_id,
-                CapabilityExecutor(adapter),
+                CapabilityExecutor(adapter, terms_derivation=offer_material_terms),
             )
             execution = executor.execute(request)
             if (
@@ -1302,7 +1302,9 @@ class ThinAgentRuntime:
                 # The cached executor is bound to a discarded Provider object
                 # (for example after a reconstruction from storage); its
                 # idempotency memory must not stand in for a real commit.
-                executor = CapabilityExecutor(adapter)
+                executor = CapabilityExecutor(
+                    adapter, terms_derivation=offer_material_terms
+                )
                 self._executors[case_id] = executor
                 execution = executor.execute(request)
             if execution.status not in {

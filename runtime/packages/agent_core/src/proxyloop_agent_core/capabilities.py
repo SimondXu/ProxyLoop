@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from threading import RLock
+from uuid import UUID
 
 from proxyloop_contracts import (
     ActionIntent,
@@ -18,10 +20,14 @@ from proxyloop_contracts import (
     CaseContextSnapshot,
     Evidence,
     EvidenceType,
+    MaterialTerm,
     ModelInputPins,
+    ProviderOffer,
 )
 
 from .interfaces import PreparedSimulatorExecution, SimulatorCapabilityAdapter
+
+TermsDerivation = Callable[[ProviderOffer], tuple[MaterialTerm, ...]]
 
 
 class CapabilityExecutionStatus(StrEnum):
@@ -48,12 +54,38 @@ class CapabilityExecutionOutcome:
 
 
 class CapabilityExecutor:
-    """The sole side-effect lane for fictional Provider capabilities."""
+    """The sole side-effect lane for fictional Provider capabilities.
 
-    def __init__(self, adapter: SimulatorCapabilityAdapter) -> None:
+    Two process-local at-most-once rules hold on top of request validation:
+
+    - one ``idempotency_key`` maps to one execution: the same request binding
+      reuses the recorded Evidence, a different binding is rejected
+      (``idempotency_key_reuse_mismatch``);
+    - one APPROVED ``ApprovalRequest`` is consumed by one execution: the same
+      approval under any other binding or idempotency key is rejected
+      (``approval_already_consumed``).
+
+    Both records are written only after the adapter's ``commit()`` returns, so
+    ``commit`` must be atomic; a commit that raises after mutating leaves no
+    record and a retry would execute again.
+
+    ``terms_derivation`` optionally recomputes the material terms of the
+    snapshot offer so an offer whose terms changed under an unchanged
+    revision is rejected (``current_offer_terms_mismatch``). The runtime
+    injects the telecom-domain derivation; this package does not depend on it.
+    """
+
+    def __init__(
+        self,
+        adapter: SimulatorCapabilityAdapter,
+        *,
+        terms_derivation: TermsDerivation | None = None,
+    ) -> None:
         self._adapter = adapter
+        self._terms_derivation = terms_derivation
         self._lock = RLock()
         self._evidence_by_idempotency_key: dict[str, tuple[str, Evidence]] = {}
+        self._consumed_approvals: dict[UUID, tuple[str, Evidence]] = {}
 
     def execute(
         self, request: CapabilityExecutionRequest
@@ -79,6 +111,20 @@ class CapabilityExecutor:
                 reason_codes=("idempotent_evidence_reused",),
                 evidence=prior_evidence,
             )
+        if request.approval is not None:
+            consumed = self._consumed_approvals.get(request.approval.approval_id)
+            if consumed is not None:
+                consumed_binding, consumed_evidence = consumed
+                if binding != consumed_binding or key != consumed_evidence.source_ref:
+                    return CapabilityExecutionOutcome(
+                        status=CapabilityExecutionStatus.REJECTED,
+                        reason_codes=("approval_already_consumed",),
+                    )
+                return CapabilityExecutionOutcome(
+                    status=CapabilityExecutionStatus.REUSED,
+                    reason_codes=("idempotent_evidence_reused",),
+                    evidence=consumed_evidence,
+                )
 
         reasons = self._validate(request)
         if reasons:
@@ -104,14 +150,18 @@ class CapabilityExecutor:
             )
         prepared_object.commit()
         self._evidence_by_idempotency_key[key] = (binding, evidence)
+        if request.approval is not None:
+            self._consumed_approvals[request.approval.approval_id] = (
+                binding,
+                evidence,
+            )
         return CapabilityExecutionOutcome(
             status=CapabilityExecutionStatus.EXECUTED,
             reason_codes=("simulator_capability_executed",),
             evidence=evidence,
         )
 
-    @staticmethod
-    def _validate(request: CapabilityExecutionRequest) -> tuple[str, ...]:
+    def _validate(self, request: CapabilityExecutionRequest) -> tuple[str, ...]:
         snapshot = request.snapshot
         intent = request.action_intent
         approval = request.approval
@@ -188,8 +238,13 @@ class CapabilityExecutor:
             )
             if offer is None or offer.revision != intent.offer_ref.offer_revision:
                 reasons.append("current_offer_mismatch")
-            elif request.executed_at >= offer.expires_at:
-                reasons.append("current_offer_expired")
+            else:
+                if request.executed_at >= offer.expires_at:
+                    reasons.append("current_offer_expired")
+                if self._terms_derivation is not None and _sorted_terms(
+                    intent.material_terms
+                ) != _sorted_terms(self._terms_derivation(offer)):
+                    reasons.append("current_offer_terms_mismatch")
         return tuple(dict.fromkeys(reasons))
 
     @staticmethod
@@ -273,6 +328,10 @@ def _request_binding(request: CapabilityExecutionRequest) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _sorted_terms(terms: tuple[MaterialTerm, ...]) -> tuple[tuple[str, str], ...]:
+    return tuple(sorted((term.name, term.value) for term in terms))
+
+
 def _material_terms_hash(intent: ActionIntent) -> str:
     canonical_terms = sorted(
         (term.model_dump(mode="json") for term in intent.material_terms),
@@ -292,4 +351,5 @@ __all__ = [
     "CapabilityExecutionRequest",
     "CapabilityExecutionStatus",
     "CapabilityExecutor",
+    "TermsDerivation",
 ]
