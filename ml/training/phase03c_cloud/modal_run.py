@@ -20,22 +20,24 @@ again after the arms finish.  The Hugging Face cache is a Volume, so the base
 model is downloaded once across the smoke and the real run.
 """
 
+import os
 import shlex
 import shutil
 import subprocess
+import sysconfig
 import time
 from pathlib import Path
 
 import modal
 
 HERE = Path(__file__).resolve().parent
-REPO_ROOT = HERE.parents[2]
-LOCAL_BUNDLE = REPO_ROOT / "data/experiments/phase-03c/cloud-bundle"
-LOCAL_TRAINING = REPO_ROOT / "data/experiments/phase-03c/training"
+BUNDLE_SUBPATH = "data/experiments/phase-03c/cloud-bundle"
+TRAINING_SUBPATH = "data/experiments/phase-03c/training"
 
 APP_NAME = "phase03c-stage2"
 DEFAULT_RUN = "cloud-run-01"
 UPLOAD_TARBALL = "phase03c-upload.tar.gz"
+DEV_ROUND_MEMBERS = ("eval/dev-report.json", "eval-dev.log")
 HOURS = 60 * 60
 
 # Remote paths: three Volumes plus the container's own disk for the heavy parts.
@@ -59,6 +61,11 @@ IMAGE = (
     .env(
         {
             "HF_HOME": HF_CACHE_DIR,
+            # vLLM's flashinfer sampler JIT-compiles kernels on first use, and
+            # the wheels' nvcc (13.4), torch's CUDA (13.0) and flashinfer's own
+            # bundled cccl headers do not agree. The arms decode greedily, so
+            # the PyTorch-native sampler is the reference path anyway.
+            "VLLM_USE_FLASHINFER_SAMPLER": "0",
             "PYTHONUNBUFFERED": "1",
             "TOKENIZERS_PARALLELISM": "false",
         }
@@ -74,6 +81,30 @@ VERSION_PROBE = (
     " 'peft', peft.__version__, 'transformers', transformers.__version__,"
     " 'datasets', datasets.__version__)"
 )
+
+
+def repo_root() -> Path:
+    """Repository root. Only defined locally: remotely this file sits in /root."""
+    return HERE.parents[2]
+
+
+def ensure_cuda_home() -> str | None:
+    """Diagnostic: report and export the nvcc the CUDA wheels ship.
+
+    Nothing in this pipeline compiles any more -- flashinfer's JIT sampler,
+    the one consumer, is disabled through VLLM_USE_FLASHINFER_SAMPLER because
+    its bundled cccl headers reject the wheels' nvcc. This stays so the log
+    records which toolkit was present if something starts compiling again.
+    """
+    if os.environ.get("CUDA_HOME"):
+        return os.environ["CUDA_HOME"]
+    site_packages = Path(sysconfig.get_paths()["purelib"])
+    for nvcc in sorted(site_packages.glob("nvidia/*/bin/nvcc")):
+        home = str(nvcc.parent.parent)
+        os.environ["CUDA_HOME"] = home
+        os.environ["CUDA_PATH"] = home
+        return home
+    return None
 
 
 def log(message: str) -> None:
@@ -109,6 +140,14 @@ def mirror(source: Path, target: Path) -> None:
     log(f"mirrored {source} -> {target}")
 
 
+def save_training_evidence(train_dir: Path, train_log: Path, out_run: Path) -> None:
+    """Mirror everything train.py has written so far, ignoring what is absent."""
+    for name in ("run-manifest.json", "dev-evals.jsonl", "adapter"):
+        mirror(train_dir / name, out_run / "train" / name)
+    mirror(train_log, out_run / "train.log")
+    OUT_VOLUME.commit()
+
+
 @app.function(
     image=IMAGE,
     gpu=GPU,
@@ -132,6 +171,14 @@ def run_stage2(
     gpu_name = torch.cuda.get_device_name(0)
     log(f"gpu {gpu_name} torch {torch.__version__} cuda {torch.version.cuda}")
     run_logged(["python", "-c", VERSION_PROBE], Path("/dev/null"))
+    log(f"cuda_home {ensure_cuda_home()}")
+    # Keep JIT/compile caches on the Volume so a rerun reuses them. Set here
+    # and not in the image: pip's own ~/.cache obeys XDG_CACHE_HOME, so an
+    # image-level value populates /hf during the build and the Volume then
+    # refuses to mount on a non-empty path.
+    jit_cache = Path(HF_CACHE_DIR) / "cache"
+    jit_cache.mkdir(parents=True, exist_ok=True)
+    os.environ["XDG_CACHE_HOME"] = str(jit_cache)
 
     bundle = Path(BUNDLE_DIR)
     if not (bundle / "bundle-manifest.json").is_file():
@@ -145,27 +192,27 @@ def run_stage2(
     out_run.mkdir(parents=True, exist_ok=True)
 
     train_log = work / "train.log"
-    run_logged(
-        [
-            "python",
-            "train.py",
-            "--bundle-dir",
-            str(bundle),
-            "--out-dir",
-            str(train_dir),
-            "--merge",
-            *shlex.split(train_flags),
-        ],
-        train_log,
-    )
+    try:
+        run_logged(
+            [
+                "python",
+                "train.py",
+                "--bundle-dir",
+                str(bundle),
+                "--out-dir",
+                str(train_dir),
+                "--merge",
+                *shlex.split(train_flags),
+            ],
+            train_log,
+        )
+    finally:
+        # Whatever the run produced before it stopped is the only copy: the
+        # work dir is the container's own disk. dev-evals.jsonl is appended
+        # per eval step, so a failure at hour 4 still leaves real evidence.
+        save_training_evidence(train_dir, train_log, out_run)
     trained = time.time()
     log(f"training finished in {trained - started:.0f}s")
-
-    # Checkpoint the expensive half before the vLLM arms can fail.
-    for name in ("run-manifest.json", "dev-evals.jsonl", "adapter"):
-        mirror(train_dir / name, out_run / "train" / name)
-    mirror(train_log, out_run / "train.log")
-    OUT_VOLUME.commit()
 
     limit_flags = ["--limit", str(eval_limit)] if eval_limit > 0 else []
     heldout_log = work / "eval-heldout.log"
@@ -183,6 +230,12 @@ def run_stage2(
         ],
         heldout_log,
     )
+    # The held-out report is Stage 3's contracted artifact and it is complete
+    # now. The dev round below loads two more engines over 400 rows instead of
+    # 240; if it fails, this must already be on the Volume.
+    mirror(eval_dir, out_run / "eval")
+    mirror(heldout_log, out_run / "eval-heldout.log")
+    OUT_VOLUME.commit()
 
     dev_log = work / "eval-dev.log"
     if not skip_dev_eval:
@@ -214,12 +267,20 @@ def run_stage2(
         "eval-heldout.log",
         "eval-dev.log",
     ]
-    present = [name for name in members if (work / name).exists()]
+    if skip_dev_eval:
+        # Only the dev ROUND's own outputs. train/dev-evals.jsonl is the
+        # per-step record including the untuned step 0 and is always required.
+        members = [name for name in members if name not in DEV_ROUND_MEMBERS]
+    missing = [name for name in members if not (work / name).exists()]
+    if missing:
+        raise SystemExit(f"upload set incomplete, missing: {missing}")
+    present = members
     tarball = work / UPLOAD_TARBALL
     subprocess.run(
         ["tar", "-czf", str(tarball), "-C", str(work), *present],
         check=True,
     )
+    HF_VOLUME.commit()
     mirror(tarball, out_run / UPLOAD_TARBALL)
     mirror(eval_dir, out_run / "eval")
     for name in ("eval-heldout.log", "eval-dev.log"):
@@ -252,11 +313,21 @@ def main(
     """Upload the bundle, run Stage 2 + 3 on one GPU, download the upload set."""
     if smoke and run == DEFAULT_RUN:
         run = "smoke-01"
-    target = Path(download_dir) if download_dir else LOCAL_TRAINING / run
+    if smoke and not run.startswith("smoke"):
+        # Otherwise a smoke writes 32-row artifacts over the real run's
+        # directory and its tarball on the out Volume.
+        raise SystemExit(f"--smoke needs a run name starting with 'smoke', got {run!r}")
+    if download_only and skip_download:
+        raise SystemExit("--download-only with --skip-download does nothing")
+    target = (
+        Path(download_dir) if download_dir else repo_root() / TRAINING_SUBPATH / run
+    )
 
     if not download_only:
         if not skip_upload:
-            local_bundle = Path(bundle_dir) if bundle_dir else LOCAL_BUNDLE
+            local_bundle = (
+                Path(bundle_dir) if bundle_dir else repo_root() / BUNDLE_SUBPATH
+            )
             manifest = local_bundle / "bundle-manifest.json"
             if not manifest.is_file():
                 raise SystemExit(

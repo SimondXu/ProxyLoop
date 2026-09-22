@@ -1,20 +1,30 @@
-# Phase 03C cloud package. Python 3.10-3.12, one CUDA GPU (A100/H100 80 GB;
+# Phase 03C cloud package. Python 3.12, one CUDA GPU (A100/H100 80 GB;
 # 40 GB works with per-device batch 2 x grad-accum 8).
 #
-# vllm pins the exact torch build it was compiled against; do not pin torch
-# separately and let vllm's requirement win (install this file in one pip
-# call so the resolver sees both).  Pins below are lower bounds on the API
-# surface train.py / eval_heldout.py use (TRL SFTConfig.max_length +
-# completion_only_loss, vLLM structured outputs); they were written offline
-# on 2026-09-22 without resolving against an index.  If pip reports a
-# conflict, relax trl/transformers first and record the resolved versions
-# from run-manifest.json.
-vllm>=0.10,<1
-torch>=2.7
-transformers>=4.56,<6
-trl>=0.21,<1
-peft>=0.17,<1
-accelerate>=1.7,<2
-datasets>=3.0,<5
-pydantic>=2.12,<3
-typing_extensions>=4.12
+# Pinned to the exact stack a full smoke run passed on 2026-09-22 (Modal,
+# A100-80GB and H100, run `smoke-01`): train.py trains and selects a
+# checkpoint, eval_heldout.py runs A1-A4 and writes the decision.  The
+# earlier lower-bound-only pins resolved to a stack the package predates
+# and failed twice (transformers 5 dropped SFTConfig.warmup_ratio; the
+# flashinfer sampler JIT could not build against the wheels' nvcc).
+#
+# Do not relax these for the Stage 2 run: the point of the pins is that the
+# 6-hour run uses the stack the smoke validated.  If a pin must move,
+# re-run `modal run modal_run.py --smoke` before the real run and record
+# the resolved versions from run-manifest.json.
+vllm==0.30.0
+torch==2.13.0
+transformers==5.17.0
+trl==0.29.1
+peft==0.21.0
+accelerate==1.15.0
+datasets==4.8.5
+pydantic==2.13.5
+typing_extensions==4.16.0
+# Transitive but pinned explicitly: vllm's own ranges leave these free, and
+# xgrammar is the guided-JSON backend the A2/A4 arms decode with, so a drift
+# here lands in Stage 3 after hours of training. flashinfer-python and torch
+# are already exact in vllm 0.30.0's own metadata.
+xgrammar==0.2.7
+tokenizers==0.23.2
+numpy==2.3.5

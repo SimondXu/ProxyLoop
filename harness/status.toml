@@ -4,10 +4,10 @@ active_product_phase = "03C-stage2"
 active_contract = "harness/build/phase-03c-fast-model-distillation.md"
 next_phase_authorized = false
 integration_baseline = "main"
-updated_at = "2026-09-21"
+updated_at = "2026-09-22"
 
 [boundaries]
-summary = "Phase 03C Stage 2 is active but blocked on external execution: the cloud training package and bundle are ready for the user to run on a rented CUDA box (see harness/context/phase-03c-stage2-preflight.md). Stage 3 decision waits for the returned artifacts. Phase 06B2, full Phase 07, and every real channel remain unauthorized."
+summary = "Phase 03C Stage 2 is active but blocked on the training run itself: the execution path is now Modal (ml/training/phase03c_cloud/modal_run.py), validated end to end by --smoke on the pinned stack and independently reviewed (harness/log/phase-03c-stage2-modal-runner.md). Starting the ~6-hour run is a separate user decision; the Stage 3 decision waits for its artifacts and local re-scoring. Phase 06B2, full Phase 07, and every real channel remain unauthorized."
 inactive = [
   "Phase 03A1 continuation or r6/r7",
   "any model training, data expansion, or promotion; Phase 03A1/03B artifact rewrites (Stage 0 writes only new phase-03c artifacts)",
