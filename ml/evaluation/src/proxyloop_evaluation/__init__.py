@@ -1,6 +1,10 @@
 """Phase 03A1 model-evaluation package."""
 
-from .artifacts import check_baseline_artifacts, write_report
+from .artifacts import (
+    check_baseline_artifacts,
+    check_baseline_artifacts_historical,
+    write_report,
+)
 from .fast_output import FastModelOutput, compile_fast_output
 from .models import (
     BaselineCondition,
@@ -43,6 +47,7 @@ __all__ = [
     "SlowModelOutput",
     "StrategyModelOutput",
     "check_baseline_artifacts",
+    "check_baseline_artifacts_historical",
     "compile_fast_output",
     "compile_slow_output",
     "compose_report",
