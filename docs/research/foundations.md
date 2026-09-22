@@ -63,6 +63,7 @@ and resources that fed them.
 - LiveKit outbound calls: https://docs.livekit.io/telephony/making-calls/outbound-calls/
 - Pydantic Evals dataset serialization: https://ai.pydantic.dev/evals/how-to/dataset-serialization/
 - Qwen3-4B-Instruct-2507 model card: https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507
+- Pine public architecture research note (2026-09-21): [`docs/research/2026-09-21-pine-public-architecture.md`](./2026-09-21-pine-public-architecture.md)
 - OpenAI model catalog: https://developers.openai.com/api/docs/models
 - MLflow tracking server: https://mlflow.org/docs/latest/self-hosting/architecture/tracking-server/
 - vLLM structured outputs: https://docs.vllm.ai/en/latest/features/structured_outputs/
