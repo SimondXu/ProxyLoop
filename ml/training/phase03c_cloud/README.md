@@ -146,21 +146,56 @@ with `--previous-report`.
 Every raw output is in the reports, so the repository evaluator re-scores
 them locally before any number is treated as canonical.
 
-## 3. Expected wall time (A100-80GB, estimate)
+## 3. On Modal (`modal_run.py`)
+
+`modal_run.py` runs the same three commands as `run.sh` inside one Modal
+Function, so no box is rented or copied to by hand.
+
+```bash
+pip install modal && modal setup            # once: browser auth against your account
+modal run ml/training/phase03c_cloud/modal_run.py --smoke        # ~30 min, pipeline check
+modal run --detach ml/training/phase03c_cloud/modal_run.py       # the real run
+modal run ml/training/phase03c_cloud/modal_run.py --download-only  # fetch after a --detach run
+```
+
+| piece | where |
+|---|---|
+| bundle | Volume `phase03c-bundle` at `/bundle`, uploaded by the local entrypoint |
+| HF cache | Volume `phase03c-hf-cache` at `/hf`; the 16 GB base is downloaded once |
+| training + merged weights | the container's own disk (`/scratch`), never a Volume |
+| upload set | Volume `phase03c-out` at `/out/<run>/`, downloaded to `data/experiments/phase-03c/training/<run>/` |
+
+- GPU is `["A100-80GB", "H100"]` (fallback order), `timeout` 12 h (billed per second used, not per timeout).
+- `--smoke` passes `--smoke` to `train.py`, caps the arms at `--limit 8` and
+  skips the dev-set arm pass; it uses run name `smoke-01` so it cannot
+  overwrite the real run's outputs.
+- The adapter, `run-manifest.json`, `dev-evals.jsonl` and `train.log` are
+  mirrored to the out Volume *before* the vLLM arms start, so a Stage 3
+  failure cannot destroy the Stage 2 evidence.
+- Flags: `--run <name>`, `--train-flags "..."`, `--skip-upload` (bundle
+  already on the Volume), `--skip-download`, `--bundle-dir`, `--download-dir`.
+- Cost: check your own workspace rates with `modal billing rates`, and the
+  spend so far with `modal billing summary`. Run the smoke first.
+
+## 4. Expected wall time (A100-80GB, estimate)
 
 | step | time |
 |---|---|
 | pip install + 16 GB base download | 10-20 min |
-| train: ~3,800 rows x 3 epochs / 16 = ~710 optimizer steps at ~32k tokens/step | ~2-2.5 h |
-| dev evals: 8 x 60 rows HF generate (+ eval loss on 400 rows) | ~15-25 min |
+| train: 7,196 rows x 3 epochs / 16 = 1,349 optimizer steps at ~36k tokens/step | ~4-5 h |
+| dev evals: 14 x 60 rows HF generate (+ eval loss on 400 rows) | ~30-50 min |
 | merge + save bf16 | ~5 min |
 | eval_heldout: 2 vLLM loads, 4 arms x 240 rows batched + 24-row latency samples | ~15-20 min |
 | eval_heldout --dev: 4 arms x 400 rows | ~10 min |
-| **total** | **~3.5-4 h** |
+| **total** | **~5.5-7 h** |
 
-H100: roughly 35-45 % faster on the training step. USD 10-30 at 2026 spot rates.
+H100: roughly 35-45 % faster on the training step.
 
-## 4. What to upload back
+The step count is 1,349, not the ~710 an earlier draft of this table stated:
+the bundle carries 7,196 train rows (`bundle-manifest.json`), none dropped at
+`max_length` 2304. Budget the run against your provider's own rate.
+
+## 5. What to upload back
 
 `../out/phase03c-upload.tar.gz` (a few hundred MB, mostly the r-32 adapter):
 
