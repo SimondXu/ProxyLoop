@@ -1,0 +1,20 @@
+# Phase 03C cloud package. Python 3.10-3.12, one CUDA GPU (A100/H100 80 GB;
+# 40 GB works with per-device batch 2 x grad-accum 8).
+#
+# vllm pins the exact torch build it was compiled against; do not pin torch
+# separately and let vllm's requirement win (install this file in one pip
+# call so the resolver sees both).  Pins below are lower bounds on the API
+# surface train.py / eval_heldout.py use (TRL SFTConfig.max_length +
+# completion_only_loss, vLLM structured outputs); they were written offline
+# on 2026-09-22 without resolving against an index.  If pip reports a
+# conflict, relax trl/transformers first and record the resolved versions
+# from run-manifest.json.
+vllm>=0.10,<1
+torch>=2.7
+transformers>=4.56,<6
+trl>=0.21,<1
+peft>=0.17,<1
+accelerate>=1.7,<2
+datasets>=3.0,<5
+pydantic>=2.12,<3
+typing_extensions>=4.12
