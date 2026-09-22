@@ -16,8 +16,10 @@ from proxyloop_case_runtime import (
     SCRIPTED_CASE_ID,
     CaseCommand,
     CaseCommandType,
+    CaseRuntimeState,
     CaseTransitionRef,
     PostgresCaseRepository,
+    StorageUnavailableError,
     ThinAgentRuntime,
 )
 from proxyloop_contracts import Money
@@ -78,6 +80,48 @@ class _ExhaustingAdapter(CaseCommandActivityAdapter):
             self.blocked_attempts += 1
             raise ApplicationError("injected unavailable", type="storage_unavailable")
         return super().apply_command(command)
+
+
+class _FinalWriteOutageRepository(PostgresCaseRepository):
+    """Lose the final approval write once, after the Provider is committed."""
+
+    def __init__(self, database_url: str) -> None:
+        self.fail_final_write = True
+        super().__init__(database_url)
+
+    def replace(
+        self,
+        case_id: UUID,
+        *,
+        expected_revision: int,
+        state: CaseRuntimeState,
+    ) -> CaseRuntimeState:
+        if state.snapshot.completion_decision is not None and self.fail_final_write:
+            self.fail_final_write = False
+            raise StorageUnavailableError("injected final write outage")
+        return super().replace(
+            case_id,
+            expected_revision=expected_revision,
+            state=state,
+        )
+
+
+class _RecordingAdapter(CaseCommandActivityAdapter):
+    """Record every activity attempt outcome per command id."""
+
+    def __init__(self, runtime: ThinAgentRuntime) -> None:
+        super().__init__(runtime)
+        self.outcomes: dict[UUID, list[str]] = {}
+
+    def apply_command(self, command: CaseCommand) -> CaseTransitionRef:
+        attempts = self.outcomes.setdefault(command.command_id, [])
+        try:
+            transition = super().apply_command(command)
+        except ApplicationError as exc:
+            attempts.append(str(exc.type))
+            raise
+        attempts.append("terminal" if transition.terminal else "applied")
+        return transition
 
 
 class _GatedApprovalActivity:
@@ -387,6 +431,70 @@ def test_live_temporal_worker_recovery_while_waiting_for_approval() -> None:
         state = replacement_runtime.repository.get(SCRIPTED_CASE_ID)
         assert state is not None
         assert state.execution_count == 1
+
+    _run_live(scenario)
+
+
+def test_live_temporal_approval_retry_after_final_write_outage_converges() -> None:
+    async def scenario(database_url: str, address: str) -> None:
+        task_queue = f"proxyloop-phase05a-claim-retry-{uuid4()}"
+        settings = TemporalSettings(target_host=address, task_queue=task_queue)
+        client, namespace = await _connected(address)
+        settings = replace(settings, namespace=namespace)
+        runtime = ThinAgentRuntime(_FinalWriteOutageRepository(database_url))
+        adapter = _RecordingAdapter(runtime)
+        temporal = TemporalCaseClient(client, settings)
+        worker = Worker(
+            client,
+            task_queue=task_queue,
+            workflows=[CaseWorkflow],
+            activities=[activity_for_adapter(adapter)],
+        )
+        async with worker:
+            created = await temporal.apply_command(_create_request())
+            waiting = await temporal.apply_command(
+                CaseCommandRequest(
+                    command_id=uuid4(),
+                    case_id=SCRIPTED_CASE_ID,
+                    command_type=CaseCommandType.APPEND_EVENT,
+                    content="Review the fictional offer.",
+                    event_type="consumer_message",
+                    expected_revision=created.after_revision,
+                )
+            )
+            assert waiting.approval_id is not None
+            approve_request = CaseCommandRequest(
+                command_id=uuid4(),
+                case_id=SCRIPTED_CASE_ID,
+                command_type=CaseCommandType.DECIDE_APPROVAL,
+                approval_id=waiting.approval_id,
+                decision="approved",
+                expected_revision=waiting.after_revision,
+            )
+            completed = await temporal.apply_command(approve_request)
+
+        assert completed.terminal is True
+        assert completed.deduplicated is False
+        assert completed.before_revision == waiting.after_revision
+        assert adapter.outcomes[approve_request.command_id] == [
+            "storage_unavailable",
+            "terminal",
+        ]
+        assert not any(
+            "case_conflict" in outcomes for outcomes in adapter.outcomes.values()
+        )
+        state = PostgresCaseRepository(database_url).get(SCRIPTED_CASE_ID)
+        assert state is not None
+        assert state.snapshot.pending_execution is False
+        assert state.execution_claim is None
+        assert state.execution_count == 1
+        assert [item.source_type.value for item in state.snapshot.evidence].count(
+            "confirmation"
+        ) == 1
+        assert [item.value for item in state.provider.state_history].count(
+            "confirmed"
+        ) == 1
+        assert len(state.transitions) == 3
 
     _run_live(scenario)
 

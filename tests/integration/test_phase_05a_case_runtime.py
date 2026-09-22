@@ -17,6 +17,7 @@ from proxyloop_case_runtime import (
     CaseRuntimeState,
     InMemoryCaseRepository,
     PostgresCaseRepository,
+    StorageUnavailableError,
     ThinAgentRuntime,
 )
 from proxyloop_contracts import ApprovalDecision, EventActor, Money
@@ -163,6 +164,97 @@ def test_same_command_id_with_different_semantics_fails_before_mutation() -> Non
     assert state_after_type_mismatch is not None
     assert state_after_type_mismatch.snapshot.revision == 2
     assert len(state_after_type_mismatch.transitions) == 1
+
+
+class _FailFinalWriteOnceRepository(InMemoryCaseRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.fail_final_write = True
+
+    def replace(
+        self,
+        case_id: UUID,
+        *,
+        expected_revision: int,
+        state: CaseRuntimeState,
+    ) -> CaseRuntimeState:
+        if state.snapshot.completion_decision is not None and self.fail_final_write:
+            self.fail_final_write = False
+            raise StorageUnavailableError("injected final write outage")
+        return super().replace(
+            case_id,
+            expected_revision=expected_revision,
+            state=state,
+        )
+
+
+def test_same_approval_command_retry_completes_pending_claim() -> None:
+    repository = _FailFinalWriteOnceRepository()
+    _runtime(repository, BASE_TIME).apply_command(_create_command())
+    event = _runtime(repository, BASE_TIME + timedelta(minutes=1)).apply_command(
+        _event_command()
+    )
+    approval_command = CaseCommand(
+        command_id=APPROVAL_COMMAND_ID,
+        case_id=SCRIPTED_CASE_ID,
+        command_type=CaseCommandType.DECIDE_APPROVAL,
+        occurred_at=BASE_TIME + timedelta(minutes=2),
+        expected_revision=event.after_revision,
+        approval_id=event.approval_id,
+        decision="approved",
+        expected_case_revision=1,
+        expected_action_intent_revision=1,
+    )
+    with pytest.raises(StorageUnavailableError, match="injected final write"):
+        _runtime(repository, BASE_TIME + timedelta(minutes=2)).apply_command(
+            approval_command
+        )
+    pending = repository.get(SCRIPTED_CASE_ID)
+    assert pending is not None
+    assert pending.snapshot.pending_execution is True
+    assert pending.execution_count == 0
+    assert len(pending.transitions) == 2
+
+    changed_body = approval_command.model_copy(
+        update={"expected_action_intent_revision": None}
+    )
+    with pytest.raises(CaseConflictError, match="different command"):
+        _runtime(repository, BASE_TIME + timedelta(minutes=3)).apply_command(
+            changed_body
+        )
+    still_pending = repository.get(SCRIPTED_CASE_ID)
+    assert still_pending is not None
+    assert still_pending.snapshot.revision == pending.snapshot.revision
+    assert still_pending.snapshot.pending_execution is True
+
+    retried = _runtime(repository, BASE_TIME + timedelta(minutes=3)).apply_command(
+        approval_command
+    )
+    assert retried.terminal is True
+    assert retried.deduplicated is False
+    assert retried.before_revision == event.after_revision
+    assert retried.after_revision == event.after_revision + 2
+
+    duplicate = _runtime(repository, BASE_TIME + timedelta(minutes=4)).apply_command(
+        approval_command
+    )
+    assert duplicate.deduplicated is True
+    assert duplicate.model_copy(update={"deduplicated": False}) == retried
+
+    with pytest.raises(CaseConflictError, match="different command"):
+        _runtime(repository, BASE_TIME + timedelta(minutes=4)).apply_command(
+            changed_body
+        )
+
+    final = repository.get(SCRIPTED_CASE_ID)
+    assert final is not None
+    assert final.snapshot.pending_execution is False
+    assert final.execution_count == 1
+    assert len(final.transitions) == 3
+    assert [item.source_type.value for item in final.snapshot.evidence].count(
+        "confirmation"
+    ) == 1
+    assert [item.value for item in final.provider.state_history].count("confirmed") == 1
 
 
 def test_legacy_receipt_is_decodable_but_not_reusable() -> None:
