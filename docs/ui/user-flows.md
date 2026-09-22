@@ -19,7 +19,8 @@ On mount or reconnect, a versioned local locator first checks
 `GET /health/ready` and then reads `GET /cases/{case_id}`. Network/503 preserves
 the locator and exact pending command; 404 reports a bounded store mismatch. A
 pending create, event, or approval keeps one lowercase UUIDv4
-`Idempotency-Key` and exact request body across an uncertain retry.
+`Idempotency-Key` and exact request body across an uncertain retry (the
+Runtime honours the key in the durable Temporal profile; direct mode ignores it).
 
 The first natural-language message establishes the conversation intent in the
 UI. Supported input starts a local progressive intake and does not create a

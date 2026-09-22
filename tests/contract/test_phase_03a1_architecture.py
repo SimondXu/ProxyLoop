@@ -33,7 +33,7 @@ def test_phase_03a1_erratum_completion_does_not_activate_phase_03b() -> None:
     assert "e08c9b6" in plans + harness + baselines
     assert "03A1-E" in plans and "Evaluation erratum" in plans
     assert "| 03A1-H |" in plans and "Complete; squash merged" in plans
-    assert "| 03A1-B |" in plans and "Complete; full gate passed" in plans
+    assert "| 03A1-B |" in plans and "Complete with erratum" in plans
     assert "| 03A1-E |" in plans and "Complete; terminal Provider blocker" in plans
     assert "| 03B |" in plans and "NO_GO_STOP_PHASE03B" in plans
     assert "**Status**: Complete; squash merged" in harness

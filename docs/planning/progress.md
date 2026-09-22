@@ -23,8 +23,9 @@ not restate those; it answers "where are we and how did we get here".
 - Known placeholders: `runtime/services/model_gateway/`, `voice/worker/`, and
   `infra/{compose,migrations,observability,temporal}/` contain only
   `.gitkeep`; real infra wiring is the root `compose.yaml`.
-- Test surface at the last gate: Runtime 291 passed + 33 guarded
-  infrastructure skips (303 collected), ML 177 passed, Web 47 vitest tests,
+- Test surface at the last gate (2026-09-22, after audit Group 1 and
+  Phase 03C Stage 1c): Runtime 316 passed + 39 guarded infrastructure
+  skips, ML 318 passed + 1 skipped, Web 51 vitest tests,
   plus contract/artifact drift checks (`make preflight`).
 
 ## 2026-08-21 — Planning
@@ -91,11 +92,13 @@ not restate those; it answers "where are we and how did we get here".
 - Phase 05A: Temporal `CaseWorkflow` in `runtime/services/workflow_worker`
   with command ordering, retries, and recovery over PostgreSQL (PR #26).
 - Phase 06A: durable Web Case resume — strict browser locator, one exact
-  pending-command retry via `Idempotency-Key`, readiness plus GET-first
+  pending-command retry via `Idempotency-Key` (honoured in the durable
+  Temporal profile; direct mode ignores the header), readiness plus GET-first
   recovery, monotonic projection guard, bounded polling, truthful
   expired/finalizing/reconnect states (PR #27).
 - Phase 06B1: synthetic `local_mailbox` in `runtime/packages/connectors` —
-  HMAC-signed raw-byte fixtures, PostgreSQL inbox/outbox authority, Temporal
+  SHA-256-fingerprinted raw-byte fixtures (unkeyed; integrity, not
+  authentication), PostgreSQL inbox/outbox authority, Temporal
   dispatch, delivered callback, two channel Evidence records (PR #28).
 - Phase 07A: `make portfolio-demo` / `-stop` / `-reset` / `-channel` /
   `-recovery` supervising Compose PostgreSQL + Temporal, worker, Runtime, and

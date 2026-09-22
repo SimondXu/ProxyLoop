@@ -307,7 +307,8 @@ Dashboards should separate model quality from infrastructure reliability:
 - optional remote GPU Fast inference;
 - object storage or local artifact directory;
 - experiment tracker;
-- no Temporal, Gmail, or telephony.
+- no Gmail or telephony (Temporal orchestration was added in Phase 05A as
+  the durable profile; the direct in-memory mode remains for iteration).
 
 ### Integrated Portfolio Demo
 

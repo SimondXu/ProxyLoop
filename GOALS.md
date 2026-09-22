@@ -24,7 +24,7 @@ The first vertical is fictional-provider, mobile-postpaid telecom bill optimizat
 Included in the staged roadmap:
 
 - one postpaid mobile-line telecom vertical using fictional providers;
-- Qwen3-4B as the Fast Model default candidate;
+- Qwen3-8B as the Fast Model default candidate (amended 2026-09-21 from Qwen3-4B; see `docs/decisions/2026-08-22-implementation-defaults.md`);
 - LFM2.5-2.6B and smaller/larger Qwen checkpoints as benchmark challengers where defined;
 - hosted Slow Reasoner behind a typed adapter;
 - simulator, data factory, SFT/QLoRA, evaluation, serving, control plane, durable workflow, and controlled demo channels;
