@@ -18,13 +18,13 @@ from proxyloop_contracts import (
     DialogueAct,
     FastModelView,
     FastTurnDecision,
-    MaterialTerm,
     OfferReference,
     ProviderOffer,
     SlowWorkRequest,
     SlowWorkResult,
     StrategyPacket,
-    canonical_fingerprint,
+    material_terms_hash,
+    offer_material_terms,
 )
 from proxyloop_contracts.contracts import (
     CompletionClaim,
@@ -218,7 +218,7 @@ def compile_slow_output(
             created_at=request.created_at,
             expires_at=request.created_at + timedelta(minutes=5),
         )
-        terms = _material_terms(offer) if offer is not None else ()
+        terms = offer_material_terms(offer) if offer is not None else ()
         intent = ActionIntent(
             contract_type="action_intent",
             schema_version="1.0",
@@ -236,7 +236,7 @@ def compile_slow_output(
                 else None
             ),
             material_terms=terms,
-            material_terms_hash=canonical_fingerprint(terms),
+            material_terms_hash=material_terms_hash(terms),
             approval_required=(
                 action_type
                 in request.view.delegated_authority.approval_required_actions
@@ -285,14 +285,6 @@ def _selected_offer(
             raise ValueError("offer position is out of range")
         return offers[proposed.offer_position]
     return None
-
-
-def _material_terms(offer: ProviderOffer) -> tuple[MaterialTerm, ...]:
-    return (
-        MaterialTerm(name="monthly_price", value=str(offer.monthly_price.amount_minor)),
-        MaterialTerm(name="total_cost", value=str(offer.total_cost.amount_minor)),
-        MaterialTerm(name="term_months", value=str(offer.term_months)),
-    )
 
 
 def _canonical(value: BaseModel) -> str:

@@ -10,6 +10,7 @@ from proxyloop_telecom_domain import (
     OfferComplianceContext,
     OfferComplianceTerms,
     offer_compliance_violations,
+    unsupported_applied_changes,
 )
 
 from .scenarios import (
@@ -266,7 +267,7 @@ def _offer_constraint_violations(
         legacy_reason_codes.get(reason, reason)
         for reason in offer_compliance_violations(context, terms)
     ]
-    if "account_cancellation" in offer.applied_changes:
+    if unsupported_applied_changes(offer.applied_changes):
         reasons.append("unsupported_action")
     return reasons
 

@@ -23,6 +23,7 @@ from proxyloop_contracts import (
     MaterialTerm,
     ModelInputPins,
     ProviderOffer,
+    material_terms_hash,
 )
 
 from .interfaces import PreparedSimulatorExecution, SimulatorCapabilityAdapter
@@ -207,7 +208,7 @@ class CapabilityExecutor:
             reasons.append("action_strategy_mismatch")
         if intent.expires_at is not None and request.executed_at >= intent.expires_at:
             reasons.append("action_intent_expired")
-        if intent.material_terms_hash != _material_terms_hash(intent):
+        if intent.material_terms_hash != material_terms_hash(intent.material_terms):
             reasons.append("action_material_terms_hash_mismatch")
 
         authority = snapshot.case.delegated_authority
@@ -330,20 +331,6 @@ def _request_binding(request: CapabilityExecutionRequest) -> str:
 
 def _sorted_terms(terms: tuple[MaterialTerm, ...]) -> tuple[tuple[str, str], ...]:
     return tuple(sorted((term.name, term.value) for term in terms))
-
-
-def _material_terms_hash(intent: ActionIntent) -> str:
-    canonical_terms = sorted(
-        (term.model_dump(mode="json") for term in intent.material_terms),
-        key=lambda item: (str(item["name"]), str(item["value"])),
-    )
-    canonical = json.dumps(
-        canonical_terms,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 __all__ = [
