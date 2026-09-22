@@ -327,6 +327,34 @@ def test_oracle_declines_when_no_offer_satisfies_constraints(offer: SafeOffer) -
     assert decision.offer_id is None
 
 
+def test_oracle_declines_fee_total_mismatch_by_default() -> None:
+    # Legacy bounds pass (total < current * 12, monthly <= target) but the
+    # disclosed total does not equal monthly * 12 + fees - known credit.
+    undisclosed_fee_offer = SafeOffer(
+        offer_id="offer-fee-mismatch",
+        provider_id="pine-mobile",
+        monthly_price_minor=7000,
+        total_cost_12_months_minor=84000,
+        currency="USD",
+        features=("mobile_hotspot",),
+        fees_minor=500,
+        term_months=12,
+        applied_changes=("plan_change",),
+        expires_at=NOW + timedelta(hours=1),
+    )
+    decision = ScriptedOracleConsumer().decide(
+        make_observation(offers=(undisclosed_fee_offer,))
+    )
+
+    assert decision.action is OracleAction.DECLINE
+    assert decision.offer_id is None
+    assert decision.reason_codes == ("no_valid_offer",)
+
+
+def test_oracle_has_no_legacy_predicate() -> None:
+    assert not hasattr(ScriptedOracleConsumer, "_legacy_offer_is_valid")
+
+
 def test_oracle_public_api_accepts_only_safe_observation() -> None:
     decide_signature = inspect.signature(ScriptedOracleConsumer.decide)
     assert list(decide_signature.parameters) == ["self", "observation"]

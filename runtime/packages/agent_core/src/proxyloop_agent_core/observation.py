@@ -5,53 +5,23 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Protocol
 
-from proxyloop_contracts import Case, ProviderOffer
-
-_SUPPORTED_APPLIED_CHANGES = frozenset(
-    {
-        "plan_change",
-        "revised_plan_change",
-        "predefined_promotion_credit",
-    }
+from proxyloop_contracts import (
+    Case,
+    OfferComplianceContext,
+    OfferComplianceTerms,
+    ProviderOffer,
+    offer_compliance_violations,
+    unsupported_applied_changes,
 )
-_REMOVE_ADD_ON_PREFIX = "remove_add_on:"
-
-
-@dataclass(frozen=True, slots=True)
-class _OfferComplianceContext:
-    """Typed transport for the authoritative policy dependency seam."""
-
-    evaluated_at: datetime
-    current_monthly_minor: int
-    currency: str
-    target_monthly_minor: int | None
-    target_currency: str | None
-    required_features: tuple[str, ...]
-    forbidden_changes: tuple[str, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class _OfferComplianceTerms:
-    """Typed public offer terms passed through the policy dependency seam."""
-
-    monthly_price_minor: int
-    total_cost_12_months_minor: int
-    currency: str
-    fees_minor: int
-    features: tuple[str, ...]
-    applied_changes: tuple[str, ...]
-    expires_at: datetime
 
 
 class _OfferCompliancePolicy(Protocol):
     def __call__(
         self,
-        # ``Any`` is the dependency-direction seam: the authoritative domain
-        # types are intentionally not imported by contracts-only agent_core.
-        context: Any,
-        terms: Any,
+        context: OfferComplianceContext,
+        terms: OfferComplianceTerms,
     ) -> tuple[str, ...]: ...
 
 
@@ -342,14 +312,15 @@ class OracleDecision:
 class ScriptedOracleConsumer:
     """Reference policy that accepts only a SafeObservation input.
 
-    The optional callable is the explicit seam for a Phase 04 authoritative
-    offer policy. With no callable, this class intentionally retains the
-    frozen Phase 01B legacy predicate for historical evaluator call sites;
-    it does not import or resolve a domain package.
+    The shared ``offer_compliance_violations`` policy is the default and the
+    only authority; ``offer_policy`` is an injection seam whose default is
+    that shared policy.
     """
 
     def __init__(self, *, offer_policy: _OfferCompliancePolicy | None = None) -> None:
-        self._offer_policy = offer_policy
+        self._offer_policy: _OfferCompliancePolicy = (
+            offer_policy if offer_policy is not None else offer_compliance_violations
+        )
 
     def decide(self, observation: SafeObservation) -> OracleDecision:
         if not isinstance(observation, SafeObservation):
@@ -405,10 +376,7 @@ class ScriptedOracleConsumer:
         )
 
     def _is_valid_offer(self, offer: SafeOffer, observation: SafeObservation) -> bool:
-        if self._offer_policy is None:
-            return self._legacy_offer_is_valid(offer, observation)
-
-        context = _OfferComplianceContext(
+        context = OfferComplianceContext(
             evaluated_at=observation.observed_at,
             current_monthly_minor=observation.current_monthly_total_minor,
             currency=observation.currency,
@@ -417,7 +385,7 @@ class ScriptedOracleConsumer:
             required_features=observation.required_features,
             forbidden_changes=observation.forbidden_changes,
         )
-        terms = _OfferComplianceTerms(
+        terms = OfferComplianceTerms(
             monthly_price_minor=offer.monthly_price_minor,
             total_cost_12_months_minor=offer.total_cost_12_months_minor,
             currency=offer.currency,
@@ -428,38 +396,4 @@ class ScriptedOracleConsumer:
         )
         if self._offer_policy(context, terms):
             return False
-        return self._supported_applied_changes(offer)
-
-    @staticmethod
-    def _legacy_offer_is_valid(offer: SafeOffer, observation: SafeObservation) -> bool:
-        """Frozen Phase 01B predicate; do not extend this legacy path."""
-
-        if offer.expires_at <= observation.observed_at:
-            return False
-        if offer.currency != observation.currency:
-            return False
-        if offer.total_cost_12_months_minor >= (
-            observation.current_monthly_total_minor * 12
-        ):
-            return False
-        if (
-            observation.target_monthly_total_minor is not None
-            and offer.monthly_price_minor > observation.target_monthly_total_minor
-        ):
-            return False
-        if not set(observation.required_features) <= set(offer.features):
-            return False
-        if set(observation.forbidden_changes) & set(offer.applied_changes):
-            return False
-        return ScriptedOracleConsumer._supported_applied_changes(offer)
-
-    @staticmethod
-    def _supported_applied_changes(offer: SafeOffer) -> bool:
-        return not any(
-            change not in _SUPPORTED_APPLIED_CHANGES
-            and not (
-                change.startswith(_REMOVE_ADD_ON_PREFIX)
-                and len(change) > len(_REMOVE_ADD_ON_PREFIX)
-            )
-            for change in offer.applied_changes
-        )
+        return not unsupported_applied_changes(offer.applied_changes)
