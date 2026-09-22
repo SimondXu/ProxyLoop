@@ -16,7 +16,7 @@ import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Final, cast
+from typing import Final, Literal, cast
 
 from proxyloop_agent_core import FastAdapterResult, ScriptedOracleConsumer
 from proxyloop_contracts import DialogueAct, FastModelView, FastTurnDecision
@@ -77,6 +77,12 @@ PHASE03B_ARM_SOURCES: Final[dict[str, Path]] = {
 }
 
 PHASE03C_COMPILER_VERSION: Final = "phase-03c-fast-compiler-v3"
+PHASE03C_COMPILER_VERSION_V4: Final = "phase-03c-fast-compiler-v4"
+PromptVersion = Literal["v3", "v4"]
+PHASE03C_COMPILER_VERSIONS: Final[dict[PromptVersion, str]] = {
+    "v3": PHASE03C_COMPILER_VERSION,
+    "v4": PHASE03C_COMPILER_VERSION_V4,
+}
 PHASE03C_POLICY_VERSION: Final = PHASE03B_POLICY_VERSION
 PHASE03C_ERRATUM_SCHEMA_VERSION: Final = "phase-03c-parser-erratum-v1"
 PHASE03C_EVALUATOR_SOURCE_FINGERPRINT: Final = hashlib.sha256(
@@ -85,6 +91,33 @@ PHASE03C_EVALUATOR_SOURCE_FINGERPRINT: Final = hashlib.sha256(
 REASON_CODE_LINE: Final = (
     "reason_code: short snake_case code, max 256 chars. Examples: "
     "offer_candidate_requires_slow_review, provider_state_requires_replan, none."
+)
+# v4 = v3 plus this one block (Stage 1b): the house decision convention the
+# v3 prompt never stated, so a teacher can agree with the oracle-derived
+# target on ``dialogue_act`` and ``reasoner_request``.  v3 bytes are frozen
+# by the Stage 0 smoke artifacts and never change.
+DECISION_CONVENTION_BLOCK: Final = (
+    "DECISION_CONVENTION: pick dialogue_act and reasoner_request from the "
+    "Provider state and the offer's compliance with the goal, in this order:\n"
+    '1. needs_clarification true -> dialogue_act "clarify", reasoner_request '
+    '{"needed": false, "reason_code": "none"}.\n'
+    "2. requested_disclosures contains anything outside allowed_disclosures -> "
+    '"challenge", {"needed": false, "reason_code": "none"}.\n'
+    '3. approval_current false -> "counter", {"needed": true, "reason_code": '
+    '"provider_state_requires_replan"}.\n'
+    '4. transfer_available true -> "escalate", {"needed": false, "reason_code": '
+    '"none"}.\n'
+    '5. confirmation_evidence_available false -> "counter", {"needed": true, '
+    '"reason_code": "provider_state_requires_replan"}.\n'
+    "6. otherwise, if an offer meets every check (monthly_price_minor <= "
+    "target_monthly_total_minor, total_cost_12_months_minor <= "
+    "target_monthly_total_minor*12, all required_features present, no "
+    "forbidden_changes applied, no unsupported change such as "
+    'account_cancellation) -> "confirm", {"needed": true, "reason_code": '
+    '"offer_candidate_requires_slow_review"}; a confirm is a proposal for Slow '
+    "review, never an acceptance.\n"
+    '7. otherwise -> "counter", {"needed": false, "reason_code": "none"}.\n'
+    "Set fact_updates to [] and action_intent to null in every case."
 )
 PROMPT_TOKEN_LIMIT: Final = 2048
 PHASE03C_ADAPTER_VERSION: Final = "phase-03c-qwen-mlx-v3"
@@ -183,8 +216,12 @@ class Phase03CQwenAdapter(Phase03BQwenAdapter):
         adapter_path: str | None = None,
         max_tokens: int = 512,
         model_spec: QwenModelSpec | None = None,
+        prompt_version: PromptVersion = "v3",
     ) -> None:
+        if prompt_version not in PHASE03C_COMPILER_VERSIONS:
+            raise ValueError(f"unknown prompt_version: {prompt_version!r}")
         spec = model_spec if model_spec is not None else QWEN3_4B_4BIT_SPEC
+        self._prompt_version: PromptVersion = prompt_version
         # The historical constructor attests the 4B checkpoint only, so it
         # is given no model_path; the spec-aware attestation happens here.
         QwenMLXAdapter.__init__(self, generator=generator, max_tokens=max_tokens)
@@ -214,12 +251,22 @@ class Phase03CQwenAdapter(Phase03BQwenAdapter):
     def model_spec(self) -> QwenModelSpec:
         return self._model_spec
 
+    @property
+    def prompt_version(self) -> PromptVersion:
+        return self._prompt_version
+
+    @property
+    def compiler_version(self) -> str:
+        return PHASE03C_COMPILER_VERSIONS[self._prompt_version]
+
     def build_prompt(self, view: FastModelView) -> QwenPrompt:
         """03B prompt text and compact view verbatim, plus the schema block.
 
         Attempt 01 of the 8B smoke replaced the 03B OUTPUT_SHAPE hint with the
         schema alone and lost ``fact_updates: []``; keeping the 03B text
         byte-for-byte and only adding to it is what the contract asks for.
+        v4 inserts ``DECISION_CONVENTION_BLOCK`` after the reason-code line;
+        the system text is identical for both versions.
         """
 
         v2 = super().build_prompt(view)
@@ -237,6 +284,7 @@ class Phase03CQwenAdapter(Phase03BQwenAdapter):
             + _canonical_json(FastModelOutput.model_json_schema())
             + "\n"
             + REASON_CODE_LINE
+            + ("\n" + DECISION_CONVENTION_BLOCK if self._prompt_version == "v4" else "")
             + "\n"
             + marker,
         )
@@ -893,12 +941,15 @@ def freeze_phase03c_controls(
     *,
     manifest_fingerprint: str,
     base_attestation: QwenCheckpointAttestation,
+    prompt_version: PromptVersion = "v3",
 ) -> Phase03BControls:
-    """Freeze v3 prompt, input, schema, and decoding controls for one arm."""
+    """Freeze the prompt, input, schema, and decoding controls for one arm."""
 
     if len(examples) != 6 or any(item.split != "development" for item in examples):
         raise ValueError("Phase 03C controls require exactly six development examples")
-    prompt_adapter = Phase03CQwenAdapter(generator=lambda _: "{}")
+    prompt_adapter = Phase03CQwenAdapter(
+        generator=lambda _: "{}", prompt_version=prompt_version
+    )
     return Phase03BControls(
         manifest_fingerprint=manifest_fingerprint,
         prompt_fingerprints=tuple(
@@ -906,7 +957,7 @@ def freeze_phase03c_controls(
         ),
         input_fingerprints=tuple(item.input_fingerprint for item in examples),
         schema_fingerprint=_fingerprint(FastModelOutput.model_json_schema()),
-        compiler_version=PHASE03C_COMPILER_VERSION,
+        compiler_version=prompt_adapter.compiler_version,
         policy_version=PHASE03C_POLICY_VERSION,
         base_attestation=base_attestation,
         decoding_profile=QwenDecodingProfile(),
@@ -1127,9 +1178,12 @@ def row_metrics_dict(row: Phase03CExecutedRow) -> dict[str, object]:
     return asdict(row.metrics)
 
 
-SMOKE_RESULT_FILES: Final[dict[str, str]] = {
-    "8b": "arm-a-untuned-8b-v3.json",
-    "4b": "arm-a-untuned-4b-v3.json",
+# Stage 0 (v3) rows are required; a v4 row per checkpoint is optional.
+SMOKE_RESULT_FILES: Final[dict[tuple[str, PromptVersion], str]] = {
+    ("8b", "v3"): "arm-a-untuned-8b-v3.json",
+    ("4b", "v3"): "arm-a-untuned-4b-v3.json",
+    ("8b", "v4"): "arm-a-untuned-8b-v4.json",
+    ("4b", "v4"): "arm-a-untuned-4b-v4.json",
 }
 
 
@@ -1145,10 +1199,6 @@ def check_smoke_results(root: Path = ROOT) -> tuple[str, ...]:
 
     problems: list[str] = []
     examples = development_examples()
-    prompt_adapter = Phase03CQwenAdapter(generator=lambda _: "{}")
-    expected_prompts = [
-        prompt_adapter.build_prompt(item.view).fingerprint for item in examples
-    ]
     expected_inputs = [item.input_fingerprint for item in examples]
     results_dir = root / "data/experiments/phase-03c/results"
     if results_dir.is_dir():
@@ -1157,13 +1207,20 @@ def check_smoke_results(root: Path = ROOT) -> tuple[str, ...]:
         for stray in sorted(results_dir.iterdir()):
             if stray.name not in SMOKE_RESULT_FILES.values():
                 problems.append(f"unexpected_result:{stray.relative_to(root)}")
-    for model, name in SMOKE_RESULT_FILES.items():
+    for (model, prompt_version), name in SMOKE_RESULT_FILES.items():
         path = results_dir / name
         label = str(path.relative_to(root))
         spec = QWEN3_8B_BF16_SPEC if model == "8b" else QWEN3_4B_4BIT_SPEC
         if not path.exists():
-            problems.append(f"missing:{label}")
+            if prompt_version == "v3":
+                problems.append(f"missing:{label}")
             continue
+        prompt_adapter = Phase03CQwenAdapter(
+            generator=lambda _: "{}", prompt_version=prompt_version
+        )
+        expected_prompts = [
+            prompt_adapter.build_prompt(item.view).fingerprint for item in examples
+        ]
         result = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(result, dict):
             problems.append(f"invalid:{label}")
@@ -1190,8 +1247,10 @@ def check_smoke_results(root: Path = ROOT) -> tuple[str, ...]:
         if not isinstance(controls, dict):
             problems.append(f"controls:{label}")
             continue
-        if controls.get("compiler_version") != PHASE03C_COMPILER_VERSION:
+        if controls.get("compiler_version") != prompt_adapter.compiler_version:
             problems.append(f"compiler_version:{label}")
+        if result.get("prompt_version", "v3") != prompt_version:
+            problems.append(f"prompt_version:{label}")
         base = controls.get("base_checkpoint")
         expected_base = {
             "model": spec.model,
@@ -1251,10 +1310,13 @@ def check_smoke_results(root: Path = ROOT) -> tuple[str, ...]:
 
 
 __all__ = [
+    "DECISION_CONVENTION_BLOCK",
     "ERRATA_DIR",
     "PHASE03B_ARM_SOURCES",
     "PHASE03C_ADAPTER_VERSION",
     "PHASE03C_COMPILER_VERSION",
+    "PHASE03C_COMPILER_VERSIONS",
+    "PHASE03C_COMPILER_VERSION_V4",
     "PHASE03C_DIR",
     "PHASE03C_ERRATUM_SCHEMA_VERSION",
     "PHASE03C_EVALUATOR_SOURCE_FINGERPRINT",
@@ -1269,6 +1331,7 @@ __all__ = [
     "Phase03CMetadata",
     "Phase03CQwenAdapter",
     "Phase03CRowMetrics",
+    "PromptVersion",
     "analyze_raw_output",
     "check_parser_errata",
     "check_smoke_results",

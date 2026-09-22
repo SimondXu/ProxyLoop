@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "unit": "usd_per_million_tokens",
+  "note": "Placeholder upper-bound estimates from conservative public list prices; correct these by hand. The 29qg relay does not expose its pricing through the API, so every ledger figure computed from this file is an accounted estimate, not a billed cost.",
+  "rates": {
+    "gemini-3.6-flash": {
+      "input": 0.5,
+      "output": 3.0
+    },
+    "claude-sonnet-5": {
+      "input": 3.0,
+      "output": 15.0
+    },
+    "gpt-5.6-terra": {
+      "input": 2.0,
+      "output": 8.0
+    },
+    "gemini-3.5-flash": {
+      "input": 0.5,
+      "output": 3.0
+    },
+    "gemini-3-flash-preview": {
+      "input": 0.5,
+      "output": 3.0
+    },
+    "gemini-2.5-flash-nothinking": {
+      "input": 0.3,
+      "output": 2.5
+    },
+    "gemini-2.5-flash": {
+      "input": 0.3,
+      "output": 2.5
+    }
+  }
+}

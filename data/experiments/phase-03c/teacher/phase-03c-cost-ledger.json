@@ -1,0 +1,25 @@
+{
+  "accounting": "estimate; relay prices not exposed; rates from ml/configs/teacher-rates.json; failed calls and calls with missing usage are charged at the pre-call worst case, so a relay outage inflates the estimate and the ledger must be reset deliberately before a rerun",
+  "per_model": {
+    "claude-sonnet-5": {
+      "calls": 600,
+      "estimated_usd": 8.804816999999993,
+      "failed": 0,
+      "input_tokens": 1737144,
+      "output_tokens": 239559,
+      "succeeded": 600
+    },
+    "gemini-3.5-flash": {
+      "calls": 600,
+      "estimated_usd": 0.7475444999999998,
+      "failed": 0,
+      "input_tokens": 1026525,
+      "output_tokens": 78094,
+      "succeeded": 600
+    }
+  },
+  "rates_path": "ml/configs/teacher-rates.json",
+  "total_calls": 1200,
+  "total_estimated_usd": 9.552361499999993,
+  "usd_ceiling": 15.0
+}

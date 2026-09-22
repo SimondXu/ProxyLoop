@@ -1,9 +1,10 @@
-"""Run one bounded Phase 03C untuned Fast arm with the v3 prompt.
+"""Run one bounded Phase 03C untuned Fast arm with the v3 or v4 prompt.
 
 Stage 0 only re-baselines untuned checkpoints (``--arm a``); tuned arms are a
 later stage.  ``--model 8b`` is the re-baseline, ``--model 4b`` the one-time
-reference row on the historical 4-bit base.  Results are descriptive
-six-episode smokes and never a Go/No-Go on their own.
+reference row on the historical 4-bit base.  ``--prompt-version`` defaults to
+the Stage 0 v3 prompt; v4 adds the Stage 1b decision-convention block.
+Results are descriptive six-episode smokes and never a Go/No-Go on their own.
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ from proxyloop_evaluation.phase03c_experiment import (  # noqa: E402
     PROMPT_TOKEN_LIMIT,
     Phase03CExecutedRow,
     Phase03CQwenAdapter,
+    PromptVersion,
     freeze_phase03c_controls,
     run_phase03c_arm,
 )
@@ -91,6 +93,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model", choices=tuple(MODEL_SPECS), required=True)
     parser.add_argument("--model-path", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--prompt-version", choices=("v3", "v4"), default="v3")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument(
         "--verify-token-fit",
@@ -125,6 +128,7 @@ def _manifest_controls(
         development,
         manifest_fingerprint=manifest_fingerprint,
         base_attestation=adapter.checkpoint_attestation,
+        prompt_version=adapter.prompt_version,
     )
     return examples, development, controls
 
@@ -326,6 +330,7 @@ def run_smoke(
     model: str,
     model_path: Path,
     output_path: Path,
+    prompt_version: PromptVersion = "v3",
     overwrite: bool = False,
     verify_token_fit: bool = False,
     adapter: Phase03CQwenAdapter | None = None,
@@ -338,12 +343,16 @@ def run_smoke(
     started = time.perf_counter()
     production_local = adapter is None
     selected_adapter = (
-        Phase03CQwenAdapter(model_path=str(model_path), model_spec=spec)
+        Phase03CQwenAdapter(
+            model_path=str(model_path), model_spec=spec, prompt_version=prompt_version
+        )
         if adapter is None
         else adapter
     )
     if selected_adapter.model_spec != spec:
         raise ValueError("adapter model spec differs from --model")
+    if selected_adapter.prompt_version != prompt_version:
+        raise ValueError("adapter prompt version differs from --prompt-version")
     examples, development, controls = _manifest_controls(selected_adapter)
     controls_payload = _controls_payload(selected_adapter, controls)
     token_fit = _token_fit(selected_adapter, examples) if verify_token_fit else None
@@ -367,11 +376,12 @@ def run_smoke(
         },
         "evaluation_pipeline_fingerprint": _evaluation_pipeline_fingerprint(),
         "description": (
-            "descriptive six-episode untuned smoke with the v3 prompt; "
-            "no statistical significance"
+            f"descriptive six-episode untuned smoke with the {prompt_version} "
+            "prompt; no statistical significance"
         ),
         "arm": "A",
         "model": model,
+        "prompt_version": prompt_version,
         "controls": controls_payload,
         "token_fit": token_fit,
         "episodes": episode_payloads,
@@ -402,6 +412,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             model=cast(Literal["8b", "4b"], args.model),
             model_path=args.model_path,
             output_path=args.output,
+            prompt_version=cast(PromptVersion, args.prompt_version),
             overwrite=args.overwrite,
             verify_token_fit=args.verify_token_fit,
         )

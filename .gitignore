@@ -40,3 +40,6 @@ recordings/
 .DS_Store
 .idea/
 .vscode/
+
+# Phase 03C teacher: accepted training JSONL stays local; raw pilot samples, reports, and ledgers are committed.
+data/experiments/phase-03c/teacher/*-accepted.jsonl
