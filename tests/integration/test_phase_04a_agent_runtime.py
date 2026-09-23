@@ -64,7 +64,11 @@ async def _test_thin_runtime_completes_multiturn_approval_flow() -> None:
         assert turn.status_code == 200
         waiting = turn.json()
         assert waiting["route"] == "wait_for_approval"
-        assert waiting["fast"]["completion_claim"]["status"] == "not_done"
+        assert "completion_claim" not in waiting["fast"]
+        waiting_state = runtime.repository.get(UUID(case_id))
+        assert waiting_state is not None
+        assert waiting_state.last_fast_decision is not None
+        assert waiting_state.last_fast_decision.completion_claim.status == "not_done"
         approval = waiting["approval"]
         assert approval["decision"] == "pending"
 
@@ -186,18 +190,7 @@ async def _test_api_create_maps_exact_intake_facts_and_event_preserves_them() ->
                 "amount_minor": 10_000,
                 "currency": "USD",
             }
-            assert case["bill_snapshot"]["line_items"] == [
-                {
-                    "name": "Postpaid mobile service",
-                    "category": "service",
-                    "amount": {"amount_minor": 9_000, "currency": "USD"},
-                },
-                {
-                    "name": "Premium data add-on",
-                    "category": "addon",
-                    "amount": {"amount_minor": 1_000, "currency": "USD"},
-                },
-            ]
+            assert "line_items" not in case["bill_snapshot"]
             assert case["goal"]["target_monthly_total"] == {
                 "amount_minor": 7_300,
                 "currency": "USD",
@@ -207,6 +200,24 @@ async def _test_api_create_maps_exact_intake_facts_and_event_preserves_them() ->
             assert (
                 case["constraints"][0]["statement"] == "Do not change device financing."
             )
+        stored = runtime.repository.get(UUID(body["case_id"]))
+        assert stored is not None
+        assert stored.snapshot.case.bill_snapshot is not None
+        assert [
+            item.model_dump(mode="json")
+            for item in stored.snapshot.case.bill_snapshot.line_items
+        ] == [
+            {
+                "name": "Postpaid mobile service",
+                "category": "service",
+                "amount": {"amount_minor": 9_000, "currency": "USD"},
+            },
+            {
+                "name": "Premium data add-on",
+                "category": "addon",
+                "amount": {"amount_minor": 1_000, "currency": "USD"},
+            },
+        ]
 
         event = await client.post(
             f"/cases/{body['case_id']}/events",

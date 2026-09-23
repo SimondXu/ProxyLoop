@@ -215,19 +215,9 @@ def assert_browser_projection_isolated(
 
 
 def _is_channel_evidence(item: Mapping[str, Any]) -> bool:
-    source_type = item.get("source_type")
-    if source_type == "provider_event":
-        return True
-    if source_type != "provider_message":
-        return False
-    source_ref = item.get("source_ref")
-    if not isinstance(source_ref, str):
-        return False
-    try:
-        parsed = UUID(source_ref)
-    except ValueError:
-        return False
-    return parsed.version == 4 and str(parsed) == source_ref
+    # The browser projection carries no source_ref and needs neither type, so
+    # any Provider message or event Evidence reaching it is channel material.
+    return item.get("source_type") in {"provider_message", "provider_event"}
 
 
 def assert_authoritative_channel_evidence(

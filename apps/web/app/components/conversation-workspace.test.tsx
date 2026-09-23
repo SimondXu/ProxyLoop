@@ -12,7 +12,7 @@ const offer = {
 };
 
 const caseRecord = {
-  bill_snapshot: { monthly_total: { amount_minor: 9200, currency: "USD" }, usage: {} },
+  bill_snapshot: { monthly_total: { amount_minor: 9200, currency: "USD" } },
   case_id: "11111111-1111-4111-8111-111111111111",
   constraints: [{ classification: "hard", statement: "Do not change device financing." }],
   goal: {

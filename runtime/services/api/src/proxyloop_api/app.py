@@ -6,7 +6,7 @@ import hashlib
 from contextlib import suppress
 from datetime import UTC, datetime
 from time import perf_counter
-from typing import Any, Literal, Protocol, cast
+from typing import Any, Literal, Protocol
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request, Response
@@ -33,14 +33,29 @@ from proxyloop_connectors import (
     LocalMailboxVerificationError,
     verify_local_mailbox_event,
 )
-from proxyloop_contracts import Money
+from proxyloop_contracts import (
+    ApprovalRequest,
+    Case,
+    CaseContextSnapshot,
+    CompletionDecision,
+    Money,
+    ProviderOffer,
+    VisibleCaseEvent,
+)
 from proxyloop_openai_adapter import OpenAICompatibleAdapterError
 from proxyloop_workflow_worker import (
     CaseCommandRequest,
     TemporalDispatchError,
     TemporalReadinessResult,
 )
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 
 from .operations import (
     CORRELATION_ID_HEADER,
@@ -767,19 +782,20 @@ def _channel_failure_message(category: str) -> str:
     return "channel conflict"
 
 
+_BROWSER_JSON: TypeAdapter[dict[str, Any]] = TypeAdapter(dict[str, Any])
+_CHANNEL_EVENT_TYPES = frozenset({"provider_message", "provider_event"})
+_BROWSER_EVIDENCE_SOURCE_TYPES = frozenset({"simulator_transition", "confirmation"})
+
+
 def _result_payload(result: RuntimeResult) -> dict[str, Any]:
+    """Build the browser payload as an explicit allow-list projection.
+
+    Every emitted field is named here, so a field added to a canonical contract
+    never reaches the browser until it is added deliberately.
+    """
+
     snapshot = result.snapshot
-    completion = snapshot.completion_decision
-    completion_payload: dict[str, Any] = (
-        completion.model_dump(mode="json")
-        if completion is not None
-        else {
-            "decision": "not_done",
-            "evidence_ids": [],
-            "missing_evidence": ["verified_provider_confirmation"],
-            "reason_codes": ["approval_or_execution_pending"],
-        }
-    )
+    completion = _browser_completion(snapshot.completion_decision)
     route = (
         result.route.outcome.value
         if hasattr(result.route, "outcome")
@@ -788,72 +804,161 @@ def _result_payload(result: RuntimeResult) -> dict[str, Any]:
     approval = result.approval
     if approval is None:
         approval = next(iter(snapshot.approval_requests), None)
-    evidence = result.evidence or tuple(
+    evidence = tuple(
         item
-        for item in snapshot.evidence
-        if item.source_type.value in {"simulator_transition", "confirmation"}
+        for item in result.evidence or snapshot.evidence
+        if item.source_type.value in _BROWSER_EVIDENCE_SOURCE_TYPES
     )
     payload: dict[str, Any] = {
-        "case_id": str(snapshot.case.case_id),
-        "case": snapshot.case.model_dump(mode="json"),
-        "snapshot": _browser_snapshot_payload(snapshot),
+        "case_id": snapshot.case.case_id,
+        "case": _browser_case(snapshot.case),
+        "snapshot": _browser_snapshot(snapshot, completion),
         "revision": snapshot.revision,
         "event_cursor": snapshot.event_cursor,
         "route": route,
-        "approval": approval.model_dump(mode="json") if approval else None,
-        "evidence": [item.model_dump(mode="json") for item in evidence],
-        "completion": completion_payload,
+        "approval": _browser_approval(approval) if approval else None,
+        "evidence": [
+            {
+                "evidence_id": item.evidence_id,
+                "source_type": item.source_type,
+                "observed_at": item.observed_at,
+            }
+            for item in evidence
+        ],
+        "completion": completion,
         "execution_count": result.execution_count,
     }
     if result.fast_decision is not None:
-        payload["fast"] = result.fast_decision.model_dump(mode="json")
-    return payload
+        payload["fast"] = {
+            "dialogue_act": result.fast_decision.dialogue_act,
+            "response_text": result.fast_decision.response_text,
+            "created_at": result.fast_decision.created_at,
+        }
+    projected: dict[str, Any] = _BROWSER_JSON.dump_python(payload, mode="json")
+    return projected
 
 
-def _browser_snapshot_payload(snapshot: Any) -> dict[str, Any]:
-    """Project the canonical snapshot without exposing local-mailbox material."""
-
-    payload = cast(dict[str, Any], snapshot.model_dump(mode="json"))
-    payload["visible_events"] = [
-        event
-        for event in payload["visible_events"]
-        if not _is_channel_visible_event(event)
-    ]
-    payload["evidence"] = [
-        evidence
-        for evidence in payload["evidence"]
-        if not _is_channel_evidence(evidence)
-    ]
-    return payload
+def _browser_money(value: Money | None) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    return {"amount_minor": value.amount_minor, "currency": value.currency}
 
 
-def _is_channel_visible_event(value: object) -> bool:
-    if not isinstance(value, dict):
-        return False
-    return value.get("actor") == "provider" and value.get("event_type") in {
-        "provider_message",
-        "provider_event",
+def _browser_completion(completion: CompletionDecision | None) -> dict[str, Any]:
+    if completion is None:
+        return {
+            "decision": "not_done",
+            "evidence_ids": [],
+            "missing_evidence": ["verified_provider_confirmation"],
+            "reason_codes": ["approval_or_execution_pending"],
+        }
+    return {
+        "decision": completion.decision,
+        "evidence_ids": list(completion.evidence_ids),
+        "missing_evidence": list(completion.missing_evidence),
+        "reason_codes": list(completion.reason_codes),
     }
 
 
-def _is_channel_evidence(value: object) -> bool:
-    if not isinstance(value, dict):
-        return False
-    source_type = value.get("source_type")
-    source_ref = value.get("source_ref")
-    if source_type == "provider_message":
-        return _is_uuid4_reference(source_ref)
-    return source_type == "provider_event"
+def _browser_case(case: Case) -> dict[str, Any]:
+    bill = case.bill_snapshot
+    goal = case.goal
+    return {
+        "case_id": case.case_id,
+        "revision": case.revision,
+        "phase": case.phase,
+        "bill_snapshot": (
+            {"monthly_total": _browser_money(bill.monthly_total)}
+            if bill is not None
+            else None
+        ),
+        "goal": {
+            "desired_outcome": goal.desired_outcome,
+            "target_monthly_total": _browser_money(goal.target_monthly_total),
+            "required_features": list(goal.required_features),
+            "forbidden_changes": list(goal.forbidden_changes),
+            "deadline": goal.deadline,
+        },
+        "constraints": [
+            {"classification": item.classification, "statement": item.statement}
+            for item in case.constraints
+        ],
+    }
 
 
-def _is_uuid4_reference(value: object) -> bool:
-    if not isinstance(value, str):
-        return False
-    try:
-        parsed = UUID(value)
-    except ValueError:
-        return False
-    return parsed.version == 4 and str(parsed) == value
+def _browser_snapshot(
+    snapshot: CaseContextSnapshot, completion: dict[str, Any]
+) -> dict[str, Any]:
+    """Project the snapshot fields the browser reads, minus channel material."""
+
+    return {
+        "revision": snapshot.revision,
+        "event_cursor": snapshot.event_cursor,
+        "phase": snapshot.case.phase,
+        "pending_execution": snapshot.pending_execution,
+        "case": _browser_case(snapshot.case),
+        "offers": [_browser_offer(offer) for offer in snapshot.offers],
+        "visible_events": [
+            {
+                "event_cursor": event.event_cursor,
+                "actor": event.actor,
+                "event_type": event.event_type,
+                "content": event.content,
+                "occurred_at": event.occurred_at,
+            }
+            for event in snapshot.visible_events
+            if not _is_channel_visible_event(event)
+        ],
+        "completion": completion,
+    }
+
+
+def _browser_offer(offer: ProviderOffer) -> dict[str, Any]:
+    return {
+        "offer_id": offer.offer_id,
+        "revision": offer.revision,
+        "provider_id": offer.provider_id,
+        "monthly_price": _browser_money(offer.monthly_price),
+        "total_cost": _browser_money(offer.total_cost),
+        "fees": [
+            {
+                "name": fee.name,
+                "category": fee.category,
+                "amount": _browser_money(fee.amount),
+            }
+            for fee in offer.fees
+        ],
+        "term_months": offer.term_months,
+        "features": list(offer.features),
+        "expires_at": offer.expires_at,
+    }
+
+
+def _browser_approval(approval: ApprovalRequest) -> dict[str, Any]:
+    offer_ref = approval.offer_ref
+    return {
+        "approval_id": approval.approval_id,
+        "case_revision": approval.case_revision,
+        "action_intent_revision": approval.action_intent_revision,
+        "action_type": approval.action_type,
+        "decision": approval.decision,
+        "requested_at": approval.requested_at,
+        "decided_at": approval.decided_at,
+        "expires_at": approval.expires_at,
+        "material_terms_hash": approval.material_terms_hash,
+        "offer_ref": (
+            {
+                "offer_id": offer_ref.offer_id,
+                "offer_revision": offer_ref.offer_revision,
+            }
+            if offer_ref is not None
+            else None
+        ),
+    }
+
+
+def _is_channel_visible_event(event: VisibleCaseEvent) -> bool:
+    return event.actor == "provider" and event.event_type in _CHANNEL_EVENT_TYPES
 
 
 def _channel_result_payload(

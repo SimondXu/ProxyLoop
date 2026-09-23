@@ -56,14 +56,14 @@ def test_browser_projection_assertion_rejects_channel_material() -> None:
     safe = {
         "snapshot": {
             "visible_events": [{"actor": "provider", "event_type": "provider_offer"}],
-            "evidence": [
-                {
-                    "source_type": "provider_message",
-                    "source_ref": "pine-mobile:offer:pine-value-5g:v1",
-                }
-            ],
         },
-        "evidence": [],
+        "evidence": [
+            {
+                "evidence_id": "99999999-9999-4999-8999-999999999999",
+                "source_type": "confirmation",
+                "observed_at": "2026-08-26T12:00:00Z",
+            }
+        ],
     }
     demo.assert_browser_projection_isolated(
         safe,
@@ -81,21 +81,21 @@ def test_browser_projection_assertion_rejects_channel_material() -> None:
     else:
         raise AssertionError("unsafe browser projection was accepted")
 
-    with pytest.raises(demo.DemoScenarioError, match="channel material"):
-        demo.assert_browser_projection_isolated(
-            {
-                "snapshot": {
-                    "visible_events": [],
+    for source_type in ("provider_message", "provider_event"):
+        with pytest.raises(demo.DemoScenarioError, match="channel material"):
+            demo.assert_browser_projection_isolated(
+                {
+                    "snapshot": {"visible_events": []},
                     "evidence": [
                         {
-                            "source_type": "provider_message",
-                            "source_ref": str(demo.INBOUND_EVENT_ID),
+                            "evidence_id": "99999999-9999-4999-8999-999999999999",
+                            "source_type": source_type,
+                            "observed_at": "2026-08-26T12:00:00Z",
                         }
                     ],
-                }
-            },
-            forbidden=(),
-        )
+                },
+                forbidden=(),
+            )
 
 
 def test_channel_evidence_assertion_ignores_existing_offer_evidence() -> None:
