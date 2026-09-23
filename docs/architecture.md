@@ -108,8 +108,8 @@ Slow receives a version-pinned `SlowWorkRequest` derived from a `SlowReasonerVie
 
 It returns a `StrategyPacket` containing:
 
-- `strategy_id`, `version`, `created_at`, and `expires_at`;
-- `case_version` and `fact_ledger_version`;
+- `strategy_id`, `revision`, `created_at`, and `expires_at`;
+- `case_revision` and `fact_ledger_revision`;
 - primary objective and current subgoal;
 - hard constraints and ranked preferences;
 - allowed and approval-required disclosure fields;
@@ -194,25 +194,27 @@ The complete decision and evidence boundary is frozen in `docs/decisions/2026-08
 
 ## Core Domain Contracts
 
-The canonical contract layer defines these Pydantic contracts before service code:
+The canonical contract layer defines Pydantic contracts before service code. The registry is `CANONICAL_MODELS` in `runtime/packages/contracts/src/proxyloop_contracts/contracts.py`; at contract set 1.1 it holds 25 types, and `test_canonical_model_registry_has_exact_phase_surface` freezes that set. The core domain contracts are:
 
-- `Case`: lifecycle identity, owner, phase, version, and timestamps.
+- `Case`: lifecycle identity, `consumer_id`, phase, revision, constraint-set revision, and timestamps; it embeds the goal, constraints, delegated authority, and an optional bill snapshot.
 - `ConsumerGoal`: desired outcome, budget, service requirements, and deadline.
-- `Constraint`: hard/soft classification, source, version, and validity.
+- `Constraint`: hard/soft classification, source, revision, and validity.
 - `BillSnapshot`: current price, line items, add-ons, term, usage, and evidence source.
 - `FactLedger`: append-only candidate/verified/rejected facts with provenance.
 - `StrategyPacket`: Slow Reasoner output described above.
 - `FastTurnDecision`: Fast Model output described above.
 - `ProviderOffer`: monthly price, total cost, features, fees, term, expiry, and provider evidence.
 - `ActionIntent`: proposed external or simulator action.
-- `ApprovalRequest`: exact action/offer version and expiry that the user approves or rejects.
+- `ApprovalRequest`: exact action-intent and offer revisions, material-terms hash, and expiry that the user approves or rejects.
 - `Evidence`: message, provider event, confirmation ID, bill, or simulator state transition.
 - `CompletionDecision`: deterministic verifier result and missing evidence.
 - `ModelTrace`: model/data/prompt versions, latency, token usage, result, and safety flags.
 
-Phase 03A1 implemented and generated the canonical wire contracts for `CaseContextSnapshot`, Fast/Slow Model Views, `RoutingDecision`, `SlowWorkRequest`, `SlowWorkResult`, planning-basis pins, and `CapabilityManifest`. Their architecture was frozen in Phase 03A0 and is now enforced by contract-generation and drift checks.
+Phase 03A1 implemented and generated the canonical wire contracts for `CaseContextSnapshot`, `VisibleCaseEvent`, Fast/Slow Model Views (`FastModelView`, `SlowReasonerView`), `RoutingDecision`, `SlowWorkRequest`, `SlowWorkResult`, planning-basis pins (`ModelInputPins`, `PlanningBasis`), and `CapabilityManifest`. Their architecture was frozen in Phase 03A0 and is now enforced by contract-generation and drift checks.
 
-All mutable objects use optimistic versions. An approval is valid only for the exact case, strategy, constraint set, and offer version it references.
+Contract set 1.1 added `ExecutionClaim` and `CompletionReceipt`; per-type version rules are in `contracts/README.md`.
+
+Every versioned contract carries a Contract Schema Version (`schema_version`) and an Entity Revision (`revision`, an optimistic sequence number starting at 1); references to another entity pin its revision (`case_revision`, `strategy_revision`, `constraint_set_revision`, `offer_revision`, and so on). An approval is valid only for the exact case, strategy, constraint-set, and offer revisions it references.
 
 ## State Ownership
 
@@ -280,7 +282,7 @@ Phase 02 validated only ingestion, normalization, curation, and export plumbing 
 Every model/channel/workflow span should carry:
 
 - `case_id`, `workflow_id`, and `episode_id`;
-- case/strategy/fact-ledger versions;
+- case/strategy/fact-ledger revisions;
 - model, adapter, prompt, dataset, and simulator versions;
 - latency segments, token usage, and estimated cost;
 - policy-gate result and reason code;

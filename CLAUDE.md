@@ -35,8 +35,8 @@ Repository checks are `make` targets; the installed `fix` Skill (Yarn) does not 
 
 - Focused: `make lint`, `make typecheck`, `make test`, `make format`, `make web-check`
 - Fast gate while iterating: `make preflight-fast`
-- Final local gate, run once on the stable diff: `make preflight` (skips the DB/Temporal-gated integration tests; a change under `case_runtime`, `workflow_worker`, `connectors`, or `api` also needs the real-dependency gates below)
-- Real-dependency gates (need the Compose PostgreSQL/Temporal profiles): `make postgres-check`, `make phase05a-check`, `make phase06b1-check`
+- Final local gate, run once on the stable diff: `make preflight` = `validate` (`format-check`, `lint`, `typecheck`, `test`, `check-layout`, `web-check`) + `lock-check` + `python3 -m compileall -q scripts` + `docker compose config --quiet`. With `PROXYLOOP_TEST_DATABASE_URL` unset it exits 0 while skipping the DB/Temporal tests in `test_phase_04c_persistent_case_store.py`, `test_phase_05a_case_runtime.py`, `test_phase_05a_temporal_workflow.py`, and `test_phase_06b1_temporal.py`, so it does not cover them. A change under `case_runtime`, `workflow_worker`, `connectors`, or `api` also needs the real-dependency gates below.
+- Real-dependency gates (need the Compose PostgreSQL/Temporal profiles; they fail rather than skip without their variables): `make postgres-check` (`PROXYLOOP_TEST_DATABASE_URL`), `make phase05a-check` and `make phase06b1-check` (`PROXYLOOP_TEST_DATABASE_URL` and `PROXYLOOP_TEST_TEMPORAL_ADDRESS`). The URL must name the `proxyloop_test` database. Run them serially and from one worktree at a time: they share `proxyloop_test`, truncate its tables, and reuse fixed Case and command ids, so concurrent runs (including a `make preflight` with the variables set) truncate each other and fail intermittently. Details: `docs/development.md`, "Local gate and real-dependency gates".
 
 Report passed, failed, blocked, skipped, manual, and unrun checks separately. Never claim a check passed without its output.
 
