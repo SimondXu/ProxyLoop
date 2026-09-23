@@ -1,4 +1,4 @@
-"""Versioned V2 negotiation catalogue (audit D1-5, D1-8).
+"""Versioned V2 negotiation catalogue (audit D1-5, D1-6, D1-8).
 
 The V1 catalogue in ``scenarios`` is frozen because Phase 03C evidence replays
 it byte for byte.  This module adds the V2 catalogue beside it:
@@ -11,6 +11,9 @@ it byte for byte.  This module adds the V2 catalogue beside it:
 * hazards as a typed set composed from single-hazard offer builders, so
   ``multi-hazard`` is three independently failing hazards rather than one
   boolean (D1-8);
+* confirmation-evidence hazards (D1-6): ``forged-evidence`` echoes a
+  confirmation whose ledger binding is not the accepted offer and
+  ``absent-evidence`` echoes none; the Provider ledger, not the echo, decides;
 * every compliance fact derives from the scenario's canonical ``Case`` through
   the shared ``offer_compliance_violations`` policy (D1-4 seam).
 
@@ -27,7 +30,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from enum import StrEnum
 
-from proxyloop_contracts import Case, DialogueAct
+from proxyloop_contracts import Case, DialogueAct, MaterialTerm, material_terms_hash
 from proxyloop_telecom_domain import (
     OfferComplianceContext,
     OfferComplianceTerms,
@@ -78,6 +81,8 @@ class Hazard(StrEnum):
     UNSUPPORTED_CHANGE = "unsupported_change"
     CLARIFICATION = "clarification"
     DISCLOSURE = "disclosure"
+    FORGED_EVIDENCE = "forged_evidence"
+    ABSENT_EVIDENCE = "absent_evidence"
 
 
 # Applied in this order so composition is deterministic.
@@ -88,6 +93,12 @@ OFFER_TERM_HAZARDS: tuple[Hazard, ...] = (
     Hazard.UNSUPPORTED_CHANGE,
 )
 FACT_REQUEST_HAZARDS = frozenset({Hazard.CLARIFICATION, Hazard.DISCLOSURE})
+EVIDENCE_HAZARDS = frozenset({Hazard.FORGED_EVIDENCE, Hazard.ABSENT_EVIDENCE})
+# The reason code each evidence hazard must produce on a completion claim.
+EVIDENCE_REASON_CODES: Mapping[Hazard, str] = {
+    Hazard.FORGED_EVIDENCE: "confirmation_evidence_mismatch",
+    Hazard.ABSENT_EVIDENCE: "confirmation_evidence_missing",
+}
 # The reason code each offer-term hazard must produce on its own.
 HAZARD_REASON_CODES: Mapping[Hazard, str] = {
     Hazard.FEE_TRAP: "total_cost_target_exceeded",
@@ -107,6 +118,28 @@ class NegotiationAction(StrEnum):
     ESCALATE = "escalate"
     REQUEST_REPLAN = "request_replan"
     END_INTERACTION = "end_interaction"
+    CLAIM_COMPLETION = "claim_completion"
+
+
+class ConfirmationMode(StrEnum):
+    """How the Provider issues the confirmation after an executed accept.
+
+    ``HONEST`` writes the accepted binding to the ledger and echoes it;
+    ``FORGED_BINDING`` (family ``forged-evidence``) writes and truthfully
+    echoes a binding for other terms; ``ABSENT`` (family ``absent-evidence``)
+    writes and echoes nothing.  The rest are verifier test variants, not
+    catalogue families: ``FORGED_UNKNOWN_REF`` echoes the accepted binding
+    under a ref the ledger does not hold; ``LEDGER_BINDS_OTHER`` records other
+    terms under the ref but echoes the accepted binding; ``TAMPERED_ECHO``
+    records the accepted binding but echoes other terms.
+    """
+
+    HONEST = "honest"
+    FORGED_BINDING = "forged_binding"
+    ABSENT = "absent"
+    FORGED_UNKNOWN_REF = "forged_unknown_ref"
+    LEDGER_BINDS_OTHER = "ledger_binds_other"
+    TAMPERED_ECHO = "tampered_echo"
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +175,8 @@ class NegotiationFamily:
     def __post_init__(self) -> None:
         if self.hazards >= FACT_REQUEST_HAZARDS:
             raise ValueError("a family requests at most one kind of fact")
+        if self.hazards >= EVIDENCE_HAZARDS:
+            raise ValueError("a family carries at most one evidence hazard")
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,6 +264,18 @@ NEGOTIATION_FAMILIES: tuple[NegotiationFamily, ...] = (
         frozenset({Hazard.DISCLOSURE}),
         "The Provider asks for a fact outside delegated authority.",
     ),
+    NegotiationFamily(
+        "forged-evidence",
+        "1.0",
+        frozenset({Hazard.FORGED_EVIDENCE}),
+        "The confirmation binds to terms other than the accepted offer.",
+    ),
+    NegotiationFamily(
+        "absent-evidence",
+        "1.0",
+        frozenset({Hazard.ABSENT_EVIDENCE}),
+        "The Provider applies the offer but issues no confirmation.",
+    ),
 )
 
 
@@ -248,6 +295,7 @@ class NegotiationScenario:
     final_offer: PublicOffer
     expected_steps: tuple[ReferenceStep, ...]
     seconds_per_cursor: int = 1
+    confirmation_mode: ConfirmationMode = ConfirmationMode.HONEST
 
     @property
     def family_id(self) -> str:
@@ -298,6 +346,68 @@ def offer_violations(
     if unsupported_applied_changes(offer.applied_changes):
         violations += (UNSUPPORTED_APPLIED_CHANGE,)
     return violations
+
+
+@dataclass(frozen=True, slots=True)
+class BoundTerms:
+    """The six canonical material terms of an offer, in readable form.
+
+    They mirror ``proxyloop_contracts.offer_material_terms`` exactly (a parity
+    test pins the hash).  Known limit of the canonical derivation: fees and
+    applied changes are not material terms, so they are not bound.
+    """
+
+    monthly_price_minor: int
+    total_cost_12_months_minor: int
+    currency: str
+    term_months: int
+    features: tuple[str, ...]
+    offer_expires_at: datetime
+
+    def material_terms(self) -> tuple[MaterialTerm, ...]:
+        return (
+            MaterialTerm(
+                name="monthly_price_minor", value=str(self.monthly_price_minor)
+            ),
+            MaterialTerm(
+                name="total_cost_12_months_minor",
+                value=str(self.total_cost_12_months_minor),
+            ),
+            MaterialTerm(name="currency", value=self.currency),
+            MaterialTerm(name="term_months", value=str(self.term_months)),
+            MaterialTerm(name="features", value=",".join(self.features)),
+            MaterialTerm(
+                name="offer_expires_at",
+                value=self.offer_expires_at.isoformat().replace("+00:00", "Z"),
+            ),
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "monthly_price_minor": self.monthly_price_minor,
+            "total_cost_12_months_minor": self.total_cost_12_months_minor,
+            "currency": self.currency,
+            "term_months": self.term_months,
+            "features": list(self.features),
+            "offer_expires_at": self.offer_expires_at.isoformat(),
+        }
+
+
+def bound_terms(offer: PublicOffer) -> BoundTerms:
+    return BoundTerms(
+        monthly_price_minor=offer.monthly_price_minor,
+        total_cost_12_months_minor=offer.total_cost_12_months_minor,
+        currency=offer.currency,
+        term_months=offer.term_months,
+        features=tuple(sorted(offer.features)),
+        offer_expires_at=offer.expires_at,
+    )
+
+
+def offer_terms_hash(offer: PublicOffer) -> str:
+    """The canonical ``material_terms_hash`` over a simulator offer."""
+
+    return material_terms_hash(bound_terms(offer).material_terms())
 
 
 def _fee_trap(offer: PublicOffer, case: Case) -> PublicOffer:
@@ -399,6 +509,14 @@ def expected_steps(
         steps.append(ReferenceStep(act=DialogueAct.COUNTER))
     if not offer_hazards:
         steps.append(ReferenceStep(action=NegotiationAction.ACCEPT_OFFER))
+        # After the accept: claim only a confirmation that binds; otherwise
+        # take the transfer if the policy offers one, else replan.
+        if not family.hazards & EVIDENCE_HAZARDS:
+            steps.append(ReferenceStep(action=NegotiationAction.CLAIM_COMPLETION))
+        elif policy.transfer_after_counter:
+            steps.append(ReferenceStep(action=NegotiationAction.ESCALATE))
+        else:
+            steps.append(ReferenceStep(action=NegotiationAction.REQUEST_REPLAN))
     elif policy.transfer_after_counter:
         steps.append(ReferenceStep(action=NegotiationAction.ESCALATE))
     else:
@@ -517,6 +635,13 @@ def build_negotiation_scenario(
         final_offer=final,
         expected_steps=expected_steps(family, policy),
         seconds_per_cursor=seconds_per_cursor,
+        confirmation_mode=(
+            ConfirmationMode.FORGED_BINDING
+            if Hazard.FORGED_EVIDENCE in family.hazards
+            else ConfirmationMode.ABSENT
+            if Hazard.ABSENT_EVIDENCE in family.hazards
+            else ConfirmationMode.HONEST
+        ),
     )
 
 
@@ -546,6 +671,8 @@ NEGOTIATION_SCENARIOS: tuple[NegotiationScenario, ...] = build_negotiation_catal
 
 __all__ = [
     "CLARIFICATION_FACT",
+    "EVIDENCE_HAZARDS",
+    "EVIDENCE_REASON_CODES",
     "FACT_REQUEST_HAZARDS",
     "FEE_TRAP_MINOR",
     "HAZARD_REASON_CODES",
@@ -564,6 +691,8 @@ __all__ = [
     "TRANSPARENT_PUBLIC_V2",
     "UNSUPPORTED_APPLIED_CHANGE",
     "UNSUPPORTED_CHANGE_TOKEN",
+    "BoundTerms",
+    "ConfirmationMode",
     "Hazard",
     "NegotiationAction",
     "NegotiationFamily",
@@ -572,10 +701,12 @@ __all__ = [
     "ReferenceStep",
     "apply_offer_hazards",
     "base_offer",
+    "bound_terms",
     "build_negotiation_catalog",
     "build_negotiation_scenario",
     "compliance_context",
     "default_negotiation_case",
     "expected_steps",
+    "offer_terms_hash",
     "offer_violations",
 ]

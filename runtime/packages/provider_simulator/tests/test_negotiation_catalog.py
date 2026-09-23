@@ -14,6 +14,7 @@ from proxyloop_provider_simulator.negotiation_catalog import (
     PROVIDER_POLICIES_V2,
     RETENTION_GATED_V2,
     TRANSPARENT_PUBLIC_V2,
+    ConfirmationMode,
     Hazard,
     apply_offer_hazards,
     base_offer,
@@ -189,3 +190,12 @@ def test_f2_builder_rejects_a_forbidden_change_that_is_also_unsupported() -> Non
     )
     with pytest.raises(ValueError, match="not isolated"):
         build_negotiation_scenario(family, TRANSPARENT_PUBLIC_V2, v1_case)
+
+
+def test_catalogue_emits_only_family_confirmation_modes() -> None:
+    # The test-only modes must never reach the catalogue, splits, or leakage.
+    assert {scenario.confirmation_mode for scenario in NEGOTIATION_SCENARIOS} == {
+        ConfirmationMode.HONEST,
+        ConfirmationMode.FORGED_BINDING,
+        ConfirmationMode.ABSENT,
+    }
