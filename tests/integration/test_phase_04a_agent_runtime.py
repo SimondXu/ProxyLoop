@@ -116,15 +116,15 @@ async def _test_thin_runtime_completes_multiturn_approval_flow() -> None:
         assert completed["execution_count"] == 1
         assert len(completed["evidence"]) == 2
 
+        # A fresh pin-less approval after completion is a new command against
+        # a terminal approval: 409 in both orchestration modes, no second
+        # Provider commit.
         duplicate = await client.post(
             f"/cases/{case_id}/approvals/{approval['approval_id']}",
             json={"decision": "approved"},
         )
-        assert duplicate.status_code == 200
-        repeated = duplicate.json()
-        assert repeated["route"] == "terminal"
-        assert repeated["execution_count"] == 1
-        assert repeated["evidence"] == completed["evidence"]
+        assert duplicate.status_code == 409
+        assert duplicate.json() == {"detail": "approval is already terminal"}
         state = runtime.repository.get(UUID(case_id))
         assert state is not None
         assert [item.value for item in state.provider.state_history].count(

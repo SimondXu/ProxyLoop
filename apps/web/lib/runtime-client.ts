@@ -602,7 +602,7 @@ function statusMessage(category: RuntimeErrorCategory): string {
     return "The saved Case is no longer available in the local Runtime. Reset this local task to continue.";
   }
   if (category === "case_conflict") {
-    return "The Case moved while this request was in flight. I read the current state; retry if the action is still offered.";
+    return "The Runtime refused this command because it conflicts with the current Case. Retry only if the action is still offered; to start over, restart the Runtime process (or reset the durable demo), then choose New task.";
   }
   if (category === "approval_expired") {
     return "The Runtime reports that this approval has expired. No approval was sent again.";

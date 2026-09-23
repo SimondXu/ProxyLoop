@@ -1580,6 +1580,11 @@ class ThinAgentRuntime:
             pending_execution=event_snapshot.pending_execution,
         )
 
+    def now(self) -> datetime:
+        """Return the Runtime clock's current UTC time."""
+
+        return self._clock_now()
+
     def _clock_now(self) -> datetime:
         now = self._clock()
         if now.tzinfo is None or now.utcoffset() != timedelta(0):

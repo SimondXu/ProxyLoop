@@ -760,6 +760,14 @@ export function ConversationWorkspace() {
           readiness.error_category === "none" ? "dependency_not_ready" : readiness.error_category as RuntimeClientError["category"],
         );
       }
+      if (readiness.orchestration_mode === "direct" && readiness.storage_mode === "memory") {
+        throw new RuntimeClientError(
+          "The direct Runtime keeps one Case per Runtime process and does not resume it after a page reload. Restart the Runtime process to start over, then choose Restart local demo.",
+          "invalid",
+          null,
+          "dependency_not_ready",
+        );
+      }
       if (
         readiness.orchestration_mode !== "temporal" ||
         readiness.storage_mode !== "postgres" ||

@@ -83,7 +83,7 @@ describe("runtime client", () => {
   it.each([
     [404, {}, "case_not_found", "The saved Case is no longer available in the local Runtime. Reset this local task to continue."],
     [422, { detail: { code: "request_invalid", message: "redacted" } }, "request_invalid", "The local Runtime rejected this state safely. No unverified result is shown."],
-    [409, { detail: { code: "case_conflict", message: "redacted" } }, "case_conflict", "The Case moved while this request was in flight. I read the current state; retry if the action is still offered."],
+    [409, { detail: { code: "case_conflict", message: "redacted" } }, "case_conflict", "The Runtime refused this command because it conflicts with the current Case. Retry only if the action is still offered; to start over, restart the Runtime process (or reset the durable demo), then choose New task."],
     [503, { detail: { code: "temporal_unavailable", message: "redacted" } }, "temporal_unavailable", "The local orchestration attempt is still unresolved. Your Case and safe retry remain preserved; reconnect to read authoritative state."],
     [503, {}, "temporal_unavailable", "The local orchestration attempt is still unresolved. Your Case and safe retry remain preserved; reconnect to read authoritative state."],
   ] as const)("maps HTTP %s %j to category %s with its bounded copy", async (status, body, category, message) => {
@@ -301,24 +301,37 @@ describe("runtime client", () => {
     });
   });
 
-  it("reports the direct readiness profile without an orchestration mode", async () => {
+  it("reports the direct readiness profile with its orchestration mode", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
       status: "ok",
       ready: true,
-      dependency: "runtime",
+      dependency: "memory",
       adapter_mode: "scripted",
       storage_mode: "memory",
+      orchestration_mode: "direct",
     }), { status: 200 })));
 
     await expect(checkReadiness()).resolves.toEqual({
       status: "ok",
       ready: true,
-      dependency: "runtime",
+      dependency: "memory",
       adapter_mode: "scripted",
       storage_mode: "memory",
-      orchestration_mode: undefined,
+      orchestration_mode: "direct",
       error_category: "none",
     });
+  });
+
+  it("does not promise a Case read in the case_conflict copy", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      detail: "case already exists",
+    }), { status: 409 })));
+
+    const rejected = await createCase(facts).catch((caught: unknown) => caught);
+
+    expect(rejected).toMatchObject({ category: "case_conflict", status: 409 });
+    expect((rejected as Error).message).not.toMatch(/I read|I will read|Reconnect/);
+    expect((rejected as Error).message).toContain("restart the Runtime process");
   });
 
   it("returns ready:false with the Temporal category when orchestration is unavailable", async () => {

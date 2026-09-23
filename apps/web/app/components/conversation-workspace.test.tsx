@@ -1429,8 +1429,9 @@ describe("ConversationWorkspace", () => {
   });
 
   it.each([
-    ["no orchestration_mode (direct)", { orchestration_mode: undefined }],
+    ["no orchestration_mode", { orchestration_mode: undefined }],
     ["storage_mode memory", { storage_mode: "memory" }],
+    ["direct with PostgreSQL storage", { orchestration_mode: "direct" }],
     ["adapter_mode other than scripted", { adapter_mode: "hosted" }],
   ])("makes no recovery claim against a non-durable readiness profile: %s", async (_label, change) => {
     const runtime = await import("../../lib/runtime-client");
@@ -1443,6 +1444,28 @@ describe("ConversationWorkspace", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Recovery requires the durable Temporal/PostgreSQL/scripted Runtime profile. The direct Runtime makes no restart-recovery claim.",
     );
+    expect(runtime.getCase).not.toHaveBeenCalled();
+    expect(screen.queryByRole("heading", { name: "Here is what I will work from." })).not.toBeInTheDocument();
+  });
+
+  it("names the direct one-Case limit and the Runtime restart instead of a durable-recovery block", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    runtime.savePersistedWorkspace(storedWorkspace(null));
+    vi.mocked(runtime.checkReadiness).mockResolvedValue({
+      ...DURABLE_READY,
+      dependency: "memory",
+      storage_mode: "memory",
+      orchestration_mode: "direct",
+    });
+    vi.mocked(runtime.getCase).mockReset();
+
+    render(<ConversationWorkspace />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "The direct Runtime keeps one Case per Runtime process and does not resume it after a page reload. Restart the Runtime process to start over, then choose Restart local demo.",
+    );
+    expect(alert).not.toHaveTextContent("Recovery requires the durable");
     expect(runtime.getCase).not.toHaveBeenCalled();
     expect(screen.queryByRole("heading", { name: "Here is what I will work from." })).not.toBeInTheDocument();
   });
@@ -1485,7 +1508,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.checkReadiness).mockResolvedValue(DURABLE_READY);
     vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => payload());
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockRejectedValueOnce(new runtime.RuntimeClientError(
-      "The Case moved while this request was in flight. I read the current state; retry if the action is still offered.",
+      "The Runtime refused this command because it conflicts with the current Case. Retry only if the action is still offered; to start over, restart the Runtime process (or reset the durable demo), then choose New task.",
       "http",
       409,
       "case_conflict",
