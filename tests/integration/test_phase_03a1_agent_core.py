@@ -1104,6 +1104,38 @@ def test_slow_result_must_match_request_and_current_strategy_revisions() -> None
     assert "slow_strategy_expired" in stale_audit.reason_codes
 
 
+def test_scripted_slow_refresh_bumps_the_revision_of_the_same_strategy() -> None:
+    snapshot, _ = _snapshot()
+    initial = _without_strategy(snapshot)
+    first = ScriptedSlowAdapter().reason(
+        CaseCoordinator.build_slow_request(
+            initial,
+            reason_code="case_initialization",
+            created_at=NOW,
+        )
+    )
+    prior = first.strategy_proposal
+    assert prior is not None
+    assert prior.revision == 1
+    installed_pins = initial.pins.model_copy(
+        update={"strategy_id": prior.strategy_id, "strategy_revision": prior.revision}
+    )
+    installed = initial.model_copy(update={"strategy": prior, "pins": installed_pins})
+
+    refreshed = ScriptedSlowAdapter().reason(
+        CaseCoordinator.build_slow_request(
+            installed,
+            reason_code="strategy_expired",
+            created_at=NOW + timedelta(minutes=31),
+        )
+    )
+
+    strategy = refreshed.strategy_proposal
+    assert strategy is not None
+    assert strategy.strategy_id == prior.strategy_id
+    assert strategy.revision == 2
+
+
 def test_bounded_fast_requires_the_exact_non_material_template() -> None:
     snapshot, _ = _snapshot()
     chinese_material = _Fast(

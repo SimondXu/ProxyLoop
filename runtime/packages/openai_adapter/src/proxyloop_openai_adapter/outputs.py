@@ -12,6 +12,7 @@ from proxyloop_contracts import (
     ActionIntent,
     ActionType,
     CapabilityArgument,
+    CapabilityDefinition,
     CapabilityProposal,
     CapabilityReference,
     ConstraintClassification,
@@ -179,14 +180,11 @@ def compile_slow_output(
     )
     capabilities: list[CapabilityProposal] = []
     actions: list[ActionIntent] = []
-    definitions = {
-        item.capability_id: item
-        for item in request.view.capability_manifest.capabilities
-    }
     proposed = output.next_capability
     if proposed is not None:
-        capability_id = f"simulator.{proposed.capability}"
-        definition = definitions.get(capability_id)
+        definition = _resolve_definition(
+            proposed, request.view.capability_manifest.capabilities
+        )
         if definition is None or len(definition.allowed_action_types) != 1:
             raise ValueError("Slow output proposed an unsupported capability")
         action_type = definition.allowed_action_types[0]
@@ -274,6 +272,25 @@ def _validate_semantic_references(
         raise ValueError("Slow strategy proposed an unauthorized disclosure")
     if not set(output.strategy.approval_required_disclosures) <= allowed:
         raise ValueError("Slow strategy proposed an unknown approval disclosure")
+
+
+def _resolve_definition(
+    proposed: CapabilityModelOutput,
+    definitions: tuple[CapabilityDefinition, ...],
+) -> CapabilityDefinition | None:
+    """Accept resolves by action type; other names by exact manifest id."""
+
+    if isinstance(proposed, AcceptOfferCapabilityModelOutput):
+        matches = [
+            item
+            for item in definitions
+            if item.allowed_action_types == (ActionType.ACCEPT_OFFER,)
+        ]
+        return matches[0] if len(matches) == 1 else None
+    capability_id = f"simulator.{proposed.capability}"
+    return next(
+        (item for item in definitions if item.capability_id == capability_id), None
+    )
 
 
 def _selected_offer(
