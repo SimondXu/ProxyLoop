@@ -80,6 +80,18 @@ describe("runtime client", () => {
     await expect(createCase(facts)).rejects.toMatchObject({ kind, status });
   });
 
+  it.each([
+    [404, {}, "case_not_found", "The saved Case is no longer available in the local Runtime. Reset this local task to continue."],
+    [422, { detail: { code: "request_invalid", message: "redacted" } }, "request_invalid", "The local Runtime rejected this state safely. No unverified result is shown."],
+    [409, { detail: { code: "case_conflict", message: "redacted" } }, "case_conflict", "The Case moved while this request was in flight. I read the current state; retry if the action is still offered."],
+    [503, { detail: { code: "temporal_unavailable", message: "redacted" } }, "temporal_unavailable", "The local orchestration attempt is still unresolved. Your Case and safe retry remain preserved; reconnect to read authoritative state."],
+    [503, {}, "temporal_unavailable", "The local orchestration attempt is still unresolved. Your Case and safe retry remain preserved; reconnect to read authoritative state."],
+  ] as const)("maps HTTP %s %j to category %s with its bounded copy", async (status, body, category, message) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status })));
+
+    await expect(getCase(basePayload.case_id)).rejects.toMatchObject({ kind: "http", status, category, message });
+  });
+
   it("fails closed when the local Runtime cannot be reached", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
 
@@ -286,6 +298,39 @@ describe("runtime client", () => {
     await expect(checkReadiness()).resolves.toMatchObject({
       ready: false,
       error_category: "dependency_not_ready",
+    });
+  });
+
+  it("reports the direct readiness profile without an orchestration mode", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      status: "ok",
+      ready: true,
+      dependency: "runtime",
+      adapter_mode: "scripted",
+      storage_mode: "memory",
+    }), { status: 200 })));
+
+    await expect(checkReadiness()).resolves.toEqual({
+      status: "ok",
+      ready: true,
+      dependency: "runtime",
+      adapter_mode: "scripted",
+      storage_mode: "memory",
+      orchestration_mode: undefined,
+      error_category: "none",
+    });
+  });
+
+  it("returns ready:false with the Temporal category when orchestration is unavailable", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      detail: { code: "temporal_unavailable", message: "redacted" },
+    }), { status: 503 })));
+
+    await expect(checkReadiness()).resolves.toEqual({
+      status: "unavailable",
+      ready: false,
+      dependency: "runtime",
+      error_category: "temporal_unavailable",
     });
   });
 
