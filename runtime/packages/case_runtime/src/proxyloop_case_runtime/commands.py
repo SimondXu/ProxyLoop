@@ -239,31 +239,6 @@ class CaseTransitionRef(BaseModel):
         return self
 
 
-class ExecutionClaimRecord(BaseModel):
-    """The durable receipt of one pending execution claim.
-
-    Written with the claim (``pending_execution=True``) so an exact retry of the
-    same command, or a later pin-less approval, can complete the claim with the
-    time basis of the original decision instead of failing the revision pin.
-    """
-
-    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
-
-    approval_id: UUID4
-    before_revision: int = Field(ge=1)
-    claimed_at: datetime
-    command_id: UUID4 | None = None
-    command_fingerprint: str | None = Field(default=None, min_length=1)
-
-    @model_validator(mode="after")
-    def validate_claim(self) -> ExecutionClaimRecord:
-        if self.claimed_at.tzinfo is None or self.claimed_at.utcoffset() != timedelta(
-            0
-        ):
-            raise ValueError("claimed_at must be a timezone-aware UTC datetime")
-        return self
-
-
 def semantic_command_fingerprint(command: CaseCommand) -> str:
     """Return the stable identity of a command, excluding workflow time.
 
@@ -282,6 +257,5 @@ __all__ = [
     "CaseCommand",
     "CaseCommandType",
     "CaseTransitionRef",
-    "ExecutionClaimRecord",
     "semantic_command_fingerprint",
 ]

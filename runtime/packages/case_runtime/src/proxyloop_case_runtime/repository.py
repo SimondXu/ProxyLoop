@@ -13,13 +13,15 @@ from proxyloop_contracts import (
     ApprovalRequest,
     CapabilityProposal,
     CaseContextSnapshot,
+    ExecutionClaim,
     FastTurnDecision,
     ModelInputPins,
+    ModelTrace,
     VisibleCaseEvent,
 )
 from proxyloop_provider_simulator.provider import FictionalMobileProvider
 
-from .commands import CaseTransitionRef, ExecutionClaimRecord
+from .commands import CaseTransitionRef
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,7 +43,11 @@ class CaseRuntimeState:
     execution_proposal: CapabilityProposal | None = None
     transitions: tuple[CaseTransitionRef, ...] = ()
     last_fast_decision: FastTurnDecision | None = None
-    execution_claim: ExecutionClaimRecord | None = None
+    execution_claim: ExecutionClaim | None = None
+    # Model call bookkeeping, appended in the state write of the transition that
+    # ran the model. Never projected into the snapshot, views, or the API.
+    # Retention is unbounded for now (known limit).
+    model_traces: tuple[ModelTrace, ...] = ()
 
     def __post_init__(self) -> None:
         if (self.execution_claim is not None) != self.snapshot.pending_execution:

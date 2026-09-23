@@ -44,11 +44,13 @@ from proxyloop_contracts import (
     EventActor,
     Evidence,
     EvidenceType,
+    ExecutionClaim,
     FactLedger,
     FactStatus,
     FastTurnDecision,
     LineItemCategory,
     ModelInputPins,
+    ModelTrace,
     Money,
     OfferReference,
     PlanningBasis,
@@ -81,7 +83,6 @@ from .commands import (
     CaseCommand,
     CaseCommandType,
     CaseTransitionRef,
-    ExecutionClaimRecord,
     semantic_command_fingerprint,
 )
 from .repository import (
@@ -439,7 +440,7 @@ class ThinAgentRuntime:
                 phase=snapshot.case.phase,
                 manifest=snapshot.capability_manifest,
             )
-            next_snapshot = self._refresh_strategy_if_required(
+            next_snapshot, refresh_traces = self._refresh_strategy_if_required(
                 next_snapshot, event, event_time
             )
             outcome = CaseCoordinator(snapshot=next_snapshot).advance(
@@ -500,6 +501,11 @@ class ThinAgentRuntime:
                 execution_proposal=state.execution_proposal,
                 transitions=(*state.transitions, transition),
                 last_fast_decision=outcome.fast_decision,
+                model_traces=(
+                    *state.model_traces,
+                    *refresh_traces,
+                    *outcome.traces,
+                ),
             )
             repository.replace_with_channel_outbox(
                 command.case_id,
@@ -583,6 +589,7 @@ class ThinAgentRuntime:
                     transitions=(*state.transitions, transition),
                     last_fast_decision=state.last_fast_decision,
                     execution_claim=state.execution_claim,
+                    model_traces=state.model_traces,
                 )
                 repository.replace_with_delivery_receipt(
                     command.case_id,
@@ -673,6 +680,7 @@ class ThinAgentRuntime:
                 execution_proposal=state.execution_proposal,
                 transitions=(*state.transitions, transition),
                 last_fast_decision=state.last_fast_decision,
+                model_traces=state.model_traces,
             )
             repository.replace_with_delivery_receipt(
                 command.case_id,
@@ -802,6 +810,7 @@ class ThinAgentRuntime:
                 events=(provider_event,),
                 provider=state.provider,
                 transitions=transitions,
+                model_traces=outcome.traces,
             )
         )
         return RuntimeResult(
@@ -888,7 +897,7 @@ class ThinAgentRuntime:
             phase=snapshot.case.phase,
             manifest=snapshot.capability_manifest,
         )
-        event_snapshot = self._refresh_strategy_if_required(
+        event_snapshot, refresh_traces = self._refresh_strategy_if_required(
             event_snapshot, event, occurred_at
         )
         outcome = CaseCoordinator(snapshot=event_snapshot).advance(
@@ -932,17 +941,14 @@ class ThinAgentRuntime:
                 phase=CasePhase.AWAITING_APPROVAL,
                 manifest=event_snapshot.capability_manifest,
             )
-        route = (
-            CaseCoordinator(snapshot=policy_snapshot)
-            .advance(
-                RouteRequest(
-                    snapshot=policy_snapshot,
-                    created_at=occurred_at,
-                    triggering_event=event,
-                )
+        routed = CaseCoordinator(snapshot=policy_snapshot).advance(
+            RouteRequest(
+                snapshot=policy_snapshot,
+                created_at=occurred_at,
+                triggering_event=event,
             )
-            .route
         )
+        route = routed.route
         transitions = state.transitions
         if command_id is not None:
             transitions = (
@@ -965,6 +971,12 @@ class ThinAgentRuntime:
             execution_source_pins=state.execution_source_pins,
             transitions=transitions,
             last_fast_decision=outcome.fast_decision,
+            model_traces=(
+                *state.model_traces,
+                *refresh_traces,
+                *outcome.traces,
+                *routed.traces,
+            ),
         )
         if approval is not None:
             # Persist the pending approval before changing Provider state.  A
@@ -1150,13 +1162,20 @@ class ThinAgentRuntime:
             execution_approval=decided,
             execution_proposal=proposal,
             transitions=state.transitions,
-            execution_claim=ExecutionClaimRecord(
+            execution_claim=ExecutionClaim(
+                contract_type="execution_claim",
+                schema_version="1.1",
+                revision=1,
+                case_id=case_id,
                 approval_id=decided.approval_id,
+                action_intent_id=intent.intent_id,
+                idempotency_key=intent.idempotency_key,
                 before_revision=snapshot.revision,
                 claimed_at=decided_at,
                 command_id=command_id,
                 command_fingerprint=command_fingerprint,
             ),
+            model_traces=state.model_traces,
         )
         self.repository.replace(
             case_id,
@@ -1229,15 +1248,10 @@ class ThinAgentRuntime:
                 phase=CasePhase.NEGOTIATING,
                 manifest=snapshot.capability_manifest,
             )
-            route = (
-                CaseCoordinator(snapshot=expired_snapshot)
-                .advance(
-                    RouteRequest(
-                        snapshot=expired_snapshot, created_at=approval.expires_at
-                    )
-                )
-                .route
+            routed = CaseCoordinator(snapshot=expired_snapshot).advance(
+                RouteRequest(snapshot=expired_snapshot, created_at=approval.expires_at)
             )
+            route = routed.route
             transition = _transition_ref(
                 command_id=command_id,
                 command_type=CaseCommandType.EXPIRE_APPROVAL,
@@ -1252,6 +1266,7 @@ class ThinAgentRuntime:
                 provider=state.provider,
                 execution_count=state.execution_count,
                 transitions=(*state.transitions, transition),
+                model_traces=(*state.model_traces, *routed.traces),
             )
             self.repository.replace(
                 case_id,
@@ -1406,6 +1421,9 @@ class ThinAgentRuntime:
                     command_fingerprint=command_fingerprint,
                 ),
             )
+        routed = CaseCoordinator(snapshot=final_snapshot).advance(
+            RouteRequest(snapshot=final_snapshot, created_at=evaluated_at)
+        )
         final_state = CaseRuntimeState(
             snapshot=final_snapshot,
             events=state.events,
@@ -1416,6 +1434,7 @@ class ThinAgentRuntime:
             execution_approval=approval,
             execution_proposal=proposal,
             transitions=transitions,
+            model_traces=(*state.model_traces, *routed.traces),
         )
         self.repository.replace(
             case_id,
@@ -1424,9 +1443,7 @@ class ThinAgentRuntime:
         )
         return RuntimeResult(
             snapshot=final_snapshot,
-            route=CaseCoordinator(snapshot=final_snapshot)
-            .advance(RouteRequest(snapshot=final_snapshot, created_at=evaluated_at))
-            .route,
+            route=routed.route,
             approval=approval,
             evidence=(execution_evidence, confirmation_evidence),
             execution_count=final_state.execution_count,
@@ -1470,11 +1487,10 @@ class ThinAgentRuntime:
             phase=CasePhase.NEGOTIATING,
             manifest=state.snapshot.capability_manifest,
         )
-        route = (
-            CaseCoordinator(snapshot=snapshot)
-            .advance(RouteRequest(snapshot=snapshot, created_at=decided_at))
-            .route
+        routed = CaseCoordinator(snapshot=snapshot).advance(
+            RouteRequest(snapshot=snapshot, created_at=decided_at)
         )
+        route = routed.route
         transitions = state.transitions
         if command_id is not None:
             transitions = (
@@ -1495,6 +1511,7 @@ class ThinAgentRuntime:
             provider=state.provider,
             execution_count=state.execution_count,
             transitions=transitions,
+            model_traces=(*state.model_traces, *routed.traces),
         )
         self.repository.replace(
             state.snapshot.case.case_id,
@@ -1557,12 +1574,13 @@ class ThinAgentRuntime:
         event_snapshot: CaseContextSnapshot,
         event: VisibleCaseEvent,
         occurred_at: datetime,
-    ) -> CaseContextSnapshot:
+    ) -> tuple[CaseContextSnapshot, tuple[ModelTrace, ...]]:
         """Install a Slow-refreshed strategy when the Router demands one.
 
         The strategy lifetime is a refresh trigger, not a session bound: an
         event after expiry routes to Slow, and the caller's Fast step then runs
         on the refreshed snapshot. Any other route returns the snapshot as is.
+        The coordinator's traces are returned for the caller's state write.
         """
 
         outcome = CaseCoordinator(snapshot=event_snapshot).advance(
@@ -1577,7 +1595,7 @@ class ThinAgentRuntime:
         # FAST_NOW_AND_SLOW_REFRESH is unreachable here; a caller that sets it
         # must pass ``fast`` too.
         if outcome.route.outcome is not RoutingOutcome.SLOW_REFRESH:
-            return event_snapshot
+            return event_snapshot, outcome.traces
         installed = event_snapshot.strategy
         strategy = (
             outcome.slow_result.strategy_proposal
@@ -1594,7 +1612,7 @@ class ThinAgentRuntime:
             )
         ):
             raise ModelRuntimeError("slow")
-        return _snapshot(
+        refreshed = _snapshot(
             case=event_snapshot.case,
             ledger=event_snapshot.fact_ledger,
             strategy=strategy,
@@ -1610,6 +1628,7 @@ class ThinAgentRuntime:
             pending_execution=event_snapshot.pending_execution,
             receipt=event_snapshot.completion_receipt,
         )
+        return refreshed, outcome.traces
 
     def now(self) -> datetime:
         """Return the Runtime clock's current UTC time."""
@@ -2180,7 +2199,7 @@ def _check_expected_revision(
 
 
 def _check_claim_retry(
-    claim: ExecutionClaimRecord,
+    claim: ExecutionClaim,
     snapshot: CaseContextSnapshot,
     *,
     expected_revision: int | None,
