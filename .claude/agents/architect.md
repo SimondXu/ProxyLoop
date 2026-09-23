@@ -2,7 +2,7 @@
 name: architect
 description: Strongest-model escalation for ProxyLoop. Use for an architecture or interface proposal, a cross-cutting design trade-off (durability, concurrency, contract or evaluator semantics), or a bug that the main session or an implementer already failed to resolve once. Returns a proposal or diagnosis with evidence; the main session keeps the decision.
 tools: Read, Grep, Glob, Bash, Edit, Write
-model: fable
+model: opus
 effort: high
 skills:
   - codebase-design
