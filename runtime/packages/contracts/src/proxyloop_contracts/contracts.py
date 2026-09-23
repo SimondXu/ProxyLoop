@@ -2,11 +2,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import date, datetime
 from enum import StrEnum
 from itertools import pairwise
 from typing import Annotated, Any, Literal
 
-from pydantic import ConfigDict, Field, TypeAdapter, model_validator
+from pydantic import (
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    ValidationInfo,
+    model_validator,
+)
+from pydantic.config import JsonDict
 
 from ._base import (
     Confidence,
@@ -22,8 +30,13 @@ from ._base import (
     Sha256,
     UtcDateTime,
     VersionedContract,
+    VersionedContract10Or11,
+    VersionedContract11,
+    absent,
+    enforce_version_gate,
     require_time_order,
     uuid_strings,
+    version_gate_json_schema,
 )
 
 
@@ -285,7 +298,16 @@ class FactLedger(VersionedContract):
         return self
 
 
-class StrategyPacket(VersionedContract):
+class StrategyPacket(VersionedContract10Or11):
+    """At 1.1 a strategy names the planning basis it was compiled against."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "dependentSchemas": version_gate_json_schema(
+                ("planning_basis_fingerprint",)
+            )
+        }
+    )
     contract_type: Literal["strategy_packet"]
     strategy_id: EntityId
     case_id: EntityId
@@ -304,9 +326,13 @@ class StrategyPacket(VersionedContract):
     required_completion_evidence: tuple[EvidenceRequirement, ...]
     escalation_conditions: tuple[HumanText, ...]
     replan_conditions: tuple[HumanText, ...]
+    planning_basis_fingerprint: Sha256 | None = Field(default=None, exclude_if=absent)
 
     @model_validator(mode="after")
-    def strategy_window_and_disclosures_must_be_valid(self) -> StrategyPacket:
+    def strategy_window_and_disclosures_must_be_valid(
+        self, info: ValidationInfo
+    ) -> StrategyPacket:
+        enforce_version_gate(self, info, ("planning_basis_fingerprint",))
         require_time_order(self.created_at, self.expires_at, "expires_at")
         overlap = set(self.allowed_disclosures) & set(
             self.approval_required_disclosures
@@ -523,7 +549,18 @@ class CompletionDecision(VersionedContract):
         return self
 
 
-class ModelTrace(VersionedContract):
+MODEL_TRACE_1_1_REQUIRED = ("role", "reason_codes")
+MODEL_TRACE_1_1_OPTIONAL = ("request_id", "input_pins")
+
+
+class ModelTrace(VersionedContract10Or11):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "dependentSchemas": version_gate_json_schema(
+                MODEL_TRACE_1_1_REQUIRED, MODEL_TRACE_1_1_OPTIONAL
+            )
+        }
+    )
     contract_type: Literal["model_trace"]
     trace_id: EntityId
     case_id: EntityId
@@ -542,12 +579,133 @@ class ModelTrace(VersionedContract):
     result: ModelResult
     output_ref: ExternalRef | None = None
     safety_flags: tuple[ExternalRef, ...]
+    role: Literal["fast", "slow", "judge", "intake"] | None = Field(
+        default=None, exclude_if=absent
+    )
+    reason_codes: tuple[ExternalRef, ...] | None = Field(
+        default=None, exclude_if=absent
+    )
+    request_id: EntityId | None = Field(default=None, exclude_if=absent)
+    input_pins: ModelInputPins | None = Field(default=None, exclude_if=absent)
 
     @model_validator(mode="after")
-    def trace_window_must_be_valid(self) -> ModelTrace:
+    def trace_window_must_be_valid(self, info: ValidationInfo) -> ModelTrace:
+        enforce_version_gate(
+            self, info, MODEL_TRACE_1_1_REQUIRED, MODEL_TRACE_1_1_OPTIONAL
+        )
         if self.completed_at < self.started_at:
             raise ValueError("completed_at must not precede started_at")
+        if self.input_pins is not None and self.input_pins.case_id != self.case_id:
+            raise ValueError("trace input_pins must reference the traced case")
+        if self.reason_codes is not None and len(set(self.reason_codes)) != len(
+            self.reason_codes
+        ):
+            raise ValueError("model trace cannot contain duplicate reason codes")
         return self
+
+
+def _null_pair_schema(field: str, partner: str) -> JsonDict:
+    return {
+        "if": {"properties": {field: {"type": "null"}}},
+        "then": {"properties": {partner: {"type": "null"}}},
+        "else": {"required": [partner], "properties": {partner: {"type": "string"}}},
+    }
+
+
+class ExecutionClaim(VersionedContract11):
+    """The execution bookkeeping of one approved action (new in 1.1).
+
+    ``command_id`` stays nullable until direct mode names its command; it and
+    ``command_fingerprint`` are both present or both absent.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "dependentSchemas": {
+                "command_id": _null_pair_schema("command_id", "command_fingerprint"),
+                "command_fingerprint": _null_pair_schema(
+                    "command_fingerprint", "command_id"
+                ),
+            }
+        }
+    )
+    contract_type: Literal["execution_claim"]
+    case_id: EntityId
+    approval_id: EntityId
+    action_intent_id: EntityId
+    idempotency_key: ExternalRef
+    before_revision: Revision
+    claimed_at: UtcDateTime
+    command_id: EntityId | None = None
+    command_fingerprint: Sha256 | None = None
+
+    @model_validator(mode="after")
+    def command_identity_must_travel_together(self) -> ExecutionClaim:
+        if (self.command_id is None) != (self.command_fingerprint is None):
+            raise ValueError("command_id and command_fingerprint travel together")
+        return self
+
+
+class CompletionReceipt(VersionedContract11):
+    """The applied-offer confirmation a COMPLETE 1.1 Case rests on (new in 1.1).
+
+    Carries every field of the Provider's applied-offer confirmation;
+    ``confirmation_content_hash`` is recomputed over exactly those fields with
+    the canonical JSON the Provider uses for its CONFIRMATION Evidence.
+    """
+
+    contract_type: Literal["completion_receipt"]
+    case_id: EntityId
+    provider_id: ExternalRef
+    confirmation_id: ExternalRef
+    offer_ref: OfferReference
+    action_intent_id: EntityId
+    approval_id: EntityId
+    approval_revision: Revision
+    confirmed_at: UtcDateTime
+    previous_monthly_price: Money
+    new_monthly_price: Money
+    total_cost_12_months: Money
+    plan_id: ExternalRef
+    plan_name: HumanText
+    features: tuple[ExternalRef, ...]
+    removed_add_ons: tuple[ExternalRef, ...]
+    applied_changes: tuple[ExternalRef, ...]
+    term_months: NonNegativeInt
+    effective_date: date
+    confirmation_evidence_id: EntityId
+    confirmation_content_hash: Sha256
+
+    @model_validator(mode="after")
+    def content_hash_must_bind_the_confirmation(self) -> CompletionReceipt:
+        confirmation = {
+            "case_id": str(self.case_id),
+            "provider_id": self.provider_id,
+            "confirmation_id": self.confirmation_id,
+            "offer_ref": self.offer_ref,
+            "action_intent_id": str(self.action_intent_id),
+            "approval_id": str(self.approval_id),
+            "confirmed_at": _utc_text(self.confirmed_at),
+            "previous_monthly_price": self.previous_monthly_price,
+            "new_monthly_price": self.new_monthly_price,
+            "total_cost_12_months": self.total_cost_12_months,
+            "plan_id": self.plan_id,
+            "plan_name": self.plan_name,
+            "features": self.features,
+            "removed_add_ons": self.removed_add_ons,
+            "applied_changes": self.applied_changes,
+            "term_months": self.term_months,
+            "effective_date": self.effective_date.isoformat(),
+        }
+        if canonical_fingerprint(confirmation) != self.confirmation_content_hash:
+            raise ValueError(
+                "confirmation_content_hash must hash the receipt's confirmation"
+            )
+        return self
+
+
+def _utc_text(value: datetime) -> str:
+    return value.isoformat().replace("+00:00", "Z")
 
 
 class FactUpdate(ContractModel):
@@ -641,8 +799,13 @@ class ModelInputPins(VersionedContract):
         return self
 
 
-class PlanningBasis(VersionedContract):
-    """Strongly typed fingerprints for every material strategy input."""
+class PlanningBasis(VersionedContract10Or11):
+    """Strongly typed fingerprints for every material strategy input.
+
+    The shape is the same at both versions; 1.1 means the offer and approval
+    components use the narrowed materiality formula (see
+    ``material_offers_fingerprint`` and ``approval_state_fingerprint``).
+    """
 
     contract_type: Literal["planning_basis"]
     goal_fingerprint: Sha256
@@ -699,6 +862,56 @@ def planning_basis_fingerprint(
     }
     canonical = json.dumps(payload, separators=(",", ":"), sort_keys=True)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def material_offers_fingerprint(offers: tuple[ProviderOffer, ...]) -> str:
+    """1.1 offer component: identity, revision, and material terms only."""
+
+    from .material_terms import material_terms_hash, offer_material_terms
+
+    return canonical_fingerprint(
+        sorted(
+            [
+                str(offer.offer_id),
+                offer.revision,
+                material_terms_hash(offer_material_terms(offer)),
+            ]
+            for offer in offers
+        )
+    )
+
+
+def approval_state_fingerprint(approvals: tuple[ApprovalRequest, ...]) -> str:
+    """1.1 approval component: decided approvals only.
+
+    A pending approval is produced by the current strategy and must not
+    invalidate it; an expired one is not a material planning input.
+    """
+
+    return canonical_fingerprint(
+        sorted(
+            [str(approval.approval_id), approval.decision.value]
+            for approval in approvals
+            if approval.decision
+            in {ApprovalDecision.APPROVED, ApprovalDecision.REJECTED}
+        )
+    )
+
+
+def strategy_basis_binding(basis: PlanningBasis) -> dict[str, Any]:
+    """The version and basis binding a strategy producer stamps on a strategy.
+
+    Apply it through construction or ``model_validate``
+    (``StrategyPacket(..., **strategy_basis_binding(basis))``), never through
+    ``model_copy(update=...)``, which skips the version gate.
+    """
+
+    if basis.schema_version == "1.1":
+        return {
+            "schema_version": "1.1",
+            "planning_basis_fingerprint": basis.planning_basis_fingerprint,
+        }
+    return {"schema_version": "1.0"}
 
 
 def canonical_fingerprint(value: Any) -> str:
@@ -816,9 +1029,58 @@ class CapabilityManifest(VersionedContract):
         return self
 
 
-class CaseContextSnapshot(VersionedContract):
-    """Immutable model-external Case state at one event cursor."""
+class CaseContextSnapshot(VersionedContract10Or11):
+    """Immutable model-external Case state at one event cursor.
 
+    The snapshot's own ``schema_version`` selects the rules: 1.0 is the
+    ML/evaluation world; at 1.1 the planning basis is 1.1 (narrowed
+    materiality) and ``phase == COMPLETE`` exactly when a completion receipt
+    bound to its CONFIRMATION Evidence is present. Nested documents keep
+    their own versions.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "dependentSchemas": {
+                "schema_version": {
+                    "if": {"properties": {"schema_version": {"const": "1.1"}}},
+                    "then": {
+                        "properties": {
+                            "planning_basis": {
+                                "properties": {"schema_version": {"const": "1.1"}}
+                            }
+                        },
+                        "if": {
+                            "properties": {
+                                "case": {"properties": {"phase": {"const": "complete"}}}
+                            }
+                        },
+                        "then": {
+                            "required": ["completion_receipt", "completion_decision"],
+                            "properties": {
+                                "completion_receipt": {"not": {"type": "null"}},
+                                "completion_decision": {
+                                    "required": ["decision"],
+                                    "properties": {"decision": {"const": "complete"}},
+                                },
+                            },
+                        },
+                        "else": {
+                            "properties": {"completion_receipt": {"type": "null"}}
+                        },
+                    },
+                    "else": {
+                        "properties": {
+                            "planning_basis": {
+                                "properties": {"schema_version": {"const": "1.0"}}
+                            },
+                            "completion_receipt": False,
+                        }
+                    },
+                }
+            }
+        }
+    )
     contract_type: Literal["case_context_snapshot"]
     case: Case
     fact_ledger: FactLedger
@@ -836,10 +1098,25 @@ class CaseContextSnapshot(VersionedContract):
     capability_manifest: CapabilityManifest
     pending_slow_work: bool = False
     pending_execution: bool = False
+    completion_receipt: CompletionReceipt | None = Field(
+        default=None, exclude_if=absent
+    )
 
     @model_validator(mode="after")
-    def snapshot_references_must_match(self) -> CaseContextSnapshot:
+    def snapshot_references_must_match(
+        self, info: ValidationInfo
+    ) -> CaseContextSnapshot:
         case_id = self.case.case_id
+        enforce_version_gate(self, info, (), ("completion_receipt",))
+        if self.planning_basis.schema_version != self.schema_version:
+            raise ValueError(
+                "planning basis schema_version must equal the snapshot schema_version"
+            )
+        if self.schema_version == "1.1":
+            approval_ids = tuple(item.approval_id for item in self.approval_requests)
+            if len(set(approval_ids)) != len(approval_ids):
+                raise ValueError("a 1.1 snapshot cannot contain duplicate approval ids")
+            self._require_receipt_exactly_when_complete()
         if self.fact_ledger.case_id != case_id:
             raise ValueError("fact ledger must reference the containing case")
         if self.strategy is not None and self.strategy.case_id != case_id:
@@ -924,14 +1201,22 @@ class CaseContextSnapshot(VersionedContract):
                 self.case.delegated_authority
             ),
             "verified_facts_fingerprint": canonical_fingerprint(verified_facts),
-            "material_offers_fingerprint": canonical_fingerprint(
-                tuple(sorted(self.offers, key=lambda item: str(item.offer_id)))
+            "material_offers_fingerprint": (
+                material_offers_fingerprint(self.offers)
+                if self.schema_version == "1.1"
+                else canonical_fingerprint(
+                    tuple(sorted(self.offers, key=lambda item: str(item.offer_id)))
+                )
             ),
-            "approval_state_fingerprint": canonical_fingerprint(
-                tuple(
-                    sorted(
-                        self.approval_requests,
-                        key=lambda item: str(item.approval_id),
+            "approval_state_fingerprint": (
+                approval_state_fingerprint(self.approval_requests)
+                if self.schema_version == "1.1"
+                else canonical_fingerprint(
+                    tuple(
+                        sorted(
+                            self.approval_requests,
+                            key=lambda item: str(item.approval_id),
+                        )
                     )
                 )
             ),
@@ -950,6 +1235,68 @@ class CaseContextSnapshot(VersionedContract):
                 "planning basis components must match material snapshot state"
             )
         return self
+
+    def _require_receipt_exactly_when_complete(self) -> None:
+        receipt = self.completion_receipt
+        if (self.case.phase is CasePhase.COMPLETE) != (receipt is not None):
+            raise ValueError(
+                "a 1.1 snapshot is complete exactly when it carries a completion "
+                "receipt"
+            )
+        if receipt is None:
+            return
+        if receipt.case_id != self.case.case_id:
+            raise ValueError("completion receipt must reference the containing case")
+        approval = next(
+            (
+                item
+                for item in self.approval_requests
+                if item.approval_id == receipt.approval_id
+                and item.revision == receipt.approval_revision
+                and item.decision is ApprovalDecision.APPROVED
+                and item.action_type is ActionType.ACCEPT_OFFER
+            ),
+            None,
+        )
+        if approval is None:
+            raise ValueError(
+                "completion receipt must name an APPROVED accept_offer approval "
+                "revision in the snapshot"
+            )
+        if (
+            approval.action_intent_id != receipt.action_intent_id
+            or approval.offer_ref != receipt.offer_ref
+        ):
+            raise ValueError(
+                "completion receipt action intent and offer must match its approval"
+            )
+        if not any(
+            item.offer_id == receipt.offer_ref.offer_id
+            and item.revision == receipt.offer_ref.offer_revision
+            for item in self.offers
+        ):
+            raise ValueError("completion receipt offer must be in the snapshot")
+        if not any(
+            item.evidence_id == receipt.confirmation_evidence_id
+            and item.source_type is EvidenceType.CONFIRMATION
+            and item.source_ref == receipt.confirmation_id
+            and item.content_hash == receipt.confirmation_content_hash
+            for item in self.evidence
+        ):
+            raise ValueError(
+                "completion receipt must match its CONFIRMATION evidence "
+                "source_ref and content_hash"
+            )
+        decision = self.completion_decision
+        if (
+            decision is None
+            or decision.decision is not CompletionOutcome.COMPLETE
+            or receipt.confirmation_evidence_id not in decision.evidence_ids
+        ):
+            raise ValueError(
+                "completion receipt requires a COMPLETE completion decision "
+                "citing its CONFIRMATION evidence"
+            )
 
 
 class FastModelView(VersionedContract):
@@ -1177,6 +1524,8 @@ CANONICAL_MODELS: tuple[type[ContractModel], ...] = (
     RoutingDecision,
     SlowWorkRequest,
     SlowWorkResult,
+    ExecutionClaim,
+    CompletionReceipt,
 )
 
 ContractDocument = Annotated[
@@ -1202,7 +1551,9 @@ ContractDocument = Annotated[
     | SlowReasonerView
     | RoutingDecision
     | SlowWorkRequest
-    | SlowWorkResult,
+    | SlowWorkResult
+    | ExecutionClaim
+    | CompletionReceipt,
     Field(discriminator="contract_type"),
 ]
 CONTRACT_ADAPTER: TypeAdapter[ContractDocument] = TypeAdapter(ContractDocument)

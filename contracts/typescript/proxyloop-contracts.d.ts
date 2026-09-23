@@ -26,7 +26,9 @@ export type ProxyLoopContractDocument =
   | SlowReasonerView
   | RoutingDecision
   | SlowWorkRequest
-  | SlowWorkResult;
+  | SlowWorkResult
+  | ExecutionClaim
+  | CompletionReceipt;
 export type AddOns = string[];
 export type CapturedAt = string;
 export type CaseId = string;
@@ -111,6 +113,7 @@ export type ExpiresAt = string;
 export type FactLedgerRevision = number;
 export type FallbackOutcomes = string[];
 export type HardConstraintIds = string[];
+export type PlanningBasisFingerprint = string | null;
 export type PrimaryObjective = string;
 export type RankedPreferenceIds = string[];
 export type ReplanConditions = string[];
@@ -118,7 +121,7 @@ export type Description = string;
 export type EvidenceType = "provider_message" | "provider_event" | "confirmation" | "bill" | "simulator_transition";
 export type RequiredCompletionEvidence = EvidenceRequirement[];
 export type Revision5 = number;
-export type SchemaVersion5 = "1.0";
+export type SchemaVersion5 = "1.0" | "1.1";
 export type StrategyId = string;
 export type ApprovalRequired = boolean;
 export type AuthorizationState = "proposed";
@@ -214,6 +217,19 @@ export type AdapterVersion = string;
 export type CaseId12 = string;
 export type CompletedAt = string;
 export type ContractType12 = "model_trace";
+export type CapabilityManifestVersion = string;
+export type CaseId13 = string;
+export type CaseRevision5 = number;
+export type ConstraintSetRevision3 = number;
+export type ContractType13 = "model_input_pins";
+export type EventCursor = number;
+export type FactLedgerRevision1 = number;
+export type PlanningBasisFingerprint1 = string;
+export type ProviderConfigRef = string;
+export type Revision10 = number;
+export type SchemaVersion12 = "1.0";
+export type StrategyId4 = string | null;
+export type StrategyRevision3 = number;
 export type InputSchemaVersion = string;
 export type InputTokens = number;
 export type LatencyMs = number;
@@ -224,25 +240,15 @@ export type OutputSchemaVersion = string;
 export type OutputTokens = number;
 export type PromptVersion = string;
 export type Provider = string;
+export type ReasonCodes1 = string[] | null;
+export type RequestId = string | null;
 export type ModelResult = "succeeded" | "rejected" | "failed";
-export type Revision10 = number;
+export type Revision11 = number;
+export type Role = ("fast" | "slow" | "judge" | "intake") | null;
 export type SafetyFlags = string[];
-export type SchemaVersion12 = "1.0";
+export type SchemaVersion13 = "1.0" | "1.1";
 export type StartedAt = string;
 export type TraceId = string;
-export type CapabilityManifestVersion = string;
-export type CaseId13 = string;
-export type CaseRevision5 = number;
-export type ConstraintSetRevision3 = number;
-export type ContractType13 = "model_input_pins";
-export type EventCursor = number;
-export type FactLedgerRevision1 = number;
-export type PlanningBasisFingerprint = string;
-export type ProviderConfigRef = string;
-export type Revision11 = number;
-export type SchemaVersion13 = "1.0";
-export type StrategyId4 = string | null;
-export type StrategyRevision3 = number;
 export type ApprovalStateFingerprint = string;
 export type CapabilityManifestFingerprint = string;
 export type ConstraintsFingerprint = string;
@@ -250,10 +256,10 @@ export type ContractType14 = "planning_basis";
 export type DelegatedAuthorityFingerprint = string;
 export type GoalFingerprint = string;
 export type MaterialOffersFingerprint = string;
-export type PlanningBasisFingerprint1 = string;
+export type PlanningBasisFingerprint2 = string;
 export type ProviderConfigFingerprint = string;
 export type Revision12 = number;
-export type SchemaVersion14 = "1.0";
+export type SchemaVersion14 = "1.0" | "1.1";
 export type VerifiedFactsFingerprint = string;
 export type EventActor = "consumer" | "provider" | "system";
 export type CaseId14 = string;
@@ -281,51 +287,70 @@ export type Revision14 = number;
 export type SchemaVersion16 = "1.0";
 export type ActionIntents = ActionIntent[];
 export type ApprovalRequests = ApprovalRequest[];
-export type ContractType17 = "case_context_snapshot";
+export type ActionIntentId1 = string;
+export type AppliedChanges = string[];
+export type ApprovalId1 = string;
+export type ApprovalRevision = number;
+export type CaseId15 = string;
+export type ConfirmationContentHash = string;
+export type ConfirmationEvidenceId = string;
+export type ConfirmationId = string;
+export type ConfirmedAt = string;
+export type ContractType17 = "completion_receipt";
+export type EffectiveDate = string;
+export type Features1 = string[];
+export type PlanId = string;
+export type PlanName = string;
+export type ProviderId1 = string;
+export type RemovedAddOns = string[];
+export type Revision15 = number;
+export type SchemaVersion17 = "1.1";
+export type TermMonths2 = number;
+export type ContractType18 = "case_context_snapshot";
 export type EventCursor2 = number;
 export type Evidence1 = Evidence[];
 export type Offers = ProviderOffer[];
 export type PendingExecution = boolean;
 export type PendingSlowWork = boolean;
 export type ProviderConfigRef1 = string;
-export type Revision15 = number;
-export type SchemaVersion17 = "1.0";
+export type Revision16 = number;
+export type SchemaVersion18 = "1.0" | "1.1";
 export type VisibleEvents = VisibleCaseEvent[];
 export type AllowedDialogueActs = DialogueAct[];
 export type AllowedDisclosures2 = string[];
-export type CaseId15 = string;
+export type CaseId16 = string;
 export type Constraints1 = Constraint[];
-export type ContractType18 = "fast_model_view";
+export type ContractType19 = "fast_model_view";
 export type PendingSlowWork1 = boolean;
 export type RecentEvents = VisibleCaseEvent[];
-export type Revision16 = number;
-export type SchemaVersion18 = "1.0";
+export type Revision17 = number;
+export type SchemaVersion19 = "1.0";
 export type VerifiedFacts = FactRecord[];
 export type ApprovalRequests1 = ApprovalRequest[];
-export type CaseId16 = string;
+export type CaseId17 = string;
 export type Constraints2 = Constraint[];
-export type ContractType19 = "slow_reasoner_view";
+export type ContractType20 = "slow_reasoner_view";
 export type Offers1 = ProviderOffer[];
 export type ProviderConfigRef2 = string;
 export type ReasonCode1 = string;
 export type RecentEvents1 = VisibleCaseEvent[];
-export type Revision17 = number;
-export type SchemaVersion19 = "1.0";
+export type Revision18 = number;
+export type SchemaVersion20 = "1.0";
 export type VerifiedFacts1 = FactRecord[];
-export type ContractType20 = "routing_decision";
+export type ContractType21 = "routing_decision";
 export type CreatedAt7 = string;
 export type RoutingOutcome =
   "terminal" | "verify_only" | "wait_for_approval" | "slow_refresh" | "fast_now_and_slow_refresh" | "fast_now";
-export type ReasonCodes1 = string[];
-export type Revision18 = number;
-export type SchemaVersion20 = "1.0";
-export type CaseId17 = string;
-export type ContractType21 = "slow_work_request";
-export type CreatedAt8 = string;
-export type ReasonCode2 = string;
-export type RequestId = string;
+export type ReasonCodes2 = string[];
 export type Revision19 = number;
 export type SchemaVersion21 = "1.0";
+export type CaseId18 = string;
+export type ContractType22 = "slow_work_request";
+export type CreatedAt8 = string;
+export type ReasonCode2 = string;
+export type RequestId1 = string;
+export type Revision20 = number;
+export type SchemaVersion22 = "1.0";
 export type ActionProposals = ActionIntent[];
 export type Name2 = string;
 export type Arguments = CapabilityArgument[];
@@ -336,13 +361,24 @@ export type CreatedAt9 = string;
 export type ExpiresAt6 = string | null;
 export type ProposalId = string;
 export type CapabilityProposals = CapabilityProposal[];
-export type CaseId18 = string;
-export type ContractType22 = "slow_work_result";
+export type CaseId19 = string;
+export type ContractType23 = "slow_work_result";
 export type CreatedAt10 = string;
-export type RequestId1 = string;
+export type RequestId2 = string;
 export type ResultId = string;
-export type Revision20 = number;
-export type SchemaVersion22 = "1.0";
+export type Revision21 = number;
+export type SchemaVersion23 = "1.0";
+export type ActionIntentId2 = string;
+export type ApprovalId2 = string;
+export type BeforeRevision = number;
+export type CaseId20 = string;
+export type ClaimedAt = string;
+export type CommandFingerprint = string | null;
+export type CommandId = string | null;
+export type ContractType24 = "execution_claim";
+export type IdempotencyKey1 = string;
+export type Revision22 = number;
+export type SchemaVersion24 = "1.1";
 
 export interface Case {
   bill_snapshot?: BillSnapshot | null;
@@ -439,6 +475,9 @@ export interface FactRecord {
   status: FactStatus;
   value: FactValue;
 }
+/**
+ * At 1.1 a strategy names the planning basis it was compiled against.
+ */
 export interface StrategyPacket {
   allowed_disclosures: AllowedDisclosures1;
   approval_required_disclosures: ApprovalRequiredDisclosures;
@@ -453,6 +492,7 @@ export interface StrategyPacket {
   fact_ledger_revision: FactLedgerRevision;
   fallback_outcomes: FallbackOutcomes;
   hard_constraint_ids: HardConstraintIds;
+  planning_basis_fingerprint?: PlanningBasisFingerprint;
   primary_objective: PrimaryObjective;
   ranked_preference_ids: RankedPreferenceIds;
   replan_conditions: ReplanConditions;
@@ -593,6 +633,7 @@ export interface ModelTrace {
   case_id: CaseId12;
   completed_at: CompletedAt;
   contract_type: ContractType12;
+  input_pins?: ModelInputPins | null;
   input_schema_version: InputSchemaVersion;
   input_tokens: InputTokens;
   latency_ms: LatencyMs;
@@ -603,10 +644,13 @@ export interface ModelTrace {
   output_tokens: OutputTokens;
   prompt_version: PromptVersion;
   provider: Provider;
+  reason_codes?: ReasonCodes1;
+  request_id?: RequestId;
   result: ModelResult;
-  revision: Revision10;
+  revision: Revision11;
+  role?: Role;
   safety_flags: SafetyFlags;
-  schema_version: SchemaVersion12;
+  schema_version: SchemaVersion13;
   started_at: StartedAt;
   trace_id: TraceId;
 }
@@ -621,15 +665,19 @@ export interface ModelInputPins {
   contract_type: ContractType13;
   event_cursor: EventCursor;
   fact_ledger_revision: FactLedgerRevision1;
-  planning_basis_fingerprint: PlanningBasisFingerprint;
+  planning_basis_fingerprint: PlanningBasisFingerprint1;
   provider_config_ref: ProviderConfigRef;
-  revision: Revision11;
-  schema_version: SchemaVersion13;
+  revision: Revision10;
+  schema_version: SchemaVersion12;
   strategy_id?: StrategyId4;
   strategy_revision?: StrategyRevision3;
 }
 /**
  * Strongly typed fingerprints for every material strategy input.
+ *
+ * The shape is the same at both versions; 1.1 means the offer and approval
+ * components use the narrowed materiality formula (see
+ * ``material_offers_fingerprint`` and ``approval_state_fingerprint``).
  */
 export interface PlanningBasis {
   approval_state_fingerprint: ApprovalStateFingerprint;
@@ -639,7 +687,7 @@ export interface PlanningBasis {
   delegated_authority_fingerprint: DelegatedAuthorityFingerprint;
   goal_fingerprint: GoalFingerprint;
   material_offers_fingerprint: MaterialOffersFingerprint;
-  planning_basis_fingerprint: PlanningBasisFingerprint1;
+  planning_basis_fingerprint: PlanningBasisFingerprint2;
   provider_config_fingerprint: ProviderConfigFingerprint;
   revision: Revision12;
   schema_version: SchemaVersion14;
@@ -686,6 +734,12 @@ export interface CapabilityDefinition {
 }
 /**
  * Immutable model-external Case state at one event cursor.
+ *
+ * The snapshot's own ``schema_version`` selects the rules: 1.0 is the
+ * ML/evaluation world; at 1.1 the planning basis is 1.1 (narrowed
+ * materiality) and ``phase == COMPLETE`` exactly when a completion receipt
+ * bound to its CONFIRMATION Evidence is present. Nested documents keep
+ * their own versions.
  */
 export interface CaseContextSnapshot {
   action_intents?: ActionIntents;
@@ -693,7 +747,8 @@ export interface CaseContextSnapshot {
   capability_manifest: CapabilityManifest;
   case: Case;
   completion_decision?: CompletionDecision | null;
-  contract_type: ContractType17;
+  completion_receipt?: CompletionReceipt | null;
+  contract_type: ContractType18;
   event_cursor: EventCursor2;
   evidence?: Evidence1;
   fact_ledger: FactLedger;
@@ -703,10 +758,42 @@ export interface CaseContextSnapshot {
   pins: ModelInputPins;
   planning_basis: PlanningBasis;
   provider_config_ref: ProviderConfigRef1;
-  revision: Revision15;
-  schema_version: SchemaVersion17;
+  revision: Revision16;
+  schema_version: SchemaVersion18;
   strategy?: StrategyPacket | null;
   visible_events?: VisibleEvents;
+}
+/**
+ * The applied-offer confirmation a COMPLETE 1.1 Case rests on (new in 1.1).
+ *
+ * Carries every field of the Provider's applied-offer confirmation;
+ * ``confirmation_content_hash`` is recomputed over exactly those fields with
+ * the canonical JSON the Provider uses for its CONFIRMATION Evidence.
+ */
+export interface CompletionReceipt {
+  action_intent_id: ActionIntentId1;
+  applied_changes: AppliedChanges;
+  approval_id: ApprovalId1;
+  approval_revision: ApprovalRevision;
+  case_id: CaseId15;
+  confirmation_content_hash: ConfirmationContentHash;
+  confirmation_evidence_id: ConfirmationEvidenceId;
+  confirmation_id: ConfirmationId;
+  confirmed_at: ConfirmedAt;
+  contract_type: ContractType17;
+  effective_date: EffectiveDate;
+  features: Features1;
+  new_monthly_price: Money;
+  offer_ref: OfferReference;
+  plan_id: PlanId;
+  plan_name: PlanName;
+  previous_monthly_price: Money;
+  provider_id: ProviderId1;
+  removed_add_ons: RemovedAddOns;
+  revision: Revision15;
+  schema_version: SchemaVersion17;
+  term_months: TermMonths2;
+  total_cost_12_months: Money;
 }
 /**
  * Explicit allowlist for the low-latency model.
@@ -714,17 +801,17 @@ export interface CaseContextSnapshot {
 export interface FastModelView {
   allowed_dialogue_acts: AllowedDialogueActs;
   allowed_disclosures: AllowedDisclosures2;
-  case_id: CaseId15;
+  case_id: CaseId16;
   constraints: Constraints1;
-  contract_type: ContractType18;
+  contract_type: ContractType19;
   goal: ConsumerGoal;
   latest_provider_event?: VisibleCaseEvent | null;
   pending_slow_work?: PendingSlowWork1;
   pins: ModelInputPins;
   planning_basis: PlanningBasis;
   recent_events?: RecentEvents;
-  revision: Revision16;
-  schema_version: SchemaVersion18;
+  revision: Revision17;
+  schema_version: SchemaVersion19;
   strategy?: StrategyPacket | null;
   verified_facts: VerifiedFacts;
 }
@@ -734,9 +821,9 @@ export interface FastModelView {
 export interface SlowReasonerView {
   approval_requests?: ApprovalRequests1;
   capability_manifest: CapabilityManifest;
-  case_id: CaseId16;
+  case_id: CaseId17;
   constraints: Constraints2;
-  contract_type: ContractType19;
+  contract_type: ContractType20;
   delegated_authority: DelegatedAuthority;
   goal: ConsumerGoal;
   offers?: Offers1;
@@ -745,44 +832,44 @@ export interface SlowReasonerView {
   provider_config_ref: ProviderConfigRef2;
   reason_code: ReasonCode1;
   recent_events?: RecentEvents1;
-  revision: Revision17;
-  schema_version: SchemaVersion19;
+  revision: Revision18;
+  schema_version: SchemaVersion20;
   strategy?: StrategyPacket | null;
   verified_facts: VerifiedFacts1;
 }
 export interface RoutingDecision {
-  contract_type: ContractType20;
+  contract_type: ContractType21;
   created_at: CreatedAt7;
   outcome: RoutingOutcome;
   pins: ModelInputPins;
-  reason_codes: ReasonCodes1;
-  revision: Revision18;
-  schema_version: SchemaVersion20;
+  reason_codes: ReasonCodes2;
+  revision: Revision19;
+  schema_version: SchemaVersion21;
 }
 export interface SlowWorkRequest {
-  case_id: CaseId17;
-  contract_type: ContractType21;
+  case_id: CaseId18;
+  contract_type: ContractType22;
   created_at: CreatedAt8;
   pins: ModelInputPins;
   planning_basis: PlanningBasis;
   reason_code: ReasonCode2;
-  request_id: RequestId;
-  revision: Revision19;
-  schema_version: SchemaVersion21;
+  request_id: RequestId1;
+  revision: Revision20;
+  schema_version: SchemaVersion22;
   view: SlowReasonerView;
 }
 export interface SlowWorkResult {
   action_proposals?: ActionProposals;
   capability_proposals?: CapabilityProposals;
-  case_id: CaseId18;
-  contract_type: ContractType22;
+  case_id: CaseId19;
+  contract_type: ContractType23;
   created_at: CreatedAt10;
   pins: ModelInputPins;
   planning_basis: PlanningBasis;
-  request_id: RequestId1;
+  request_id: RequestId2;
   result_id: ResultId;
-  revision: Revision20;
-  schema_version: SchemaVersion22;
+  revision: Revision21;
+  schema_version: SchemaVersion23;
   strategy_proposal?: StrategyPacket | null;
 }
 /**
@@ -803,4 +890,23 @@ export interface CapabilityReference {
   capability_id: CapabilityId1;
   namespace: Namespace2;
   version: Version1;
+}
+/**
+ * The execution bookkeeping of one approved action (new in 1.1).
+ *
+ * ``command_id`` stays nullable until direct mode names its command; it and
+ * ``command_fingerprint`` are both present or both absent.
+ */
+export interface ExecutionClaim {
+  action_intent_id: ActionIntentId2;
+  approval_id: ApprovalId2;
+  before_revision: BeforeRevision;
+  case_id: CaseId20;
+  claimed_at: ClaimedAt;
+  command_fingerprint?: CommandFingerprint;
+  command_id?: CommandId;
+  contract_type: ContractType24;
+  idempotency_key: IdempotencyKey1;
+  revision: Revision22;
+  schema_version: SchemaVersion24;
 }
