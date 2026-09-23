@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Mapping, Sequence
+import time
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Protocol, cast
+from urllib.parse import urlparse
 
-from proxyloop_agent_core import FastAdapterResult
+from proxyloop_agent_core import FastAdapterResult, ModelCallUsage, ModelIdentity
 from proxyloop_contracts import FastModelView, SlowWorkRequest, SlowWorkResult
 
 from .errors import ModelFailureKind, OpenAICompatibleAdapterError
@@ -17,6 +19,11 @@ from .outputs import (
     compile_fast_output,
     compile_slow_output,
 )
+
+# Bump when the adapter's request shaping or the system prompts in
+# ``_messages`` change; both are recorded on every ModelTrace.
+ADAPTER_VERSION = "openai-compatible-adapter-v1"
+PROMPT_VERSION = "openai-compatible-chat-v1"
 
 
 class _Completions(Protocol):
@@ -39,6 +46,7 @@ class OpenAICompatibleAdapter:
         timeout: float = 30.0,
         max_completion_tokens: int = 1_024,
         client: object | None = None,
+        monotonic: Callable[[], float] | None = None,
     ) -> None:
         if not model or not base_url or not api_key:
             raise ValueError("model, base_url, and api_key are required")
@@ -54,12 +62,29 @@ class OpenAICompatibleAdapter:
         self.base_url = base_url
         self.timeout = float(timeout)
         self.max_completion_tokens = max_completion_tokens
+        # The host only: a base URL may carry credentials in its userinfo.
+        self.model_identity = ModelIdentity(
+            provider=urlparse(base_url).hostname or "openai_compatible",
+            model=model,
+            model_version=model,
+            adapter_version=ADAPTER_VERSION,
+            prompt_version=PROMPT_VERSION,
+        )
+        self._monotonic = monotonic or time.perf_counter
         self._client = client if client is not None else self._build_client(api_key)
 
     def decide(self, view: FastModelView) -> FastAdapterResult:
+        return self.decide_with_usage(view)[0]
+
+    def reason(self, request: SlowWorkRequest) -> SlowWorkResult:
+        return self.reason_with_usage(request)[0]
+
+    def decide_with_usage(
+        self, view: FastModelView
+    ) -> tuple[FastAdapterResult, ModelCallUsage]:
         if not isinstance(view, FastModelView):
             raise TypeError("Fast adapter accepts only FastModelView")
-        response = self._request(view, FastModelOutput)
+        response, usage = self._request(view, FastModelOutput)
         try:
             output = _parsed_output(response, FastModelOutput)
             decision = compile_fast_output(view, output)
@@ -67,12 +92,14 @@ class OpenAICompatibleAdapter:
             raise
         except Exception as exc:
             raise OpenAICompatibleAdapterError(ModelFailureKind.INVALID_OUTPUT) from exc
-        return FastAdapterResult(pins=view.pins, decision=decision)
+        return FastAdapterResult(pins=view.pins, decision=decision), usage
 
-    def reason(self, request: SlowWorkRequest) -> SlowWorkResult:
+    def reason_with_usage(
+        self, request: SlowWorkRequest
+    ) -> tuple[SlowWorkResult, ModelCallUsage]:
         if not isinstance(request, SlowWorkRequest):
             raise TypeError("Slow adapter accepts only SlowWorkRequest")
-        response = self._request(request, SlowModelOutput)
+        response, usage = self._request(request, SlowModelOutput)
         try:
             output = _parsed_output(response, SlowModelOutput)
             result = compile_slow_output(request, output)
@@ -88,7 +115,7 @@ class OpenAICompatibleAdapter:
             raise
         except Exception as exc:
             raise OpenAICompatibleAdapterError(ModelFailureKind.INVALID_OUTPUT) from exc
-        return result
+        return result, usage
 
     def _build_client(self, api_key: str) -> object:
         try:
@@ -103,16 +130,20 @@ class OpenAICompatibleAdapter:
         except Exception as exc:
             raise OpenAICompatibleAdapterError(ModelFailureKind.CONFIGURATION) from exc
 
-    def _request(self, input_value: object, output_model: type[Any]) -> object:
+    def _request(
+        self, input_value: object, output_model: type[Any]
+    ) -> tuple[object, ModelCallUsage]:
         messages = _messages(input_value)
         try:
             completions: _Completions = cast(Any, self._client).chat.completions
+            started = self._monotonic()
             response = completions.parse(
                 model=self.model,
                 messages=messages,
                 max_completion_tokens=self.max_completion_tokens,
                 response_format=output_model,
             )
+            elapsed = self._monotonic() - started
         except Exception as exc:
             kind = (
                 ModelFailureKind.TIMEOUT
@@ -121,7 +152,18 @@ class OpenAICompatibleAdapter:
             )
             raise OpenAICompatibleAdapterError(kind) from exc
         _validate_response_model(response, self.model)
-        return response
+        usage = _field(response, "usage")
+        return response, ModelCallUsage(
+            input_tokens=_token_count(_field(usage, "prompt_tokens")),
+            output_tokens=_token_count(_field(usage, "completion_tokens")),
+            latency_ms=max(0, round(elapsed * 1000)),
+        )
+
+
+def _token_count(value: object) -> int:
+    """A reported count, or zero when the response carries none."""
+
+    return value if type(value) is int and value >= 0 else 0
 
 
 def _messages(input_value: object) -> list[dict[str, str]]:
