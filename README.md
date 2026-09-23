@@ -115,7 +115,7 @@ vocabulary: [CONTEXT.md](CONTEXT.md).
 | Next.js conversation UI with four-fact intake and durable resume | Implemented |
 | Synthetic `local_mailbox` channel (SHA-256-fingerprinted fixtures, inbox/outbox, dedup, callbacks) | Implemented |
 | Multi-turn evaluation harness and untuned hosted baselines | Implemented (research) |
-| Post-training of the Fast model | One bounded QLoRA smoke ran and was stopped (`NO_GO`) — see [ML evidence](docs/ml-evidence.md) |
+| Post-training of the Fast model | Phase 03C distillation ran and reached `GO_DISTILLED` (0.542 → 0.983 on held-out families); the earlier QLoRA smoke was stopped (`NO_GO`). The adapter is **not** promoted to serving — see [ML evidence](docs/ml-evidence.md) |
 | Real e-mail / MCP / provider integration, voice, auth, deployment | Not started, separately gated |
 
 The Web demo, mailbox, and recovery claims are local observations against the
@@ -124,13 +124,29 @@ effects or real-provider delivery.
 
 ## ML evidence
 
-The Fast model is meant to be a project-trained small model (Qwen3-4B for
-the recorded runs; Qwen3-8B for the prepared redo), with a hosted reasoner as
-the Slow model.
-The evaluation harness, untuned baselines, a hosted reliability rerun, a
+The Fast model is meant to be a project-trained small model (Qwen3-8B), with
+a hosted reasoner as the Slow model. Phase 03C trained one; nothing has been
+promoted to serving, so the runtime still runs the untuned model.
+
+Phase 03C distilled it from an oracle-filtered teacher set: 8,003
+`claude-sonnet-5` samples, 807 quarantined (499 for disagreeing with the
+scripted oracle), **7,196 accepted**; LoRA on 1.055 % of the parameters for
+6.6 h on one A100. On 240 held-out rows from six scenario families that
+appear in no training row, act agreement goes from **0.542 untuned to 0.983
+distilled** — decision `GO_DISTILLED`, every raw output re-scored locally
+against the repository evaluator with zero disagreements. No policy violation
+fires on that set, but the set contains no disclosure-risk row, so that zero
+is partly untested: on the in-family dev rows the distilled model still names
+a restricted field 4 times in 400 (the untuned model, 7).
+
+The write-up states what that does *not* show: the 240 rows carry only six
+distinct decision rules, the gain is one repaired defect (the untuned model
+almost never said `confirm`), the constrained-decoding arms were handicapped
+by a token cap, and nothing has been promoted to serving. Earlier runs — the
+evaluation harness, untuned baselines, a hosted reliability rerun, a
 six-episode validity diagnostic (0/6 → 5/6 after fixing model/oracle input
-parity), and one QLoRA smoke that returned invalid structured output are all
-recorded honestly, including costs and what each result does *not* show.
+parity) and the Phase 03B QLoRA smoke that returned invalid structured
+output — are recorded with the same honesty, including costs.
 Read [docs/ml-evidence.md](docs/ml-evidence.md).
 
 ## Repository layout

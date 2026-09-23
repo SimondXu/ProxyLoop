@@ -56,3 +56,5 @@ data/experiments/phase-03c/training/**/*.jsonl
 # the manifests and reports, never the archive.
 data/experiments/phase-03c/training/**/*.tar.gz
 !data/experiments/phase-03c/training/*/train.log
+!data/experiments/phase-03c/training/*/eval-heldout.log
+!data/experiments/phase-03c/training/*/eval-dev.log

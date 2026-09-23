@@ -6,7 +6,7 @@
 	errata errata-check hosted-rerun-source-check hosted-rerun-check \
 	validity-smoke-check phase03b-readiness-check phase03b-experiment-check \
 	phase03c-errata phase03c-smoke-check phase03c-invariants phase03c-invariants-check \
-	phase03c-cloud-bundle phase03c-cloud-bundle-check phase03c-training-data phase03c-training-check \
+	phase03c-cloud-bundle phase03c-cloud-bundle-check phase03c-training-data phase03c-training-check phase03c-rescore-check \
 	lock-check postgres-check phase04d-check phase04d-profile-check phase05a-check phase06b1-check web-check \
 	runtime-server portfolio-demo portfolio-demo-stop portfolio-demo-reset \
 	portfolio-demo-channel portfolio-demo-recovery dev
@@ -41,7 +41,7 @@ ML_PYTHON_PATHS := ml/data_pipeline/src ml/evaluation/src ml/tests \
 	scripts/run_phase03c_teacher_pilot.py scripts/run_phase03c_teacher_generation.py \
 	scripts/build_phase03c_cloud_bundle.py ml/training/phase03c_cloud \
 	scripts/prepare_phase03c_training_data.py scripts/run_phase03c_training.py \
-	scripts/run_phase03c_dev_eval.py
+	scripts/run_phase03c_dev_eval.py scripts/rescore_phase03c_heldout.py
 # Cloud bundle inputs: the accepted teacher JSONL and an optional local Qwen3-8B tokenizer snapshot for token stats.
 PHASE03C_ACCEPTED ?= data/experiments/phase-03c/teacher-full-v6/claude-sonnet-5-accepted.jsonl
 PHASE03C_TOKENIZER_PATH ?=
@@ -110,7 +110,7 @@ typecheck:
 		scripts/run_phase03c_teacher_pilot.py scripts/run_phase03c_teacher_generation.py \
 		scripts/build_phase03c_cloud_bundle.py \
 		scripts/prepare_phase03c_training_data.py scripts/run_phase03c_training.py \
-		scripts/run_phase03c_dev_eval.py
+		scripts/run_phase03c_dev_eval.py scripts/rescore_phase03c_heldout.py
 
 unit-test:
 	$(PYTHON_RUN) pytest -c runtime/pyproject.toml -q \
@@ -119,7 +119,7 @@ unit-test:
 		tests/contract tests/integration
 	$(ML_PYTHON_RUN) pytest -c ml/pyproject.toml ml/tests -q
 
-test: unit-test contracts-check benchmark-check data-pilot-check harness-check baselines-check errata-check hosted-rerun-check validity-smoke-check phase03b-readiness-check phase03b-experiment-check phase03c-smoke-check phase03c-invariants-check phase03c-prompt-set-check phase03c-teacher-pilot-check phase03c-teacher-generation-check phase03c-cloud-bundle-check phase03c-training-check
+test: unit-test contracts-check benchmark-check data-pilot-check harness-check baselines-check errata-check hosted-rerun-check validity-smoke-check phase03b-readiness-check phase03b-experiment-check phase03c-smoke-check phase03c-invariants-check phase03c-prompt-set-check phase03c-teacher-pilot-check phase03c-teacher-generation-check phase03c-cloud-bundle-check phase03c-training-check phase03c-rescore-check
 
 contracts:
 	$(PYTHON_RUN) python scripts/generate_contracts.py
@@ -203,6 +203,19 @@ phase03c-teacher-generation-check:
 phase03c-cloud-bundle:
 	$(ML_PYTHON_RUN) python -m scripts.build_phase03c_cloud_bundle --accepted "$(PHASE03C_ACCEPTED)" \
 		$(if $(PHASE03C_TOKENIZER_PATH),--tokenizer-path "$(PHASE03C_TOKENIZER_PATH)",)
+
+# Locks the published Stage 3 numbers: replays every stored raw output through
+# the repository evaluator and fails if the committed re-scored reports drift.
+PHASE03C_RUN_EVAL ?= data/experiments/phase-03c/training/cloud-run-01/eval
+phase03c-rescore-check:
+	@test -f $(PHASE03C_RUN_EVAL)/heldout-report.json || \
+		{ echo "no cloud run under $(PHASE03C_RUN_EVAL); nothing to check"; exit 0; }
+	$(ML_PYTHON_RUN) python -m scripts.rescore_phase03c_heldout --check \
+		--report $(PHASE03C_RUN_EVAL)/heldout-report.json \
+		--out $(PHASE03C_RUN_EVAL)/heldout-rescored.json
+	$(ML_PYTHON_RUN) python -m scripts.rescore_phase03c_heldout --check \
+		--report $(PHASE03C_RUN_EVAL)/dev-report.json \
+		--out $(PHASE03C_RUN_EVAL)/dev-rescored.json
 
 phase03c-cloud-bundle-check:
 	$(ML_PYTHON_RUN) python -m scripts.build_phase03c_cloud_bundle --check
