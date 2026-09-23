@@ -9,7 +9,7 @@ This section maps the shared contract above onto Claude Code. It adds nothing to
 - The main conversation is the root orchestrator. It owns every root-orchestrator-retained decision in `AGENTS.md`, inspects primary evidence itself, and never delegates the final diff review, completion claim, or integration decision.
 - Project roles are `.claude/agents/explorer.md`, `fast-worker.md`, `implementer.md`, `reviewer.md`, and `architect.md`. Spawn them with the `Agent` tool by name; every task packet must carry the objective, scope and non-goals, known paths, owned files or exact questions, expected output, verification command, and escalation triggers.
 - Concurrency ceiling: 6 subagents in flight at once, matching `max_concurrent_threads_per_session` in `.codex/config.toml`. This is a ceiling, not a target; it overrides the lower global default for this repository.
-- `architect` runs on Fable at `high` effort. Use it only for a root-orchestrator-retained decision that needs a worked proposal (architecture, interface placement, canonical contract or evaluator semantics, a durability or concurrency design) or for a bug that survived one `diagnosing-bugs` pass. It returns a proposal or diagnosis with evidence; the decision stays in the main session. Do not use it for ordinary implementation.
+- `architect` runs on Opus at `high` effort (switched from Fable on 2026-09-23 at the user's direction: Opus 5.5 is currently the stronger model for this role). Use it only for a root-orchestrator-retained decision that needs a worked proposal (architecture, interface placement, canonical contract or evaluator semantics, a durability or concurrency design) or for a bug that survived one `diagnosing-bugs` pass. It returns a proposal or diagnosis with evidence; the decision stays in the main session. Do not use it for ordinary implementation.
 - `explorer` and `reviewer` are read-only by contract and tool list. They are not sandboxed the way Codex `read-only` agents are, so never hand them a task that expects edits.
 - The global agents `root-cause-investigator`, `silent-failure-hunter`, `test-log-analyzer`, `security-auditor`, and the built-in `Explore` remain available for their own triggers. Use `explorer` when the output must be an evidence card tied to the active phase; use `Explore` for a quick unbounded lookup.
 - There is no `.codegraph/` index in this repository; explorers use `Grep`, `Glob`, and focused reads.
@@ -23,7 +23,7 @@ This section maps the shared contract above onto Claude Code. It adds nothing to
 | `fast-worker` | Luna medium | `sonnet`, `effort: medium` |
 | `implementer` | Luna xhigh | `inherit`, `effort: high` |
 | `reviewer` | Terra high | `opus`, `effort: high` |
-| `architect` | Luna max (escalation only) | `fable`, `effort: high` |
+| `architect` | Luna max (escalation only) | `opus`, `effort: high` |
 
 ### Orientation
 
