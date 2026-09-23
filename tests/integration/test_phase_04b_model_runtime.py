@@ -34,6 +34,7 @@ from proxyloop_contracts.contracts import (
     ReasonerRequest,
 )
 from proxyloop_openai_adapter import (
+    AcceptOfferCapabilityModelOutput,
     FastModelOutput,
     ModelFailureKind,
     OpenAICompatibleAdapter,
@@ -115,6 +116,16 @@ def _slow_output() -> SlowModelOutput:
     )
 
 
+def _slow_output_proposing_accept() -> SlowModelOutput:
+    return _slow_output().model_copy(
+        update={
+            "next_capability": AcceptOfferCapabilityModelOutput(
+                capability="accept_offer", offer_position=0
+            )
+        }
+    )
+
+
 def _fast_output() -> FastModelOutput:
     return FastModelOutput(
         dialogue_act=DialogueAct.CLARIFY,
@@ -159,6 +170,18 @@ def test_model_backed_runtime_reaches_pending_approval_with_fake_transport() -> 
     assert waiting.fast_decision.action_intent is None
     assert len(transport.calls) == 2
     assert all(call["model"] == "runtime-model" for call in transport.calls)
+
+
+def test_model_slow_accept_proposal_compiles_against_the_runtime_manifest() -> None:
+    # B1-3: the runtime advertises simulator.accept_fictional_offer only; a Slow
+    # accept proposal must resolve through the manifest, not a name guess.
+    adapter, transport = _adapter(_Response(_slow_output_proposing_accept()))
+    runtime = ThinAgentRuntime(fast=adapter, slow=adapter)
+
+    created = runtime.create_case()
+
+    assert created.snapshot.strategy is not None
+    assert len(transport.calls) == 1
 
 
 @pytest.mark.parametrize(
