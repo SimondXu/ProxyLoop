@@ -49,6 +49,7 @@ from proxyloop_evaluation.validity_smoke import (
     select_validity_smoke_fixtures,
     with_public_provider_state,
 )
+from proxyloop_evaluation.validity_smoke_replay import check_validity_smoke_replay
 
 ROOT = Path(__file__).resolve().parents[1]
 R4_PATH = ROOT / "data/evaluation/phase-03a1-r4-hosted-rerun-report.json"
@@ -485,10 +486,18 @@ def _check_report(
                     for item in summary_typed.prompt_provenance
                 ] != expected_prompt_provenance:
                     failures.append("summary prompt provenance mismatch")
-            if report.get("smoke_metrics") != _metrics(
-                summary_rows, expected_references
-            ):
-                failures.append("smoke metrics mismatch")
+            # Re-derive every label from the stored raw outputs; the counts
+            # and fingerprints above are only self-consistency checks.
+            failures.extend(
+                check_validity_smoke_replay(summary_typed, fixtures=prepared)
+            )
+            try:
+                expected_smoke_metrics = _metrics(summary_rows, expected_references)
+            except (AttributeError, ValueError) as error:
+                failures.append(f"smoke metrics cannot be derived: {error}")
+            else:
+                if report.get("smoke_metrics") != expected_smoke_metrics:
+                    failures.append("smoke metrics mismatch")
             if report.get("actual_cost_microusd") != expected_cost:
                 failures.append("actual cost mismatch")
 
