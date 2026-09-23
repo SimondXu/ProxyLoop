@@ -449,7 +449,7 @@ ACCEPT = AcceptOfferCapabilityModelOutput(capability="accept_offer", offer_posit
 
 
 def test_compiled_slow_accept_resolves_the_runtime_manifest_capability() -> None:
-    manifest = runtime_manifest(NOW - timedelta(hours=1))
+    manifest = runtime_manifest(Phase01AEpisode.success().case)
 
     offer, proposal, intent = _compile_with(manifest, ACCEPT)
 
