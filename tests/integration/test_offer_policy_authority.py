@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
+import pytest
 from proxyloop_agent_core import (
     CapabilityExecutionRequest,
     CapabilityExecutionStatus,
@@ -14,6 +15,7 @@ from proxyloop_agent_core import (
     CaseCoordinator,
     PreparedSimulatorExecution,
 )
+from proxyloop_case_runtime.runtime import _manifest as runtime_manifest
 from proxyloop_contracts import (
     ActionIntent,
     ActionType,
@@ -43,6 +45,8 @@ from proxyloop_contracts.material_terms import (
 )
 from proxyloop_openai_adapter import (
     AcceptOfferCapabilityModelOutput,
+    CapabilityModelOutput,
+    NonOfferCapabilityModelOutput,
     SlowModelOutput,
     StrategyModelOutput,
     compile_slow_output,
@@ -139,8 +143,9 @@ def _snapshot(
     *,
     strategy: StrategyPacket | None,
     approvals: tuple[ApprovalRequest, ...] = (),
+    manifest: CapabilityManifest | None = None,
 ) -> CaseContextSnapshot:
-    manifest = _manifest()
+    manifest = manifest if manifest is not None else _manifest()
     ledger = FactLedger(
         contract_type="fact_ledger",
         schema_version="1.0",
@@ -379,3 +384,121 @@ def test_legacy_predicate_and_private_change_list_are_gone() -> None:
         and pattern.search(path.read_text(encoding="utf-8"))
     ]
     assert hits == []
+
+
+# The model says ``accept_offer``; the runtime manifest advertises
+# ``simulator.accept_fictional_offer``. The compiler resolves an accept
+# proposal by the definition's action type, not by the model's name.
+
+
+def _definition(capability_id: str, action_type: ActionType) -> CapabilityDefinition:
+    return CapabilityDefinition(
+        capability_id=capability_id,
+        version="1.0",
+        description="A fictional simulator capability.",
+        allowed_action_types=(action_type,),
+        expires_at=NOW + timedelta(hours=1),
+    )
+
+
+def _manifest_with(*definitions: CapabilityDefinition) -> CapabilityManifest:
+    # model_validate, not model_copy: the manifest validator must run.
+    return CapabilityManifest.model_validate(
+        {**_manifest().model_dump(), "capabilities": definitions}
+    )
+
+
+def _compile_with(
+    manifest: CapabilityManifest,
+    next_capability: CapabilityModelOutput,
+) -> tuple[ProviderOffer, CapabilityProposal, ActionIntent]:
+    episode = Phase01AEpisode.success()
+    offer = episode.issue_offer()
+    request = CaseCoordinator.build_slow_request(
+        _snapshot(episode.case, offer, strategy=None, manifest=manifest),
+        reason_code="case_initialization",
+        created_at=NOW,
+    )
+    output = SlowModelOutput(
+        strategy=StrategyModelOutput(
+            primary_objective="Reduce the recurring bill safely.",
+            current_subgoal="Act on the current fictional Provider state.",
+            ranked_preference_positions=(),
+            allowed_disclosures=(),
+            approval_required_disclosures=(),
+            concession_ladder=(),
+            fallback_outcomes=(),
+            required_completion_evidence=(
+                EvidenceRequirement(
+                    evidence_type=EvidenceType.CONFIRMATION,
+                    description="A fictional Provider confirmation is required.",
+                ),
+            ),
+            escalation_conditions=(),
+            replan_conditions=(),
+        ),
+        next_capability=next_capability,
+    )
+    result = compile_slow_output(request, output)
+    (proposal,) = result.capability_proposals
+    (intent,) = result.action_proposals
+    return offer, proposal, intent
+
+
+ACCEPT = AcceptOfferCapabilityModelOutput(capability="accept_offer", offer_position=0)
+
+
+def test_compiled_slow_accept_resolves_the_runtime_manifest_capability() -> None:
+    manifest = runtime_manifest(NOW - timedelta(hours=1))
+
+    offer, proposal, intent = _compile_with(manifest, ACCEPT)
+
+    assert proposal.capability.capability_id == "simulator.accept_fictional_offer"
+    assert proposal.capability.version == "1.0"
+    assert intent.action_type is ActionType.ACCEPT_OFFER
+    assert intent.material_terms == offer_material_terms(offer)
+
+
+def test_compiled_slow_accept_still_resolves_the_ml_manifest_name() -> None:
+    _, proposal, intent = _compile_with(_manifest(), ACCEPT)
+
+    assert proposal.capability.capability_id == "simulator.accept_offer"
+    assert intent.action_type is ActionType.ACCEPT_OFFER
+
+
+@pytest.mark.parametrize(
+    "definitions",
+    [
+        (
+            _definition("simulator.accept_offer", ActionType.ACCEPT_OFFER),
+            _definition("simulator.accept_fictional_offer", ActionType.ACCEPT_OFFER),
+        ),
+        (_definition("simulator.request_replan", ActionType.SEND_MESSAGE),),
+    ],
+    ids=["two_accept_definitions", "no_accept_definition"],
+)
+def test_compiled_slow_accept_requires_exactly_one_accept_definition(
+    definitions: tuple[CapabilityDefinition, ...],
+) -> None:
+    with pytest.raises(ValueError, match="unsupported capability"):
+        _compile_with(_manifest_with(*definitions), ACCEPT)
+
+
+def test_compiled_slow_non_offer_capability_resolves_by_exact_id() -> None:
+    replan = NonOfferCapabilityModelOutput(capability="request_replan")
+    manifest = _manifest_with(
+        _definition("simulator.accept_fictional_offer", ActionType.ACCEPT_OFFER),
+        _definition("simulator.request_replan", ActionType.SEND_MESSAGE),
+    )
+
+    _, proposal, intent = _compile_with(manifest, replan)
+
+    assert proposal.capability.capability_id == "simulator.request_replan"
+    assert intent.action_type is ActionType.SEND_MESSAGE
+    assert intent.offer_ref is None
+
+    absent = _manifest_with(
+        _definition("simulator.accept_fictional_offer", ActionType.ACCEPT_OFFER),
+    )
+    with pytest.raises(ValueError, match="unsupported capability"):
+        _compile_with(absent, replan)
