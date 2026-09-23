@@ -144,6 +144,41 @@ def test_semantic_failure_does_not_erase_json_or_schema_validity() -> None:
     assert "slow_semantic_invalid" in row.failure_codes
 
 
+def test_state_valid_non_reference_action_is_valid_but_not_a_reference_match() -> None:
+    """A replan on a fee-trap turn is state-valid even though the oracle declines."""
+
+    fixture = next(
+        item
+        for item in build_fresh_phase03a1_bundle().fixtures
+        if item.scenario.family_id == "fee-total-cost-trap"
+    )
+    assert fixture.reference_capability_id == "simulator.decline"
+    queued = _QueuedCompletions([_slow_output("request_replan"), _fast_output()])
+    adapter = OpenAIFrontierAdapter(
+        client=_QueuedClient(SimpleNamespace(completions=queued)),
+        reasoning_effort="high",
+        input_token_cap=100,
+        max_output_tokens=100,
+        call_cap=2,
+        usd_ceiling=1.0,
+    )
+
+    summary = run_frontier_condition_v2(
+        adapter,
+        condition=EvaluationConditionV2.FRONTIER_REFERENCE_HIGH,
+        fixtures=(fixture,),
+    )
+
+    row = summary.episodes[0]
+    assert row.provider_outcome_valid is True
+    assert row.reference_match is False
+    assert row.end_to_end_valid is True
+    assert row.safe_noncompletion is True
+    assert row.completed is False
+    assert row.false_completion is False
+    assert replay_condition_v2(summary, fixtures=(fixture,)) == ()
+
+
 def test_qwen_fast_plus_frontier_slow_uses_only_one_hosted_call() -> None:
     fixture = build_fresh_phase03a1_bundle().fixtures[0]
     capability = fixture.reference_capability_id.removeprefix("simulator.")

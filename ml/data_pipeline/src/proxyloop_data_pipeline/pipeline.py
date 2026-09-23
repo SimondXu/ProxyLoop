@@ -22,6 +22,7 @@ from proxyloop_provider_simulator.environment import (
     ProviderEnvironment,
 )
 from proxyloop_provider_simulator.episode import Phase01AEpisode
+from proxyloop_provider_simulator.leakage import leaked_private_values, private_tokens
 from proxyloop_provider_simulator.scenarios import (
     BENCHMARK_SCENARIOS,
     BenchmarkScenario,
@@ -62,6 +63,9 @@ FORBIDDEN_MODEL_KEYS = frozenset(
         "verifier_criteria",
     }
 )
+# Audit D3-1: family, configuration, scenario ids and private labels are
+# rejected by value (including JSON encoded inside strings), not only by key.
+PRIVATE_TOKENS = private_tokens(BENCHMARK_SCENARIOS)
 HIGH_RISK_PII_FIELDS = frozenset(
     {
         "account_number",
@@ -350,6 +354,10 @@ def _forbidden_keys(value: object) -> set[str]:
     return found
 
 
+def _forbidden_values(value: object) -> tuple[str, ...]:
+    return leaked_private_values(value, PRIVATE_TOKENS)
+
+
 def _has_pii(value: object, *, field_name: str | None = None) -> bool:
     if isinstance(value, dict):
         for key, child in value.items():
@@ -402,6 +410,8 @@ def _intrinsic_rejection(raw: dict[str, object]) -> str | None:
         return "pii_detected"
     if _forbidden_keys(raw_content):
         return "forbidden_model_field"
+    if _forbidden_values(raw_content):
+        return "private_value_leak"
     try:
         record = NormalizedTrajectory.model_validate(raw)
     except ValidationError:
@@ -421,6 +431,8 @@ def _intrinsic_rejection(raw: dict[str, object]) -> str | None:
         return "pii_detected"
     if _forbidden_keys(model_content):
         return "forbidden_model_field"
+    if _forbidden_values(model_content):
+        return "private_value_leak"
     if record.lineage != expected_record.lineage:
         return "split_mismatch"
     if not record.verification.valid_outcome or record.verification.false_completion:

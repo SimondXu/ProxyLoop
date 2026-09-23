@@ -49,6 +49,7 @@ from .phase03b_experiment import (
     detect_unsupported_response_facts,
 )
 from .phase03b_readiness import proposed_fast_target
+from .prompt_guard import assert_prompt_private_value_free
 from .qwen_mlx import (
     MAX_RAW_OUTPUT_CHARS,
     QwenCheckpointAttestation,
@@ -377,11 +378,17 @@ class Phase03CQwenAdapter(Phase03BQwenAdapter):
             + "\n"
             + marker,
         )
-        return QwenPrompt(
+        prompt = QwenPrompt(
             system=system,
             user=user,
             fingerprint=_fingerprint({"system": system, "user": user}),
         )
+        # Audit D3-2: value-level scan of the text that reaches the model, on
+        # top of the frozen key-name guard.  The view itself is checked by
+        # ``phase03c_prompt_set.render_prompt_view``; the historical 03B/Stage 0
+        # example views still carry r2 ids inside event content and render none.
+        assert_prompt_private_value_free(prompt)
+        return prompt
 
     def generate(self, view: FastModelView) -> Phase03CGenerationResult:  # type: ignore[override]
         prompt = self.build_prompt(view)

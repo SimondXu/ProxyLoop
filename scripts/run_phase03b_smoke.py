@@ -31,7 +31,7 @@ from proxyloop_evaluation.phase03b_experiment import (  # noqa: E402
     Phase03BExecutedRow,
     Phase03BQwenAdapter,
     build_phase03b_examples,
-    build_phase03b_manifest,
+    committed_phase03b_manifest_fingerprint,
     freeze_phase03b_controls,
     run_phase03b_arm,
 )
@@ -92,7 +92,9 @@ def validate_args(args: argparse.Namespace) -> None:
 def _manifest_controls() -> tuple[tuple[Phase03BExample, ...], Phase03BControls]:
     examples = build_phase03b_examples()
     development = tuple(item for item in examples if item.split == "development")
-    manifest_fingerprint = canonical_fingerprint(build_phase03b_manifest(examples))
+    # The committed manifest is the frozen artifact the run binds to; a live
+    # derivation would move with the Phase 02 sources it records.
+    manifest_fingerprint = committed_phase03b_manifest_fingerprint()
     return development, freeze_phase03b_controls(
         development,
         manifest_fingerprint=manifest_fingerprint,

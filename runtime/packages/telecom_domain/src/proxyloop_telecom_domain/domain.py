@@ -17,10 +17,15 @@ from proxyloop_contracts import (
     CompletionOutcome,
     Evidence,
     EvidenceType,
-    MaterialTerm,
     Money,
     OfferReference,
     ProviderOffer,
+)
+from proxyloop_contracts.material_terms import (
+    material_terms_hash as material_terms_hash,
+)
+from proxyloop_contracts.material_terms import (
+    offer_material_terms as offer_material_terms,
 )
 
 from .offer_policy import (
@@ -118,31 +123,6 @@ def _sha256_json(value: object) -> str:
         sort_keys=True,
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
-
-
-def offer_material_terms(offer: ProviderOffer) -> tuple[MaterialTerm, ...]:
-    return (
-        MaterialTerm(
-            name="monthly_price_minor",
-            value=str(offer.monthly_price.amount_minor),
-        ),
-        MaterialTerm(
-            name="total_cost_12_months_minor",
-            value=str(offer.total_cost.amount_minor),
-        ),
-        MaterialTerm(name="currency", value=offer.monthly_price.currency),
-        MaterialTerm(name="term_months", value=str(offer.term_months)),
-        MaterialTerm(name="features", value=",".join(sorted(offer.features))),
-        MaterialTerm(name="offer_expires_at", value=_utc_text(offer.expires_at)),
-    )
-
-
-def material_terms_hash(terms: tuple[MaterialTerm, ...]) -> str:
-    canonical_terms = sorted(
-        (term.model_dump(mode="json") for term in terms),
-        key=lambda item: (str(item["name"]), str(item["value"])),
-    )
-    return _sha256_json(canonical_terms)
 
 
 def confirmation_hash(confirmation: AppliedOfferConfirmation) -> str:

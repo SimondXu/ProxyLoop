@@ -42,7 +42,43 @@ def _load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def check_baseline_artifacts(root: Path) -> tuple[bool, tuple[str, ...]]:
+HARNESS_EPISODE_STATES = ("unchanged", "drifted_since_r1")
+
+
+def harness_episode_state(root: Path) -> str:
+    """``unchanged`` when r1's recorded ``episode_fingerprint`` still equals the
+    committed Harness episodes, else ``drifted_since_r1``.
+
+    r1 was evaluated against the Harness episodes of its time; a later
+    regeneration of ``phase-03a1-episodes.json`` (for example opaque public
+    ids) is reported as a state, not repaired by rewriting r1.
+    """
+
+    report = BaselineReport.model_validate_json(
+        (root / REPORT_PATH).read_text(encoding="utf-8")
+    )
+    episodes = _load_json(root / EPISODES_PATH)
+    if report.episode_fingerprint == episodes.get("episode_fingerprint"):
+        return HARNESS_EPISODE_STATES[0]
+    return HARNESS_EPISODE_STATES[1]
+
+
+def check_baseline_artifacts_historical(root: Path) -> tuple[bool, tuple[str, ...]]:
+    """Integrity-only gate for the superseded r1 report: no evaluator replay.
+
+    r1 is historical evidence; its own fingerprints, provenance, and
+    truthfulness claims are still checked, but its rows are no longer re-read
+    through the current evaluator (``replay_report``) and its binding to the
+    current Harness episodes is reported by ``harness_episode_state`` instead
+    of failing the gate.
+    """
+
+    return check_baseline_artifacts(root, replay=False)
+
+
+def check_baseline_artifacts(
+    root: Path, *, replay: bool = True
+) -> tuple[bool, tuple[str, ...]]:
     """Validate shape, provenance bindings, truthfulness, and exact fingerprint."""
 
     errors: list[str] = []
@@ -73,7 +109,9 @@ def check_baseline_artifacts(root: Path) -> tuple[bool, tuple[str, ...]]:
     )
     if report.manifest_fingerprint != manifest.get("content_hash"):
         errors.append("baseline manifest fingerprint does not match Harness")
-    if report.episode_fingerprint != episodes.get("episode_fingerprint"):
+    if replay and report.episode_fingerprint != episodes.get("episode_fingerprint"):
+        # Legacy replay path only; the historical gate reports this as
+        # ``harness_episode_state`` instead.
         errors.append("baseline episode fingerprint does not match Harness")
     if report.harness_ceiling_fingerprint != ceiling.get("ceiling_fingerprint"):
         errors.append("baseline ceiling fingerprint does not match Harness")
@@ -199,17 +237,18 @@ def check_baseline_artifacts(root: Path) -> tuple[bool, tuple[str, ...]]:
             "frontier reference must remain unattempted after unknown hosted cost"
         )
 
-    from .replay import replay_report
+    if replay:
+        from .replay import replay_report
 
-    errors.extend(
-        replay_report(
-            root,
-            report,
-            manifest=manifest,
-            episodes=episodes,
-            ceiling=ceiling,
+        errors.extend(
+            replay_report(
+                root,
+                report,
+                manifest=manifest,
+                episodes=episodes,
+                ceiling=ceiling,
+            )
         )
-    )
 
     expected_ready = all(
         condition.run_status is RunStatus.SUCCEEDED
@@ -240,10 +279,13 @@ def write_report(root: Path, report: BaselineReport) -> None:
 
 
 __all__ = [
+    "HARNESS_EPISODE_STATES",
     "REPORT_PATH",
     "canonical_json",
     "check_baseline_artifacts",
+    "check_baseline_artifacts_historical",
     "fingerprint",
+    "harness_episode_state",
     "report_fingerprint",
     "write_report",
 ]

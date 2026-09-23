@@ -7,8 +7,10 @@ that has no ProxyLoop packages: ``train.jsonl`` (accepted teacher rows as
 ``heldout.jsonl`` (prompts plus the oracle target and the public observation
 the offline scorer needs), ``schema.json`` (``FastModelOutput``'s JSON
 schema for guided decoding), and ``bundle-manifest.json``.  ``--check``
-re-renders every deterministic file and compares its hash with the committed
-manifest; the JSONL files carry teacher text and stay git-ignored.
+verifies the committed manifest against its own recorded provenance and the
+present files (see ``check_bundle_with_state``); the JSONL files carry
+teacher text and stay git-ignored, and ``make phase03c-cloud-bundle``
+rebuilds the bundle when the accepted JSONL is present.
 """
 
 from __future__ import annotations
@@ -467,30 +469,76 @@ def write_bundle(
     return document
 
 
-def check_bundle(
-    out_dir: Path, *, prompt_set_path: Path, heldout_seeds: Sequence[int]
-) -> tuple[str, ...]:
-    """Re-render the deterministic files and report drift from the manifest.
+PROMPT_SET_CONTENT_STATES: Final = ("unchanged", "drifted_since_bundle")
+# The committed Stage 2 bundle as another session built it.  With the JSONL
+# absent, a tampered-and-resigned manifest would otherwise pass the self
+# check; a legitimate ``make phase03c-cloud-bundle`` rebuild updates this
+# literal deliberately.
+COMMITTED_BUNDLE_DATASET_FINGERPRINT: Final = (
+    "ab86aa43efd1de8a57d72465d7d2db2856e951da866ee8512bdf5968ace47993"
+)
 
-    ``train.jsonl`` depends on the git-ignored accepted file, so it is hashed
-    only when present; ``valid.jsonl``, ``dev-eval.jsonl``, ``heldout.jsonl``,
-    and ``schema.json`` are recomputed from the frozen prompt set and compared
-    with the manifest whether or not the local files exist.
+
+def _prompt_fingerprints(path: Path) -> set[str]:
+    fingerprints: set[str] = set()
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if isinstance(row, dict) and isinstance(row.get("prompt_fingerprint"), str):
+                fingerprints.add(row["prompt_fingerprint"])
+    return fingerprints
+
+
+def check_bundle_with_state(
+    out_dir: Path, *, prompt_set_path: Path, heldout_seeds: Sequence[int]
+) -> tuple[tuple[str, ...], str, tuple[str, ...]]:
+    """``(problems, prompt-set content state, drifted comparisons)``.
+
+    The bundle is the Stage 2 training package built by another session from
+    the git-ignored accepted JSONL; it is integrity-checked against its own
+    recorded provenance, never rewritten here (``make phase03c-cloud-bundle``
+    rebuilds it when the accepted JSONL is present).  Three tiers:
+
+    (a) internal integrity, a failure: the manifest's self ``dataset_fingerprint``,
+        ``schema.json``/``valid.jsonl`` (prompt text plus oracle targets,
+        recomputed from the frozen prompt set) against the recorded hashes,
+        and every recorded hash against a bundle file that is present;
+    (b) prompt identity, a failure: the ``prompt_fingerprint`` set of a present
+        ``dev-eval.jsonl``/``heldout.jsonl`` must equal the current renderings;
+    (c) a labelled state, never a failure: the prompt set's
+        ``content_fingerprint`` and the byte hashes of re-rendered
+        ``dev-eval.jsonl``/``heldout.jsonl`` (they embed the public observation
+        and view, whose ids/fingerprints may move without the prompts moving).
     """
 
     manifest_path = out_dir / MANIFEST_FILENAME
     if not manifest_path.is_file():
-        return (f"missing_manifest:{_relative(manifest_path)}",)
+        return (
+            (f"missing_manifest:{_relative(manifest_path)}",),
+            PROMPT_SET_CONTENT_STATES[1],
+            (),
+        )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if (
         not isinstance(manifest, dict)
         or manifest.get("schema_version") != BUNDLE_SCHEMA_VERSION
     ):
-        return (f"unsupported_manifest:{_relative(manifest_path)}",)
+        return (
+            (f"unsupported_manifest:{_relative(manifest_path)}",),
+            PROMPT_SET_CONTENT_STATES[1],
+            (),
+        )
     problems: list[str] = []
+    drifted: list[str] = []
     prompt_version = cast(PromptVersion, manifest.get("prompt_version"))
     if prompt_version not in PHASE03C_COMPILER_VERSIONS:
-        return (f"prompt_version:{prompt_version}",)
+        return (
+            (f"prompt_version:{prompt_version}",),
+            PROMPT_SET_CONTENT_STATES[1],
+            (),
+        )
     if manifest.get("compiler_version") != PHASE03C_COMPILER_VERSIONS[prompt_version]:
         problems.append("compiler_version")
     spec = QWEN3_8B_BF16_SPEC
@@ -499,10 +547,22 @@ def check_bundle(
         spec.source_revision
     ):
         problems.append("base_model")
+    # (a) the manifest binds itself.
+    unsigned = {
+        key: value for key, value in manifest.items() if key != "dataset_fingerprint"
+    }
+    if manifest.get("dataset_fingerprint") != _sha256_text(_canonical_json(unsigned)):
+        problems.append("manifest_fingerprint")
+    if (
+        out_dir.resolve() == (PROJECT_ROOT / DEFAULT_OUT_DIR).resolve()
+        and manifest.get("dataset_fingerprint") != COMMITTED_BUNDLE_DATASET_FINGERPRINT
+    ):
+        problems.append("committed_bundle_fingerprint")
+    # (c) the prompt set's whole content fingerprint.
     if manifest.get("prompt_set", {}).get(
         "content_fingerprint"
     ) != prompt_set_content_fingerprint(prompt_set_path):
-        problems.append("prompt_set_content_fingerprint")
+        drifted.append("prompt_set_content_fingerprint")
     schema_text = json.dumps(schema_document(), indent=2, sort_keys=True) + "\n"
     if manifest.get("schema_fingerprint") != _sha256_text(
         _canonical_json(schema_document())
@@ -510,31 +570,61 @@ def check_bundle(
         problems.append("schema_fingerprint")
     files = manifest.get("files", {})
     prompt_rows = load_prompt_set_manifest(prompt_set_path)
-    expected: dict[str, str] = {
+    dev_eval_rows = build_dev_eval_rows(prompt_rows, prompt_version=prompt_version)
+    heldout_rows = build_heldout_rows(
+        seeds=heldout_seeds, prompt_version=prompt_version
+    )
+    # (a) deterministic files that carry only prompts and oracle targets.
+    integrity: dict[str, str] = {
         SCHEMA_FILENAME: _sha256_text(schema_text),
         VALID_FILENAME: dataset_rows_sha256(
             build_dev_rows(prompt_rows, prompt_version=prompt_version)
         ),
-        DEV_EVAL_FILENAME: rows_sha256(
-            build_dev_eval_rows(prompt_rows, prompt_version=prompt_version)
-        ),
-        HELDOUT_FILENAME: rows_sha256(
-            build_heldout_rows(seeds=heldout_seeds, prompt_version=prompt_version)
-        ),
     }
-    for name, sha in expected.items():
+    for name, sha in integrity.items():
         if files.get(name, {}).get("sha256") != sha:
             problems.append(f"manifest_drift:{name}")
+    # (c) files that also embed the public observation and the view.
+    rendered: dict[str, tuple[str, set[str]]] = {
+        DEV_EVAL_FILENAME: (
+            rows_sha256(dev_eval_rows),
+            {str(row["prompt_fingerprint"]) for row in dev_eval_rows},
+        ),
+        HELDOUT_FILENAME: (
+            rows_sha256(heldout_rows),
+            {str(row["prompt_fingerprint"]) for row in heldout_rows},
+        ),
+    }
+    for name, (sha, _) in rendered.items():
+        if files.get(name, {}).get("sha256") != sha:
+            drifted.append(f"rendered:{name}")
+    # (a) present files against the recorded hashes; (b) prompt identity.
     for name in (TRAIN_FILENAME, VALID_FILENAME, DEV_EVAL_FILENAME, HELDOUT_FILENAME):
         path = out_dir / name
         if path.is_file() and sha256_file(path) != files.get(name, {}).get("sha256"):
             problems.append(f"file_drift:{name}")
+    for name, (_, expected_fingerprints) in rendered.items():
+        path = out_dir / name
+        if path.is_file() and _prompt_fingerprints(path) != expected_fingerprints:
+            problems.append(f"prompt_identity:{name}")
     schema_path = out_dir / SCHEMA_FILENAME
     if schema_path.is_file() and schema_path.read_text(encoding="utf-8") != (
         schema_text
     ):
         problems.append(f"file_drift:{SCHEMA_FILENAME}")
-    return tuple(problems)
+    state = PROMPT_SET_CONTENT_STATES[1] if drifted else PROMPT_SET_CONTENT_STATES[0]
+    return tuple(problems), state, tuple(drifted)
+
+
+def check_bundle(
+    out_dir: Path, *, prompt_set_path: Path, heldout_seeds: Sequence[int]
+) -> tuple[str, ...]:
+    """The failures of ``check_bundle_with_state``; the state is not a failure."""
+
+    problems, _, _ = check_bundle_with_state(
+        out_dir, prompt_set_path=prompt_set_path, heldout_seeds=heldout_seeds
+    )
+    return problems
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -564,10 +654,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     seeds = tuple(range(args.heldout_seed_first, args.heldout_seed_last + 1))
     started = time.perf_counter()
     if args.check:
-        problems = check_bundle(
+        problems, state, drifted = check_bundle_with_state(
             args.out_dir, prompt_set_path=args.manifest, heldout_seeds=seeds
         )
         elapsed = time.perf_counter() - started
+        print(
+            f"prompt set content: {state}"
+            + (f" ({', '.join(drifted)})" if drifted else "")
+        )
         if problems:
             for problem in problems:
                 print(problem)

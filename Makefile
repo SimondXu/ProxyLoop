@@ -3,7 +3,8 @@
 .PHONY: help preflight preflight-fast check-layout validate format format-check lint typecheck \
 	unit-test test contracts contracts-check simulator benchmark benchmark-check \
 	data-pilot data-pilot-check harness harness-check baselines baselines-check \
-	errata errata-check hosted-rerun-source-check hosted-rerun-check \
+	baselines-historical-check errata errata-check hosted-rerun-source-check \
+	hosted-rerun-check hosted-rescore hosted-rescore-check \
 	validity-smoke-check phase03b-readiness-check phase03b-experiment-check \
 	phase03c-errata phase03c-smoke-check phase03c-invariants phase03c-invariants-check \
 	phase03c-cloud-bundle phase03c-cloud-bundle-check phase03c-training-data phase03c-training-check phase03c-rescore-check \
@@ -33,6 +34,7 @@ ML_PYTHON_PATHS := ml/data_pipeline/src ml/evaluation/src ml/tests \
 	scripts/run_phase_03a1_evaluation_erratum.py \
 	scripts/run_phase_03a1_evaluation_erratum_models.py \
 	scripts/run_phase_03a1_hosted_rerun.py \
+	scripts/run_phase_03a1_hosted_rescore.py \
 	scripts/run_phase_03a1_validity_smoke.py \
 	scripts/prepare_phase03b_readiness.py \
 	scripts/prepare_phase03b_experiment.py scripts/run_phase03b_smoke.py \
@@ -47,7 +49,7 @@ PHASE03C_ACCEPTED ?= data/experiments/phase-03c/teacher-full-v6/claude-sonnet-5-
 PHASE03C_TOKENIZER_PATH ?=
 
 help:
-	@printf '%s\n' 'Targets: preflight, preflight-fast, validate, format, format-check, lint, typecheck, test, postgres-check, phase04d-check, phase04d-profile-check, phase05a-check, phase06b1-check, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, phase03c-smoke-check, phase03c-invariants, phase03c-invariants-check, phase03c-prompt-set-check, phase03c-teacher-pilot-check, phase03c-teacher-generation-check, phase03c-cloud-bundle, phase03c-cloud-bundle-check, phase03c-training-data, phase03c-training-check, check-layout, lock-check, runtime-server, portfolio-demo, portfolio-demo-stop, portfolio-demo-reset, portfolio-demo-channel, portfolio-demo-recovery, dev'
+	@printf '%s\n' 'Targets: preflight, preflight-fast, validate, format, format-check, lint, typecheck, test, postgres-check, phase04d-check, phase04d-profile-check, phase05a-check, phase06b1-check, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, baselines-historical-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, hosted-rescore, hosted-rescore-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, phase03c-smoke-check, phase03c-invariants, phase03c-invariants-check, phase03c-prompt-set-check, phase03c-teacher-pilot-check, phase03c-teacher-generation-check, phase03c-cloud-bundle, phase03c-cloud-bundle-check, phase03c-training-data, phase03c-training-check, check-layout, lock-check, runtime-server, portfolio-demo, portfolio-demo-stop, portfolio-demo-reset, portfolio-demo-channel, portfolio-demo-recovery, dev'
 
 preflight: validate lock-check
 	python3 -m compileall -q scripts
@@ -102,6 +104,7 @@ typecheck:
 		scripts/run_phase_03a1_evaluation_erratum.py \
 		scripts/run_phase_03a1_evaluation_erratum_models.py \
 		scripts/run_phase_03a1_hosted_rerun.py \
+		scripts/run_phase_03a1_hosted_rescore.py \
 		scripts/run_phase_03a1_validity_smoke.py \
 		scripts/prepare_phase03b_readiness.py \
 		scripts/prepare_phase03b_experiment.py scripts/run_phase03b_smoke.py \
@@ -119,7 +122,7 @@ unit-test:
 		tests/contract tests/integration
 	$(ML_PYTHON_RUN) pytest -c ml/pyproject.toml ml/tests -q
 
-test: unit-test contracts-check benchmark-check data-pilot-check harness-check baselines-check errata-check hosted-rerun-check validity-smoke-check phase03b-readiness-check phase03b-experiment-check phase03c-smoke-check phase03c-invariants-check phase03c-prompt-set-check phase03c-teacher-pilot-check phase03c-teacher-generation-check phase03c-cloud-bundle-check phase03c-training-check phase03c-rescore-check
+test: unit-test contracts-check benchmark-check data-pilot-check harness-check baselines-historical-check errata-check hosted-rerun-check validity-smoke-check phase03b-readiness-check phase03b-experiment-check phase03c-smoke-check phase03c-invariants-check phase03c-prompt-set-check phase03c-teacher-pilot-check phase03c-teacher-generation-check phase03c-cloud-bundle-check phase03c-training-check phase03c-rescore-check
 
 contracts:
 	$(PYTHON_RUN) python scripts/generate_contracts.py
@@ -151,8 +154,16 @@ harness-check:
 
 baselines: baselines-check
 
+# r1 replay through the current evaluator; historical, not part of `make test`.
+# This legacy replay fails on the current tree by design: it binds r1 to the
+# Harness episodes of its time, which were regenerated with opaque public ids.
+# `baselines-historical-check` reports that drift as a state instead.
 baselines-check:
 	$(ML_PYTHON_RUN) python -m scripts.run_phase_03a1_baselines --check
+
+# r1 integrity only (fingerprints, provenance, truthfulness); no replay.
+baselines-historical-check:
+	$(ML_PYTHON_RUN) python -m scripts.run_phase_03a1_baselines --check-historical
 
 errata:
 	$(ML_PYTHON_RUN) python -m scripts.run_phase_03a1_evaluation_erratum --write-fixtures
@@ -163,8 +174,16 @@ errata-check:
 hosted-rerun-source-check:
 	$(ML_PYTHON_RUN) python -m scripts.run_phase_03a1_hosted_rerun --check-sources
 
-hosted-rerun-check:
-	$(ML_PYTHON_RUN) python -m scripts.run_phase_03a1_hosted_rerun --check
+# r4 gate: integrity + execution-contract state + rescored artifact.  The r4-era
+# gate `python -m scripts.run_phase_03a1_hosted_rerun --check` (frozen bytes,
+# fresh-fixture replay) stays runnable but is no longer part of `make test`.
+hosted-rerun-check: hosted-rescore-check
+
+hosted-rescore:
+	$(ML_PYTHON_RUN) python -m scripts.run_phase_03a1_hosted_rescore --write
+
+hosted-rescore-check:
+	$(ML_PYTHON_RUN) python -m scripts.run_phase_03a1_hosted_rescore --check
 
 validity-smoke-check:
 	$(ML_PYTHON_RUN) python -m scripts.run_phase_03a1_validity_smoke --check

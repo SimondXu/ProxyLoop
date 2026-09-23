@@ -54,9 +54,21 @@ from .contracts import (
     planning_basis_fingerprint,
     validate_contract_json,
 )
+from .material_terms import material_terms_hash, offer_material_terms
+from .offer_policy import (
+    REMOVE_ADD_ON_PREFIX,
+    SUPPORTED_APPLIED_CHANGES,
+    OfferComplianceContext,
+    OfferComplianceTerms,
+    is_supported_applied_change,
+    offer_compliance_violations,
+    unsupported_applied_changes,
+)
 
 __all__ = [
     "CANONICAL_MODELS",
+    "REMOVE_ADD_ON_PREFIX",
+    "SUPPORTED_APPLIED_CHANGES",
     "ActionIntent",
     "ActionType",
     "ApprovalDecision",
@@ -93,6 +105,8 @@ __all__ = [
     "ModelResult",
     "ModelTrace",
     "Money",
+    "OfferComplianceContext",
+    "OfferComplianceTerms",
     "OfferReference",
     "PlanningBasis",
     "ProviderOffer",
@@ -106,6 +120,11 @@ __all__ = [
     "VisibleCaseEvent",
     "canonical_fingerprint",
     "contract_json_schema",
+    "is_supported_applied_change",
+    "material_terms_hash",
+    "offer_compliance_violations",
+    "offer_material_terms",
     "planning_basis_fingerprint",
+    "unsupported_applied_changes",
     "validate_contract_json",
 ]

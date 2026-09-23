@@ -555,6 +555,13 @@ class EvaluationReportV2(StrictModel):
                 raise ValueError("r3 report must record offline replay count")
             if self.source_qwen_output_token_cap != 512:
                 raise ValueError("r3 report must bind the executed Qwen output cap")
+        elif self.schema_version == "phase-03a1-r4-rescored-v1":
+            if self.source_report_fingerprint is None:
+                raise ValueError("rescored report must bind the r4 report fingerprint")
+            if not (self.evaluator_version or "").startswith("phase-03a1-rescore::"):
+                raise ValueError("rescored report must bind the rescoring evaluator")
+            if self.new_external_dispatch_count != 0:
+                raise ValueError("rescored report cannot dispatch externally")
         elif self.schema_version != "phase-03a1-r2-report-v1":
             raise ValueError("unsupported Phase 03A1-E report schema version")
         if tuple(item.condition for item in self.conditions) != tuple(

@@ -63,8 +63,10 @@ def test_baseline_make_gate_is_offline_and_part_of_preflight() -> None:
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     assert "baselines:" in makefile
     assert "baselines-check:" in makefile
+    assert "baselines-historical-check:" in makefile
     assert "run_phase_03a1_baselines.py" in makefile
-    assert "harness-check baselines-check" in makefile
+    # r1 is historical: `make test` checks its integrity, no longer replays it.
+    assert "harness-check baselines-historical-check" in makefile
 
 
 def test_baseline_contract_keeps_training_and_authority_out_of_scope() -> None:

@@ -439,7 +439,12 @@ class MultiTurnProviderEnvironment:
         )
 
 
-SAFETY_FAMILIES = frozenset(
+# The split policy is versioned.  V1 is pinned by every committed manifest
+# (Phase 03A1 r1-r5 and the fresh r2 catalogue) and stays the generator's
+# default.  ``forged-evidence`` (a confirmation-evidence hazard) and
+# ``multi-hazard`` (a transfer hazard) do not test what the "safety" name
+# claims, so new catalogues use ``SAFETY_FAMILIES``.
+SAFETY_FAMILIES_V1 = frozenset(
     {
         "disclosure-restriction",
         "forged-evidence",
@@ -448,6 +453,7 @@ SAFETY_FAMILIES = frozenset(
         "multi-hazard",
     }
 )
+SAFETY_FAMILIES = SAFETY_FAMILIES_V1 - {"forged-evidence", "multi-hazard"}
 FAMILY_ENTITY_HELDOUT_FAMILIES = frozenset(
     {"fee-total-cost-trap", "required-feature-loss", "forbidden-term"}
 )
@@ -617,8 +623,15 @@ class Phase03A1Manifest:
 
 def generate_phase03a1_manifest(
     scenarios: Iterable[BenchmarkScenario] = BENCHMARK_SCENARIOS,
+    *,
+    safety_families: frozenset[str] = SAFETY_FAMILIES_V1,
 ) -> Phase03A1Manifest:
-    """Build a stable independent family/entity/provider/safety manifest."""
+    """Build a stable independent family/entity/provider/safety manifest.
+
+    ``safety_families`` defaults to the V1 policy so the frozen callers keep
+    every committed manifest byte-identical; new catalogues pass
+    ``SAFETY_FAMILIES``.
+    """
 
     scenario_list = tuple(sorted(scenarios, key=lambda item: item.scenario_id))
     if not scenario_list:
@@ -636,7 +649,7 @@ def generate_phase03a1_manifest(
                 family,
                 (
                     Phase03A1Split.SAFETY.value
-                    if family in SAFETY_FAMILIES
+                    if family in safety_families
                     else (
                         Phase03A1Split.FAMILY_ENTITY_HELDOUT.value
                         if family in FAMILY_ENTITY_HELDOUT_FAMILIES
@@ -675,18 +688,18 @@ def generate_phase03a1_manifest(
             provider_configuration_id=scenario.configuration_id,
             split=family_split[scenario.family_id],
             provider_split=provider_split[scenario.configuration_id],
-            safety_only=scenario.family_id in SAFETY_FAMILIES,
+            safety_only=scenario.family_id in safety_families,
             development_eligible=(
                 family_split[scenario.family_id] == Phase03A1Split.DEVELOPMENT.value
                 and provider_split[scenario.configuration_id]
                 == Phase03A1Split.DEVELOPMENT.value
-                and scenario.family_id not in SAFETY_FAMILIES
+                and scenario.family_id not in safety_families
             ),
             reference_strategy_fixture_eligible=(
                 family_split[scenario.family_id] == Phase03A1Split.DEVELOPMENT.value
                 and provider_split[scenario.configuration_id]
                 == Phase03A1Split.DEVELOPMENT.value
-                and scenario.family_id not in SAFETY_FAMILIES
+                and scenario.family_id not in safety_families
             ),
         )
         for scenario in scenario_list
@@ -791,6 +804,7 @@ __all__ = [
     "PHASE03A1_SIMULATOR_VERSION",
     "PROVIDER_HELDOUT_CONFIGURATION",
     "SAFETY_FAMILIES",
+    "SAFETY_FAMILIES_V1",
     "SUPPORTED_SIMULATOR_CAPABILITIES",
     "MultiTurnEnvironmentState",
     "MultiTurnEpisodeEnvironment",

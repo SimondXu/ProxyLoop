@@ -18,6 +18,7 @@ from proxyloop_provider_simulator.environment import (
     ProviderEnvironment,
 )
 from proxyloop_provider_simulator.episode import Phase01AEpisode
+from proxyloop_provider_simulator.leakage import leaked_private_values, private_tokens
 from proxyloop_provider_simulator.scenarios import BENCHMARK_SCENARIOS, ProviderTurn
 from proxyloop_provider_simulator.splits import generate_split_manifest
 
@@ -44,6 +45,7 @@ FORBIDDEN_OBSERVATION_KEYS = frozenset(
         "database_state",
     }
 )
+PRIVATE_TOKENS = private_tokens(BENCHMARK_SCENARIOS)
 EXPECTED_FAMILY_SPLIT_COUNTS = {"train": 10, "development": 3, "test": 3}
 EXPECTED_SCENARIO_SPLIT_COUNTS = {"train": 20, "development": 6, "test": 6}
 
@@ -96,8 +98,13 @@ def _verification_flag(row: dict[str, object], key: str) -> bool:
 
 
 def _leakage_count(row: dict[str, object]) -> int:
-    leaked = row.get("leaked_observation_keys")
-    return len(leaked) if isinstance(leaked, list) else 1
+    """Leaked key names plus leaked string values; a missing list counts as 1."""
+
+    count = 0
+    for key in ("leaked_observation_keys", "leaked_public_values"):
+        leaked = row.get(key)
+        count += len(leaked) if isinstance(leaked, list) else 1
+    return count
 
 
 def _gate_passes(
@@ -150,6 +157,8 @@ def build_benchmark_report() -> dict[str, object]:
         )
         observation_dict = observation.to_dict()
         leaked = _leaked_keys(observation_dict)
+        # Audit D1-1: the value scan covers the serialized text a model reads.
+        leaked_values = leaked_private_values(observation.to_json(), PRIVATE_TOKENS)
         oracle_decision = oracle.decide(observation)
         verification = environment.apply(
             EnvironmentDecision(
@@ -169,6 +178,7 @@ def build_benchmark_report() -> dict[str, object]:
                 "split": manifest.scenario_split(scenario.scenario_id),
                 "observation_fingerprint": _fingerprint(observation_dict),
                 "leaked_observation_keys": list(leaked),
+                "leaked_public_values": list(leaked_values),
                 "oracle_action": oracle_decision.action.value,
                 "oracle_offer_id": oracle_decision.offer_id,
                 "oracle_reason_codes": list(oracle_decision.reason_codes),

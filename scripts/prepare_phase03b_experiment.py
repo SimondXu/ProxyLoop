@@ -12,6 +12,7 @@ from proxyloop_evaluation.phase03b_experiment import (
     EXPERIMENT_DIR,
     ROOT,
     check_phase03b_artifacts,
+    phase02_source_state,
     write_phase03b_artifacts,
 )
 from proxyloop_evaluation.qwen_mlx import (
@@ -199,6 +200,10 @@ def main() -> int:
         parser.error("--model-path is only valid with --verify-token-fit")
     if args.check:
         errors = check_phase03b_artifacts()
+        state, drifted = phase02_source_state()
+        print(
+            f"phase02 source: {state}" + (f" ({', '.join(drifted)})" if drifted else "")
+        )
         if errors:
             for error in errors:
                 print(error)

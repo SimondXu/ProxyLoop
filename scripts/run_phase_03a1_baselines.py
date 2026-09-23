@@ -8,10 +8,12 @@ from pathlib import Path
 
 from proxyloop_evaluation import (
     check_baseline_artifacts,
+    check_baseline_artifacts_historical,
     frontier_report,
     qwen_report,
     write_report,
 )
+from proxyloop_evaluation.artifacts import harness_episode_state
 from proxyloop_evaluation.openai_frontier import FRONTIER_API_KEY_ENV
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +23,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument("--check", action="store_true")
+    action.add_argument("--check-historical", action="store_true")
     action.add_argument("--run-qwen", action="store_true")
     action.add_argument("--run-frontier", action="store_true")
     parser.add_argument("--model-path")
@@ -61,6 +64,15 @@ def main() -> int:
         )
         print("Recorded hosted frontier baseline evidence within the approved cap.")
         return 0
+    if args.check_historical:
+        ok, errors = check_baseline_artifacts_historical(ROOT)
+        if ok:
+            print("Phase 03A1 r1 baseline artifacts are intact (not replayed).")
+            print(f"harness episodes: {harness_episode_state(ROOT)}")
+            return 0
+        for error in errors:
+            print(error)
+        return 1
     ok, errors = check_baseline_artifacts(ROOT)
     if ok:
         print("Phase 03A1 baseline artifacts are valid and truthfully bound.")
