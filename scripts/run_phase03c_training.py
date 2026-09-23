@@ -9,7 +9,8 @@ base attestation, config hash, package versions, machine, wall time, loss
 table, and adapter file hashes.  ``--smoke`` trains rank 8 for four
 iterations on eight rows against the historical 4B 4-bit base to validate
 the pipeline; adapters are never committed.  ``--check`` validates every
-committed ``run-manifest.json`` under the training directory.
+committed ``run-manifest.json`` under the training directory, at any depth,
+with the checker its ``schema_version`` names (local MLX or cloud TRL).
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ import platform
 import subprocess
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
@@ -30,6 +31,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from proxyloop_evaluation.phase03c_training.cloud_manifest import (  # noqa: E402
+    CLOUD_RUN_MANIFEST_SCHEMA_VERSION,
+    check_cloud_run_manifest,
+)
 from proxyloop_evaluation.phase03c_training.config import (  # noqa: E402
     ADAPTERS_DIRNAME,
     RECIPE,
@@ -50,6 +55,7 @@ from proxyloop_evaluation.phase03c_training.dataset import (  # noqa: E402
 )
 from proxyloop_evaluation.phase03c_training.manifest import (  # noqa: E402
     RUN_MANIFEST_FILENAME,
+    RUN_MANIFEST_SCHEMA_VERSION,
     TRAIN_LOG_FILENAME,
     adapter_file_hashes,
     build_run_manifest,
@@ -63,6 +69,20 @@ from proxyloop_evaluation.qwen_spec import (  # noqa: E402
 )
 
 TRAINING_DIR = PROJECT_ROOT / "data/experiments/phase-03c/training"
+# Every committed run manifest, relative to TRAINING_DIR: a floor so a glob
+# change cannot silently shrink what ``--check`` covers.  Extra manifests
+# found under TRAINING_DIR are checked too.
+EXPECTED_RUN_MANIFESTS = (
+    "cloud-run-01/train/run-manifest.json",
+    "smoke-01/train/run-manifest.json",
+    "smoke/run-manifest.json",
+)
+_CHECKERS: dict[str, Callable[[Path], tuple[str, ...]]] = {
+    RUN_MANIFEST_SCHEMA_VERSION: check_run_manifest,
+    CLOUD_RUN_MANIFEST_SCHEMA_VERSION: check_cloud_run_manifest,
+}
+# A manifest a checker cannot parse is a reported problem, not a traceback.
+_MALFORMED = (json.JSONDecodeError, KeyError, TypeError, AttributeError, ValueError)
 _PACKAGES = ("mlx", "mlx-lm", "transformers", "pydantic", "numpy")
 
 
@@ -256,16 +276,37 @@ def train(args: argparse.Namespace) -> int:
     return exit_code
 
 
+def _schema_version(path: Path) -> object:
+    document = json.loads(path.read_text(encoding="utf-8"))
+    return document.get("schema_version") if isinstance(document, dict) else None
+
+
 def check() -> int:
-    manifests = sorted(TRAINING_DIR.glob(f"*/{RUN_MANIFEST_FILENAME}"))
-    if not manifests:
-        print(f"no run manifest under {TRAINING_DIR}; nothing to check")
-        return 0
-    problems: list[str] = []
+    manifests = sorted(TRAINING_DIR.rglob(RUN_MANIFEST_FILENAME))
+    found = {path.relative_to(TRAINING_DIR).as_posix() for path in manifests}
+    problems = [
+        f"{relative}:missing_expected_manifest"
+        for relative in EXPECTED_RUN_MANIFESTS
+        if relative not in found
+    ]
     for path in manifests:
-        problems.extend(
-            f"{path.parent.name}:{problem}" for problem in check_run_manifest(path)
-        )
+        relative = path.relative_to(TRAINING_DIR).as_posix()
+        try:
+            schema_version = _schema_version(path)
+            checker = (
+                _CHECKERS.get(schema_version)
+                if isinstance(schema_version, str)
+                else None
+            )
+            if checker is None:
+                problems.append(f"{relative}:unknown_schema_version:{schema_version}")
+                continue
+            print(f"{relative}: {schema_version} -> {checker.__name__}")
+            found_problems = checker(path)
+        except _MALFORMED as error:
+            problems.append(f"{relative}:malformed_manifest:{type(error).__name__}")
+            continue
+        problems.extend(f"{relative}:{problem}" for problem in found_problems)
     for problem in problems:
         print(problem)
     if problems:

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 from proxyloop_evaluation.phase03b_readiness import proposed_fast_target
@@ -16,6 +18,9 @@ from proxyloop_evaluation.phase03c_prompt_set import (
     render_prompt,
     render_prompt_view,
     resolve_row,
+)
+from proxyloop_evaluation.phase03c_training.cloud_manifest import (
+    check_cloud_run_manifest,
 )
 from proxyloop_evaluation.phase03c_training.config import (
     RECIPE,
@@ -65,6 +70,7 @@ from proxyloop_evaluation.phase03c_training.manifest import (
 )
 from proxyloop_evaluation.qwen_spec import QWEN3_4B_4BIT_SPEC
 
+import scripts.run_phase03c_training as training_script
 from scripts.run_phase03c_dev_eval import run_dev_eval
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -470,6 +476,132 @@ def test_run_manifest_fingerprint_is_reproducible_and_checked(tmp_path: Path) ->
     problems = check_run_manifest(full_path)
     assert "iters_not_three_epochs" in problems
     assert "plan_drift" not in problems
+
+
+def test_training_check_visits_every_committed_run_manifest(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The local smoke manifest sits one level down, the two cloud runs two.
+    assert training_script.check() == 0
+    out = capsys.readouterr().out
+    for relative in (
+        "smoke/run-manifest.json",
+        "smoke-01/train/run-manifest.json",
+        "cloud-run-01/train/run-manifest.json",
+    ):
+        assert relative in out
+    assert "(3 checked" in out
+
+
+def test_cloud_run_manifest_config_tamper_is_caught(tmp_path: Path) -> None:
+    source = ROOT / "data/experiments/phase-03c/training/cloud-run-01/train"
+    document = json.loads((source / RUN_MANIFEST_FILENAME).read_text("utf-8"))
+    path = tmp_path / RUN_MANIFEST_FILENAME
+    path.write_text(json.dumps(document), encoding="utf-8")
+    assert check_cloud_run_manifest(path) == ()
+    document["config"]["learning_rate"] = document["config"]["learning_rate"] * 2
+    path.write_text(json.dumps(document), encoding="utf-8")
+    assert check_cloud_run_manifest(path) == ("config_hash_drift",)
+
+
+def _selected(document: dict[str, Any]) -> dict[str, Any]:
+    return next(e for e in document["evals"] if e == document["selected"])
+
+
+@pytest.mark.parametrize(
+    ("mutate", "expected"),
+    [
+        (
+            lambda d: d.update(selected_minus_untuned_act_agreement=0.4),
+            "selected_delta_drift",
+        ),
+        (
+            lambda d: d["selected"].update(oracle_act_agreement=0.1),
+            "selected_not_in_evals",
+        ),
+        (
+            lambda d: d["bundle"].update(dataset_fingerprint="0" * 64),
+            "bundle_fingerprint_mismatch",
+        ),
+        (
+            lambda d: d["bundle"].update(train_sha256="0" * 64),
+            "bundle_train_sha256_mismatch",
+        ),
+        (lambda d: d.pop("gpu"), "missing_key:gpu"),
+        (
+            # The evals entry first, while it still equals ``selected``.
+            lambda d: (
+                _selected(d).update(policy_violation=1),
+                d["selected"].update(policy_violation=1),
+            ),
+            "selected_has_policy_violation",
+        ),
+    ],
+)
+def test_cloud_run_manifest_invariants_are_each_checked(
+    tmp_path: Path, mutate: Callable[[dict[str, Any]], object], expected: str
+) -> None:
+    source = ROOT / "data/experiments/phase-03c/training/cloud-run-01/train"
+    document = json.loads((source / RUN_MANIFEST_FILENAME).read_text("utf-8"))
+    mutate(document)
+    path = tmp_path / RUN_MANIFEST_FILENAME
+    path.write_text(json.dumps(document), encoding="utf-8")
+    assert check_cloud_run_manifest(path) == (expected,)
+
+
+def _training_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, expected: tuple[str, ...]
+) -> Path:
+    monkeypatch.setattr(training_script, "TRAINING_DIR", tmp_path)
+    monkeypatch.setattr(training_script, "EXPECTED_RUN_MANIFESTS", expected)
+    smoke = ROOT / "data/experiments/phase-03c/training/smoke" / RUN_MANIFEST_FILENAME
+    target = tmp_path / "smoke" / RUN_MANIFEST_FILENAME
+    target.parent.mkdir()
+    target.write_bytes(smoke.read_bytes())
+    return tmp_path
+
+
+def test_training_check_refuses_an_unknown_schema_version(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = _training_dir(tmp_path, monkeypatch, ("smoke/run-manifest.json",))
+    extra = root / "run-x" / "train" / RUN_MANIFEST_FILENAME
+    extra.parent.mkdir(parents=True)
+    extra.write_text(json.dumps({"schema_version": "bogus"}), encoding="utf-8")
+    assert training_script.check() == 1
+    out = capsys.readouterr().out
+    assert "run-x/train/run-manifest.json:unknown_schema_version:bogus" in out
+
+
+def test_training_check_fails_on_a_missing_expected_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    expected = ("gone/train/run-manifest.json", "smoke/run-manifest.json")
+    _training_dir(tmp_path, monkeypatch, expected)
+    assert training_script.check() == 1
+    out = capsys.readouterr().out
+    assert "gone/train/run-manifest.json:missing_expected_manifest" in out
+    assert "smoke/run-manifest.json: phase-03c-training-run-v1" in out
+
+
+def test_training_check_reports_a_malformed_manifest_and_continues(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = _training_dir(tmp_path, monkeypatch, ("smoke/run-manifest.json",))
+    broken = root / "a-broken" / "train" / RUN_MANIFEST_FILENAME
+    broken.parent.mkdir(parents=True)
+    broken.write_text("{not json", encoding="utf-8")
+    assert training_script.check() == 1
+    out = capsys.readouterr().out
+    assert "a-broken/train/run-manifest.json:malformed_manifest:JSONDecodeError" in out
+    # The next manifest in sorted order is still checked.
+    assert "smoke/run-manifest.json: phase-03c-training-run-v1" in out
 
 
 # --- dev eval -----------------------------------------------------------------
