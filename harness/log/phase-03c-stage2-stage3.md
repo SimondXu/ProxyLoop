@@ -151,7 +151,11 @@ is carried in `docs/ml-evidence.md` and in `README.md`.
 `data/experiments/phase-03c/training/cloud-run-01/`: `train/run-manifest.json`,
 `eval/heldout-report.json`, `eval/dev-report.json`, `eval/heldout-rescored.json`,
 `eval/dev-rescored.json`, `train.log`, `eval-heldout.log` and `eval-dev.log` (the last two needed a
-`.gitignore` negation; the global `*.log` rule had been hiding them). The
+`.gitignore` negation; the global `*.log` rule had been hiding them). All
+three are committed byte-exact: they carry the terminal control sequences
+tqdm and vLLM emit while redrawing, which CI's `git diff --check` reads as
+trailing whitespace, so `.gitattributes` exempts captured logs from that
+check rather than normalising the evidence. The
 adapter safetensors,
 `dev-evals.jsonl` and the 323 MB archive stay out of Git by `.gitignore`.
 `training/smoke-01/` holds the last Modal `--smoke` run that validated the
