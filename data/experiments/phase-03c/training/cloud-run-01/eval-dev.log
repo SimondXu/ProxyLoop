@@ -22,7 +22,7 @@ WARNING 09-22 22:00:06 [system_utils.py:157] We must use the `spawn` multiproces
 (EngineCore pid=389) Loading safetensors checkpoint shards:  80% Completed | 4/5 [00:02<00:00,  1.38it/s]
 (EngineCore pid=389) Loading safetensors checkpoint shards: 100% Completed | 5/5 [00:03<00:00,  1.73it/s]
 (EngineCore pid=389) Loading safetensors checkpoint shards: 100% Completed | 5/5 [00:03<00:00,  1.55it/s]
-(EngineCore pid=389) 
+(EngineCore pid=389)
 (EngineCore pid=389) INFO 09-22 22:00:30 [default_loader.py:430] Loading weights took 3.29 seconds
 (EngineCore pid=389) INFO 09-22 22:00:30 [model_runner.py:428] Model loading took 15.27 GiB memory and 6.641917 seconds
 (EngineCore pid=389) INFO 09-22 22:00:30 [topk_topp_sampler.py:62] FlashInfer top-p/top-k sampling disabled via VLLM_USE_FLASHINFER_SAMPLER=0.
@@ -75,7 +75,7 @@ INFO 09-22 22:02:46 [kernel.py:416] Final IR op priority after setting platform 
 (EngineCore pid=540) Loading safetensors checkpoint shards:   0% Completed | 0/1 [00:00<?, ?it/s]
 (EngineCore pid=540) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:05<00:00,  5.84s/it]
 (EngineCore pid=540) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:05<00:00,  5.84s/it]
-(EngineCore pid=540) 
+(EngineCore pid=540)
 (EngineCore pid=540) INFO 09-22 22:03:18 [default_loader.py:430] Loading weights took 5.85 seconds
 (EngineCore pid=540) INFO 09-22 22:03:18 [model_runner.py:428] Model loading took 15.27 GiB memory and 9.202509 seconds
 (EngineCore pid=540) INFO 09-22 22:03:18 [topk_topp_sampler.py:62] FlashInfer top-p/top-k sampling disabled via VLLM_USE_FLASHINFER_SAMPLER=0.
