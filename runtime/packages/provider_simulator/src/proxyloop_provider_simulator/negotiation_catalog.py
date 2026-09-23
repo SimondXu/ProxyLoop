@@ -25,6 +25,7 @@ feeds only ``reference_match``; it never decides validity (invariant I3).
 from __future__ import annotations
 
 import hashlib
+import hmac
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
@@ -659,10 +660,20 @@ def build_negotiation_catalog(
     return tuple(sorted(scenarios, key=lambda item: item.scenario_id))
 
 
-def _episode_ref(scenario_id: str) -> str:
-    """Content-free public reference (a hash, not a secret; see D1-1)."""
+# Keys the public episode reference.  Every public id (offer, turn,
+# confirmation) derives from ``episode_ref``, so none of them is a plain
+# digest of a scenario id: a dictionary built from the catalogue's scenario
+# ids alone does not reverse them.  The constant is not a secret from a repo
+# reader; it keeps the ids content-free for a model that sees only the turns.
+PUBLIC_ID_SALT = bytes.fromhex("43d82047fcbee639d5554b5e3aa6de7e")
 
-    digest = hashlib.sha256(scenario_id.encode("utf-8")).hexdigest()[:16]
+
+def _episode_ref(scenario_id: str) -> str:
+    """Salted, content-free public reference for one scenario instance."""
+
+    digest = hmac.new(
+        PUBLIC_ID_SALT, scenario_id.encode("utf-8"), hashlib.sha256
+    ).hexdigest()[:16]
     return f"ng-{digest}"
 
 
