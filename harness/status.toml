@@ -1,13 +1,13 @@
 schema_version = 1
-product_phase_state = "blocked"
-active_product_phase = "03C-stage2"
-active_contract = "harness/build/phase-03c-fast-model-distillation.md"
+product_phase_state = "idle"
+active_product_phase = ""
+active_contract = ""
 next_phase_authorized = false
 integration_baseline = "main"
-updated_at = "2026-09-21"
+updated_at = "2026-09-22"
 
 [boundaries]
-summary = "Phase 03C Stage 2 is active but blocked on external execution: the cloud training package and bundle are ready for the user to run on a rented CUDA box (see harness/context/phase-03c-stage2-preflight.md). Stage 3 decision waits for the returned artifacts. Phase 06B2, full Phase 07, and every real channel remain unauthorized."
+summary = "Phase 03C is closed at GO_DISTILLED: the distilled Qwen3-8B adapter reaches 0.983 act agreement against 0.542 untuned on 240 held-out rows from six families absent from training, re-scored locally with zero disagreements (harness/log/phase-03c-stage2-stage3.md). Nothing is promoted: serving the adapter, real-model load, capacity, p95 and automatic fallback each need a new user decision, as do any further training or data expansion. Phase 06B2, full Phase 07, and every real channel remain unauthorized."
 inactive = [
   "Phase 03A1 continuation or r6/r7",
   "any model training, data expansion, or promotion; Phase 03A1/03B artifact rewrites (Stage 0 writes only new phase-03c artifacts)",

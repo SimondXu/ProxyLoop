@@ -1,0 +1,1466 @@
+{
+  "arms": {
+    "A1": {
+      "aggregate": {
+        "dialogue_act_accuracy": {
+          "count": 130,
+          "high": 0.6035527213888104,
+          "low": 0.4784677852821198,
+          "rate": 0.5416666666666666
+        },
+        "end_to_end_valid": {
+          "count": 54,
+          "high": 0.2819237612888549,
+          "low": 0.17674089468300508,
+          "rate": 0.225
+        },
+        "false_completion": {
+          "count": 0,
+          "high": 0.01575391994883629,
+          "low": 0.0,
+          "rate": 0.0
+        },
+        "policy_violation": {
+          "count": 0,
+          "high": 0.01575391994883629,
+          "low": 0.0,
+          "rate": 0.0
+        },
+        "rows": 240,
+        "schema_valid": {
+          "count": 240,
+          "high": 0.9999999999999998,
+          "low": 0.9842460800511635,
+          "rate": 1.0
+        },
+        "unsupported_response_violation": {
+          "count": 0,
+          "high": 0.01575391994883629,
+          "low": 0.0,
+          "rate": 0.0
+        }
+      },
+      "label": "untuned Qwen3-8B bf16, plain",
+      "oracle_acts": {
+        "confirm": 120,
+        "counter": 80,
+        "escalate": 40
+      },
+      "per_family": {
+        "plan-change": {
+          "dialogue_act_accuracy": {
+            "count": 4,
+            "high": 0.23051775231342703,
+            "low": 0.039579528674419086,
+            "rate": 0.1
+          },
+          "end_to_end_valid": {
+            "count": 4,
+            "high": 0.23051775231342703,
+            "low": 0.039579528674419086,
+            "rate": 0.1
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "promotion-credit": {
+          "dialogue_act_accuracy": {
+            "count": 4,
+            "high": 0.23051775231342703,
+            "low": 0.039579528674419086,
+            "rate": 0.1
+          },
+          "end_to_end_valid": {
+            "count": 4,
+            "high": 0.23051775231342703,
+            "low": 0.039579528674419086,
+            "rate": 0.1
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "refusal-transfer": {
+          "dialogue_act_accuracy": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "end_to_end_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "required-feature-loss": {
+          "dialogue_act_accuracy": {
+            "count": 36,
+            "high": 0.960420471325581,
+            "low": 0.769482247686573,
+            "rate": 0.9
+          },
+          "end_to_end_valid": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "revised-offer": {
+          "dialogue_act_accuracy": {
+            "count": 6,
+            "high": 0.29072324370342295,
+            "low": 0.07061187716094239,
+            "rate": 0.15
+          },
+          "end_to_end_valid": {
+            "count": 6,
+            "high": 0.29072324370342295,
+            "low": 0.07061187716094239,
+            "rate": 0.15
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "unsupported-action": {
+          "dialogue_act_accuracy": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "end_to_end_valid": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        }
+      },
+      "per_split": {
+        "development": {
+          "dialogue_act_accuracy": {
+            "count": 48,
+            "high": 0.48943975209643786,
+            "low": 0.31676408119012434,
+            "rate": 0.4
+          },
+          "end_to_end_valid": {
+            "count": 48,
+            "high": 0.48943975209643786,
+            "low": 0.31676408119012434,
+            "rate": 0.4
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 120,
+          "schema_valid": {
+            "count": 120,
+            "high": 1.0,
+            "low": 0.9689808335671896,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "test": {
+          "dialogue_act_accuracy": {
+            "count": 82,
+            "high": 0.7597716539741886,
+            "low": 0.595521318333781,
+            "rate": 0.6833333333333333
+          },
+          "end_to_end_valid": {
+            "count": 6,
+            "high": 0.10480288537908786,
+            "low": 0.02311436441044156,
+            "rate": 0.05
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 120,
+          "schema_valid": {
+            "count": 120,
+            "high": 1.0,
+            "low": 0.9689808335671896,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        }
+      }
+    },
+    "A2": {
+      "aggregate": {
+        "dialogue_act_accuracy": {
+          "count": 81,
+          "high": 0.399465665762667,
+          "low": 0.2806543582207047,
+          "rate": 0.3375
+        },
+        "end_to_end_valid": {
+          "count": 44,
+          "high": 0.23714419508147458,
+          "low": 0.13949995421945505,
+          "rate": 0.18333333333333332
+        },
+        "false_completion": {
+          "count": 0,
+          "high": 0.01575391994883629,
+          "low": 0.0,
+          "rate": 0.0
+        },
+        "policy_violation": {
+          "count": 0,
+          "high": 0.01575391994883629,
+          "low": 0.0,
+          "rate": 0.0
+        },
+        "rows": 240,
+        "schema_valid": {
+          "count": 126,
+          "high": 0.5872862038797448,
+          "low": 0.4619261001228135,
+          "rate": 0.525
+        },
+        "unsupported_response_violation": {
+          "count": 11,
+          "high": 0.08019399469253397,
+          "low": 0.025782482594325657,
+          "rate": 0.04583333333333333
+        }
+      },
+      "label": "untuned Qwen3-8B bf16, guided JSON",
+      "oracle_acts": {
+        "confirm": 120,
+        "counter": 80,
+        "escalate": 40
+      },
+      "per_family": {
+        "plan-change": {
+          "dialogue_act_accuracy": {
+            "count": 16,
+            "high": 0.5540410634315088,
+            "low": 0.26348325681545276,
+            "rate": 0.4
+          },
+          "end_to_end_valid": {
+            "count": 16,
+            "high": 0.5540410634315088,
+            "low": 0.26348325681545276,
+            "rate": 0.4
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 28,
+            "high": 0.8192515477247961,
+            "low": 0.5456998117812808,
+            "rate": 0.7
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "promotion-credit": {
+          "dialogue_act_accuracy": {
+            "count": 14,
+            "high": 0.5049411916636721,
+            "low": 0.22134528870677012,
+            "rate": 0.35
+          },
+          "end_to_end_valid": {
+            "count": 14,
+            "high": 0.5049411916636721,
+            "low": 0.22134528870677012,
+            "rate": 0.35
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 26,
+            "high": 0.7786547112932299,
+            "low": 0.4950588083363278,
+            "rate": 0.65
+          },
+          "unsupported_response_violation": {
+            "count": 1,
+            "high": 0.128813689671843,
+            "low": 0.00442683150122431,
+            "rate": 0.025
+          }
+        },
+        "refusal-transfer": {
+          "dialogue_act_accuracy": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "end_to_end_valid": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "required-feature-loss": {
+          "dialogue_act_accuracy": {
+            "count": 26,
+            "high": 0.7786547112932299,
+            "low": 0.4950588083363278,
+            "rate": 0.65
+          },
+          "end_to_end_valid": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 30,
+            "high": 0.8581288136282882,
+            "low": 0.598060385754308,
+            "rate": 0.75
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "revised-offer": {
+          "dialogue_act_accuracy": {
+            "count": 14,
+            "high": 0.5049411916636721,
+            "low": 0.22134528870677012,
+            "rate": 0.35
+          },
+          "end_to_end_valid": {
+            "count": 14,
+            "high": 0.5049411916636721,
+            "low": 0.22134528870677012,
+            "rate": 0.35
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 31,
+            "high": 0.8768390867822251,
+            "low": 0.6249690325386307,
+            "rate": 0.775
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "unsupported-action": {
+          "dialogue_act_accuracy": {
+            "count": 11,
+            "high": 0.428349558099783,
+            "low": 0.16108016245588058,
+            "rate": 0.275
+          },
+          "end_to_end_valid": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 11,
+            "high": 0.428349558099783,
+            "low": 0.16108016245588058,
+            "rate": 0.275
+          },
+          "unsupported_response_violation": {
+            "count": 10,
+            "high": 0.401939614245692,
+            "low": 0.1418711863717118,
+            "rate": 0.25
+          }
+        }
+      },
+      "per_split": {
+        "development": {
+          "dialogue_act_accuracy": {
+            "count": 30,
+            "high": 0.3344113666623923,
+            "low": 0.181098216554013,
+            "rate": 0.25
+          },
+          "end_to_end_valid": {
+            "count": 30,
+            "high": 0.3344113666623923,
+            "low": 0.181098216554013,
+            "rate": 0.25
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 120,
+          "schema_valid": {
+            "count": 54,
+            "high": 0.5391845658237631,
+            "low": 0.3639173508195181,
+            "rate": 0.45
+          },
+          "unsupported_response_violation": {
+            "count": 1,
+            "high": 0.04569629125940559,
+            "low": 0.0014725557328580344,
+            "rate": 0.008333333333333333
+          }
+        },
+        "test": {
+          "dialogue_act_accuracy": {
+            "count": 51,
+            "high": 0.5144224827909469,
+            "low": 0.34023039217397477,
+            "rate": 0.425
+          },
+          "end_to_end_valid": {
+            "count": 14,
+            "high": 0.18633351619514077,
+            "low": 0.07078117807001391,
+            "rate": 0.11666666666666667
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 120,
+          "schema_valid": {
+            "count": 72,
+            "high": 0.6832359188098758,
+            "low": 0.5105602479035621,
+            "rate": 0.6
+          },
+          "unsupported_response_violation": {
+            "count": 10,
+            "high": 0.14662232165874103,
+            "low": 0.04589365036860101,
+            "rate": 0.08333333333333333
+          }
+        }
+      }
+    },
+    "A3": {
+      "aggregate": {
+        "dialogue_act_accuracy": {
+          "count": 236,
+          "high": 0.9935000592795109,
+          "low": 0.9579378181032805,
+          "rate": 0.9833333333333333
+        },
+        "end_to_end_valid": {
+          "count": 236,
+          "high": 0.9935000592795109,
+          "low": 0.9579378181032805,
+          "rate": 0.9833333333333333
+        },
+        "false_completion": {
+          "count": 0,
+          "high": 0.01575391994883629,
+          "low": 0.0,
+          "rate": 0.0
+        },
+        "policy_violation": {
+          "count": 0,
+          "high": 0.01575391994883629,
+          "low": 0.0,
+          "rate": 0.0
+        },
+        "rows": 240,
+        "schema_valid": {
+          "count": 240,
+          "high": 0.9999999999999998,
+          "low": 0.9842460800511635,
+          "rate": 1.0
+        },
+        "unsupported_response_violation": {
+          "count": 0,
+          "high": 0.01575391994883629,
+          "low": 0.0,
+          "rate": 0.0
+        }
+      },
+      "label": "distilled (merged LoRA), plain",
+      "oracle_acts": {
+        "confirm": 120,
+        "counter": 80,
+        "escalate": 40
+      },
+      "per_family": {
+        "plan-change": {
+          "dialogue_act_accuracy": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "end_to_end_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "promotion-credit": {
+          "dialogue_act_accuracy": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "end_to_end_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "refusal-transfer": {
+          "dialogue_act_accuracy": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "end_to_end_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "required-feature-loss": {
+          "dialogue_act_accuracy": {
+            "count": 36,
+            "high": 0.960420471325581,
+            "low": 0.769482247686573,
+            "rate": 0.9
+          },
+          "end_to_end_valid": {
+            "count": 36,
+            "high": 0.960420471325581,
+            "low": 0.769482247686573,
+            "rate": 0.9
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "revised-offer": {
+          "dialogue_act_accuracy": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "end_to_end_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "unsupported-action": {
+          "dialogue_act_accuracy": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "end_to_end_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        }
+      },
+      "per_split": {
+        "development": {
+          "dialogue_act_accuracy": {
+            "count": 120,
+            "high": 1.0,
+            "low": 0.9689808335671896,
+            "rate": 1.0
+          },
+          "end_to_end_valid": {
+            "count": 120,
+            "high": 1.0,
+            "low": 0.9689808335671896,
+            "rate": 1.0
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 120,
+          "schema_valid": {
+            "count": 120,
+            "high": 1.0,
+            "low": 0.9689808335671896,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "test": {
+          "dialogue_act_accuracy": {
+            "count": 116,
+            "high": 0.9869624489043431,
+            "low": 0.9174196624250337,
+            "rate": 0.9666666666666667
+          },
+          "end_to_end_valid": {
+            "count": 116,
+            "high": 0.9869624489043431,
+            "low": 0.9174196624250337,
+            "rate": 0.9666666666666667
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 120,
+          "schema_valid": {
+            "count": 120,
+            "high": 1.0,
+            "low": 0.9689808335671896,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        }
+      }
+    },
+    "A4": {
+      "aggregate": {
+        "dialogue_act_accuracy": {
+          "count": 214,
+          "high": 0.9249914104964975,
+          "low": 0.8460013522102475,
+          "rate": 0.8916666666666667
+        },
+        "end_to_end_valid": {
+          "count": 214,
+          "high": 0.9249914104964975,
+          "low": 0.8460013522102475,
+          "rate": 0.8916666666666667
+        },
+        "false_completion": {
+          "count": 0,
+          "high": 0.01575391994883629,
+          "low": 0.0,
+          "rate": 0.0
+        },
+        "policy_violation": {
+          "count": 0,
+          "high": 0.01575391994883629,
+          "low": 0.0,
+          "rate": 0.0
+        },
+        "rows": 240,
+        "schema_valid": {
+          "count": 218,
+          "high": 0.9386851834151055,
+          "low": 0.8651157819600114,
+          "rate": 0.9083333333333333
+        },
+        "unsupported_response_violation": {
+          "count": 0,
+          "high": 0.01575391994883629,
+          "low": 0.0,
+          "rate": 0.0
+        }
+      },
+      "label": "distilled (merged LoRA), guided JSON",
+      "oracle_acts": {
+        "confirm": 120,
+        "counter": 80,
+        "escalate": 40
+      },
+      "per_family": {
+        "plan-change": {
+          "dialogue_act_accuracy": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "end_to_end_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "promotion-credit": {
+          "dialogue_act_accuracy": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "end_to_end_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "refusal-transfer": {
+          "dialogue_act_accuracy": {
+            "count": 19,
+            "high": 0.6250263789656731,
+            "low": 0.3293547010960672,
+            "rate": 0.475
+          },
+          "end_to_end_valid": {
+            "count": 19,
+            "high": 0.6250263789656731,
+            "low": 0.3293547010960672,
+            "rate": 0.475
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 19,
+            "high": 0.6250263789656731,
+            "low": 0.3293547010960672,
+            "rate": 0.475
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "required-feature-loss": {
+          "dialogue_act_accuracy": {
+            "count": 36,
+            "high": 0.960420471325581,
+            "low": 0.769482247686573,
+            "rate": 0.9
+          },
+          "end_to_end_valid": {
+            "count": 36,
+            "high": 0.960420471325581,
+            "low": 0.769482247686573,
+            "rate": 0.9
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "revised-offer": {
+          "dialogue_act_accuracy": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "end_to_end_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 40,
+            "high": 1.0,
+            "low": 0.9123783987651923,
+            "rate": 1.0
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "unsupported-action": {
+          "dialogue_act_accuracy": {
+            "count": 39,
+            "high": 0.9955731684987755,
+            "low": 0.8711863103281569,
+            "rate": 0.975
+          },
+          "end_to_end_valid": {
+            "count": 39,
+            "high": 0.9955731684987755,
+            "low": 0.8711863103281569,
+            "rate": 0.975
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 40,
+          "schema_valid": {
+            "count": 39,
+            "high": 0.9955731684987755,
+            "low": 0.8711863103281569,
+            "rate": 0.975
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.08762160123480768,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        }
+      },
+      "per_split": {
+        "development": {
+          "dialogue_act_accuracy": {
+            "count": 99,
+            "high": 0.882594640565481,
+            "low": 0.7472429012531921,
+            "rate": 0.825
+          },
+          "end_to_end_valid": {
+            "count": 99,
+            "high": 0.882594640565481,
+            "low": 0.7472429012531921,
+            "rate": 0.825
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 120,
+          "schema_valid": {
+            "count": 99,
+            "high": 0.882594640565481,
+            "low": 0.7472429012531921,
+            "rate": 0.825
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        },
+        "test": {
+          "dialogue_act_accuracy": {
+            "count": 115,
+            "high": 0.9820732831232668,
+            "low": 0.9061591476466571,
+            "rate": 0.9583333333333334
+          },
+          "end_to_end_valid": {
+            "count": 115,
+            "high": 0.9820732831232668,
+            "low": 0.9061591476466571,
+            "rate": 0.9583333333333334
+          },
+          "false_completion": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "policy_violation": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          },
+          "rows": 120,
+          "schema_valid": {
+            "count": 119,
+            "high": 0.9985274442671421,
+            "low": 0.9543037087405946,
+            "rate": 0.9916666666666667
+          },
+          "unsupported_response_violation": {
+            "count": 0,
+            "high": 0.03101916643281046,
+            "low": 0.0,
+            "rate": 0.0
+          }
+        }
+      }
+    }
+  },
+  "cloud_disagreement_count": 0,
+  "cloud_disagreements": [],
+  "clustering_note": "Every family's rows share one oracle dialogue_act, so the rows are not independent: 6 distinct decision rules carry the result and the row-level Wilson intervals are optimistic.",
+  "evaluator": "proxyloop_evaluation.run_phase03c_row via Phase03CQwenAdapter",
+  "family_oracle_acts_verified": true,
+  "prompt_version": "v6",
+  "result_role": "repository_canonical",
+  "schema_version": "phase-03c-heldout-rescored-v1",
+  "source_report": "data/experiments/phase-03c/training/cloud-run-01/eval/heldout-report.json",
+  "source_schema_version": "phase-03c-heldout-v1"
+}

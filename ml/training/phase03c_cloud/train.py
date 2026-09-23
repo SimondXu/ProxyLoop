@@ -12,6 +12,7 @@ never by loss.
 """
 
 import argparse
+import dataclasses
 import hashlib
 import json
 import platform
@@ -513,7 +514,6 @@ def main() -> int:
         per_device_eval_batch_size=config["per_device_eval_batch_size"],
         learning_rate=config["learning_rate"],
         lr_scheduler_type=config["lr_scheduler_type"],
-        warmup_ratio=config["warmup_ratio"],
         bf16=config["bf16"],
         gradient_checkpointing=config["gradient_checkpointing"],
         gradient_checkpointing_kwargs={"use_reentrant": False},
@@ -537,6 +537,18 @@ def main() -> int:
         sft_kwargs["completion_only_loss"] = True
     if args.smoke:
         sft_kwargs["max_steps"] = 4
+    # transformers >= 5 dropped ``warmup_ratio``; there ``warmup_steps`` is a
+    # float where a value in [0, 1) is the same ratio of total steps.
+    sft_fields = {field.name for field in dataclasses.fields(SFTConfig)}
+    warmup_arg = "warmup_ratio" if "warmup_ratio" in sft_fields else "warmup_steps"
+    if not 0 <= config["warmup_ratio"] < 1:
+        # >= 1 means "this many steps" on the warmup_steps path and "this
+        # multiple of the run" on the warmup_ratio path: silently different.
+        raise SystemExit(
+            f"warmup_ratio must be in [0, 1), got {config['warmup_ratio']}"
+        )
+    sft_kwargs[warmup_arg] = config["warmup_ratio"]
+    log(f"warmup: {warmup_arg}={config['warmup_ratio']}")
     sft_config = SFTConfig(**sft_kwargs)
     trainer = SFTTrainer(
         model=model,
@@ -645,6 +657,7 @@ def main() -> int:
         "config_hash": config_hash,
         "config_path": args.config.name,
         "loss_masking": masking,
+        "warmup_arg": warmup_arg,
         "trained_span_check": span_check,
         "token_stats": {"train": train_stats, "valid": valid_stats},
         "rows_used": {"train": len(train_rows), "valid": len(valid_rows)},

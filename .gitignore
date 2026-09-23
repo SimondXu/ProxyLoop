@@ -52,4 +52,9 @@ data/experiments/phase-03c/cloud-bundle/*.jsonl
 data/experiments/phase-03c/training/**/adapters/
 data/experiments/phase-03c/training/**/*.safetensors
 data/experiments/phase-03c/training/**/*.jsonl
+# The returned upload set is ~230 MB, mostly the adapter; unpack it, commit
+# the manifests and reports, never the archive.
+data/experiments/phase-03c/training/**/*.tar.gz
 !data/experiments/phase-03c/training/*/train.log
+!data/experiments/phase-03c/training/*/eval-heldout.log
+!data/experiments/phase-03c/training/*/eval-dev.log
