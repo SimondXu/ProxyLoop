@@ -17,9 +17,14 @@ from .interfaces import (
     BOUNDED_FAST_STATUS_TEXT,
     FastAdapter,
     FastAdapterResult,
+    IdentifiedAdapter,
+    ModelCallUsage,
+    ModelIdentity,
     PreparedSimulatorExecution,
     SimulatorCapabilityAdapter,
     SlowAdapter,
+    UsageReportingFastAdapter,
+    UsageReportingSlowAdapter,
 )
 from .observation import (
     OracleAction,
@@ -53,6 +58,9 @@ __all__ = [
     "DeterministicRouter",
     "FastAdapter",
     "FastAdapterResult",
+    "IdentifiedAdapter",
+    "ModelCallUsage",
+    "ModelIdentity",
     "OracleAction",
     "OracleDecision",
     "OraclePrecedence",
@@ -68,5 +76,7 @@ __all__ = [
     "SimulatorCapabilityAdapter",
     "SlowAdapter",
     "SnapshotCommit",
+    "UsageReportingFastAdapter",
+    "UsageReportingSlowAdapter",
     "accepted_fast_reasoner_trigger",
 ]
