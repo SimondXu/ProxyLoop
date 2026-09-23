@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ConversationWorkspace, isSupportedMobileBillIntent } from "./conversation-workspace";
@@ -1920,6 +1920,151 @@ describe("ConversationWorkspace", () => {
     expect(screen.getByRole("button", { name: /Keep both unchanged/ })).toBeEnabled();
     expect(screen.queryAllByText("Blocked")).toHaveLength(0);
     expect(runtime.createCase).toHaveBeenCalledTimes(2);
+  });
+
+  it("E-7: an unchanged poll during the in-flight event POST keeps Working instead of re-showing confirm", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const pendingEvent = deferred<RuntimePayload>();
+    const waiting = payload({
+      approval: {
+        action_intent_revision: 1,
+        approval_id: "22222222-2222-4222-8222-222222222222",
+        case_revision: 2,
+        decision: "pending",
+        expires_at: NORMAL_PENDING_APPROVAL_EXPIRES_AT,
+        material_terms_hash: "hash-1",
+      },
+      event_cursor: 2,
+      revision: 4,
+      route: "wait_for_approval",
+    });
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockReturnValue(pendingEvent.promise);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.useFakeTimers();
+    vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => payload());
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await flushMicrotasks();
+
+    await flushMicrotasks(1500);
+    expect(runtime.getCase).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByText("Working").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Needs input")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Comparing fictional Provider options" })).toBeInTheDocument();
+    expect(document.getElementById("task-brief-confirm")).toBeDisabled();
+
+    vi.mocked(runtime.getCase).mockImplementation(async () => waiting);
+    pendingEvent.resolve(waiting);
+    await flushMicrotasks();
+    expect(screen.getByRole("heading", { name: "Accept these exact fictional terms?" })).toBeInTheDocument();
+    expect(runtime.appendConsumerEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("E-8: the working Progress artifact shows only steps backed by the accepted payload", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const pendingEvent = deferred<RuntimePayload>();
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockReturnValue(pendingEvent.promise);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+
+    const progress = screen.getByRole("heading", { name: "Comparing fictional Provider options" }).closest("section") as HTMLElement;
+    expect(within(progress).queryByText("Guardrails checked")).not.toBeInTheDocument();
+    expect(within(progress).getByText("Case revision 2 read")).toBeInTheDocument();
+    expect(progress.querySelectorAll("li.done")).toHaveLength(1);
+    expect(progress.querySelector("li.active")).toHaveTextContent("Runtime decision");
+  });
+
+  it("E-8: the finalizing Progress artifact names the pending execution the Runtime reported", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const finalizing = payload({
+      event_cursor: 2,
+      revision: 6,
+      route: "fast_now",
+      snapshot: { ...payload().snapshot, pending_execution: true },
+    });
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockResolvedValue(finalizing);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload(), finalizing]);
+    vi.mocked(runtime.getCase).mockResolvedValue(finalizing);
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+
+    const heading = await screen.findByRole("heading", { name: "Finalizing the approved fictional transition" });
+    const progress = heading.closest("section") as HTMLElement;
+    expect(within(progress).queryByText("Guardrails checked")).not.toBeInTheDocument();
+    expect(within(progress).getByText("Case revision 6 read")).toBeInTheDocument();
+    expect(progress.querySelectorAll("li.done")).toHaveLength(1);
+    expect(progress.querySelector("li.active")).toHaveTextContent("Execution pending");
+  });
+
+  it("E-9: the Usage row renders the projected usage.data_megabytes", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const withUsage = {
+      ...caseRecord,
+      bill_snapshot: { ...caseRecord.bill_snapshot, usage: { data_megabytes: 24576 } },
+    };
+    const created = payload({ case: withUsage, snapshot: { ...payload().snapshot, case: withUsage } });
+    vi.mocked(runtime.createCase).mockResolvedValue(created);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [created]);
+
+    const rail = screen.getByRole("complementary", { name: "Current task context" });
+    expect(within(rail).getByText("Usage").nextElementSibling).toHaveTextContent("24,576 MB data");
+    expect(within(rail).queryByText("Runtime fact")).not.toBeInTheDocument();
+  });
+
+  it("E-9: the Usage row says Unavailable when the projection carries no usage", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+
+    const rail = screen.getByRole("complementary", { name: "Current task context" });
+    expect(within(rail).getByText("Usage").nextElementSibling).toHaveTextContent("Unavailable");
+    expect(within(rail).queryByText("Runtime fact")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["$92.00.", "$92.00"],
+    ["$92.", "$92.00"],
+    ["$12345", "$12,345.00"],
+    ["$1,500", "$1,500.00"],
+    ["92 USD.", "$92.00"],
+  ])("E-10: accepts the USD input %s as %s", (input, shown) => {
+    render(<ConversationWorkspace />);
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "Lower my mobile bill" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: input } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("Current monthly total").nextElementSibling).toHaveTextContent(shown);
+    expect(screen.getAllByText("Missing")).toHaveLength(3);
+  });
+
+  it.each([
+    "$1,50",
+    "$1,500,00",
+    "12.345 USD",
+    "$92.00.5",
+    "$.50",
+  ])("E-10: rejects the ambiguous USD input %s locally", (input) => {
+    render(<ConversationWorkspace />);
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "Lower my mobile bill" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: input } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Use one non-negative USD value such as $92.00.");
+    expect(screen.getAllByText("Missing")).toHaveLength(4);
   });
 });
 

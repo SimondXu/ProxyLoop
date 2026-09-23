@@ -922,7 +922,10 @@ def _browser_case(case: Case) -> dict[str, Any]:
         "revision": case.revision,
         "phase": case.phase,
         "bill_snapshot": (
-            {"monthly_total": _browser_money(bill.monthly_total)}
+            {
+                "monthly_total": _browser_money(bill.monthly_total),
+                "usage": {"data_megabytes": bill.usage.data_megabytes},
+            }
             if bill is not None
             else None
         ),

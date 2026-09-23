@@ -106,7 +106,10 @@ function parseUsdMoney(text: string): RuntimeMoney | null {
   if (/[€£¥]|\b(?:EUR|CAD|GBP|JPY)\b/i.test(text) || /-\s*\$?\s*\d/.test(text)) {
     return null;
   }
-  const matches = [...text.matchAll(/(?:\$\s*(\d{1,4}(?:,\d{3})*(?:\.\d{1,2})?)(?![\dA-Za-z.])|(\d{1,4}(?:,\d{3})*(?:\.\d{1,2})?)\s*USD\b)/gi)];
+  // One amount: comma-grouped thousands or plain digits, at most two decimals.
+  // A trailing sentence period ("$92.00.", "$92.") ends the amount; a decimal
+  // comma ("$1,50"), a third decimal, or a digit run glued to letters rejects (E-10).
+  const matches = [...text.matchAll(/(?:\$\s*((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)|(?<![\d.,])((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)\s*USD\b)(?![\dA-Za-z,]|\.\d)/gi)];
   if (matches.length !== 1) return null;
   const raw = matches[0][1] ?? matches[0][2];
   if (!raw) return null;
@@ -233,6 +236,14 @@ function formatMoney(value: unknown): string {
   } catch {
     return `${currency} ${(amountMinor / 100).toFixed(2)}`;
   }
+}
+
+// The projection carries `UsageProfile.data_megabytes` (E-9); show it verbatim.
+function formatDataUsage(usage: JsonObject | null): string {
+  const megabytes = integerAt(usage, "data_megabytes");
+  return megabytes === null || megabytes < 0
+    ? "Unavailable"
+    : `${megabytes.toLocaleString("en-US")} MB data`;
 }
 
 function caseRecord(payload: RuntimePayload): JsonObject | null {
@@ -404,7 +415,10 @@ function TaskBriefArtifact({
   );
 }
 
-function ProgressArtifact({ label = "Comparing fictional Provider options" }: { label?: string }) {
+// Only steps the accepted payload backs (E-8): the Case revision the Web read and
+// validated against the confirmed facts, and the Runtime result still awaited.
+function ProgressArtifact({ payload, finalizing }: { payload: RuntimePayload; finalizing: boolean }) {
+  const label = finalizing ? "Finalizing the approved fictional transition" : "Comparing fictional Provider options";
   return (
     <section aria-labelledby="progress-title" className="chat-artifact progress-artifact">
       <div className="artifact-heading">
@@ -415,9 +429,12 @@ function ProgressArtifact({ label = "Comparing fictional Provider options" }: { 
         <StatusBadge tone="working">Working</StatusBadge>
       </div>
       <ol className="activity-list">
-        <li className="done"><span aria-hidden="true">✓</span><span><strong>Case snapshot read</strong><small>Bill and constraints are pinned.</small></span></li>
-        <li className="done"><span aria-hidden="true">✓</span><span><strong>Guardrails checked</strong><small>Hotspot and device financing remain protected.</small></span></li>
-        <li className="active"><span aria-hidden="true">◷</span><span><strong>Runtime decision</strong><small>Waiting for the authoritative response.</small></span></li>
+        <li className="done"><span aria-hidden="true">✓</span><span><strong>Case revision {payload.revision} read</strong><small>Bill and constraints match your confirmed facts.</small></span></li>
+        {finalizing ? (
+          <li className="active"><span aria-hidden="true">◷</span><span><strong>Execution pending</strong><small>The Runtime reports an execution in progress; no receipt until a read verifies completion.</small></span></li>
+        ) : (
+          <li className="active"><span aria-hidden="true">◷</span><span><strong>Runtime decision</strong><small>Waiting for the authoritative response.</small></span></li>
+        )}
       </ol>
     </section>
   );
@@ -589,6 +606,10 @@ export function ConversationWorkspace() {
   // Blocked is sticky: once set, only an explicit Reconnect or Restart clears
   // it, so a late POST failure, in-flight GET, or poll cannot leave it (E-5).
   const blockedRef = useRef(false);
+  // The session id of the event or approval POST in flight, or null. While it is
+  // set, a poll read may advance the phase or block, but never step back to the
+  // pre-command confirm phase (E-7).
+  const commandInFlightRef = useRef<number | null>(null);
 
   function enterBlocked(message: string) {
     blockedRef.current = true;
@@ -715,6 +736,7 @@ export function ConversationWorkspace() {
     caseId: string,
     facts: IntakeFacts,
     requestId: number,
+    { poll = false }: { poll?: boolean } = {},
   ): Promise<RuntimePayload> {
     const recovered = await getCase(caseId);
     if (requestId !== sessionId.current) return recovered;
@@ -738,6 +760,7 @@ export function ConversationWorkspace() {
       enterBlocked(message);
       throw new BlockedStateError(message);
     }
+    if (poll && nextPhase === "confirm" && commandInFlightRef.current === requestId) return recovered;
     if (nextPhase !== phase) resetPollBudget();
     setPhase(nextPhase);
     const pending = storageRef.current?.pendingCommand;
@@ -925,6 +948,7 @@ export function ConversationWorkspace() {
   function restart() {
     sessionId.current += 1;
     blockedRef.current = false;
+    commandInFlightRef.current = null;
     setMessages([]);
     setDraft("");
     setPayload(null);
@@ -988,7 +1012,7 @@ export function ConversationWorkspace() {
       pollCount.current += 1;
       setApprovalDeadlinePassed(true);
       setError("The local approval deadline has passed. Reading the authoritative Runtime state now.");
-      void readAuthoritativeCase(payload.case_id, confirmedFacts, sessionId.current).catch((caught) => {
+      void readAuthoritativeCase(payload.case_id, confirmedFacts, sessionId.current, { poll: true }).catch((caught) => {
         if (!blockedRef.current && caught instanceof Error) setError(caught.message);
       });
     }, delay);
@@ -1011,7 +1035,7 @@ export function ConversationWorkspace() {
     const timer = window.setTimeout(() => {
       if (blockedRef.current) return;
       pollCount.current += 1;
-      void readAuthoritativeCase(payload.case_id, confirmedFacts, sessionId.current).catch((caught) => {
+      void readAuthoritativeCase(payload.case_id, confirmedFacts, sessionId.current, { poll: true }).catch((caught) => {
         if (!blockedRef.current && caught instanceof Error) setError(caught.message);
       });
     }, 1500);
@@ -1101,6 +1125,7 @@ export function ConversationWorkspace() {
       expectedActionIntentRevision: null,
     });
     updateStoredState({ caseId: payload.case_id, confirmedFacts: facts, pendingCommand: command });
+    commandInFlightRef.current = requestId;
     try {
       const waiting = await appendConsumerEvent(payload.case_id, CONFIRMATION_EVENT, payload.revision, {
         idempotencyKey: command.idempotencyKey,
@@ -1130,6 +1155,7 @@ export function ConversationWorkspace() {
       setPhase("confirm");
       setError(caught instanceof Error ? caught.message : "The Runtime failed safely. Retry or restart the demo.");
     } finally {
+      if (commandInFlightRef.current === requestId) commandInFlightRef.current = null;
       if (requestId === sessionId.current) setBusy(false);
     }
   }
@@ -1166,6 +1192,7 @@ export function ConversationWorkspace() {
       expectedActionIntentRevision: approval.action_intent_revision,
     });
     updateStoredState({ caseId: waiting.case_id, confirmedFacts, pendingCommand: command });
+    commandInFlightRef.current = requestId;
     try {
       const completed = await decideApproval(waiting.case_id, approval.approval_id, {
         expectedActionIntentRevision: approval.action_intent_revision,
@@ -1197,6 +1224,7 @@ export function ConversationWorkspace() {
       setPhase("approval");
       setError(caught instanceof Error ? caught.message : "The Runtime failed safely. Retry or restart the demo.");
     } finally {
+      if (commandInFlightRef.current === requestId) commandInFlightRef.current = null;
       if (requestId === sessionId.current) setBusy(false);
     }
   }
@@ -1306,7 +1334,7 @@ export function ConversationWorkspace() {
             <AssistantMessage><TaskBriefArtifact blockedLabel={phase === "blocked" ? "Blocked" : staleRetryDropped ? "Reconnect to continue" : undefined} onConfirm={phase === "confirm" && !busy && !staleRetryDropped ? confirmConstraint : undefined} payload={payload} /></AssistantMessage>
           ) : null}
 
-          {payload && (phase === "working" || phase === "finalizing") ? <AssistantMessage><ProgressArtifact label={phase === "finalizing" ? "Finalizing the approved fictional transition" : undefined} /></AssistantMessage> : null}
+          {payload && (phase === "working" || phase === "finalizing") ? <AssistantMessage><ProgressArtifact finalizing={phase === "finalizing"} payload={payload} /></AssistantMessage> : null}
 
           {payload && (phase === "approval" || phase === "receipt" || phase === "finalizing" || phase === "expired") ? (
             <AssistantMessage>
@@ -1354,7 +1382,7 @@ export function ConversationWorkspace() {
           <span className="context-label">Known facts</span>
           <dl>
             <div><dt>Current</dt><dd>{payload ? formatMoney(objectAt(billRecord(payload), "monthly_total")) : "—"}</dd></div>
-            <div><dt>Usage</dt><dd>{payload ? (stringAt(objectAt(billRecord(payload), "usage"), "data_gb") ?? "Runtime fact") : "—"}</dd></div>
+            <div><dt>Usage</dt><dd>{payload ? formatDataUsage(objectAt(billRecord(payload), "usage")) : "—"}</dd></div>
             <div><dt>Case revision</dt><dd>{payload?.revision ?? "—"}</dd></div>
           </dl>
         </div>

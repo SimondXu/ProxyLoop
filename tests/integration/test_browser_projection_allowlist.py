@@ -28,7 +28,8 @@ ENVELOPE_KEYS = {
     "execution_count",
 }
 CASE_KEYS = {"case_id", "revision", "phase", "bill_snapshot", "goal", "constraints"}
-BILL_KEYS = {"monthly_total"}
+BILL_KEYS = {"monthly_total", "usage"}
+USAGE_KEYS = {"data_megabytes"}
 GOAL_KEYS = {
     "desired_outcome",
     "target_monthly_total",
@@ -113,6 +114,8 @@ def _assert_case(value: dict[str, Any]) -> None:
     assert set(value) == CASE_KEYS
     assert set(value["bill_snapshot"]) == BILL_KEYS
     _assert_money(value["bill_snapshot"]["monthly_total"])
+    assert set(value["bill_snapshot"]["usage"]) == USAGE_KEYS
+    assert isinstance(value["bill_snapshot"]["usage"]["data_megabytes"], int)
     assert set(value["goal"]) == GOAL_KEYS
     _assert_money(value["goal"]["target_monthly_total"])
     assert value["constraints"]
