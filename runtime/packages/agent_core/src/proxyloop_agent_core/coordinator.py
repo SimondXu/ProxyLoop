@@ -16,6 +16,7 @@ from proxyloop_contracts import (
     FastModelView,
     FastTurnDecision,
     ModelInputPins,
+    ModelTrace,
     RoutingDecision,
     RoutingOutcome,
     SlowReasonerView,
@@ -56,6 +57,8 @@ class CoordinatorOutcome:
     fast_decision: FastTurnDecision | None = None
     slow_result: SlowWorkResult | None = None
     audits: tuple[ResultAudit, ...] = ()
+    # The ModelTrace seam (PR3 of the 1.1 design); nothing populates it yet.
+    traces: tuple[ModelTrace, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -398,6 +401,12 @@ class CaseCoordinator:
                 reasons.append("slow_strategy_predates_request")
             if strategy.expires_at <= evaluation_time:
                 reasons.append("slow_strategy_expired")
+            if (
+                current.schema_version == "1.1"
+                and strategy.planning_basis_fingerprint
+                != current.planning_basis.planning_basis_fingerprint
+            ):
+                reasons.append("slow_strategy_basis_mismatch")
         for action in result.action_proposals:
             if action.created_at < result.created_at:
                 reasons.append("slow_action_predates_result")

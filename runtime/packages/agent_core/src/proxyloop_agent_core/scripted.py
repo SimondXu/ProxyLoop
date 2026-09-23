@@ -15,6 +15,7 @@ from proxyloop_contracts import (
     SlowWorkRequest,
     SlowWorkResult,
     StrategyPacket,
+    strategy_basis_binding,
 )
 from proxyloop_contracts.contracts import (
     CompletionClaim,
@@ -69,7 +70,7 @@ class ScriptedSlowAdapter:
         prior = view.strategy
         strategy = StrategyPacket(
             contract_type="strategy_packet",
-            schema_version="1.0",
+            **strategy_basis_binding(request.planning_basis),
             # A refresh of the same strategy must be distinguishable by revision.
             revision=(
                 prior.revision + 1

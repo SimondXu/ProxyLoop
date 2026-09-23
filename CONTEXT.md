@@ -53,7 +53,7 @@ A versioned, structured plan produced by the Slow Reasoner for bounded downstrea
 _Avoid_: Reasoning trace, prompt dump
 
 **Planning Basis**:
-The versioned material Case state whose change invalidates a Strategy Packet, including goals, constraints, authority, verified facts, offers, approval state, Provider configuration, and available capabilities.
+The versioned material Case state whose change invalidates a Strategy Packet, including goals, constraints, authority, verified facts, offers, approval state, Provider configuration, and available capabilities. From contract set 1.1, an offer is material through its identity, revision, and material terms, and approval state is material only once an approval is decided (approved or rejected); a pending or expired approval does not invalidate the strategy. A 1.1 Strategy Packet names the Planning Basis it was compiled against.
 _Avoid_: Chat history, event count, prompt hash
 
 **Slow Work Request**:

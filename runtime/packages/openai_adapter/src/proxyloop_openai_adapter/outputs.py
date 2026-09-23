@@ -26,6 +26,7 @@ from proxyloop_contracts import (
     StrategyPacket,
     material_terms_hash,
     offer_material_terms,
+    strategy_basis_binding,
 )
 from proxyloop_contracts.contracts import (
     CompletionClaim,
@@ -156,7 +157,7 @@ def compile_slow_output(
         raise ValueError("preference position is out of range")
     strategy = StrategyPacket(
         contract_type="strategy_packet",
-        schema_version="1.0",
+        **strategy_basis_binding(request.planning_basis),
         revision=1,
         strategy_id=strategy_id,
         case_id=request.case_id,
