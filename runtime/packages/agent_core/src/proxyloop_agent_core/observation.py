@@ -309,18 +309,37 @@ class OracleDecision:
             raise ValueError("only accept_offer may reference an offer")
 
 
+class OraclePrecedence(StrEnum):
+    """Versioned decision order of ``ScriptedOracleConsumer``.
+
+    ``V1`` is frozen: it escalates on an available transfer before looking at
+    any offer. ``V2_OFFER_FIRST`` accepts a compliant offer with confirmation
+    evidence first and escalates only when no such offer exists, so unlike
+    ``V1`` it evaluates the offer policy on the transfer path too.
+    """
+
+    V1 = "v1"
+    V2_OFFER_FIRST = "v2_offer_first"
+
+
 class ScriptedOracleConsumer:
     """Reference policy that accepts only a SafeObservation input.
 
     The shared ``offer_compliance_violations`` policy is the default and the
     only authority; ``offer_policy`` is an injection seam whose default is
-    that shared policy.
+    that shared policy. ``precedence`` defaults to the frozen V1 order.
     """
 
-    def __init__(self, *, offer_policy: _OfferCompliancePolicy | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        offer_policy: _OfferCompliancePolicy | None = None,
+        precedence: OraclePrecedence = OraclePrecedence.V1,
+    ) -> None:
         self._offer_policy: _OfferCompliancePolicy = (
             offer_policy if offer_policy is not None else offer_compliance_violations
         )
+        self._precedence = OraclePrecedence(precedence)
 
     def decide(self, observation: SafeObservation) -> OracleDecision:
         if not isinstance(observation, SafeObservation):
@@ -345,6 +364,8 @@ class ScriptedOracleConsumer:
                 None,
                 ("approval_not_current",),
             )
+        if self._precedence is OraclePrecedence.V2_OFFER_FIRST:
+            return self._decide_offer_first(observation)
         if observation.transfer_available:
             return OracleDecision(OracleAction.ESCALATE, None, ("transfer_available",))
         if not observation.confirmation_evidence_available:
@@ -354,25 +375,49 @@ class ScriptedOracleConsumer:
                 ("confirmation_evidence_unavailable",),
             )
 
+        selected = self._best_valid_offer(observation)
+        if selected is None:
+            return OracleDecision(OracleAction.DECLINE, None, ("no_valid_offer",))
+        return OracleDecision(
+            OracleAction.ACCEPT_OFFER,
+            selected.offer_id,
+            ("valid_offer",),
+        )
+
+    def _decide_offer_first(self, observation: SafeObservation) -> OracleDecision:
+        if observation.confirmation_evidence_available:
+            selected = self._best_valid_offer(observation)
+            if selected is not None:
+                return OracleDecision(
+                    OracleAction.ACCEPT_OFFER,
+                    selected.offer_id,
+                    ("valid_offer",),
+                )
+        if observation.transfer_available:
+            return OracleDecision(OracleAction.ESCALATE, None, ("transfer_available",))
+        if not observation.confirmation_evidence_available:
+            return OracleDecision(
+                OracleAction.REQUEST_REPLAN,
+                None,
+                ("confirmation_evidence_unavailable",),
+            )
+        return OracleDecision(OracleAction.DECLINE, None, ("no_valid_offer",))
+
+    def _best_valid_offer(self, observation: SafeObservation) -> SafeOffer | None:
         valid_offers = tuple(
             offer
             for offer in observation.offers
             if self._is_valid_offer(offer, observation)
         )
         if not valid_offers:
-            return OracleDecision(OracleAction.DECLINE, None, ("no_valid_offer",))
-        selected = min(
+            return None
+        return min(
             valid_offers,
             key=lambda offer: (
                 offer.total_cost_12_months_minor,
                 offer.monthly_price_minor,
                 offer.offer_id,
             ),
-        )
-        return OracleDecision(
-            OracleAction.ACCEPT_OFFER,
-            selected.offer_id,
-            ("valid_offer",),
         )
 
     def _is_valid_offer(self, offer: SafeOffer, observation: SafeObservation) -> bool:

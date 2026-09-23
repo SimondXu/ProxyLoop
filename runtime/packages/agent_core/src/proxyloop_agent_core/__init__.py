@@ -24,6 +24,7 @@ from .interfaces import (
 from .observation import (
     OracleAction,
     OracleDecision,
+    OraclePrecedence,
     SafeObservation,
     SafeObservationAdapter,
     SafeOffer,
@@ -54,6 +55,7 @@ __all__ = [
     "FastAdapterResult",
     "OracleAction",
     "OracleDecision",
+    "OraclePrecedence",
     "PreparedSimulatorExecution",
     "ResultAudit",
     "RouteRequest",
