@@ -368,6 +368,73 @@ describe("ConversationWorkspace", () => {
     expect(runtime.decideApproval).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [
+      "an incomplete pending approval read back from the Case",
+      payload({
+        approval: {
+          action_intent_revision: 1,
+          approval_id: "22222222-2222-4222-8222-222222222222",
+          case_revision: 2,
+          decision: "pending",
+        },
+        revision: 4,
+        route: "wait_for_approval",
+      }),
+    ],
+    [
+      "an event response that drifts an intake fact",
+      payload({
+        revision: 4,
+        snapshot: {
+          case: { ...caseRecord, bill_snapshot: { monthly_total: { amount_minor: 9300, currency: "USD" } } },
+          offers: [offer],
+        },
+      }),
+    ],
+  ])("R6: %s is terminal Blocked with no confirm or approval action and no second event", async (_label, blocked) => {
+    const runtime = await import("../../lib/runtime-client");
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(blocked);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.mocked(runtime.getCase).mockResolvedValue(blocked);
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+
+    expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Keep both unchanged/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve exact terms" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Blocked").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Needs input")).not.toBeInTheDocument();
+    const confirm = document.getElementById("task-brief-confirm");
+    expect(confirm).toBeDisabled();
+    expect(confirm).toHaveTextContent("Blocked");
+    fireEvent.click(confirm as HTMLElement);
+    expect(runtime.appendConsumerEvent).toHaveBeenCalledTimes(1);
+    expect(runtime.decideApproval).not.toHaveBeenCalled();
+  });
+
+  it("R7: a create response that mismatches the confirmed draft is terminal Blocked with no second create", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const driftedCase = { ...caseRecord, bill_snapshot: { monthly_total: { amount_minor: 9300, currency: "USD" } } };
+    vi.mocked(runtime.createCase).mockReset().mockResolvedValue(payload({
+      case: driftedCase,
+      snapshot: { case: driftedCase, offers: [offer] },
+    }));
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(false);
+    fireEvent.click(screen.getByRole("button", { name: "Create fictional Case" }));
+
+    expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create fictional Case" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Keep both unchanged/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Blocked").length).toBeGreaterThan(0);
+    expect(runtime.createCase).toHaveBeenCalledTimes(1);
+    expect(runtime.getCase).not.toHaveBeenCalled();
+  });
+
   it("blocks a pending offer when its event response loses the Task Brief", async () => {
     const runtime = await import("../../lib/runtime-client");
     const lostBrief = payload({
@@ -1279,12 +1346,623 @@ describe("ConversationWorkspace", () => {
     expect(vi.mocked(runtime.decideApproval).mock.calls).toHaveLength(1);
     expect(runtime.loadPersistedWorkspace()?.pendingCommand).toBeNull();
   });
+
+  it.each([
+    "12.345",
+    "$12.345",
+    "-5",
+    "-$5",
+    "$-5",
+    "1e3",
+    "$1e3",
+    "$",
+    "€92",
+    "92 EUR",
+    "£92",
+    "$92 or $95",
+  ])("rejects the non-strict USD input %s locally", async (input) => {
+    const runtime = await import("../../lib/runtime-client");
+    render(<ConversationWorkspace />);
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "Lower my mobile bill" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: input } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Use one non-negative USD value such as $92.00.");
+    expect(screen.getAllByText("Missing")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeDisabled();
+    expect(runtime.createCase).not.toHaveBeenCalled();
+  });
+
+  it("cannot submit an empty USD input", () => {
+    render(<ConversationWorkspace />);
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "Lower my mobile bill" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "   " } });
+
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    expect(screen.getAllByText("Missing")).toHaveLength(4);
+  });
+
+  it("keeps the exact event retry and truthful copy on temporal_unavailable", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const copy = "The local orchestration attempt is still unresolved. Your Case and safe retry remain preserved; reconnect to read authoritative state.";
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset()
+      .mockRejectedValueOnce(new runtime.RuntimeClientError(copy, "http", 503, "temporal_unavailable"));
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(copy);
+    expect(screen.queryAllByText("Blocked")).toHaveLength(0);
+    expect(screen.getByRole("button", { name: /Keep both unchanged/ })).toBeEnabled();
+    expect(runtime.loadPersistedWorkspace()?.pendingCommand).toMatchObject({
+      kind: "append_event",
+      idempotencyKey: vi.mocked(runtime.appendConsumerEvent).mock.calls[0]?.[3]?.idempotencyKey,
+    });
+  });
+
+  it("preserves the saved Case and pending command when readiness reports ready:false", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const stored = storedWorkspace(storedPendingEvent);
+    runtime.savePersistedWorkspace(stored);
+    vi.mocked(runtime.checkReadiness).mockResolvedValue({
+      status: "unavailable",
+      ready: false,
+      dependency: "runtime",
+      error_category: "temporal_unavailable",
+    });
+    vi.mocked(runtime.getCase).mockReset();
+    vi.mocked(runtime.appendConsumerEvent).mockReset();
+
+    render(<ConversationWorkspace />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The local Runtime is not ready yet. Your saved Case and pending command remain preserved.",
+    );
+    expect(runtime.getCase).not.toHaveBeenCalled();
+    expect(runtime.appendConsumerEvent).not.toHaveBeenCalled();
+    expect(runtime.loadPersistedWorkspace()).toEqual(stored);
+    expect(screen.getByRole("button", { name: "Reconnect and read Case" })).toBeInTheDocument();
+  });
+
+  it.each([
+    ["no orchestration_mode (direct)", { orchestration_mode: undefined }],
+    ["storage_mode memory", { storage_mode: "memory" }],
+    ["adapter_mode other than scripted", { adapter_mode: "hosted" }],
+  ])("makes no recovery claim against a non-durable readiness profile: %s", async (_label, change) => {
+    const runtime = await import("../../lib/runtime-client");
+    runtime.savePersistedWorkspace(storedWorkspace(null));
+    vi.mocked(runtime.checkReadiness).mockResolvedValue({ ...DURABLE_READY, ...change });
+    vi.mocked(runtime.getCase).mockReset();
+
+    render(<ConversationWorkspace />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Recovery requires the durable Temporal/PostgreSQL/scripted Runtime profile. The direct Runtime makes no restart-recovery claim.",
+    );
+    expect(runtime.getCase).not.toHaveBeenCalled();
+    expect(screen.queryByRole("heading", { name: "Here is what I will work from." })).not.toBeInTheDocument();
+  });
+
+  it("shows the bounded reset message and invents no Case on a restore 404", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const copy = "The saved Case is no longer available in the local Runtime. Reset this local task to continue.";
+    runtime.savePersistedWorkspace(storedWorkspace(null));
+    vi.mocked(runtime.checkReadiness).mockResolvedValue(DURABLE_READY);
+    vi.mocked(runtime.getCase).mockReset()
+      .mockRejectedValue(new runtime.RuntimeClientError(copy, "http", 404, "case_not_found"));
+
+    render(<ConversationWorkspace />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(copy);
+    expect(screen.queryByRole("heading", { name: "Here is what I will work from." })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Blocked").length).toBeGreaterThan(0);
+    expect(runtime.createCase).not.toHaveBeenCalled();
+  });
+
+  it("shows no Task Brief when create is rejected with 422", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const copy = "The local Runtime rejected this state safely. No unverified result is shown.";
+    vi.mocked(runtime.createCase).mockReset()
+      .mockRejectedValueOnce(new runtime.RuntimeClientError(copy, "http", 422, "request_invalid"));
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(false);
+    fireEvent.click(screen.getByRole("button", { name: "Create fictional Case" }));
+
+    expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
+    expect(screen.getByText(copy)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Here is what I will work from." })).not.toBeInTheDocument();
+    expect(runtime.getCase).not.toHaveBeenCalled();
+  });
+
+  it("discards a stale restored command with the restore-409 message", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    runtime.savePersistedWorkspace(storedWorkspace(storedPendingEvent));
+    vi.mocked(runtime.checkReadiness).mockResolvedValue(DURABLE_READY);
+    vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockRejectedValueOnce(new runtime.RuntimeClientError(
+      "The Case moved while this request was in flight. I read the current state; retry if the action is still offered.",
+      "http",
+      409,
+      "case_conflict",
+    ));
+
+    render(<ConversationWorkspace />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The Runtime rejected this stale command. I read the current Case and discarded that retry.",
+    );
+    expect(runtime.appendConsumerEvent).toHaveBeenCalledTimes(1);
+    expect(runtime.getCase).toHaveBeenCalledTimes(2);
+    expect(runtime.loadPersistedWorkspace()?.pendingCommand).toBeNull();
+  });
+
+  it("shows Connecting while the explicit create request is in flight", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const pendingCreate = deferred<RuntimePayload>();
+    vi.mocked(runtime.createCase).mockReset().mockReturnValue(pendingCreate.promise);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(false);
+    fireEvent.click(screen.getByRole("button", { name: "Create fictional Case" }));
+
+    expect(screen.getAllByText("Connecting").length).toBeGreaterThan(0);
+    expect(screen.getByPlaceholderText("Connecting to local Runtime…")).toBeDisabled();
+    expect(screen.queryByRole("heading", { name: "Here is what I will work from." })).not.toBeInTheDocument();
+  });
+
+  it("suppresses a double click on confirm and shows Working while the event is in flight", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const pendingEvent = deferred<RuntimePayload>();
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockReturnValue(pendingEvent.promise);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    const confirm = screen.getByRole("button", { name: /Keep both unchanged/ });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+
+    expect(runtime.appendConsumerEvent).toHaveBeenCalledTimes(1);
+    expect(confirm).toBeDisabled();
+    expect(screen.getAllByText("Working").length).toBeGreaterThan(0);
+  });
+
+  it("suppresses a double click on approve", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const pendingApproval = deferred<RuntimePayload>();
+    const waiting = payload({
+      approval: {
+        action_intent_revision: 1,
+        approval_id: "22222222-2222-4222-8222-222222222222",
+        case_revision: 2,
+        decision: "pending",
+        expires_at: NORMAL_PENDING_APPROVAL_EXPIRES_AT,
+        material_terms_hash: "hash-1",
+      },
+      revision: 4,
+      route: "wait_for_approval",
+    });
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(waiting);
+    vi.mocked(runtime.decideApproval).mockReset().mockReturnValue(pendingApproval.promise);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload(), waiting]);
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    const approve = await screen.findByRole("button", { name: "Approve exact terms" });
+    fireEvent.click(approve);
+    fireEvent.click(approve);
+
+    expect(runtime.decideApproval).toHaveBeenCalledTimes(1);
+    expect(approve).toBeDisabled();
+    expect(approve).toHaveTextContent("Sending exact approval…");
+  });
+
+  it("backs deadline reads off to 1500 ms and stops after the 5-read budget", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const pending = payload({
+      approval: {
+        action_intent_revision: 1,
+        approval_id: "22222222-2222-4222-8222-222222222222",
+        case_revision: 2,
+        decision: "pending",
+        expires_at: "2026-08-25T00:00:00Z",
+        material_terms_hash: "hash-1",
+      },
+      event_cursor: 2,
+      revision: 4,
+      route: "wait_for_approval",
+    });
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(false, "yes", true, []);
+    vi.useFakeTimers();
+    vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...pending }));
+    const flush = async (ms: number | null) => {
+      await act(async () => {
+        if (ms !== null) vi.advanceTimersByTime(ms);
+        for (let index = 0; index < 10; index += 1) await Promise.resolve();
+      });
+    };
+    fireEvent.click(screen.getByRole("button", { name: "Create fictional Case" }));
+    await flush(null);
+    expect(screen.getByRole("heading", { name: "Accept these exact fictional terms?" })).toBeInTheDocument();
+    expect(runtime.getCase).toHaveBeenCalledTimes(1);
+
+    await flush(0);
+    expect(runtime.getCase).toHaveBeenCalledTimes(2);
+    await flush(1499);
+    expect(runtime.getCase).toHaveBeenCalledTimes(2);
+    await flush(1);
+    expect(runtime.getCase).toHaveBeenCalledTimes(3);
+    for (let read = 0; read < 3; read += 1) await flush(1500);
+    expect(runtime.getCase).toHaveBeenCalledTimes(6);
+
+    for (let idle = 0; idle < 10; idle += 1) await flush(1500);
+    expect(runtime.getCase).toHaveBeenCalledTimes(6);
+    expect(screen.getByRole("button", { name: "Approval deadline reached" })).toBeDisabled();
+    expect(screen.queryByText("Approval expired")).not.toBeInTheDocument();
+  });
+
+  const flushMicrotasks = async (ms: number | null = null) => {
+    await act(async () => {
+      if (ms !== null) vi.advanceTimersByTime(ms);
+      for (let index = 0; index < 10; index += 1) await Promise.resolve();
+    });
+  };
+
+  function expectStickyBlocked() {
+    expect(screen.getAllByText("Blocked").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /Keep both unchanged/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve exact terms" })).not.toBeInTheDocument();
+    expect(document.getElementById("task-brief-confirm")).toBeDisabled();
+    expect(document.getElementById("task-brief-confirm")).toHaveTextContent("Blocked");
+  }
+
+  it("B1: a working poll that blocks stays Blocked when the in-flight event POST then fails", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const pendingEvent = deferred<RuntimePayload>();
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockReturnValue(pendingEvent.promise);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.useFakeTimers();
+    vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...INCOMPLETE_APPROVAL }));
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await flushMicrotasks();
+    expect(screen.getAllByText("Working").length).toBeGreaterThan(0);
+
+    await flushMicrotasks(1500);
+    expectStickyBlocked();
+
+    pendingEvent.reject(new runtime.RuntimeClientError("offline", "network"));
+    await flushMicrotasks();
+    expectStickyBlocked();
+    fireEvent.click(document.getElementById("task-brief-confirm") as HTMLElement);
+    const reads = vi.mocked(runtime.getCase).mock.calls.length;
+    await flushMicrotasks(15000);
+    expect(runtime.getCase).toHaveBeenCalledTimes(reads);
+    expect(runtime.appendConsumerEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("B1 approval twin: a deadline poll that blocks stays Blocked when the in-flight approval then fails", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const pendingApproval = deferred<RuntimePayload>();
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.useFakeTimers();
+    const waiting = payload({
+      approval: {
+        action_intent_revision: 1,
+        approval_id: "22222222-2222-4222-8222-222222222222",
+        case_revision: 2,
+        decision: "pending",
+        expires_at: new Date(Date.now() + 1000).toISOString(),
+        material_terms_hash: "hash-1",
+      },
+      event_cursor: 2,
+      revision: 4,
+      route: "wait_for_approval",
+    });
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(waiting);
+    vi.mocked(runtime.decideApproval).mockReset().mockReturnValue(pendingApproval.promise);
+    vi.mocked(runtime.getCase).mockReset()
+      .mockResolvedValueOnce(waiting)
+      .mockImplementation(async () => ({ ...INCOMPLETE_APPROVAL, event_cursor: 3, revision: 5 }));
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await flushMicrotasks();
+    fireEvent.click(screen.getByRole("button", { name: "Approve exact terms" }));
+    await flushMicrotasks();
+    expect(runtime.decideApproval).toHaveBeenCalledTimes(1);
+
+    await flushMicrotasks(1000);
+    expectStickyBlocked();
+
+    pendingApproval.reject(new runtime.RuntimeClientError("offline", "network"));
+    await flushMicrotasks();
+    expectStickyBlocked();
+    const reads = vi.mocked(runtime.getCase).mock.calls.length;
+    await flushMicrotasks(15000);
+    expect(runtime.getCase).toHaveBeenCalledTimes(reads);
+    expect(runtime.decideApproval).toHaveBeenCalledTimes(1);
+  });
+
+  it("I1: an approval response that drifts an intake fact is Blocked with no second approval", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const waiting = payload({
+      approval: {
+        action_intent_revision: 1,
+        approval_id: "22222222-2222-4222-8222-222222222222",
+        case_revision: 2,
+        decision: "pending",
+        expires_at: NORMAL_PENDING_APPROVAL_EXPIRES_AT,
+        material_terms_hash: "hash-1",
+      },
+      revision: 4,
+      route: "wait_for_approval",
+    });
+    const driftedCase = { ...caseRecord, bill_snapshot: { monthly_total: { amount_minor: 9300, currency: "USD" } } };
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(waiting);
+    vi.mocked(runtime.decideApproval).mockReset().mockResolvedValue(payload({
+      case: driftedCase,
+      revision: 7,
+      snapshot: { case: driftedCase, offers: [offer] },
+    }));
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload(), waiting]);
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Approve exact terms" }));
+
+    expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
+    expectStickyBlocked();
+    expect(runtime.decideApproval).toHaveBeenCalledTimes(1);
+  });
+
+  it("I2a: a valid event response followed by a drifted Case read is Blocked with no confirm", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const waiting = payload({
+      approval: {
+        action_intent_revision: 1,
+        approval_id: "22222222-2222-4222-8222-222222222222",
+        case_revision: 2,
+        decision: "pending",
+        expires_at: NORMAL_PENDING_APPROVAL_EXPIRES_AT,
+        material_terms_hash: "hash-1",
+      },
+      revision: 4,
+      route: "wait_for_approval",
+    });
+    const driftedCase = { ...caseRecord, bill_snapshot: { monthly_total: { amount_minor: 9300, currency: "USD" } } };
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(waiting);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [
+      payload(),
+      { ...waiting, case: driftedCase, snapshot: { case: driftedCase, offers: [offer] } },
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+
+    expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
+    expectStickyBlocked();
+    expect(runtime.appendConsumerEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("I2b: a finalizing poll that reads an incomplete approval is Blocked and stops polling", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const finalizing = payload({
+      event_cursor: 2,
+      revision: 6,
+      route: "fast_now",
+      snapshot: { ...payload().snapshot, pending_execution: true },
+    });
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(finalizing);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.useFakeTimers();
+    vi.mocked(runtime.getCase).mockReset()
+      .mockResolvedValueOnce(finalizing)
+      .mockImplementation(async () => ({ ...INCOMPLETE_APPROVAL, event_cursor: 3, revision: 7 }));
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await flushMicrotasks();
+    expect(screen.getByRole("heading", { name: "Finalizing the approved fictional transition" })).toBeInTheDocument();
+
+    await flushMicrotasks(1500);
+    expectStickyBlocked();
+    expect(screen.queryByRole("heading", { name: "Finalizing the approved fictional transition" })).not.toBeInTheDocument();
+    const reads = vi.mocked(runtime.getCase).mock.calls.length;
+    for (let poll = 0; poll < 6; poll += 1) await flushMicrotasks(1500);
+    expect(runtime.getCase).toHaveBeenCalledTimes(reads);
+  });
+
+  it("M2: reconnect from Blocked reads again and replays no command while the Case is still blocked", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(INCOMPLETE_APPROVAL);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.mocked(runtime.getCase).mockImplementation(async () => ({ ...INCOMPLETE_APPROVAL }));
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
+    expectStickyBlocked();
+    const reads = vi.mocked(runtime.getCase).mock.calls.length;
+
+    vi.mocked(runtime.checkReadiness).mockResolvedValue(DURABLE_READY);
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect and read Case" }));
+    await waitFor(() => expect(runtime.getCase).toHaveBeenCalledTimes(reads + 1));
+    await waitFor(() => expectStickyBlocked());
+    expect(runtime.appendConsumerEvent).toHaveBeenCalledTimes(1);
+    expect(runtime.decideApproval).not.toHaveBeenCalled();
+  });
+
+  function validPendingApproval(overrides: Partial<RuntimePayload> = {}): RuntimePayload {
+    return payload({
+      approval: {
+        action_intent_revision: 1,
+        approval_id: "22222222-2222-4222-8222-222222222222",
+        case_revision: 2,
+        decision: "pending",
+        expires_at: NORMAL_PENDING_APPROVAL_EXPIRES_AT,
+        material_terms_hash: "hash-1",
+      },
+      event_cursor: 2,
+      revision: 4,
+      route: "wait_for_approval",
+      ...overrides,
+    });
+  }
+
+  it("sticky I1: after a poll blocks, a late valid event response and valid reads stay Blocked", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const pendingEvent = deferred<RuntimePayload>();
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockReturnValue(pendingEvent.promise);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.useFakeTimers();
+    vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...INCOMPLETE_APPROVAL }));
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await flushMicrotasks();
+    await flushMicrotasks(1500);
+    expectStickyBlocked();
+
+    vi.mocked(runtime.getCase).mockImplementation(async () => validPendingApproval());
+    pendingEvent.resolve(validPendingApproval());
+    await flushMicrotasks();
+    expectStickyBlocked();
+    await flushMicrotasks(15000);
+    expectStickyBlocked();
+    expect(screen.queryByRole("heading", { name: "Accept these exact fictional terms?" })).not.toBeInTheDocument();
+    expect(runtime.appendConsumerEvent).toHaveBeenCalledTimes(1);
+    expect(runtime.decideApproval).not.toHaveBeenCalled();
+  });
+
+  it("sticky I2: Reconnect from Blocked to a valid Case offers approval once and replays no event", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const pendingApproval = deferred<RuntimePayload>();
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(INCOMPLETE_APPROVAL);
+    vi.mocked(runtime.decideApproval).mockReset().mockReturnValue(pendingApproval.promise);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.mocked(runtime.getCase).mockImplementation(async () => ({ ...INCOMPLETE_APPROVAL }));
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
+    expectStickyBlocked();
+
+    vi.mocked(runtime.checkReadiness).mockResolvedValue(DURABLE_READY);
+    vi.mocked(runtime.getCase).mockImplementation(async () => validPendingApproval({ event_cursor: 3, revision: 5 }));
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect and read Case" }));
+    const approve = await screen.findByRole("button", { name: "Approve exact terms" });
+    expect(approve).toBeEnabled();
+    expect(screen.queryAllByText("Blocked")).toHaveLength(0);
+    fireEvent.click(approve);
+    fireEvent.click(approve);
+
+    expect(runtime.decideApproval).toHaveBeenCalledTimes(1);
+    expect(runtime.appendConsumerEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("sticky I3: Restart from Blocked lets a fresh intake reach a clickable confirm", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(INCOMPLETE_APPROVAL);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.mocked(runtime.getCase).mockImplementation(async () => ({ ...INCOMPLETE_APPROVAL }));
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
+    expectStickyBlocked();
+
+    fireEvent.click(screen.getByRole("button", { name: "Restart local demo" }));
+    await completeLocalIntake(true, "yes", true, [payload()]);
+
+    expect(screen.getByRole("button", { name: /Keep both unchanged/ })).toBeEnabled();
+    expect(screen.queryAllByText("Blocked")).toHaveLength(0);
+    expect(runtime.createCase).toHaveBeenCalledTimes(2);
+  });
 });
+
+const INCOMPLETE_APPROVAL: RuntimePayload = {
+  approval: {
+    action_intent_revision: 1,
+    approval_id: "22222222-2222-4222-8222-222222222222",
+    case_revision: 2,
+    decision: "pending",
+  },
+  case: caseRecord,
+  case_id: "11111111-1111-4111-8111-111111111111",
+  completion: { decision: "not_done", evidence_ids: [] },
+  event_cursor: 2,
+  evidence: [],
+  execution_count: 0,
+  revision: 4,
+  route: "wait_for_approval",
+  snapshot: { case: caseRecord, offers: [offer] },
+};
+
+const DURABLE_READY = {
+  status: "ok",
+  ready: true,
+  dependency: "postgres",
+  adapter_mode: "scripted",
+  storage_mode: "postgres",
+  orchestration_mode: "temporal",
+  error_category: "none",
+};
+
+const storedPendingEvent = {
+  kind: "append_event" as const,
+  idempotencyKey: "22222222-2222-4222-8222-222222222222",
+  requestBody: {
+    content: "Keep mobile hotspot and device financing unchanged.",
+    event_type: "consumer_message",
+    expected_revision: 2,
+  },
+  caseId: "11111111-1111-4111-8111-111111111111",
+  expectedRevision: 2,
+  approvalId: null,
+  expectedCaseRevision: null,
+  expectedActionIntentRevision: null,
+};
+
+function storedWorkspace(pendingCommand: typeof storedPendingEvent | null) {
+  return {
+    schemaVersion: 1 as const,
+    caseId: "11111111-1111-4111-8111-111111111111",
+    confirmedFacts: {
+      currentMonthlyTotal: { amount_minor: 9200, currency: "USD" as const },
+      targetMonthlyTotal: { amount_minor: 7500, currency: "USD" as const },
+      mobileHotspotRequired: true as const,
+      deviceFinancingChangeForbidden: true as const,
+    },
+    pendingCommand,
+  };
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }

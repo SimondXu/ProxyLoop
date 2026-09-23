@@ -57,6 +57,15 @@ const EMPTY_INTAKE: IntakeDraft = {
   deviceFinancingChangeForbidden: null,
 };
 
+// A response the Web classifies as blocked (a predicate rejects the projection
+// or the Case reaches a state it cannot show). Terminal: handlers must not fall
+// back to an actionable phase that re-offers confirm or approval (E-5).
+class BlockedStateError extends RuntimeClientError {
+  constructor(message: string) {
+    super(message, "invalid");
+  }
+}
+
 const CONFIRMATION_EVENT =
   "Keep mobile hotspot and device financing unchanged. Continue with the fictional offer.";
 
@@ -577,6 +586,24 @@ export function ConversationWorkspace() {
   const [staleRetryDropped, setStaleRetryDropped] = useState(false);
   const pollCount = useRef(0);
   const pollBudgetExhaustedReported = useRef(false);
+  // Blocked is sticky: once set, only an explicit Reconnect or Restart clears
+  // it, so a late POST failure, in-flight GET, or poll cannot leave it (E-5).
+  const blockedRef = useRef(false);
+
+  function enterBlocked(message: string) {
+    blockedRef.current = true;
+    setPhase("blocked");
+    setError(message);
+  }
+
+  // True when the workspace is (or has just become) blocked; the caller must
+  // then stop instead of falling back to an actionable phase.
+  function holdBlocked(caught: unknown): boolean {
+    if (!blockedRef.current && caught instanceof BlockedStateError) enterBlocked(caught.message);
+    if (!blockedRef.current) return false;
+    setPhase("blocked");
+    return true;
+  }
 
   function clearFailure() {
     setError(null);
@@ -691,6 +718,14 @@ export function ConversationWorkspace() {
   ): Promise<RuntimePayload> {
     const recovered = await getCase(caseId);
     if (requestId !== sessionId.current) return recovered;
+    if (blockedRef.current) {
+      throw new BlockedStateError("The workspace is blocked. Reconnect or restart the local demo.");
+    }
+    if (!hasValidTaskBrief(recovered, facts)) {
+      const message = "The local Runtime returned a stale or mismatched Case. No unverified state is shown.";
+      enterBlocked(message);
+      throw new BlockedStateError(message);
+    }
     if (!acceptPayload(recovered, facts)) {
       throw new RuntimeClientError(
         "The local Runtime returned a stale or mismatched Case. No unverified state is shown.",
@@ -699,10 +734,9 @@ export function ConversationWorkspace() {
     }
     const nextPhase = phaseForPayload(recovered);
     if (nextPhase === "blocked") {
-      throw new RuntimeClientError(
-        "The local Runtime returned a state that cannot be shown as an approval or verified completion.",
-        "invalid",
-      );
+      const message = "The local Runtime returned a state that cannot be shown as an approval or verified completion.";
+      enterBlocked(message);
+      throw new BlockedStateError(message);
     }
     if (nextPhase !== phase) resetPollBudget();
     setPhase(nextPhase);
@@ -802,7 +836,7 @@ export function ConversationWorkspace() {
     } catch (caught) {
       if (requestId !== sessionId.current) return;
       const pendingKey = state.pendingCommand?.idempotencyKey;
-      if (caught instanceof RuntimeClientError && caught.status === 409 && state.caseId !== null) {
+      if (!blockedRef.current && caught instanceof RuntimeClientError && caught.status === 409 && state.caseId !== null) {
         try {
           await readAuthoritativeCase(state.caseId, state.confirmedFacts, requestId);
           if (pendingKey !== undefined && storageRef.current?.pendingCommand?.idempotencyKey === pendingKey) {
@@ -815,8 +849,8 @@ export function ConversationWorkspace() {
           caught = reconciled;
         }
       }
-      setPhase("blocked");
-      setError(caught instanceof Error ? caught.message : "The local Runtime could not restore this Case safely.");
+      if (holdBlocked(caught)) return;
+      enterBlocked(caught instanceof Error ? caught.message : "The local Runtime could not restore this Case safely.");
     } finally {
       if (requestId === sessionId.current) setBusy(false);
     }
@@ -825,6 +859,7 @@ export function ConversationWorkspace() {
   function reconnect() {
     const stored = storageRef.current;
     if (stored === null || (stored.caseId === null && stored.pendingCommand === null)) return;
+    blockedRef.current = false;
     const requestId = sessionId.current + 1;
     sessionId.current = requestId;
     void restorePersisted(stored, requestId);
@@ -859,9 +894,8 @@ export function ConversationWorkspace() {
       const created = await createCase(facts, { idempotencyKey: command.idempotencyKey });
       if (requestId !== sessionId.current) return;
       if (!hasValidTaskBrief(created, facts)) {
-        throw new RuntimeClientError(
+        throw new BlockedStateError(
           "The local Runtime returned a Case that does not match your confirmed facts. No verified Task Brief is shown; restart the local demo.",
-          "invalid",
         );
       }
       setConfirmedFacts(facts);
@@ -872,6 +906,7 @@ export function ConversationWorkspace() {
       await readAuthoritativeCase(created.case_id, facts, requestId);
     } catch (caught) {
       if (requestId !== sessionId.current) return;
+      if (holdBlocked(caught)) return;
       setPhase("intake");
       setError(caught instanceof Error ? caught.message : "The local Runtime failed safely. Refresh or restart the demo.");
     } finally {
@@ -881,6 +916,7 @@ export function ConversationWorkspace() {
 
   function restart() {
     sessionId.current += 1;
+    blockedRef.current = false;
     setMessages([]);
     setDraft("");
     setPayload(null);
@@ -940,12 +976,12 @@ export function ConversationWorkspace() {
     if (pollCount.current >= 5) return;
     const delay = pollCount.current === 0 ? Math.max(0, expiresAt - Date.now()) : 1500;
     const timer = window.setTimeout(() => {
-      if (pollCount.current >= 5) return;
+      if (blockedRef.current || pollCount.current >= 5) return;
       pollCount.current += 1;
       setApprovalDeadlinePassed(true);
       setError("The local approval deadline has passed. Reading the authoritative Runtime state now.");
       void readAuthoritativeCase(payload.case_id, confirmedFacts, sessionId.current).catch((caught) => {
-        if (caught instanceof Error) setError(caught.message);
+        if (!blockedRef.current && caught instanceof Error) setError(caught.message);
       });
     }, delay);
     return () => window.clearTimeout(timer);
@@ -965,9 +1001,10 @@ export function ConversationWorkspace() {
       return;
     }
     const timer = window.setTimeout(() => {
+      if (blockedRef.current) return;
       pollCount.current += 1;
       void readAuthoritativeCase(payload.case_id, confirmedFacts, sessionId.current).catch((caught) => {
-        if (caught instanceof Error) setError(caught.message);
+        if (!blockedRef.current && caught instanceof Error) setError(caught.message);
       });
     }, 1500);
     return () => window.clearTimeout(timer);
@@ -1036,7 +1073,7 @@ export function ConversationWorkspace() {
   }
 
   async function confirmConstraint() {
-    if (!payload || busy) return;
+    if (!payload || busy || blockedRef.current) return;
     const facts = confirmedFacts;
     if (!facts || !hasValidTaskBrief(payload, facts)) return;
     const requestId = sessionId.current;
@@ -1061,14 +1098,13 @@ export function ConversationWorkspace() {
         idempotencyKey: command.idempotencyKey,
       });
       if (requestId !== sessionId.current) return;
-      if (!hasValidTaskBrief(waiting, facts)) throw new RuntimeClientError(
+      if (!hasValidTaskBrief(waiting, facts)) throw new BlockedStateError(
         "The Runtime returned missing or mismatched intake facts. No approval is available.",
-        "invalid",
       );
       await readAuthoritativeCase(waiting.case_id, facts, requestId);
     } catch (caught) {
       if (requestId !== sessionId.current) return;
-      if (caught instanceof RuntimeClientError && caught.status === 409) {
+      if (!blockedRef.current && caught instanceof RuntimeClientError && caught.status === 409) {
         try {
           const reconciled = await readAuthoritativeCase(payload.case_id, facts, requestId);
           if (requestId !== sessionId.current) return;
@@ -1082,6 +1118,7 @@ export function ConversationWorkspace() {
           caught = reconciled;
         }
       }
+      if (holdBlocked(caught)) return;
       setPhase("confirm");
       setError(caught instanceof Error ? caught.message : "The Runtime failed safely. Retry or restart the demo.");
     } finally {
@@ -1090,7 +1127,7 @@ export function ConversationWorkspace() {
   }
 
   async function approveExactTerms() {
-    if (!payload?.approval || busy) return;
+    if (!payload?.approval || busy || blockedRef.current) return;
     const requestId = sessionId.current;
     const waiting = payload;
     const approval = waiting.approval;
@@ -1102,7 +1139,7 @@ export function ConversationWorkspace() {
       setApprovalDeadlinePassed(true);
       setBusy(false);
       void readAuthoritativeCase(waiting.case_id, confirmedFacts, requestId).catch((caught) => {
-        if (requestId === sessionId.current) setError(caught instanceof Error ? caught.message : "The Runtime could not confirm the approval state.");
+        if (requestId === sessionId.current && !blockedRef.current) setError(caught instanceof Error ? caught.message : "The Runtime could not confirm the approval state.");
       });
       return;
     }
@@ -1128,14 +1165,13 @@ export function ConversationWorkspace() {
         expectedRevision: waiting.revision,
       }, { idempotencyKey: command.idempotencyKey });
       if (requestId !== sessionId.current) return;
-      if (!hasValidTaskBrief(completed, confirmedFacts)) throw new RuntimeClientError(
+      if (!hasValidTaskBrief(completed, confirmedFacts)) throw new BlockedStateError(
         "The Runtime response did not preserve the confirmed intake facts. No success is shown.",
-        "invalid",
       );
       await readAuthoritativeCase(completed.case_id, confirmedFacts, requestId);
     } catch (caught) {
       if (requestId !== sessionId.current) return;
-      if (caught instanceof RuntimeClientError && caught.status === 409) {
+      if (!blockedRef.current && caught instanceof RuntimeClientError && caught.status === 409) {
         try {
           const reconciled = await readAuthoritativeCase(waiting.case_id, confirmedFacts, requestId);
           if (requestId !== sessionId.current) return;
@@ -1149,6 +1185,7 @@ export function ConversationWorkspace() {
           caught = reconciled;
         }
       }
+      if (holdBlocked(caught)) return;
       setPhase("approval");
       setError(caught instanceof Error ? caught.message : "The Runtime failed safely. Retry or restart the demo.");
     } finally {
@@ -1258,7 +1295,7 @@ export function ConversationWorkspace() {
           ) : null}
 
           {payload && (phase === "confirm" || phase === "working" || phase === "finalizing" || phase === "approval" || phase === "receipt" || phase === "expired" || phase === "blocked") ? (
-            <AssistantMessage><TaskBriefArtifact blockedLabel={staleRetryDropped ? "Reconnect to continue" : undefined} onConfirm={phase === "confirm" && !busy && !staleRetryDropped ? confirmConstraint : undefined} payload={payload} /></AssistantMessage>
+            <AssistantMessage><TaskBriefArtifact blockedLabel={phase === "blocked" ? "Blocked" : staleRetryDropped ? "Reconnect to continue" : undefined} onConfirm={phase === "confirm" && !busy && !staleRetryDropped ? confirmConstraint : undefined} payload={payload} /></AssistantMessage>
           ) : null}
 
           {payload && (phase === "working" || phase === "finalizing") ? <AssistantMessage><ProgressArtifact label={phase === "finalizing" ? "Finalizing the approved fictional transition" : undefined} /></AssistantMessage> : null}
