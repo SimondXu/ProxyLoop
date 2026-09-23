@@ -788,7 +788,82 @@
     },
     "CaseContextSnapshot": {
       "additionalProperties": false,
-      "description": "Immutable model-external Case state at one event cursor.",
+      "dependentSchemas": {
+        "schema_version": {
+          "else": {
+            "properties": {
+              "completion_receipt": false,
+              "planning_basis": {
+                "properties": {
+                  "schema_version": {
+                    "const": "1.0"
+                  }
+                }
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": "1.1"
+              }
+            }
+          },
+          "then": {
+            "else": {
+              "properties": {
+                "completion_receipt": {
+                  "type": "null"
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "case": {
+                  "properties": {
+                    "phase": {
+                      "const": "complete"
+                    }
+                  }
+                }
+              }
+            },
+            "properties": {
+              "planning_basis": {
+                "properties": {
+                  "schema_version": {
+                    "const": "1.1"
+                  }
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "completion_decision": {
+                  "properties": {
+                    "decision": {
+                      "const": "complete"
+                    }
+                  },
+                  "required": [
+                    "decision"
+                  ]
+                },
+                "completion_receipt": {
+                  "not": {
+                    "type": "null"
+                  }
+                }
+              },
+              "required": [
+                "completion_receipt",
+                "completion_decision"
+              ]
+            }
+          }
+        }
+      },
+      "description": "Immutable model-external Case state at one event cursor.\n\nThe snapshot's own ``schema_version`` selects the rules: 1.0 is the\nML/evaluation world; at 1.1 the planning basis is 1.1 (narrowed\nmateriality) and ``phase == COMPLETE`` exactly when a completion receipt\nbound to its CONFIRMATION Evidence is present. Nested documents keep\ntheir own versions.",
       "properties": {
         "action_intents": {
           "default": [],
@@ -816,6 +891,17 @@
           "anyOf": [
             {
               "$ref": "#/$defs/CompletionDecision"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "completion_receipt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompletionReceipt"
             },
             {
               "type": "null"
@@ -880,7 +966,10 @@
           "type": "integer"
         },
         "schema_version": {
-          "const": "1.0",
+          "enum": [
+            "1.0",
+            "1.1"
+          ],
           "title": "Schema Version",
           "type": "string"
         },
@@ -1107,6 +1196,167 @@
       ],
       "title": "CompletionOutcome",
       "type": "string"
+    },
+    "CompletionReceipt": {
+      "additionalProperties": false,
+      "description": "The applied-offer confirmation a COMPLETE 1.1 Case rests on (new in 1.1).\n\nCarries every field of the Provider's applied-offer confirmation;\n``confirmation_content_hash`` is recomputed over exactly those fields with\nthe canonical JSON the Provider uses for its CONFIRMATION Evidence.",
+      "properties": {
+        "action_intent_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Action Intent Id",
+          "type": "string"
+        },
+        "applied_changes": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Applied Changes",
+          "type": "array"
+        },
+        "approval_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Approval Id",
+          "type": "string"
+        },
+        "approval_revision": {
+          "minimum": 1,
+          "title": "Approval Revision",
+          "type": "integer"
+        },
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "confirmation_content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Confirmation Content Hash",
+          "type": "string"
+        },
+        "confirmation_evidence_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Confirmation Evidence Id",
+          "type": "string"
+        },
+        "confirmation_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Confirmation Id",
+          "type": "string"
+        },
+        "confirmed_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Confirmed At",
+          "type": "string"
+        },
+        "contract_type": {
+          "const": "completion_receipt",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "effective_date": {
+          "format": "date",
+          "title": "Effective Date",
+          "type": "string"
+        },
+        "features": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Features",
+          "type": "array"
+        },
+        "new_monthly_price": {
+          "$ref": "#/$defs/Money"
+        },
+        "offer_ref": {
+          "$ref": "#/$defs/OfferReference"
+        },
+        "plan_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "plan_name": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Plan Name",
+          "type": "string"
+        },
+        "previous_monthly_price": {
+          "$ref": "#/$defs/Money"
+        },
+        "provider_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "removed_add_ons": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Removed Add Ons",
+          "type": "array"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "term_months": {
+          "minimum": 0,
+          "title": "Term Months",
+          "type": "integer"
+        },
+        "total_cost_12_months": {
+          "$ref": "#/$defs/Money"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "case_id",
+        "provider_id",
+        "confirmation_id",
+        "offer_ref",
+        "action_intent_id",
+        "approval_id",
+        "approval_revision",
+        "confirmed_at",
+        "previous_monthly_price",
+        "new_monthly_price",
+        "total_cost_12_months",
+        "plan_id",
+        "plan_name",
+        "features",
+        "removed_add_ons",
+        "applied_changes",
+        "term_months",
+        "effective_date",
+        "confirmation_evidence_id",
+        "confirmation_content_hash"
+      ],
+      "title": "CompletionReceipt",
+      "type": "object"
     },
     "Constraint": {
       "additionalProperties": false,
@@ -1482,6 +1732,156 @@
       ],
       "title": "EvidenceType",
       "type": "string"
+    },
+    "ExecutionClaim": {
+      "additionalProperties": false,
+      "dependentSchemas": {
+        "command_fingerprint": {
+          "else": {
+            "properties": {
+              "command_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "command_id"
+            ]
+          },
+          "if": {
+            "properties": {
+              "command_fingerprint": {
+                "type": "null"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "command_id": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        "command_id": {
+          "else": {
+            "properties": {
+              "command_fingerprint": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "command_fingerprint"
+            ]
+          },
+          "if": {
+            "properties": {
+              "command_id": {
+                "type": "null"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "command_fingerprint": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      },
+      "description": "The execution bookkeeping of one approved action (new in 1.1).\n\n``command_id`` stays nullable until direct mode names its command; it and\n``command_fingerprint`` are both present or both absent.",
+      "properties": {
+        "action_intent_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Action Intent Id",
+          "type": "string"
+        },
+        "approval_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Approval Id",
+          "type": "string"
+        },
+        "before_revision": {
+          "minimum": 1,
+          "title": "Before Revision",
+          "type": "integer"
+        },
+        "case_id": {
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "claimed_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|\\+00:00)$",
+          "title": "Claimed At",
+          "type": "string"
+        },
+        "command_fingerprint": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Command Fingerprint"
+        },
+        "command_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Command Id"
+        },
+        "contract_type": {
+          "const": "execution_claim",
+          "title": "Contract Type",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "revision",
+        "contract_type",
+        "case_id",
+        "approval_id",
+        "action_intent_id",
+        "idempotency_key",
+        "before_revision",
+        "claimed_at"
+      ],
+      "title": "ExecutionClaim",
+      "type": "object"
     },
     "FactLedger": {
       "additionalProperties": false,
@@ -2063,6 +2463,43 @@
     },
     "ModelTrace": {
       "additionalProperties": false,
+      "dependentSchemas": {
+        "schema_version": {
+          "else": {
+            "properties": {
+              "input_pins": false,
+              "reason_codes": false,
+              "request_id": false,
+              "role": false
+            }
+          },
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": "1.1"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "reason_codes": {
+                "not": {
+                  "type": "null"
+                }
+              },
+              "role": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            },
+            "required": [
+              "role",
+              "reason_codes"
+            ]
+          }
+        }
+      },
       "properties": {
         "adapter_version": {
           "maxLength": 256,
@@ -2086,6 +2523,17 @@
           "const": "model_trace",
           "title": "Contract Type",
           "type": "string"
+        },
+        "input_pins": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelInputPins"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "input_schema_version": {
           "maxLength": 256,
@@ -2152,6 +2600,37 @@
           "title": "Provider",
           "type": "string"
         },
+        "reason_codes": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason Codes"
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Request Id"
+        },
         "result": {
           "$ref": "#/$defs/ModelResult"
         },
@@ -2159,6 +2638,24 @@
           "minimum": 1,
           "title": "Revision",
           "type": "integer"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "enum": [
+                "fast",
+                "slow",
+                "judge",
+                "intake"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
         },
         "safety_flags": {
           "items": {
@@ -2170,7 +2667,10 @@
           "type": "array"
         },
         "schema_version": {
-          "const": "1.0",
+          "enum": [
+            "1.0",
+            "1.1"
+          ],
           "title": "Schema Version",
           "type": "string"
         },
@@ -2255,7 +2755,7 @@
     },
     "PlanningBasis": {
       "additionalProperties": false,
-      "description": "Strongly typed fingerprints for every material strategy input.",
+      "description": "Strongly typed fingerprints for every material strategy input.\n\nThe shape is the same at both versions; 1.1 means the offer and approval\ncomponents use the narrowed materiality formula (see\n``material_offers_fingerprint`` and ``approval_state_fingerprint``).",
       "properties": {
         "approval_state_fingerprint": {
           "pattern": "^[0-9a-f]{64}$",
@@ -2308,7 +2808,10 @@
           "type": "integer"
         },
         "schema_version": {
-          "const": "1.0",
+          "enum": [
+            "1.0",
+            "1.1"
+          ],
           "title": "Schema Version",
           "type": "string"
         },
@@ -2803,6 +3306,35 @@
     },
     "StrategyPacket": {
       "additionalProperties": false,
+      "dependentSchemas": {
+        "schema_version": {
+          "else": {
+            "properties": {
+              "planning_basis_fingerprint": false
+            }
+          },
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": "1.1"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "planning_basis_fingerprint": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            },
+            "required": [
+              "planning_basis_fingerprint"
+            ]
+          }
+        }
+      },
+      "description": "At 1.1 a strategy names the planning basis it was compiled against.",
       "properties": {
         "allowed_disclosures": {
           "items": {
@@ -2897,6 +3429,19 @@
           "title": "Hard Constraint Ids",
           "type": "array"
         },
+        "planning_basis_fingerprint": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Planning Basis Fingerprint"
+        },
         "primary_objective": {
           "maxLength": 4000,
           "minLength": 1,
@@ -2934,7 +3479,10 @@
           "type": "integer"
         },
         "schema_version": {
-          "const": "1.0",
+          "enum": [
+            "1.0",
+            "1.1"
+          ],
           "title": "Schema Version",
           "type": "string"
         },
@@ -3071,7 +3619,7 @@
       "type": "object"
     }
   },
-  "$id": "https://proxyloop.local/schemas/proxyloop-contracts-1.0.json",
+  "$id": "https://proxyloop.local/schemas/proxyloop-contracts-1.1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Canonical Phase 00B wire contracts generated from the framework-independent Pydantic package.",
   "discriminator": {
@@ -3083,9 +3631,11 @@
       "case": "#/$defs/Case",
       "case_context_snapshot": "#/$defs/CaseContextSnapshot",
       "completion_decision": "#/$defs/CompletionDecision",
+      "completion_receipt": "#/$defs/CompletionReceipt",
       "constraint": "#/$defs/Constraint",
       "consumer_goal": "#/$defs/ConsumerGoal",
       "evidence": "#/$defs/Evidence",
+      "execution_claim": "#/$defs/ExecutionClaim",
       "fact_ledger": "#/$defs/FactLedger",
       "fast_model_view": "#/$defs/FastModelView",
       "fast_turn_decision": "#/$defs/FastTurnDecision",
@@ -3171,12 +3721,18 @@
     },
     {
       "$ref": "#/$defs/SlowWorkResult"
+    },
+    {
+      "$ref": "#/$defs/ExecutionClaim"
+    },
+    {
+      "$ref": "#/$defs/CompletionReceipt"
     }
   ],
   "title": "ProxyLoop Contract Document",
   "x-drift-command": "make contracts-check",
   "x-generated-by": "scripts/generate_contracts.py",
   "x-regeneration-command": "make contracts",
-  "x-schema-version": "1.0",
+  "x-schema-version": "1.1",
   "x-source": "runtime/packages/contracts/src/proxyloop_contracts"
 }

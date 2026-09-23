@@ -28,7 +28,7 @@ def render_schema(destination: Path) -> None:
     schema = contract_json_schema()
     schema.update(
         {
-            "$id": "https://proxyloop.local/schemas/proxyloop-contracts-1.0.json",
+            "$id": "https://proxyloop.local/schemas/proxyloop-contracts-1.1.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "title": "ProxyLoop Contract Document",
             "description": (
@@ -37,7 +37,7 @@ def render_schema(destination: Path) -> None:
             ),
             "x-generated-by": "scripts/generate_contracts.py",
             "x-regeneration-command": "make contracts",
-            "x-schema-version": "1.0",
+            "x-schema-version": "1.1",
             "x-source": "runtime/packages/contracts/src/proxyloop_contracts",
             "x-drift-command": "make contracts-check",
         }
