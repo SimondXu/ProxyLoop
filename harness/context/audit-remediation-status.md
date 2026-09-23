@@ -271,6 +271,7 @@ Other items (Minor unless marked):
 - **R-12 (Important, proposal stage 1)** rejected-result traces reach `CoordinatorOutcome` but the runtime raises before writing; needs a traces-only append.
 - R-13 `model_traces` retention unbounded.
 - R-14 the 1.0/1.1 basis switch is duplicated in `runtime.py` and `contracts.py`.
+- R-15 flaky: `ml/tests/test_teacher_pipeline.py::test_concurrent_workers_cannot_jointly_exceed_the_ceiling` asserts `8 <= calls <= 20` and saw 21 on CI (#71, a docs-only PR); the bound is timing-dependent — tighten the test or make the concurrency deterministic.
 
 Still open from the audit P2 list and not yet batched: runtime/router/api
 hygiene (B1-12, B2-7, B2-8, B2-9, A-7f, R-2, R-5, R-14 — after PR4 and
