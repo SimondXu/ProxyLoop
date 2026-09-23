@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -213,6 +214,14 @@ def _message_event(
         content=content,
         fixture_timestamp=BASE_TIME,
     )
+
+
+def _is_uuid4(value: str) -> bool:
+    try:
+        parsed = UUID(value)
+    except ValueError:
+        return False
+    return parsed.version == 4 and str(parsed) == value
 
 
 def test_channel_ingest_is_atomic_and_deduplicated() -> None:
@@ -679,17 +688,41 @@ def test_channel_delivery_rejects_replayed_callback_payload() -> None:
     snapshot = payload["snapshot"]
     assert snapshot["revision"] == state.snapshot.revision
     assert snapshot["event_cursor"] == state.snapshot.event_cursor
-    assert snapshot["pins"]
+    assert "pins" not in snapshot
     assert [event["event_type"] for event in snapshot["visible_events"]] == [
         "provider_offer"
     ]
-    assert [item["source_type"] for item in snapshot["evidence"]] == [
+    assert "evidence" not in snapshot
+    non_channel_evidence = [
+        item
+        for item in state.snapshot.evidence
+        if item.source_type.value != "provider_event"
+        and not (
+            item.source_type.value == "provider_message" and _is_uuid4(item.source_ref)
+        )
+    ]
+    assert [item.source_type.value for item in non_channel_evidence] == [
         "provider_message"
     ]
     assert all(
-        item["source_ref"] == "pine-mobile:offer:pine-value-5g:v1"
-        for item in snapshot["evidence"]
+        item.source_ref == "pine-mobile:offer:pine-value-5g:v1"
+        for item in non_channel_evidence
     )
+    assert {item["source_type"] for item in payload["evidence"]} <= {
+        "simulator_transition",
+        "confirmation",
+    }
+    channel_evidence = [
+        item for item in state.snapshot.evidence if item not in non_channel_evidence
+    ]
+    assert {item.source_type.value for item in channel_evidence} == {
+        "provider_message",
+        "provider_event",
+    }
+    encoded = json.dumps(payload)
+    for item in channel_evidence:
+        assert str(item.evidence_id) not in encoded
+        assert item.content_hash not in encoded
     assert "Synthetic Provider message." not in str(payload)
     assert artifact_hash not in str(payload)
     assert "local-provider-test" not in str(payload)

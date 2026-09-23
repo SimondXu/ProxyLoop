@@ -1,25 +1,59 @@
 export type JsonObject = Record<string, unknown>;
 
-export type RuntimeApproval = JsonObject & {
+// These types mirror the API's allow-listed browser projection
+// (`_result_payload` in proxyloop_api/app.py). Fields that parsePayload does
+// not validate stay `unknown` and are read only through runtime guards.
+
+export type RuntimeApproval = {
   approval_id: string;
   case_revision: number;
   action_intent_revision: number;
   decision: string;
+  action_type?: unknown;
+  requested_at?: unknown;
+  decided_at?: unknown;
+  expires_at?: unknown;
+  material_terms_hash?: unknown;
+  offer_ref?: unknown;
 };
 
-export type RuntimeCompletion = JsonObject & {
+export type RuntimeCompletion = {
   decision: string;
   evidence_ids: unknown;
+  missing_evidence?: unknown;
+  reason_codes?: unknown;
 };
 
-export type RuntimeEvidence = JsonObject & {
+export type RuntimeEvidence = {
   evidence_id: string;
+  source_type?: unknown;
+  observed_at?: unknown;
+};
+
+export type RuntimeCaseProjection = {
+  case_id?: unknown;
+  revision?: unknown;
+  phase?: unknown;
+  bill_snapshot?: unknown;
+  goal?: unknown;
+  constraints?: unknown;
+};
+
+export type RuntimeSnapshotProjection = {
+  revision?: unknown;
+  event_cursor?: unknown;
+  phase?: unknown;
+  pending_execution?: boolean;
+  case?: unknown;
+  offers?: unknown;
+  visible_events?: unknown;
+  completion?: unknown;
 };
 
 export type RuntimePayload = {
   case_id: string;
-  case: JsonObject;
-  snapshot: JsonObject;
+  case: RuntimeCaseProjection;
+  snapshot: RuntimeSnapshotProjection;
   revision: number;
   event_cursor: number;
   route: string;
@@ -27,7 +61,7 @@ export type RuntimePayload = {
   evidence: RuntimeEvidence[];
   completion: RuntimeCompletion;
   execution_count: number;
-  [key: string]: unknown;
+  fast?: unknown;
 };
 
 export type RuntimeMoney = {
@@ -326,7 +360,7 @@ function parsePayload(value: unknown): RuntimePayload {
     execution_count: value.execution_count,
     revision: value.revision,
     route: value.route,
-    snapshot: value.snapshot,
+    snapshot: value.snapshot as RuntimeSnapshotProjection,
   };
 }
 

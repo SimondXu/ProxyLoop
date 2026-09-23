@@ -8,6 +8,7 @@ import {
   createCase,
   decideApproval,
   getCase,
+  hasValidPendingApproval,
   hasValidTaskBrief,
   isValidPersistedWorkspace,
   loadPersistedWorkspace,
@@ -299,6 +300,91 @@ describe("runtime client", () => {
       "/api/runtime/cases/11111111-1111-4111-8111-111111111111",
       expect.objectContaining({ method: "GET" }),
     );
+  });
+
+  it("accepts the API's allow-listed browser projection with no internal fields", async () => {
+    const projectedCase = {
+      bill_snapshot: { monthly_total: facts.currentMonthlyTotal },
+      case_id: basePayload.case_id,
+      constraints: [{ classification: "hard", statement: "Do not change device financing." }],
+      goal: {
+        deadline: "2026-10-02T12:00:00Z",
+        desired_outcome: "Reduce the recurring bill without losing mobile hotspot access.",
+        forbidden_changes: ["device_financing_change"],
+        required_features: ["mobile_hotspot"],
+        target_monthly_total: facts.targetMonthlyTotal,
+      },
+      phase: "awaiting_approval",
+      revision: 1,
+    };
+    const completion = {
+      decision: "not_done",
+      evidence_ids: [],
+      missing_evidence: ["verified_provider_confirmation"],
+      reason_codes: ["approval_or_execution_pending"],
+    };
+    const projected = {
+      approval: {
+        action_intent_revision: 1,
+        action_type: "accept_offer",
+        approval_id: "22222222-2222-4222-8222-222222222222",
+        case_revision: 1,
+        decided_at: null,
+        decision: "pending",
+        expires_at: "2026-08-25T13:00:00Z",
+        material_terms_hash: "a".repeat(64),
+        offer_ref: { offer_id: "33333333-3333-4333-8333-333333333333", offer_revision: 1 },
+        requested_at: "2026-08-25T12:00:00Z",
+      },
+      case: projectedCase,
+      case_id: basePayload.case_id,
+      completion,
+      event_cursor: 2,
+      evidence: [],
+      execution_count: 0,
+      fast: {
+        created_at: "2026-08-25T12:00:00Z",
+        dialogue_act: "clarify",
+        response_text: "I found an offer that needs your approval.",
+      },
+      revision: 4,
+      route: "wait_for_approval",
+      snapshot: {
+        case: projectedCase,
+        completion,
+        event_cursor: 2,
+        offers: [{
+          expires_at: "2026-08-25T13:00:00Z",
+          features: ["mobile_hotspot", "unlimited_talk_text"],
+          fees: [],
+          monthly_price: { amount_minor: 7200, currency: "USD" },
+          offer_id: "33333333-3333-4333-8333-333333333333",
+          provider_id: "pine-mobile",
+          revision: 1,
+          term_months: 0,
+          total_cost: { amount_minor: 86400, currency: "USD" },
+        }],
+        pending_execution: false,
+        phase: "awaiting_approval",
+        revision: 4,
+        visible_events: [{
+          actor: "consumer",
+          content: "Please review the current offer.",
+          event_cursor: 2,
+          event_type: "consumer_message",
+          occurred_at: "2026-08-25T12:00:00Z",
+        }],
+      },
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(projected), { status: 200 }),
+    ));
+
+    const parsed = await getCase(basePayload.case_id);
+
+    expect(parsed).toEqual(projected);
+    expect(hasValidTaskBrief(parsed, facts)).toBe(true);
+    expect(hasValidPendingApproval(parsed)).toBe(true);
   });
 
   it("fails closed for root, snapshot, draft, and later fact disagreement", () => {
