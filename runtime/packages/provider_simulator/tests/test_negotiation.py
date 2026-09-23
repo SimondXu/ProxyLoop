@@ -22,6 +22,7 @@ from proxyloop_provider_simulator.negotiation import (
     reference_input,
 )
 from proxyloop_provider_simulator.negotiation_catalog import (
+    EVIDENCE_HAZARDS,
     HAZARD_REASON_CODES,
     MULTI_HAZARD,
     NEGOTIATION_FAMILIES,
@@ -37,6 +38,7 @@ from proxyloop_provider_simulator.negotiation_catalog import (
     default_negotiation_case,
     offer_violations,
 )
+from proxyloop_provider_simulator.scenarios import PublicOffer
 
 
 def _scenario(family_id: str, policy_id: str) -> NegotiationScenario:
@@ -55,6 +57,7 @@ def _run_reference(
     )
     turn = environment.start()
     countered = False
+    accepted: PublicOffer | None = None
     step = 0
     while not environment.is_terminal:
         step += 1
@@ -62,6 +65,7 @@ def _run_reference(
             turn,
             scenario.case,
             countered=countered,
+            accepted_offer=accepted,
             evaluated_at=environment.next_input_at,
             idempotency_key=f"ref-{step}",
         )
@@ -69,8 +73,16 @@ def _run_reference(
             countered = countered or item.dialogue_act is DialogueAct.COUNTER
             turn = environment.submit_message(item).provider_turn
         else:
+            if item.action is NegotiationAction.ACCEPT_OFFER:
+                accepted = next(o for o in turn.offers if o.offer_id == item.offer_id)
             turn = environment.submit_capability(item).provider_turn
     return environment
+
+
+def _claim(environment: NegotiationEnvironment, key: str = "claim") -> None:
+    environment.submit_capability(
+        CapabilityAttempt(NegotiationAction.CLAIM_COMPLETION, key)
+    )
 
 
 def _message(
@@ -93,10 +105,12 @@ def _terminal(environment: NegotiationEnvironment) -> NegotiationVerification:
     return environment.verification
 
 
+# Families whose reference episode ends with a verified completion.
 SUCCESS_FAMILIES = {
     family.family_id
     for family in NEGOTIATION_FAMILIES
     if not family.hazards.intersection(OFFER_TERM_HAZARDS)
+    and not family.hazards & EVIDENCE_HAZARDS
 }
 
 
@@ -144,12 +158,14 @@ def test_opening_accept_is_valid_under_transparent_and_invalid_under_retention(
                 turn,
                 scenario.case,
                 countered=False,
+                accepted_offer=None,
                 evaluated_at=environment.next_input_at,
                 idempotency_key=f"fact-{turn.cursor}",
             )
             assert isinstance(item, ConsumerMessage)
             turn = environment.submit_message(item).provider_turn
         environment.submit_capability(_accept("accept", turn.offers[0].offer_id))
+        _claim(environment)
         results[policy_id] = _terminal(environment)
     assert results["transparent-public-v2"].valid_outcome
     assert results["transparent-public-v2"].completed
@@ -168,6 +184,7 @@ def test_retention_success_episode_has_at_least_three_provider_turns() -> None:
     assert environment.trajectory == (
         ReferenceStep(act=DialogueAct.COUNTER),
         ReferenceStep(action=NegotiationAction.ACCEPT_OFFER),
+        ReferenceStep(action=NegotiationAction.CLAIM_COMPLETION),
     )
     assert _terminal(environment).confirmation_ref is not None
 
@@ -193,6 +210,7 @@ def test_probe_e_compliant_offer_with_transfer_is_accepted_not_escalated() -> No
         turn,
         scenario.case,
         countered=True,
+        accepted_offer=None,
         evaluated_at=environment.next_input_at,
         idempotency_key="next",
     )
@@ -337,7 +355,8 @@ def test_accept_text_without_an_accept_capability_confirms_nothing() -> None:
         _message(DialogueAct.CONFIRM, "m", text="I accept the offer.")
     )
     assert transition.state is NegotiationState.OFFER_OPEN
-    assert transition.provider_turn.confirmation_ref is None
+    assert transition.provider_turn.confirmation is None
+    assert not transition.provider_turn.offer_accepted
 
 
 def test_per_input_idempotency() -> None:
@@ -361,10 +380,18 @@ def test_per_input_idempotency() -> None:
         )
 
     offer_id = first.provider_turn.offers[0].offer_id
-    done = environment.submit_capability(_accept("a-1", offer_id))
-    assert environment.is_terminal
+    accepted = environment.submit_capability(_accept("a-1", offer_id))
+    assert not environment.is_terminal and accepted.verification is None
     replay = environment.submit_capability(_accept("a-1", offer_id))
-    assert replay.duplicate and replay.verification == done.verification
+    assert replay.duplicate and replace(replay, duplicate=False) == accepted
+    done = environment.submit_capability(
+        CapabilityAttempt(NegotiationAction.CLAIM_COMPLETION, "c-1")
+    )
+    assert environment.is_terminal
+    claim_again = environment.submit_capability(
+        CapabilityAttempt(NegotiationAction.CLAIM_COMPLETION, "c-1")
+    )
+    assert claim_again.duplicate and claim_again.verification == done.verification
     with pytest.raises(IllegalNegotiationTransitionError):
         environment.submit_capability(_accept("a-2", offer_id))
 
@@ -449,6 +476,7 @@ def test_disclosing_a_protected_fact_invalidates_even_a_completed_accept() -> No
         _message(DialogueAct.CLARIFY, "pin", provided_facts=((PROTECTED_FACT, "1234"),))
     )
     environment.submit_capability(_accept("a", quote.provider_turn.offers[0].offer_id))
+    _claim(environment)
     verification = _terminal(environment)
     assert verification.completed
     assert not verification.valid_outcome
@@ -537,7 +565,9 @@ def _one_shot(scenario: NegotiationScenario, agent: str) -> NegotiationVerificat
     context = compliance_context(scenario.case, environment.next_input_at)
     compliant = [offer for offer in turn.offers if not offer_violations(offer, context)]
     if agent == "accept-if-compliant-else-decline" and compliant:
+        # The naive agent claims whatever confirmation it is shown.
         environment.submit_capability(_accept("one-shot", compliant[0].offer_id))
+        _claim(environment)
     else:
         environment.submit_capability(
             CapabilityAttempt(NegotiationAction.DECLINE_OFFER, "one-shot")
@@ -546,14 +576,20 @@ def _one_shot(scenario: NegotiationScenario, agent: str) -> NegotiationVerificat
 
 
 @pytest.mark.parametrize(
-    ("agent", "valid", "completed"),
-    [("always-decline", 14, 0), ("accept-if-compliant-else-decline", 16, 2)],
+    ("agent", "valid", "completed", "false_completion"),
+    [
+        ("always-decline", 16, 0, 0),
+        ("accept-if-compliant-else-decline", 18, 2, 2),
+    ],
 )
-def test_reviewer_one_shot_agents(agent: str, valid: int, completed: int) -> None:
+def test_reviewer_one_shot_agents(
+    agent: str, valid: int, completed: int, false_completion: int
+) -> None:
     verdicts = [_one_shot(scenario, agent) for scenario in NEGOTIATION_SCENARIOS]
+    assert len(verdicts) == 22
     assert sum(item.valid_outcome for item in verdicts) == valid
     assert sum(item.completed for item in verdicts) == completed
-    assert not any(item.false_completion for item in verdicts)
+    assert sum(item.false_completion for item in verdicts) == false_completion
 
 
 def test_declining_an_answerable_fact_request_is_invalid() -> None:
@@ -631,6 +667,7 @@ def test_reference_judges_expiry_at_the_provider_instant() -> None:
         turn,
         scenario.case,
         countered=False,
+        accepted_offer=None,
         evaluated_at=turn.observed_at,
         idempotency_key="stale",
     )
@@ -639,6 +676,7 @@ def test_reference_judges_expiry_at_the_provider_instant() -> None:
         turn,
         scenario.case,
         countered=False,
+        accepted_offer=None,
         evaluated_at=environment.next_input_at,
         idempotency_key="aligned",
     )
