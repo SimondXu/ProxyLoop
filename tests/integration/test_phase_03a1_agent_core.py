@@ -588,6 +588,13 @@ class _SlowCommitCapability(_Capability):
         self.invocations += 1
 
 
+@dataclass
+class _RaiseAfterMutationCapability(_Capability):
+    def _commit(self) -> None:
+        self.invocations += 1
+        raise RuntimeError("commit failed after mutating")
+
+
 def test_capability_executor_rechecks_authority_and_reuses_evidence() -> None:
     snapshot, episode = _snapshot()
     episode.request_approval()
@@ -642,6 +649,67 @@ def test_capability_executor_rechecks_authority_and_reuses_evidence() -> None:
     )
     assert rejected.status is CapabilityExecutionStatus.REJECTED
     assert "current_offer_mismatch" in rejected.reason_codes
+
+
+def test_capability_executor_does_not_rerun_a_commit_that_raised() -> None:
+    # B1-10: a commit that raises may already have mutated the adapter. The
+    # executor claims the execution before commit, so neither a retry of the
+    # same request nor the same approval under another key runs it again.
+    snapshot, episode = _snapshot()
+    episode.request_approval()
+    episode.approve()
+    snapshot = _with_approval(snapshot, episode.approval_request)
+    assert episode.action_intent is not None
+    assert episode.action_intent.offer_ref is not None
+    proposal = CapabilityProposal(
+        proposal_id=UUID("ffffffff-ffff-4fff-8fff-ffffffffffff"),
+        capability=CapabilityReference(
+            namespace="simulator",
+            capability_id="simulator.accept_fictional_offer",
+            version="1.0",
+        ),
+        arguments=(
+            CapabilityArgument(
+                name="offer_id",
+                value=str(episode.action_intent.offer_ref.offer_id),
+            ),
+        ),
+        created_at=NOW - timedelta(minutes=1),
+        expires_at=NOW + timedelta(minutes=5),
+    )
+    request = CapabilityExecutionRequest(
+        snapshot=snapshot,
+        source_pins=snapshot.pins,
+        proposal=proposal,
+        action_intent=episode.action_intent,
+        approval=episode.approval_request,
+        executed_at=NOW,
+    )
+    adapter = _RaiseAfterMutationCapability()
+    executor = CapabilityExecutor(adapter)
+
+    with pytest.raises(RuntimeError, match="commit failed after mutating"):
+        executor.execute(request)
+    retried = executor.execute(request)
+    other_key = executor.execute(
+        CapabilityExecutionRequest(
+            snapshot=snapshot,
+            source_pins=snapshot.pins,
+            proposal=proposal,
+            action_intent=episode.action_intent.model_copy(
+                update={"idempotency_key": "another-idempotency-key"}
+            ),
+            approval=episode.approval_request,
+            executed_at=NOW,
+        )
+    )
+
+    assert retried.status is CapabilityExecutionStatus.REJECTED
+    assert retried.reason_codes == ("execution_outcome_unknown",)
+    assert retried.evidence is None
+    assert other_key.status is CapabilityExecutionStatus.REJECTED
+    assert other_key.reason_codes == ("execution_outcome_unknown",)
+    assert adapter.invocations == 1
 
 
 def test_capability_executor_serializes_concurrent_duplicate_execution() -> None:
