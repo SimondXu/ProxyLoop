@@ -31,6 +31,7 @@ from proxyloop_workflow_worker import (
     CaseCommandActivityAdapter,
     CaseCommandRequest,
     TemporalCaseClient,
+    TemporalDispatchError,
     TemporalSettings,
     activity_for_adapter,
     channel_activity_for_adapter,
@@ -282,5 +283,74 @@ def test_live_temporal_local_mailbox_delivery_is_stable() -> None:
                 data_converter=pydantic_data_converter,
             )
             await replayer.replay_workflow(history)
+
+    asyncio.run(scenario())
+
+
+def test_live_temporal_conflicted_mailbox_event_succeeds_on_redelivery() -> None:
+    """T4 (audit C-4): the inbox fixes the command id, so a first dispatch that
+    conflicted on a stale revision must not poison the event's redelivery."""
+
+    database_url, temporal_address = _dependencies()
+    _truncate(database_url)
+
+    async def scenario() -> None:
+        task_queue = f"proxyloop-phase06b1-redeliver-{uuid4()}"
+        client, namespace = await _connect(temporal_address)
+        settings = TemporalSettings(
+            target_host=temporal_address,
+            namespace=namespace,
+            task_queue=task_queue,
+        )
+        runtime = ThinAgentRuntime(PostgresCaseRepository(database_url))
+        adapter = CaseCommandActivityAdapter(
+            runtime,
+            local_mailbox=FaultInjectingLocalMailboxAdapter(),
+        )
+        temporal = TemporalCaseClient(client, settings)
+        worker = Worker(
+            client,
+            task_queue=task_queue,
+            workflows=[CaseWorkflow],
+            activities=[
+                activity_for_adapter(adapter),
+                channel_activity_for_adapter(adapter),
+            ],
+        )
+        async with worker:
+            created = await temporal.apply_command(_create_command())
+            event = _message_event(uuid4())
+            repository = runtime.repository
+            assert isinstance(repository, PostgresCaseRepository)
+            inbox = repository.reserve_channel_event(event, received_at=BASE_TIME)
+
+            def dispatch(expected_revision: int) -> CaseCommandRequest:
+                return CaseCommandRequest(
+                    schema_version="phase-06b1-v1",
+                    command_id=inbox.command_id,
+                    case_id=SCRIPTED_CASE_ID,
+                    command_type=CaseCommandType.INGEST_CHANNEL_EVENT,
+                    expected_revision=expected_revision,
+                    channel_occurred_at=event.occurred_at,
+                    channel_kind=CHANNEL_KIND,
+                    binding_ref=BINDING_REF,
+                    event_id=event.event_id,
+                    content_hash=hashlib.sha256(event.content.encode()).hexdigest(),
+                    payload_hash=event.raw_payload_hash,
+                )
+
+            with pytest.raises(TemporalDispatchError) as raised:
+                await temporal.apply_command(dispatch(created.after_revision + 5))
+            redelivered = repository.reserve_channel_event(event, received_at=BASE_TIME)
+            assert redelivered.command_id == inbox.command_id
+            transition = await temporal.apply_command(dispatch(created.after_revision))
+
+        assert raised.value.category == "channel_conflict"
+        assert transition.command_id == inbox.command_id
+        assert transition.before_revision == created.after_revision
+        assert transition.delivery_id is not None
+        state = runtime.repository.get(SCRIPTED_CASE_ID)
+        assert state is not None
+        assert len(state.transitions) == 2
 
     asyncio.run(scenario())

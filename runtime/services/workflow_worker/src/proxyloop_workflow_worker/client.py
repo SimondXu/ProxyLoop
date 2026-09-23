@@ -65,7 +65,9 @@ class TemporalCaseClient:
 
         request = _command_request(command)
         workflow_id = workflow_id_for_case(request.case_id)
-        update_id = update_id_for_command(request.command_id)
+        update_id = update_id_for_command(
+            request.command_id, request.semantic_fingerprint()
+        )
         try:
             if request.command_type is CaseCommandType.CREATE_CASE:
                 # A fresh operation is required for every Update-with-Start call.

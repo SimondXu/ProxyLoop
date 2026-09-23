@@ -4,7 +4,7 @@ import asyncio
 import os
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import httpx
@@ -22,6 +22,7 @@ from proxyloop_case_runtime import (
     StorageUnavailableError,
     ThinAgentRuntime,
 )
+from proxyloop_case_runtime.commands import semantic_command_fingerprint
 from proxyloop_contracts import Money
 from proxyloop_workflow_worker import (
     CaseCommandActivityAdapter,
@@ -33,8 +34,10 @@ from proxyloop_workflow_worker import (
 )
 from proxyloop_workflow_worker.workflow import (
     ACTIVITY_NAME,
+    COMMAND_ID_PREFIX,
     UPDATE_NAME,
     CaseWorkflow,
+    activity_id_for_command,
     update_id_for_command,
 )
 from temporalio import activity
@@ -750,7 +753,10 @@ def test_time_skipping_approval_update_races_expiry_without_stale_execution() ->
                     UPDATE_NAME,
                     approval_request,
                     wait_for_stage=WorkflowUpdateStage.ACCEPTED,
-                    id=update_id_for_command(approval_request.command_id),
+                    id=update_id_for_command(
+                        approval_request.command_id,
+                        approval_request.semantic_fingerprint(),
+                    ),
                     result_type=CaseTransitionRef,
                 )
                 result_task = asyncio.create_task(accepted.result())
@@ -1176,3 +1182,241 @@ def test_time_skipping_post_commit_retry_receipt_keeps_pending_expiry() -> None:
             assert len(state.transitions) == 3
 
     asyncio.run(scenario())
+
+
+def _append_request(command_id: UUID, expected_revision: int) -> CaseCommandRequest:
+    return CaseCommandRequest(
+        command_id=command_id,
+        case_id=SCRIPTED_CASE_ID,
+        command_type=CaseCommandType.APPEND_EVENT,
+        content="Review the fictional offer.",
+        event_type="consumer_message",
+        expected_revision=expected_revision,
+    )
+
+
+def test_update_id_binds_command_id_and_semantic_request() -> None:
+    command_id = UUID("A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D")
+    stale = _append_request(command_id, 7)
+    current = _append_request(command_id, 2)
+
+    stale_id = update_id_for_command(command_id, stale.semantic_fingerprint())
+    assert stale_id == update_id_for_command(
+        command_id, _append_request(command_id, 7).semantic_fingerprint()
+    )
+    assert stale_id == stale_id.lower()
+    assert stale_id.startswith(f"{COMMAND_ID_PREFIX}{str(command_id).lower()}:")
+    assert stale_id != update_id_for_command(command_id, current.semantic_fingerprint())
+    # Recorded histories carry the Activity ID; its format must not change.
+    assert activity_id_for_command(command_id) == (
+        f"{COMMAND_ID_PREFIX}{str(command_id).lower()}"
+    )
+
+
+def test_request_fingerprint_matches_runtime_receipt_fingerprint() -> None:
+    requests = [
+        _create_request(),
+        _append_request(uuid4(), 2),
+        CaseCommandRequest(
+            command_id=uuid4(),
+            case_id=SCRIPTED_CASE_ID,
+            command_type=CaseCommandType.DECIDE_APPROVAL,
+            approval_id=uuid4(),
+            decision="approved",
+            expected_revision=3,
+        ),
+        CaseCommandRequest(
+            command_id=uuid4(),
+            case_id=SCRIPTED_CASE_ID,
+            command_type=CaseCommandType.EXPIRE_APPROVAL,
+            approval_id=uuid4(),
+            expected_revision=3,
+            approval_expires_at=datetime(2026, 8, 26, 14, tzinfo=UTC),
+        ),
+        _ingest_request(datetime(2026, 8, 26, 12, tzinfo=UTC)),
+        CaseCommandRequest(
+            schema_version="phase-06b1-v1",
+            command_id=uuid4(),
+            case_id=SCRIPTED_CASE_ID,
+            command_type=CaseCommandType.RECORD_CHANNEL_DELIVERY,
+            expected_revision=4,
+            channel_occurred_at=datetime(2026, 8, 26, 12, 5, tzinfo=UTC),
+            channel_kind="local_mailbox",
+            binding_ref="fictional-provider-local-mailbox",
+            event_id=uuid4(),
+            delivery_id=uuid4(),
+            provider_message_id="local-provider-1",
+            delivery_status="delivered",
+            artifact_hash="b" * 64,
+            payload_hash="b" * 64,
+        ),
+    ]
+    for request in requests:
+        for occurred_at in (
+            datetime(2026, 1, 1, tzinfo=UTC),
+            datetime(2027, 6, 1, 12, tzinfo=UTC),
+        ):
+            command = request.to_command(occurred_at)
+            assert request.semantic_fingerprint() == semantic_command_fingerprint(
+                command
+            )
+            round_trip = CaseCommandRequest.from_command(command)
+            assert round_trip == request
+            assert round_trip.semantic_fingerprint() == request.semantic_fingerprint()
+
+    # ``channel_occurred_at`` becomes ``occurred_at``, which the Runtime
+    # fingerprint excludes, so it is not part of the request fingerprint.
+    assert (
+        _ingest_request(datetime(2026, 8, 26, 12, tzinfo=UTC)).semantic_fingerprint()
+        == _ingest_request(datetime(2026, 8, 27, 9, tzinfo=UTC)).semantic_fingerprint()
+    )
+
+
+_INGEST_COMMAND_ID = UUID("b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d")
+_INGEST_EVENT_ID = UUID("c1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d")
+
+
+def _ingest_request(channel_occurred_at: datetime) -> CaseCommandRequest:
+    return CaseCommandRequest(
+        schema_version="phase-06b1-v1",
+        command_id=_INGEST_COMMAND_ID,
+        case_id=SCRIPTED_CASE_ID,
+        command_type=CaseCommandType.INGEST_CHANNEL_EVENT,
+        expected_revision=2,
+        channel_occurred_at=channel_occurred_at,
+        channel_kind="local_mailbox",
+        binding_ref="fictional-provider-local-mailbox",
+        event_id=_INGEST_EVENT_ID,
+        content_hash="a" * 64,
+        payload_hash="c" * 64,
+    )
+
+
+def test_live_temporal_corrected_retry_of_conflicted_command_executes() -> None:
+    """T1 (audit C-4): a corrected body under the same command id is not
+    answered with the cached ``case_conflict`` of the stale body."""
+
+    async def scenario(database_url: str, address: str) -> None:
+        task_queue = f"proxyloop-phase05a-corrected-{uuid4()}"
+        settings = TemporalSettings(target_host=address, task_queue=task_queue)
+        client, namespace = await _connected(address)
+        settings = replace(settings, namespace=namespace)
+        runtime = ThinAgentRuntime(PostgresCaseRepository(database_url))
+        adapter = _RecordingAdapter(runtime)
+        temporal = TemporalCaseClient(client, settings)
+        worker = Worker(
+            client,
+            task_queue=task_queue,
+            workflows=[CaseWorkflow],
+            activities=[activity_for_adapter(adapter)],
+        )
+        command_id = uuid4()
+        async with worker:
+            created = await temporal.apply_command(_create_request())
+            with pytest.raises(TemporalDispatchError) as raised:
+                await temporal.apply_command(
+                    _append_request(command_id, created.after_revision + 5)
+                )
+            corrected = await temporal.apply_command(
+                _append_request(command_id, created.after_revision)
+            )
+
+        assert raised.value.category == "case_conflict"
+        assert corrected.command_id == command_id
+        assert corrected.deduplicated is False
+        assert corrected.before_revision == created.after_revision
+        assert corrected.after_revision > created.after_revision
+        assert adapter.outcomes[command_id] == ["case_conflict", "applied"]
+        state = runtime.repository.get(SCRIPTED_CASE_ID)
+        assert state is not None
+        assert len(state.transitions) == 2
+
+    _run_live(scenario)
+
+
+def test_live_temporal_identical_retry_keeps_cached_outcome() -> None:
+    """T2: identical retries do not re-execute a failed or successful command."""
+
+    async def scenario(database_url: str, address: str) -> None:
+        task_queue = f"proxyloop-phase05a-identical-{uuid4()}"
+        settings = TemporalSettings(target_host=address, task_queue=task_queue)
+        client, namespace = await _connected(address)
+        settings = replace(settings, namespace=namespace)
+        runtime = ThinAgentRuntime(PostgresCaseRepository(database_url))
+        adapter = _RecordingAdapter(runtime)
+        temporal = TemporalCaseClient(client, settings)
+        worker = Worker(
+            client,
+            task_queue=task_queue,
+            workflows=[CaseWorkflow],
+            activities=[activity_for_adapter(adapter)],
+        )
+        failed_id = uuid4()
+        succeeded_id = uuid4()
+        async with worker:
+            created = await temporal.apply_command(_create_request())
+            stale = _append_request(failed_id, created.after_revision + 5)
+            categories = []
+            for _ in range(2):
+                with pytest.raises(TemporalDispatchError) as raised:
+                    await temporal.apply_command(stale)
+                categories.append(raised.value.category)
+            success = _append_request(succeeded_id, created.after_revision)
+            first = await temporal.apply_command(success)
+            repeated = await temporal.apply_command(success)
+
+        assert categories == ["case_conflict", "case_conflict"]
+        assert adapter.outcomes[failed_id] == ["case_conflict"]
+        assert adapter.outcomes[succeeded_id] == ["applied"]
+        assert repeated == first
+        state = runtime.repository.get(SCRIPTED_CASE_ID)
+        assert state is not None
+        assert len(state.transitions) == 2
+
+    _run_live(scenario)
+
+
+def test_live_temporal_changed_body_after_success_is_runtime_conflict() -> None:
+    """T3: a reused command id with a different body after success reaches the
+    Runtime's receipt fingerprint check instead of the cached success."""
+
+    async def scenario(database_url: str, address: str) -> None:
+        task_queue = f"proxyloop-phase05a-reused-{uuid4()}"
+        settings = TemporalSettings(target_host=address, task_queue=task_queue)
+        client, namespace = await _connected(address)
+        settings = replace(settings, namespace=namespace)
+        runtime = ThinAgentRuntime(PostgresCaseRepository(database_url))
+        adapter = _RecordingAdapter(runtime)
+        temporal = TemporalCaseClient(client, settings)
+        worker = Worker(
+            client,
+            task_queue=task_queue,
+            workflows=[CaseWorkflow],
+            activities=[activity_for_adapter(adapter)],
+        )
+        command_id = uuid4()
+        async with worker:
+            created = await temporal.apply_command(_create_request())
+            applied = await temporal.apply_command(
+                _append_request(command_id, created.after_revision)
+            )
+            changed = CaseCommandRequest(
+                command_id=command_id,
+                case_id=SCRIPTED_CASE_ID,
+                command_type=CaseCommandType.APPEND_EVENT,
+                content="A different fictional message.",
+                event_type="consumer_message",
+                expected_revision=created.after_revision,
+            )
+            with pytest.raises(TemporalDispatchError) as raised:
+                await temporal.apply_command(changed)
+
+        assert applied.deduplicated is False
+        assert raised.value.category == "case_conflict"
+        assert adapter.outcomes[command_id] == ["applied", "case_conflict"]
+        state = runtime.repository.get(SCRIPTED_CASE_ID)
+        assert state is not None
+        assert len(state.transitions) == 2
+        assert state.transitions[-1].after_revision == applied.after_revision
+
+    _run_live(scenario)

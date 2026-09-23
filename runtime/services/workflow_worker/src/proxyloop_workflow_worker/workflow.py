@@ -55,16 +55,30 @@ def workflow_id_for_case(case_id: UUID) -> str:
     return f"{WORKFLOW_ID_PREFIX}{str(case_id).lower()}"
 
 
-def update_id_for_command(command_id: UUID) -> str:
-    """Return the stable Temporal Update ID for a command UUID."""
+def update_id_for_command(command_id: UUID, request_fingerprint: str) -> str:
+    """Return the Temporal Update ID for one command id and request body.
 
-    return f"{COMMAND_ID_PREFIX}{str(command_id).lower()}"
+    Temporal caches an Update outcome per Update ID within a run, so the ID
+    binds the semantic request fingerprint too: an identical retry reuses the
+    cached outcome, while a corrected body under the same command id reaches
+    the Runtime, whose receipt fingerprint rules decide.
+    """
+
+    return (
+        f"{COMMAND_ID_PREFIX}{str(command_id).lower()}:"
+        f"{request_fingerprint[:16].lower()}"
+    )
 
 
 def activity_id_for_command(command_id: UUID) -> str:
-    """Return the stable Temporal Activity ID for a command UUID."""
+    """Return the stable Temporal Activity ID for a command UUID.
 
-    return update_id_for_command(command_id)
+    Activities run one at a time under the Workflow command lock, and Temporal
+    only rejects an Activity ID that is still pending, so sequential attempts
+    for one command id (a corrected retry) may share it.
+    """
+
+    return f"{COMMAND_ID_PREFIX}{str(command_id).lower()}"
 
 
 def _deterministic_uuid4(seed: str) -> UUID:

@@ -347,6 +347,83 @@ def test_local_mailbox_api_marks_known_applied_duplicate() -> None:
     assert duplicate.json()["command_id"] == first.json()["command_id"]
 
 
+def test_local_mailbox_api_duplicate_racing_first_dispatch_is_deduplicated() -> None:
+    """A duplicate whose inbox read predates the first dispatch's commit still
+    finds the Case receipt, which is written in the same transaction that
+    marks the inbox applied, so the receipt alone proves the event applied."""
+
+    class _StaleInboxRepository(_ChannelRepository):
+        def __init__(self) -> None:
+            super().__init__()
+            self.first_copy: dict[UUID, InboxReceiptRecord] = {}
+
+        def reserve_channel_event(
+            self,
+            event: VerifiedLocalMailboxEvent,
+            *,
+            received_at: datetime,
+        ) -> InboxReceiptRecord:
+            receipt = super().reserve_channel_event(event, received_at=received_at)
+            stale = self.first_copy.setdefault(event.event_id, receipt)
+            return replace(stale, deduplicated=receipt.deduplicated)
+
+    repository = _StaleInboxRepository()
+    now = datetime.now(UTC)
+    runtime = ThinAgentRuntime(repository, clock=lambda: now)
+    runtime.apply_command(_create_command().model_copy(update={"occurred_at": now}))
+    dispatched: list[UUID] = []
+
+    class _Temporal:
+        async def apply_command(self, request: CaseCommandRequest) -> object:
+            dispatched.append(request.command_id)
+            try:
+                return runtime.apply_command(request.to_command(BASE_TIME))
+            except CaseConflictError as exc:
+                raise TemporalDispatchError("channel_conflict") from exc
+
+        async def check_readiness(self) -> object:
+            return object()
+
+    event_id = uuid4()
+    payload = (
+        '{"schema_version":"local-mailbox-v1",'
+        f'"event_id":"{event_id}",'
+        '"binding_ref":"fictional-provider-local-mailbox",'
+        f'"occurred_at":"{now.isoformat().replace("+00:00", "Z")}",'
+        '"kind":"provider_message",'
+        '"content":"Synthetic Provider message."}'
+    ).encode()
+    headers = build_fixture_headers(payload)
+
+    async def request() -> tuple[httpx.Response, httpx.Response]:
+        app = create_app(runtime, temporal_client=_Temporal())
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            first = await client.post(
+                "/channels/local_mailbox/events",
+                content=payload,
+                headers=headers,
+            )
+            duplicate = await client.post(
+                "/channels/local_mailbox/events",
+                content=payload,
+                headers=headers,
+            )
+        return first, duplicate
+
+    first, duplicate = asyncio.run(request())
+    inbox = repository.get_inbox_receipt(event_id)
+    assert inbox is not None
+    assert inbox.processing_state == "applied"
+    assert repository.first_copy[event_id].processing_state == "reserved"
+    assert first.status_code == 200
+    assert duplicate.status_code == 200
+    assert duplicate.json()["deduplicated"] is True
+    assert duplicate.json()["command_id"] == first.json()["command_id"]
+    assert len(dispatched) == 1
+
+
 @pytest.mark.parametrize(
     "category, status, message",
     [
