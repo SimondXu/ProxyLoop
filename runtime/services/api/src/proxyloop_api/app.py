@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
-from contextlib import suppress
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any, Literal, Protocol
@@ -34,10 +36,10 @@ from proxyloop_connectors import (
     verify_local_mailbox_event,
 )
 from proxyloop_contracts import (
+    ApprovalDecision,
     ApprovalRequest,
     Case,
     CaseContextSnapshot,
-    CompletionDecision,
     Money,
     ProviderOffer,
     VisibleCaseEvent,
@@ -53,10 +55,12 @@ from pydantic import (
     ConfigDict,
     Field,
     TypeAdapter,
+    ValidationError,
     field_validator,
     model_validator,
 )
 
+from .direct_expiry import DirectApprovalExpiry, Sleep
 from .operations import (
     CORRELATION_ID_HEADER,
     JsonLoggingOperationRecorder,
@@ -133,12 +137,57 @@ def create_app(
     *,
     recorder: OperationRecorder | None = None,
     temporal_client: TemporalCommandClient | None = None,
+    approval_expiry_sleep: Sleep | None = None,
 ) -> FastAPI:
     service = runtime if runtime is not None else ThinAgentRuntime()
     operation_recorder = (
         recorder if recorder is not None else JsonLoggingOperationRecorder()
     )
-    api = FastAPI(title="ProxyLoop Thin Agent Runtime", version="0.0.0")
+    # Direct mode has no Workflow timer, so a pending approval expires from an
+    # in-process timer on this app's loop; Temporal mode owns its own timer.
+    approval_expiry = (
+        DirectApprovalExpiry(
+            service,
+            now=service.now,
+            sleep=approval_expiry_sleep or asyncio.sleep,
+        )
+        if temporal_client is None
+        else None
+    )
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            if approval_expiry is not None:
+                await approval_expiry.aclose()
+
+    api = FastAPI(
+        title="ProxyLoop Thin Agent Runtime", version="0.0.0", lifespan=lifespan
+    )
+
+    async def apply(command: CaseCommandRequest) -> CaseTransitionRef:
+        """Dispatch through the Workflow or, in direct mode, through the same
+        Runtime ``apply_command`` the Workflow activity calls."""
+
+        if temporal_client is not None:
+            return await temporal_client.apply_command(command)
+        occurred_at = service.now()
+        if command.command_type in _CLOCK_GUARDED_COMMANDS:
+            # An explicit command time bypasses the Runtime's own event-time
+            # guard, so keep direct mode's refusal of a clock that does not
+            # advance past the latest visible event.
+            state = service.repository.get(command.case_id)
+            if (
+                state is not None
+                and occurred_at <= state.snapshot.visible_events[-1].occurred_at
+            ):
+                raise CaseConflictError("clock time must advance event time")
+        transition = service.apply_command(command.to_command(occurred_at))
+        if approval_expiry is not None:
+            approval_expiry.observe(transition, observed_at=occurred_at)
+        return transition
 
     @api.middleware("http")
     async def observe_operation(request: Request, call_next: Any) -> Any:
@@ -376,6 +425,7 @@ def create_app(
             )
         payload = readiness_payload(service, result)
         if temporal_client is None:
+            payload["orchestration_mode"] = "direct"
             return JSONResponse(status_code=200, content=payload)
         temporal_result = await temporal_client.check_readiness()
         payload["orchestration_mode"] = "temporal"
@@ -399,8 +449,11 @@ def create_app(
     async def create_case(
         request: Request, command: CreateCaseRequest
     ) -> dict[str, Any]:
-        if temporal_client is None:
-            result = service.create_case(
+        transition = await apply(
+            _command_request(
+                command_id=_command_id(request),
+                case_id=SCRIPTED_CASE_ID,
+                command_type=CaseCommandType.CREATE_CASE,
                 current_monthly_total=command.current_monthly_total,
                 target_monthly_total=command.target_monthly_total,
                 mobile_hotspot_required=command.mobile_hotspot_required,
@@ -408,21 +461,8 @@ def create_app(
                     command.device_financing_change_forbidden
                 ),
             )
-        else:
-            transition = await temporal_client.apply_command(
-                CaseCommandRequest(
-                    command_id=_command_id(request),
-                    case_id=SCRIPTED_CASE_ID,
-                    command_type=CaseCommandType.CREATE_CASE,
-                    current_monthly_total=command.current_monthly_total,
-                    target_monthly_total=command.target_monthly_total,
-                    mobile_hotspot_required=command.mobile_hotspot_required,
-                    device_financing_change_forbidden=(
-                        command.device_financing_change_forbidden
-                    ),
-                )
-            )
-            result = service.current_result(SCRIPTED_CASE_ID, transition=transition)
+        )
+        result = service.current_result(SCRIPTED_CASE_ID, transition=transition)
         _annotate_result(request, result)
         return _result_payload(result)
 
@@ -454,25 +494,17 @@ def create_app(
         command: EventCommand,
         case_id: UUID,
     ) -> dict[str, Any]:
-        if temporal_client is None:
-            result = service.append_event(
-                case_id,
+        transition = await apply(
+            _command_request(
+                command_id=_command_id(request),
+                case_id=case_id,
+                command_type=CaseCommandType.APPEND_EVENT,
                 content=command.content,
                 event_type=command.event_type,
                 expected_revision=command.expected_revision,
             )
-        else:
-            transition = await temporal_client.apply_command(
-                CaseCommandRequest(
-                    command_id=_command_id(request),
-                    case_id=case_id,
-                    command_type=CaseCommandType.APPEND_EVENT,
-                    content=command.content,
-                    event_type=command.event_type,
-                    expected_revision=command.expected_revision,
-                )
-            )
-            result = service.current_result(case_id, transition=transition)
+        )
+        result = service.current_result(case_id, transition=transition)
         _annotate_result(request, result)
         return _result_payload(result)
 
@@ -483,10 +515,12 @@ def create_app(
         case_id: UUID,
         approval_id: UUID,
     ) -> dict[str, Any]:
-        if temporal_client is None:
-            result = service.approve(
-                case_id,
-                approval_id,
+        transition = await apply(
+            _command_request(
+                command_id=_command_id(request),
+                case_id=case_id,
+                command_type=CaseCommandType.DECIDE_APPROVAL,
+                approval_id=approval_id,
                 decision=command.decision,
                 expected_revision=command.expected_revision,
                 expected_case_revision=command.expected_case_revision,
@@ -494,22 +528,8 @@ def create_app(
                     command.expected_action_intent_revision
                 ),
             )
-        else:
-            transition = await temporal_client.apply_command(
-                CaseCommandRequest(
-                    command_id=_command_id(request),
-                    case_id=case_id,
-                    command_type=CaseCommandType.DECIDE_APPROVAL,
-                    approval_id=approval_id,
-                    decision=command.decision,
-                    expected_revision=command.expected_revision,
-                    expected_case_revision=command.expected_case_revision,
-                    expected_action_intent_revision=(
-                        command.expected_action_intent_revision
-                    ),
-                )
-            )
-            result = service.current_result(case_id, transition=transition)
+        )
+        result = service.current_result(case_id, transition=transition)
         _annotate_result(request, result)
         return _result_payload(result)
 
@@ -606,6 +626,7 @@ def create_app(
         return _channel_result_payload(event, transition)
 
     api.state.operation_recorder = operation_recorder
+    api.state.approval_expiry = approval_expiry
     api.state.orchestration_mode = (
         "temporal" if temporal_client is not None else "direct"
     )
@@ -623,6 +644,25 @@ def _command_id(request: Request) -> UUID:
     if parsed.version != 4 or str(parsed) != value:
         raise TemporalDispatchError("invalid_command")
     return parsed
+
+
+_CLOCK_GUARDED_COMMANDS = frozenset(
+    {CaseCommandType.APPEND_EVENT, CaseCommandType.DECIDE_APPROVAL}
+)
+
+
+def _command_request(**values: Any) -> CaseCommandRequest:
+    """Build a browser command, rejecting invalid ids as ``invalid_command``.
+
+    The command model requires UUIDv4 Case and approval ids; a path id that
+    parses as a UUID of another version is bad input (422) in both modes, the
+    same category as a malformed ``Idempotency-Key``.
+    """
+
+    try:
+        return CaseCommandRequest(**values)
+    except ValidationError as exc:
+        raise TemporalDispatchError("invalid_command") from exc
 
 
 def _annotate_result(request: Request, result: RuntimeResult) -> None:
@@ -794,7 +834,7 @@ def _result_payload(result: RuntimeResult) -> dict[str, Any]:
     """
 
     snapshot = result.snapshot
-    completion = _browser_completion(snapshot.completion_decision)
+    completion = _browser_completion(snapshot)
     route = (
         result.route.outcome.value
         if hasattr(result.route, "outcome")
@@ -843,13 +883,28 @@ def _browser_money(value: Money | None) -> dict[str, Any] | None:
     return {"amount_minor": value.amount_minor, "currency": value.currency}
 
 
-def _browser_completion(completion: CompletionDecision | None) -> dict[str, Any]:
+_UNDECIDED_REASON_CODES = {
+    ApprovalDecision.REJECTED: "approval_rejected",
+    ApprovalDecision.EXPIRED: "approval_expired",
+}
+
+
+def _browser_completion(snapshot: CaseContextSnapshot) -> dict[str, Any]:
+    completion = snapshot.completion_decision
     if completion is None:
+        # A projection placeholder, not a canonical CompletionDecision: the
+        # reason names the approval state that actually holds completion back.
+        approval = next(iter(snapshot.approval_requests), None)
+        reason = (
+            _UNDECIDED_REASON_CODES.get(approval.decision)
+            if approval is not None
+            else None
+        )
         return {
             "decision": "not_done",
             "evidence_ids": [],
             "missing_evidence": ["verified_provider_confirmation"],
-            "reason_codes": ["approval_or_execution_pending"],
+            "reason_codes": [reason or "approval_or_execution_pending"],
         }
     return {
         "decision": completion.decision,

@@ -10,10 +10,13 @@ Unsupported first messages remain local with a scope explanation; the small
 English lexical gate is not general language understanding.
 
 Run the Runtime and Web processes separately for iterative work. This direct
-mode, in its default in-memory configuration, holds one Case per Runtime
-process, ignores
-`Idempotency-Key`, and cannot resume a Case after a page reload; use
-`make portfolio-demo` for the durable profile:
+mode honours `Idempotency-Key` through the same Runtime command path as the
+durable profile and expires a pending approval from an in-process timer. In its
+default in-memory configuration it holds one Case per Runtime process, and a
+process restart loses both that Case and its expiry timer. The Web does not
+resume a direct-mode Case after a page reload; it says so and asks you to
+restart the Runtime process to start over. Use `make portfolio-demo` for the
+durable profile:
 
 ```text
 make runtime-server

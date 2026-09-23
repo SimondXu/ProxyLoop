@@ -20,7 +20,10 @@ On mount or reconnect, a versioned local locator first checks
 the locator and exact pending command; 404 reports a bounded store mismatch. A
 pending create, event, or approval keeps one lowercase UUIDv4
 `Idempotency-Key` and exact request body across an uncertain retry (the
-Runtime honours the key in the durable Temporal profile; direct mode ignores it).
+Runtime honours the key in both the durable Temporal profile and direct mode).
+Recovery after a page reload is claimed only for the durable profile; an in-memory direct
+Runtime reports its one-Case-per-process limit and asks for a Runtime process
+restart instead.
 
 The first natural-language message establishes the conversation intent in the
 UI. Supported input starts a local progressive intake and does not create a
@@ -50,6 +53,9 @@ for arbitrary or Chinese input.
 
 If the Runtime returns HTTP 409/503, network failure, non-JSON, or a malformed
 payload, the conversation stays open with a retry/restart/refresh explanation.
+A 409 on create (the Runtime already holds its one Case) is not followed by a
+read; its copy offers a retry only if the action is still offered, or a Runtime process restart, rather than
+claiming a read happened.
 If a created Case receives an arbitrary correction, the UI records it only as a
 local note and says to restart the local Runtime, then choose `New task`.
 Changing the created Case is unsupported in this demo because its fixture IDs
