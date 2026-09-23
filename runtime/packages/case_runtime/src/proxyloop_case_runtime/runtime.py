@@ -40,6 +40,7 @@ from proxyloop_contracts import (
     CasePhase,
     CompletionDecision,
     CompletionOutcome,
+    CompletionReceipt,
     EventActor,
     Evidence,
     EvidenceType,
@@ -56,12 +57,15 @@ from proxyloop_contracts import (
     RoutingOutcome,
     StrategyPacket,
     VisibleCaseEvent,
+    approval_state_fingerprint,
     canonical_fingerprint,
+    material_offers_fingerprint,
     planning_basis_fingerprint,
 )
 from proxyloop_provider_simulator.episode import Phase01AEpisode
 from proxyloop_provider_simulator.provider import FictionalMobileProvider
 from proxyloop_telecom_domain import (
+    AppliedOfferConfirmation,
     CompletionVerification,
     OfferComplianceContext,
     OfferComplianceTerms,
@@ -93,6 +97,7 @@ from .repository import (
 )
 
 RuntimeDecision = Literal["approved", "rejected"]
+SnapshotVersion = Literal["1.0", "1.1"]
 AdapterMode = Literal["scripted", "model"]
 StorageMode = Literal["memory", "postgres"]
 TransitionSchemaVersion = Literal["phase-05a-v1", "phase-06b1-v1"]
@@ -644,6 +649,7 @@ class ThinAgentRuntime:
                 snapshot_revision=snapshot.revision + 1,
                 phase=snapshot.case.phase,
                 manifest=snapshot.capability_manifest,
+                receipt=snapshot.completion_receipt,
             )
             transition = _transition_ref(
                 command_id=command.command_id,
@@ -1223,12 +1229,21 @@ class ThinAgentRuntime:
                 phase=CasePhase.NEGOTIATING,
                 manifest=snapshot.capability_manifest,
             )
+            route = (
+                CaseCoordinator(snapshot=expired_snapshot)
+                .advance(
+                    RouteRequest(
+                        snapshot=expired_snapshot, created_at=approval.expires_at
+                    )
+                )
+                .route
+            )
             transition = _transition_ref(
                 command_id=command_id,
                 command_type=CaseCommandType.EXPIRE_APPROVAL,
                 before_revision=snapshot.revision,
                 snapshot=expired_snapshot,
-                route="fast_now",
+                route=route,
                 command_fingerprint=command_fingerprint,
             )
             updated = CaseRuntimeState(
@@ -1245,7 +1260,7 @@ class ThinAgentRuntime:
             )
             return RuntimeResult(
                 snapshot=expired_snapshot,
-                route="fast_now",
+                route=route,
                 approval=expired,
                 execution_count=updated.execution_count,
             )
@@ -1348,6 +1363,14 @@ class ThinAgentRuntime:
             if completion.decision is CompletionOutcome.COMPLETE
             else CasePhase.CANDIDATE_COMPLETE
         )
+        # A claim completes in the version it was taken under: its source pins
+        # bind that version's planning basis. Only a 1.1 snapshot carries a
+        # receipt.
+        receipt = (
+            _completion_receipt(approval, confirmation, confirmation_evidence)
+            if final_phase is CasePhase.COMPLETE and snapshot.schema_version == "1.1"
+            else None
+        )
         final_snapshot = _snapshot(
             case=snapshot.case,
             ledger=snapshot.fact_ledger,
@@ -1366,6 +1389,8 @@ class ThinAgentRuntime:
             phase=final_phase,
             manifest=snapshot.capability_manifest,
             pending_execution=False,
+            receipt=receipt,
+            schema_version=snapshot.schema_version,
         )
         transitions = state.transitions
         if command_id is not None:
@@ -1445,6 +1470,11 @@ class ThinAgentRuntime:
             phase=CasePhase.NEGOTIATING,
             manifest=state.snapshot.capability_manifest,
         )
+        route = (
+            CaseCoordinator(snapshot=snapshot)
+            .advance(RouteRequest(snapshot=snapshot, created_at=decided_at))
+            .route
+        )
         transitions = state.transitions
         if command_id is not None:
             transitions = (
@@ -1454,7 +1484,7 @@ class ThinAgentRuntime:
                     command_type=CaseCommandType.DECIDE_APPROVAL,
                     before_revision=state.snapshot.revision,
                     snapshot=snapshot,
-                    route="fast_now",
+                    route=route,
                     approval=decided,
                     command_fingerprint=command_fingerprint,
                 ),
@@ -1471,7 +1501,7 @@ class ThinAgentRuntime:
             expected_revision=state.snapshot.revision,
             state=updated,
         )
-        return RuntimeResult(snapshot=snapshot, route="fast_now")
+        return RuntimeResult(snapshot=snapshot, route=route)
 
     def _repeat_approved(
         self,
@@ -1578,6 +1608,7 @@ class ThinAgentRuntime:
             phase=event_snapshot.case.phase,
             manifest=event_snapshot.capability_manifest,
             pending_execution=event_snapshot.pending_execution,
+            receipt=event_snapshot.completion_receipt,
         )
 
     def now(self) -> datetime:
@@ -1755,17 +1786,19 @@ def _snapshot(
     events: tuple[VisibleCaseEvent, ...],
     snapshot_revision: int,
     phase: CasePhase,
-    manifest: CapabilityManifest | None = None,
+    manifest: CapabilityManifest,
     pending_execution: bool = False,
+    receipt: CompletionReceipt | None = None,
+    schema_version: SnapshotVersion = "1.1",
 ) -> CaseContextSnapshot:
     effective_case = case.model_copy(update={"phase": phase})
-    effective_manifest = manifest or _manifest(case)
     basis = _basis(
         effective_case,
         ledger,
         offers,
         approvals,
-        effective_manifest,
+        manifest,
+        schema_version=schema_version,
     )
     pins = ModelInputPins(
         contract_type="model_input_pins",
@@ -1780,11 +1813,11 @@ def _snapshot(
         planning_basis_fingerprint=basis.planning_basis_fingerprint,
         event_cursor=events[-1].event_cursor if events else 0,
         provider_config_ref=RUNTIME_PROVIDER_CONFIG,
-        capability_manifest_version=effective_manifest.manifest_version,
+        capability_manifest_version=manifest.manifest_version,
     )
     return CaseContextSnapshot(
         contract_type="case_context_snapshot",
-        schema_version="1.0",
+        schema_version=schema_version,
         revision=snapshot_revision,
         case=effective_case,
         fact_ledger=ledger,
@@ -1799,8 +1832,43 @@ def _snapshot(
         planning_basis=basis,
         pins=pins,
         provider_config_ref=RUNTIME_PROVIDER_CONFIG,
-        capability_manifest=effective_manifest,
+        capability_manifest=manifest,
         pending_execution=pending_execution,
+        completion_receipt=receipt,
+    )
+
+
+def _completion_receipt(
+    approval: ApprovalRequest,
+    confirmation: AppliedOfferConfirmation,
+    confirmation_evidence: Evidence,
+) -> CompletionReceipt:
+    """Bind the Provider's applied-offer confirmation to its approval."""
+
+    return CompletionReceipt(
+        contract_type="completion_receipt",
+        schema_version="1.1",
+        revision=1,
+        case_id=confirmation.case_id,
+        provider_id=confirmation.provider_id,
+        confirmation_id=confirmation.confirmation_id,
+        offer_ref=confirmation.offer_ref,
+        action_intent_id=confirmation.action_intent_id,
+        approval_id=confirmation.approval_id,
+        approval_revision=approval.revision,
+        confirmed_at=confirmation.confirmed_at,
+        previous_monthly_price=confirmation.previous_monthly_price,
+        new_monthly_price=confirmation.new_monthly_price,
+        total_cost_12_months=confirmation.total_cost_12_months,
+        plan_id=confirmation.plan_id,
+        plan_name=confirmation.plan_name,
+        features=confirmation.features,
+        removed_add_ons=confirmation.removed_add_ons,
+        applied_changes=confirmation.applied_changes,
+        term_months=confirmation.term_months,
+        effective_date=confirmation.effective_date,
+        confirmation_evidence_id=confirmation_evidence.evidence_id,
+        confirmation_content_hash=confirmation_evidence.content_hash,
     )
 
 
@@ -1943,7 +2011,21 @@ def _basis(
     offers: tuple[ProviderOffer, ...],
     approvals: tuple[ApprovalRequest, ...],
     manifest: CapabilityManifest,
+    *,
+    schema_version: SnapshotVersion,
 ) -> PlanningBasis:
+    if schema_version == "1.1":
+        offers_fingerprint = material_offers_fingerprint(offers)
+        approvals_fingerprint = approval_state_fingerprint(approvals)
+    else:
+        # The 1.0 formula, kept only to complete an execution claim that was
+        # taken on a 1.0 snapshot.
+        offers_fingerprint = canonical_fingerprint(
+            tuple(sorted(offers, key=lambda item: str(item.offer_id)))
+        )
+        approvals_fingerprint = canonical_fingerprint(
+            tuple(sorted(approvals, key=lambda item: str(item.approval_id)))
+        )
     components = {
         "goal_fingerprint": canonical_fingerprint(case.goal),
         "constraints_fingerprint": canonical_fingerprint(
@@ -1964,18 +2046,14 @@ def _basis(
                 )
             )
         ),
-        "material_offers_fingerprint": canonical_fingerprint(
-            tuple(sorted(offers, key=lambda item: str(item.offer_id)))
-        ),
-        "approval_state_fingerprint": canonical_fingerprint(
-            tuple(sorted(approvals, key=lambda item: str(item.approval_id)))
-        ),
+        "material_offers_fingerprint": offers_fingerprint,
+        "approval_state_fingerprint": approvals_fingerprint,
         "provider_config_fingerprint": canonical_fingerprint(RUNTIME_PROVIDER_CONFIG),
         "capability_manifest_fingerprint": canonical_fingerprint(manifest),
     }
     return PlanningBasis(
         contract_type="planning_basis",
-        schema_version="1.0",
+        schema_version=schema_version,
         revision=1,
         **components,
         planning_basis_fingerprint=planning_basis_fingerprint(**components),

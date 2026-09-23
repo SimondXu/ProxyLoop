@@ -119,6 +119,7 @@ class DeterministicRouter:
         current_strategy_allows_fast = (
             snapshot.strategy is not None
             and snapshot.strategy.expires_at > request.created_at
+            and not _strategy_basis_incompatible(snapshot)
         )
         if mandatory_reasons and (
             not request.bounded_acknowledgement_allowed
@@ -144,9 +145,26 @@ class DeterministicRouter:
             reasons.append("case_initialization")
         elif snapshot.strategy.expires_at <= request.created_at:
             reasons.append("strategy_expired")
+        if _strategy_basis_incompatible(snapshot):
+            reasons.append("strategy_basis_incompatible")
         if snapshot.pending_slow_work:
             reasons.append("slow_work_pending")
         return tuple(dict.fromkeys(reasons))
+
+
+def _strategy_basis_incompatible(snapshot: CaseContextSnapshot) -> bool:
+    """A 1.1 strategy names the basis it was compiled against.
+
+    A material change, or a 1.0 strategy carried into a 1.1 snapshot, makes it
+    incompatible. The version comes from the snapshot, never from the pins.
+    """
+
+    return (
+        snapshot.schema_version == "1.1"
+        and snapshot.strategy is not None
+        and snapshot.strategy.planning_basis_fingerprint
+        != snapshot.pins.planning_basis_fingerprint
+    )
 
 
 def _approval_is_current(
