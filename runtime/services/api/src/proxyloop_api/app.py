@@ -547,11 +547,10 @@ def create_app(
             (item for item in state.transitions if item.command_id == inbox.command_id),
             None,
         )
-        if (
-            inbox.deduplicated
-            and inbox.processing_state == "applied"
-            and prior is not None
-        ):
+        # The Case receipt is written in the same transaction that marks the
+        # inbox applied, so the receipt alone proves the event applied; the
+        # inbox copy read above may predate a racing first dispatch's commit.
+        if prior is not None:
             request.state.revision = prior.after_revision
             request.state.delivery_state = prior.delivery_status
             return _channel_result_payload(

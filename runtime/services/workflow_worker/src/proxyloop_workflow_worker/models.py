@@ -12,7 +12,7 @@ from proxyloop_case_runtime.commands import (
     CaseCommandType,
     CaseTransitionRef,
 )
-from proxyloop_contracts import Money
+from proxyloop_contracts import Money, canonical_fingerprint
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 WORKFLOW_SCHEMA_VERSION: Literal["phase-05a-v1", "phase-06b1-v1"] = "phase-05a-v1"
@@ -128,6 +128,20 @@ class CaseCommandRequest(BaseModel):
         }:
             values["channel_occurred_at"] = command.occurred_at
         return cls.model_validate(values)
+
+    def semantic_fingerprint(self) -> str:
+        """Return the Runtime receipt fingerprint of the command this becomes.
+
+        ``to_command`` passes every field except ``channel_occurred_at`` to
+        ``CaseCommand`` unchanged, and ``semantic_command_fingerprint``
+        excludes ``occurred_at`` (the only field ``to_command`` adds), so
+        hashing exactly those fields equals the fingerprint the Runtime stores
+        on the receipt without needing a Workflow time.
+        """
+
+        return canonical_fingerprint(
+            self.model_dump(mode="json", exclude={"channel_occurred_at"})
+        )
 
     def to_command(self, occurred_at: datetime) -> CaseCommand:
         if occurred_at.tzinfo is None or occurred_at.astimezone(UTC) != occurred_at:
