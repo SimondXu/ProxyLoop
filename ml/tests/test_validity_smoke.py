@@ -11,6 +11,7 @@ from proxyloop_evaluation.fresh_fixtures import (
     build_fresh_phase03a1_bundle,
     build_fresh_safe_observation,
 )
+from proxyloop_evaluation.models import EvaluationSummaryV2
 from proxyloop_evaluation.runner_v2 import snapshot_without_strategy
 from proxyloop_evaluation.validity_smoke import (
     SMOKE_CAPABILITIES,
@@ -19,13 +20,17 @@ from proxyloop_evaluation.validity_smoke import (
     select_validity_smoke_fixtures,
     with_public_provider_state,
 )
+from proxyloop_evaluation.validity_smoke_replay import check_validity_smoke_replay
 
 from scripts.run_phase_03a1_validity_smoke import (
     R4_PATH,
     REPORT_PATH,
     _check_report,
+    _expected_failure_slices,
     _fingerprint,
+    _metrics,
     _sha256,
+    _summary_counts,
 )
 
 
@@ -144,6 +149,175 @@ def test_validity_smoke_checker_rejects_refingerprinted_r4_tamper(
 
     assert not passed
     assert failures
+
+
+_FEE_TRAP_EPISODE = (
+    "episode-r2-phase-03a1-r2::fee-total-cost-trap@2.0"
+    "::phase-03a1-r2::retention-gated-v1@2.0"
+)
+
+
+def _relabel_consistently(
+    payload: dict[str, Any], mutate_row: Callable[[dict[str, Any]], None]
+) -> None:
+    """Edit one row, then recompute every derived count with the script's helpers.
+
+    This is the audit D2-2 probe: all self-consistency checks see a coherent
+    artifact, so only a replay of the stored raw outputs can catch the edit.
+    """
+
+    summary = payload["summary"]
+    row = next(
+        item for item in summary["episodes"] if item["episode_id"] == _FEE_TRAP_EPISODE
+    )
+    mutate_row(row)
+    rows = summary["episodes"]
+    selected = select_validity_smoke_fixtures(build_fresh_phase03a1_bundle().fixtures)
+    summary.update(_summary_counts(rows))
+    summary["failure_slices"] = _expected_failure_slices(rows, selected)
+    payload["smoke_metrics"] = _metrics(rows, payload["reference_capabilities"])
+
+
+def _flip_fee_trap_to_valid(row: dict[str, Any]) -> None:
+    row.update(
+        end_to_end_valid=True,
+        provider_outcome_valid=True,
+        reference_match=True,
+        false_completion=False,
+        failure_codes=[],
+    )
+
+
+def test_validity_smoke_checker_rejects_relabelled_row(tmp_path: Path) -> None:
+    """T1: a label flip with every count and fingerprint recomputed is caught."""
+
+    report_path = _refingerprinted_report(
+        tmp_path,
+        lambda payload: _relabel_consistently(payload, _flip_fee_trap_to_valid),
+    )
+    tampered = json.loads(report_path.read_text(encoding="utf-8"))
+    assert tampered["smoke_metrics"]["end_to_end_valid_count"] == 6
+
+    passed, failures = _check_report(report_path=report_path)
+
+    assert not passed
+    assert (
+        f"summary replay: {_FEE_TRAP_EPISODE} differs from its stored raw outputs"
+        in failures
+    ), failures
+
+
+def test_validity_smoke_replay_reproduces_committed_summary() -> None:
+    """T2: the current evaluator re-derives every committed r5 label."""
+
+    payload = json.loads(REPORT_PATH.read_text(encoding="utf-8"))
+    summary = EvaluationSummaryV2.model_validate(payload["summary"], strict=False)
+    prepared = tuple(
+        with_public_provider_state(fixture)
+        for fixture in select_validity_smoke_fixtures(
+            build_fresh_phase03a1_bundle().fixtures
+        )
+    )
+
+    assert check_validity_smoke_replay(summary, fixtures=prepared) == ()
+
+
+def _break_fast_output(row: dict[str, Any]) -> None:
+    # The Fast prompt is built before the Fast output exists, so this edit
+    # leaves prompt provenance intact; only the replay can see it.
+    row["fast_raw_output"] = "{"
+
+
+def test_validity_smoke_checker_rejects_tampered_raw_output(tmp_path: Path) -> None:
+    """T3: committed labels unchanged, stored raw output edited → replay differs."""
+
+    def mutate(payload: dict[str, Any]) -> None:
+        row = next(
+            item
+            for item in payload["summary"]["episodes"]
+            if item["episode_id"] != _FEE_TRAP_EPISODE
+        )
+        assert row["end_to_end_valid"] is True
+        _break_fast_output(row)
+
+    report_path = _refingerprinted_report(tmp_path, mutate)
+
+    passed, failures = _check_report(report_path=report_path)
+
+    assert not passed
+    moved = (
+        "fast_json_valid_count",
+        "fast_schema_valid_count",
+        "fast_canonical_valid_count",
+        "end_to_end_valid_count",
+        "failure_slices",
+    )
+    assert [failure for failure in failures if "replay" in failure] == [
+        "summary replay: episode-r2-phase-03a1-r2::add-on-removal@2.0"
+        "::phase-03a1-r2::retention-gated-v1@2.0 differs from its stored raw outputs",
+        *(
+            f"summary replay: {field} differs from the stored raw outputs"
+            for field in moved
+        ),
+    ], failures
+
+
+def _fee_trap_row(payload: dict[str, Any]) -> dict[str, Any]:
+    return next(
+        item
+        for item in payload["summary"]["episodes"]
+        if item["episode_id"] == _FEE_TRAP_EPISODE
+    )
+
+
+def _fail_first_hosted_call(payload: dict[str, Any]) -> None:
+    _fee_trap_row(payload)["hosted_calls"][0]["status"] = "failed_provider_call"
+
+
+def _change_slow_capability(payload: dict[str, Any]) -> None:
+    row = _fee_trap_row(payload)
+    slow = json.loads(row["slow_raw_output"])
+    assert slow["next_capability"]["capability"] == "accept_offer"
+    slow["next_capability"] = {"capability": "decline"}
+    row["slow_raw_output"] = json.dumps(slow, separators=(",", ":"))
+
+
+def _change_output_fingerprint(payload: dict[str, Any]) -> None:
+    _fee_trap_row(payload)["output_fingerprint"] = "0" * 64
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        pytest.param(_fail_first_hosted_call, id="hosted-call-status"),
+        pytest.param(_change_slow_capability, id="slow-next-capability"),
+        pytest.param(_change_output_fingerprint, id="output-fingerprint"),
+    ],
+)
+def test_validity_smoke_checker_rejects_evidence_tamper_on_replay(
+    tmp_path: Path,
+    mutate: Callable[[dict[str, Any]], None],
+) -> None:
+    report_path = _refingerprinted_report(tmp_path, mutate)
+
+    passed, failures = _check_report(report_path=report_path)
+
+    assert not passed
+    assert any(failure.startswith("summary replay") for failure in failures), failures
+
+
+def test_validity_smoke_checker_reports_non_json_slow_output(tmp_path: Path) -> None:
+    report_path = _refingerprinted_report(
+        tmp_path,
+        lambda payload: _fee_trap_row(payload).__setitem__("slow_raw_output", "{"),
+    )
+
+    passed, failures = _check_report(report_path=report_path)
+
+    assert not passed
+    assert any(
+        failure.startswith("smoke metrics cannot be derived") for failure in failures
+    ), failures
 
 
 def test_smoke_selects_one_frozen_episode_per_capability() -> None:
