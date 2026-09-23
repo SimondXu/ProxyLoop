@@ -739,7 +739,7 @@ class ThinAgentRuntime:
             events=(provider_event,),
             snapshot_revision=1,
             phase=CasePhase.INITIATED,
-            manifest=_manifest(created_at),
+            manifest=_manifest(case),
         )
         state = CaseRuntimeState(
             snapshot=snapshot,
@@ -910,6 +910,7 @@ class ThinAgentRuntime:
                 event_snapshot.strategy,
                 event_snapshot.offers[0],
                 requested_at=occurred_at,
+                manifest=event_snapshot.capability_manifest,
             )
             policy_snapshot = _snapshot(
                 case=event_snapshot.case,
@@ -1643,6 +1644,7 @@ def _build_approval(
     offer: ProviderOffer,
     *,
     requested_at: datetime,
+    manifest: CapabilityManifest,
 ) -> tuple[ActionIntent, ApprovalRequest]:
     if strategy is None:
         raise RuntimeError("a strategy is required before an approval")
@@ -1687,6 +1689,8 @@ def _build_approval(
         requested_at=requested_at,
         expires_at=offer.expires_at,
     )
+    if approval.expires_at > manifest.expires_at:
+        raise RuntimeError("an approval cannot outlive the capability manifest")
     return intent, approval
 
 
@@ -1750,7 +1754,7 @@ def _snapshot(
     pending_execution: bool = False,
 ) -> CaseContextSnapshot:
     effective_case = case.model_copy(update={"phase": phase})
-    effective_manifest = manifest or _manifest(case.created_at)
+    effective_manifest = manifest or _manifest(case)
     basis = _basis(
         effective_case,
         ledger,
@@ -1903,22 +1907,26 @@ def _ledger(case_id: UUID, created_at: datetime) -> FactLedger:
     )
 
 
-def _manifest(issued_at: datetime) -> CapabilityManifest:
+def _manifest(case: Case) -> CapabilityManifest:
+    # Minted once per Case; it must outlive every wait the Case may take (A-11).
+    deadline = case.goal.deadline
+    if deadline is None:
+        raise RuntimeError("a runtime Case requires a goal deadline")
     return CapabilityManifest(
         contract_type="capability_manifest",
         schema_version="1.0",
         revision=1,
         namespace="simulator",
         manifest_version=RUNTIME_MANIFEST_VERSION,
-        issued_at=issued_at,
-        expires_at=issued_at + timedelta(days=1),
+        issued_at=case.created_at,
+        expires_at=deadline,
         capabilities=(
             CapabilityDefinition(
                 capability_id="simulator.accept_fictional_offer",
                 version="1.0",
                 description="Accept one current fictional Provider offer.",
                 allowed_action_types=(ActionType.ACCEPT_OFFER,),
-                expires_at=issued_at + timedelta(days=1),
+                expires_at=deadline,
             ),
         ),
     )
