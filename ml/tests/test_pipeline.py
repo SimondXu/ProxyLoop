@@ -243,3 +243,37 @@ def test_missing_provenance_quarantine_retains_external_usage() -> None:
     assert report["external_input_token_count"] == 9
     assert report["estimated_external_cost_usd"] == 0.25
     assert report["automated_audit_status"] == "failed"
+
+
+def test_schema_invalid_candidate_is_not_labelled_missing_provenance() -> None:
+    """Audit D3-7: a record with provenance that fails schema validation is
+    ``schema_invalid``, not ``missing_provenance``."""
+
+    raw = build_pilot().accepted[0].model_dump(mode="python")
+    raw["review_state"] = "approved"
+
+    accepted, rejected = curate_candidates([raw])
+
+    assert not accepted
+    assert rejected[0]["reason_codes"] == ["schema_invalid"]
+
+
+def test_hash_mismatch_is_not_labelled_invalid_verifier_outcome() -> None:
+    """Audit D3-7: a stale ``content_hash`` or ``semantic_fingerprint`` is a
+    ``hash_mismatch``; the verifier outcome itself is valid."""
+
+    base = build_pilot().accepted[0].model_dump(mode="python")
+    stale_content = deepcopy(base)
+    stale_content["trajectory_id"] = "zz-stale-content-hash"
+    stale_content["content_hash"] = "0" * 64
+    stale_semantic = deepcopy(base)
+    stale_semantic["trajectory_id"] = "zz-stale-semantic-fingerprint"
+    stale_semantic["semantic_fingerprint"] = "0" * 64
+
+    accepted, rejected = curate_candidates([stale_content, stale_semantic])
+
+    assert not accepted
+    assert [item["reason_codes"] for item in rejected] == [
+        ["hash_mismatch"],
+        ["hash_mismatch"],
+    ]
