@@ -53,6 +53,7 @@ from proxyloop_contracts import (
     PlanningBasis,
     ProviderOffer,
     RoutingDecision,
+    RoutingOutcome,
     StrategyPacket,
     VisibleCaseEvent,
     canonical_fingerprint,
@@ -433,6 +434,9 @@ class ThinAgentRuntime:
                 phase=snapshot.case.phase,
                 manifest=snapshot.capability_manifest,
             )
+            next_snapshot = self._refresh_strategy_if_required(
+                next_snapshot, event, event_time
+            )
             outcome = CaseCoordinator(snapshot=next_snapshot).advance(
                 RouteRequest(
                     snapshot=next_snapshot,
@@ -447,14 +451,14 @@ class ThinAgentRuntime:
                 or outcome.fast_decision.response_text != BOUNDED_FAST_STATUS_TEXT
             ):
                 raise ModelRuntimeError("fast")
-            if snapshot.strategy is None or ActionType.SEND_MESSAGE not in (
+            if next_snapshot.strategy is None or ActionType.SEND_MESSAGE not in (
                 snapshot.case.delegated_authority.allowed_actions
             ):
                 raise ChannelConflictError("channel send is not authorized")
             delivery_id = _stable_uuid(f"channel-delivery:{command.event_id}")
             idempotency_key = str(delivery_id)
             body = BOUNDED_FAST_STATUS_TEXT
-            strategy = snapshot.strategy
+            strategy = next_snapshot.strategy
             outbox = OutboxRecord(
                 delivery_id=delivery_id,
                 idempotency_key=idempotency_key,
@@ -877,6 +881,9 @@ class ThinAgentRuntime:
             snapshot_revision=snapshot.revision + 1,
             phase=snapshot.case.phase,
             manifest=snapshot.capability_manifest,
+        )
+        event_snapshot = self._refresh_strategy_if_required(
+            event_snapshot, event, occurred_at
         )
         outcome = CaseCoordinator(snapshot=event_snapshot).advance(
             RouteRequest(
@@ -1513,6 +1520,64 @@ class ThinAgentRuntime:
                 execution_count=state.execution_count,
             )
         raise CaseConflictError("approved continuation has no terminal completion")
+
+    def _refresh_strategy_if_required(
+        self,
+        event_snapshot: CaseContextSnapshot,
+        event: VisibleCaseEvent,
+        occurred_at: datetime,
+    ) -> CaseContextSnapshot:
+        """Install a Slow-refreshed strategy when the Router demands one.
+
+        The strategy lifetime is a refresh trigger, not a session bound: an
+        event after expiry routes to Slow, and the caller's Fast step then runs
+        on the refreshed snapshot. Any other route returns the snapshot as is.
+        """
+
+        outcome = CaseCoordinator(snapshot=event_snapshot).advance(
+            RouteRequest(
+                snapshot=event_snapshot,
+                created_at=occurred_at,
+                triggering_event=event,
+            ),
+            slow=self._slow,
+        )
+        # The event paths never set ``bounded_acknowledgement_allowed``, so
+        # FAST_NOW_AND_SLOW_REFRESH is unreachable here; a caller that sets it
+        # must pass ``fast`` too.
+        if outcome.route.outcome is not RoutingOutcome.SLOW_REFRESH:
+            return event_snapshot
+        installed = event_snapshot.strategy
+        strategy = (
+            outcome.slow_result.strategy_proposal
+            if outcome.slow_result is not None
+            else None
+        )
+        if (
+            outcome.status is not CoordinatorStatus.ACCEPTED
+            or strategy is None
+            or (
+                installed is not None
+                and strategy.strategy_id == installed.strategy_id
+                and strategy.revision <= installed.revision
+            )
+        ):
+            raise ModelRuntimeError("slow")
+        return _snapshot(
+            case=event_snapshot.case,
+            ledger=event_snapshot.fact_ledger,
+            strategy=strategy,
+            offers=event_snapshot.offers,
+            action_intents=event_snapshot.action_intents,
+            approvals=event_snapshot.approval_requests,
+            evidence=event_snapshot.evidence,
+            completion=event_snapshot.completion_decision,
+            events=event_snapshot.visible_events,
+            snapshot_revision=event_snapshot.revision + 1,
+            phase=event_snapshot.case.phase,
+            manifest=event_snapshot.capability_manifest,
+            pending_execution=event_snapshot.pending_execution,
+        )
 
     def _clock_now(self) -> datetime:
         now = self._clock()

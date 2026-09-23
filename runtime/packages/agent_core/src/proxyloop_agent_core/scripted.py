@@ -63,13 +63,20 @@ class ScriptedSlowAdapter:
 
     def reason(self, request: SlowWorkRequest) -> SlowWorkResult:
         view = request.view
+        strategy_id = _stable_uuid4(
+            f"strategy:{request.case_id}:{request.pins.planning_basis_fingerprint}"
+        )
+        prior = view.strategy
         strategy = StrategyPacket(
             contract_type="strategy_packet",
             schema_version="1.0",
-            revision=1,
-            strategy_id=_stable_uuid4(
-                f"strategy:{request.case_id}:{request.pins.planning_basis_fingerprint}"
+            # A refresh of the same strategy must be distinguishable by revision.
+            revision=(
+                prior.revision + 1
+                if prior is not None and prior.strategy_id == strategy_id
+                else 1
             ),
+            strategy_id=strategy_id,
             case_id=request.case_id,
             case_revision=request.pins.case_revision,
             fact_ledger_revision=request.pins.fact_ledger_revision,
