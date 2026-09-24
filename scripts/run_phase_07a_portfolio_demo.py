@@ -138,8 +138,10 @@ def build_demo_environment(
 ) -> dict[str, str]:
     """Return explicit demo settings without inheriting model credentials.
 
-    ``fast_backend`` (the ``FAST_BACKEND`` flag) is set for every child
-    process, so the worker and the API always read the same selection.
+    ``PROXYLOOP_FAST_BACKEND`` is always set explicitly, overriding an
+    inherited value. ``serve`` passes the ``FAST_BACKEND`` flag here for the
+    host worker and API, so both read the same selection; the Web build and
+    the recovery check call it with the ``scripted`` default.
     """
 
     if fast_backend not in FAST_BACKENDS:

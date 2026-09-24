@@ -367,7 +367,7 @@ def test_web_demo_uses_production_build_and_start(monkeypatch, tmp_path: Path) -
 # PR-11 D6: the launcher's local Fast backend flag.
 
 
-def test_fast_backend_flag_sets_one_environment_for_every_process() -> None:
+def test_fast_backend_flag_sets_one_selection_for_worker_and_api() -> None:
     inherited = {"PATH": "/bin", "PROXYLOOP_FAST_BACKEND": "untuned"}
 
     assert demo.build_demo_environment(inherited)["PROXYLOOP_FAST_BACKEND"] == (

@@ -4,7 +4,7 @@ The worker builds its Fast adapter from ``PROXYLOOP_FAST_BACKEND`` with the
 API's refusal matrix (D1); the API lifts its Temporal refusal and labels
 (D2); a typed Fast failure never fails the activity (D4); channel commands
 keep the scripted Fast and the constant outbound body (D5-A). CI uses the
-in-test fake gateway only. The two time-skipping tests follow PR-3: an
+in-test fake gateway only. The three time-skipping tests follow PR-3: an
 in-memory repository, the process-local test server, gated on
 ``PROXYLOOP_TEST_TEMPORAL_ADDRESS`` alone, run in ``phase05a-check``.
 """
@@ -14,22 +14,31 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import threading
 from collections.abc import Iterator, Mapping
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
 from local_fast_fake_gateway import FakeGateway
-from proxyloop_agent_core import BOUNDED_FAST_STATUS_TEXT
+from proxyloop_agent_core import (
+    BOUNDED_FAST_STATUS_TEXT,
+    FastAdapterResult,
+    ScriptedDialogueFastAdapter,
+)
 from proxyloop_api import config as api_config
 from proxyloop_case_runtime import (
     FAST_FALLBACK_TEXT,
     SCRIPTED_CASE_ID,
     CaseCommand,
     CaseCommandType,
+    CaseRuntimeState,
     CaseTransitionRef,
+    InboxReceiptRecord,
     InMemoryCaseRepository,
+    OutboxRecord,
     ThinAgentRuntime,
 )
 from proxyloop_connectors import (
@@ -38,7 +47,7 @@ from proxyloop_connectors import (
     LocalMailboxEventKind,
     VerifiedLocalMailboxEvent,
 )
-from proxyloop_contracts import ModelResult, Money
+from proxyloop_contracts import FastModelView, ModelResult, Money
 from proxyloop_local_fast import (
     MAX_TIMEOUT_S,
     LocalFastHttpAdapter,
@@ -61,7 +70,6 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
-from test_phase_06b1_channel_runtime import _ChannelRepository
 
 WORKER_BASE = {
     "PROXYLOOP_STORAGE_MODE": "postgres",
@@ -71,6 +79,86 @@ _GATED = pytest.mark.skipif(
     not os.environ.get("PROXYLOOP_TEST_TEMPORAL_ADDRESS"),
     reason="PROXYLOOP_TEST_TEMPORAL_ADDRESS is required (runs in phase05a-check)",
 )
+
+
+class _ChannelRepository(InMemoryCaseRepository):
+    """The channel surface these tests use: inbox reservation, the atomic
+    Case-plus-outbox write, and delivery observations (no freshness checks,
+    no delivery callbacks)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.inbox: dict[UUID, InboxReceiptRecord] = {}
+        self.outbox: dict[UUID, OutboxRecord] = {}
+
+    def reserve_channel_event(
+        self, event: VerifiedLocalMailboxEvent, *, received_at: datetime
+    ) -> InboxReceiptRecord:
+        receipt = InboxReceiptRecord(
+            channel_kind=CHANNEL_KIND,
+            event_id=event.event_id,
+            payload_hash=event.raw_payload_hash,
+            binding_ref=BINDING_REF,
+            case_id=SCRIPTED_CASE_ID,
+            command_id=uuid4(),
+            first_seen_at=received_at,
+            event_kind=event.kind.value,
+            processing_state="reserved",
+            content=event.content,
+        )
+        self.inbox[event.event_id] = receipt
+        return receipt
+
+    def get_inbox_receipt(self, event_id: UUID) -> InboxReceiptRecord | None:
+        return self.inbox.get(event_id)
+
+    def get_outbox_record(self, delivery_id: UUID) -> OutboxRecord | None:
+        return self.outbox.get(delivery_id)
+
+    def get_delivery_receipt(self, delivery_id: UUID) -> None:
+        return None
+
+    def replace_with_channel_outbox(
+        self,
+        case_id: UUID,
+        *,
+        expected_revision: int,
+        state: CaseRuntimeState,
+        outbox: OutboxRecord,
+        inbox_event_id: UUID,
+    ) -> CaseRuntimeState:
+        updated = self.replace(
+            case_id, expected_revision=expected_revision, state=state
+        )
+        self.outbox[outbox.delivery_id] = outbox
+        self.inbox[inbox_event_id] = replace(
+            self.inbox[inbox_event_id], processing_state="applied"
+        )
+        return updated
+
+    def replace_with_delivery_receipt(self, *args: Any, **kwargs: Any) -> None:
+        raise AssertionError("these tests post no delivery callback")
+
+    def record_delivery_observation(
+        self,
+        delivery_id: UUID,
+        *,
+        idempotency_key: str,
+        state: str,
+        provider_message_id: str | None,
+        failure_category: str | None = None,
+    ) -> OutboxRecord:
+        prior = self.outbox[delivery_id]
+        assert prior.idempotency_key == idempotency_key
+        updated = replace(
+            prior,
+            state=state,
+            provider_message_id=provider_message_id or prior.provider_message_id,
+            attempt_count=prior.attempt_count + 1,
+            last_failure_category=failure_category,
+        )
+        self.outbox[delivery_id] = updated
+        return updated
 
 
 @pytest.fixture
@@ -228,20 +316,27 @@ def test_worker_refuses_an_absent_or_mismatched_gateway(
 
 
 def test_worker_selects_the_labelled_local_backend(
-    monkeypatch: pytest.MonkeyPatch, gateway: FakeGateway
+    monkeypatch: pytest.MonkeyPatch,
+    gateway: FakeGateway,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     # T2: Case commands get the local adapter; channel commands keep scripted
     # Fast over the same repository (D5-A).
     repository = _ChannelRepository()
-    adapter = _local_worker_adapter(
-        monkeypatch,
-        repository,
-        {
-            "PROXYLOOP_FAST_BACKEND": "distilled",
-            "PROXYLOOP_FAST_GATEWAY_URL": gateway.url,
-        },
-    )
+    with caplog.at_level("INFO", logger=worker_activities.__name__):
+        adapter = _local_worker_adapter(
+            monkeypatch,
+            repository,
+            {
+                "PROXYLOOP_FAST_BACKEND": "distilled",
+                "PROXYLOOP_FAST_GATEWAY_URL": gateway.url,
+            },
+        )
 
+    # Review M-2: one start line, the label only (no URL or fingerprint).
+    assert [record.getMessage() for record in caplog.records] == [
+        "worker Fast backend: local_distilled_candidate"
+    ]
     assert adapter.runtime.adapter_mode == "local_distilled_candidate"
     assert adapter.runtime.repository is repository
     assert adapter.channel_runtime is not adapter.runtime
@@ -344,6 +439,67 @@ def test_one_local_runtime_for_every_command_would_fail_channel_ingest(
 
     assert raised.value.type == "model_path"
     assert raised.value.non_retryable
+
+
+class _BlockingScriptedFast(ScriptedDialogueFastAdapter):
+    """Scripted Fast that holds its call until the test releases it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def decide(self, view: FastModelView) -> FastAdapterResult:
+        self.entered.set()
+        assert self.release.wait(10)
+        return super().decide(view)
+
+
+def test_two_runtimes_admit_one_commit_at_one_revision() -> None:
+    # Review I-1: the Case and channel Runtimes have separate in-process
+    # lanes, so a consumer turn blocked in Fast on one and a channel ingest on
+    # the other can run at the same expected revision. Repository CAS admits
+    # the first commit; the other fails case_conflict, which is non-retryable.
+    repository = _ChannelRepository()
+    fast = _BlockingScriptedFast()
+    adapter = CaseCommandActivityAdapter(
+        ThinAgentRuntime(repository, fast=fast),
+        channel_runtime=ThinAgentRuntime(repository),
+    )
+    now = datetime.now(UTC)
+    created = adapter.channel_runtime.apply_command(_create(now))
+    outcome: dict[str, BaseException | CaseTransitionRef] = {}
+
+    def consumer_turn() -> None:
+        try:
+            outcome["consumer"] = adapter.apply_command(
+                _consumer_turn(created.after_revision, now)
+            )
+        except ApplicationError as error:
+            outcome["consumer"] = error
+
+    worker = threading.Thread(target=consumer_turn)
+    worker.start()
+    try:
+        assert fast.entered.wait(5)
+        request = _ingest_request(repository, created.after_revision, now)
+        ingested = adapter.apply_command(request.to_command(now))
+    finally:
+        fast.release.set()
+        worker.join(10)
+
+    assert ingested.delivery_id is not None
+    failure = outcome["consumer"]
+    assert isinstance(failure, ApplicationError)
+    assert (failure.type, failure.non_retryable) == ("case_conflict", True)
+    state = repository.get(SCRIPTED_CASE_ID)
+    assert state is not None
+    event_types = [event.event_type for event in state.snapshot.visible_events]
+    assert event_types.count("provider_message") == 1
+    assert "consumer_message" not in event_types
+    assert "assistant_message" not in event_types
+    assert len(repository.outbox) == 1
+    assert state.snapshot.revision == ingested.after_revision
 
 
 # --- D2: the API lifts its Temporal refusal --------------------------------

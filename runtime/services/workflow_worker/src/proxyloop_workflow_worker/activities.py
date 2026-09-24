@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from collections.abc import Mapping
 from typing import Any
@@ -35,6 +36,8 @@ from .workflow import ACTIVITY_NAME, CHANNEL_DELIVERY_ACTIVITY_NAME
 # Outbox states the delivery activity still sends. The channel route re-drives
 # a redelivered event's delivery only while its outbox is in one of them.
 REDRIVABLE_OUTBOX_STATES = frozenset({"pending", "failed_retryable", "unknown"})
+
+_logger = logging.getLogger(__name__)
 
 
 class CaseCommandActivityAdapter:
@@ -295,17 +298,29 @@ def activity_adapter_from_environment(
     fast = fast_adapter_from_environment(values)
     repository = PostgresCaseRepository(database_url)
     if fast is None:
-        return CaseCommandActivityAdapter(ThinAgentRuntime(repository))
-    return CaseCommandActivityAdapter(
-        ThinAgentRuntime(repository, fast=fast),
-        channel_runtime=ThinAgentRuntime(repository),
-    )
+        adapter = CaseCommandActivityAdapter(ThinAgentRuntime(repository))
+    else:
+        adapter = CaseCommandActivityAdapter(
+            ThinAgentRuntime(repository, fast=fast),
+            channel_runtime=ThinAgentRuntime(repository),
+        )
+    # The label only: the API labels from its own environment, so this line
+    # is the worker-side record of the backend its Case commands use.
+    _logger.info("worker Fast backend: %s", adapter.runtime.adapter_mode)
+    return adapter
 
 
 def runtime_from_environment(
     environ: Mapping[str, str] | None = None,
 ) -> ThinAgentRuntime:
-    """The Runtime that applies the worker's Case commands."""
+    """The Runtime that applies the worker's Case commands.
+
+    Warning: with a local Fast backend this is only the Case-command
+    Runtime. Wrapping it in ``CaseCommandActivityAdapter(runtime)`` would send
+    channel commands to the local model too, and every channel ingest would
+    fail ``model_path``. Build a worker's adapter with
+    ``activity_adapter_from_environment``.
+    """
 
     return activity_adapter_from_environment(environ).runtime
 

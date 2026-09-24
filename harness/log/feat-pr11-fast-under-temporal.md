@@ -45,7 +45,7 @@ activity option, or retry policy), `runtime.py` (PR-13), `app.py` (PR-12),
   `app.py` edit).
 - `scripts/run_phase_07a_portfolio_demo.py`: `serve --fast-backend
   {scripted,distilled,untuned}`; `build_demo_environment(..., fast_backend=)`
-  sets `PROXYLOOP_FAST_BACKEND` for every child; `check_fast_backend(env)`
+  sets `PROXYLOOP_FAST_BACKEND` explicitly (the flag's value for the worker and API); `check_fast_backend(env)`
   runs before ports/Compose/Web/host processes; the banner prints the backend
   and label.
 - `Makefile`: `FAST_BACKEND ?= scripted`, `portfolio-demo` passes
@@ -113,11 +113,36 @@ Makefile passes no flag).
   gateway): `make local-fast-gateway BACKEND=distilled`, then
   `FAST_BACKEND=distilled make portfolio-demo`, Scene A and Scene B.
 
+## After review (Approve; I-1, M-1..M-5 accepted by the root)
+
+Review: `harness/code_review/feat-pr11-fast-under-temporal.md`. D5-A stands.
+
+- I-1: new non-gated `test_two_runtimes_admit_one_commit_at_one_revision`
+  (a blocking scripted Fast on the Case Runtime; a channel ingest commits
+  on the channel Runtime at the same revision; the consumer turn then fails
+  `case_conflict`, non-retryable; one `provider_message`, no consumer or
+  assistant event, one outbox row). Based on the reviewer's `interleave.py`.
+- M-2: one start log line `worker Fast backend: <label>` in
+  `activity_adapter_from_environment`, asserted by the composition test.
+- M-1, M-2 direction, M-3 (retry protection only with `expected_revision`;
+  receipt re-check gap for PR-13), M-4 (API bootstraps the DB before the
+  probe; documented, not reordered): `docs/architecture.md` and the spec.
+- M-5: docstring warning on `activities.runtime_from_environment`; the test
+  module has its own minimal channel repository instead of importing
+  `test_phase_06b1_channel_runtime._ChannelRepository`; launcher docstring,
+  spec, log, and a test name now say the flag reaches the worker and API.
+- `main` had not moved (`a8fdf5b`); no merge.
+- Checks: `make format` (no change), `make lint` passed, `make typecheck`
+  passed (75 / 59 files); focused 81 passed, 3 skipped; the three gated
+  bodies called directly without `PROXYLOOP_TEST_*` or a database: passed.
+  `make preflight`: exit 0, runtime 1615 passed / 66 skipped, ml 397 passed /
+  1 skipped, vitest 189 passed, gated pin unchanged at 66 (the new test is
+  not gated).
+- Not run: the three DB gates (the lane is held by PR-12).
+
 ## Remaining
 
-- Root: confirm D5 option A (channel commands keep scripted Fast; constant
-  outbound body) or choose B/C (spec §2 D5).
-- DB lane serially; independent review; PR; CI; merge.
+- DB lane serially (after PR-12 releases it); PR; CI; merge.
 - Recorded limits (spec §7): API label drift if the worker is started with
   another value; queued same-Case Fast calls can exceed the 30 s Next proxy;
   a slow database plus a 25 s Fast call can exceed the activity

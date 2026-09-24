@@ -102,6 +102,15 @@ Tags: **[O]** observed in code, **[I]** inferred, **[D]** decided here.
   `local_mlx_gateway`, `model_version` `<backend>:<fingerprint prefix>`, or
   the scripted identity). A hand-started worker with a different variable
   would make `/health` mislabel the run: a recorded local limit.
+- **After review (M-1, M-2, M-4).** `adapter_mode` in operation records and
+  `/health` describes the Case-command backend only, never the channel path
+  (scripted, D5). The worker logs `worker Fast backend: <label>` once at
+  start (label only). Disagreement direction: worker `distilled` + API
+  `scripted` under-claims (`/health` says scripted, traces name the local
+  model); the reverse over-claims. The API's `runtime_from_environment`
+  bootstraps PostgreSQL before the gateway probe (the worker probes first);
+  reordering it is not a one-line change there, so it is documented, not
+  changed.
 - Only `api/config.py` changes; **no `app.py` edit**. The `model_path`
   409 message "model execution is unavailable in Temporal mode" becomes
   imprecise for a local validation reject (it is a redacted category); it is
@@ -151,13 +160,23 @@ Tags: **[O]** observed in code, **[I]** inferred, **[D]** decided here.
   9a made the wire decode total), and (b) the activity exceeding its 30 s
   start-to-close, which D3 bounds to "storage took more than ~5 s". In (b) a
   retry attempt that finds the first attempt committed returns the stored
-  receipt without a model call; one that races the still-running first
-  attempt (in the same worker) waits on the Case lane, fails the expected-
-  revision check before any Fast call, and `apply_command`'s conflict path
-  returns the first attempt's receipt as `deduplicated` (pre-existing
-  behaviour). A retry landing on another worker process has no shared lane;
-  PostgreSQL CAS still admits one commit, but that attempt may make its own
-  model call first. Recorded as a limit.
+  receipt without a model call. **Corrected after review (M-3):** a retry
+  that races the still-running first attempt in the same worker waits on the
+  per-Case lane, but it is then stopped only if something in
+  `_append_event_serialized` raises a conflict before the Fast call.
+  - With `expected_revision` sent, the revision check does, and
+    `apply_command`'s conflict path returns the first attempt's receipt as
+    `deduplicated`.
+  - Without it, nothing checks for the receipt after the lock: today's
+    scripted lifecycle protects the retry only incidentally, because the
+    first consumer turn opens an approval and the retry then fails "case is
+    awaiting approval" (again resolved to the receipt).
+  - **Gap (recorded, not fixed here):** `_append_event_serialized` does not
+    re-check the command's receipt after taking the lock. PR-13 owns
+    `runtime.py` and will add the re-check; this PR does not edit it.
+  A retry landing on another worker process has no shared lane; PostgreSQL
+  CAS still admits one commit, but that attempt may make its own model call
+  first. Recorded as a limit.
 - **No retry-policy change and no Workflow change.**
 
 ### D5 — Channel outbound body: stays the constant; channel commands keep scripted Fast [D, recommended; root may overrule]
@@ -186,9 +205,10 @@ if the root prefers B, the worker routing is the only code to revert.
   `scripted`). The Makefile passes `--fast-backend "$(FAST_BACKEND)"` to
   `serve`; argparse restricts it to `scripted | distilled | untuned`.
 - `build_demo_environment(..., fast_backend="scripted")` sets
-  `PROXYLOOP_FAST_BACKEND` explicitly for every child (worker, API, Web
-  build, recovery), so the flag, not an inherited shell value, decides; one
-  environment reaches both the worker and the API (D2).
+  `PROXYLOOP_FAST_BACKEND` explicitly, overriding an inherited shell value;
+  `serve` passes the flag for the host worker and API, so one selection
+  reaches both (D2). The Web build and the recovery check use the `scripted`
+  default (review M-5 corrected "every child").
   `PROXYLOOP_FAST_GATEWAY_URL` / `PROXYLOOP_FAST_TIMEOUT_S` are inherited as
   today.
 - **The launcher expects the gateway; it does not start it.** The gateway is
@@ -240,7 +260,7 @@ unless noted; "red" = fails on `main` @ `a8fdf5b`:
 - **T6 (pin)** `MAX_TIMEOUT_S + 5 ≤ ACTIVITY_START_TO_CLOSE` seconds, and the
   retry policy is unchanged.
 - **T7 (red, `test_phase_07a_portfolio_demo.py`)** the flag sets
-  `PROXYLOOP_FAST_BACKEND` for every child and overrides an inherited value;
+  `PROXYLOOP_FAST_BACKEND` for the worker and API and overrides an inherited value;
   `serve --fast-backend distilled` without a gateway refuses before Compose
   starts; a matching fake gateway passes the check; argparse refuses an
   unknown backend; the Makefile passes the flag.
@@ -276,7 +296,7 @@ The per-file pin gains `tests/integration/test_fast_under_temporal.py: 3`
    constant body, no assistant event, no model call (D5-A).
 6. `FAST_BACKEND=distilled make portfolio-demo` refuses before starting
    anything when the gateway is absent or mismatched, and passes one
-   `PROXYLOOP_FAST_BACKEND` to every process; the default is unchanged.
+   `PROXYLOOP_FAST_BACKEND` to the worker and the API; the default is unchanged.
 7. `workflow.py`, the retry policy, and every committed `*-check` artifact are
    unchanged; no replay fixture is needed.
 8. Docs: `docs/architecture.md` (Temporal Fast backend, D2–D5 limits),
