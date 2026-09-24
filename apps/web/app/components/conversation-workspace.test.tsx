@@ -2504,6 +2504,107 @@ describe("ConversationWorkspace", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("PR-10: the Agent status bar renders the authoritative snapshot through approval and completion, never fast", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const fastEcho = { dialogue_act: "clarify", response_text: "FAST ECHO MUST NOT RENDER" };
+    const created = payload({ snapshot: { ...payload().snapshot, offers: [], phase: "strategy" } });
+    const approval = {
+      action_intent_revision: 1,
+      approval_id: "22222222-2222-4222-8222-222222222222",
+      case_revision: 2,
+      decision: "pending",
+      expires_at: NORMAL_PENDING_APPROVAL_EXPIRES_AT,
+      material_terms_hash: "hash-1",
+    };
+    const waiting = payload({
+      approval,
+      fast: fastEcho,
+      revision: 4,
+      route: "wait_for_approval",
+      snapshot: { ...payload().snapshot, phase: "awaiting_approval" },
+    });
+    const completed = payload({
+      approval: { ...approval, decision: "approved" },
+      completion: { decision: "complete", evidence_ids: ["evidence-1"] },
+      evidence: [{ evidence_id: "evidence-1" }],
+      execution_count: 1,
+      revision: 7,
+      route: "terminal",
+      snapshot: { ...payload().snapshot, pending_execution: false, phase: "complete" },
+    });
+    const eventPost = deferred<RuntimePayload>();
+    vi.mocked(runtime.createCase).mockResolvedValue(created);
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockReturnValue(eventPost.promise);
+    vi.mocked(runtime.decideApproval).mockResolvedValue(completed);
+
+    render(<ConversationWorkspace />);
+    expect(screen.queryByRole("region", { name: "Agent status" })).not.toBeInTheDocument();
+    await completeLocalIntake(true, "yes", true, [created, waiting, completed]);
+
+    // The Case waits for the consumer (confirm phase): no planning claim.
+    const rail = screen.getByRole("complementary", { name: "Current task context" });
+    let bar = within(rail).getByRole("region", { name: "Agent status" });
+    expect(bar).toHaveTextContent("Waiting for you to confirm the Task Brief.");
+    expect(bar).not.toHaveTextContent("Planning");
+    expect(within(bar).getByText("Goal").nextElementSibling).toHaveTextContent("$75.00 or below per month (current bill $92.00)");
+    expect(within(bar).getByText("Current offer").nextElementSibling).toHaveTextContent("No offer yet");
+
+    // Planning only while the confirmation command actually runs (working).
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await waitFor(() => expect(within(rail).getByRole("region", { name: "Agent status" })).toHaveTextContent("Planning from your confirmed goal."));
+    eventPost.resolve(waiting);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Accept these exact fictional terms?" })).toBeInTheDocument());
+    bar = within(rail).getByRole("region", { name: "Agent status" });
+    expect(bar).toHaveTextContent("Waiting for your approval of the exact terms.");
+    expect(within(bar).getByText("Approval").nextElementSibling).toHaveTextContent(`Pending · expires ${NORMAL_PENDING_APPROVAL_EXPIRES_AT}`);
+    expect(within(bar).getByText("Current offer").nextElementSibling).toHaveTextContent("fictional_mobile_provider · $72.00/month");
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve exact terms" }));
+    expect(await screen.findByRole("heading", { name: "Completed with supporting Evidence" })).toBeInTheDocument();
+    bar = within(rail).getByRole("region", { name: "Agent status" });
+    expect(bar).toHaveTextContent("Done: the Runtime verified completion against Provider Evidence.");
+    expect(within(bar).getByText("Completion").nextElementSibling).toHaveTextContent("Verified complete · 1 matching Evidence ID · receipt shown");
+    expect(screen.queryByText(/FAST ECHO MUST NOT RENDER/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /New task/ }));
+    expect(screen.queryByRole("region", { name: "Agent status" })).not.toBeInTheDocument();
+  });
+
+  it("PR-10 I-1: after a rejected read Blocks the workspace, the bar stops describing the held approval", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const approval = {
+      action_intent_revision: 1,
+      approval_id: "22222222-2222-4222-8222-222222222222",
+      case_revision: 2,
+      decision: "pending",
+      expires_at: NORMAL_PENDING_APPROVAL_EXPIRES_AT,
+      material_terms_hash: "hash-1",
+    };
+    const waiting = payload({ approval, revision: 4, route: "wait_for_approval" });
+    const driftedCase = { ...caseRecord, bill_snapshot: { monthly_total: { amount_minor: 9300, currency: "USD" } } };
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(waiting);
+    vi.mocked(runtime.decideApproval).mockReset().mockResolvedValue(payload({ revision: 5 }));
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [
+      payload(),
+      waiting,
+      { ...waiting, case: driftedCase, revision: 5, snapshot: { case: driftedCase, offers: [offer] } },
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Accept these exact fictional terms?" })).toBeInTheDocument());
+    const rail = screen.getByRole("complementary", { name: "Current task context" });
+    expect(within(rail).getByRole("region", { name: "Agent status" })).toHaveTextContent("Waiting for your approval of the exact terms.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve exact terms" }));
+    expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
+    const bar = within(rail).getByRole("region", { name: "Agent status" });
+    expect(bar).toHaveTextContent("Stopped — state not verified. Reconnect or restart the local demo.");
+    expect(bar).toHaveTextContent("as of Case revision 4");
+    expect(bar).not.toHaveTextContent("Waiting for your approval");
+  });
+
   it.each([
     ["$92.00.", "$92.00"],
     ["$92.", "$92.00"],
