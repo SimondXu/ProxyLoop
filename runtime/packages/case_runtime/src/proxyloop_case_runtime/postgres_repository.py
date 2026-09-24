@@ -1142,13 +1142,16 @@ def _backfill_inline_traces(cursor: Any) -> None:
 
     Runs inside the bootstrap transaction under its advisory lock, so two
     processes never copy the same row. The row becomes version 3 at the same
-    revision; ``updated_at`` is not touched. A row whose ``model_traces`` is
-    not a JSON array is left as version 2 and fails closed when it is read.
+    revision; ``updated_at`` is not touched. A row without a ``model_traces``
+    key had no traces (the version 2 envelope defaulted it to empty) and is
+    migrated with none. A row whose ``model_traces`` is present but not a JSON
+    array is left as version 2 and fails closed when it is read.
     """
 
     cursor.execute(
         f"""
-        SELECT case_id, payload->'model_traces' FROM {_TABLE_NAME}
+        SELECT case_id, COALESCE(payload->'model_traces', '[]'::jsonb)
+        FROM {_TABLE_NAME}
         WHERE payload->'storage_version' = %s
         ORDER BY case_id
         FOR UPDATE

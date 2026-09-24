@@ -22,6 +22,7 @@ from proxyloop_contracts import (
     ApprovalDecision,
     CasePhase,
     CompletionOutcome,
+    ModelResult,
     ModelTrace,
     SlowWorkRequest,
     SlowWorkResult,
@@ -352,7 +353,12 @@ def test_t5_rejected_slow_refresh_persists_no_case_state(
     logged = _logged(repository)
     assert logged[:1] == created_traces
     assert [trace.role for trace in logged] == ["slow", "slow"]
-    assert logged[1].reason_codes is not None
+    # I11: ``result`` is the coordinator's verdict. A same-revision refresh
+    # passes the coordinator and is refused by the Runtime afterwards.
+    expected = (
+        ModelResult.SUCCEEDED if slow is _SameRevisionSlow else ModelResult.REJECTED
+    )
+    assert logged[1].result is expected
 
 
 def test_t6_current_strategy_makes_no_slow_call() -> None:

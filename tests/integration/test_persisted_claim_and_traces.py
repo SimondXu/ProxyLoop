@@ -411,6 +411,41 @@ def test_the_log_holds_every_issued_trace_across_the_direct_flow(
     _assert_not_projected(final, issued)
 
 
+@pytest.mark.parametrize("ending", ["rejected", "expired"])
+def test_an_approval_that_does_not_execute_leaves_the_log_as_issued(
+    issued: list[ModelTrace], ending: str
+) -> None:
+    repository = _PayloadRepository()
+    runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)
+    runtime.apply_command(_create_command())
+    event = runtime.apply_command(_event_command())
+    decide = _approval_command(event.after_revision, event.approval_id)
+    if ending == "rejected":
+        command = decide.model_copy(update={"decision": "rejected"})
+    else:
+        waiting = repository.get(SCRIPTED_CASE_ID)
+        assert waiting is not None
+        (approval,) = waiting.snapshot.approval_requests
+        command = CaseCommand(
+            command_id=uuid4(),
+            case_id=SCRIPTED_CASE_ID,
+            command_type=CaseCommandType.EXPIRE_APPROVAL,
+            occurred_at=approval.expires_at,
+            expected_revision=event.after_revision,
+            approval_id=approval.approval_id,
+            approval_expires_at=approval.expires_at,
+        )
+    runtime.apply_command(command)
+
+    stored = repository.get(SCRIPTED_CASE_ID)
+    assert stored is not None
+    assert stored.snapshot.revision > event.after_revision
+    # The decision and expiry paths run no model: the log is exactly as issued.
+    assert [trace.role for trace in issued] == ["slow", "fast"]
+    assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
+    assert "model_traces" not in repository.payloads[SCRIPTED_CASE_ID]
+
+
 def test_the_log_holds_every_issued_trace_across_the_channel_flow(
     issued: list[ModelTrace],
 ) -> None:
@@ -649,10 +684,17 @@ def test_a_compare_and_swap_loser_keeps_its_traces(
 
 def test_the_runtime_calls_the_coordinator_only_through_advance() -> None:
     # I6 source guard: ``_advance`` is the Runtime's single coordinator call,
-    # so a new path cannot run a model without logging its traces.
+    # so a new path cannot run a model without logging its traces. This is a
+    # text guard over runtime.py, not a proof: it counts source spellings.
     source = inspect.getsource(runtime_module)
     assert source.count(".advance(") == 1
+    assert source.count(".advance") == 1
+    assert source.count("._coordinator(") == 1
+    assert source.count("CaseCoordinator(") == 1
     assert "self._coordinator(request.snapshot).advance(" in source
+    # No adapter is called directly, around the coordinator.
+    assert source.count(".decide(") == 0
+    assert source.count(".reason(") == 0
 
 
 def _unconnected_postgres(monkeypatch: pytest.MonkeyPatch) -> PostgresCaseRepository:

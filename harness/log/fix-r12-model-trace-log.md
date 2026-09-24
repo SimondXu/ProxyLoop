@@ -112,3 +112,45 @@ Compose `postgres-test` (`localhost:55432/proxyloop_test`) and Temporal
 
 No fixes were needed. These gates run again after `git merge origin/main`
 once PR-4 has landed.
+
+## Review follow-ups (independent review: Approve; root accepted M1–M6)
+
+The artifact is `harness/code_review/fix-r12-model-trace-log.md`. These
+follow-ups were made without the DB.
+
+- M1: the backfill reads `COALESCE(payload->'model_traces', '[]'::jsonb)`, so
+  a version 2 row with no traces key migrates with no traces. A present
+  non-array value, including JSON `null`, still stays version 2. New DB-gated
+  test `test_postgres_bootstrap_migrates_a_v2_row_without_a_traces_key`
+  (written, not run).
+- M2: the backfill copies inline traces without validating them. A version 2
+  row that used to fail closed only because an inline trace was invalid or
+  foreign now reads as a Case, while `list_model_traces` fails closed on that
+  trace. The tamper signal moves from the Case read to the log read, as the
+  spec intends. Also recorded in `docs/architecture.md`.
+- M3: the G8 text guard also requires one `.advance`, one `._coordinator(`,
+  and one `CaseCoordinator(`, and no `.decide(` or `.reason(` in `runtime.py`.
+- M4: `test_postgres_trace_log_error_suppresses_driver_cause[append|list]`
+  (DB-free) covers the mapping of `psycopg.Error` to `StorageUnavailableError`.
+- M5: `test_an_approval_that_does_not_execute_leaves_the_log_as_issued[rejected|expired]`.
+- M6: the R2 refresh trace asserts `result`: `SUCCEEDED` for
+  `_SameRevisionSlow` (the coordinator accepts it and the Runtime refuses it,
+  I11) and `REJECTED` for `_ExpiredStrategySlow`.
+
+Checks after the follow-ups (no `PROXYLOOP_TEST_*` set):
+
+- Passed: `make lint`, and `make typecheck` (66 and 59 files).
+- Passed: `make test` (exit 0: runtime 1261 passed, 57 skipped; ml 397 passed,
+  1 skipped; negotiation gate current).
+- Passed: `make preflight` (exit 0: the same counts, plus web 140 passed).
+- There are now 6 new DB-gated items (57 skipped = 51 + 6), so PR-1's
+  gated-skip pin moves by +6.
+- Not run: the DB gates. The early run above predates M1; all three gates run
+  again after the PR-4 merge.
+
+## Notes for PR-8
+
+- M7: `create_case` on an existing Case runs Slow and appends a `SUCCEEDED`
+  Slow trace before it fails with `CaseConflictError` (I6: log before acting).
+  A per-turn Fast/Slow split read from `list_model_traces` must not count it
+  as a turn.

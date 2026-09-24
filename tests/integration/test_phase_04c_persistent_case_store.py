@@ -18,6 +18,7 @@ from proxyloop_api import (
     CaseRuntimeState,
     InMemoryCaseRepository,
     PostgresCaseRepository,
+    StorageUnavailableError,
     ThinAgentRuntime,
     runtime_from_environment,
 )
@@ -920,6 +921,45 @@ def test_postgres_bootstrap_moves_v2_inline_traces_to_the_log_once(
     assert upgraded.list_model_traces(garbage_id) == ()
 
 
+def test_postgres_bootstrap_migrates_a_v2_row_without_a_traces_key(
+    repository: PostgresCaseRepository,
+) -> None:
+    # The version 2 envelope defaulted a missing ``model_traces`` to empty.
+    database_url = os.environ["PROXYLOOP_TEST_DATABASE_URL"]
+    _logged_flow(repository)
+    state = repository.get(CASE_ID)
+    assert state is not None
+    with psycopg.connect(database_url) as connection, connection.transaction():
+        stored = connection.execute(
+            f"SELECT payload FROM {TABLE} WHERE case_id = %s", (CASE_ID,)
+        ).fetchone()
+        assert stored is not None
+        v2 = {**stored[0], "storage_version": 2}
+        assert "model_traces" not in v2
+        connection.execute(
+            f"UPDATE {TABLE} SET payload = %s WHERE case_id = %s",
+            (Jsonb(v2), CASE_ID),
+        )
+        connection.execute(f"TRUNCATE TABLE {TRACES_TABLE}")
+    revision, _, updated_at = _raw_row(database_url)
+
+    upgraded = PostgresCaseRepository(database_url)
+
+    with psycopg.connect(database_url) as connection:
+        row = connection.execute(
+            f"SELECT revision, payload, updated_at FROM {TABLE} WHERE case_id = %s",
+            (CASE_ID,),
+        ).fetchone()
+    assert row is not None
+    assert (row[0], row[2]) == (revision, updated_at)
+    assert row[1]["storage_version"] == 3
+    assert "model_traces" not in row[1]
+    loaded = upgraded.get(CASE_ID)
+    assert loaded is not None
+    assert loaded.snapshot == state.snapshot
+    assert upgraded.list_model_traces(CASE_ID) == ()
+
+
 def test_runtime_configuration_defaults_and_fails_closed() -> None:
     runtime = runtime_from_environment(environ={})
     assert isinstance(runtime.repository, InMemoryCaseRepository)
@@ -992,6 +1032,31 @@ def test_postgres_operation_error_suppresses_driver_cause(
     with pytest.raises(RuntimeError) as raised:
         repository.get(CASE_ID)
     assert str(raised.value) == "PostgreSQL Case storage operation failed"
+    assert raised.value.__cause__ is None
+    assert raised.value.__suppress_context__ is True
+
+
+@pytest.mark.parametrize("operation", ["append", "list"])
+def test_postgres_trace_log_error_suppresses_driver_cause(
+    monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    def fail_connect(_repository: PostgresCaseRepository) -> object:
+        raise psycopg.OperationalError("password=secret raw driver details")
+
+    memory = InMemoryCaseRepository()
+    ThinAgentRuntime(memory, clock=_clock(BASE_TIME)).create_case()
+    traces = memory.list_model_traces(CASE_ID)
+    assert traces
+    repository = object.__new__(PostgresCaseRepository)
+    repository._database_url = "postgresql://user:secret@example.invalid/db"
+    monkeypatch.setattr(PostgresCaseRepository, "_connect", fail_connect)
+    with pytest.raises(StorageUnavailableError) as raised:
+        if operation == "append":
+            repository.append_model_traces(CASE_ID, traces)
+        else:
+            repository.list_model_traces(CASE_ID)
+    assert str(raised.value) == "PostgreSQL model trace operation failed"
+    assert "secret" not in str(raised.value)
     assert raised.value.__cause__ is None
     assert raised.value.__suppress_context__ is True
 
