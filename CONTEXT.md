@@ -64,6 +64,10 @@ _Avoid_: Model handoff, background prompt, tool command
 A structured proposal returned for one Slow Work Request that remains inert unless its input pins are current and deterministic validation accepts it.
 _Avoid_: Executed plan, agent state, reasoning trace
 
+**Standing Proposal**:
+The capability proposal of the last Slow Work Result accepted for a Case, held until a later accepted result replaces it or an Approval Request consumes it. It authorizes nothing: an Action Intent is compiled from it only while it is current and deterministic policy finds the offer it names compliant.
+_Avoid_: Pending action, queued intent, model plan
+
 **Routing Decision**:
 The deterministic, version-pinned selection of Fast work, Slow work, approval wait, verification, or terminal handling for one Case event.
 _Avoid_: Model choice, handoff guess, confidence threshold

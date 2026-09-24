@@ -44,6 +44,10 @@ class CaseRuntimeState:
     transitions: tuple[CaseTransitionRef, ...] = ()
     last_fast_decision: FastTurnDecision | None = None
     execution_claim: ExecutionClaim | None = None
+    # The capability proposal of the last admitted Slow result (PR-13). It is
+    # Runtime-local: no snapshot, view, projection or trace carries it. An
+    # approval consumes it, so it is None whenever an approval exists.
+    standing_proposal: CapabilityProposal | None = None
     # Model traces are not Case state: they live only in the repository's
     # append-only trace log (``append_model_traces``/``list_model_traces``).
 
@@ -52,6 +56,8 @@ class CaseRuntimeState:
             raise ValueError(
                 "execution claim must be present exactly while execution is pending"
             )
+        if self.standing_proposal is not None and self.snapshot.approval_requests:
+            raise ValueError("a standing proposal cannot outlive an approval")
 
 
 class CaseNotFoundError(LookupError):

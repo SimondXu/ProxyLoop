@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from proxyloop_agent_core import ScriptedSlowAdapter
+from proxyloop_agent_core import ScriptedProposingSlowAdapter, ScriptedSlowAdapter
 from proxyloop_case_runtime import (
     SCRIPTED_CASE_ID,
     CaseCommand,
@@ -52,6 +52,11 @@ class _CountingSlow(ScriptedSlowAdapter):
     def reason(self, request: SlowWorkRequest) -> SlowWorkResult:
         self.reason_codes.append(request.reason_code)
         return super().reason(request)
+
+
+class _CountingProposingSlow(_CountingSlow, ScriptedProposingSlowAdapter):
+    """``_CountingSlow`` over the proposing default (PR-13): it can open an
+    approval. The refresh fakes below stay strategy-only."""
 
 
 class _SameRevisionSlow(_CountingSlow):
@@ -159,7 +164,7 @@ def test_t2_refreshed_approval_executes_once_and_completes() -> None:
 
 
 def test_t3_expired_strategy_does_not_gate_a_current_approval() -> None:
-    slow = _CountingSlow()
+    slow = _CountingProposingSlow()
     runtime, _, clock = _created(slow)
     clock.now = T0 + timedelta(minutes=10)
     pending = runtime.append_event(SCRIPTED_CASE_ID, content="Is the offer ready?")
@@ -362,7 +367,7 @@ def test_t5_rejected_slow_refresh_persists_no_case_state(
 
 
 def test_t6_current_strategy_makes_no_slow_call() -> None:
-    slow = _CountingSlow()
+    slow = _CountingProposingSlow()
     runtime, _, clock = _created(slow)
     created = runtime.current_result(SCRIPTED_CASE_ID).snapshot
     clock.now = T0 + timedelta(minutes=10)
