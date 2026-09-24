@@ -13,6 +13,8 @@ import asyncio
 import inspect
 import json
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -1061,5 +1063,59 @@ def test_a_concurrent_retry_of_a_delivery_callback_records_once() -> None:
     assert receipts["retry"] == receipts["first"].model_copy(
         update={"deduplicated": True}
     )
+    state = _state(repository)
+    assert [t.command_id for t in state.transitions].count(command.command_id) == 1
+
+
+def test_two_first_callbacks_that_both_pass_the_relookup_record_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Review re-check (scratch rev-pr13/delivery_race.py): the in-lane receipt
+    # re-lookup and the first-callback write are separate lane entries. Both
+    # unpinned callbacks find no receipt in the first, then take the second
+    # one in turn; the later one must be a duplicate, not a second write.
+    repository = _CodecChannelRepository()
+    runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)
+    runtime.apply_command(_create_command())
+    ingested = runtime.apply_command(
+        _channel_command(repository, BASE_TIME + timedelta(minutes=5))
+    )
+    assert ingested.delivery_id is not None
+    _accepted(repository, ingested.delivery_id)
+    command = _callback(
+        repository, ingested.delivery_id, _state(repository).snapshot.revision
+    ).model_copy(update={"expected_revision": None})
+    lane = runtime._lane
+    barrier = threading.Barrier(2)
+    entries: dict[int, int] = {}
+
+    @contextmanager
+    def held_lane(case_id: UUID) -> Iterator[None]:
+        thread = threading.get_ident()
+        entries[thread] = entries.get(thread, 0) + 1
+        if entries[thread] == 2:  # about to enter the first-callback write
+            barrier.wait(timeout=10)
+        with lane(case_id):
+            yield
+
+    monkeypatch.setattr(runtime, "_lane", held_lane)
+    results: dict[int, Any] = {}
+
+    def attempt(index: int) -> None:
+        try:
+            results[index] = runtime.apply_command(command)
+        except Exception as error:
+            results[index] = error
+
+    threads = [threading.Thread(target=attempt, args=(i,)) for i in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(10)
+
+    assert sorted(entries.values()) == [2, 2]
+    receipts = list(results.values())
+    assert all(not isinstance(item, Exception) for item in receipts), receipts
+    assert sorted(item.deduplicated for item in receipts) == [False, True]
     state = _state(repository)
     assert [t.command_id for t in state.transitions].count(command.command_id) == 1

@@ -39,11 +39,16 @@ twice. Rule: inside the Case lane, before any coordinator run or write, a
 command whose receipt is already stored raises `CaseConflictError`, and
 `apply_command` returns the stored receipt as a duplicate. Coverage:
 - It applies to `append_event`, `ingest_channel_event` (channel commands
-  may also omit `expected_revision`), and the receipt-deduplicated
-  delivery-callback write.
-- Create, approve and expire already refuse such a replay before any model
-  call or write: create through the repository's uniqueness check, approve
-  and expire through the decided approval. A test pins each of them.
+  may also omit `expected_revision`), and both delivery-callback writes.
+  The first-callback write needs the check too: its receipt re-lookup runs
+  in an earlier lane entry, as the re-review showed with
+  `scratchpad/rev-pr13/delivery_race.py`.
+- Approve and expire already refuse such a replay in the lane before any
+  model call or write, through the decided approval.
+- Create has no lane. A raced create makes one extra Slow call and trace,
+  but the repository's create uniqueness refuses its write, so it writes no
+  state.
+- A test pins each of them.
 
 ---
 

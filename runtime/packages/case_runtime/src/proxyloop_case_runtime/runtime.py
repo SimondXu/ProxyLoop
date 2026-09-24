@@ -633,6 +633,9 @@ class ThinAgentRuntime:
                 )
         with self._lane(command.case_id):
             state = self._require(command.case_id)
+            # The re-lookup above ran in an earlier lane entry: a same-command
+            # callback may have written in between.
+            _check_not_applied(state, command.command_id)
             snapshot = state.snapshot
             _check_expected_revision(snapshot, command.expected_revision)
             if snapshot.pending_execution:

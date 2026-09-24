@@ -293,3 +293,45 @@ Byte identity held again:
 
 Not run: the DB lane and `/security-review`. The reviewer re-verifies after
 the push.
+
+## Re-review follow-up: the first-callback delivery race
+
+The re-review confirmed B1 on the append and ingest paths. It found one more
+gap, which the root made a must-fix before merge.
+
+`record_channel_delivery` makes its in-lane receipt re-lookup and its
+first-callback write in separate lane entries. Two unpinned same-command
+callbacks can both pass the re-lookup, and the second one's write then
+failed storage validation instead of returning a duplicate. The reviewer's
+repro is `scratchpad/rev-pr13/delivery_race.py`; on `a414804` it gave
+`{1: ok, 0: RuntimeError storage validation}`.
+
+My earlier note that this branch "needs no check" was wrong: its mutation
+run exercised only the benign interleaving.
+
+- Red first: the new test `test_two_first_callbacks_that_both_pass_the_relookup_record_once`
+  reproduces the reviewer's interleaving, with a barrier before each
+  thread's second lane entry. It failed with `[receipt, RuntimeError('Case
+  state failed storage validation')]` (scratch
+  `impl-pr13/red-delivery-relookup.txt`).
+- Fix: `_check_not_applied(state, command.command_id)` right after
+  `self._require(...)` in the first-callback lane block.
+- After the fix, `delivery_race.py` gives `{1: ok, 0: ok deduplicated}` and
+  one transition. The race tests passed 20 of 20 repeated runs.
+
+The review artifact and the spec's M-3 note are corrected. The corrections
+cover the first-callback branch, create (no lane: a raced create makes one
+extra Slow call and trace but writes no state), and the in-memory double
+append.
+
+Checks after the re-review fix, with no `PROXYLOOP_TEST_*` variable set:
+
+- `make lint`: passed.
+- `make typecheck`: passed (runtime 76 source files, ml 59).
+- `make test`: exit 0. Runtime 1680 passed, 63 skipped; ml 397 passed, 1
+  skipped; every `*-check` passed, and the split report is current.
+- `make preflight`: exit 0. Runtime 1680 passed, 63 skipped; Web 189; the
+  gated skips equal the pinned 63.
+- `git diff --stat origin/main -- contracts/ data/ ml/ scripts/` is empty.
+
+Not run: the DB lane and `/security-review`.
