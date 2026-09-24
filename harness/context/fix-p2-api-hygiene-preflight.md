@@ -53,12 +53,22 @@ does not, see R-2).
    and operation-record categories are unchanged. The exception text is
    logged server-side at INFO on `proxyloop_api.app` with the request's
    correlation id and category (the allowlisted `OperationRecord` has no
-   free-text field and is not widened). The fake-Temporal tests now match
-   real Temporal's detail for these categories.
+   free-text field and is not widened). Review M1: `_conflict_category`
+   also maps the Runtime's "approval expired" to `approval_expired`, as the
+   workflow activity does. Direct mode then matches real Temporal for
+   `case_conflict`, `approval_expired` and `not_found`; for a stale revision
+   direct mode and the fake return `stale_cas` while real Temporal returns
+   `case_conflict` (known limit; the fix belongs in
+   `workflow_worker/activities.py`, out of scope).
+   Review M2: the request-validation handler returns 422
+   `{"detail": {"code": "request_invalid", "message": "request rejected"}}`
+   instead of FastAPI's default body (which echoed `input`), and logs only
+   field locations and error types.
 2. **B2-7.** `current_result` uses `transition.route` only when the receipt
    produced the current snapshot (`transition.after_revision ==
    snapshot.revision`); otherwise the route is derived from the snapshot as
-   for a plain read (`terminal` / `current`).
+   for a plain read (`terminal` / `current`). Review M3: the Fast decision is
+   attached under the same guard.
 3. **B2-9.** Delete the dead `_clock_now()` call in the non-pending
    terminal branch. The call in the `APPROVED` branch (added in `1ca982ee`
    with a "keep the clock contract" comment) is not the audited line and

@@ -12,8 +12,7 @@ from time import perf_counter
 from typing import Any, Literal, Protocol
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, Request, Response
-from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from proxyloop_case_runtime import (
@@ -217,9 +216,23 @@ def create_app(
     @api.exception_handler(RequestValidationError)
     async def handle_request_validation(
         request: Request, exc: RequestValidationError
-    ) -> Response:
+    ) -> JSONResponse:
         request.state.operation_error_category = "request_invalid"
-        return await request_validation_exception_handler(request, exc)
+        # Field locations and error types only; never the rejected input.
+        _log_refusal(
+            request,
+            "request_invalid",
+            [
+                (".".join(str(part) for part in error["loc"]), error["type"])
+                for error in exc.errors()
+            ],
+        )
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": {"code": "request_invalid", "message": "request rejected"}
+            },
+        )
 
     @api.exception_handler(CaseNotFoundError)
     async def handle_not_found(
@@ -803,18 +816,25 @@ def _policy_outcome(snapshot: Any) -> str:
     return "none"
 
 
-def _log_refusal(request: Request, category: str, exc: BaseException) -> None:
-    """Keep the Runtime's refusal text server-side, keyed by correlation id."""
+def _log_refusal(request: Request, category: str, reason: object) -> None:
+    """Keep the refusal reason server-side, keyed by correlation id.
+
+    ``reason`` is a Runtime exception (static text) or a validation summary
+    of field locations and error types; never request input.
+    """
 
     logger.info(
         "request refused: correlation_id=%s category=%s reason=%s",
         request.state.correlation_id,
         category,
-        exc,
+        reason,
     )
 
 
 def _conflict_category(exc: CaseConflictError) -> str:
+    # Mirrors the workflow activity's classification of an expired approval.
+    if "approval expired" in str(exc).lower():
+        return "approval_expired"
     return "stale_cas" if "stale" in str(exc) else "case_conflict"
 
 

@@ -3,9 +3,12 @@
 The key/body matrix runs against the default direct mode and against the
 fake Temporal client of the existing Temporal API tests. The modes match on
 status codes and deduplication behaviour. The fake calls the Runtime directly,
-so its error ``detail`` equals direct mode's: a content-free category such as
-``{"detail": "case_conflict"}`` (P2 R-2), which a real Temporal server also
-returns for a conflict. Direct mode also expires a pending approval in process.
+so its error ``detail`` equals direct mode's: a content-free category
+(P2 R-2). Direct mode and a real Temporal server agree on ``case_conflict``,
+``approval_expired`` and ``not_found``; for a stale revision direct mode and
+the fake return ``stale_cas`` while the real workflow activity classifies it
+``case_conflict`` (known limit; the fix belongs in ``activities.py``). Direct
+mode also expires a pending approval in process.
 """
 
 from __future__ import annotations

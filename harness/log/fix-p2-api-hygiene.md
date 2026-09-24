@@ -35,6 +35,23 @@ Spec: `harness/context/fix-p2-api-hygiene-preflight.md`. Branch
   prints each difference to stderr and exits 1; no `assert`.
   `docs/development.md` target description updated.
 
+Independent review: Approve with four Minors, all applied:
+
+- **M1** `app.py` `_conflict_category`: the Runtime's "approval expired"
+  → `approval_expired` (direct mode now matches real Temporal for expiry).
+- **M2** `app.py` `handle_request_validation`: replaces FastAPI's default
+  422 body (which echoed `input`) with
+  `{"detail": {"code": "request_invalid", "message": "request rejected"}}`;
+  logs `(location, type)` pairs only. The Web already lists
+  `request_invalid` and maps 422 to it; no Web change.
+- **M3** `runtime.py` `current_result`: `fast_decision` is attached only
+  under the same `after_revision == snapshot.revision` guard as the route.
+- **M4** B2-7 tests for a replay after a later write and after an approval
+  expiry. No public command can follow the approval-opening event (a
+  second event is refused with "case is awaiting approval" or "case
+  approval is terminal"), so the later-write test seeds one revision bump
+  plus a later Fast decision through the repository.
+
 ## Red → green
 
 | Test | Red on main | Green |
@@ -45,6 +62,10 @@ Spec: `harness/context/fix-p2-api-hygiene-preflight.md`. Branch
 | `::test_repeat_decision_on_rejected_approval_reads_no_clock` | `4 == 3` clock reads | pass |
 | `::test_temporal_not_found_detail_is_the_category_code` | `'case not found' != 'not_found'` | pass |
 | `test_phase_04d_...::test_profile_check_compares_the_committed_baseline_without_assert` | `ImportError: _check_report` | pass |
+| M1 `::test_direct_approval_after_its_deadline_is_approval_expired` | `'case_conflict' != 'approval_expired'` | pass |
+| M2 `::test_request_validation_returns_a_fixed_body_and_logs_no_input` ×4 (extra field, over-long content, malformed JSON, bad path UUID) | default list body echoing `input` | pass |
+| M3/M4 `::test_replay_after_a_later_write_reports_current_without_a_stale_fast` | `'fast' not in {...}` fails | pass |
+| M4 `::test_replay_after_an_approval_expiry_reports_current` | already green on the B2-7 guard (regression test) | pass |
 
 `python -O scripts/run_phase_04d_control_plane_profile.py --check` exits 0;
 with a tampered `timeout_rate` under `-O` it prints
@@ -68,9 +89,15 @@ with a tampered `timeout_rate` under `-O` it prints
 
 ## Known limits
 
-- A replayed `/events` receipt still carries `fast` from
-  `state.last_fast_decision`, i.e. the latest Fast decision even if a later
-  event produced it; the B2-7 guard covers `route` only.
+- ~~A replayed `/events` receipt still carries `fast` from
+  `state.last_fast_decision` even if a later event produced it~~ — fixed by
+  review M3.
+- For a stale revision, direct mode and the fake Temporal client return
+  `{"detail": "stale_cas"}` while real Temporal returns `case_conflict`
+  (the workflow activity classifies it); the fix belongs in
+  `workflow_worker/activities.py`, out of scope.
+- The M2 validation log includes field locations, which for an
+  `extra_forbidden` error is the client-chosen key name (never its value).
 - The `APPROVED`-branch `_clock_now()` (`runtime.py` ~1102) stays by root
   decision.
 
@@ -102,3 +129,12 @@ shared test DB held exclusively (variables on the make command line only):
 - `make preflight` (variables unset): pass; runtime 1206 passed, 51
   skipped; ml 397 passed, 1 skipped; Web 140 passed; artifact checks
   passed.
+
+After review M1–M4 (DB gates not yet rerun; the DB is held elsewhere):
+
+- Focused pytest (7 API/runtime files): 114 passed.
+- `make format-check`, `make lint`, `make typecheck` (66 / 59 files),
+  `make preflight-fast`: pass.
+- `make web-check`: pass, 140 tests.
+- `make test`: runtime 1213 passed, 51 skipped; ml 397 passed, 1 skipped;
+  artifact checks passed.

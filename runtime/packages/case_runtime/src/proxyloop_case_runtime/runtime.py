@@ -338,12 +338,16 @@ class ThinAgentRuntime:
         state = self._require(case_id)
         if transition is not None and transition.case_id != case_id:
             raise CaseConflictError("transition reference Case id does not match")
-        # A receipt's route describes the snapshot it produced; a replayed
-        # receipt the Case has since moved past reports the current state.
+        # A receipt's route and Fast decision describe the snapshot it
+        # produced; a replayed receipt the Case has since moved past reports
+        # the current state and no Fast decision.
+        produced_current = (
+            transition is not None
+            and transition.after_revision == state.snapshot.revision
+        )
         route = (
             transition.route
-            if transition is not None
-            and transition.after_revision == state.snapshot.revision
+            if transition is not None and produced_current
             else "terminal"
             if state.snapshot.completion_decision is not None
             else "current"
@@ -353,6 +357,7 @@ class ThinAgentRuntime:
             route=route,
             fast_decision=state.last_fast_decision
             if transition is not None
+            and produced_current
             and transition.command_type is CaseCommandType.APPEND_EVENT
             else None,
             approval=next(iter(state.snapshot.approval_requests), None),
