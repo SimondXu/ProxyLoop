@@ -138,3 +138,19 @@ After review M1–M4 (DB gates not yet rerun; the DB is held elsewhere):
 - `make web-check`: pass, 140 tests.
 - `make test`: runtime 1213 passed, 51 skipped; ml 397 passed, 1 skipped;
   artifact checks passed.
+
+Docs step: `harness/context/audit-remediation-status.md` moves R-2, B2-7,
+B2-9, G-3 to the closed tables (branch name, PR pending) and records the
+API-error limits in §6. `docs/architecture.md` and `docs/ui/state-matrix.md`
+describe no API error body; unchanged.
+
+After merging `origin/main` @ `d23aff9` (#80, router precedence), serially,
+with the shared test DB held exclusively (variables on the make command line
+only):
+
+- `make postgres-check`: 27 passed.
+- `make phase05a-check`: 42 passed (103 s).
+- `make phase06b1-check`: 35 passed.
+- `make preflight` (variables unset): pass; runtime 1216 passed, 51
+  skipped; ml 397 passed, 1 skipped; Web 140 passed; artifact checks
+  passed.
