@@ -264,3 +264,93 @@ Evidence scripts (scratch, not committed): `scratchpad/impl-pr9b/m2_replay.py`
   `ml/uv.lock` unchanged, gated skips matching the pin of 63).
 - `git diff origin/main -- ml/pyproject.toml ml/uv.lock …/qwen_mlx.py
   …/fast_output.py runtime apps` is empty. No `PROXYLOOP_TEST_*` set.
+
+## Second half after PR-9a (#97, main @ `a8fdf5b`): checkpoint 2026-09-24
+
+The session paused at a usage limit. This section is the exact state.
+
+### Done
+
+- Merged `origin/main` @ `a8fdf5b` (`2e3ba11`): the spec takes main's copy
+  (9a's plus the dated 25 s amendment); the status file keeps both rows.
+- Shared wire (`167b605`): `local_fast/wire.py` deleted; the gateway uses
+  `proxyloop_agent_core.local_fast_wire` (`DecideResponse`,
+  `encode_decide_response`, the detail allow-lists). The fake identities encode
+  to the 9a identity goldens byte-for-byte, a core result encodes to each
+  response golden, the request golden is served, and the frozen
+  `FastModelOutput` schema equals the golden once `description` is dropped.
+- Host header: the 9a client accepts `127.0.0.1`, `::1` and `localhost`; the
+  gateway binds IPv4 127.0.0.1 only, so it accepts exactly `127.0.0.1:<port>`
+  and `localhost:<port>` (what `http.client` sends for those URLs); `[::1]`
+  cannot reach the socket and every other name is refused. End-to-end tests
+  (`ml/tests/test_local_fast_wire_compat.py`): the real 9a
+  `LocalFastHttpAdapter` (runtime env, subprocess) against the real gateway
+  HTTP server with a fake generator gets a line over both hosts, a typed
+  `fast_adapter_invalid_output`/`invalid_json` failure, and a startup refusal
+  for another backend.
+- M2 script `scripts/run_phase03c_product_parity.py` (`5dc5ece`) and the
+  split-report extension (`a19aa0e`, see below).
+- **M2 manual run: complete.** Command: `scratchpad/impl-pr9b/m2-run.sh`
+  (`HF_HUB_OFFLINE=1 … run_phase03c_product_parity --run --backend <b>`), then
+  `--write`. Apple M4 Pro, 48 GiB, macOS 26.5.1, mlx 0.32.1, mlx-lm 0.31.3.
+  Distilled: 200/200 generated rows, 14:41:02 → 16:00:51 UTC (79 min 49 s,
+  load 22.1 s), run from `5dc5ece`, clean tree. Untuned: 200/200,
+  16:00:51 → 16:36:27 UTC (35 min 36 s, load 12.5 s), run from `a19aa0e`
+  (the commits after `5dc5ece` touch only the Makefile, the split script and a
+  runtime test, none on the generation path) with the untracked
+  `ml/tests/test_product_parity.py`. Both `rc=0`. Committed:
+  `data/experiments/phase-03c/local-parity/product-path-report.json`;
+  `make phase03c-product-parity-check` passes; `ml/tests/test_product_parity.py`
+  13 passed.
+
+### M2 results (240 held-out rows, product rendering path)
+
+- Deterministic: 40/240 rows (all of refusal-transfer) are refused by
+  `fast_public_observation` (`fast_observation_offer_missing`: the family has
+  no offer), so the model is never called and the fallback is delivered. The
+  other 200 rows all lose `applied_changes` (D4) and differ in offer ids (not
+  in the prompt), so no product prompt equals its trained prompt and every
+  row was generated. D3 (Provider-state defaults) changed no held-out row:
+  their true flags are the defaults. Renderer information loss alone: the
+  oracle's act on the product observation equals the true one on 120/240
+  rows (promotion-credit confirm → counter and unsupported-action counter →
+  confirm once the applied change is gone; refusal-transfer refused).
+- Act agreement with the true oracle: distilled 157/240 (0.654) vs 236/240 on
+  the trained path (M1); untuned 97/240 vs 133/240. Against the oracle of the
+  product observation: distilled 157/240, untuned 87/240. Per family, the
+  distilled model follows its input: 40/40 on promotion-credit and
+  unsupported-action against the product oracle, 0/40 against the true one.
+- **Headline (Q1): delivered distilled lines through the product path: 0/240.**
+  All 200 outputs that reach the gate are withheld by `fast-gate-v1`
+  (`fast_gate_dialogue_act` 200, `fast_gate_number_not_allowed` 200,
+  `fast_gate_completion` 181, `fast_gate_non_ascii_text` 72,
+  `fast_gate_text_too_long` 47); the other 40 are refused before the model.
+  Untuned: 8/240 delivered (192 gate-rejected: dialogue act and numbers).
+  On the trained path (M1 outputs, trained snapshots) the gate passes 0/240
+  distilled and 44/240 untuned, matching the spec's probe P4 estimate.
+  No output failed compilation, `validate_fast_result` or the no-fact-updates
+  rule. A negative result, recorded as such.
+- Latency, descriptive: distilled product-path generation p50 23.9 s, max
+  32.5 s; untuned p50 10.4 s, max 12.9 s.
+
+### Pending (not started; resume here)
+
+1. **Local split reports (not run).** `make test` and
+   `make fast-slow-split-check` currently FAIL on this checkpoint with
+   `distilled:fast-slow-split-distilled.json_missing,
+   untuned:fast-slow-split-untuned.json_missing` until the two files are
+   committed. To resume, run the lane (about 10 minutes, one model at a
+   time): `bash scratchpad/impl-pr9b/split-run.sh`. **Port 8765 is taken** by
+   an unrelated `study_server.py` (PID 66838, running since 2026-09-23), so
+   set `PORT` in that script to a free port (for example 8775) first. It
+   starts the real gateway per backend, waits for `serving backend=`, runs
+   `run_fast_slow_split_report.py --write --fast-backend <b> --gateway-url
+   http://127.0.0.1:<port>`, and stops the gateway. Then commit
+   `data/evaluation/fast-slow-split-{distilled,untuned}.json`.
+2. Docs: `ml/serving/README.md` M2 section; `docs/architecture.md`
+   "Local opt-in Fast backend" measured paragraph (M2 and gate numbers above,
+   split summary); status row.
+3. `make lint`, `make typecheck`, `make test`, `make preflight` on the final
+   tree (not run on this checkpoint).
+4. Browser check (distilled backend through the Web, direct mode): needs
+   the DB/Compose lane; waiting for the root's go. Not started.
