@@ -308,18 +308,24 @@ export type AssistantLine = { eventCursor: number; text: string };
 // Runtime-authored dialogue (actor SYSTEM, event_type assistant_message) read
 // only from the authoritative snapshot.visible_events; `fast` is never read.
 // Dialogue carries no authority, so a malformed entry is skipped instead of
-// blocking the Case.
+// blocking the Case. A repeated cursor keeps its first well-formed entry.
 export function assistantLines(payload: RuntimePayload): AssistantLine[] {
+  const seen = new Set<number>();
   return arrayValue(payload.snapshot, "visible_events")
-    .flatMap((event) =>
-      isObject(event) &&
-      event.actor === "system" &&
-      event.event_type === "assistant_message" &&
-      isNonNegativeInteger(event.event_cursor) &&
-      isNonEmptyString(event.content)
-        ? [{ eventCursor: event.event_cursor, text: event.content }]
-        : [],
-    )
+    .flatMap((event) => {
+      if (
+        !isObject(event) ||
+        event.actor !== "system" ||
+        event.event_type !== "assistant_message" ||
+        !isNonNegativeInteger(event.event_cursor) ||
+        !isNonEmptyString(event.content) ||
+        seen.has(event.event_cursor)
+      ) {
+        return [];
+      }
+      seen.add(event.event_cursor);
+      return [{ eventCursor: event.event_cursor, text: event.content }];
+    })
     .sort((left, right) => left.eventCursor - right.eventCursor);
 }
 

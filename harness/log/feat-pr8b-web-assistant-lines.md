@@ -24,7 +24,8 @@ frozen event shape and merges only after 8a.
   consumer input; the label reuses the existing `artifact-note` class (no CSS
   change).
 - Tests: `runtime-client.test.ts` (+3 cases, 6 runs) and
-  `conversation-workspace.test.tsx` (+4 cases, 6 runs).
+  `conversation-workspace.test.tsx` (+4 cases, 6 runs); review follow-up
+  below adds 1 + 3 more.
 
 ## Event shape used by the fixtures
 
@@ -91,11 +92,45 @@ test and the "only malformed entries" render test.
 - Independent `reviewer`, PR, CI. Merge after 8a and before PR-10/PR-12 touch
   `conversation-workspace.tsx`.
 
+## Independent review follow-up
+
+Reviewer verdict: Approve with Minors
+(`harness/code_review/feat-pr8b-web-assistant-lines.md`). The root accepted
+M1–M3 (applied here) and M4 (a log note only, no code change).
+
+- M1: `assistantLines` keeps the first well-formed entry for a repeated cursor
+  (a malformed entry at that cursor does not displace a valid one). New tests:
+  client "keeps the first well-formed entry for a repeated cursor"; workspace
+  "8b M1" (one bubble renders, no React "same key" `console.error`).
+- M2: `apps/web/app/globals.css` `.message-bubble` gains
+  `overflow-wrap: anywhere`, so a 600-character line with no spaces wraps
+  instead of widening the three-column grid. Not covered by a vitest case
+  (jsdom does no layout); Browser check pending with 8a.
+- M3: workspace "8b M3a" (Case A's line renders; New task removes it; Case B,
+  created next with no lines, shows none of A's) and "8b M3b" (after the line
+  renders in finalizing, a poll read with a lower revision, then one with the
+  same revision and a lower cursor, both without the line, leave it shown).
+- M4: see Limits.
+
+Scratch mutation check (not committed): without the dedupe, the client M1
+test and the workspace M1 test fail (the bubble count fails first); with
+`acceptPayload`'s stale guards removed, M3b fails.
+
+Checks after the follow-up:
+
+- `make web-check`: exit 0 (eslint, `tsc`, vitest 2 files / 156 passed,
+  `next build` compiled).
+- `make preflight`: exit 0 (ruff format 120 + 90 files, lint clean, mypy 66 +
+  59 files clean, runtime tests 1260 passed / 53 skipped DB/Temporal gated, ML
+  tests 397 passed / 1 skipped, contracts match, artifact checks green,
+  web-check green, lock checks, `compileall`, `docker compose config`).
+
 ## Limits
 
 - Lines render in cursor order as one group after the Task Brief; the
   Web-authored local messages are not interleaved with them by cursor (they
   have no cursor). With one consumer turn before approval (spec R4) that is the
-  whole dialogue.
-- React keys are the event cursor; the runtime keeps cursors unique per
-  snapshot, and duplicates are not de-duplicated here.
+  whole dialogue. **M4: once PR-13 brings multi-turn Web dialogue, ordering
+  must interleave consumer turns and assistant lines by cursor**; this grouped
+  rendering is not sufficient then.
+- React keys are the event cursor; M1's dedupe keeps them unique.

@@ -565,6 +565,26 @@ describe("runtime client", () => {
     ]);
   });
 
+  it("keeps the first well-formed entry for a repeated cursor", () => {
+    const payload = {
+      ...basePayload,
+      snapshot: {
+        case: caseRecord,
+        visible_events: [
+          visibleEvent(3, "system", "assistant_message", 7),
+          visibleEvent(3, "system", "assistant_message", "First at 3."),
+          visibleEvent(1, "system", "assistant_message", "Only at 1."),
+          visibleEvent(3, "system", "assistant_message", "Second at 3."),
+        ],
+      },
+    };
+
+    expect(assistantLines(payload)).toEqual([
+      { eventCursor: 1, text: "Only at 1." },
+      { eventCursor: 3, text: "First at 3." },
+    ]);
+  });
+
   it.each([
     ["missing", undefined],
     ["null", null],

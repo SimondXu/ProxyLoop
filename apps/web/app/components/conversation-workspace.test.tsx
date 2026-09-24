@@ -2405,6 +2405,105 @@ describe("ConversationWorkspace", () => {
     expect(screen.queryByText("Wrong actor.")).not.toBeInTheDocument();
   });
 
+  it("8b M1: a repeated cursor renders one line and no React key warning", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    runtime.savePersistedWorkspace(storedWorkspace(null));
+    vi.mocked(runtime.checkReadiness).mockResolvedValue(DURABLE_READY);
+    vi.mocked(runtime.getCase).mockResolvedValue(payload({
+      event_cursor: 3,
+      snapshot: {
+        ...payload().snapshot,
+        visible_events: [
+          CONSUMER_CONFIRMATION,
+          assistantEvent(3, SCRIPTED_LINE),
+          assistantEvent(3, "A repeated cursor must not render."),
+        ],
+      },
+    }));
+
+    render(<ConversationWorkspace />);
+
+    const dialogue = await screen.findByRole("region", { name: "Automated messages" });
+    expect(within(dialogue).getAllByRole("article")).toHaveLength(1);
+    expect(within(dialogue).getByText(SCRIPTED_LINE)).toBeInTheDocument();
+    expect(screen.queryByText("A repeated cursor must not render.")).not.toBeInTheDocument();
+    const keyWarnings = consoleError.mock.calls.filter((call) => call.some(
+      (argument) => typeof argument === "string" && argument.includes("same key"),
+    ));
+    expect(keyWarnings).toEqual([]);
+  });
+
+  it("8b M3a: Restart drops Case A's lines and Case B shows none of them", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const caseA = payload({
+      event_cursor: 3,
+      snapshot: { ...payload().snapshot, visible_events: [CONSUMER_CONFIRMATION, assistantEvent(3, "Case A line.")] },
+    });
+    const caseBRecord = { ...caseRecord, case_id: "33333333-3333-4333-8333-333333333333" };
+    const caseB = payload({
+      case: caseBRecord,
+      case_id: caseBRecord.case_id,
+      snapshot: { case: caseBRecord, offers: [offer] },
+    });
+    vi.mocked(runtime.createCase).mockReset().mockResolvedValueOnce(caseA).mockResolvedValueOnce(caseB);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [caseA]);
+    expect(screen.getByText("Case A line.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /New task/ }));
+    expect(screen.queryByText("Case A line.")).not.toBeInTheDocument();
+
+    await completeLocalIntake(true, "yes", true, [caseB]);
+    expect(runtime.getCase).toHaveBeenLastCalledWith(caseBRecord.case_id);
+    expect(screen.queryByText("Case A line.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Automated messages" })).not.toBeInTheDocument();
+  });
+
+  it("8b M3b: a stale poll read (lower revision or cursor) does not roll the lines back", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const finalizing = payload({
+      event_cursor: 3,
+      revision: 6,
+      route: "fast_now",
+      snapshot: {
+        ...payload().snapshot,
+        pending_execution: true,
+        visible_events: [CONSUMER_CONFIRMATION, assistantEvent(3, SCRIPTED_LINE)],
+      },
+    });
+    const lowerRevision = payload({
+      event_cursor: 3,
+      revision: 5,
+      route: "fast_now",
+      snapshot: { ...payload().snapshot, pending_execution: true, visible_events: [CONSUMER_CONFIRMATION] },
+    });
+    const lowerCursor = { ...lowerRevision, event_cursor: 2, revision: 6 };
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(finalizing);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.useFakeTimers();
+    vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...finalizing }));
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await flushMicrotasks();
+    expect(screen.getByText(SCRIPTED_LINE)).toBeInTheDocument();
+    const reads = vi.mocked(runtime.getCase).mock.calls.length;
+
+    vi.mocked(runtime.getCase).mockImplementation(async () => ({ ...lowerRevision }));
+    await flushMicrotasks(1500);
+    expect(runtime.getCase).toHaveBeenCalledTimes(reads + 1);
+    expect(screen.getByText(SCRIPTED_LINE)).toBeInTheDocument();
+
+    vi.mocked(runtime.getCase).mockImplementation(async () => ({ ...lowerCursor }));
+    await flushMicrotasks(1500);
+    expect(runtime.getCase).toHaveBeenCalledTimes(reads + 2);
+    expect(screen.getByText(SCRIPTED_LINE)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it.each([
     ["$92.00.", "$92.00"],
     ["$92.", "$92.00"],
