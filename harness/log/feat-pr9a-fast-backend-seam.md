@@ -179,8 +179,10 @@ Checks after the follow-up, with no `PROXYLOOP_TEST_*` variable set:
 `make lint` passed; `make typecheck` passed (runtime 75 source files, ml 59);
 `make test` exit 0 (runtime 1585 passed, 63 skipped; ml 397 passed, 1 skipped;
 every `*-check` passed; no committed artifact moved); `make preflight` exit 0
-(Web 156 tests, gated skips equal the pinned 63). DB gates: not rerun yet. `runtime.py` changed (M3), so they must be rerun
-when the lane is free.
+(Web 156 tests, gated skips equal the pinned 63). DB lane rerun on
+`8b9adae` (`main` @ `c018390` already merged), serially, with the variables on
+the make command line only: `make postgres-check` 38 passed;
+`make phase05a-check` 53 passed; `make phase06b1-check` 56 passed.
 
 ## Decisions and assumptions (implementer; root to confirm)
 
