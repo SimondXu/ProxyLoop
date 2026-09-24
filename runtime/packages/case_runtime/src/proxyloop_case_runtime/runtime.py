@@ -47,7 +47,6 @@ from proxyloop_contracts import (
     EvidenceType,
     ExecutionClaim,
     FactLedger,
-    FactStatus,
     FastTurnDecision,
     LineItemCategory,
     ModelInputPins,
@@ -60,9 +59,7 @@ from proxyloop_contracts import (
     RoutingOutcome,
     StrategyPacket,
     VisibleCaseEvent,
-    approval_state_fingerprint,
-    canonical_fingerprint,
-    material_offers_fingerprint,
+    planning_basis_components,
     planning_basis_fingerprint,
 )
 from proxyloop_provider_simulator.episode import Phase01AEpisode
@@ -2037,43 +2034,17 @@ def _basis(
     *,
     schema_version: SnapshotVersion,
 ) -> PlanningBasis:
-    if schema_version == "1.1":
-        offers_fingerprint = material_offers_fingerprint(offers)
-        approvals_fingerprint = approval_state_fingerprint(approvals)
-    else:
-        # The 1.0 formula, kept only to complete an execution claim that was
-        # taken on a 1.0 snapshot.
-        offers_fingerprint = canonical_fingerprint(
-            tuple(sorted(offers, key=lambda item: str(item.offer_id)))
-        )
-        approvals_fingerprint = canonical_fingerprint(
-            tuple(sorted(approvals, key=lambda item: str(item.approval_id)))
-        )
-    components = {
-        "goal_fingerprint": canonical_fingerprint(case.goal),
-        "constraints_fingerprint": canonical_fingerprint(
-            tuple(sorted(case.constraints, key=lambda item: str(item.constraint_id)))
-        ),
-        "delegated_authority_fingerprint": canonical_fingerprint(
-            case.delegated_authority
-        ),
-        "verified_facts_fingerprint": canonical_fingerprint(
-            tuple(
-                sorted(
-                    (
-                        item
-                        for item in ledger.entries
-                        if item.status is FactStatus.VERIFIED
-                    ),
-                    key=lambda item: str(item.fact_id),
-                )
-            )
-        ),
-        "material_offers_fingerprint": offers_fingerprint,
-        "approval_state_fingerprint": approvals_fingerprint,
-        "provider_config_fingerprint": canonical_fingerprint(RUNTIME_PROVIDER_CONFIG),
-        "capability_manifest_fingerprint": canonical_fingerprint(manifest),
-    }
+    # A 1.0 basis is built only to complete an execution claim that was taken
+    # on a 1.0 snapshot.
+    components = planning_basis_components(
+        schema_version=schema_version,
+        case=case,
+        fact_ledger=ledger,
+        offers=offers,
+        approval_requests=approvals,
+        provider_config_ref=RUNTIME_PROVIDER_CONFIG,
+        capability_manifest=manifest,
+    )
     return PlanningBasis(
         contract_type="planning_basis",
         schema_version=schema_version,

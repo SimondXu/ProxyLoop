@@ -27,7 +27,7 @@ supersedes decision 15 (no V0, scripted gates, no further training); 18
 takes Phase 03C option A in local-only form ("local opt-in candidate"),
 then option C, and excludes option B (06B2); 19 keeps contract set 1.2
 narrow and droppable; 20 passes Stage 2 feedback outside the contract.
-The §4/§4a backlog (R-5, R-6, R-11, R-12, R-13, R-14, R-15, R-16,
+The §4/§4a backlog (R-5, R-6, R-11, R-12, R-13, R-15, R-16,
 R-17, R-18, R-19) and the §5 stages below are scheduled by that plan;
 R-19 (found in the #81 review) is not yet assigned to a build-plan PR.
 
@@ -189,7 +189,7 @@ Other items (Minor unless marked):
 - R-11 the canonical `material_terms_hash` excludes fees and applied changes. Option (a) **done** on branch `docs/contract-semantics-limits` (`CONTEXT.md` Material Terms states the implemented definition and its limits); option (b), binding fees, credits, and applied changes (R-11b), deferred to contract set 1.2.
 - **R-12 (Important, proposal stage 1)** rejected-result traces reach `CoordinatorOutcome` but the runtime raises before writing; needs a traces-only append.
 - R-13 `model_traces` retention unbounded. Option (c) **done** on branch `docs/contract-semantics-limits` (documented in `docs/architecture.md`); option (b), a separate append-only trace log at `storage_version` 3, planned with R-12.
-- R-14 the 1.0/1.1 basis switch is duplicated in `runtime.py` and `contracts.py`.
+- R-14 the 1.0/1.1 basis switch is duplicated in `runtime.py` and `contracts.py` — **done** on `refactor/r14-basis-switch-owner` (PR not yet opened): one owner, `planning_basis_components` in the contracts package, called by the snapshot validator and the runtime's `_basis`; pinned by `runtime/packages/contracts/tests/test_planning_basis_components.py`. See `harness/log/refactor-r14-basis-switch-owner.md`.
 - R-15 flaky: `ml/tests/test_teacher_pipeline.py::test_concurrent_workers_cannot_jointly_exceed_the_ceiling` asserts `8 <= calls <= 20` and saw 21 on CI (#71, a docs-only PR); the bound is timing-dependent — tighten the test or make the concurrency deterministic. Failed CI again on #75 (2026-09-24, run 35961699413 attempt 1: `assert 21 <= 20`; attempt 2 passed). A separate fix task has been proposed.
 - **R-16 (Important; severity confirmed by the root)** the expiry path's `_expiry_failure_category` reads the innermost typed `ApplicationError`; every real activity failure is raised `from exc`, so the converter chain is `[('ApplicationError','case_conflict',True), ('ApplicationError','CaseConflictError',False)]` and a real non-retryable expiry failure (e.g. `case_conflict`) is classified retryable and retried with backoff instead of abandoned. The expiry tests miss it because their injected faults carry no `__cause__`. The fix changes expiry-path commands for recorded histories, so it needs a second workflow patch gate. See `harness/log/fix-r1-retryable-update-continues-as-new.md`.
 - R-17 a channel ingest that exhausts on the delivery activity is not re-driven on redelivery (pre-existing; found in the R-1 design, `fix-r1-retryable-update-continues-as-new.md`).
@@ -197,7 +197,7 @@ Other items (Minor unless marked):
 - R-19 `SafeObservationAdapter._adapt_offer` (`agent_core/observation.py`) raises on a contract-valid `ProviderOffer` with a negative fee sum or a duplicate feature, via `SafeOffer.__post_init__` (the same out-of-domain inputs B1-9 made total in the policy check). Used today by the `ml/` pipeline and evaluation and the `scripts/` benchmark/harness runners, not by the product runtime. Found in the B1-9 review.
 
 Still open from the audit P2 list and not yet batched: runtime/router/api
-hygiene (B2-8, A-7f, R-5, R-14) and ops/tests (C-5, C-7, C-8, R-6).
+hygiene (B2-8, A-7f, R-5) and ops/tests (C-5, C-7, C-8, R-6).
 The design-first items are settled: B1-9 is closed above, and A-3, A-5, A-9
 are recorded as limits above. **Do not do**: D3-5/D3-6 (`qwen_mlx.py`
 frozen by r4); D1-10/11/12 (V1 simulator frozen, superseded by V2); D2-9 and
