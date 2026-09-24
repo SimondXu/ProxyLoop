@@ -161,6 +161,23 @@ def test_second_start_refuses_atomic_lifecycle_lock(
     demo._release_lifecycle_lock(tmp_path)
 
 
+def test_refused_start_keeps_the_process_state_of_a_crashed_supervisor(
+    tmp_path: Path,
+) -> None:
+    # C-5: a crashed supervisor leaves pids.json behind while its host services
+    # keep running. A refused second start must not delete it, or
+    # portfolio-demo-stop can no longer find those processes.
+    pids = {name: 4242 for name in demo.HOST_SERVICE_NAMES}
+    pid_file = tmp_path / demo.PID_FILE
+    pid_file.write_text(json.dumps(pids) + "\n")
+
+    with pytest.raises(demo.DemoScenarioError, match="already has a process state"):
+        demo.start_demo(state_dir=tmp_path)
+
+    assert demo._read_pids(tmp_path) == pids
+    assert not (tmp_path / demo.LIFECYCLE_LOCK_FILE).exists()
+
+
 def test_start_claims_lifecycle_before_clearing_stop_request(
     monkeypatch, tmp_path: Path
 ) -> None:

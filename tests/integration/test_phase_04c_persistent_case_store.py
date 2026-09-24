@@ -4,7 +4,7 @@ import importlib
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, replace
 from datetime import UTC, datetime, timedelta
 from threading import Barrier
 from types import SimpleNamespace
@@ -166,13 +166,46 @@ def _assert_non_provider_fields_equal(
     expected: CaseRuntimeState,
     actual: CaseRuntimeState,
 ) -> None:
-    assert actual.snapshot == expected.snapshot
-    assert actual.events == expected.events
-    assert actual.execution_count == expected.execution_count
-    assert actual.execution_source_pins == expected.execution_source_pins
-    assert actual.execution_intent == expected.execution_intent
-    assert actual.execution_approval == expected.execution_approval
-    assert actual.execution_proposal == expected.execution_proposal
+    # Derived from the dataclass so a field added later is compared too.
+    for field in fields(CaseRuntimeState):
+        if field.name == "provider":
+            continue
+        assert getattr(actual, field.name) == getattr(expected, field.name), field.name
+
+
+@pytest.mark.parametrize(
+    ("field", "other_value"),
+    [("transitions", ()), ("last_fast_decision", None)],
+)
+def test_round_trip_helper_compares_every_non_provider_field(
+    field: str, other_value: object
+) -> None:
+    # C-7: AC3 says every non-Provider field round-trips; the helper must notice
+    # a difference in any of them, not only the execution fields.
+    repository = InMemoryCaseRepository()
+    runtime = ThinAgentRuntime(
+        repository, clock=_clock(BASE_TIME, BASE_TIME + timedelta(minutes=1))
+    )
+    created = runtime.create_case()
+    runtime.apply_command(
+        CaseCommand(
+            command_id=UUID("dddddddd-dddd-4ddd-8ddd-dddddddddddd"),
+            case_id=CASE_ID,
+            command_type=CaseCommandType.APPEND_EVENT,
+            occurred_at=BASE_TIME + timedelta(minutes=1),
+            expected_revision=created.snapshot.revision,
+            content="Review the offer.",
+            event_type="consumer_message",
+        )
+    )
+    state = repository.get(CASE_ID)
+    assert state is not None
+    assert state.transitions
+    assert state.last_fast_decision is not None
+    changed = replace(state, **{field: other_value})
+
+    with pytest.raises(AssertionError):
+        _assert_non_provider_fields_equal(state, changed)
 
 
 def _terminal_state(repository: PostgresCaseRepository) -> CaseRuntimeState:

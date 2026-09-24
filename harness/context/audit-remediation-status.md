@@ -41,6 +41,7 @@ recorded — the relay is exhausted), force-push, destructive operations.
 | `fix/r18-callback-evidence-pairing` | PR-4, R-18 | Review applied (reviewer Approve, Minors 1-3 fixed); merged with `main` @ `0eb3079`; `make lint`, `make typecheck`, `make preflight` green on `c73f6a7`; gates green on merged main @ `5266b6d` (`postgres-check` 27, `phase05a-check` 53, `phase06b1-check` 35); `make test` green on `0eb3079`; ready for PR | PR; CI; squash merge. Accepted limits are in its log (a consistent forged event+Evidence pair, unchecked `source_ref`/`content_hash`; binding to real deliveries needs a storage change) |
 | `fix/gate-honesty-r15-g1` | PR-1, R-15 + G-1 strong form | Implemented; commit subject says "(unreviewed WIP)". R-15: the `<= 20` bound was wrong (true invariant 10 ≤ calls ≤ 21; 21 is reachable with one worker) — barrier-based deterministic test, 200/200 passes. G-1: `scripts/check_gated_skips.py` pins 51 gated skips and names the real-dependency gates at the end of `make preflight` | `make preflight`; `reviewer`; open question for the reviewer/root: the pin is not enforced when any `PROXYLOOP_TEST_*` is set (alternative: require 0 gated skips when both are set); PR; CI; merge |
 | `fix/b2-8-threadpool-runtime-calls` | PR-6, B2-8 | Implemented: `app.py` runs the direct-mode `apply_command`, `current_result`, the readiness probe, and the mailbox route's storage calls via `run_in_threadpool`; `direct_expiry.py` `_expire` likewise; `health_live` is `async def`. Review: Approve with one Important (I1: worker threads broke the in-process serialization of the direct-mode clock guard — a strictly earlier time ended in 500 `internal_error`, equal times were accepted), fixed by one per-app `threading.Lock` around `apply_direct` (order: app lock → Runtime lane; expiry takes the lane only) with a red/green race test (`harness/code_review/fix-b2-8-threadpool-runtime-calls.md`). Known limit: across uvicorn processes on PostgreSQL the gap remains as on `main` — a strictly earlier time fails closed in the `CaseContextSnapshot` validator with 500 `internal_error` and no write; an equal time is accepted. `make lint`, `typecheck`, `test`, `preflight` green on the follow-up diff; DB gates green at `3c88fc2`: `postgres-check` 27, `phase05a-check` 42, `phase06b1-check` 35 | PR; CI; merge. Log `fix-b2-8-threadpool-runtime-calls.md` |
+| `fix/pr5-ops-tests` | PR-5, C-5 + C-7 + C-8 (R-6 deferred) | Implemented from `main` @ `74fb993`: C-5 a refused `make portfolio-demo` keeps a crashed supervisor's `pids.json` (red/green); C-7 the 04C round-trip helper compares every non-Provider field of `CaseRuntimeState` (red/green, DB-free self-test); C-8 two real-PostgreSQL delivery-callback tests (rollback + retry, duplicate + regression) on an in-progress Case, adding 2 gated skips (PR-1's pin must add 2). R-6 needs `runtime.py` + `postgres_repository.py` (PR-7): seam and test plan in the log. `make lint`, `typecheck`, `test`, `preflight` green; `postgres-check` and `phase06b1-check` unrun (lane held) | DB lane (`postgres-check`, `phase06b1-check`); `reviewer`; PR; CI; merge. Log `fix-pr5-ops-tests.md` |
 
 R-19 (`SafeObservationAdapter` raises on negative-fee / duplicate-feature
 offers; used by `ml/` and two scripts) is assigned to PR-9, whose parity
@@ -192,7 +193,7 @@ separate decisions.
 
 Open: G-1's stronger form (`preflight` asserts the gated-skip count or
 names the real-dependency gates), A-7f,
-B2-8 (in flight, PR-6, §0), C-5, C-7, C-8, D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
+B2-8 (in flight, PR-6, §0), C-5, C-7, C-8 (in flight, PR-5, §0), D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
 deletion only), D3-8, D3-9.
 
 ## 4a. Found during the P1 and P2 runs (R-1 … R-19)
@@ -223,7 +224,7 @@ the window and exceeds the 30 s Next proxy timeout.
 Other items (Minor unless marked):
 - R-4 the ML compiler resolves capabilities by exact id (frozen via r4; consistent today).
 - R-5 the channel route reads `expected_revision` outside the lock (redelivery recovers since #62).
-- R-6 persisted Cases keep their 1-day manifest; a runtime > 24 h test needs an injectable offer TTL.
+- R-6 persisted Cases keep their 1-day manifest; a runtime > 24 h test needs an injectable offer TTL. Deferred from PR-5 until PR-7 merges: the seam needs `runtime.py` (`create_case` builds the Provider) and `postgres_repository.py` (`_reconstruct_provider` regenerates the offer with the default TTL); proposed seam, storage options, and test plan in `harness/log/fix-pr5-ops-tests.md`.
 - R-7 `_snapshot(manifest=None)` re-mint — **done** in #68 (manifest required).
 - R-9 shared `proxyloop_test` DB → run DB/Temporal gates serially (documented in #73); a per-run schema would remove the hazard.
 - R-11 the canonical `material_terms_hash` excludes fees and applied changes. Option (a) **done** in #83 (`CONTEXT.md` Material Terms states the implemented definition and its limits); option (b), binding fees, credits, and applied changes (R-11b), deferred to contract set 1.2.
@@ -237,7 +238,7 @@ Other items (Minor unless marked):
 - R-19 `SafeObservationAdapter._adapt_offer` (`agent_core/observation.py`) raises on a contract-valid `ProviderOffer` with a negative fee sum or a duplicate feature, via `SafeOffer.__post_init__` (the same out-of-domain inputs B1-9 made total in the policy check). Used today by the `ml/` pipeline and evaluation and the `scripts/` benchmark/harness runners, not by the product runtime. Found in the B1-9 review.
 
 Still open from the audit P2 list and not yet batched: runtime/router/api
-hygiene (B2-8 in flight as PR-6, A-7f, R-5) and ops/tests (C-5, C-7, C-8, R-6).
+hygiene (B2-8 in flight as PR-6, A-7f, R-5) and ops/tests (C-5, C-7, C-8 in flight as PR-5; R-6 deferred until after PR-7).
 The design-first items are settled: B1-9 is closed above, and A-3, A-5, A-9
 are recorded as limits above. **Do not do**: D3-5/D3-6 (`qwen_mlx.py`
 frozen by r4); D1-10/11/12 (V1 simulator frozen, superseded by V2); D2-9 and
