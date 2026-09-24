@@ -6,8 +6,8 @@ proposal (`docs/research/2026-09-21-target-architecture-proposal.md`).
 Authorization and adopted decisions: `harness/context/audit-remediation-decisions.md`.
 Group 2 design: `harness/context/group2-evaluator-proposal.md`.
 
-**Updated 2026-09-24 (build plan and decisions 16–20 adopted; P1 closed,
-first P2 batches, R-10, R-1, B1-12 and B1-9 merged, #72–#81). `main` @ `e1c8371`.
+**Updated 2026-09-24, end of the third session (#72–#85 merged; build plan and
+decisions 16–20 adopted). `main` @ `903a7ba`.
 Everything below is merged to `main` unless the row says otherwise.**
 
 A new session should read, in order: `harness/status.toml`, this file
@@ -16,32 +16,72 @@ spec and log named by the item it picks up.
 
 ## 0. Next session — start here
 
-**Resume from `harness/context/build-plan-to-complete.md`** (adopted
-2026-09-24): Wave 0 (in flight: #80 and #81 B1-9 merged; #82 API hygiene and
-#83 contract-semantics limits open; `refactor/r14-basis-switch-owner`
-pushed), then Waves 1–6 = PR-1..PR-17 in order, under its serialization
-rules and "do not do" list. Decisions 16–20 in
-`harness/context/audit-remediation-decisions.md` govern it: 16 extends the
-authorization to a complete build within the unchanged hard limits; 17
-supersedes decision 15 (no V0, scripted gates, no further training); 18
-takes Phase 03C option A in local-only form ("local opt-in candidate"),
-then option C, and excludes option B (06B2); 19 keeps contract set 1.2
-narrow and droppable; 20 passes Stage 2 feedback outside the contract.
-The §4/§4a backlog (R-5, R-6, R-11, R-12, R-13, R-15, R-16,
-R-17, R-18, R-19) and the §5 stages below are scheduled by that plan;
-R-19 (found in the #81 review) is not yet assigned to a build-plan PR.
+**Handoff 2026-09-24 (end of the third session).** `main` @ `903a7ba`.
+This session merged #72–#85: 1.1 PR4 (P1 closed), R-10, R-1/R-1b, the four
+P2 WIP batches, B1-12 + Router precedence tests, API hygiene (R-2, B2-7,
+B2-9, G-3), B1-9, R-14, the contract-semantics limits (A-3, A-5, A-9,
+R-11a, R-13c), and decisions 16–20 with the build plan.
 
-Working mode: implementation, noisy checks and review run in subagents;
-the root decides, reviews the final diffs and merges. To bring a pushed
-branch up to date, prefer `git merge origin/main` over a rebase (no
-force-push).
+**The plan of record is `harness/context/build-plan-to-complete.md`**
+(PR-1..PR-17 in six waves, dependencies, serialization rules, "do not do"
+list, definition of done), governed by decisions 16–20 in
+`harness/context/audit-remediation-decisions.md`. Decision 16 is the
+user's standing authorization for a complete build: do not stop to ask
+for design or routine decisions — consult `architect` (or a reviewer) when
+unsure, decide, and record the decision; every PR updates the docs it
+affects; merge after CI + independent review. Hard limits still need the
+user: real credentials, real external channels/Providers (06B2),
+deployment/release, hosted spend beyond a recorded budget (none is
+recorded — the relay is exhausted), force-push, destructive operations.
 
-Gate hygiene learned the hard way: the DB/Temporal gates share the
-`proxyloop_test` database and fixed Case ids, so two concurrent runs truncate
-each other (`case_not_found`, `state_invalid`). Run them one at a time and
-tell implementers not to set `PROXYLOOP_TEST_*`. A fresh worktree needs
-`pnpm install --frozen-lockfile` before `make test` or `make preflight` (the
-generated-contract tests call `tsc`/`json2ts`).
+### In flight (pushed, no PR open) — finish these first
+
+| Branch | Plan item | State | Remaining |
+|---|---|---|---|
+| `fix/r18-callback-evidence-pairing` | PR-4, R-18 | Implemented; merged with `main` @ `e1c8371`; `make test`, `postgres-check` 27, `phase05a-check` 42, `phase06b1-check` 35, `make preflight` all green | independent `reviewer`; merge current `main` (status-file conflict likely); PR; CI; squash merge. Accepted limits are in its log (a consistent forged event+Evidence pair, unchecked `source_ref`/`content_hash`; binding to real deliveries needs a storage change) |
+| `fix/r16-expiry-classifier` | PR-2, R-16 | Implemented (outermost-cause classifier, second patch gate `expiry-failure-outermost-cause`, replay fixture recorded on `main`); non-DB checks green; replay test red on `main`, green on the branch | with the DB: red run of the chained non-retryable expiry test against `main`'s `workflow.py`, green run, then `phase05a-check` → `phase06b1-check` → `postgres-check` → `make preflight`; `reviewer`; PR; CI; merge |
+| `fix/gate-honesty-r15-g1` | PR-1, R-15 + G-1 strong form | Implemented; commit subject says "(unreviewed WIP)". R-15: the `<= 20` bound was wrong (true invariant 10 ≤ calls ≤ 21; 21 is reachable with one worker) — barrier-based deterministic test, 200/200 passes. G-1: `scripts/check_gated_skips.py` pins 51 gated skips and names the real-dependency gates at the end of `make preflight` | `make preflight`; `reviewer`; open question for the reviewer/root: the pin is not enforced when any `PROXYLOOP_TEST_*` is set (alternative: require 0 gated skips when both are set); PR; CI; merge |
+
+R-19 (`SafeObservationAdapter` raises on negative-fee / duplicate-feature
+offers; used by `ml/` and two scripts) is assigned to PR-9, whose parity
+renderer uses `agent_core/observation.py`.
+
+### Then
+
+Wave 1 continues with PR-3 (after PR-2), PR-5 (after PR-4), PR-6 (B2-8,
+`app.py`), PR-7 (R-12 + R-13b trace log, **architect design first**);
+then Waves 2–6 per the plan. Items marked "architect first" get an
+`architect` proposal before any `implementer` starts.
+
+### How to run it (harness)
+
+- Root = the main session: decides, reads primary evidence for its
+  decisions, reviews final diffs, merges. `implementer` writes code in its
+  own worktree (`isolation: worktree`) with a full task packet;
+  `reviewer` (read-only) reviews every material PR; `architect` proposes
+  for design-first items and uncertain decisions; `explorer` for
+  inventories. Resume a subagent with SendMessage for follow-ups instead
+  of starting a fresh one. Up to 6 in flight.
+- **One DB lane**: the Compose test DB (`localhost:55432/proxyloop_test`,
+  Temporal `localhost:7233`) is shared — only one agent at a time runs
+  DB/Temporal tests or the gates, `postgres-check` → `phase05a-check` →
+  `phase06b1-check`, with the variables on the make command line only.
+  Implementers do all non-DB work first and report "ready for DB"; the
+  root hands the DB out explicitly.
+- **One writer per hot file** (`runtime.py`, `app.py`,
+  `conversation-workspace.tsx`, `workflow.py`, `postgres_repository.py`).
+- Bring pushed branches up to date with `git merge origin/main`, never
+  rebase + force-push. Every PR edits this status file, so merging one PR
+  makes the others conflict here: merge them one at a time and resolve by
+  keeping both sides (closed rows from both; open lists minus everything
+  either side closed). A code auto-merge in `runtime.py` needs `make test`,
+  and the DB gates when the combined behaviour is DB-covered.
+- Give each subagent its own scratch subdirectory (the scratchpad root is
+  shared; agents overwrote each other's files once).
+- `gh pr checks --watch` can die on a GitHub TLS timeout; poll
+  `gh pr checks <n>` in a loop instead. The ML test R-15 flaked on CI
+  twice before PR-1; if it recurs before PR-1 lands, rerun the failed job.
+- Fresh worktrees need `pnpm install --frozen-lockfile` before `make test`.
 
 ## 1. Where the programme stands
 
@@ -131,7 +171,7 @@ Closed in the third session:
 | D3-7, D2-6 | pipeline reason codes: `schema_invalid`, `hash_mismatch`, `declared_rejection` (a non-empty `rejection_reasons` is quarantined, no longer accepted), `provenance_mismatch`, `unknown_derivation_parent`, `missing_provenance` for a null `source`; a non-frozen test replays the committed r2 and pins its one r3-corrected mismatch | #74 | `fix-p2-ml-eval-hygiene.md` |
 | B1-6, B1-7, B1-8, B1-10, B1-11 | model match is exact or a dated snapshot; SDK `ValidationError` → `invalid_output`; `offer_case_mismatch`; a `commit()` that raised is never re-run (`execution_outcome_unknown`); the credit constant is owned by `offer_policy.py` | #76 | `fix-p2-adapter-domain.md` |
 | E-7, E-8, E-9 (= R-3), E-10 | polls never regress an in-flight command; Progress shows only payload-backed steps; `usage.data_megabytes` allow-listed and rendered; strict USD parsing | #77 | `fix-p2-web-hygiene.md` |
-| B2-7, B2-9, G-3 | a replayed receipt reports its route and Fast decision only if it produced the current snapshot (otherwise `terminal`/`current`, no `fast`); the dead clock read in the terminal-approval branch is gone; `phase04d-profile-check` compares a committed shape baseline and exact counts and exits 1 with named failures (no bare `assert`) | branch `fix/p2-api-hygiene` (PR pending) | `fix-p2-api-hygiene.md` |
+| B2-7, B2-9, G-3 | a replayed receipt reports its route and Fast decision only if it produced the current snapshot (otherwise `terminal`/`current`, no `fast`); the dead clock read in the terminal-approval branch is gone; `phase04d-profile-check` compares a committed shape baseline and exact counts and exits 1 with named failures (no bare `assert`) | #82 | `fix-p2-api-hygiene.md` |
 | B1-12 | the Router waits on approval state, not an event label: `RouteRequest.trigger_is_approval_decision` removed, a current PENDING approval always routes `WAIT_FOR_APPROVAL`; precedence and reason codes unchanged | #80 | `fix-p2-router-precedence.md` |
 | grep-based architecture tests → Router precedence tests (audit §3, lane A) | the grep test over `router.py`/`coordinator.py` is deleted; `test_router_precedence_ladder_matches_the_frozen_table` checks each row of `ROUTER_PRECEDENCE` behaviourally, plus a slow-result planning-basis rejection test; the 03A0 docs-invariant tests are kept | #80 | `fix-p2-router-precedence.md` |
 | B1-9 | the Case-vs-offer policy check is total: `case_offer_violations` (telecom domain) turns a contract-valid but out-of-domain input (negative fee sum from a credit line, duplicate goal/offer/applied-change tokens) into `offer_terms_invalid` / `compliance_context_invalid` instead of raising; `verify_completion` and the runtime approval gate both use it (NEEDS_REPLAN / no approval). A non-UTC `evaluated_at` still raises (caller bug). No wire or fee-netting change; non-negative fees at the wire deferred to 1.2 | `fix/b1-9-total-offer-policy` | `fix-b1-9-total-offer-policy.md` |
@@ -143,7 +183,7 @@ deleting the D3-7 `rejection_reasons` field (emitted in the committed
 `_matches_environment` fallback at `pipeline.py:566`.
 
 Recorded as limits (documentation plus characterization tests, no
-behaviour change) on branch `docs/contract-semantics-limits`
+behaviour change) in #83
 (`docs-contract-semantics-limits.md`): A-3 (the executor is the only
 enforcement point for the capability/action join), A-5 (`Evidence.content_hash`
 referent table), A-9 (ephemeral values and write-once records keep
@@ -165,7 +205,7 @@ Closed:
 | R-1 (Important), R-1b | option (f): a retry-exhausted Update still fails with `temporal_unavailable` and the run requests Continue-As-New (patch gate `retryable-update-failure-continues-as-new`), so the identical retry reaches the Runtime; the classifier reads `ActivityError.retry_state` (`MAXIMUM_ATTEMPTS_REACHED`, `TIMEOUT`); `_can_continue_as_new()` ends the R-1b busy-loop | #78 | `fix-r1-retryable-update-continues-as-new.md` |
 | R-3 (= E-9) | see §4 | #77 | `fix-p2-web-hygiene.md` |
 | R-8 | documented: the browser `event_cursor`/`revision` count channel events; `snapshot.completion` is a synthetic `not_done` | #77 | `fix-p2-web-hygiene.md` |
-| R-2 | error details are content-free category codes: 404 `{"detail": "not_found"}` in both modes; 409 `{"detail": "stale_cas" \| "case_conflict" \| "approval_expired"}`; request validation 422 `{"detail": {"code": "request_invalid", "message": "request rejected"}}` instead of FastAPI's default body (which echoed input). The Runtime text (or, for 422, field locations and error types only) is logged server-side with the correlation id | branch `fix/p2-api-hygiene` (PR pending) | `fix-p2-api-hygiene.md` |
+| R-2 | error details are content-free category codes: 404 `{"detail": "not_found"}` in both modes; 409 `{"detail": "stale_cas" \| "case_conflict" \| "approval_expired"}`; request validation 422 `{"detail": {"code": "request_invalid", "message": "request rejected"}}` instead of FastAPI's default body (which echoed input). The Runtime text (or, for 422, field locations and error types only) is logged server-side with the correlation id | #82 | `fix-p2-api-hygiene.md` |
 
 Specs: `harness/context/fix-r10-terminal-delivery-callback-preflight.md`,
 `harness/context/fix-r1-retryable-update-continues-as-new-preflight.md`.
@@ -186,10 +226,10 @@ Other items (Minor unless marked):
 - R-6 persisted Cases keep their 1-day manifest; a runtime > 24 h test needs an injectable offer TTL.
 - R-7 `_snapshot(manifest=None)` re-mint — **done** in #68 (manifest required).
 - R-9 shared `proxyloop_test` DB → run DB/Temporal gates serially (documented in #73); a per-run schema would remove the hazard.
-- R-11 the canonical `material_terms_hash` excludes fees and applied changes. Option (a) **done** on branch `docs/contract-semantics-limits` (`CONTEXT.md` Material Terms states the implemented definition and its limits); option (b), binding fees, credits, and applied changes (R-11b), deferred to contract set 1.2.
+- R-11 the canonical `material_terms_hash` excludes fees and applied changes. Option (a) **done** in #83 (`CONTEXT.md` Material Terms states the implemented definition and its limits); option (b), binding fees, credits, and applied changes (R-11b), deferred to contract set 1.2.
 - **R-12 (Important, proposal stage 1)** rejected-result traces reach `CoordinatorOutcome` but the runtime raises before writing; needs a traces-only append.
-- R-13 `model_traces` retention unbounded. Option (c) **done** on branch `docs/contract-semantics-limits` (documented in `docs/architecture.md`); option (b), a separate append-only trace log at `storage_version` 3, planned with R-12.
-- R-14 the 1.0/1.1 basis switch is duplicated in `runtime.py` and `contracts.py` — **done** on `refactor/r14-basis-switch-owner` (PR not yet opened): one owner, `planning_basis_components` in the contracts package, called by the snapshot validator and the runtime's `_basis`; pinned by `runtime/packages/contracts/tests/test_planning_basis_components.py`. See `harness/log/refactor-r14-basis-switch-owner.md`.
+- R-13 `model_traces` retention unbounded. Option (c) **done** in #83 (documented in `docs/architecture.md`); option (b), a separate append-only trace log at `storage_version` 3, planned with R-12.
+- R-14 the 1.0/1.1 basis switch is duplicated in `runtime.py` and `contracts.py` — **done** in #85: one owner, `planning_basis_components` in the contracts package, called by the snapshot validator and the runtime's `_basis`; pinned by `runtime/packages/contracts/tests/test_planning_basis_components.py`. See `harness/log/refactor-r14-basis-switch-owner.md`.
 - R-15 flaky: `ml/tests/test_teacher_pipeline.py::test_concurrent_workers_cannot_jointly_exceed_the_ceiling` asserts `8 <= calls <= 20` and saw 21 on CI (#71, a docs-only PR); the bound is timing-dependent — tighten the test or make the concurrency deterministic. Failed CI again on #75 (2026-09-24, run 35961699413 attempt 1: `assert 21 <= 20`; attempt 2 passed). A separate fix task has been proposed.
 - **R-16 (Important; severity confirmed by the root)** the expiry path's `_expiry_failure_category` reads the innermost typed `ApplicationError`; every real activity failure is raised `from exc`, so the converter chain is `[('ApplicationError','case_conflict',True), ('ApplicationError','CaseConflictError',False)]` and a real non-retryable expiry failure (e.g. `case_conflict`) is classified retryable and retried with backoff instead of abandoned. The expiry tests miss it because their injected faults carry no `__cause__`. The fix changes expiry-path commands for recorded histories, so it needs a second workflow patch gate. See `harness/log/fix-r1-retryable-update-continues-as-new.md`.
 - R-17 a channel ingest that exhausts on the delivery activity is not re-driven on redelivery (pre-existing; found in the R-1 design, `fix-r1-retryable-update-continues-as-new.md`).

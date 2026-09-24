@@ -27,9 +27,12 @@ needs the real-dependency gates.
 |---|---|
 | #80 B1-12 router precedence (lane A) | merged (`d23aff9`) |
 | #81 B1-9 total offer policy (`fix/b1-9-total-offer-policy`) | merged (`e1c8371`) |
-| #82 P2 API hygiene (`fix/p2-api-hygiene`) | open |
-| `refactor/r14-basis-switch-owner` (R-14) | branch pushed, no PR yet |
-| #83 contract-semantics limits (`docs/contract-semantics-limits`) | open |
+| #82 P2 API hygiene (`fix/p2-api-hygiene`) | merged (`88a6c7e`) |
+| #85 R-14 planning-basis owner (`refactor/r14-basis-switch-owner`) | merged (`903a7ba`) |
+| #83 contract-semantics limits (`docs/contract-semantics-limits`) | merged (`f6d2871`) |
+| #84 decisions 16–20 and this plan | merged (`af67774`) |
+
+Wave 0 is complete. Wave 1 in flight at the 2026-09-24 handoff: PR-1 (`fix/gate-honesty-r15-g1`), PR-2 (`fix/r16-expiry-classifier`), PR-4 (`fix/r18-callback-evidence-pairing`) — pushed, no PR; see the status file §0.
 
 ## Waves 1–6 — PR-1..PR-17
 
