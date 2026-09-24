@@ -1719,6 +1719,46 @@ describe("ConversationWorkspace", () => {
     expect(runtime.decideApproval).toHaveBeenCalledTimes(1);
   });
 
+  it("N-1: deadline reads during an in-flight approval POST stay 1500 ms apart", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const pendingApproval = deferred<RuntimePayload>();
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.useFakeTimers();
+    const waiting = payload({
+      approval: {
+        action_intent_revision: 1,
+        approval_id: "22222222-2222-4222-8222-222222222222",
+        case_revision: 2,
+        decision: "pending",
+        expires_at: new Date(Date.now() + 5000).toISOString(),
+        material_terms_hash: "hash-1",
+      },
+      event_cursor: 2,
+      revision: 4,
+      route: "wait_for_approval",
+    });
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(waiting);
+    vi.mocked(runtime.decideApproval).mockReset().mockReturnValue(pendingApproval.promise);
+    vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...waiting }));
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await flushMicrotasks();
+    fireEvent.click(screen.getByRole("button", { name: "Approve exact terms" }));
+    await flushMicrotasks();
+    expect(runtime.decideApproval).toHaveBeenCalledTimes(1);
+
+    await flushMicrotasks(5001);
+    const reads = vi.mocked(runtime.getCase).mock.calls.length;
+    for (let flush = 0; flush < 30; flush += 1) await flushMicrotasks(0);
+    expect(runtime.getCase).toHaveBeenCalledTimes(reads);
+    await flushMicrotasks(1499);
+    expect(runtime.getCase).toHaveBeenCalledTimes(reads);
+    await flushMicrotasks(1);
+    expect(runtime.getCase).toHaveBeenCalledTimes(reads + 1);
+  });
+
   it("I1: an approval response that drifts an intake fact is Blocked with no second approval", async () => {
     const runtime = await import("../../lib/runtime-client");
     const waiting = payload({

@@ -631,6 +631,10 @@ export function ConversationWorkspace() {
   const [staleRetryDropped, setStaleRetryDropped] = useState(false);
   const pollCount = useRef(0);
   const pollBudgetExhaustedReported = useRef(false);
+  // `approval_id|expires_at` of the approval whose deadline read has started; the
+  // first deadline read waits for expiry, later ones 1500 ms (N-1). Keyed so a
+  // new approval or deadline starts over; independent of the poll budget count.
+  const deadlineReadStartedRef = useRef<string | null>(null);
   // Blocked is sticky: once set, only an explicit Reconnect or Restart clears
   // it, so a late POST failure, in-flight GET, or poll cannot leave it (E-5).
   const blockedRef = useRef(false);
@@ -1000,6 +1004,7 @@ export function ConversationWorkspace() {
     sessionId.current += 1;
     blockedRef.current = false;
     commandInFlightRef.current = null;
+    deadlineReadStartedRef.current = null;
     setMessages([]);
     setDraft("");
     setPayload(null);
@@ -1057,9 +1062,11 @@ export function ConversationWorkspace() {
     const expiresAt = Date.parse(stringAt(approval, "expires_at") ?? "");
     if (!Number.isFinite(expiresAt)) return;
     if (pollCount.current >= 5) return;
-    const delay = pollCount.current === 0 ? Math.max(0, expiresAt - Date.now()) : 1500;
+    const deadlineKey = `${approval.approval_id}|${expiresAt}`;
+    const delay = deadlineReadStartedRef.current === deadlineKey ? 1500 : Math.max(0, expiresAt - Date.now());
     const timer = window.setTimeout(() => {
       if (blockedRef.current || pollCount.current >= 5) return;
+      deadlineReadStartedRef.current = deadlineKey;
       countPollRead();
       setApprovalDeadlinePassed(true);
       setError("The local approval deadline has passed. Reading the authoritative Runtime state now.");

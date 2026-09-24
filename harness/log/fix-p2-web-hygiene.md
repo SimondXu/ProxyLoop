@@ -96,8 +96,13 @@ Checks on this tree (no `PROXYLOOP_TEST_*` set):
 - `make test`: pass (1174 passed, 46 skipped; 390 passed, 1 skipped;
   V2 ceiling report current). The first suite collected 1230 at the merge
   run and 1220 now. A clean detached worktree at `49a10a3` also collects
-  1220 with an identical per-file count, so this diff did not change it;
-  the cause is not established.
+  1220 with an identical per-file count, so this diff did not change it.
+  Correction (re-review): the extra 10 are #75
+  (`test_r10_terminal_delivery_callback.py`, 9 parametrised cases, plus 1
+  in `test_phase_06b1_channel_runtime.py`), which was present on the tree
+  where the merge-time run happened. No test file was lost. After merging
+  #75 (below) the suite collects 1230 again, and those two files add 9
+  and 1.
 - `git status --short data/`: empty.
 - Not run: `make preflight`, real-dependency gates, Browser/manual smoke.
 
@@ -137,3 +142,34 @@ Checks on this tree (no `PROXYLOOP_TEST_*` set):
 
 Known limit: reads made during a command are unbounded for as long as the
 POST stays pending (one per 1500 ms); the budget cannot bound them.
+
+## Re-review @ db154b2 (Request Changes: N-1) and update to origin/main
+
+- Merged `origin/main` @ `14d3fcf` (#74, #75): no conflicts; main touched
+  none of this branch's files.
+- N-1: while an approval POST is in flight, the deadline effect detected
+  its first read with `pollCount.current === 0`. Under option B the count
+  stays 0, so the delay stayed `max(0, expiresAt - now) = 0` and GETs fired
+  back to back. Fix: `deadlineReadStartedRef` holds
+  `approval_id|expires_at` once the first deadline read fires, and the
+  delay is 1500 ms for that same key, otherwise the time to expiry. A new
+  approval or deadline starts over, and `restart()` clears the ref.
+  Vitest "N-1: deadline reads during an in-flight approval POST stay
+  1500 ms apart" (expires_at = now + 5 s, `decideApproval` held pending,
+  Approve, +5001 ms, 30 zero-duration flushes, then +1499/+1): red, getCase
+  2 → 32 (matches the reviewer repro) → green (no read on zero-duration
+  flushes; next read exactly at +1500 ms).
+- M-a: `docs/ui/state-matrix.md` states that only an uppercase ISO code
+  after the amount marks it non-USD (`$92 aud` is read as USD; the Draft
+  Task Brief echoes the amount). No code change.
+
+Checks on this tree (no `PROXYLOOP_TEST_*` set):
+
+- `make web-check`: pass (2 files, 140 vitest tests, build).
+- allow-list pytest: 1 passed.
+- `make format-check lint typecheck`: pass.
+- `make preflight-fast`: pass.
+- `make test`: pass (1183 passed, 47 skipped; 397 passed, 1 skipped;
+  V2 ceiling report current).
+- `git status --short data/`: empty.
+- Not run: `make preflight`, real-dependency gates, Browser/manual smoke.
