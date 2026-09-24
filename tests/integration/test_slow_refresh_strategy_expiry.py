@@ -22,6 +22,8 @@ from proxyloop_contracts import (
     ApprovalDecision,
     CasePhase,
     CompletionOutcome,
+    ModelResult,
+    ModelTrace,
     SlowWorkRequest,
     SlowWorkResult,
 )
@@ -239,16 +241,25 @@ def test_t4_channel_event_after_expiry_refreshes_and_pins_the_outbox() -> None:
     assert inbox.processing_state == "applied"
 
 
-def _assert_channel_refusal_persisted_nothing(
+def _logged(
+    repository: InMemoryCaseRepository,
+) -> tuple[ModelTrace, ...]:
+    return repository.list_model_traces(SCRIPTED_CASE_ID)
+
+
+def _assert_channel_refusal_persisted_no_case_state(
     runtime: ThinAgentRuntime,
     repository: _ChannelRepository,
     command: CaseCommand,
     before_revision: int,
     before_outbox_count: int,
 ) -> None:
+    logged = len(_logged(repository))
     with pytest.raises(ModelRuntimeError) as raised:
         runtime.apply_command(command)
     assert raised.value.source == "slow"
+    # The refused refresh's Slow trace is kept; the Case state is not changed.
+    assert [trace.role for trace in _logged(repository)[logged:]] == ["slow"]
     stored = repository.get(SCRIPTED_CASE_ID)
     assert stored is not None
     assert stored.snapshot.revision == before_revision
@@ -260,14 +271,14 @@ def _assert_channel_refusal_persisted_nothing(
 
 
 @pytest.mark.parametrize("slow", [_SameRevisionSlow, _ExpiredStrategySlow])
-def test_t5_channel_rejected_slow_refresh_persists_nothing(
+def test_t5_channel_rejected_slow_refresh_persists_no_case_state(
     slow: type[_CountingSlow],
 ) -> None:
     adapter = slow()
     runtime, repository = _channel_created(adapter)
     command = _channel_command(repository, BASE_TIME + timedelta(minutes=31))
 
-    _assert_channel_refusal_persisted_nothing(
+    _assert_channel_refusal_persisted_no_case_state(
         runtime, repository, command, before_revision=2, before_outbox_count=0
     )
     assert adapter.reason_codes == ["case_initialization", "strategy_expired"]
@@ -285,7 +296,7 @@ def test_t5_channel_rejects_a_same_id_revision_regression() -> None:
     assert refreshed.snapshot.strategy.revision == 2
     command = _channel_command(repository, BASE_TIME + timedelta(minutes=62))
 
-    _assert_channel_refusal_persisted_nothing(
+    _assert_channel_refusal_persisted_no_case_state(
         runtime,
         repository,
         command,
@@ -318,13 +329,16 @@ def test_t6_channel_event_with_current_strategy_makes_no_slow_call() -> None:
 
 
 @pytest.mark.parametrize("slow", [_SameRevisionSlow, _ExpiredStrategySlow])
-def test_t5_rejected_slow_refresh_persists_nothing(
+def test_t5_rejected_slow_refresh_persists_no_case_state(
     slow: type[_CountingSlow],
 ) -> None:
+    # R2: the refused refresh is traced even though no Case state is written.
     adapter = slow()
     runtime, repository, clock = _created(adapter)
     before = repository.get(SCRIPTED_CASE_ID)
     assert before is not None
+    created_traces = _logged(repository)
+    assert [trace.role for trace in created_traces] == ["slow"]
     clock.now = T0 + timedelta(minutes=31)
 
     with pytest.raises(ModelRuntimeError) as raised:
@@ -336,6 +350,15 @@ def test_t5_rejected_slow_refresh_persists_nothing(
     assert after is not None
     assert after.snapshot.revision == before.snapshot.revision
     assert after.snapshot == before.snapshot
+    logged = _logged(repository)
+    assert logged[:1] == created_traces
+    assert [trace.role for trace in logged] == ["slow", "slow"]
+    # I11: ``result`` is the coordinator's verdict. A same-revision refresh
+    # passes the coordinator and is refused by the Runtime afterwards.
+    expected = (
+        ModelResult.SUCCEEDED if slow is _SameRevisionSlow else ModelResult.REJECTED
+    )
+    assert logged[1].result is expected
 
 
 def test_t6_current_strategy_makes_no_slow_call() -> None:

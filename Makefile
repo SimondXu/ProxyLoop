@@ -2,7 +2,7 @@
 
 .PHONY: help preflight preflight-fast check-layout validate format format-check lint typecheck \
 	unit-test test contracts contracts-check simulator benchmark benchmark-check \
-	negotiation-check \
+	negotiation-check fast-slow-split-report fast-slow-split-check \
 	data-pilot data-pilot-check harness harness-check baselines baselines-check \
 	baselines-historical-check errata errata-check hosted-rerun-source-check \
 	hosted-rerun-check hosted-rescore hosted-rescore-check \
@@ -14,6 +14,8 @@
 	portfolio-demo-channel portfolio-demo-recovery dev
 
 PYTHON_RUN := uv run --project runtime --all-packages
+# Runtime pytest JUnit report; `make preflight` pins its gated-skip count.
+GATED_SKIPS_REPORT := .gate/runtime-junit.xml
 ML_PYTHON_RUN := uv run --project ml
 PYTHON_PATHS := runtime/packages/contracts/src runtime/packages/contracts/tests \
 	runtime/packages/agent_core/src \
@@ -27,10 +29,10 @@ PYTHON_PATHS := runtime/packages/contracts/src runtime/packages/contracts/tests 
 	runtime/services/workflow_worker/src \
 	tests/contract tests/integration scripts/generate_contracts.py \
 	scripts/run_phase_01b_benchmark.py scripts/run_phase_03a1_harness.py \
-	scripts/run_negotiation_ceiling.py \
+	scripts/run_negotiation_ceiling.py scripts/run_fast_slow_split_report.py \
 	scripts/run_phase_04d_control_plane_profile.py \
 	scripts/run_phase_07a_portfolio_demo.py \
-	scripts/validate_layout.py
+	scripts/validate_layout.py scripts/check_gated_skips.py
 ML_PYTHON_PATHS := ml/data_pipeline/src ml/evaluation/src ml/tests \
 	scripts/run_phase_02_data_pilot.py scripts/run_phase_03a1_baselines.py \
 	scripts/run_phase_03a1_evaluation_erratum.py \
@@ -51,11 +53,12 @@ PHASE03C_ACCEPTED ?= data/experiments/phase-03c/teacher-full-v6/claude-sonnet-5-
 PHASE03C_TOKENIZER_PATH ?=
 
 help:
-	@printf '%s\n' 'Targets: preflight, preflight-fast, validate, format, format-check, lint, typecheck, test, postgres-check, phase04d-check, phase04d-profile-check, phase05a-check, phase06b1-check, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, negotiation-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, baselines-historical-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, hosted-rescore, hosted-rescore-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, phase03c-smoke-check, phase03c-invariants, phase03c-invariants-check, phase03c-prompt-set-check, phase03c-teacher-pilot-check, phase03c-teacher-generation-check, phase03c-cloud-bundle, phase03c-cloud-bundle-check, phase03c-training-data, phase03c-training-check, check-layout, lock-check, runtime-server, portfolio-demo, portfolio-demo-stop, portfolio-demo-reset, portfolio-demo-channel, portfolio-demo-recovery, dev'
+	@printf '%s\n' 'Targets: preflight, preflight-fast, validate, format, format-check, lint, typecheck, test, postgres-check, phase04d-check, phase04d-profile-check, phase05a-check, phase06b1-check, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, negotiation-check, fast-slow-split-report, fast-slow-split-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, baselines-historical-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, hosted-rescore, hosted-rescore-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, phase03c-smoke-check, phase03c-invariants, phase03c-invariants-check, phase03c-prompt-set-check, phase03c-teacher-pilot-check, phase03c-teacher-generation-check, phase03c-cloud-bundle, phase03c-cloud-bundle-check, phase03c-training-data, phase03c-training-check, check-layout, lock-check, runtime-server, portfolio-demo, portfolio-demo-stop, portfolio-demo-reset, portfolio-demo-channel, portfolio-demo-recovery, dev'
 
 preflight: validate lock-check
 	python3 -m compileall -q scripts
 	docker compose config --quiet
+	python3 scripts/check_gated_skips.py $(GATED_SKIPS_REPORT)
 
 preflight-fast: check-layout
 	python3 -m compileall -q scripts
@@ -98,9 +101,10 @@ typecheck:
 		runtime/services/workflow_worker/src \
 		runtime/packages/provider_simulator/src scripts/generate_contracts.py \
 		scripts/run_phase_01b_benchmark.py scripts/run_phase_03a1_harness.py \
-		scripts/run_negotiation_ceiling.py \
+		scripts/run_negotiation_ceiling.py scripts/run_fast_slow_split_report.py \
 		scripts/run_phase_04d_control_plane_profile.py \
-		scripts/run_phase_07a_portfolio_demo.py scripts/validate_layout.py
+		scripts/run_phase_07a_portfolio_demo.py scripts/validate_layout.py \
+		scripts/check_gated_skips.py
 	$(ML_PYTHON_RUN) mypy --config-file ml/pyproject.toml \
 		ml/data_pipeline/src ml/evaluation/src scripts/run_phase_02_data_pilot.py \
 		scripts/run_phase_03a1_baselines.py \
@@ -122,10 +126,11 @@ unit-test:
 	$(PYTHON_RUN) pytest -c runtime/pyproject.toml -q \
 		runtime/packages/contracts/tests runtime/packages/provider_simulator/tests \
 		runtime/packages/telecom_domain/tests \
-		tests/contract tests/integration
+		tests/contract tests/integration \
+		-o junit_family=xunit1 --junitxml=$(GATED_SKIPS_REPORT)
 	$(ML_PYTHON_RUN) pytest -c ml/pyproject.toml ml/tests -q
 
-test: unit-test contracts-check benchmark-check data-pilot-check harness-check baselines-historical-check errata-check hosted-rerun-check validity-smoke-check phase03b-readiness-check phase03b-experiment-check phase03c-smoke-check phase03c-invariants-check phase03c-prompt-set-check phase03c-teacher-pilot-check phase03c-teacher-generation-check phase03c-cloud-bundle-check phase03c-training-check phase03c-rescore-check negotiation-check
+test: unit-test contracts-check benchmark-check data-pilot-check harness-check baselines-historical-check errata-check hosted-rerun-check validity-smoke-check phase03b-readiness-check phase03b-experiment-check phase03c-smoke-check phase03c-invariants-check phase03c-prompt-set-check phase03c-teacher-pilot-check phase03c-teacher-generation-check phase03c-cloud-bundle-check phase03c-training-check phase03c-rescore-check negotiation-check fast-slow-split-check
 
 contracts:
 	$(PYTHON_RUN) python scripts/generate_contracts.py
@@ -145,6 +150,12 @@ benchmark-check:
 
 negotiation-check:
 	$(PYTHON_RUN) python scripts/run_negotiation_ceiling.py --check
+
+fast-slow-split-report:
+	$(PYTHON_RUN) python scripts/run_fast_slow_split_report.py --write
+
+fast-slow-split-check:
+	$(PYTHON_RUN) python scripts/run_fast_slow_split_report.py --check
 
 data-pilot:
 	$(ML_PYTHON_RUN) python scripts/run_phase_02_data_pilot.py

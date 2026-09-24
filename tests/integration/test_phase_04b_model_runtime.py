@@ -28,7 +28,7 @@ from proxyloop_api import (
     create_app,
     runtime_from_environment,
 )
-from proxyloop_contracts import DialogueAct, EvidenceType
+from proxyloop_contracts import DialogueAct, EvidenceType, ModelResult
 from proxyloop_contracts.contracts import (
     CompletionClaim,
     EvidenceRequirement,
@@ -355,16 +355,17 @@ def test_slow_transport_failure_leaves_no_persisted_case() -> None:
     assert runtime.repository.get(_known_case_id()) is None
 
 
-def test_stale_slow_result_leaves_no_persisted_case_or_authoritative_mutation() -> None:
-    class StaleSlow:
-        def reason(self, request: Any) -> Any:
-            result = ScriptedSlowAdapter().reason(request)
-            stale_pins = request.pins.model_copy(
-                update={"event_cursor": request.pins.event_cursor + 1}
-            )
-            return result.model_copy(update={"pins": stale_pins})
+class _StaleSlow:
+    def reason(self, request: Any) -> Any:
+        result = ScriptedSlowAdapter().reason(request)
+        stale_pins = request.pins.model_copy(
+            update={"event_cursor": request.pins.event_cursor + 1}
+        )
+        return result.model_copy(update={"pins": stale_pins})
 
-    runtime = ThinAgentRuntime(slow=StaleSlow())
+
+def test_stale_slow_result_leaves_no_persisted_case_or_authoritative_mutation() -> None:
+    runtime = ThinAgentRuntime(slow=_StaleSlow())
 
     with pytest.raises(ModelRuntimeError, match="rejected safely"):
         runtime.create_case()
@@ -372,6 +373,20 @@ def test_stale_slow_result_leaves_no_persisted_case_or_authoritative_mutation() 
     # No repository record means no approval, Provider confirmation, completion,
     # or persisted Evidence could have been created.
     assert runtime.repository.get(_known_case_id()) is None
+
+
+def test_a_rejected_create_is_traced_without_a_case() -> None:
+    runtime = ThinAgentRuntime(slow=_StaleSlow())
+
+    with pytest.raises(ModelRuntimeError) as raised:
+        runtime.create_case()
+
+    assert raised.value.source == "slow"
+    assert runtime.repository.get(_known_case_id()) is None
+    (trace,) = runtime.repository.list_model_traces(_known_case_id())
+    assert trace.role == "slow"
+    assert trace.result is ModelResult.REJECTED
+    assert trace.reason_codes
 
 
 def test_stale_fast_result_is_rejected_before_approval_or_provider_action() -> None:

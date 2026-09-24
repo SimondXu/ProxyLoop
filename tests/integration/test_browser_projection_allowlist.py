@@ -196,6 +196,15 @@ async def _test_browser_routes_emit_only_the_allow_listed_projection() -> None:
         read = await client.get(f"/cases/{case_id}")
         assert read.status_code == 200
         _assert_projection(read.json())
+        # The Runtime-authored assistant line projects with exactly the
+        # existing event keys, on the command result and on a read.
+        for payload in (waiting, read.json()):
+            line = payload["snapshot"]["visible_events"][-1]
+            assert set(line) == VISIBLE_EVENT_KEYS
+            assert (line["actor"], line["event_type"]) == (
+                "system",
+                "assistant_message",
+            )
 
         approved = await client.post(
             f"/cases/{case_id}/approvals/{approval['approval_id']}",

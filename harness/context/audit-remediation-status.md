@@ -34,14 +34,15 @@ user: real credentials, real external channels/Providers (06B2),
 deployment/release, hosted spend beyond a recorded budget (none is
 recorded — the relay is exhausted), force-push, destructive operations.
 
-### In flight (pushed, no PR open) — finish these first
+### In flight — finish these first
 
 | Branch | Plan item | State | Remaining |
 |---|---|---|---|
-| `fix/r18-callback-evidence-pairing` | PR-4, R-18 | Implemented; merged with `main` @ `e1c8371`; `make test`, `postgres-check` 27, `phase05a-check` 42, `phase06b1-check` 35, `make preflight` all green | independent `reviewer`; merge current `main` (status-file conflict likely); PR; CI; squash merge. Accepted limits are in its log (a consistent forged event+Evidence pair, unchecked `source_ref`/`content_hash`; binding to real deliveries needs a storage change) |
-| `fix/r16-expiry-classifier` | PR-2, R-16 | Implemented (outermost-cause classifier, second patch gate `expiry-failure-outermost-cause`, replay fixture recorded on `main`); merged with `main` @ `c73f6a7`; gates green; independent review Approve, its three Minors applied (in-flight-run wording, DB-free classifier test, fixture-recorder limit): chained non-retryable expiry test red on `main`'s `workflow.py` (`16 == 1` attempts), green on the branch; `phase05a-check` 45, `phase06b1-check` 35, `postgres-check` 27, `make preflight` all green | PR; CI; squash merge |
-| `feat/pr8b-web-assistant-lines` | PR-8b (Web part of Stage 1a; spec `pr8-fast-dialogue-design.md` §4.3) | Implemented against the frozen §4.1 event shape with fixtures (8a not built): pure `assistantLines(payload)` in `runtime-client.ts`; `conversation-workspace.tsx` renders `system`/`assistant_message` lines from `snapshot.visible_events` as plain-text bubbles with the decision-8 label; no new fetch, no `fast` read, no free-text turn. 9 new vitest cases red on `main`, green on the branch; independent review Approve with Minors, M1–M3 applied (cursor dedupe, `overflow-wrap`, Case-isolation and stale-poll tests), M4 recorded (review: `harness/code_review/feat-pr8b-web-assistant-lines.md`); `make web-check` (156 passed) and `make preflight` green (log: `harness/log/feat-pr8b-web-assistant-lines.md`) | merge only **after 8a**; Browser check on `make portfolio-demo` after 8a (line visible after confirmation and after reload); PR; CI; squash merge; must merge before PR-10/PR-12 touch `conversation-workspace.tsx` |
-| `fix/gate-honesty-r15-g1` | PR-1, R-15 + G-1 strong form | Implemented; commit subject says "(unreviewed WIP)". R-15: the `<= 20` bound was wrong (true invariant 10 ≤ calls ≤ 21; 21 is reachable with one worker) — barrier-based deterministic test, 200/200 passes. G-1: `scripts/check_gated_skips.py` pins 51 gated skips and names the real-dependency gates at the end of `make preflight` | `make preflight`; `reviewer`; open question for the reviewer/root: the pin is not enforced when any `PROXYLOOP_TEST_*` is set (alternative: require 0 gated skips when both are set); PR; CI; merge |
+| `fix/gate-honesty-r15-g1` | PR-1, R-15 + G-1 strong form | Review: Approve (`harness/code_review/fix-gate-honesty-r15-g1.md`); root decisions applied (enforcement decided by the two variables only, per-file pin); merged with `main` @ `5266b6d` (#87); per-file pin updated to 53 (`test_phase_05a_temporal_workflow.py` 22 → 24: #87 parametrized two gated expiry tests `[unchained]`/`[chained]`); merged with `main` @ `74fb993` (#88, #89): pin unchanged, `make preflight` green at 53; R-15 test 200/200 fresh-process passes (after the `c73f6a7` merge). R-15: the `<= 20` bound was wrong (true invariant 10 ≤ calls ≤ 21; 21 is reachable with one worker) — barrier-based deterministic test, 200/200 passes. G-1: `scripts/check_gated_skips.py` pins 51 gated skips and names the real-dependency gates at the end of `make preflight` | #90 open; CI; root final integration review; merge |
+| `fix/r12-model-trace-log` | PR-7, R-12 + R-13b | Implemented per the frozen spec `harness/context/r12-model-trace-log-design.md` (append-only model-trace log, `storage_version` 3, bootstrap backfill of version 2 rows under an advisory lock, `_advance` as the single coordinator call with a source guard); red evidence in `harness/log/fix-r12-model-trace-log.md`; merged with `main` @ `74fb993` (PR-4); `make test`, `make preflight` green; gates green on the merge: `postgres-check` 35, `phase05a-check` 53, `phase06b1-check` 35 | PR; CI; merge. Independent review: Approve (M1–M6 applied, M7 deferred to PR-8; `harness/code_review/fix-r12-model-trace-log.md`). It adds 6 DB-gated test items: merged with `main` @ `f4a2487` (PR-1), the per-file pin is updated to 59 (`test_phase_04c_persistent_case_store.py` 23 → 29) and `make preflight` is green |
+| `feat/pr8a-fast-dialogue` | PR-8a, A-4 / decision 7 stage 1a (runtime + gate + report) | Implemented per the frozen spec `harness/context/pr8-fast-dialogue-design.md` (with the root's dated §5.2 amendment): `ScriptedDialogueFastAdapter` is the default Fast adapter, every applied consumer event gets one `assistant_message` visible event, the `fast-gate-v1` disclosure gate withholds text and delivers the fallback, `make fast-slow-split-check` replays the committed `data/evaluation/fast-slow-split-scripted.json`; no committed artifact moved; no DB-gated test added (pin unchanged); red evidence in `harness/log/feat-pr8a-fast-dialogue.md`. S2 redefined by a dated spec amendment (a $70 target is refused at intake; S2 talks after the offer expires); `make lint`, `make typecheck`, `make test`, `make phase04d-profile-check`, `make preflight` green; merged with `main` @ `df733f7` (#92), DB gates green on the merge: `postgres-check` 35, `phase05a-check` 53, `phase06b1-check` 54. Review: Request Changes (`harness/code_review/feat-pr8a-fast-dialogue.md`), B1/I1/M1–M6 applied (gate stays `fast-gate-v1`, spec §2.2 amended) | re-review; PR; CI; merge before PR-8b |
+| `feat/pr8b-web-assistant-lines` | PR-8b (Web part of Stage 1a; spec `pr8-fast-dialogue-design.md` §4.3) | Implemented against the frozen §4.1 event shape with fixtures; merged with `main` @ `29c8671` (8a, #94): pure `assistantLines(payload)` in `runtime-client.ts`; `conversation-workspace.tsx` renders `system`/`assistant_message` lines from `snapshot.visible_events` as plain-text bubbles with the decision-8 label; no new fetch, no `fast` read, no free-text turn. 9 new vitest cases red on `main`, green on the branch; independent review Approve with Minors, M1–M3 applied (cursor dedupe, `overflow-wrap`, Case-isolation and stale-poll tests), M4 recorded (review: `harness/code_review/feat-pr8b-web-assistant-lines.md`); `make web-check` (156 passed) and `make preflight` green (log: `harness/log/feat-pr8b-web-assistant-lines.md`) | Browser check on `make portfolio-demo` (line visible after confirmation and after reload); PR; CI; squash merge; must merge before PR-10/PR-12 touch `conversation-workspace.tsx` |
+| `fix/pr5-ops-tests` | PR-5, C-5 + C-7 + C-8 (R-6 deferred) | Review: Approve, conditional on the DB gates; Minors 1-6 applied (`harness/code_review/fix-pr5-ops-tests.md`); merged with `main` @ `df733f7` (#91, #92). C-5 a refused `make portfolio-demo` keeps a crashed supervisor's `pids.json` (red/green, real second-start path with a stale lock); C-7 the 04C round-trip helper compares every non-Provider field of `CaseRuntimeState` (red/green) plus a DB-free codec round-trip test; C-8 two real-PostgreSQL delivery-callback tests on an in-progress Case: rollback + retry, and a repeated callback (keeps one receipt; records a transition, marks its Inbox applied, rewrites the Outbox) plus direct storage-level regression calls. Gated-skip pin: `test_phase_06b1_channel_runtime.py` +2 (4 with #92's re-drive test; total 63). R-6 needs `runtime.py` + `postgres_repository.py` (PR-7): seam and test plan in the log. On `df733f7`: `make test`, `preflight` green (63 gated skips); on `1573a42`: `postgres-check` 38, `phase05a-check` 53, `phase06b1-check` 37 passed (not rerun after #92: it touched only `app.py`, activities and tests the C-8 tests do not use) | PR #93; CI; merge. R-6 follow-up after PR-7: option (b), the TTL stored in the Provider config as an optional field defaulting to today's 1 h. Log `fix-pr5-ops-tests.md` |
 
 R-19 (`SafeObservationAdapter` raises on negative-fee / duplicate-feature
 offers; used by `ml/` and two scripts) is assigned to PR-9, whose parity
@@ -49,8 +50,9 @@ renderer uses `agent_core/observation.py`.
 
 ### Then
 
-Wave 1 continues with PR-3 (after PR-2), PR-5 (after PR-4), PR-6 (B2-8,
-`app.py`), PR-7 (R-12 + R-13b trace log, **architect design first**);
+Wave 1 continues with PR-3 (PR-2 merged), PR-5 (PR-4 merged), PR-7
+(R-12 + R-13b trace log, **architect design first**); PR-2 (#87), PR-4
+(#88) and PR-6 (#89) are merged;
 then Waves 2–6 per the plan. Items marked "architect first" get an
 `architect` proposal before any `implementer` starts.
 
@@ -176,6 +178,7 @@ Closed in the third session:
 | B1-12 | the Router waits on approval state, not an event label: `RouteRequest.trigger_is_approval_decision` removed, a current PENDING approval always routes `WAIT_FOR_APPROVAL`; precedence and reason codes unchanged | #80 | `fix-p2-router-precedence.md` |
 | grep-based architecture tests → Router precedence tests (audit §3, lane A) | the grep test over `router.py`/`coordinator.py` is deleted; `test_router_precedence_ladder_matches_the_frozen_table` checks each row of `ROUTER_PRECEDENCE` behaviourally, plus a slow-result planning-basis rejection test; the 03A0 docs-invariant tests are kept | #80 | `fix-p2-router-precedence.md` |
 | B1-9 | the Case-vs-offer policy check is total: `case_offer_violations` (telecom domain) turns a contract-valid but out-of-domain input (negative fee sum from a credit line, duplicate goal/offer/applied-change tokens) into `offer_terms_invalid` / `compliance_context_invalid` instead of raising; `verify_completion` and the runtime approval gate both use it (NEEDS_REPLAN / no approval). A non-UTC `evaluated_at` still raises (caller bug). No wire or fee-netting change; non-negative fees at the wire deferred to 1.2 | `fix/b1-9-total-offer-policy` | `fix-b1-9-total-offer-policy.md` |
+| G-1 (strong form) | `unit-test` writes the runtime pytest JUnit report to `.gate/runtime-junit.xml`; the last `make preflight` step, `scripts/check_gated_skips.py`, prints the tests skipped on a `PROXYLOOP_TEST_*` reason per file, names `postgres-check`, `phase05a-check`, `phase06b1-check`, and fails unless the per-file counts equal the pin (53 in total after #87). Only `PROXYLOOP_TEST_DATABASE_URL` and `PROXYLOOP_TEST_TEMPORAL_ADDRESS` decide enforcement: neither set, the pin is enforced; both set, 0 gated skips are required; exactly one set, report only. Found a fifth gated file, `test_phase_06b1_channel_runtime.py` (1 test, via a `test_phase_06b1_temporal.py` fixture; covered by `phase06b1-check`) | `fix/gate-honesty-r15-g1` | `fix-gate-honesty-r15-g1.md` |
 
 Recorded as limits by #74 (`fix-p2-ml-eval-hygiene.md`), still open:
 deleting the D3-7 `rejection_reasons` field (emitted in the committed
@@ -191,9 +194,9 @@ referent table), A-9 (ephemeral values and write-once records keep
 `revision=1`). The contract changes the audit proposed for them stay open as
 separate decisions.
 
-Open: G-1's stronger form (`preflight` asserts the gated-skip count or
-names the real-dependency gates), A-7f,
-B2-8, C-5, C-7, C-8, D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
+Open: A-7f,
+G-1 follow-up (the real-dependency gates do not themselves require 0
+gated skips; review Minor 5 of `fix-gate-honesty-r15-g1`), C-5, C-7, C-8 (in flight, PR-5, §0), D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
 deletion only), D3-8, D3-9.
 
 ## 4a. Found during the P1 and P2 runs (R-1 … R-19)
@@ -206,7 +209,11 @@ Closed:
 | R-1 (Important), R-1b | option (f): a retry-exhausted Update still fails with `temporal_unavailable` and the run requests Continue-As-New (patch gate `retryable-update-failure-continues-as-new`), so the identical retry reaches the Runtime; the classifier reads `ActivityError.retry_state` (`MAXIMUM_ATTEMPTS_REACHED`, `TIMEOUT`); `_can_continue_as_new()` ends the R-1b busy-loop | #78 | `fix-r1-retryable-update-continues-as-new.md` |
 | R-3 (= E-9) | see §4 | #77 | `fix-p2-web-hygiene.md` |
 | R-8 | documented: the browser `event_cursor`/`revision` count channel events; `snapshot.completion` is a synthetic `not_done` | #77 | `fix-p2-web-hygiene.md` |
+| R-15 | not a ledger bug: `calls <= 20` was a guess. From the reservation rule, `(calls - 1) * per_call + min_worst <= ceiling` and `(calls - 7) * per_call + 8 * max_worst > ceiling`, i.e. 10 <= calls <= 21 here; a sequential run also admits 21. The test now holds the first eight calls at a barrier (eight joint reservations, the ledger refuses a ninth) and asserts the derived bounds; 200/200 fresh-process runs pass | `fix/gate-honesty-r15-g1` | `fix-gate-honesty-r15-g1.md` |
 | R-2 | error details are content-free category codes: 404 `{"detail": "not_found"}` in both modes; 409 `{"detail": "stale_cas" \| "case_conflict" \| "approval_expired"}`; request validation 422 `{"detail": {"code": "request_invalid", "message": "request rejected"}}` instead of FastAPI's default body (which echoed input). The Runtime text (or, for 422, field locations and error types only) is logged server-side with the correlation id | #82 | `fix-p2-api-hygiene.md` |
+| R-16 (Important) | the expiry path classifies the outermost typed failure (`_outermost_failure_category`) behind the second patch gate `expiry-failure-outermost-cause`, so a chained non-retryable expiry failure is abandoned, not retried; a pre-R-16 replay fixture keeps recorded histories on the old path | #87 | `fix-r16-expiry-classifier.md` |
+| R-18 | the terminal codec rule pairs the callback events after the approval-decision cursor with the `PROVIDER_EVENT` Evidence after the confirmation Evidence (same count, in order, equal times); a forged event without Evidence or a deleted event whose Evidence remains is rejected | #88 | `fix-r18-callback-evidence-pairing.md` |
+| B2-8 | synchronous Runtime, storage and readiness calls in async API handlers and the direct-mode expiry timer run via `run_in_threadpool`; direct commands stay serialized in-process under one app lock | #89 | `fix-b2-8-threadpool-runtime-calls.md` |
 
 Specs: `harness/context/fix-r10-terminal-delivery-callback-preflight.md`,
 `harness/context/fix-r1-retryable-update-continues-as-new-preflight.md`.
@@ -223,22 +230,19 @@ the window and exceeds the 30 s Next proxy timeout.
 
 Other items (Minor unless marked):
 - R-4 the ML compiler resolves capabilities by exact id (frozen via r4; consistent today).
-- R-5 the channel route reads `expected_revision` outside the lock (redelivery recovers since #62).
-- R-6 persisted Cases keep their 1-day manifest; a runtime > 24 h test needs an injectable offer TTL.
+- R-5 the channel route reads `expected_revision` outside the lock (redelivery recovers since #62). **Implemented on `fix/r17-r5-channel-redrive` (PR-3), gates green, review findings applied**: on `channel_conflict` the route re-reads and re-sends once with the advanced revision, only when the event still has no receipt and the revision moved; a delivery conflict after the ingest committed stays a 409 after one dispatch (spec `fix-r17-r5-channel-redrive-preflight.md`, log `fix-r17-r5-channel-redrive.md`).
+- R-6 persisted Cases keep their 1-day manifest; a runtime > 24 h test needs an injectable offer TTL. Deferred from PR-5 until PR-7 merges: the seam needs `runtime.py` (`create_case` builds the Provider) and `postgres_repository.py` (`_reconstruct_provider` regenerates the offer with the default TTL); proposed seam, storage options, and test plan in `harness/log/fix-pr5-ops-tests.md`. Root decision: option (b), the TTL stored in the Provider config as an optional field defaulting to today's 1 h, in a follow-up PR after PR-7 (which merged as #91).
 - R-7 `_snapshot(manifest=None)` re-mint — **done** in #68 (manifest required).
 - R-9 shared `proxyloop_test` DB → run DB/Temporal gates serially (documented in #73); a per-run schema would remove the hazard.
 - R-11 the canonical `material_terms_hash` excludes fees and applied changes. Option (a) **done** in #83 (`CONTEXT.md` Material Terms states the implemented definition and its limits); option (b), binding fees, credits, and applied changes (R-11b), deferred to contract set 1.2.
-- **R-12 (Important, proposal stage 1)** rejected-result traces reach `CoordinatorOutcome` but the runtime raises before writing; needs a traces-only append.
-- R-13 `model_traces` retention unbounded. Option (c) **done** in #83 (documented in `docs/architecture.md`); option (b), a separate append-only trace log at `storage_version` 3, planned with R-12.
+- **R-12 (Important)** rejected-result traces reach `CoordinatorOutcome` but the runtime raises before writing. **Implemented on `fix/r12-model-trace-log` (PR-7), DB gates pending**: every coordinator run goes through `ThinAgentRuntime._advance`, which appends its traces to an append-only log before the runtime acts on the outcome (spec `harness/context/r12-model-trace-log-design.md`, log `harness/log/fix-r12-model-trace-log.md`). Known limit: an adapter that raises produces no outcome and so no trace.
+- R-13 `model_traces` retention unbounded. Option (c) **done** in #83 (documented in `docs/architecture.md`); option (b) (R-13b), a separate append-only trace log at `storage_version` 3, **implemented on `fix/r12-model-trace-log` (PR-7), DB gates pending**: the envelope carries no traces, and bootstrap moves version 2 inline traces into the log under an advisory lock. Retention is still unbounded (pruning is a separate policy decision).
 - R-14 the 1.0/1.1 basis switch is duplicated in `runtime.py` and `contracts.py` — **done** in #85: one owner, `planning_basis_components` in the contracts package, called by the snapshot validator and the runtime's `_basis`; pinned by `runtime/packages/contracts/tests/test_planning_basis_components.py`. See `harness/log/refactor-r14-basis-switch-owner.md`.
-- R-15 flaky: `ml/tests/test_teacher_pipeline.py::test_concurrent_workers_cannot_jointly_exceed_the_ceiling` asserts `8 <= calls <= 20` and saw 21 on CI (#71, a docs-only PR); the bound is timing-dependent — tighten the test or make the concurrency deterministic. Failed CI again on #75 (2026-09-24, run 35961699413 attempt 1: `assert 21 <= 20`; attempt 2 passed). A separate fix task has been proposed.
-- **R-16 (Important; severity confirmed by the root)** the expiry path's `_expiry_failure_category` reads the innermost typed `ApplicationError`; every real activity failure is raised `from exc`, so the converter chain is `[('ApplicationError','case_conflict',True), ('ApplicationError','CaseConflictError',False)]` and a real non-retryable expiry failure (e.g. `case_conflict`) is classified retryable and retried with backoff instead of abandoned. The expiry tests miss it because their injected faults carry no `__cause__`. The fix changes expiry-path commands for recorded histories, so it needs a second workflow patch gate. See `harness/log/fix-r1-retryable-update-continues-as-new.md`. **Gates green, review Approve** on `fix/r16-expiry-classifier` (outermost-cause classifier behind patch `expiry-failure-outermost-cause`; spec `fix-r16-expiry-classifier-preflight.md`, log `fix-r16-expiry-classifier.md`).
-- R-17 a channel ingest that exhausts on the delivery activity is not re-driven on redelivery (pre-existing; found in the R-1 design, `fix-r1-retryable-update-continues-as-new.md`).
-- R-18 callback events on a terminal Case are not paired with their Provider-event Evidence: delivered/bounced `provider_event`s forged after the approval cursor without Evidence, or a deleted callback event whose Evidence remains, are accepted. Root decided it is out of scope for R-10 (`fix-r10-terminal-delivery-callback.md`, Known limits).
+- R-17 a channel ingest that exhausts on the delivery activity is not re-driven on redelivery (pre-existing; found in the R-1 design, `fix-r1-retryable-update-continues-as-new.md`). **Implemented on `fix/r17-r5-channel-redrive` (PR-3), gates green, review findings applied**: a duplicate whose outbox is in `REDRIVABLE_OUTBOX_STATES` re-sends the identical ingest request (same Update ID), and the Workflow re-runs the delivery activity once R-1 has rolled the run; no `workflow.py` change. The delivery activity always looks up before sending (every attempt and outbox state) and sends only when the lookup finds nothing (review I-1). Residual risk: a send whose effect is not yet visible to `lookup`, e.g. a schedule-to-close `TIMEOUT` letting a retry or re-drive run while the timed-out attempt is still in flight.
 - R-19 `SafeObservationAdapter._adapt_offer` (`agent_core/observation.py`) raises on a contract-valid `ProviderOffer` with a negative fee sum or a duplicate feature, via `SafeOffer.__post_init__` (the same out-of-domain inputs B1-9 made total in the policy check). Used today by the `ml/` pipeline and evaluation and the `scripts/` benchmark/harness runners, not by the product runtime. Found in the B1-9 review.
 
 Still open from the audit P2 list and not yet batched: runtime/router/api
-hygiene (B2-8, A-7f, R-5) and ops/tests (C-5, C-7, C-8, R-6).
+hygiene (A-7f, R-5) and ops/tests (C-5, C-7, C-8 in flight as PR-5; R-6 deferred until after PR-7).
 The design-first items are settled: B1-9 is closed above, and A-3, A-5, A-9
 are recorded as limits above. **Do not do**: D3-5/D3-6 (`qwen_mlx.py`
 frozen by r4); D1-10/11/12 (V1 simulator frozen, superseded by V2); D2-9 and
@@ -259,11 +263,15 @@ state is sticky; V2 `false_completion` ≠ V1's (a hazardous accept is
 These are the changes that make the product demonstrable; none is started.
 Each needs its own spec under `harness/context/` before implementation.
 
-1. **Fast dialogue reaches the product** (A-4, B1-3, decision 7). Today the
-   runtime accepts only a constant Fast text and no model output reaches a
-   user-visible surface; the Web demo is an eight-step wizard that never
-   shows model text. Needs a per-turn measurement so the Fast/Slow share is
-   a number, not a claim.
+1. **Fast dialogue reaches the product** (A-4, B1-3, decision 7). **Stage 1a
+   done, scripted only** (PR-8a, `feat/pr8a-fast-dialogue`,
+   `harness/context/pr8-fast-dialogue-design.md`): the default scripted Fast
+   adapter's line reaches the Case as an `assistant_message` visible event
+   behind the `fast-gate-v1` disclosure gate, and the per-turn Fast/Slow
+   split is measured and committed (`data/evaluation/fast-slow-split-scripted.json`).
+   The Web rendering is PR-8b; no model-backed Fast text is measured yet
+   (PR-9); the channel body stays constant (PR-11); multi-turn Web dialogue
+   waits for PR-13.
 2. **Judge pass before the deterministic gate** (decision 7). Quality only,
    never in metrics or authority — a Judge that reaches metrics repeats
    D2-1. Second model family when a second credential exists, recorded in

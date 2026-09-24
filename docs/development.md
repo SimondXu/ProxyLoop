@@ -25,7 +25,8 @@ make preflight-fast          Layout, script syntax, and Git whitespace checks
 make validate                format-check, lint, typecheck, test, check-layout,
                              web-check
 make preflight               validate + lock-check + script compile + Compose
-                             config (see "Local gate and real-dependency gates")
+                             config + pinned gated-skip count (see "Local gate
+                             and real-dependency gates")
 make format / format-check   Ruff format
 make lint / typecheck        Ruff lint / strict mypy
 make unit-test               Runtime and ML pytest
@@ -108,23 +109,38 @@ described here; see the Makefile.
 
 `make preflight` runs `validate` (`format-check`, `lint`, `typecheck`, `test`,
 `check-layout`, `web-check`), then `lock-check`,
-`python3 -m compileall -q scripts`, and `docker compose config --quiet`. It
-starts no container.
+`python3 -m compileall -q scripts`, `docker compose config --quiet`, and
+last `scripts/check_gated_skips.py`. It starts no container.
 
-`unit-test` collects all of `tests/integration`. Four files skip their
+`unit-test` collects all of `tests/integration`. Five files skip their
 database tests when `PROXYLOOP_TEST_DATABASE_URL` is unset; their Temporal
 tests also need `PROXYLOOP_TEST_TEMPORAL_ADDRESS`:
 
-- `test_phase_04c_persistent_case_store.py`
-- `test_phase_05a_case_runtime.py`
-- `test_phase_05a_temporal_workflow.py`
-- `test_phase_06b1_temporal.py`
+- `test_phase_04c_persistent_case_store.py` (29 tests)
+- `test_phase_05a_case_runtime.py` (2)
+- `test_phase_05a_temporal_workflow.py` (24)
+- `test_phase_06b1_channel_runtime.py` (4: three through a fixture imported
+  from `test_phase_06b1_temporal.py`, and the time-skipping re-drive test,
+  gated on `PROXYLOOP_TEST_TEMPORAL_ADDRESS` alone so `make test` never
+  starts the Temporal test server)
+- `test_phase_06b1_temporal.py` (4)
 
-With the variables unset, `make preflight` exits 0 and reports those tests as
-skipped, so a "preflight passed" claim covers none of them. With the
-variables set, `unit-test` runs them too. A change under `case_runtime`,
-`workflow_worker`, `connectors`, or `api` therefore also needs the
-real-dependency gates below.
+With the variables unset, `make preflight` exits 0 and skips those 63 tests,
+so a "preflight passed" claim covers none of them. `unit-test` writes the
+runtime pytest JUnit report to `.gate/runtime-junit.xml` (git-ignored); the
+last preflight step counts the tests skipped with a `PROXYLOOP_TEST_*` reason,
+prints the count per file, and names the three real-dependency targets below.
+The count is pinned per file (`EXPECTED_GATED_SKIPS_PER_FILE` in
+`scripts/check_gated_skips.py`): a test that newly skips on a missing
+variable, or a gated test that is removed, added, or moved between files,
+fails preflight until the pin and this list change together. Only
+`PROXYLOOP_TEST_DATABASE_URL` and `PROXYLOOP_TEST_TEMPORAL_ADDRESS` decide
+enforcement (other `PROXYLOOP_TEST_*` names are ignored): with neither set
+the pin is enforced; with both set no gated test may skip; with exactly one
+set `unit-test` runs the gated tests it can reach and the count is printed
+but not enforced. A change under
+`case_runtime`, `workflow_worker`, `connectors`, or `api` therefore also needs
+the real-dependency gates below.
 
 The real-dependency gates fail instead of skipping when a variable is missing:
 

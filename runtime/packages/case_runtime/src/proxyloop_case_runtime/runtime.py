@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from threading import RLock
-from typing import Any, Literal
+from typing import Any, Final, Literal
 from uuid import UUID
 
 from proxyloop_agent_core import (
@@ -17,13 +17,16 @@ from proxyloop_agent_core import (
     CapabilityExecutionStatus,
     CapabilityExecutor,
     CaseCoordinator,
+    CoordinatorOutcome,
     CoordinatorStatus,
     FastAdapter,
     PreparedSimulatorExecution,
     RouteRequest,
+    ScriptedDialogueFastAdapter,
     ScriptedFastAdapter,
     ScriptedSlowAdapter,
     SlowAdapter,
+    fast_disclosure_violations,
 )
 from proxyloop_connectors import BINDING_REF, CHANNEL_KIND
 from proxyloop_contracts import (
@@ -50,7 +53,6 @@ from proxyloop_contracts import (
     FastTurnDecision,
     LineItemCategory,
     ModelInputPins,
-    ModelTrace,
     Money,
     OfferReference,
     PlanningBasis,
@@ -102,6 +104,12 @@ DeliveryStatus = Literal["pending", "accepted", "delivered", "bounced"]
 RUNTIME_PROVIDER_CONFIG = "pine-mobile:runtime-v1"
 RUNTIME_MANIFEST_VERSION = "phase-04a-runtime-v1"
 SCRIPTED_CASE_ID = Phase01AEpisode.success().case.case_id
+# The Runtime-authored dialogue line after each applied consumer event; a
+# caller can never append this event type.
+ASSISTANT_MESSAGE_EVENT_TYPE: Final = "assistant_message"
+# Delivered in place of Fast text the disclosure gate withheld.
+FAST_FALLBACK_TEXT: Final = BOUNDED_FAST_STATUS_TEXT
+_SCRIPTED_FAST_TYPES = (ScriptedFastAdapter, ScriptedDialogueFastAdapter)
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,7 +222,7 @@ class ThinAgentRuntime:
         )
         self._clock = clock or (lambda: datetime.now(UTC))
         self._slow = slow if slow is not None else ScriptedSlowAdapter()
-        self._fast = fast if fast is not None else ScriptedFastAdapter()
+        self._fast = fast if fast is not None else ScriptedDialogueFastAdapter()
         self._lanes_lock = RLock()
         self._lanes: dict[UUID, RLock] = {}
         self._executors: dict[UUID, CapabilityExecutor] = {}
@@ -444,10 +452,10 @@ class ThinAgentRuntime:
                 phase=snapshot.case.phase,
                 manifest=snapshot.capability_manifest,
             )
-            next_snapshot, refresh_traces = self._refresh_strategy_if_required(
+            next_snapshot = self._refresh_strategy_if_required(
                 next_snapshot, event, event_time
             )
-            outcome = self._coordinator(next_snapshot).advance(
+            outcome = self._advance(
                 RouteRequest(
                     snapshot=next_snapshot,
                     created_at=event_time,
@@ -505,11 +513,6 @@ class ThinAgentRuntime:
                 execution_proposal=state.execution_proposal,
                 transitions=(*state.transitions, transition),
                 last_fast_decision=outcome.fast_decision,
-                model_traces=(
-                    *state.model_traces,
-                    *refresh_traces,
-                    *outcome.traces,
-                ),
             )
             repository.replace_with_channel_outbox(
                 command.case_id,
@@ -593,7 +596,6 @@ class ThinAgentRuntime:
                     transitions=(*state.transitions, transition),
                     last_fast_decision=state.last_fast_decision,
                     execution_claim=state.execution_claim,
-                    model_traces=state.model_traces,
                 )
                 repository.replace_with_delivery_receipt(
                     command.case_id,
@@ -691,7 +693,6 @@ class ThinAgentRuntime:
                 execution_proposal=state.execution_proposal,
                 transitions=(*state.transitions, transition),
                 last_fast_decision=state.last_fast_decision,
-                model_traces=state.model_traces,
             )
             repository.replace_with_delivery_receipt(
                 command.case_id,
@@ -771,7 +772,7 @@ class ThinAgentRuntime:
             events=(provider_event,),
             provider=provider,
         )
-        outcome = self._coordinator(snapshot).advance(
+        outcome = self._advance(
             RouteRequest(
                 snapshot=snapshot,
                 created_at=provider_event.occurred_at,
@@ -821,7 +822,6 @@ class ThinAgentRuntime:
                 events=(provider_event,),
                 provider=state.provider,
                 transitions=transitions,
-                model_traces=outcome.traces,
             )
         )
         return RuntimeResult(
@@ -841,6 +841,8 @@ class ThinAgentRuntime:
         occurred_at: datetime | None = None,
         command_fingerprint: str | None = None,
     ) -> RuntimeResult:
+        if event_type == ASSISTANT_MESSAGE_EVENT_TYPE:
+            raise ValueError("assistant_message events are Runtime-authored only")
         with self._lane(case_id):
             return self._append_event_serialized(
                 case_id,
@@ -908,10 +910,10 @@ class ThinAgentRuntime:
             phase=snapshot.case.phase,
             manifest=snapshot.capability_manifest,
         )
-        event_snapshot, refresh_traces = self._refresh_strategy_if_required(
+        event_snapshot = self._refresh_strategy_if_required(
             event_snapshot, event, occurred_at
         )
-        outcome = self._coordinator(event_snapshot).advance(
+        outcome = self._advance(
             RouteRequest(
                 snapshot=event_snapshot,
                 created_at=occurred_at,
@@ -919,10 +921,16 @@ class ThinAgentRuntime:
             ),
             fast=self._fast,
         )
-        if (
-            outcome.status is not CoordinatorStatus.ACCEPTED
-            or outcome.fast_decision is None
+        # Gate-passed Fast text is delivered; gate-withheld text is replaced by
+        # the fallback and the command still applies; a validation reject fails.
+        if outcome.fast_disclosure_rejected:
+            line = FAST_FALLBACK_TEXT
+        elif (
+            outcome.status is CoordinatorStatus.ACCEPTED
+            and outcome.fast_decision is not None
         ):
+            line = outcome.fast_decision.response_text
+        else:
             raise ModelRuntimeError("fast")
         policy_snapshot = event_snapshot
         approval: ApprovalRequest | None = None
@@ -952,7 +960,7 @@ class ThinAgentRuntime:
                 phase=CasePhase.AWAITING_APPROVAL,
                 manifest=event_snapshot.capability_manifest,
             )
-        routed = self._coordinator(policy_snapshot).advance(
+        routed = self._advance(
             RouteRequest(
                 snapshot=policy_snapshot,
                 created_at=occurred_at,
@@ -960,6 +968,31 @@ class ThinAgentRuntime:
             )
         )
         route = routed.route
+        # The assistant line is appended last, after routing (which needs the
+        # trigger as the latest event), at the same snapshot revision.
+        assistant = _event(
+            case_id,
+            cursor=policy_snapshot.event_cursor + 1,
+            occurred_at=occurred_at,
+            event_type=ASSISTANT_MESSAGE_EVENT_TYPE,
+            content=line,
+            seed=f"{policy_snapshot.event_cursor + 1}:{ASSISTANT_MESSAGE_EVENT_TYPE}",
+            actor=EventActor.SYSTEM,
+        )
+        policy_snapshot = _snapshot(
+            case=policy_snapshot.case,
+            ledger=policy_snapshot.fact_ledger,
+            strategy=policy_snapshot.strategy,
+            offers=policy_snapshot.offers,
+            action_intents=policy_snapshot.action_intents,
+            approvals=policy_snapshot.approval_requests,
+            evidence=policy_snapshot.evidence,
+            completion=None,
+            events=(*policy_snapshot.visible_events, assistant),
+            snapshot_revision=policy_snapshot.revision,
+            phase=policy_snapshot.case.phase,
+            manifest=policy_snapshot.capability_manifest,
+        )
         transitions = state.transitions
         if command_id is not None:
             transitions = (
@@ -976,18 +1009,12 @@ class ThinAgentRuntime:
             )
         updated = CaseRuntimeState(
             snapshot=policy_snapshot,
-            events=(*state.events, event),
+            events=(*state.events, event, assistant),
             provider=state.provider,
             execution_count=state.execution_count,
             execution_source_pins=state.execution_source_pins,
             transitions=transitions,
             last_fast_decision=outcome.fast_decision,
-            model_traces=(
-                *state.model_traces,
-                *refresh_traces,
-                *outcome.traces,
-                *routed.traces,
-            ),
         )
         if approval is not None:
             # Persist the pending approval before changing Provider state.  A
@@ -1184,7 +1211,6 @@ class ThinAgentRuntime:
                 command_id=command_id,
                 command_fingerprint=command_fingerprint,
             ),
-            model_traces=state.model_traces,
         )
         self.repository.replace(
             case_id,
@@ -1257,7 +1283,7 @@ class ThinAgentRuntime:
                 phase=CasePhase.NEGOTIATING,
                 manifest=snapshot.capability_manifest,
             )
-            routed = self._coordinator(expired_snapshot).advance(
+            routed = self._advance(
                 RouteRequest(snapshot=expired_snapshot, created_at=approval.expires_at)
             )
             route = routed.route
@@ -1275,7 +1301,6 @@ class ThinAgentRuntime:
                 provider=state.provider,
                 execution_count=state.execution_count,
                 transitions=(*state.transitions, transition),
-                model_traces=(*state.model_traces, *routed.traces),
             )
             self.repository.replace(
                 case_id,
@@ -1437,7 +1462,7 @@ class ThinAgentRuntime:
                     command_fingerprint=command_fingerprint,
                 ),
             )
-        routed = self._coordinator(final_snapshot).advance(
+        routed = self._advance(
             RouteRequest(snapshot=final_snapshot, created_at=evaluated_at)
         )
         final_state = CaseRuntimeState(
@@ -1450,7 +1475,6 @@ class ThinAgentRuntime:
             execution_approval=approval,
             execution_proposal=proposal,
             transitions=transitions,
-            model_traces=(*state.model_traces, *routed.traces),
         )
         self.repository.replace(
             case_id,
@@ -1503,9 +1527,7 @@ class ThinAgentRuntime:
             phase=CasePhase.NEGOTIATING,
             manifest=state.snapshot.capability_manifest,
         )
-        routed = self._coordinator(snapshot).advance(
-            RouteRequest(snapshot=snapshot, created_at=decided_at)
-        )
+        routed = self._advance(RouteRequest(snapshot=snapshot, created_at=decided_at))
         route = routed.route
         transitions = state.transitions
         if command_id is not None:
@@ -1527,7 +1549,6 @@ class ThinAgentRuntime:
             provider=state.provider,
             execution_count=state.execution_count,
             transitions=transitions,
-            model_traces=(*state.model_traces, *routed.traces),
         )
         self.repository.replace(
             state.snapshot.case.case_id,
@@ -1590,16 +1611,15 @@ class ThinAgentRuntime:
         event_snapshot: CaseContextSnapshot,
         event: VisibleCaseEvent,
         occurred_at: datetime,
-    ) -> tuple[CaseContextSnapshot, tuple[ModelTrace, ...]]:
+    ) -> CaseContextSnapshot:
         """Install a Slow-refreshed strategy when the Router demands one.
 
         The strategy lifetime is a refresh trigger, not a session bound: an
         event after expiry routes to Slow, and the caller's Fast step then runs
         on the refreshed snapshot. Any other route returns the snapshot as is.
-        The coordinator's traces are returned for the caller's state write.
         """
 
-        outcome = self._coordinator(event_snapshot).advance(
+        outcome = self._advance(
             RouteRequest(
                 snapshot=event_snapshot,
                 created_at=occurred_at,
@@ -1611,7 +1631,7 @@ class ThinAgentRuntime:
         # FAST_NOW_AND_SLOW_REFRESH is unreachable here; a caller that sets it
         # must pass ``fast`` too.
         if outcome.route.outcome is not RoutingOutcome.SLOW_REFRESH:
-            return event_snapshot, outcome.traces
+            return event_snapshot
         installed = event_snapshot.strategy
         strategy = (
             outcome.slow_result.strategy_proposal
@@ -1644,14 +1664,42 @@ class ThinAgentRuntime:
             pending_execution=event_snapshot.pending_execution,
             receipt=event_snapshot.completion_receipt,
         )
-        return refreshed, outcome.traces
+        return refreshed
+
+    def _advance(
+        self,
+        request: RouteRequest,
+        *,
+        fast: FastAdapter | None = None,
+        slow: SlowAdapter | None = None,
+    ) -> CoordinatorOutcome:
+        """Run the coordinator once and log its traces before acting on them.
+
+        This is the only coordinator call in the Runtime. The traces are
+        appended before the caller inspects the outcome, so a rejected result,
+        a lost compare-and-swap, or a rolled-back write keeps its model calls.
+        """
+
+        outcome = self._coordinator(request.snapshot).advance(
+            request, fast=fast, slow=slow
+        )
+        if outcome.traces:
+            self.repository.append_model_traces(
+                request.snapshot.case.case_id, outcome.traces
+            )
+        return outcome
 
     def _coordinator(self, snapshot: CaseContextSnapshot) -> CaseCoordinator:
         # A trace starts at the route request's time, which is this Runtime
         # clock's reading for the operation, and lasts the measured latency.
         # The Runtime clock itself is not handed over: every extra read would
         # move the operation times an injected clock defines.
-        return CaseCoordinator(snapshot=snapshot, monotonic=time.perf_counter)
+        # Only the Runtime gates Fast text for display; ML callers do not.
+        return CaseCoordinator(
+            snapshot=snapshot,
+            monotonic=time.perf_counter,
+            fast_gate=fast_disclosure_violations,
+        )
 
     def now(self) -> datetime:
         """Return the Runtime clock's current UTC time."""
@@ -2214,7 +2262,7 @@ def _channel_repository(repository: CaseRepository) -> Any:
 
 
 def _infer_adapter_mode(fast: FastAdapter, slow: SlowAdapter) -> AdapterMode:
-    if isinstance(fast, ScriptedFastAdapter) and isinstance(slow, ScriptedSlowAdapter):
+    if isinstance(fast, _SCRIPTED_FAST_TYPES) and isinstance(slow, ScriptedSlowAdapter):
         return "scripted"
     return "model"
 
@@ -2226,6 +2274,8 @@ def _infer_storage_mode(repository: CaseRepository) -> StorageMode:
 
 
 __all__ = [
+    "ASSISTANT_MESSAGE_EVENT_TYPE",
+    "FAST_FALLBACK_TEXT",
     "SCRIPTED_CASE_ID",
     "AdapterMode",
     "CaseConflictError",

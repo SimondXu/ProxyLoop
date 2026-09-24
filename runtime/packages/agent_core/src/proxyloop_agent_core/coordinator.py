@@ -29,6 +29,7 @@ from proxyloop_contracts import (
     canonical_fingerprint,
 )
 
+from .disclosure_gate import FastGate
 from .interfaces import (
     BOUNDED_FAST_STATUS_TEXT,
     FastAdapter,
@@ -72,6 +73,8 @@ class CoordinatorOutcome:
     audits: tuple[ResultAudit, ...] = ()
     # One 1.1 ModelTrace per adapter call on a 1.1 snapshot, in call order.
     traces: tuple[ModelTrace, ...] = ()
+    # The Fast output was validated, then withheld by the disclosure gate.
+    fast_disclosure_rejected: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +101,11 @@ class CaseCoordinator:
     at the route request's ``created_at`` and ends ``latency`` later (0 when
     nothing measured); with a clock but no measurement the latency is the
     clock window's width. A non-UTC clock is refused before the model call.
+
+    ``fast_gate`` (the product Runtime only) runs on a Fast output that passed
+    ``validate_fast_result``. A non-empty verdict rejects the Fast audit with
+    the gate's codes, withholds the decision, and sets
+    ``fast_disclosure_rejected``. Without a gate the behaviour is unchanged.
     """
 
     def __init__(
@@ -107,12 +115,14 @@ class CaseCoordinator:
         *,
         clock: Callable[[], datetime] | None = None,
         monotonic: Callable[[], float] | None = None,
+        fast_gate: FastGate | None = None,
     ) -> None:
         self._router = router or DeterministicRouter()
         self._lock = RLock()
         self._current_snapshot = snapshot
         self._clock = clock
         self._monotonic = monotonic
+        self._fast_gate = fast_gate
 
     @property
     def current_snapshot(self) -> CaseContextSnapshot | None:
@@ -198,6 +208,7 @@ class CaseCoordinator:
         traces: list[ModelTrace] = []
         slow_result: SlowWorkResult | None = None
         fast_decision: FastTurnDecision | None = None
+        fast_disclosure_rejected = False
 
         if route.outcome in {
             RoutingOutcome.SLOW_REFRESH,
@@ -268,6 +279,11 @@ class CaseCoordinator:
                 request.snapshot,
                 bounded=route.outcome is RoutingOutcome.FAST_NOW_AND_SLOW_REFRESH,
             )
+            if audit.accepted and self._fast_gate is not None:
+                gate_codes = self._fast_gate(fast_output.decision, request.snapshot)
+                if gate_codes:
+                    fast_disclosure_rejected = True
+                    audit = replace(audit, accepted=False, reason_codes=gate_codes)
             audits.append(audit)
             if traced:
                 traces.append(
@@ -297,6 +313,7 @@ class CaseCoordinator:
             slow_result=slow_result,
             audits=tuple(audits),
             traces=tuple(traces),
+            fast_disclosure_rejected=fast_disclosure_rejected,
         )
 
     def _timed(self, call: Callable[[], _T], at: datetime) -> tuple[_T, _CallWindow]:

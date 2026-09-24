@@ -832,7 +832,11 @@ def start_demo(*, state_dir: Path | None = None) -> None:
         _terminate_processes(processes)
         if compose_started:
             _compose("stop", *COMPOSE_SERVICES, check=False)
-        _pid_file(selected).unlink(missing_ok=True)
+        # Only the invocation that spawned the host services wrote pids.json.
+        # A refused start must keep another supervisor's file so
+        # portfolio-demo-stop can still find those processes.
+        if processes:
+            _pid_file(selected).unlink(missing_ok=True)
         _stop_file(selected).unlink(missing_ok=True)
         _release_lifecycle_lock(selected)
 

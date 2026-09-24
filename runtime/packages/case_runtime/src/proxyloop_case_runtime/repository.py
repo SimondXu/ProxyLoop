@@ -44,10 +44,8 @@ class CaseRuntimeState:
     transitions: tuple[CaseTransitionRef, ...] = ()
     last_fast_decision: FastTurnDecision | None = None
     execution_claim: ExecutionClaim | None = None
-    # Model call bookkeeping, appended in the state write of the transition that
-    # ran the model. Never projected into the snapshot, views, or the API.
-    # Retention is unbounded for now (known limit).
-    model_traces: tuple[ModelTrace, ...] = ()
+    # Model traces are not Case state: they live only in the repository's
+    # append-only trace log (``append_model_traces``/``list_model_traces``).
 
     def __post_init__(self) -> None:
         if (self.execution_claim is not None) != self.snapshot.pending_execution:
@@ -149,13 +147,31 @@ class CaseRepository(Protocol):
         state: CaseRuntimeState,
     ) -> CaseRuntimeState: ...
 
+    def append_model_traces(
+        self, case_id: UUID, traces: tuple[ModelTrace, ...]
+    ) -> None: ...
+
+    def list_model_traces(self, case_id: UUID) -> tuple[ModelTrace, ...]: ...
+
+
+def check_model_trace_case(case_id: UUID, traces: tuple[ModelTrace, ...]) -> None:
+    """Refuse a trace append that is not wholly about ``case_id``."""
+
+    if any(trace.case_id != case_id for trace in traces):
+        raise ValueError("model trace references another Case")
+
 
 class InMemoryCaseRepository:
-    """Thread-safe single-process repository with optimistic replacement."""
+    """Thread-safe single-process repository with optimistic replacement.
+
+    Model traces are an append-only log beside the Case records: an append
+    never reads or changes a Case and does not need the Case to exist.
+    """
 
     def __init__(self) -> None:
         self._lock = RLock()
         self._states: dict[UUID, CaseRuntimeState] = {}
+        self._traces: dict[UUID, list[ModelTrace]] = {}
 
     def create(self, state: CaseRuntimeState) -> CaseRuntimeState:
         case_id = state.snapshot.case.case_id
@@ -186,6 +202,19 @@ class InMemoryCaseRepository:
                 raise CaseConflictError("replacement case id does not match")
             self._states[case_id] = state
             return state
+
+    def append_model_traces(
+        self, case_id: UUID, traces: tuple[ModelTrace, ...]
+    ) -> None:
+        check_model_trace_case(case_id, traces)
+        if not traces:
+            return
+        with self._lock:
+            self._traces.setdefault(case_id, []).extend(traces)
+
+    def list_model_traces(self, case_id: UUID) -> tuple[ModelTrace, ...]:
+        with self._lock:
+            return tuple(self._traces.get(case_id, ()))
 
 
 __all__ = [

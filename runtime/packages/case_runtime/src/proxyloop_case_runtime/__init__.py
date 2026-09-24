@@ -23,6 +23,8 @@ from .repository import (
     StorageUnavailableError,
 )
 from .runtime import (
+    ASSISTANT_MESSAGE_EVENT_TYPE,
+    FAST_FALLBACK_TEXT,
     SCRIPTED_CASE_ID,
     AdapterMode,
     ModelRuntimeError,
@@ -33,8 +35,10 @@ from .runtime import (
 )
 
 __all__ = [
+    "ASSISTANT_MESSAGE_EVENT_TYPE",
     "CASE_COMMAND_SCHEMA_VERSION",
     "CHANNEL_COMMAND_SCHEMA_VERSION",
+    "FAST_FALLBACK_TEXT",
     "SCRIPTED_CASE_ID",
     "AdapterMode",
     "CaseCommand",

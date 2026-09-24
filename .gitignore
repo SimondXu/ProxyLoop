@@ -8,6 +8,8 @@ __pycache__/
 *.egg-info/
 .coverage
 htmlcov/
+# make unit-test report read by the make preflight gated-skip check
+.gate/
 
 # Node.js
 node_modules/

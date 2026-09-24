@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, replace
 from datetime import UTC, datetime, timedelta
 from threading import Barrier
 from types import SimpleNamespace
@@ -18,11 +19,18 @@ from proxyloop_api import (
     CaseRuntimeState,
     InMemoryCaseRepository,
     PostgresCaseRepository,
+    StorageUnavailableError,
     ThinAgentRuntime,
     runtime_from_environment,
 )
 from proxyloop_case_runtime import CaseCommand, CaseCommandType
-from proxyloop_contracts import CasePhase, CompletionOutcome, DialogueAct, EvidenceType
+from proxyloop_contracts import (
+    CasePhase,
+    CompletionOutcome,
+    DialogueAct,
+    EvidenceType,
+    ModelTrace,
+)
 from proxyloop_contracts.contracts import (
     CompletionClaim,
     EvidenceRequirement,
@@ -39,6 +47,7 @@ from psycopg.types.json import Jsonb
 BASE_TIME = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
 CASE_ID = UUID("11111111-1111-4111-8111-111111111111")
 TABLE = "proxyloop_case_runtime_states"
+TRACES_TABLE = "proxyloop_model_traces"
 
 
 class _FinalWriteFailureRepository(PostgresCaseRepository):
@@ -139,7 +148,7 @@ def repository() -> PostgresCaseRepository:
             raise AssertionError("Postgres integration tests require proxyloop_test")
     repository = PostgresCaseRepository(database_url)
     with psycopg.connect(database_url) as connection, connection.transaction():
-        connection.execute(f"TRUNCATE TABLE {TABLE}")
+        connection.execute(f"TRUNCATE TABLE {TABLE}, {TRACES_TABLE}")
     return repository
 
 
@@ -166,13 +175,93 @@ def _assert_non_provider_fields_equal(
     expected: CaseRuntimeState,
     actual: CaseRuntimeState,
 ) -> None:
-    assert actual.snapshot == expected.snapshot
-    assert actual.events == expected.events
-    assert actual.execution_count == expected.execution_count
-    assert actual.execution_source_pins == expected.execution_source_pins
-    assert actual.execution_intent == expected.execution_intent
-    assert actual.execution_approval == expected.execution_approval
-    assert actual.execution_proposal == expected.execution_proposal
+    # Derived from the dataclass so a field added later is compared too.
+    for field in fields(CaseRuntimeState):
+        if field.name == "provider":
+            continue
+        assert getattr(actual, field.name) == getattr(expected, field.name), field.name
+
+
+def _in_memory_waiting() -> tuple[ThinAgentRuntime, CaseRuntimeState]:
+    """An in-memory Case awaiting approval, reached through a command so that
+    `transitions` and `last_fast_decision` are populated."""
+
+    runtime = ThinAgentRuntime(
+        InMemoryCaseRepository(),
+        clock=_clock(
+            BASE_TIME,
+            BASE_TIME + timedelta(minutes=1),
+            BASE_TIME + timedelta(minutes=2),
+        ),
+    )
+    created = runtime.create_case()
+    runtime.apply_command(
+        CaseCommand(
+            command_id=UUID("dddddddd-dddd-4ddd-8ddd-dddddddddddd"),
+            case_id=CASE_ID,
+            command_type=CaseCommandType.APPEND_EVENT,
+            occurred_at=BASE_TIME + timedelta(minutes=1),
+            expected_revision=created.snapshot.revision,
+            content="Review the offer.",
+            event_type="consumer_message",
+        )
+    )
+    state = runtime.repository.get(CASE_ID)
+    assert state is not None
+    assert state.transitions
+    assert state.last_fast_decision is not None
+    return runtime, state
+
+
+def _codec_round_trip(state: CaseRuntimeState) -> CaseRuntimeState:
+    payload = json.loads(json.dumps(PostgresCaseRepository._encode_state(state)))
+    return PostgresCaseRepository._decode_state(
+        state.snapshot.case.case_id, state.snapshot.revision, payload
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "other_value"),
+    [("transitions", ()), ("last_fast_decision", None)],
+)
+def test_round_trip_helper_compares_every_non_provider_field(
+    field: str, other_value: object
+) -> None:
+    # C-7: AC3 says every non-Provider field round-trips; the helper must notice
+    # a difference in any of them, not only the execution fields.
+    _, state = _in_memory_waiting()
+    changed = replace(state, **{field: other_value})
+
+    with pytest.raises(AssertionError):
+        _assert_non_provider_fields_equal(state, changed)
+
+
+def test_every_non_provider_field_survives_the_postgres_codec() -> None:
+    # C-7 without a database: the write/read codec keeps every non-Provider
+    # field, for a waiting Case and for the executed terminal Case.
+    runtime, waiting = _in_memory_waiting()
+    _assert_non_provider_fields_equal(waiting, _codec_round_trip(waiting))
+
+    approval = waiting.snapshot.approval_requests[0]
+    runtime.apply_command(
+        CaseCommand(
+            command_id=APPROVAL_COMMAND_ID,
+            case_id=CASE_ID,
+            command_type=CaseCommandType.DECIDE_APPROVAL,
+            occurred_at=BASE_TIME + timedelta(minutes=2),
+            expected_revision=waiting.snapshot.revision,
+            approval_id=approval.approval_id,
+            decision="approved",
+            expected_case_revision=approval.case_revision,
+            expected_action_intent_revision=approval.action_intent_revision,
+        )
+    )
+    terminal = runtime.repository.get(CASE_ID)
+    assert terminal is not None
+    assert terminal.execution_count == 1
+    assert terminal.execution_source_pins is not None
+    assert len(terminal.transitions) == len(waiting.transitions) + 1
+    _assert_non_provider_fields_equal(terminal, _codec_round_trip(terminal))
 
 
 def _terminal_state(repository: PostgresCaseRepository) -> CaseRuntimeState:
@@ -631,7 +720,7 @@ def test_postgres_conflicts_and_strict_payload_fail_closed(
     with psycopg.connect(database_url) as connection:
         connection.execute(
             f"UPDATE {TABLE} SET payload = %s WHERE case_id = %s",
-            (Jsonb({"storage_version": 3}), CASE_ID),
+            (Jsonb({"storage_version": 4}), CASE_ID),
         )
     with pytest.raises(RuntimeError, match="unsupported Case storage version"):
         repository.get(CASE_ID)
@@ -773,6 +862,185 @@ def test_postgres_rejects_simulator_transition_evidence_tampering(
         repository.get(CASE_ID)
 
 
+# -- the append-only model-trace log (R-12, R-13b) -------------------------------
+
+
+def _logged_flow(repository: PostgresCaseRepository) -> tuple[ModelTrace, ...]:
+    runtime = ThinAgentRuntime(
+        repository, clock=_clock(BASE_TIME, BASE_TIME + timedelta(minutes=1))
+    )
+    _waiting(runtime)
+    traces = repository.list_model_traces(CASE_ID)
+    assert [trace.role for trace in traces] == ["slow", "fast"]
+    return traces
+
+
+def _raw_row(database_url: str, case_id: UUID = CASE_ID) -> tuple[object, ...]:
+    with psycopg.connect(database_url) as connection:
+        row = connection.execute(
+            f"SELECT revision, payload::text, updated_at FROM {TABLE} "
+            "WHERE case_id = %s",
+            (case_id,),
+        ).fetchone()
+    assert row is not None
+    return tuple(row)
+
+
+def test_postgres_trace_log_appends_in_order_without_touching_the_case(
+    repository: PostgresCaseRepository,
+) -> None:
+    database_url = os.environ["PROXYLOOP_TEST_DATABASE_URL"]
+    slow, fast = _logged_flow(repository)
+    before = _raw_row(database_url)
+
+    # Indistinguishable calls are two rows; order is append order (I4, I10).
+    repository.append_model_traces(CASE_ID, (fast, slow))
+    repository.append_model_traces(CASE_ID, ())
+
+    assert repository.list_model_traces(CASE_ID) == (slow, fast, fast, slow)
+    assert _raw_row(database_url) == before  # I5: revision and bytes unchanged
+    other = UUID("22222222-2222-4222-8222-222222222222")
+    with pytest.raises(ValueError, match="another Case"):
+        repository.append_model_traces(other, (slow,))
+    assert repository.list_model_traces(other) == ()
+
+
+def test_postgres_trace_log_needs_no_case_row_and_survives_truncation(
+    repository: PostgresCaseRepository,
+) -> None:
+    database_url = os.environ["PROXYLOOP_TEST_DATABASE_URL"]
+    traces = _logged_flow(repository)
+    # No foreign key: the Case table still truncates on its own.
+    with psycopg.connect(database_url) as connection, connection.transaction():
+        connection.execute(f"TRUNCATE TABLE {TABLE}")
+    assert repository.get(CASE_ID) is None
+    assert repository.list_model_traces(CASE_ID) == traces
+
+    # A rejected create has no Case row; its traces are appended anyway.
+    repository.append_model_traces(CASE_ID, traces)
+    assert repository.get(CASE_ID) is None
+    assert repository.list_model_traces(CASE_ID) == (*traces, *traces)
+
+
+@pytest.mark.parametrize("tamper", ["foreign_case", "invalid_shape"])
+def test_postgres_trace_log_fails_closed_on_a_tampered_trace(
+    repository: PostgresCaseRepository, tamper: str
+) -> None:
+    database_url = os.environ["PROXYLOOP_TEST_DATABASE_URL"]
+    _logged_flow(repository)
+    with psycopg.connect(database_url) as connection:
+        if tamper == "foreign_case":
+            # Consistently foreign: the trace's own validators still pass.
+            foreign = Jsonb("22222222-2222-4222-8222-222222222222")
+            connection.execute(
+                f"UPDATE {TRACES_TABLE} SET trace = jsonb_set("
+                "jsonb_set(trace, '{case_id}', %s), '{input_pins,case_id}', %s)",
+                (foreign, foreign),
+            )
+        else:
+            connection.execute(
+                f"UPDATE {TRACES_TABLE} SET trace = %s", (Jsonb({"unexpected": 1}),)
+            )
+    with pytest.raises(RuntimeError, match="stored model trace is invalid"):
+        repository.list_model_traces(CASE_ID)
+
+
+def test_postgres_bootstrap_moves_v2_inline_traces_to_the_log_once(
+    repository: PostgresCaseRepository,
+) -> None:
+    database_url = os.environ["PROXYLOOP_TEST_DATABASE_URL"]
+    traces = _logged_flow(repository)
+    state = repository.get(CASE_ID)
+    assert state is not None
+    garbage_id = UUID("33333333-3333-4333-8333-333333333333")
+    # Rebuild the row exactly as the version 2 codec wrote it, traces inline,
+    # and start from an empty log.
+    with psycopg.connect(database_url) as connection, connection.transaction():
+        stored = connection.execute(
+            f"SELECT payload FROM {TABLE} WHERE case_id = %s", (CASE_ID,)
+        ).fetchone()
+        assert stored is not None
+        v2 = {
+            **stored[0],
+            "storage_version": 2,
+            "model_traces": [trace.model_dump(mode="json") for trace in traces],
+        }
+        connection.execute(
+            f"UPDATE {TABLE} SET payload = %s WHERE case_id = %s",
+            (Jsonb(v2), CASE_ID),
+        )
+        # A version 2 row whose traces are not an array is left for read.
+        connection.execute(
+            f"INSERT INTO {TABLE} (case_id, revision, payload) VALUES (%s, 1, %s)",
+            (garbage_id, Jsonb({"storage_version": 2, "model_traces": "invalid"})),
+        )
+        connection.execute(f"TRUNCATE TABLE {TRACES_TABLE}")
+    revision, _, updated_at = _raw_row(database_url)
+    with pytest.raises(RuntimeError, match="unsupported Case storage version"):
+        repository.get(CASE_ID)
+
+    upgraded = PostgresCaseRepository(database_url)
+
+    with psycopg.connect(database_url) as connection:
+        row = connection.execute(
+            f"SELECT revision, payload, updated_at FROM {TABLE} WHERE case_id = %s",
+            (CASE_ID,),
+        ).fetchone()
+    assert row is not None
+    assert (row[0], row[2]) == (revision, updated_at)
+    assert row[1]["storage_version"] == 3
+    assert "model_traces" not in row[1]
+    loaded = upgraded.get(CASE_ID)
+    assert loaded is not None
+    assert loaded.snapshot == state.snapshot
+    assert upgraded.list_model_traces(CASE_ID) == traces
+    with pytest.raises(RuntimeError, match="unsupported Case storage version"):
+        upgraded.get(garbage_id)
+
+    PostgresCaseRepository(database_url)
+    assert upgraded.list_model_traces(CASE_ID) == traces  # no duplicates
+    assert upgraded.list_model_traces(garbage_id) == ()
+
+
+def test_postgres_bootstrap_migrates_a_v2_row_without_a_traces_key(
+    repository: PostgresCaseRepository,
+) -> None:
+    # The version 2 envelope defaulted a missing ``model_traces`` to empty.
+    database_url = os.environ["PROXYLOOP_TEST_DATABASE_URL"]
+    _logged_flow(repository)
+    state = repository.get(CASE_ID)
+    assert state is not None
+    with psycopg.connect(database_url) as connection, connection.transaction():
+        stored = connection.execute(
+            f"SELECT payload FROM {TABLE} WHERE case_id = %s", (CASE_ID,)
+        ).fetchone()
+        assert stored is not None
+        v2 = {**stored[0], "storage_version": 2}
+        assert "model_traces" not in v2
+        connection.execute(
+            f"UPDATE {TABLE} SET payload = %s WHERE case_id = %s",
+            (Jsonb(v2), CASE_ID),
+        )
+        connection.execute(f"TRUNCATE TABLE {TRACES_TABLE}")
+    revision, _, updated_at = _raw_row(database_url)
+
+    upgraded = PostgresCaseRepository(database_url)
+
+    with psycopg.connect(database_url) as connection:
+        row = connection.execute(
+            f"SELECT revision, payload, updated_at FROM {TABLE} WHERE case_id = %s",
+            (CASE_ID,),
+        ).fetchone()
+    assert row is not None
+    assert (row[0], row[2]) == (revision, updated_at)
+    assert row[1]["storage_version"] == 3
+    assert "model_traces" not in row[1]
+    loaded = upgraded.get(CASE_ID)
+    assert loaded is not None
+    assert loaded.snapshot == state.snapshot
+    assert upgraded.list_model_traces(CASE_ID) == ()
+
+
 def test_runtime_configuration_defaults_and_fails_closed() -> None:
     runtime = runtime_from_environment(environ={})
     assert isinstance(runtime.repository, InMemoryCaseRepository)
@@ -845,6 +1113,31 @@ def test_postgres_operation_error_suppresses_driver_cause(
     with pytest.raises(RuntimeError) as raised:
         repository.get(CASE_ID)
     assert str(raised.value) == "PostgreSQL Case storage operation failed"
+    assert raised.value.__cause__ is None
+    assert raised.value.__suppress_context__ is True
+
+
+@pytest.mark.parametrize("operation", ["append", "list"])
+def test_postgres_trace_log_error_suppresses_driver_cause(
+    monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    def fail_connect(_repository: PostgresCaseRepository) -> object:
+        raise psycopg.OperationalError("password=secret raw driver details")
+
+    memory = InMemoryCaseRepository()
+    ThinAgentRuntime(memory, clock=_clock(BASE_TIME)).create_case()
+    traces = memory.list_model_traces(CASE_ID)
+    assert traces
+    repository = object.__new__(PostgresCaseRepository)
+    repository._database_url = "postgresql://user:secret@example.invalid/db"
+    monkeypatch.setattr(PostgresCaseRepository, "_connect", fail_connect)
+    with pytest.raises(StorageUnavailableError) as raised:
+        if operation == "append":
+            repository.append_model_traces(CASE_ID, traces)
+        else:
+            repository.list_model_traces(CASE_ID)
+    assert str(raised.value) == "PostgreSQL model trace operation failed"
+    assert "secret" not in str(raised.value)
     assert raised.value.__cause__ is None
     assert raised.value.__suppress_context__ is True
 
