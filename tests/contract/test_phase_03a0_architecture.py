@@ -1,7 +1,18 @@
+"""Docs-freeze tests for the Phase 03A0 architecture decision.
+
+These assert that the ADR, build contract, preflight, and PLANS.md still state
+the frozen decisions; they do not exercise the code. Router precedence is
+enforced behaviourally in tests/integration/test_phase_03a1_agent_core.py
+(``test_router_precedence_ladder_matches_the_frozen_table``), and the ADR's
+outcome order is tied to ``ROUTER_PRECEDENCE`` below.
+"""
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
+
+from proxyloop_agent_core import ROUTER_PRECEDENCE
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -159,15 +170,7 @@ def test_phase_03a0_requires_eval_first_before_later_data_expansion() -> None:
 def test_phase_03a0_freezes_router_precedence_and_single_outcome() -> None:
     decision = document("docs/decisions/2026-08-23-fast-slow-orchestration.md")
     routing = decision[decision.index("### Routing") :]
-    outcomes = (
-        "terminal",
-        "verify_only",
-        "wait_for_approval",
-        "slow_refresh",
-        "fast_now_and_slow_refresh",
-        "fast_now",
-    )
-    positions = [routing.index(f"`{outcome}`") for outcome in outcomes]
+    positions = [routing.index(f"`{outcome}`") for outcome in ROUTER_PRECEDENCE]
 
     assert positions == sorted(positions)
     assert re.search(r"(?:exactly one|one and only one|one) outcome", routing, re.I)
