@@ -119,11 +119,11 @@ tests also need `PROXYLOOP_TEST_TEMPORAL_ADDRESS`:
 - `test_phase_04c_persistent_case_store.py` (23 tests)
 - `test_phase_05a_case_runtime.py` (2)
 - `test_phase_05a_temporal_workflow.py` (24)
-- `test_phase_06b1_channel_runtime.py` (1, through a fixture imported from
+- `test_phase_06b1_channel_runtime.py` (3, through a fixture imported from
   `test_phase_06b1_temporal.py`)
 - `test_phase_06b1_temporal.py` (3)
 
-With the variables unset, `make preflight` exits 0 and skips those 53 tests,
+With the variables unset, `make preflight` exits 0 and skips those 55 tests,
 so a "preflight passed" claim covers none of them. `unit-test` writes the
 runtime pytest JUnit report to `.gate/runtime-junit.xml` (git-ignored); the
 last preflight step counts the tests skipped with a `PROXYLOOP_TEST_*` reason,

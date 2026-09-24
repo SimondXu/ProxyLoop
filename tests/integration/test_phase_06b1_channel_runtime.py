@@ -1066,7 +1066,12 @@ def test_postgres_delivery_callback_write_is_atomic_and_retryable() -> None:
 
 
 def test_postgres_repeated_delivery_callback_keeps_one_receipt() -> None:
-    """C-8: a second callback for the same delivery is a no-op; a regression fails."""
+    """C-8: a repeated callback keeps one receipt; a regression writes nothing.
+
+    The repeat is not a no-op: it keeps the snapshot and the receipt but
+    records its transition, marks its Inbox applied, and rewrites the Outbox
+    with the same state.
+    """
 
     database_url = _database_url()
     _truncate(database_url)
@@ -1091,6 +1096,7 @@ def test_postgres_repeated_delivery_callback_keeps_one_receipt() -> None:
     after_duplicate = PostgresCaseRepository(database_url).get(SCRIPTED_CASE_ID)
     assert after_duplicate is not None
     assert after_duplicate.snapshot == after_first.snapshot
+    assert len(after_duplicate.transitions) == len(after_first.transitions) + 1
     assert repository.get_delivery_receipt(delivery_id) == receipt
     repeated_inbox = repository.get_inbox_receipt(repeated.event_id)
     assert repeated_inbox is not None
@@ -1103,12 +1109,29 @@ def test_postgres_repeated_delivery_callback_keeps_one_receipt() -> None:
         expected_revision=first.after_revision,
         delivery_status="bounced",
     )
+    # The Runtime refuses the regression before it reaches storage ...
     with pytest.raises(ChannelConflictError, match="regressed"):
         runtime.apply_command(bounced)
+    # ... so drive the storage checks directly: an Outbox regression
+    # (delivered -> bounced) and a receipt that differs from the stored one.
+    for outbox_state, regressing in (
+        ("bounced", replace(receipt, observation_state="bounced")),
+        ("delivered", replace(receipt, artifact_hash="0" * 64)),
+    ):
+        with pytest.raises(CaseConflictError, match="delivery observation regressed"):
+            repository.replace_with_delivery_receipt(
+                SCRIPTED_CASE_ID,
+                expected_revision=after_duplicate.snapshot.revision,
+                state=after_duplicate,
+                inbox_event_id=bounced.event_id,
+                receipt=regressing,
+                outbox_state=outbox_state,
+            )
 
     final = PostgresCaseRepository(database_url).get(SCRIPTED_CASE_ID)
     assert final is not None
     assert final.snapshot == after_first.snapshot
+    assert final.transitions == after_duplicate.transitions
     outbox = repository.get_outbox_record(delivery_id)
     assert outbox is not None
     assert outbox.state == "delivered"

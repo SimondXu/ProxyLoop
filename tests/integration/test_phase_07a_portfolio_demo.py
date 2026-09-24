@@ -170,6 +170,13 @@ def test_refused_start_keeps_the_process_state_of_a_crashed_supervisor(
     pids = {name: 4242 for name in demo.HOST_SERVICE_NAMES}
     pid_file = tmp_path / demo.PID_FILE
     pid_file.write_text(json.dumps(pids) + "\n")
+    # The crashed supervisor also left its lifecycle lock; its owner is dead,
+    # so the second start reclaims the lock and reaches the pids.json refusal.
+    exited = subprocess.Popen(["true"])
+    exited.wait()
+    (tmp_path / demo.LIFECYCLE_LOCK_FILE).write_text(
+        json.dumps({"pid": exited.pid}) + "\n"
+    )
 
     with pytest.raises(demo.DemoScenarioError, match="already has a process state"):
         demo.start_demo(state_dir=tmp_path)

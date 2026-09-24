@@ -4,7 +4,8 @@ Findings: `harness/code_review/repo-audit-C.md` C-5, C-7, C-8;
 `harness/context/audit-remediation-status.md` §4a R-6 (origin:
 `harness/log/fix-capability-manifest-lifetime.md`, Known limits). Plan row:
 `harness/context/build-plan-to-complete.md` PR-5.
-Branch `fix/pr5-ops-tests` from `main` @ `74fb993`.
+Branch `fix/pr5-ops-tests` from `main` @ `74fb993`; merged with `main` @
+`f4a2487` (#90) after review.
 
 Hot-file constraint for this PR: no edits to `runtime.py`,
 `postgres_repository.py` (PR-7), `app.py` or `workflow.py` (PR-3). None were
@@ -27,40 +28,70 @@ edited.
   only after every service started). A refused start keeps another
   supervisor's file, so `make portfolio-demo-stop` can still find and stop
   those processes. Stop-file and lifecycle-lock handling are unchanged.
+  `docs/portfolio-demo.md` gains one troubleshooting note: delete
+  `$TMPDIR/proxyloop-portfolio-demo/pids.json` by hand if a stale file names
+  PIDs that now belong to other processes (stop refuses to signal them).
 - **C-7** `_assert_non_provider_fields_equal` iterates
   `dataclasses.fields(CaseRuntimeState)` minus `provider`, so it compares all
   eleven non-Provider fields and any field added later. The three DB-gated
   call sites (`postgres-check`) now also compare `transitions`,
   `last_fast_decision`, `execution_claim`, `model_traces`; each compares two
-  reads of the same row or a no-write repeat, and the codec round-trips
-  those fields through the pydantic envelope (`postgres_repository.py:1004-1007`,
-  `:1048-1051`).
+  reads of the same row or a no-write repeat. A DB-free test,
+  `test_every_non_provider_field_survives_the_postgres_codec`, sends a
+  waiting and an executed terminal in-memory state (both reached through
+  commands, so `transitions` and `last_fast_decision` are populated) through
+  `_encode_state` → JSON → `_decode_state` and compares with the helper.
 - **C-8** `tests/integration/test_phase_06b1_channel_runtime.py`, two
   real-PostgreSQL tests (gated on `PROXYLOOP_TEST_DATABASE_URL`, run by
   `make phase06b1-check`):
   - `test_postgres_delivery_callback_write_is_atomic_and_retryable`: an
-    in-progress Case with an accepted outbound reply; a subclass points the
-    final Inbox write of one callback at a missing row, so the Case UPDATE,
-    Outbox UPDATE and receipt INSERT have run when the transaction raises
-    `CaseConflictError`. Asserts nothing persisted (snapshot, transitions,
-    Outbox `accepted`, Inbox `reserved`, zero receipt rows); the identical
-    command then applies once (revision +1, one `provider_event` Evidence
-    whose id the receipt carries, Outbox `delivered`, Inbox `applied`, one
-    receipt row).
+    in-progress Case with an accepted outbound reply; a subclass
+    (`_InboxWriteFailureRepository`) points the final Inbox write of one
+    callback at a missing row, so the Case UPDATE, Outbox UPDATE and receipt
+    INSERT have run when the transaction raises `CaseConflictError`. Asserts
+    nothing persisted (snapshot, transitions, Outbox `accepted`, Inbox
+    `reserved`, zero receipt rows); the identical command then applies once
+    (revision +1, one `provider_event` Evidence whose id the receipt
+    carries, Outbox `delivered`, Inbox `applied`, one receipt row).
   - `test_postgres_repeated_delivery_callback_keeps_one_receipt`: a second
-    `delivered` callback for the same delivery takes the prior-receipt path
-    (same revision, same snapshot, its Inbox `applied`, still one receipt);
-    a `bounced` callback afterwards raises `ChannelConflictError`
-    ("regressed") and changes nothing (its Inbox stays `reserved`).
+    `delivered` callback for the same delivery takes the prior-receipt path.
+    It is not a no-op: the snapshot, revision and the one receipt are kept,
+    but it records its transition, marks its Inbox `applied`, and rewrites
+    the Outbox with the same state. A `bounced` callback is then refused by
+    the Runtime (`runtime.py:565`, `ChannelConflictError` "regressed") before
+    storage, so the test also calls `replace_with_delivery_receipt` directly:
+    an Outbox regression `delivered` → `bounced`
+    (`postgres_repository.py:781-784`) and a receipt differing from the
+    stored one (`:801-802`) both raise "delivery observation regressed" and
+    write nothing (snapshot, transitions, Outbox `delivered`, that Inbox
+    `reserved`, the one receipt).
 - No product code outside the demo script changed.
 
 ## Red → green
 
 | Test | Pre-fix | Post-fix |
 |---|---|---|
-| `test_phase_07a_portfolio_demo.py::test_refused_start_keeps_the_process_state_of_a_crashed_supervisor` | FAILED: `_read_pids` raised "portfolio demo is not running" (the refused start deleted `pids.json`) | passed; 07A file 16 passed |
-| `test_phase_04c_persistent_case_store.py::test_round_trip_helper_compares_every_non_provider_field[transitions, last_fast_decision]` (DB-free) | 2 FAILED: `DID NOT RAISE AssertionError` | 2 passed; file 6 passed, 23 skipped (DB) |
+| `test_phase_07a_portfolio_demo.py::test_refused_start_keeps_the_process_state_of_a_crashed_supervisor` (stale `lifecycle.lock` owned by an exited PID plus `pids.json`, the real second-start path) | FAILED on the `74fb993` script: `_read_pids` raised "portfolio demo is not running" (the refused start deleted `pids.json`) | passed; 07A file 16 passed |
+| `test_phase_04c_persistent_case_store.py::test_round_trip_helper_compares_every_non_provider_field[transitions, last_fast_decision]` (DB-free) | 2 FAILED: `DID NOT RAISE AssertionError` | 2 passed |
+| `test_every_non_provider_field_survives_the_postgres_codec` (DB-free) | not applicable: pins existing codec behaviour | passed; 04C file 7 passed, 23 skipped (DB) |
 | the two C-8 tests | not applicable: coverage of existing behaviour, not a defect | skipped locally (no DB); **unrun** until the DB lane runs `make phase06b1-check` |
+
+## Known limits
+
+- C-5, pre-dating this PR (`_spawn_host_services`,
+  `run_phase_07a_portfolio_demo.py:556-579`), host services can still be
+  orphaned without a `pids.json` that names them: a SIGINT/SIGTERM during
+  the spawn loop (the handler raises out of `start_demo` before the file is
+  written, and `processes` in `start_demo` is still empty); a `write_text`
+  failure at `:574` (the services are running, the exception propagates,
+  nothing terminates them); and a SIGKILL of the supervisor before `:574`.
+  Not changed here.
+- C-8: the `prior_receipt is None` branch for a terminal Outbox
+  (`postgres_repository.py:803-807`) stays without real-PostgreSQL coverage;
+  no API path produces a `delivered`/`bounced` Outbox without a receipt.
+- C-8: PR-7 may change the `replace_with_delivery_receipt` signature; if it
+  does, `_InboxWriteFailureRepository` (and the direct calls in the
+  repeated-callback test) must follow.
 
 ## R-6 deferred until after PR-7
 
@@ -108,21 +139,27 @@ accepted known limit (no migration; A-11 log).
 
 ## Gated-skip count
 
-The two C-8 tests are gated on `PROXYLOOP_TEST_DATABASE_URL`: the runtime
-suite's skip count goes from 53 to 55 without DB variables. The preflight
-gated-skip pin from PR-1 (`scripts/check_gated_skips.py`, not yet on
-`main`) must add 2 when the branches meet.
+The two C-8 tests are gated on `PROXYLOOP_TEST_DATABASE_URL`. After merging
+`main` @ `f4a2487`, `make preflight` failed only at the #90 pin
+(`test_phase_06b1_channel_runtime.py: expected 1, found 3`; total 53 → 55).
+`EXPECTED_GATED_SKIPS_PER_FILE` in `scripts/check_gated_skips.py` and the
+list in `docs/development.md` now say 3 (total 55).
 
 ## Checks
 
-- `make lint`: exit 0.
-- `make typecheck`: exit 0 ("no issues found in 59 source files").
-- `make test`: exit 0 (runtime 1278 passed, 55 skipped; ML 397 passed,
-  1 skipped).
-- `make preflight`: first run exit 2 at `format-check` (the C-7 helper's
-  `assert` line); `ruff format` applied to that file; second run exit 0
-  (runtime 1278 passed, 55 skipped; ML 397 passed, 1 skipped; web 140
-  passed; `docker compose config` ok). `make lint`, `typecheck` and `test`
-  above ran before the format fix, which changed only line wrapping.
-- Not run (lane held; no `PROXYLOOP_TEST_*` set): `make postgres-check`
-  (C-7 call sites), `make phase06b1-check` (the two C-8 tests).
+First pass (on `74fb993`): `make lint`, `make typecheck`, `make test` exit 0;
+`make preflight` exit 2 at `format-check` (the C-7 helper's `assert` line),
+exit 0 after `ruff format`.
+
+After review and the `f4a2487` merge, no `PROXYLOOP_TEST_*` set:
+
+- `make preflight`: exit 2 at the gated-skip pin (above); after the pin
+  update, exit 0 (runtime 1288 passed, 55 skipped; ML 397 passed,
+  1 skipped; web 140 passed; "Gated-skip counts match the pinned 55 per
+  file.").
+- `make lint`: exit 0. `make typecheck`: exit 0 (67 and 59 source files,
+  no issues). `make test`: exit 0 (runtime 1288 passed, 55 skipped; ML 397
+  passed, 1 skipped). Run after the last code change; only the log, status
+  and review-artifact text changed after `make preflight`.
+- Not run (lane held): `make postgres-check` (C-7 call sites),
+  `make phase06b1-check` (the two C-8 tests).
