@@ -23,6 +23,16 @@ Tests, red first. Non-DB: R17-T1, R17-T2 (parametrized over accepted/delivered/b
 
 Risks to record in the log: re-drive depends on the R-1 roll (the cached 503 before a roll, unpatched runs); a sender that stops after one 503 leaves the outbox pending; the response's delivery_status is the stored receipt value; the unknown/failed_retryable-after-successful-Update case.
 
+**Root change, 2026-09-24 (review I-1), supersedes the at-most-once
+hardening above:** the delivery activity now ALWAYS looks up before sending,
+for every attempt and every outbox state, and sends only if the lookup finds
+nothing. Evidence: the R-17 main path sent twice when
+`record_delivery_observation` failed after a successful send (the reviewer
+measured `{'send': 2, 'lookup': 4}` on the time-skipping test). The residual
+is only a send whose effect is not yet visible to lookup (TIMEOUT overlap).
+The time-skipping test counts `send` and `lookup` separately, asserts exactly
+one send, and is gated to `phase06b1-check` (I-2, I-3).
+
 The sections below are the pre-decision spec; where they differ (the R5-3
 "receipt exists → return deduplicated" branch, the racing-test edit), the
 decisions above win.

@@ -297,12 +297,13 @@ def test_known_adapter_retry_looks_up_without_sending() -> None:
     assert retry.provider_message_id == first.provider_message_id
 
 
-@pytest.mark.parametrize("stored_state", ["unknown", "failed_retryable"])
-def test_non_pending_outbox_looks_up_before_sending_on_first_attempt(
+@pytest.mark.parametrize("stored_state", ["pending", "unknown", "failed_retryable"])
+def test_outbox_looks_up_before_sending_on_first_attempt(
     stored_state: str,
 ) -> None:
-    """A re-drive starts a fresh activity (attempt 1); an outbox that has
-    already seen an attempt must still be looked up before any second send."""
+    """A re-drive starts a fresh activity (attempt 1), and an earlier attempt
+    may have sent and then failed to record, even with the outbox still
+    ``pending``: every attempt looks up before any second send."""
 
     body = "I am checking that and will update you."
     record = OutboxRecord(

@@ -163,14 +163,15 @@ class CaseCommandActivityAdapter:
                 body=outbox.body,
                 body_hash=outbox.body_hash,
             )
+            # Always look up first, on every attempt and outbox state: an
+            # earlier attempt or activity (a re-drive starts again at attempt
+            # 1) may have sent and then failed to record, even on a
+            # ``pending`` outbox. Send only when the adapter knows nothing.
+            del activity_attempt
             observation: DeliveryObservation | None = None
-            # A re-drive starts a new activity at attempt 1, so a stored state
-            # other than ``pending`` also means an earlier attempt may have
-            # reached the adapter: look up before sending again.
-            if activity_attempt > 1 or outbox.state != "pending":
-                lookup_result = self.local_mailbox.lookup(attempt)
-                if isinstance(lookup_result, DeliveryObservation):
-                    observation = lookup_result
+            lookup_result = self.local_mailbox.lookup(attempt)
+            if isinstance(lookup_result, DeliveryObservation):
+                observation = lookup_result
             if observation is None:
                 try:
                     observation = self.local_mailbox.send(attempt)

@@ -25,7 +25,9 @@ Branch `fix/r17-r5-channel-redrive` from `main` @ `5266b6d`, fast-forwarded to
   - `_find_receipt` replaces the inline receipt lookup (used twice).
 - `runtime/services/workflow_worker/src/proxyloop_workflow_worker/activities.py`:
   `REDRIVABLE_OUTBOX_STATES` (the set the delivery activity sends; the route
-  imports it, no second copy); the activity looks up before sending when
+  imports it, no second copy). After review I-1 the activity always looks up
+  before sending (every attempt and outbox state) and sends only when the
+  lookup finds nothing; the first version looked up only when
   `activity_attempt > 1 or outbox.state != "pending"`.
   `__init__.py` exports the constant lazily.
 - `workflow.py`, the Temporal client, models, the Runtime, the repository, and
@@ -33,11 +35,12 @@ Branch `fix/r17-r5-channel-redrive` from `main` @ `5266b6d`, fast-forwarded to
   patch gate or replay fixture.
 - `docs/architecture.md` (`local_mailbox` paragraph) and §4a of
   `harness/context/audit-remediation-status.md`: the re-drive, the R-5 retry,
-  the idempotent-`send` invariant, and the `TIMEOUT` concurrency risk.
+  the always-lookup rule, and the residual `TIMEOUT` concurrency risk.
 
 ## Tests
 
-`tests/integration/test_phase_06b1_channel_runtime.py` (no DB; `make test`):
+`tests/integration/test_phase_06b1_channel_runtime.py` (no DB; `make test`
+unless marked):
 
 - `_ChannelRepository` gains `record_delivery_observation` (test seam).
 - Racing-duplicate edit:
@@ -56,24 +59,31 @@ Branch `fix/r17-r5-channel-redrive` from `main` @ `5266b6d`, fast-forwarded to
   `test_local_mailbox_stale_revision_retry_is_bounded` (2 dispatches, 409).
 - R5-T2 `test_local_mailbox_conflict_without_revision_change_is_not_retried`.
 - R5-T3 `test_local_mailbox_delivery_conflict_after_ingest_commit_is_not_retried`.
-- `test_time_skipping_identical_ingest_redrives_exhausted_delivery`: the
-  scratch probe as a test (process-local time-skipping server, in-memory
-  repository; about 15 s of real activity backoff). Asserts the outbox ends
-  `accepted` under exactly one provider-message id.
+- M-2 `test_local_mailbox_unavailable_dispatch_is_not_retried_after_case_moved`
+  (1 dispatch, 503).
+- `test_time_skipping_identical_ingest_redrives_exhausted_delivery`
+  (**gated** on `PROXYLOOP_TEST_TEMPORAL_ADDRESS`, runs in `phase06b1-check`;
+  review I-3): the scratch probe as a test (process-local time-skipping
+  server, in-memory repository whose observation write fails until switched
+  on; about 15 s of real activity backoff). `_CountingMailboxAdapter` counts
+  `send` and `lookup`; the test asserts the outbox ends `accepted` after
+  exactly one `send` (review I-2).
 
 `tests/integration/test_phase_06b1_workflow_worker.py` (no DB):
-`test_non_pending_outbox_looks_up_before_sending_on_first_attempt`
-[unknown, failed_retryable] and
+`test_outbox_looks_up_before_sending_on_first_attempt`
+[pending, unknown, failed_retryable] and
 `test_redrivable_outbox_states_are_the_ones_the_activity_sends`.
 
-`tests/integration/test_phase_06b1_temporal.py` (DB + Temporal, written, **not
-run yet**): R17-T3
+`tests/integration/test_phase_06b1_temporal.py` (DB + Temporal): R17-T3
 `test_live_temporal_mailbox_redelivery_redrives_exhausted_delivery`.
 
-## Red → green (no DB, no `PROXYLOOP_TEST_*`)
+`scripts/check_gated_skips.py` pin and `docs/development.md`: channel
+runtime 1 → 2, 06B1 temporal 3 → 4, total 53 → 55.
 
-Red: new tests with `main`'s `app.py` and `activities.py` (before any source
-edit): 8 failed, 34 passed, 5 skipped.
+## Red → green
+
+First pass (no DB, no `PROXYLOOP_TEST_*`): new tests with `main`'s `app.py`
+and `activities.py` (before any source edit): 8 failed, 34 passed, 5 skipped.
 
 | Test | Red | Green |
 |---|---|---|
@@ -84,21 +94,43 @@ edit): 8 failed, 34 passed, 5 skipped.
 | R5 retry bounded | `assert 1 == 2` dispatches | pass |
 | lookup-first [unknown], [failed_retryable] | `assert 0 == 1` lookups | pass |
 | constant | `ImportError` (no `REDRIVABLE_OUTBOX_STATES`) | pass |
-| R17-T2 ×4, fingerprint fallback, R5-T2, R5-T3, racing edit, time-skipping | pass (guards) | pass |
+| R17-T2 ×4, fingerprint fallback, R5-T2, R5-T3, racing edit | pass (guards) | pass |
 
-Green: the three 06B1 files, 42 passed, 5 skipped (DB-gated) in 16.7 s.
+Review round (I-1/I-2): the time-skipping test with separate counters, run
+against the first-pass `activities.py` (`PROXYLOOP_TEST_TEMPORAL_ADDRESS` set
+on the command line, DB lane held): FAIL `assert 2 == 1` (`send_calls`): the
+re-drive's attempt 1 on the still-`pending` outbox sent again although
+attempt 1 of the first activity had sent and failed to record. After the
+always-lookup change: pass (non-DB 06B1 files plus that test: 48 passed,
+1 skipped). M-2's test passes on both (guard).
 
 ## Checks
 
-- Passed: `make format-check`, `make lint`, `make typecheck` (exit 0; one
-  ruff E501 and one SIM300 in the new tests fixed first).
-- Passed: `make test` (exit 0; runtime 1279 passed, 54 skipped; ml 397
-  passed, 1 skipped).
-- Passed: `make preflight` (no `PROXYLOOP_TEST_*` set, exit 0; runtime 1279
-  passed, 54 skipped; ml 397 passed, 1 skipped; vitest 140 passed). The one
-  new skip is R17-T3.
-- Not run (DB lane held elsewhere): `make postgres-check`,
-  `make phase05a-check`, `make phase06b1-check` (includes R17-T3).
+First pass, on `64ace73` + merge `3343609` (`main` @ `74fb993`, #88):
+
+- Passed: `make test` (runtime 1291 passed, 54 skipped; ml 397 passed,
+  1 skipped).
+- Passed, serially, variables on the make command line only
+  (`127.0.0.1:55432/proxyloop_test`, Temporal `127.0.0.1:7233`):
+  `make postgres-check` 27 passed; `make phase05a-check` 53 passed;
+  `make phase06b1-check` 52 passed, 0 skipped (includes R17-T3).
+
+Final, after the review changes and merge `8a883ed` (`main` @ `f4a2487`,
+#90):
+
+- Passed: `make format-check`, `make lint`, `make typecheck` (exit 0).
+- `make preflight` first failed only on the gated-skip pin (expected 53,
+  found 55: channel runtime 1 → 2, 06B1 temporal 3 → 4); pin and
+  `docs/development.md` updated. Then passed (exit 0; runtime 1301 passed,
+  55 skipped; ml 397 passed, 1 skipped; vitest 140 passed; gated skips 55).
+- Passed: `make test` (runtime 1301 passed, 55 skipped; ml 397 passed,
+  1 skipped).
+- Passed, serially: `make postgres-check` 27 passed; `make phase05a-check`
+  53 passed; `make phase06b1-check` 54 passed, 0 skipped (includes R17-T3 and
+  the time-skipping re-drive test).
+
+Review: `harness/code_review/fix-r17-r5-channel-redrive.md` (Request
+Changes, no Blocking; all findings applied).
 
 ## Known limits and risks
 
@@ -115,13 +147,13 @@ Green: the three 06B1 files, 42 passed, 5 skipped (DB-gated) in 16.7 s.
   adapter never records them, but if a future adapter does, the identical
   re-drive Update is a cached success within the run and re-drives nothing
   until the run rolls.
-- At-most-once: a re-driven `pending` outbox sends without a lookup, so it
-  relies on `send` being idempotent by `idempotency_key` (true for the local
-  adapter); any real adapter must guarantee this or look up first.
-- `TIMEOUT` concurrency: a schedule-to-close timeout lets a retry or re-drive
-  run while the timed-out attempt is still in flight (pre-existing, R-1
-  known limit).
-- `test_time_skipping_identical_ingest_redrives_exhausted_delivery` is the
-  first `make test` test that starts the Temporal time-skipping test server;
-  on a machine without the cached binary (CI) the SDK downloads it, and it
-  adds about 15 s.
+- Duplicate sends: the activity looks up before every send, so the residual
+  is a send whose effect is not yet visible to `lookup`, e.g. a
+  schedule-to-close `TIMEOUT` letting a retry or re-drive run while the
+  timed-out attempt is still in flight (pre-existing, R-1 known limit).
+- M-3: a known race still returns 409 for an event that did apply (the
+  conflict and the receipt race; same as `main`); its redelivery gets 200.
+- M-4: a duplicate now reads the outbox, so an outbox-read storage fault
+  returns 503 where `main` returned 200; and a duplicate of an event whose
+  first Update is still running waits on that in-flight Update instead of
+  returning 200 at once.

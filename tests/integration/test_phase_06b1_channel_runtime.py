@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -807,6 +808,28 @@ def test_local_mailbox_delivery_conflict_after_ingest_commit_is_not_retried() ->
     assert len(temporal.requests) == 1
 
 
+def test_local_mailbox_unavailable_dispatch_is_not_retried_after_case_moved() -> None:
+    """Only ``channel_conflict`` is retried: an unavailable dispatch that
+    committed nothing is a 503 after one dispatch even though another event
+    advanced the Case meanwhile."""
+
+    repository, runtime, now = _channel_case()
+
+    def handle(call: int, request: CaseCommandRequest) -> CaseTransitionRef:
+        del call, request
+        _commit_other_event(repository, runtime)
+        raise TemporalDispatchError("channel_dependency_unavailable")
+
+    temporal = _ScriptedTemporal(handle)
+    (response,) = _post_event(
+        runtime, temporal, _mailbox_payload(uuid4(), now), times=1
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "channel_dependency_unavailable"
+    assert len(temporal.requests) == 1
+
+
 class _UnavailableObservationRepository(_ChannelRepository):
     """Delivery observations fail (retryably) until ``healthy`` is set."""
 
@@ -834,29 +857,34 @@ class _UnavailableObservationRepository(_ChannelRepository):
         )
 
 
-class _ObservingMailboxAdapter(LocalMailboxAdapter):
+class _CountingMailboxAdapter(LocalMailboxAdapter):
     def __init__(self) -> None:
         super().__init__()
-        self.provider_message_ids: list[str] = []
+        self.send_calls = 0
+        self.lookup_calls = 0
 
     def send(self, attempt: DeliveryAttempt) -> DeliveryObservation:
-        observation = super().send(attempt)
-        self.provider_message_ids.append(observation.provider_message_id)
-        return observation
+        self.send_calls += 1
+        return super().send(attempt)
 
     def lookup(self, attempt: DeliveryAttempt) -> DeliveryObservation | UnknownDelivery:
-        result = super().lookup(attempt)
-        if isinstance(result, DeliveryObservation):
-            self.provider_message_ids.append(result.provider_message_id)
-        return result
+        self.lookup_calls += 1
+        return super().lookup(attempt)
 
 
+@pytest.mark.skipif(
+    not os.environ.get("PROXYLOOP_TEST_TEMPORAL_ADDRESS"),
+    reason="PROXYLOOP_TEST_TEMPORAL_ADDRESS is required (runs in phase06b1-check)",
+)
 def test_time_skipping_identical_ingest_redrives_exhausted_delivery() -> None:
     """The Workflow half of R-17, no DB: after the delivery activity exhausts,
     the identical ingest Update (the route's re-drive) reaches the Workflow
     once R-1 has rolled the run, re-runs the delivery activity, and the outbox
-    is accepted under exactly one provider-message id. Takes about 15 s: the
-    activity retry backoff is real time."""
+    is accepted after exactly one adapter send, although the observation write
+    failed after that send on every earlier attempt. Takes about 15 s: the
+    activity retry backoff is real time. It uses the process-local
+    time-skipping server, but is gated to ``phase06b1-check`` so ``make test``
+    never starts or downloads that server."""
 
     repository = _UnavailableObservationRepository()
     runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)
@@ -877,7 +905,7 @@ def test_time_skipping_identical_ingest_redrives_exhausted_delivery() -> None:
         content_hash=hashlib.sha256(event.content.encode()).hexdigest(),
         payload_hash=event.raw_payload_hash,
     )
-    mailbox = _ObservingMailboxAdapter()
+    mailbox = _CountingMailboxAdapter()
 
     async def scenario() -> tuple[str, CaseTransitionRef]:
         environment = await WorkflowEnvironment.start_time_skipping(
@@ -914,7 +942,7 @@ def test_time_skipping_identical_ingest_redrives_exhausted_delivery() -> None:
     (outbox,) = repository.outbox.values()
     assert outbox.state == "accepted"
     assert outbox.provider_message_id is not None
-    assert set(mailbox.provider_message_ids) == {outbox.provider_message_id}
+    assert mailbox.send_calls == 1
     state = repository.get(SCRIPTED_CASE_ID)
     assert state is not None
     assert len(state.transitions) == 2
