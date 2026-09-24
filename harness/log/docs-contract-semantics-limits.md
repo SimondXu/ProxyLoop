@@ -342,3 +342,21 @@ exit 0; `pytest tests/integration/test_contract_semantics_limits.py` 2
 passed; with `tests/integration/test_phase_03a1_agent_core.py` and
 `tests/contract`, 137 passed. `make preflight`, `make test`, and the
 DB/Temporal gates were not rerun for this round.
+
+## Merge of `origin/main` @ `e1c8371` (#81, B1-9)
+
+Conflict in `harness/context/audit-remediation-status.md` only, in two
+hunks. Both sides are kept: #81's rows (B1-12 and lane A closed by #80, B1-9
+closed, R-19 added) and this branch's marks (A-3, A-5, A-9 recorded as
+limits; R-11 and R-13 options). The "Open" list and the "Still open" line
+now omit all five items.
+
+#81 moved the runtime policy call into `case_offer_violations`
+(`domain.py:185-237`); the runtime calls it without `applied_changes`
+(`runtime.py:1691`, default `()` at `domain.py:190`), and the verifier
+passes the confirmation's applied changes (`domain.py:268-272`). The
+documented R-11/M-2 claims still hold; the `runtime.py:1712` and
+`domain.py:228-236` citations above predate #81 and map to those lines. One
+addition from #81 is not described in `CONTEXT.md` Material Terms: a credit
+line that makes the offer's fee sum negative is now rejected as
+`offer_terms_invalid` at approval and completion.
