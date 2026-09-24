@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Protocol
+from typing import Final, Protocol
 
 from proxyloop_contracts import (
     Case,
@@ -269,22 +269,65 @@ class SafeObservationAdapter:
             return offer
         if not isinstance(offer, ProviderOffer):
             raise TypeError("offers must contain ProviderOffer or SafeOffer values")
-        if str(offer.case_id) != case_id or offer.provider_id != provider_id:
-            raise ValueError(
-                "provider offer does not belong to this public observation"
-            )
-        return SafeOffer(
-            offer_id=str(offer.offer_id),
-            provider_id=str(offer.provider_id),
-            monthly_price_minor=offer.monthly_price.amount_minor,
-            total_cost_12_months_minor=offer.total_cost.amount_minor,
-            currency=offer.monthly_price.currency,
-            features=tuple(str(value) for value in offer.features),
-            fees_minor=sum(item.amount.amount_minor for item in offer.fees),
-            term_months=offer.term_months,
-            applied_changes=(),
-            expires_at=offer.expires_at,
+        classified = classify_provider_offer(
+            offer, provider_id=provider_id, case_id=case_id
         )
+        if isinstance(classified, SafeOffer):
+            return classified
+        # The first code is the check that raised first before R-19.
+        raise ValueError(_OFFER_REFUSAL_MESSAGES[classified[0]])
+
+
+# Every contract-valid ProviderOffer that ``SafeOffer`` cannot represent gets
+# one of these codes, in the order the pre-R-19 checks ran; the message is the
+# exact one ``SafeObservationAdapter.build`` raised for it.
+_OFFER_REFUSAL_MESSAGES: Final[dict[str, str]] = {
+    "offer_case_mismatch": "provider offer does not belong to this public observation",
+    "offer_provider_mismatch": (
+        "provider offer does not belong to this public observation"
+    ),
+    "offer_fee_sum_negative": "fees_minor must be a non-negative integer",
+    "offer_features_duplicate": "features cannot contain duplicates",
+}
+OFFER_CLASSIFICATION_CODES: Final = frozenset(_OFFER_REFUSAL_MESSAGES)
+
+
+def classify_provider_offer(
+    offer: ProviderOffer, *, provider_id: str, case_id: str
+) -> SafeOffer | tuple[str, ...]:
+    """The ``SafeOffer`` for a contract-valid offer, or why there is none.
+
+    Total over contract-valid ``ProviderOffer`` values: a credit line that makes
+    the fee sum negative, a repeated feature, or an offer of another Case or
+    Provider yields reason codes instead of an exception (R-19). The contract
+    already guarantees every other ``SafeOffer`` field.
+    """
+
+    codes: list[str] = []
+    if str(offer.case_id) != case_id:
+        codes.append("offer_case_mismatch")
+    if offer.provider_id != provider_id:
+        codes.append("offer_provider_mismatch")
+    fees_minor = sum(item.amount.amount_minor for item in offer.fees)
+    if fees_minor < 0:
+        codes.append("offer_fee_sum_negative")
+    features = tuple(str(value) for value in offer.features)
+    if len(features) != len(set(features)):
+        codes.append("offer_features_duplicate")
+    if codes:
+        return tuple(codes)
+    return SafeOffer(
+        offer_id=str(offer.offer_id),
+        provider_id=str(offer.provider_id),
+        monthly_price_minor=offer.monthly_price.amount_minor,
+        total_cost_12_months_minor=offer.total_cost.amount_minor,
+        currency=offer.monthly_price.currency,
+        features=features,
+        fees_minor=fees_minor,
+        term_months=offer.term_months,
+        applied_changes=(),
+        expires_at=offer.expires_at,
+    )
 
 
 class OracleAction(StrEnum):

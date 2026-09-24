@@ -30,13 +30,16 @@ from proxyloop_contracts import (
 )
 
 from .disclosure_gate import FastGate
+from .fast_observation import ObservationRefusal, fast_public_observation
 from .interfaces import (
     BOUNDED_FAST_STATUS_TEXT,
     FastAdapter,
+    FastAdapterFailure,
     FastAdapterResult,
     IdentifiedAdapter,
     ModelCallUsage,
     ModelIdentity,
+    ObservingFastAdapter,
     SlowAdapter,
     UsageReportingFastAdapter,
     UsageReportingSlowAdapter,
@@ -75,6 +78,8 @@ class CoordinatorOutcome:
     traces: tuple[ModelTrace, ...] = ()
     # The Fast output was validated, then withheld by the disclosure gate.
     fast_disclosure_rejected: bool = False
+    # The Fast call raised a captured ``FastAdapterFailure`` (no decision).
+    fast_failed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +111,15 @@ class CaseCoordinator:
     ``validate_fast_result``. A non-empty verdict rejects the Fast audit with
     the gate's codes, withholds the decision, and sets
     ``fast_disclosure_rejected``. Without a gate the behaviour is unchanged.
+
+    ``capture_fast_failures`` (the product Runtime only) turns a
+    ``FastAdapterFailure`` raised by the Fast call into a ``FAILED`` Fast trace
+    and ``fast_failed``; there is no retry and no other adapter. Any other
+    exception propagates, and without the flag so does the failure.
+
+    An ``ObservingFastAdapter`` is called with ``fast_public_observation`` of
+    the snapshot the view is projected from; a refusal is a
+    ``fast_input_unrenderable`` failure raised before the adapter is called.
     """
 
     def __init__(
@@ -116,6 +130,7 @@ class CaseCoordinator:
         clock: Callable[[], datetime] | None = None,
         monotonic: Callable[[], float] | None = None,
         fast_gate: FastGate | None = None,
+        capture_fast_failures: bool = False,
     ) -> None:
         self._router = router or DeterministicRouter()
         self._lock = RLock()
@@ -123,6 +138,7 @@ class CaseCoordinator:
         self._clock = clock
         self._monotonic = monotonic
         self._fast_gate = fast_gate
+        self._capture_fast_failures = capture_fast_failures
 
     @property
     def current_snapshot(self) -> CaseContextSnapshot | None:
@@ -209,6 +225,7 @@ class CaseCoordinator:
         slow_result: SlowWorkResult | None = None
         fast_decision: FastTurnDecision | None = None
         fast_disclosure_rejected = False
+        fast_failed = False
 
         if route.outcome in {
             RoutingOutcome.SLOW_REFRESH,
@@ -250,6 +267,7 @@ class CaseCoordinator:
                         input_schema_version=slow_request.schema_version,
                         output_schema_version=slow_output.schema_version,
                         output_id=slow_output.result_id,
+                        result=_audit_result(audit),
                     )
                 )
             if audit.accepted:
@@ -268,40 +286,75 @@ class CaseCoordinator:
                     traces=tuple(traces),
                 )
             fast_view = self.project_fast_view(request.snapshot)
+            snapshot = request.snapshot
             if traced:
-                (fast_output, fast_usage), window = self._timed(
-                    lambda: _decide(fast, fast_view), request.created_at
+                called, window = self._timed(
+                    lambda: self._captured(lambda: _decide(fast, fast_view, snapshot)),
+                    request.created_at,
                 )
             else:
-                fast_output = fast.decide(fast_view)
-            audit = self.validate_fast_result(
-                fast_output,
-                request.snapshot,
-                bounded=route.outcome is RoutingOutcome.FAST_NOW_AND_SLOW_REFRESH,
-            )
-            if audit.accepted and self._fast_gate is not None:
-                gate_codes = self._fast_gate(fast_output.decision, request.snapshot)
-                if gate_codes:
-                    fast_disclosure_rejected = True
-                    audit = replace(audit, accepted=False, reason_codes=gate_codes)
-            audits.append(audit)
-            if traced:
-                traces.append(
-                    _model_trace(
-                        role="fast",
-                        adapter=fast,
-                        snapshot=request.snapshot,
-                        audit=audit,
-                        window=window,
-                        usage=fast_usage,
-                        request_id=None,
-                        input_schema_version=fast_view.schema_version,
-                        output_schema_version=fast_output.decision.schema_version,
-                        output_id=fast_output.decision.decision_id,
-                    )
+                called = self._captured(
+                    lambda: (_decide_untraced(fast, fast_view, snapshot), None)
                 )
-            if audit.accepted:
-                fast_decision = fast_output.decision
+            if isinstance(called, FastAdapterFailure):
+                fast_failed = True
+                audit = ResultAudit(
+                    source="fast",
+                    accepted=False,
+                    reason_codes=called.reason_codes,
+                    input_pins=snapshot.pins,
+                    current_pins=snapshot.pins,
+                )
+                audits.append(audit)
+                if traced:
+                    # Reported tokens count; the latency is the call window.
+                    reported = called.usage or ModelCallUsage()
+                    traces.append(
+                        _model_trace(
+                            role="fast",
+                            adapter=fast,
+                            snapshot=snapshot,
+                            audit=audit,
+                            window=window,
+                            usage=replace(reported, latency_ms=None),
+                            request_id=None,
+                            input_schema_version=fast_view.schema_version,
+                            output_schema_version="none",
+                            output_id=None,
+                            result=ModelResult.FAILED,
+                        )
+                    )
+            else:
+                fast_output, fast_usage = called
+                audit = self.validate_fast_result(
+                    fast_output,
+                    snapshot,
+                    bounded=route.outcome is RoutingOutcome.FAST_NOW_AND_SLOW_REFRESH,
+                )
+                if audit.accepted and self._fast_gate is not None:
+                    gate_codes = self._fast_gate(fast_output.decision, snapshot)
+                    if gate_codes:
+                        fast_disclosure_rejected = True
+                        audit = replace(audit, accepted=False, reason_codes=gate_codes)
+                audits.append(audit)
+                if traced:
+                    traces.append(
+                        _model_trace(
+                            role="fast",
+                            adapter=fast,
+                            snapshot=snapshot,
+                            audit=audit,
+                            window=window,
+                            usage=fast_usage,
+                            request_id=None,
+                            input_schema_version=fast_view.schema_version,
+                            output_schema_version=fast_output.decision.schema_version,
+                            output_id=fast_output.decision.decision_id,
+                            result=_audit_result(audit),
+                        )
+                    )
+                if audit.accepted:
+                    fast_decision = fast_output.decision
 
         accepted = bool(fast_decision is not None or slow_result is not None)
         return CoordinatorOutcome(
@@ -314,7 +367,18 @@ class CaseCoordinator:
             audits=tuple(audits),
             traces=tuple(traces),
             fast_disclosure_rejected=fast_disclosure_rejected,
+            fast_failed=fast_failed,
         )
+
+    def _captured(self, call: Callable[[], _T]) -> _T | FastAdapterFailure:
+        """The call's value, or its ``FastAdapterFailure`` when captured."""
+
+        try:
+            return call()
+        except FastAdapterFailure as failure:
+            if not self._capture_fast_failures:
+                raise
+            return failure
 
     def _timed(self, call: Callable[[], _T], at: datetime) -> tuple[_T, _CallWindow]:
         # A broken injected source is refused before the model call, clearly.
@@ -555,11 +619,37 @@ def _reason(
 
 
 def _decide(
-    fast: FastAdapter, view: FastModelView
+    fast: FastAdapter, view: FastModelView, snapshot: CaseContextSnapshot
 ) -> tuple[FastAdapterResult, ModelCallUsage | None]:
+    if isinstance(fast, ObservingFastAdapter):
+        return _decide_observed(fast, view, snapshot)
     if isinstance(fast, UsageReportingFastAdapter):
         return fast.decide_with_usage(view)
     return fast.decide(view), None
+
+
+def _decide_untraced(
+    fast: FastAdapter, view: FastModelView, snapshot: CaseContextSnapshot
+) -> FastAdapterResult:
+    # The untraced (1.0, ML) path calls ``decide`` exactly as before.
+    if isinstance(fast, ObservingFastAdapter):
+        return _decide_observed(fast, view, snapshot)[0]
+    return fast.decide(view)
+
+
+def _decide_observed(
+    fast: ObservingFastAdapter, view: FastModelView, snapshot: CaseContextSnapshot
+) -> tuple[FastAdapterResult, ModelCallUsage]:
+    observation = fast_public_observation(snapshot)
+    if isinstance(observation, ObservationRefusal):
+        raise FastAdapterFailure(
+            "fast_input_unrenderable", detail_code=observation.reason_codes[0]
+        )
+    return fast.decide_observed(view, observation)
+
+
+def _audit_result(audit: ResultAudit) -> ModelResult:
+    return ModelResult.SUCCEEDED if audit.accepted else ModelResult.REJECTED
 
 
 def _model_trace(
@@ -573,7 +663,8 @@ def _model_trace(
     request_id: UUID | None,
     input_schema_version: str,
     output_schema_version: str,
-    output_id: UUID,
+    output_id: UUID | None,
+    result: ModelResult,
 ) -> ModelTrace:
     """Record one adapter call; an unidentified adapter is named by its class.
 
@@ -615,8 +706,8 @@ def _model_trace(
         latency_ms=latency_ms,
         input_tokens=reported.input_tokens,
         output_tokens=reported.output_tokens,
-        result=ModelResult.SUCCEEDED if audit.accepted else ModelResult.REJECTED,
-        output_ref=str(output_id),
+        result=result,
+        output_ref=str(output_id) if output_id is not None else None,
         safety_flags=(),
         role=role,
         # A reason repeated per offending proposal is recorded once.
