@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import hashlib
 from datetime import timedelta
+from typing import Final
 from uuid import UUID
 
 from proxyloop_contracts import (
     ConstraintClassification,
     DialogueAct,
+    EventActor,
     EvidenceType,
     FastModelView,
     FastTurnDecision,
@@ -68,6 +70,73 @@ class ScriptedFastAdapter:
                 status="not_done", evidence_message_ids=()
             ),
             response_text=BOUNDED_FAST_STATUS_TEXT,
+            action_intent=None,
+        )
+        return FastAdapterResult(pins=view.pins, decision=decision)
+
+
+SCRIPTED_DIALOGUE_LINES: Final[tuple[str, ...]] = (
+    "Thanks. I'm reviewing the fictional offer against your constraints now.",
+    "Noted. I'll keep your required features and forbidden changes in view.",
+    "Understood. Nothing changes without your explicit approval of exact terms.",
+    "Got it. I'll keep checking the fictional offer against what you asked for.",
+)
+SCRIPTED_PENDING_SLOW_LINE: Final = "I'm refreshing the plan before proposing anything."
+
+
+class ScriptedDialogueFastAdapter:
+    """Select one fixed dialogue line per turn; nothing is interpolated.
+
+    No snapshot text or number is spliced into a line, so every line passes
+    the disclosure gate by construction. A turn not triggered by the Consumer
+    gets ``BOUNDED_FAST_STATUS_TEXT``, the channel path's constant. The output
+    is a pure function of the view, so a retried command gets the same line.
+    """
+
+    model_identity = ModelIdentity(
+        provider="scripted",
+        model="scripted_dialogue_fast",
+        model_version="dialogue-v1",
+        adapter_version="scripted-v1",
+        prompt_version="no-prompt",
+    )
+
+    def decide(self, view: FastModelView) -> FastAdapterResult:
+        strategy = view.strategy
+        if strategy is None:
+            raise ValueError("scripted Fast requires a current Strategy Packet")
+        latest = view.recent_events[-1] if view.recent_events else None
+        if latest is None or latest.actor is not EventActor.CONSUMER:
+            text = BOUNDED_FAST_STATUS_TEXT
+        elif view.pending_slow_work:
+            text = SCRIPTED_PENDING_SLOW_LINE
+        else:
+            consumer_turns = sum(
+                event.actor is EventActor.CONSUMER for event in view.recent_events
+            )
+            text = SCRIPTED_DIALOGUE_LINES[
+                min(consumer_turns, len(SCRIPTED_DIALOGUE_LINES)) - 1
+            ]
+        decision = FastTurnDecision(
+            contract_type="fast_turn_decision",
+            schema_version="1.0",
+            decision_id=_stable_uuid4(
+                f"scripted-dialogue-fast:{view.case_id}:{view.pins.event_cursor}"
+            ),
+            case_id=view.case_id,
+            case_revision=view.pins.case_revision,
+            strategy_id=strategy.strategy_id,
+            strategy_revision=strategy.revision,
+            created_at=latest.occurred_at
+            if latest is not None
+            else strategy.created_at,
+            dialogue_act=DialogueAct.CLARIFY,
+            fact_updates=(),
+            reasoner_request=ReasonerRequest(needed=False, reason_code="none"),
+            completion_claim=CompletionClaim(
+                status="not_done", evidence_message_ids=()
+            ),
+            response_text=text,
             action_intent=None,
         )
         return FastAdapterResult(pins=view.pins, decision=decision)
@@ -155,4 +224,10 @@ def _stable_uuid4(value: str) -> UUID:
     return UUID(bytes=bytes(raw))
 
 
-__all__ = ["ScriptedFastAdapter", "ScriptedSlowAdapter"]
+__all__ = [
+    "SCRIPTED_DIALOGUE_LINES",
+    "SCRIPTED_PENDING_SLOW_LINE",
+    "ScriptedDialogueFastAdapter",
+    "ScriptedFastAdapter",
+    "ScriptedSlowAdapter",
+]

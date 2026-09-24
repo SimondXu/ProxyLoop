@@ -1,0 +1,218 @@
+{
+  "claim_boundary": "scripted adapters; shares describe routing structure, not model quality or latency",
+  "fast_backend": "scripted_dialogue",
+  "fast_gate_version": "fast-gate-v1",
+  "report_fingerprint": "5413400a11beb5a526d74c8dbfa573efc58ca13eda7c9c1c518eb1eaeaf9f8e0",
+  "scenarios": {
+    "demo_path": {
+      "aggregates": {
+        "calls_by_role_and_result": {
+          "fast": {
+            "failed": 0,
+            "rejected": 0,
+            "succeeded": 1
+          },
+          "slow": {
+            "failed": 0,
+            "rejected": 0,
+            "succeeded": 1
+          }
+        },
+        "dialogue_turns": 1,
+        "fallback_cause_counts": {
+          "failure": 0,
+          "gate": 0
+        },
+        "fast_model_line_rate": 1.0,
+        "fast_only_turn_share": 0.5,
+        "fast_reject_reason_histogram": {},
+        "gate_fallback_rate": 0.0,
+        "slow_involved_turn_share": 0.5,
+        "turns": 2,
+        "turns_by_class": {
+          "fast_only": 1,
+          "no_model": 0,
+          "slow_only": 1,
+          "slow_then_fast": 0
+        },
+        "unapplied_calls_by_role_and_result": {
+          "fast": {
+            "failed": 0,
+            "rejected": 0,
+            "succeeded": 0
+          },
+          "slow": {
+            "failed": 0,
+            "rejected": 0,
+            "succeeded": 1
+          }
+        },
+        "unapplied_fast_reject_reason_histogram": {},
+        "unapplied_model_calls": 1
+      },
+      "turns": [
+        {
+          "class": "slow_only",
+          "delivered": "none",
+          "fallback_cause": null,
+          "fast_calls": 0,
+          "fast_reject_codes": [],
+          "fast_result": null,
+          "slow_calls": 1,
+          "trigger_event_type": "provider_offer",
+          "turn": 1
+        },
+        {
+          "class": "fast_only",
+          "delivered": "model",
+          "fallback_cause": null,
+          "fast_calls": 1,
+          "fast_reject_codes": [],
+          "fast_result": "succeeded",
+          "slow_calls": 0,
+          "trigger_event_type": "consumer_message",
+          "turn": 2
+        }
+      ]
+    },
+    "dialogue_path": {
+      "aggregates": {
+        "calls_by_role_and_result": {
+          "fast": {
+            "failed": 0,
+            "rejected": 0,
+            "succeeded": 7
+          },
+          "slow": {
+            "failed": 0,
+            "rejected": 0,
+            "succeeded": 3
+          }
+        },
+        "dialogue_turns": 7,
+        "fallback_cause_counts": {
+          "failure": 0,
+          "gate": 0
+        },
+        "fast_model_line_rate": 1.0,
+        "fast_only_turn_share": 0.625,
+        "fast_reject_reason_histogram": {},
+        "gate_fallback_rate": 0.0,
+        "slow_involved_turn_share": 0.375,
+        "turns": 8,
+        "turns_by_class": {
+          "fast_only": 5,
+          "no_model": 0,
+          "slow_only": 1,
+          "slow_then_fast": 2
+        },
+        "unapplied_calls_by_role_and_result": {
+          "fast": {
+            "failed": 0,
+            "rejected": 0,
+            "succeeded": 0
+          },
+          "slow": {
+            "failed": 0,
+            "rejected": 0,
+            "succeeded": 0
+          }
+        },
+        "unapplied_fast_reject_reason_histogram": {},
+        "unapplied_model_calls": 0
+      },
+      "turns": [
+        {
+          "class": "slow_only",
+          "delivered": "none",
+          "fallback_cause": null,
+          "fast_calls": 0,
+          "fast_reject_codes": [],
+          "fast_result": null,
+          "slow_calls": 1,
+          "trigger_event_type": "provider_offer",
+          "turn": 1
+        },
+        {
+          "class": "slow_then_fast",
+          "delivered": "model",
+          "fallback_cause": null,
+          "fast_calls": 1,
+          "fast_reject_codes": [],
+          "fast_result": "succeeded",
+          "slow_calls": 1,
+          "trigger_event_type": "consumer_message",
+          "turn": 2
+        },
+        {
+          "class": "fast_only",
+          "delivered": "model",
+          "fallback_cause": null,
+          "fast_calls": 1,
+          "fast_reject_codes": [],
+          "fast_result": "succeeded",
+          "slow_calls": 0,
+          "trigger_event_type": "consumer_message",
+          "turn": 4
+        },
+        {
+          "class": "fast_only",
+          "delivered": "model",
+          "fallback_cause": null,
+          "fast_calls": 1,
+          "fast_reject_codes": [],
+          "fast_result": "succeeded",
+          "slow_calls": 0,
+          "trigger_event_type": "consumer_message",
+          "turn": 6
+        },
+        {
+          "class": "fast_only",
+          "delivered": "model",
+          "fallback_cause": null,
+          "fast_calls": 1,
+          "fast_reject_codes": [],
+          "fast_result": "succeeded",
+          "slow_calls": 0,
+          "trigger_event_type": "consumer_message",
+          "turn": 8
+        },
+        {
+          "class": "fast_only",
+          "delivered": "model",
+          "fallback_cause": null,
+          "fast_calls": 1,
+          "fast_reject_codes": [],
+          "fast_result": "succeeded",
+          "slow_calls": 0,
+          "trigger_event_type": "consumer_message",
+          "turn": 10
+        },
+        {
+          "class": "slow_then_fast",
+          "delivered": "model",
+          "fallback_cause": null,
+          "fast_calls": 1,
+          "fast_reject_codes": [],
+          "fast_result": "succeeded",
+          "slow_calls": 1,
+          "trigger_event_type": "consumer_message",
+          "turn": 12
+        },
+        {
+          "class": "fast_only",
+          "delivered": "model",
+          "fallback_cause": null,
+          "fast_calls": 1,
+          "fast_reject_codes": [],
+          "fast_result": "succeeded",
+          "slow_calls": 0,
+          "trigger_event_type": "consumer_message",
+          "turn": 14
+        }
+      ]
+    }
+  },
+  "schema_version": "fast-slow-split-v1",
+  "unicode_data_version": "15.0.0"
+}
