@@ -115,3 +115,19 @@ matches HEAD afterwards):
 | drop `planning_basis_fingerprint_mismatch` append (`coordinator.py`) | `test_slow_result_on_another_planning_basis_is_rejected` | `1 failed` (reasons `('stale_slow_result',)`) |
 
 Unmutated: `tests/integration/test_phase_03a1_agent_core.py` → `28 passed`.
+
+Merged `origin/main` @ `ff35dca` (#79, docs only; no conflict). Checks on the
+merged tree:
+
+- Focused (03A1 agent core/harness, 04A, 05A, strategy-basis, model-trace,
+  `tests/contract`) → `232 passed, 24 skipped` (DB-URL skips).
+- `make format-check lint typecheck` → exit 0 (`116`/`90 files already
+  formatted`, ruff `All checks passed!` ×2, mypy `66` and `59 source files`
+  clean).
+- `make preflight-fast` → exit 0.
+- `make test` → exit 0; runtime `1203 passed, 51 skipped`, ml `397 passed, 1
+  skipped`.
+- `make preflight` → exit 0; runtime `1220 passed, 51 skipped`, ml `397
+  passed, 1 skipped`, Web `140 passed (140)`.
+- Not rerun: DB gates (`make phase05a-check` passed on this change above;
+  `postgres-check`, `phase06b1-check` not run).
