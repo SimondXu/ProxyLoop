@@ -333,3 +333,12 @@ B1-12). The ADR conflicted because both sides appended an "Amendment
 2026-09-24". Both amendments are kept, #80's first; the closing sentence of
 this branch's amendment now names the "Capabilities and side effects"
 paragraph, and the pointer at that paragraph names this amendment by title.
+
+Verification after the review fixes and the merge of `d23aff9` (no
+`PROXYLOOP_TEST_*` set): `make contracts-check` exit 0; `make format-check
+lint typecheck` exit 0 (the first run failed on E501 in the widened
+`contracts.py` comment, which was then rewrapped); `make preflight-fast`
+exit 0; `pytest tests/integration/test_contract_semantics_limits.py` 2
+passed; with `tests/integration/test_phase_03a1_agent_core.py` and
+`tests/contract`, 137 passed. `make preflight`, `make test`, and the
+DB/Temporal gates were not rerun for this round.
