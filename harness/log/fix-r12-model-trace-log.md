@@ -100,6 +100,15 @@ Result: `9 failed, 54 deselected`.
   clean). This branch has no gated-skip pin (PR-1 has not merged). With PR-1's
   pin, the count is +5 over the pinned 51.
 
-Not run (DB lane held by others; the root hands it out): `make postgres-check`
-(it runs G6 and G7), `make phase05a-check`, and `make phase06b1-check`. Before
-them, merge `origin/main` once PR-4 has landed.
+## Real-dependency gates, early run (branch @ `5e483db`, base `c73f6a7`, before the PR-4 merge)
+
+The root granted the DB lane exclusively. The gates ran serially against the
+Compose `postgres-test` (`localhost:55432/proxyloop_test`) and Temporal
+`127.0.0.1:7233`, with the variables on the make command line only:
+
+- Passed: `make postgres-check` (32 passed, 0 skipped; includes G6 and G7).
+- Passed: `make phase05a-check` (42 passed; replay tests unchanged).
+- Passed: `make phase06b1-check` (35 passed).
+
+No fixes were needed. These gates run again after `git merge origin/main`
+once PR-4 has landed.
