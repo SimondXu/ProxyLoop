@@ -429,6 +429,31 @@ def test_http_is_single_flight_and_identity_answers_while_busy() -> None:
     assert first[0][0] == 200
 
 
+def test_generation_runs_on_one_model_thread_whatever_thread_calls() -> None:
+    """MLX streams are thread-local: a model loaded on one thread fails with
+    "There is no Stream(cpu, 0) in current thread" when a fresh HTTP handler
+    thread generates (observed on the live gateway).  Load and every generate
+    must share one thread."""
+
+    scenario, position = _heldout_positions()[0]
+    oracle = _oracle_json(scenario, position)
+    threads: list[str] = []
+
+    def generator(_: str) -> str:
+        threads.append(threading.current_thread().name)
+        return oracle
+
+    core = LocalFastGatewayCore.with_generator(generator)
+    body = _request_body(_product_view(scenario, position), position.observation)
+    with _running(core) as port:
+        for _ in range(3):
+            assert _call(port, "POST", "/v1/fast/decide", body)[0] == 200
+    core.decide(_product_view(scenario, position), position.observation)
+    assert len(threads) == 4
+    assert len(set(threads)) == 1
+    assert threads[0].startswith("local-fast-model")
+
+
 def test_http_model_failure_is_a_content_free_500() -> None:
     scenario, position = _heldout_positions()[0]
 

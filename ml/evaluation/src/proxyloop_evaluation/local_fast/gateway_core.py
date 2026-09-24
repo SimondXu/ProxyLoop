@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal
@@ -103,6 +104,10 @@ def check_lora_layers(layers: Mapping[str, bool], *, expected: frozenset[str]) -
         )
 
 
+def _model_thread() -> ThreadPoolExecutor:
+    return ThreadPoolExecutor(max_workers=1, thread_name_prefix="local-fast-model")
+
+
 def _mlx_nonzero(value: object) -> bool:
     mx = importlib.import_module("mlx.core")
     return bool(mx.any(value != 0).item())
@@ -137,11 +142,26 @@ def _unrenderable(code: str) -> GatewayResult:
 
 
 class LocalFastGatewayCore:
-    def __init__(self, adapter: Phase03CQwenAdapter, identity: GatewayIdentity) -> None:
+    """All model work runs on one dedicated thread.
+
+    MLX streams are thread-local: a model loaded on one thread failed with
+    "There is no Stream(cpu, 0) in current thread" when a fresh HTTP handler
+    thread generated first (observed on the live gateway).  ``load`` and every
+    ``decide`` therefore run on ``model_thread``; callers on any thread block
+    on the result.
+    """
+
+    def __init__(
+        self,
+        adapter: Phase03CQwenAdapter,
+        identity: GatewayIdentity,
+        model_thread: ThreadPoolExecutor,
+    ) -> None:
         if adapter.prompt_version != PROMPT_VERSION:
             raise ValueError("the gateway serves the v6 prompt only")
         self._adapter = adapter
         self._identity = identity
+        self._model_thread = model_thread
 
     @property
     def identity(self) -> GatewayIdentity:
@@ -166,25 +186,35 @@ class LocalFastGatewayCore:
             )
         if adapter_path is not None and attestation is not None:
             verify_mlx_adapter(adapter_path, attestation)
-        # The constructor attests the base snapshot (attest_qwen_spec).
-        adapter = Phase03CQwenAdapter(
-            model_path=str(model_path),
-            adapter_path=str(adapter_path) if adapter_path is not None else None,
-            max_tokens=MAX_TOKENS,
-            model_spec=QWEN3_8B_BF16_SPEC,
-            prompt_version=PROMPT_VERSION,
-        )
-        # The same lazy loader generate() uses; loading here makes the
-        # self-check run before the first request instead of during it.
-        model, _, _ = adapter._load_mlx()
-        check_lora_layers(
-            collect_lora_layers(model, nonzero=_mlx_nonzero),
-            expected=(
-                attestation.expected_lora_modules()
-                if attestation is not None
-                else frozenset()
-            ),
-        )
+
+        def load_on_model_thread() -> Phase03CQwenAdapter:
+            # The constructor attests the base snapshot (attest_qwen_spec).
+            adapter = Phase03CQwenAdapter(
+                model_path=str(model_path),
+                adapter_path=str(adapter_path) if adapter_path is not None else None,
+                max_tokens=MAX_TOKENS,
+                model_spec=QWEN3_8B_BF16_SPEC,
+                prompt_version=PROMPT_VERSION,
+            )
+            # The same lazy loader generate() uses; loading here makes the
+            # self-check run before the first request instead of during it.
+            model, _, _ = adapter._load_mlx()
+            check_lora_layers(
+                collect_lora_layers(model, nonzero=_mlx_nonzero),
+                expected=(
+                    attestation.expected_lora_modules()
+                    if attestation is not None
+                    else frozenset()
+                ),
+            )
+            return adapter
+
+        model_thread = _model_thread()
+        try:
+            adapter = model_thread.submit(load_on_model_thread).result()
+        except BaseException:
+            model_thread.shutdown(wait=False)
+            raise
         identity = GatewayIdentity(
             backend=backend,
             adapter_fingerprint=(
@@ -192,7 +222,7 @@ class LocalFastGatewayCore:
             ),
             mlx_versions=installed_mlx_versions(),
         )
-        return cls(adapter, identity)
+        return cls(adapter, identity, model_thread)
 
     @classmethod
     def with_generator(
@@ -217,6 +247,7 @@ class LocalFastGatewayCore:
                 else None,
                 mlx_versions={},
             ),
+            _model_thread(),
         )
 
     def decide(
@@ -225,6 +256,11 @@ class LocalFastGatewayCore:
         """Raises ``ObservationMismatchError`` (a request error) or
         ``GatewayModelError``; every other outcome is a ``GatewayResult``."""
 
+        return self._model_thread.submit(self._decide, view, observation).result()
+
+    def _decide(
+        self, view: FastModelView, observation: SafeObservation
+    ) -> GatewayResult:
         try:
             model_view = trained_view(view, observation)
         except TrainedViewError as error:
