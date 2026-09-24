@@ -297,6 +297,64 @@ def test_known_adapter_retry_looks_up_without_sending() -> None:
     assert retry.provider_message_id == first.provider_message_id
 
 
+@pytest.mark.parametrize("stored_state", ["unknown", "failed_retryable"])
+def test_non_pending_outbox_looks_up_before_sending_on_first_attempt(
+    stored_state: str,
+) -> None:
+    """A re-drive starts a fresh activity (attempt 1); an outbox that has
+    already seen an attempt must still be looked up before any second send."""
+
+    body = "I am checking that and will update you."
+    record = OutboxRecord(
+        delivery_id=DELIVERY_ID,
+        idempotency_key=str(DELIVERY_ID),
+        case_id=SCRIPTED_CASE_ID,
+        binding_ref=BINDING_REF,
+        source_event_id=CALLBACK_EVENT_ID,
+        source_command_id=COMMAND_ID,
+        source_case_revision=3,
+        source_strategy_id=None,
+        source_strategy_revision=1,
+        source_event_cursor=4,
+        body=body,
+        body_hash=hashlib.sha256(body.encode()).hexdigest(),
+        state=stored_state,
+    )
+    repository = _OutboxRepository(record)
+    mailbox = _CountingMailboxAdapter()
+    adapter = CaseCommandActivityAdapter(_Runtime(repository), mailbox)
+    first = mailbox.send(
+        DeliveryAttempt(
+            delivery_id=record.delivery_id,
+            idempotency_key=record.idempotency_key,
+            binding_ref=record.binding_ref,
+            body=record.body,
+            body_hash=record.body_hash,
+        )
+    )
+
+    result = adapter.dispatch_channel_delivery(
+        ChannelDeliveryRequest(
+            case_id=SCRIPTED_CASE_ID,
+            delivery_id=DELIVERY_ID,
+            idempotency_key=str(DELIVERY_ID),
+        ),
+        activity_attempt=1,
+    )
+
+    assert mailbox.lookup_calls == 1
+    assert mailbox.send_calls == 1
+    assert result.state == "accepted"
+    assert result.provider_message_id == first.provider_message_id
+
+
+def test_redrivable_outbox_states_are_the_ones_the_activity_sends() -> None:
+    from proxyloop_workflow_worker import REDRIVABLE_OUTBOX_STATES
+
+    expected = frozenset({"pending", "failed_retryable", "unknown"})
+    assert expected == REDRIVABLE_OUTBOX_STATES
+
+
 def test_fail_before_accept_then_replacement_retry_sends_once() -> None:
     body = "I am checking that and will update you."
     record = OutboxRecord(

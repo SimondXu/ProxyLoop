@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -17,8 +18,10 @@ from proxyloop_case_runtime import (
     CaseCommandType,
     CaseConflictError,
     CaseRuntimeState,
+    CaseTransitionRef,
     ChannelBindingRecord,
     ChannelConflictError,
+    ChannelDependencyUnavailableError,
     DeliveryReceiptRecord,
     InboxReceiptRecord,
     InMemoryCaseRepository,
@@ -29,7 +32,11 @@ from proxyloop_case_runtime import (
 from proxyloop_connectors import (
     BINDING_REF,
     CHANNEL_KIND,
+    DeliveryAttempt,
+    DeliveryObservation,
+    LocalMailboxAdapter,
     LocalMailboxEventKind,
+    UnknownDelivery,
     VerifiedLocalMailboxEvent,
     build_fixture_headers,
 )
@@ -37,10 +44,19 @@ from proxyloop_contracts import Money
 from proxyloop_workflow_worker import (
     CaseCommandActivityAdapter,
     CaseCommandRequest,
+    ChannelDeliveryRequest,
+    TemporalCaseClient,
     TemporalDispatchError,
+    TemporalSettings,
+    activity_for_adapter,
+    channel_activity_for_adapter,
 )
 from proxyloop_workflow_worker.client import _failure_category
+from proxyloop_workflow_worker.workflow import CaseWorkflow
+from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import ApplicationError
+from temporalio.testing import WorkflowEnvironment
+from temporalio.worker import Worker
 from test_phase_06b1_temporal import _database_url, _truncate
 
 BASE_TIME = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
@@ -109,6 +125,27 @@ class _ChannelRepository(InMemoryCaseRepository):
 
     def get_outbox_record(self, delivery_id: UUID) -> OutboxRecord | None:
         return self.outbox.get(delivery_id)
+
+    def record_delivery_observation(
+        self,
+        delivery_id: UUID,
+        *,
+        idempotency_key: str,
+        state: str,
+        provider_message_id: str | None,
+        failure_category: str | None = None,
+    ) -> OutboxRecord:
+        prior = self.outbox[delivery_id]
+        assert prior.idempotency_key == idempotency_key
+        updated = replace(
+            prior,
+            state=state,
+            provider_message_id=provider_message_id or prior.provider_message_id,
+            attempt_count=prior.attempt_count + 1,
+            last_failure_category=failure_category,
+        )
+        self.outbox[delivery_id] = updated
+        return updated
 
     def get_delivery_receipt(self, delivery_id: UUID) -> DeliveryReceiptRecord | None:
         for receipt in reversed(self.receipts):
@@ -375,14 +412,26 @@ def test_local_mailbox_api_duplicate_racing_first_dispatch_is_deduplicated() -> 
     runtime = ThinAgentRuntime(repository, clock=lambda: now)
     runtime.apply_command(_create_command().model_copy(update={"occurred_at": now}))
     dispatched: list[UUID] = []
+    # The real delivery activity, so the first dispatch leaves the outbox
+    # accepted as the Workflow would and the duplicate has nothing to re-drive.
+    delivery = CaseCommandActivityAdapter(runtime, local_mailbox=LocalMailboxAdapter())
 
     class _Temporal:
         async def apply_command(self, request: CaseCommandRequest) -> object:
             dispatched.append(request.command_id)
             try:
-                return runtime.apply_command(request.to_command(BASE_TIME))
+                transition = runtime.apply_command(request.to_command(BASE_TIME))
             except CaseConflictError as exc:
                 raise TemporalDispatchError("channel_conflict") from exc
+            assert transition.delivery_id is not None
+            delivery.dispatch_channel_delivery(
+                ChannelDeliveryRequest(
+                    case_id=transition.case_id,
+                    delivery_id=transition.delivery_id,
+                    idempotency_key=str(transition.delivery_id),
+                )
+            )
+            return transition
 
         async def check_readiness(self) -> object:
             return object()
@@ -425,6 +474,450 @@ def test_local_mailbox_api_duplicate_racing_first_dispatch_is_deduplicated() -> 
     assert duplicate.json()["deduplicated"] is True
     assert duplicate.json()["command_id"] == first.json()["command_id"]
     assert len(dispatched) == 1
+    assert [record.state for record in repository.outbox.values()] == ["accepted"]
+
+
+class _ScriptedTemporal:
+    """Fake Temporal client: records every request and lets a test script each
+    dispatch by its 1-based call number."""
+
+    def __init__(
+        self, handle: Callable[[int, CaseCommandRequest], CaseTransitionRef]
+    ) -> None:
+        self.requests: list[CaseCommandRequest] = []
+        self._handle = handle
+
+    async def apply_command(self, request: CaseCommandRequest) -> CaseTransitionRef:
+        self.requests.append(request)
+        return self._handle(len(self.requests), request)
+
+    async def check_readiness(self) -> object:
+        return object()
+
+
+def _channel_case() -> tuple[_ChannelRepository, ThinAgentRuntime, datetime]:
+    repository = _ChannelRepository()
+    now = datetime.now(UTC)
+    runtime = ThinAgentRuntime(repository, clock=lambda: now)
+    runtime.apply_command(_create_command().model_copy(update={"occurred_at": now}))
+    return repository, runtime, now
+
+
+def _dispatch(
+    runtime: ThinAgentRuntime, request: CaseCommandRequest
+) -> CaseTransitionRef:
+    """Apply as the Case activity would, with its channel conflict category."""
+
+    try:
+        return runtime.apply_command(request.to_command(BASE_TIME))
+    except CaseConflictError as exc:
+        raise TemporalDispatchError("channel_conflict") from exc
+
+
+def _mailbox_payload(event_id: UUID, now: datetime) -> bytes:
+    return (
+        '{"schema_version":"local-mailbox-v1",'
+        f'"event_id":"{event_id}",'
+        '"binding_ref":"fictional-provider-local-mailbox",'
+        f'"occurred_at":"{now.isoformat().replace("+00:00", "Z")}",'
+        '"kind":"provider_message",'
+        '"content":"Synthetic Provider message."}'
+    ).encode()
+
+
+def _post_event(
+    runtime: ThinAgentRuntime,
+    temporal: _ScriptedTemporal,
+    payload: bytes,
+    *,
+    times: int,
+) -> list[httpx.Response]:
+    headers = build_fixture_headers(payload)
+
+    async def request() -> list[httpx.Response]:
+        app = create_app(runtime, temporal_client=temporal)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            return [
+                await client.post(
+                    "/channels/local_mailbox/events", content=payload, headers=headers
+                )
+                for _ in range(times)
+            ]
+
+    return asyncio.run(request())
+
+
+def _ingest_receipt(
+    repository: _ChannelRepository, command_id: UUID
+) -> CaseTransitionRef:
+    state = repository.get(SCRIPTED_CASE_ID)
+    assert state is not None
+    (receipt,) = [item for item in state.transitions if item.command_id == command_id]
+    return receipt
+
+
+def test_local_mailbox_redelivery_redrives_an_exhausted_delivery() -> None:
+    """R17-T1: the ingest committed but its delivery activity exhausted (503);
+    the redelivery sends the identical request again so the Workflow re-drives
+    the delivery."""
+
+    repository, runtime, now = _channel_case()
+
+    def handle(call: int, request: CaseCommandRequest) -> CaseTransitionRef:
+        transition = _dispatch(runtime, request)
+        if call == 1:
+            raise TemporalDispatchError("channel_dependency_unavailable")
+        return transition
+
+    temporal = _ScriptedTemporal(handle)
+    first, redelivery = _post_event(
+        runtime, temporal, _mailbox_payload(uuid4(), now), times=2
+    )
+
+    assert first.status_code == 503
+    assert redelivery.status_code == 200
+    assert redelivery.json()["deduplicated"] is True
+    assert len(temporal.requests) == 2
+    original, redriven = temporal.requests
+    assert redriven == original
+    receipt = _ingest_receipt(repository, original.command_id)
+    assert redriven.semantic_fingerprint() == receipt.command_fingerprint
+    assert redelivery.json()["delivery_id"] == str(receipt.delivery_id)
+
+
+def test_local_mailbox_redrive_response_is_always_deduplicated() -> None:
+    repository, runtime, now = _channel_case()
+
+    def handle(call: int, request: CaseCommandRequest) -> CaseTransitionRef:
+        transition = _dispatch(runtime, request)
+        if call == 1:
+            raise TemporalDispatchError("channel_dependency_unavailable")
+        return transition.model_copy(update={"deduplicated": False})
+
+    temporal = _ScriptedTemporal(handle)
+    _, redelivery = _post_event(
+        runtime, temporal, _mailbox_payload(uuid4(), now), times=2
+    )
+
+    assert redelivery.status_code == 200
+    assert redelivery.json()["deduplicated"] is True
+    assert len(temporal.requests) == 2
+    del repository
+
+
+def test_local_mailbox_redrive_failure_is_not_retried_in_route() -> None:
+    _, runtime, now = _channel_case()
+
+    def handle(call: int, request: CaseCommandRequest) -> CaseTransitionRef:
+        _dispatch(runtime, request)
+        raise TemporalDispatchError("channel_dependency_unavailable")
+
+    temporal = _ScriptedTemporal(handle)
+    first, redelivery = _post_event(
+        runtime, temporal, _mailbox_payload(uuid4(), now), times=2
+    )
+
+    assert first.status_code == 503
+    assert redelivery.status_code == 503
+    assert len(temporal.requests) == 2
+
+
+@pytest.mark.parametrize(
+    "outbox_state", ["accepted", "delivered", "bounced", "failed_terminal"]
+)
+def test_local_mailbox_duplicate_of_settled_delivery_is_not_redriven(
+    outbox_state: str,
+) -> None:
+    """R17-T2: only a delivery the activity would still send is re-driven."""
+
+    repository, runtime, now = _channel_case()
+
+    def handle(call: int, request: CaseCommandRequest) -> CaseTransitionRef:
+        del call
+        return _dispatch(runtime, request)
+
+    temporal = _ScriptedTemporal(handle)
+    payload = _mailbox_payload(uuid4(), now)
+    (first,) = _post_event(runtime, temporal, payload, times=1)
+    (delivery_id,) = repository.outbox
+    repository.outbox[delivery_id] = replace(
+        repository.outbox[delivery_id],
+        state=outbox_state,
+        provider_message_id=(
+            None if outbox_state == "failed_terminal" else "local-provider-fixture"
+        ),
+    )
+    (duplicate,) = _post_event(runtime, temporal, payload, times=1)
+
+    assert first.status_code == 200
+    assert duplicate.status_code == 200
+    assert duplicate.json()["deduplicated"] is True
+    assert len(temporal.requests) == 1
+
+
+def test_local_mailbox_redrive_falls_back_when_no_fingerprint_matches() -> None:
+    """A receipt whose fingerprint neither candidate request reproduces is
+    answered from the receipt, as before, and never re-sent."""
+
+    repository, runtime, now = _channel_case()
+
+    def handle(call: int, request: CaseCommandRequest) -> CaseTransitionRef:
+        _dispatch(runtime, request)
+        raise TemporalDispatchError("channel_dependency_unavailable")
+
+    temporal = _ScriptedTemporal(handle)
+    payload = _mailbox_payload(uuid4(), now)
+    (first,) = _post_event(runtime, temporal, payload, times=1)
+    state = repository.get(SCRIPTED_CASE_ID)
+    assert state is not None
+    *earlier, receipt = state.transitions
+    repository.replace(
+        SCRIPTED_CASE_ID,
+        expected_revision=state.snapshot.revision,
+        state=replace(
+            state,
+            transitions=(
+                *earlier,
+                receipt.model_copy(update={"command_fingerprint": "0" * 64}),
+            ),
+        ),
+    )
+    (duplicate,) = _post_event(runtime, temporal, payload, times=1)
+
+    assert first.status_code == 503
+    assert duplicate.status_code == 200
+    assert duplicate.json()["deduplicated"] is True
+    assert len(temporal.requests) == 1
+
+
+def _commit_other_event(
+    repository: _ChannelRepository, runtime: ThinAgentRuntime
+) -> None:
+    """A concurrent command: another mailbox event ingested directly."""
+
+    event = _message_event(uuid4())
+    inbox = repository.reserve_channel_event(event, received_at=BASE_TIME)
+    state = repository.get(SCRIPTED_CASE_ID)
+    assert state is not None
+    assert event.content is not None
+    runtime.apply_command(
+        CaseCommand(
+            schema_version="phase-06b1-v1",
+            command_id=inbox.command_id,
+            case_id=SCRIPTED_CASE_ID,
+            command_type=CaseCommandType.INGEST_CHANNEL_EVENT,
+            occurred_at=event.occurred_at,
+            expected_revision=state.snapshot.revision,
+            channel_kind=CHANNEL_KIND,
+            binding_ref=BINDING_REF,
+            event_id=event.event_id,
+            content_hash=hashlib.sha256(event.content.encode()).hexdigest(),
+            payload_hash=event.raw_payload_hash,
+        )
+    )
+
+
+def test_local_mailbox_stale_revision_is_retried_with_the_fresh_revision() -> None:
+    """R5-T1: the route's revision read loses to a concurrent commit; the
+    route re-reads and dispatches once more with the advanced revision."""
+
+    repository, runtime, now = _channel_case()
+
+    def handle(call: int, request: CaseCommandRequest) -> CaseTransitionRef:
+        if call == 1:
+            _commit_other_event(repository, runtime)
+        return _dispatch(runtime, request)
+
+    temporal = _ScriptedTemporal(handle)
+    (response,) = _post_event(
+        runtime, temporal, _mailbox_payload(uuid4(), now), times=1
+    )
+
+    assert response.status_code == 200
+    assert response.json()["deduplicated"] is False
+    assert len(temporal.requests) == 2
+    stale, fresh = temporal.requests
+    assert fresh.command_id == stale.command_id
+    assert stale.expected_revision is not None
+    assert fresh.expected_revision is not None
+    assert fresh.expected_revision > stale.expected_revision
+    receipt = _ingest_receipt(repository, fresh.command_id)
+    assert fresh.semantic_fingerprint() == receipt.command_fingerprint
+
+
+def test_local_mailbox_stale_revision_retry_is_bounded() -> None:
+    repository, runtime, now = _channel_case()
+
+    def handle(call: int, request: CaseCommandRequest) -> CaseTransitionRef:
+        del call
+        _commit_other_event(repository, runtime)
+        return _dispatch(runtime, request)
+
+    temporal = _ScriptedTemporal(handle)
+    (response,) = _post_event(
+        runtime, temporal, _mailbox_payload(uuid4(), now), times=1
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "channel_conflict"
+    assert len(temporal.requests) == 2
+
+
+def test_local_mailbox_conflict_without_revision_change_is_not_retried() -> None:
+    """R5-T2: a genuine conflict (the Case did not move) is a 409 after one
+    dispatch."""
+
+    _, runtime, now = _channel_case()
+
+    def handle(call: int, request: CaseCommandRequest) -> CaseTransitionRef:
+        del call, request
+        raise TemporalDispatchError("channel_conflict")
+
+    temporal = _ScriptedTemporal(handle)
+    (response,) = _post_event(
+        runtime, temporal, _mailbox_payload(uuid4(), now), times=1
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "channel_conflict"
+    assert len(temporal.requests) == 1
+
+
+def test_local_mailbox_delivery_conflict_after_ingest_commit_is_not_retried() -> None:
+    """R5-T3: the ingest committed (the revision advanced) and the delivery
+    activity then failed with ``channel_conflict``; the receipt exists, so the
+    route must not re-dispatch."""
+
+    _, runtime, now = _channel_case()
+
+    def handle(call: int, request: CaseCommandRequest) -> CaseTransitionRef:
+        del call
+        _dispatch(runtime, request)
+        raise TemporalDispatchError("channel_conflict")
+
+    temporal = _ScriptedTemporal(handle)
+    (response,) = _post_event(
+        runtime, temporal, _mailbox_payload(uuid4(), now), times=1
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "channel_conflict"
+    assert len(temporal.requests) == 1
+
+
+class _UnavailableObservationRepository(_ChannelRepository):
+    """Delivery observations fail (retryably) until ``healthy`` is set."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.healthy = False
+
+    def record_delivery_observation(
+        self,
+        delivery_id: UUID,
+        *,
+        idempotency_key: str,
+        state: str,
+        provider_message_id: str | None,
+        failure_category: str | None = None,
+    ) -> OutboxRecord:
+        if not self.healthy:
+            raise ChannelDependencyUnavailableError("channel storage unavailable")
+        return super().record_delivery_observation(
+            delivery_id,
+            idempotency_key=idempotency_key,
+            state=state,
+            provider_message_id=provider_message_id,
+            failure_category=failure_category,
+        )
+
+
+class _ObservingMailboxAdapter(LocalMailboxAdapter):
+    def __init__(self) -> None:
+        super().__init__()
+        self.provider_message_ids: list[str] = []
+
+    def send(self, attempt: DeliveryAttempt) -> DeliveryObservation:
+        observation = super().send(attempt)
+        self.provider_message_ids.append(observation.provider_message_id)
+        return observation
+
+    def lookup(self, attempt: DeliveryAttempt) -> DeliveryObservation | UnknownDelivery:
+        result = super().lookup(attempt)
+        if isinstance(result, DeliveryObservation):
+            self.provider_message_ids.append(result.provider_message_id)
+        return result
+
+
+def test_time_skipping_identical_ingest_redrives_exhausted_delivery() -> None:
+    """The Workflow half of R-17, no DB: after the delivery activity exhausts,
+    the identical ingest Update (the route's re-drive) reaches the Workflow
+    once R-1 has rolled the run, re-runs the delivery activity, and the outbox
+    is accepted under exactly one provider-message id. Takes about 15 s: the
+    activity retry backoff is real time."""
+
+    repository = _UnavailableObservationRepository()
+    runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)
+    created = runtime.apply_command(_create_command())
+    event = _message_event(uuid4())
+    assert event.content is not None
+    inbox = repository.reserve_channel_event(event, received_at=BASE_TIME)
+    request = CaseCommandRequest(
+        schema_version="phase-06b1-v1",
+        command_id=inbox.command_id,
+        case_id=SCRIPTED_CASE_ID,
+        command_type=CaseCommandType.INGEST_CHANNEL_EVENT,
+        expected_revision=created.after_revision,
+        channel_occurred_at=event.occurred_at,
+        channel_kind=CHANNEL_KIND,
+        binding_ref=BINDING_REF,
+        event_id=event.event_id,
+        content_hash=hashlib.sha256(event.content.encode()).hexdigest(),
+        payload_hash=event.raw_payload_hash,
+    )
+    mailbox = _ObservingMailboxAdapter()
+
+    async def scenario() -> tuple[str, CaseTransitionRef]:
+        environment = await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        )
+        async with environment:
+            task_queue = f"proxyloop-phase06b1-redrive-{uuid4()}"
+            adapter = CaseCommandActivityAdapter(runtime, local_mailbox=mailbox)
+            temporal = TemporalCaseClient(
+                environment.client, TemporalSettings(task_queue=task_queue)
+            )
+            async with Worker(
+                environment.client,
+                task_queue=task_queue,
+                workflows=[CaseWorkflow],
+                activities=[
+                    activity_for_adapter(adapter),
+                    channel_activity_for_adapter(adapter),
+                ],
+            ):
+                # Starts the Workflow; the Runtime deduplicates the create.
+                await temporal.apply_command(_create_command())
+                with pytest.raises(TemporalDispatchError) as raised:
+                    await temporal.apply_command(request)
+                (pending,) = repository.outbox.values()
+                assert pending.state == "pending"
+                repository.healthy = True
+                return raised.value.category, await temporal.apply_command(request)
+
+    category, redriven = asyncio.run(scenario())
+
+    assert category == "channel_dependency_unavailable"
+    assert redriven.command_id == inbox.command_id
+    (outbox,) = repository.outbox.values()
+    assert outbox.state == "accepted"
+    assert outbox.provider_message_id is not None
+    assert set(mailbox.provider_message_ids) == {outbox.provider_message_id}
+    state = repository.get(SCRIPTED_CASE_ID)
+    assert state is not None
+    assert len(state.transitions) == 2
 
 
 @pytest.mark.parametrize(

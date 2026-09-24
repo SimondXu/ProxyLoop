@@ -1,5 +1,32 @@
 # Fix: a redelivered channel event re-drives an exhausted delivery (R-17); the channel route stops losing its first dispatch to a stale revision (R-5)
 
+## Root decisions
+
+PR-3: the root decided after consulting the architect.
+
+R-17 is option A, with three frozen corrections:
+(a) Extract a pure `_channel_command_request(event, inbox, expected_revision)` in app.py. The first dispatch and the re-drive both use it.
+(b) A re-drive response always carries `deduplicated=True`.
+(c) The set of re-drivable outbox states (pending, failed_retryable, unknown) is one constant shared with the activity code. The route keeps no second copy.
+For the racing-duplicate test, have the fake call the real `CaseCommandActivityAdapter.dispatch_channel_delivery` with `LocalMailboxAdapter`, instead of hand-setting the outbox to `accepted`.
+
+R-5 is R5-3 with a mandatory guard. On `channel_conflict`, re-read. Retry only when `inbox.command_id` still has no receipt AND the Case revision has advanced; otherwise re-raise unchanged. A delivery-activity `channel_conflict` raised after the ingest committed must remain a 409 with a single dispatch. At most 2 dispatches per HTTP request for R-5, and at most 1 for a re-drive. Re-drive failures are not retried in-route.
+
+At-most-once hardening, accepted: in `activities.py`, look up before sending when `activity_attempt > 1 or outbox.state != "pending"`, so unknown/failed_retryable get the lookup. Put the residual invariant in `docs/architecture.md` and §4a: a pending re-drive relies on `send` being idempotent by idempotency_key; any real adapter must guarantee this (or lookup-first). Also record the TIMEOUT-concurrency risk.
+
+Frozen AC and invariants:
+- No change to workflow.py, the Temporal client, models, the Runtime, the repository, or `update_id_for_command`.
+- The fingerprint of a route-sent request equals the receipt's.
+- Existing replay tests pass unchanged.
+
+Tests, red first. Non-DB: R17-T1, R17-T2 (parametrized over accepted/delivered/bounced/failed_terminal), the fingerprint-mismatch fallback, re-drive `deduplicated=True`, the racing-duplicate edit, R5-T1, R5-T2, R5-T3, and repro_workflow.py converted into a time-skipping test that asserts exactly one provider_message_id. DB (write it now; do not run until I hand you the lane): R17-T3 live in test_phase_06b1_temporal.py.
+
+Risks to record in the log: re-drive depends on the R-1 roll (the cached 503 before a roll, unpatched runs); a sender that stops after one 503 leaves the outbox pending; the response's delivery_status is the stored receipt value; the unknown/failed_retryable-after-successful-Update case.
+
+The sections below are the pre-decision spec; where they differ (the R5-3
+"receipt exists → return deduplicated" branch, the racing-test edit), the
+decisions above win.
+
 Backlog items R-17 and R-5 in `harness/context/audit-remediation-status.md`
 §4a (build-plan PR-3). Branch `fix/r17-r5-channel-redrive` from `main` @
 `5266b6d` (R-16), merged with `origin/main` @ `0eb3079` (#89, B2-8). Line

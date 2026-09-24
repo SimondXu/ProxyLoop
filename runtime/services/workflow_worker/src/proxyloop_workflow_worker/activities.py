@@ -31,6 +31,10 @@ from temporalio.exceptions import ApplicationError
 from .models import ChannelDeliveryRequest
 from .workflow import ACTIVITY_NAME, CHANNEL_DELIVERY_ACTIVITY_NAME
 
+# Outbox states the delivery activity still sends. The channel route re-drives
+# a redelivered event's delivery only while its outbox is in one of them.
+REDRIVABLE_OUTBOX_STATES = frozenset({"pending", "failed_retryable", "unknown"})
+
 
 class CaseCommandActivityAdapter:
     """Adapt one Runtime instance to the Temporal activity contract."""
@@ -150,7 +154,7 @@ class CaseCommandActivityAdapter:
                 return outbox
             if outbox.state == "failed_terminal":
                 raise ChannelConflictError("terminal delivery has no accepted truth")
-            if outbox.state not in {"pending", "failed_retryable", "unknown"}:
+            if outbox.state not in REDRIVABLE_OUTBOX_STATES:
                 raise ChannelConflictError("stored delivery state is invalid")
             attempt = DeliveryAttempt(
                 delivery_id=outbox.delivery_id,
@@ -160,7 +164,10 @@ class CaseCommandActivityAdapter:
                 body_hash=outbox.body_hash,
             )
             observation: DeliveryObservation | None = None
-            if activity_attempt > 1:
+            # A re-drive starts a new activity at attempt 1, so a stored state
+            # other than ``pending`` also means an earlier attempt may have
+            # reached the adapter: look up before sending again.
+            if activity_attempt > 1 or outbox.state != "pending":
                 lookup_result = self.local_mailbox.lookup(attempt)
                 if isinstance(lookup_result, DeliveryObservation):
                     observation = lookup_result
@@ -322,6 +329,7 @@ async def dispatch_channel_delivery_activity(request: ChannelDeliveryRequest) ->
 
 
 __all__ = [
+    "REDRIVABLE_OUTBOX_STATES",
     "CaseCommandActivityAdapter",
     "activity_for_adapter",
     "apply_case_command_activity",

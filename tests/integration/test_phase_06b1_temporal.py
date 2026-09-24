@@ -7,9 +7,11 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+import httpx
 import psycopg
 import pytest
 from google.protobuf.duration_pb2 import Duration
+from proxyloop_api import create_app
 from proxyloop_case_runtime import (
     SCRIPTED_CASE_ID,
     CaseCommand,
@@ -25,6 +27,7 @@ from proxyloop_connectors import (
     FaultInjectingLocalMailboxAdapter,
     LocalMailboxEventKind,
     VerifiedLocalMailboxEvent,
+    build_fixture_headers,
 )
 from proxyloop_contracts import Money
 from proxyloop_workflow_worker import (
@@ -352,5 +355,120 @@ def test_live_temporal_conflicted_mailbox_event_succeeds_on_redelivery() -> None
         state = runtime.repository.get(SCRIPTED_CASE_ID)
         assert state is not None
         assert len(state.transitions) == 2
+
+    asyncio.run(scenario())
+
+
+def test_live_temporal_mailbox_redelivery_redrives_exhausted_delivery() -> None:
+    """R17-T3: through the HTTP route and a real worker, a Provider message
+    whose delivery activity exhausts (503) is delivered on redelivery, once
+    R-1 has rolled the run, with no second Case event, outbox, or Evidence."""
+
+    database_url, temporal_address = _dependencies()
+    _truncate(database_url)
+
+    async def scenario() -> None:
+        task_queue = f"proxyloop-phase06b1-redrive-{uuid4()}"
+        client, namespace = await _connect(temporal_address)
+        settings = TemporalSettings(
+            target_host=temporal_address,
+            namespace=namespace,
+            task_queue=task_queue,
+        )
+        runtime = ThinAgentRuntime(PostgresCaseRepository(database_url))
+        adapter = CaseCommandActivityAdapter(
+            runtime,
+            local_mailbox=FaultInjectingLocalMailboxAdapter(fail_before_accept=5),
+        )
+        temporal = TemporalCaseClient(client, settings)
+        worker = Worker(
+            client,
+            task_queue=task_queue,
+            workflows=[CaseWorkflow],
+            activities=[
+                activity_for_adapter(adapter),
+                channel_activity_for_adapter(adapter),
+            ],
+        )
+        repository = runtime.repository
+        assert isinstance(repository, PostgresCaseRepository)
+        now = datetime.now(UTC)
+        event_id = uuid4()
+        payload = (
+            '{"schema_version":"local-mailbox-v1",'
+            f'"event_id":"{event_id}",'
+            '"binding_ref":"fictional-provider-local-mailbox",'
+            f'"occurred_at":"{now.isoformat().replace("+00:00", "Z")}",'
+            '"kind":"provider_message",'
+            '"content":"Synthetic Provider message."}'
+        ).encode()
+        headers = build_fixture_headers(payload)
+        async with worker:
+            await temporal.apply_command(_create_command())
+            handle = client.get_workflow_handle(temporal.workflow_id(SCRIPTED_CASE_ID))
+            first_run_id = (await handle.describe()).run_id
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(
+                    app=create_app(runtime, temporal_client=temporal)
+                ),
+                base_url="http://test",
+                timeout=120,
+            ) as http:
+                first = await http.post(
+                    "/channels/local_mailbox/events", content=payload, headers=headers
+                )
+                assert first.status_code == 503
+                assert first.json()["detail"]["code"] == (
+                    "channel_dependency_unavailable"
+                )
+                state = repository.get(SCRIPTED_CASE_ID)
+                assert state is not None
+                receipt = state.transitions[-1]
+                assert receipt.delivery_id is not None
+                pending = repository.get_outbox_record(receipt.delivery_id)
+                assert pending is not None
+                assert pending.state == "pending"
+
+                redelivery = await http.post(
+                    "/channels/local_mailbox/events", content=payload, headers=headers
+                )
+            assert redelivery.status_code == 200
+            assert redelivery.json()["deduplicated"] is True
+            assert redelivery.json()["command_id"] == str(receipt.command_id)
+            current_run_id = (await handle.describe()).run_id
+            assert current_run_id != first_run_id
+
+            outbox = repository.get_outbox_record(receipt.delivery_id)
+            assert outbox is not None
+            assert outbox.state == "accepted"
+            assert outbox.provider_message_id is not None
+            state = repository.get(SCRIPTED_CASE_ID)
+            assert state is not None
+            assert len(state.transitions) == 2
+            assert (
+                sum(
+                    item.source_type.value == "provider_message"
+                    and item.source_ref == str(event_id)
+                    for item in state.snapshot.evidence
+                )
+                == 1
+            )
+            with psycopg.connect(database_url) as connection:
+                outbox_count = connection.execute(
+                    "SELECT count(*) FROM proxyloop_channel_outbox_records"
+                ).fetchone()
+            assert outbox_count is not None
+            assert outbox_count[0] == 1
+
+            replayer = Replayer(
+                workflows=[CaseWorkflow],
+                data_converter=pydantic_data_converter,
+            )
+            await replayer.replay_workflow(
+                await client.get_workflow_handle(
+                    temporal.workflow_id(SCRIPTED_CASE_ID), run_id=first_run_id
+                ).fetch_history()
+            )
+            await replayer.replay_workflow(await handle.fetch_history())
 
     asyncio.run(scenario())
