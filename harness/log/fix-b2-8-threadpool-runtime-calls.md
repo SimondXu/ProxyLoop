@@ -92,7 +92,10 @@ After the review follow-ups (current diff):
   Temporal gated); ML tests 397 passed, 1 skipped; every artifact gate
   green.
 - `make preflight`: exit 0 (same Python counts; Web 140 passed).
-- DB gates: not yet rerun on this diff (the lane is held elsewhere).
+- DB gates at `3c88fc2` (lane held exclusively, serial, variables on the
+  make command line only, same values as below): `make postgres-check`
+  exit 0, 27 passed; `make phase05a-check` exit 0, 42 passed;
+  `make phase06b1-check` exit 0, 35 passed.
 
 Before the review, on `e514754`: `make lint`, `typecheck`, `test`,
 `preflight` exit 0; DB lane held exclusively, serial, variables on the make
