@@ -1,14 +1,16 @@
-"""The canonical execution claim and model traces are persisted (1.1 PR4).
+"""The canonical execution claim and model traces are persisted (1.1 PR4, R-12).
 
 The PostgreSQL codec is exercised without a database: a repository below
 stores every state as the exact jsonb payload the PostgreSQL repository
-writes and decodes it on every read.
+writes and decodes it on every read. Model traces live in the repository's
+append-only log, never in the Case state (``storage_version`` 3).
 """
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import json
 from dataclasses import replace
 from datetime import timedelta
@@ -18,15 +20,24 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
-from proxyloop_agent_core import CaseCoordinator, CoordinatorOutcome, RouteRequest
+from proxyloop_agent_core import (
+    CaseCoordinator,
+    CoordinatorOutcome,
+    FastAdapterResult,
+    RouteRequest,
+    ScriptedFastAdapter,
+)
 from proxyloop_agent_core.interfaces import FastAdapter, SlowAdapter
 from proxyloop_api import create_app
 from proxyloop_case_runtime import (
     SCRIPTED_CASE_ID,
     CaseCommand,
     CaseCommandType,
+    CaseConflictError,
     CaseRuntimeState,
+    ChannelConflictError,
     InMemoryCaseRepository,
+    ModelRuntimeError,
     ThinAgentRuntime,
 )
 from proxyloop_case_runtime import runtime as runtime_module
@@ -34,9 +45,11 @@ from proxyloop_case_runtime.commands import semantic_command_fingerprint
 from proxyloop_case_runtime.postgres_repository import PostgresCaseRepository
 from proxyloop_connectors import BINDING_REF, CHANNEL_KIND, LocalMailboxEventKind
 from proxyloop_contracts import (
+    ActionType,
     CasePhase,
     EvidenceType,
     ExecutionClaim,
+    ModelResult,
     ModelTrace,
 )
 from test_phase_05a_case_runtime import (
@@ -194,11 +207,11 @@ def _expected_claim(
     )
 
 
-# -- storage_version 1 rows load, upgrade, and are rewritten as version 2 -------
+# -- storage_version 1 rows load, upgrade, and are rewritten as version 3 -------
 
 
 @pytest.mark.parametrize("stored_as_1_0", [False, True], ids=["snap-1.1", "snap-1.0"])
-def test_a_v1_row_with_a_pending_claim_upgrades_completes_and_writes_v2(
+def test_a_v1_row_with_a_pending_claim_upgrades_completes_and_writes_v3(
     stored_as_1_0: bool,
 ) -> None:
     pending, command, before_revision = _pending_claim()
@@ -210,11 +223,10 @@ def test_a_v1_row_with_a_pending_claim_upgrades_completes_and_writes_v2(
 
     expected = _expected_claim(pending, command, before_revision)
     assert upgraded.execution_claim == expected
-    assert upgraded.model_traces == ()
     assert upgraded.snapshot == pending.snapshot
     rewritten = _encode(upgraded)
-    assert rewritten["storage_version"] == 2
-    assert rewritten["model_traces"] == []
+    assert rewritten["storage_version"] == 3
+    assert "model_traces" not in rewritten
     assert (
         ExecutionClaim.model_validate_json(json.dumps(rewritten["execution_claim"]))
         == expected
@@ -232,9 +244,9 @@ def test_a_v1_row_with_a_pending_claim_upgrades_completes_and_writes_v2(
     assert retried.deduplicated is False
     assert retried.before_revision == before_revision
     stored = repository.payloads[SCRIPTED_CASE_ID]
-    assert stored["storage_version"] == 2
+    assert stored["storage_version"] == 3
     assert stored["execution_claim"] is None
-    assert stored["model_traces"] == []
+    assert "model_traces" not in stored
     final = _decode(stored)
     assert final.snapshot.case.phase is CasePhase.COMPLETE
     assert final.snapshot.schema_version == ("1.0" if stored_as_1_0 else "1.1")
@@ -249,7 +261,7 @@ def test_a_v1_row_with_a_pending_claim_upgrades_completes_and_writes_v2(
     assert duplicate.model_copy(update={"deduplicated": False}) == retried
 
 
-def test_v1_rows_without_a_claim_load_and_rewrite_as_v2() -> None:
+def test_v1_rows_without_a_claim_load_and_rewrite_as_v3() -> None:
     repository = InMemoryCaseRepository()
     _runtime(repository, BASE_TIME).apply_command(_create_command())
     created = repository.get(SCRIPTED_CASE_ID)
@@ -263,11 +275,11 @@ def test_v1_rows_without_a_claim_load_and_rewrite_as_v2() -> None:
     for state in (created, waiting):
         loaded = _decode(_v1_payload(state))
         assert loaded.execution_claim is None
-        assert loaded.model_traces == ()
         assert loaded.snapshot == state.snapshot
         assert loaded.transitions == state.transitions
         rewritten = _encode(loaded)
-        assert rewritten["storage_version"] == 2
+        assert rewritten["storage_version"] == 3
+        assert "model_traces" not in rewritten
         assert rewritten["execution_claim"] is None
         assert _decode(rewritten).snapshot == state.snapshot
 
@@ -288,11 +300,15 @@ def test_stored_rows_fail_closed_on_shapes_they_never_had() -> None:
         # A pending row still requires its claim.
         {**row, "execution_claim": None},
         {**_encode(pending), "execution_claim": None},
+        # A version 3 row carries no traces: they live in the trace log.
+        {**_encode(pending), "model_traces": []},
     ):
         with pytest.raises(RuntimeError, match=INVALID):
             _decode(tampered)
-    with pytest.raises(RuntimeError, match="unsupported Case storage version"):
-        _decode({**_encode(pending), "storage_version": 3})
+    # Version 2 rows are moved to version 3 at bootstrap, never decoded.
+    for version in (2, 4):
+        with pytest.raises(RuntimeError, match="unsupported Case storage version"):
+            _decode({**_encode(pending), "storage_version": version})
 
 
 @pytest.mark.parametrize(
@@ -304,7 +320,7 @@ def test_stored_rows_fail_closed_on_shapes_they_never_had() -> None:
         ("approval_id", "44444444-4444-4444-8444-444444444444"),
     ],
 )
-def test_a_v2_claim_must_bind_the_pending_execution(field: str, value: str) -> None:
+def test_a_v3_claim_must_bind_the_pending_execution(field: str, value: str) -> None:
     pending, _, _ = _pending_claim()
     payload = _encode(pending)
     payload["execution_claim"][field] = value
@@ -327,7 +343,7 @@ def test_the_claim_is_present_exactly_while_execution_is_pending() -> None:
         replace(idle, execution_claim=pending.execution_claim)
 
 
-# -- model traces ride in the same state write and never leave runtime state ----
+# -- model traces live in an append-only log, never in the Case state -----------
 
 
 @pytest.fixture
@@ -352,28 +368,6 @@ def issued(monkeypatch: pytest.MonkeyPatch) -> list[ModelTrace]:
     return traces
 
 
-class _RecordingRepository(_PayloadRepository):
-    def __init__(self) -> None:
-        super().__init__()
-        self.writes: list[CaseRuntimeState] = []
-
-    def create(self, state: CaseRuntimeState) -> CaseRuntimeState:
-        self.writes.append(state)
-        return super().create(state)
-
-    def replace(
-        self,
-        case_id: UUID,
-        *,
-        expected_revision: int,
-        state: CaseRuntimeState,
-    ) -> CaseRuntimeState:
-        self.writes.append(state)
-        return super().replace(
-            case_id, expected_revision=expected_revision, state=state
-        )
-
-
 def _assert_not_projected(state: CaseRuntimeState, traces: list[ModelTrace]) -> None:
     public = json.dumps(
         [
@@ -387,159 +381,49 @@ def _assert_not_projected(state: CaseRuntimeState, traces: list[ModelTrace]) -> 
         assert str(trace.trace_id) not in public
 
 
-def test_traces_are_appended_in_the_same_write_and_survive_completion(
+def test_the_log_holds_every_issued_trace_across_the_direct_flow(
     issued: list[ModelTrace],
 ) -> None:
-    repository = _RecordingRepository()
+    repository = _PayloadRepository()
     clock = BASE_TIME
     runtime = ThinAgentRuntime(repository, clock=lambda: clock)
 
     runtime.apply_command(_create_command())
-    assert [write.model_traces for write in repository.writes] == [tuple(issued)]
     assert [trace.role for trace in issued] == ["slow"]
+    assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
 
     clock = BASE_TIME + timedelta(minutes=1)
-    before = len(repository.writes)
     event = runtime.apply_command(_event_command())
-    (event_write,) = repository.writes[before:]
-    assert event_write.snapshot.revision == event.after_revision
-    assert event_write.model_traces == tuple(issued)
     assert [trace.role for trace in issued] == ["slow", "fast"]
+    assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
 
     clock = BASE_TIME + timedelta(minutes=2)
     runtime.apply_command(_approval_command(event.after_revision, event.approval_id))
-    claim_write, final_write = repository.writes[before + 1 :]
-    assert claim_write.snapshot.pending_execution
-    assert claim_write.execution_claim is not None
-    assert final_write.snapshot.case.phase is CasePhase.COMPLETE
-    assert final_write.model_traces == claim_write.model_traces == tuple(issued)
 
-    stored = repository.payloads[SCRIPTED_CASE_ID]
-    assert stored["storage_version"] == 2
-    assert [item["trace_id"] for item in stored["model_traces"]] == [
-        str(trace.trace_id) for trace in issued
-    ]
     final = repository.get(SCRIPTED_CASE_ID)
     assert final is not None
-    assert final.model_traces == tuple(issued)
-    _assert_not_projected(final, issued)
-    foreign = json.loads(json.dumps(stored))
-    foreign["model_traces"][0]["case_id"] = "22222222-2222-4222-8222-222222222222"
-    with pytest.raises(RuntimeError, match=INVALID):
-        _decode(foreign)
-
-
-def test_persisted_traces_share_the_case_time_base(
-    issued: list[ModelTrace], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # Each trace starts at the time of the Case event whose route ran the
-    # model and lasts the measured latency (a fake perf counter: 0.25 s per
-    # call), so a persisted trace never needs a second clock to be placed.
-    # Only the runtime's measurement source is replaced, not the process-wide
-    # ``time.perf_counter``; the coordinator reads it before and after a call.
-    ticks = iter(range(1_000))
-    monkeypatch.setattr(
-        runtime_module, "time", SimpleNamespace(perf_counter=lambda: next(ticks) / 4)
-    )
-    repository = _RecordingRepository()
-    runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)
-    runtime.apply_command(_create_command())
-    runtime.apply_command(_event_command())
-
-    stored = repository.get(SCRIPTED_CASE_ID)
-    assert stored is not None
-    assert [trace.role for trace in stored.model_traces] == ["slow", "fast"]
-    assert stored.model_traces == tuple(issued)
-    event_times = {event.occurred_at for event in stored.events}
-    for trace in stored.model_traces:
-        assert trace.started_at in event_times
-        assert trace.latency_ms == 250
-        assert trace.completed_at == trace.started_at + timedelta(milliseconds=250)
-
-
-@pytest.mark.parametrize("ending", ["rejected", "expired"])
-def test_traces_survive_an_approval_that_does_not_execute(
-    issued: list[ModelTrace], ending: str
-) -> None:
-    repository = _RecordingRepository()
-    runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)
-    runtime.apply_command(_create_command())
-    event = runtime.apply_command(_event_command())
-    decide = _approval_command(event.after_revision, event.approval_id)
-    if ending == "rejected":
-        command = decide.model_copy(update={"decision": "rejected"})
-    else:
-        waiting = repository.get(SCRIPTED_CASE_ID)
-        assert waiting is not None
-        (approval,) = waiting.snapshot.approval_requests
-        command = CaseCommand(
-            command_id=uuid4(),
-            case_id=SCRIPTED_CASE_ID,
-            command_type=CaseCommandType.EXPIRE_APPROVAL,
-            occurred_at=approval.expires_at,
-            expected_revision=event.after_revision,
-            approval_id=approval.approval_id,
-            approval_expires_at=approval.expires_at,
-        )
-    before = len(repository.writes)
-    runtime.apply_command(command)
-
-    assert len(repository.writes) == before + 1
+    assert final.snapshot.case.phase is CasePhase.COMPLETE
     assert [trace.role for trace in issued] == ["slow", "fast"]
-    stored = repository.get(SCRIPTED_CASE_ID)
-    assert stored is not None
-    assert stored.snapshot.revision > event.after_revision
-    assert stored.model_traces == tuple(issued)
+    assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
+    stored = repository.payloads[SCRIPTED_CASE_ID]
+    assert stored["storage_version"] == 3
+    assert "model_traces" not in stored
+    _assert_not_projected(final, issued)
 
 
-class _RecordingChannelRepository(_ChannelRepository):
-    def __init__(self) -> None:
-        super().__init__()
-        self.writes: list[CaseRuntimeState] = []
-
-    def replace_with_channel_outbox(self, *args: Any, **kwargs: Any) -> Any:
-        self.writes.append(kwargs["state"])
-        return super().replace_with_channel_outbox(*args, **kwargs)
-
-    def replace_with_delivery_receipt(self, *args: Any, **kwargs: Any) -> Any:
-        self.writes.append(kwargs["state"])
-        return super().replace_with_delivery_receipt(*args, **kwargs)
-
-
-def test_a_channel_event_writes_its_refresh_and_fast_traces_once(
+def test_the_log_holds_every_issued_trace_across_the_channel_flow(
     issued: list[ModelTrace],
 ) -> None:
-    repository = _RecordingChannelRepository()
+    repository = _ChannelRepository()
     runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)
     runtime.apply_command(_create_command())
-    created = repository.get(SCRIPTED_CASE_ID)
-    assert created is not None
-    assert created.model_traces == tuple(issued)
-
     # After the strategy lifetime, the event refreshes Slow and then runs Fast.
-    runtime.apply_command(
+    applied = runtime.apply_command(
         _channel_command(repository, BASE_TIME + timedelta(minutes=31))
     )
-
-    assert [trace.role for trace in issued] == ["slow", "slow", "fast"]
-    (write,) = repository.writes
-    assert write.model_traces == tuple(issued)
-    stored = repository.get(SCRIPTED_CASE_ID)
-    assert stored is not None
-    assert stored.model_traces == tuple(issued)
-    _assert_not_projected(stored, issued)
-
-
-def test_delivery_callbacks_carry_the_traces_forward(
-    issued: list[ModelTrace],
-) -> None:
-    repository = _RecordingChannelRepository()
-    runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)
-    runtime.apply_command(_create_command())
-    applied = runtime.apply_command(_channel_command(repository, BASE_TIME))
     assert applied.delivery_id is not None
-    traces = tuple(issued)
-    assert len(traces) >= 2
+    assert [trace.role for trace in issued] == ["slow", "slow", "fast"]
+    assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
     accepted = repository.get_outbox_record(applied.delivery_id)
     assert accepted is not None
     repository.outbox[applied.delivery_id] = replace(
@@ -569,13 +453,240 @@ def test_delivery_callbacks_carry_the_traces_forward(
     first = runtime.apply_command(callback(applied.after_revision))
     runtime.apply_command(callback(first.after_revision))  # an exact duplicate
 
-    first_write, duplicate_write = repository.writes[-2:]
-    assert first_write.snapshot.revision == first.after_revision
-    assert first_write.model_traces == duplicate_write.model_traces == traces
-    assert tuple(issued) == traces  # a callback runs no model
+    # A callback runs no model, so it logs nothing.
+    assert [trace.role for trace in issued] == ["slow", "slow", "fast"]
+    assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
     stored = repository.get(SCRIPTED_CASE_ID)
     assert stored is not None
-    assert stored.model_traces == traces
+    _assert_not_projected(stored, issued)
+
+
+def test_persisted_traces_share_the_case_time_base(
+    issued: list[ModelTrace], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Each trace starts at the time of the Case event whose route ran the
+    # model and lasts the measured latency (a fake perf counter: 0.25 s per
+    # call), so a persisted trace never needs a second clock to be placed.
+    # Only the runtime's measurement source is replaced, not the process-wide
+    # ``time.perf_counter``; the coordinator reads it before and after a call.
+    ticks = iter(range(1_000))
+    monkeypatch.setattr(
+        runtime_module, "time", SimpleNamespace(perf_counter=lambda: next(ticks) / 4)
+    )
+    repository = _PayloadRepository()
+    runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)
+    runtime.apply_command(_create_command())
+    runtime.apply_command(_event_command())
+
+    stored = repository.get(SCRIPTED_CASE_ID)
+    assert stored is not None
+    logged = repository.list_model_traces(SCRIPTED_CASE_ID)
+    assert [trace.role for trace in logged] == ["slow", "fast"]
+    assert logged == tuple(issued)
+    event_times = {event.occurred_at for event in stored.events}
+    for trace in logged:
+        assert trace.started_at in event_times
+        assert trace.latency_ms == 250
+        assert trace.completed_at == trace.started_at + timedelta(milliseconds=250)
+
+
+class _StalePinsFast(ScriptedFastAdapter):
+    """Echo the pins of the view before the triggering event."""
+
+    def decide(self, view: Any) -> FastAdapterResult:
+        result = super().decide(view)
+        stale = result.pins.model_copy(
+            update={"event_cursor": result.pins.event_cursor - 1}
+        )
+        return FastAdapterResult(pins=stale, decision=result.decision)
+
+
+class _OffScriptFast(ScriptedFastAdapter):
+    """An accepted decision whose text is not the bounded channel reply."""
+
+    def decide(self, view: Any) -> FastAdapterResult:
+        result = super().decide(view)
+        decision = result.decision.model_copy(
+            update={"response_text": "Could you confirm the next step?"}
+        )
+        return FastAdapterResult(pins=result.pins, decision=decision)
+
+
+def test_a_rejected_fast_result_is_traced(issued: list[ModelTrace]) -> None:
+    repository = _PayloadRepository()
+    runtime = ThinAgentRuntime(
+        repository, clock=lambda: BASE_TIME, fast=_StalePinsFast()
+    )
+    runtime.apply_command(_create_command())
+    before = repository.get(SCRIPTED_CASE_ID)
+    assert before is not None
+
+    with pytest.raises(ModelRuntimeError) as raised:
+        runtime.apply_command(_event_command())
+
+    assert raised.value.source == "fast"
+    assert [trace.role for trace in issued] == ["slow", "fast"]
+    rejected = issued[-1]
+    assert rejected.result is ModelResult.REJECTED
+    assert rejected.reason_codes
+    assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
+    after = repository.get(SCRIPTED_CASE_ID)
+    assert after is not None
+    assert after.snapshot == before.snapshot
+    assert after.events == before.events
+    assert after.transitions == before.transitions
+
+
+def _without_send_message(repository: _ChannelRepository) -> None:
+    state = repository.get(SCRIPTED_CASE_ID)
+    assert state is not None
+    case = state.snapshot.case
+    authority = case.delegated_authority.model_copy(
+        update={
+            "allowed_actions": tuple(
+                action
+                for action in case.delegated_authority.allowed_actions
+                if action is not ActionType.SEND_MESSAGE
+            )
+        }
+    )
+    snapshot = state.snapshot.model_copy(
+        update={"case": case.model_copy(update={"delegated_authority": authority})}
+    )
+    repository.replace(
+        SCRIPTED_CASE_ID,
+        expected_revision=snapshot.revision,
+        state=replace(state, snapshot=snapshot),
+    )
+
+
+@pytest.mark.parametrize("refusal", ["response_text", "unauthorized_send"])
+def test_a_channel_refusal_keeps_its_accepted_traces(
+    issued: list[ModelTrace], refusal: str
+) -> None:
+    repository = _ChannelRepository()
+    fast = _OffScriptFast() if refusal == "response_text" else ScriptedFastAdapter()
+    runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME, fast=fast)
+    runtime.apply_command(_create_command())
+    if refusal == "unauthorized_send":
+        _without_send_message(repository)
+    before = repository.get(SCRIPTED_CASE_ID)
+    assert before is not None
+    # After the strategy lifetime, the event refreshes Slow and then runs Fast.
+    command = _channel_command(repository, BASE_TIME + timedelta(minutes=31))
+
+    with pytest.raises((ModelRuntimeError, ChannelConflictError)) as raised:
+        runtime.apply_command(command)
+
+    if refusal == "response_text":
+        assert isinstance(raised.value, ModelRuntimeError)
+        assert raised.value.source == "fast"
+    else:
+        assert str(raised.value) == "channel send is not authorized"
+    assert [trace.role for trace in issued] == ["slow", "slow", "fast"]
+    assert {trace.result for trace in issued} == {ModelResult.SUCCEEDED}
+    assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
+    after = repository.get(SCRIPTED_CASE_ID)
+    assert after is not None
+    assert after.snapshot == before.snapshot
+    assert after.transitions == before.transitions
+    assert repository.outbox == {}
+    assert command.event_id is not None
+    inbox = repository.get_inbox_receipt(command.event_id)
+    assert inbox is not None
+    assert inbox.processing_state == "reserved"
+
+
+def test_the_append_event_rollback_keeps_its_traces(
+    issued: list[ModelTrace], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The in-memory store hands the Runtime its stored Provider, so only this
+    # Case's Provider refuses (the codec replays ``await_approval`` itself).
+    repository = InMemoryCaseRepository()
+    runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)
+    runtime.apply_command(_create_command())
+    before = repository.get(SCRIPTED_CASE_ID)
+    assert before is not None
+
+    def refuse(intent: object) -> None:
+        raise RuntimeError("simulated Provider refusal")
+
+    monkeypatch.setattr(before.provider, "await_approval", refuse)
+    with pytest.raises(RuntimeError, match="simulated Provider refusal"):
+        runtime.apply_command(_event_command())
+
+    after = repository.get(SCRIPTED_CASE_ID)
+    assert after is not None
+    assert after.snapshot == before.snapshot
+    assert after.transitions == before.transitions
+    assert [trace.role for trace in issued] == ["slow", "fast"]
+    assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
+
+
+def test_a_compare_and_swap_loser_keeps_its_traces(
+    issued: list[ModelTrace],
+) -> None:
+    class _LosingRepository(_PayloadRepository):
+        def replace(
+            self,
+            case_id: UUID,
+            *,
+            expected_revision: int,
+            state: CaseRuntimeState,
+        ) -> CaseRuntimeState:
+            raise CaseConflictError("case snapshot revision is stale")
+
+    repository = _LosingRepository()
+    runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)
+    runtime.apply_command(_create_command())
+
+    with pytest.raises(CaseConflictError):
+        runtime.apply_command(_event_command())
+
+    assert [trace.role for trace in issued] == ["slow", "fast"]
+    assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
+
+
+def test_the_runtime_calls_the_coordinator_only_through_advance() -> None:
+    # I6 source guard: ``_advance`` is the Runtime's single coordinator call,
+    # so a new path cannot run a model without logging its traces.
+    source = inspect.getsource(runtime_module)
+    assert source.count(".advance(") == 1
+    assert "self._coordinator(request.snapshot).advance(" in source
+
+
+def _unconnected_postgres(monkeypatch: pytest.MonkeyPatch) -> PostgresCaseRepository:
+    """A PostgreSQL repository that fails the test if it opens a connection."""
+
+    repository = PostgresCaseRepository.__new__(PostgresCaseRepository)
+
+    def connect() -> Any:
+        raise AssertionError("the append must not open a connection")
+
+    monkeypatch.setattr(repository, "_connect", connect)
+    return repository
+
+
+@pytest.mark.parametrize("adapter", ["memory", "postgres"])
+def test_a_trace_append_is_for_one_case_and_empty_is_a_no_op(
+    issued: list[ModelTrace], monkeypatch: pytest.MonkeyPatch, adapter: str
+) -> None:
+    memory = InMemoryCaseRepository()
+    ThinAgentRuntime(memory, clock=lambda: BASE_TIME).apply_command(_create_command())
+    (trace,) = issued
+    foreign = trace.model_copy(
+        update={"case_id": UUID("22222222-2222-4222-8222-222222222222")}
+    )
+    repository: InMemoryCaseRepository | PostgresCaseRepository = (
+        memory if adapter == "memory" else _unconnected_postgres(monkeypatch)
+    )
+
+    with pytest.raises(ValueError, match="model trace references another Case"):
+        repository.append_model_traces(SCRIPTED_CASE_ID, (trace, foreign))
+    repository.append_model_traces(SCRIPTED_CASE_ID, ())
+
+    # All or nothing: the valid trace in the refused append was not written.
+    assert memory.list_model_traces(SCRIPTED_CASE_ID) == (trace,)
 
 
 def test_the_browser_projection_never_carries_a_trace(
@@ -628,7 +739,8 @@ async def _browser_flow(issued: list[ModelTrace]) -> None:
     state = runtime.repository.get(UUID(case_id))
     assert state is not None
     assert len(issued) >= 2
-    assert state.model_traces == tuple(issued)
+    assert runtime.repository.list_model_traces(UUID(case_id)) == tuple(issued)
+    _assert_not_projected(state, issued)
     for body in bodies:
         assert "model_traces" not in body
         for trace in issued:
