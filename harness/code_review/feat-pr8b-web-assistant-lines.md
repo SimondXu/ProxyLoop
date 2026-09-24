@@ -6,8 +6,8 @@
 **Reviewer**: independent read-only `reviewer` subagent.
 
 **Recommendation**: Approve with Minors. No blocking finding. The root
-accepted M1–M4 and passed them to the implementer, who wrote this file from
-the root's message.
+accepted M1–M4 and set M5's disposition, and passed them to the implementer,
+who wrote this file from the root's messages.
 
 ## Findings and disposition
 
@@ -17,7 +17,7 @@ the root's message.
 | M2 | A 600-character line with no spaces could widen the bubble and break the three-column grid. | Applied: `overflow-wrap: anywhere` on `.message-bubble` in `apps/web/app/globals.css`. No vitest case (jsdom does no layout); covered by the pending Browser check. |
 | M3 | Missing tests for Case isolation and stale-poll rollback. | Applied: workspace "8b M3a" (Case A's line is gone after New task and after Case B is created) and "8b M3b" (a lower-revision poll read, then a same-revision lower-cursor read, both without the line, leave it shown). |
 | M4 | Lines render as one group after the Task Brief, not interleaved with consumer turns by cursor. | No code change: recorded in the log's Limits. Ordering must interleave by cursor once PR-13 brings multi-turn Web dialogue. |
-| M5 | Not included in the root's message to the implementer. | Unknown to the implementer; the root should fill in this row from the reviewer's findings. |
+| M5 | `harness/context/audit-remediation-status.md` is edited by several concurrent PRs, so a merge conflict is likely when this branch merges. | No change; resolved at merge time by keeping both sides. |
 
 ## Verification after the follow-up
 
