@@ -25,7 +25,7 @@ the merged #44, #46 and #71. P1 is closed. Resume in this order:
 1. **The rest of P2 (§4)**, grouped into batches — see the P2 batch plan
    once recorded (the root is inventorying the open items now).
 2. **The §4a backlog**: R-2, R-5, R-6, R-11, R-12, R-13, R-15, R-16,
-   R-17, R-18, as the root schedules them. A separate fix task has been
+   R-17, R-18, R-19, as the root schedules them. A separate fix task has been
    proposed for R-15 (the flaky ML test); R-16 needs a second workflow
    patch gate.
 3. **The proposal stages (§5).** **Before stage 1, ask the user about
@@ -133,6 +133,9 @@ Closed in the third session:
 | D3-7, D2-6 | pipeline reason codes: `schema_invalid`, `hash_mismatch`, `declared_rejection` (a non-empty `rejection_reasons` is quarantined, no longer accepted), `provenance_mismatch`, `unknown_derivation_parent`, `missing_provenance` for a null `source`; a non-frozen test replays the committed r2 and pins its one r3-corrected mismatch | #74 | `fix-p2-ml-eval-hygiene.md` |
 | B1-6, B1-7, B1-8, B1-10, B1-11 | model match is exact or a dated snapshot; SDK `ValidationError` → `invalid_output`; `offer_case_mismatch`; a `commit()` that raised is never re-run (`execution_outcome_unknown`); the credit constant is owned by `offer_policy.py` | #76 | `fix-p2-adapter-domain.md` |
 | E-7, E-8, E-9 (= R-3), E-10 | polls never regress an in-flight command; Progress shows only payload-backed steps; `usage.data_megabytes` allow-listed and rendered; strict USD parsing | #77 | `fix-p2-web-hygiene.md` |
+| B1-12 | the Router waits on approval state, not an event label: `RouteRequest.trigger_is_approval_decision` removed, a current PENDING approval always routes `WAIT_FOR_APPROVAL`; precedence and reason codes unchanged | #80 | `fix-p2-router-precedence.md` |
+| grep-based architecture tests → Router precedence tests (audit §3, lane A) | the grep test over `router.py`/`coordinator.py` is deleted; `test_router_precedence_ladder_matches_the_frozen_table` checks each row of `ROUTER_PRECEDENCE` behaviourally, plus a slow-result planning-basis rejection test; the 03A0 docs-invariant tests are kept | #80 | `fix-p2-router-precedence.md` |
+| B1-9 | the Case-vs-offer policy check is total: `case_offer_violations` (telecom domain) turns a contract-valid but out-of-domain input (negative fee sum from a credit line, duplicate goal/offer/applied-change tokens) into `offer_terms_invalid` / `compliance_context_invalid` instead of raising; `verify_completion` and the runtime approval gate both use it (NEEDS_REPLAN / no approval). A non-UTC `evaluated_at` still raises (caller bug). No wire or fee-netting change; non-negative fees at the wire deferred to 1.2 | `fix/b1-9-total-offer-policy` | `fix-b1-9-total-offer-policy.md` |
 
 Recorded as limits by #74 (`fix-p2-ml-eval-hygiene.md`), still open:
 deleting the D3-7 `rejection_reasons` field (emitted in the committed
@@ -141,12 +144,11 @@ deleting the D3-7 `rejection_reasons` field (emitted in the committed
 `_matches_environment` fallback at `pipeline.py:566`.
 
 Open: G-1's stronger form (`preflight` asserts the gated-skip count or
-names the real-dependency gates), G-3, A-3, A-5, A-7f, A-9, B1-9, B1-12,
+names the real-dependency gates), G-3, A-3, A-5, A-7f, A-9,
 B2-7…B2-9, C-5, C-7, C-8, D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
-deletion only), D3-8, D3-9, and replacing the grep-based architecture tests
-with Router precedence tests (audit §3, lane A).
+deletion only), D3-8, D3-9.
 
-## 4a. Found during the P1 and P2 runs (R-1 … R-18)
+## 4a. Found during the P1 and P2 runs (R-1 … R-19)
 
 Closed:
 
@@ -185,11 +187,11 @@ Other items (Minor unless marked):
 - **R-16 (Important; severity confirmed by the root)** the expiry path's `_expiry_failure_category` reads the innermost typed `ApplicationError`; every real activity failure is raised `from exc`, so the converter chain is `[('ApplicationError','case_conflict',True), ('ApplicationError','CaseConflictError',False)]` and a real non-retryable expiry failure (e.g. `case_conflict`) is classified retryable and retried with backoff instead of abandoned. The expiry tests miss it because their injected faults carry no `__cause__`. The fix changes expiry-path commands for recorded histories, so it needs a second workflow patch gate. See `harness/log/fix-r1-retryable-update-continues-as-new.md`.
 - R-17 a channel ingest that exhausts on the delivery activity is not re-driven on redelivery (pre-existing; found in the R-1 design, `fix-r1-retryable-update-continues-as-new.md`).
 - R-18 callback events on a terminal Case are not paired with their Provider-event Evidence: delivered/bounced `provider_event`s forged after the approval cursor without Evidence, or a deleted callback event whose Evidence remains, are accepted. Root decided it is out of scope for R-10 (`fix-r10-terminal-delivery-callback.md`, Known limits).
+- R-19 `SafeObservationAdapter._adapt_offer` (`agent_core/observation.py`) raises on a contract-valid `ProviderOffer` with a negative fee sum or a duplicate feature, via `SafeOffer.__post_init__` (the same out-of-domain inputs B1-9 made total in the policy check). Used today by the `ml/` pipeline and evaluation and the `scripts/` benchmark/harness runners, not by the product runtime. Found in the B1-9 review.
 
 Still open from the audit P2 list and not yet batched: runtime/router/api
-hygiene (B1-12, B2-7, B2-8, B2-9, A-7f, R-2, R-5), ops/tests (C-5, C-7, C-8, G-3, R-6), architecture-test replacement
-(grep → Router precedence tests), and the design-first items A-3, A-5, A-9,
-B1-9 (route through `architect`). **Do not do**: D3-5/D3-6 (`qwen_mlx.py`
+hygiene (B2-7, B2-8, B2-9, A-7f, R-2, R-5), ops/tests (C-5, C-7, C-8, G-3, R-6),
+and the design-first items A-3, A-5, A-9 (route through `architect`). **Do not do**: D3-5/D3-6 (`qwen_mlx.py`
 frozen by r4); D1-10/11/12 (V1 simulator frozen, superseded by V2); D2-9 and
 D3-8 only if a check proves no committed report byte moves.
 
