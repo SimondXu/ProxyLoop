@@ -11,7 +11,6 @@ from proxyloop_contracts import (
     CaseContextSnapshot,
     CasePhase,
     CompletionOutcome,
-    EventActor,
     RoutingDecision,
     RoutingOutcome,
     VisibleCaseEvent,
@@ -58,15 +57,6 @@ class RouteRequest:
                 "triggering event must be the latest visible snapshot event"
             )
 
-    @property
-    def trigger_is_approval_decision(self) -> bool:
-        event = self.triggering_event
-        return (
-            event is not None
-            and event.actor is EventActor.CONSUMER
-            and event.event_type == "approval_decision"
-        )
-
 
 class DeterministicRouter:
     """Select exactly one outcome by the frozen precedence table."""
@@ -108,11 +98,13 @@ class DeterministicRouter:
             for approval in snapshot.approval_requests
             if approval.decision is ApprovalDecision.PENDING
         )
+        # Approval state, not an event label, releases the wait: a recorded
+        # decision leaves the request non-PENDING before the Router runs.
         approval_blocking = any(
             _approval_is_current(snapshot, approval, request.created_at)
             for approval in pending_approvals
         )
-        if approval_blocking and not request.trigger_is_approval_decision:
+        if approval_blocking:
             return RoutingOutcome.WAIT_FOR_APPROVAL, ("current_approval_pending",)
 
         mandatory_reasons = self._mandatory_slow_reasons(request)
