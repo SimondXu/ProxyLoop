@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -21,7 +22,11 @@ from proxyloop_api import (
     create_app,
 )
 from proxyloop_api.app import CreateCaseRequest
-from proxyloop_api.intake import INTAKE_PARSER_VERSION, propose_intake
+from proxyloop_api.intake import (
+    INTAKE_PARSER_VERSION,
+    MAX_AMOUNT_MINOR,
+    propose_intake,
+)
 from proxyloop_case_runtime import SCRIPTED_CASE_ID
 from pydantic import ValidationError
 from test_phase_05a_temporal_api import FailingTemporalCaseClient
@@ -147,9 +152,14 @@ def test_amounts_are_assigned_by_their_cues(
             {"mobile_hotspot_required": "ambiguous"},
         ),
         (
+            # "No change" names no feature and follows "Keep hotspot": it
+            # casts doubt on the hotspot too (I-1 orphan rule).
             "I pay $92, target $75. Keep hotspot. "
             "No change, but please modify device financing.",
-            {"device_financing_change_forbidden": "ambiguous"},
+            {
+                "mobile_hotspot_required": "ambiguous",
+                "device_financing_change_forbidden": "ambiguous",
+            },
         ),
         (
             "I pay $92, target $75. Keep hotspot. I want to change my financing.",
@@ -217,7 +227,20 @@ def test_keep_and_never_change_phrases_set_the_typed_booleans(text: str) -> None
     assert body["proposal"]["device_financing_change_forbidden"] is True
 
 
-_GRID = (7000, 7199, 7200, 7201, 7500, 9199, 9200, 9201, 12000)
+_GRID = (
+    7000,
+    7199,
+    7200,
+    7201,
+    7500,
+    9199,
+    9200,
+    9201,
+    12000,
+    MAX_AMOUNT_MINOR - 1,
+    MAX_AMOUNT_MINOR,
+    MAX_AMOUNT_MINOR + 1,
+)
 
 
 @pytest.mark.parametrize("current", _GRID)
@@ -245,6 +268,127 @@ def test_amount_rules_match_the_create_case_validator(
         validator_accepts = False
 
     assert parser_accepts is validator_accepts
+
+
+# Review I-1: a negation, a question, or a later doubt never becomes true.
+@pytest.mark.parametrize(
+    ("text", "field"),
+    [
+        ("hotspot isn't required", "mobile_hotspot_required"),
+        ("I won't need hotspot", "mobile_hotspot_required"),
+        ("hotspot doesn't need to stay", "mobile_hotspot_required"),
+        ("financing isn't staying the same", "device_financing_change_forbidden"),
+        ("I can't keep financing the same", "device_financing_change_forbidden"),
+        ("Can I keep my hotspot?", "mobile_hotspot_required"),
+        ("Keep the hotspot? Nope", "mobile_hotspot_required"),
+        (
+            "I need a hotspot for work but honestly I'd drop it",
+            "mobile_hotspot_required",
+        ),
+        (
+            "keep financing unchanged but I want to end it",
+            "device_financing_change_forbidden",
+        ),
+        ("keep hotspot unless it costs more", "mobile_hotspot_required"),
+        ("hotspot is optional", "mobile_hotspot_required"),
+        ("I'd rather not keep hotspot", "mobile_hotspot_required"),
+        ("Is my hotspot kept", "mobile_hotspot_required"),
+        (
+            "keep my device payments, I'll pay off the phone next month",
+            "device_financing_change_forbidden",
+        ),
+    ],
+)
+def test_negations_questions_and_later_doubts_are_ambiguous(
+    text: str, field: str
+) -> None:
+    body = _body(text)
+
+    assert body["proposal"][field] is None
+    assert _clarifications(text)[field] == "ambiguous"
+
+
+# Review I-2: an amount with no sure role marks both amounts ambiguous.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I want to save $80 on my $200 bill.",
+        "Cut $75 off my $180 bill",
+        "Lower my $92 bill by $12",
+        "Reduce it by $75 from $160",
+        "My bill is $92 and I want to spend at least $80 less",
+        "I pay $150 and would accept anything under $100 but ideally $80",
+        "bill $92, target between $75 and $80",
+        "I pay $92 and want $70 to $80",
+        "my bill went up to $92",
+        "My bill went up to $92 and I want $80",
+        "Went up from $80 to $92",
+        "The plan went from $80 to $92",
+        "It jumped from $85 to $110 and I want $90",
+        "I was paying $80 until they raised it to $92, I want $80 back",
+        "My bill rose to $110. I want $90",
+        "Is it possible to go from $120 to $75?",
+        "Could I pay $80 instead of $92?",
+        "Write me a poem about my $5 coffee",
+    ],
+)
+def test_change_range_history_and_question_amounts_are_ambiguous(
+    text: str,
+) -> None:
+    body = _body(text)
+
+    assert body["proposal"]["current_monthly_total"] is None
+    assert body["proposal"]["target_monthly_total"] is None
+    assert _clarifications(text)["current_monthly_total"] == "ambiguous"
+    assert _clarifications(text)["target_monthly_total"] == "ambiguous"
+
+
+@pytest.mark.parametrize(
+    ("text", "field", "reason"),
+    [
+        # Review M-3: digits are ASCII only.
+        (
+            "my bill is $\u0669\u0662, I want $80",
+            "current_monthly_total",
+            "invalid_amount",
+        ),
+        ("I pay \u0669\u0662 dollars", "current_monthly_total", "missing"),
+        (
+            "My bill is $1,000,000.00, I want $80",
+            "current_monthly_total",
+            "invalid_amount",
+        ),
+    ],
+)
+def test_non_ascii_digits_and_amounts_over_the_cap_are_not_read(
+    text: str, field: str, reason: str
+) -> None:
+    assert _body(text)["proposal"][field] is None
+    assert _clarifications(text)[field] == reason
+
+
+def test_the_cap_itself_is_read() -> None:
+    body = _body("My bill is $999,999.99, I want $80")
+
+    assert body["proposal"]["current_monthly_total"] == _usd(MAX_AMOUNT_MINOR)
+
+
+OFF_TOPIC_FIXTURE = (
+    Path(__file__).resolve().parents[2]
+    / "apps/web/app/components/intake-offtopic-proposals.json"
+)
+
+
+def test_off_topic_inputs_read_no_value_and_match_the_web_fixture() -> None:
+    """Review M-1: the Web's off-topic test uses these real parser outputs."""
+
+    fixture = json.loads(OFF_TOPIC_FIXTURE.read_text())
+
+    assert len(fixture) == 5
+    for text, expected in fixture.items():
+        body = _body(text)
+        assert body == expected
+        assert all(value is None for value in body["proposal"].values())
 
 
 def test_the_parser_is_deterministic() -> None:

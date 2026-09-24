@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from dataclasses import dataclass
 from typing import Final, Literal
 
 from proxyloop_contracts import Money
@@ -24,7 +25,9 @@ INTAKE_PARSER_VERSION: Final = "intake-parser-v1"
 INTAKE_TEXT_MAX_LENGTH = 2000
 # The fictional offer's monthly price; the same rule as ``CreateCaseRequest``.
 FIXED_OFFER_MINOR = 7200
-_MAX_AMOUNT_MINOR = 99_999_999
+# $999,999.99: the largest amount the parser, `CreateCaseRequest`, and the
+# Web accept.
+MAX_AMOUNT_MINOR = 99_999_999
 
 IntakeField = Literal[
     "current_monthly_total",
@@ -74,14 +77,39 @@ class IntakeProposal(BaseModel):
     clarifications: tuple[IntakeClarification, ...]
 
 
-_CLAUSE_BREAK = re.compile(r"[;!?\n]|[.,](?=\s|$)|\b(?:and|but)\b")
-_FOREIGN_CURRENCY = re.compile(r"[€£¥]|[a-z]\$|\b(?:eur|euros?|gbp|cad|aud|jpy)\b")
-_MONEY = re.compile(
-    r"\$\s?(?P<dollar>[-\u2013\u2014+]?[\d.,]+)"
-    r"|(?<![\w.,$])(?P<plain>\d[\d.,]*)\s?(?:usd|dollars?|bucks)\b"
+# Rule set ``intake-parser-v1`` (amended before merge after review, I-1..I-3,
+# M-3): any uncertainty is a clarification, never a guessed value.
+_SENTENCE_BREAK = re.compile(r"[;!?\n]|\.(?=\s|$)")
+_CLAUSE_BREAK = re.compile(r",(?=\s|$)|\b(?:and|but)\b")
+_QUESTION_START = re.compile(
+    r"^\s*(?:(?:can|could|should|would|will|shall|may|might|do|does|did|is|are|am)"
+    r"\s+(?:i|we|you|it|they|my|the|there|this|that)|what|how|why|when|where|which)\b"
 )
-_STRICT_AMOUNT = re.compile(r"^(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?$")
-_RANGE_AFTER = re.compile(r"^\s*[-\u2013\u2014]\s*\$?\d")
+_FOREIGN_CURRENCY = re.compile(r"[€£¥]|[a-z]\$|\b(?:eur|euros?|gbp|cad|aud|jpy)\b")
+# Digits are ASCII only: ``\d`` would read other scripts' digits as numbers.
+_MONEY = re.compile(
+    r"\$\s?(?P<dollar>[-\u2013\u2014+]?[0-9.,]+)"
+    r"|\$\s?(?P<junk>[^\s0-9]\S*)"
+    r"|(?<![\w.,$])(?P<plain>[0-9][0-9.,]*)\s?(?:usd|dollars?|bucks)\b"
+)
+_STRICT_AMOUNT = re.compile(r"^(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]{1,2})?$")
+_RANGE_AFTER = re.compile(r"^\s*[-\u2013\u2014]\s*\$?[0-9]")
+_TO_AMOUNT_AFTER = re.compile(r"^\s*to\s*\$?\s?[0-9]")
+_TO_AMOUNT_BEFORE = re.compile(r"[0-9]\s*(?:usd|dollars?|bucks)?\s+to\s*$")
+_FROM_BEFORE = re.compile(r"\bfrom\s*$")
+_FROM_TO_BEFORE = re.compile(
+    r"\bfrom\s+\$?\s?[0-9][0-9.,]*\s*(?:usd|dollars?|bucks)?\s+to\s*$"
+)
+# A price history verb: the amounts after it are not a current bill or a goal
+# we can tell apart ("went up to $92", "went from $80 to $92").
+_HISTORY = re.compile(
+    r"\b(?:went|gone|goes\s+up|go\s+up|moved|changed|jump(?:ed|s)?|rais(?:e|ed|es)"
+    r"|rose|risen|increas(?:e|ed|es)|climb(?:ed|s)?|hike[ds]?)\b"
+)
+_CHANGE_AFTER = re.compile(r"^\s*(?:off|less|cheaper|lower|savings|in\s+savings)\b")
+_CHANGE_BEFORE = re.compile(
+    r"\b(?:save|saving|savings|cut|by|off|between|at\s+least|(?<!no )more\s+than)\b"
+)
 _AFTER_CURRENT = re.compile(r"^\s*(?:bill|plan|now|currently|today)\b")
 _AFTER_TARGET = re.compile(
     r"^\s*(?:or\s+(?:less|lower|below|under|cheaper)|max(?:imum)?|tops|target|goal"
@@ -96,16 +124,21 @@ _BEFORE_CURRENT = re.compile(
     r"|charge|charged|charges|spend|spending|from|bill|at)\b"
 )
 
+_NEGATION = (
+    r"no|not|nope|nah|never|cannot|\w+n't|dont|isnt|doesnt|cant|wont|didnt|arent"
+    r"|wasnt|shouldnt|wouldnt|without|drop|remove|cancel|lose|disable|off|stop"
+    r"|rid|end"
+)
+_HEDGE = r"unless|if|optional|maybe|perhaps|probably|rather|ideally|whatever"
+_CHANGE_WORDS = (
+    r"chang\w*|modif\w*|switch\w*|pay\s*off|payoff|refinanc\w*|restructur\w*"
+)
 _HOTSPOT_TERM = re.compile(r"\b(?:mobile\s+)?hot\s?spot\b|\btethering\b")
 _HOTSPOT_KEEP = re.compile(
     r"\b(?:must\s+have|must\s+keep|keep|needs|need|required|requires|require"
     r"|retain|preserve|stays|stay)\b"
 )
-_NEGATION = (
-    r"no|not|don't|dont|do\s+not|never|without|drop|remove|cancel|lose|disable"
-    r"|off|stop|rid"
-)
-_HOTSPOT_RESIDUAL = re.compile(rf"\b(?:{_NEGATION})\b")
+_HOTSPOT_RESIDUAL = re.compile(rf"\b(?:{_NEGATION}|{_HEDGE})\b")
 _FINANCING_TERM = re.compile(
     r"\b(?:(?:device|phone)\s+)?financ(?:e|ing)\b"
     r"|\b(?:device|phone)\s+(?:payment|installment)s?\b|\binstallment\s+plan\b"
@@ -115,12 +148,24 @@ _FINANCING_KEEP = re.compile(
     r"|no\s+changes|no\s+change|without\s+changing|don't\s+touch|do\s+not\s+touch"
     r"|unchanged|untouched|keep|leave|same|as\s+is|alone)\b"
 )
-_FINANCING_RESIDUAL = re.compile(
-    rf"\b(?:{_NEGATION}|chang\w*|modif\w*|switch\w*|pay\s*off|payoff|end"
-    r"|refinanc\w*|restructur\w*)\b"
-)
+_FINANCING_RESIDUAL = re.compile(rf"\b(?:{_NEGATION}|{_HEDGE}|{_CHANGE_WORDS})\b")
+# A clause that names no feature but negates or changes something casts doubt
+# on the feature named last ("Keep the hotspot? Nope", "... I'd drop it").
+_ORPHAN_DOUBT = re.compile(rf"\b(?:{_NEGATION}|{_CHANGE_WORDS})\b")
 
 _Role = Literal["current", "target"]
+_Feature = Literal["hotspot", "financing"]
+_Verdict = Literal["keep", "ambiguous", "missing"]
+_FEATURES: dict[_Feature, tuple[re.Pattern[str], re.Pattern[str], re.Pattern[str]]] = {
+    "hotspot": (_HOTSPOT_TERM, _HOTSPOT_KEEP, _HOTSPOT_RESIDUAL),
+    "financing": (_FINANCING_TERM, _FINANCING_KEEP, _FINANCING_RESIDUAL),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class _Clause:
+    text: str
+    question: bool
 
 
 def propose_intake(text: str) -> IntakeProposal:
@@ -138,18 +183,19 @@ def propose_intake(text: str) -> IntakeProposal:
     else:
         current, target = _amounts(clauses, reasons)
 
-    hotspot = _feature(clauses, _HOTSPOT_TERM, _HOTSPOT_KEEP, _HOTSPOT_RESIDUAL)
-    financing = _feature(clauses, _FINANCING_TERM, _FINANCING_KEEP, _FINANCING_RESIDUAL)
-    if hotspot != "keep":
-        reasons["mobile_hotspot_required"] = hotspot
-    if financing != "keep":
-        reasons["device_financing_change_forbidden"] = financing
+    verdicts = _features(clauses)
+    if verdicts["hotspot"] != "keep":
+        reasons["mobile_hotspot_required"] = verdicts["hotspot"]
+    if verdicts["financing"] != "keep":
+        reasons["device_financing_change_forbidden"] = verdicts["financing"]
 
     facts = IntakeFacts(
         current_monthly_total=current,
         target_monthly_total=target,
-        mobile_hotspot_required=True if hotspot == "keep" else None,
-        device_financing_change_forbidden=True if financing == "keep" else None,
+        mobile_hotspot_required=True if verdicts["hotspot"] == "keep" else None,
+        device_financing_change_forbidden=(
+            True if verdicts["financing"] == "keep" else None
+        ),
     )
     order: tuple[IntakeField, ...] = (
         "current_monthly_total",
@@ -167,32 +213,51 @@ def propose_intake(text: str) -> IntakeProposal:
     )
 
 
-def _clauses(text: str) -> list[str]:
-    clauses: list[str] = []
+def _split(text: str, pattern: re.Pattern[str]) -> list[tuple[str, str]]:
+    """Return ``(part, delimiter)`` pairs; the last delimiter is empty."""
+
+    parts: list[tuple[str, str]] = []
     start = 0
-    for match in _CLAUSE_BREAK.finditer(text):
-        clauses.append(text[start : match.start()])
+    for match in pattern.finditer(text):
+        parts.append((text[start : match.start()], match.group()))
         start = match.end()
-    clauses.append(text[start:])
-    return [clause for clause in clauses if clause.strip()]
+    parts.append((text[start:], ""))
+    return parts
+
+
+def _clauses(text: str) -> list[_Clause]:
+    clauses: list[_Clause] = []
+    for sentence, end in _split(text, _SENTENCE_BREAK):
+        question = end == "?" or bool(_QUESTION_START.match(sentence))
+        clauses.extend(
+            _Clause(part, question)
+            for part, _ in _split(sentence, _CLAUSE_BREAK)
+            if part.strip()
+        )
+    return clauses
 
 
 def _amounts(
-    clauses: list[str], reasons: dict[IntakeField, ClarificationReason]
+    clauses: list[_Clause], reasons: dict[IntakeField, ClarificationReason]
 ) -> tuple[Money | None, Money | None]:
     values: dict[_Role, set[int]] = {"current": set(), "target": set()}
     invalid: set[_Role] = set()
-    unresolved = False
+    unassigned = False
     for clause in clauses:
+        text = clause.text
         previous_end = 0
-        for match in _MONEY.finditer(clause):
-            before = clause[: match.start()]
-            after = clause[match.end() :]
-            role = _role(clause[previous_end : match.start()], before, after)
+        for match in _MONEY.finditer(text):
+            before = text[: match.start()]
+            after = text[match.end() :]
+            role = (
+                None
+                if clause.question
+                else _role(text[previous_end : match.start()], before, after)
+            )
             previous_end = match.end()
             amount = _amount_minor(match, before, after)
             if role is None:
-                unresolved = True
+                unassigned = True
             elif amount is None:
                 invalid.add(role)
             else:
@@ -204,14 +269,15 @@ def _amounts(
         "target": "target_monthly_total",
     }
     for role, field in fields.items():
-        if role in invalid:
-            reasons[field] = "invalid_amount"
-        elif len(values[role]) > 1:
+        if unassigned or len(values[role]) > 1:
+            # An amount with no role could be either fact.
             reasons[field] = "ambiguous"
+        elif role in invalid:
+            reasons[field] = "invalid_amount"
         elif values[role]:
             resolved[role] = Money(amount_minor=values[role].pop(), currency="USD")
         else:
-            reasons[field] = "ambiguous" if unresolved else "missing"
+            reasons[field] = "missing"
 
     current, target = resolved["current"], resolved["target"]
     if current is not None and current.amount_minor <= FIXED_OFFER_MINOR:
@@ -225,13 +291,32 @@ def _amounts(
 
 
 def _role(segment: str, before: str, after: str) -> _Role | None:
+    """The amount's role, or ``None`` when it has none or it is unsure."""
+
+    if _HISTORY.search(before):
+        return None  # "went up to $92", "jumped from $85 to $110"
+    if _FROM_BEFORE.search(before) and _TO_AMOUNT_AFTER.match(after):
+        return "current"  # "from $92 to $75"
+    if _FROM_TO_BEFORE.search(before):
+        return "target"
+    if _TO_AMOUNT_AFTER.match(after) or _TO_AMOUNT_BEFORE.search(before):
+        return None  # a range: "$70 to $80"
+    if _CHANGE_AFTER.match(after):
+        return None  # a change amount: "$20 off", "$10 less"
     if _AFTER_CURRENT.match(after):
         return "current"
     if _AFTER_TARGET.match(after):
         return "target"
     # The words since the previous amount decide; with no cue there, the
-    # whole clause before the amount does ("target $75 or maybe $78").
+    # whole clause before the amount does ("target $75 or maybe $78"). A
+    # change cue nearer than any role cue ("save $20", "by $10") has no role.
     for words in (segment, before):
+        change = _last_match(_CHANGE_BEFORE, words)
+        cue = max(
+            _last_match(_BEFORE_TARGET, words), _last_match(_BEFORE_CURRENT, words)
+        )
+        if change > cue:
+            return None
         if _BEFORE_TARGET.search(words):
             return "target"
         if _BEFORE_CURRENT.search(words):
@@ -239,12 +324,17 @@ def _role(segment: str, before: str, after: str) -> _Role | None:
     return None
 
 
+def _last_match(pattern: re.Pattern[str], text: str) -> int:
+    return max((match.start() for match in pattern.finditer(text)), default=-1)
+
+
 def _amount_minor(match: re.Match[str], before: str, after: str) -> int | None:
     raw = match.group("dollar") or match.group("plain")
     if (
-        before.rstrip().endswith(("-", "\u2013", "\u2014"))
+        raw is None
+        or before.rstrip().endswith(("-", "\u2013", "\u2014"))
         or _RANGE_AFTER.match(after)
-        or (match.group("dollar") is not None and after[:1].isalpha())
+        or (match.group("dollar") is not None and after[:1].isalnum())
     ):
         return None
     if raw.endswith((".", ",")):
@@ -253,28 +343,40 @@ def _amount_minor(match: re.Match[str], before: str, after: str) -> int | None:
         return None
     whole, _, fraction = raw.replace(",", "").partition(".")
     amount = int(whole) * 100 + int(fraction.ljust(2, "0"))
-    return amount if amount <= _MAX_AMOUNT_MINOR else None
+    return amount if amount <= MAX_AMOUNT_MINOR else None
 
 
-def _feature(
-    clauses: list[str],
-    term: re.Pattern[str],
-    keep: re.Pattern[str],
-    residual: re.Pattern[str],
-) -> Literal["keep", "ambiguous", "missing"]:
-    mentioned = [clause for clause in clauses if term.search(clause)]
-    if not mentioned:
-        return "missing"
-    for clause in mentioned:
-        if not keep.search(clause) or residual.search(keep.sub(" ", clause)):
-            return "ambiguous"
-    return "keep"
+def _features(clauses: list[_Clause]) -> dict[_Feature, _Verdict]:
+    verdicts: dict[_Feature, _Verdict] = {"hotspot": "missing", "financing": "missing"}
+    last_named: _Feature | None = None
+    for clause in clauses:
+        named: list[tuple[int, _Feature]] = []
+        for feature, (term, keep, residual) in _FEATURES.items():
+            found = term.search(clause.text)
+            if found is None:
+                continue
+            named.append((found.start(), feature))
+            doubtful = (
+                clause.question
+                or not keep.search(clause.text)
+                or residual.search(keep.sub(" ", clause.text)) is not None
+            )
+            if doubtful:
+                verdicts[feature] = "ambiguous"
+            elif verdicts[feature] == "missing":
+                verdicts[feature] = "keep"
+        if named:
+            last_named = max(named)[1]
+        elif last_named is not None and _ORPHAN_DOUBT.search(clause.text):
+            verdicts[last_named] = "ambiguous"
+    return verdicts
 
 
 __all__ = [
     "FIXED_OFFER_MINOR",
     "INTAKE_PARSER_VERSION",
     "INTAKE_TEXT_MAX_LENGTH",
+    "MAX_AMOUNT_MINOR",
     "IntakeClarification",
     "IntakeFacts",
     "IntakeProposal",

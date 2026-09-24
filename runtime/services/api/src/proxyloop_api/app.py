@@ -66,7 +66,7 @@ from pydantic import (
 )
 
 from .direct_expiry import DirectApprovalExpiry, Sleep
-from .intake import IntakeProposalRequest, propose_intake
+from .intake import MAX_AMOUNT_MINOR, IntakeProposalRequest, propose_intake
 from .operations import (
     CORRELATION_ID_HEADER,
     JsonLoggingOperationRecorder,
@@ -130,6 +130,9 @@ class CreateCaseRequest(BaseModel):
             raise ValueError("current_monthly_total must be greater than 7200 cents")
         if self.target_monthly_total.amount_minor < 7200:
             raise ValueError("target_monthly_total must be at least 7200 cents")
+        if self.current_monthly_total.amount_minor > MAX_AMOUNT_MINOR:
+            # The same cap as the intake parser and the Web (PR-12 M-3).
+            raise ValueError("current_monthly_total is above the supported maximum")
         if (
             self.target_monthly_total.amount_minor
             >= self.current_monthly_total.amount_minor

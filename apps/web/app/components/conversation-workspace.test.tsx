@@ -2,6 +2,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ConversationWorkspace, isSupportedMobileBillIntent } from "./conversation-workspace";
+// Real `propose_intake` outputs, pinned by tests/integration/test_stateless_intake.py.
+import OFF_TOPIC_PROPOSALS from "./intake-offtopic-proposals.json";
 import type { IntakeProposal, RuntimePayload } from "../../lib/runtime-client";
 
 const offer = {
@@ -190,7 +192,7 @@ describe("ConversationWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     expect(screen.getByRole("alert")).toHaveTextContent(/stay above the confirmed target/);
     expect(createButton).toBeDisabled();
-    expect(screen.getByText("$92.00")).toBeInTheDocument();
+    expect(screen.getByText("Current monthly total").nextElementSibling).toHaveTextContent("$92.00");
     expect(runtime.createCase).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "$80" } });
@@ -223,10 +225,12 @@ describe("ConversationWorkspace", () => {
     expect(runtime.proposeIntake).toHaveBeenCalledTimes(1);
     expect(runtime.proposeIntake).toHaveBeenCalledWith(FULL_REQUEST);
     expect(screen.getByText(/I read all four facts from your request/)).toBeInTheDocument();
-    expect(screen.getByText("Current monthly total").nextElementSibling).toHaveTextContent("$92.00");
-    expect(screen.getByText("Target monthly total").nextElementSibling).toHaveTextContent("$75.00");
-    expect(screen.getByText("Mobile hotspot required").nextElementSibling).toHaveTextContent("Confirmed · required");
-    expect(screen.getByText("Device financing change forbidden").nextElementSibling).toHaveTextContent("Confirmed · unchanged");
+    expect(screen.getByText("Current monthly total").nextElementSibling).toHaveTextContent("$92.00 · Read from your message");
+    expect(screen.getByText("Target monthly total").nextElementSibling).toHaveTextContent("$75.00 · Read from your message");
+    expect(screen.getByText("Mobile hotspot required").nextElementSibling).toHaveTextContent("Required · Read from your message");
+    expect(screen.getByText("Device financing change forbidden").nextElementSibling).toHaveTextContent("Unchanged · Read from your message");
+    // Review I-1: a value read from the message is never labelled confirmed.
+    expect(screen.queryByText(/Confirmed/)).not.toBeInTheDocument();
     expect(screen.queryByText("Missing")).not.toBeInTheDocument();
     expect(runtime.createCase).not.toHaveBeenCalled();
 
@@ -284,7 +288,7 @@ describe("ConversationWorkspace", () => {
         { target_monthly_total: { amount_minor: 7000, currency: "USD" } },
         [{ field: "target_monthly_total", reason: "below_fixed_offer" }],
       ),
-      "$70.00 · below the $72.00 fictional offer",
+      "$70.00 · Read from your message · below the $72.00 fictional offer",
     ],
   ])("PR-12: a %s target shows its clarification and blocks Create until answered", async (_reason, proposal, shown) => {
     const runtime = await import("../../lib/runtime-client");
@@ -368,10 +372,110 @@ describe("ConversationWorkspace", () => {
 
     send(FULL_REQUEST);
 
-    expect(await screen.findByText(kind === "422" ? /I could not read that request, and nothing was created/ : /could not be reached.*Nothing was created/)).toBeInTheDocument();
+    expect(await screen.findByText(kind === "422" ? /I could not read that request, and nothing was created/ : /could not be reached/)).toBeInTheDocument();
+    // Review M-2: the reply never repeats itself.
+    expect(screen.queryByText(/Nothing was created\..*Nothing was created/)).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Confirm the facts before creating a Case." })).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText("Message ProxyLoop")).toBeEnabled();
     expect(runtime.createCase).not.toHaveBeenCalled();
+  });
+
+  it("PR-12 I-1: a fact the consumer supplies is shown as confirmed; the others stay read", async () => {
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(false, [payload()], intakeProposal(
+      { mobile_hotspot_required: null },
+      [{ field: "mobile_hotspot_required", reason: "ambiguous" }],
+    ));
+
+    send("yes");
+    expect(screen.getByText("Mobile hotspot required").nextElementSibling).toHaveTextContent("Confirmed · required");
+    expect(screen.getByText("Mobile hotspot required").nextElementSibling).not.toHaveTextContent("Read from your message");
+    expect(screen.getByText("Device financing change forbidden").nextElementSibling).toHaveTextContent("Unchanged · Read from your message");
+  });
+
+  it("PR-12 I-3: editing the current bill re-prompts a target that still breaks its rule", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    vi.mocked(runtime.createCase).mockReset().mockResolvedValue(payload());
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(false, [payload()], intakeProposal(
+      { target_monthly_total: { amount_minor: 7000, currency: "USD" } },
+      [{ field: "target_monthly_total", reason: "below_fixed_offer" }],
+    ));
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);
+    send("$95");
+
+    expect(screen.getByText("Current monthly total").nextElementSibling).toHaveTextContent("$95.00");
+    expect(screen.getByText("Target monthly total").nextElementSibling).toHaveTextContent("below the $72.00 fictional offer");
+    expect(screen.getAllByText(/What monthly total would you like to reach/).length).toBeGreaterThan(1);
+    expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeDisabled();
+
+    send("$80");
+    expect(screen.getByText("Target monthly total").nextElementSibling).not.toHaveTextContent("below the $72.00");
+    expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Create fictional Case" }));
+    await waitFor(() => expect(runtime.createCase).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentMonthlyTotal: { amount_minor: 9500, currency: "USD" },
+        targetMonthlyTotal: { amount_minor: 8000, currency: "USD" },
+      }),
+      { idempotencyKey: expect.any(String) },
+    ));
+  });
+
+  it("PR-12 I-3: a target_not_below_current target is released once the current bill is raised", async () => {
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(false, [payload()], intakeProposal(
+      { current_monthly_total: { amount_minor: 8000, currency: "USD" }, target_monthly_total: { amount_minor: 8500, currency: "USD" } },
+      [{ field: "target_monthly_total", reason: "target_not_below_current" }],
+    ));
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);
+    send("$92");
+
+    expect(screen.getByText("Target monthly total").nextElementSibling).not.toHaveTextContent("must stay below");
+    expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeEnabled();
+  });
+
+  it("PR-12 M-3: an amount above $999,999.99 is refused locally", async () => {
+    render(<ConversationWorkspace />);
+    await openEmptyCard();
+
+    send("$1,000,000");
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Amounts above $999,999.99 are not supported.");
+    expect(screen.getAllByText("Missing")).toHaveLength(4);
+  });
+
+  it.each(Object.keys(OFF_TOPIC_PROPOSALS))("PR-12 M-1: the real proposal for off-topic %s opens no card", async (text) => {
+    const runtime = await import("../../lib/runtime-client");
+    vi.mocked(runtime.proposeIntake).mockReset().mockResolvedValue(
+      OFF_TOPIC_PROPOSALS[text as keyof typeof OFF_TOPIC_PROPOSALS] as IntakeProposal,
+    );
+    render(<ConversationWorkspace />);
+
+    send(text);
+
+    expect(await screen.findByText(/only supports lowering a fictional mobile bill/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Confirm the facts before creating a Case." })).not.toBeInTheDocument();
+  });
+
+  it("PR-12 M-6: a proposal that resolves after Restart opens no card", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const pending = deferred<IntakeProposal>();
+    vi.mocked(runtime.proposeIntake).mockReset().mockReturnValue(pending.promise);
+    render(<ConversationWorkspace />);
+
+    send(FULL_REQUEST);
+    fireEvent.click(screen.getByRole("button", { name: /New task/ }));
+    await act(async () => {
+      pending.resolve(FULL_PROPOSAL);
+      await pending.promise;
+    });
+
+    expect(screen.queryByRole("heading", { name: "Confirm the facts before creating a Case." })).not.toBeInTheDocument();
+    expect(screen.queryByText(/I read all four facts/)).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Message ProxyLoop")).toBeEnabled();
   });
 
   it("PR-12: refuses an over-long request locally without calling the Runtime", async () => {

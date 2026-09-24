@@ -242,3 +242,46 @@ and §5 item 3, log `harness/log/feat-pr12-stateless-intake.md`.
   One known misreading is not a clarification: `to` is a target cue, so "my bill
   went up to $92" proposes $92 as the target. The card shows it and the consumer
   corrects it before creating anything.
+
+## Amendment 2026-09-24 — review (Request Changes): `intake-parser-v1` rule amendments
+
+The independent review found no Blocking defect; the create-only-on-click
+invariant holds. It found values filled in where this spec promised a
+clarification. Root decision: **any uncertainty becomes a clarification, never a
+guessed value.** The branch is unmerged, so the rule set keeps the name
+`intake-parser-v1`; these amendments replace the matching rules above.
+
+- **I-1 features.** Negations include `\w+n't` contractions and their
+  apostrophe-less forms (`isnt`, `cant`, …), `nope`, `nah`, `cannot`, `end`;
+  hedges (`unless`, `if`, `optional`, `maybe`, `perhaps`, `probably`, `rather`,
+  `ideally`, `whatever`) also make a feature `ambiguous`. A sentence ending in
+  `?`, or starting with a question form ("can I", "is my", "what", …), makes
+  every feature it names `ambiguous`. A clause that names no feature but holds a
+  negation or change word ("Nope", "I'd drop it", "I'll pay off the phone")
+  makes the most recently named feature `ambiguous`. Web: a value read from the
+  message is labelled "Read from your message", never "Confirmed", until the
+  consumer supplies it or chooses Create.
+- **I-2 amounts.** An amount has no role when it is a change amount (`save`,
+  `cut`, `by`, `off`, `between`, `at least`, `more than` nearer than any role
+  cue; or followed by `off`/`less`/`cheaper`/`lower`/`savings`), a range
+  (`$70 to $80` without `from`, `between … and …`), after a price-history verb
+  (`went`, `gone`, `moved`, `changed`, `jumped`, `raised`, `rose`, `increased`,
+  `climbed`, `hiked`, …), inside a question, or has no cue. **Any amount with no
+  role makes both amount fields `ambiguous`** (replacing "an unresolved mention
+  makes only a still-empty field ambiguous"). `from $X to $Y` without a history
+  verb stays current → target. "my bill went up to $92" is now `ambiguous`, not
+  a $92 target (the earlier known limit is closed).
+- **I-3 Web.** After an edit the other amount keeps its rule code until its own
+  rule passes locally; the next prompt also covers any amount the local rules
+  reject, so Create is never disabled without a prompt.
+- **M-1.** The card opens only when the proposal read at least one value or the
+  scope gate passes; clarifications alone no longer open it.
+- **M-3.** Digits are ASCII `[0-9]` only. The $999,999.99 cap is enforced the
+  same way in three places: the parser (`invalid_amount`), `CreateCaseRequest`
+  (current bill above the cap is a 422; the target must already be lower), and
+  the Web's local rule. The parity grid reaches the cap and one cent above it.
+- **M-2** one "Nothing was created." in the failure reply; **M-4** recorded in
+  the log only; **M-6** tests added (stale proposal after Restart, Edit after the
+  proposal, contractions and questions, change amounts, off-topic inputs through
+  the real parser outputs in `apps/web/app/components/intake-offtopic-proposals.json`,
+  pinned by pytest).

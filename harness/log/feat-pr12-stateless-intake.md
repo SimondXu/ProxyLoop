@@ -85,6 +85,122 @@ Not run:
   and the parser. Only the parser copy is pinned, by the parity test.
 - The Web scope gate `isSupportedMobileBillIntent` still reads free text in the
   browser. It decides only whether an empty proposal is off-topic.
-- The parser is lexical and English only. "went up to $92" proposes a $92 target,
-  which the consumer corrects on the card.
+- The parser is lexical and English only. After the review it fails toward
+  clarification: a correct but unusual phrasing ("I'd like $80 rather than $92",
+  "Hotspot: yes") often yields `ambiguous`, and the consumer then answers one
+  prompt. The earlier "went up to $92 reads as a target" limit is closed.
 - A model-backed intake is not built (decision 17).
+- M-4 (review, recorded only): the 422 log names the key of an unknown field
+  (never its value), which is the known #82 limit. A body that is not valid
+  UTF-8 gets FastAPI's pre-existing 400 shape, not the 422 body.
+
+## Merge with `main` @ `a8fdf5b` (#97) and the DB lane
+
+- Merging `origin/main` produced `0c58635` with no conflict; the status file
+  merged cleanly with both sides kept.
+- On `0c58635`:
+  - `make test` exit 0: runtime 1713 passed / 63 skipped; ML 397 / 1 skipped.
+  - `make preflight` exit 0: vitest 208; gated-skip pin 63.
+- The DB gates ran serially from this worktree against the Compose
+  `postgres-test` (`127.0.0.1:55432/proxyloop_test`) and `temporal`
+  (`127.0.0.1:7233`), with the variables on the make command line only:
+  - `postgres-check`: 38 passed.
+  - `phase05a-check`: 53 passed.
+  - `phase06b1-check`: 56 passed.
+
+## Review follow-up (Request Changes; `harness/code_review/feat-pr12-stateless-intake.md`)
+
+The root decided that any uncertainty becomes a clarification, never a guessed
+value. The spec gains dated `intake-parser-v1` rule amendments:
+
+- I-1: contractions, hedges, questions, and later doubt make a feature
+  `ambiguous`. The Web labels read values "Read from your message".
+- I-2: change, range, history, question, and cue-less amounts have no role, and
+  any amount without a role makes both amounts `ambiguous`.
+- I-3: the Web keeps the other amount's rule code until its rule passes. It also
+  prompts any amount that the local rules still reject.
+- M-1: the card opens only on a read value or the scope gate.
+- M-2: the failure reply is not repeated.
+- M-3: digits are ASCII only. The $999,999.99 cap is enforced in the parser, in
+  `CreateCaseRequest` (current bill), and in the Web.
+- M-6: the missing tests were added.
+
+Red against the pre-review code:
+
+- 32 of 219 pytest items fail against the `63d1d00` parser. The old module was
+  given a `MAX_AMOUNT_MINOR` alias so that it imports.
+- 10 of 144 workspace vitest cases fail against the pre-review component.
+- The stale-after-Restart case and the `target_not_below_current` release case
+  pass on both versions; they are regression tests.
+
+Green, on the amended tree:
+
+- `make lint` exit 0.
+- `make typecheck` exit 0.
+- `make test` exit 0: runtime 1813 passed / 63 skipped; ML 397 / 1 skipped.
+- `make web-check` exit 0: vitest 218 passed, and `next build` succeeded.
+- `make preflight` exit 0: gated-skip pin 63.
+
+The DB gates were rerun because `CreateCaseRequest` gained the cap:
+
+- `postgres-check`: 38 passed.
+- `phase05a-check`: 53 passed.
+- `phase06b1-check`: 56 passed.
+
+## Browser evidence (amended card)
+
+The check used headless Chromium via Python Playwright 1.54 at a 1440x1000
+viewport, against the real durable Runtime. Readiness was
+`{"ready":true,"adapter_mode":"scripted","storage_mode":"postgres","orchestration_mode":"temporal"}`.
+The Web was the production build of the amended tree (`next start`).
+
+Setup (the same method as PR-8b and PR-10):
+
+- Port 8000 is held by an unrelated process, which was not touched.
+- A throwaway Compose project, `proxyloop-pr12-browser`, ran postgres on 55472
+  and temporal on 7272 on a fresh volume.
+- A scratch launcher ran the supervisor's worker, Runtime, and Web commands with
+  no model credentials: Runtime on 8012, Web on 3012.
+- Playwright forwarded `/api/runtime/**` to 8012.
+- Afterwards only those three processes were stopped, and only that project was
+  removed with `down -v`. The existing `proxyloop-*` containers,
+  `proxyloop_postgres-data`, and `proxyloop-portfolio-demo_postgres-data` are
+  unchanged.
+
+The journey:
+
+1. One message: "My mobile bill is $92 and I want to get it under $75. Keep my
+   hotspot. (zebra-7731)".
+2. The card showed:
+   - "$92.00 · Read from your message"
+   - "$75.00 · Read from your message"
+   - "Required · Read from your message"
+   - financing "Missing"
+
+   Create was disabled, and only the financing prompt was asked.
+3. The consumer answered "no change". The financing row read "Confirmed ·
+   unchanged", and Create was enabled.
+4. Create, then "Keep both unchanged and continue", then the pending approval,
+   then "Approve exact terms", then the verified receipt.
+5. After a reload, the durable restore showed the receipt again. The Status Bar
+   read "Done: the Runtime verified completion…", as of Case revision 6.
+
+Runtime calls, in order: `POST /intake/proposals`, `POST /cases`, `GET`,
+`POST …/events`, `GET`, `POST …/approvals/{id}`, `GET`, then after the reload
+`GET /health/ready` and `GET`. The console had no errors or warnings.
+
+The marker `zebra-7731` was absent from:
+
+- the proposal response;
+- `localStorage`, both before Create and after completion;
+- the Runtime, worker, and Web logs (0 matches each).
+
+Screenshots are scratch and not committed. They are in
+`.../scratchpad/impl-pr12/browser/`, with `result.json`:
+
+- `01-parsed-card.png`
+- `02-missing-fact-filled.png`
+- `03-case-created.png`
+- `04-pending-approval.png`
+- `05-verified-receipt.png`
+- `06-after-reload.png`

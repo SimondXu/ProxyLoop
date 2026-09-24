@@ -88,6 +88,9 @@ const CLARIFICATION_LABELS: Record<IntakeClarificationReason, string> = {
   target_not_below_current: "must stay below the current bill",
 };
 
+// $999,999.99: the same cap as the intake parser and `CreateCaseRequest`.
+const MAX_AMOUNT_MINOR = 99_999_999;
+
 const VALUE_RULE_REASONS = new Set<IntakeClarificationReason>(["below_fixed_offer", "target_not_below_current"]);
 
 const UNSUPPORTED_INTENT_MESSAGE =
@@ -128,10 +131,13 @@ function draftValue(draft: IntakeDraft, field: IntakeField): unknown {
 }
 
 // The first fact the consumer still has to supply: a missing value or an
-// open clarification from the intake proposal.
+// open clarification from the intake proposal, then any amount the local
+// rules reject, so Create is never disabled without a prompt (review I-3).
 function firstFieldNeedingInput(draft: IntakeDraft, clarifications: IntakeClarifications): IntakeField | null {
   return INTAKE_FIELD_ORDER.find(
     (field) => draftValue(draft, field) === null || clarifications[field] !== undefined,
+  ) ?? INTAKE_FIELD_ORDER.find(
+    (field) => (field === "current" || field === "target") && intakeValueError(field, draft) !== null,
   ) ?? null;
 }
 
@@ -150,23 +156,25 @@ function clarificationsFromProposal(result: IntakeProposal): IntakeClarification
   );
 }
 
-// Whether the proposal read anything at all: a value, or an amount it could not use.
-function proposalReadAFact(result: IntakeProposal): boolean {
-  return (
-    Object.values(result.proposal).some((value) => value !== null) ||
-    result.clarifications.some((item) => item.reason !== "missing")
-  );
+// Whether the proposal read at least one value (review M-1).
+function proposalReadAValue(result: IntakeProposal): boolean {
+  return Object.values(result.proposal).some((value) => value !== null);
 }
 
 // Once the consumer supplies a field, its proposal clarification is resolved.
-// A money edit also hands both money value rules to the local check.
-function resolveClarification(clarifications: IntakeClarifications, field: IntakeField): IntakeClarifications {
+// The other amount keeps a value-rule code until its own rule passes locally
+// with the new value (review I-3).
+function resolveClarification(
+  clarifications: IntakeClarifications,
+  field: IntakeField,
+  draft: IntakeDraft,
+): IntakeClarifications {
   return Object.fromEntries(
     Object.entries(clarifications).filter(([key, reason]) =>
       key !== field &&
-      !((field === "current" || field === "target") &&
-        (key === "current" || key === "target") &&
-        VALUE_RULE_REASONS.has(reason)),
+      !((key === "current" || key === "target") &&
+        VALUE_RULE_REASONS.has(reason) &&
+        intakeValueError(key, draft) === null),
     ),
   );
 }
@@ -266,6 +274,12 @@ function intakeFacts(draft: IntakeDraft): IntakeFacts | null {
 function intakeValueError(field: IntakeField, draft: IntakeDraft): string | null {
   const current = draft.currentMonthlyTotal?.amount_minor;
   const target = draft.targetMonthlyTotal?.amount_minor;
+  if (
+    (field === "current" && current !== undefined && current > MAX_AMOUNT_MINOR) ||
+    (field === "target" && target !== undefined && target > MAX_AMOUNT_MINOR)
+  ) {
+    return "Amounts above $999,999.99 are not supported.";
+  }
   if (field === "current") {
     if (current !== undefined && current <= 7200) {
       return "The current bill must be greater than $72.00 for this fictional offer.";
@@ -426,14 +440,22 @@ function UserMessage({ children }: { children: ReactNode }) {
   );
 }
 
-function factValue(value: string | null, reason: IntakeClarificationReason | undefined): string {
-  if (reason === undefined) return value ?? "Missing";
-  return value === null ? CLARIFICATION_LABELS[reason] : `${value} · ${CLARIFICATION_LABELS[reason]}`;
+const READ_FROM_MESSAGE = "Read from your message";
+
+function factValue(
+  value: string | null,
+  reason: IntakeClarificationReason | undefined,
+  readFromMessage: boolean,
+): string {
+  const shown = value !== null && readFromMessage ? `${value} · ${READ_FROM_MESSAGE}` : value;
+  if (reason === undefined) return shown ?? "Missing";
+  return shown === null ? CLARIFICATION_LABELS[reason] : `${shown} · ${CLARIFICATION_LABELS[reason]}`;
 }
 
 function DraftTaskBrief({
   draft,
   clarifications,
+  readFromMessage,
   activeField,
   intakeError,
   busy,
@@ -442,6 +464,7 @@ function DraftTaskBrief({
 }: {
   draft: IntakeDraft;
   clarifications: IntakeClarifications;
+  readFromMessage: readonly IntakeField[];
   activeField: IntakeField | null;
   intakeError: string | null;
   busy: boolean;
@@ -452,22 +475,30 @@ function DraftTaskBrief({
     {
       field: "current" as const,
       label: "Current monthly total",
-      value: factValue(draft.currentMonthlyTotal === null ? null : formatMoney(draft.currentMonthlyTotal), clarifications.current),
+      value: factValue(draft.currentMonthlyTotal === null ? null : formatMoney(draft.currentMonthlyTotal), clarifications.current, readFromMessage.includes("current")),
     },
     {
       field: "target" as const,
       label: "Target monthly total",
-      value: factValue(draft.targetMonthlyTotal === null ? null : formatMoney(draft.targetMonthlyTotal), clarifications.target),
+      value: factValue(draft.targetMonthlyTotal === null ? null : formatMoney(draft.targetMonthlyTotal), clarifications.target, readFromMessage.includes("target")),
     },
     {
       field: "hotspot" as const,
       label: "Mobile hotspot required",
-      value: factValue(draft.mobileHotspotRequired === true ? "Confirmed · required" : null, clarifications.hotspot),
+      value: factValue(
+        draft.mobileHotspotRequired !== true ? null : readFromMessage.includes("hotspot") ? "Required" : "Confirmed · required",
+        clarifications.hotspot,
+        readFromMessage.includes("hotspot"),
+      ),
     },
     {
       field: "financing" as const,
       label: "Device financing change forbidden",
-      value: factValue(draft.deviceFinancingChangeForbidden === true ? "Confirmed · unchanged" : null, clarifications.financing),
+      value: factValue(
+        draft.deviceFinancingChangeForbidden !== true ? null : readFromMessage.includes("financing") ? "Unchanged" : "Confirmed · unchanged",
+        clarifications.financing,
+        readFromMessage.includes("financing"),
+      ),
     },
   ];
   const ready =
@@ -500,7 +531,7 @@ function DraftTaskBrief({
         ))}
       </dl>
       <p className="artifact-note">
-        I read these facts from your message; the Runtime did not store it. Nothing is created until you choose the explicit create action, and the Runtime will receive exactly these four fields.
+        Facts marked &quot;Read from your message&quot; are my reading, not yet your confirmation; the Runtime did not store your message. Check each one: choosing Create fictional Case confirms them, and the Runtime will receive exactly these four fields.
       </p>
       <button className="primary-button" disabled={!ready || busy} onClick={onCreate} type="button">
         {busy ? "Creating fictional Case…" : "Create fictional Case"}
@@ -733,6 +764,9 @@ export function ConversationWorkspace() {
   const [confirmedFacts, setConfirmedFacts] = useState<IntakeFacts | null>(null);
   const [intake, setIntake] = useState<IntakeDraft>(EMPTY_INTAKE);
   const [clarifications, setClarifications] = useState<IntakeClarifications>({});
+  // Fields whose value came from the intake proposal and that the consumer
+  // has not supplied again; shown as "Read from your message" (review I-1).
+  const [readFromMessage, setReadFromMessage] = useState<IntakeField[]>([]);
   const [activeField, setActiveField] = useState<IntakeField | null>(null);
   const [intakeError, setIntakeError] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -1118,6 +1152,7 @@ export function ConversationWorkspace() {
     setConfirmedFacts(null);
     setIntake(EMPTY_INTAKE);
     setClarifications({});
+    setReadFromMessage([]);
     setActiveField(null);
     setIntakeError(null);
     clearFailure();
@@ -1262,9 +1297,11 @@ export function ConversationWorkspace() {
         ? { ...intake, mobileHotspotRequired: true }
         : { ...intake, deviceFinancingChangeForbidden: true };
     }
-    const remaining = resolveClarification(clarifications, field);
+    const remaining = resolveClarification(clarifications, field, next);
+    const remainingRead = readFromMessage.filter((item) => item !== field);
     setIntake(next);
     setClarifications(remaining);
+    setReadFromMessage(remainingRead);
     setIntakeError(null);
     const nextField = firstFieldNeedingInput(next, remaining);
     setActiveField(nextField);
@@ -1413,7 +1450,7 @@ export function ConversationWorkspace() {
     try {
       const result = await proposeIntake(text);
       if (requestId !== sessionId.current) return;
-      if (!proposalReadAFact(result) && !isSupportedMobileBillIntent(text)) {
+      if (!proposalReadAValue(result) && !isSupportedMobileBillIntent(text)) {
         addMessage("assistant", UNSUPPORTED_INTENT_MESSAGE);
         return;
       }
@@ -1422,6 +1459,7 @@ export function ConversationWorkspace() {
       const field = firstFieldNeedingInput(next, pending);
       setIntake(next);
       setClarifications(pending);
+      setReadFromMessage(INTAKE_FIELD_ORDER.filter((item) => draftValue(next, item) !== null));
       setIntakeError(null);
       setActiveField(field);
       setPhase("intake");
@@ -1438,7 +1476,7 @@ export function ConversationWorkspace() {
         caught instanceof RuntimeClientError && caught.status === 422
           ? "I could not read that request, and nothing was created. Please rephrase it."
           : caught instanceof Error
-            ? `${caught.message} Nothing was created.`
+            ? caught.message
             : "The local Runtime could not read that request. Nothing was created.",
       );
     } finally {
@@ -1535,6 +1573,7 @@ export function ConversationWorkspace() {
                 activeField={activeField}
                 busy={busy}
                 clarifications={clarifications}
+                readFromMessage={readFromMessage}
                 draft={intake}
                 intakeError={intakeError}
                 onCreate={createIntakeCase}
