@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   appendConsumerEvent,
   appendConsumerEventRequestBody,
+  type AssistantLine,
+  assistantLines,
   checkReadiness,
   clearPersistedWorkspace,
   completionHasVerifiedEvidence,
@@ -300,6 +302,25 @@ function AssistantMessage({ children }: { children: ReactNode }) {
         <div className="message-bubble">{children}</div>
       </div>
     </article>
+  );
+}
+
+const AUTOMATED_LINE_LABEL =
+  "ProxyLoop AI · automated message — it cannot accept, sign, or change anything without your approval.";
+
+// Runtime-authored lines from snapshot.visible_events (PR-8 I10), rendered as
+// plain React text only; each carries the automated-message label.
+function DialogueArtifact({ lines }: { lines: AssistantLine[] }) {
+  if (lines.length === 0) return null;
+  return (
+    <section aria-label="Automated messages">
+      {lines.map((line) => (
+        <AssistantMessage key={line.eventCursor}>
+          <p>{line.text}</p>
+          <p className="artifact-note">{AUTOMATED_LINE_LABEL}</p>
+        </AssistantMessage>
+      ))}
+    </section>
   );
 }
 
@@ -1395,7 +1416,10 @@ export function ConversationWorkspace() {
           ) : null}
 
           {payload && (phase === "confirm" || phase === "working" || phase === "finalizing" || phase === "approval" || phase === "receipt" || phase === "expired" || phase === "blocked") ? (
-            <AssistantMessage><TaskBriefArtifact blockedLabel={phase === "blocked" ? "Blocked" : staleRetryDropped ? "Reconnect to continue" : undefined} onConfirm={phase === "confirm" && !busy && !staleRetryDropped ? confirmConstraint : undefined} payload={payload} /></AssistantMessage>
+            <>
+              <AssistantMessage><TaskBriefArtifact blockedLabel={phase === "blocked" ? "Blocked" : staleRetryDropped ? "Reconnect to continue" : undefined} onConfirm={phase === "confirm" && !busy && !staleRetryDropped ? confirmConstraint : undefined} payload={payload} /></AssistantMessage>
+              <DialogueArtifact lines={assistantLines(payload)} />
+            </>
           ) : null}
 
           {payload && (phase === "working" || phase === "finalizing") ? <AssistantMessage><ProgressArtifact finalizing={phase === "finalizing"} payload={payload} /></AssistantMessage> : null}
