@@ -1324,9 +1324,20 @@ def _verify_delivery_callback_pairs(
     both ids is not stored, so the pairing is by order and time: the i-th
     event after the approval cursor matches the i-th Provider-event Evidence
     after the confirmation Evidence, with ``observed_at`` and ``captured_at``
-    equal to the event's ``occurred_at``.
+    equal to the event's ``occurred_at``. Each delivery status yields at most
+    one pair, so callback event ids and Provider-event Evidence ids are unique.
     """
 
+    callback_ids = [
+        event.event_id
+        for event in snapshot.visible_events
+        if _is_delivery_callback_event(event)
+    ]
+    provider_event_ids = [
+        item.evidence_id
+        for item in snapshot.evidence
+        if item.source_type is EvidenceType.PROVIDER_EVENT
+    ]
     events = [
         event
         for event in snapshot.visible_events
@@ -1338,9 +1349,15 @@ def _verify_delivery_callback_pairs(
         for item in snapshot.evidence[executed + 1 :]
         if item.source_type is EvidenceType.PROVIDER_EVENT
     ]
-    if len(events) != len(evidence) or any(
-        item.observed_at != event.occurred_at or item.captured_at != event.occurred_at
-        for event, item in zip(events, evidence, strict=True)
+    if (
+        len(set(callback_ids)) != len(callback_ids)
+        or len(set(provider_event_ids)) != len(provider_event_ids)
+        or len(events) != len(evidence)
+        or any(
+            item.observed_at != event.occurred_at
+            or item.captured_at != event.occurred_at
+            for event, item in zip(events, evidence, strict=True)
+        )
     ):
         raise ValueError("terminal Case callback events do not match their Evidence")
 

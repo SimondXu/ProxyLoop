@@ -44,6 +44,7 @@ from test_phase_06b1_channel_runtime import (
 from test_strategy_basis_binding import _as_stored_1_0
 
 REJECTED = "Case state failed storage validation"
+UNPAIRED = "terminal Case callback events do not match their Evidence"
 ARTIFACT_HASH = hashlib.sha256(b"artifact").hexdigest()
 CALLBACK_CONTENT = {
     "delivered": "The fictional Provider delivered the local reply.",
@@ -395,6 +396,15 @@ def test_a_non_delivery_event_after_the_approval_is_rejected(
 # with the Provider-event Evidence appended with it after the execution.
 
 
+def _assert_unpaired(state: CaseRuntimeState) -> None:
+    """The codec rejects ``state`` because of the pairing rule itself."""
+
+    with pytest.raises(RuntimeError, match=REJECTED) as raised:
+        PostgresCaseRepository._encode_state(state)
+    assert raised.value.__suppress_context__ is True
+    assert str(raised.value.__context__) == UNPAIRED
+
+
 def _forged_callback_event(state: CaseRuntimeState) -> VisibleCaseEvent:
     last = state.snapshot.visible_events[-1]
     return runtime_module._event(
@@ -462,8 +472,7 @@ def test_a_forged_callback_event_without_evidence_is_rejected() -> None:
         after,
         events=(*after.snapshot.visible_events, _forged_callback_event(after)),
     )
-    with pytest.raises(RuntimeError, match=REJECTED):
-        PostgresCaseRepository._encode_state(forged)
+    _assert_unpaired(forged)
 
 
 def test_a_forged_callback_event_on_a_completed_case_is_rejected() -> None:
@@ -477,23 +486,20 @@ def test_a_forged_callback_event_on_a_completed_case_is_rejected() -> None:
             _forged_callback_event(completed),
         ),
     )
-    with pytest.raises(RuntimeError, match=REJECTED):
-        PostgresCaseRepository._encode_state(forged)
+    _assert_unpaired(forged)
 
 
 def test_a_deleted_callback_event_whose_evidence_remains_is_rejected() -> None:
     after = _delivered_after_complete()
     forged = _rebuilt(after, events=after.snapshot.visible_events[:-1])
-    with pytest.raises(RuntimeError, match=REJECTED):
-        PostgresCaseRepository._encode_state(forged)
+    _assert_unpaired(forged)
 
 
 def test_provider_event_evidence_without_a_callback_event_is_rejected() -> None:
     after = _delivered_after_complete()
     extra = after.snapshot.evidence[-1].model_copy(update={"evidence_id": uuid4()})
     forged = _rebuilt(after, evidence=(*after.snapshot.evidence, extra))
-    with pytest.raises(RuntimeError, match=REJECTED):
-        PostgresCaseRepository._encode_state(forged)
+    _assert_unpaired(forged)
 
 
 def test_a_callback_evidence_at_another_time_is_rejected() -> None:
@@ -506,5 +512,46 @@ def test_a_callback_evidence_at_another_time_is_rejected() -> None:
         }
     )
     forged = _rebuilt(after, evidence=(*after.snapshot.evidence[:-1], shifted))
-    with pytest.raises(RuntimeError, match=REJECTED):
-        PostgresCaseRepository._encode_state(forged)
+    _assert_unpaired(forged)
+
+
+# Evidence requires captured_at >= observed_at, so observed_at moves earlier.
+@pytest.mark.parametrize(
+    ("field", "seconds"), [("observed_at", -1), ("captured_at", 1)]
+)
+def test_a_callback_evidence_with_one_shifted_time_is_rejected(
+    field: str, seconds: int
+) -> None:
+    after = _delivered_after_complete()
+    last = after.snapshot.evidence[-1]
+    shifted = last.model_copy(
+        update={field: getattr(last, field) + timedelta(seconds=seconds)}
+    )
+    _assert_unpaired(
+        _rebuilt(after, evidence=(*after.snapshot.evidence[:-1], shifted))
+    )
+
+
+def test_a_callback_evidence_moved_before_the_confirmation_is_rejected() -> None:
+    after = _delivered_after_complete()
+    *earlier, callback = after.snapshot.evidence
+    confirmation = next(
+        index
+        for index, item in enumerate(earlier)
+        if item.source_type is EvidenceType.CONFIRMATION
+    )
+    moved = (*earlier[:confirmation], callback, *earlier[confirmation:])
+    _assert_unpaired(_rebuilt(after, evidence=moved))
+
+
+def test_an_exact_duplicate_of_a_callback_pair_is_rejected() -> None:
+    after = _delivered_after_complete()
+    event = after.snapshot.visible_events[-1]
+    duplicate = event.model_copy(update={"event_cursor": event.event_cursor + 1})
+    _assert_unpaired(
+        _rebuilt(
+            after,
+            events=(*after.snapshot.visible_events, duplicate),
+            evidence=(*after.snapshot.evidence, after.snapshot.evidence[-1]),
+        )
+    )
