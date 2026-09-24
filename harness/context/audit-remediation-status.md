@@ -41,6 +41,8 @@ recorded — the relay is exhausted), force-push, destructive operations.
 | `fix/gate-honesty-r15-g1` | PR-1, R-15 + G-1 strong form | Review: Approve (`harness/code_review/fix-gate-honesty-r15-g1.md`); root decisions applied (enforcement decided by the two variables only, per-file pin); merged with `main` @ `5266b6d` (#87); per-file pin updated to 53 (`test_phase_05a_temporal_workflow.py` 22 → 24: #87 parametrized two gated expiry tests `[unchained]`/`[chained]`); merged with `main` @ `74fb993` (#88, #89): pin unchanged, `make preflight` green at 53; R-15 test 200/200 fresh-process passes (after the `c73f6a7` merge). R-15: the `<= 20` bound was wrong (true invariant 10 ≤ calls ≤ 21; 21 is reachable with one worker) — barrier-based deterministic test, 200/200 passes. G-1: `scripts/check_gated_skips.py` pins 51 gated skips and names the real-dependency gates at the end of `make preflight` | #90 open; CI; root final integration review; merge |
 | `fix/r12-model-trace-log` | PR-7, R-12 + R-13b | Implemented per the frozen spec `harness/context/r12-model-trace-log-design.md` (append-only model-trace log, `storage_version` 3, bootstrap backfill of version 2 rows under an advisory lock, `_advance` as the single coordinator call with a source guard); red evidence in `harness/log/fix-r12-model-trace-log.md`; merged with `main` @ `74fb993` (PR-4); `make test`, `make preflight` green; gates green on the merge: `postgres-check` 35, `phase05a-check` 53, `phase06b1-check` 35 | PR; CI; merge. Independent review: Approve (M1–M6 applied, M7 deferred to PR-8; `harness/code_review/fix-r12-model-trace-log.md`). It adds 6 DB-gated test items: merged with `main` @ `f4a2487` (PR-1), the per-file pin is updated to 59 (`test_phase_04c_persistent_case_store.py` 23 → 29) and `make preflight` is green |
 
+| `feat/pr8a-fast-dialogue` | PR-8a, A-4 / decision 7 stage 1a (runtime + gate + report) | Implemented per the frozen spec `harness/context/pr8-fast-dialogue-design.md` (with the root's dated §5.2 amendment): `ScriptedDialogueFastAdapter` is the default Fast adapter, every applied consumer event gets one `assistant_message` visible event, the `fast-gate-v1` disclosure gate withholds text and delivers the fallback, `make fast-slow-split-check` replays the committed `data/evaluation/fast-slow-split-scripted.json`; no committed artifact moved; no DB-gated test added (pin unchanged); red evidence in `harness/log/feat-pr8a-fast-dialogue.md`. S2 redefined by a dated spec amendment (a $70 target is refused at intake; S2 talks after the offer expires); `make lint`, `make typecheck`, `make test`, `make phase04d-profile-check`, `make preflight` green | DB lane (`postgres-check` → `phase05a-check` → `phase06b1-check`); independent review; PR; CI; merge before PR-8b |
+
 R-19 (`SafeObservationAdapter` raises on negative-fee / duplicate-feature
 offers; used by `ml/` and two scripts) is assigned to PR-9, whose parity
 renderer uses `agent_core/observation.py`.
@@ -260,11 +262,15 @@ state is sticky; V2 `false_completion` ≠ V1's (a hazardous accept is
 These are the changes that make the product demonstrable; none is started.
 Each needs its own spec under `harness/context/` before implementation.
 
-1. **Fast dialogue reaches the product** (A-4, B1-3, decision 7). Today the
-   runtime accepts only a constant Fast text and no model output reaches a
-   user-visible surface; the Web demo is an eight-step wizard that never
-   shows model text. Needs a per-turn measurement so the Fast/Slow share is
-   a number, not a claim.
+1. **Fast dialogue reaches the product** (A-4, B1-3, decision 7). **Stage 1a
+   done, scripted only** (PR-8a, `feat/pr8a-fast-dialogue`,
+   `harness/context/pr8-fast-dialogue-design.md`): the default scripted Fast
+   adapter's line reaches the Case as an `assistant_message` visible event
+   behind the `fast-gate-v1` disclosure gate, and the per-turn Fast/Slow
+   split is measured and committed (`data/evaluation/fast-slow-split-scripted.json`).
+   The Web rendering is PR-8b; no model-backed Fast text is measured yet
+   (PR-9); the channel body stays constant (PR-11); multi-turn Web dialogue
+   waits for PR-13.
 2. **Judge pass before the deterministic gate** (decision 7). Quality only,
    never in metrics or authority — a Judge that reaches metrics repeats
    D2-1. Second model family when a second credential exists, recorded in

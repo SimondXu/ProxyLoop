@@ -45,6 +45,19 @@ from day one so PR-9 needs no schema bump:
 
 The report still contains no model text.
 
+Amendment, 2026-09-24 (root, from the PR-13 design review), to §5.3 scenario S2.
+"Create $92 → $70; the offer is non-compliant" cannot be built: intake refuses any
+target below $72.00, and every intake-valid Case has a compliant offer for its
+first hour. S2 (`dialogue_path`) is redefined with public runtime commands only:
+create $92 → $75 at T0, then consumer events after the offer has expired (the
+offer lives 60 minutes, a strategy 30), so no approval opens and the expired
+strategy refreshes through Slow: +61 min (`slow_then_fast`), +62…+65 (four
+`fast_only`), +92 (31 minutes after that refresh, `slow_then_fast`), +93
+(`fast_only`). AC 5's intent is kept: S1 = {`slow_only`: 1, `fast_only`: 1};
+S2 has ≥ 1 `slow_then_fast`; the scripted fallback rate is 0. S1 (`demo_path`)
+also carries one repeated `create_case` (the M7 note), counted as an unapplied
+attempt; it adds no turn.
+
 Split: 8a (runtime + gate + report) starts after PR-7 merges; 8b (Web) is
 written now against the frozen event shape and merges after 8a, before PR-10
 and PR-12 touch `conversation-workspace.tsx`.
