@@ -2227,6 +2227,13 @@ def _check_not_applied(state: CaseRuntimeState, command_id: UUID | None) -> None
     check before the first attempt writes, then wait on the lane. It stops
     here, before any model call or write; ``apply_command`` then returns the
     stored receipt as a duplicate (M-3).
+
+    The lane is per Runtime instance, so "before any model call or write"
+    holds only within one instance. Across processes or instances a
+    same-command race can still make one extra model call and trace; the
+    PostgreSQL revision compare-and-swap rejects the loser's write, and
+    ``apply_command`` maps that conflict to the stored receipt as a
+    duplicate. This limit pre-dates PR-13.
     """
 
     if command_id is not None and _find_transition(state, command_id) is not None:
