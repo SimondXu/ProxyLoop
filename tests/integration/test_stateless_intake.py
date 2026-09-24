@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ from proxyloop_api import (
 from proxyloop_api.app import CreateCaseRequest
 from proxyloop_api.intake import (
     INTAKE_PARSER_VERSION,
+    INTAKE_TEXT_MAX_LENGTH,
     MAX_AMOUNT_MINOR,
     propose_intake,
 )
@@ -389,6 +391,92 @@ def test_off_topic_inputs_read_no_value_and_match_the_web_fixture() -> None:
         body = _body(text)
         assert body == expected
         assert all(value is None for value in body["proposal"].values())
+
+
+# Re-review UX rules: common target cues, lowering requests (also as a
+# question), and "Actually … both" / "Actually no." doubt on every feature.
+@pytest.mark.parametrize(
+    ("text", "current", "target"),
+    [
+        ("My bill is $92 and I'd like $75", 9200, 7500),
+        ("I pay $92 and would be happy with $75", 9200, 7500),
+        ("My phone bill is $92/month, I'd like it to be $75", 9200, 7500),
+        ("My last bill was $92, I'm hoping for $75", 9200, 7500),
+        ("My bill is $92, I want it to be $75", 9200, 7500),
+        ("My bill is $92. Get it down to $75.", 9200, 7500),
+        ("Can you lower my phone bill from $92 to $75?", 9200, 7500),
+        ("How can I lower my $92 phone bill to $75?", 9200, 7500),
+        ("Could you get my mobile bill down to $75? I pay $92.", 9200, 7500),
+        ("Please reduce my bill from $92 to $75", 9200, 7500),
+        ("Cut my bill from $92 to $75", 9200, 7500),
+    ],
+)
+def test_common_target_cues_and_lowering_requests_are_read(
+    text: str, current: int, target: int
+) -> None:
+    body = _body(text)
+
+    assert body["proposal"]["current_monthly_total"] == _usd(current)
+    assert body["proposal"]["target_monthly_total"] == _usd(target)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Is it possible to go from $120 to $75?",
+        "I pay $92 now. Is $75 possible?",
+        "Can you lower my bill? It went from $80 to $92.",
+    ],
+)
+def test_a_question_without_a_clean_lowering_request_stays_ambiguous(
+    text: str,
+) -> None:
+    clarifications = _clarifications(text)
+
+    assert clarifications["current_monthly_total"] == "ambiguous"
+    assert clarifications["target_monthly_total"] == "ambiguous"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I pay $92, target $75, keep hotspot, keep financing unchanged. "
+        "Actually, forget it, I want to change both.",
+        "Keep hotspot and financing unchanged. Actually no.",
+        "Keep my hotspot. Leave financing alone. Actually, change everything.",
+    ],
+)
+def test_an_actually_both_doubt_reaches_every_named_feature(text: str) -> None:
+    clarifications = _clarifications(text)
+
+    assert clarifications["mobile_hotspot_required"] == "ambiguous"
+    assert clarifications["device_financing_change_forbidden"] == "ambiguous"
+
+
+# Review I-A / M-5: bounded work on adversarial 2000-character input. Locally
+# each case takes well under 1 ms (see the log); the bound is generous for CI.
+_WORST_CASES = {
+    "from 1, 1300 spaces, many $5": ("from 1" + " " * 1300 + "$5 " * 231),
+    "1, 1000 spaces, many $5": ("1" + " " * 1000 + "$5 " * 333),
+    "1, 1000 tabs, many $5": ("1" + "\t" * 1000 + "$5 " * 333),
+    "fullwidth dollar and circled 20": "\uff04\u2473" * 1000,
+    "$1- repeated": "$1-" * 667,
+    "from 1, spaces, 8 x $5": ("from 1" + " " * 1970 + "$5 " * 8),
+    "from 1, tabs, 8 x $5": ("from 1" + "\t" * 1970 + "$5 " * 8),
+    "(from 1, 240 spaces, $5) x 8": ("from 1" + " " * 240 + "$5") * 8,
+    "1 usd, spaces, 8 x $5": ("1 usd" + " " * 1970 + "$5 " * 8),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_WORST_CASES))
+def test_adversarial_input_is_parsed_in_bounded_time(name: str) -> None:
+    text = _WORST_CASES[name][-INTAKE_TEXT_MAX_LENGTH:]
+    started = time.perf_counter()
+    propose_intake(text)
+    elapsed = time.perf_counter() - started
+    print(f"{name}: {len(text)} chars, {elapsed * 1000:.2f} ms")
+
+    assert elapsed < 0.25
 
 
 def test_the_parser_is_deterministic() -> None:

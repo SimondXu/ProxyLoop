@@ -190,7 +190,7 @@ describe("ConversationWorkspace", () => {
 
     fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "$74" } });
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-    expect(screen.getByRole("alert")).toHaveTextContent(/stay above the confirmed target/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/stay above the target/);
     expect(createButton).toBeDisabled();
     expect(screen.getByText("Current monthly total").nextElementSibling).toHaveTextContent("$92.00");
     expect(runtime.createCase).not.toHaveBeenCalled();
@@ -372,8 +372,8 @@ describe("ConversationWorkspace", () => {
 
     send(FULL_REQUEST);
 
-    expect(await screen.findByText(kind === "422" ? /I could not read that request, and nothing was created/ : /could not be reached/)).toBeInTheDocument();
-    // Review M-2: the reply never repeats itself.
+    expect(await screen.findByText(kind === "422" ? /I could not read that request, and nothing was created/ : /could not be reached.*Nothing was created\./)).toBeInTheDocument();
+    // Review M-2: the reply says it once.
     expect(screen.queryByText(/Nothing was created\..*Nothing was created/)).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Confirm the facts before creating a Case." })).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText("Message ProxyLoop")).toBeEnabled();
@@ -447,17 +447,49 @@ describe("ConversationWorkspace", () => {
     expect(screen.getAllByText("Missing")).toHaveLength(4);
   });
 
-  it.each(Object.keys(OFF_TOPIC_PROPOSALS))("PR-12 M-1: the real proposal for off-topic %s opens no card", async (text) => {
+  // Real parser outputs. An amount clarification opens the card (re-review);
+  // a feature-only clarification with no phone word gets the scope reply.
+  it.each([
+    ["Help me plan a vacation for $2,000", true],
+    ["What does device financing mean?", false],
+    ["Can I keep my hotspot?", false],
+    ["Convert 10 euros to dollars", true],
+    ["Write me a poem about my $5 coffee", true],
+  ] as const)("PR-12 M-1: the real proposal for %s opens the card: %s", async (text, opensCard) => {
     const runtime = await import("../../lib/runtime-client");
     vi.mocked(runtime.proposeIntake).mockReset().mockResolvedValue(
-      OFF_TOPIC_PROPOSALS[text as keyof typeof OFF_TOPIC_PROPOSALS] as IntakeProposal,
+      OFF_TOPIC_PROPOSALS[text] as IntakeProposal,
     );
     render(<ConversationWorkspace />);
 
     send(text);
 
-    expect(await screen.findByText(/only supports lowering a fictional mobile bill/)).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Confirm the facts before creating a Case." })).not.toBeInTheDocument();
+    if (opensCard) {
+      expect(await screen.findByRole("heading", { name: "Confirm the facts before creating a Case." })).toBeInTheDocument();
+      expect(screen.queryByText(/only supports lowering a fictional mobile bill/)).not.toBeInTheDocument();
+    } else {
+      expect(await screen.findByText(/only supports lowering a fictional mobile bill/)).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Confirm the facts before creating a Case." })).not.toBeInTheDocument();
+    }
+  });
+
+  it("PR-12 re-review: on-topic text with an unsure amount and no phone word opens the card", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    vi.mocked(runtime.proposeIntake).mockReset().mockResolvedValue(intakeProposal(
+      { current_monthly_total: null, target_monthly_total: null, mobile_hotspot_required: null, device_financing_change_forbidden: null },
+      [
+        { field: "current_monthly_total", reason: "ambiguous" },
+        { field: "target_monthly_total", reason: "ambiguous" },
+        { field: "mobile_hotspot_required", reason: "missing" },
+        { field: "device_financing_change_forbidden", reason: "missing" },
+      ],
+    ));
+    render(<ConversationWorkspace />);
+
+    send("I pay $92 and I'd rather pay $75 or maybe $78");
+
+    expect(await screen.findByRole("heading", { name: "Confirm the facts before creating a Case." })).toBeInTheDocument();
+    expect(screen.getAllByText("Needs clarification · more than one reading")).toHaveLength(2);
   });
 
   it("PR-12 M-6: a proposal that resolves after Restart opens no card", async () => {

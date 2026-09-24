@@ -156,9 +156,18 @@ function clarificationsFromProposal(result: IntakeProposal): IntakeClarification
   );
 }
 
-// Whether the proposal read at least one value (review M-1).
-function proposalReadAValue(result: IntakeProposal): boolean {
-  return Object.values(result.proposal).some((value) => value !== null);
+// Whether the proposal is about a bill: it read at least one value (review
+// M-1), or it has a clarification on an amount (re-review), so on-topic text
+// without a phone word still opens the card.
+function proposalOpensCard(result: IntakeProposal): boolean {
+  return (
+    Object.values(result.proposal).some((value) => value !== null) ||
+    result.clarifications.some(
+      (item) =>
+        (item.field === "current_monthly_total" || item.field === "target_monthly_total") &&
+        item.reason !== "missing",
+    )
+  );
 }
 
 // Once the consumer supplies a field, its proposal clarification is resolved.
@@ -285,7 +294,7 @@ function intakeValueError(field: IntakeField, draft: IntakeDraft): string | null
       return "The current bill must be greater than $72.00 for this fictional offer.";
     }
     return current !== undefined && target !== undefined && target >= current
-      ? "The current bill must stay above the confirmed target. Enter a higher current USD amount."
+      ? "The current bill must stay above the target. Enter a higher current USD amount."
       : null;
   }
   if (field === "target") {
@@ -293,7 +302,7 @@ function intakeValueError(field: IntakeField, draft: IntakeDraft): string | null
       return "The target must be at least $72.00.";
     }
     if (target !== undefined && current !== undefined && target >= current) {
-      return "The target must stay below the confirmed current bill. Enter a lower USD amount.";
+      return "The target must stay below the current bill. Enter a lower USD amount.";
     }
   }
   return null;
@@ -1450,7 +1459,7 @@ export function ConversationWorkspace() {
     try {
       const result = await proposeIntake(text);
       if (requestId !== sessionId.current) return;
-      if (!proposalReadAValue(result) && !isSupportedMobileBillIntent(text)) {
+      if (!proposalOpensCard(result) && !isSupportedMobileBillIntent(text)) {
         addMessage("assistant", UNSUPPORTED_INTENT_MESSAGE);
         return;
       }
@@ -1475,9 +1484,11 @@ export function ConversationWorkspace() {
         "assistant",
         caught instanceof RuntimeClientError && caught.status === 422
           ? "I could not read that request, and nothing was created. Please rephrase it."
-          : caught instanceof Error
+          : caught instanceof RuntimeClientError && caught.kind === "invalid"
             ? caught.message
-            : "The local Runtime could not read that request. Nothing was created.",
+            : caught instanceof Error
+              ? `${caught.message} Nothing was created.`
+              : "The local Runtime could not read that request. Nothing was created.",
       );
     } finally {
       if (requestId === sessionId.current) setBusy(false);

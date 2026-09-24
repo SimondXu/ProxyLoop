@@ -26,11 +26,15 @@ branch is unmerged.
 | I-3 | In the Web, a money edit dropped both amounts' rule codes. Example: target $70 `below_fixed_offer`, then current edited to $95. The target's code disappeared while its rule still failed, leaving Create disabled with no prompt. | Applied. The other amount keeps its rule code until its own rule passes with the new value. The next prompt also covers any amount the local rules still reject. Vitest: target $70 → edit current to $95 → the target is re-prompted; $80 then enables Create and sends 9500/8000. A second vitest: `target_not_below_current` is released once the current bill is raised. |
 | M-1 | The card opened on clarifications alone, for off-topic text. | Applied. The card opens only if a value was read or the scope gate passes. The five off-topic inputs, with their real parser outputs, are in `apps/web/app/components/intake-offtopic-proposals.json`, pinned by pytest and used by vitest. |
 | M-2 | The failure reply could say "Nothing was created." twice. | Applied (vitest asserts no repeat). |
-| M-3 | `\d` accepted non-ASCII digits ("$٩٢" read as 92). The $999,999.99 cap existed only in the parser. | Applied. Digits are `[0-9]`. The cap is now the same in three places: the parser (`invalid_amount`), `CreateCaseRequest` (a current bill above the cap is a 422, and the target must already be lower), and the Web's local rule. The parity grid reaches the cap and one cent above it. |
-| M-4 | The 422 log names the key of an unknown field, and invalid UTF-8 gets the pre-existing 400 shape. | Recorded in the log only. The first is the known #82 limit; the second predates PR-12. |
+| M-3 | `\d` accepted non-ASCII digits ("$٩٢" read as 92). The $999,999.99 cap existed only in the parser. | Applied. Digits are `[0-9]`. The cap is now the same in three places: the parser (`invalid_amount`), `CreateCaseRequest` (a current bill above the cap is a 422, and the target must already be lower), and the Web's local rule. The `CreateCaseRequest` cap is a **root decision**, not the reviewer's recommendation; it tightens the create contract, which the re-review judged safe. The parity grid reaches the cap and one cent above it. |
+| M-4 | The 422 log names the key of an unknown field, and a body that is not valid UTF-8 gets a 400 shape. | Recorded in the log only. Both behaviours predate PR-12. The privacy test does not cover the extra-key case: the key a client chooses can appear in the server log. |
+| M-5 | Quadratic backtracking cost (found in the re-review together with I-A). | See I-A below. |
 | M-6 | Tests were missing. | Added. A proposal that resolves after Restart opens no card. Edit after a proposal. Contractions and questions. Change and range amounts. Off-topic inputs through the real parser outputs. |
 
 ## Verification after the follow-up
+
+The DB gate counts, the Browser run, and the red counts below are
+**implementer-reported**.
 
 - Red against the pre-review code: 32 of 219 pytest items fail against the
   `63d1d00` parser. 10 of 144 workspace vitest cases fail against the
@@ -42,3 +46,11 @@ branch is unmerged.
   gained the cap: `postgres-check` 38, `phase05a-check` 53, `phase06b1-check` 56.
 - The Browser journey passed against the real durable Runtime, with details in
   the log.
+
+## Re-review (Request Changes: one Important finding, I-A)
+
+| # | Finding | Disposition |
+|---|---|---|
+| I-A (with M-5) | `_TO_AMOUNT_BEFORE` and `_FROM_TO_BEFORE` had adjacent `\s*…\s+`, and `_role` ran them on the whole text before every amount. The cost was quadratic: `("from 1" + " "*1300 + "$5 "*231)[:2000]` took about 1.6 s. | Applied. The patterns no longer have adjacent optional whitespace and see only the right-stripped last 48 characters. More than 8 amounts make both amounts ambiguous without reading each one. A timing regression test covers spaces, tabs, repeated "＄⑳", "$1-", and long-whitespace cases under the 8-amount cap, each asserted < 250 ms. Implementer-measured: 1.7 s → ≤ 1.8 ms (see the log). The spec's "every regex is linear" claim is corrected. |
+| UX (accepted) | Common target cues. Lowering requests, including as a question. "Actually … both" and "Actually no." should reach every feature. The card should open on an amount clarification. "confirmed" should be dropped from the copy. The non-422 reply should say "Nothing was created." | Applied, with tests for each new phrasing. |
+| Limits (root) | An unrelated later negation makes the last feature ambiguous. "from $X to $Y" with no verb is read as current → target. | Recorded in the spec; no change. |

@@ -204,3 +204,51 @@ Screenshots are scratch and not committed. They are in
 - `04-pending-approval.png`
 - `05-verified-receipt.png`
 - `06-after-reload.png`
+
+## Re-review follow-up (I-A + accepted UX rules)
+
+The spec gained a second dated amendment (`intake-parser-v1`, amended before
+merge with no version bump). The review artifact gained a re-review section
+plus the corrections to M-3, M-4 and M-5.
+
+**I-A / M-5 timing.** Implementer-measured, best of 3, 2000-character input:
+
+| Input | Before (`b31a787`) | After |
+|---|---|---|
+| `from 1` + 1300 spaces + many `$5` | 1735.0 ms | 0.31 ms |
+| `1` + 1000 spaces + many `$5` | 1015.1 ms | 0.35 ms |
+| `1` + 1000 tabs + many `$5` | 936.2 ms | 0.34 ms |
+| `1 usd` + spaces + many `$5` | 89.3 ms | 0.2 ms |
+| repeated "＄⑳" | 385.0 ms | 0.64 ms |
+| repeated `$1-` | 173.6 ms | 0.49 ms |
+
+The inputs above now hit the 8-amount cap. The following cases stay under the
+cap and exercise the tail bound instead. They took 0.28–1.74 ms after the
+change; before the change they were not measured separately.
+
+- `from 1` + 1970 spaces or tabs + 8 × `$5`
+- (`from 1` + 240 spaces + `$5`) × 8
+- `1 usd` + spaces + 8 × `$5`
+
+The regression test asserts < 250 ms per case.
+
+**Red → green (pytest).** 14 of 245 items fail against the `b31a787` parser:
+the timing cases plus the new phrasings. 245 pass after the change.
+
+**Checks on the final tree:**
+
+| Check | Result |
+|---|---|
+| `make lint` | exit 0 |
+| `make typecheck` | exit 0 |
+| `make test` | exit 0: runtime 1839 passed / 63 skipped; ML 397 / 1 skipped |
+| `make web-check` | exit 0: vitest 219, build |
+| `make preflight` | exit 0: gated-skip pin 63 |
+
+**Not run.** The DB gates were not rerun: this round changed only the parser
+and the Web, and `CreateCaseRequest` is unchanged since the green gate run. No
+new Browser pass was run; the card changes this round are the opening rule and
+some copy.
+
+**Remaining.** None of the accepted items is unfinished. The root still owns
+the re-review and the PR.

@@ -82,8 +82,12 @@ ever wanted, it is a new decision and a new parser version.
 
 A pure module `proxyloop_api/intake.py`: `propose_intake(text) -> IntakeProposal`.
 Standard library `re` + `unicodedata` only (NFKC, `’` → `'`); no import of
-`case_runtime` or `agent_core`. Every regex is linear (no nested quantifiers) and
-the input is ≤ 2000 characters.
+`case_runtime` or `agent_core`. The input is ≤ 2000 characters. The regexes
+are not all provably linear. The re-review amendment below bounds the work
+instead: no pattern has adjacent optional whitespace runs; the end-anchored
+patterns see only a 48-character tail; at most 8 amounts are read one by one.
+A timing test holds adversarial 2000-character input under 250 ms (well under
+1 ms measured locally).
 
 Clauses: the text is split at `; ! ?` and newlines, at `.`/`,` followed by
 whitespace or the end (so `$1,092.50` stays whole), and at the words `and`/`but`.
@@ -285,3 +289,42 @@ guessed value.** The branch is unmerged, so the rule set keeps the name
   proposal, contractions and questions, change amounts, off-topic inputs through
   the real parser outputs in `apps/web/app/components/intake-offtopic-proposals.json`,
   pinned by pytest).
+
+## Amendment 2026-09-24 — re-review (Request Changes, I-A): more `intake-parser-v1` rules
+
+`intake-parser-v1` was amended twice before merge. The name was not bumped
+either time, because no proposal under this name has ever been merged or
+recorded.
+
+- **I-A / M-5 (bounded cost).** `_TO_AMOUNT_BEFORE` and `_FROM_TO_BEFORE` had
+  adjacent `\s*…\s+` and ran on the whole preceding text for every amount, so
+  their cost was quadratic (`("from 1" + " "*1300 + "$5 "*231)[:2000]` took
+  about 1.7 s). They are rewritten without adjacent optional whitespace and see
+  only the right-stripped last 48 characters before the amount. More than 8
+  amounts make both amounts `ambiguous` without reading each one. A timing test
+  asserts < 250 ms for the reviewer's worst inputs at 2000 characters.
+- **Target cues.** "I'd like", "would like", "hoping", "hope for", "happy with",
+  and "happy at" are target cues ("want it to be $X" and "get it down to $X"
+  already were).
+- **Lowering requests.** A question clause that contains a lowering verb
+  (`lower`, `reduce`, `bring down`, `cut`, `get`) still reads its amounts:
+  "Can you lower my phone bill from $92 to $75?" and "How can I lower my $92
+  phone bill to $75?" give current $92 and target $75. A price-history verb
+  still makes them ambiguous. "phone/mobile/cell bill" right after an amount
+  marks it as the current bill.
+- **"Actually … both".** A later clause that negates or changes something and
+  names no feature casts doubt on every named feature, not only the last one,
+  when its sentence says `both`, `all`, `everything`, or `actually`.
+  Examples: "Actually no.", "Actually, forget it, I want to change both."
+  `forget` counts as a negation.
+- **Web.** The card opens when the proposal read a value, when it has any
+  amount clarification other than `missing`, or when the scope gate passes.
+  This means on-topic text without a phone word still gets the card. Some
+  off-topic text that mentions money ("vacation for $2,000") now opens the card
+  too; the root accepted that. The copy now says "must stay below/above the
+  current bill/target" (no "confirmed"). A non-422 failure says "Nothing was
+  created." once.
+- **Documented limits (root decision, no change).**
+  - An unrelated later negation ("No rush", "I can't afford it") makes the last
+    named feature `ambiguous`. This fails safe.
+  - "from $X to $Y" with no verb at all is read as current → target.

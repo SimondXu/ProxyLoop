@@ -94,12 +94,22 @@ _MONEY = re.compile(
 )
 _STRICT_AMOUNT = re.compile(r"^(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]{1,2})?$")
 _RANGE_AFTER = re.compile(r"^\s*[-\u2013\u2014]\s*\$?[0-9]")
-_TO_AMOUNT_AFTER = re.compile(r"^\s*to\s*\$?\s?[0-9]")
-_TO_AMOUNT_BEFORE = re.compile(r"[0-9]\s*(?:usd|dollars?|bucks)?\s+to\s*$")
-_FROM_BEFORE = re.compile(r"\bfrom\s*$")
+# The end-anchored patterns run only on a bounded, right-stripped tail of the
+# text before an amount, and none has two adjacent optional whitespace runs
+# (review I-A: those backtracked quadratically on long whitespace).
+_TAIL_CHARS = 48
+# More amounts than this in one request are not read one by one: both amounts
+# are ambiguous, which also bounds the per-amount work.
+_MAX_MENTIONS = 8
+_TO_AMOUNT_AFTER = re.compile(r"^\s*to\s*(?:\$\s?)?[0-9]")
+_TO_AMOUNT_BEFORE = re.compile(r"[0-9](?:\s*(?:usd|dollars?|bucks))?\s+to$")
+_FROM_BEFORE = re.compile(r"\bfrom$")
 _FROM_TO_BEFORE = re.compile(
-    r"\bfrom\s+\$?\s?[0-9][0-9.,]*\s*(?:usd|dollars?|bucks)?\s+to\s*$"
+    r"\bfrom\s+(?:\$\s?)?[0-9][0-9.,]*(?:\s*(?:usd|dollars?|bucks))?\s+to$"
 )
+# A request to lower the bill: a question holding one still reads its amounts
+# ("Can you lower my phone bill from $92 to $75?").
+_LOWERING = re.compile(r"\b(?:lower|reduce|bring\s+down|cut|get)\b")
 # A price history verb: the amounts after it are not a current bill or a goal
 # we can tell apart ("went up to $92", "went from $80 to $92").
 _HISTORY = re.compile(
@@ -110,14 +120,18 @@ _CHANGE_AFTER = re.compile(r"^\s*(?:off|less|cheaper|lower|savings|in\s+savings)
 _CHANGE_BEFORE = re.compile(
     r"\b(?:save|saving|savings|cut|by|off|between|at\s+least|(?<!no )more\s+than)\b"
 )
-_AFTER_CURRENT = re.compile(r"^\s*(?:bill|plan|now|currently|today)\b")
+_AFTER_CURRENT = re.compile(
+    r"^\s*(?:(?:phone|mobile|cell)\s+)?(?:bill|plan|now|currently|today)\b"
+)
 _AFTER_TARGET = re.compile(
     r"^\s*(?:or\s+(?:less|lower|below|under|cheaper)|max(?:imum)?|tops|target|goal"
     r"|at\s+most)\b"
 )
 _BEFORE_TARGET = re.compile(
     r"\b(?:to|under|below|target|goal|at\s+most|no\s+more\s+than|less\s+than"
-    r"|lower\s+than|cheaper\s+than|max|maximum|reach|want|aim|budget)\b"
+    r"|lower\s+than|cheaper\s+than|max|maximum|reach|want|aim|budget"
+    r"|(?:i'd|i\s+would|would|we'd)\s+like|hoping|hope\s+for|happy\s+with"
+    r"|happy\s+at)\b"
 )
 _BEFORE_CURRENT = re.compile(
     r"\b(?:currently|current|now|pay|paying|paid|is|are|was|cost|costs|costing"
@@ -127,7 +141,7 @@ _BEFORE_CURRENT = re.compile(
 _NEGATION = (
     r"no|not|nope|nah|never|cannot|\w+n't|dont|isnt|doesnt|cant|wont|didnt|arent"
     r"|wasnt|shouldnt|wouldnt|without|drop|remove|cancel|lose|disable|off|stop"
-    r"|rid|end"
+    r"|rid|end|forget"
 )
 _HEDGE = r"unless|if|optional|maybe|perhaps|probably|rather|ideally|whatever"
 _CHANGE_WORDS = (
@@ -152,6 +166,9 @@ _FINANCING_RESIDUAL = re.compile(rf"\b(?:{_NEGATION}|{_HEDGE}|{_CHANGE_WORDS})\b
 # A clause that names no feature but negates or changes something casts doubt
 # on the feature named last ("Keep the hotspot? Nope", "... I'd drop it").
 _ORPHAN_DOUBT = re.compile(rf"\b(?:{_NEGATION}|{_CHANGE_WORDS})\b")
+# ... and on every named feature when its sentence says so ("Actually no.",
+# "Actually, forget it, I want to change both.").
+_ALL_DOUBT = re.compile(r"\b(?:both|all|everything|actually)\b")
 
 _Role = Literal["current", "target"]
 _Feature = Literal["hotspot", "financing"]
@@ -166,6 +183,7 @@ _FEATURES: dict[_Feature, tuple[re.Pattern[str], re.Pattern[str], re.Pattern[str
 class _Clause:
     text: str
     question: bool
+    sentence: str
 
 
 def propose_intake(text: str) -> IntakeProposal:
@@ -230,7 +248,7 @@ def _clauses(text: str) -> list[_Clause]:
     for sentence, end in _split(text, _SENTENCE_BREAK):
         question = end == "?" or bool(_QUESTION_START.match(sentence))
         clauses.extend(
-            _Clause(part, question)
+            _Clause(part, question, sentence)
             for part, _ in _split(sentence, _CLAUSE_BREAK)
             if part.strip()
         )
@@ -243,15 +261,22 @@ def _amounts(
     values: dict[_Role, set[int]] = {"current": set(), "target": set()}
     invalid: set[_Role] = set()
     unassigned = False
-    for clause in clauses:
+    mentions = [(clause, list(_MONEY.finditer(clause.text))) for clause in clauses]
+    if sum(len(matches) for _, matches in mentions) > _MAX_MENTIONS:
+        reasons["current_monthly_total"] = "ambiguous"
+        reasons["target_monthly_total"] = "ambiguous"
+        return None, None
+    for clause, matches in mentions:
         text = clause.text
+        # A question has no sure amounts unless it asks to lower the bill.
+        unsure = clause.question and not _LOWERING.search(text)
         previous_end = 0
-        for match in _MONEY.finditer(text):
+        for match in matches:
             before = text[: match.start()]
             after = text[match.end() :]
             role = (
                 None
-                if clause.question
+                if unsure
                 else _role(text[previous_end : match.start()], before, after)
             )
             previous_end = match.end()
@@ -293,13 +318,14 @@ def _amounts(
 def _role(segment: str, before: str, after: str) -> _Role | None:
     """The amount's role, or ``None`` when it has none or it is unsure."""
 
+    tail = before.rstrip()[-_TAIL_CHARS:]
     if _HISTORY.search(before):
         return None  # "went up to $92", "jumped from $85 to $110"
-    if _FROM_BEFORE.search(before) and _TO_AMOUNT_AFTER.match(after):
+    if _FROM_BEFORE.search(tail) and _TO_AMOUNT_AFTER.match(after):
         return "current"  # "from $92 to $75"
-    if _FROM_TO_BEFORE.search(before):
+    if _FROM_TO_BEFORE.search(tail):
         return "target"
-    if _TO_AMOUNT_AFTER.match(after) or _TO_AMOUNT_BEFORE.search(before):
+    if _TO_AMOUNT_AFTER.match(after) or _TO_AMOUNT_BEFORE.search(tail):
         return None  # a range: "$70 to $80"
     if _CHANGE_AFTER.match(after):
         return None  # a change amount: "$20 off", "$10 less"
@@ -368,7 +394,12 @@ def _features(clauses: list[_Clause]) -> dict[_Feature, _Verdict]:
         if named:
             last_named = max(named)[1]
         elif last_named is not None and _ORPHAN_DOUBT.search(clause.text):
-            verdicts[last_named] = "ambiguous"
+            if _ALL_DOUBT.search(clause.sentence):
+                for feature, verdict in verdicts.items():
+                    if verdict != "missing":
+                        verdicts[feature] = "ambiguous"
+            else:
+                verdicts[last_named] = "ambiguous"
     return verdicts
 
 
