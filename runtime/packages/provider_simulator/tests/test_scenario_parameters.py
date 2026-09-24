@@ -7,6 +7,7 @@ from datetime import timedelta
 
 import pytest
 from proxyloop_contracts import Case, ConstraintClassification
+from proxyloop_contracts.offer_policy import PREDEFINED_PROMOTION_CREDIT_MINOR
 from proxyloop_provider_simulator.environment import (
     EnvironmentDecision,
     ProviderEnvironment,
@@ -16,6 +17,7 @@ from proxyloop_provider_simulator.scenarios import (
     BENCHMARK_SCENARIOS,
     CASE_OBSERVED_AT,
     DEFAULT_PARAMS,
+    PROMOTION_CREDIT_MINOR,
     PROVIDER_CONFIGURATIONS,
     SCENARIO_FAMILIES,
     BenchmarkScenario,
@@ -389,3 +391,10 @@ def test_case_constraints_follow_the_forbidden_changes() -> None:
     ids = {item.constraint_id for item in case.constraints}
     assert len(ids) == 2
     assert all(item.version == 4 for item in ids)
+
+
+def test_v1_promotion_credit_equals_the_policy_constant() -> None:
+    # B1-11: ``offer_policy`` owns the catalogued credit. ``scenarios.py`` is a
+    # frozen V1 surface (harness/context/d1-simulator-v2-design.md, decision
+    # 1) and keeps its own literal; this pins the two to one value.
+    assert PROMOTION_CREDIT_MINOR == PREDEFINED_PROMOTION_CREDIT_MINOR

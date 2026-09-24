@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx
 import openai
+import pydantic
 import pytest
 from proxyloop_agent_core import (
     CaseCoordinator,
@@ -207,6 +208,52 @@ def test_model_adapter_rejects_invalid_or_wrong_metadata(
         adapter.decide(_fast_view_for_adapter(adapter))
     assert raised.value.kind is expected
     assert "other-model" not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    ("response_model", "accepted"),
+    [
+        ("runtime-model", True),
+        ("runtime-model-2024-08-06", True),
+        ("runtime-model-20240806", True),
+        # B1-6: a sibling model sharing the requested prefix is not the model.
+        ("runtime-model-mini", False),
+        ("runtime-model-mini-2024-08-06", False),
+        ("runtime-model-mini-20240806", False),
+        ("runtime-model-2024-08-06-preview", False),
+        ("runtime-model-2024086", False),
+        ("runtime-model-2024-0806", False),
+        ("runtime-model-latest", False),
+        ("runtime-model-v2", False),
+    ],
+)
+def test_model_adapter_accepts_only_the_requested_model_or_its_dated_snapshot(
+    response_model: str, accepted: bool
+) -> None:
+    adapter, _transport = _adapter(_Response(_fast_output(), model=response_model))
+    if accepted:
+        adapter.decide(_fast_view_for_adapter(adapter))
+        return
+    with pytest.raises(OpenAICompatibleAdapterError) as raised:
+        adapter.decide(_fast_view_for_adapter(adapter))
+    assert raised.value.kind is ModelFailureKind.MODEL_METADATA
+
+
+def test_model_adapter_classifies_sdk_schema_failure_as_invalid_output() -> None:
+    # B1-7: ``completions.parse`` raises pydantic ``ValidationError`` when the
+    # returned content does not match the schema; that is the model's output,
+    # not the transport.
+    try:
+        FastModelOutput.model_validate_json('{"dialogue_act":"not-an-act"}')
+    except pydantic.ValidationError as exc:
+        schema_error = exc
+    else:  # pragma: no cover - the payload above is always invalid
+        raise AssertionError("expected a ValidationError")
+    adapter, _transport = _adapter(error=schema_error)
+    with pytest.raises(OpenAICompatibleAdapterError) as raised:
+        adapter.decide(_fast_view_for_adapter(adapter))
+    assert raised.value.kind is ModelFailureKind.INVALID_OUTPUT
+    assert "not-an-act" not in str(raised.value)
 
 
 def test_model_adapter_fails_closed_on_timeout_and_transport_without_raw_text() -> None:

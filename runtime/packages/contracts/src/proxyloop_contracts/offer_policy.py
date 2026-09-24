@@ -11,8 +11,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+# The single owner of the catalogued promotion credit. The frozen V1
+# ``provider_simulator.scenarios.PROMOTION_CREDIT_MINOR`` keeps its own literal
+# and a test pins it to this value.
+PREDEFINED_PROMOTION_CREDIT_MINOR = 5_000
 _KNOWN_CREDITS_MINOR = {
-    "predefined_promotion_credit": 5_000,
+    "predefined_promotion_credit": PREDEFINED_PROMOTION_CREDIT_MINOR,
 }
 
 SUPPORTED_APPLIED_CHANGES: frozenset[str] = frozenset(
@@ -169,6 +173,7 @@ def _require_tokens(values: tuple[str, ...], *, name: str) -> None:
 
 
 __all__ = [
+    "PREDEFINED_PROMOTION_CREDIT_MINOR",
     "REMOVE_ADD_ON_PREFIX",
     "SUPPORTED_APPLIED_CHANGES",
     "OfferComplianceContext",

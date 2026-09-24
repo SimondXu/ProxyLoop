@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import time
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Protocol, cast
@@ -11,6 +12,7 @@ from urllib.parse import urlparse
 
 from proxyloop_agent_core import FastAdapterResult, ModelCallUsage, ModelIdentity
 from proxyloop_contracts import FastModelView, SlowWorkRequest, SlowWorkResult
+from pydantic import ValidationError
 
 from .errors import ModelFailureKind, OpenAICompatibleAdapterError
 from .outputs import (
@@ -19,6 +21,8 @@ from .outputs import (
     compile_fast_output,
     compile_slow_output,
 )
+
+_DATED_SNAPSHOT_SUFFIX = re.compile(r"\d{4}-\d{2}-\d{2}|\d{8}")
 
 # Bump when the adapter's request shaping or the system prompts in
 # ``_messages`` change; both are recorded on every ModelTrace.
@@ -144,6 +148,10 @@ class OpenAICompatibleAdapter:
                 response_format=output_model,
             )
             elapsed = self._monotonic() - started
+        except ValidationError as exc:
+            # ``parse`` validates the returned content against the schema
+            # client-side; a mismatch is the model's output, not the transport.
+            raise OpenAICompatibleAdapterError(ModelFailureKind.INVALID_OUTPUT) from exc
         except Exception as exc:
             kind = (
                 ModelFailureKind.TIMEOUT
@@ -201,9 +209,18 @@ def _validate_response_model(response: object, requested_model: str) -> None:
     response_model = _field(response, "model")
     if not isinstance(response_model, str) or not response_model:
         raise OpenAICompatibleAdapterError(ModelFailureKind.MODEL_METADATA)
+    # An alias such as ``gpt-4o`` may be served by its dated snapshot
+    # ``gpt-4o-2024-08-06`` (or ``-YYYYMMDD``, e.g. ``-20240806``); any other
+    # suffix (``gpt-4o-mini``, ``-latest``) is a different model.
     if not (
         response_model == requested_model
-        or response_model.startswith(f"{requested_model}-")
+        or (
+            response_model.startswith(f"{requested_model}-")
+            and _DATED_SNAPSHOT_SUFFIX.fullmatch(
+                response_model[len(requested_model) + 1 :]
+            )
+            is not None
+        )
     ):
         raise OpenAICompatibleAdapterError(ModelFailureKind.MODEL_METADATA)
 

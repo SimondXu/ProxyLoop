@@ -204,6 +204,8 @@ def verify_completion(request: CompletionVerification) -> CompletionDecision:
 
     if request.evaluated_at < request.executed_at:
         reject("evaluation_precedes_execution")
+    if request.offer.case_id != request.case.case_id:
+        reject("offer_case_mismatch")
 
     bill_snapshot = request.case.bill_snapshot
     if bill_snapshot is None:

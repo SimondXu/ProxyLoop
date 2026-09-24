@@ -20,7 +20,8 @@ from proxyloop_case_runtime import (
     StorageUnavailableError,
     ThinAgentRuntime,
 )
-from proxyloop_contracts import ApprovalDecision, EventActor, Money
+from proxyloop_contracts import ApprovalDecision, ApprovalRequest, EventActor, Money
+from proxyloop_provider_simulator.provider import FictionalMobileProvider
 
 BASE_TIME = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
 CREATE_COMMAND_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
@@ -255,6 +256,58 @@ def test_same_approval_command_retry_completes_pending_claim() -> None:
         "confirmation"
     ) == 1
     assert [item.value for item in final.provider.state_history].count("confirmed") == 1
+
+
+def test_same_process_retry_after_a_raising_provider_commit_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # B1-10: a Provider commit that raises leaves its outcome unknown. The
+    # same Runtime's cached executor refuses to run it again; the retry says
+    # so instead of committing a second time.
+    commits: list[datetime] = []
+
+    def _raising_commit(
+        self: FictionalMobileProvider,
+        approval_request: ApprovalRequest,
+        *,
+        executed_at: datetime,
+    ) -> object:
+        del self, approval_request
+        commits.append(executed_at)
+        raise RuntimeError("injected Provider commit failure")
+
+    monkeypatch.setattr(
+        FictionalMobileProvider, "execute_approved_offer", _raising_commit
+    )
+    now = [BASE_TIME]
+    runtime = ThinAgentRuntime(InMemoryCaseRepository(), clock=lambda: now[0])
+    runtime.apply_command(_create_command())
+    now[0] = BASE_TIME + timedelta(minutes=1)
+    event = runtime.apply_command(_event_command())
+    approval_command = CaseCommand(
+        command_id=APPROVAL_COMMAND_ID,
+        case_id=SCRIPTED_CASE_ID,
+        command_type=CaseCommandType.DECIDE_APPROVAL,
+        occurred_at=BASE_TIME + timedelta(minutes=2),
+        expected_revision=event.after_revision,
+        approval_id=event.approval_id,
+        decision="approved",
+        expected_case_revision=1,
+        expected_action_intent_revision=1,
+    )
+    now[0] = BASE_TIME + timedelta(minutes=2)
+    with pytest.raises(RuntimeError, match="injected Provider commit failure"):
+        runtime.apply_command(approval_command)
+
+    now[0] = BASE_TIME + timedelta(minutes=3)
+    with pytest.raises(CaseConflictError, match="outcome is unknown"):
+        runtime.apply_command(approval_command)
+
+    assert len(commits) == 1
+    pending = runtime.repository.get(SCRIPTED_CASE_ID)
+    assert pending is not None
+    assert pending.snapshot.pending_execution is True
+    assert pending.execution_count == 0
 
 
 def test_legacy_receipt_is_decodable_but_not_reusable() -> None:

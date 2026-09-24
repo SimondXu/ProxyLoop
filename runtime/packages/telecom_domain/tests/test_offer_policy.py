@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import pytest
-from proxyloop_contracts import Money
+from proxyloop_contracts import CompletionOutcome, Money
 from proxyloop_provider_simulator.episode import Phase01AEpisode
 from proxyloop_telecom_domain import (
     CompletionVerification,
@@ -201,3 +202,40 @@ def test_completion_verifier_uses_policy_for_total_cost_trap() -> None:
     )
 
     assert "total_cost_target_exceeded" in decision.reason_codes
+
+
+def test_completion_verifier_rejects_an_offer_from_another_case() -> None:
+    # B1-8: every other binding in the request names the case; the offer must
+    # too, or a confirmation could be verified against a foreign offer.
+    episode = Phase01AEpisode.success()
+    episode.issue_offer()
+    episode.request_approval()
+    episode.approve()
+    episode.execute()
+    episode.verify()
+    assert episode.completion_decision is not None
+    assert episode.offer is not None
+    assert episode.action_intent is not None
+    assert episode.approval_request is not None
+    assert episode.confirmation is not None
+    assert episode.confirmation_evidence is not None
+    foreign_offer = episode.offer.model_copy(
+        update={"case_id": UUID("0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f")}
+    )
+    decision = verify_completion(
+        CompletionVerification(
+            completion_id=episode.completion_decision.completion_id,
+            case=episode.case,
+            offer=foreign_offer,
+            action_intent=episode.action_intent,
+            approval_request=episode.approval_request,
+            confirmation=episode.confirmation,
+            evidence=episode.confirmation_evidence,
+            confirmation_authority=episode.provider,
+            executed_at=episode.confirmation.confirmed_at,
+            evaluated_at=episode.completion_decision.evaluated_at,
+        )
+    )
+
+    assert decision.decision is CompletionOutcome.NEEDS_REPLAN
+    assert decision.reason_codes == ("offer_case_mismatch",)
