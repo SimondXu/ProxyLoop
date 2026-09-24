@@ -35,6 +35,8 @@ def test_hosted_rerun_has_a_separate_module_command_artifact_and_make_gate() -> 
     # The r4 gate in `make test` is the rescore check; pin the dependency and
     # its recipe exactly so dropping either fails here.
     assert "hosted-rerun-check: hosted-rescore-check" in lines
+    alias = lines.index("hosted-rerun-check: hosted-rescore-check")
+    assert not lines[alias + 1].startswith("\t"), "hosted-rerun-check is an alias"
     rescore = lines.index("hosted-rescore-check:")
     assert lines[rescore + 1].split() == [
         "$(ML_PYTHON_RUN)",

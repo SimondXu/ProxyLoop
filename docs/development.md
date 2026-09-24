@@ -121,7 +121,9 @@ tests also need `PROXYLOOP_TEST_TEMPORAL_ADDRESS`:
 
 With the variables unset, `make preflight` exits 0 and reports those tests as
 skipped, so a "preflight passed" claim covers none of them. With the
-variables set, `unit-test` runs them too.
+variables set, `unit-test` runs them too. A change under `case_runtime`,
+`workflow_worker`, `connectors`, or `api` therefore also needs the
+real-dependency gates below.
 
 The real-dependency gates fail instead of skipping when a variable is missing:
 
@@ -133,8 +135,10 @@ The real-dependency gates fail instead of skipping when a variable is missing:
 
 `PROXYLOOP_TEST_DATABASE_URL` must name the `proxyloop_test` database; the
 tests refuse any other name. Locally that is the `postgres-test` Compose
-profile on port `55432` ([infra/README.md](../infra/README.md)). CI sets
-`PROXYLOOP_TEST_TEMPORAL_ADDRESS` to `127.0.0.1:7233`.
+profile on port `55432` ([infra/README.md](../infra/README.md)).
+`PROXYLOOP_TEST_TEMPORAL_ADDRESS` is locally the Compose `temporal` service at
+`127.0.0.1:7233` by default (`TEMPORAL_PORT` overrides the port); CI sets it to
+`127.0.0.1:7233`.
 
 Run these gates one at a time, from one worktree at a time. The tests
 truncate their tables in the shared `proxyloop_test` database and reuse fixed

@@ -214,7 +214,7 @@ Phase 03A1 implemented and generated the canonical wire contracts for `CaseConte
 
 Contract set 1.1 added `ExecutionClaim` and `CompletionReceipt`; per-type version rules are in `contracts/README.md`.
 
-Every versioned contract carries a Contract Schema Version (`schema_version`) and an Entity Revision (`revision`, an optimistic sequence number starting at 1); references to another entity pin its revision (`case_revision`, `strategy_revision`, `constraint_set_revision`, `offer_revision`, and so on). An approval is valid only for the exact case, strategy, constraint-set, and offer revisions it references.
+Every canonical contract carries a Contract Schema Version (`schema_version`); all except `Evidence` and `FastTurnDecision` also carry an Entity Revision (`revision`, an optimistic sequence number starting at 1). References to another entity pin its revision (`case_revision`, `strategy_revision`, `constraint_set_revision`, `offer_revision`, and so on). An approval is valid only for the exact case, strategy, constraint-set, and offer revisions it references.
 
 ## State Ownership
 

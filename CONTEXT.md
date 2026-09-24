@@ -29,7 +29,7 @@ The counterparty offering or managing a consumer service; all research-MVP Provi
 _Avoid_: Vendor, carrier when used generically
 
 **Bill Snapshot**:
-An evidence-linked representation of the Consumer's current service and charges at a specific version.
+An evidence-linked representation of the Consumer's current service and charges at a specific revision.
 _Avoid_: Bill, account state
 
 **Offer**:

@@ -147,3 +147,53 @@ Verification (no `PROXYLOOP_TEST_*` set):
   `390 passed, 1 skipped`. `git status --short data/` empty.
 
 Not run: `make web-check`, `make preflight`, and the real-dependency gates.
+
+## Independent review: accepted findings (root decisions)
+
+- **G-1 status: documented (`AGENTS.md`, `CLAUDE.md`, `docs/development.md`),
+  not enforced by `make preflight`.** Not closed. No Makefile change.
+  - `AGENTS.md` step 9 gains one tool-agnostic sentence (113 bytes): "It skips
+    DB/Temporal tests; service changes also need the serial real-dependency
+    gates in `docs/development.md`." `AGENTS.md` is 11993 bytes, under the
+    12000-byte cap in `scripts/validate_layout.py`. A longer sentence (12225
+    bytes total) failed `check-layout`; root chose to shorten it rather than
+    raise the cap or cut other rules. This amends the spec's "`AGENTS.md`
+    semantics out of scope" line by root decision.
+  - `docs/development.md` "Local gate and real-dependency gates" now names the
+    four directories (`case_runtime`, `workflow_worker`, `connectors`, `api`)
+    and keeps the shared `proxyloop_test` / one-at-a-time rule.
+  - `CLAUDE.md` is back to mapping only: the final-gate bullet matches `main`;
+    the real-dependency bullet points to `AGENTS.md` and
+    `docs/development.md`. The profile wording is corrected per
+    `compose.yaml`: only `postgres-test` is profile-gated; `temporal` is a
+    default service, needed by `phase05a-check` and `phase06b1-check`.
+- **M-1** (`docs/architecture.md`): every canonical contract carries
+  `schema_version`; all except `Evidence` and `FastTurnDecision` carry
+  `revision`. Checked by iterating `CANONICAL_MODELS` `model_fields` (25
+  types; those two lack `revision`).
+- **M-2, `CONTEXT.md` word changes on this branch** (two in total):
+  Approval Request "Case version" → "Case revision" (above), and Bill
+  Snapshot "at a specific version" → "at a specific revision". Checked:
+  `BillSnapshot` has a `revision` field.
+- **M-3** (test pin): the test also asserts the line after
+  `hosted-rerun-check: hosted-rescore-check` does not start with a tab, so the
+  target stays a pure alias. Red/green on a scratch copy: passes on the real
+  Makefile; with a recipe line added under the alias it fails with
+  `AssertionError: hosted-rerun-check is an alias`.
+- **M-5** (`docs/development.md`): the local `PROXYLOOP_TEST_TEMPORAL_ADDRESS`
+  is the Compose `temporal` service, `127.0.0.1:7233` by default,
+  `TEMPORAL_PORT` overrides the port (`compose.yaml`); CI value unchanged.
+
+Known limit (M-6, out of scope): `docs/architecture.md` says the 03A1
+contracts are "enforced by contract-generation and drift checks"; per
+`repo-audit-A` that is overstated. Not changed here.
+
+Verification after these changes (no `PROXYLOOP_TEST_*` set):
+
+- Pinned test + `test_phase_03a0_architecture.py`: 14 passed.
+- `make format-check lint`: exit 0.
+- `make preflight-fast`: exit 0 (includes `check-layout`).
+- `git diff --check`: exit 0.
+
+Not run after these changes: `make typecheck`, `make test`, `make web-check`,
+`make preflight`, and the real-dependency gates.
