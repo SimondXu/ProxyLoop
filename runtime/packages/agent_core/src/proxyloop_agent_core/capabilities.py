@@ -66,9 +66,15 @@ class CapabilityExecutor:
       approval under any other binding or idempotency key is rejected
       (``approval_already_consumed``).
 
-    Both records are written only after the adapter's ``commit()`` returns, so
-    ``commit`` must be atomic; a commit that raises after mutating leaves no
-    record and a retry would execute again.
+    Both records are written only after the adapter's ``commit()`` returns.
+    Before ``commit()`` the executor claims the idempotency key and the
+    approval; a ``commit`` that raises may already have mutated the adapter, so
+    its claims stay and any later request for that key or approval is
+    rejected (``execution_outcome_unknown``) instead of executing again.
+    Reconciling such an execution is the caller's job, against the adapter's
+    own state; the executor never clears the unresolved mark. The runtime
+    reconciles through its ``provider.confirmation`` short-circuit before it
+    calls the executor at all.
 
     ``terms_derivation`` optionally recomputes the material terms of the
     snapshot offer so an offer whose terms changed under an unchanged
@@ -87,6 +93,8 @@ class CapabilityExecutor:
         self._lock = RLock()
         self._evidence_by_idempotency_key: dict[str, tuple[str, Evidence]] = {}
         self._consumed_approvals: dict[UUID, tuple[str, Evidence]] = {}
+        self._unresolved_keys: set[str] = set()
+        self._unresolved_approvals: set[UUID] = set()
 
     def execute(
         self, request: CapabilityExecutionRequest
@@ -98,6 +106,14 @@ class CapabilityExecutor:
         self, request: CapabilityExecutionRequest
     ) -> CapabilityExecutionOutcome:
         key = request.action_intent.idempotency_key
+        approval_id = (
+            request.approval.approval_id if request.approval is not None else None
+        )
+        if key in self._unresolved_keys or approval_id in self._unresolved_approvals:
+            return CapabilityExecutionOutcome(
+                status=CapabilityExecutionStatus.REJECTED,
+                reason_codes=("execution_outcome_unknown",),
+            )
         binding = _request_binding(request)
         prior = self._evidence_by_idempotency_key.get(key)
         if prior is not None:
@@ -149,13 +165,15 @@ class CapabilityExecutor:
                 status=CapabilityExecutionStatus.REJECTED,
                 reason_codes=evidence_reasons,
             )
+        self._unresolved_keys.add(key)
+        if approval_id is not None:
+            self._unresolved_approvals.add(approval_id)
         prepared_object.commit()
+        self._unresolved_keys.discard(key)
         self._evidence_by_idempotency_key[key] = (binding, evidence)
-        if request.approval is not None:
-            self._consumed_approvals[request.approval.approval_id] = (
-                binding,
-                evidence,
-            )
+        if approval_id is not None:
+            self._unresolved_approvals.discard(approval_id)
+            self._consumed_approvals[approval_id] = (binding, evidence)
         return CapabilityExecutionOutcome(
             status=CapabilityExecutionStatus.EXECUTED,
             reason_codes=("simulator_capability_executed",),
