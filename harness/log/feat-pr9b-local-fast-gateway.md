@@ -246,3 +246,21 @@ Review artifact: `harness/code_review/feat-pr9b-local-fast-gateway.md`.
   The real conversion still reproduces the committed attestation (`matches`).
 - M7: the README and the log state that the distilled latency was measured
   while other work ran on the machine.
+
+Evidence scripts (scratch, not committed): `scratchpad/impl-pr9b/m2_replay.py`
+(M2 replay), `real_weight_check.py` (M1 real-MLX partial load),
+`m1-code-state.json` (the `--code-state` input to `--write`).
+
+## Gates after the remediation and the `origin/main` merge (`b950011`, main @ `04a8ed5`)
+
+- Merge conflicts: `Makefile` (both sides' targets kept: `fast-slow-split-check`
+  from PR-8a next to `phase03c-local-parity-check`) and the status file (main's
+  rows and the PR-9b row kept).
+- `make lint`: passed. `make typecheck`: passed (runtime 70, ml 70 source files).
+- `make test`: passed (runtime 1470 passed, 63 gated skips; ml 468 passed;
+  every `*-check` passed, including `phase03c-local-parity-check` (stack parity
+  held) and PR-8a's `fast-slow-split-check`).
+- `make preflight`: passed (web 189 tests and build, `lock-check` with
+  `ml/uv.lock` unchanged, gated skips matching the pin of 63).
+- `git diff origin/main -- ml/pyproject.toml ml/uv.lock …/qwen_mlx.py
+  …/fast_output.py runtime apps` is empty. No `PROXYLOOP_TEST_*` set.
