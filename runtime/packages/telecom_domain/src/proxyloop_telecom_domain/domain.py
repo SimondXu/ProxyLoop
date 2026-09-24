@@ -194,7 +194,9 @@ def case_offer_violations(
     The contract admits values outside the policy's domain: a negative fee
     sum from a credit line, or a repeated token in a goal or offer tuple.
     Those fail closed as one reason code instead of raising, so no caller
-    can approve or complete on them and none crashes on them. A non-UTC
+    can approve or complete on them and none crashes on them. An invalid
+    ``applied_changes`` (for example a repeated confirmed change) also maps
+    to ``offer_terms_invalid``. A non-UTC
     ``evaluated_at`` is a caller bug, not offer data, and still raises.
     """
 

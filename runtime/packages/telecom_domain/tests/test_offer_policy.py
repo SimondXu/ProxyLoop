@@ -312,7 +312,7 @@ def test_completion_verifier_fails_closed_on_a_negative_fee_sum() -> None:
     decision = _verify_with_offer(episode, credited)
 
     assert decision.decision is CompletionOutcome.NEEDS_REPLAN
-    assert "offer_terms_invalid" in decision.reason_codes
+    assert decision.reason_codes == ("offer_terms_invalid",)
     assert decision.evidence_ids == ()
 
 
@@ -327,7 +327,13 @@ def test_completion_verifier_fails_closed_on_duplicate_offer_features() -> None:
     decision = _verify_with_offer(episode, repeated)
 
     assert decision.decision is CompletionOutcome.NEEDS_REPLAN
-    assert "offer_terms_invalid" in decision.reason_codes
+    # The repeated feature also changes the material terms and no longer
+    # matches the confirmed features, so those bindings fail too.
+    assert decision.reason_codes == (
+        "approval_binding_mismatch",
+        "offer_terms_invalid",
+        "confirmation_state_mismatch",
+    )
 
 
 def test_case_offer_violations_returns_a_reason_code_for_each_invalid_input() -> None:

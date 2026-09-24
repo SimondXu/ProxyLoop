@@ -70,6 +70,27 @@ Branch `fix/b1-9-total-offer-policy` from `origin/main` @ `74e2073`.
   log contained NUL bytes and an inconsistent count (1203 passed vs 1271
   collected), so it was discarded and rerun into a fresh file.
 
+## Independent review (Approve) and follow-ups
+
+- Reviewer: Approve; differential fuzz of 20k inputs, 0 exceptions, 0
+  differences on previously-returning inputs.
+- Minor 1: the two `verify_completion` tests assert exact reason codes,
+  order verified by running them: negative fee -> `("offer_terms_invalid",)`;
+  duplicate features -> `("approval_binding_mismatch", "offer_terms_invalid",
+  "confirmation_state_mismatch")`.
+- Minor 2: the `case_offer_violations` docstring notes that an invalid
+  `applied_changes` (e.g. a repeated confirmed change) also maps to
+  `offer_terms_invalid`.
+- Docs: `harness/context/audit-remediation-status.md` moves B1-9 to the §4
+  closed table and adds backlog item R-19 (`SafeObservationAdapter.
+  _adapt_offer` raises on the same inputs via `SafeOffer.__post_init__`;
+  callers are `ml/` and `scripts/`, not the product runtime).
+  `docs/architecture.md` and `CONTEXT.md` describe verifier outcomes and
+  offer fields but not the raise-vs-reason-code behaviour or the fee sign,
+  so they are unchanged.
+- `origin/main` still @ `ff35dca` (already merged); nothing new to merge.
+  DB gates not rerun (test/doc-only change; passed above).
+
 ## Limits
 
 - The wire still admits a negative fee line; enforcing non-negative fees at
