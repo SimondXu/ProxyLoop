@@ -42,8 +42,16 @@ DB-gated test was added, so the gated-skip pin is unchanged.
 
 ## Checks
 
-See the root report for the final `make web-check` and `make preflight` results
-on the pushed sha.
+Run on `6896450` without any `PROXYLOOP_TEST_*` variable set:
+
+- `make web-check` passed: lint, typecheck, vitest (176 passed), and `next build`.
+- `make preflight` passed: runtime pytest reported 1469 passed and 63 skipped, and
+  the 63 gated skips match the per-file pin. ML pytest reported 397 passed and 1
+  skipped. Every committed `*-check` passed, and so did web-check.
+- Not run: the DB gates. No service code changed, so they are not required.
+- Pending: a Browser check against a real Runtime. It needs the DB lane (Compose).
+  Port 8000 is held by an unrelated process, so it would use the PR-8b
+  scratch-launcher approach.
 
 ## Limits
 
