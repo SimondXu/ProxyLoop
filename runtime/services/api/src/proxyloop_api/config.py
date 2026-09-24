@@ -13,6 +13,7 @@ from proxyloop_case_runtime import (
     PostgresCaseRepository,
     ThinAgentRuntime,
 )
+from proxyloop_local_fast import fast_adapter_from_environment, selected_fast_backend
 from proxyloop_openai_adapter import OpenAICompatibleAdapter
 from proxyloop_workflow_worker import (
     TemporalCaseClient,
@@ -45,10 +46,16 @@ def runtime_from_environment(
     else:
         raise ValueError("PROXYLOOP_STORAGE_MODE must be memory or postgres")
     selected = mode or values.get("PROXYLOOP_RUNTIME_MODE", "scripted")
+    fast_backend = selected_fast_backend(values)
     if selected == "scripted":
-        return ThinAgentRuntime(repository)
+        # A local Fast backend is opt-in; Slow stays scripted (decision 17).
+        return ThinAgentRuntime(repository, fast=fast_adapter_from_environment(values))
     if selected != "model":
         raise ValueError("PROXYLOOP_RUNTIME_MODE must be scripted or model")
+    if fast_backend != "scripted":
+        raise ValueError(
+            "PROXYLOOP_FAST_BACKEND requires PROXYLOOP_RUNTIME_MODE=scripted"
+        )
     required = {
         "PROXYLOOP_MODEL_API_KEY": values.get("PROXYLOOP_MODEL_API_KEY"),
         "PROXYLOOP_MODEL_BASE_URL": values.get("PROXYLOOP_MODEL_BASE_URL"),
@@ -85,6 +92,11 @@ async def services_from_environment(
         return RuntimeServices(runtime_from_environment(mode=mode, environ=values))
     if orchestration_mode != "temporal":
         raise ValueError("PROXYLOOP_ORCHESTRATION_MODE must be direct or temporal")
+    if selected_fast_backend(values) != "scripted":
+        # Until PR-11 the worker runs scripted Fast only.
+        raise ValueError(
+            "Temporal orchestration requires PROXYLOOP_FAST_BACKEND=scripted"
+        )
     selected_runtime_mode = mode or values.get("PROXYLOOP_RUNTIME_MODE", "scripted")
     if selected_runtime_mode != "scripted":
         raise ValueError("Temporal orchestration requires scripted Runtime mode")
