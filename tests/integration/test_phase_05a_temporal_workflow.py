@@ -39,6 +39,7 @@ from proxyloop_workflow_worker.workflow import (
     COMMAND_ID_PREFIX,
     UPDATE_NAME,
     CaseWorkflow,
+    _outermost_failure_category,
     activity_id_for_command,
     update_id_for_command,
 )
@@ -55,7 +56,14 @@ from temporalio.client import (
     WorkflowUpdateStage,
 )
 from temporalio.contrib.pydantic import pydantic_data_converter
-from temporalio.exceptions import ApplicationError
+from temporalio.exceptions import (
+    ActivityError,
+    ApplicationError,
+    CancelledError,
+    RetryState,
+    TimeoutType,
+)
+from temporalio.exceptions import TimeoutError as ActivityTimeoutError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Replayer, UnsandboxedWorkflowRunner, Worker
 
@@ -1810,3 +1818,117 @@ def test_replay_pre_r16_history_keeps_the_expiry_patch_gate(
         temporal_workflow.NondeterminismError, match="id: 35, TimerStarted"
     ):
         _replay(_PRE_R16_HISTORY, UnsandboxedWorkflowRunner())
+
+
+def _activity_failure(cause: BaseException, retry_state: RetryState) -> ActivityError:
+    error = ActivityError(
+        "activity failed",
+        scheduled_event_id=1,
+        started_event_id=2,
+        identity="proxyloop-test",
+        activity_type=ACTIVITY_NAME,
+        activity_id="proxyloop-test-activity",
+        retry_state=retry_state,
+    )
+    error.__cause__ = cause
+    return error
+
+
+def _raised_from(outer: BaseException, inner: BaseException) -> BaseException:
+    outer.__cause__ = inner
+    return outer
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        pytest.param(
+            _activity_failure(
+                _raised_from(
+                    ApplicationError("c", type="case_conflict", non_retryable=True),
+                    ApplicationError("s", type="CaseConflictError"),
+                ),
+                RetryState.NON_RETRYABLE_FAILURE,
+            ),
+            ("case_conflict", True),
+            id="chained-case-conflict-abandons",
+        ),
+        pytest.param(
+            _activity_failure(
+                _raised_from(
+                    ApplicationError("c", type="storage_unavailable"),
+                    ApplicationError("s", type="StorageUnavailableError"),
+                ),
+                RetryState.MAXIMUM_ATTEMPTS_REACHED,
+            ),
+            ("storage_unavailable", False),
+            id="chained-storage-exhausted-retries",
+        ),
+        pytest.param(
+            _activity_failure(
+                _raised_from(
+                    ApplicationError("c", type="channel_conflict", non_retryable=True),
+                    ApplicationError("s", type="ChannelConflictError"),
+                ),
+                RetryState.NON_RETRYABLE_FAILURE,
+            ),
+            ("channel_conflict", True),
+            id="flagged-not-listed-abandons",
+        ),
+        pytest.param(
+            _activity_failure(
+                _raised_from(
+                    ApplicationError("c", type="case_not_found"),
+                    ApplicationError("s", type="CaseNotFoundError"),
+                ),
+                RetryState.NON_RETRYABLE_FAILURE,
+            ),
+            ("case_not_found", True),
+            id="listed-not-flagged-abandons",
+        ),
+        pytest.param(
+            _activity_failure(
+                _raised_from(
+                    ActivityTimeoutError(
+                        "t",
+                        type=TimeoutType.SCHEDULE_TO_CLOSE,
+                        last_heartbeat_details=[],
+                    ),
+                    ApplicationError("c", type="storage_unavailable"),
+                ),
+                RetryState.TIMEOUT,
+            ),
+            ("activity_timeout", False),
+            id="timeout-over-last-failure-retries",
+        ),
+        pytest.param(
+            _activity_failure(CancelledError("c"), RetryState.CANCEL_REQUESTED),
+            ("activity_failed", False),
+            id="cancelled-retries",
+        ),
+        pytest.param(
+            _activity_failure(
+                ApplicationError("u", non_retryable=True),
+                RetryState.NON_RETRYABLE_FAILURE,
+            ),
+            ("activity_failed", True),
+            id="untyped-flagged-abandons",
+        ),
+        pytest.param(
+            _raised_from(
+                ApplicationError("x", type="state_invalid", non_retryable=True),
+                ValueError("v"),
+            ),
+            ("state_invalid", True),
+            id="workflow-state-invalid-abandons",
+        ),
+    ],
+)
+def test_outermost_failure_category_classifies_the_raised_failure(
+    error: BaseException, expected: tuple[str, bool]
+) -> None:
+    """R-16: the expiry classifier reads the failure the activity (or the
+    Workflow) raised, not a converted cause beneath it; non-retryable exactly
+    when flagged or listed in the activity retry policy."""
+
+    assert _outermost_failure_category(error) == expected

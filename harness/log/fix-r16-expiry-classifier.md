@@ -65,4 +65,29 @@ on the make command line only:
   build, lock checks, `compileall`, `docker compose config` clean. The
   gated skips are covered by the three gates above.
 
-Remaining: independent `reviewer`; PR; CI; merge.
+Review (`harness/code_review/fix-r16-expiry-classifier.md`): Approve, three
+Minors accepted and applied without the DB: the in-flight-run wording in the
+spec's risks, a DB-free parametrized test of `_outermost_failure_category`
+(`test_outermost_failure_category_classifies_the_raised_failure`, eight
+shapes, run by `make test`), and the fixture-recorder limit below.
+After the Minors, without the DB: passed `make lint`, `make typecheck`,
+`make format-check`, `make test` (runtime 1260 passed, 53 skipped; ml 397
+passed, 1 skipped).
+
+## Known limits
+
+- Runs in progress at deploy time: a run that replays a pre-deploy expiry
+  failure caches `patched("expiry-failure-outermost-cause") == False` for the
+  rest of the run, so a chained non-retryable expiry failure in it is retried
+  indefinitely with the backoff capped at 5 minutes, until an Update adopts a
+  newer transition (`_adopt_transition` → `_reset_expiry_backoff`) or the run
+  rolls; history grows by about one failed activity plus timer per 5 minutes
+  meanwhile. The growth predates this fix (no history-size Continue-As-New).
+- Every roll resets the run-local expiry state, so an abandoned expiry is
+  attempted once more in the new run (unchanged).
+- No recorder script is committed for
+  `temporal_history.case-workflow-expiry-chained-conflict.pre-r16.json`; the
+  recording procedure is described above and in the spec. Re-recording needs
+  `main` @ `d23aff9` and a hand-written driver, as for the R-1 fixture.
+
+Remaining: PR; CI; merge.

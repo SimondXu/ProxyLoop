@@ -82,10 +82,18 @@ plain text or the decoded payloads.
 
 ## Risks carried
 
-- Runs in progress at deploy time: a run that replays an expiry failure
-  recorded before the deploy keeps `patched(...) == False` for the rest of
-  that run, so a later chained non-retryable expiry failure in that run is
-  still retried with backoff until the run rolls.
+- Runs in progress at deploy time: when a run replays an expiry failure
+  recorded before the deploy, the SDK caches
+  `patched("expiry-failure-outermost-cause") == False` for the rest of that
+  run. A chained non-retryable expiry failure in that run is then classified
+  retryable and retried indefinitely (there is no attempt limit), with the
+  backoff capped at `EXPIRY_RETRY_MAXIMUM_BACKOFF` (5 minutes). It stops only
+  when an Update adopts a newer transition (`_adopt_transition` →
+  `_reset_expiry_backoff`) or the run rolls (command threshold or the R-1
+  exhaustion roll; failed expiries do not count toward the threshold).
+  Meanwhile the history grows by about one failed activity plus its retry
+  timer every 5 minutes. That unbounded growth predates this fix: no
+  history-size Continue-As-New exists.
 - Unchanged: the expiry state is run-local, so any roll (threshold or R-1)
   resets `_expiry_abandoned_for` and the abandoned expiry is attempted once
   more in the new run.
