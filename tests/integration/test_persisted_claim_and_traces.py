@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
@@ -426,20 +426,16 @@ def test_traces_are_appended_in_the_same_write_and_survive_completion(
         _decode(foreign)
 
 
-def test_persisted_traces_are_timed_on_the_runtime_clock(
-    issued: list[ModelTrace],
+def test_persisted_traces_share_the_case_time_base(
+    issued: list[ModelTrace], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # A clock that advances on every read: a trace timed on it starts and
-    # completes at readings the runtime clock actually returned, never
-    # collapsed onto the route request's time.
-    readings: list[datetime] = []
-
-    def ticking() -> datetime:
-        readings.append(BASE_TIME + timedelta(milliseconds=len(readings)))
-        return readings[-1]
-
+    # Each trace starts at the time of the Case event whose route ran the
+    # model and lasts the measured latency (a fake perf counter: 0.25 s per
+    # call), so a persisted trace never needs a second clock to be placed.
+    ticks = iter(range(1_000))
+    monkeypatch.setattr(runtime_module.time, "perf_counter", lambda: next(ticks) / 4)
     repository = _RecordingRepository()
-    runtime = ThinAgentRuntime(repository, clock=ticking)
+    runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)
     runtime.apply_command(_create_command())
     runtime.apply_command(_event_command())
 
@@ -447,10 +443,11 @@ def test_persisted_traces_are_timed_on_the_runtime_clock(
     assert stored is not None
     assert [trace.role for trace in stored.model_traces] == ["slow", "fast"]
     assert stored.model_traces == tuple(issued)
+    event_times = {event.occurred_at for event in stored.events}
     for trace in stored.model_traces:
-        assert trace.started_at in readings
-        assert trace.completed_at in readings
-        assert trace.completed_at > trace.started_at
+        assert trace.started_at in event_times
+        assert trace.latency_ms == 250
+        assert trace.completed_at == trace.started_at + timedelta(milliseconds=250)
 
 
 class _RecordingChannelRepository(_ChannelRepository):

@@ -67,14 +67,24 @@ traces the real coordinator returns; the stub is gone.
 ## After the rebase onto PR3 (`f989613`)
 
 - `runtime.py`: all eight `CaseCoordinator(...)` constructions go through
-  `ThinAgentRuntime._coordinator`, which passes `clock=self.now` and
-  `monotonic=time.perf_counter`. Without it a persisted trace started at the
-  route request's time and, with no adapter-reported latency, completed at
-  the same instant with `latency_ms=0`.
-- New `test_persisted_traces_are_timed_on_the_runtime_clock` (ticking runtime
-  clock; every trace's `started_at`/`completed_at` is a reading that clock
-  returned, and `completed_at > started_at`). Red with the helper reverted to
-  `CaseCoordinator(snapshot=snapshot)`: `started_at` not among the readings.
+  `ThinAgentRuntime._coordinator`, which passes `monotonic=time.perf_counter`.
+  Without it every persisted trace had `latency_ms=0` and
+  `completed_at == started_at` (the scripted adapters report no latency).
+- Decision (root): the Runtime clock is **not** passed as the coordinator's
+  `clock`, although the handoff said `clock=self.now`. That was tried: the
+  coordinator reads a clock twice per model call, so an injected sequence
+  clock (`SequenceClock` in `test_phase_04a_agent_runtime.py`) had its later
+  operation times shifted and two 04a tests failed (an approval no longer
+  expired; a late recovery lost its claim time). Every model-calling route
+  (create, event, channel) already carries `created_at` = the Case event's
+  time, which is the trace start without a clock; the monotonic measurement
+  supplies the duration. The Runtime clock stays the single time base and
+  keeps one read per operation.
+- New `test_persisted_traces_share_the_case_time_base`: each persisted trace
+  starts at a stored Case event's `occurred_at`, `latency_ms` is the
+  (patched) perf-counter measurement, and `completed_at = started_at +
+  latency`. Red with the helper reverted to `CaseCoordinator(snapshot=...)`:
+  `latency_ms` 0 != 250.
 - From the PR3 review: `trace_id` is not an idempotency key; a replayed
   command is deduplicated by command id before any coordinator run, so no
   trace is appended twice.

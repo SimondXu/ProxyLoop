@@ -1632,11 +1632,11 @@ class ThinAgentRuntime:
         return refreshed, outcome.traces
 
     def _coordinator(self, snapshot: CaseContextSnapshot) -> CaseCoordinator:
-        # Model traces are timed on the Runtime clock, so a persisted trace
-        # carries the same time base as the Case's events.
-        return CaseCoordinator(
-            snapshot=snapshot, clock=self.now, monotonic=time.perf_counter
-        )
+        # A trace starts at the route request's time, which is this Runtime
+        # clock's reading for the operation, and lasts the measured latency.
+        # The Runtime clock itself is not handed over: every extra read would
+        # move the operation times an injected clock defines.
+        return CaseCoordinator(snapshot=snapshot, monotonic=time.perf_counter)
 
     def now(self) -> datetime:
         """Return the Runtime clock's current UTC time."""
