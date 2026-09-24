@@ -338,9 +338,12 @@ class ThinAgentRuntime:
         state = self._require(case_id)
         if transition is not None and transition.case_id != case_id:
             raise CaseConflictError("transition reference Case id does not match")
+        # A receipt's route describes the snapshot it produced; a replayed
+        # receipt the Case has since moved past reports the current state.
         route = (
             transition.route
             if transition is not None
+            and transition.after_revision == state.snapshot.revision
             else "terminal"
             if state.snapshot.completion_decision is not None
             else "current"
@@ -1110,8 +1113,6 @@ class ThinAgentRuntime:
                 )
             return self._repeat_approved(state, approval, command_id=command_id)
         if approval.decision is not ApprovalDecision.PENDING:
-            if occurred_at is None:
-                self._clock_now()
             raise CaseConflictError("approval is already terminal")
         decided_at = (
             occurred_at if occurred_at is not None else self._approval_time(snapshot)

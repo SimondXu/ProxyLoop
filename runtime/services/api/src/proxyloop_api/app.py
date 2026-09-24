@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
@@ -68,6 +69,8 @@ from .operations import (
     OperationRecorder,
 )
 from .readiness import check_readiness, liveness_payload, readiness_payload
+
+logger = logging.getLogger(__name__)
 
 
 class TemporalCommandClient(Protocol):
@@ -223,12 +226,16 @@ def create_app(
         request: Request, exc: CaseNotFoundError
     ) -> JSONResponse:
         request.state.operation_error_category = "case_not_found"
-        return JSONResponse(status_code=404, content={"detail": str(exc)})
+        _log_refusal(request, "case_not_found", exc)
+        # The same content-free detail the Temporal branch returns.
+        return JSONResponse(status_code=404, content={"detail": "case not found"})
 
     @api.exception_handler(CaseConflictError)
     async def handle_conflict(request: Request, exc: CaseConflictError) -> JSONResponse:
-        request.state.operation_error_category = _conflict_category(exc)
-        return JSONResponse(status_code=409, content={"detail": str(exc)})
+        category = _conflict_category(exc)
+        request.state.operation_error_category = category
+        _log_refusal(request, category, exc)
+        return JSONResponse(status_code=409, content={"detail": category})
 
     @api.exception_handler(StorageUnavailableError)
     async def handle_storage_unavailable(
@@ -794,6 +801,17 @@ def _policy_outcome(snapshot: Any) -> str:
     if snapshot.action_intents:
         return "allowed"
     return "none"
+
+
+def _log_refusal(request: Request, category: str, exc: BaseException) -> None:
+    """Keep the Runtime's refusal text server-side, keyed by correlation id."""
+
+    logger.info(
+        "request refused: correlation_id=%s category=%s reason=%s",
+        request.state.correlation_id,
+        category,
+        exc,
+    )
 
 
 def _conflict_category(exc: CaseConflictError) -> str:

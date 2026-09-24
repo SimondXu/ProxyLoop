@@ -79,7 +79,7 @@ async def _test_thin_runtime_completes_multiturn_approval_flow() -> None:
             json={"content": "Please continue while approval is pending."},
         )
         assert blocked.status_code == 409
-        assert blocked.json() == {"detail": "case is awaiting approval"}
+        assert blocked.json() == {"detail": "case_conflict"}
         after_blocked_event = runtime.repository.get(UUID(case_id))
         assert after_blocked_event is not None
         assert after_blocked_event.snapshot.revision == (
@@ -124,7 +124,7 @@ async def _test_thin_runtime_completes_multiturn_approval_flow() -> None:
             json={"decision": "approved"},
         )
         assert duplicate.status_code == 409
-        assert duplicate.json() == {"detail": "approval is already terminal"}
+        assert duplicate.json() == {"detail": "case_conflict"}
         state = runtime.repository.get(UUID(case_id))
         assert state is not None
         assert [item.value for item in state.provider.state_history].count(
@@ -136,7 +136,7 @@ async def _test_thin_runtime_completes_multiturn_approval_flow() -> None:
             json={"content": "Do something else after completion."},
         )
         assert terminal_event.status_code == 409
-        assert terminal_event.json() == {"detail": "case is terminal"}
+        assert terminal_event.json() == {"detail": "case_conflict"}
 
         readable = await client.get(f"/cases/{case_id}")
         assert readable.status_code == 200
@@ -163,7 +163,7 @@ async def _test_api_missing_case_and_stale_revision() -> None:
             json={"content": "stale", "expected_revision": 999},
         )
         assert stale.status_code == 409
-        assert stale.json() == {"detail": "case snapshot revision is stale"}
+        assert stale.json() == {"detail": "stale_cas"}
 
 
 def test_api_create_maps_exact_intake_facts_and_event_preserves_them() -> None:
@@ -545,7 +545,7 @@ async def _test_exact_pinned_retry_completes_pending_claim() -> None:
 
         first = await client.post(url, json=body, headers=headers)
         assert first.status_code == 409
-        assert first.json() == {"detail": "injected final CAS conflict"}
+        assert first.json() == {"detail": "case_conflict"}
         claimed = repository.get(UUID(case_id))
         assert claimed is not None
         assert claimed.snapshot.pending_execution is True
@@ -607,7 +607,7 @@ async def _test_late_pin_less_recovery_verifies_at_claim_time() -> None:
             json={"decision": "approved", "expected_revision": turn.json()["revision"]},
         )
         assert first.status_code == 409
-        assert first.json() == {"detail": "injected final CAS conflict"}
+        assert first.json() == {"detail": "case_conflict"}
 
         late = await client.post(url, json={"decision": "approved"})
         assert late.status_code == 200, late.json()
@@ -627,4 +627,4 @@ async def _test_late_pin_less_recovery_verifies_at_claim_time() -> None:
             json={"content": "Do something else after completion."},
         )
         assert terminal_event.status_code == 409
-        assert terminal_event.json() == {"detail": "case is terminal"}
+        assert terminal_event.json() == {"detail": "case_conflict"}
