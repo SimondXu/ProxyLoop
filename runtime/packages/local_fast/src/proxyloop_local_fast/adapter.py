@@ -59,6 +59,8 @@ DEFAULT_GATEWAY_URL: Final = "http://127.0.0.1:8765"
 # Temporal activity and Next proxy limits.
 DEFAULT_TIMEOUT_S: Final = 25.0
 MAX_TIMEOUT_S: Final = 25.0
+# Below this a call cannot even connect; it is a configuration error (N1).
+MIN_TIMEOUT_S: Final = 0.1
 LOOPBACK_HOSTS: Final = frozenset({"127.0.0.1", "::1", "localhost"})
 # What the Phase 03C parity was measured on (review M2). The runtime cannot
 # import ml/, so these mirror `QWEN3_8B_BF16_SPEC.model` in
@@ -84,9 +86,11 @@ def validate_timeout(timeout_s: float) -> float:
         isinstance(timeout_s, bool)
         or not isinstance(timeout_s, int | float)
         or not math.isfinite(timeout_s)
-        or not 0 < timeout_s <= MAX_TIMEOUT_S
+        or not MIN_TIMEOUT_S <= timeout_s <= MAX_TIMEOUT_S
     ):
-        raise ValueError(f"the local Fast timeout must be in (0, {MAX_TIMEOUT_S:g}]")
+        raise ValueError(
+            f"the local Fast timeout must be in [{MIN_TIMEOUT_S:g}, {MAX_TIMEOUT_S:g}]"
+        )
     return float(timeout_s)
 
 
@@ -357,8 +361,10 @@ def _exchange(
     headers = {"Accept": "application/json"}
     if body is not None:
         headers["Content-Type"] = "application/json"
-    connection = _DeadlineConnection(host, port, time.monotonic() + timeout_s)
+    connection: _DeadlineConnection | None = None
     try:
+        # Built inside the try: an expired deadline here is a typed timeout.
+        connection = _DeadlineConnection(host, port, time.monotonic() + timeout_s)
         connection.request(method, path, body=body, headers=headers)
         response = connection.getresponse()
         return response.status, response.read(MAX_RESPONSE_BYTES + 1)
@@ -372,9 +378,10 @@ def _exchange(
             "fast_adapter_protocol_error", "http_response_invalid"
         ) from None
     finally:
-        connection.close()
-        if connection.raw_sock is not None:
-            connection.raw_sock.close()
+        if connection is not None:
+            connection.close()
+            if connection.raw_sock is not None:
+                connection.raw_sock.close()
 
 
 __all__ = [
@@ -385,6 +392,7 @@ __all__ = [
     "LOCAL_FAST_PROVIDER",
     "LOOPBACK_HOSTS",
     "MAX_TIMEOUT_S",
+    "MIN_TIMEOUT_S",
     "SERVED_BASE_MODEL",
     "SERVED_PROMPT_VERSION",
     "Backend",

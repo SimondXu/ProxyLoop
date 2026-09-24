@@ -17,6 +17,7 @@ from proxyloop_local_fast import (
     LocalFastStartupError,
     fast_adapter_from_environment,
 )
+from proxyloop_local_fast.adapter import _CallFailed, _exchange
 
 MODEL_KEYS = {
     "PROXYLOOP_MODEL_API_KEY": "test-key-not-real",
@@ -66,6 +67,15 @@ def gateway() -> Iterator[FakeGateway]:
         ),
         (
             {"PROXYLOOP_FAST_BACKEND": "untuned", "PROXYLOOP_FAST_TIMEOUT_S": "nan"},
+            "PROXYLOOP_FAST_TIMEOUT_S",
+        ),
+        # Re-review N1: below the 0.1 s floor.
+        (
+            {"PROXYLOOP_FAST_BACKEND": "untuned", "PROXYLOOP_FAST_TIMEOUT_S": "1e-300"},
+            "PROXYLOOP_FAST_TIMEOUT_S",
+        ),
+        (
+            {"PROXYLOOP_FAST_BACKEND": "untuned", "PROXYLOOP_FAST_TIMEOUT_S": "0.09"},
             "PROXYLOOP_FAST_TIMEOUT_S",
         ),
         (
@@ -161,6 +171,24 @@ def test_the_default_timeout_is_the_25_second_cap(gateway: FakeGateway) -> None:
     )
     assert adapter is not None
     assert adapter._timeout_s == 25.0
+
+
+@pytest.mark.parametrize("timeout_s", [0.0, 1e-300, 0.099])
+def test_connect_refuses_a_timeout_below_the_floor(timeout_s: float) -> None:
+    # Re-review N1 (a): a near-zero budget is a configuration error.
+    with pytest.raises(ValueError, match="timeout"):
+        LocalFastHttpAdapter.connect(
+            base_url="http://127.0.0.1:8765", backend="distilled", timeout_s=timeout_s
+        )
+
+
+def test_an_expired_deadline_is_a_typed_timeout(gateway: FakeGateway) -> None:
+    # Re-review N1 (b): expiry while the connection is built maps to the
+    # allow-listed timeout, never an untyped TimeoutError.
+    host, port = gateway.url.removeprefix("http://").split(":")
+    with pytest.raises(_CallFailed) as raised:
+        _exchange(host, int(port), 1e-300, "GET", "/v1/identity", None)
+    assert raised.value.code == "fast_adapter_timeout"
 
 
 def test_scripted_is_the_default_and_starts_no_client() -> None:

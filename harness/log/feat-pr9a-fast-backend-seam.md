@@ -184,6 +184,23 @@ every `*-check` passed; no committed artifact moved); `make preflight` exit 0
 the make command line only: `make postgres-check` 38 passed;
 `make phase05a-check` 53 passed; `make phase06b1-check` 56 passed.
 
+## Focused re-review: Approve, plus N1
+
+N1 (Minor, accepted): a near-zero timeout escaped as an untyped
+`TimeoutError`, because `_DeadlineConnection` was built before the `try` in
+`_exchange`. Both fixes are in `proxyloop_local_fast` only:
+`validate_timeout` refuses anything below 0.1 s (and the environment parse
+reuses it), and the connection is now built inside the `try`, so expiry becomes
+`fast_adapter_timeout`. Red on `8b9adae`: 5 failed in
+`test_local_fast_config.py`. `runtime.py` is unchanged, so the DB gates recorded
+above still hold.
+
+Checks after N1, with no `PROXYLOOP_TEST_*` variable set: `make lint` passed;
+`make typecheck` passed (runtime 75 source files, ml 59); `make test` exit 0
+(runtime 1591 passed, 63 skipped; ml 397 passed, 1 skipped; every `*-check`
+passed; no committed artifact moved); `make preflight` exit 0 (Web 156 tests,
+gated skips equal the pinned 63).
+
 ## Decisions and assumptions (implementer; root to confirm)
 
 - `FastAdapterFailure.detail_code` is one code; for a renderer refusal with

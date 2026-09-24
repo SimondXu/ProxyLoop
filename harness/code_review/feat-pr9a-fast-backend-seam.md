@@ -34,5 +34,14 @@ default timeout goes to 25 s, following PR-9b's measurement.
   `WireError` for every case. `probe_e2e.py` gives 200 plus a `FAILED` Fast
   trace. `probe_trickle.py` ends in `fast_adapter_timeout`.
 - The repository checks are in the log, `harness/log/feat-pr9a-fast-backend-seam.md`.
-- `runtime.py` changed (M3), so the DB gates have to be rerun when the lane is
-  free.
+- `runtime.py` changed (M3), so the DB gates were rerun on `8b9adae`:
+  `postgres-check` 38, `phase05a-check` 53, `phase06b1-check` 56 passed.
+
+## Focused re-review
+
+**Target**: `8b9adae` (the I1/M1–M4 fixes and the 25 s timeout).
+**Recommendation**: Approve, with one Minor that the root accepted.
+
+| # | Finding | Disposition |
+|---|---|---|
+| N1 (Minor) | A near-zero timeout (for example `PROXYLOOP_FAST_TIMEOUT_S=1e-300`) passed validation. `_exchange` built `_DeadlineConnection` before its `try`, so the expired deadline raised an untyped `TimeoutError` and the server crashed at start with a traceback. | Fixed both ways, in `proxyloop_local_fast` only (no `runtime.py`; the DB gates are unaffected). (a) `validate_timeout`, which the environment parse now also uses, refuses anything below `MIN_TIMEOUT_S = 0.1`. (b) `_exchange` builds the connection inside the `try`, so any deadline expiry becomes `fast_adapter_timeout`. Red first: 5 failed on `8b9adae`, all an untyped `TimeoutError` or a failed startup. Tests: `1e-300` and `0.09` in the environment refusal matrix, `test_connect_refuses_a_timeout_below_the_floor`, `test_an_expired_deadline_is_a_typed_timeout`. Docs now state the range as [0.1, 25]. |

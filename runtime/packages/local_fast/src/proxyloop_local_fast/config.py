@@ -8,7 +8,6 @@ switches backends automatically.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Mapping
 from typing import Final
 
@@ -17,8 +16,10 @@ from .adapter import (
     DEFAULT_GATEWAY_URL,
     DEFAULT_TIMEOUT_S,
     MAX_TIMEOUT_S,
+    MIN_TIMEOUT_S,
     Backend,
     LocalFastHttpAdapter,
+    validate_timeout,
 )
 
 FAST_BACKEND_VARIABLE: Final = "PROXYLOOP_FAST_BACKEND"
@@ -50,8 +51,10 @@ def fast_adapter_from_environment(
         timeout = float(timeout_text)
     except ValueError as error:
         raise ValueError(_timeout_message()) from error
-    if not math.isfinite(timeout) or not 0 < timeout <= MAX_TIMEOUT_S:
-        raise ValueError(_timeout_message())
+    try:
+        validate_timeout(timeout)
+    except ValueError as error:
+        raise ValueError(_timeout_message()) from error
     local: Backend = "distilled" if backend == "distilled" else "untuned"
     return LocalFastHttpAdapter.connect(
         base_url=values.get(FAST_GATEWAY_URL_VARIABLE, DEFAULT_GATEWAY_URL),
@@ -61,7 +64,10 @@ def fast_adapter_from_environment(
 
 
 def _timeout_message() -> str:
-    return f"{FAST_TIMEOUT_VARIABLE} must be a number in (0, {MAX_TIMEOUT_S:g}]"
+    return (
+        f"{FAST_TIMEOUT_VARIABLE} must be a number in "
+        f"[{MIN_TIMEOUT_S:g}, {MAX_TIMEOUT_S:g}]"
+    )
 
 
 __all__ = [
