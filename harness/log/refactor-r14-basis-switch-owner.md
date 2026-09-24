@@ -49,9 +49,53 @@ No contract schema, generated artifact or fixture change.
 - Not run (root schedules): `make postgres-check`, `make phase05a-check`,
   `make phase06b1-check`, `make preflight`.
 
-## Residual risk
+## Independent review follow-up
 
-The snapshot validator no longer independently re-derives the runtime's
-basis formula; it still checks the runtime's inputs. The formula keeps
-independent oracles in `tests/contract/test_contract_set_1_1.py` and the
-committed fixtures.
+Reviewer verdict: Approve with two Important items, both applied.
+
+1. New `runtime/packages/contracts/tests/test_planning_basis_components.py`
+   (12 tests). A hand-ordered reference that never calls
+   `planning_basis_components` or relies on the snapshot validator:
+   mixed-status ledger (VERIFIED facts in reverse `fact_id` order plus a
+   CANDIDATE and a REJECTED fact), two constraints in reverse id order, two
+   offers and two approvals in reverse id order, provider config
+   `carrier-b:custom-config-7`, both versions. Asserts dict equality with
+   `planning_basis_components`, that `CaseContextSnapshot` accepts the
+   reference basis, and that it rejects a basis built without the VERIFIED
+   filter (id-sorted), without the fact sort, without the constraint sort,
+   or (1.0) without the offer/approval sort. 1.1 offer/approval components
+   use `material_offers_fingerprint` / `approval_state_fingerprint`, which
+   `tests/contract/test_contract_set_1_1.py` pins separately.
+   Reviewer mutation plugin (`r14mutant.py`, copied unchanged, same
+   SHA-256), new test file only: unmutated 12 passed; `nofilter` 6 failed;
+   `nofactsort` 6 failed; `no10sort` 3 failed (1.0 only, as expected);
+   `noconsort` 6 failed; also `swap` 4 failed and `provconst` 4 failed.
+2. Spec corrected: no committed JSON fixture carries component fingerprints
+   (the drift gate checks schema shape only), and `test_contract_set_1_1.py`
+   `_components` pins only the version switch and provider config.
+
+Merged `origin/main` @ `ff35dca` (docs only, no overlap), then reran:
+
+- Focused suite: 184 passed, 2 skipped (172 before plus the 12 new).
+- `make format-check lint typecheck`: exit 0 (ruff format 117 + 90 files,
+  ruff "All checks passed!" twice, mypy 66 + 59 files clean).
+- `make contracts-check`: exit 0, "Contract artifacts match the canonical
+  Pydantic source".
+- `make preflight-fast`: exit 0.
+- `make test`: exit 0; runtime 1212 passed, 51 skipped (DB/Temporal gated);
+  ML 397 passed, 1 skipped (`yaml`); every artifact `--check` gate green.
+- Still not run (root schedules): `postgres-check`, `phase05a-check`,
+  `phase06b1-check`, `make preflight`.
+
+## Residual risk and known limits
+
+- The snapshot validator no longer independently re-derives the runtime's
+  basis formula; it still checks the runtime's inputs. The formula is now
+  pinned by `test_planning_basis_components.py`.
+- Pre-existing, out of scope: `scripts/run_phase_03a1_harness.py`,
+  `tests/integration/test_offer_policy_authority.py` and
+  `tests/integration/test_phase_03a1_agent_core.py` build a `PlanningBasis`
+  by hand with verified facts in ledger order (and offers, approvals and
+  constraints unsorted). They are not the canonical formula; this change
+  does not touch them and did not investigate which inputs would expose the
+  difference.
