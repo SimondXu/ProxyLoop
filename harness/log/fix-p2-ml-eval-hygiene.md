@@ -73,3 +73,20 @@ under `data/` changed.
 - `git status --porcelain data/`: empty.
 - Not run: `make preflight`, `make web-check`, the real-dependency gates (no
   runtime, API, workflow or web code changed).
+
+## Update to `origin/main` (2026-09-24)
+
+- `git merge origin/main` twice (no rebase, no force-push): `f989613` (#70,
+  #71), then `f818b61` (#72), which landed while verification ran. Both merges
+  were conflict-free; neither touched `ml/` or `data/`. The branch diff against
+  `origin/main` is still the three `ml/` files plus this log and the spec.
+- Re-verified on the merged tree `dfc21b9`: `make format-check lint typecheck`
+  exit 0; `make preflight-fast` exit 0; `make test` (no `PROXYLOOP_TEST_*` set)
+  exit 0, runtime `1174 passed, 46 skipped`, ML `393 passed, 1 skipped`, the
+  same three informational drift states. One earlier `make test` run on the
+  first merge (`cac1eab`) reported ML `390 passed, 1 skipped` with exit 0; the
+  three later runs on the same tree and after (`make unit-test`, `make test`,
+  direct pytest with `-rA`) all reported `393 passed, 1 skipped`, and
+  collection is 394. The 3-test gap was not reproduced or explained.
+- `git status --short data/`: empty. `git diff --stat origin/main -- ml/ data/`:
+  only `pipeline.py`, `test_pipeline.py`, `test_phase03a1_erratum_artifacts.py`.
