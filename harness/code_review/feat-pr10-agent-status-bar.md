@@ -41,3 +41,16 @@ instead of "best current offer", and execution status instead of delivery status
   with the verified receipt, and after reload.
 
 Evidence: `harness/log/feat-pr10-agent-status-bar.md`.
+
+## Re-review
+
+**Target**: `feat/pr10-agent-status-bar` @ `06d3b46`. **Result**: all four checks
+(I-1, I-2, I-3, the Minors) pass. One narrow Important finding remains, and the root
+accepted it:
+
+| # | Finding | Disposition |
+|---|---|---|
+| R-1 | After create the Runtime sits in `strategy`, waiting for the consumer (the workspace shows "Needs input" and the confirm button), but the bar said "Planning from your confirmed goal." (Browser screenshot 01). | Applied. The workspace passes `awaitingConsumer: phase === "confirm"` next to `blocked`, and the line reads "Waiting for you to confirm the Task Brief." `blocked` still wins. "Planning…" now shows only while the confirmation command runs (`working`). Red first: the renderer case and the workspace PR-10 case failed (2 failed / 187 passed). Green: vitest 189 passed. The workspace case holds the event POST open on a deferred promise and checks for "Planning" only while it is in flight. |
+
+Screenshot 01 was not retaken. The lane was already released and the throwaway
+Compose project removed, and the vitest cases cover the change.

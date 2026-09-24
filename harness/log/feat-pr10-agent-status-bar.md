@@ -108,6 +108,20 @@ The Web was the production build of `081109b` (`next start`).
   `03-after-approve.png`, `04-completion-verified-receipt.png`, and
   `05-after-reload.png`. The bar text per stage is in `result.json`.
 
+## Re-review fix (R-1)
+
+- The re-review passed I-1..I-3 and the Minors, with one Important finding: after
+  create, the bar said "Planning from your confirmed goal." while the Case waited
+  for the consumer (screenshot 01).
+- Fix: `awaitingConsumer: phase === "confirm"` gives "Waiting for you to confirm
+  the Task Brief."; "Planning…" shows only in `working`.
+- Red: 2 failed / 187 passed. Green: 189 passed.
+- Screenshot 01 was not retaken: the lane is released and the Compose project
+  removed. The vitest renderer and workspace cases cover the change.
+- `origin/main` was still `c018390`, so the merge was "Already up to date".
+- After the fix, on `3a7f443`: `make web-check` exit 0 (vitest 189); `make preflight`
+  exit 0 (runtime 1470 passed / 63 skipped, pin matches; ML 397 passed / 1 skipped).
+
 ## Limits
 
 - The Status Bar does not show channel delivery status or the Fast gate verdict,
