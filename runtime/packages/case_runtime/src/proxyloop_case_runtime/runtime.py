@@ -411,6 +411,7 @@ class ThinAgentRuntime:
             raise ChannelConflictError("channel content hash mismatch")
         with self._lane(command.case_id):
             state = self._require(command.case_id)
+            _check_not_applied(state, command.command_id)
             snapshot = state.snapshot
             _check_expected_revision(snapshot, command.expected_revision)
             if inbox.case_id != command.case_id or inbox.binding_ref != BINDING_REF:
@@ -589,6 +590,7 @@ class ThinAgentRuntime:
                 raise ChannelConflictError("delivery observation regressed")
             with self._lane(command.case_id):
                 state = self._require(command.case_id)
+                _check_not_applied(state, command.command_id)
                 snapshot = state.snapshot
                 _check_expected_revision(snapshot, command.expected_revision)
                 transition = _transition_ref(
@@ -889,6 +891,7 @@ class ThinAgentRuntime:
         command_fingerprint: str | None,
     ) -> RuntimeResult:
         state = self._require(case_id)
+        _check_not_applied(state, command_id)
         snapshot = state.snapshot
         _check_expected_revision(snapshot, expected_revision)
         if snapshot.completion_decision is not None or snapshot.case.phase in {
@@ -2212,6 +2215,19 @@ def _find_transition(
         ),
         None,
     )
+
+
+def _check_not_applied(state: CaseRuntimeState, command_id: UUID | None) -> None:
+    """Refuse, inside the Case lane, a command whose receipt is stored.
+
+    A retry without ``expected_revision`` can pass ``apply_command``'s receipt
+    check before the first attempt writes, then wait on the lane. It stops
+    here, before any model call or write; ``apply_command`` then returns the
+    stored receipt as a duplicate (M-3).
+    """
+
+    if command_id is not None and _find_transition(state, command_id) is not None:
+        raise CaseConflictError("command was already applied")
 
 
 def _check_receipt_fingerprint(

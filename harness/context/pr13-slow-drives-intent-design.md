@@ -28,6 +28,23 @@ proposal below (decisions 16, 19, 20). Root answers to §8:
 
 Sequencing: `runtime.py` writers in order PR-8a → PR-9a → PR-13.
 
+Root must-fix M-3 (2026-09-24, found in the PR-11 review), added to
+PR-13's scope. `expected_revision` is optional on a consumer event
+(`app.py:91`), so a retry of the same command can pass `apply_command`'s
+receipt check before the first attempt writes, and then wait on the Case
+lane. On main only the first scripted turn's approval refused that retry
+("awaiting approval"). PR-13 lets a turn apply without an approval (J6),
+which removes that accidental guard, so the retry would append the event
+twice. Rule: inside the Case lane, before any coordinator run or write, a
+command whose receipt is already stored raises `CaseConflictError`, and
+`apply_command` returns the stored receipt as a duplicate. Coverage:
+- It applies to `append_event`, `ingest_channel_event` (channel commands
+  may also omit `expected_revision`), and the receipt-deduplicated
+  delivery-callback write.
+- Create, approve and expire already refuse such a replay before any model
+  call or write: create through the repository's uniqueness check, approve
+  and expire through the decided approval. A test pins each of them.
+
 ---
 
 # PR-13 design proposal: Slow's proposal drives the intent, with an A-3 coordinator validator

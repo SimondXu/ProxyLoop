@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import threading
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -19,7 +20,12 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
-from proxyloop_agent_core import ScriptedProposingSlowAdapter, ScriptedSlowAdapter
+from proxyloop_agent_core import (
+    FastAdapterResult,
+    ScriptedDialogueFastAdapter,
+    ScriptedProposingSlowAdapter,
+    ScriptedSlowAdapter,
+)
 from proxyloop_api import create_app
 from proxyloop_case_runtime import (
     ASSISTANT_MESSAGE_EVENT_TYPE,
@@ -41,6 +47,7 @@ from proxyloop_contracts import (
     CapabilityReference,
     CasePhase,
     EventActor,
+    FastModelView,
     ModelResult,
     Money,
     OfferReference,
@@ -59,7 +66,11 @@ from test_phase_04b_model_runtime import (
     _slow_output_proposing_accept,
 )
 from test_phase_04c_persistent_case_store import _assert_non_provider_fields_equal
-from test_phase_06b1_channel_runtime import BASE_TIME, _create_command
+from test_phase_06b1_channel_runtime import (
+    BASE_TIME,
+    _ChannelRepository,
+    _create_command,
+)
 from test_r10_terminal_delivery_callback import (
     _callback,
     _CodecChannelRepository,
@@ -651,3 +662,341 @@ def test_the_codec_refuses_to_write_a_foreign_offer_proposal() -> None:
         PostgresCaseRepository._encode_state(
             replace(created, standing_proposal=foreign)
         )
+
+
+# -- M-3: a replayed command is re-checked inside the Case lane -----------------
+
+
+class _HeldFast(ScriptedDialogueFastAdapter):
+    """Holds the first Fast call until released; later calls pass through."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def decide(self, view: FastModelView) -> FastAdapterResult:
+        self.calls += 1
+        if self.calls == 1:
+            self.entered.set()
+            assert self.release.wait(10)
+        return super().decide(view)
+
+
+class _WatchedRepository(InMemoryCaseRepository):
+    """Signals when a watched thread first reads a Case."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.watched: threading.Thread | None = None
+        self.read = threading.Event()
+
+    def get(self, case_id: UUID) -> CaseRuntimeState | None:
+        if threading.current_thread() is self.watched:
+            self.read.set()
+        return super().get(case_id)
+
+
+def _unpinned_event(command_id: UUID, at: datetime) -> CaseCommand:
+    # No expected_revision: the API allows it (EventCommand.expected_revision).
+    return CaseCommand(
+        command_id=command_id,
+        case_id=SCRIPTED_CASE_ID,
+        command_type=CaseCommandType.APPEND_EVENT,
+        occurred_at=at,
+        content="Please review the offer.",
+        event_type="consumer_message",
+    )
+
+
+def _consumer_turns(repository: InMemoryCaseRepository) -> tuple[int, int]:
+    state = repository.get(SCRIPTED_CASE_ID)
+    assert state is not None
+    events = state.snapshot.visible_events
+    return (
+        sum(event.event_type == "consumer_message" for event in events),
+        sum(event.event_type == ASSISTANT_MESSAGE_EVENT_TYPE for event in events),
+    )
+
+
+@pytest.mark.parametrize(
+    ("slow", "offset", "model_calls"),
+    [
+        # A Slow that proposes nothing: the turn applies without an approval.
+        pytest.param(ScriptedSlowAdapter, timedelta(minutes=1), 1, id="dialogue"),
+        # The default Slow after the offer expired: refresh, then no approval.
+        pytest.param(
+            ScriptedProposingSlowAdapter,
+            timedelta(minutes=61),
+            2,
+            id="offer-expired",
+        ),
+    ],
+)
+def test_a_concurrent_retry_of_an_unpinned_event_applies_once(
+    slow: type[ScriptedSlowAdapter], offset: timedelta, model_calls: int
+) -> None:
+    # The retry passes the receipt check before the first attempt writes,
+    # then waits on the Case lane. No approval opens, so nothing else
+    # refuses the second attempt.
+    repository = _WatchedRepository()
+    fast = _HeldFast()
+    runtime = ThinAgentRuntime(
+        repository, clock=SteppingClock(), fast=fast, slow=slow()
+    )
+    runtime.create_case(occurred_at=T0)
+    created_traces = len(repository.list_model_traces(SCRIPTED_CASE_ID))
+    command = _unpinned_event(uuid4(), T0 + offset)
+    receipts: dict[str, Any] = {}
+
+    def attempt(name: str) -> None:
+        receipts[name] = runtime.apply_command(command)
+
+    first = threading.Thread(target=attempt, args=("first",))
+    first.start()
+    assert fast.entered.wait(10)
+    retry = threading.Thread(target=attempt, args=("retry",))
+    repository.watched = retry
+    retry.start()
+    assert repository.read.wait(10)
+    fast.release.set()
+    first.join(10)
+    retry.join(10)
+
+    assert _consumer_turns(repository) == (1, 1)
+    assert receipts["first"].deduplicated is False
+    assert receipts["retry"] == receipts["first"].model_copy(
+        update={"deduplicated": True}
+    )
+    state = repository.get(SCRIPTED_CASE_ID)
+    assert state is not None
+    assert [t.command_id for t in state.transitions].count(command.command_id) == 1
+    assert state.snapshot.approval_requests == ()
+    # The retry made no model call: only the first attempt's are traced.
+    traces = repository.list_model_traces(SCRIPTED_CASE_ID)
+    assert len(traces) == created_traces + model_calls
+    assert fast.calls == 1
+
+
+def test_a_retry_after_a_timeout_returns_the_stored_receipt() -> None:
+    repository = InMemoryCaseRepository()
+    runtime = ThinAgentRuntime(
+        repository, clock=SteppingClock(), slow=ScriptedSlowAdapter()
+    )
+    runtime.create_case(occurred_at=T0)
+    command = _unpinned_event(uuid4(), T0 + timedelta(minutes=1))
+
+    applied = runtime.apply_command(command)
+    # The caller timed out and retries the identical command.
+    replayed = runtime.apply_command(command)
+
+    assert replayed == applied.model_copy(update={"deduplicated": True})
+    assert _consumer_turns(repository) == (1, 1)
+
+
+@pytest.mark.parametrize("decision", ["approved", "rejected", "expired"])
+def test_the_lane_refuses_a_replayed_approval_command_without_a_write(
+    decision: str,
+) -> None:
+    # What a raced retry reaches after apply_command's receipt check: the
+    # decided approval refuses it before any model call or write, so
+    # apply_command returns the stored receipt.
+    repository = InMemoryCaseRepository()
+    runtime = ThinAgentRuntime(repository, clock=SteppingClock())
+    runtime.create_case(occurred_at=T0)
+    waiting = runtime.append_event(SCRIPTED_CASE_ID, content="Review the offer.")
+    approval = waiting.approval
+    assert approval is not None
+    command_id = uuid4()
+    if decision == "expired":
+        command = CaseCommand(
+            command_id=command_id,
+            case_id=SCRIPTED_CASE_ID,
+            command_type=CaseCommandType.EXPIRE_APPROVAL,
+            occurred_at=approval.expires_at,
+            expected_revision=waiting.snapshot.revision,
+            approval_id=approval.approval_id,
+            approval_expires_at=approval.expires_at,
+        )
+    else:
+        command = CaseCommand(
+            command_id=command_id,
+            case_id=SCRIPTED_CASE_ID,
+            command_type=CaseCommandType.DECIDE_APPROVAL,
+            occurred_at=T0 + timedelta(minutes=2),
+            approval_id=approval.approval_id,
+            decision=decision,
+        )
+    applied = runtime.apply_command(command)
+    before = repository.get(SCRIPTED_CASE_ID)
+    traces = len(repository.list_model_traces(SCRIPTED_CASE_ID))
+
+    with pytest.raises(runtime_module.CaseConflictError):
+        if decision == "expired":
+            runtime.expire_approval(
+                SCRIPTED_CASE_ID,
+                approval.approval_id,
+                expected_revision=waiting.snapshot.revision,
+                expires_at=approval.expires_at,
+                command_id=command_id,
+            )
+        else:
+            runtime.approve(
+                SCRIPTED_CASE_ID,
+                approval.approval_id,
+                decision=decision,  # type: ignore[arg-type]
+                occurred_at=T0 + timedelta(minutes=2),
+                command_id=command_id,
+            )
+
+    assert repository.get(SCRIPTED_CASE_ID) is before
+    assert len(repository.list_model_traces(SCRIPTED_CASE_ID)) == traces
+    assert runtime.apply_command(command) == applied.model_copy(
+        update={"deduplicated": True}
+    )
+
+
+def test_a_raced_create_with_the_same_command_applies_once() -> None:
+    # Create has no lane: the repository's create uniqueness refuses the
+    # second write and apply_command returns the stored receipt.
+    repository = InMemoryCaseRepository()
+    runtime = ThinAgentRuntime(repository, clock=SteppingClock())
+    command = CaseCommand(
+        command_id=uuid4(),
+        case_id=SCRIPTED_CASE_ID,
+        command_type=CaseCommandType.CREATE_CASE,
+        occurred_at=T0,
+        current_monthly_total=Money(amount_minor=9200, currency="USD"),
+        target_monthly_total=Money(amount_minor=7500, currency="USD"),
+        mobile_hotspot_required=True,
+        device_financing_change_forbidden=True,
+    )
+    applied = runtime.apply_command(command)
+    before = repository.get(SCRIPTED_CASE_ID)
+
+    with pytest.raises(runtime_module.CaseConflictError):
+        runtime.create_case(
+            current_monthly_total=command.current_monthly_total,
+            target_monthly_total=command.target_monthly_total,
+            command_id=command.command_id,
+            expected_case_id=SCRIPTED_CASE_ID,
+            occurred_at=T0,
+        )
+
+    assert repository.get(SCRIPTED_CASE_ID) is before
+    assert runtime.apply_command(command) == applied.model_copy(
+        update={"deduplicated": True}
+    )
+
+
+class _WatchedChannelRepository(_ChannelRepository):
+    """Signals when a watched thread has read its inbox reservation."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.watched: threading.Thread | None = None
+        self.read = threading.Event()
+
+    def get_inbox_receipt(self, event_id: UUID) -> Any:
+        receipt = super().get_inbox_receipt(event_id)
+        if threading.current_thread() is self.watched:
+            self.read.set()
+        return receipt
+
+
+def test_a_concurrent_retry_of_a_channel_ingest_makes_no_model_call() -> None:
+    # The retry reads the still-reserved inbox before the first attempt
+    # writes, then waits on the Case lane; it must stop before the model.
+    repository = _WatchedChannelRepository()
+    fast = _HeldFast()
+    runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME, fast=fast)
+    runtime.apply_command(_create_command())
+    # Unpinned: a channel command may omit expected_revision.
+    command = _channel_command(repository, BASE_TIME + timedelta(minutes=5)).model_copy(
+        update={"expected_revision": None}
+    )
+    receipts: dict[str, Any] = {}
+
+    def attempt(name: str) -> None:
+        receipts[name] = runtime.apply_command(command)
+
+    first = threading.Thread(target=attempt, args=("first",))
+    first.start()
+    assert fast.entered.wait(10)
+    retry = threading.Thread(target=attempt, args=("retry",))
+    repository.watched = retry
+    retry.start()
+    assert repository.read.wait(10)
+    fast.release.set()
+    first.join(10)
+    retry.join(10)
+
+    assert fast.calls == 1
+    assert receipts["retry"] == receipts["first"].model_copy(
+        update={"deduplicated": True}
+    )
+    state = repository.get(SCRIPTED_CASE_ID)
+    assert state is not None
+    assert [t.command_id for t in state.transitions].count(command.command_id) == 1
+
+
+class _HeldDeliveryRepository(_CodecChannelRepository):
+    """Holds the first delivery write; signals when the retry read its inbox."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.watched: threading.Thread | None = None
+        self.read = threading.Event()
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self.writes = 0
+
+    def get_inbox_receipt(self, event_id: UUID) -> Any:
+        receipt = super().get_inbox_receipt(event_id)
+        if threading.current_thread() is self.watched:
+            self.read.set()
+        return receipt
+
+    def replace_with_delivery_receipt(self, case_id: UUID, **kwargs: Any) -> Any:
+        self.writes += 1
+        if self.writes == 1:
+            self.entered.set()
+            assert self.release.wait(10)
+        return super().replace_with_delivery_receipt(case_id, **kwargs)
+
+
+def test_a_concurrent_retry_of_a_delivery_callback_records_once() -> None:
+    repository = _HeldDeliveryRepository()
+    runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)
+    runtime.apply_command(_create_command())
+    ingested = runtime.apply_command(
+        _channel_command(repository, BASE_TIME + timedelta(minutes=5))
+    )
+    assert ingested.delivery_id is not None
+    _accepted(repository, ingested.delivery_id)
+    # Unpinned: a channel command may omit expected_revision.
+    command = _callback(
+        repository, ingested.delivery_id, _state(repository).snapshot.revision
+    ).model_copy(update={"expected_revision": None})
+    receipts: dict[str, Any] = {}
+
+    def attempt(name: str) -> None:
+        receipts[name] = runtime.apply_command(command)
+
+    first = threading.Thread(target=attempt, args=("first",))
+    first.start()
+    assert repository.entered.wait(10)
+    retry = threading.Thread(target=attempt, args=("retry",))
+    repository.watched = retry
+    retry.start()
+    assert repository.read.wait(10)
+    repository.release.set()
+    first.join(10)
+    retry.join(10)
+
+    assert repository.writes == 1
+    assert receipts["retry"] == receipts["first"].model_copy(
+        update={"deduplicated": True}
+    )
+    state = _state(repository)
+    assert [t.command_id for t in state.transitions].count(command.command_id) == 1
