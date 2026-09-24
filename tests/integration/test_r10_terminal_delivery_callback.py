@@ -527,9 +527,7 @@ def test_a_callback_evidence_with_one_shifted_time_is_rejected(
     shifted = last.model_copy(
         update={field: getattr(last, field) + timedelta(seconds=seconds)}
     )
-    _assert_unpaired(
-        _rebuilt(after, evidence=(*after.snapshot.evidence[:-1], shifted))
-    )
+    _assert_unpaired(_rebuilt(after, evidence=(*after.snapshot.evidence[:-1], shifted)))
 
 
 def test_a_callback_evidence_moved_before_the_confirmation_is_rejected() -> None:

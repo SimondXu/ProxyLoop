@@ -55,6 +55,44 @@ both sides kept):
 - Passed: `make preflight` (exit 0; runtime 1231 passed, 51 skipped; ml 397
   passed, 1 skipped; web 140 passed).
 
+## Independent review
+
+Reviewer verdict: Approve with three Minors, all accepted by the root and
+fixed on the branch (`harness/code_review/fix-r18-callback-evidence-pairing.md`):
+
+1. An exact duplicate of a real callback pair (the event copied with
+   `event_cursor + 1`, same `event_id`, and the same Evidence appended
+   again) was accepted. `_verify_delivery_callback_pairs` now also requires
+   callback event ids and `PROVIDER_EVENT` Evidence ids to be unique across
+   the snapshot (each delivery status yields one pair,
+   `H(delivery_id:status)`), else the same pairing error.
+2. The R-18 forgery tests asserted only the generic storage-validation
+   wrapper. A new `_assert_unpaired` helper also asserts the suppressed
+   context is the pairing `ValueError` ("terminal Case callback events do
+   not match their Evidence"), following the `__suppress_context__`
+   precedent in `test_phase_04c_persistent_case_store.py`.
+3. New adjacent tests: only `observed_at` shifted (earlier, since Evidence
+   requires `captured_at >= observed_at`), only `captured_at` shifted, the
+   callback Evidence moved before the confirmation Evidence, and the exact
+   duplicate pair.
+
+Red, fix 1 stashed, new tests in place: 1 failed, 20 passed;
+`test_an_exact_duplicate_of_a_callback_pair_is_rejected` failed with "DID
+NOT RAISE". Green with fix 1: 21 passed. The other new tests pass on both
+sides (the existing rule already rejects them, now proven by cause).
+
+After merging `origin/main` @ `c73f6a7` (#86; clean merge), no DB:
+
+- Passed: `make lint`, `make typecheck` (exit 0).
+- Passed: `make test` (exit 0; runtime 1263 passed, 51 skipped; ml 397
+  passed, 1 skipped).
+- Passed: `make preflight` (exit 0 after `ruff format` of the test file;
+  runtime 1263 passed, 51 skipped; ml 397 passed, 1 skipped; web 140
+  passed).
+- Not run (DB lane held elsewhere): `make postgres-check`,
+  `make phase05a-check`, `make phase06b1-check` on the merged branch. The
+  earlier DB-gate results above predate the review fix and this merge.
+
 ## Known limits
 
 Recorded by the root as accepted limits (binding a pair to a real delivery
