@@ -85,8 +85,21 @@ Final diff (option B, on `8e1522a`):
 
 ## Known limits
 
-- Delayed roll: the roll waits until no handler or activity is active, so a
-  retry arriving before then still receives the cached failure.
+- Delayed roll: the roll waits until no handler or activity is active, so any
+  number of retries arriving before then receive the cached failure for as
+  long as other handlers stay active (for example another handler exhausting
+  its ~15 s of retries, or a continuous Update stream).
+- Runs in progress at deploy time: a run that has replayed an exhaustion
+  keeps `patched("retryable-update-failure-continues-as-new") == False` for
+  the rest of that run, so further exhaustions in that run do not roll, and an
+  approval stuck at `pending_execution` before the deploy recovers only after
+  the run rolls at the command threshold (32) or through a retry with the same
+  command id.
+- `RetryState.TIMEOUT` (schedule-to-close exhaustion) is covered by code
+  review only, not by a test. As before this change, the Workflow can see
+  that timeout while the last attempt is still running, so the retry may run
+  concurrently with it; the Runtime's revision CAS and execution claim bound
+  that overlap.
 - Every roll resets the run-local expiry state: the backoff
   (`_expiry_failures`, `_expiry_retry_at`) and `_expiry_abandoned_for`, so an
   abandoned expiry is attempted once more in the new run.

@@ -86,8 +86,10 @@ T5 needs neither and runs in `make test`.
 ## Risks carried
 
 - Delayed roll while other handlers run: the roll waits for every handler and
-  activity to finish, so a retry that arrives before then still receives the
-  cached failure (at most one retry, typically within one ~15 s exhaustion).
+  activity to finish, so any number of retries arriving before then receive
+  the cached failure for as long as other handlers stay active (for example
+  another handler exhausting its ~15 s of retries, or a continuous Update
+  stream).
 - The expiry backoff (`_expiry_failures`, `_expiry_retry_at`) is run-local and
   resets on every roll (the P0-3 limit, now more frequent).
 - Each roll also resets `_expiry_abandoned_for`, so an expiry abandoned after
