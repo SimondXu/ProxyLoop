@@ -1,8 +1,35 @@
-# PR-14: Stage 2 Judge seam — preflight spec
+# PR-14: Stage 2 Judge seam — frozen spec
 
-Status: **proposed; not frozen.** The root freezes it by answering §11.
-Implementation starts only after PR-13 (`feat/pr13-slow-drives-intent`) merges,
-because both write `runtime.py`. This branch is based on PR-13 @ `23932a2`, and
+Status: **frozen** by the root orchestrator on 2026-09-25, which adopted every
+§11 recommendation. Implementation starts only after PR-13
+(`feat/pr13-slow-drives-intent`) merges, because both write `runtime.py`, and
+only once the root gives the go.
+
+## Root answers (2026-09-25)
+
+1. The Judge reviews **every admitted Slow result**: create and each refresh,
+   with or without proposals. There is no `judge_required` predicate.
+2. There is **one revise code**, `judge_premature_give_up`. Other codes arrive
+   with a model Judge as `judge-verdict-v2`.
+3. **If the Slow adapter lacks `FeedbackReasoningSlowAdapter`, there is no
+   retry.** The revise is traced and the first admitted result is used.
+4. **If the retry call raises, the exception propagates.** Record as a known
+   limit that the run's traces are then lost (PR-7 limit 8). This cannot happen
+   under decision 17.
+5. **A retry that the coordinator admits but the Runtime cannot use** (K2) is a
+   recorded known limit. The Runtime's rules are not copied into `agent_core`.
+6. **Constructor injection**: `CaseCoordinator(judge=...)`, passed only by
+   `ThinAgentRuntime._coordinator()`.
+7. **The split report carries call and retry counts only.** It has no verdict
+   distribution (decision 7, read strictly).
+8. **PR-9b merges before PR-14.** PR-14 keeps `check_local_report` passing,
+   and the local reports stay pre-Judge observed artifacts.
+9. **`CONTEXT.md` gains a "Judge" term** with the §11.9 wording. It is added
+   through the `domain-modeling` procedure during implementation.
+
+---
+
+This branch is based on PR-13 @ `23932a2`, and
 line numbers below refer to that head. Tags: **[O]** observed in code or docs,
 **[I]** inferred, **[P]** proposed.
 
