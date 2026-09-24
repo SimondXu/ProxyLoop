@@ -103,9 +103,26 @@ repeated `create_case` (M7), counted as 1 unapplied model call.
 | `make test` | passed (exit 0), including `fast-slow-split-check` |
 | `make phase04d-profile-check` | passed (exit 0) |
 | `make preflight` | passed (exit 0); gated-skip counts match the pinned 59 per file |
-| `postgres-check`, `phase05a-check`, `phase06b1-check` | **not run** (DB lane queued; `runtime.py` changed, so they are required before merge) |
+| `postgres-check`, `phase05a-check`, `phase06b1-check` | see "After merging `main` @ `df733f7`" |
 
 No DB-gated test was added: the gated-skip pin is unchanged.
+
+### After merging `main` @ `df733f7` (#92: channel re-drive, `app.py`, `activities.py`)
+
+The merge was clean (no conflicts). On the merge commit:
+
+| Check | Result |
+|---|---|
+| `make test` | passed (exit 0); runtime pytest 1390 passed, 61 skipped; ml 397 passed, 1 skipped; `Fast/Slow split report is current.` |
+| byte identity | `git diff --stat origin/main -- data/ contracts/ ml/` lists only `data/evaluation/fast-slow-split-scripted.json` (new) |
+| `make preflight` | passed (exit 0); gated-skip counts match the pinned 61 per file (#92's pin) |
+| `make postgres-check` | 35 passed |
+| `make phase05a-check` | 53 passed |
+| `make phase06b1-check` | 54 passed (includes #92's channel re-drive with the assistant-line delivery) |
+
+The gates ran serially from this worktree against the Compose `postgres-test`
+(`127.0.0.1:55432/proxyloop_test`) and `temporal` (`127.0.0.1:7233`)
+services, with the variables on the make command line only.
 
 ## Known limits
 
