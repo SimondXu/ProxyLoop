@@ -34,12 +34,10 @@ user: real credentials, real external channels/Providers (06B2),
 deployment/release, hosted spend beyond a recorded budget (none is
 recorded — the relay is exhausted), force-push, destructive operations.
 
-### In flight (pushed, no PR open) — finish these first
+### In flight — finish these first
 
 | Branch | Plan item | State | Remaining |
 |---|---|---|---|
-| `fix/r18-callback-evidence-pairing` | PR-4, R-18 | Implemented; merged with `main` @ `e1c8371`; `make test`, `postgres-check` 27, `phase05a-check` 42, `phase06b1-check` 35, `make preflight` all green | independent `reviewer`; merge current `main` (status-file conflict likely); PR; CI; squash merge. Accepted limits are in its log (a consistent forged event+Evidence pair, unchecked `source_ref`/`content_hash`; binding to real deliveries needs a storage change) |
-| `fix/r16-expiry-classifier` | PR-2, R-16 | Implemented (outermost-cause classifier, second patch gate `expiry-failure-outermost-cause`, replay fixture recorded on `main`); merged with `main` @ `c73f6a7`; gates green; independent review Approve, its three Minors applied (in-flight-run wording, DB-free classifier test, fixture-recorder limit): chained non-retryable expiry test red on `main`'s `workflow.py` (`16 == 1` attempts), green on the branch; `phase05a-check` 45, `phase06b1-check` 35, `postgres-check` 27, `make preflight` all green | PR; CI; squash merge |
 | `fix/gate-honesty-r15-g1` | PR-1, R-15 + G-1 strong form | Review: Approve (`harness/code_review/fix-gate-honesty-r15-g1.md`); root decisions applied (enforcement decided by the two variables only, per-file pin); merged with `main` @ `5266b6d` (#87); per-file pin updated to 53 (`test_phase_05a_temporal_workflow.py` 22 → 24: #87 parametrized two gated expiry tests `[unchained]`/`[chained]`); `make preflight` green at 53; R-15 test 200/200 fresh-process passes (after the `c73f6a7` merge). R-15: the `<= 20` bound was wrong (true invariant 10 ≤ calls ≤ 21; 21 is reachable with one worker) — barrier-based deterministic test, 200/200 passes. G-1: `scripts/check_gated_skips.py` pins 51 gated skips and names the real-dependency gates at the end of `make preflight` | PR open; CI; merge (after PR-4; merge order PR-4 → PR-2 → PR-1) |
 
 R-19 (`SafeObservationAdapter` raises on negative-fee / duplicate-feature
@@ -48,8 +46,9 @@ renderer uses `agent_core/observation.py`.
 
 ### Then
 
-Wave 1 continues with PR-3 (after PR-2), PR-5 (after PR-4), PR-6 (B2-8,
-`app.py`), PR-7 (R-12 + R-13b trace log, **architect design first**);
+Wave 1 continues with PR-3 (PR-2 merged), PR-5 (PR-4 merged), PR-7
+(R-12 + R-13b trace log, **architect design first**); PR-2 (#87), PR-4
+(#88) and PR-6 (#89) are merged;
 then Waves 2–6 per the plan. Items marked "architect first" get an
 `architect` proposal before any `implementer` starts.
 
@@ -193,7 +192,7 @@ separate decisions.
 
 Open: A-7f,
 G-1 follow-up (the real-dependency gates do not themselves require 0
-gated skips; review Minor 5 of `fix-gate-honesty-r15-g1`), B2-8, C-5, C-7, C-8, D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
+gated skips; review Minor 5 of `fix-gate-honesty-r15-g1`), C-5, C-7, C-8, D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
 deletion only), D3-8, D3-9.
 
 ## 4a. Found during the P1 and P2 runs (R-1 … R-19)
@@ -208,6 +207,9 @@ Closed:
 | R-8 | documented: the browser `event_cursor`/`revision` count channel events; `snapshot.completion` is a synthetic `not_done` | #77 | `fix-p2-web-hygiene.md` |
 | R-15 | not a ledger bug: `calls <= 20` was a guess. From the reservation rule, `(calls - 1) * per_call + min_worst <= ceiling` and `(calls - 7) * per_call + 8 * max_worst > ceiling`, i.e. 10 <= calls <= 21 here; a sequential run also admits 21. The test now holds the first eight calls at a barrier (eight joint reservations, the ledger refuses a ninth) and asserts the derived bounds; 200/200 fresh-process runs pass | `fix/gate-honesty-r15-g1` | `fix-gate-honesty-r15-g1.md` |
 | R-2 | error details are content-free category codes: 404 `{"detail": "not_found"}` in both modes; 409 `{"detail": "stale_cas" \| "case_conflict" \| "approval_expired"}`; request validation 422 `{"detail": {"code": "request_invalid", "message": "request rejected"}}` instead of FastAPI's default body (which echoed input). The Runtime text (or, for 422, field locations and error types only) is logged server-side with the correlation id | #82 | `fix-p2-api-hygiene.md` |
+| R-16 (Important) | the expiry path classifies the outermost typed failure (`_outermost_failure_category`) behind the second patch gate `expiry-failure-outermost-cause`, so a chained non-retryable expiry failure is abandoned, not retried; a pre-R-16 replay fixture keeps recorded histories on the old path | #87 | `fix-r16-expiry-classifier.md` |
+| R-18 | the terminal codec rule pairs the callback events after the approval-decision cursor with the `PROVIDER_EVENT` Evidence after the confirmation Evidence (same count, in order, equal times); a forged event without Evidence or a deleted event whose Evidence remains is rejected | #88 | `fix-r18-callback-evidence-pairing.md` |
+| B2-8 | synchronous Runtime, storage and readiness calls in async API handlers and the direct-mode expiry timer run via `run_in_threadpool`; direct commands stay serialized in-process under one app lock | #89 | `fix-b2-8-threadpool-runtime-calls.md` |
 
 Specs: `harness/context/fix-r10-terminal-delivery-callback-preflight.md`,
 `harness/context/fix-r1-retryable-update-continues-as-new-preflight.md`.
@@ -232,13 +234,11 @@ Other items (Minor unless marked):
 - **R-12 (Important, proposal stage 1)** rejected-result traces reach `CoordinatorOutcome` but the runtime raises before writing; needs a traces-only append.
 - R-13 `model_traces` retention unbounded. Option (c) **done** in #83 (documented in `docs/architecture.md`); option (b), a separate append-only trace log at `storage_version` 3, planned with R-12.
 - R-14 the 1.0/1.1 basis switch is duplicated in `runtime.py` and `contracts.py` — **done** in #85: one owner, `planning_basis_components` in the contracts package, called by the snapshot validator and the runtime's `_basis`; pinned by `runtime/packages/contracts/tests/test_planning_basis_components.py`. See `harness/log/refactor-r14-basis-switch-owner.md`.
-- **R-16 (Important; severity confirmed by the root)** the expiry path's `_expiry_failure_category` reads the innermost typed `ApplicationError`; every real activity failure is raised `from exc`, so the converter chain is `[('ApplicationError','case_conflict',True), ('ApplicationError','CaseConflictError',False)]` and a real non-retryable expiry failure (e.g. `case_conflict`) is classified retryable and retried with backoff instead of abandoned. The expiry tests miss it because their injected faults carry no `__cause__`. The fix changes expiry-path commands for recorded histories, so it needs a second workflow patch gate. See `harness/log/fix-r1-retryable-update-continues-as-new.md`. **Gates green, review Approve** on `fix/r16-expiry-classifier` (outermost-cause classifier behind patch `expiry-failure-outermost-cause`; spec `fix-r16-expiry-classifier-preflight.md`, log `fix-r16-expiry-classifier.md`).
 - R-17 a channel ingest that exhausts on the delivery activity is not re-driven on redelivery (pre-existing; found in the R-1 design, `fix-r1-retryable-update-continues-as-new.md`).
-- R-18 callback events on a terminal Case are not paired with their Provider-event Evidence: delivered/bounced `provider_event`s forged after the approval cursor without Evidence, or a deleted callback event whose Evidence remains, are accepted. Root decided it is out of scope for R-10 (`fix-r10-terminal-delivery-callback.md`, Known limits).
 - R-19 `SafeObservationAdapter._adapt_offer` (`agent_core/observation.py`) raises on a contract-valid `ProviderOffer` with a negative fee sum or a duplicate feature, via `SafeOffer.__post_init__` (the same out-of-domain inputs B1-9 made total in the policy check). Used today by the `ml/` pipeline and evaluation and the `scripts/` benchmark/harness runners, not by the product runtime. Found in the B1-9 review.
 
 Still open from the audit P2 list and not yet batched: runtime/router/api
-hygiene (B2-8, A-7f, R-5) and ops/tests (C-5, C-7, C-8, R-6).
+hygiene (A-7f, R-5) and ops/tests (C-5, C-7, C-8, R-6).
 The design-first items are settled: B1-9 is closed above, and A-3, A-5, A-9
 are recorded as limits above. **Do not do**: D3-5/D3-6 (`qwen_mlx.py`
 frozen by r4); D1-10/11/12 (V1 simulator frozen, superseded by V2); D2-9 and

@@ -16,6 +16,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from uuid import UUID
 
+from fastapi.concurrency import run_in_threadpool
 from proxyloop_case_runtime import (
     CaseCommandType,
     CaseConflictError,
@@ -111,7 +112,9 @@ class DirectApprovalExpiry:
                     approval_id=approval_id,
                     approval_expires_at=expires_at,
                 )
-                self._runtime.apply_command(request.to_command(expires_at))
+                await run_in_threadpool(
+                    self._runtime.apply_command, request.to_command(expires_at)
+                )
                 return
             except (CaseConflictError, CaseNotFoundError):
                 # Decided (or otherwise moved) before the deadline: the
