@@ -174,5 +174,10 @@ async def _test_concurrent_direct_events(*, frozen_clock: bool) -> None:
             body: Any = response.json()
             assert body == {"detail": "case_conflict"}
     assert any(response.status_code == 200 for response in responses)
-    times = [event.occurred_at for event in state.snapshot.visible_events]
+    # A Runtime-authored assistant line shares its trigger's time (PR-8 I6).
+    times = [
+        event.occurred_at
+        for event in state.snapshot.visible_events
+        if event.event_type != "assistant_message"
+    ]
     assert all(later > earlier for earlier, later in pairwise(times)), times

@@ -30,6 +30,21 @@ on an existing Case appends a SUCCEEDED Slow trace before `CaseConflictError`.
 The turn-split report must classify such traces as unapplied attempts (§5.1),
 and S1 must include that case.
 
+Amendment, 2026-09-24 (root, decided from the PR-9 design, Q8), to §5.2. It applies
+from day one so PR-9 needs no schema bump:
+
+1. The per-turn record carries `fast_result` ∈ {"succeeded", "rejected", "failed", null}
+   (null when the turn had no Fast call) and `fallback_cause` ∈ {null, "gate", "failure"}.
+   "gate": the disclosure gate rejected the output and the fallback was delivered.
+   "failure": reserved for PR-9, where a typed adapter failure produces a FAILED trace and
+   the fallback. The aggregates include the count of each `fallback_cause`.
+2. For the scripted backend `fallback_cause` is always null; "failure" never occurs.
+3. The schema stays generic enough that PR-9 can add
+   `--fast-backend {scripted,distilled,untuned}` without changing the scripted file's
+   bytes. PR-8 does not implement the flag.
+
+The report still contains no model text.
+
 Split: 8a (runtime + gate + report) starts after PR-7 merges; 8b (Web) is
 written now against the frozen event shape and merges after 8a, before PR-10
 and PR-12 touch `conversation-workspace.tsx`.

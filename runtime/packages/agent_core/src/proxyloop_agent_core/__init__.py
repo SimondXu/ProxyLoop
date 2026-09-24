@@ -13,6 +13,12 @@ from .coordinator import (
     ResultAudit,
     SnapshotCommit,
 )
+from .disclosure_gate import (
+    FAST_GATE_ALLOWED_ACTS,
+    FAST_GATE_VERSION,
+    FastGate,
+    fast_disclosure_violations,
+)
 from .interfaces import (
     BOUNDED_FAST_STATUS_TEXT,
     FastAdapter,
@@ -42,12 +48,22 @@ from .router import (
     RouteRequest,
     accepted_fast_reasoner_trigger,
 )
-from .scripted import ScriptedFastAdapter, ScriptedSlowAdapter
+from .scripted import (
+    SCRIPTED_DIALOGUE_LINES,
+    SCRIPTED_PENDING_SLOW_LINE,
+    ScriptedDialogueFastAdapter,
+    ScriptedFastAdapter,
+    ScriptedSlowAdapter,
+)
 
 __all__ = [
     "ALLOWED_FAST_REASONER_REASONS",
     "BOUNDED_FAST_STATUS_TEXT",
+    "FAST_GATE_ALLOWED_ACTS",
+    "FAST_GATE_VERSION",
     "ROUTER_PRECEDENCE",
+    "SCRIPTED_DIALOGUE_LINES",
+    "SCRIPTED_PENDING_SLOW_LINE",
     "CapabilityExecutionOutcome",
     "CapabilityExecutionRequest",
     "CapabilityExecutionStatus",
@@ -58,6 +74,7 @@ __all__ = [
     "DeterministicRouter",
     "FastAdapter",
     "FastAdapterResult",
+    "FastGate",
     "IdentifiedAdapter",
     "ModelCallUsage",
     "ModelIdentity",
@@ -70,6 +87,7 @@ __all__ = [
     "SafeObservation",
     "SafeObservationAdapter",
     "SafeOffer",
+    "ScriptedDialogueFastAdapter",
     "ScriptedFastAdapter",
     "ScriptedOracleConsumer",
     "ScriptedSlowAdapter",
@@ -79,4 +97,5 @@ __all__ = [
     "UsageReportingFastAdapter",
     "UsageReportingSlowAdapter",
     "accepted_fast_reasoner_trigger",
+    "fast_disclosure_violations",
 ]

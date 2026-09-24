@@ -208,7 +208,7 @@ def test_event_key_body_matrix_is_mode_independent(mode: str) -> None:
         assert [item.command_type for item in state.transitions][-1] is (
             CaseCommandType.APPEND_EVENT
         )
-        assert state.snapshot.event_cursor == 2
+        assert state.snapshot.event_cursor == 3
 
     _run(scenario)
 
