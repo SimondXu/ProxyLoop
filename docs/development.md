@@ -112,10 +112,13 @@ described here; see the Makefile.
 `python3 -m compileall -q scripts`, `docker compose config --quiet`, and
 last `scripts/check_gated_skips.py`. It starts no container.
 
-`unit-test` collects all of `tests/integration`. Five files skip their
+`unit-test` collects all of `tests/integration`. Six files skip their
 database tests when `PROXYLOOP_TEST_DATABASE_URL` is unset; their Temporal
 tests also need `PROXYLOOP_TEST_TEMPORAL_ADDRESS`:
 
+- `test_fast_under_temporal.py` (3: time-skipping Workflow tests on an
+  in-memory repository, gated on `PROXYLOOP_TEST_TEMPORAL_ADDRESS` alone
+  like the re-drive test below; run in `phase05a-check`)
 - `test_phase_04c_persistent_case_store.py` (29 tests)
 - `test_phase_05a_case_runtime.py` (2)
 - `test_phase_05a_temporal_workflow.py` (24)
@@ -125,7 +128,7 @@ tests also need `PROXYLOOP_TEST_TEMPORAL_ADDRESS`:
   starts the Temporal test server)
 - `test_phase_06b1_temporal.py` (4)
 
-With the variables unset, `make preflight` exits 0 and skips those 63 tests,
+With the variables unset, `make preflight` exits 0 and skips those 66 tests,
 so a "preflight passed" claim covers none of them. `unit-test` writes the
 runtime pytest JUnit report to `.gate/runtime-junit.xml` (git-ignored); the
 last preflight step counts the tests skipped with a `PROXYLOOP_TEST_*` reason,
@@ -147,7 +150,7 @@ The real-dependency gates fail instead of skipping when a variable is missing:
 | Target | Needs | Runs |
 |---|---|---|
 | `postgres-check` | `PROXYLOOP_TEST_DATABASE_URL` | `test_phase_04c_persistent_case_store.py` |
-| `phase05a-check` | `PROXYLOOP_TEST_DATABASE_URL`, `PROXYLOOP_TEST_TEMPORAL_ADDRESS` | `test_phase_05a_case_runtime.py`, `test_phase_05a_temporal_api.py`, `test_phase_05a_temporal_workflow.py` |
+| `phase05a-check` | `PROXYLOOP_TEST_DATABASE_URL`, `PROXYLOOP_TEST_TEMPORAL_ADDRESS` | `test_phase_05a_case_runtime.py`, `test_phase_05a_temporal_api.py`, `test_phase_05a_temporal_workflow.py`, `test_fast_under_temporal.py` |
 | `phase06b1-check` | `PROXYLOOP_TEST_DATABASE_URL`, `PROXYLOOP_TEST_TEMPORAL_ADDRESS` | `test_phase_06b1_connectors.py`, `test_phase_06b1_channel_runtime.py`, `test_phase_06b1_workflow_worker.py`, `test_phase_06b1_temporal.py` |
 
 `PROXYLOOP_TEST_DATABASE_URL` must name the `proxyloop_test` database; the
@@ -195,8 +198,10 @@ repository. Storage and orchestration modes are explicit and never fall back:
 
   The server does not load `.env` files. No real model smoke is part of the
   automated gate.
-- A local Fast backend is opt-in, direct mode only, with scripted Runtime
-  mode (Slow stays scripted); Temporal refuses it until PR-11:
+- A local Fast backend is opt-in, with scripted Runtime mode (Slow stays
+  scripted), in direct mode or under Temporal (PR-11). Under Temporal the
+  worker and the API read the same variables; start both with the same
+  values (`FAST_BACKEND=distilled make portfolio-demo` does):
 
   | Variable | Values | Rule |
   |---|---|---|
@@ -204,9 +209,12 @@ repository. Storage and orchestration modes are explicit and never fall back:
   | `PROXYLOOP_FAST_GATEWAY_URL` | default `http://127.0.0.1:8765` | an `http://` loopback origin only (`127.0.0.1`, `::1`, `localhost`) |
   | `PROXYLOOP_FAST_TIMEOUT_S` | default `25` (the cap) | a number in [0.1, 25]; a distilled call can hold the direct-mode app lock for up to this long |
 
-  The server refuses to start unless the gateway answers `/v1/identity`
-  with the selected backend. A failed Fast call delivers the fallback line
-  and is traced `FAILED`; nothing retries or switches backend. Roll back by
+  The server, and under Temporal the worker, refuses to start unless the
+  gateway answers `/v1/identity` with the selected backend. A failed Fast
+  call delivers the fallback line and is traced `FAILED`; nothing retries or
+  switches backend (under Temporal the activity completes, so it is not
+  retried either). Channel commands keep scripted Fast and the constant
+  outbound body. Roll back by
   setting `scripted` and restarting. The gateway process and its runbook are
   PR-9b's (`ml/serving/`); CI uses only the in-test fake gateway.
 

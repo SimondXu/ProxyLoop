@@ -1,4 +1,4 @@
-"""Executable Temporal Worker entry point for the scripted Case Workflow."""
+"""Executable Temporal Worker entry point for the Case Workflow."""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ from temporalio.worker import Worker
 
 from .activities import (
     CaseCommandActivityAdapter,
+    activity_adapter_from_environment,
     activity_for_adapter,
     channel_activity_for_adapter,
-    runtime_from_environment,
 )
 from .client import TemporalCaseClient
 from .config import TemporalSettings, temporal_settings_from_environment
@@ -28,7 +28,7 @@ def create_worker(
 ) -> Worker:
     """Construct a Worker with exactly the Case Workflow and activity."""
 
-    selected_adapter = adapter or CaseCommandActivityAdapter(runtime_from_environment())
+    selected_adapter = adapter or activity_adapter_from_environment()
     return Worker(
         client,
         task_queue=settings.task_queue,

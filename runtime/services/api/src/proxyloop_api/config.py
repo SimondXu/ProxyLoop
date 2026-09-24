@@ -92,11 +92,10 @@ async def services_from_environment(
         return RuntimeServices(runtime_from_environment(mode=mode, environ=values))
     if orchestration_mode != "temporal":
         raise ValueError("PROXYLOOP_ORCHESTRATION_MODE must be direct or temporal")
-    if selected_fast_backend(values) != "scripted":
-        # Until PR-11 the worker runs scripted Fast only.
-        raise ValueError(
-            "Temporal orchestration requires PROXYLOOP_FAST_BACKEND=scripted"
-        )
+    # The worker makes every Fast call (PR-11); this process never does in
+    # Temporal mode. It reads the same PROXYLOOP_FAST_BACKEND, so it probes
+    # the same gateway at start and labels adapter_mode; it cannot see the
+    # worker's selection, and the worker's Fast traces are the authority.
     selected_runtime_mode = mode or values.get("PROXYLOOP_RUNTIME_MODE", "scripted")
     if selected_runtime_mode != "scripted":
         raise ValueError("Temporal orchestration requires scripted Runtime mode")
