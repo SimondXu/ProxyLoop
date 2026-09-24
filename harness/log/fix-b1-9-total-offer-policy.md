@@ -88,8 +88,11 @@ Branch `fix/b1-9-total-offer-policy` from `origin/main` @ `74e2073`.
   `docs/architecture.md` and `CONTEXT.md` describe verifier outcomes and
   offer fields but not the raise-vs-reason-code behaviour or the fee sign,
   so they are unchanged.
-- `origin/main` still @ `ff35dca` (already merged); nothing new to merge.
-  DB gates not rerun (test/doc-only change; passed above).
+- Merged `origin/main` @ `d23aff9` (#80, router precedence; clean, the
+  status file untouched by it). At the root's request the status file also
+  moves B1-12 and the grep -> Router precedence test replacement (audit §3,
+  lane A) to the §4 closed table with #80 and `fix-p2-router-precedence.md`.
+  DB gates not rerun (test/doc-only change since they passed above).
 
 ## Limits
 
