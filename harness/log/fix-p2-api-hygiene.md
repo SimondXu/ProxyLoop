@@ -90,3 +90,15 @@ First pass (before the `not_found` change):
 After the `not_found` change:
 
 - Focused pytest (7 API/runtime files): 107 passed.
+- `make format-check`, `make lint`, `make typecheck`, `make preflight-fast`:
+  pass.
+
+After merging `origin/main` @ `ff35dca` (docs only), serially, with the
+shared test DB held exclusively (variables on the make command line only):
+
+- `make postgres-check`: 27 passed.
+- `make phase05a-check`: 42 passed (99 s).
+- `make phase06b1-check`: 35 passed.
+- `make preflight` (variables unset): pass; runtime 1206 passed, 51
+  skipped; ml 397 passed, 1 skipped; Web 140 passed; artifact checks
+  passed.
