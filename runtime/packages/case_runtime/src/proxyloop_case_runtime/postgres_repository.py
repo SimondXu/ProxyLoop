@@ -25,6 +25,7 @@ from proxyloop_contracts import (
     CaseContextSnapshot,
     CasePhase,
     CompletionOutcome,
+    EventActor,
     Evidence,
     EvidenceType,
     ExecutionClaim,
@@ -70,6 +71,13 @@ _BINDINGS_TABLE = "proxyloop_channel_bindings"
 _INBOX_TABLE = "proxyloop_channel_inbox_receipts"
 _OUTBOX_TABLE = "proxyloop_channel_outbox_records"
 _DELIVERY_TABLE = "proxyloop_channel_delivery_receipts"
+# The only events a delivery callback appends to a terminal Case.
+_DELIVERY_CALLBACK_CONTENT = frozenset(
+    {
+        "The fictional Provider delivered the local reply.",
+        "The fictional Provider bounced the local reply.",
+    }
+)
 
 
 class _CaseStorageEnvelope(BaseModel):
@@ -1219,8 +1227,19 @@ def _reconstruct_provider(envelope: _CaseStorageEnvelope) -> FictionalMobileProv
         raise ValueError("terminal execution pins do not match approval state")
     if envelope.execution_source_pins is None:
         raise ValueError("terminal Case is missing source pins")
-    if envelope.execution_source_pins != snapshot.pins:
+    # The execution was pinned at the approval decision; a later delivery
+    # callback only appends a Provider event, which moves the event cursor.
+    approval_cursor = _approval_decision_cursor(snapshot, approval)
+    if envelope.execution_source_pins != snapshot.pins.model_copy(
+        update={"event_cursor": approval_cursor}
+    ):
         raise ValueError("terminal execution pins do not match snapshot identity")
+    if any(
+        not _is_delivery_callback_event(event)
+        for event in snapshot.visible_events
+        if event.event_cursor > approval_cursor
+    ):
+        raise ValueError("terminal Case has a non-delivery event after approval")
     if envelope.execution_proposal != _capability_proposal(offer, approval.decided_at):
         raise ValueError("terminal execution proposal is not deterministic")
     confirmation_evidence = _confirmation_evidence(snapshot.evidence)
@@ -1261,6 +1280,30 @@ def _reconstruct_provider(envelope: _CaseStorageEnvelope) -> FictionalMobileProv
     if verified_completion != snapshot.completion_decision:
         raise ValueError("stored completion does not match the authoritative verifier")
     return provider
+
+
+def _approval_decision_cursor(
+    snapshot: CaseContextSnapshot, approval: ApprovalRequest
+) -> int:
+    event_id = _stable_uuid(
+        f"{snapshot.case.case_id}:event:approval:{approval.approval_id}:approved"
+    )
+    matching = [item for item in snapshot.visible_events if item.event_id == event_id]
+    if (
+        len(matching) != 1
+        or matching[0].event_type != "approval_decision"
+        or matching[0].occurred_at != approval.decided_at
+    ):
+        raise ValueError("terminal Case approval decision event is not deterministic")
+    return matching[0].event_cursor
+
+
+def _is_delivery_callback_event(event: VisibleCaseEvent) -> bool:
+    return (
+        event.event_type == "provider_event"
+        and event.actor is EventActor.PROVIDER
+        and event.content in _DELIVERY_CALLBACK_CONTENT
+    )
 
 
 def _verify_no_execution_fields(envelope: _CaseStorageEnvelope) -> None:

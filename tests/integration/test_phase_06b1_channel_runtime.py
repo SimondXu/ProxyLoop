@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import httpx
+import psycopg
 import pytest
 from proxyloop_api import create_app
 from proxyloop_case_runtime import (
@@ -22,6 +23,7 @@ from proxyloop_case_runtime import (
     InboxReceiptRecord,
     InMemoryCaseRepository,
     OutboxRecord,
+    PostgresCaseRepository,
     ThinAgentRuntime,
 )
 from proxyloop_connectors import (
@@ -39,6 +41,7 @@ from proxyloop_workflow_worker import (
 )
 from proxyloop_workflow_worker.client import _failure_category
 from temporalio.exceptions import ApplicationError
+from test_phase_06b1_temporal import _database_url, _truncate
 
 BASE_TIME = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
 CREATE_COMMAND_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
@@ -803,3 +806,103 @@ def test_channel_delivery_rejects_replayed_callback_payload() -> None:
     assert "Synthetic Provider message." not in str(payload)
     assert artifact_hash not in str(payload)
     assert "local-provider-test" not in str(payload)
+
+
+def test_postgres_delivery_callback_after_complete_is_stored() -> None:
+    """R-10: a delivery callback on a COMPLETE Case passes the PostgreSQL codec."""
+
+    database_url = _database_url()
+    _truncate(database_url)
+    repository = PostgresCaseRepository(database_url)
+    now = [BASE_TIME]
+    runtime = ThinAgentRuntime(repository, clock=lambda: now[0])
+    created = runtime.apply_command(_create_command())
+    event = _message_event(uuid4())
+    inbox = repository.reserve_channel_event(event, received_at=BASE_TIME)
+    applied = runtime.apply_command(
+        CaseCommand(
+            schema_version="phase-06b1-v1",
+            command_id=inbox.command_id,
+            case_id=SCRIPTED_CASE_ID,
+            command_type=CaseCommandType.INGEST_CHANNEL_EVENT,
+            occurred_at=event.occurred_at,
+            expected_revision=created.after_revision,
+            channel_kind=CHANNEL_KIND,
+            binding_ref=BINDING_REF,
+            event_id=event.event_id,
+            content_hash=hashlib.sha256(event.content.encode()).hexdigest(),
+            payload_hash=event.raw_payload_hash,
+        )
+    )
+    assert applied.delivery_id is not None
+    outbox = repository.get_outbox_record(applied.delivery_id)
+    assert outbox is not None
+    repository.record_delivery_observation(
+        applied.delivery_id,
+        idempotency_key=outbox.idempotency_key,
+        state="accepted",
+        provider_message_id="local-provider-test",
+    )
+    now[0] = BASE_TIME + timedelta(minutes=1)
+    waiting = runtime.append_event(SCRIPTED_CASE_ID, content="Review the offer.")
+    assert waiting.approval is not None
+    completed = runtime.apply_command(
+        CaseCommand(
+            command_id=uuid4(),
+            case_id=SCRIPTED_CASE_ID,
+            command_type=CaseCommandType.DECIDE_APPROVAL,
+            occurred_at=BASE_TIME + timedelta(minutes=2),
+            expected_revision=waiting.snapshot.revision,
+            approval_id=waiting.approval.approval_id,
+            decision="approved",
+        )
+    )
+    assert completed.terminal is True
+    before = PostgresCaseRepository(database_url).get(SCRIPTED_CASE_ID)
+    assert before is not None
+    assert before.snapshot.completion_receipt is not None
+
+    delivery_event = _message_event(uuid4(), kind=LocalMailboxEventKind.DELIVERY)
+    delivery_inbox = repository.reserve_channel_event(
+        delivery_event, received_at=BASE_TIME
+    )
+    delivered = runtime.apply_command(
+        CaseCommand(
+            schema_version="phase-06b1-v1",
+            command_id=delivery_inbox.command_id,
+            case_id=SCRIPTED_CASE_ID,
+            command_type=CaseCommandType.RECORD_CHANNEL_DELIVERY,
+            occurred_at=BASE_TIME,
+            expected_revision=before.snapshot.revision,
+            channel_kind=CHANNEL_KIND,
+            binding_ref=BINDING_REF,
+            event_id=delivery_event.event_id,
+            delivery_id=applied.delivery_id,
+            provider_message_id="local-provider-test",
+            delivery_status="delivered",
+            artifact_hash=hashlib.sha256(b"artifact").hexdigest(),
+            payload_hash=delivery_event.raw_payload_hash,
+        )
+    )
+
+    assert delivered.after_revision == before.snapshot.revision + 1
+    fresh = PostgresCaseRepository(database_url)
+    after = fresh.get(SCRIPTED_CASE_ID)
+    assert after is not None
+    assert after.snapshot.revision == before.snapshot.revision + 1
+    assert after.snapshot.case.phase is before.snapshot.case.phase
+    assert after.snapshot.completion_decision == before.snapshot.completion_decision
+    assert after.snapshot.completion_receipt == before.snapshot.completion_receipt
+    assert after.execution_source_pins == before.execution_source_pins
+    delivery_inbox_after = fresh.get_inbox_receipt(delivery_event.event_id)
+    assert delivery_inbox_after is not None
+    assert delivery_inbox_after.processing_state == "applied"
+    outbox_after = fresh.get_outbox_record(applied.delivery_id)
+    assert outbox_after is not None
+    assert outbox_after.state == "delivered"
+    with psycopg.connect(database_url) as connection:
+        row = connection.execute(
+            "SELECT count(*) FROM proxyloop_channel_delivery_receipts"
+        ).fetchone()
+    assert row is not None
+    assert row[0] == 1
