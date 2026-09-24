@@ -103,39 +103,59 @@ Line numbers are at `74e2073` plus this diff.
 Only these three entries changed; every other entry and the file structure
 are untouched.
 
+Final text after independent review (I-2, M-1, M-2 applied).
+
 - **Evidence**
-  - Before: "An immutable reference to a simulator or controlled external
-    artifact used to support facts or completion."
-  - After: the same sentence, then "Its content hash is the SHA-256 of the
-    canonical bytes of the artifact named by its source type and source
-    reference; the referent for each source type is listed in
-    `docs/architecture.md`. Only a confirmation's content hash is an input to
-    completion verification; a simulator-transition content hash is an executor
+  - Before:
+    "An immutable reference to a simulator or controlled external artifact
+    used to support facts or completion."
+  - After:
+    "An immutable reference to a simulator or controlled external artifact
+    used to support facts or completion. For every source type except a
+    simulator transition (producer-defined) and a bill (no producer), its
+    content hash is the SHA-256 of the canonical or raw bytes of the
+    artifact named by its source type and source reference; the referent and
+    the bytes for each source type are listed in `docs/architecture.md`.
+    Only a confirmation's content hash is an input to completion
+    verification; a simulator-transition content hash is an executor
     attestation whose value its producer defines, and it must not be relied
     on."
 - **Entity Revision**
-  - Before: "The optimistic sequence number of one immutable snapshot in a
-    mutable business entity's history."
-  - After: the same sentence, then "The ephemeral contract values
+  - Before:
+    "The optimistic sequence number of one immutable snapshot in a mutable
+    business entity's history."
+  - After:
+    "The optimistic sequence number of one immutable snapshot in a mutable
+    business entity's history. The ephemeral contract values
     `ModelInputPins`, `PlanningBasis`, `VisibleCaseEvent`,
     `CapabilityManifest`, `FastModelView`, `SlowReasonerView`,
     `RoutingDecision`, `SlowWorkRequest`, and `SlowWorkResult` carry a
     `revision` field that the product runtime always writes as 1 and that is
-    not an Entity Revision; consumers must not compare it. The write-once
-    records `ModelTrace`, `CompletionDecision`, `ExecutionClaim`, and
-    `CompletionReceipt` are immutable and have no revision history: their
-    `revision` is always 1 and must not be compared either."
+    not an Entity Revision. No consumer reads it as a sequence number, but
+    it is part of whole-value equality and fingerprints of pins, planning
+    bases, and the manifest, so producers must keep writing 1 and any echo
+    must preserve it. The write-once records `ModelTrace`,
+    `CompletionDecision`, `ExecutionClaim`, and `CompletionReceipt` are
+    immutable and have no revision history: their `revision` is always 1 and
+    is never read as a sequence number, and producers must keep writing 1
+    because a record compared as a whole includes it."
 - **Material Terms**
-  - Before: "The price, fees, credits, effective date, duration, expiry, and
-    feature changes whose alteration can invalidate an action or approval."
-  - After: "The offer terms an Action Intent and Approval Request bind
-    through their material-terms hash: monthly price, 12-month total,
-    currency, term, features, and offer expiry; a change to any of them
-    invalidates the action or approval. Fees and credits are bound only in
-    aggregate, through the 12-month total (policy rejects a total that
-    disagrees with the monthly price, fees, and known credits as
-    `fee_total_mismatch`) and the exact offer identity and revision the
-    approval pins. An approval binds neither the fee breakdown nor the
+  - Before:
+    "The price, fees, credits, effective date, duration, expiry, and feature
+    changes whose alteration can invalidate an action or approval."
+  - After:
+    "The offer terms an Action Intent and Approval Request bind through
+    their material-terms hash: monthly price, 12-month total, currency,
+    term, features, and offer expiry; a change to any of them invalidates
+    the action or approval. Fees and credits are bound only in aggregate,
+    through the 12-month total (policy rejects a total that disagrees with
+    the monthly price, fees, and known credits as `fee_total_mismatch`) and
+    the exact offer identity and revision the approval pins. At runtime
+    approval time catalogued credits are not applied, because the runtime
+    policy sees no applied changes, so a runtime offer whose 12-month total
+    reflects a catalogued credit is rejected as `fee_total_mismatch` today;
+    catalogued credits count only in the negotiation simulator and in the
+    completion verifier. An approval binds neither the fee breakdown nor the
     changes the Provider will apply: an Offer has no applied-changes field,
     so a forbidden applied change is caught only by the completion verifier
     after execution."
@@ -252,3 +272,64 @@ and a new log, and R-12 is still listed there. With no `PROXYLOOP_TEST_*` set:
   `docker compose config --quiet` passed.
 - Not run: the DB/Temporal gates (no runtime behaviour change; another agent
   holds the DB) and independent review.
+
+## Independent review: Request Changes, fixes applied
+
+Each finding was checked against code before rewriting.
+
+- **I-1 (Important), the capability/action join.** The earlier text said the
+  executor alone binds an Action Intent to a manifest capability. That is
+  false: the Slow output compilers build the join. `openai_adapter`
+  `outputs.py:186-191` resolves the proposed capability in
+  `request.view.capability_manifest`, rejects an unsupported one, and sets
+  `action_type = definition.allowed_action_types[0]`; the ML
+  `slow_output.py:124-135` does the same. The join is not carried on the
+  wire, and neither the contract nor the coordinator audit checks it after
+  the boundary. `docs/architecture.md`, the ADR amendment, the test module
+  docstring, and one test comment now say that the executor is the only
+  enforcement point, and "joined only at execution" became "checked only at
+  execution".
+- **I-2 (Important), revision equality.** The earlier text said consumers
+  "must not compare" the ephemeral `revision` and that "nothing reads" the
+  ML runner's increment. That is false: pins and bases are compared as
+  whole values (`capabilities.py:194`; `coordinator.py:138`, `:168`, `:435`,
+  `:483`; `openai_adapter/adapter.py:110-111`; `openai_frontier.py:836`,
+  `:838`), and the manifest's `revision` enters
+  `capability_manifest_fingerprint` (`contracts.py:1232`). Reproduced: an
+  executor request whose `source_pins` is the snapshot pins with
+  `revision=2` returns `('stale_capability_proposal',)`. For the write-once
+  records, the PostgreSQL codec compares the stored `CompletionDecision` as
+  a whole with the recomputed one (`postgres_repository.py:1280`).
+  `ExecutionClaim` is checked field by field (`:1351-1363`), and no code
+  compares `ModelTrace` or `CompletionReceipt` as a whole outside tests. The
+  wording is now "no consumer reads it as a sequence number, but it is part
+  of whole-value equality, so producers must keep writing 1 and any echo
+  must preserve it". For `runner_v2`, the Slow result echoes the value
+  unchanged.
+- **M-1, the general `content_hash` definition** (`CONTEXT.md`,
+  `docs/architecture.md`, `contracts.py` comment): it now excludes
+  `simulator_transition` (producer-defined) and `bill` (no producer) and
+  says "canonical or raw bytes, per the table".
+- **M-2, credits at runtime approval time** (`CONTEXT.md` Material Terms):
+  the runtime policy passes `applied_changes=()` (`runtime.py:1712`), so the
+  catalogued credit (`_KNOWN_CREDITS_MINOR`, `offer_policy.py:18-20`) is
+  never subtracted before approval. A runtime offer whose 12-month total
+  reflects a catalogued credit is therefore rejected as `fee_total_mismatch`
+  today. Catalogued credits count only in the negotiation simulator and in
+  the completion verifier, which reads the confirmation's applied changes
+  (`domain.py:228-236`). **Known limit**: this is tied to the future contract
+  set 1.2 (R-11b), which would bind fees, credits, and applied changes.
+- **M-3, the test docstring**: the channel and delivery comments in
+  `test_contract_semantics_limits.py` now say that the API projection's
+  hashing (`app.py:599`, `:617`) is copied, not exercised, because the route
+  runs through Temporal.
+- **Status**: `harness/context/audit-remediation-status.md` marks A-3, A-5,
+  and A-9 as recorded limits, R-11 (a) as done with (b) deferred to 1.2, and
+  R-13 (c) as done with (b) planned with R-12, all on branch
+  `docs/contract-semantics-limits`.
+
+`git fetch origin && git merge origin/main` merged `d23aff9` (#80,
+B1-12). The ADR conflicted because both sides appended an "Amendment
+2026-09-24". Both amendments are kept, #80's first; the closing sentence of
+this branch's amendment now names the "Capabilities and side effects"
+paragraph, and the pointer at that paragraph names this amendment by title.

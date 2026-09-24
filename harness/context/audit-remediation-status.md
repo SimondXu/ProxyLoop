@@ -140,8 +140,16 @@ deleting the D3-7 `rejection_reasons` field (emitted in the committed
 (frozen modules or committed hosted-report bytes); audit N1, the
 `_matches_environment` fallback at `pipeline.py:566`.
 
+Recorded as limits (documentation plus characterization tests, no
+behaviour change) on branch `docs/contract-semantics-limits`
+(`docs-contract-semantics-limits.md`): A-3 (the executor is the only
+enforcement point for the capability/action join), A-5 (`Evidence.content_hash`
+referent table), A-9 (ephemeral values and write-once records keep
+`revision=1`). The contract changes the audit proposed for them stay open as
+separate decisions.
+
 Open: G-1's stronger form (`preflight` asserts the gated-skip count or
-names the real-dependency gates), G-3, A-3, A-5, A-7f, A-9, B1-9, B1-12,
+names the real-dependency gates), G-3, A-7f, B1-9, B1-12,
 B2-7…B2-9, C-5, C-7, C-8, D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
 deletion only), D3-8, D3-9, and replacing the grep-based architecture tests
 with Router precedence tests (audit §3, lane A).
@@ -177,9 +185,9 @@ Other items (Minor unless marked):
 - R-6 persisted Cases keep their 1-day manifest; a runtime > 24 h test needs an injectable offer TTL.
 - R-7 `_snapshot(manifest=None)` re-mint — **done** in #68 (manifest required).
 - R-9 shared `proxyloop_test` DB → run DB/Temporal gates serially (documented in #73); a per-run schema would remove the hazard.
-- R-11 the canonical `material_terms_hash` excludes fees and applied changes.
+- R-11 the canonical `material_terms_hash` excludes fees and applied changes. Option (a) **done** on branch `docs/contract-semantics-limits` (`CONTEXT.md` Material Terms states the implemented definition and its limits); option (b), binding fees, credits, and applied changes (R-11b), deferred to contract set 1.2.
 - **R-12 (Important, proposal stage 1)** rejected-result traces reach `CoordinatorOutcome` but the runtime raises before writing; needs a traces-only append.
-- R-13 `model_traces` retention unbounded.
+- R-13 `model_traces` retention unbounded. Option (c) **done** on branch `docs/contract-semantics-limits` (documented in `docs/architecture.md`); option (b), a separate append-only trace log at `storage_version` 3, planned with R-12.
 - R-14 the 1.0/1.1 basis switch is duplicated in `runtime.py` and `contracts.py`.
 - R-15 flaky: `ml/tests/test_teacher_pipeline.py::test_concurrent_workers_cannot_jointly_exceed_the_ceiling` asserts `8 <= calls <= 20` and saw 21 on CI (#71, a docs-only PR); the bound is timing-dependent — tighten the test or make the concurrency deterministic. Failed CI again on #75 (2026-09-24, run 35961699413 attempt 1: `assert 21 <= 20`; attempt 2 passed). A separate fix task has been proposed.
 - **R-16 (Important; severity confirmed by the root)** the expiry path's `_expiry_failure_category` reads the innermost typed `ApplicationError`; every real activity failure is raised `from exc`, so the converter chain is `[('ApplicationError','case_conflict',True), ('ApplicationError','CaseConflictError',False)]` and a real non-retryable expiry failure (e.g. `case_conflict`) is classified retryable and retried with backoff instead of abandoned. The expiry tests miss it because their injected faults carry no `__cause__`. The fix changes expiry-path commands for recorded histories, so it needs a second workflow patch gate. See `harness/log/fix-r1-retryable-update-continues-as-new.md`.
@@ -188,8 +196,8 @@ Other items (Minor unless marked):
 
 Still open from the audit P2 list and not yet batched: runtime/router/api
 hygiene (B1-12, B2-7, B2-8, B2-9, A-7f, R-2, R-5, R-14), ops/tests (C-5, C-7, C-8, G-3, R-6), architecture-test replacement
-(grep → Router precedence tests), and the design-first items A-3, A-5, A-9,
-B1-9 (route through `architect`). **Do not do**: D3-5/D3-6 (`qwen_mlx.py`
+(grep → Router precedence tests), and the design-first item B1-9 (route
+through `architect`; A-3, A-5, A-9 are recorded as limits above). **Do not do**: D3-5/D3-6 (`qwen_mlx.py`
 frozen by r4); D1-10/11/12 (V1 simulator frozen, superseded by V2); D2-9 and
 D3-8 only if a check proves no committed report byte moves.
 
