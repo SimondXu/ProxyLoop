@@ -120,8 +120,11 @@ are untouched.
     `ModelInputPins`, `PlanningBasis`, `VisibleCaseEvent`,
     `CapabilityManifest`, `FastModelView`, `SlowReasonerView`,
     `RoutingDecision`, `SlowWorkRequest`, and `SlowWorkResult` carry a
-    `revision` field that is always 1 and is not an Entity Revision;
-    consumers must not compare it."
+    `revision` field that the product runtime always writes as 1 and that is
+    not an Entity Revision; consumers must not compare it. The write-once
+    records `ModelTrace`, `CompletionDecision`, `ExecutionClaim`, and
+    `CompletionReceipt` are immutable and have no revision history: their
+    `revision` is always 1 and must not be compared either."
 - **Material Terms**
   - Before: "The price, fees, credits, effective date, duration, expiry, and
     feature changes whose alteration can invalidate an action or approval."
@@ -197,12 +200,39 @@ pins no sentence touched here (its ADR markers are all still present).
 
 ## Open points for the root orchestrator
 
-- `ModelTrace`, `CompletionDecision`, `ExecutionClaim`, and
-  `CompletionReceipt` are also written only with `revision=1` today, but they
-  are persisted records rather than one-shot values, so they are not in the
-  A-9 list. Whether they are entities is not decided here.
+- Resolved by root decision (see "Root decision: write-once records" below):
+  `ModelTrace`, `CompletionDecision`, `ExecutionClaim`, and
+  `CompletionReceipt` are write-once records.
 - `simulator_transition` hashes are not a completion-verification input, but
   the PostgreSQL codec rebuilds the runtime's exact quote, confirmation, and
   transition Evidence on load (`postgres_repository.py:1176-1184`,
   `:1245-1252`, `:1407-1419`); changing any producer formula therefore needs a
   storage decision. The architecture text now says so.
+
+## Root decision: write-once records
+
+The root orchestrator decided that `ModelTrace`, `CompletionDecision`,
+`ExecutionClaim`, and `CompletionReceipt` are write-once immutable records,
+not entities with a revision history, and that their `revision` must not be
+compared. They are listed as a second category next to the ephemeral values
+in `CONTEXT.md` (Entity Revision) and `docs/architecture.md`.
+
+Producer check before listing (AST scan of every constructor call plus grep
+for `"revision":` updates, over `runtime/packages`, `runtime/services`, `ml`,
+and `scripts`, tests excluded):
+
+- `ModelTrace`: `coordinator.py:583` and `scripts/run_phase_03a1_harness.py:146`,
+  both `revision=1`.
+- `CompletionDecision`: `domain.py:282`, `revision=1`.
+- `ExecutionClaim`: `runtime.py:1173` and `postgres_repository.py:171` (the
+  storage_version 1 upgrade), both `revision=1`.
+- `CompletionReceipt`: `runtime.py:1889`, `revision=1`.
+- None of the four is ever updated through `model_copy(update={"revision": ...})`,
+  and no code reads their `revision`.
+
+The same scan found one exception to the ephemeral list's "always 1": the ML
+evaluation runner increments `PlanningBasis.revision` when it rebuilds a basis
+(`ml/evaluation/src/proxyloop_evaluation/runner_v2.py:388`, an r4-frozen
+path). Nothing reads that value. The product runtime writes 1 at every site.
+The `CONTEXT.md` sentence therefore now says "that the product runtime always
+writes as 1", and `docs/architecture.md` names the exception.

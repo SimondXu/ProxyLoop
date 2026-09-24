@@ -105,7 +105,7 @@ The identifier for the shape and meaning of a serialized ProxyLoop contract, ind
 _Avoid_: Entity version, database migration
 
 **Entity Revision**:
-The optimistic sequence number of one immutable snapshot in a mutable business entity's history. The ephemeral contract values `ModelInputPins`, `PlanningBasis`, `VisibleCaseEvent`, `CapabilityManifest`, `FastModelView`, `SlowReasonerView`, `RoutingDecision`, `SlowWorkRequest`, and `SlowWorkResult` carry a `revision` field that is always 1 and is not an Entity Revision; consumers must not compare it.
+The optimistic sequence number of one immutable snapshot in a mutable business entity's history. The ephemeral contract values `ModelInputPins`, `PlanningBasis`, `VisibleCaseEvent`, `CapabilityManifest`, `FastModelView`, `SlowReasonerView`, `RoutingDecision`, `SlowWorkRequest`, and `SlowWorkResult` carry a `revision` field that the product runtime always writes as 1 and that is not an Entity Revision; consumers must not compare it. The write-once records `ModelTrace`, `CompletionDecision`, `ExecutionClaim`, and `CompletionReceipt` are immutable and have no revision history: their `revision` is always 1 and must not be compared either.
 _Avoid_: Schema version, timestamp
 
 **Money**:
