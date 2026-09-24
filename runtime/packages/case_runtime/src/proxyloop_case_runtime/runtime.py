@@ -658,6 +658,13 @@ class ThinAgentRuntime:
                 phase=snapshot.case.phase,
                 manifest=snapshot.capability_manifest,
                 receipt=snapshot.completion_receipt,
+                # A completed Case keeps the version it completed in: its
+                # execution source pins bind that version's planning basis.
+                schema_version=(
+                    snapshot.schema_version
+                    if snapshot.completion_decision is not None
+                    else "1.1"
+                ),
             )
             transition = _transition_ref(
                 command_id=command.command_id,
