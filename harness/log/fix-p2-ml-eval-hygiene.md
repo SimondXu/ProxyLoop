@@ -8,25 +8,42 @@ under `data/` changed.
 
 ## Per item
 
-- **D3-7 reason codes: fixed.** `pipeline._intrinsic_rejection` returns
-  `schema_invalid` for a `ValidationError` (was `missing_provenance`; an
-  absent `source` key still returns `missing_provenance` from the earlier
-  check) and `hash_mismatch` for a stale `content_hash` or
-  `semantic_fingerprint` (was `invalid_verifier_outcome`). Red first:
-  `test_schema_invalid_candidate_is_not_labelled_missing_provenance` and
-  `test_hash_mismatch_is_not_labelled_invalid_verifier_outcome` failed on
-  `5bedcce` (`2 failed, 14 passed`), then passed. None of the eight pilot
-  probes reaches either branch, so the Phase 02 quarantine manifest and
-  quality report stay byte-identical (`data-pilot-check` green).
-- **D3-7 `rejection_reasons`: recorded as a known limit.** The field is
-  emitted in the committed `data/schemas/normalized-trajectory-v1.schema.json`
-  (line 335), so removing it changes a committed artifact. Populating it has
-  no sound place: quarantined candidates are emitted as dicts with
-  `reason_codes`, not as `NormalizedTrajectory`, and changing that shape
-  changes the committed quarantine manifest. Note for the follow-up: a
-  candidate that arrives with a non-empty `rejection_reasons` is currently
-  accepted (neither `_intrinsic_rejection` nor `_matches_environment` compares
-  the field); not changed here because it needs a new reason code.
+- **D3-7 reason codes: fixed.** `pipeline._intrinsic_rejection` now labels
+  each rejection by its actual cause (codes decided by the root orchestrator
+  after independent review):
+  - `source` absent or `None`: `missing_provenance` (a null `source` was
+    `schema_invalid` on the WIP commit);
+  - `ValidationError`: `schema_invalid` (was `missing_provenance`);
+  - non-empty `rejection_reasons`, checked after schema validation so
+    `schema_invalid` still wins: `declared_rejection` (was accepted);
+  - `derivation_parent_id` names no scenario: `unknown_derivation_parent`
+    (was `split_mismatch`);
+  - `source`/`generation` present but differ from the expected record:
+    `provenance_mismatch` (was `missing_provenance`);
+  - stale `content_hash` or `semantic_fingerprint`: `hash_mismatch` (was
+    `invalid_verifier_outcome`).
+  Red first: on the WIP commit `test_schema_invalid_candidate_is_not_labelled_missing_provenance`
+  and `test_hash_mismatch_is_not_labelled_invalid_verifier_outcome` failed
+  (`2 failed, 14 passed`). In the review round
+  `test_declared_rejection_reasons_are_not_accepted` (candidate was accepted),
+  `test_replaced_provenance_is_provenance_mismatch`,
+  `test_unknown_derivation_parent_is_not_labelled_split_mismatch`,
+  `test_null_source_is_missing_provenance`, and the updated expectation in
+  `test_frozen_source_and_environment_verification_cannot_be_replaced`
+  failed (`5 failed, 32 passed` across the two ML test files), then all passed
+  (`37 passed`). None of the eight pilot probes reaches a changed branch
+  (probe 01 deletes `source`; probe 07 changes only `lineage.split`; every
+  probe has empty `rejection_reasons`), so the Phase 02 quarantine manifest,
+  quality report, and `EXPECTED_REJECTION_CATEGORIES` in
+  `tests/integration/test_phase_02_artifacts.py` are unchanged
+  (`make data-pilot-check` green).
+- **D3-7 `rejection_reasons` field: accept-gap fixed; deletion deferred.** A
+  declared rejection is now quarantined (above). Deleting the unused field
+  stays deferred because it is emitted in the committed
+  `data/schemas/normalized-trajectory-v1.schema.json` (line 335).
+- **D3-7 limit (audit N1, out of scope):** the `_matches_environment`
+  fallback in `curate_candidates` (`pipeline.py:566`) still labels any
+  non-regenerable row `invalid_verifier_outcome`.
 - **D3-9: recorded as a known limit.** The model-suffix match
   (`openai_frontier.py:587-590`) and the `error=str(exc)` writes
   (`:297, 311, 340, 354, 368`) live in `openai_frontier.py`, which is in
@@ -47,8 +64,13 @@ under `data/` changed.
   conditions to the set r3 changed; r3 must replay clean. Sensitivity checked
   in a scratch script: flipping `end_to_end_valid` on one
   `untuned_fast_slow_off_r2` r2 row adds `untuned_fast_slow_off_r2: semantic
-  replay mismatch`, which the test rejects. Runs under `make test`
-  (`unit-test`).
+  replay mismatch`, which the test rejects. After review the test also pins
+  the single corrected episode: the differing fields are exactly
+  `{failure_codes, route_agreement}` and the `failure_codes` symmetric
+  difference is exactly `{router_outcome_mismatch}`. Sensitivity checked on
+  scratch copies of the test: appending a failure code to that r2 episode
+  fails the `failure_codes` pin, and changing its `fast_raw_output` fails the
+  field-set pin. Runs under `make test` (`unit-test`).
 - **D2-7: recorded as a known limit.** `failures.add("router_outcome_mismatch")`
   is at `runner_v2.py:1147` (frozen) and the label is inside the committed
   r2-r5 reports and the rescored r4; any fix changes committed report bytes.
@@ -83,10 +105,25 @@ under `data/` changed.
 - Re-verified on the merged tree `dfc21b9`: `make format-check lint typecheck`
   exit 0; `make preflight-fast` exit 0; `make test` (no `PROXYLOOP_TEST_*` set)
   exit 0, runtime `1174 passed, 46 skipped`, ML `393 passed, 1 skipped`, the
-  same three informational drift states. One earlier `make test` run on the
-  first merge (`cac1eab`) reported ML `390 passed, 1 skipped` with exit 0; the
-  three later runs on the same tree and after (`make unit-test`, `make test`,
-  direct pytest with `-rA`) all reported `393 passed, 1 skipped`, and
-  collection is 394. The 3-test gap was not reproduced or explained.
+  same three informational drift states. The main checkout collects 391 ML
+  tests (390 passed + 1 skipped) and this worktree 394 (393 + 1); the one
+  `make test` run that reported `390 passed, 1 skipped` matches main's
+  collection (root orchestrator: it ran on main after a cwd reset) and is not
+  evidence for this branch.
 - `git status --short data/`: empty. `git diff --stat origin/main -- ml/ data/`:
   only `pipeline.py`, `test_pipeline.py`, `test_phase03a1_erratum_artifacts.py`.
+
+## Review round 1 (Request Changes: I-1, M-1, M-2, M-3)
+
+- Applied the root decisions above (`declared_rejection`, the three
+  relabels, the r2→r3 episode pin, the 390 note). `:566` untouched.
+- Verification on the final diff: the two ML test files `37 passed`;
+  `make data-pilot-check` exit 0; `make format-check lint typecheck` exit 0;
+  `make preflight-fast` exit 0; `make test` (no `PROXYLOOP_TEST_*`) exit 0,
+  runtime `1174 passed, 46 skipped`, ML `397 passed, 1 skipped` (398
+  collected), the same three informational drift states.
+- `git status --short data/`: empty. No path in
+  `hosted_rerun._R4_EXECUTION_PATHS` is in the diff; `git diff --stat
+  origin/main -- ml/ data/` lists only `pipeline.py`, `test_pipeline.py`,
+  `test_phase03a1_erratum_artifacts.py`.
+- Not run: `make preflight`, `make web-check`, the real-dependency gates.

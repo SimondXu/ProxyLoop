@@ -344,3 +344,19 @@ def test_committed_r2_labels_replay_except_where_r3_corrects() -> None:
     assert corrected_conditions == {"untuned_fast_frontier_slow_medium"}
     assert {error.split(":", 1)[0] for error in source_errors} == (corrected_conditions)
     assert replay_report_v2(corrected, fixtures=fixtures) == ()
+
+    changed_rows = [
+        (before_row.model_dump(mode="json"), after_row.model_dump(mode="json"))
+        for before, after in zip(source.conditions, corrected.conditions, strict=True)
+        for before_row, after_row in zip(before.episodes, after.episodes, strict=True)
+        if before_row != after_row
+    ]
+    assert len(changed_rows) == 1
+    before_row, after_row = changed_rows[0]
+    assert {key for key in before_row if before_row[key] != after_row[key]} == {
+        "failure_codes",
+        "route_agreement",
+    }
+    assert set(before_row["failure_codes"]) ^ set(after_row["failure_codes"]) == {
+        "router_outcome_mismatch"
+    }

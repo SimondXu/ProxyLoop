@@ -198,7 +198,7 @@ def test_frozen_source_and_environment_verification_cannot_be_replaced() -> None
 
     assert not accepted
     assert {item["reason_codes"][0] for item in rejected} == {
-        "missing_provenance",
+        "provenance_mismatch",
         "invalid_verifier_outcome",
     }
 
@@ -277,3 +277,54 @@ def test_hash_mismatch_is_not_labelled_invalid_verifier_outcome() -> None:
         ["hash_mismatch"],
         ["hash_mismatch"],
     ]
+
+
+def test_declared_rejection_reasons_are_not_accepted() -> None:
+    """Audit D3-7: a candidate that already carries ``rejection_reasons`` is
+    quarantined as ``declared_rejection`` instead of being accepted."""
+
+    raw = build_pilot().accepted[0].model_dump(mode="python")
+    raw["rejection_reasons"] = ("pii_detected",)
+
+    accepted, rejected = curate_candidates([raw])
+
+    assert not accepted
+    assert rejected[0]["reason_codes"] == ["declared_rejection"]
+
+
+def test_replaced_provenance_is_provenance_mismatch() -> None:
+    """Audit D3-7: provenance that is present but differs from the expected
+    source is ``provenance_mismatch``, not ``missing_provenance``."""
+
+    raw = build_pilot().accepted[0].model_dump(mode="python")
+    raw["source"]["source_id"] = "unexpected-source"  # type: ignore[index]
+
+    accepted, rejected = curate_candidates([raw])
+
+    assert not accepted
+    assert rejected[0]["reason_codes"] == ["provenance_mismatch"]
+
+
+def test_unknown_derivation_parent_is_not_labelled_split_mismatch() -> None:
+    """Audit D3-7: a ``derivation_parent_id`` that names no scenario is
+    ``unknown_derivation_parent``, not ``split_mismatch``."""
+
+    raw = build_pilot().accepted[0].model_dump(mode="python")
+    raw["lineage"]["derivation_parent_id"] = "no-such-scenario"  # type: ignore[index]
+
+    accepted, rejected = curate_candidates([raw])
+
+    assert not accepted
+    assert rejected[0]["reason_codes"] == ["unknown_derivation_parent"]
+
+
+def test_null_source_is_missing_provenance() -> None:
+    """Audit D3-7: ``source: None`` is treated like an absent ``source``."""
+
+    raw = build_pilot().accepted[0].model_dump(mode="python")
+    raw["source"] = None
+
+    accepted, rejected = curate_candidates([raw])
+
+    assert not accepted
+    assert rejected[0]["reason_codes"] == ["missing_provenance"]
