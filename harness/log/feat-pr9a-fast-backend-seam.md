@@ -57,7 +57,7 @@ in-test fake gateway; no model runs.
   check; strict `FastModelOutput`; non-empty `fact_updates` refused; compiled
   against the runtime's view) and `fast_adapter_from_environment`
   (`PROXYLOOP_FAST_BACKEND`, `PROXYLOOP_FAST_GATEWAY_URL`,
-  `PROXYLOOP_FAST_TIMEOUT_S`, default 20, cap 25). `LocalFastStartupError` for an
+  `PROXYLOOP_FAST_TIMEOUT_S`, default 25 after the root amendment below, cap 25). `LocalFastStartupError` for an
   absent, invalid, or mismatched gateway.
 - `api/config.py`: a local backend only with `PROXYLOOP_RUNTIME_MODE=scripted`;
   Temporal refuses any non-scripted Fast backend until PR-11.
@@ -140,6 +140,47 @@ On the final tree, with no `PROXYLOOP_TEST_*` variable set:
   `make phase06b1-check` 56 passed. No DB-gated test was added.
 - Not run: independent review, `/security-review` (new loopback HTTP client and
   failure path), any real gateway or model (PR-9b's manual lane).
+
+## Review follow-up (Request Changes, no Blocking finding)
+
+Review artifact: `harness/code_review/feat-pr9a-fast-backend-seam.md`. The root
+accepted I1 and M1–M4 and made one more decision on the timeout:
+
+- I1: wire decoding is total. `_load` maps any `ValueError` (including an int
+  past the 4300-digit limit) or `RecursionError` to `body_not_json`, and every
+  allow-list test is `isinstance(str)`-guarded. A malformed body is now a
+  `FAILED` protocol-error trace plus the fallback, and a malformed identity is a
+  `LocalFastStartupError`.
+- M1: the timeout bounds the whole call. A socket wrapper sets each read and
+  write timeout to the remaining budget, so a trickling gateway is cut off at
+  the deadline.
+- M2: identity fields must be tokens (at most 128 characters, no spaces or
+  control characters). `connect` pins prompt `v6` and base model
+  `Qwen/Qwen3-8B-MLX-bf16`.
+- M3: an unknown `LabelledFastBackend` label is refused in `runtime.py`.
+- M4: the adapter's map is renamed `ADAPTER_MODE_BY_BACKEND`.
+- Root amendment 2026-09-24 (also dated in the spec and in
+  `docs/architecture.md`). PR-9b measured distilled latency locally over 240
+  held-out prompts: p50 21.3 s, max 26.9 s, 134/240 calls over 20 s and 15/240
+  over 25 s. `PROXYLOOP_FAST_TIMEOUT_S` now defaults to 25 s, the cap, and the
+  cap stays 25 s because of the 30 s Temporal activity and Next proxy limits.
+  About 15/240 ≈ 6% of held-out-like distilled calls are expected to time out
+  into the fallback line, and a Fast call can hold the B2-8 direct-mode app lock
+  for up to 25 s (a recorded local limit).
+
+Red, on the reviewed tree, for the new cases in `test_local_fast_adapter.py`
+and `test_local_fast_config.py`: 21 failed, 66 passed. The reviewer's probes
+reproduced I1 (`TypeError` and `ValueError` escapes; `probe_e2e.py` returned 500
+with only a Slow trace) and M1 (`probe_trickle.py`: 2.5 s wall at a 0.3 s
+timeout). After the fixes the probes give a `WireError` for every case, 200 plus
+a `FAILED` Fast trace, and `fast_adapter_timeout` respectively.
+
+Checks after the follow-up, with no `PROXYLOOP_TEST_*` variable set:
+`make lint` passed; `make typecheck` passed (runtime 75 source files, ml 59);
+`make test` exit 0 (runtime 1585 passed, 63 skipped; ml 397 passed, 1 skipped;
+every `*-check` passed; no committed artifact moved); `make preflight` exit 0
+(Web 156 tests, gated skips equal the pinned 63). DB gates: not rerun yet. `runtime.py` changed (M3), so they must be rerun
+when the lane is free.
 
 ## Decisions and assumptions (implementer; root to confirm)
 

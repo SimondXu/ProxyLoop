@@ -202,7 +202,7 @@ repository. Storage and orchestration modes are explicit and never fall back:
   |---|---|---|
   | `PROXYLOOP_FAST_BACKEND` | `scripted` (default), `distilled`, `untuned` | `distilled` is the Phase 03C Local Opt-in Candidate, `untuned` its base |
   | `PROXYLOOP_FAST_GATEWAY_URL` | default `http://127.0.0.1:8765` | an `http://` loopback origin only (`127.0.0.1`, `::1`, `localhost`) |
-  | `PROXYLOOP_FAST_TIMEOUT_S` | default `20` | a number in (0, 25] |
+  | `PROXYLOOP_FAST_TIMEOUT_S` | default `25` (the cap) | a number in (0, 25]; a distilled call can hold the direct-mode app lock for up to this long |
 
   The server refuses to start unless the gateway answers `/v1/identity`
   with the selected backend. A failed Fast call delivers the fallback line

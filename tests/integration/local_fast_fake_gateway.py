@@ -44,6 +44,9 @@ BEHAVIOURS: Final = frozenset(
         "unrenderable",
         "identity_flip",
         "drop",
+        "detail_not_text",
+        "trickle_head",
+        "trickle_body",
     }
 )
 
@@ -135,7 +138,29 @@ class FakeGateway:
                 if status is None:
                     self.close_connection = True
                     return
+                if gateway.behaviour.startswith("trickle"):
+                    self._trickle(answer)
+                    return
                 self._send(status, answer)
+
+            def _trickle(self, body: bytes) -> None:
+                # A byte every 0.1 s: each socket read is quick, the whole
+                # answer is not (review M1).
+                head = (
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                    f"Content-Length: {len(body)}\r\n\r\n"
+                ).encode()
+                self.close_connection = True
+                if gateway.behaviour == "trickle_body":
+                    self.wfile.write(head)
+                    head = b""
+                try:
+                    for byte in (head + body)[:40]:
+                        time.sleep(0.1)
+                        self.wfile.write(bytes([byte]))
+                        self.wfile.flush()
+                except OSError:
+                    return  # the client gave up, as it should
 
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self._server.daemon_threads = True
@@ -180,6 +205,11 @@ class FakeGateway:
         if behaviour == "wrong_wire_version":
             document = json.loads(body)
             document["wire_version"] = "local-fast-wire-v0"
+            body = encode_json(document)
+        if behaviour == "detail_not_text":
+            # Review I1: a list where a detail code belongs.
+            document = json.loads(self._response("invalid_output", None, "x"))
+            document["detail_code"] = ["x"]
             body = encode_json(document)
         if behaviour == "identity_flip":
             document = json.loads(body)

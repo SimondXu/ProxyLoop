@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from typing import Final
 
 from .adapter import (
-    BACKEND_LABELS,
+    ADAPTER_MODE_BY_BACKEND,
     DEFAULT_GATEWAY_URL,
     DEFAULT_TIMEOUT_S,
     MAX_TIMEOUT_S,
@@ -30,7 +30,7 @@ def selected_fast_backend(values: Mapping[str, str]) -> str:
     """``scripted`` (the default), ``distilled`` or ``untuned``."""
 
     backend = values.get(FAST_BACKEND_VARIABLE, "scripted")
-    if backend != "scripted" and backend not in BACKEND_LABELS:
+    if backend != "scripted" and backend not in ADAPTER_MODE_BY_BACKEND:
         raise ValueError(
             f"{FAST_BACKEND_VARIABLE} must be scripted, distilled, or untuned"
         )

@@ -34,6 +34,17 @@ proposal below (decisions 16 and 18). Root answers to §8:
   a release and is excluded. Weights/adapters are never committed.
 - **Q12.** D3–D6 recorded as E1 caveats, not invented product signals.
 
+**Root amendment 2026-09-24 (Q10 timeout, after PR-9b's local measurement).**
+PR-9b measured the distilled backend on this machine over the 240 held-out
+prompts, sequentially: latency p50 21.3 s, max 26.9 s; 134/240 calls took over
+20 s and 15/240 over 25 s. `PROXYLOOP_FAST_TIMEOUT_S` therefore defaults to
+**25 s, the cap**; the cap stays 25 s because it is bound by the 30 s Temporal
+activity and Next proxy limits. At 25 s about 15/240 ≈ 6% of held-out-like
+distilled calls are expected to end as `fast_adapter_timeout` and deliver the
+fallback line (one machine; not p95 or capacity). A Fast call can hold the B2-8
+direct-mode app lock for up to 25 s, a recorded local limit. §2.7 and §2.9
+below still say 20 s; this amendment supersedes them.
+
 Split: 9a (runtime seam, R-19, HTTP adapter, fake gateway; CI only; touches
 `runtime.py`/`agent_core`) starts after PR-8a merges. 9b (gateway, adapter
 conversion, silent-load guard, parity M1/M2, local split reports, manual run)

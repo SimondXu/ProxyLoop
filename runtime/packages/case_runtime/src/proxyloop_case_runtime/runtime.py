@@ -2273,14 +2273,18 @@ def _channel_repository(repository: CaseRepository) -> Any:
 
 
 def _infer_adapter_mode(fast: FastAdapter, slow: SlowAdapter) -> AdapterMode:
-    if isinstance(slow, ScriptedSlowAdapter):
-        if isinstance(fast, _SCRIPTED_FAST_TYPES):
-            return "scripted"
-        if isinstance(fast, LabelledFastBackend):
-            label = fast.fast_backend_label
-            for mode in _LOCAL_FAST_MODES:
-                if label == mode:
-                    return mode
+    if isinstance(fast, LabelledFastBackend):
+        # An opt-in backend names itself; an unknown name is refused, never
+        # reported as ``model`` (review M3).
+        label = fast.fast_backend_label
+        mode = next((item for item in _LOCAL_FAST_MODES if item == label), None)
+        if mode is None:
+            raise ValueError("unrecognised Fast backend label")
+        if isinstance(slow, ScriptedSlowAdapter):
+            return mode
+        return "model"
+    if isinstance(fast, _SCRIPTED_FAST_TYPES) and isinstance(slow, ScriptedSlowAdapter):
+        return "scripted"
     return "model"
 
 

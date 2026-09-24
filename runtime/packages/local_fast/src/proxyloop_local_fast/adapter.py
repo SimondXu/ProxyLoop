@@ -15,11 +15,13 @@ loopback origin only, follows no redirect, and carries no credential (L1).
 from __future__ import annotations
 
 import http.client
+import io
 import json
 import math
+import socket
 import time
 from collections.abc import Callable
-from typing import Final, Literal
+from typing import Any, Final, Literal
 from urllib.parse import urlsplit
 
 from proxyloop_agent_core import (
@@ -45,16 +47,25 @@ from proxyloop_openai_adapter import FastModelOutput, compile_fast_output
 
 Backend = Literal["distilled", "untuned"]
 BackendLabel = Literal["local_distilled_candidate", "local_untuned_baseline"]
-BACKEND_LABELS: Final[dict[str, BackendLabel]] = {
+ADAPTER_MODE_BY_BACKEND: Final[dict[str, BackendLabel]] = {
     "distilled": "local_distilled_candidate",
     "untuned": "local_untuned_baseline",
 }
 LOCAL_FAST_PROVIDER: Final = "local_mlx_gateway"
 LOCAL_FAST_ADAPTER_VERSION: Final = "local-fast-http-v1"
 DEFAULT_GATEWAY_URL: Final = "http://127.0.0.1:8765"
-DEFAULT_TIMEOUT_S: Final = 20.0
+# Root amendment 2026-09-24: the default is the cap. PR-9b measured distilled
+# calls at p50 21.3 s, max 26.9 s locally; the cap stays under the 30 s
+# Temporal activity and Next proxy limits.
+DEFAULT_TIMEOUT_S: Final = 25.0
 MAX_TIMEOUT_S: Final = 25.0
 LOOPBACK_HOSTS: Final = frozenset({"127.0.0.1", "::1", "localhost"})
+# What the Phase 03C parity was measured on (review M2). The runtime cannot
+# import ml/, so these mirror `QWEN3_8B_BF16_SPEC.model` in
+# `ml/evaluation/src/proxyloop_evaluation/qwen_spec.py` and the 03C v6 prompt;
+# the identity goldens under tests/fixtures/local-fast-wire pin both values.
+SERVED_BASE_MODEL: Final = "Qwen/Qwen3-8B-MLX-bf16"
+SERVED_PROMPT_VERSION: Final = "v6"
 
 
 class LocalFastStartupError(RuntimeError):
@@ -139,7 +150,7 @@ class LocalFastHttpAdapter:
     ) -> LocalFastHttpAdapter:
         """Probe ``/v1/identity``; refuse to start unless it serves ``backend``."""
 
-        if backend not in BACKEND_LABELS:
+        if backend not in ADAPTER_MODE_BY_BACKEND:
             raise ValueError("the local Fast backend must be distilled or untuned")
         host, port = parse_loopback_url(base_url)
         timeout = validate_timeout(timeout_s)
@@ -164,6 +175,13 @@ class LocalFastHttpAdapter:
                 f"the local Fast gateway serves backend {identity.backend}, "
                 f"not {backend}"
             )
+        if (
+            identity.prompt_version != SERVED_PROMPT_VERSION
+            or identity.base_model != SERVED_BASE_MODEL
+        ):
+            raise LocalFastStartupError(
+                "the local Fast gateway serves another prompt version or base model"
+            )
         return cls(host=host, port=port, identity=identity, timeout_s=timeout)
 
     @property
@@ -176,7 +194,7 @@ class LocalFastHttpAdapter:
 
     @property
     def fast_backend_label(self) -> BackendLabel:
-        return BACKEND_LABELS[self._identity.backend]
+        return ADAPTER_MODE_BY_BACKEND[self._identity.backend]
 
     def decide(self, view: FastModelView) -> FastAdapterResult:
         # The trained model cannot be prompted without the public observation.
@@ -202,7 +220,8 @@ class LocalFastHttpAdapter:
                 failure.code, detail_code=failure.detail_code
             ) from None
         elapsed = max(0.0, self._monotonic() - started)
-        # Socket timeouts bound each read; the deadline bounds the whole call.
+        # ``_exchange`` bounds the whole call; this re-checks on the injected
+        # clock that times the call.
         if elapsed > self._timeout_s:
             raise FastAdapterFailure("fast_adapter_timeout")
         if status == 503:
@@ -265,6 +284,65 @@ def _compile(
         raise invalid("output_compile_refused") from None
 
 
+def _remaining(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("the local Fast call deadline passed")
+    return remaining
+
+
+class _DeadlineReader(io.RawIOBase):
+    """Each socket read waits at most the call's remaining budget (review M1).
+
+    A socket timeout alone bounds one read, so a gateway that trickles its
+    answer could hold the call, and the direct-mode app lock, far past it.
+    """
+
+    def __init__(self, sock: socket.socket, deadline: float) -> None:
+        self._sock = sock
+        self._deadline = deadline
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Any) -> int:
+        self._sock.settimeout(_remaining(self._deadline))
+        return self._sock.recv_into(buffer)
+
+
+class _DeadlineSocket:
+    """What ``http.client`` uses of a socket, with every read and write
+    bounded by the deadline. Closing is left to ``_exchange``, which owns the
+    real socket (``http.client`` closes the connection before reading the
+    body of a ``Connection: close`` answer)."""
+
+    def __init__(self, sock: socket.socket, deadline: float) -> None:
+        self._sock = sock
+        self._deadline = deadline
+
+    def makefile(self, mode: str, *args: object, **kwargs: object) -> io.BufferedReader:
+        return io.BufferedReader(_DeadlineReader(self._sock, self._deadline))
+
+    def sendall(self, data: bytes) -> None:
+        self._sock.settimeout(_remaining(self._deadline))
+        self._sock.sendall(data)
+
+    def close(self) -> None:
+        return None
+
+
+class _DeadlineConnection(http.client.HTTPConnection):
+    def __init__(self, host: str, port: int, deadline: float) -> None:
+        super().__init__(host, port, timeout=_remaining(deadline))
+        self._deadline = deadline
+        self.raw_sock: socket.socket | None = None
+
+    def connect(self) -> None:
+        super().connect()
+        self.raw_sock = self.sock
+        self.sock = _DeadlineSocket(self.raw_sock, self._deadline)
+
+
 def _exchange(
     host: str,
     port: int,
@@ -273,12 +351,13 @@ def _exchange(
     path: str,
     body: bytes | None,
 ) -> tuple[int, bytes]:
-    """One request on a fresh connection; transport errors as ``_CallFailed``."""
+    """One request on a fresh connection, all of it within ``timeout_s``;
+    transport errors as ``_CallFailed``."""
 
-    connection = http.client.HTTPConnection(host, port, timeout=timeout_s)
     headers = {"Accept": "application/json"}
     if body is not None:
         headers["Content-Type"] = "application/json"
+    connection = _DeadlineConnection(host, port, time.monotonic() + timeout_s)
     try:
         connection.request(method, path, body=body, headers=headers)
         response = connection.getresponse()
@@ -294,16 +373,20 @@ def _exchange(
         ) from None
     finally:
         connection.close()
+        if connection.raw_sock is not None:
+            connection.raw_sock.close()
 
 
 __all__ = [
-    "BACKEND_LABELS",
+    "ADAPTER_MODE_BY_BACKEND",
     "DEFAULT_GATEWAY_URL",
     "DEFAULT_TIMEOUT_S",
     "LOCAL_FAST_ADAPTER_VERSION",
     "LOCAL_FAST_PROVIDER",
     "LOOPBACK_HOSTS",
     "MAX_TIMEOUT_S",
+    "SERVED_BASE_MODEL",
+    "SERVED_PROMPT_VERSION",
     "Backend",
     "BackendLabel",
     "LocalFastHttpAdapter",

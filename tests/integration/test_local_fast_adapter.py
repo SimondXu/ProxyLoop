@@ -26,15 +26,18 @@ from proxyloop_agent_core import (
     FAST_ADAPTER_FAILURE_DETAIL_CODES,
     CaseCoordinator,
     FastAdapterFailure,
+    FastAdapterResult,
     IdentifiedAdapter,
     LabelledFastBackend,
     ObservingFastAdapter,
     SafeObservation,
+    ScriptedDialogueFastAdapter,
     fast_public_observation,
 )
 from proxyloop_agent_core.local_fast_wire import (
     DecideResponse,
     WireError,
+    canonical_sha256,
     decode_decide_request,
     decode_decide_response,
     decode_identity,
@@ -50,8 +53,8 @@ from proxyloop_case_runtime import (
     ThinAgentRuntime,
 )
 from proxyloop_case_runtime.turn_split import fast_slow_split
-from proxyloop_contracts import ModelResult, ModelTrace
-from proxyloop_local_fast import LocalFastHttpAdapter
+from proxyloop_contracts import FastModelView, ModelResult, ModelTrace
+from proxyloop_local_fast import LocalFastHttpAdapter, LocalFastStartupError
 from proxyloop_openai_adapter import FastModelOutput
 from test_fast_dialogue_delivery import CREATE_CASE_REQUEST, SteppingClock
 
@@ -203,6 +206,15 @@ def test_gate_violating_model_text_is_withheld(
         ("invalid_output", None, ("fast_adapter_invalid_output", "invalid_json")),
         ("unrenderable", None, ("fast_input_unrenderable", "prompt_render_refused")),
         ("identity_flip", None, ("fast_adapter_identity_mismatch",)),
+        # Review I1: this escaped as a 500 with no Fast trace.
+        (
+            "detail_not_text",
+            None,
+            ("fast_adapter_protocol_error", "body_shape_invalid"),
+        ),
+        # Review M1: a trickle is bounded by the whole-call deadline.
+        ("trickle_head", None, ("fast_adapter_timeout",)),
+        ("trickle_body", None, ("fast_adapter_timeout",)),
         (
             "success",
             model_output(
@@ -237,13 +249,17 @@ def test_each_gateway_failure_delivers_the_fallback_and_applies(
     if output is not None:
         gateway.output = output
     repository = InMemoryCaseRepository()
-    timeout_s = 0.3 if behaviour == "slow" else 5.0
+    timed = behaviour == "slow" or behaviour.startswith("trickle")
+    timeout_s = 0.3 if timed else 5.0
     runtime = ThinAgentRuntime(
         repository, clock=SteppingClock(), fast=_adapter(gateway, timeout_s)
     )
 
     status, body, _, _ = _turn(runtime)
 
+    if timed:
+        # The whole call, not each read, is bounded (the trickle takes 4 s).
+        assert _fast_trace(repository).latency_ms < 1_500
     assert status == 200
     assert "fast" not in body
     assert body["route"] == "wait_for_approval"
@@ -398,6 +414,29 @@ def test_the_fast_output_schema_matches_the_golden() -> None:
         (b'{"a": NaN}', "body_not_json"),
         (b'{"a": 1, "a": 2}', "body_duplicate_key"),
         (b"[]", "body_shape_invalid"),
+        (b"[" * 100_000, "body_not_json"),
+        # Review I1: past the 4300-digit int conversion limit.
+        (
+            fixture_bytes("decide-response-invalid-output.json").replace(
+                b'"input_tokens":1830', b'"input_tokens":' + b"9" * 5_000
+            ),
+            "body_not_json",
+        ),
+        (
+            fixture_bytes("decide-response-succeeded.json").replace(
+                b'"response_text":"', b'"response_text":' + b"1" * 5_000 + b',"x":"'
+            ),
+            "body_not_json",
+        ),
+    ],
+    ids=[
+        "not-utf8",
+        "nan",
+        "duplicate-key",
+        "array",
+        "deep-nesting",
+        "huge-int-usage",
+        "huge-int-output",
     ],
 )
 def test_malformed_bodies_are_wire_errors(body: bytes, code: str) -> None:
@@ -407,20 +446,29 @@ def test_malformed_bodies_are_wire_errors(body: bytes, code: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("change", "code"),
+    ("golden", "change", "code"),
     [
-        ({"extra": 1}, "body_shape_invalid"),
-        ({"detail_code": "free text"}, "body_shape_invalid"),
-        ({"status": "maybe"}, "body_shape_invalid"),
+        ("succeeded", {"extra": 1}, "body_shape_invalid"),
+        ("succeeded", {"detail_code": "free text"}, "body_shape_invalid"),
+        ("succeeded", {"status": "maybe"}, "body_shape_invalid"),
         (
+            "succeeded",
             {"usage": {"input_tokens": True, "output_tokens": 0, "generation_ms": 0}},
             "body_shape_invalid",
         ),
-        ({"identity_fingerprint": "abc"}, "body_shape_invalid"),
+        ("succeeded", {"identity_fingerprint": "abc"}, "body_shape_invalid"),
+        # Review I1: unhashable values where an allow-listed code belongs.
+        ("succeeded", {"status": []}, "body_shape_invalid"),
+        ("succeeded", {"status": {}}, "body_shape_invalid"),
+        ("invalid-output", {"status": []}, "body_shape_invalid"),
+        ("invalid-output", {"detail_code": ["x"]}, "body_shape_invalid"),
+        ("unrenderable", {"detail_code": {}}, "body_shape_invalid"),
     ],
 )
-def test_a_decide_response_is_strict(change: dict[str, Any], code: str) -> None:
-    document = json.loads(fixture_bytes("decide-response-succeeded.json"))
+def test_a_decide_response_is_strict(
+    golden: str, change: dict[str, Any], code: str
+) -> None:
+    document = json.loads(fixture_bytes(f"decide-response-{golden}.json"))
     document.update(change)
     with pytest.raises(WireError) as raised:
         decode_decide_response(encode_json(document))
@@ -451,3 +499,59 @@ def test_an_identity_is_bound_by_its_fingerprint(change: dict[str, Any]) -> None
     document.update(change)
     with pytest.raises(WireError):
         decode_identity(encode_json(document))
+
+
+def _identity_body(**change: Any) -> bytes:
+    """The distilled golden identity with ``change`` and a matching fingerprint."""
+
+    document = json.loads(fixture_bytes("identity-distilled.json"))
+    document.update(change)
+    document.pop("identity_fingerprint")
+    fingerprint = canonical_sha256(document)
+    return encode_json({**document, "identity_fingerprint": fingerprint})
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"backend": []},
+        {"label": {}},
+        {"base_model": "Qwen/Qwen3\n8B"},
+        {"prompt_version": "v6\u0000"},
+        {"compiler_version": "x" * 200},
+        {"adapter_fingerprint": "fake generator"},
+        {"mlx_versions": {"mlx": "0.29 beta"}},
+    ],
+)
+def test_identity_fields_are_tokens(change: dict[str, Any]) -> None:
+    # Review I1 (unhashable backend) and M2 (tokens: no control characters or
+    # spaces, at most 128 characters), with a correctly recomputed fingerprint.
+    with pytest.raises(WireError) as raised:
+        decode_identity(_identity_body(**change))
+    assert raised.value.code == "body_shape_invalid"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [{"prompt_version": "v7"}, {"base_model": "Qwen/Qwen3-4B-Instruct-2507"}],
+)
+def test_connect_pins_the_served_prompt_and_base_model(
+    gateway: FakeGateway, change: dict[str, Any]
+) -> None:
+    # Review M2: a well-formed identity for another prompt or model is refused.
+    gateway.identity_body = _identity_body(**change)
+    with pytest.raises(LocalFastStartupError, match="serves"):
+        _adapter(gateway)
+
+
+class _Mislabelled:
+    fast_backend_label = "local_promoted_production"
+
+    def decide(self, view: FastModelView) -> FastAdapterResult:
+        return ScriptedDialogueFastAdapter().decide(view)
+
+
+def test_an_unknown_backend_label_is_refused() -> None:
+    # Review M3: no silent fallback to ``model``.
+    with pytest.raises(ValueError, match="Fast backend label"):
+        ThinAgentRuntime(fast=_Mislabelled())

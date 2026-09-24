@@ -1,13 +1,15 @@
 """Runtime HTTP client for the opt-in loopback local Fast gateway."""
 
 from .adapter import (
-    BACKEND_LABELS,
+    ADAPTER_MODE_BY_BACKEND,
     DEFAULT_GATEWAY_URL,
     DEFAULT_TIMEOUT_S,
     LOCAL_FAST_ADAPTER_VERSION,
     LOCAL_FAST_PROVIDER,
     LOOPBACK_HOSTS,
     MAX_TIMEOUT_S,
+    SERVED_BASE_MODEL,
+    SERVED_PROMPT_VERSION,
     Backend,
     BackendLabel,
     LocalFastHttpAdapter,
@@ -24,7 +26,7 @@ from .config import (
 )
 
 __all__ = [
-    "BACKEND_LABELS",
+    "ADAPTER_MODE_BY_BACKEND",
     "DEFAULT_GATEWAY_URL",
     "DEFAULT_TIMEOUT_S",
     "FAST_BACKEND_VARIABLE",
@@ -34,6 +36,8 @@ __all__ = [
     "LOCAL_FAST_PROVIDER",
     "LOOPBACK_HOSTS",
     "MAX_TIMEOUT_S",
+    "SERVED_BASE_MODEL",
+    "SERVED_PROMPT_VERSION",
     "Backend",
     "BackendLabel",
     "LocalFastHttpAdapter",

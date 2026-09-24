@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Iterator
 
 import pytest
-from local_fast_fake_gateway import FakeGateway
+from local_fast_fake_gateway import FakeGateway, fixture_bytes
+from proxyloop_agent_core.local_fast_wire import encode_json
 from proxyloop_api.config import runtime_from_environment, services_from_environment
 from proxyloop_local_fast import (
+    DEFAULT_TIMEOUT_S,
+    MAX_TIMEOUT_S,
     LocalFastHttpAdapter,
     LocalFastStartupError,
     fast_adapter_from_environment,
@@ -115,8 +119,28 @@ def test_a_backend_mismatch_refuses_to_start(gateway: FakeGateway) -> None:
         )
 
 
-def test_a_bad_identity_body_refuses_to_start(gateway: FakeGateway) -> None:
-    gateway.identity_body = b'{"wire_version": "local-fast-wire-v1"}'
+def _identity_with(field: str, value: bytes) -> bytes:
+    document = json.loads(fixture_bytes("identity-distilled.json"))
+    document[field] = "__raw__"
+    return encode_json(document).replace(b'"__raw__"', value)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'{"wire_version": "local-fast-wire-v1"}',
+        # Review I1: these escaped as TypeError / ValueError, not a refusal.
+        _identity_with("backend", b"[]"),
+        _identity_with("label", b"{}"),
+        _identity_with("prompt_version", b"9" * 5_000),
+        b"[" * 100_000,
+    ],
+    ids=["missing-keys", "backend-list", "label-dict", "huge-int", "deep-nesting"],
+)
+def test_a_bad_identity_body_refuses_to_start(
+    gateway: FakeGateway, body: bytes
+) -> None:
+    gateway.identity_body = body
     with pytest.raises(LocalFastStartupError, match="identity"):
         fast_adapter_from_environment(
             {
@@ -124,6 +148,19 @@ def test_a_bad_identity_body_refuses_to_start(gateway: FakeGateway) -> None:
                 "PROXYLOOP_FAST_GATEWAY_URL": gateway.url,
             }
         )
+
+
+def test_the_default_timeout_is_the_25_second_cap(gateway: FakeGateway) -> None:
+    # Root amendment 2026-09-24 (measured distilled p50 21.3 s, max 26.9 s).
+    assert (DEFAULT_TIMEOUT_S, MAX_TIMEOUT_S) == (25.0, 25.0)
+    adapter = fast_adapter_from_environment(
+        {
+            "PROXYLOOP_FAST_BACKEND": "distilled",
+            "PROXYLOOP_FAST_GATEWAY_URL": gateway.url,
+        }
+    )
+    assert adapter is not None
+    assert adapter._timeout_s == 25.0
 
 
 def test_scripted_is_the_default_and_starts_no_client() -> None:

@@ -17,7 +17,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, cast
 
 from proxyloop_contracts import FastModelView
 
@@ -152,7 +152,8 @@ _OFFER_KEYS: Final = frozenset(
     }
 )
 _SHA256: Final = re.compile(r"[0-9a-f]{64}")
-_TEXT_MAX: Final = 256
+# An identity field: printable ASCII without spaces, at most 128 characters.
+_TOKEN: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/+@-]{0,127}")
 
 
 class WireError(ValueError):
@@ -294,7 +295,13 @@ def decode_decide_response(body: bytes) -> DecideResponse:
     status = data["status"]
     output = data["output"]
     detail = data["detail_code"]
-    if not _is_sha256(fingerprint) or status not in DECIDE_STATUSES:
+    # Every allow-list test is guarded: an unhashable value must be a
+    # WireError, never a TypeError that escapes the Fast call (review I1).
+    if (
+        not _is_sha256(fingerprint)
+        or not isinstance(status, str)
+        or status not in DECIDE_STATUSES
+    ):
         raise WireError("body_shape_invalid")
     if status == "succeeded":
         if detail is not None:
@@ -308,6 +315,8 @@ def decode_decide_response(body: bytes) -> DecideResponse:
             if status == "invalid_output"
             else UNRENDERABLE_DETAIL_CODES
         )
+        if not isinstance(detail, str):
+            raise WireError("body_shape_invalid")
         if detail not in allowed:
             raise WireError("detail_code_unknown")
     usage = _object(data["usage"], _USAGE_KEYS)
@@ -316,7 +325,7 @@ def decode_decide_response(body: bytes) -> DecideResponse:
         raise WireError("body_shape_invalid")
     return DecideResponse(
         identity_fingerprint=fingerprint,
-        status=status,
+        status=cast(DecideStatus, status),
         output=output,
         detail_code=detail,
         input_tokens=counts[0],
@@ -334,17 +343,22 @@ def decode_identity(body: bytes) -> GatewayIdentity:
     data = _object(_load(body), _IDENTITY_KEYS)
     _check_version(data)
     backend = data["backend"]
-    if backend not in BACKEND_LABELS or data["label"] != BACKEND_LABELS[backend]:
+    if (
+        not isinstance(backend, str)
+        or backend not in BACKEND_LABELS
+        or data["label"] != BACKEND_LABELS[backend]
+    ):
         raise WireError("body_shape_invalid")
-    if not all(_is_text(data[key]) for key in _IDENTITY_TEXT_KEYS):
+    # Tokens, so a composed trace identity stays within ExternalRef (M2).
+    if not all(_is_token(data[key]) for key in _IDENTITY_TEXT_KEYS):
         raise WireError("body_shape_invalid")
     adapter = data["adapter_fingerprint"]
     # Only the distilled backend serves an adapter.
-    if not (_is_text(adapter) if backend == "distilled" else adapter is None):
+    if not (_is_token(adapter) if backend == "distilled" else adapter is None):
         raise WireError("body_shape_invalid")
     versions = data["mlx_versions"]
     if not isinstance(versions, dict) or not all(
-        _is_text(name) and (value is None or _is_text(value))
+        _is_token(name) and (value is None or _is_token(value))
         for name, value in versions.items()
     ):
         raise WireError("body_shape_invalid")
@@ -355,7 +369,7 @@ def decode_identity(body: bytes) -> GatewayIdentity:
     if not _is_sha256(fingerprint) or canonical_sha256(payload) != fingerprint:
         raise WireError("identity_fingerprint_invalid")
     return GatewayIdentity(
-        backend=backend,
+        backend=cast(GatewayBackend, backend),
         label=data["label"],
         base_model=data["base_model"],
         base_revision=data["base_revision"],
@@ -390,7 +404,11 @@ def _load(body: bytes) -> object:
             object_pairs_hook=_reject_duplicates,
             parse_constant=_reject_constant,
         )
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as error:
+    except WireError:
+        raise
+    except (ValueError, RecursionError) as error:
+        # ValueError covers JSONDecodeError, UnicodeDecodeError, and an integer
+        # past the int conversion digit limit (review I1).
         raise WireError("body_not_json") from error
 
 
@@ -405,8 +423,8 @@ def _check_version(data: dict[str, Any]) -> None:
         raise WireError("wire_version_mismatch")
 
 
-def _is_text(value: object) -> bool:
-    return isinstance(value, str) and 0 < len(value.strip()) <= _TEXT_MAX
+def _is_token(value: object) -> bool:
+    return isinstance(value, str) and _TOKEN.fullmatch(value) is not None
 
 
 def _is_sha256(value: object) -> bool:
