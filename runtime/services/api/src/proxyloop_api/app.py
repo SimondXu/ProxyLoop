@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
@@ -169,6 +170,9 @@ def create_app(
     api = FastAPI(
         title="ProxyLoop Thin Agent Runtime", version="0.0.0", lifespan=lifespan
     )
+    # Direct commands run one at a time in this process, as they did on the
+    # loop; lock order is this lock, then the Runtime lane (expiry: lane only).
+    direct_command_lock = threading.Lock()
 
     async def apply(command: CaseCommandRequest) -> CaseTransitionRef:
         """Dispatch through the Workflow or, in direct mode, through the same
@@ -186,18 +190,20 @@ def create_app(
     def apply_direct(
         command: CaseCommandRequest,
     ) -> tuple[CaseTransitionRef, datetime]:
-        occurred_at = service.now()
-        if command.command_type in _CLOCK_GUARDED_COMMANDS:
-            # An explicit command time bypasses the Runtime's own event-time
-            # guard, so keep direct mode's refusal of a clock that does not
-            # advance past the latest visible event.
-            state = service.repository.get(command.case_id)
-            if (
-                state is not None
-                and occurred_at <= state.snapshot.visible_events[-1].occurred_at
-            ):
-                raise CaseConflictError("clock time must advance event time")
-        return service.apply_command(command.to_command(occurred_at)), occurred_at
+        with direct_command_lock:
+            occurred_at = service.now()
+            if command.command_type in _CLOCK_GUARDED_COMMANDS:
+                # An explicit command time bypasses the Runtime's own
+                # event-time guard, so keep direct mode's refusal of a clock
+                # that does not advance past the latest visible event.
+                state = service.repository.get(command.case_id)
+                if (
+                    state is not None
+                    and occurred_at <= state.snapshot.visible_events[-1].occurred_at
+                ):
+                    raise CaseConflictError("clock time must advance event time")
+            transition = service.apply_command(command.to_command(occurred_at))
+            return transition, occurred_at
 
     @api.middleware("http")
     async def observe_operation(request: Request, call_next: Any) -> Any:
@@ -434,7 +440,7 @@ def create_app(
         )
 
     @api.get("/health/live")
-    def health_live(request: Request) -> dict[str, object]:
+    async def health_live(request: Request) -> dict[str, object]:
         request.state.operation_name = "health_live"
         payload = liveness_payload(service)
         if temporal_client is not None:
