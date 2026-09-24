@@ -129,6 +129,17 @@ Final, after the review changes and merge `8a883ed` (`main` @ `f4a2487`,
   53 passed; `make phase06b1-check` 54 passed, 0 skipped (includes R17-T3 and
   the time-skipping re-drive test).
 
+After merging `main` @ `1573a42` (#91, v3 trace log; merge `6a4abce`; pin
+kept from both sides: 04c 29, channel runtime 2, 06B1 temporal 4, total 61):
+
+- Passed: `make test` (runtime 1311 passed, 61 skipped; ml 397 passed,
+  1 skipped).
+- Passed: `make preflight` (exit 0; runtime 1311 passed, 61 skipped; ml 397
+  passed, 1 skipped; vitest 140 passed; gated skips 61).
+- Passed, serially: `make postgres-check` 35 passed; `make phase05a-check`
+  53 passed; `make phase06b1-check` 54 passed, 0 skipped (includes R17-T3
+  and the time-skipping re-drive test).
+
 Review: `harness/code_review/fix-r17-r5-channel-redrive.md` (Request
 Changes, no Blocking; all findings applied).
 
