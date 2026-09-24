@@ -155,7 +155,13 @@ The two C-8 tests are gated on `PROXYLOOP_TEST_DATABASE_URL`. After merging
 list in `docs/development.md` now say 3 (total 55). After merging `main` @
 `1573a42` (#91: 04c pin 29), the per-file pin is 04c 29 (this PR adds no
 gated 04c test), 05a_case_runtime 2, 05a_temporal_workflow 24,
-06b1_channel_runtime 3, 06b1_temporal 3: total 61.
+06b1_channel_runtime 3, 06b1_temporal 3: total 61. After merging `main` @
+`df733f7` (#92: channel_runtime 2, temporal 4), the per-file pin is 04c 29,
+05a_case_runtime 2, 05a_temporal_workflow 24, 06b1_channel_runtime 4,
+06b1_temporal 4: total 63. Channel_runtime is 4, not 3 + 2: both sides
+counted the one pre-existing gated test (`test_postgres_delivery_callback_after_complete_is_stored`);
+the union is that test, the two C-8 tests and #92's re-drive test. A
+preflight with the pin at 5 confirmed it (`expected 5, found 4`).
 
 ## Checks
 
@@ -194,3 +200,18 @@ on `127.0.0.1:7233`):
 - `make phase05a-check`: 53 passed.
 - `make phase06b1-check`: 37 passed, 0 skipped (first real run of the two
   C-8 tests). No test needed a fix.
+
+After the `df733f7` merge (#92), no `PROXYLOOP_TEST_*` in the environment:
+
+- `make test`: exit 0 (runtime 1315 passed, 63 skipped; ML 397 passed,
+  1 skipped).
+- `make preflight`: exit 0 (runtime 1315 passed, 63 skipped; ML 397 passed,
+  1 skipped; web 140 passed; "Gated-skip counts match the pinned 63 per
+  file.").
+- `make phase06b1-check` not rerun, by decision: #92 changed `app.py`,
+  `workflow_worker/activities.py` and tests. The C-8 tests import none of
+  those; they use `PostgresCaseRepository`, `ThinAgentRuntime` and the
+  helpers `_database_url`/`_truncate` (`test_phase_06b1_temporal.py`) and
+  `_create_command`/`_message_event`, none of which #92 changed, and #92
+  added no autouse fixture. `runtime.py` and `postgres_repository.py` are
+  unchanged by #92. CI runs `phase06b1-check` on the PR.
