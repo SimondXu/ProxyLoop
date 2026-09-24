@@ -163,3 +163,29 @@ false positive.
 The regenerated report still meets AC 5. `demo_path` is {`slow_only` 1,
 `fast_only` 1} with 1 unapplied Slow call (the repeated create). `dialogue_path`
 has 2 `slow_then_fast` turns. `gate_fallback_rate` is 0 in both.
+
+## Final additions after the re-review (Approve) and merge of `main` @ `a3a429f` (#93)
+
+The root's final decisions are recorded in the review artifact and in a dated
+spec amendment:
+- bare completion participles;
+- non-ASCII symbols (S*);
+- dash-like, parenthesised, and "minus" amounts;
+- "account owner";
+- `FAST_GATE_UNICODE_DATA_VERSION = "15.0.0"`, with a test, and
+  `unicode_data_version` in the report.
+
+The report was regenerated because of that new field. The gate stays
+`fast-gate-v1`, and G7 still passes.
+
+The merge conflicted only in the status table; both rows were kept. The
+gated-skip pin is main's 63; this branch adds no gated test.
+
+| Check | Result |
+|---|---|
+| `make lint` | passed |
+| `make typecheck` | passed (70 and 59 source files) |
+| `make test` | passed (exit 0); runtime pytest 1467 passed, 63 skipped; ml 397 passed, 1 skipped; `Fast/Slow split report is current.` |
+| byte identity | `git diff --stat origin/main -- data/ contracts/ ml/` lists only `data/evaluation/fast-slow-split-scripted.json` (new) |
+| `make preflight` | passed (exit 0); gated-skip counts match the pinned 63 per file |
+| DB gates | 35 / 53 / 54 on `23e1b5d`. Since then `runtime.py` is unchanged (`git diff --stat 23e1b5d HEAD -- runtime/` lists only `agent_core` and `turn_split.py`); the branch-side changes are the pure gate, the split, the report, and tests, so the gates were not rerun |
