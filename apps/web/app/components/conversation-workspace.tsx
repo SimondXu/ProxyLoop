@@ -96,6 +96,8 @@ const VALUE_RULE_REASONS = new Set<IntakeClarificationReason>(["below_fixed_offe
 const UNSUPPORTED_INTENT_MESSAGE =
   "This local demo only supports lowering a fictional mobile bill. Try a clear request such as “Lower my mobile bill.”";
 
+const INTAKE_FAILURE_MESSAGE = "I couldn't read that message right now. Nothing was created.";
+
 // A response the Web classifies as blocked (a predicate rejects the projection
 // or the Case reaches a state it cannot show). Terminal: handlers must not fall
 // back to an actionable phase that re-offers confirm or approval (E-5).
@@ -164,7 +166,8 @@ const BILL_OR_PAYMENT_CUE =
 // Whether the proposal is about a bill: it read at least one value (review
 // M-1), or it has a clarification on an amount and the text has a bill or
 // payment cue (third amendment), so on-topic text without a phone word still
-// opens the card while off-topic text that mentions money does not.
+// opens the card while off-topic text that mentions money does not. A foreign
+// currency is not an amount clarification here (fourth amendment M-4).
 function proposalOpensCard(result: IntakeProposal, text: string): boolean {
   return (
     Object.values(result.proposal).some((value) => value !== null) ||
@@ -172,7 +175,8 @@ function proposalOpensCard(result: IntakeProposal, text: string): boolean {
       result.clarifications.some(
         (item) =>
           (item.field === "current_monthly_total" || item.field === "target_monthly_total") &&
-          item.reason !== "missing",
+          item.reason !== "missing" &&
+          item.reason !== "unsupported_currency",
       ))
   );
 }
@@ -1485,18 +1489,11 @@ export function ConversationWorkspace() {
           ? `I read your request into the Draft Task Brief below. ${intakePrompt(field)}`
           : "I read all four facts from your request into the Draft Task Brief below. Check them, then choose Create fictional Case when they match.",
       );
-    } catch (caught) {
+    } catch {
+      // Every failure of the proposal request gets the same intake copy
+      // (fourth amendment M-5): no Case exists yet, so no Case wording.
       if (requestId !== sessionId.current) return;
-      addMessage(
-        "assistant",
-        caught instanceof RuntimeClientError && caught.status === 422
-          ? "I could not read that request, and nothing was created. Please rephrase it."
-          : caught instanceof RuntimeClientError && caught.kind === "invalid"
-            ? caught.message
-            : caught instanceof Error
-              ? `${caught.message} Nothing was created.`
-              : "The local Runtime could not read that request. Nothing was created.",
-      );
+      addMessage("assistant", INTAKE_FAILURE_MESSAGE);
     } finally {
       if (requestId === sessionId.current) setBusy(false);
     }

@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import time
+import unicodedata
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,7 @@ from proxyloop_api.intake import (
     INTAKE_PARSER_VERSION,
     INTAKE_TEXT_MAX_LENGTH,
     MAX_AMOUNT_MINOR,
+    NORMALIZED_TEXT_MAX_LENGTH,
     propose_intake,
 )
 from proxyloop_case_runtime import SCRIPTED_CASE_ID
@@ -73,10 +75,8 @@ def test_a_full_sentence_proposes_all_four_typed_facts() -> None:
         ("Lower my bill from $92 to $75", 9200, 7500),
         ("Get my $92 bill down to $75", 9200, 7500),
         ("My bill is 92 dollars, target 75 USD", 9200, 7500),
-        ("I'm paying $1,092.50 and would like to pay $80.25", 109250, 8025),
+        ("I'm paying $1,092.50 and would like $80.25", 109250, 8025),
         ("Currently $92, $75 or less", 9200, 7500),
-        ("I pay $92. My budget is $75.", 9200, 7500),
-        ("My bill is $92 but I only want to pay $75", 9200, 7500),
     ],
 )
 def test_amounts_are_assigned_by_their_cues(
@@ -400,6 +400,7 @@ def test_off_topic_inputs_read_no_value_and_match_the_web_fixture() -> None:
         "My bill is $92 and I'd like $75",
         "My bill went up to $92 and I want $80",
         "My plan went up to $92",
+        "Which phone should I take on a euro trip?",
     ]
     for text, expected in fixture.items():
         body = _body(text)
@@ -468,6 +469,95 @@ def test_an_actually_both_doubt_reaches_every_named_feature(text: str) -> None:
     assert clarifications["device_financing_change_forbidden"] == "ambiguous"
 
 
+# Fourth amendment I-1: bare "get" is not a lowering request; a comparative
+# ("lower than $X") in a question is not one either.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Should I get the $92 plan? I want to pay under $80.",
+        "Why did my bill get to $92?",
+        "Is $80 realistic to get?",
+        "Should I get the $92 plan?",
+        "Can I get it lower than $92?",
+        "Is it lower than $92?",
+    ],
+)
+def test_a_question_that_does_not_ask_to_lower_reads_no_amount(text: str) -> None:
+    body = _body(text)
+
+    assert body["proposal"]["current_monthly_total"] is None
+    assert body["proposal"]["target_monthly_total"] is None
+    assert _clarifications(text)["current_monthly_total"] == "ambiguous"
+    assert _clarifications(text)["target_monthly_total"] == "ambiguous"
+
+
+def test_get_with_a_lowering_word_is_still_a_lowering_request() -> None:
+    text = "Could you get my mobile bill down to $75?"
+
+    assert _body(text)["proposal"]["target_monthly_total"] == _usd(7500)
+    assert _clarifications(text)["current_monthly_total"] == "missing"
+
+
+# Fourth amendment M-2: a current cue nearer the amount than the target cue
+# that rule-2 order would pick makes the amount ambiguous. The last four were
+# read as values before the amendment; they are ambiguous now.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Hoping you can explain why my bill is $92",
+        "I'm happy at $92, I'd rather keep it",
+        "I'd like to lower my phone bill that is currently $92",
+        "I pay $92. My budget is $75.",
+        "My bill is $92 but I only want to pay $75",
+        "I'm paying $92 and would like to pay $80",
+        "My target is $75 and my bill is $92",
+    ],
+)
+def test_an_amount_with_both_role_cues_is_ambiguous(text: str) -> None:
+    body = _body(text)
+
+    assert body["proposal"]["current_monthly_total"] is None
+    assert body["proposal"]["target_monthly_total"] is None
+    assert _clarifications(text)["current_monthly_total"] == "ambiguous"
+    assert _clarifications(text)["target_monthly_total"] == "ambiguous"
+
+
+# Fourth amendment M-3: a retraction after named features doubts all of them.
+@pytest.mark.parametrize(
+    "retraction", ["Wait, no.", "No.", "Never mind.", "Scratch that."]
+)
+def test_a_retraction_doubts_every_named_feature(retraction: str) -> None:
+    text = f"Keep my hotspot. Keep financing unchanged. {retraction}"
+
+    clarifications = _clarifications(text)
+
+    assert clarifications["mobile_hotspot_required"] == "ambiguous"
+    assert clarifications["device_financing_change_forbidden"] == "ambiguous"
+
+
+# Fourth amendment M-1: text whose NFKC form is longer than 4000 characters is
+# not read: every field is `missing`, with no value.
+def test_text_that_expands_past_the_normalized_cap_is_not_read() -> None:
+    text = "My bill is $92, I want $75, keep my hotspot. " + "\ufdfa" * 250
+
+    body = _body(text)
+
+    assert len(unicodedata.normalize("NFKC", text)) > NORMALIZED_TEXT_MAX_LENGTH
+    assert all(value is None for value in body["proposal"].values())
+    assert set(_clarifications(text).values()) == {"missing"}
+    assert len(body["clarifications"]) == 4
+
+
+def test_text_at_the_normalized_cap_is_still_read() -> None:
+    head = "My bill is $92, I want $75. " + "\ufdfa" * 200
+    padding = NORMALIZED_TEXT_MAX_LENGTH - len(unicodedata.normalize("NFKC", head))
+    at_cap = head + " " * padding
+
+    assert len(unicodedata.normalize("NFKC", at_cap)) == NORMALIZED_TEXT_MAX_LENGTH
+    assert _body(at_cap)["proposal"]["current_monthly_total"] == _usd(9200)
+    assert _body(at_cap + " ")["proposal"]["current_monthly_total"] is None
+
+
 # Review I-A / M-5: bounded work on adversarial 2000-character input. Locally
 # each case takes well under 1 ms (see the log); the bound is generous for CI.
 _WORST_CASES = {
@@ -480,6 +570,16 @@ _WORST_CASES = {
     "from 1, tabs, 8 x $5": ("from 1" + "\t" * 1970 + "$5 " * 8),
     "(from 1, 240 spaces, $5) x 8": ("from 1" + " " * 240 + "$5") * 8,
     "1 usd, spaces, 8 x $5": ("1 usd" + " " * 1970 + "$5 " * 8),
+    # Fourth amendment M-1: NFKC expansion (U+FDFA is 18 characters after
+    # NFKC) and a long run of orphan negations.
+    "U+FDFA pad, 8 x $5": "\ufdfa" * 1975 + "$5 " * 8,
+    "keep hotspot, 350 x No-sign, U+FDFA pad": (
+        "keep hotspot, " + "\u2116, " * 350 + "\ufdfa" * 2000
+    )[:INTAKE_TEXT_MAX_LENGTH],
+    "keep hotspot, 500 x no,": "keep hotspot, " + "no, " * 500,
+    "near the cap: U+FDFA x 100, keep hotspot, 470 x no,": (
+        "\ufdfa" * 100 + "keep hotspot, " + "no, " * 470
+    ),
 }
 
 

@@ -28,6 +28,9 @@ FIXED_OFFER_MINOR = 7200
 # $999,999.99: the largest amount the parser, `CreateCaseRequest`, and the
 # Web accept.
 MAX_AMOUNT_MINOR = 99_999_999
+# NFKC can expand a character up to 18-fold; text longer than this after
+# normalization is not read (every field ``missing``), which bounds the work.
+NORMALIZED_TEXT_MAX_LENGTH = 4000
 
 IntakeField = Literal[
     "current_monthly_total",
@@ -108,8 +111,13 @@ _FROM_TO_BEFORE = re.compile(
     r"\bfrom\s+(?:\$\s?)?[0-9][0-9.,]*(?:\s*(?:usd|dollars?|bucks))?\s+to$"
 )
 # A request to lower the bill: a question holding one still reads its amounts
-# ("Can you lower my phone bill from $92 to $75?").
-_LOWERING = re.compile(r"\b(?:lower|reduce|bring\s+down|cut|get)\b")
+# ("Can you lower my phone bill from $92 to $75?"). ``get`` counts only with a
+# lowering word ("get my bill down"); a comparative ("lower than $92") is not a
+# request.
+_LOWERING = re.compile(
+    r"\b(?:lower(?!\s+than\b)|reduce|bring\s+down|cut"
+    r"|get\b[^.?!]{0,40}?\b(?:down|lower|cheaper|under|below|reduced)\b(?!\s+than\b))"
+)
 # A price history verb: the amounts after it are not a current bill or a goal
 # we can tell apart ("went up to $92", "went from $80 to $92").
 _HISTORY = re.compile(
@@ -169,7 +177,18 @@ _ORPHAN_DOUBT = re.compile(rf"\b(?:{_NEGATION}|{_CHANGE_WORDS})\b")
 # ... and on every named feature when its sentence says so ("Actually no.",
 # "Actually, forget it, I want to change both.").
 _ALL_DOUBT = re.compile(r"\b(?:both|all|everything|actually)\b")
+# A retraction casts doubt on every named feature ("Wait, no.", "No.",
+# "Never mind.", "Scratch that.").
+_RETRACTION = re.compile(
+    r"^\s*no\s*$|\bwait\s*,?\s*no\b|\bnever\s*mind\b|\bscratch\s+that\b"
+)
 
+_ORDER: tuple[IntakeField, ...] = (
+    "current_monthly_total",
+    "target_monthly_total",
+    "mobile_hotspot_required",
+    "device_financing_change_forbidden",
+)
 _Role = Literal["current", "target"]
 _Feature = Literal["hotspot", "financing"]
 _Verdict = Literal["keep", "ambiguous", "missing"]
@@ -183,13 +202,28 @@ _FEATURES: dict[_Feature, tuple[re.Pattern[str], re.Pattern[str], re.Pattern[str
 class _Clause:
     text: str
     question: bool
-    sentence: str
+    # Read once per sentence: it doubts every named feature, and whether it
+    # is a retraction (a retraction needs no negation word in the clause).
+    doubts_all: bool
+    retraction: bool
 
 
 def propose_intake(text: str) -> IntakeProposal:
     """Read ``text`` into a typed proposal; pure and deterministic."""
 
     normalized = unicodedata.normalize("NFKC", text).replace("\u2019", "'").lower()
+    if len(normalized) > NORMALIZED_TEXT_MAX_LENGTH:
+        return IntakeProposal(
+            proposal=IntakeFacts(
+                current_monthly_total=None,
+                target_monthly_total=None,
+                mobile_hotspot_required=None,
+                device_financing_change_forbidden=None,
+            ),
+            clarifications=tuple(
+                IntakeClarification(field=field, reason="missing") for field in _ORDER
+            ),
+        )
     clauses = _clauses(normalized)
     reasons: dict[IntakeField, ClarificationReason] = {}
 
@@ -215,17 +249,11 @@ def propose_intake(text: str) -> IntakeProposal:
             True if verdicts["financing"] == "keep" else None
         ),
     )
-    order: tuple[IntakeField, ...] = (
-        "current_monthly_total",
-        "target_monthly_total",
-        "mobile_hotspot_required",
-        "device_financing_change_forbidden",
-    )
     return IntakeProposal(
         proposal=facts,
         clarifications=tuple(
             IntakeClarification(field=field, reason=reasons[field])
-            for field in order
+            for field in _ORDER
             if field in reasons
         ),
     )
@@ -247,8 +275,10 @@ def _clauses(text: str) -> list[_Clause]:
     clauses: list[_Clause] = []
     for sentence, end in _split(text, _SENTENCE_BREAK):
         question = end == "?" or bool(_QUESTION_START.match(sentence))
+        retraction = _RETRACTION.search(sentence) is not None
+        doubts_all = retraction or _ALL_DOUBT.search(sentence) is not None
         clauses.extend(
-            _Clause(part, question, sentence)
+            _Clause(part, question, doubts_all, retraction)
             for part, _ in _split(sentence, _CLAUSE_BREAK)
             if part.strip()
         )
@@ -318,8 +348,8 @@ def _amounts(
 def _role(segment: str, before: str, after: str) -> _Role | None:
     """The amount's role, or ``None`` when it has none or it is unsure."""
 
-    tail = before.rstrip()[-_TAIL_CHARS:]
-    if _HISTORY.search(before):
+    tail = _tail(before)
+    if _HISTORY.search(tail):
         return None  # "went up to $92", "jumped from $85 to $110"
     if _FROM_BEFORE.search(tail) and _TO_AMOUNT_AFTER.match(after):
         return "current"  # "from $92 to $75"
@@ -334,20 +364,33 @@ def _role(segment: str, before: str, after: str) -> _Role | None:
     if _AFTER_TARGET.match(after):
         return "target"
     # The words since the previous amount decide; with no cue there, the
-    # whole clause before the amount does ("target $75 or maybe $78"). A
-    # change cue nearer than any role cue ("save $20", "by $10") has no role.
-    for words in (segment, before):
+    # clause before the amount does ("target $75 or maybe $78"). Both see
+    # only the bounded tail. A change cue nearer than any role cue ("save
+    # $20", "by $10") has no role, and so has a current cue nearer than the
+    # target cue ("hoping … my bill is $92", "happy at $92").
+    for words in (_tail(segment), tail):
         change = _last_match(_CHANGE_BEFORE, words)
-        cue = max(
-            _last_match(_BEFORE_TARGET, words), _last_match(_BEFORE_CURRENT, words)
-        )
-        if change > cue:
+        target = _last_match(_BEFORE_TARGET, words)
+        current = _last_match(_BEFORE_CURRENT, words)
+        if change > max(target, current):
             return None
-        if _BEFORE_TARGET.search(words):
-            return "target"
-        if _BEFORE_CURRENT.search(words):
+        if target >= 0:
+            return "target" if target >= current else None
+        if current >= 0:
             return "current"
     return None
+
+
+def _tail(text: str) -> str:
+    """The right-stripped last ``_TAIL_CHARS`` characters, whole words only."""
+
+    stripped = text.rstrip()
+    if len(stripped) <= _TAIL_CHARS:
+        return stripped
+    tail = stripped[-_TAIL_CHARS:]
+    if stripped[-_TAIL_CHARS - 1].isalnum() or stripped[-_TAIL_CHARS - 1] in "_'":
+        return re.sub(r"^[\w']+", "", tail)
+    return tail
 
 
 def _last_match(pattern: re.Pattern[str], text: str) -> int:
@@ -393,8 +436,10 @@ def _features(clauses: list[_Clause]) -> dict[_Feature, _Verdict]:
                 verdicts[feature] = "keep"
         if named:
             last_named = max(named)[1]
-        elif last_named is not None and _ORPHAN_DOUBT.search(clause.text):
-            if _ALL_DOUBT.search(clause.sentence):
+        elif last_named is not None and (
+            clause.retraction or _ORPHAN_DOUBT.search(clause.text)
+        ):
+            if clause.doubts_all:
                 for feature, verdict in verdicts.items():
                     if verdict != "missing":
                         verdicts[feature] = "ambiguous"
@@ -408,6 +453,7 @@ __all__ = [
     "INTAKE_PARSER_VERSION",
     "INTAKE_TEXT_MAX_LENGTH",
     "MAX_AMOUNT_MINOR",
+    "NORMALIZED_TEXT_MAX_LENGTH",
     "IntakeClarification",
     "IntakeFacts",
     "IntakeProposal",

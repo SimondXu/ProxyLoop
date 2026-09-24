@@ -306,3 +306,70 @@ only the Web opening rule, a Web fixture, and tests. On this branch, `app.py`,
 `CreateCaseRequest` and the parser are unchanged since the last green DB gate
 run. The merge brought main's `config.py` and worker changes (#98) unchanged;
 this run does not re-verify them against the real dependencies.
+
+## Fourth amendment (focused re-review: I-1, M-1..M-5)
+
+The spec gained a fourth dated amendment (`intake-parser-v1`, still unmerged).
+Changed: `intake.py` (I-1 `get`, M-1 cap, per-sentence doubt and bounded
+scans, M-2, M-3); `conversation-workspace.tsx` (M-4 rule (c), M-5 copy); the
+fixture gained "Which phone should I take on a euro trip?" (real parser
+output); the pytest pin and tests.
+
+**Implementer interpretation (M-2), flagged for the root.** The literal rule
+"a clause with both a target and a current cue is ambiguous" would also make
+"Could you get my mobile bill down to $75?" ambiguous (`bill` is a current
+cue), which I-1 forbids. The implemented rule makes the amount ambiguous only
+when a current cue is nearer the amount than the last target cue. Four
+phrasings that were read as values before are now ambiguous and pinned:
+"My budget is $75", "I only want to pay $75", "would like to pay $80", "My
+target is $75". Under the literal rule they would be ambiguous as well.
+
+**Red → green.**
+
+- Pytest: the final test file against the pre-change parser (constant
+  `NORMALIZED_TEXT_MAX_LENGTH` added only so that it imports) fails 19 of 267.
+  - I-1: 6.
+  - M-2: 7, including the four former-value phrasings.
+  - M-3: 4.
+  - M-1 cap: 2.
+
+  All 267 pass after the change. "Could you get my mobile bill down to $75?"
+  passes on both versions and guards against over-restricting `get`.
+- Vitest, `conversation-workspace.test.tsx`: 9 of 176 failed before the change.
+  - M-5: 422, 404, 409, 500, 503, network, 200 non-JSON, 200 invalid proposal.
+    These run through the real client with a stubbed `fetch`.
+  - M-4: the euro-trip row. It still failed once its fixture entry was added.
+
+  All 176 pass after the change.
+
+**Timing** (best of 3 to 5, implementer-measured with the reviewer's
+`timing.py` / `timing2.py` plus the pytest table; ms):
+
+| Input | NFKC length | Before | After |
+|---|---|---|---|
+| U+FDFA x 2000 | 36000 | 4.55 | 1.22 (refused) |
+| keep hotspot + U+FDFA pad + `$` | 34220 | 14.51 | 1.16 (refused) |
+| U+FDFA pad + 8 x `$5` | 35574 | 32.71 | 1.19–1.33 (refused) |
+| keep hotspot, 350 x `№, ` + U+FDFA | 18262 | 67.80 | 0.58–0.63 (refused) |
+| keep hotspot, 450 x `№, ` + U+FDFA | 13262 | 63.58 | 0.41 (refused) |
+| keep hotspot, `no, ` + U+FDFA pad | 15362 | 49.65 | 0.46 (refused) |
+| keep hotspot, 500 x `no, ` | 2000 | 12.02 | 0.83–0.85 |
+| keep hotspot and `no` x 300 | 2000 | 7.05 | 0.55 |
+| near the cap: U+FDFA x 100, keep hotspot, 470 x `no, ` (read) | 3694 | not measured | 1.17–1.22 |
+
+Every other reviewer input stays under 0.6 ms. The pytest timing table (13
+cases) asserts < 250 ms per case; its largest measured value is 1.33 ms.
+
+**Checks:**
+
+| Check | Result |
+|---|---|
+| `make lint` | exit 0 |
+| `make typecheck` | exit 0 (59 files, no issues) |
+| `make test` | exit 0: runtime 1882 passed / 66 skipped; ML 397 / 1 skipped |
+| `make web-check` | exit 0: vitest 250 passed, `next build` |
+| `make preflight` | exit 0 on the second run: runtime 1882 / 66, ML 397 / 1, vitest 250, gated-skip pin 66. The first run failed `format-check` only: one new test assertion was not ruff-formatted. It was rewritten; no behavior changed. |
+
+**Not run.** The DB gates and a Browser pass were not run. This round changed
+the parser, the Web opening rule and failure copy, and tests. It did not
+change `app.py`, `CreateCaseRequest`, or any repository or Temporal path.

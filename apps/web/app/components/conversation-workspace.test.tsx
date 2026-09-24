@@ -361,23 +361,42 @@ describe("ConversationWorkspace", () => {
     expect(runtime.createCase).not.toHaveBeenCalled();
   });
 
-  it.each(["422", "network"])("PR-12: a %s proposal failure opens no card and creates nothing", async (kind) => {
+  // Fourth amendment M-5: every non-success path of the intake proposal gets
+  // the same intake copy, through the real client and a stubbed fetch.
+  const INTAKE_FAILURE_COPY = "I couldn't read that message right now. Nothing was created.";
+  const jsonResponse = (status: number, body: unknown) =>
+    new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  it.each([
+    ["422", () => jsonResponse(422, { detail: { code: "request_invalid", message: "request rejected" } })],
+    ["404", () => jsonResponse(404, { detail: "Not Found" })],
+    ["409", () => jsonResponse(409, { detail: { code: "conflict", message: "conflict" } })],
+    ["500", () => jsonResponse(500, { detail: { code: "internal_error", message: "internal error" } })],
+    ["503", () => new Response("upstream unavailable", { status: 503 })],
+    ["network", () => { throw new TypeError("fetch failed"); }],
+    ["200 non-JSON body", () => new Response("<html>ok</html>", { status: 200 })],
+    ["200 invalid proposal", () => jsonResponse(200, { ...EMPTY_PROPOSAL, extra: true })],
+  ] as const)("PR-12 M-5: a %s proposal failure gets the intake copy and creates nothing", async (_kind, respond) => {
     const runtime = await import("../../lib/runtime-client");
-    const failure = kind === "422"
-      ? new runtime.RuntimeClientError("The local Runtime rejected this state safely. No unverified result is shown.", "http", 422, "request_invalid")
-      : new runtime.RuntimeClientError("The local Runtime could not be reached. Start it and retry, or restart the demo.", "network", null, "network");
-    vi.mocked(runtime.proposeIntake).mockReset().mockRejectedValue(failure);
+    const actual = await vi.importActual<typeof import("../../lib/runtime-client")>("../../lib/runtime-client");
+    const fetchStub = vi.fn(async () => respond());
+    vi.stubGlobal("fetch", fetchStub);
+    vi.mocked(runtime.proposeIntake).mockReset().mockImplementation(actual.proposeIntake);
     vi.mocked(runtime.createCase).mockClear();
-    render(<ConversationWorkspace />);
+    try {
+      render(<ConversationWorkspace />);
 
-    send(FULL_REQUEST);
+      send(FULL_REQUEST);
 
-    expect(await screen.findByText(kind === "422" ? /I could not read that request, and nothing was created/ : /could not be reached.*Nothing was created\./)).toBeInTheDocument();
-    // Review M-2: the reply says it once.
-    expect(screen.queryByText(/Nothing was created\..*Nothing was created/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Confirm the facts before creating a Case." })).not.toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Message ProxyLoop")).toBeEnabled();
-    expect(runtime.createCase).not.toHaveBeenCalled();
+      expect(await screen.findByText(INTAKE_FAILURE_COPY)).toBeInTheDocument();
+      expect(fetchStub).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(/Nothing was created\..*Nothing was created/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/could not be reached|rejected this state|could not read that request/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Confirm the facts before creating a Case." })).not.toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Message ProxyLoop")).toBeEnabled();
+      expect(runtime.createCase).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("PR-12 I-1: a fact the consumer supplies is shown as confirmed; the others stay read", async () => {
@@ -459,6 +478,7 @@ describe("ConversationWorkspace", () => {
     ["My bill is $92 and I'd like $75", true],
     ["My bill went up to $92 and I want $80", true],
     ["My plan went up to $92", false],
+    ["Which phone should I take on a euro trip?", false],
   ] as const)("PR-12 M-1: the real proposal for %s opens the card: %s", async (text, opensCard) => {
     const runtime = await import("../../lib/runtime-client");
     vi.mocked(runtime.proposeIntake).mockReset().mockResolvedValue(

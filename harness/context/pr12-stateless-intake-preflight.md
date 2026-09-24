@@ -368,3 +368,56 @@ the file now also holds the on-topic rows):
 scope reply. Its amount is `ambiguous` (price-history verb) and `plan` is not a
 cue. The consumer can rephrase with "bill" or a phone word. The parser and
 `intake-parser-v1` are unchanged; this is a Web-only rule.
+
+## Amendment 2026-09-24 — focused re-review (Request Changes, I-1): fourth set of rules
+
+Root decisions on the focused re-review. The rule set is still
+`intake-parser-v1`, because nothing under that name has been merged.
+
+- **I-1 `get`.** Bare `get` no longer makes a question a lowering request. It
+  counts only as `get … down|lower|cheaper|under|below|reduced`, with at most 40
+  characters between and no `than` after. `lower` followed by `than` is a
+  comparative, not a request. These are ambiguous for every amount:
+  - "Should I get the $92 plan? I want to pay under $80."
+  - "Why did my bill get to $92?"
+  - "Is $80 realistic to get?"
+  - "Should I get the $92 plan?"
+  - "Can I get it lower than $92?"
+
+  "Could you get my mobile bill down to $75?" still reads $75 as the target.
+- **M-1 bounded cost.**
+  - `_ALL_DOUBT` and the retraction check run once per sentence, and the
+    result is stored on each clause.
+  - Text longer than `NORMALIZED_TEXT_MAX_LENGTH = 4000` characters after NFKC
+    and lowercasing is not read. All four fields get the existing closed reason
+    `missing` and no value. No new reason code was added, so the Web contract
+    is unchanged.
+  - The history check and both role-cue scans (the words since the previous
+    amount, then the clause before the amount) see only the same 48-character
+    tail, cut at a word boundary.
+  - The timing table gained two of the reviewer's NFKC-expansion inputs, the
+    un-expanded orphan-negation run, and one expanded input below the cap.
+    Each is asserted < 250 ms; the measured numbers are in the log.
+- **M-2 both role cues.** In the window the role scan uses, a current cue that
+  is nearer the amount than the last target cue makes the amount ambiguous.
+  Before, target-first order decided. When the target cue is the nearer one,
+  or both start at the same place (`at most`), the target stands. Reading the
+  rule this way is an implementer interpretation. The literal "any clause with
+  both" would also make "Could you get my mobile bill down to $75?" ambiguous,
+  because `bill` is a current cue, and I-1 requires that sentence to read $75.
+  - Ambiguous now: "Hoping you can explain why my bill is $92", "I'm happy at
+    $92, I'd rather keep it", "I'd like to lower my phone bill that is
+    currently $92".
+  - **Previously read as values, now ambiguous:** "My budget is $75", "I only
+    want to pay $75", "would like to pay $80", "My target is $75".
+- **M-3 retractions.** A sentence that is only "No", or that holds "wait, no",
+  "never mind", or "scratch that", casts doubt on every feature already named.
+  A retraction clause needs no negation word to count.
+- **M-4 Web.** In card rule (c), `unsupported_currency` does not count as an
+  amount clarification. "Which phone should I take on a euro trip?" gets the
+  scope reply. The real parser output is in the fixture.
+- **M-5 Web.** Every failure of the intake-proposal request shows the same
+  message. This covers a 422, a network failure, any other 4xx or 5xx, and a
+  200 whose body is not JSON or is not a valid proposal. The message is "I
+  couldn't read that message right now. Nothing was created." and has no Case
+  wording.

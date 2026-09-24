@@ -212,5 +212,32 @@
         "reason": "missing"
       }
     ]
+  },
+  "Which phone should I take on a euro trip?": {
+    "parser": "intake-parser-v1",
+    "proposal": {
+      "current_monthly_total": null,
+      "target_monthly_total": null,
+      "mobile_hotspot_required": null,
+      "device_financing_change_forbidden": null
+    },
+    "clarifications": [
+      {
+        "field": "current_monthly_total",
+        "reason": "unsupported_currency"
+      },
+      {
+        "field": "target_monthly_total",
+        "reason": "unsupported_currency"
+      },
+      {
+        "field": "mobile_hotspot_required",
+        "reason": "missing"
+      },
+      {
+        "field": "device_financing_change_forbidden",
+        "reason": "missing"
+      }
+    ]
   }
 }
