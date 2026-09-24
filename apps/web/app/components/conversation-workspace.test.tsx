@@ -1962,6 +1962,118 @@ describe("ConversationWorkspace", () => {
     expect(runtime.appendConsumerEvent).toHaveBeenCalledTimes(1);
   });
 
+  it("I-1: polls during a long in-flight event POST continue without exhausting the poll budget", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const pendingEvent = deferred<RuntimePayload>();
+    const waiting = payload({
+      approval: {
+        action_intent_revision: 1,
+        approval_id: "22222222-2222-4222-8222-222222222222",
+        case_revision: 2,
+        decision: "pending",
+        expires_at: NORMAL_PENDING_APPROVAL_EXPIRES_AT,
+        material_terms_hash: "hash-1",
+      },
+      event_cursor: 2,
+      revision: 4,
+      route: "wait_for_approval",
+    });
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockReturnValue(pendingEvent.promise);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.useFakeTimers();
+    vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => payload());
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await flushMicrotasks();
+    for (let tick = 0; tick < 7; tick += 1) await flushMicrotasks(1500);
+
+    expect(vi.mocked(runtime.getCase).mock.calls.length).toBeGreaterThan(5);
+    expect(screen.queryByText(/Still waiting for the authoritative result/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reconnect and read Case" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Working").length).toBeGreaterThan(0);
+
+    vi.mocked(runtime.getCase).mockImplementation(async () => waiting);
+    pendingEvent.resolve(waiting);
+    await flushMicrotasks();
+    expect(screen.getByRole("heading", { name: "Accept these exact fictional terms?" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("I-1: a budget error from a stalled reconnect is cleared once its authoritative reads and replay succeed", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const finalizing = payload({
+      event_cursor: 2,
+      revision: 6,
+      route: "fast_now",
+      snapshot: { ...payload().snapshot, pending_execution: true },
+    });
+    const waiting = payload({
+      approval: {
+        action_intent_revision: 1,
+        approval_id: "22222222-2222-4222-8222-222222222222",
+        case_revision: 2,
+        decision: "pending",
+        expires_at: NORMAL_PENDING_APPROVAL_EXPIRES_AT,
+        material_terms_hash: "hash-1",
+      },
+      event_cursor: 3,
+      revision: 7,
+      route: "wait_for_approval",
+    });
+    const readiness = deferred<Awaited<ReturnType<typeof runtime.checkReadiness>>>();
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(finalizing);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.useFakeTimers();
+    vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...finalizing }));
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await flushMicrotasks();
+    for (let tick = 0; tick < 7; tick += 1) await flushMicrotasks(1500);
+    expect(screen.getByRole("alert")).toHaveTextContent("Still waiting for the authoritative result after 5 reads");
+
+    vi.mocked(runtime.checkReadiness).mockReset().mockReturnValue(readiness.promise);
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect and read Case" }));
+    await flushMicrotasks();
+    for (let tick = 0; tick < 7; tick += 1) await flushMicrotasks(1500);
+    expect(screen.getByRole("alert")).toHaveTextContent("Still waiting for the authoritative result after 5 reads");
+
+    vi.mocked(runtime.getCase).mockImplementation(async () => ({ ...waiting }));
+    vi.mocked(runtime.appendConsumerEvent).mockResolvedValue(waiting);
+    readiness.resolve(DURABLE_READY as Awaited<ReturnType<typeof runtime.checkReadiness>>);
+    await flushMicrotasks();
+    expect(screen.getByRole("heading", { name: "Accept these exact fictional terms?" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("M-1: stale poll reads re-arm polling but still stop at the 5-read budget", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const finalizing = payload({
+      event_cursor: 2,
+      revision: 6,
+      route: "fast_now",
+      snapshot: { ...payload().snapshot, pending_execution: true },
+    });
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(finalizing);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.useFakeTimers();
+    vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...finalizing }));
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await flushMicrotasks();
+    const reads = vi.mocked(runtime.getCase).mock.calls.length;
+
+    vi.mocked(runtime.getCase).mockImplementation(async () => ({ ...finalizing, revision: 5 }));
+    for (let tick = 0; tick < 10; tick += 1) await flushMicrotasks(1500);
+    expect(runtime.getCase).toHaveBeenCalledTimes(reads + 5);
+    expect(screen.getByRole("alert")).toHaveTextContent("Still waiting for the authoritative result after 5 reads");
+  });
+
   it("I-3: a failed event POST keeps the approval a poll already read instead of re-enabling confirm", async () => {
     const runtime = await import("../../lib/runtime-client");
     const pendingEvent = deferred<RuntimePayload>();

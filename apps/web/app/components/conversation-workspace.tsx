@@ -66,6 +66,9 @@ class BlockedStateError extends RuntimeClientError {
   }
 }
 
+const POLL_BUDGET_MESSAGE =
+  "Still waiting for the authoritative result after 5 reads. The Runtime may have an execution in progress or stuck; reconnect to read the Case again.";
+
 const CONFIRMATION_EVENT =
   "Keep mobile hotspot and device financing unchanged. Continue with the fictional offer.";
 
@@ -663,6 +666,20 @@ export function ConversationWorkspace() {
     pollBudgetExhaustedReported.current = false;
   }
 
+  // A read made while this session's event or approval POST is in flight does
+  // not count against the 5-read budget (I-1); the command bounds that window.
+  function countPollRead() {
+    if (commandInFlightRef.current !== sessionId.current) pollCount.current += 1;
+  }
+
+  // A successful authoritative command read supersedes a "still waiting" budget
+  // error; the budget restarts so polling cannot then stop silently (I-1).
+  function clearPollBudgetError() {
+    if (!pollBudgetExhaustedReported.current) return;
+    resetPollBudget();
+    setError((current) => (current === POLL_BUDGET_MESSAGE ? null : current));
+  }
+
   function writeStorage(state: PersistedWorkspaceState | null) {
     storageRef.current = state;
     setHasStoredState(state !== null);
@@ -794,6 +811,7 @@ export function ConversationWorkspace() {
       throw new BlockedStateError(message);
     }
     if (poll && nextPhase === "confirm" && commandInFlightRef.current === requestId) return recovered;
+    if (!poll) clearPollBudgetError();
     if (nextPhase !== phase) resetPollBudget();
     setPhase(nextPhase);
     const pending = storageRef.current?.pendingCommand;
@@ -1042,7 +1060,7 @@ export function ConversationWorkspace() {
     const delay = pollCount.current === 0 ? Math.max(0, expiresAt - Date.now()) : 1500;
     const timer = window.setTimeout(() => {
       if (blockedRef.current || pollCount.current >= 5) return;
-      pollCount.current += 1;
+      countPollRead();
       setApprovalDeadlinePassed(true);
       setError("The local approval deadline has passed. Reading the authoritative Runtime state now.");
       void readAuthoritativeCase(payload.case_id, confirmedFacts, sessionId.current, { poll: true }).catch((caught) => {
@@ -1061,13 +1079,13 @@ export function ConversationWorkspace() {
     if (pollCount.current >= 5) {
       if (!pollBudgetExhaustedReported.current) {
         pollBudgetExhaustedReported.current = true;
-        setError("Still waiting for the authoritative result after 5 reads. The Runtime may have an execution in progress or stuck; reconnect to read the Case again.");
+        setError(POLL_BUDGET_MESSAGE);
       }
       return;
     }
     const timer = window.setTimeout(() => {
       if (blockedRef.current) return;
-      pollCount.current += 1;
+      countPollRead();
       void readAuthoritativeCase(payload.case_id, confirmedFacts, sessionId.current, { poll: true }).catch((caught) => {
         if (!blockedRef.current && caught instanceof Error) setError(caught.message);
       });

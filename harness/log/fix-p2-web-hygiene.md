@@ -82,7 +82,7 @@ file unless noted. Red was observed before each change.
 | M-5 | `tests/integration/test_browser_projection_allowlist.py` `EXCLUDED_KEYS` gains `model_traces`, `execution_claim`, `trace_id`, `claimed_at` | Guard only: the allow-list already kept them out, so it cannot be red first |
 | M-3 | No code change | n/a |
 | spec | "No runtime-package change" now names the `runtime/services/api` `app.py` projection change | n/a |
-| I-1 | **Not applied, escalated.** "Skip the poll timer while in flight" (prototyped) turns the I-1 regression test green but reds 4 tests: #63's `B1` and `sticky I1`, the E-7 test, and the item-4 I-3 test. All four need a poll during the in-flight event POST. Keeping the polls but not charging the budget passes everything except the I-1 assertion "`getCase` called 0 times" (7 reads in 10.5 s) | open: root decision needed |
+| I-1 | **Not applied, escalated.** "Skip the poll timer while in flight" (prototyped) turns the I-1 regression test green but reds 4 tests: #63's `B1` and `sticky I1`, the E-7 test, and the item-4 I-3 test. All four need a poll during the in-flight event POST. Keeping the polls but not charging the budget passes everything except the I-1 assertion "`getCase` called 0 times" (7 reads in 10.5 s) | root decided Option B; applied below |
 
 Limits (M-3): no local upper bound on amounts; the server `Money` has none
 either.
@@ -100,3 +100,40 @@ Checks on this tree (no `PROXYLOOP_TEST_*` set):
   the cause is not established.
 - `git status --short data/`: empty.
 - Not run: `make preflight`, real-dependency gates, Browser/manual smoke.
+
+## Review round 1, item I-1: root decision Option B
+
+- `countPollRead()` (`conversation-workspace.tsx`, used by the deadline and
+  the working/finalizing poll timers): a read made while
+  `commandInFlightRef.current === sessionId.current` does not count against
+  the 5-read budget. Polling continues during the command, so #63 `B1` /
+  `sticky I1`, E-7 and I-3 keep their poll-during-POST behaviour.
+- `clearPollBudgetError()`, called from `readAuthoritativeCase` for every
+  successful non-poll (command, restore or reconnect) read: when the budget
+  error was reported, restart the budget and clear the error only if it is
+  still `POLL_BUDGET_MESSAGE`.
+- A direct confirm/approve cannot start with the budget error showing: both
+  already `clearFailure()` at start, and no command button is enabled while
+  it shows. The reachable case is a Reconnect whose readiness check stalls
+  while restoring-phase polls exhaust the budget.
+- `docs/ui/state-matrix.md` finalizing row documents the accounting.
+
+| Test | Before | After |
+|---|---|---|
+| "I-1: polls during a long in-flight event POST continue without exhausting the poll budget" | red (reads stop at 5, "Still waiting" shown) | green |
+| "I-1: a budget error from a stalled reconnect is cleared once its authoritative reads and replay succeed" | red (error left after the approval card appears) | green |
+| "M-1: stale poll reads re-arm polling but still stop at the 5-read budget" | green (guard: the `stalePollTick` re-arm cannot bypass the budget; stale reads outside a command count) | green |
+
+Checks on this tree (no `PROXYLOOP_TEST_*` set):
+
+- `make web-check`: pass (2 files, 139 vitest tests, build).
+- allow-list pytest: 1 passed.
+- `make format-check lint typecheck`: pass.
+- `make preflight-fast`: pass.
+- `make test`: pass (1174 passed, 46 skipped; 390 passed, 1 skipped;
+  V2 ceiling report current).
+- `git status --short data/`: empty.
+- Not run: `make preflight`, real-dependency gates, Browser/manual smoke.
+
+Known limit: reads made during a command are unbounded for as long as the
+POST stays pending (one per 1500 ms); the budget cannot bound them.
