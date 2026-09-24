@@ -631,7 +631,7 @@ def test_postgres_conflicts_and_strict_payload_fail_closed(
     with psycopg.connect(database_url) as connection:
         connection.execute(
             f"UPDATE {TABLE} SET payload = %s WHERE case_id = %s",
-            (Jsonb({"storage_version": 2}), CASE_ID),
+            (Jsonb({"storage_version": 3}), CASE_ID),
         )
     with pytest.raises(RuntimeError, match="unsupported Case storage version"):
         repository.get(CASE_ID)
