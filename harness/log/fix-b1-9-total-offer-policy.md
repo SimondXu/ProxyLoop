@@ -46,8 +46,29 @@ Branch `fix/b1-9-total-offer-policy` from `origin/main` @ `74e2073`.
   `drifted_since_r1`, `drifted_since_03b`, `drifted_since_bundle` are the
   pre-existing informational states. `git status` shows no committed
   artifact modified.
-- Not run here: `make postgres-check`, `make phase05a-check`,
-  `make phase06b1-check` (the root schedules the shared DB/Temporal gates).
+
+## Amendment: `evaluated_at` guard (root decision), merge, real gates
+
+- `case_offer_violations` now validates `evaluated_at` first (before the
+  bill check and the first `try`) and raises
+  `ValueError("evaluated_at must be timezone-aware UTC")` for a naive or
+  non-UTC value, so a caller bug is not masked as
+  `compliance_context_invalid`. New test
+  `test_case_offer_violations_raises_on_a_non_utc_evaluation_time`
+  (naive, +02:00; with and without a bill). Mutation (raise -> `pass`):
+  2 failed; restored.
+- Merged `origin/main` @ `ff35dca` (docs-only: status and one log).
+- Focused run: 78 passed. `make format-check lint typecheck`: exit 0.
+  `make preflight-fast`: exit 0.
+- Real-dependency gates, serial, shared test DB at `localhost:55432`,
+  Temporal at `localhost:7233`, variables on the make command line only:
+  `make postgres-check` 27 passed; `make phase05a-check` 42 passed;
+  `make phase06b1-check` 35 passed. No `case_not_found` / `state_invalid`.
+- `make preflight`: exit 0; runtime 1220 passed, 51 skipped; ml 397 passed,
+  1 skipped; web 140 passed; Next build compiled. Same three pre-existing
+  drift lines. A first `make preflight` run also exited 0 but its captured
+  log contained NUL bytes and an inconsistent count (1203 passed vs 1271
+  collected), so it was discarded and rerun into a fresh file.
 
 ## Limits
 
@@ -55,5 +76,3 @@ Branch `fix/b1-9-total-offer-policy` from `origin/main` @ `74e2073`.
   the wire is deferred to a future 1.2 contract set.
 - Fee netting is unchanged: a +1000/-1000 pair nets to 0 and is evaluated
   as a zero fee sum.
-- `compliance_context_invalid` also covers a non-UTC `evaluated_at`, since
-  the context constructor raises the same `ValueError` for it.

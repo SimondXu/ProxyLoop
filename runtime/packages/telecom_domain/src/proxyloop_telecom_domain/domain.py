@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Protocol
 from uuid import UUID
 
@@ -194,9 +194,12 @@ def case_offer_violations(
     The contract admits values outside the policy's domain: a negative fee
     sum from a credit line, or a repeated token in a goal or offer tuple.
     Those fail closed as one reason code instead of raising, so no caller
-    can approve or complete on them and none crashes on them.
+    can approve or complete on them and none crashes on them. A non-UTC
+    ``evaluated_at`` is a caller bug, not offer data, and still raises.
     """
 
+    if evaluated_at.tzinfo is None or evaluated_at.utcoffset() != timedelta(0):
+        raise ValueError("evaluated_at must be timezone-aware UTC")
     bill = case.bill_snapshot
     if bill is None:
         return ("missing_bill_snapshot",)

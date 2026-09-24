@@ -30,6 +30,10 @@ the root-adopted architect proposal; this file freezes it for the implementer.
    `OfferComplianceTerms` raises `ValueError`, else delegates to
    `offer_compliance_violations`. Only `ValueError` from those two
    constructors is caught; no bare `except Exception`.
+   Root decision (amendment): a naive or non-UTC `evaluated_at` is a caller
+   bug, not offer data. It is validated first, before the bill check and the
+   first `try`, and raises `ValueError("evaluated_at must be timezone-aware
+   UTC")`; only data-derived invalidity maps to a reason code.
 2. `verify_completion` and `offer_compliance_violations_for_case` (kept, same
    exported name, now a one-line wrapper) both call it; the duplicated context
    construction is removed. `CompletionOutcome` has no REJECTED, so an invalid

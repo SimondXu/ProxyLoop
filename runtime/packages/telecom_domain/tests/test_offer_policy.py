@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from uuid import UUID
 
 import pytest
@@ -357,6 +357,28 @@ def test_case_offer_violations_returns_a_reason_code_for_each_invalid_input() ->
     assert case_offer_violations(billless, offer, evaluated_at=at) == (
         "missing_bill_snapshot",
     )
+
+
+@pytest.mark.parametrize(
+    "evaluated_at",
+    [
+        datetime(2026, 8, 24, 12, 0),
+        datetime(2026, 8, 24, 14, 0, tzinfo=timezone(timedelta(hours=2))),
+    ],
+    ids=["naive", "non_utc_offset"],
+)
+def test_case_offer_violations_raises_on_a_non_utc_evaluation_time(
+    evaluated_at: datetime,
+) -> None:
+    # A non-UTC clock is a caller bug, not offer data: it must not be masked
+    # as ``compliance_context_invalid``, even before the bill check.
+    episode = Phase01AEpisode.success()
+    offer = episode.issue_offer()
+    billless = _wire_valid(episode.case.model_copy(update={"bill_snapshot": None}))
+
+    for case in (episode.case, billless):
+        with pytest.raises(ValueError, match="evaluated_at must be timezone-aware"):
+            case_offer_violations(case, offer, evaluated_at=evaluated_at)
 
 
 # Every input of the policy tables above, lifted into contract-valid Case and
