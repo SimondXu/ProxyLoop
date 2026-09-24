@@ -1,0 +1,244 @@
+# PR-12 preflight: stateless intake (Stage 3)
+
+Bounded change under decisions 16–20 (`harness/context/audit-remediation-decisions.md`),
+build plan row PR-12 (`harness/context/build-plan-to-complete.md`). Branch
+`feat/pr12-stateless-intake` from `origin/main` @ `04a8ed5` (#96, PR-10 merged).
+Written 2026-09-24. Tags: **[O]** observed in code, **[P]** proposed here.
+
+## Sources
+
+- Build plan PR-12: "stateless `POST /intake/proposals` with a deterministic parser;
+  a Web card replaces the wizard"; DoD item 2 "free-text intake → typed card →
+  confirmed Case → …".
+- `audit-remediation-status.md` §5 item 3: stateless intake, so the Case invariant
+  "goal is consumer-confirmed" stays typed.
+- Target architecture proposal §3 step 1–2, §4 row "Intake" (`ConsumerGoalProposal`
+  is **not** canonical: an API request/response model in `services/api`), §5
+  (`CaseCommandType.INTAKE_PROPOSAL` is not added), §9 (the returned typed goal is
+  a card the user edits or confirms; only confirmed typed facts create the Case),
+  §12 Q5 (**stateless**).
+- [O] `runtime/services/api/src/proxyloop_api/app.py`: `CreateCaseRequest` (strict
+  USD; current > 7200 minor; 7200 ≤ target < current; both booleans the literal
+  `true`), the content-free 422 handler (#82), operation records, the browser
+  allow-list, the B2-8 threadpool/lock.
+- [O] `runtime/packages/case_runtime/src/proxyloop_case_runtime/runtime.py`
+  `_case_with_intake` repeats the same rule (not touched: `runtime.py` is reserved
+  for PR-9a/PR-13).
+- [O] `apps/web/app/components/conversation-workspace.tsx`: the wizard asks, one
+  composer turn each, for the current bill, the target, hotspot, and financing,
+  then shows a Draft Task Brief whose "Create fictional Case" sends exactly the
+  four `CreateCaseRequest` fields. `isSupportedMobileBillIntent` gates the first
+  message; `parseUsdMoney` and `parseBooleanFact` parse each field turn.
+
+## Decision 1 — the endpoint contract [P]
+
+`POST /intake/proposals`, stateless, in `services/api`.
+
+Request (`IntakeProposalRequest`, `extra="forbid"`, strict):
+`{"text": str}`, 1 ≤ length ≤ 2000 characters. Anything else → the existing
+content-free 422 `{"detail": {"code": "request_invalid", "message": "request
+rejected"}}`; the server log gets field locations and error types only (never the
+value), exactly as today.
+
+Response 200 (`IntakeProposal`):
+
+```json
+{
+  "parser": "intake-parser-v1",
+  "proposal": {
+    "current_monthly_total": {"amount_minor": 9200, "currency": "USD"} | null,
+    "target_monthly_total": {"amount_minor": 7500, "currency": "USD"} | null,
+    "mobile_hotspot_required": true | null,
+    "device_financing_change_forbidden": true | null
+  },
+  "clarifications": [{"field": "<one of the four keys>", "reason": "<code>"}]
+}
+```
+
+- The four proposal keys are exactly the `CreateCaseRequest` keys, so a confirmed
+  card maps 1:1 to the create body. Booleans are `true` or `null` because the
+  create path accepts only the literal `true`.
+- `clarifications` holds at most one entry per field, in the key order above.
+  Closed reason codes: `missing`, `ambiguous`, `invalid_amount`,
+  `unsupported_currency`, `below_fixed_offer`, `target_not_below_current`.
+  A value is returned together with a clarification only for the two value rules
+  (`below_fixed_offer`, `target_not_below_current`); every other reason has a
+  `null` value.
+- The response never contains the text or any substring of it: only Money,
+  booleans, and closed codes.
+- `parser` names the rule set; any rule change bumps it.
+
+Stateless: no Case, no command, no repository or Runtime call, no Temporal
+dispatch, no model call, no persistence, no trace. The same handler runs in direct
+and Temporal mode. It is a sync `def` handler (FastAPI runs it in the threadpool,
+B2-8); it takes no lock because it touches no shared state.
+
+The parser is deterministic and model-free in **every** adapter mode. A
+model-backed intake (proposal §3 "Runtime calls Slow") is not built: decision 17
+keeps Slow scripted, and a model call would add a trace and a spend path. If it is
+ever wanted, it is a new decision and a new parser version.
+
+## Decision 2 — the parser and its limits [P]
+
+A pure module `proxyloop_api/intake.py`: `propose_intake(text) -> IntakeProposal`.
+Standard library `re` + `unicodedata` only (NFKC, `’` → `'`); no import of
+`case_runtime` or `agent_core`. Every regex is linear (no nested quantifiers) and
+the input is ≤ 2000 characters.
+
+Clauses: the text is split at `; ! ?` and newlines, at `.`/`,` followed by
+whitespace or the end (so `$1,092.50` stays whole), and at the words `and`/`but`.
+Cues are read inside one clause only.
+
+**Amounts.** A money mention is `$N` or `N USD` / `N dollar(s)` / `N bucks`. `N`
+is strict: plain digits or comma-grouped thousands, at most two decimals, one
+trailing sentence `.` or `,` dropped; at most $999,999.99. A mention that is
+negative (`-$5`, `$-5`), a range (`$70-75`, `$70–$75`), glued to a letter
+(`$92k`), or otherwise not strict is `invalid_amount` for its role. Bare numbers
+("my bill is 92") are not read. Any foreign-currency marker in the text (`€ £ ¥`,
+`EUR`, `euro(s)`, `GBP`, `CAD`, `AUD`, `JPY`, or a letter-prefixed `$` such as
+`A$`, `US$`) makes both amount fields `unsupported_currency` with no value.
+
+Each mention gets a role:
+
+1. The words right after it: `bill`, `plan`, `now`, `currently`, `today` →
+   current; `or less/lower/below/under/cheaper`, `max(imum)`, `tops`, `target`,
+   `goal`, `at most` → target.
+2. Otherwise the clause text before it (from the clause start or the previous
+   mention): a target cue (`to`, `under`, `below`, `target`, `goal`, `at most`,
+   `no more than`, `less than`, `lower than`, `cheaper than`, `max(imum)`,
+   `reach`, `want`, `aim`, `budget`) → target; else a current cue (`currently`,
+   `current`, `now`, `pay/paying/paid`, `is/are/was`, `cost(s/ing)`,
+   `charge(d/s)`, `spend(ing)`, `from`, `bill`, `at`) → current; else unresolved.
+
+Per role: any invalid mention → `invalid_amount`; two different valid values →
+`ambiguous`; one value (repeats allowed) → that value. An unresolved mention makes
+only a still-empty field `ambiguous`; no mention at all → `missing`. Then the
+value rules, the same as `CreateCaseRequest`: current ≤ $72.00 →
+`below_fixed_offer`; target < $72.00 → `below_fixed_offer`; both present and
+target ≥ current → `target_not_below_current` on the target. A parity test pins
+"no amount clarification" ⇔ `CreateCaseRequest` accepts, over a grid of pairs.
+
+**Keep / never-change (closed vocabulary).** In each clause that names the
+feature, the keep phrases are removed (longest first); the feature is `true` only
+if a keep phrase was present and no negation or change word remains; any other
+clause naming it makes it `ambiguous`. No clause names it → `missing`.
+
+- Mobile hotspot: terms `hotspot`, `hot spot`, `mobile hotspot`, `tethering`.
+  Keep phrases `keep`, `need(s)`, `require(d/s)`, `must have`, `must keep`,
+  `retain`, `preserve`, `stay(s)`. Residual words that make it ambiguous: `no`,
+  `not`, `don't`, `do not`, `never`, `without`, `drop`, `remove`, `cancel`,
+  `lose`, `disable`, `off`, `stop`, `rid`.
+- Device financing: terms `financing`, `finance`, `device/phone financing`,
+  `device/phone payment(s)`, `device/phone installment(s)`, `installment plan`.
+  Keep phrases `don't change`, `do not change`, `never change`, `not change`,
+  `no change(s)`, `without changing`, `don't touch`, `do not touch`,
+  `unchanged`, `untouched`, `keep`, `leave`, `same`, `as is`, `alone`. Residual
+  words that make it ambiguous: the hotspot list plus `change(s/d)`,
+  `modify`, `switch`, `pay off`, `payoff`, `end`, `refinance`, `restructure`.
+
+Deliberate limits, not bugs: English only; no number words ("ninety-two"); no bare
+numbers; no inference from "a lower bill" to a target; a keep phrase across an
+`and` ("keep my hotspot and device financing") leaves the second feature
+`ambiguous`; a double negative ("never lose my hotspot") is `ambiguous`. Every
+limit fails toward a clarification, never toward a value the consumer did not
+write, and the consumer confirms every value on the card.
+
+## Decision 3 — the Web card replaces the wizard [P]
+
+- The first composer message goes to `proposeIntake(text)` in `runtime-client.ts`
+  (strict response parse: exact keys, USD safe-integer Money, `true | null`,
+  closed field and reason codes; otherwise the existing "invalid snapshot" error).
+  Longer than 2000 characters is refused locally without a request.
+- If the proposal found no fact at all and `isSupportedMobileBillIntent(text)` is
+  false, the existing "only supports lowering a fictional mobile bill" reply is
+  shown and nothing else happens. Otherwise the Draft Task Brief card opens,
+  filled from the proposal. This keeps today's scope gate for off-topic text while
+  a full sentence that the gate would miss ("my bill is $92, target $75") still
+  opens the card.
+- The card shows each field's value or its clarification ("Missing", "Needs
+  clarification · …", or the value with the rule it breaks). The first field with a
+  clarification becomes the active field and its prompt is asked; the consumer
+  answers in the composer exactly as today (`parseUsdMoney`, `parseBooleanFact`,
+  `intakeValueError` unchanged) or uses Edit on any row. A field's server
+  clarification is dropped once the consumer supplies that field.
+- "Create fictional Case" stays disabled until the four typed values pass the
+  unchanged local rules; only that click calls `createCase` with the typed facts.
+  The Case is therefore created only from consumer-confirmed typed facts: the
+  invariant stays typed and `create_case` is unchanged.
+- The sequential step-by-step prompting from an empty draft is gone; step prompts
+  remain only for fields the proposal could not fill.
+
+## Decision 4 — privacy of free text [P]
+
+The text is never logged, never echoed, never persisted:
+
+- API: the handler logs nothing; the operation record is the existing allow-list
+  (route, status, latency, categories; no body). A 422 logs field locations and
+  error types only (existing handler). The response carries no text. An internal
+  error is the existing content-free 500.
+- Web: the text is sent once to the local Runtime; the browser envelope
+  (`proxyloop.runtime:v1`) still stores only the locator, confirmed typed facts,
+  and one pending command; the text stays only in the in-memory transcript bubble,
+  as today.
+
+## Decision 5 — no contract change [P]
+
+None. `IntakeProposalRequest` / `IntakeProposal` are API-local pydantic models
+(proposal §4 "Intake" row); Money is reused as a value type. No `CaseCommandType`,
+no `CreateCaseRequest` change, no browser-projection change, no `runtime.py`
+change, no DB-gated test (the gated-skip pin is unchanged).
+
+## Red tests and acceptance criteria
+
+Python, `tests/integration/test_stateless_intake.py`:
+
+1. Parser table: full sentence → four values, no clarifications; `from $92 to $75`;
+   `my $92 bill down to $75`; `92 dollars` / `75 USD`; missing fields; two target
+   values → `ambiguous`; unresolved amount → `ambiguous`; `$70-75`, `-$5`, `$92k`,
+   `12.345` → `invalid_amount`; `€92` / `A$92` → `unsupported_currency`; `$70`
+   current → `below_fixed_offer` with value; target ≥ current →
+   `target_not_below_current`; hotspot and financing keep / negated / bare /
+   `no change, but please modify device financing` → `ambiguous`.
+2. Parity: over a grid of (current, target) the parser has no amount clarification
+   iff `CreateCaseRequest` accepts the pair.
+3. Determinism: the same text twice gives byte-identical JSON.
+4. Route: 200 with the typed body in direct and in Temporal mode (a failing
+   Temporal client proves no dispatch); the repository holds no Case afterwards.
+5. Privacy: a marker in the text appears in no response body, no log record at any
+   level, and no operation record, for a 200 and for a too-long 422; the 422 body
+   is the content-free body; an extra field is 422.
+
+Web, vitest:
+
+6. `runtime-client.test.ts`: `proposeIntake` posts `{text}` to
+   `/api/runtime/intake/proposals`; a malformed response (extra key, non-USD, a
+   `false` boolean, an unknown reason) is rejected.
+7. `conversation-workspace.test.tsx`: one sentence fills all four rows and enables
+   Create without step prompts; `createCase` receives exactly the proposed typed
+   facts only after the click; a partial proposal prompts only the missing field;
+   an ambiguous/invalid field shows its clarification and blocks Create until
+   answered; off-topic text with no facts keeps the scope reply; a proposal
+   failure creates nothing; the text is not in localStorage.
+
+Acceptance: all red tests fail on `main` and pass on the branch; every existing
+test passes (the wizard-specific helper is rewritten to the card flow); `make
+lint`, `make typecheck`, `make test`, `make web-check`, `make preflight` green;
+Browser check and DB gates reported "ready for DB" (the lane runs them).
+
+## Docs
+
+`docs/architecture.md` (Experience Layer and Control Plane), `CONTEXT.md` (new
+term **Intake Proposal**, via the domain-modeling procedure), status §0 PR-12 row
+and §5 item 3, log `harness/log/feat-pr12-stateless-intake.md`.
+
+## Limits
+
+- The $72 rule now has four copies (API `CreateCaseRequest`, `runtime.py`, the
+  Web, the parser); the parser copy is pinned to `CreateCaseRequest` by the parity
+  test. One owner would need `runtime.py` (reserved) — left for PR-13 or later.
+- The Web scope gate (`isSupportedMobileBillIntent`) is a second free-text reader
+  in the browser; it decides only whether an empty proposal is off-topic.
+- The parser is a lexical floor, English only; its misses become clarifications.
+  One known misreading is not a clarification: `to` is a target cue, so "my bill
+  went up to $92" proposes $92 as the target. The card shows it and the consumer
+  corrects it before creating anything.

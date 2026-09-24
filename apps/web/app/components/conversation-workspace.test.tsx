@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ConversationWorkspace, isSupportedMobileBillIntent } from "./conversation-workspace";
-import type { RuntimePayload } from "../../lib/runtime-client";
+import type { IntakeProposal, RuntimePayload } from "../../lib/runtime-client";
 
 const offer = {
   features: ["mobile_hotspot", "unlimited_talk_text"],
@@ -41,6 +41,43 @@ function payload(overrides: Partial<RuntimePayload> = {}): RuntimePayload {
   };
 }
 
+// PR-12: the free-text request and the typed proposal the Runtime returns for it.
+const REQUEST_MARKER = "zebra-marker-4471";
+const FULL_REQUEST = `My mobile bill is $92, get it under $75, keep my hotspot and never change device financing. ${REQUEST_MARKER}`;
+
+function intakeProposal(
+  proposal: Partial<IntakeProposal["proposal"]> = {},
+  clarifications: IntakeProposal["clarifications"] = [],
+): IntakeProposal {
+  return {
+    parser: "intake-parser-v1",
+    proposal: {
+      current_monthly_total: { amount_minor: 9200, currency: "USD" },
+      target_monthly_total: { amount_minor: 7500, currency: "USD" },
+      mobile_hotspot_required: true,
+      device_financing_change_forbidden: true,
+      ...proposal,
+    },
+    clarifications,
+  };
+}
+
+const FULL_PROPOSAL = intakeProposal();
+const EMPTY_PROPOSAL = intakeProposal(
+  {
+    current_monthly_total: null,
+    target_monthly_total: null,
+    mobile_hotspot_required: null,
+    device_financing_change_forbidden: null,
+  },
+  [
+    { field: "current_monthly_total", reason: "missing" },
+    { field: "target_monthly_total", reason: "missing" },
+    { field: "mobile_hotspot_required", reason: "missing" },
+    { field: "device_financing_change_forbidden", reason: "missing" },
+  ],
+);
+
 const NORMAL_PENDING_APPROVAL_EXPIRES_AT = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
 afterEach(() => {
@@ -64,46 +101,51 @@ vi.mock("../../lib/runtime-client", async () => {
     createCase: vi.fn(),
     decideApproval: vi.fn(),
     getCase: vi.fn(),
+    proposeIntake: vi.fn(),
   };
 });
 
 describe("ConversationWorkspace", () => {
+  function send(text: string) {
+    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: text } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  }
+
+  // PR-12: one free-text request opens the Draft Task Brief card filled from
+  // the (mocked) stateless intake proposal; "Create fictional Case" confirms it.
   async function completeLocalIntake(
     create = true,
-    financing = "yes",
-    expectReady = true,
     authoritativeResponses: RuntimePayload[] = [payload()],
+    proposal: IntakeProposal = FULL_PROPOSAL,
   ) {
     const runtime = await import("../../lib/runtime-client");
     vi.mocked(runtime.getCase).mockReset();
     authoritativeResponses.forEach((response) => vi.mocked(runtime.getCase).mockResolvedValueOnce(response));
-    const composer = screen.getByPlaceholderText("Message ProxyLoop");
-    fireEvent.change(composer, { target: { value: "Lower my mobile bill" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "$92" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "$75" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "yes" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: financing } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-    if (expectReady) {
-      expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeEnabled();
-    }
+    vi.mocked(runtime.proposeIntake).mockReset().mockResolvedValue(proposal);
+    send(FULL_REQUEST);
+    const createButton = await screen.findByRole("button", { name: "Create fictional Case" });
+    if (proposal.clarifications.length === 0) expect(createButton).toBeEnabled();
     if (create) {
-      fireEvent.click(screen.getByRole("button", { name: "Create fictional Case" }));
+      fireEvent.click(createButton);
       await waitFor(() => expect(screen.getByRole("heading", { name: "Here is what I will work from." })).toBeInTheDocument());
     }
+  }
+
+  async function openEmptyCard() {
+    const runtime = await import("../../lib/runtime-client");
+    vi.mocked(runtime.proposeIntake).mockReset().mockResolvedValue(EMPTY_PROPOSAL);
+    send("Lower my mobile bill");
+    await screen.findByRole("heading", { name: "Confirm the facts before creating a Case." });
   }
 
   it.each([
     "Help me plan a vacation",
     "What is my phone price?",
     "my mobile cost increased",
-  ])("keeps unsupported initial request %s local and does not create a Case", async (text) => {
+  ])("keeps unsupported initial request %s off the card and does not create a Case", async (text) => {
     const runtime = await import("../../lib/runtime-client");
     vi.mocked(runtime.createCase).mockClear();
+    vi.mocked(runtime.proposeIntake).mockReset().mockResolvedValue(EMPTY_PROPOSAL);
 
     render(<ConversationWorkspace />);
     const composer = screen.getByPlaceholderText("Message ProxyLoop");
@@ -111,7 +153,9 @@ describe("ConversationWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
     expect(await screen.findByText(/only supports lowering a fictional mobile bill/)).toBeInTheDocument();
+    expect(runtime.proposeIntake).toHaveBeenCalledWith(text);
     expect(runtime.createCase).not.toHaveBeenCalled();
+    expect(screen.queryByRole("heading", { name: "Confirm the facts before creating a Case." })).not.toBeInTheDocument();
     expect(composer).toBeEnabled();
   });
 
@@ -170,55 +214,187 @@ describe("ConversationWorkspace", () => {
     );
   });
 
-  it("accepts financing no change as a positive confirmation", async () => {
+  it("PR-12: one request fills all four facts and only the create click sends them", async () => {
     const runtime = await import("../../lib/runtime-client");
-    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.createCase).mockReset().mockResolvedValue(payload());
     render(<ConversationWorkspace />);
-    await completeLocalIntake(false, "no change");
-    expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeEnabled();
+    await completeLocalIntake(false);
+
+    expect(runtime.proposeIntake).toHaveBeenCalledTimes(1);
+    expect(runtime.proposeIntake).toHaveBeenCalledWith(FULL_REQUEST);
+    expect(screen.getByText(/I read all four facts from your request/)).toBeInTheDocument();
+    expect(screen.getByText("Current monthly total").nextElementSibling).toHaveTextContent("$92.00");
+    expect(screen.getByText("Target monthly total").nextElementSibling).toHaveTextContent("$75.00");
+    expect(screen.getByText("Mobile hotspot required").nextElementSibling).toHaveTextContent("Confirmed · required");
+    expect(screen.getByText("Device financing change forbidden").nextElementSibling).toHaveTextContent("Confirmed · unchanged");
+    expect(screen.queryByText("Missing")).not.toBeInTheDocument();
+    expect(runtime.createCase).not.toHaveBeenCalled();
+
     fireEvent.click(screen.getByRole("button", { name: "Create fictional Case" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Here is what I will work from." })).toBeInTheDocument());
+    expect(runtime.createCase).toHaveBeenCalledTimes(1);
     expect(runtime.createCase).toHaveBeenCalledWith(
-      expect.objectContaining({ deviceFinancingChangeForbidden: true }),
+      {
+        currentMonthlyTotal: { amount_minor: 9200, currency: "USD" },
+        targetMonthlyTotal: { amount_minor: 7500, currency: "USD" },
+        mobileHotspotRequired: true,
+        deviceFinancingChangeForbidden: true,
+      },
       { idempotencyKey: expect.any(String) },
     );
   });
 
-  it("rejects contradictory financing no-change language locally", async () => {
+  it("PR-12: a partial proposal asks only for the missing fact", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    vi.mocked(runtime.createCase).mockReset().mockResolvedValue(payload());
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(false, [payload()], intakeProposal(
+      { target_monthly_total: null },
+      [{ field: "target_monthly_total", reason: "missing" }],
+    ));
+
+    expect(screen.getByText(/What monthly total would you like to reach/)).toBeInTheDocument();
+    expect(screen.queryByText(/What is your current monthly bill total/)).not.toBeInTheDocument();
+    expect(screen.getAllByText("Missing")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeDisabled();
+
+    send("$75");
+    expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Create fictional Case" }));
+    await waitFor(() => expect(runtime.createCase).toHaveBeenCalledWith(
+      expect.objectContaining({ targetMonthlyTotal: { amount_minor: 7500, currency: "USD" } }),
+      { idempotencyKey: expect.any(String) },
+    ));
+  });
+
+  it.each([
+    [
+      "ambiguous",
+      intakeProposal({ target_monthly_total: null }, [{ field: "target_monthly_total", reason: "ambiguous" }]),
+      "Needs clarification · more than one reading",
+    ],
+    [
+      "invalid_amount",
+      intakeProposal({ target_monthly_total: null }, [{ field: "target_monthly_total", reason: "invalid_amount" }]),
+      "Needs clarification · not a valid USD amount",
+    ],
+    [
+      "below_fixed_offer",
+      intakeProposal(
+        { target_monthly_total: { amount_minor: 7000, currency: "USD" } },
+        [{ field: "target_monthly_total", reason: "below_fixed_offer" }],
+      ),
+      "$70.00 · below the $72.00 fictional offer",
+    ],
+  ])("PR-12: a %s target shows its clarification and blocks Create until answered", async (_reason, proposal, shown) => {
     const runtime = await import("../../lib/runtime-client");
     render(<ConversationWorkspace />);
-    await completeLocalIntake(false, "no change, but I want to change device financing", false);
+    await completeLocalIntake(false, [payload()], proposal);
 
+    expect(screen.getByText("Target monthly total").nextElementSibling).toHaveTextContent(shown);
     expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeDisabled();
+
+    send("$75");
+    expect(screen.getByText("Target monthly total").nextElementSibling).toHaveTextContent("$75.00");
+    expect(screen.getByText("Target monthly total").nextElementSibling).not.toHaveTextContent("Needs clarification");
+    expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeEnabled();
+    expect(runtime.createCase).not.toHaveBeenCalled();
+  });
+
+  it("PR-12: unsupported currency on both amounts asks for each in turn", async () => {
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(false, [payload()], intakeProposal(
+      { current_monthly_total: null, target_monthly_total: null },
+      [
+        { field: "current_monthly_total", reason: "unsupported_currency" },
+        { field: "target_monthly_total", reason: "unsupported_currency" },
+      ],
+    ));
+
+    expect(screen.getAllByText("Needs clarification · USD only")).toHaveLength(2);
+    send("$92");
+    send("$75");
+    expect(screen.queryByText(/Needs clarification/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeEnabled();
+  });
+
+  it("PR-12: an ambiguous financing fact needs an unambiguous confirmation", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    vi.mocked(runtime.createCase).mockReset().mockResolvedValue(payload());
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(false, [payload()], intakeProposal(
+      { device_financing_change_forbidden: null },
+      [{ field: "device_financing_change_forbidden", reason: "ambiguous" }],
+    ));
+    expect(screen.getByText(/Should device financing remain unchanged/)).toBeInTheDocument();
+
+    send("no change, but I want to change device financing");
     expect(screen.getByRole("alert")).toHaveTextContent(/Device financing must remain unchanged/);
-    expect(runtime.createCase).not.toHaveBeenCalled();
-  });
-
-  it("rejects Terra's contradictory financing no-change regression locally", async () => {
-    const runtime = await import("../../lib/runtime-client");
-    render(<ConversationWorkspace />);
-    await completeLocalIntake(false, "no change, but please modify device financing", false);
-
     expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeDisabled();
-    expect(runtime.createCase).not.toHaveBeenCalled();
+    send("no change, but please modify device financing");
+    expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeDisabled();
+
+    send("no change");
+    expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Create fictional Case" }));
+    await waitFor(() => expect(runtime.createCase).toHaveBeenCalledWith(
+      expect.objectContaining({ deviceFinancingChangeForbidden: true }),
+      { idempotencyKey: expect.any(String) },
+    ));
   });
 
-  it("rejects contradictory hotspot language locally", async () => {
+  it("PR-12: an ambiguous hotspot fact rejects contradictory confirmation locally", async () => {
     const runtime = await import("../../lib/runtime-client");
     render(<ConversationWorkspace />);
-    const composer = screen.getByPlaceholderText("Message ProxyLoop");
-    fireEvent.change(composer, { target: { value: "Lower my mobile bill" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "$92" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "$75" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "yes, remove mobile hotspot" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await completeLocalIntake(false, [payload()], intakeProposal(
+      { mobile_hotspot_required: null },
+      [{ field: "mobile_hotspot_required", reason: "ambiguous" }],
+    ));
 
+    send("yes, remove mobile hotspot");
     expect(screen.getByRole("button", { name: "Create fictional Case" })).toBeDisabled();
     expect(screen.getByRole("alert")).toHaveTextContent(/Mobile hotspot must remain required/);
     expect(runtime.createCase).not.toHaveBeenCalled();
+  });
+
+  it.each(["422", "network"])("PR-12: a %s proposal failure opens no card and creates nothing", async (kind) => {
+    const runtime = await import("../../lib/runtime-client");
+    const failure = kind === "422"
+      ? new runtime.RuntimeClientError("The local Runtime rejected this state safely. No unverified result is shown.", "http", 422, "request_invalid")
+      : new runtime.RuntimeClientError("The local Runtime could not be reached. Start it and retry, or restart the demo.", "network", null, "network");
+    vi.mocked(runtime.proposeIntake).mockReset().mockRejectedValue(failure);
+    vi.mocked(runtime.createCase).mockClear();
+    render(<ConversationWorkspace />);
+
+    send(FULL_REQUEST);
+
+    expect(await screen.findByText(kind === "422" ? /I could not read that request, and nothing was created/ : /could not be reached.*Nothing was created/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Confirm the facts before creating a Case." })).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Message ProxyLoop")).toBeEnabled();
+    expect(runtime.createCase).not.toHaveBeenCalled();
+  });
+
+  it("PR-12: refuses an over-long request locally without calling the Runtime", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    vi.mocked(runtime.proposeIntake).mockReset();
+    render(<ConversationWorkspace />);
+
+    send(`Lower my mobile bill ${"x".repeat(2000)}`);
+
+    expect(screen.getByText(/Please keep the request under 2,000 characters/)).toBeInTheDocument();
+    expect(runtime.proposeIntake).not.toHaveBeenCalled();
+  });
+
+  it("PR-12: the request text is never stored in the browser envelope", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    vi.mocked(runtime.createCase).mockReset().mockResolvedValue(payload());
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true);
+
+    const stored = Object.keys(window.localStorage).map((key) => window.localStorage.getItem(key) ?? "").join("\n");
+    expect(stored).toContain("currentMonthlyTotal");
+    expect(stored).not.toContain(REQUEST_MARKER);
+    expect(stored).not.toContain("never change device financing");
   });
 
   it("keeps the conversation primary and completes only through the Runtime flow", async () => {
@@ -248,7 +424,7 @@ describe("ConversationWorkspace", () => {
 
     render(<ConversationWorkspace />);
     await waitFor(() => expect(screen.getByPlaceholderText("Message ProxyLoop")).toBeEnabled());
-    await completeLocalIntake(true, "yes", true, [payload(), waiting, completed]);
+    await completeLocalIntake(true, [payload(), waiting, completed]);
 
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Accept these exact fictional terms?" })).toBeInTheDocument());
@@ -293,7 +469,7 @@ describe("ConversationWorkspace", () => {
 
     render(<ConversationWorkspace />);
     await waitFor(() => expect(screen.getByPlaceholderText("Message ProxyLoop")).toBeEnabled());
-    await completeLocalIntake(true, "yes", true, [payload(), waiting, invalidCompleted]);
+    await completeLocalIntake(true, [payload(), waiting, invalidCompleted]);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Approve exact terms" }));
 
@@ -360,7 +536,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockResolvedValue(incomplete);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload(), incomplete]);
+    await completeLocalIntake(true, [payload(), incomplete]);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
 
     expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
@@ -398,7 +574,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(blocked);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.mocked(runtime.getCase).mockResolvedValue(blocked);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
 
@@ -457,7 +633,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockResolvedValue(lostBrief);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload(), lostBrief]);
+    await completeLocalIntake(true, [payload(), lostBrief]);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
 
     expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
@@ -491,7 +667,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockResolvedValue(drifted);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload(), drifted]);
+    await completeLocalIntake(true, [payload(), drifted]);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
 
     expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
@@ -539,7 +715,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.decideApproval).mockReturnValue(pendingApproval.promise);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload(), waiting]);
+    await completeLocalIntake(true, [payload(), waiting]);
     fireEvent.click(await screen.findByRole("button", { name: /Keep both unchanged/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Approve exact terms" }));
     fireEvent.click(screen.getByRole("button", { name: /New task/ }));
@@ -671,7 +847,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockRejectedValueOnce(new runtime.RuntimeClientError("offline", "network"));
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
     expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
     const pending = runtime.loadPersistedWorkspace()?.pendingCommand;
@@ -735,7 +911,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.decideApproval).mockRejectedValueOnce(new runtime.RuntimeClientError("offline", "network"));
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload(), waiting]);
+    await completeLocalIntake(true, [payload(), waiting]);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Approve exact terms" }));
     expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
@@ -900,7 +1076,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockResolvedValue(finalizing);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.useFakeTimers();
     vi.mocked(runtime.getCase).mockReset().mockResolvedValueOnce(finalizing);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
@@ -1005,7 +1181,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockResolvedValue(finalizing);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload(), finalizing]);
+    await completeLocalIntake(true, [payload(), finalizing]);
     vi.mocked(runtime.getCase).mockResolvedValue(finalizing);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
 
@@ -1032,7 +1208,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockResolvedValue(expired);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload(), expired]);
+    await completeLocalIntake(true, [payload(), expired]);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
 
     expect(await screen.findByText("Approval expired")).toBeInTheDocument();
@@ -1071,7 +1247,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.createCase).mockResolvedValue(payload());
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(false, "yes", true, []);
+    await completeLocalIntake(false, []);
     vi.useFakeTimers();
     vi.mocked(runtime.getCase).mockReset()
       .mockResolvedValueOnce(pending)
@@ -1123,7 +1299,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockResolvedValue(finalizing);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.useFakeTimers();
     vi.mocked(runtime.getCase).mockReset().mockResolvedValueOnce(finalizing).mockReturnValueOnce(pendingPoll.promise);
     await act(async () => {
@@ -1156,7 +1332,7 @@ describe("ConversationWorkspace", () => {
     ));
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.mocked(runtime.getCase).mockResolvedValue(payload());
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
 
@@ -1188,7 +1364,7 @@ describe("ConversationWorkspace", () => {
     ));
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
 
     const alert = await screen.findByRole("alert");
@@ -1222,7 +1398,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockResolvedValue(finalizing);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.useFakeTimers();
     vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...finalizing }));
     await act(async () => {
@@ -1363,8 +1539,7 @@ describe("ConversationWorkspace", () => {
   ])("rejects the non-strict USD input %s locally", async (input) => {
     const runtime = await import("../../lib/runtime-client");
     render(<ConversationWorkspace />);
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "Lower my mobile bill" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await openEmptyCard();
     fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: input } });
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
@@ -1374,10 +1549,9 @@ describe("ConversationWorkspace", () => {
     expect(runtime.createCase).not.toHaveBeenCalled();
   });
 
-  it("cannot submit an empty USD input", () => {
+  it("cannot submit an empty USD input", async () => {
     render(<ConversationWorkspace />);
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "Lower my mobile bill" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await openEmptyCard();
     fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "   " } });
 
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
@@ -1392,7 +1566,7 @@ describe("ConversationWorkspace", () => {
       .mockRejectedValueOnce(new runtime.RuntimeClientError(copy, "http", 503, "temporal_unavailable"));
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(copy);
@@ -1545,7 +1719,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockReturnValue(pendingEvent.promise);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     const confirm = screen.getByRole("button", { name: /Keep both unchanged/ });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
@@ -1575,7 +1749,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.decideApproval).mockReset().mockReturnValue(pendingApproval.promise);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload(), waiting]);
+    await completeLocalIntake(true, [payload(), waiting]);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
     const approve = await screen.findByRole("button", { name: "Approve exact terms" });
     fireEvent.click(approve);
@@ -1604,7 +1778,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.createCase).mockResolvedValue(payload());
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(false, "yes", true, []);
+    await completeLocalIntake(false, []);
     vi.useFakeTimers();
     vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...pending }));
     const flush = async (ms: number | null) => {
@@ -1655,7 +1829,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockReturnValue(pendingEvent.promise);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.useFakeTimers();
     vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...INCOMPLETE_APPROVAL }));
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
@@ -1681,7 +1855,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.createCase).mockResolvedValue(payload());
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.useFakeTimers();
     const waiting = payload({
       approval: {
@@ -1725,7 +1899,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.createCase).mockResolvedValue(payload());
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.useFakeTimers();
     const waiting = payload({
       approval: {
@@ -1783,7 +1957,7 @@ describe("ConversationWorkspace", () => {
     }));
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload(), waiting]);
+    await completeLocalIntake(true, [payload(), waiting]);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Approve exact terms" }));
 
@@ -1811,7 +1985,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(waiting);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [
+    await completeLocalIntake(true, [
       payload(),
       { ...waiting, case: driftedCase, snapshot: { case: driftedCase, offers: [offer] } },
     ]);
@@ -1834,7 +2008,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(finalizing);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.useFakeTimers();
     vi.mocked(runtime.getCase).mockReset()
       .mockResolvedValueOnce(finalizing)
@@ -1857,7 +2031,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(INCOMPLETE_APPROVAL);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.mocked(runtime.getCase).mockImplementation(async () => ({ ...INCOMPLETE_APPROVAL }));
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
     expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
@@ -1896,7 +2070,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockReturnValue(pendingEvent.promise);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.useFakeTimers();
     vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...INCOMPLETE_APPROVAL }));
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
@@ -1923,7 +2097,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.decideApproval).mockReset().mockReturnValue(pendingApproval.promise);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.mocked(runtime.getCase).mockImplementation(async () => ({ ...INCOMPLETE_APPROVAL }));
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
     expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
@@ -1948,14 +2122,14 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(INCOMPLETE_APPROVAL);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.mocked(runtime.getCase).mockImplementation(async () => ({ ...INCOMPLETE_APPROVAL }));
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
     expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
     expectStickyBlocked();
 
     fireEvent.click(screen.getByRole("button", { name: "Restart local demo" }));
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
 
     expect(screen.getByRole("button", { name: /Keep both unchanged/ })).toBeEnabled();
     expect(screen.queryAllByText("Blocked")).toHaveLength(0);
@@ -1982,7 +2156,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockReturnValue(pendingEvent.promise);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.useFakeTimers();
     vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => payload());
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
@@ -2022,7 +2196,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockReturnValue(pendingEvent.promise);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.useFakeTimers();
     vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => payload());
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
@@ -2067,7 +2241,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(finalizing);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.useFakeTimers();
     vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...finalizing }));
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
@@ -2101,7 +2275,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(finalizing);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.useFakeTimers();
     vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...finalizing }));
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
@@ -2134,7 +2308,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockReturnValue(pendingEvent.promise);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.useFakeTimers();
     vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => waiting);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
@@ -2163,7 +2337,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(finalizing);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.useFakeTimers();
     vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...finalizing }));
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
@@ -2189,7 +2363,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockReturnValue(pendingEvent.promise);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
 
     expect(screen.queryByRole("heading", { name: "Comparing fictional Provider options" })).not.toBeInTheDocument();
@@ -2212,7 +2386,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockResolvedValue(finalizing);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload(), finalizing]);
+    await completeLocalIntake(true, [payload(), finalizing]);
     vi.mocked(runtime.getCase).mockResolvedValue(finalizing);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
 
@@ -2246,7 +2420,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(approvedFinalizing);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.mocked(runtime.getCase).mockResolvedValue(approvedFinalizing);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
 
@@ -2263,7 +2437,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.createCase).mockResolvedValue(created);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [created]);
+    await completeLocalIntake(true, [created]);
 
     const rail = screen.getByRole("complementary", { name: "Current task context" });
     expect(within(rail).getByText("Usage").nextElementSibling).toHaveTextContent("24,576 MB data");
@@ -2275,7 +2449,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.createCase).mockResolvedValue(payload());
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
 
     const rail = screen.getByRole("complementary", { name: "Current task context" });
     expect(within(rail).getByText("Usage").nextElementSibling).toHaveTextContent("Unavailable");
@@ -2316,7 +2490,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockResolvedValue(posted);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload(), read]);
+    await completeLocalIntake(true, [payload(), read]);
     expect(screen.queryByText(AUTOMATED_LABEL)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
@@ -2449,13 +2623,13 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.createCase).mockReset().mockResolvedValueOnce(caseA).mockResolvedValueOnce(caseB);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [caseA]);
+    await completeLocalIntake(true, [caseA]);
     expect(screen.getByText("Case A line.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /New task/ }));
     expect(screen.queryByText("Case A line.")).not.toBeInTheDocument();
 
-    await completeLocalIntake(true, "yes", true, [caseB]);
+    await completeLocalIntake(true, [caseB]);
     expect(runtime.getCase).toHaveBeenLastCalledWith(caseBRecord.case_id);
     expect(screen.queryByText("Case A line.")).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Automated messages" })).not.toBeInTheDocument();
@@ -2484,7 +2658,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(finalizing);
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [payload()]);
+    await completeLocalIntake(true, [payload()]);
     vi.useFakeTimers();
     vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...finalizing }));
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
@@ -2539,7 +2713,7 @@ describe("ConversationWorkspace", () => {
 
     render(<ConversationWorkspace />);
     expect(screen.queryByRole("region", { name: "Agent status" })).not.toBeInTheDocument();
-    await completeLocalIntake(true, "yes", true, [created, waiting, completed]);
+    await completeLocalIntake(true, [created, waiting, completed]);
 
     // The Case waits for the consumer (confirm phase): no planning claim.
     const rail = screen.getByRole("complementary", { name: "Current task context" });
@@ -2587,7 +2761,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.decideApproval).mockReset().mockResolvedValue(payload({ revision: 5 }));
 
     render(<ConversationWorkspace />);
-    await completeLocalIntake(true, "yes", true, [
+    await completeLocalIntake(true, [
       payload(),
       waiting,
       { ...waiting, case: driftedCase, revision: 5, snapshot: { case: driftedCase, offers: [offer] } },
@@ -2614,10 +2788,9 @@ describe("ConversationWorkspace", () => {
     ["$92, thanks", "$92.00"],
     ["$1,500, please", "$1,500.00"],
     ["92 USD, thanks", "$92.00"],
-  ])("E-10: accepts the USD input %s as %s", (input, shown) => {
+  ])("E-10: accepts the USD input %s as %s", async (input, shown) => {
     render(<ConversationWorkspace />);
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "Lower my mobile bill" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await openEmptyCard();
     fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: input } });
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
@@ -2648,10 +2821,9 @@ describe("ConversationWorkspace", () => {
     "$92–95",
     "$92-95",
     "$5-",
-  ])("E-10: rejects the ambiguous USD input %s locally", (input) => {
+  ])("E-10: rejects the ambiguous USD input %s locally", async (input) => {
     render(<ConversationWorkspace />);
-    fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "Lower my mobile bill" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await openEmptyCard();
     fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: input } });
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 

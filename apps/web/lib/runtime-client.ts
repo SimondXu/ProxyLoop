@@ -76,6 +76,35 @@ export type IntakeFacts = {
   deviceFinancingChangeForbidden: true;
 };
 
+// Stateless intake (PR-12): the API's typed, inert reading of free text. Its
+// four proposal keys are exactly the create request's keys.
+export type IntakeProposalField =
+  | "current_monthly_total"
+  | "target_monthly_total"
+  | "mobile_hotspot_required"
+  | "device_financing_change_forbidden";
+
+export type IntakeClarificationReason =
+  | "missing"
+  | "ambiguous"
+  | "invalid_amount"
+  | "unsupported_currency"
+  | "below_fixed_offer"
+  | "target_not_below_current";
+
+export type IntakeProposal = {
+  parser: "intake-parser-v1";
+  proposal: {
+    current_monthly_total: RuntimeMoney | null;
+    target_monthly_total: RuntimeMoney | null;
+    mobile_hotspot_required: true | null;
+    device_financing_change_forbidden: true | null;
+  };
+  clarifications: { field: IntakeProposalField; reason: IntakeClarificationReason }[];
+};
+
+export const INTAKE_TEXT_MAX_LENGTH = 2000;
+
 export type RuntimeReadiness = {
   status: string;
   ready: boolean;
@@ -728,6 +757,71 @@ export function createCase(
     headers: { "Idempotency-Key": key },
     method: "POST",
   });
+}
+
+const INTAKE_PROPOSAL_FIELDS: readonly IntakeProposalField[] = [
+  "current_monthly_total",
+  "device_financing_change_forbidden",
+  "mobile_hotspot_required",
+  "target_monthly_total",
+];
+
+const INTAKE_CLARIFICATION_REASONS = new Set<IntakeClarificationReason>([
+  "missing",
+  "ambiguous",
+  "invalid_amount",
+  "unsupported_currency",
+  "below_fixed_offer",
+  "target_not_below_current",
+]);
+
+function isIntakeClarification(
+  value: unknown,
+): value is IntakeProposal["clarifications"][number] {
+  return (
+    isObject(value) &&
+    hasOnlyKeys(value, ["field", "reason"]) &&
+    INTAKE_PROPOSAL_FIELDS.includes(value.field as IntakeProposalField) &&
+    INTAKE_CLARIFICATION_REASONS.has(value.reason as IntakeClarificationReason)
+  );
+}
+
+function parseIntakeProposal(value: unknown): IntakeProposal {
+  const proposal = objectValue(value, "proposal");
+  const clarifications = isObject(value) ? value.clarifications : undefined;
+  if (
+    !isObject(value) ||
+    !hasOnlyKeys(value, ["clarifications", "parser", "proposal"]) ||
+    value.parser !== "intake-parser-v1" ||
+    proposal === null ||
+    !hasOnlyKeys(proposal, INTAKE_PROPOSAL_FIELDS) ||
+    !(proposal.current_monthly_total === null || isPersistedMoney(proposal.current_monthly_total)) ||
+    !(proposal.target_monthly_total === null || isPersistedMoney(proposal.target_monthly_total)) ||
+    !(proposal.mobile_hotspot_required === null || proposal.mobile_hotspot_required === true) ||
+    !(
+      proposal.device_financing_change_forbidden === null ||
+      proposal.device_financing_change_forbidden === true
+    ) ||
+    !Array.isArray(clarifications) ||
+    !clarifications.every(isIntakeClarification) ||
+    new Set(clarifications.map((item) => item.field)).size !== clarifications.length
+  ) {
+    throw new RuntimeClientError(
+      "The local Runtime returned an invalid intake proposal. Nothing was created.",
+      "invalid",
+    );
+  }
+  return value as IntakeProposal;
+}
+
+// Stateless: no Idempotency-Key, no Case, nothing stored in the browser.
+export async function proposeIntake(text: string): Promise<IntakeProposal> {
+  return parseIntakeProposal(
+    await requestJson("/intake/proposals", {
+      body: JSON.stringify({ text }),
+      method: "POST",
+    }),
+  );
 }
 
 export function appendConsumerEvent(

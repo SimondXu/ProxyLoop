@@ -66,6 +66,7 @@ from pydantic import (
 )
 
 from .direct_expiry import DirectApprovalExpiry, Sleep
+from .intake import IntakeProposalRequest, propose_intake
 from .operations import (
     CORRELATION_ID_HEADER,
     JsonLoggingOperationRecorder,
@@ -481,6 +482,16 @@ def create_app(
             )
             return JSONResponse(status_code=503, content=payload)
         return JSONResponse(status_code=200, content=payload)
+
+    @api.post("/intake/proposals")
+    def intake_proposal(command: IntakeProposalRequest) -> dict[str, Any]:
+        """Stateless intake (PR-12): read free text into a typed proposal.
+
+        No Case, Runtime, Temporal, model, or storage call, and no lock; the
+        text is never logged, echoed, or kept. A 422 is the content-free body.
+        """
+
+        return propose_intake(command.text).model_dump(mode="json")
 
     @api.post("/cases", status_code=201)
     async def create_case(
