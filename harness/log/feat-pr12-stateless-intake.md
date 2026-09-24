@@ -252,3 +252,57 @@ some copy.
 
 **Remaining.** None of the accepted items is unfinished. The root still owns
 the re-review and the PR.
+
+## Third amendment (root decision: when the card opens)
+
+The spec gained a third dated amendment. The Web opens the Draft card when (a) a
+proposal field has a value, (b) the scope gate passes, or (c) there is an amount
+clarification other than `missing` and the text has a cue from a closed list
+(`bill`, `pay`, `paying`, `paid`, `monthly`, `per month`, `a month`, `/mo`,
+`carrier`, `phone`, `mobile`, `cell`, `wireless`, `data`, `hotspot`,
+`financing`). Otherwise the consumer gets the scope reply.
+
+The first proposed cue list also had bare `plan`, which would open the card for
+"Help me plan a vacation for $2,000", contradicting the expected outcome. The
+implementer stopped and reported this. The root chose option A and dropped
+bare `plan`. Documented limit: "My plan went up to $92", with no other cue, now
+gets the scope reply.
+
+Changed: `proposalOpensCard(result, text)` in `conversation-workspace.tsx`; the
+fixture `intake-offtopic-proposals.json` gained three real parser outputs ("My
+bill is $92 and I'd like $75", "My bill went up to $92 and I want $80", "My plan
+went up to $92"). The pytest pin now checks the eight texts in order. The parser
+and `intake-parser-v1` are unchanged.
+
+**Red → green.**
+
+- Vitest, `conversation-workspace.test.tsx`: 11 of 169 failed before the change.
+  - The three off-topic money texts expected the scope reply.
+  - The three new fixture rows had no fixture entry yet.
+  - Five negative cue cases: `plan`, `billfold`, `payment`, `months`, `database`.
+  All 169 pass after the change. The 16 positive cue cases passed on both
+  versions; they are regression tests for the cue list.
+- Pytest, `test_off_topic_inputs_read_no_value_and_match_the_web_fixture`:
+  failed before the fixture update; 245 of 245 intake items pass after it.
+
+**Merge.** `origin/main` @ `e10443d` (#98, #97) merged cleanly as `f7c49ff`.
+Git auto-merged `docs/architecture.md` and
+`harness/context/audit-remediation-status.md`. `app.py` did not conflict, and
+`config.py` is main's version. The gated-skip pin is main's 66; PR-12 adds no
+gated test.
+
+**Checks** (no `PROXYLOOP_TEST_*` variable set):
+
+| Check | Result |
+|---|---|
+| `make lint` | exit 0 |
+| `make typecheck` | exit 0 (mypy: 59 files, no issues) |
+| `make test` | exit 0: runtime 1860 passed / 66 skipped; ML 397 / 1 skipped |
+| `make web-check` | exit 0: vitest 243 passed (3 files), `next build` |
+| `make preflight` | exit 0: runtime 1860 / 66 skipped, ML 397 / 1, vitest 243, gated-skip pin 66 |
+
+**Not run.** The DB gates and a Browser pass were not run: this round changed
+only the Web opening rule, a Web fixture, and tests. On this branch, `app.py`,
+`CreateCaseRequest` and the parser are unchanged since the last green DB gate
+run. The merge brought main's `config.py` and worker changes (#98) unchanged;
+this run does not re-verify them against the real dependencies.

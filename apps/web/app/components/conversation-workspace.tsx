@@ -156,17 +156,24 @@ function clarificationsFromProposal(result: IntakeProposal): IntakeClarification
   );
 }
 
+// A closed list of bill or payment cues (third amendment). Bare "plan" is not
+// a cue, so "Help me plan a vacation for $2,000" gets the scope reply.
+const BILL_OR_PAYMENT_CUE =
+  /\b(?:bill|pay|paying|paid|monthly|per\s+month|a\s+month|carrier|phone|mobile|cell|wireless|data|hotspot|financing)\b|\/mo\b/i;
+
 // Whether the proposal is about a bill: it read at least one value (review
-// M-1), or it has a clarification on an amount (re-review), so on-topic text
-// without a phone word still opens the card.
-function proposalOpensCard(result: IntakeProposal): boolean {
+// M-1), or it has a clarification on an amount and the text has a bill or
+// payment cue (third amendment), so on-topic text without a phone word still
+// opens the card while off-topic text that mentions money does not.
+function proposalOpensCard(result: IntakeProposal, text: string): boolean {
   return (
     Object.values(result.proposal).some((value) => value !== null) ||
-    result.clarifications.some(
-      (item) =>
-        (item.field === "current_monthly_total" || item.field === "target_monthly_total") &&
-        item.reason !== "missing",
-    )
+    (BILL_OR_PAYMENT_CUE.test(text) &&
+      result.clarifications.some(
+        (item) =>
+          (item.field === "current_monthly_total" || item.field === "target_monthly_total") &&
+          item.reason !== "missing",
+      ))
   );
 }
 
@@ -1459,7 +1466,7 @@ export function ConversationWorkspace() {
     try {
       const result = await proposeIntake(text);
       if (requestId !== sessionId.current) return;
-      if (!proposalOpensCard(result) && !isSupportedMobileBillIntent(text)) {
+      if (!proposalOpensCard(result, text) && !isSupportedMobileBillIntent(text)) {
         addMessage("assistant", UNSUPPORTED_INTENT_MESSAGE);
         return;
       }

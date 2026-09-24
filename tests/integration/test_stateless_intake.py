@@ -381,16 +381,31 @@ OFF_TOPIC_FIXTURE = (
 )
 
 
+# The Web's card-opening table uses these real parser outputs (review M-1,
+# third amendment). Only this text reads values; the others read none.
+ON_TOPIC_FIXTURE_TEXTS = {"My bill is $92 and I'd like $75"}
+
+
 def test_off_topic_inputs_read_no_value_and_match_the_web_fixture() -> None:
-    """Review M-1: the Web's off-topic test uses these real parser outputs."""
+    """The Web's card-opening test uses these real parser outputs."""
 
     fixture = json.loads(OFF_TOPIC_FIXTURE.read_text())
 
-    assert len(fixture) == 5
+    assert list(fixture) == [
+        "Help me plan a vacation for $2,000",
+        "What does device financing mean?",
+        "Can I keep my hotspot?",
+        "Convert 10 euros to dollars",
+        "Write me a poem about my $5 coffee",
+        "My bill is $92 and I'd like $75",
+        "My bill went up to $92 and I want $80",
+        "My plan went up to $92",
+    ]
     for text, expected in fixture.items():
         body = _body(text)
         assert body == expected
-        assert all(value is None for value in body["proposal"].values())
+        if text not in ON_TOPIC_FIXTURE_TEXTS:
+            assert all(value is None for value in body["proposal"].values())
 
 
 # Re-review UX rules: common target cues, lowering requests (also as a

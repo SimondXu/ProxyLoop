@@ -447,14 +447,18 @@ describe("ConversationWorkspace", () => {
     expect(screen.getAllByText("Missing")).toHaveLength(4);
   });
 
-  // Real parser outputs. An amount clarification opens the card (re-review);
-  // a feature-only clarification with no phone word gets the scope reply.
+  // Real parser outputs. The card opens on a read value, on the scope gate, or
+  // on an amount clarification with a bill or payment cue (third amendment);
+  // otherwise the scope reply. Bare "plan" is not a cue (documented limit).
   it.each([
-    ["Help me plan a vacation for $2,000", true],
+    ["Help me plan a vacation for $2,000", false],
     ["What does device financing mean?", false],
     ["Can I keep my hotspot?", false],
-    ["Convert 10 euros to dollars", true],
-    ["Write me a poem about my $5 coffee", true],
+    ["Convert 10 euros to dollars", false],
+    ["Write me a poem about my $5 coffee", false],
+    ["My bill is $92 and I'd like $75", true],
+    ["My bill went up to $92 and I want $80", true],
+    ["My plan went up to $92", false],
   ] as const)("PR-12 M-1: the real proposal for %s opens the card: %s", async (text, opensCard) => {
     const runtime = await import("../../lib/runtime-client");
     vi.mocked(runtime.proposeIntake).mockReset().mockResolvedValue(
@@ -467,6 +471,53 @@ describe("ConversationWorkspace", () => {
     if (opensCard) {
       expect(await screen.findByRole("heading", { name: "Confirm the facts before creating a Case." })).toBeInTheDocument();
       expect(screen.queryByText(/only supports lowering a fictional mobile bill/)).not.toBeInTheDocument();
+    } else {
+      expect(await screen.findByText(/only supports lowering a fictional mobile bill/)).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Confirm the facts before creating a Case." })).not.toBeInTheDocument();
+    }
+  });
+
+  // Third amendment: an amount clarification opens the card only with a cue
+  // from the closed list, matched as a whole word or phrase.
+  it.each([
+    ["My bill went up to $92", true],
+    ["I pay $92, maybe $80", true],
+    ["I'm paying $92, maybe $80", true],
+    ["I paid $92, maybe $80", true],
+    ["It is $92 monthly, maybe $80", true],
+    ["It is $92 per month, maybe $80", true],
+    ["It is $92 a month, maybe $80", true],
+    ["It is $92/mo, maybe $80", true],
+    ["My carrier went up to $92", true],
+    ["My phone went up to $92", true],
+    ["Mobile went up to $92", true],
+    ["Cell went up to $92", true],
+    ["Wireless went up to $92", true],
+    ["Data went up to $92", true],
+    ["Hotspot went up to $92", true],
+    ["Financing went up to $92", true],
+    ["My plan went up to $92", false],
+    ["My billfold holds $92", false],
+    ["I spent $92 on a payment app, maybe $80", false],
+    ["Twelve months ago it was $92, maybe $80", false],
+    ["The database cost $92, maybe $80", false],
+  ] as const)("PR-12 third amendment: an unsure amount in %s opens the card: %s", async (text, opensCard) => {
+    const runtime = await import("../../lib/runtime-client");
+    vi.mocked(runtime.proposeIntake).mockReset().mockResolvedValue(intakeProposal(
+      { current_monthly_total: null, target_monthly_total: null, mobile_hotspot_required: null, device_financing_change_forbidden: null },
+      [
+        { field: "current_monthly_total", reason: "ambiguous" },
+        { field: "target_monthly_total", reason: "ambiguous" },
+        { field: "mobile_hotspot_required", reason: "missing" },
+        { field: "device_financing_change_forbidden", reason: "missing" },
+      ],
+    ));
+    render(<ConversationWorkspace />);
+
+    send(text);
+
+    if (opensCard) {
+      expect(await screen.findByRole("heading", { name: "Confirm the facts before creating a Case." })).toBeInTheDocument();
     } else {
       expect(await screen.findByText(/only supports lowering a fictional mobile bill/)).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Confirm the facts before creating a Case." })).not.toBeInTheDocument();

@@ -133,5 +133,84 @@
         "reason": "missing"
       }
     ]
+  },
+  "My bill is $92 and I'd like $75": {
+    "parser": "intake-parser-v1",
+    "proposal": {
+      "current_monthly_total": {
+        "amount_minor": 9200,
+        "currency": "USD"
+      },
+      "target_monthly_total": {
+        "amount_minor": 7500,
+        "currency": "USD"
+      },
+      "mobile_hotspot_required": null,
+      "device_financing_change_forbidden": null
+    },
+    "clarifications": [
+      {
+        "field": "mobile_hotspot_required",
+        "reason": "missing"
+      },
+      {
+        "field": "device_financing_change_forbidden",
+        "reason": "missing"
+      }
+    ]
+  },
+  "My bill went up to $92 and I want $80": {
+    "parser": "intake-parser-v1",
+    "proposal": {
+      "current_monthly_total": null,
+      "target_monthly_total": null,
+      "mobile_hotspot_required": null,
+      "device_financing_change_forbidden": null
+    },
+    "clarifications": [
+      {
+        "field": "current_monthly_total",
+        "reason": "ambiguous"
+      },
+      {
+        "field": "target_monthly_total",
+        "reason": "ambiguous"
+      },
+      {
+        "field": "mobile_hotspot_required",
+        "reason": "missing"
+      },
+      {
+        "field": "device_financing_change_forbidden",
+        "reason": "missing"
+      }
+    ]
+  },
+  "My plan went up to $92": {
+    "parser": "intake-parser-v1",
+    "proposal": {
+      "current_monthly_total": null,
+      "target_monthly_total": null,
+      "mobile_hotspot_required": null,
+      "device_financing_change_forbidden": null
+    },
+    "clarifications": [
+      {
+        "field": "current_monthly_total",
+        "reason": "ambiguous"
+      },
+      {
+        "field": "target_monthly_total",
+        "reason": "ambiguous"
+      },
+      {
+        "field": "mobile_hotspot_required",
+        "reason": "missing"
+      },
+      {
+        "field": "device_financing_change_forbidden",
+        "reason": "missing"
+      }
+    ]
   }
 }

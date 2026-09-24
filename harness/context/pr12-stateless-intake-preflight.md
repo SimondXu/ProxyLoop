@@ -328,3 +328,43 @@ recorded.
   - An unrelated later negation ("No rush", "I can't afford it") makes the last
     named feature `ambiguous`. This fails safe.
   - "from $X to $Y" with no verb at all is read as current → target.
+
+## Amendment 2026-09-24 — root decision: when the card opens
+
+The second amendment opened the card whenever an amount needed clarification,
+so off-topic text that mentions money opened it ("Help me plan a vacation for
+$2,000", "Convert 10 euros to dollars", "Write me a poem about my $5 coffee").
+Root decision: the Web opens the Draft card when any one of these holds,
+otherwise the consumer gets the scope reply.
+
+- (a) at least one proposal field has a non-null value;
+- (b) the scope gate `isSupportedMobileBillIntent` passes;
+- (c) there is an amount clarification other than `missing` **and** the text
+  has a cue from a closed list, matched as a whole word or phrase and ignoring
+  case: `bill`, `pay`, `paying`, `paid`, `monthly`, `per month`, `a month`,
+  `/mo`, `carrier`, `phone`, `mobile`, `cell`, `wireless`, `data`, `hotspot`,
+  `financing`.
+
+Bare `plan` is deliberately **not** a cue (root decision, option A): it would
+open the card for "Help me plan a vacation for $2,000". Phone, data, mobile
+and cell plans are still caught by those words.
+
+Outcomes, pinned by vitest on the real parser outputs in
+`apps/web/app/components/intake-offtopic-proposals.json` (pinned by pytest;
+the file now also holds the on-topic rows):
+
+| Text | Result |
+|---|---|
+| "My bill is $92 and I'd like $75" | card, (a) |
+| "My bill went up to $92 and I want $80" | card, (c) on `bill` |
+| "Help me plan a vacation for $2,000" | scope reply |
+| "Convert 10 euros to dollars" | scope reply |
+| "Write me a poem about my $5 coffee" | scope reply |
+| "What does device financing mean?" | scope reply |
+| "Can I keep my hotspot?" | scope reply |
+| "My plan went up to $92" | scope reply (documented limit) |
+
+**Documented limit.** "My plan went up to $92", with no other cue, now gets the
+scope reply. Its amount is `ambiguous` (price-history verb) and `plan` is not a
+cue. The consumer can rephrase with "bill" or a phone word. The parser and
+`intake-parser-v1` are unchanged; this is a Web-only rule.
