@@ -86,16 +86,26 @@ C = 20p + W - 1e-9 = 0.142077 (22.55p).
 - `make test` (after `pnpm install --frozen-lockfile`): exit 0; runtime 1228
   passed, 51 skipped; ml 397 passed, 1 skipped.
 
+## Verification after merging `main` @ `c73f6a7` (#82–#86)
+
+- Merge: one conflict, `harness/context/audit-remediation-status.md`
+  (four hunks); kept `main`'s text and re-applied this branch's changes
+  (R-15 and G-1 strong form closed, R-2 row kept alongside the R-15 row).
+- `make preflight` (no `PROXYLOOP_TEST_*` set): exit 0. Runtime 1256
+  passed, 51 skipped; ml 397 passed, 1 skipped; web 140 passed; ruff and
+  mypy clean. It ends with the gated-skip output above, unchanged: `main`'s
+  new tests (#82, #85) add no gated skips, so the pin stays 51.
+- R-15, 200 fresh pytest processes of the test (sequential, no other load):
+  `passed=200 failed=0`.
+
 ## Not run / remaining
 
-- `make preflight` not run (session handoff). It is the remaining check;
-  it should end with the output above. CI runs it without the variables.
 - No DB/Temporal gates run (none needed; no service code changed).
 - No independent review yet; no PR opened (not requested).
 
 ## Open questions for the root
 
-- The pin is not enforced when any `PROXYLOOP_TEST_*` is set (a partial set
+- Open for review: the pin is not enforced when any `PROXYLOOP_TEST_*` is set (a partial set
   would otherwise fail); acceptable, or enforce "0 gated skips" when both are
   set?
 - xunit1 is pytest's legacy JUnit family, used only for the per-test `file`
