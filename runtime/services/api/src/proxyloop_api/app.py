@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
@@ -13,6 +14,7 @@ from typing import Any, Literal, Protocol
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from proxyloop_case_runtime import (
@@ -168,6 +170,9 @@ def create_app(
     api = FastAPI(
         title="ProxyLoop Thin Agent Runtime", version="0.0.0", lifespan=lifespan
     )
+    # Direct commands run one at a time in this process, as they did on the
+    # loop; lock order is this lock, then the Runtime lane (expiry: lane only).
+    direct_command_lock = threading.Lock()
 
     async def apply(command: CaseCommandRequest) -> CaseTransitionRef:
         """Dispatch through the Workflow or, in direct mode, through the same
@@ -175,21 +180,30 @@ def create_app(
 
         if temporal_client is not None:
             return await temporal_client.apply_command(command)
-        occurred_at = service.now()
-        if command.command_type in _CLOCK_GUARDED_COMMANDS:
-            # An explicit command time bypasses the Runtime's own event-time
-            # guard, so keep direct mode's refusal of a clock that does not
-            # advance past the latest visible event.
-            state = service.repository.get(command.case_id)
-            if (
-                state is not None
-                and occurred_at <= state.snapshot.visible_events[-1].occurred_at
-            ):
-                raise CaseConflictError("clock time must advance event time")
-        transition = service.apply_command(command.to_command(occurred_at))
+        # The Runtime, its storage, and its model adapters are synchronous;
+        # run them off the event loop. The expiry timer arms on the loop.
+        transition, occurred_at = await run_in_threadpool(apply_direct, command)
         if approval_expiry is not None:
             approval_expiry.observe(transition, observed_at=occurred_at)
         return transition
+
+    def apply_direct(
+        command: CaseCommandRequest,
+    ) -> tuple[CaseTransitionRef, datetime]:
+        with direct_command_lock:
+            occurred_at = service.now()
+            if command.command_type in _CLOCK_GUARDED_COMMANDS:
+                # An explicit command time bypasses the Runtime's own
+                # event-time guard, so keep direct mode's refusal of a clock
+                # that does not advance past the latest visible event.
+                state = service.repository.get(command.case_id)
+                if (
+                    state is not None
+                    and occurred_at <= state.snapshot.visible_events[-1].occurred_at
+                ):
+                    raise CaseConflictError("clock time must advance event time")
+            transition = service.apply_command(command.to_command(occurred_at))
+            return transition, occurred_at
 
     @api.middleware("http")
     async def observe_operation(request: Request, call_next: Any) -> Any:
@@ -426,7 +440,7 @@ def create_app(
         )
 
     @api.get("/health/live")
-    def health_live(request: Request) -> dict[str, object]:
+    async def health_live(request: Request) -> dict[str, object]:
         request.state.operation_name = "health_live"
         payload = liveness_payload(service)
         if temporal_client is not None:
@@ -436,7 +450,7 @@ def create_app(
     @api.get("/health/ready")
     async def health_ready(request: Request) -> JSONResponse:
         request.state.operation_name = "health_ready"
-        result = check_readiness(service)
+        result = await run_in_threadpool(check_readiness, service)
         if not result.ready:
             request.state.operation_error_category = result.error_category
             return JSONResponse(
@@ -482,7 +496,9 @@ def create_app(
                 ),
             )
         )
-        result = service.current_result(SCRIPTED_CASE_ID, transition=transition)
+        result = await run_in_threadpool(
+            service.current_result, SCRIPTED_CASE_ID, transition=transition
+        )
         _annotate_result(request, result)
         return _result_payload(result)
 
@@ -524,7 +540,9 @@ def create_app(
                 expected_revision=command.expected_revision,
             )
         )
-        result = service.current_result(case_id, transition=transition)
+        result = await run_in_threadpool(
+            service.current_result, case_id, transition=transition
+        )
         _annotate_result(request, result)
         return _result_payload(result)
 
@@ -549,7 +567,9 @@ def create_app(
                 ),
             )
         )
-        result = service.current_result(case_id, transition=transition)
+        result = await run_in_threadpool(
+            service.current_result, case_id, transition=transition
+        )
         _annotate_result(request, result)
         return _result_payload(result)
 
@@ -578,9 +598,9 @@ def create_app(
             raise ChannelDependencyUnavailableError(
                 "local mailbox requires PostgreSQL channel persistence"
             )
-        inbox = reserve(event, received_at=received_at)
+        inbox = await run_in_threadpool(reserve, event, received_at=received_at)
         request.state.case_id = str(inbox.case_id)
-        state = service.repository.get(inbox.case_id)
+        state = await run_in_threadpool(service.repository.get, inbox.case_id)
         if state is None:
             raise CaseNotFoundError("case not found")
         prior = next(
