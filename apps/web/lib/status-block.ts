@@ -19,7 +19,9 @@ export type StatusBlock = { doingNow: string; asOf: string; rows: StatusRow[] };
 
 // `blocked`: the workspace itself is Blocked (a rejected read, a mismatched
 // Case, a sticky block). The payload it still holds is then not verified.
-export type StatusBlockOptions = { blocked?: boolean };
+// `awaitingConsumer`: the workspace is waiting for the consumer to confirm the
+// Task Brief (its confirm phase), so nothing is being planned yet.
+export type StatusBlockOptions = { blocked?: boolean; awaitingConsumer?: boolean };
 
 const NOT_VERIFIED = "Stopped — state not verified. Reconnect or restart the local demo.";
 
@@ -72,6 +74,7 @@ function doingNow(payload: RuntimePayload, phase: string | null, options: Status
       : "Finalizing the fictional transition; waiting for a verified result.";
   }
   if (view === "approval") return "Waiting for your approval of the exact terms.";
+  if (options.awaitingConsumer) return "Waiting for you to confirm the Task Brief.";
   if (phase === "initiated" || phase === "strategy") return "Planning from your confirmed goal.";
   if (phase === "negotiating") return "Negotiating with the fictional Provider.";
   if (phase === null) return "Waiting for the Runtime to report the Case phase.";

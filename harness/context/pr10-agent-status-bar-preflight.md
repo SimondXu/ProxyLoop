@@ -187,3 +187,12 @@ instead of delivery status) as recorded limits. The review fixes supersede the
   Runtime has expired the approval. In that window the bar still shows the Runtime's
   "Pending · expires …" and the approval line until an authoritative read reports
   `expired`.
+
+## Amendment 2026-09-24 — re-review
+
+After create the Runtime sits in `strategy`, waiting for the consumer (the workspace's
+confirm phase), so "Planning from your confirmed goal." was a false activity claim.
+The workspace now passes `awaitingConsumer: phase === "confirm"` next to `blocked`, and
+the line reads "Waiting for you to confirm the Task Brief." `blocked` still wins. The
+Case-phase fallback (planning, negotiating, …) now shows only while a command runs
+(`working`).

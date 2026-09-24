@@ -2532,21 +2532,27 @@ describe("ConversationWorkspace", () => {
       route: "terminal",
       snapshot: { ...payload().snapshot, pending_execution: false, phase: "complete" },
     });
+    const eventPost = deferred<RuntimePayload>();
     vi.mocked(runtime.createCase).mockResolvedValue(created);
-    vi.mocked(runtime.appendConsumerEvent).mockResolvedValue(waiting);
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockReturnValue(eventPost.promise);
     vi.mocked(runtime.decideApproval).mockResolvedValue(completed);
 
     render(<ConversationWorkspace />);
     expect(screen.queryByRole("region", { name: "Agent status" })).not.toBeInTheDocument();
     await completeLocalIntake(true, "yes", true, [created, waiting, completed]);
 
+    // The Case waits for the consumer (confirm phase): no planning claim.
     const rail = screen.getByRole("complementary", { name: "Current task context" });
     let bar = within(rail).getByRole("region", { name: "Agent status" });
-    expect(bar).toHaveTextContent("Planning from your confirmed goal.");
+    expect(bar).toHaveTextContent("Waiting for you to confirm the Task Brief.");
+    expect(bar).not.toHaveTextContent("Planning");
     expect(within(bar).getByText("Goal").nextElementSibling).toHaveTextContent("$75.00 or below per month (current bill $92.00)");
     expect(within(bar).getByText("Current offer").nextElementSibling).toHaveTextContent("No offer yet");
 
+    // Planning only while the confirmation command actually runs (working).
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await waitFor(() => expect(within(rail).getByRole("region", { name: "Agent status" })).toHaveTextContent("Planning from your confirmed goal."));
+    eventPost.resolve(waiting);
     await waitFor(() => expect(screen.getByRole("heading", { name: "Accept these exact fictional terms?" })).toBeInTheDocument());
     bar = within(rail).getByRole("region", { name: "Agent status" });
     expect(bar).toHaveTextContent("Waiting for your approval of the exact terms.");

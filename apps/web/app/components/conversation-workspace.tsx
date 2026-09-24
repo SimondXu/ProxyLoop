@@ -316,8 +316,17 @@ function DialogueArtifact({ lines }: { lines: AssistantLine[] }) {
 // accepted authoritative payload; this component adds no text of its own.
 // `blocked` is the workspace's own Blocked state: the held payload is then
 // not verified, and the bar says so instead of deriving an activity.
-function AgentStatusBar({ payload, blocked }: { payload: RuntimePayload; blocked: boolean }) {
-  const status = renderStatusBlock(payload, { blocked });
+// `awaitingConsumer` is the confirm phase: the Case waits for the consumer.
+function AgentStatusBar({
+  payload,
+  blocked,
+  awaitingConsumer,
+}: {
+  payload: RuntimePayload;
+  blocked: boolean;
+  awaitingConsumer: boolean;
+}) {
+  const status = renderStatusBlock(payload, { awaitingConsumer, blocked });
   return (
     <section aria-labelledby="agent-status-title" className="context-section agent-status">
       <span className="context-label" id="agent-status-title">Agent status</span>
@@ -1455,7 +1464,7 @@ export function ConversationWorkspace() {
       </section>
 
       <aside aria-label="Current task context" className="context-rail">
-        {payload ? <AgentStatusBar blocked={phase === "blocked"} payload={payload} /> : null}
+        {payload ? <AgentStatusBar awaitingConsumer={phase === "confirm"} blocked={phase === "blocked"} payload={payload} /> : null}
         <div className="context-section">
           <span className="context-label">Current goal</span>
           <strong>{payload ? formatMoney(objectAt(goalRecord(payload), "target_monthly_total")) : "Runtime snapshot pending"}</strong>

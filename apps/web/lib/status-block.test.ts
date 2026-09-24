@@ -265,6 +265,17 @@ describe("renderStatusBlock", () => {
     expect(block.doingNow).toBe("Finalizing the fictional transition; waiting for a verified result.");
   });
 
+  // Re-review: after create the Runtime waits for the consumer (confirm).
+  it("renders a Case awaiting the consumer's confirmation without a planning claim", () => {
+    const block = renderStatusBlock(payload(), { awaitingConsumer: true });
+    expect(block.doingNow).toBe("Waiting for you to confirm the Task Brief.");
+    expect(renderStatusBlock(payload()).doingNow).toBe("Planning from your confirmed goal.");
+  });
+
+  it("lets Blocked win over awaiting the consumer", () => {
+    expect(renderStatusBlock(payload(), { awaitingConsumer: true, blocked: true }).doingNow).toBe(NOT_VERIFIED);
+  });
+
   it("names the Case revision the bar was rendered from", () => {
     expect(renderStatusBlock(payload({ revision: 9 })).asOf).toBe("as of Case revision 9");
   });
