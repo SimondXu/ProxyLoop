@@ -502,6 +502,69 @@ def test_a_proposal_outliving_its_offer_opens_no_approval() -> None:
     assert state.standing_proposal.created_at == T0 + timedelta(minutes=61)
 
 
+class _IncoherentOnRefreshSlow(ScriptedProposingSlowAdapter):
+    """Coherent on create; an END_INTERACTION accept-capability pair after."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def reason(self, request: SlowWorkRequest) -> SlowWorkResult:
+        self.calls += 1
+        if self.calls == 1:
+            return super().reason(request)
+        return _with_pair(
+            request,
+            ScriptedSlowAdapter.reason(self, request),
+            offer=request.view.offers[0],
+            action_type=ActionType.END_INTERACTION,
+            expires_at=request.created_at + timedelta(minutes=5),
+        )
+
+
+@pytest.mark.parametrize("path", ["append", "channel"])
+def test_an_a3_rejected_refresh_fails_the_command_and_keeps_the_state(
+    path: str,
+) -> None:
+    # M4: the A-3 check also guards a refresh; nothing of the result is used.
+    repository = _CodecChannelRepository()
+    runtime = ThinAgentRuntime(
+        repository, clock=lambda: BASE_TIME, slow=_IncoherentOnRefreshSlow()
+    )
+    runtime.apply_command(_create_command())
+    before = _state(repository)
+    at = BASE_TIME + timedelta(minutes=31)  # the strategy expired
+    if path == "append":
+        command = CaseCommand(
+            command_id=uuid4(),
+            case_id=SCRIPTED_CASE_ID,
+            command_type=CaseCommandType.APPEND_EVENT,
+            occurred_at=at,
+            expected_revision=before.snapshot.revision,
+            content="Is the offer ready?",
+            event_type="consumer_message",
+        )
+    else:
+        command = _channel_command(repository, at)
+
+    with pytest.raises(ModelRuntimeError) as raised:
+        runtime.apply_command(command)
+
+    assert raised.value.source == "slow"
+    after = _state(repository)
+    assert after.snapshot == before.snapshot
+    assert after.standing_proposal == before.standing_proposal
+    trace = repository.list_model_traces(SCRIPTED_CASE_ID)[-1]
+    assert (trace.role, trace.result) == ("slow", ModelResult.REJECTED)
+    assert trace.reason_codes == (
+        "slow_proposal_capability_action_mismatch",
+        "slow_proposal_action_not_delegated",
+    )
+    if path == "channel":
+        assert command.event_id is not None
+        inbox = repository.get_inbox_receipt(command.event_id)
+        assert inbox is not None and inbox.processing_state == "reserved"
+
+
 # -- D4: identity and the single coordinator site ------------------------------
 
 

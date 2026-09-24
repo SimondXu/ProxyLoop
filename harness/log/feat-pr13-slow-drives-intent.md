@@ -232,3 +232,64 @@ On the final tree, with no `PROXYLOOP_TEST_*` variable set:
   `make phase06b1-check`); it needs the Compose `postgres-test` and
   `temporal` services and is left to the root. Also not run: the independent
   review and `/security-review`.
+
+## Review follow-up: root must-fix M-3 and review Request Changes (B1, M1–M6, I1)
+
+Review artifact: `harness/code_review/feat-pr13-slow-drives-intent.md`. The
+root's M-3, found in the PR-11 review, is the same defect as review B1.
+
+- **B1 / M-3 and M5, commit `9d24a3a`.** `_check_not_applied` runs inside the
+  Case lane, before any model call or write, in `append_event`,
+  `ingest_channel_event` and the receipt-deduplicated delivery write. The
+  spec records the rule.
+  - Red on `e96d6f7`, before the fix (scratch `impl-pr13/red-m3.txt`): the
+    concurrent unpinned retry of a turn without an approval gave
+    `assert (2, 2) == (1, 1)` (two consumer events and two assistant lines).
+    The unpinned channel-ingest retry gave `assert 2 == 1` (a second Fast
+    call). The sequential retry already passed.
+  - Mutation (scratch `impl-pr13/mutate-m3.txt`): removing each of the three
+    re-checks fails a test. A fourth re-check, in the first-callback branch,
+    survived mutation because it is unreachable (a raced same-command retry
+    takes the deduplicated branch), so it was not added.
+  - Create, approve (approved and rejected) and expire already refused a
+    replay in the lane with no write or trace. Tests pin each of them.
+  - The race tests passed 25 of 25 repeated runs.
+  - Reviewer probe `race.py` on the fix: all 4 scenarios give one consumer
+    event and one transition for the command. The second racer is
+    `deduplicated`, and the PostgreSQL encode succeeds. The scenarios are
+    the default Slow at +1 min, the strategy-only Slow at +1 min with and
+    without `expected_revision`, and the default Slow at +61 min.
+- **M4.** A-3 rejection at a refresh, on the append and channel paths
+  (`refresh_reject.py` gives the same result).
+- **I1.** K2 and its worse path, where a channel refresh at +31 min yields a
+  proposal that expires at +36 and the next refresh comes at +61 after the
+  offer expired, are known limits in `docs/architecture.md` and in the spec's
+  risk row. They affect model Slow only (decision 17); the re-consult
+  trigger stays deferred.
+- **M1 and M6** are docstrings. **M2** amends the spec table (rule 6 is a
+  lower bound) and notes why no `approval_required` mirror is needed.
+- **M3, limit:** `SLOW_PROPOSAL_CHECK_VERSION` (`slow-proposal-v1`) is not
+  stamped on traces. `ModelTrace` has no field for a check version, and
+  adding one is a contract change outside PR-13. A trace's
+  `slow_proposal_*` codes are therefore interpreted against the code of the
+  commit that wrote them.
+
+Checks after the follow-up, with no `PROXYLOOP_TEST_*` variable set:
+
+- `make lint`: passed.
+- `make typecheck`: passed (runtime 76 source files, ml 59).
+- `make test`, run standalone after the M-3 fix: exit 0 (runtime 1676
+  passed, 63 skipped; ml 397 passed, 1 skipped; every `*-check` passed).
+- `make preflight`, on the final tree: exit 0. It includes `make test`
+  (runtime 1679 passed, 63 skipped; ml 397 passed, 1 skipped; every
+  `*-check` passed, the split report current) and Web (189 tests). The
+  gated skips equal the pinned 63.
+
+Byte identity held again:
+
+- `git diff --stat origin/main -- contracts/ data/ ml/ scripts/` is empty.
+- The 57-state main-versus-branch differential still shows no difference
+  outside the Slow trace `model_version` and the wall-clock latency.
+
+Not run: the DB lane and `/security-review`. The reviewer re-verifies after
+the push.

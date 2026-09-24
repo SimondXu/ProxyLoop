@@ -179,7 +179,7 @@ Rules. They are checked in fixed order, and each code appears once. `evaluated_a
 | 3 | `slow_proposal_capability_unsupported` | `(capability_id, version)` of `c` is not in `m.capabilities` | `unsupported_capability` |
 | 4 | `slow_proposal_capability_action_mismatch` | `a.action_type ∉ definition.allowed_action_types` | `capability_action_mismatch` |
 | 5 | `slow_proposal_capability_expired` | any of `c.expires_at`, `definition.expires_at`, `m.expires_at` is `≤ evaluated_at` | `capability_proposal_expired`, `capability_expired`, `capability_manifest_expired` |
-| 6 | `slow_proposal_predates_result` | `c.created_at < result.created_at` (mirrors `slow_action_predates_result`) | `capability_proposal_not_current` |
+| 6 | `slow_proposal_predates_result` | `c.created_at < result.created_at` (mirrors `slow_action_predates_result`) | — (a lower bound; the executor's `capability_proposal_not_current` is the upper bound `created_at > executed_at`, amended after review M2) |
 | 7 | `slow_proposal_offer_binding_mismatch` | the `offer_id` arguments of `c` ≠ `(a.offer_ref.offer_id,)`; or `a.offer_ref is None` while `c` has an `offer_id` argument | `capability_offer_binding_mismatch` |
 | 8 | `slow_proposal_offer_not_current` | `a.offer_ref` (id, revision) is not in `snapshot.offers`. Offer **expiry is not checked here**: policy owns it (`offer_expired`) | `current_offer_mismatch` |
 | 9 | `slow_proposal_terms_mismatch` | `a.material_terms_hash ≠ material_terms_hash(a.material_terms)`, or the sorted terms ≠ `offer_material_terms(offer)`. Both functions come from contracts, so `agent_core` keeps its single dependency | `action_material_terms_hash_mismatch`, `current_offer_terms_mismatch` |
@@ -187,6 +187,14 @@ Rules. They are checked in fixed order, and each code appears once. `evaluated_a
 | 11 | `slow_proposal_action_not_delegated` | `a.action_type ∉ authority.allowed_actions ∪ authority.approval_required_actions` | `delegated_authority_denied` |
 
 - Rules 3–11 run only for a well-formed pair: when rule 1 or 2 fires, only those codes are returned.
+- Review M2 (amendment): no rule mirrors `approval_required`. The check
+  does not compare `a.approval_required` with
+  `authority.approval_required_actions`. This is safe for two reasons.
+  First, the model's intent never reaches the snapshot: the Runtime
+  compiles its own intent and approval with `_build_approval`, and the
+  contract already forces `approval_required=True` for an accept. Second,
+  the executor requires an approval whenever the action type is
+  approval-required or the intent says so.
 - A result with no proposals yields `()`.
 - The OpenAI compiler's accept pair satisfies every rule by construction (`outputs.py:182-245`). [I; red-first test A1b proves it.]
 
@@ -507,7 +515,7 @@ def _verify_standing_proposal(envelope, snapshot) -> None:
 | # | Risk | Mitigation / note |
 |---|---|---|
 | K1 | **Silent drop.** `runtime.py` constructs `CaseRuntimeState` explicitly at 10 sites. A pre-approval site that omits `standing_proposal` silently stops approvals, most likely on the channel paths | D2 lifecycle test over every command type; the J5 invariant; a review checklist. Optionally move the carry sites to `dataclasses.replace` |
-| K2 | **Model-mode behaviour change (intended).** A model Slow that proposes nothing opens no approval. The OpenAI compiler's 5-min proposal expiry means a consumer who confirms after 5 min gets no approval until the 30-min strategy refresh, a stranded wait | No re-consult trigger in PR-13 (root Q4). Model Slow is outside every gate (decision 17; credentials are a hard limit). Stated as a known limit |
+| K2 | **Model-mode behaviour change (intended).** A model Slow that proposes nothing opens no approval. The OpenAI compiler's 5-min proposal expiry means a consumer who confirms after 5 min gets no approval until the 30-min strategy refresh, a stranded wait. Worse path (review I1): a channel event at +31 min refreshes, and its proposal expires at +36. The next refresh is at +61, after the offer expired at +60, so no approval is possible for the rest of the offer | No re-consult trigger in PR-13 (root Q4; still deferred). This affects model Slow only: decision 17 keeps Slow scripted in every authorized flow, and model Slow is outside every gate (credentials are a hard limit). Stated as a known limit in `docs/architecture.md` |
 | K3 | **Storage.** The field is additive in v3 with `extra="forbid"`. Code from before PR-13 cannot read rows written by PR-13, so a branch switch on the demo volume fails closed | Root Q2: no bump, or bump to 4 with a v3 upgrade path |
 | K4 | **Codec cannot replay model output.** It validates the proposal's structure only | Stated; expiry is handled at use time |
 | K5 | **Duplication with the executor.** The A-3 validator re-implements parts of `capabilities._validate` | A3 agreement test; the executor stays untouched and authoritative at execution |

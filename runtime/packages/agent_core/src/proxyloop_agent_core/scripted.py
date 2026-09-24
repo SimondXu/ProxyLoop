@@ -235,6 +235,13 @@ class ScriptedProposingSlowAdapter(ScriptedSlowAdapter):
     with the offer. The proposal is made regardless of offer compliance:
     deterministic policy, not the model, decides whether it becomes an
     approval.
+
+    It does not consult delegated authority either. That is unreachable
+    today: every Runtime Case lists the accept action as approval-required.
+    For a Case that did not, the accept intent would fail contract
+    validation (an accept requires approval) and the Slow call would raise;
+    and an undelegated action that reached admission would be rejected as a
+    whole by A-3 rule 11 (``slow_proposal_action_not_delegated``).
     """
 
     model_identity = ModelIdentity(

@@ -142,6 +142,13 @@ def standing_proposal_offer(
     accept-offer capability, the proposal, definition or manifest has
     expired, or it does not carry exactly one ``offer_id`` naming a snapshot
     offer.
+
+    The offer is matched by id only: a capability proposal carries no offer
+    revision. That relies on the Runtime's precondition that a Case holds
+    one deterministic offer whose revision never changes (the storage codec
+    refuses any other shape), and the A-3 check bound the action's offer
+    revision when the proposal was admitted. A Runtime whose offers can be
+    revised must also check the revision before compiling an intent.
     """
 
     if proposal is None:
