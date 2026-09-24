@@ -113,3 +113,14 @@ the variables on the make command line only:
   constraints unsorted). They are not the canonical formula; this change
   does not touch them and did not investigate which inputs would expose the
   difference.
+
+## Merge of `origin/main` @ `e1c8371` (#81, B1-9)
+
+Conflict only in `harness/context/audit-remediation-status.md` (both
+sides kept). `runtime.py` auto-merged: #81 replaced the offer-policy
+wrapper body and its imports; this branch's `planning_basis_components`
+import and `_basis` body are unchanged. Rerun on the merged tree:
+`make format-check lint typecheck` exit 0; `make contracts-check` exit 0;
+`make test` exit 0 (runtime 1235 passed, 51 skipped; ML 397 passed,
+1 skipped). The DB/Temporal gates above predate this merge; a
+`phase05a-check` rerun is pending the shared DB.
