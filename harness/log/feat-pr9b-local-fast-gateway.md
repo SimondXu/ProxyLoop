@@ -333,24 +333,67 @@ The session paused at a usage limit. This section is the exact state.
 - Latency, descriptive: distilled product-path generation p50 23.9 s, max
   32.5 s; untuned p50 10.4 s, max 12.9 s.
 
-### Pending (not started; resume here)
+### Local split reports (manual model lane, 2026-09-24)
 
-1. **Local split reports (not run).** `make test` and
-   `make fast-slow-split-check` currently FAIL on this checkpoint with
-   `distilled:fast-slow-split-distilled.json_missing,
-   untuned:fast-slow-split-untuned.json_missing` until the two files are
-   committed. To resume, run the lane (about 10 minutes, one model at a
-   time): `bash scratchpad/impl-pr9b/split-run.sh`. **Port 8765 is taken** by
-   an unrelated `study_server.py` (PID 66838, running since 2026-09-23), so
-   set `PORT` in that script to a free port (for example 8775) first. It
-   starts the real gateway per backend, waits for `serving backend=`, runs
-   `run_fast_slow_split_report.py --write --fast-backend <b> --gateway-url
-   http://127.0.0.1:<port>`, and stops the gateway. Then commit
-   `data/evaluation/fast-slow-split-{distilled,untuned}.json`.
-2. Docs: `ml/serving/README.md` M2 section; `docs/architecture.md`
-   "Local opt-in Fast backend" measured paragraph (M2 and gate numbers above,
-   split summary); status row.
-3. `make lint`, `make typecheck`, `make test`, `make preflight` on the final
-   tree (not run on this checkpoint).
-4. Browser check (distilled backend through the Web, direct mode): needs
-   the DB/Compose lane; waiting for the root's go. Not started.
+- Command: `scratchpad/impl-pr9b2/split-run.sh` (the earlier runner, `PORT`
+  8775 because 8765 was taken): for each backend, `HF_HUB_OFFLINE=1 uv run
+  --project ml --offline python -m scripts.run_local_fast_gateway --backend <b>
+  --model-path <base> --port 8775`, wait for `serving backend=`, then
+  `run_fast_slow_split_report.py --write --fast-backend <b> --gateway-url
+  http://127.0.0.1:8775` (default timeout 25 s), then stop the gateway. Run
+  from `ab4f239` with a clean tree. Host as above.
+- Wall time: distilled 23:07:53 → 23:11:09 UTC (gateway ready in 18 s),
+  untuned 23:11:09 → 23:12:55 UTC (ready in 14 s); both `rc=0`. Identities:
+  distilled `c83bdd6ba873cb8f…`, untuned `39aa5f20b5383c46…` (equal to M1).
+- Result, both backends: turn structure equals the scripted replay (demo:
+  slow_only 1, fast_only 1; dialogue: slow_only 1, fast_only 5,
+  slow_then_fast 2). All 8 Fast calls per backend were gateway `succeeded`
+  and gate-rejected, so every Fast turn delivered the fallback:
+  `fast_model_line_rate` 0.0, `fallback_cause` gate 8 / failure 0, no
+  timeout and no `busy`. Gate codes: distilled `fast_gate_completion`,
+  `fast_gate_dialogue_act`, `fast_gate_number_not_allowed` on every call;
+  untuned the last two. Fast call ms: distilled 21,039–24,106 (dialogue
+  p50 22,084), untuned 10,435–12,131. Every call had the same token counts
+  (1869 in; 184 out distilled, 78 out untuned), consistent with D5: the
+  product prompt does not carry the consumer's words, so these scenarios
+  give the model the same input each turn.
+- `data/evaluation/fast-slow-split-scripted.json` sha256 `8d720f88…6bc02e`
+  before and after (unchanged). `make fast-slow-split-check` passes.
+  Committed in `9e3538a`.
+
+### Docs
+
+- `ml/serving/README.md`: M2 section (negative product result, Q1), local
+  split reports section, M2 and split steps, the stale interim-wire paragraph
+  replaced. `docs/architecture.md`: a measured paragraph in "Local opt-in
+  Fast backend (PR-9a)". Status row updated. (`ac3135d`.)
+- M2 detail added while writing the docs: 64 of the 200 distilled
+  product-path generations took longer than 25 s (M1: 15/240), under
+  uncontrolled machine load.
+
+### Merge and gates (`7e6c1ce`, main @ `e10443d`, #98 PR-11)
+
+- Conflicts: `docs/architecture.md` (the PR-9b paragraph kept before PR-11's
+  "Local Fast backend under Temporal") and the status file (the PR-9b and
+  PR-11 rows both kept). The `Makefile` auto-merged; `make test` still runs
+  `phase03c-local-parity-check`, `phase03c-product-parity-check` and
+  `fast-slow-split-check`.
+- `make lint`: passed. `make typecheck`: passed (runtime 75, ml 70 source
+  files). `make test`: passed (runtime 1624 passed, 66 gated skips; ml 494
+  passed; every `*-check` passed, including M1 `stack parity held`, the
+  product-path report, and the three split reports). `make preflight`:
+  passed (format-check, lint, typecheck, test, layout, web 189 tests and the
+  build, lock-check with `ml/uv.lock` unchanged, gated skips matching the pin
+  of 66). No `PROXYLOOP_TEST_*` variable was set; no DB lane (no service
+  change on this branch).
+- `git diff origin/main -- ml/pyproject.toml ml/uv.lock …/qwen_mlx.py
+  …/fast_output.py` is empty; no weights, adapters or converted files are
+  tracked.
+
+### Remaining
+
+1. Independent review of the second half (wire switch, M2 script and report,
+   split-report extension and reports, docs).
+2. Browser check (distilled backend through the Web, direct mode, spec §6.7
+   step 4): needs a lane; not started.
+3. PR, CI, merge.
