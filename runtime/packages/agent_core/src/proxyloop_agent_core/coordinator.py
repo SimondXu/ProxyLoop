@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import math
+from collections.abc import Callable
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
 from threading import RLock
+from typing import Literal, TypeVar
 from uuid import UUID
 
 from proxyloop_contracts import (
@@ -16,21 +19,31 @@ from proxyloop_contracts import (
     FastModelView,
     FastTurnDecision,
     ModelInputPins,
+    ModelResult,
     ModelTrace,
     RoutingDecision,
     RoutingOutcome,
     SlowReasonerView,
     SlowWorkRequest,
     SlowWorkResult,
+    canonical_fingerprint,
 )
 
 from .interfaces import (
     BOUNDED_FAST_STATUS_TEXT,
     FastAdapter,
     FastAdapterResult,
+    IdentifiedAdapter,
+    ModelCallUsage,
+    ModelIdentity,
     SlowAdapter,
+    UsageReportingFastAdapter,
+    UsageReportingSlowAdapter,
 )
 from .router import DeterministicRouter, RouteRequest
+
+_T = TypeVar("_T")
+_EXTERNAL_REF_MAX = 256  # the ModelTrace identity fields are ExternalRef
 
 
 class CoordinatorStatus(StrEnum):
@@ -57,8 +70,16 @@ class CoordinatorOutcome:
     fast_decision: FastTurnDecision | None = None
     slow_result: SlowWorkResult | None = None
     audits: tuple[ResultAudit, ...] = ()
-    # The ModelTrace seam (PR3 of the 1.1 design); nothing populates it yet.
+    # One 1.1 ModelTrace per adapter call on a 1.1 snapshot, in call order.
     traces: tuple[ModelTrace, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _CallWindow:
+    started_at: datetime
+    # None without a clock (or with an unusable end reading).
+    completed_at: datetime | None
+    elapsed_ms: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,16 +90,29 @@ class SnapshotCommit:
 
 
 class CaseCoordinator:
-    """Advance one immutable snapshot through one deterministic route."""
+    """Advance one immutable snapshot through one deterministic route.
+
+    ``clock`` and ``monotonic`` time the model calls traced on a 1.1 snapshot.
+    The coordinator never reads a wall clock. Latency is the adapter-reported
+    value, else the ``monotonic`` measurement. Without ``clock`` a trace starts
+    at the route request's ``created_at`` and ends ``latency`` later (0 when
+    nothing measured); with a clock but no measurement the latency is the
+    clock window's width. A non-UTC clock is refused before the model call.
+    """
 
     def __init__(
         self,
         router: DeterministicRouter | None = None,
         snapshot: CaseContextSnapshot | None = None,
+        *,
+        clock: Callable[[], datetime] | None = None,
+        monotonic: Callable[[], float] | None = None,
     ) -> None:
         self._router = router or DeterministicRouter()
         self._lock = RLock()
         self._current_snapshot = snapshot
+        self._clock = clock
+        self._monotonic = monotonic
 
     @property
     def current_snapshot(self) -> CaseContextSnapshot | None:
@@ -159,6 +193,9 @@ class CaseCoordinator:
             return CoordinatorOutcome(route=route, status=CoordinatorStatus.ROUTED)
 
         audits: list[ResultAudit] = []
+        # Only a 1.1 snapshot is traced; the 1.0 (ML/evaluation) path is as before.
+        traced = request.snapshot.schema_version == "1.1"
+        traces: list[ModelTrace] = []
         slow_result: SlowWorkResult | None = None
         fast_decision: FastTurnDecision | None = None
 
@@ -176,7 +213,12 @@ class CaseCoordinator:
                 reason_code=route.reason_codes[0],
                 created_at=request.created_at,
             )
-            slow_output = slow.reason(slow_request)
+            if traced:
+                (slow_output, slow_usage), window = self._timed(
+                    lambda: _reason(slow, slow_request), request.created_at
+                )
+            else:
+                slow_output = slow.reason(slow_request)
             audit = self.validate_slow_result(
                 slow_output,
                 request.snapshot,
@@ -184,6 +226,21 @@ class CaseCoordinator:
                 evaluated_at=request.created_at,
             )
             audits.append(audit)
+            if traced:
+                traces.append(
+                    _model_trace(
+                        role="slow",
+                        adapter=slow,
+                        snapshot=request.snapshot,
+                        audit=audit,
+                        window=window,
+                        usage=slow_usage,
+                        request_id=slow_request.request_id,
+                        input_schema_version=slow_request.schema_version,
+                        output_schema_version=slow_output.schema_version,
+                        output_id=slow_output.result_id,
+                    )
+                )
             if audit.accepted:
                 slow_result = slow_output
 
@@ -197,14 +254,36 @@ class CaseCoordinator:
                     status=CoordinatorStatus.FAST_UNAVAILABLE,
                     slow_result=slow_result,
                     audits=tuple(audits),
+                    traces=tuple(traces),
                 )
-            fast_output = fast.decide(self.project_fast_view(request.snapshot))
+            fast_view = self.project_fast_view(request.snapshot)
+            if traced:
+                (fast_output, fast_usage), window = self._timed(
+                    lambda: _decide(fast, fast_view), request.created_at
+                )
+            else:
+                fast_output = fast.decide(fast_view)
             audit = self.validate_fast_result(
                 fast_output,
                 request.snapshot,
                 bounded=route.outcome is RoutingOutcome.FAST_NOW_AND_SLOW_REFRESH,
             )
             audits.append(audit)
+            if traced:
+                traces.append(
+                    _model_trace(
+                        role="fast",
+                        adapter=fast,
+                        snapshot=request.snapshot,
+                        audit=audit,
+                        window=window,
+                        usage=fast_usage,
+                        request_id=None,
+                        input_schema_version=fast_view.schema_version,
+                        output_schema_version=fast_output.decision.schema_version,
+                        output_id=fast_output.decision.decision_id,
+                    )
+                )
             if audit.accepted:
                 fast_decision = fast_output.decision
 
@@ -217,7 +296,36 @@ class CaseCoordinator:
             fast_decision=fast_decision,
             slow_result=slow_result,
             audits=tuple(audits),
+            traces=tuple(traces),
         )
+
+    def _timed(self, call: Callable[[], _T], at: datetime) -> tuple[_T, _CallWindow]:
+        # A broken injected source is refused before the model call, clearly.
+        started_at = at
+        if self._clock is not None:
+            clock_start = _utc_reading(self._clock())
+            if clock_start is None:
+                raise ValueError("clock must return a timezone-aware UTC datetime")
+            started_at = clock_start
+        start: float | None = None
+        if self._monotonic is not None:
+            start = _monotonic_reading(self._monotonic())
+            if start is None:
+                raise ValueError("monotonic must return a finite number")
+        value = call()
+        # After the call, observability never fails the business result: an
+        # unusable reading falls back to the window derived in _model_trace.
+        elapsed_ms: int | None = None
+        if self._monotonic is not None and start is not None:
+            end = _monotonic_reading(self._monotonic())
+            if end is not None and end >= start:
+                elapsed_ms = round((end - start) * 1000)
+        completed_at: datetime | None = None
+        if self._clock is not None:
+            clock_end = _utc_reading(self._clock())
+            if clock_end is not None and clock_end >= started_at:
+                completed_at = clock_end
+        return value, _CallWindow(started_at, completed_at, elapsed_ms)
 
     @staticmethod
     def project_fast_view(snapshot: CaseContextSnapshot) -> FastModelView:
@@ -419,6 +527,144 @@ class CaseCoordinator:
             input_pins=result.pins,
             current_pins=current.pins,
         )
+
+
+def _reason(
+    slow: SlowAdapter, request: SlowWorkRequest
+) -> tuple[SlowWorkResult, ModelCallUsage | None]:
+    if isinstance(slow, UsageReportingSlowAdapter):
+        return slow.reason_with_usage(request)
+    return slow.reason(request), None
+
+
+def _decide(
+    fast: FastAdapter, view: FastModelView
+) -> tuple[FastAdapterResult, ModelCallUsage | None]:
+    if isinstance(fast, UsageReportingFastAdapter):
+        return fast.decide_with_usage(view)
+    return fast.decide(view), None
+
+
+def _model_trace(
+    *,
+    role: Literal["fast", "slow"],
+    adapter: object,
+    snapshot: CaseContextSnapshot,
+    audit: ResultAudit,
+    window: _CallWindow,
+    usage: ModelCallUsage | None,
+    request_id: UUID | None,
+    input_schema_version: str,
+    output_schema_version: str,
+    output_id: UUID,
+) -> ModelTrace:
+    """Record one adapter call; an unidentified adapter is named by its class.
+
+    Whatever the adapter reports is normalised rather than trusted: this runs
+    after the model call, so it must not turn a trace problem into a failure.
+    """
+
+    identity = _identity(adapter)
+    reported = _normalised_usage(usage)
+    measured = (
+        reported.latency_ms if reported.latency_ms is not None else window.elapsed_ms
+    )
+    if window.completed_at is None:
+        # No clock: the window is derived from the latency, never contradicts it.
+        latency_ms = measured if measured is not None else 0
+        completed_at = window.started_at + timedelta(milliseconds=latency_ms)
+    else:
+        completed_at = window.completed_at
+        latency_ms = (
+            measured
+            if measured is not None
+            else round((completed_at - window.started_at).total_seconds() * 1000)
+        )
+    trace = ModelTrace(
+        contract_type="model_trace",
+        schema_version="1.1",
+        revision=1,
+        trace_id=_stable_uuid4("model-trace"),
+        case_id=snapshot.case.case_id,
+        started_at=window.started_at,
+        completed_at=completed_at,
+        provider=identity.provider,
+        model=identity.model,
+        model_version=identity.model_version,
+        adapter_version=identity.adapter_version,
+        prompt_version=identity.prompt_version,
+        input_schema_version=input_schema_version,
+        output_schema_version=output_schema_version,
+        latency_ms=latency_ms,
+        input_tokens=reported.input_tokens,
+        output_tokens=reported.output_tokens,
+        result=ModelResult.SUCCEEDED if audit.accepted else ModelResult.REJECTED,
+        output_ref=str(output_id),
+        safety_flags=(),
+        role=role,
+        # A reason repeated per offending proposal is recorded once.
+        reason_codes=tuple(dict.fromkeys(audit.reason_codes)),
+        request_id=request_id,
+        input_pins=snapshot.pins,
+    )
+    # The id is derived from every other field: one call, one stable id.
+    content = trace.model_dump(mode="json", exclude={"trace_id"})
+    trace_id = _stable_uuid4(f"model-trace:{canonical_fingerprint(content)}")
+    return trace.model_copy(update={"trace_id": trace_id})
+
+
+def _identity(adapter: object) -> ModelIdentity:
+    reported = (
+        adapter.model_identity if isinstance(adapter, IdentifiedAdapter) else None
+    )
+
+    def field(name: str, fallback: str) -> str:
+        value = getattr(reported, name, None)
+        if isinstance(value, str) and 0 < len(value.strip()) <= _EXTERNAL_REF_MAX:
+            return value
+        return fallback
+
+    return ModelIdentity(
+        provider=field("provider", "unidentified"),
+        model=field("model", type(adapter).__name__[:_EXTERNAL_REF_MAX]),
+        model_version=field("model_version", "unversioned"),
+        adapter_version=field("adapter_version", "unversioned"),
+        prompt_version=field("prompt_version", "unversioned"),
+    )
+
+
+def _normalised_usage(usage: object) -> ModelCallUsage:
+    """A reported count that is not a non-negative int (or bool) becomes 0."""
+
+    def count(name: str) -> int | None:
+        value = getattr(usage, name, None)
+        return value if type(value) is int and value >= 0 else None
+
+    return ModelCallUsage(
+        input_tokens=count("input_tokens") or 0,
+        output_tokens=count("output_tokens") or 0,
+        latency_ms=count("latency_ms"),
+    )
+
+
+def _utc_reading(value: object) -> datetime | None:
+    if (
+        isinstance(value, datetime)
+        and value.tzinfo is not None
+        and value.utcoffset() == timedelta(0)
+    ):
+        return value
+    return None
+
+
+def _monotonic_reading(value: object) -> float | None:
+    if (
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    ):
+        return float(value)
+    return None
 
 
 def _stable_uuid4(value: str) -> UUID:

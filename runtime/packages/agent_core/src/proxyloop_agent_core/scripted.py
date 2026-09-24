@@ -23,11 +23,25 @@ from proxyloop_contracts.contracts import (
     ReasonerRequest,
 )
 
-from .interfaces import BOUNDED_FAST_STATUS_TEXT, FastAdapterResult
+from .interfaces import BOUNDED_FAST_STATUS_TEXT, FastAdapterResult, ModelIdentity
+
+
+def _scripted_identity(model: str) -> ModelIdentity:
+    """Deterministic, promptless, and zero-token (no usage is reported)."""
+
+    return ModelIdentity(
+        provider="scripted",
+        model=model,
+        model_version="deterministic-v1",
+        adapter_version="scripted-v1",
+        prompt_version="no-prompt",
+    )
 
 
 class ScriptedFastAdapter:
     """Return one safe typed dialogue decision under a current strategy."""
+
+    model_identity = _scripted_identity("scripted_fast")
 
     def decide(self, view: FastModelView) -> FastAdapterResult:
         strategy = view.strategy
@@ -61,6 +75,8 @@ class ScriptedFastAdapter:
 
 class ScriptedSlowAdapter:
     """Produce a deterministic reference strategy, never authorization."""
+
+    model_identity = _scripted_identity("scripted_slow")
 
     def reason(self, request: SlowWorkRequest) -> SlowWorkResult:
         view = request.view
