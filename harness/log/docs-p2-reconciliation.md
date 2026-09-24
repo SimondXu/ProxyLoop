@@ -197,3 +197,4 @@ Verification after these changes (no `PROXYLOOP_TEST_*` set):
 
 Not run after these changes: `make typecheck`, `make test`, `make web-check`,
 `make preflight`, and the real-dependency gates.
+- Final gate after merging `origin/main` @ `f818b61` (#72, no conflicts): `make preflight` exit 0; Runtime `1174 passed, 46 skipped`, ML `390 passed, 1 skipped`, web `99 passed` (2 files); `git status --short data/` empty.
