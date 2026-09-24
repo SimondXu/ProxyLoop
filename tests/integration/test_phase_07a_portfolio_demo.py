@@ -7,6 +7,7 @@ from typing import Self
 
 import psycopg
 import pytest
+from local_fast_fake_gateway import FakeGateway
 from proxyloop_case_runtime import SCRIPTED_CASE_ID
 
 from scripts import run_phase_07a_portfolio_demo as demo
@@ -361,3 +362,84 @@ def test_web_demo_uses_production_build_and_start(monkeypatch, tmp_path: Path) -
     source = Path(demo.__file__).read_text()
     assert '"@proxyloop/web",\n            "start"' in source
     assert '"@proxyloop/web",\n            "dev"' not in source
+
+
+# PR-11 D6: the launcher's local Fast backend flag.
+
+
+def test_fast_backend_flag_sets_one_selection_for_worker_and_api() -> None:
+    inherited = {"PATH": "/bin", "PROXYLOOP_FAST_BACKEND": "untuned"}
+
+    assert demo.build_demo_environment(inherited)["PROXYLOOP_FAST_BACKEND"] == (
+        "scripted"
+    )
+    environment = demo.build_demo_environment(inherited, fast_backend="distilled")
+    assert environment["PROXYLOOP_FAST_BACKEND"] == "distilled"
+    assert environment["PROXYLOOP_ORCHESTRATION_MODE"] == "temporal"
+    assert environment["PROXYLOOP_RUNTIME_MODE"] == "scripted"
+    with pytest.raises(ValueError, match="fast backend"):
+        demo.build_demo_environment(inherited, fast_backend="hosted")
+
+
+def test_a_matching_gateway_passes_the_launcher_check() -> None:
+    assert demo.check_fast_backend(demo.build_demo_environment({})) is None
+    with FakeGateway(backend="distilled") as gateway:
+        environment = demo.build_demo_environment(
+            {"PROXYLOOP_FAST_GATEWAY_URL": gateway.url}, fast_backend="distilled"
+        )
+        assert demo.check_fast_backend(environment) == "local opt-in candidate"
+        mismatched = demo.build_demo_environment(
+            {"PROXYLOOP_FAST_GATEWAY_URL": gateway.url}, fast_backend="untuned"
+        )
+        with pytest.raises(demo.DemoScenarioError, match="BACKEND=untuned"):
+            demo.check_fast_backend(mismatched)
+
+
+def test_a_local_fast_backend_without_its_gateway_starts_nothing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    with FakeGateway(backend="distilled") as stopped:
+        url = stopped.url
+    monkeypatch.setenv("PROXYLOOP_FAST_GATEWAY_URL", url)
+    started: list[str] = []
+    monkeypatch.setattr(demo, "_check_startup_ports", lambda: None)
+    monkeypatch.setattr(
+        demo, "_start_compose_dependencies", lambda: started.append("compose")
+    )
+    monkeypatch.setattr(
+        demo, "_build_web_app", lambda *_args: started.append("web-build")
+    )
+    monkeypatch.setattr(
+        demo, "_spawn_host_services", lambda *_args, **_kwargs: started.append("hosts")
+    )
+
+    with pytest.raises(
+        demo.DemoScenarioError, match="make local-fast-gateway BACKEND=distilled"
+    ):
+        demo.start_demo(state_dir=tmp_path, fast_backend="distilled")
+
+    assert started == []
+    assert not (tmp_path / demo.LIFECYCLE_LOCK_FILE).exists()
+    assert not (tmp_path / demo.PID_FILE).exists()
+
+
+def test_serve_accepts_only_known_fast_backends(monkeypatch) -> None:
+    observed: list[str] = []
+    monkeypatch.setattr(
+        demo, "start_demo", lambda *, fast_backend: observed.append(fast_backend)
+    )
+
+    assert demo.main(["serve"]) == 0
+    assert demo.main(["serve", "--fast-backend", "untuned"]) == 0
+    assert observed == ["scripted", "untuned"]
+    with pytest.raises(SystemExit) as raised:
+        demo.main(["serve", "--fast-backend", "hosted"])
+    assert raised.value.code == 2
+
+
+def test_make_passes_the_fast_backend_flag() -> None:
+    makefile = Path("Makefile").read_text()
+    assert "FAST_BACKEND ?= scripted" in makefile
+    assert (
+        'scripts/run_phase_07a_portfolio_demo.py serve --fast-backend "$(FAST_BACKEND)"'
+    ) in makefile
