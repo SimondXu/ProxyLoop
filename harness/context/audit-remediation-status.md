@@ -40,6 +40,7 @@ recorded — the relay is exhausted), force-push, destructive operations.
 |---|---|---|---|
 | `fix/r18-callback-evidence-pairing` | PR-4, R-18 | Review applied (reviewer Approve, Minors 1-3 fixed); merged with `main` @ `c73f6a7`; `make lint`, `make typecheck`, `make test`, `make preflight` green; gates green on merged main (`postgres-check` 27, `phase05a-check` 42, `phase06b1-check` 35); ready for PR | PR; CI; squash merge. Accepted limits are in its log (a consistent forged event+Evidence pair, unchecked `source_ref`/`content_hash`; binding to real deliveries needs a storage change) |
 | `fix/gate-honesty-r15-g1` | PR-1, R-15 + G-1 strong form | Implemented; commit subject says "(unreviewed WIP)". R-15: the `<= 20` bound was wrong (true invariant 10 ≤ calls ≤ 21; 21 is reachable with one worker) — barrier-based deterministic test, 200/200 passes. G-1: `scripts/check_gated_skips.py` pins 51 gated skips and names the real-dependency gates at the end of `make preflight` | `make preflight`; `reviewer`; open question for the reviewer/root: the pin is not enforced when any `PROXYLOOP_TEST_*` is set (alternative: require 0 gated skips when both are set); PR; CI; merge |
+| `fix/b2-8-threadpool-runtime-calls` | PR-6, B2-8 | Implemented: `app.py` runs the direct-mode `apply_command`, `current_result`, the readiness probe, and the mailbox route's storage calls via `run_in_threadpool`; `direct_expiry.py` `_expire` likewise; `health_live` is `async def`. Review: Approve with one Important (I1: worker threads broke the in-process serialization of the direct-mode clock guard — a strictly earlier time ended in 500 `internal_error`, equal times were accepted), fixed by one per-app `threading.Lock` around `apply_direct` (order: app lock → Runtime lane; expiry takes the lane only) with a red/green race test (`harness/code_review/fix-b2-8-threadpool-runtime-calls.md`). Known limit: across uvicorn processes on PostgreSQL the gap remains as on `main` — a strictly earlier time fails closed in the `CaseContextSnapshot` validator with 500 `internal_error` and no write; an equal time is accepted. `make lint`, `typecheck`, `test`, `preflight` green on the follow-up diff; DB gates green at `3c88fc2`: `postgres-check` 27, `phase05a-check` 42, `phase06b1-check` 35 | PR; CI; merge. Log `fix-b2-8-threadpool-runtime-calls.md` |
 
 R-19 (`SafeObservationAdapter` raises on negative-fee / duplicate-feature
 offers; used by `ml/` and two scripts) is assigned to PR-9, whose parity
@@ -191,7 +192,7 @@ separate decisions.
 
 Open: G-1's stronger form (`preflight` asserts the gated-skip count or
 names the real-dependency gates), A-7f,
-B2-8, C-5, C-7, C-8, D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
+B2-8 (in flight, PR-6, §0), C-5, C-7, C-8, D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
 deletion only), D3-8, D3-9.
 
 ## 4a. Found during the P1 and P2 runs (R-1 … R-19)
@@ -236,7 +237,7 @@ Other items (Minor unless marked):
 - R-19 `SafeObservationAdapter._adapt_offer` (`agent_core/observation.py`) raises on a contract-valid `ProviderOffer` with a negative fee sum or a duplicate feature, via `SafeOffer.__post_init__` (the same out-of-domain inputs B1-9 made total in the policy check). Used today by the `ml/` pipeline and evaluation and the `scripts/` benchmark/harness runners, not by the product runtime. Found in the B1-9 review.
 
 Still open from the audit P2 list and not yet batched: runtime/router/api
-hygiene (B2-8, A-7f, R-5) and ops/tests (C-5, C-7, C-8, R-6).
+hygiene (B2-8 in flight as PR-6, A-7f, R-5) and ops/tests (C-5, C-7, C-8, R-6).
 The design-first items are settled: B1-9 is closed above, and A-3, A-5, A-9
 are recorded as limits above. **Do not do**: D3-5/D3-6 (`qwen_mlx.py`
 frozen by r4); D1-10/11/12 (V1 simulator frozen, superseded by V2); D2-9 and
