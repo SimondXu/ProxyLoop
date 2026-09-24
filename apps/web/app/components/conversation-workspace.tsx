@@ -28,6 +28,7 @@ import {
   type RuntimeMoney,
   type RuntimePayload,
 } from "../../lib/runtime-client";
+import { renderStatusBlock } from "../../lib/status-block";
 import { StatusBadge } from "./status-badge";
 
 type WorkspacePhase =
@@ -320,6 +321,23 @@ function DialogueArtifact({ lines }: { lines: AssistantLine[] }) {
           <p className="artifact-note">{AUTOMATED_LINE_LABEL}</p>
         </AssistantMessage>
       ))}
+    </section>
+  );
+}
+
+// Agent Status Bar (PR-10): rows come only from renderStatusBlock over the
+// accepted authoritative payload; this component adds no text of its own.
+function AgentStatusBar({ payload }: { payload: RuntimePayload }) {
+  const status = renderStatusBlock(payload);
+  return (
+    <section aria-label="Agent status" className="context-section agent-status">
+      <span className="context-label">Agent status</span>
+      <strong>{status.doingNow}</strong>
+      <dl>
+        {status.rows.map((row) => (
+          <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>
+        ))}
+      </dl>
     </section>
   );
 }
@@ -1461,6 +1479,7 @@ export function ConversationWorkspace() {
       </section>
 
       <aside aria-label="Current task context" className="context-rail">
+        {payload ? <AgentStatusBar payload={payload} /> : null}
         <div className="context-section">
           <span className="context-label">Current goal</span>
           <strong>{payload ? formatMoney(objectAt(goalRecord(payload), "target_monthly_total")) : "Runtime snapshot pending"}</strong>
