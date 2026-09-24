@@ -22,27 +22,70 @@ The repository is a polyglot monorepo with isolated dependency zones
 
 ```text
 make preflight-fast          Layout, script syntax, and Git whitespace checks
-make validate                Format, lint, mypy, tests, contract drift, layout
-make preflight               validate + lock checks + Compose config (the CI gate)
+make validate                format-check, lint, typecheck, test, check-layout,
+                             web-check
+make preflight               validate + lock-check + script compile + Compose
+                             config (see "Local gate and real-dependency gates")
 make format / format-check   Ruff format
 make lint / typecheck        Ruff lint / strict mypy
-make unit-test / test        Runtime and ML pytest
+make unit-test               Runtime and ML pytest
+make test                    unit-test plus the artifact checks listed after
+                             `test:` in the Makefile
 make web-check               Web lint, typecheck, vitest, production build
 make contracts               Regenerate JSON Schema and TypeScript contracts
-make contracts-check         Verify generated artifacts and compile the TS fixture
+make contracts-check         Regenerate into a temp dir, byte-compare with the
+                             committed artifacts, compile the TS fixture
 make simulator               Emit the Phase 01A success episode as JSON
-make benchmark / -check      Phase 01B scripted environment-ceiling report
-make data-pilot / -check     Phase 02 one-turn pilot report and drift check
-make harness / harness-check Phase 03A1 deterministic evaluation harness
-make baselines-check         Phase 03A1 untuned baseline artifacts
-make errata / errata-check   Phase 03A1 evaluation erratum artifacts
-make hosted-rerun-check      Source-bound Phase 03A1 r4 hosted report
-make validity-smoke-check    Source-bound Phase 03A1 r5 diagnostic report
-make phase03b-readiness-check / phase03b-experiment-check
-                             Frozen Phase 03B readiness and smoke artifacts
+make benchmark / -check      Phase 01B scripted environment ceiling; -check
+                             re-runs it, byte-compares, fails on a failed gate
+make negotiation-check       V2 negotiation ceiling: re-runs the reference
+                             consumer over the catalogue, byte-compares
+                             data/manifests/negotiation-v1-ceiling.json, fails
+                             on drift or a failed gate
+make data-pilot / -check     Phase 02 pilot; -check regenerates, byte-compares,
+                             fails unless the automated audit passed
+make harness / harness-check Phase 03A1 harness; -check generates twice
+                             (determinism), byte-compares manifest, episodes
+                             and ceiling, fails on a failed ceiling gate
+make baselines-check         r1 legacy replay through the current evaluator;
+                             fails on the current tree by design (the Harness
+                             episodes were regenerated after r1); not in `test`
+make baselines-historical-check
+                             r1 integrity only (fingerprints, provenance,
+                             truthfulness), no replay; reports the episode
+                             drift as a state instead of failing
+make errata / errata-check   Phase 03A1-E; -check regenerates and compares the
+                             r2 fixtures, checks the r2 report's fingerprints,
+                             replays r3 from its captured raw outputs, and
+                             binds r3 to r2
+make hosted-rerun-check      Alias: depends on hosted-rescore-check only (the
+                             r4-era `hosted_rerun --check` is not in `test`)
+make hosted-rescore          r4 integrity check, then write
+                             data/evaluation/phase-03a1-r4-rescored-report.json
+                             by re-reading the r4 raw outputs with the current
+                             evaluator (no model calls)
+make hosted-rescore-check    r4 integrity; prints whether the r4 execution
+                             bytes changed (reported, never a failure); fails
+                             unless the committed rescored report equals a
+                             fresh derivation byte for byte
+make validity-smoke-check    Phase 03A1-V r5: binds to r4 by hash and replays
+                             every row from its stored raw outputs
+make phase03b-readiness-check
+                             Regenerate the Gate 0 packet and byte-compare
+make phase03b-experiment-check
+                             Re-derive train/valid rows, manifest and QLoRA
+                             config (Phase 02 provenance fields as recorded);
+                             bind each smoke arm to the committed manifest
+make phase03c-rescore-check  Re-score the stored Phase 03C cloud raw outputs
+                             (held-out and dev) with the repository evaluator,
+                             byte-compare the committed *-rescored.json, fail
+                             on any disagreement with the cloud scores; exits 0
+                             with a notice when no cloud run is present
 make postgres-check          Phase 04C PostgreSQL gate (needs postgres-test)
-make phase04d-check / phase04d-profile-check
-                             Phase 04D control-plane gates
+make phase04d-check          Phase 04D control-plane operation tests
+make phase04d-profile-check  Phase 04D profile: fresh report, asserts
+                             p95 >= p50 and a non-zero timeout rate; no
+                             committed baseline
 make phase05a-check          Phase 05A Temporal CaseWorkflow gate
 make phase06b1-check         Phase 06B1 local mailbox gate
 make runtime-server / dev    Scripted Runtime on 127.0.0.1:8000
@@ -50,10 +93,58 @@ make portfolio-demo[-stop|-reset|-channel|-recovery]
                              Phase 07A local demo lifecycle
 ```
 
-The `*-check` artifact targets replay committed reports with zero external
-model calls. `postgres-check`, `phase05a-check`, and `phase06b1-check` need
-`PROXYLOOP_TEST_DATABASE_URL` pointing at the `proxyloop_test` database and,
-for the last two, a reachable Temporal server.
+The artifact checks make zero external model calls, but they prove different
+things. `contracts-check`, `benchmark-check`, `negotiation-check`,
+`data-pilot-check`, `harness-check`, and `phase03b-readiness-check` regenerate
+their artifacts from code and byte-compare them. `errata-check`,
+`validity-smoke-check`, `hosted-rescore-check`, and `phase03c-rescore-check`
+re-derive scores from stored raw model outputs with the current evaluator.
+`baselines-historical-check` checks integrity only. `baselines-check` fails
+by design. The other `phase03c-*` checks in the `test:` list are not
+described here; see the Makefile.
+
+## Local gate and real-dependency gates
+
+`make preflight` runs `validate` (`format-check`, `lint`, `typecheck`, `test`,
+`check-layout`, `web-check`), then `lock-check`,
+`python3 -m compileall -q scripts`, and `docker compose config --quiet`. It
+starts no container.
+
+`unit-test` collects all of `tests/integration`. Four files skip their
+database tests when `PROXYLOOP_TEST_DATABASE_URL` is unset; their Temporal
+tests also need `PROXYLOOP_TEST_TEMPORAL_ADDRESS`:
+
+- `test_phase_04c_persistent_case_store.py`
+- `test_phase_05a_case_runtime.py`
+- `test_phase_05a_temporal_workflow.py`
+- `test_phase_06b1_temporal.py`
+
+With the variables unset, `make preflight` exits 0 and reports those tests as
+skipped, so a "preflight passed" claim covers none of them. With the
+variables set, `unit-test` runs them too. A change under `case_runtime`,
+`workflow_worker`, `connectors`, or `api` therefore also needs the
+real-dependency gates below.
+
+The real-dependency gates fail instead of skipping when a variable is missing:
+
+| Target | Needs | Runs |
+|---|---|---|
+| `postgres-check` | `PROXYLOOP_TEST_DATABASE_URL` | `test_phase_04c_persistent_case_store.py` |
+| `phase05a-check` | `PROXYLOOP_TEST_DATABASE_URL`, `PROXYLOOP_TEST_TEMPORAL_ADDRESS` | `test_phase_05a_case_runtime.py`, `test_phase_05a_temporal_api.py`, `test_phase_05a_temporal_workflow.py` |
+| `phase06b1-check` | `PROXYLOOP_TEST_DATABASE_URL`, `PROXYLOOP_TEST_TEMPORAL_ADDRESS` | `test_phase_06b1_connectors.py`, `test_phase_06b1_channel_runtime.py`, `test_phase_06b1_workflow_worker.py`, `test_phase_06b1_temporal.py` |
+
+`PROXYLOOP_TEST_DATABASE_URL` must name the `proxyloop_test` database; the
+tests refuse any other name. Locally that is the `postgres-test` Compose
+profile on port `55432` ([infra/README.md](../infra/README.md)).
+`PROXYLOOP_TEST_TEMPORAL_ADDRESS` is locally the Compose `temporal` service at
+`127.0.0.1:7233` by default (`TEMPORAL_PORT` overrides the port); CI sets it to
+`127.0.0.1:7233`.
+
+Run these gates one at a time, from one worktree at a time. The tests
+truncate their tables in the shared `proxyloop_test` database and reuse fixed
+ids (the scripted Case id and fixed command UUIDs), so two concurrent runs
+truncate each other's rows and fail intermittently (`case_not_found`,
+`state_invalid`). A `make preflight` with the variables set is such a run.
 
 ## Hosted CI
 
