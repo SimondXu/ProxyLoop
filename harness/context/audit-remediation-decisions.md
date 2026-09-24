@@ -30,7 +30,7 @@ force-push, destructive operations on shared history.
 | 12 | `ModelTrace` is **emitted** with a `role` field, not deleted (proposal §12.2). |
 | 13 | Judge uses a second model family when a second credential exists, else the Slow family, recorded in the trace. |
 | 14 | Intake is a stateless `POST /intake/proposals`. |
-| 15 | Phase order per audit decision 12: V0 (frontier-only) is the target of Stages 1–3; training stays behind V0's numbers. |
+| 15 | ~~Phase order per audit decision 12: V0 (frontier-only) is the target of Stages 1–3; training stays behind V0's numbers.~~ Superseded by decision 17 (2026-09-24). |
 
 ## Execution order
 
@@ -51,3 +51,17 @@ force-push, destructive operations on shared history.
 Every PR keeps one bounded concern, a spec under `harness/context/`, and a
 log under `harness/log/`; anything that needs credentials or hosted spend
 is reported instead of run.
+
+## Decisions adopted 2026-09-24 (build to complete)
+
+Recorded 2026-09-24 by the root orchestrator. Decisions 16–18 follow the
+user's instruction quoted in 16; 19–20 are root decisions taken under it.
+The plan they drive is `harness/context/build-plan-to-complete.md`.
+
+| # | Decision | Reason |
+|---|---|---|
+| 16 | **Extended authorization** (user, 2026-09-24): "全部按照你的计划去执行 只要完成这个项目全部building就好了 然后每做一步记得更新对应的docs 遇到不确定的问题可以起一个subagent来对话进行分享建议讨论再做决定". The root carries the plan to a complete build, decides open questions after consulting a subagent (`architect` or `reviewer`) and records each decision here; every PR updates the docs it affects. Hard limits unchanged: real credentials, real external channels and Providers (Phase 06B2), deployment or release, hosted spend beyond a recorded budget, force-push, destructive operations. | The user's own words; it widens the 2026-09-22 authorization from the audit backlog to the whole build without lifting any hard limit. |
+| 17 | **Decision 15 is superseded.** V0 (hosted frontier in both slots) cannot be measured: the relay keys are exhausted (≈ USD 146 total per `harness/context/phase-03c-stage2-handoff.md` §5; ≈ USD 121.59 for Stages 1b/1c per `harness/context/post-phase-03c-handoff.md` §4; no remaining budget recorded), model mode is direct-only today, and training has already happened (Phase 03C, GO_DISTILLED). All gates run on scripted adapters; Slow stays scripted; the Judge seam is built with a scripted Judge; no further training. The V0, frontier-as-Fast and second-family-Judge rows are recorded as "not measured (budget)". | Decision 15 assumed a hosted budget and an ordering that no longer exist; measuring it would breach the hosted-spend limit in 16. |
+| 18 | **After Phase 03C: option A in local-only form, then option C; option B excluded.** The GO_DISTILLED Qwen3-8B LoRA adapter becomes an opt-in local Fast backend behind a gateway, with untuned/scripted rollback, an input-parity renderer, attestation, a pre-registered local parity re-measure, the disclosure gate and a deterministic fallback. It is always labelled "local opt-in candidate", never "promoted" or "production", and carries the four recorded 03C caveats plus E1–E5: (E1) the product never produces the trained observation input; (E2) a different inference stack: training/evaluation ran on vLLM/HF (A100, PEFT LoRA); local serving would be MLX on Apple silicon; parity unmeasured; (E3) no product latency measured; (E4) act agreement has little product consequence today; (E5) nothing about Slow, Judge, multi-turn or outcomes. The root treats decision 16 as the user decision `harness/status.toml` required for local serving; production serving, p95/capacity/OOM and automatic fallback under load remain out of scope. Option C (Phase 07) comes last. Option B (Phase 06B2) is a hard limit and excluded; "complete" means complete within the authorized limits. | Makes the 03C result reachable in the product without claiming promotion, and keeps every external-party step behind the hard limits. |
+| 19 | **Contract set 1.2 is narrow and droppable, after Stage 4.** R-11b: ProviderOffer 1.2 declares `applied_changes`; the 1.2 material-terms hash adds the fee breakdown and applied changes; ActionIntent/ApprovalRequest 1.2; verifier outcome `applied_change_not_approved`. B1-9b: 1.2 ProviderOffer requires FEE/TAX ≥ 0 and CREDIT ≤ 0. Every committed simulator, benchmark, ML and 03C producer stays at 1.1 and every committed `*-check` must stay byte-identical. A-3a is replaced by a coordinator validator (build plan PR-13); A-9b is dropped (the r4-frozen `runner_v2` increments `PlanningBasis.revision`). | Closes R-11 and B1-9 without moving frozen evidence; dropping 1.2 leaves nothing half-done. |
+| 20 | **Stage 2 feedback is passed outside the contract**: no `SlowWorkRequest.revision_feedback` field. | r4 prompts serialize the typed Slow request, so a new default field risks moving frozen fingerprints. |
