@@ -140,9 +140,21 @@ Review: `harness/code_review/feat-pr11-fast-under-temporal.md`. D5-A stands.
   not gated).
 - Not run: the three DB gates (the lane is held by PR-12).
 
+## DB lane (held exclusively, 2026-09-24, on `d8460fe`; `main` still `a8fdf5b`)
+
+- `make test`: exit 0 (runtime 1615 passed / 66 skipped; ml 397 passed /
+  1 skipped). `make preflight`: exit 0 (gated pin 66 matches).
+- Serially, variables on the make command line only (local `postgres-test`
+  on 55432, `proxyloop_test`; Compose `temporal` at `127.0.0.1:7233`):
+  - `make postgres-check`: 38 passed.
+  - `make phase05a-check`: 73 passed, 0 skipped (53 before this PR + the 20
+    tests of `test_fast_under_temporal.py`, including the three gated
+    time-skipping tests).
+  - `make phase06b1-check`: 56 passed.
+
 ## Remaining
 
-- DB lane serially (after PR-12 releases it); PR; CI; merge.
+- PR; CI; merge (root). Manual run after PR-9b.
 - Recorded limits (spec §7): API label drift if the worker is started with
   another value; queued same-Case Fast calls can exceed the 30 s Next proxy;
   a slow database plus a 25 s Fast call can exceed the activity
