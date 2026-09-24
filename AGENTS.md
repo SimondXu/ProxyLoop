@@ -100,7 +100,7 @@ For an approved phase or bounded change:
 6. When the diff is stable, obtain independent review for material code, contract, authorization, security, workflow, or external-channel changes.
 7. Batch accepted findings, rerun affected checks, and request re-review only for material semantic changes or unresolved findings.
 8. Run Browser or manual verification only after the affected behavior is stable.
-9. Run `make preflight` once as the final local repository gate; rerun it only after a material change to covered behavior or artifacts.
+9. Run `make preflight` once as the final local repository gate; rerun it only after a material change to covered behavior or artifacts. It skips DB/Temporal tests; service changes also need the serial real-dependency gates in `docs/development.md`.
 10. Record concise pre-merge evidence in one bounded-change log under `harness/log/`, then integrate and stop at the gate.
 
 Never report a check as passed if it was not run. Separate passed checks from blocked, skipped, manual, Browser, cloud, GPU, voice, and external-channel work.

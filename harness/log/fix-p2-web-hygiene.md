@@ -45,3 +45,24 @@ Spec: `harness/context/fix-p2-web-hygiene-preflight.md`. Branch
 - Not run: `make preflight`, `make test`, real-dependency gates
   (`postgres-check`, `phase05a-check`, `phase06b1-check`) although `api`
   changed; Browser/manual smoke.
+
+## Update to origin/main
+
+Merged (not rebased) `origin/main` @ `c914c1b` (#70, #71, #72, #73) into
+the branch. No textual conflicts, and main touched none of this branch's
+files. #72 leaves `_browser_case` unchanged, so the projection stays an
+explicit allow-list: it carries no `model_traces` and no claim data, and
+the one addition is still `bill_snapshot.usage.data_megabytes`
+(`NonNegativeInt` in contracts).
+
+Rerun on the merged tree (no `PROXYLOOP_TEST_*` set):
+
+- `make format-check lint typecheck`: pass.
+- `make web-check`: pass (2 files, 114 vitest tests, build).
+- `make preflight-fast`: pass.
+- `make test`: pass (1184 passed, 46 skipped; 390 passed, 1 skipped;
+  V2 ceiling report current).
+- `git status --short data/`: empty.
+- Still not run: `make preflight`, real-dependency gates
+  (`postgres-check`, `phase05a-check`, `phase06b1-check`), Browser/manual
+  smoke.

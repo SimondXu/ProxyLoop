@@ -27,8 +27,10 @@ from proxyloop_contracts import (
     CompletionOutcome,
     Evidence,
     EvidenceType,
+    ExecutionClaim,
     FastTurnDecision,
     ModelInputPins,
+    ModelTrace,
     ProviderOffer,
     VisibleCaseEvent,
 )
@@ -36,9 +38,16 @@ from proxyloop_provider_simulator.provider import FictionalMobileProvider
 from proxyloop_telecom_domain import CompletionVerification, verify_completion
 from psycopg.rows import tuple_row
 from psycopg.types.json import Jsonb
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    UUID4,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    model_validator,
+)
 
-from .commands import CaseTransitionRef, ExecutionClaimRecord
+from .commands import CaseTransitionRef
 from .repository import (
     CaseConflictError,
     CaseNotFoundError,
@@ -51,7 +60,10 @@ from .repository import (
     StorageUnavailableError,
 )
 
-_STORAGE_VERSION: Literal[1] = 1
+# Version 2 carries the canonical ExecutionClaim and the model traces. Version 1
+# rows are still read and upgraded; every write is version 2.
+_STORAGE_VERSION: Literal[2] = 2
+_LEGACY_STORAGE_VERSION: Literal[1] = 1
 _TABLE_NAME = "proxyloop_case_runtime_states"
 _PROVIDER_CONFIG_REF = "pine-mobile:runtime-v1"
 _BINDINGS_TABLE = "proxyloop_channel_bindings"
@@ -65,7 +77,7 @@ class _CaseStorageEnvelope(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    storage_version: Literal[1]
+    storage_version: Literal[2]
     snapshot: CaseContextSnapshot
     events: tuple[VisibleCaseEvent, ...]
     execution_count: int = Field(ge=0)
@@ -75,7 +87,8 @@ class _CaseStorageEnvelope(BaseModel):
     execution_proposal: CapabilityProposal | None = None
     transitions: tuple[CaseTransitionRef, ...] = ()
     last_fast_decision: FastTurnDecision | None = None
-    execution_claim: ExecutionClaimRecord | None = None
+    execution_claim: ExecutionClaim | None = None
+    model_traces: tuple[ModelTrace, ...] = ()
 
     @model_validator(mode="after")
     def state_history_matches_snapshot(self) -> _CaseStorageEnvelope:
@@ -83,6 +96,10 @@ class _CaseStorageEnvelope(BaseModel):
             raise ValueError("stored event history does not match snapshot")
         if (self.execution_claim is not None) != self.snapshot.pending_execution:
             raise ValueError("stored execution claim does not match pending state")
+        if any(
+            trace.case_id != self.snapshot.case.case_id for trace in self.model_traces
+        ):
+            raise ValueError("stored model trace references another Case")
         command_ids: set[UUID] = set()
         prior_revision = 0
         for transition in self.transitions:
@@ -97,6 +114,78 @@ class _CaseStorageEnvelope(BaseModel):
             command_ids.add(transition.command_id)
             prior_revision = transition.after_revision
         return self
+
+
+class _LegacyExecutionClaimRecord(BaseModel):
+    """The ``storage_version`` 1 claim record, read only to be upgraded."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+    approval_id: UUID4
+    before_revision: int = Field(ge=1)
+    claimed_at: datetime
+    command_id: UUID4 | None = None
+    command_fingerprint: str | None = Field(default=None, min_length=1)
+
+
+class _LegacyCaseStorageEnvelope(BaseModel):
+    """The ``storage_version`` 1 envelope, read only to be upgraded."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    storage_version: Literal[1]
+    snapshot: CaseContextSnapshot
+    events: tuple[VisibleCaseEvent, ...]
+    execution_count: int = Field(ge=0)
+    execution_source_pins: ModelInputPins | None = None
+    execution_intent: ActionIntent | None = None
+    execution_approval: ApprovalRequest | None = None
+    execution_proposal: CapabilityProposal | None = None
+    transitions: tuple[CaseTransitionRef, ...] = ()
+    last_fast_decision: FastTurnDecision | None = None
+    execution_claim: _LegacyExecutionClaimRecord | None = None
+
+    def upgrade(self) -> _CaseStorageEnvelope:
+        """Rebuild the canonical claim from the claimed ActionIntent.
+
+        A pending claim's intent is persisted beside it, so the Case id, the
+        action intent id and the idempotency key are recovered without loss;
+        every other claim field is carried over as stored. A version 1 row
+        has no model traces.
+        """
+
+        record = self.execution_claim
+        claim: ExecutionClaim | None = None
+        if record is not None:
+            intent = self.execution_intent
+            if intent is None:
+                raise ValueError("stored execution claim has no action intent")
+            claim = ExecutionClaim(
+                contract_type="execution_claim",
+                schema_version="1.1",
+                revision=1,
+                case_id=intent.case_id,
+                approval_id=record.approval_id,
+                action_intent_id=intent.intent_id,
+                idempotency_key=intent.idempotency_key,
+                before_revision=record.before_revision,
+                claimed_at=record.claimed_at,
+                command_id=record.command_id,
+                command_fingerprint=record.command_fingerprint,
+            )
+        return _CaseStorageEnvelope(
+            storage_version=_STORAGE_VERSION,
+            snapshot=self.snapshot,
+            events=self.events,
+            execution_count=self.execution_count,
+            execution_source_pins=self.execution_source_pins,
+            execution_intent=self.execution_intent,
+            execution_approval=self.execution_approval,
+            execution_proposal=self.execution_proposal,
+            transitions=self.transitions,
+            last_fast_decision=self.last_fast_decision,
+            execution_claim=claim,
+        )
 
 
 class PostgresCaseRepository:
@@ -907,6 +996,7 @@ class PostgresCaseRepository:
                 transitions=state.transitions,
                 last_fast_decision=state.last_fast_decision,
                 execution_claim=state.execution_claim,
+                model_traces=state.model_traces,
             )
             _verify_provider_state(state, envelope)
         except (ValidationError, ValueError, RuntimeError):
@@ -921,10 +1011,16 @@ class PostgresCaseRepository:
     ) -> CaseRuntimeState:
         if not isinstance(payload, dict):
             raise RuntimeError("stored Case payload is invalid")
-        if payload.get("storage_version") != _STORAGE_VERSION:
+        storage_version = payload.get("storage_version")
+        if storage_version not in (_STORAGE_VERSION, _LEGACY_STORAGE_VERSION):
             raise RuntimeError("unsupported Case storage version")
         try:
-            envelope = _CaseStorageEnvelope.model_validate_json(json.dumps(payload))
+            document = json.dumps(payload)
+            envelope = (
+                _CaseStorageEnvelope.model_validate_json(document)
+                if storage_version == _STORAGE_VERSION
+                else _LegacyCaseStorageEnvelope.model_validate_json(document).upgrade()
+            )
             if envelope.snapshot.case.case_id != case_id:
                 raise ValueError("stored Case id does not match row")
             if row_revision != envelope.snapshot.revision:
@@ -944,6 +1040,7 @@ class PostgresCaseRepository:
             transitions=envelope.transitions,
             last_fast_decision=envelope.last_fast_decision,
             execution_claim=envelope.execution_claim,
+            model_traces=envelope.model_traces,
         )
 
 
@@ -1210,6 +1307,13 @@ def _verify_pending_fields(
         raise ValueError("pending execution is missing its claim record")
     if claim.approval_id != approval.approval_id:
         raise ValueError("pending execution claim does not reference the approval")
+    if claim.case_id != snapshot.case.case_id:
+        raise ValueError("pending execution claim references another Case")
+    if (
+        claim.action_intent_id != intent.intent_id
+        or claim.idempotency_key != intent.idempotency_key
+    ):
+        raise ValueError("pending execution claim does not reference the intent")
     if claim.claimed_at != approval.decided_at:
         raise ValueError("pending execution claim time does not match the decision")
     if claim.before_revision != snapshot.revision - 1:
