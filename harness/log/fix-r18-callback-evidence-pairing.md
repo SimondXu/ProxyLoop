@@ -94,7 +94,24 @@ After merging `origin/main` @ `c73f6a7` (#86; clean merge), no DB:
   Temporal, on `6c3e9d3` (review fix merged with `main` @ `c73f6a7`):
   `make postgres-check` (27 passed), `make phase05a-check` (42 passed),
   `make phase06b1-check` (35 passed). These replace the `e1c8371` gate
-  results above.
+  results above; the `b48452b` results below supersede them in turn.
+
+After merging `origin/main` @ `5266b6d` (#87, R-16; one conflict in
+`audit-remediation-status.md` §0, resolved by keeping this branch's R-18 row
+and dropping the R-16 in-flight row that #87 closed), on `b48452b`:
+
+- Passed: `make test` (exit 0; runtime 1272 passed, 53 skipped; ml 397
+  passed, 1 skipped).
+- Passed, one at a time against the Compose `postgres-test` DB and
+  Temporal: `make postgres-check` (27 passed), `make phase05a-check`
+  (53 passed; #87 added the R-16 tests), `make phase06b1-check` (35 passed).
+
+After merging `origin/main` @ `0eb3079` (#89, B2-8: `app.py`,
+`direct_expiry.py`, its own test and harness docs; clean merge), on
+`c3ca62e`:
+
+- Passed: `make test` (exit 0; runtime 1275 passed, 53 skipped; ml 397
+  passed, 1 skipped). DB gates not rerun: #89 is disjoint from this change.
 
 ## Known limits
 
