@@ -71,8 +71,21 @@ The gateway side of the wire lives in `local_fast/wire.py` until PR-9a lands
 `agent_core/local_fast_wire.py`; the gateway then switches to that module so
 the wire has one owner.
 
+## M1 result
+
+Stack parity held (pre-registered bar ≥ 0.95 on both): on the 240 held-out
+trained-format prompts the local distilled arm reaches act agreement
+236/240 = 0.983 (cloud A3: 236/240) and per-row act concordance with cloud
+A3 of 240/240; the untuned arm 133/240 (cloud A1: 130/240). Details, per-row
+raw outputs and the claim boundary: the parity report and
+`harness/log/feat-pr9b-local-fast-gateway.md`. M2 (the product rendering
+path) is not measured yet.
+
 ## Local limits
 
-Loopback only, no authentication: any local process can call it. MLX cannot
-cancel a running generation. No p95, capacity, concurrency, OOM, or
-production latency is measured or claimed.
+Loopback only, no authentication: any local process can call it. All model
+work runs on one thread (MLX streams are thread-local) and `decide` is single
+flight. MLX cannot cancel a running generation. Observed on one M4 Pro,
+sequentially: distilled generation p50 21.3 s, max 26.9 s (134 of 240 above
+20 s); untuned p50 9.9 s. No p95, capacity, concurrency, OOM, or production
+latency is measured or claimed.
