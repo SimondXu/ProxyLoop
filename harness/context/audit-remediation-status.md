@@ -6,7 +6,8 @@ proposal (`docs/research/2026-09-21-target-architecture-proposal.md`).
 Authorization and adopted decisions: `harness/context/audit-remediation-decisions.md`.
 Group 2 design: `harness/context/group2-evaluator-proposal.md`.
 
-**Updated 2026-09-23 (second session, P1 close). `main` @ `724ada2`.
+**Updated 2026-09-24 (third session: P1 closed, first four P2 batches,
+R-10 and R-1 merged, #72–#78). `main` @ `74e2073`.
 Everything below is merged to `main` unless the row says otherwise.**
 
 A new session should read, in order: `harness/status.toml`, this file
@@ -15,55 +16,27 @@ spec and log named by the item it picks up.
 
 ## 0. Next session — start here
 
-The session that produced #52–#70 paused on a usage limit with work in
-flight. Every unmerged branch below is committed with the suffix
-"(unreviewed WIP)" and **pushed**; no PR is open for it. Resume in this
-order:
+No work is in flight. Every branch from the earlier sessions is merged
+(#72–#78), no PR is open, and no WIP branch remains; the remote branches
+still listed (`docs/audit-claim-corrections`,
+`fix/workflow-dedup-transition-guard`, `docs/handoff-p1-close`) belong to
+the merged #44, #46 and #71. P1 is closed. Resume in this order:
 
-1. **1.1 PR4 — the last P1 item.** Branch `feat/persisted-claim-and-traces`
-   (spec `harness/context/feat-persisted-claim-and-traces-preflight.md`,
-   log `harness/log/feat-persisted-claim-and-traces.md`). Implemented and
-   locally green on `6932596`, **not reviewed**. Remaining: rebase onto
-   `main` (PR3 #70 has landed); in `runtime.py` pass `clock=self.now` and
-   `monotonic=time.perf_counter` to every `CaseCoordinator(...)` built for an
-   `advance` call (8 call sites) and add a test that persisted traces carry
-   the runtime clock's time; independent review; `make preflight` +
-   `postgres-check`, `phase05a-check`, `phase06b1-check` **run serially**;
-   PR → CI → merge. From the PR3 review: `trace_id` is not an idempotency
-   key (dedup is by command).
-2. **R-10 (Important, pre-existing correctness bug).** Diagnosed, not fixed —
-   see §4a. Implement fix option A after PR4 (both touch `runtime.py` /
-   `postgres_repository.py`).
-3. **R-1 (Important).** Design in §4a; implement after PR4.
-4. **Four P2 batches, implemented, not reviewed.** Each needs: rebase,
-   independent review, `make preflight`, the Compose gates where marked,
-   PR → CI → merge.
-   - `docs/p2-reconciliation` — A-7d/e/g, G-1 (what `preflight` runs vs the
-     real-dependency gates, the serial-run rule), `docs/development.md` check
-     targets, pinned `hosted-rerun-check: hosted-rescore-check`. Also changed
-     one word in `CONTEXT.md` ("Case version" → "Case revision"); confirm or
-     revert.
-   - `fix/p2-adapter-domain` — B1-6 (model match: exact or `-YYYY-MM-DD`
-     snapshot), B1-7 (SDK `ValidationError` → `invalid_output`), B1-8
-     (`offer_case_mismatch`), B1-10 (executor marks key/approval in progress
-     before `commit()`; a raised commit is never re-run — **changes a runtime
-     edge case**: a same-process retry after a raising commit now gets
-     `execution_outcome_unknown`; the reviewer must confirm), B1-11 (constant
-     owned by `offer_policy.py`; V1 `scenarios.py` untouched, pinned by a
-     test). **Compose gates required** (executor).
-   - `fix/p2-web-hygiene` — E-7 (polls never regress to `confirm` during an
-     in-flight command), E-8 (Progress shows only payload-backed steps), E-9
-     (`usage.data_megabytes` added to the browser allow-list and rendered),
-     E-10 (USD parser aligned with its prompt), R-8 (documented). Touches the
-     `app.py` projection → **Compose gates required**.
-   - `fix/p2-ml-eval-hygiene` — D3-7 reason codes (`schema_invalid`,
-     `hash_mismatch`; names to confirm), a D2-6 replay test; D3-7's
-     `rejection_reasons`, D3-9, D2-7, D2-8 recorded as limits (frozen modules
-     or committed report bytes). `data/` unchanged.
-5. The rest of P2 (§4), then the proposal stages (§5). **Before stage 1, ask
-   the user about decision 15** (training-after-V0 vs Phase 03C
-   GO_DISTILLED); the Phase 03C next-phase choice (A promote / C Phase 07 /
-   B 06B2) is also the user's.
+1. **The rest of P2 (§4)**, grouped into batches — see the P2 batch plan
+   once recorded (the root is inventorying the open items now).
+2. **The §4a backlog**: R-2, R-5, R-6, R-11, R-12, R-13, R-14, R-15, R-16,
+   R-17, R-18, as the root schedules them. A separate fix task has been
+   proposed for R-15 (the flaky ML test); R-16 needs a second workflow
+   patch gate.
+3. **The proposal stages (§5).** **Before stage 1, ask the user about
+   decision 15** (training-after-V0 vs Phase 03C GO_DISTILLED); the Phase
+   03C next-phase choice (A promote / C Phase 07 / B 06B2) is also the
+   user's.
+
+Working mode: implementation, noisy checks and review run in subagents;
+the root decides, reviews the final diffs and merges. To bring a pushed
+branch up to date, prefer `git merge origin/main` over a rebase (no
+force-push).
 
 Gate hygiene learned the hard way: the DB/Temporal gates share the
 `proxyloop_test` database and fixed Case ids, so two concurrent runs truncate
@@ -79,19 +52,24 @@ generated-contract tests call `tsc`/`json2ts`).
 | Audit itself | 10 review lanes, Pine reference, target architecture | done, #37 |
 | Group 1 | every Blocking and the Important defects in the runtime, workflow and Web | **done**, #38 #39 #40 #43 #44 #46 |
 | Group 2 | simulator / evaluation authority, evaluator evolution, verifier, leakage | **done**, #47 #48 #49 #50 |
-| P1 | 11 backlog rows, staged | **done except 1.1 PR4** (#54–#70, see §3) |
-| P2 | ~40 hygiene items + R-1…R-14 found in the P1 run | four batches implemented, unreviewed (§0, §4) |
+| P1 | 11 backlog rows, staged | **done** (#54–#70, #72, see §3) |
+| P2 | ~40 hygiene items + R-1…R-18 found in the P1/P2 runs | first four batches merged (#73 #74 #76 #77), R-10 and R-1/R-1b fixed (#75 #78); the rest open (§4, §4a) |
 | Proposal stages | intake, Fast dialogue wiring, Judge, Agent Status Bar | **not started** (see §5) |
 
 Every audit finding rated Blocking or Important is closed. What remains is
-feature work (P1, the proposal) and hygiene (P2).
+feature work (the proposal), hygiene (P2) and the §4a backlog.
 
-Latest root gate on `main`'s tip (#70, PR3 diff, DB/Temporal-gated tests
-enabled): `make preflight` exit 0 with runtime 1185 passed, ML and web
-green; `postgres-check` 27, `phase05a-check` 36, `phase06b1-check` 34.
-Real-dependency gates are not part of `preflight`; run them serially.
+Latest recorded gates: #77 and #78 each merged `origin/main` @ `8e1522a`
+(#76) and ran `make preflight` exit 0 there, with the real-dependency
+gates one at a time — #78 (`fix-r1-retryable-update-continues-as-new.md`):
+runtime 1200 passed / 51 skipped, ML 397 / 1 skipped, web 99;
+`phase05a-check` 42, `phase06b1-check` 35, `postgres-check` 27. No gate
+has been recorded on the combined tip `74e2073` (#77 + #78). Real-dependency
+gates are not part of `preflight`; run them serially.
 
 ## 2. Closed items, with the evidence
+
+Groups 1 and 2 below; P1 in §3; P2 items and R-items in §4 and §4a.
 
 | Item | Finding | What changed | PR | Log |
 |---|---|---|---|---|
@@ -113,7 +91,7 @@ the `deduplicated` rejection that would have stranded a Case (#46), and the
 harness `idempotency_key` that still leaked the scenario id (#50). Each is
 recorded in its log.
 
-## 3. P1 — closed in the second session (except 1.1 PR4)
+## 3. P1 — closed (second session; 1.1 PR4 in the third)
 
 | Ids | What changed | PR | Log |
 |---|---|---|---|
@@ -132,7 +110,7 @@ recorded in its log.
 | A-1, A-10, A-6 (PR2) | the runtime produces 1.1 snapshots; strategies bind to their planning basis; COMPLETE carries a bound receipt | #68 | `feat-runtime-1-1.md` |
 | D1 (P-E) | V2 splits, `SAFETY_FAMILIES_V2`, state-derived metrics, committed scripted ceiling (`make negotiation-check`) | #69 | `feat-negotiation-v2-evaluation.md` |
 | A-2 (PR3) | the coordinator emits a 1.1 `ModelTrace` per model call | #70 | `feat-model-trace-producer.md` |
-| canonical `ExecutionClaim`, trace persistence (PR4) | **open** — branch `feat/persisted-claim-and-traces`, see §0 | — | `feat-persisted-claim-and-traces.md` |
+| B2-1 (contract half), A-2 (storage) (PR4) | runtime state carries the canonical 1.1 `ExecutionClaim` and persisted `model_traces` (storage envelope v2, v1 upgraded on read). Root decision: the runtime passes only `monotonic=time.perf_counter` to the coordinator, not the runtime clock | #72 | `feat-persisted-claim-and-traces.md` |
 
 Also merged: #55 (the 03C training check visits all committed manifests),
 #58 (the `architect` role runs on Opus). Designs with root decisions:
@@ -145,137 +123,71 @@ Done through P0-4: G-2 (`contracts/README.md`), F-2 (test counts), F-3
 A-7c (ADR gate), part of G-1 (the `CLAUDE.md` note on what `preflight`
 skips).
 
+Closed in the third session:
+
+| Ids | What changed | PR | Log |
+|---|---|---|---|
+| A-7d, A-7e, A-7g | `docs/architecture.md` uses the revision vocabulary, lists the `Case` fields (no owner field), names `CANONICAL_MODELS` (25 types at 1.1); `CONTEXT.md` wording "Case revision" and "at a specific revision" adopted | #73 | `docs-p2-reconciliation.md` |
+| G-1 (documented only) | `AGENTS.md` step 9 pointer, `CLAUDE.md` and `docs/development.md` state what `preflight` skips and that the real-dependency gates run serially. **Not enforced by `make preflight`**: G-1's stronger form stays open | #73 | `docs-p2-reconciliation.md` |
+| programme items (not in the audit) | `docs/development.md` describes each `*-check` target, lists `baselines-historical-check`, `hosted-rescore`, `hosted-rescore-check`, and says `baselines-check` fails by design; `test_phase_03a1_hosted_rerun_architecture.py` pins the exact line `hosted-rerun-check: hosted-rescore-check` | #73 | `docs-p2-reconciliation.md` |
+| D3-7, D2-6 | pipeline reason codes: `schema_invalid`, `hash_mismatch`, `declared_rejection` (a non-empty `rejection_reasons` is quarantined, no longer accepted), `provenance_mismatch`, `unknown_derivation_parent`, `missing_provenance` for a null `source`; a non-frozen test replays the committed r2 and pins its one r3-corrected mismatch | #74 | `fix-p2-ml-eval-hygiene.md` |
+| B1-6, B1-7, B1-8, B1-10, B1-11 | model match is exact or a dated snapshot; SDK `ValidationError` → `invalid_output`; `offer_case_mismatch`; a `commit()` that raised is never re-run (`execution_outcome_unknown`); the credit constant is owned by `offer_policy.py` | #76 | `fix-p2-adapter-domain.md` |
+| E-7, E-8, E-9 (= R-3), E-10 | polls never regress an in-flight command; Progress shows only payload-backed steps; `usage.data_megabytes` allow-listed and rendered; strict USD parsing | #77 | `fix-p2-web-hygiene.md` |
+
+Recorded as limits by #74 (`fix-p2-ml-eval-hygiene.md`), still open:
+deleting the D3-7 `rejection_reasons` field (emitted in the committed
+`data/schemas/normalized-trajectory-v1.schema.json`); D3-9, D2-7, D2-8
+(frozen modules or committed hosted-report bytes); audit N1, the
+`_matches_environment` fallback at `pipeline.py:566`.
+
 Open: G-1's stronger form (`preflight` asserts the gated-skip count or
-names the real-dependency gates), G-3, A-3, A-5, A-7d–g, A-9,
-B1-6…B1-12, B2-7…B2-9, C-5, C-7, C-8, D1-10…D1-12, D2-6…D2-9, D3-5…D3-9,
-E-7…E-10, and replacing the grep-based architecture tests with Router
-precedence tests (audit §3, lane A).
+names the real-dependency gates), G-3, A-3, A-5, A-7f, A-9, B1-9, B1-12,
+B2-7…B2-9, C-5, C-7, C-8, D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
+deletion only), D3-8, D3-9, and replacing the grep-based architecture tests
+with Router precedence tests (audit §3, lane A).
 
-Added by this programme, not in the audit:
-- `docs/development.md` still describes the `*-check` targets as "replay
-  committed reports" and does not list `baselines-historical-check`,
-  `hosted-rescore`, `hosted-rescore-check`.
-- `tests/contract/test_phase_03a1_hosted_rerun_architecture.py:35` matches
-  the old script name by substring; nothing pins
-  `hosted-rerun-check: hosted-rescore-check`.
-- The legacy `make baselines-check` (r1 replay) fails on the current tree
-  by design; a test asserts that. Commented in the `Makefile`.
+## 4a. Found during the P1 and P2 runs (R-1 … R-18)
 
-## 4a. Found during the P1 run (R-1 … R-14) and designs in hand
+Closed:
 
-**R-10 (Important, pre-existing since #28; the 1.0 half since #68).** A
-channel delivery callback on a COMPLETE Case fails. The 06B1 contract
-requires the callback to append a Provider-event evidence and advance the
-revision on a terminal Case; `record_channel_delivery` does so and moves
-`pins.event_cursor`, but the Postgres codec's terminal rule
-(`postgres_repository.py` ~1115-1146) demands
-`execution_source_pins == snapshot.pins`, i.e. it silently assumes a
-terminal Case is never written again → "Case state failed storage
-validation" (Temporal: non-retryable `state_invalid`; inbox stuck
-`reserved`). For a stored 1.0 COMPLETE Case the callback's `_snapshot(...)`
-also defaults to 1.1 and trips the receipt rule. Diagnosed by a
-root-cause investigation (codec-level repro, no DB). **Recommended fix A**
-(root decision still to record): the terminal rule becomes
-`execution_source_pins == snapshot.pins.model_copy(update={"event_cursor": c})`
-where `c` is the cursor of the deterministic `approval_decision` event, plus
-"every event after `c` is a callback `provider_event`" (no loss of forgery
-protection); the callback passes `schema_version=snapshot.schema_version`
-once `completion_decision` is set. Regression tests first: a codec-round-
-tripping `_ChannelRepository` + "first delivered callback after COMPLETE"
-(revision +1; decision, receipt and source pins unchanged); a stored 1.0
-COMPLETE Case stays 1.0; tampered source-pin cursor or a non-delivery event
-after approval is rejected. Rejected: B (write channel tables only —
-violates 06B1 AC 9), C (refuse — loses the receipt), D (store the cursor —
-heavier). The existing test `test_phase_06b1_channel_runtime.py:620-646`
-used a fake repository without the codec, which is why this was missed.
+| Ids | What changed | PR | Log |
+|---|---|---|---|
+| R-10 (Important) | fix A: the codec's terminal rule compares the execution source pins with the snapshot pins at the approval-decision cursor and accepts only delivery-callback `provider_event`s after it; a callback on a stored 1.0 COMPLETE Case keeps 1.0 | #75 | `fix-r10-terminal-delivery-callback.md` |
+| R-1 (Important), R-1b | option (f): a retry-exhausted Update still fails with `temporal_unavailable` and the run requests Continue-As-New (patch gate `retryable-update-failure-continues-as-new`), so the identical retry reaches the Runtime; the classifier reads `ActivityError.retry_state` (`MAXIMUM_ATTEMPTS_REACHED`, `TIMEOUT`); `_can_continue_as_new()` ends the R-1b busy-loop | #78 | `fix-r1-retryable-update-continues-as-new.md` |
+| R-3 (= E-9) | see §4 | #77 | `fix-p2-web-hygiene.md` |
+| R-8 | documented: the browser `event_cursor`/`revision` count channel events; `snapshot.completion` is a synthetic `not_done` | #77 | `fix-p2-web-hygiene.md` |
 
-**R-1 (Important).** An identical retry after retryable exhaustion
-(`temporal_unavailable`) receives the cached Update failure until
-Continue-As-New; the Web's "safe retry preserved" copy is untrue within a
-run and an approval stuck at `pending_execution` cannot be finished by its
-own identical retry. **Design (architect, Opus, probed on the Compose Temporal 1.28.1 with
-in-memory repositories): option (f)** — on retryable exhaustion the Update
-still fails with `temporal_unavailable`, **and the run requests
-Continue-As-New**; the new run's Update cache is empty, so the identical
-retry reaches the Runtime (receipt / claim rules decide). Non-retryable
-failures stay cached (#62's T2 unchanged). Observed on `main`: 5 ×
-`storage_unavailable` → `temporal_unavailable` after 15.1 s; the identical
-retry returns the cached failure in 0.00 s with no new activity; an
-approval whose final write exhausted stays `pending_execution` forever. A
-completed Update (success or failure) can never be evicted within a run;
-only a new run clears it. Rejected: (a) keep the Update open and retry —
-needs a deadline anyway (then (f)), holds the lock or lets commands jump
-the queue, blocks Continue-As-New, changes approval semantics; (b) a
-non-failing "retry later" result — successes are cached too; (c) an
-attempt salt — the client cannot know it without a live worker (or (g), a
-random Update ID per request, which drops Update-level dedup globally and
-reverses #62's T2 — kept as a fallback); (d) a bigger retry budget — only
-shortens the window and exceeds the 30 s Next proxy timeout.
-
-**R-1b (pre-existing on `main`, found by the probes; fix in the same PR —
-root decision still to record):** when the Continue-As-New threshold is
-reached while a command is queued on the lock, `run()` busy-loops: both
-`wake_changed` conditions return True on `_continue_requested` while
-`_active_handlers > 0` forbids Continue-As-New, so the WFT spins
-(`TMPRL1101 Potential deadlock` ×8) and both commands hang. Option (f)
-would make it common.
-
-**Exact change (`workflow_worker/workflow.py` only; client, models,
-activities, API and Web unchanged — the Web's "safe retry preserved" copy
-becomes true):**
-1. `_can_continue_as_new()` = `_continue_requested and _active_handlers == 0
-   and not _activity_in_flight`; use it in `run()`'s Continue-As-New check
-   and in **both** `wake_changed` predicates (R-1b; no patch needed — the
-   old and new conditions differ only in states that deadlock).
-2. In `apply_case_command`, inside the lock:
-   `try: transition = await self._execute_command(command)`
-   `except ActivityError as error:` classify with the existing
-   `_expiry_failure_category` (rename to `_activity_failure_category`); if
-   not non-retryable **and** `workflow.patched("retryable-update-failure-continues-as-new")`,
-   set `self._continue_requested = True`; re-raise.
-3. In both success paths (`apply_case_command` and `_expire_pending`):
-   `self._continue_requested = self._continue_requested or (self._commands_in_run >= self._continue_as_new_after)`
-   (observed: without `or`, a queued command's success clears the flag and
-   the retry still hits the cache).
-4. Update the `update_id_for_command` docstring (a retryable failure
-   rolls the run).
-
-**Tests first** (`tests/integration/test_phase_05a_temporal_workflow.py`;
-each ~16 s real time — the backoff runs on the server clock): T1 identical
-append retry after exhaustion reaches the Runtime (attempts 6, run rolled);
-T2 identical approval retry finishes a claim whose final write exhausted
-(`terminal`, `execution_count == 1`); T3 exhaustion with a queued command —
-the queued one succeeds, A's identical retry reaches the Runtime
-(`case_conflict`); T4 `continue_as_new_after=2` with a stuck X and a queued
-Y — both complete (hangs on `main`, R-1b); T5 Replayer over a committed
-history fixture recorded on `main` ("exhaustion, then a success in the same
-run"; strip local paths) proves the patch gate (unpatched →
-`NondeterminismError`); optional T6 over HTTP (503 then 200 with the same
-`Idempotency-Key`). Then `phase05a-check`, `phase06b1-check`,
-`postgres-check` serially and `make preflight`. Risks: a delayed roll while
-other handlers run (≤ one retry still cached, typically ≤ 15 s); expiry
-backoff resets on each roll (P0-3 limit, now more frequent); one extra run
-per exhaustion. Separate pre-existing gap to backlog: a channel ingest that
-exhausts on the delivery activity is not re-driven on redelivery.
+Specs: `harness/context/fix-r10-terminal-delivery-callback-preflight.md`,
+`harness/context/fix-r1-retryable-update-continues-as-new-preflight.md`.
+Rejected alternatives, kept here because the R-1 spec cites them. R-10: B
+(write channel tables only — violates 06B1 AC 9), C (refuse — loses the
+receipt), D (store the cursor — heavier). R-1: (a) keep the Update open and
+retry — needs a deadline anyway (then (f)), holds the lock or lets commands
+jump the queue, blocks Continue-As-New, changes approval semantics; (b) a
+non-failing "retry later" result — successes are cached too; (c) an attempt
+salt — the client cannot know it without a live worker (or (g), a random
+Update ID per request, which drops Update-level dedup globally and reverses
+#62's T2 — kept as a fallback); (d) a bigger retry budget — only shortens
+the window and exceeds the 30 s Next proxy timeout.
 
 Other items (Minor unless marked):
 - R-2 `app.py` error handlers echo `str(exc)` to the browser.
-- R-3 = E-9 (in `fix/p2-web-hygiene`).
 - R-4 the ML compiler resolves capabilities by exact id (frozen via r4; consistent today).
 - R-5 the channel route reads `expected_revision` outside the lock (redelivery recovers since #62).
 - R-6 persisted Cases keep their 1-day manifest; a runtime > 24 h test needs an injectable offer TTL.
 - R-7 `_snapshot(manifest=None)` re-mint — **done** in #68 (manifest required).
-- R-8 the browser `event_cursor`/`revision` count channel events; `snapshot.completion` is synthetic `not_done` (documented in `fix/p2-web-hygiene`).
-- R-9 shared `proxyloop_test` DB → run DB/Temporal gates serially (documented in `docs/p2-reconciliation`); a per-run schema would remove the hazard.
+- R-9 shared `proxyloop_test` DB → run DB/Temporal gates serially (documented in #73); a per-run schema would remove the hazard.
 - R-11 the canonical `material_terms_hash` excludes fees and applied changes.
 - **R-12 (Important, proposal stage 1)** rejected-result traces reach `CoordinatorOutcome` but the runtime raises before writing; needs a traces-only append.
 - R-13 `model_traces` retention unbounded.
 - R-14 the 1.0/1.1 basis switch is duplicated in `runtime.py` and `contracts.py`.
-- R-15 flaky: `ml/tests/test_teacher_pipeline.py::test_concurrent_workers_cannot_jointly_exceed_the_ceiling` asserts `8 <= calls <= 20` and saw 21 on CI (#71, a docs-only PR); the bound is timing-dependent — tighten the test or make the concurrency deterministic.
+- R-15 flaky: `ml/tests/test_teacher_pipeline.py::test_concurrent_workers_cannot_jointly_exceed_the_ceiling` asserts `8 <= calls <= 20` and saw 21 on CI (#71, a docs-only PR); the bound is timing-dependent — tighten the test or make the concurrency deterministic. Failed CI again on #75 (2026-09-24, run 35961699413 attempt 1: `assert 21 <= 20`; attempt 2 passed). A separate fix task has been proposed.
+- **R-16 (Important; severity confirmed by the root)** the expiry path's `_expiry_failure_category` reads the innermost typed `ApplicationError`; every real activity failure is raised `from exc`, so the converter chain is `[('ApplicationError','case_conflict',True), ('ApplicationError','CaseConflictError',False)]` and a real non-retryable expiry failure (e.g. `case_conflict`) is classified retryable and retried with backoff instead of abandoned. The expiry tests miss it because their injected faults carry no `__cause__`. The fix changes expiry-path commands for recorded histories, so it needs a second workflow patch gate. See `harness/log/fix-r1-retryable-update-continues-as-new.md`.
+- R-17 a channel ingest that exhausts on the delivery activity is not re-driven on redelivery (pre-existing; found in the R-1 design, `fix-r1-retryable-update-continues-as-new.md`).
+- R-18 callback events on a terminal Case are not paired with their Provider-event Evidence: delivered/bounced `provider_event`s forged after the approval cursor without Evidence, or a deleted callback event whose Evidence remains, are accepted. Root decided it is out of scope for R-10 (`fix-r10-terminal-delivery-callback.md`, Known limits).
 
 Still open from the audit P2 list and not yet batched: runtime/router/api
-hygiene (B1-12, B2-7, B2-8, B2-9, A-7f, R-2, R-5, R-14 — after PR4 and
-R-10), ops/tests (C-5, C-7, C-8, G-3, R-6), architecture-test replacement
+hygiene (B1-12, B2-7, B2-8, B2-9, A-7f, R-2, R-5, R-14), ops/tests (C-5, C-7, C-8, G-3, R-6), architecture-test replacement
 (grep → Router precedence tests), and the design-first items A-3, A-5, A-9,
 B1-9 (route through `architect`). **Do not do**: D3-5/D3-6 (`qwen_mlx.py`
 frozen by r4); D1-10/11/12 (V1 simulator frozen, superseded by V2); D2-9 and
