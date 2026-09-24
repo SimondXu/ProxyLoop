@@ -4,15 +4,15 @@ active_product_phase = ""
 active_contract = ""
 next_phase_authorized = false
 integration_baseline = "main"
-updated_at = "2026-09-22"
+updated_at = "2026-09-24"
 
 [boundaries]
-summary = "Phase 03C is closed at GO_DISTILLED: the distilled Qwen3-8B adapter reaches 0.983 act agreement against 0.542 untuned on 240 held-out rows from six families absent from training, re-scored locally with zero disagreements (harness/log/phase-03c-stage2-stage3.md). Nothing is promoted: serving the adapter, real-model load, capacity, p95 and automatic fallback each need a new user decision, as do any further training or data expansion. Phase 06B2, full Phase 07, and every real channel remain unauthorized."
+summary = "Phase 03C is closed at GO_DISTILLED: the distilled Qwen3-8B adapter reaches 0.983 act agreement against 0.542 untuned on 240 held-out rows from six families absent from training, re-scored locally with zero disagreements (harness/log/phase-03c-stage2-stage3.md). Nothing is promoted. Decisions 16-18 (harness/context/audit-remediation-decisions.md, 2026-09-24) extend the audit authorization to the build plan in harness/context/build-plan-to-complete.md: the adapter may be served locally as an opt-in Fast backend, labelled a local opt-in candidate, never promoted or production; V0 and further training are not done (budget); Phase 07 comes last. Production serving, real-model load, capacity, p95, OOM and automatic fallback, further training or data expansion, Phase 06B2, every real channel, and deployment remain unauthorized. No phase contract is active; the build plan is audit and proposal work, not a product phase."
 inactive = [
   "Phase 03A1 continuation or r6/r7",
   "any model training, data expansion, or promotion; Phase 03A1/03B artifact rewrites (Stage 0 writes only new phase-03c artifacts)",
   "PostgreSQL work beyond the completed Phase 06B1 and Phase 07A local demo state",
-  "promoted-model serving, real-model load, OOM, production p95, or automatic fallback work",
+  "promoted or production model serving, real-model load, OOM, production p95, or automatic fallback work (local opt-in serving of the 03C adapter is authorized by decision 18)",
   "Temporal work beyond the completed Phase 06B1 behavior and Phase 07A local recovery demonstration",
   "real tools, Providers, email, MCP, SMS, or external network channels",
   "authentication, real channels, voice, or production UI",

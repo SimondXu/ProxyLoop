@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from copy import deepcopy
 from uuid import UUID, uuid4
 
 import httpx
@@ -17,7 +18,7 @@ from proxyloop_api import (
 )
 from proxyloop_openai_adapter import ModelFailureKind, OpenAICompatibleAdapterError
 
-from scripts.run_phase_04d_control_plane_profile import _run_profile
+from scripts.run_phase_04d_control_plane_profile import _check_report, _run_profile
 
 CREATE_CASE_REQUEST = {
     "current_monthly_total": {"amount_minor": 9200, "currency": "USD"},
@@ -416,7 +417,7 @@ def test_stale_case_revision_is_classified() -> None:
     recorder = InMemoryOperationRecorder()
     response = asyncio.run(request(recorder))
     assert response.status_code == 409
-    assert response.json() == {"detail": "case snapshot revision is stale"}
+    assert response.json() == {"detail": "stale_cas"}
     assert recorder.records[-1].error_category == "stale_cas"
 
 
@@ -429,3 +430,39 @@ def test_local_profile_report_is_bounded_diagnostic_evidence() -> None:
     assert report["requests"]["p95_ms"] >= report["requests"]["p50_ms"]
     assert report["requests"]["timeout_rate"] > 0
     assert report["outcomes"]["error_categories"] == ["model_timeout", "none"]
+
+
+def test_profile_check_compares_the_committed_baseline_without_assert() -> None:
+    report = asyncio.run(_run_profile(2))
+    assert _check_report(report, iterations=2) == []
+
+    missing = deepcopy(report)
+    del missing["requests"]["p95_ms"]
+    assert "requests.p95_ms: missing" in _check_report(missing, iterations=2)
+
+    extra = deepcopy(report)
+    extra["requests"]["p99_ms"] = 1.0
+    assert "requests.p99_ms: not in baseline" in _check_report(extra, iterations=2)
+
+    retyped = deepcopy(report)
+    retyped["requests"]["count"] = "5"
+    assert "requests.count: expected int, got str" in _check_report(
+        retyped, iterations=2
+    )
+
+    no_timeout = deepcopy(report)
+    no_timeout["requests"]["timeout_rate"] = 0.0
+    no_timeout["outcomes"]["error_categories"] = ["none"]
+    failures = _check_report(no_timeout, iterations=2)
+    assert "requests.timeout_rate: expected 0.2, got 0.0" in failures
+    assert (
+        "outcomes.error_categories: expected ['model_timeout', 'none'], got ['none']"
+        in failures
+    )
+
+    inverted = deepcopy(report)
+    inverted["requests"]["p50_ms"] = 2.0
+    inverted["requests"]["p95_ms"] = 1.0
+    assert "requests.p95_ms: 1.0 is below p50_ms 2.0" in _check_report(
+        inverted, iterations=2
+    )

@@ -121,7 +121,7 @@ This compare-and-swap behavior is implemented locally for the text research MVP.
 
 ### Capabilities and side effects
 
-A versioned `CapabilityManifest` is the only action/tool vocabulary available to models and the executor. Phase 03A1 contains local fictional-Provider simulator capabilities only. It does not advertise MCP, Gmail, telephony, LiveKit, real Provider, or production credentials.
+A versioned `CapabilityManifest` is the only action/tool vocabulary available to models and the executor. Phase 03A1 contains local fictional-Provider simulator capabilities only. It does not advertise MCP, Gmail, telephony, LiveKit, real Provider, or production credentials. (Where this vocabulary is enforced is recorded in "Amendment 2026-09-24 — where the capability vocabulary is enforced" below.)
 
 Slow may propose a bounded capability/action plan. The deterministic compiler and policy gate translate a valid proposal into inert Action Intents. The capability executor is the only module allowed to invoke an adapter and must re-check current strategy/basis, authorization, approval, expiry, and idempotency immediately before execution.
 
@@ -157,3 +157,35 @@ It is not trained to own strategy generation, multi-step tool selection or argum
 ## Amendment 2026-09-24 — Approval wait keyed on approval state
 
 Amended 2026-09-24 (audit B1-12, branch `fix/p2-router-precedence`): the event-label bypass was removed; approval state alone releases the wait. Row 3 previously ended its condition with "and the triggering event is not the Consumer's approval decision"; it now carries the amended condition above. The mandatory-Slow list also names the existing `stale_approval` trigger, a PENDING Approval Request that is no longer current.
+
+## Amendment 2026-09-24 — where the capability vocabulary is enforced
+
+The statement in "Capabilities and side effects" that the `CapabilityManifest`
+is the only action/tool vocabulary available to models and the executor
+describes the design intent. Facts recorded against the implementation at the
+time of this amendment (audit A-3):
+
+- The manifest is the only vocabulary the capability executor will execute.
+- The Slow output compilers construct the join: they look up the proposed
+  capability in the view's manifest, reject an unsupported one, and take the
+  Action Intent's `action_type` from that capability's `allowed_action_types`
+  (`runtime/packages/openai_adapter/src/proxyloop_openai_adapter/outputs.py`,
+  `ml/evaluation/src/proxyloop_evaluation/slow_output.py`).
+- The join is not carried on the wire. `ActionIntent` names an action type
+  from the closed `ActionType` enum but carries no capability or proposal
+  reference; `DelegatedAuthority` is expressed over `ActionType`. After a
+  `SlowWorkResult` crosses the contract boundary, neither contract validation
+  nor the coordinator's Slow result audit checks `action_proposals` against
+  `capability_proposals`. The contracts only restrict capability references
+  to the `simulator` namespace.
+- The capability executor is therefore the only enforcement point. It looks
+  up the proposal's capability id and version in the snapshot's manifest and
+  rejects a miss (`unsupported_capability`) or a capability that does not
+  allow the intent's action type (`capability_action_mismatch`)
+  (`runtime/packages/agent_core/src/proxyloop_agent_core/capabilities.py`).
+- Moving the binding into the contracts (for example a capability reference
+  on `ActionIntent`) is a wire-schema change and needs its own decision and
+  drift gate; this amendment does not make it.
+
+The "Capabilities and side effects" paragraph is retained as the 2026-08-23
+decision; where it conflicts with this amendment, the amendment wins.
