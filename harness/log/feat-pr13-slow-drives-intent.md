@@ -335,3 +335,60 @@ Checks after the re-review fix, with no `PROXYLOOP_TEST_*` variable set:
 - `git diff --stat origin/main -- contracts/ data/ ml/ scripts/` is empty.
 
 Not run: the DB lane and `/security-review`.
+
+## Merge with main and the DB lane
+
+`origin/main` @ `e10443d` (#98, PR-11) merged into the branch as `2939aeb`.
+The only conflict was the §0 table of
+`harness/context/audit-remediation-status.md`; both rows were kept. No
+code file conflicted: PR-11 changed `activities.py` and `worker.py` but not
+`runtime.py`. The gated-skip pin is now **66** (PR-11 added 3 in
+`test_fast_under_temporal.py`); PR-13 adds no gated test.
+
+Worker defaults after the merge. `activity_adapter_from_environment` builds
+`ThinAgentRuntime(repository)` without a Fast backend, or
+`ThinAgentRuntime(repository, fast=fast)` plus the channel Runtime
+`ThinAgentRuntime(repository)`. None of them passes `slow`, so all of them
+get `ScriptedProposingSlowAdapter` (probe with a stubbed repository and
+Fast: `ScriptedProposingSlowAdapter` on both instances; the channel
+Runtime's Fast is `ScriptedDialogueFastAdapter`; `adapter_mode` is
+`scripted` without a backend). The channel path is unchanged in the
+relevant ways: `ingest_channel_event` still refuses a Case with a pending
+approval, a completion decision or a pending execution; it installs the
+refreshed standing proposal but never opens an approval, because only
+`append_event` opens one. Both instances share the repository, so a
+proposal the channel Runtime stores is consumed by the Case Runtime's next
+`append_event`.
+
+The root's re-review wording fix (docstring only, no behaviour change):
+`_check_not_applied` now says the Case lane is per Runtime instance.
+Across processes or instances a same-command race can still make one extra
+model call and trace; the PostgreSQL revision compare-and-swap rejects the
+loser, and `apply_command` maps that to a deduplicated receipt. This limit
+pre-dates PR-13. The review artifact's B1 row says the same, and it gains a
+"Re-review" section (round 2 Request Changes at `a414804`, round 3 Approve
+at `23932a2`).
+
+Checks on the merged tree, with no `PROXYLOOP_TEST_*` variable set in the
+environment:
+
+- `make test` on `2939aeb`: exit 0. Runtime 1701 passed, 66 skipped; ml
+  397 passed, 1 skipped; every `*-check` passed.
+- `make preflight` on `2939aeb`: exit 0. Runtime 1701 passed, 66 skipped; ml 397
+  passed, 1 skipped; Web 189; "Gated-skip counts match the pinned 66 per
+  file."
+- After the docstring edit: `make lint` and `make format-check` passed.
+  `make test` and `make preflight` were not rerun for a docstring-only
+  change.
+
+DB lane, run on `2939aeb` (before the docstring edit), serially from this
+worktree against the Compose
+`postgres-test` (127.0.0.1:55432/proxyloop_test) and `temporal`
+(127.0.0.1:7233) services, with the variables on the make command line
+only:
+
+- `make postgres-check`: 38 passed.
+- `make phase05a-check`: 73 passed.
+- `make phase06b1-check`: 56 passed.
+
+The counts equal PR-11's DB gates on `d8460fe`. Not run: `/security-review`.
