@@ -4,14 +4,17 @@ These tests pin today's behaviour so that the wording in ``CONTEXT.md``,
 ``docs/architecture.md`` and the Fast/Slow ADR amendment of 2026-09-24 has to
 change together with it:
 
-- A-3: an Action Intent carries no capability reference, and neither the
-  ``SlowWorkResult`` contract nor the coordinator's Slow result audit binds an
-  action proposal to a capability proposal; only the capability executor does
-  (``unsupported_capability`` and ``capability_action_mismatch`` are asserted
-  in ``test_phase_03a1_agent_core.py``).
+- A-3: the Slow output compilers build the capability/action join, but an
+  Action Intent carries no capability reference, and neither the
+  ``SlowWorkResult`` contract nor the coordinator's Slow result audit checks
+  an action proposal against a capability proposal; only the capability
+  executor does (``unsupported_capability`` and ``capability_action_mismatch``
+  are asserted in ``test_phase_03a1_agent_core.py``).
 - A-5: every Evidence ``content_hash`` in a completed runtime Case recomputes
   from the artifact its ``(source_type, source_ref)`` names, per the referent
-  table in ``docs/architecture.md``.
+  table in ``docs/architecture.md``. The channel commands copy the API
+  projection's hashing; the API route itself runs through Temporal and is not
+  exercised.
 """
 
 from __future__ import annotations
@@ -120,8 +123,10 @@ def test_completed_case_evidence_hashes_recompute_from_their_referents() -> None
     runtime = ThinAgentRuntime(repository, clock=lambda: now[0])
     runtime.apply_command(_create_command())
 
-    # A verified local-mailbox Provider message, projected the way the API's
-    # channel route builds its command (``content_hash`` over the content).
+    # A verified local-mailbox Provider message. The command copies the API
+    # projection's hashing (``content_hash`` over the UTF-8 content,
+    # ``app.py`` channel route); the route itself runs through Temporal and is
+    # not exercised here.
     message_id = uuid4()
     message_content = "Synthetic Provider message about the offer."
     _, message = _verified(
@@ -174,8 +179,9 @@ def test_completed_case_evidence_hashes_recompute_from_their_referents() -> None
         )
     )
 
-    # A verified delivery callback, projected the way the API's channel route
-    # builds its command (``artifact_hash`` is the raw payload hash).
+    # A verified delivery callback. The command copies the API projection's
+    # hashing (``artifact_hash`` is the raw payload hash, ``app.py`` channel
+    # route); the route itself runs through Temporal and is not exercised here.
     delivery_raw, delivery = _verified(
         {
             "schema_version": "local-mailbox-v1",

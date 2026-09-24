@@ -1031,7 +1031,7 @@ def _deny_capability_action_mismatch(
     proposal: CapabilityProposal,
 ) -> CapabilityExecutionRequest:
     # The proposal still names a manifest capability, but that capability no
-    # longer allows the intent's action type; only the executor binds the two.
+    # longer allows the intent's action type; only the executor checks the two.
     assert episode.action_intent is not None
     manifest = snapshot.capability_manifest
     narrowed = manifest.model_copy(

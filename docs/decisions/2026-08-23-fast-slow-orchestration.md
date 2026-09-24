@@ -160,19 +160,24 @@ is the only action/tool vocabulary available to models and the executor
 describes the design intent. Facts recorded against the implementation at the
 time of this amendment (audit A-3):
 
-- The manifest is the only vocabulary the capability executor will execute,
-  and the executor alone binds an Action Intent to a manifest capability. It
-  looks up the proposal's capability id and version in the snapshot's manifest
-  and rejects a miss (`unsupported_capability`) or a capability that does not
+- The manifest is the only vocabulary the capability executor will execute.
+- The Slow output compilers construct the join: they look up the proposed
+  capability in the view's manifest, reject an unsupported one, and take the
+  Action Intent's `action_type` from that capability's `allowed_action_types`
+  (`runtime/packages/openai_adapter/src/proxyloop_openai_adapter/outputs.py`,
+  `ml/evaluation/src/proxyloop_evaluation/slow_output.py`).
+- The join is not carried on the wire. `ActionIntent` names an action type
+  from the closed `ActionType` enum but carries no capability or proposal
+  reference; `DelegatedAuthority` is expressed over `ActionType`. After a
+  `SlowWorkResult` crosses the contract boundary, neither contract validation
+  nor the coordinator's Slow result audit checks `action_proposals` against
+  `capability_proposals`. The contracts only restrict capability references
+  to the `simulator` namespace.
+- The capability executor is therefore the only enforcement point. It looks
+  up the proposal's capability id and version in the snapshot's manifest and
+  rejects a miss (`unsupported_capability`) or a capability that does not
   allow the intent's action type (`capability_action_mismatch`)
   (`runtime/packages/agent_core/src/proxyloop_agent_core/capabilities.py`).
-- Contract validation does not bind them. `ActionIntent` names an action type
-  from the closed `ActionType` enum but carries no capability or proposal
-  reference; `DelegatedAuthority` is expressed over `ActionType`;
-  `SlowWorkResult` does not cross-check `action_proposals` against
-  `capability_proposals`, and neither does the coordinator's Slow result
-  audit. The contracts only restrict capability references to the `simulator`
-  namespace.
 - Moving the binding into the contracts (for example a capability reference
   on `ActionIntent`) is a wire-schema change and needs its own decision and
   drift gate; this amendment does not make it.

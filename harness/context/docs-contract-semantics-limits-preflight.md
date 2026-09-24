@@ -9,9 +9,10 @@ behaviour change.
 ## Items
 
 - **A-3** (`harness/code_review/repo-audit-A.md` §A-3): the capability
-  manifest is the only vocabulary the executor will execute; the executor
-  alone binds an `ActionIntent` to a manifest capability. Contract validation
-  does not. Rewrite `docs/architecture.md` (Model Collaboration and Routing,
+  manifest is the only vocabulary the executor will execute; the Slow output
+  compilers build the capability/action join, but it is not carried on the
+  wire, and after the contract boundary only the executor checks it (as
+  corrected by independent review I-1). Rewrite `docs/architecture.md` (Model Collaboration and Routing,
   Safety invariants) and add a dated amendment to
   `docs/decisions/2026-08-23-fast-slow-orchestration.md`. Assert
   `capability_action_mismatch` in the executor denial table (audit B1 N1;
