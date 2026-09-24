@@ -76,6 +76,14 @@ _Avoid_: Tool list, MCP catalog, model skills
 A structured proposal for the next dialogue act, fact delta, escalation, or completion candidate during a bounded interaction.
 _Avoid_: Agent action, autonomous decision
 
+**Disclosure Gate**:
+The deterministic, versioned check that decides whether validated Fast text may be shown to a person, treating every line as if the Provider could read it. A rejection replaces the text with a fixed fallback line; it never fails the Consumer's turn.
+_Avoid_: Safety filter, content moderation, Judge
+
+**Assistant Message**:
+A Runtime-authored visible Case event carrying the one dialogue line shown after each applied Consumer event: Fast text that passed the Disclosure Gate, or the fixed fallback. It is dialogue, never authority: no approval, execution, or completion depends on it.
+_Avoid_: Fast response, model reply, bot message
+
 **Action Intent**:
 A typed request to perform a side effect that remains inert until deterministic policy and approval checks authorize it.
 _Avoid_: Tool call, command

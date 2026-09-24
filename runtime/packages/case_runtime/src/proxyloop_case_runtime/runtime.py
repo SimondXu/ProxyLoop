@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from threading import RLock
-from typing import Any, Literal
+from typing import Any, Final, Literal
 from uuid import UUID
 
 from proxyloop_agent_core import (
@@ -22,9 +22,11 @@ from proxyloop_agent_core import (
     FastAdapter,
     PreparedSimulatorExecution,
     RouteRequest,
+    ScriptedDialogueFastAdapter,
     ScriptedFastAdapter,
     ScriptedSlowAdapter,
     SlowAdapter,
+    fast_disclosure_violations,
 )
 from proxyloop_connectors import BINDING_REF, CHANNEL_KIND
 from proxyloop_contracts import (
@@ -102,6 +104,12 @@ DeliveryStatus = Literal["pending", "accepted", "delivered", "bounced"]
 RUNTIME_PROVIDER_CONFIG = "pine-mobile:runtime-v1"
 RUNTIME_MANIFEST_VERSION = "phase-04a-runtime-v1"
 SCRIPTED_CASE_ID = Phase01AEpisode.success().case.case_id
+# The Runtime-authored dialogue line after each applied consumer event; a
+# caller can never append this event type.
+ASSISTANT_MESSAGE_EVENT_TYPE: Final = "assistant_message"
+# Delivered in place of Fast text the disclosure gate withheld.
+FAST_FALLBACK_TEXT: Final = BOUNDED_FAST_STATUS_TEXT
+_SCRIPTED_FAST_TYPES = (ScriptedFastAdapter, ScriptedDialogueFastAdapter)
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,7 +222,7 @@ class ThinAgentRuntime:
         )
         self._clock = clock or (lambda: datetime.now(UTC))
         self._slow = slow if slow is not None else ScriptedSlowAdapter()
-        self._fast = fast if fast is not None else ScriptedFastAdapter()
+        self._fast = fast if fast is not None else ScriptedDialogueFastAdapter()
         self._lanes_lock = RLock()
         self._lanes: dict[UUID, RLock] = {}
         self._executors: dict[UUID, CapabilityExecutor] = {}
@@ -833,6 +841,8 @@ class ThinAgentRuntime:
         occurred_at: datetime | None = None,
         command_fingerprint: str | None = None,
     ) -> RuntimeResult:
+        if event_type == ASSISTANT_MESSAGE_EVENT_TYPE:
+            raise ValueError("assistant_message events are Runtime-authored only")
         with self._lane(case_id):
             return self._append_event_serialized(
                 case_id,
@@ -911,10 +921,16 @@ class ThinAgentRuntime:
             ),
             fast=self._fast,
         )
-        if (
-            outcome.status is not CoordinatorStatus.ACCEPTED
-            or outcome.fast_decision is None
+        # Gate-passed Fast text is delivered; gate-withheld text is replaced by
+        # the fallback and the command still applies; a validation reject fails.
+        if outcome.fast_disclosure_rejected:
+            line = FAST_FALLBACK_TEXT
+        elif (
+            outcome.status is CoordinatorStatus.ACCEPTED
+            and outcome.fast_decision is not None
         ):
+            line = outcome.fast_decision.response_text
+        else:
             raise ModelRuntimeError("fast")
         policy_snapshot = event_snapshot
         approval: ApprovalRequest | None = None
@@ -952,6 +968,31 @@ class ThinAgentRuntime:
             )
         )
         route = routed.route
+        # The assistant line is appended last, after routing (which needs the
+        # trigger as the latest event), at the same snapshot revision.
+        assistant = _event(
+            case_id,
+            cursor=policy_snapshot.event_cursor + 1,
+            occurred_at=occurred_at,
+            event_type=ASSISTANT_MESSAGE_EVENT_TYPE,
+            content=line,
+            seed=f"{policy_snapshot.event_cursor + 1}:{ASSISTANT_MESSAGE_EVENT_TYPE}",
+            actor=EventActor.SYSTEM,
+        )
+        policy_snapshot = _snapshot(
+            case=policy_snapshot.case,
+            ledger=policy_snapshot.fact_ledger,
+            strategy=policy_snapshot.strategy,
+            offers=policy_snapshot.offers,
+            action_intents=policy_snapshot.action_intents,
+            approvals=policy_snapshot.approval_requests,
+            evidence=policy_snapshot.evidence,
+            completion=None,
+            events=(*policy_snapshot.visible_events, assistant),
+            snapshot_revision=policy_snapshot.revision,
+            phase=policy_snapshot.case.phase,
+            manifest=policy_snapshot.capability_manifest,
+        )
         transitions = state.transitions
         if command_id is not None:
             transitions = (
@@ -968,7 +1009,7 @@ class ThinAgentRuntime:
             )
         updated = CaseRuntimeState(
             snapshot=policy_snapshot,
-            events=(*state.events, event),
+            events=(*state.events, event, assistant),
             provider=state.provider,
             execution_count=state.execution_count,
             execution_source_pins=state.execution_source_pins,
@@ -1653,7 +1694,12 @@ class ThinAgentRuntime:
         # clock's reading for the operation, and lasts the measured latency.
         # The Runtime clock itself is not handed over: every extra read would
         # move the operation times an injected clock defines.
-        return CaseCoordinator(snapshot=snapshot, monotonic=time.perf_counter)
+        # Only the Runtime gates Fast text for display; ML callers do not.
+        return CaseCoordinator(
+            snapshot=snapshot,
+            monotonic=time.perf_counter,
+            fast_gate=fast_disclosure_violations,
+        )
 
     def now(self) -> datetime:
         """Return the Runtime clock's current UTC time."""
@@ -2216,7 +2262,7 @@ def _channel_repository(repository: CaseRepository) -> Any:
 
 
 def _infer_adapter_mode(fast: FastAdapter, slow: SlowAdapter) -> AdapterMode:
-    if isinstance(fast, ScriptedFastAdapter) and isinstance(slow, ScriptedSlowAdapter):
+    if isinstance(fast, _SCRIPTED_FAST_TYPES) and isinstance(slow, ScriptedSlowAdapter):
         return "scripted"
     return "model"
 
@@ -2228,6 +2274,8 @@ def _infer_storage_mode(repository: CaseRepository) -> StorageMode:
 
 
 __all__ = [
+    "ASSISTANT_MESSAGE_EVENT_TYPE",
+    "FAST_FALLBACK_TEXT",
     "SCRIPTED_CASE_ID",
     "AdapterMode",
     "CaseConflictError",

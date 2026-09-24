@@ -2282,6 +2282,329 @@ describe("ConversationWorkspace", () => {
     expect(within(rail).queryByText("Runtime fact")).not.toBeInTheDocument();
   });
 
+  it("8b: renders the assistant line from the GET payload after confirmConstraint, never from fast", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const approval = {
+      action_intent_revision: 1,
+      approval_id: "22222222-2222-4222-8222-222222222222",
+      case_revision: 2,
+      decision: "pending",
+      expires_at: NORMAL_PENDING_APPROVAL_EXPIRES_AT,
+      material_terms_hash: "hash-1",
+    };
+    // The POST response carries no line and a `fast` echo; only the GET does.
+    const posted = payload({
+      approval,
+      event_cursor: 2,
+      fast: { dialogue_act: "clarify", response_text: "FAST ECHO MUST NOT RENDER" },
+      revision: 4,
+      route: "wait_for_approval",
+      snapshot: { ...payload().snapshot, visible_events: [CONSUMER_CONFIRMATION] },
+    });
+    const read = payload({
+      approval,
+      event_cursor: 3,
+      fast: { dialogue_act: "clarify", response_text: "FAST ECHO MUST NOT RENDER" },
+      revision: 4,
+      route: "wait_for_approval",
+      snapshot: {
+        ...payload().snapshot,
+        visible_events: [CONSUMER_CONFIRMATION, assistantEvent(3, SCRIPTED_LINE)],
+      },
+    });
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockResolvedValue(posted);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload(), read]);
+    expect(screen.queryByText(AUTOMATED_LABEL)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Accept these exact fictional terms?" })).toBeInTheDocument());
+
+    const dialogue = screen.getByRole("region", { name: "Automated messages" });
+    expect(within(dialogue).getByText(SCRIPTED_LINE)).toBeInTheDocument();
+    expect(within(dialogue).getByText(AUTOMATED_LABEL)).toBeInTheDocument();
+    expect(screen.queryByText("FAST ECHO MUST NOT RENDER")).not.toBeInTheDocument();
+    expect(screen.queryByText("Keep mobile hotspot and device financing unchanged. Continue with the fictional offer.")).not.toBeInTheDocument();
+    expect(runtime.getCase).toHaveBeenCalledTimes(2);
+    expect(screen.getByPlaceholderText("Message ProxyLoop")).toBeEnabled();
+  });
+
+  it("8b: re-renders assistant lines from the authoritative GET on restore", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    runtime.savePersistedWorkspace(storedWorkspace(null));
+    vi.mocked(runtime.checkReadiness).mockResolvedValue(DURABLE_READY);
+    vi.mocked(runtime.getCase).mockResolvedValue(payload({
+      event_cursor: 5,
+      revision: 4,
+      snapshot: {
+        ...payload().snapshot,
+        visible_events: [
+          assistantEvent(5, "Second line."),
+          CONSUMER_CONFIRMATION,
+          assistantEvent(3, SCRIPTED_LINE),
+        ],
+      },
+    }));
+
+    render(<ConversationWorkspace />);
+
+    const dialogue = await screen.findByRole("region", { name: "Automated messages" });
+    const lines = within(dialogue).getAllByRole("article");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toHaveTextContent(SCRIPTED_LINE);
+    expect(lines[1]).toHaveTextContent("Second line.");
+    expect(within(dialogue).getAllByText(AUTOMATED_LABEL)).toHaveLength(2);
+    expect(runtime.getCase).toHaveBeenCalledWith(payload().case_id);
+  });
+
+  it("8b: renders assistant line content as literal text, never as HTML", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const markup = '<script>window.__proxyloopInjected = true</script><img src=x onerror="alert(1)"><b>bold</b>';
+    runtime.savePersistedWorkspace(storedWorkspace(null));
+    vi.mocked(runtime.checkReadiness).mockResolvedValue(DURABLE_READY);
+    vi.mocked(runtime.getCase).mockResolvedValue(payload({
+      event_cursor: 3,
+      snapshot: { ...payload().snapshot, visible_events: [CONSUMER_CONFIRMATION, assistantEvent(3, markup)] },
+    }));
+
+    render(<ConversationWorkspace />);
+
+    const dialogue = await screen.findByRole("region", { name: "Automated messages" });
+    expect(within(dialogue).getByText(markup)).toBeInTheDocument();
+    expect(dialogue.querySelector("script, img, b")).toBeNull();
+    expect((window as unknown as { __proxyloopInjected?: boolean }).__proxyloopInjected).toBeUndefined();
+  });
+
+  it.each([
+    ["no visible_events", undefined],
+    ["only consumer and provider events", [
+      visibleEvent(1, "provider", "provider_offer", "Fictional offer."),
+      CONSUMER_CONFIRMATION,
+    ]],
+    ["only malformed assistant entries", [
+      visibleEvent(3, "consumer", "assistant_message", "Wrong actor."),
+      visibleEvent(4, "system", "assistant_message", 42),
+      visibleEvent(-1, "system", "assistant_message", "Negative cursor."),
+      visibleEvent(5, "system", "approval_expired", "Wrong type."),
+    ]],
+  ])("8b: renders no automated message when the payload has %s", async (_label, visibleEvents) => {
+    const runtime = await import("../../lib/runtime-client");
+    runtime.savePersistedWorkspace(storedWorkspace(null));
+    vi.mocked(runtime.checkReadiness).mockResolvedValue(DURABLE_READY);
+    vi.mocked(runtime.getCase).mockResolvedValue(payload({
+      snapshot: { ...payload().snapshot, visible_events: visibleEvents },
+    }));
+
+    render(<ConversationWorkspace />);
+
+    expect(await screen.findByRole("heading", { name: "Here is what I will work from." })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Automated messages" })).not.toBeInTheDocument();
+    expect(screen.queryByText(AUTOMATED_LABEL)).not.toBeInTheDocument();
+    expect(screen.queryByText("Wrong actor.")).not.toBeInTheDocument();
+  });
+
+  it("8b M1: a repeated cursor renders one line and no React key warning", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    runtime.savePersistedWorkspace(storedWorkspace(null));
+    vi.mocked(runtime.checkReadiness).mockResolvedValue(DURABLE_READY);
+    vi.mocked(runtime.getCase).mockResolvedValue(payload({
+      event_cursor: 3,
+      snapshot: {
+        ...payload().snapshot,
+        visible_events: [
+          CONSUMER_CONFIRMATION,
+          assistantEvent(3, SCRIPTED_LINE),
+          assistantEvent(3, "A repeated cursor must not render."),
+        ],
+      },
+    }));
+
+    render(<ConversationWorkspace />);
+
+    const dialogue = await screen.findByRole("region", { name: "Automated messages" });
+    expect(within(dialogue).getAllByRole("article")).toHaveLength(1);
+    expect(within(dialogue).getByText(SCRIPTED_LINE)).toBeInTheDocument();
+    expect(screen.queryByText("A repeated cursor must not render.")).not.toBeInTheDocument();
+    const keyWarnings = consoleError.mock.calls.filter((call) => call.some(
+      (argument) => typeof argument === "string" && argument.includes("same key"),
+    ));
+    expect(keyWarnings).toEqual([]);
+  });
+
+  it("8b M3a: Restart drops Case A's lines and Case B shows none of them", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const caseA = payload({
+      event_cursor: 3,
+      snapshot: { ...payload().snapshot, visible_events: [CONSUMER_CONFIRMATION, assistantEvent(3, "Case A line.")] },
+    });
+    const caseBRecord = { ...caseRecord, case_id: "33333333-3333-4333-8333-333333333333" };
+    const caseB = payload({
+      case: caseBRecord,
+      case_id: caseBRecord.case_id,
+      snapshot: { case: caseBRecord, offers: [offer] },
+    });
+    vi.mocked(runtime.createCase).mockReset().mockResolvedValueOnce(caseA).mockResolvedValueOnce(caseB);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [caseA]);
+    expect(screen.getByText("Case A line.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /New task/ }));
+    expect(screen.queryByText("Case A line.")).not.toBeInTheDocument();
+
+    await completeLocalIntake(true, "yes", true, [caseB]);
+    expect(runtime.getCase).toHaveBeenLastCalledWith(caseBRecord.case_id);
+    expect(screen.queryByText("Case A line.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Automated messages" })).not.toBeInTheDocument();
+  });
+
+  it("8b M3b: a stale poll read (lower revision or cursor) does not roll the lines back", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const finalizing = payload({
+      event_cursor: 3,
+      revision: 6,
+      route: "fast_now",
+      snapshot: {
+        ...payload().snapshot,
+        pending_execution: true,
+        visible_events: [CONSUMER_CONFIRMATION, assistantEvent(3, SCRIPTED_LINE)],
+      },
+    });
+    const lowerRevision = payload({
+      event_cursor: 3,
+      revision: 5,
+      route: "fast_now",
+      snapshot: { ...payload().snapshot, pending_execution: true, visible_events: [CONSUMER_CONFIRMATION] },
+    });
+    const lowerCursor = { ...lowerRevision, event_cursor: 2, revision: 6 };
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(finalizing);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.useFakeTimers();
+    vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...finalizing }));
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await flushMicrotasks();
+    expect(screen.getByText(SCRIPTED_LINE)).toBeInTheDocument();
+    const reads = vi.mocked(runtime.getCase).mock.calls.length;
+
+    vi.mocked(runtime.getCase).mockImplementation(async () => ({ ...lowerRevision }));
+    await flushMicrotasks(1500);
+    expect(runtime.getCase).toHaveBeenCalledTimes(reads + 1);
+    expect(screen.getByText(SCRIPTED_LINE)).toBeInTheDocument();
+
+    vi.mocked(runtime.getCase).mockImplementation(async () => ({ ...lowerCursor }));
+    await flushMicrotasks(1500);
+    expect(runtime.getCase).toHaveBeenCalledTimes(reads + 2);
+    expect(screen.getByText(SCRIPTED_LINE)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("PR-10: the Agent status bar renders the authoritative snapshot through approval and completion, never fast", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const fastEcho = { dialogue_act: "clarify", response_text: "FAST ECHO MUST NOT RENDER" };
+    const created = payload({ snapshot: { ...payload().snapshot, offers: [], phase: "strategy" } });
+    const approval = {
+      action_intent_revision: 1,
+      approval_id: "22222222-2222-4222-8222-222222222222",
+      case_revision: 2,
+      decision: "pending",
+      expires_at: NORMAL_PENDING_APPROVAL_EXPIRES_AT,
+      material_terms_hash: "hash-1",
+    };
+    const waiting = payload({
+      approval,
+      fast: fastEcho,
+      revision: 4,
+      route: "wait_for_approval",
+      snapshot: { ...payload().snapshot, phase: "awaiting_approval" },
+    });
+    const completed = payload({
+      approval: { ...approval, decision: "approved" },
+      completion: { decision: "complete", evidence_ids: ["evidence-1"] },
+      evidence: [{ evidence_id: "evidence-1" }],
+      execution_count: 1,
+      revision: 7,
+      route: "terminal",
+      snapshot: { ...payload().snapshot, pending_execution: false, phase: "complete" },
+    });
+    const eventPost = deferred<RuntimePayload>();
+    vi.mocked(runtime.createCase).mockResolvedValue(created);
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockReturnValue(eventPost.promise);
+    vi.mocked(runtime.decideApproval).mockResolvedValue(completed);
+
+    render(<ConversationWorkspace />);
+    expect(screen.queryByRole("region", { name: "Agent status" })).not.toBeInTheDocument();
+    await completeLocalIntake(true, "yes", true, [created, waiting, completed]);
+
+    // The Case waits for the consumer (confirm phase): no planning claim.
+    const rail = screen.getByRole("complementary", { name: "Current task context" });
+    let bar = within(rail).getByRole("region", { name: "Agent status" });
+    expect(bar).toHaveTextContent("Waiting for you to confirm the Task Brief.");
+    expect(bar).not.toHaveTextContent("Planning");
+    expect(within(bar).getByText("Goal").nextElementSibling).toHaveTextContent("$75.00 or below per month (current bill $92.00)");
+    expect(within(bar).getByText("Current offer").nextElementSibling).toHaveTextContent("No offer yet");
+
+    // Planning only while the confirmation command actually runs (working).
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await waitFor(() => expect(within(rail).getByRole("region", { name: "Agent status" })).toHaveTextContent("Planning from your confirmed goal."));
+    eventPost.resolve(waiting);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Accept these exact fictional terms?" })).toBeInTheDocument());
+    bar = within(rail).getByRole("region", { name: "Agent status" });
+    expect(bar).toHaveTextContent("Waiting for your approval of the exact terms.");
+    expect(within(bar).getByText("Approval").nextElementSibling).toHaveTextContent(`Pending · expires ${NORMAL_PENDING_APPROVAL_EXPIRES_AT}`);
+    expect(within(bar).getByText("Current offer").nextElementSibling).toHaveTextContent("fictional_mobile_provider · $72.00/month");
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve exact terms" }));
+    expect(await screen.findByRole("heading", { name: "Completed with supporting Evidence" })).toBeInTheDocument();
+    bar = within(rail).getByRole("region", { name: "Agent status" });
+    expect(bar).toHaveTextContent("Done: the Runtime verified completion against Provider Evidence.");
+    expect(within(bar).getByText("Completion").nextElementSibling).toHaveTextContent("Verified complete · 1 matching Evidence ID · receipt shown");
+    expect(screen.queryByText(/FAST ECHO MUST NOT RENDER/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /New task/ }));
+    expect(screen.queryByRole("region", { name: "Agent status" })).not.toBeInTheDocument();
+  });
+
+  it("PR-10 I-1: after a rejected read Blocks the workspace, the bar stops describing the held approval", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const approval = {
+      action_intent_revision: 1,
+      approval_id: "22222222-2222-4222-8222-222222222222",
+      case_revision: 2,
+      decision: "pending",
+      expires_at: NORMAL_PENDING_APPROVAL_EXPIRES_AT,
+      material_terms_hash: "hash-1",
+    };
+    const waiting = payload({ approval, revision: 4, route: "wait_for_approval" });
+    const driftedCase = { ...caseRecord, bill_snapshot: { monthly_total: { amount_minor: 9300, currency: "USD" } } };
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(waiting);
+    vi.mocked(runtime.decideApproval).mockReset().mockResolvedValue(payload({ revision: 5 }));
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [
+      payload(),
+      waiting,
+      { ...waiting, case: driftedCase, revision: 5, snapshot: { case: driftedCase, offers: [offer] } },
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Accept these exact fictional terms?" })).toBeInTheDocument());
+    const rail = screen.getByRole("complementary", { name: "Current task context" });
+    expect(within(rail).getByRole("region", { name: "Agent status" })).toHaveTextContent("Waiting for your approval of the exact terms.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve exact terms" }));
+    expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
+    const bar = within(rail).getByRole("region", { name: "Agent status" });
+    expect(bar).toHaveTextContent("Stopped — state not verified. Reconnect or restart the local demo.");
+    expect(bar).toHaveTextContent("as of Case revision 4");
+    expect(bar).not.toHaveTextContent("Waiting for your approval");
+  });
+
   it.each([
     ["$92.00.", "$92.00"],
     ["$92.", "$92.00"],
@@ -2393,6 +2716,35 @@ function storedWorkspace(pendingCommand: typeof storedPendingEvent | null) {
     pendingCommand,
   };
 }
+
+const AUTOMATED_LABEL =
+  "ProxyLoop AI · automated message — it cannot accept, sign, or change anything without your approval.";
+const SCRIPTED_LINE = "Noted. I'll keep your required features and forbidden changes in view.";
+
+// Browser projection of a visible event: exactly VISIBLE_EVENT_KEYS in
+// tests/integration/test_browser_projection_allowlist.py (the projection
+// drops the canonical event_id).
+function visibleEvent(eventCursor: unknown, actor: unknown, eventType: unknown, content: unknown) {
+  return {
+    actor,
+    content,
+    event_cursor: eventCursor,
+    event_type: eventType,
+    occurred_at: "2026-08-25T12:00:00Z",
+  };
+}
+
+// PR-8 §4.1: a runtime-authored line at trigger cursor + 1, actor SYSTEM.
+function assistantEvent(eventCursor: number, content: string) {
+  return visibleEvent(eventCursor, "system", "assistant_message", content);
+}
+
+const CONSUMER_CONFIRMATION = visibleEvent(
+  2,
+  "consumer",
+  "consumer_message",
+  "Keep mobile hotspot and device financing unchanged. Continue with the fictional offer.",
+);
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

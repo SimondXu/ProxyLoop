@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   appendConsumerEvent,
   appendConsumerEventRequestBody,
+  type AssistantLine,
+  assistantLines,
   checkReadiness,
   clearPersistedWorkspace,
   completionHasVerifiedEvidence,
@@ -22,10 +24,13 @@ import {
   savePersistedWorkspace,
   type PersistedPendingCommand,
   type PersistedWorkspaceState,
+  phaseForPayload,
   RuntimeClientError,
   type RuntimeMoney,
   type RuntimePayload,
 } from "../../lib/runtime-client";
+import { formatMoney } from "../../lib/format";
+import { renderStatusBlock } from "../../lib/status-block";
 import { StatusBadge } from "./status-badge";
 
 type WorkspacePhase =
@@ -246,21 +251,6 @@ function humanize(value: string): string {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function formatMoney(value: unknown): string {
-  const amountMinor = integerAt(value, "amount_minor");
-  const currency = stringAt(value, "currency");
-  if (amountMinor === null || currency === null) return "Unavailable";
-  try {
-    return new Intl.NumberFormat("en-US", {
-      currency,
-      maximumFractionDigits: 2,
-      style: "currency",
-    }).format(amountMinor / 100);
-  } catch {
-    return `${currency} ${(amountMinor / 100).toFixed(2)}`;
-  }
-}
-
 // The projection carries `UsageProfile.data_megabytes` (E-9); show it verbatim.
 function formatDataUsage(usage: JsonObject | null): string {
   const megabytes = integerAt(usage, "data_megabytes");
@@ -300,6 +290,54 @@ function AssistantMessage({ children }: { children: ReactNode }) {
         <div className="message-bubble">{children}</div>
       </div>
     </article>
+  );
+}
+
+const AUTOMATED_LINE_LABEL =
+  "ProxyLoop AI · automated message — it cannot accept, sign, or change anything without your approval.";
+
+// Runtime-authored lines from snapshot.visible_events (PR-8 I10), rendered as
+// plain React text only; each carries the automated-message label.
+function DialogueArtifact({ lines }: { lines: AssistantLine[] }) {
+  if (lines.length === 0) return null;
+  return (
+    <section aria-label="Automated messages">
+      {lines.map((line) => (
+        <AssistantMessage key={line.eventCursor}>
+          <p>{line.text}</p>
+          <p className="artifact-note">{AUTOMATED_LINE_LABEL}</p>
+        </AssistantMessage>
+      ))}
+    </section>
+  );
+}
+
+// Agent Status Bar (PR-10): rows come only from renderStatusBlock over the
+// accepted authoritative payload; this component adds no text of its own.
+// `blocked` is the workspace's own Blocked state: the held payload is then
+// not verified, and the bar says so instead of deriving an activity.
+// `awaitingConsumer` is the confirm phase: the Case waits for the consumer.
+function AgentStatusBar({
+  payload,
+  blocked,
+  awaitingConsumer,
+}: {
+  payload: RuntimePayload;
+  blocked: boolean;
+  awaitingConsumer: boolean;
+}) {
+  const status = renderStatusBlock(payload, { awaitingConsumer, blocked });
+  return (
+    <section aria-labelledby="agent-status-title" className="context-section agent-status">
+      <span className="context-label" id="agent-status-title">Agent status</span>
+      <strong>{status.doingNow}</strong>
+      <p>{status.asOf}</p>
+      <dl>
+        {status.rows.map((row) => (
+          <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>
+        ))}
+      </dl>
+    </section>
   );
 }
 
@@ -728,20 +766,6 @@ export function ConversationWorkspace() {
     payloadRef.current = next;
     setPayload(next);
     return true;
-  }
-
-  function phaseForPayload(next: RuntimePayload): WorkspacePhase {
-    if (next.completion.decision === "complete") {
-      return completionHasVerifiedEvidence(next) ? "receipt" : "blocked";
-    }
-    const approval = next.approval;
-    if (approval?.decision === "expired") return "expired";
-    if (next.snapshot.pending_execution === true) return "finalizing";
-    if (approval?.decision === "pending") {
-      return hasValidPendingApproval(next) ? "approval" : "blocked";
-    }
-    if (approval?.decision && approval.decision !== "pending") return "blocked";
-    return "confirm";
   }
 
   function pendingCommand(
@@ -1395,7 +1419,10 @@ export function ConversationWorkspace() {
           ) : null}
 
           {payload && (phase === "confirm" || phase === "working" || phase === "finalizing" || phase === "approval" || phase === "receipt" || phase === "expired" || phase === "blocked") ? (
-            <AssistantMessage><TaskBriefArtifact blockedLabel={phase === "blocked" ? "Blocked" : staleRetryDropped ? "Reconnect to continue" : undefined} onConfirm={phase === "confirm" && !busy && !staleRetryDropped ? confirmConstraint : undefined} payload={payload} /></AssistantMessage>
+            <>
+              <AssistantMessage><TaskBriefArtifact blockedLabel={phase === "blocked" ? "Blocked" : staleRetryDropped ? "Reconnect to continue" : undefined} onConfirm={phase === "confirm" && !busy && !staleRetryDropped ? confirmConstraint : undefined} payload={payload} /></AssistantMessage>
+              <DialogueArtifact lines={assistantLines(payload)} />
+            </>
           ) : null}
 
           {payload && (phase === "working" || phase === "finalizing") ? <AssistantMessage><ProgressArtifact finalizing={phase === "finalizing"} payload={payload} /></AssistantMessage> : null}
@@ -1437,6 +1464,7 @@ export function ConversationWorkspace() {
       </section>
 
       <aside aria-label="Current task context" className="context-rail">
+        {payload ? <AgentStatusBar awaitingConsumer={phase === "confirm"} blocked={phase === "blocked"} payload={payload} /> : null}
         <div className="context-section">
           <span className="context-label">Current goal</span>
           <strong>{payload ? formatMoney(objectAt(goalRecord(payload), "target_monthly_total")) : "Runtime snapshot pending"}</strong>

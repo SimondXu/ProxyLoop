@@ -118,7 +118,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .user-turn .message-stack { max-width: min(620px, 90%); }
 .message-author { color: var(--faint-ink); display: block; font-size: .68rem; font-weight: 730; margin: 0 0 5px 2px; }
 .user-turn .message-author { text-align: right; }
-.message-bubble { color: var(--ink); font-size: .93rem; }
+.message-bubble { color: var(--ink); font-size: .93rem; overflow-wrap: anywhere; }
 .user-turn .message-bubble { background: var(--surface-tint); border-radius: 15px 15px 4px 15px; padding: 11px 14px; }
 .message-bubble p { margin: 0; }
 
@@ -193,6 +193,8 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .context-section dl div { display: flex; font-size: .77rem; justify-content: space-between; padding: 5px 0; }
 .context-section dt { color: var(--muted-ink); }
 .context-section dd { font-weight: 690; margin: 0; text-align: right; }
+.agent-status dl div { display: grid; gap: 2px; justify-content: stretch; }
+.agent-status dd { overflow-wrap: anywhere; text-align: left; }
 .shield-mark { color: var(--accent-dark); margin-right: 6px; }
 .context-detail-link { color: var(--accent-dark); font-size: .76rem; font-weight: 720; margin-top: 20px; }
 .sr-only { height: 1px; margin: -1px; overflow: hidden; position: absolute; width: 1px; clip: rect(0, 0, 0, 0); }
