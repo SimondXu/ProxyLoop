@@ -398,18 +398,41 @@ Root decisions on the focused re-review. The rule set is still
   - The timing table gained two of the reviewer's NFKC-expansion inputs, the
     un-expanded orphan-negation run, and one expanded input below the cap.
     Each is asserted < 250 ms; the measured numbers are in the log.
-- **M-2 both role cues.** In the window the role scan uses, a current cue that
-  is nearer the amount than the last target cue makes the amount ambiguous.
-  Before, target-first order decided. When the target cue is the nearer one,
-  or both start at the same place (`at most`), the target stands. Reading the
-  rule this way is an implementer interpretation. The literal "any clause with
-  both" would also make "Could you get my mobile bill down to $75?" ambiguous,
-  because `bill` is a current cue, and I-1 requires that sentence to read $75.
-  - Ambiguous now: "Hoping you can explain why my bill is $92", "I'm happy at
-    $92, I'd rather keep it", "I'd like to lower my phone bill that is
+- **M-2 tiered role cues (root decision).** The cues before an amount come in
+  tiers:
+  - Strong target cues: `target`, `budget`, `goal`, "want to pay", "would like
+    to pay", "only want to pay", "(want|like) it (to be|at)", "get … down to",
+    "bring … down to", "lower … to".
+  - Weak current cues: bare `bill`, `pay`/`paying`, `plan`.
+  - Strong current cues: `currently`, "right now", "now paying", "my bill is",
+    "I pay", "I'm paying", "(it|bill) (is|costs|comes to)".
+
+  A strong target cue beats a weak current cue. The amount is ambiguous when a
+  target cue of either tier meets a strong current cue.
+
+  Implementation notes:
+  - Under these rules the two target tiers act the same. A weak and a strong
+    target cue both beat a weak current cue and both lose to a strong current
+    cue. So the parser keeps one target list, which adds `like it (to be|at)`,
+    plus a separate strong-current list. The remaining earlier current cues
+    stay weak.
+  - `plan` is not added as a cue before an amount. It would read "Help me plan
+    a vacation for $2,000" as a current bill and open the card. It stays a cue
+    after an amount ("$92 plan").
+  - "I am paying" is a strong current cue together with "I'm paying".
+  - The `to` in "comes to" is not a target cue.
+  - `happy at` is both a target cue and a strong current cue. That is the only
+    way "I'm happy at $92" can come out ambiguous under this rule. As a
+    result, "I'd be happy at $75" is ambiguous too.
+
+  Outcomes:
+  - Read as the target: "My target is $75", "My budget is $75", "I only want to
+    pay $75", "would like to pay $80", and "Could you get my mobile bill down
+    to $75?".
+  - Ambiguous: "Hoping you can explain why my bill is $92", "I'm happy at $92,
+    I'd rather keep it", and "I'd like to lower my phone bill that is
     currently $92".
-  - **Previously read as values, now ambiguous:** "My budget is $75", "I only
-    want to pay $75", "would like to pay $80", "My target is $75".
+  - "My bill is $92 and I'd like $75" still reads current $92 and target $75.
 - **M-3 retractions.** A sentence that is only "No", or that holds "wait, no",
   "never mind", or "scratch that", casts doubt on every feature already named.
   A retraction clause needs no negation word to count.

@@ -315,15 +315,6 @@ scans, M-2, M-3); `conversation-workspace.tsx` (M-4 rule (c), M-5 copy); the
 fixture gained "Which phone should I take on a euro trip?" (real parser
 output); the pytest pin and tests.
 
-**Implementer interpretation (M-2), flagged for the root.** The literal rule
-"a clause with both a target and a current cue is ambiguous" would also make
-"Could you get my mobile bill down to $75?" ambiguous (`bill` is a current
-cue), which I-1 forbids. The implemented rule makes the amount ambiguous only
-when a current cue is nearer the amount than the last target cue. Four
-phrasings that were read as values before are now ambiguous and pinned:
-"My budget is $75", "I only want to pay $75", "would like to pay $80", "My
-target is $75". Under the literal rule they would be ambiguous as well.
-
 **Red → green.**
 
 - Pytest: the final test file against the pre-change parser (constant
@@ -373,3 +364,51 @@ cases) asserts < 250 ms per case; its largest measured value is 1.33 ms.
 **Not run.** The DB gates and a Browser pass were not run. This round changed
 the parser, the Web opening rule and failure copy, and tests. It did not
 change `app.py`, `CreateCaseRequest`, or any repository or Temporal path.
+
+### M-2 replaced by the root's tiered rule
+
+The root did not accept the implementer's "nearer current cue" reading. It
+made too many common target phrasings ambiguous. The root's tiered rule
+replaces it; the full rule is in the spec. In short: a target cue beats a weak
+current cue, and a target cue that meets a strong current cue leaves the
+amount without a role.
+
+Under this rule the two target tiers act the same, so the parser has one
+target list and a separate strong-current list. Four implementation choices
+are recorded in the spec:
+- `plan` is not a cue before an amount; the vacation case stays off-topic.
+- "I am paying" is strong, the same as "I'm paying".
+- The `to` in "comes to" is not a target cue.
+- `happy at` is also a strong current cue, so "I'd be happy at $75" is
+  ambiguous too.
+
+"would like to pay $80.25" is back in the comma-grouping test. "My budget is
+$75", "I only want to pay $75" and "My target is $75 and my bill is $92" are
+back to reading values.
+
+**Red → green.** The final test file against the `b16c97f` parser fails 9 of
+275:
+- the four restored value rows;
+- four strong-target rows: "My target is $75", "My budget is $75", "I only
+  want to pay $75", "I would like to pay $80";
+- the new "My bill comes to $92" row.
+
+All 275 pass after the change. The three root ambiguous examples, the I-1 set,
+and "Could you get my mobile bill down to $75?" pass on both versions.
+
+On a 25-sentence phrasing corpus, the amounts now match the parser from before
+the fourth amendment, except the intended I-1 cases. The corpus is in the
+scratch directory, not committed.
+
+**Checks** (tiered rule):
+
+| Check | Result |
+|---|---|
+| `make lint` | exit 0 |
+| `make typecheck` | exit 0 (59 files, no issues) |
+| `make test` | exit 0: runtime 1890 passed / 66 skipped; ML 397 / 1 skipped |
+| `make web-check` | exit 0: vitest 250 passed, `next build` |
+| `make preflight` | exit 0: runtime 1890 / 66, ML 397 / 1, vitest 250, gated-skip pin 66 |
+
+**Not run.** The DB gates and a Browser pass were not run; only the parser's
+role cues and tests changed in this step.

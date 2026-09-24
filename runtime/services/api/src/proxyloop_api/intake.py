@@ -135,11 +135,21 @@ _AFTER_TARGET = re.compile(
     r"^\s*(?:or\s+(?:less|lower|below|under|cheaper)|max(?:imum)?|tops|target|goal"
     r"|at\s+most)\b"
 )
+# Role cues before an amount (fourth amendment M-2, root decision). A target
+# cue beats a weak current cue ("I only want to pay $75"); a target cue that
+# meets a strong current cue leaves the amount without a role. Under these
+# rules strong and weak target cues act the same, so they share one list.
 _BEFORE_TARGET = re.compile(
-    r"\b(?:to|under|below|target|goal|at\s+most|no\s+more\s+than|less\s+than"
-    r"|lower\s+than|cheaper\s+than|max|maximum|reach|want|aim|budget"
-    r"|(?:i'd|i\s+would|would|we'd)\s+like|hoping|hope\s+for|happy\s+with"
-    r"|happy\s+at)\b"
+    r"\b(?:(?<!comes )to|under|below|target|goal|at\s+most|no\s+more\s+than"
+    r"|less\s+than|lower\s+than|cheaper\s+than|max|maximum|reach|want|aim|budget"
+    r"|(?:i'd|i\s+would|would|we'd)\s+like|like\s+it\s+(?:to\s+be|at)|hoping"
+    r"|hope\s+for|happy\s+with|happy\s+at)\b"
+)
+# "happy at" is also a strong current cue: "I'm happy at $92" may describe the
+# bill as it is.
+_STRONG_CURRENT = re.compile(
+    r"\b(?:currently|right\s+now|now\s+paying|i\s+pay|i'm\s+paying|i\s+am\s+paying"
+    r"|(?:it|bill)\s+(?:is|costs|comes\s+to)|happy\s+at)\b"
 )
 _BEFORE_CURRENT = re.compile(
     r"\b(?:currently|current|now|pay|paying|paid|is|are|was|cost|costs|costing"
@@ -366,16 +376,18 @@ def _role(segment: str, before: str, after: str) -> _Role | None:
     # The words since the previous amount decide; with no cue there, the
     # clause before the amount does ("target $75 or maybe $78"). Both see
     # only the bounded tail. A change cue nearer than any role cue ("save
-    # $20", "by $10") has no role, and so has a current cue nearer than the
-    # target cue ("hoping … my bill is $92", "happy at $92").
+    # $20", "by $10") has no role. A target cue beats a weak current cue
+    # ("I only want to pay $75"); a target cue with a strong current cue has
+    # no role ("hoping … my bill is $92").
     for words in (_tail(segment), tail):
         change = _last_match(_CHANGE_BEFORE, words)
         target = _last_match(_BEFORE_TARGET, words)
-        current = _last_match(_BEFORE_CURRENT, words)
+        strong_current = _last_match(_STRONG_CURRENT, words)
+        current = max(strong_current, _last_match(_BEFORE_CURRENT, words))
         if change > max(target, current):
             return None
         if target >= 0:
-            return "target" if target >= current else None
+            return None if strong_current >= 0 else "target"
         if current >= 0:
             return "current"
     return None

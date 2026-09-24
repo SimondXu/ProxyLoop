@@ -75,8 +75,11 @@ def test_a_full_sentence_proposes_all_four_typed_facts() -> None:
         ("Lower my bill from $92 to $75", 9200, 7500),
         ("Get my $92 bill down to $75", 9200, 7500),
         ("My bill is 92 dollars, target 75 USD", 9200, 7500),
-        ("I'm paying $1,092.50 and would like $80.25", 109250, 8025),
+        ("I'm paying $1,092.50 and would like to pay $80.25", 109250, 8025),
         ("Currently $92, $75 or less", 9200, 7500),
+        ("I pay $92. My budget is $75.", 9200, 7500),
+        ("My bill is $92 but I only want to pay $75", 9200, 7500),
+        ("My target is $75 and my bill is $92", 9200, 7500),
     ],
 )
 def test_amounts_are_assigned_by_their_cues(
@@ -498,19 +501,42 @@ def test_get_with_a_lowering_word_is_still_a_lowering_request() -> None:
     assert _clarifications(text)["current_monthly_total"] == "missing"
 
 
-# Fourth amendment M-2: a current cue nearer the amount than the target cue
-# that rule-2 order would pick makes the amount ambiguous. The last four were
-# read as values before the amendment; they are ambiguous now.
+# Fourth amendment M-2 (root decision, tiered cues): a strong target cue
+# beats a weak current cue; a target cue of either strength that meets a
+# strong current cue makes the amount ambiguous.
+@pytest.mark.parametrize(
+    ("text", "target"),
+    [
+        ("My target is $75", 7500),
+        ("My budget is $75", 7500),
+        ("I only want to pay $75", 7500),
+        ("I would like to pay $80", 8000),
+        ("Could you get my mobile bill down to $75?", 7500),
+        ("Bring my phone bill down to $75", 7500),
+        ("I want it to be $75", 7500),
+    ],
+)
+def test_a_strong_target_cue_beats_a_weak_current_cue(text: str, target: int) -> None:
+    body = _body(text)
+
+    assert body["proposal"]["target_monthly_total"] == _usd(target)
+    assert _clarifications(text)["current_monthly_total"] == "missing"
+
+
+def test_comes_to_is_a_current_cue_not_a_target_cue() -> None:
+    body = _body("My bill comes to $92")
+
+    assert body["proposal"]["current_monthly_total"] == _usd(9200)
+    assert _clarifications("My bill comes to $92")["target_monthly_total"] == "missing"
+
+
 @pytest.mark.parametrize(
     "text",
     [
         "Hoping you can explain why my bill is $92",
         "I'm happy at $92, I'd rather keep it",
         "I'd like to lower my phone bill that is currently $92",
-        "I pay $92. My budget is $75.",
-        "My bill is $92 but I only want to pay $75",
-        "I'm paying $92 and would like to pay $80",
-        "My target is $75 and my bill is $92",
+        "My goal is what I'm paying right now: $92",
     ],
 )
 def test_an_amount_with_both_role_cues_is_ambiguous(text: str) -> None:
