@@ -102,7 +102,7 @@ It confirmed the root's clock decision (only `monotonic` is passed).
 2. I2, a rejected model result is never persisted, so every stored trace
    has `result=SUCCEEDED`; the channel path also drops accepted traces on a
    `response_text` mismatch or an unauthorized send. Recorded below as the
-   remaining A-2 gap (needs a trace-only write or a side table: a new
+   remaining A-2 gap, already backlog R-12 (needs a trace-only write or a side table: a new
    decision, outside PR4's frozen "no separate write").
 3. M1, trace times are the Case operation time plus measured latency, not a
    wall-clock call window: a Slow refresh and the Fast call in the same
