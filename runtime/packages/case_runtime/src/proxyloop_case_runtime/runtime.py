@@ -70,10 +70,8 @@ from proxyloop_provider_simulator.provider import FictionalMobileProvider
 from proxyloop_telecom_domain import (
     AppliedOfferConfirmation,
     CompletionVerification,
-    OfferComplianceContext,
-    OfferComplianceTerms,
+    case_offer_violations,
     material_terms_hash,
-    offer_compliance_violations,
     offer_material_terms,
     verify_completion,
 )
@@ -1696,29 +1694,7 @@ def offer_compliance_violations_for_case(
     *,
     evaluated_at: datetime,
 ) -> tuple[str, ...]:
-    bill = case.bill_snapshot
-    target = case.goal.target_monthly_total
-    if bill is None:
-        return ("missing_bill_snapshot",)
-    context = OfferComplianceContext(
-        evaluated_at=evaluated_at,
-        current_monthly_minor=bill.monthly_total.amount_minor,
-        currency=bill.monthly_total.currency,
-        target_monthly_minor=target.amount_minor if target is not None else None,
-        target_currency=target.currency if target is not None else None,
-        required_features=case.goal.required_features,
-        forbidden_changes=case.goal.forbidden_changes,
-    )
-    terms = OfferComplianceTerms(
-        monthly_price_minor=offer.monthly_price.amount_minor,
-        total_cost_12_months_minor=offer.total_cost.amount_minor,
-        currency=offer.monthly_price.currency,
-        fees_minor=sum(item.amount.amount_minor for item in offer.fees),
-        features=offer.features,
-        applied_changes=(),
-        expires_at=offer.expires_at,
-    )
-    return offer_compliance_violations(context, terms)
+    return case_offer_violations(case, offer, evaluated_at=evaluated_at)
 
 
 def _build_approval(
