@@ -33,7 +33,7 @@ RENDERER_NAMES = (
 
 def _scanned_roots() -> list[Path]:
     # Every Runtime package and service source tree, plus all of `ml/`.
-    return sorted(ROOT.glob("runtime/*/*/src")) + [ROOT / "ml"]
+    return [*sorted(ROOT.glob("runtime/*/*/src")), ROOT / "ml"]
 
 
 def _imported_roots(path: Path) -> set[str]:
