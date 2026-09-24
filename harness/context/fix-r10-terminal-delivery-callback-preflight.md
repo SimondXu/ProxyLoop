@@ -39,9 +39,12 @@ No contract change, no `storage_version` bump.
 A `_ChannelRepository` variant round-trips every write through
 `PostgresCaseRepository._encode_state` / `_decode_state` (no database).
 
-- First delivered callback after COMPLETE: revision +1; completion decision,
-  receipt and execution source pins unchanged; a replayed observation of the
-  same delivery is still accepted.
+- First callback after COMPLETE (`delivered` and `bounced`): revision +1;
+  completion decision, receipt and execution source pins unchanged; event text
+  and Provider-event Evidence asserted; a replayed observation of the same
+  delivery is still accepted.
+- DB-gated, in `test_phase_06b1_channel_runtime.py` (`make phase06b1-check`):
+  the same flow on `PostgresCaseRepository`, re-read through a fresh instance.
 - A stored 1.0 COMPLETE Case stays 1.0 after the callback.
 - A source-pin cursor of `c ± 1` is rejected.
 - A non-delivery event after the approval decision (consumer message,

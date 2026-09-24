@@ -38,6 +38,11 @@ from test_phase_06b1_channel_runtime import (
 from test_strategy_basis_binding import _as_stored_1_0
 
 REJECTED = "Case state failed storage validation"
+ARTIFACT_HASH = hashlib.sha256(b"artifact").hexdigest()
+CALLBACK_CONTENT = {
+    "delivered": "The fictional Provider delivered the local reply.",
+    "bounced": "The fictional Provider bounced the local reply.",
+}
 
 
 def _round_trip(state: CaseRuntimeState) -> CaseRuntimeState:
@@ -158,7 +163,10 @@ def _completed(repository: _CodecChannelRepository) -> tuple[ThinAgentRuntime, U
 
 
 def _callback(
-    repository: _CodecChannelRepository, delivery_id: UUID, expected_revision: int
+    repository: _CodecChannelRepository,
+    delivery_id: UUID,
+    expected_revision: int,
+    delivery_status: str = "delivered",
 ) -> CaseCommand:
     delivery_event = _message_event(uuid4(), kind=LocalMailboxEventKind.DELIVERY)
     inbox = repository.reserve_channel_event(delivery_event, received_at=BASE_TIME)
@@ -174,8 +182,8 @@ def _callback(
         event_id=delivery_event.event_id,
         delivery_id=delivery_id,
         provider_message_id="local-provider-test",
-        delivery_status="delivered",
-        artifact_hash=hashlib.sha256(b"artifact").hexdigest(),
+        delivery_status=delivery_status,
+        artifact_hash=ARTIFACT_HASH,
         payload_hash=delivery_event.raw_payload_hash,
     )
 
@@ -188,7 +196,8 @@ def _delivered_after_complete() -> CaseRuntimeState:
     return _state(repository)
 
 
-def test_first_delivered_callback_after_complete_is_stored() -> None:
+@pytest.mark.parametrize("delivery_status", ["delivered", "bounced"])
+def test_first_callback_after_complete_is_stored(delivery_status: str) -> None:
     repository = _CodecChannelRepository()
     runtime, delivery_id = _completed(repository)
     before = _state(repository)
@@ -196,11 +205,11 @@ def test_first_delivered_callback_after_complete_is_stored() -> None:
     assert before.snapshot.completion_receipt is not None
 
     delivered = runtime.apply_command(
-        _callback(repository, delivery_id, before.snapshot.revision)
+        _callback(repository, delivery_id, before.snapshot.revision, delivery_status)
     )
 
     assert delivered.after_revision == before.snapshot.revision + 1
-    assert delivered.delivery_status == "delivered"
+    assert delivered.delivery_status == delivery_status
     after = _state(repository)
     assert after.snapshot.revision == before.snapshot.revision + 1
     assert after.snapshot.schema_version == "1.1"
@@ -211,14 +220,21 @@ def test_first_delivered_callback_after_complete_is_stored() -> None:
     assert after.execution_count == 1
     new_event = after.snapshot.visible_events[-1]
     assert new_event.event_type == "provider_event"
+    assert new_event.actor is EventActor.PROVIDER
+    assert new_event.content == CALLBACK_CONTENT[delivery_status]
     assert new_event.event_cursor == before.snapshot.event_cursor + 1
-    assert after.snapshot.evidence[-1].source_type is EvidenceType.PROVIDER_EVENT
+    evidence = after.snapshot.evidence[-1]
+    assert evidence.source_type is EvidenceType.PROVIDER_EVENT
+    assert evidence.source_ref == "local-provider-test"
+    assert evidence.content_hash == ARTIFACT_HASH
+    assert evidence.observed_at == new_event.occurred_at
+    assert after.snapshot.evidence[:-1] == before.snapshot.evidence
     assert len(repository.receipts) == 1
 
     # A replayed observation of the same delivery is written again as a
     # transition only; the terminal rule still accepts the stored Case.
     replayed = runtime.apply_command(
-        _callback(repository, delivery_id, after.snapshot.revision)
+        _callback(repository, delivery_id, after.snapshot.revision, delivery_status)
     )
     assert replayed.after_revision == after.snapshot.revision
     assert _state(repository).snapshot == after.snapshot
