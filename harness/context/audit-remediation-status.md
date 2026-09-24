@@ -16,22 +16,18 @@ spec and log named by the item it picks up.
 
 ## 0. Next session — start here
 
-No work is in flight. Every branch from the earlier sessions is merged
-(#72–#78), no PR is open, and no WIP branch remains; the remote branches
-still listed (`docs/audit-claim-corrections`,
-`fix/workflow-dedup-transition-guard`, `docs/handoff-p1-close`) belong to
-the merged #44, #46 and #71. P1 is closed. Resume in this order:
-
-1. **The rest of P2 (§4)**, grouped into batches — see the P2 batch plan
-   once recorded (the root is inventorying the open items now).
-2. **The §4a backlog**: R-2, R-5, R-6, R-11, R-12, R-13, R-14, R-15, R-16,
-   R-17, R-18, as the root schedules them. A separate fix task has been
-   proposed for R-15 (the flaky ML test); R-16 needs a second workflow
-   patch gate.
-3. **The proposal stages (§5).** **Before stage 1, ask the user about
-   decision 15** (training-after-V0 vs Phase 03C GO_DISTILLED); the Phase
-   03C next-phase choice (A promote / C Phase 07 / B 06B2) is also the
-   user's.
+**Resume from `harness/context/build-plan-to-complete.md`** (adopted
+2026-09-24): Wave 0 (in flight: #80 merged; #81 B1-9, #82 API hygiene and
+#83 contract-semantics limits open; `refactor/r14-basis-switch-owner`
+pushed), then Waves 1–6 = PR-1..PR-17 in order, under its serialization
+rules and "do not do" list. Decisions 16–20 in
+`harness/context/audit-remediation-decisions.md` govern it: 16 extends the
+authorization to a complete build within the unchanged hard limits; 17
+supersedes decision 15 (no V0, scripted gates, no further training); 18
+takes Phase 03C option A in local-only form ("local opt-in candidate"),
+then option C, and excludes option B (06B2); 19 keeps contract set 1.2
+narrow and droppable; 20 passes Stage 2 feedback outside the contract.
+The §4/§4a backlog and the §5 stages below are scheduled by that plan.
 
 Working mode: implementation, noisy checks and review run in subagents;
 the root decides, reviews the final diffs and merges. To bring a pushed
