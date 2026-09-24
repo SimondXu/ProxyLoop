@@ -403,7 +403,7 @@ def _expected_trajectory(
 
 
 def _intrinsic_rejection(raw: dict[str, object]) -> str | None:
-    if "source" not in raw:
+    if raw.get("source") is None:
         return "missing_provenance"
     raw_content = raw.get("learning_content")
     if _has_pii(raw_content):
@@ -415,17 +415,19 @@ def _intrinsic_rejection(raw: dict[str, object]) -> str | None:
     try:
         record = NormalizedTrajectory.model_validate(raw)
     except ValidationError:
-        return "missing_provenance"
+        return "schema_invalid"
+    if record.rejection_reasons:
+        return "declared_rejection"
     if record.source.license.status != "approved":
         return "unapproved_license"
     expected_record = _expected_trajectory(record)
     if expected_record is None:
-        return "split_mismatch"
+        return "unknown_derivation_parent"
     if (
         record.source != expected_record.source
         or record.generation != expected_record.generation
     ):
-        return "missing_provenance"
+        return "provenance_mismatch"
     model_content = record.learning_content.model_dump(mode="json")
     if _has_pii(model_content):
         return "pii_detected"
@@ -442,9 +444,9 @@ def _intrinsic_rejection(raw: dict[str, object]) -> str | None:
         "verification": record.verification.model_dump(mode="json"),
     }
     if record.content_hash != fingerprint(content_payload):
-        return "invalid_verifier_outcome"
+        return "hash_mismatch"
     if record.semantic_fingerprint != lexical_fingerprint(model_content):
-        return "invalid_verifier_outcome"
+        return "hash_mismatch"
     return None
 
 

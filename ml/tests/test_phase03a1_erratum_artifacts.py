@@ -21,7 +21,7 @@ from proxyloop_evaluation.fresh_fixtures import build_fresh_phase03a1_bundle
 from proxyloop_evaluation.models import (
     EvaluationReportV2,
 )
-from proxyloop_evaluation.replay_v2 import derive_r3_report_from_r2
+from proxyloop_evaluation.replay_v2 import derive_r3_report_from_r2, replay_report_v2
 from proxyloop_evaluation.runner_v2 import initial_report_v2
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -319,3 +319,44 @@ def test_check_replays_scripted_rows_after_a_valid_refingerprint(
 
     assert not ok
     assert any("scripted" in error and "replay" in error for error in errors)
+
+
+def test_committed_r2_labels_replay_except_where_r3_corrects() -> None:
+    """Audit D2-6: ``check_r2_artifacts`` skips r2 semantic replay once r3
+    exists.  Replay r2 here and pin the only mismatching conditions to the ones
+    whose rows r3 corrected, so any other r2 label drift fails."""
+
+    source = EvaluationReportV2.model_validate_json(
+        (ROOT / R2_REPORT_PATH).read_text(encoding="utf-8")
+    )
+    corrected = EvaluationReportV2.model_validate_json(
+        (ROOT / R3_REPORT_PATH).read_text(encoding="utf-8")
+    )
+    fixtures = build_fresh_phase03a1_bundle().fixtures
+    corrected_conditions = {
+        after.condition.value
+        for before, after in zip(source.conditions, corrected.conditions, strict=True)
+        if before.episodes != after.episodes
+    }
+
+    source_errors = replay_report_v2(source, fixtures=fixtures)
+
+    assert corrected_conditions == {"untuned_fast_frontier_slow_medium"}
+    assert {error.split(":", 1)[0] for error in source_errors} == (corrected_conditions)
+    assert replay_report_v2(corrected, fixtures=fixtures) == ()
+
+    changed_rows = [
+        (before_row.model_dump(mode="json"), after_row.model_dump(mode="json"))
+        for before, after in zip(source.conditions, corrected.conditions, strict=True)
+        for before_row, after_row in zip(before.episodes, after.episodes, strict=True)
+        if before_row != after_row
+    ]
+    assert len(changed_rows) == 1
+    before_row, after_row = changed_rows[0]
+    assert {key for key in before_row if before_row[key] != after_row[key]} == {
+        "failure_codes",
+        "route_agreement",
+    }
+    assert set(before_row["failure_codes"]) ^ set(after_row["failure_codes"]) == {
+        "router_outcome_mismatch"
+    }
