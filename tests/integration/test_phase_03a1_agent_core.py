@@ -1026,6 +1026,33 @@ def _deny_unsupported_capability(
     )
 
 
+def _deny_capability_action_mismatch(
+    snapshot: CaseContextSnapshot,
+    episode: Phase01AEpisode,
+    proposal: CapabilityProposal,
+) -> CapabilityExecutionRequest:
+    # The proposal still names a manifest capability, but that capability no
+    # longer allows the intent's action type; only the executor checks the two.
+    assert episode.action_intent is not None
+    manifest = snapshot.capability_manifest
+    narrowed = manifest.model_copy(
+        update={
+            "capabilities": tuple(
+                capability.model_copy(
+                    update={"allowed_action_types": (ActionType.SEND_MESSAGE,)}
+                )
+                for capability in manifest.capabilities
+            )
+        }
+    )
+    return _execution_request(
+        _rebuilt(snapshot, capability_manifest=narrowed),
+        proposal,
+        episode.action_intent,
+        episode.approval_request,
+    )
+
+
 def _deny_case_revision(
     snapshot: CaseContextSnapshot,
     episode: Phase01AEpisode,
@@ -1076,6 +1103,11 @@ def _deny_delegated_authority(
             _deny_unsupported_capability,
             "unsupported_capability",
             id="unsupported_capability",
+        ),
+        pytest.param(
+            _deny_capability_action_mismatch,
+            "capability_action_mismatch",
+            id="capability_action_mismatch",
         ),
         pytest.param(
             _deny_case_revision,
