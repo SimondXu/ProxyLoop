@@ -118,7 +118,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .user-turn .message-stack { max-width: min(620px, 90%); }
 .message-author { color: var(--faint-ink); display: block; font-size: .68rem; font-weight: 730; margin: 0 0 5px 2px; }
 .user-turn .message-author { text-align: right; }
-.message-bubble { color: var(--ink); font-size: .93rem; }
+.message-bubble { color: var(--ink); font-size: .93rem; overflow-wrap: anywhere; }
 .user-turn .message-bubble { background: var(--surface-tint); border-radius: 15px 15px 4px 15px; padding: 11px 14px; }
 .message-bubble p { margin: 0; }
 

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   appendConsumerEvent,
+  assistantLines,
   checkReadiness,
   clearPersistedWorkspace,
   completionHasVerifiedEvidence,
@@ -513,5 +514,107 @@ describe("runtime client", () => {
     expect(completionHasVerifiedEvidence({ ...completed, completion: { decision: "complete", evidence_ids: ["   "] } })).toBe(false);
     expect(completionHasVerifiedEvidence({ ...completed, execution_count: 2 })).toBe(false);
     expect(completionHasVerifiedEvidence({ ...completed, completion: { decision: "complete", evidence_ids: [] } })).toBe(false);
+  });
+
+  // Browser projection shape of a visible event (VISIBLE_EVENT_KEYS in
+  // tests/integration/test_browser_projection_allowlist.py).
+  function visibleEvent(eventCursor: unknown, actor: unknown, eventType: unknown, content: unknown) {
+    return {
+      actor,
+      content,
+      event_cursor: eventCursor,
+      event_type: eventType,
+      occurred_at: "2026-08-25T12:00:00Z",
+    };
+  }
+
+  it("keeps only well-formed system assistant_message lines, ordered by cursor", () => {
+    const payload = {
+      ...basePayload,
+      fast: { dialogue_act: "clarify", response_text: "Echo only; never read." },
+      snapshot: {
+        case: caseRecord,
+        visible_events: [
+          visibleEvent(5, "system", "assistant_message", "Second line."),
+          visibleEvent(1, "provider", "provider_offer", "Offer text."),
+          visibleEvent(2, "consumer", "consumer_message", "Consumer text."),
+          visibleEvent(3, "system", "assistant_message", "First line."),
+          visibleEvent(4, "consumer", "assistant_message", "Wrong actor."),
+          visibleEvent(6, "provider", "assistant_message", "Wrong actor."),
+          visibleEvent(7, "system", "approval_expired", "System, wrong type."),
+          visibleEvent(8, "system", "assistant_message", 42),
+          visibleEvent(9, "system", "assistant_message", { text: "object" }),
+          visibleEvent(10, "system", "assistant_message", ""),
+          visibleEvent(11, "system", "assistant_message", "   "),
+          visibleEvent(-1, "system", "assistant_message", "Negative cursor."),
+          visibleEvent(2.5, "system", "assistant_message", "Fractional cursor."),
+          visibleEvent("12", "system", "assistant_message", "String cursor."),
+          visibleEvent(null, "system", "assistant_message", "Null cursor."),
+          visibleEvent(0, "system", "assistant_message", "Cursor zero."),
+          null,
+          "system",
+          ["system", "assistant_message"],
+        ],
+      },
+    };
+
+    expect(assistantLines(payload)).toEqual([
+      { eventCursor: 0, text: "Cursor zero." },
+      { eventCursor: 3, text: "First line." },
+      { eventCursor: 5, text: "Second line." },
+    ]);
+  });
+
+  it("keeps the first well-formed entry for a repeated cursor", () => {
+    const payload = {
+      ...basePayload,
+      snapshot: {
+        case: caseRecord,
+        visible_events: [
+          visibleEvent(3, "system", "assistant_message", 7),
+          visibleEvent(3, "system", "assistant_message", "First at 3."),
+          visibleEvent(1, "system", "assistant_message", "Only at 1."),
+          visibleEvent(3, "system", "assistant_message", "Second at 3."),
+        ],
+      },
+    };
+
+    expect(assistantLines(payload)).toEqual([
+      { eventCursor: 1, text: "Only at 1." },
+      { eventCursor: 3, text: "First at 3." },
+    ]);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["null", null],
+    ["an object", { 0: visibleEvent(3, "system", "assistant_message", "Not a list.") }],
+    ["a string", "assistant_message"],
+  ])("returns no lines when visible_events is %s", (_label, visibleEvents) => {
+    const payload = { ...basePayload, snapshot: { case: caseRecord, visible_events: visibleEvents } };
+
+    expect(assistantLines(payload)).toEqual([]);
+  });
+
+  it("does not block a Case read on malformed dialogue entries", async () => {
+    const projected = {
+      ...basePayload,
+      snapshot: {
+        case: caseRecord,
+        visible_events: [
+          visibleEvent(2, "consumer", "consumer_message", "Keep both unchanged."),
+          visibleEvent(3, "system", "assistant_message", 7),
+          visibleEvent(4, "system", "assistant_message", "Noted."),
+        ],
+      },
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(projected), { status: 200 }),
+    ));
+
+    const parsed = await getCase(basePayload.case_id);
+
+    expect(hasValidTaskBrief(parsed, facts)).toBe(true);
+    expect(assistantLines(parsed)).toEqual([{ eventCursor: 4, text: "Noted." }]);
   });
 });
