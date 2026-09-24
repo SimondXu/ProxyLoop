@@ -31,6 +31,7 @@ const offer = {
 };
 
 const PENDING_EXPIRES_AT = "2026-09-24T18:30:00Z";
+const NOT_VERIFIED = "Stopped — state not verified. Reconnect or restart the local demo.";
 
 const pendingApproval = {
   action_intent_revision: 1,
@@ -175,7 +176,7 @@ describe("renderStatusBlock", () => {
       },
       { offers: [offer], phase: "complete" },
     ));
-    expect(block.doingNow).toBe("Stopped: the completion is not backed by matching Evidence.");
+    expect(block.doingNow).toBe(NOT_VERIFIED);
     expect(row(block, "Completion")).toBe("Complete claimed without matching Evidence · no receipt");
   });
 
@@ -192,21 +193,94 @@ describe("renderStatusBlock", () => {
     expect(row(block, "Completion")).toBe("Not Done · Approval Expired");
   });
 
-  it("renders a rejected approval as stopped", () => {
+  it("renders a rejected approval as not verified, as the workspace Blocks it", () => {
     const block = renderStatusBlock(payload(
       { approval: { ...pendingApproval, decision: "rejected" } },
       { offers: [offer], phase: "negotiating" },
     ));
-    expect(block.doingNow).toBe("Stopped: the approval was rejected and nothing was accepted.");
+    expect(block.doingNow).toBe(NOT_VERIFIED);
     expect(row(block, "Approval")).toBe("Rejected");
   });
 
   it.each([
     ["initiated", "Planning from your confirmed goal."],
-    ["candidate_complete", "Checking the Provider's confirmation before any receipt."],
-    ["closed", "The Case is closed."],
-  ])("maps phase %s to its doing-now line", (phase, line) => {
+    ["candidate_complete", "Waiting for the Runtime."],
+    ["closed", "Waiting for the Runtime."],
+  ])("maps phase %s with no approval to its doing-now line", (phase, line) => {
     expect(renderStatusBlock(payload({}, { phase })).doingNow).toBe(line);
+  });
+
+  // Review I-1: the bar follows the workspace's phaseForPayload.
+  it.each([
+    ["no material_terms_hash", { ...pendingApproval, material_terms_hash: undefined }],
+    ["an unparseable expiry", { ...pendingApproval, expires_at: "not-a-date" }],
+  ])("renders a pending approval with %s as not verified", (_name, invalid) => {
+    const block = renderStatusBlock(payload(
+      { approval: invalid },
+      { offers: [offer], phase: "awaiting_approval" },
+    ));
+    expect(block.doingNow).toBe(NOT_VERIFIED);
+  });
+
+  it("renders approved, not pending, not done as not verified", () => {
+    const block = renderStatusBlock(payload(
+      { approval: { ...pendingApproval, decision: "approved" } },
+      { offers: [offer], pending_execution: false, phase: "negotiating" },
+    ));
+    expect(block.doingNow).toBe(NOT_VERIFIED);
+  });
+
+  it("claims no activity for a terminal candidate_complete Case", () => {
+    const block = renderStatusBlock(payload(
+      {
+        approval: { ...pendingApproval, decision: "approved" },
+        completion: { decision: "candidate_complete", evidence_ids: ["evidence-1"], reason_codes: [] },
+        evidence: [{ evidence_id: "evidence-1" }],
+        execution_count: 1,
+      },
+      { offers: [offer], pending_execution: false, phase: "candidate_complete" },
+    ));
+    expect(block.doingNow).toBe(NOT_VERIFIED);
+    expect(block.doingNow).not.toMatch(/checking/i);
+    expect(row(block, "Completion")).toBe("Candidate Complete");
+  });
+
+  it("renders a held payload as not verified when the workspace is Blocked", () => {
+    const valid = payload({ approval: pendingApproval, revision: 4 }, { offers: [offer], phase: "awaiting_approval" });
+    expect(renderStatusBlock(valid).doingNow).toBe("Waiting for your approval of the exact terms.");
+    const block = renderStatusBlock(valid, { blocked: true });
+    expect(block.doingNow).toBe(NOT_VERIFIED);
+    expect(block.asOf).toBe("as of Case revision 4");
+  });
+
+  // Review I-2: same condition as the Progress artifact title (M-4).
+  it.each([
+    ["pending", { ...pendingApproval }],
+    ["null", null],
+  ])("says finalizing, not executing an approval, when the decision is %s", (_name, current) => {
+    const block = renderStatusBlock(payload(
+      { approval: current },
+      { offers: [offer], pending_execution: true, phase: "negotiating" },
+    ));
+    expect(block.doingNow).toBe("Finalizing the fictional transition; waiting for a verified result.");
+  });
+
+  it("names the Case revision the bar was rendered from", () => {
+    expect(renderStatusBlock(payload({ revision: 9 })).asOf).toBe("as of Case revision 9");
+  });
+
+  it("renders a fallback for empty decision strings", () => {
+    const block = renderStatusBlock(payload({
+      approval: { ...pendingApproval, decision: "" },
+      completion: { decision: "", evidence_ids: [] },
+    }));
+    expect(row(block, "Approval")).toBe("Not reported");
+    expect(row(block, "Completion")).toBe("Not reported");
+  });
+
+  it("uses the Offer artifact's wording for an unnamed Provider", () => {
+    const block = renderStatusBlock(payload({}, { offers: [{ ...offer, provider_id: undefined }] }));
+    expect(row(block, "Current offer")).toMatch(/^Fictional Provider · \$72\.00\/month/);
   });
 
   it("falls back when the projection carries no phase", () => {
@@ -262,7 +336,11 @@ describe("status-block module boundary", () => {
   it("is imported only by the conversation workspace", () => {
     const importers = [join(webRoot, "app"), join(webRoot, "lib")]
       .flatMap(sourceFiles)
-      .filter((path) => /from\s+["'][^"']*status-block["']/.test(readFileSync(path, "utf8")))
+      .filter((path) => {
+        const source = readFileSync(path, "utf8");
+        return /from\s+["'][^"']*status-block["']/.test(source) ||
+          /import\s*\(\s*["'`][^"'`]*status-block["'`]\s*\)/.test(source);
+      })
       .map((path) => relative(webRoot, path));
     expect(importers).toEqual(["app/components/conversation-workspace.tsx"]);
   });

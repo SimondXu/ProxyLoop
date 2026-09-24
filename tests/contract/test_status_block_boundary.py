@@ -1,9 +1,10 @@
 """PR-8 I12 / PR-10: the Agent Status Bar never becomes the Fast prompt.
 
-The Status Bar is rendered only in the Web (`apps/web/lib/status-block.ts`).
-The disclosure gate reads contract fields directly, and no Fast prompt,
-observation, or serving builder may import or re-create a status-block
-renderer.
+I12 is enforced by placement: the Status Bar renderer is TypeScript in the Web
+(`apps/web/lib/status-block.ts`), which no Python module can import. This test
+is a tripwire for the ways that could erode: the disclosure gate importing
+anything beyond the contracts, or any Runtime or ML source growing or naming a
+status-block renderer.
 """
 
 from __future__ import annotations
@@ -22,19 +23,17 @@ GATE = (
     / "proxyloop_agent_core"
     / "disclosure_gate.py"
 )
-# agent_core (gate, Fast view, observation), the hosted Fast prompt builder,
-# and every ML prompt, observation, data, and serving module.
-FAST_SIDE_ROOTS = (
-    ROOT / "runtime" / "packages" / "agent_core" / "src",
-    ROOT / "runtime" / "packages" / "openai_adapter" / "src",
-    ROOT / "ml",
-)
 RENDERER_NAMES = (
     "status_block",
     "render_status_block",
     "status-block",
     "renderStatusBlock",
 )
+
+
+def _scanned_roots() -> list[Path]:
+    # Every Runtime package and service source tree, plus all of `ml/`.
+    return sorted(ROOT.glob("runtime/*/*/src")) + [ROOT / "ml"]
 
 
 def _imported_roots(path: Path) -> set[str]:
@@ -63,8 +62,22 @@ def test_disclosure_gate_reads_contract_fields_directly() -> None:
     }
 
 
-def test_fast_side_sources_never_reference_a_status_block_renderer() -> None:
-    sources = [path for root in FAST_SIDE_ROOTS for path in _python_sources(root)]
+def test_every_scanned_root_has_python_sources() -> None:
+    roots = _scanned_roots()
+    names = {path.relative_to(ROOT).as_posix() for path in roots}
+    # The Fast-side seams must be among the scanned roots.
+    assert {
+        "runtime/packages/agent_core/src",
+        "runtime/packages/openai_adapter/src",
+        "runtime/packages/case_runtime/src",
+        "runtime/services/api/src",
+        "ml",
+    } <= names
+    assert all(_python_sources(root) for root in roots)
+
+
+def test_no_runtime_or_ml_source_names_a_status_block_renderer() -> None:
+    sources = [path for root in _scanned_roots() for path in _python_sources(root)]
     assert GATE in sources
     offenders = sorted(
         f"{path.relative_to(ROOT)}: {name}"

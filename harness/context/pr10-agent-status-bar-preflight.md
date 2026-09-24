@@ -154,3 +154,36 @@ item 4; log `harness/log/feat-pr10-agent-status-bar.md`.
 - The Status Bar is a rendering for the person, not a prompt. A prompt-side status
   block (proposal §7) is not built; if one is ever wanted for Slow, it is a separate
   root decision, and I12 keeps it away from Fast.
+
+## Amendment 2026-09-24 — independent review (Request Changes, I-1..I-3)
+
+The root accepted the two interpretations above ("Current offer"; execution status
+instead of delivery status) as recorded limits. The review fixes supersede the
+"Doing now" precedence in Decision 2:
+
+- **I-1.** The workspace's `phaseForPayload` moved to `runtime-client.ts` as the
+  single pure classifier, and both the workspace and `renderStatusBlock` use it.
+  `blocked` (either the payload's classification or the workspace's own Blocked
+  state, passed as `renderStatusBlock(payload, { blocked })`) renders "Stopped —
+  state not verified. Reconnect or restart the local demo." This covers an invalid
+  pending approval, an approved or rejected approval that is neither pending
+  execution nor complete (including `candidate_complete` after execution), an
+  unverified completion, and a stale payload kept after a rejected read. `receipt`,
+  `expired`, `finalizing`, and `approval` map to their lines. `confirm` falls back
+  to the Case phase: initiated/strategy is planning, negotiating is negotiating,
+  a missing phase is "report the Case phase", and any other phase is "Waiting for
+  the Runtime." The block also carries "as of Case revision N".
+- **I-2.** Finalizing names an approved transition only when
+  `approval.decision === "approved"`, the Progress artifact's M-4 condition.
+  Otherwise it reads "Finalizing the fictional transition; …".
+- **I-3.** The Python tripwire scans every `runtime/*/*/src` and `ml/`, asserts
+  each root has sources, and keeps the gate-imports check. I12 is enforced by
+  placement; the test is a tripwire.
+- Minors: an empty decision renders "Not reported"; an unnamed Provider reads
+  "Fictional Provider" (the Offer artifact's wording); money uses the shared
+  `apps/web/lib/format.ts`; the Web importer test also catches dynamic `import()`;
+  the section uses `aria-labelledby`.
+- New limit: the workspace's local deadline timer can disable Approve before the
+  Runtime has expired the approval. In that window the bar still shows the Runtime's
+  "Pending · expires …" and the approval line until an authoritative read reports
+  `expired`.

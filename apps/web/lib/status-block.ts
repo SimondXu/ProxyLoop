@@ -1,12 +1,27 @@
-import { completionHasVerifiedEvidence, type JsonObject, type RuntimePayload } from "./runtime-client";
+import { formatMoneyOrNull as money } from "./format";
+import {
+  completionHasVerifiedEvidence,
+  type JsonObject,
+  phaseForPayload,
+  type RuntimePayload,
+} from "./runtime-client";
 
 // The Agent Status Bar (PR-10): a deterministic rendering of the allow-listed
 // browser projection for the person reading the Case. This is the only place
 // its text is built. It reads no clock and no per-command model echo, and it is
-// never a model prompt (PR-8 I12): no Runtime or ML module imports it.
+// never a model prompt (PR-8 I12): no Runtime or ML module can import it.
+// The activity line follows the workspace's own classification
+// (`phaseForPayload`), so the bar never describes a state the rest of the Web
+// refuses to show.
 
 export type StatusRow = { label: string; value: string };
-export type StatusBlock = { doingNow: string; rows: StatusRow[] };
+export type StatusBlock = { doingNow: string; asOf: string; rows: StatusRow[] };
+
+// `blocked`: the workspace itself is Blocked (a rejected read, a mismatched
+// Case, a sticky block). The payload it still holds is then not verified.
+export type StatusBlockOptions = { blocked?: boolean };
+
+const NOT_VERIFIED = "Stopped — state not verified. Reconnect or restart the local demo.";
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -40,37 +55,27 @@ function strings(value: unknown[]): string[] {
   return value.filter((item): item is string => typeof item === "string" && item.trim() !== "");
 }
 
-function money(value: unknown): string | null {
-  const amountMinor = integerAt(value, "amount_minor");
-  const currency = stringAt(value, "currency");
-  if (amountMinor === null || currency === null) return null;
-  try {
-    return new Intl.NumberFormat("en-US", { currency, style: "currency" }).format(amountMinor / 100);
-  } catch {
-    return `${currency} ${(amountMinor / 100).toFixed(2)}`;
-  }
+function nonEmpty(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
-function doingNow(payload: RuntimePayload, phase: string | null): string {
-  if (payload.completion.decision === "complete") {
-    return completionHasVerifiedEvidence(payload)
-      ? "Done: the Runtime verified completion against Provider Evidence."
-      : "Stopped: the completion is not backed by matching Evidence.";
+function doingNow(payload: RuntimePayload, phase: string | null, options: StatusBlockOptions): string {
+  if (options.blocked) return NOT_VERIFIED;
+  const view = phaseForPayload(payload);
+  if (view === "blocked") return NOT_VERIFIED;
+  if (view === "receipt") return "Done: the Runtime verified completion against Provider Evidence.";
+  if (view === "expired") return "Stopped: the approval expired and nothing was accepted.";
+  if (view === "finalizing") {
+    // Same condition as the Progress artifact title (M-4).
+    return payload.approval?.decision === "approved"
+      ? "Executing the approved fictional transition; waiting for a verified result."
+      : "Finalizing the fictional transition; waiting for a verified result.";
   }
-  const decision = payload.approval?.decision;
-  if (decision === "expired") return "Stopped: the approval expired and nothing was accepted.";
-  if (decision === "rejected") return "Stopped: the approval was rejected and nothing was accepted.";
-  if (payload.snapshot.pending_execution === true) {
-    return "Executing the approved fictional transition; waiting for a verified result.";
-  }
-  if (decision === "pending" || phase === "awaiting_approval") {
-    return "Waiting for your approval of the exact terms.";
-  }
+  if (view === "approval") return "Waiting for your approval of the exact terms.";
   if (phase === "initiated" || phase === "strategy") return "Planning from your confirmed goal.";
   if (phase === "negotiating") return "Negotiating with the fictional Provider.";
-  if (phase === "candidate_complete") return "Checking the Provider's confirmation before any receipt.";
-  if (phase === "complete" || phase === "closed") return "The Case is closed.";
-  return "Waiting for the Runtime to report the Case phase.";
+  if (phase === null) return "Waiting for the Runtime to report the Case phase.";
+  return "Waiting for the Runtime.";
 }
 
 function goal(currentCase: JsonObject | null): string {
@@ -117,7 +122,8 @@ function currentOffer(payload: RuntimePayload): string {
     })
     : null;
   return [
-    stringAt(offer, "provider_id") ?? "Unnamed Provider",
+    // Same wording as the Offer artifact when the Provider is not named.
+    stringAt(offer, "provider_id") ?? "Fictional Provider",
     ...(monthly === null ? [] : [`${monthly}/month`]),
     ...(total === null ? [] : [`total ${total}`]),
     ...(fees === null ? [] : [fees.length ? `fees: ${fees.join(", ")}` : "no fees"]),
@@ -131,10 +137,12 @@ function currentOffer(payload: RuntimePayload): string {
 function approval(payload: RuntimePayload): string {
   const current = payload.approval;
   if (current === null) return "None";
+  const decision = nonEmpty(current.decision);
+  if (decision === null) return "Not reported";
   const expires = stringAt(current, "expires_at");
-  if (current.decision === "pending") return `Pending · expires ${expires ?? "time not reported"}`;
-  if (current.decision === "expired") return expires ? `Expired at ${expires}` : "Expired";
-  return humanize(current.decision);
+  if (decision === "pending") return `Pending · expires ${expires ?? "time not reported"}`;
+  if (decision === "expired") return expires ? `Expired at ${expires}` : "Expired";
+  return humanize(decision);
 }
 
 function execution(payload: RuntimePayload): string {
@@ -145,7 +153,8 @@ function execution(payload: RuntimePayload): string {
 }
 
 function completion(payload: RuntimePayload): string {
-  const decision = payload.completion.decision;
+  const decision = nonEmpty(payload.completion.decision);
+  if (decision === null) return "Not reported";
   if (decision === "complete") {
     if (!completionHasVerifiedEvidence(payload)) {
       return "Complete claimed without matching Evidence · no receipt";
@@ -158,13 +167,15 @@ function completion(payload: RuntimePayload): string {
   return [humanize(decision), ...(reasons.length ? [reasons.join(", ")] : [])].join(" · ");
 }
 
-export function renderStatusBlock(payload: RuntimePayload): StatusBlock {
+export function renderStatusBlock(
+  payload: RuntimePayload,
+  options: StatusBlockOptions = {},
+): StatusBlock {
   const currentCase = objectAt(payload.snapshot, "case");
-  const phase = typeof payload.snapshot.phase === "string" && payload.snapshot.phase.trim()
-    ? payload.snapshot.phase
-    : null;
+  const phase = nonEmpty(payload.snapshot.phase);
   return {
-    doingNow: doingNow(payload, phase),
+    doingNow: doingNow(payload, phase, options),
+    asOf: `as of Case revision ${payload.revision}`,
     rows: [
       { label: "Phase", value: phase === null ? "Not reported" : humanize(phase) },
       { label: "Goal", value: goal(currentCase) },

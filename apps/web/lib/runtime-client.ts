@@ -303,6 +303,24 @@ export function hasValidPendingApproval(payload: RuntimePayload): boolean {
   );
 }
 
+// The Web's reading of one accepted payload: the single classification the
+// conversation workspace and the Agent Status Bar share, so they cannot disagree.
+export type PayloadPhase = "receipt" | "blocked" | "expired" | "finalizing" | "approval" | "confirm";
+
+export function phaseForPayload(next: RuntimePayload): PayloadPhase {
+  if (next.completion.decision === "complete") {
+    return completionHasVerifiedEvidence(next) ? "receipt" : "blocked";
+  }
+  const approval = next.approval;
+  if (approval?.decision === "expired") return "expired";
+  if (next.snapshot.pending_execution === true) return "finalizing";
+  if (approval?.decision === "pending") {
+    return hasValidPendingApproval(next) ? "approval" : "blocked";
+  }
+  if (approval?.decision && approval.decision !== "pending") return "blocked";
+  return "confirm";
+}
+
 export type AssistantLine = { eventCursor: number; text: string };
 
 // Runtime-authored dialogue (actor SYSTEM, event_type assistant_message) read

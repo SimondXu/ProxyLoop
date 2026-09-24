@@ -2564,6 +2564,41 @@ describe("ConversationWorkspace", () => {
     expect(screen.queryByRole("region", { name: "Agent status" })).not.toBeInTheDocument();
   });
 
+  it("PR-10 I-1: after a rejected read Blocks the workspace, the bar stops describing the held approval", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const approval = {
+      action_intent_revision: 1,
+      approval_id: "22222222-2222-4222-8222-222222222222",
+      case_revision: 2,
+      decision: "pending",
+      expires_at: NORMAL_PENDING_APPROVAL_EXPIRES_AT,
+      material_terms_hash: "hash-1",
+    };
+    const waiting = payload({ approval, revision: 4, route: "wait_for_approval" });
+    const driftedCase = { ...caseRecord, bill_snapshot: { monthly_total: { amount_minor: 9300, currency: "USD" } } };
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(waiting);
+    vi.mocked(runtime.decideApproval).mockReset().mockResolvedValue(payload({ revision: 5 }));
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [
+      payload(),
+      waiting,
+      { ...waiting, case: driftedCase, revision: 5, snapshot: { case: driftedCase, offers: [offer] } },
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Accept these exact fictional terms?" })).toBeInTheDocument());
+    const rail = screen.getByRole("complementary", { name: "Current task context" });
+    expect(within(rail).getByRole("region", { name: "Agent status" })).toHaveTextContent("Waiting for your approval of the exact terms.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve exact terms" }));
+    expect(await screen.findByText("Runtime state not verified")).toBeInTheDocument();
+    const bar = within(rail).getByRole("region", { name: "Agent status" });
+    expect(bar).toHaveTextContent("Stopped — state not verified. Reconnect or restart the local demo.");
+    expect(bar).toHaveTextContent("as of Case revision 4");
+    expect(bar).not.toHaveTextContent("Waiting for your approval");
+  });
+
   it.each([
     ["$92.00.", "$92.00"],
     ["$92.", "$92.00"],
