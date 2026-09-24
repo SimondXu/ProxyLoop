@@ -26,7 +26,7 @@ needs the real-dependency gates.
 | Item | State |
 |---|---|
 | #80 B1-12 router precedence (lane A) | merged (`d23aff9`) |
-| #81 B1-9 total offer policy (`fix/b1-9-total-offer-policy`) | open |
+| #81 B1-9 total offer policy (`fix/b1-9-total-offer-policy`) | merged (`e1c8371`) |
 | #82 P2 API hygiene (`fix/p2-api-hygiene`) | open |
 | `refactor/r14-basis-switch-owner` (R-14) | branch pushed, no PR yet |
 | #83 contract-semantics limits (`docs/contract-semantics-limits`) | open |
