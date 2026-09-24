@@ -162,3 +162,21 @@ credentials or teacher text). `make phase03c-local-parity-check` passes
 (12 s); after replacing one raw output's act in a working copy it failed
 with `parity-report.json is stale or was edited` (then restored with git).
 `ml/tests/test_local_parity.py`: 10 passed.
+
+## Repository gates (on `6607165`)
+
+- `make lint`: passed. `make typecheck`: passed (runtime 67, ml 70 source
+  files).
+- `make test`: passed (runtime 1294 passed, 59 skipped DB/Temporal-gated;
+  ml 445 passed; every `*-check` passed, including `phase03c-rescore-check`,
+  `phase03c-smoke-check`, `hosted-rerun-check` and the new
+  `phase03c-local-parity-check`).
+- `make preflight`: passed (format-check, lint, typecheck, test,
+  check-layout, web-check with 140 web tests and the build, `lock-check`
+  with `ml/uv.lock` unchanged, gated skips matching the pin of 59). No
+  `PROXYLOOP_TEST_*` variable was set; the DB lane is not needed (no service
+  change).
+- Frozen and hot paths: `git diff 1573a42 -- ml/pyproject.toml ml/uv.lock
+  …/qwen_mlx.py …/fast_output.py runtime apps` is empty.
+- Not run: independent review (root's call), the DB/Temporal gates (not
+  applicable), the Browser check (pending with 9a).
