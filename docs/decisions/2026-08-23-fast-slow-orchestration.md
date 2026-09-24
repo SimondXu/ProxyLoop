@@ -83,6 +83,7 @@ Every decision records deterministic reason codes and the snapshot pins that pro
 - changed Consumer Goal, hard constraint, or Delegated Authority;
 - Provider refusal or a materially changed offer;
 - expired or planning-basis-incompatible Strategy Packet;
+- a PENDING Approval Request that is no longer current (`stale_approval`);
 - conflicting facts;
 - stalled or repeated dialogue;
 - Fast `reasoner_request` accepted by Router policy;
@@ -98,7 +99,7 @@ Routing outcomes are mutually exclusive. The Router evaluates the following prec
 |---:|---|---|
 | 1 | `terminal` | The Case is already in a verified terminal state. No model or executor work is scheduled. |
 | 2 | `verify_only` | New executor/Provider Evidence or a completion candidate awaits deterministic verification. The verifier runs before any replan; a `needs_replan` result creates a new event that is routed again. |
-| 3 | `wait_for_approval` | A current, unexpired Approval Request blocks consequential work and the triggering event is not the Consumer's approval decision. Approval decisions go directly through the approval/current-state gate; resulting execution Evidence is routed again at priority 2. |
+| 3 | `wait_for_approval` | A current, unexpired PENDING Approval Request blocks consequential work; a recorded decision leaves it non-PENDING, so a decided approval never blocks. Approval decisions go directly through the approval/current-state gate; resulting execution Evidence is routed again at priority 2. |
 | 4 | `slow_refresh` | A mandatory Slow trigger exists and no current strategy permits a bounded non-consequential acknowledgement. Fast waits. |
 | 5 | `fast_now_and_slow_refresh` | A mandatory Slow trigger exists, while a current strategy and disclosure policy explicitly permit a bounded acknowledgement, clarification, or status response that cannot state material terms, accept an offer, or trigger a side effect. |
 | 6 | `fast_now` | A current compatible strategy exists, no higher-priority condition matches, and the event requires a normal dialogue turn. |
@@ -120,7 +121,7 @@ This compare-and-swap behavior is implemented locally for the text research MVP.
 
 ### Capabilities and side effects
 
-A versioned `CapabilityManifest` is the only action/tool vocabulary available to models and the executor. Phase 03A1 contains local fictional-Provider simulator capabilities only. It does not advertise MCP, Gmail, telephony, LiveKit, real Provider, or production credentials. (Where this vocabulary is enforced is recorded in Amendment 2026-09-24 below.)
+A versioned `CapabilityManifest` is the only action/tool vocabulary available to models and the executor. Phase 03A1 contains local fictional-Provider simulator capabilities only. It does not advertise MCP, Gmail, telephony, LiveKit, real Provider, or production credentials. (Where this vocabulary is enforced is recorded in "Amendment 2026-09-24 — where the capability vocabulary is enforced" below.)
 
 Slow may propose a bounded capability/action plan. The deterministic compiler and policy gate translate a valid proposal into inert Action Intents. The capability executor is the only module allowed to invoke an adapter and must re-check current strategy/basis, authorization, approval, expiry, and idempotency immediately before execution.
 
@@ -153,6 +154,10 @@ It is not trained to own strategy generation, multi-step tool selection or argum
 - Open-data SFT and project-specific generation remain later evidence-driven decisions.
 - Canonical Phase 00B contracts are not changed by this decision; any wire-schema change requires its own implementation and drift gate.
 
+## Amendment 2026-09-24 — Approval wait keyed on approval state
+
+Amended 2026-09-24 (audit B1-12, branch `fix/p2-router-precedence`): the event-label bypass was removed; approval state alone releases the wait. Row 3 previously ended its condition with "and the triggering event is not the Consumer's approval decision"; it now carries the amended condition above. The mandatory-Slow list also names the existing `stale_approval` trigger, a PENDING Approval Request that is no longer current.
+
 ## Amendment 2026-09-24 — where the capability vocabulary is enforced
 
 The statement in "Capabilities and side effects" that the `CapabilityManifest`
@@ -182,5 +187,5 @@ time of this amendment (audit A-3):
   on `ActionIntent`) is a wire-schema change and needs its own decision and
   drift gate; this amendment does not make it.
 
-The paragraph above is retained as the 2026-08-23 decision; where it conflicts
-with this amendment, the amendment wins.
+The "Capabilities and side effects" paragraph is retained as the 2026-08-23
+decision; where it conflicts with this amendment, the amendment wins.

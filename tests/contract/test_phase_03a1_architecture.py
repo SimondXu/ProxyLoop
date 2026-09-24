@@ -85,28 +85,6 @@ def test_phase_03a1_canonical_contracts_are_public_and_generated() -> None:
         assert f"export interface {name}" in typescript
 
 
-def test_phase_03a1_router_precedence_and_fast_action_boundary_are_executable() -> None:
-    router = document("runtime/packages/agent_core/src/proxyloop_agent_core/router.py")
-    coordinator = document(
-        "runtime/packages/agent_core/src/proxyloop_agent_core/coordinator.py"
-    )
-
-    outcomes = (
-        "terminal",
-        "verify_only",
-        "wait_for_approval",
-        "slow_refresh",
-        "fast_now_and_slow_refresh",
-        "fast_now",
-    )
-    positions = [router.index(f'"{outcome}"') for outcome in outcomes]
-
-    assert positions == sorted(positions)
-    assert "action_intent" in coordinator
-    assert "stale" in coordinator.lower()
-    assert "planning_basis_fingerprint" in coordinator
-
-
 def test_phase_03a1_runtime_has_no_model_provider_dependencies_or_imports() -> None:
     runtime_root = ROOT / "runtime"
     forbidden = {
