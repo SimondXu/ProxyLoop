@@ -42,12 +42,29 @@ The nine R-10 tests in the file pass before and after.
 - Passed: `make preflight-fast` (exit 0).
 - Passed: `make test` (exit 0; runtime 1211 passed, 51 skipped; ml 397
   passed, 1 skipped).
-- Not run yet (shared DB): `make postgres-check`, `make phase05a-check`,
-  `make phase06b1-check`, `make preflight`.
+
+After merging `origin/main` @ `e1c8371` (#81; one status-file conflict,
+both sides kept):
+
+- Passed: `make test` (exit 0; runtime 1231 passed, 51 skipped; ml 397
+  passed, 1 skipped).
+- Passed, one at a time against the Compose test DB and Temporal:
+  `make postgres-check` (27 passed), `make phase05a-check` (42 passed),
+  `make phase06b1-check` (35 passed, including R-10's DB-gated
+  `test_postgres_delivery_callback_after_complete_is_stored`).
+- Passed: `make preflight` (exit 0; runtime 1231 passed, 51 skipped; ml 397
+  passed, 1 skipped; web 140 passed).
 
 ## Known limits
 
-See the spec: a consistent forged event/Evidence pair and a delivered/bounced
-text swap are still accepted (needs the delivery id or a receipt-table
-cross-check, a root decision); `source_ref` / `content_hash` are unchecked;
-pre-approval callbacks stay unpaired.
+Recorded by the root as accepted limits (binding a pair to a real delivery
+needs a storage change, out of scope):
+
+- A consistent forged pair (a callback event and a `PROVIDER_EVENT` Evidence
+  with equal times) is accepted, and a delivered/bounced text swap is not
+  detected; binding needs the delivery id in the payload or a cross-check
+  against `proxyloop_channel_delivery_receipts.evidence_id`.
+- `source_ref` and `content_hash` are unchecked; the event does not carry
+  them.
+- Callbacks before the approval stay unpaired, and extra Evidence placed
+  before the confirmation Evidence or of other types is not restricted.
