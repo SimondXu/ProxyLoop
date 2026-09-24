@@ -11,6 +11,7 @@ from uuid import UUID
 import pytest
 from proxyloop_agent_core import (
     BOUNDED_FAST_STATUS_TEXT,
+    ROUTER_PRECEDENCE,
     CapabilityExecutionRequest,
     CapabilityExecutionStatus,
     CapabilityExecutor,
@@ -1252,6 +1253,8 @@ def test_approval_trigger_must_be_the_latest_verified_visible_event() -> None:
             created_at=NOW + timedelta(seconds=1),
             triggering_event=snapshot.visible_events[0],
         )
+    # B1-12: the event label is not authority. The approval in the snapshot is
+    # still PENDING and current, so the Case keeps waiting.
     decision = DeterministicRouter().route(
         RouteRequest(
             snapshot=latest,
@@ -1259,4 +1262,148 @@ def test_approval_trigger_must_be_the_latest_verified_visible_event() -> None:
             triggering_event=approval_event,
         )
     )
-    assert decision.outcome is RoutingOutcome.FAST_NOW
+    assert decision.outcome is RoutingOutcome.WAIT_FOR_APPROVAL
+    assert decision.reason_codes == ("current_approval_pending",)
+
+
+def test_a_recorded_approval_decision_releases_the_approval_wait() -> None:
+    snapshot, _ = _snapshot(approval_current=True)
+    pending = snapshot.approval_requests[0]
+    decided_at = NOW + timedelta(seconds=1)
+    for outcome in (ApprovalDecision.APPROVED, ApprovalDecision.REJECTED):
+        decided = pending.model_copy(
+            update={
+                "revision": pending.revision + 1,
+                "decision": outcome,
+                "decided_at": decided_at,
+            }
+        )
+        recorded = _with_approval(snapshot, decided)
+        approval_event = VisibleCaseEvent(
+            contract_type="visible_case_event",
+            schema_version="1.0",
+            revision=1,
+            event_id=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaac"),
+            case_id=snapshot.case.case_id,
+            event_cursor=2,
+            occurred_at=decided_at,
+            actor=EventActor.CONSUMER,
+            event_type="approval_decision",
+            content=outcome.value,
+        )
+        latest = recorded.model_copy(
+            update={
+                "visible_events": (*recorded.visible_events, approval_event),
+                "event_cursor": 2,
+                "pins": recorded.pins.model_copy(update={"event_cursor": 2}),
+            }
+        )
+        with_trigger = DeterministicRouter().route(
+            RouteRequest(
+                snapshot=latest,
+                created_at=decided_at,
+                triggering_event=approval_event,
+            )
+        )
+        without_trigger = DeterministicRouter().route(
+            RouteRequest(snapshot=latest, created_at=decided_at)
+        )
+        # The decided state, not the event label, releases the wait.
+        assert with_trigger.outcome is RoutingOutcome.FAST_NOW
+        assert without_trigger.outcome is RoutingOutcome.FAST_NOW
+
+
+def test_router_precedence_ladder_matches_the_frozen_table() -> None:
+    """Every row wins while every lower row's condition also holds.
+
+    Start with a snapshot matching all six rows, then clear the highest
+    matching condition one step at a time. The outcomes, read in order, are
+    the precedence table; ``ROUTER_PRECEDENCE`` must name the same order.
+    """
+
+    snapshot, _ = _snapshot(approval_current=True)
+    router = DeterministicRouter()
+    mandatory = ("material_offer_changed",)
+    closed = snapshot.case.model_copy(update={"phase": CasePhase.CLOSED})
+    ladder = (
+        # 1 terminal: closed, pending execution, current approval, mandatory Slow.
+        RouteRequest(
+            snapshot=snapshot.model_copy(
+                update={"case": closed, "pending_execution": True}
+            ),
+            created_at=NOW,
+            mandatory_slow_reason_codes=mandatory,
+            bounded_acknowledgement_allowed=True,
+        ),
+        # 2 verify_only: not terminal; pending execution still set.
+        RouteRequest(
+            snapshot=snapshot.model_copy(update={"pending_execution": True}),
+            created_at=NOW,
+            mandatory_slow_reason_codes=mandatory,
+            bounded_acknowledgement_allowed=True,
+        ),
+        # 3 wait_for_approval: nothing to verify; the approval is current.
+        RouteRequest(
+            snapshot=snapshot,
+            created_at=NOW,
+            mandatory_slow_reason_codes=mandatory,
+            bounded_acknowledgement_allowed=True,
+        ),
+        # 4 slow_refresh: no approval; mandatory Slow without a permitted ack.
+        RouteRequest(
+            snapshot=snapshot.model_copy(update={"approval_requests": ()}),
+            created_at=NOW,
+            mandatory_slow_reason_codes=mandatory,
+        ),
+        # 5 fast_now_and_slow_refresh: the current strategy permits an ack.
+        RouteRequest(
+            snapshot=snapshot.model_copy(update={"approval_requests": ()}),
+            created_at=NOW,
+            mandatory_slow_reason_codes=mandatory,
+            bounded_acknowledgement_allowed=True,
+        ),
+        # 6 fast_now: no mandatory Slow trigger remains.
+        RouteRequest(
+            snapshot=snapshot.model_copy(update={"approval_requests": ()}),
+            created_at=NOW,
+            bounded_acknowledgement_allowed=True,
+        ),
+    )
+
+    outcomes = tuple(router.route(request).outcome.value for request in ladder)
+
+    assert outcomes == ROUTER_PRECEDENCE
+    assert len(set(outcomes)) == len(RoutingOutcome)
+
+
+def test_stale_approval_and_expired_strategy_route_to_slow() -> None:
+    snapshot, _ = _snapshot(approval_current=True)
+    router = DeterministicRouter()
+
+    # A pending approval bound to an older Case revision is not current: the
+    # Router does not wait on it and instead requires Slow work.
+    pending = snapshot.approval_requests[0]
+    stale = pending.model_copy(update={"case_revision": snapshot.case.revision + 1})
+    stale_route = router.route(
+        RouteRequest(
+            snapshot=snapshot.model_copy(update={"approval_requests": (stale,)}),
+            created_at=NOW,
+        )
+    )
+    assert stale_route.outcome is RoutingOutcome.SLOW_REFRESH
+    assert "stale_approval" in stale_route.reason_codes
+
+    # Row 4 over row 5: an expired strategy cannot permit an acknowledgement.
+    assert snapshot.strategy is not None
+    expired = snapshot.strategy.model_copy(update={"expires_at": NOW})
+    expired_route = router.route(
+        RouteRequest(
+            snapshot=snapshot.model_copy(
+                update={"strategy": expired, "approval_requests": ()}
+            ),
+            created_at=NOW,
+            bounded_acknowledgement_allowed=True,
+        )
+    )
+    assert expired_route.outcome is RoutingOutcome.SLOW_REFRESH
+    assert expired_route.reason_codes == ("strategy_expired",)
