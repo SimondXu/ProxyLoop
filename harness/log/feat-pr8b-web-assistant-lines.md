@@ -84,12 +84,55 @@ test and the "only malformed entries" render test.
   `docker compose config`.
 - Not run: DB/Temporal gates (no runtime, API, or Python change; no DB used).
 
+## Merge with 8a and Browser evidence
+
+Merged `origin/main` @ `29c8671` (PR-8a, #94). The status-file conflict was
+resolved by keeping both sides' changes (main's In-flight rows plus this
+branch's PR-8b row). On the merge: `make web-check` exit 0 (vitest 156
+passed); `make preflight` exit 0 (runtime tests 1467 passed / 63 skipped,
+gated-skip pin matches 63; ML tests 397 passed / 1 skipped; artifact checks
+green).
+
+Browser check (spec §6.6 8b, AC 7), headless Chromium via Python Playwright
+1.54 against the real durable Runtime (`scripted` / `postgres` / `temporal`,
+readiness `{"ready":true,"adapter_mode":"scripted","storage_mode":"postgres","orchestration_mode":"temporal"}`):
+
+- Deviation from `make portfolio-demo`, same components: port 8000 was held by
+  an unrelated local process that was not stopped, and the supervisor and the
+  Web's `/api/runtime` rewrite both hardcode 8000. A scratch launcher reused
+  the supervisor's own `_start_compose_dependencies` and
+  `build_demo_environment` and started the same worker, Runtime, and
+  production Web (`next start`, the build from the merged tree) commands, with
+  the Runtime on 8001. Playwright forwarded the browser's `/api/runtime/**`
+  requests to 8001. No repository file changed.
+- The scripted API has one fixed Case id, and the existing
+  `proxyloop-portfolio-demo_postgres-data` volume already held that Case
+  (`CaseConflictError: case already exists`). Instead of resetting that
+  volume, the Compose services ran under a throwaway project
+  (`proxyloop-pr8b-browser`, fresh volume), removed with `down -v` afterwards.
+  `make portfolio-demo-stop` ran; the demo volume is preserved.
+- Flow: intake $92 / $75 / yes / yes, Create fictional Case, then
+  "Keep both unchanged and continue". Runtime calls observed: `POST /cases`,
+  `GET /cases/{id}`, `POST /cases/{id}/events`, `GET /cases/{id}`, then on
+  reload `GET /health/ready`, `GET /cases/{id}`.
+- Before confirmation: 0 automated-message labels.
+- After confirmation (approval shown): one line, "Thanks. I'm reviewing the
+  fictional offer against your constraints now.", with the exact label once.
+- After a page reload (durable restore): the same line and label.
+- Long line (M2): the scripted lines are short, so a 600-character no-space
+  line was injected into the rendered bubble in the live page. With the
+  shipped CSS (`overflow-wrap: anywhere`), the line fits its box at 1280x900
+  (scrollWidth 707 = clientWidth 707) and 375x812 (307 = 307), with no page
+  overflow. Negative control on the same bubble (`overflow-wrap: normal`):
+  scrollWidth 4548 against 707 / 307.
+- Console warnings/errors: none.
+- Screenshots (scratch, not committed): `01-case-created-before-confirm.png`,
+  `02-after-confirm.png`, `03-after-reload.png`, `04-long-line-1280.png`,
+  `04-long-line-375.png`.
+
 ## Pending
 
-- Browser verification (§6.6 8b) on `make portfolio-demo`: the assistant line
-  visible after confirmation and after reload. It needs 8a's runtime to emit
-  `assistant_message`; until then the real backend has no line to show.
-- Independent `reviewer`, PR, CI. Merge after 8a and before PR-10/PR-12 touch
+- PR, CI, root final review, merge. Merge before PR-10/PR-12 touch
   `conversation-workspace.tsx`.
 
 ## Independent review follow-up
