@@ -131,9 +131,27 @@ preflight` exit 0 with runtime 1260 passed, 51 skipped; ml 397 passed, 1
 skipped; web 140 passed; last line `Gated-skip counts match the pinned 51
 per file.`
 
-Merge order is PR-4 -> PR-2 -> PR-1. PR-2 adds 2 gated tests (its
-preflight showed 53), so the per-file pin changes when this branch merges
-`main` after PR-2.
+Merge order is PR-4 -> PR-2 -> PR-1.
+
+## Pin update after merging `main` @ `5266b6d` (#87, PR-2)
+
+- Merge: one conflict in `harness/context/audit-remediation-status.md`
+  (two hunks): kept `main`'s PR-2 row and R-16 bullet next to this
+  branch's PR-1 row; the R-15 "flaky" bullet stays removed (closed here).
+- `make preflight` then failed as intended: `FAIL: expected 51 gated
+  skips, found 53`, `test_phase_05a_temporal_workflow.py: expected 22,
+  found 24`. Cause: #87 parametrized two gated tests,
+  `test_time_skipping_expiry_retry_exhaustion_keeps_workflow_alive` and
+  `test_time_skipping_non_retryable_expiry_failure_does_not_spin`, as
+  `[unchained]`/`[chained]` (+1 each). Its other new tests run without the
+  variables.
+- Pin updated: `test_phase_04c_persistent_case_store.py` 23,
+  `test_phase_05a_case_runtime.py` 2, `test_phase_05a_temporal_workflow.py`
+  24, `test_phase_06b1_channel_runtime.py` 1, `test_phase_06b1_temporal.py`
+  3; total 53. `docs/development.md` list and count updated.
+- `make preflight` rerun: exit 0; runtime 1269 passed, 53 skipped; ml 397
+  passed, 1 skipped; web 140 passed; ruff and mypy clean; last line
+  `Gated-skip counts match the pinned 53 per file.`
 
 ## Not run / remaining
 
