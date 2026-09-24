@@ -34,7 +34,8 @@ a policy decision), B1-12.
 
 1. B1-6: accept the exact configured model, or the configured model plus a
    dated snapshot suffix `-YYYY-MM-DD` (the OpenAI alias → snapshot form,
-   e.g. `gpt-4o` → `gpt-4o-2024-08-06`). Any other suffix is
+   e.g. `gpt-4o` → `gpt-4o-2024-08-06`) or `-YYYYMMDD` (added after
+   review). Any other suffix is
    `MODEL_METADATA`. Exact-only was rejected because it would fail every
    OpenAI alias request.
 2. B1-7: `except pydantic.ValidationError` before the generic handler →

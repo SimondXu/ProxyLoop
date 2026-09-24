@@ -1346,6 +1346,13 @@ class ThinAgentRuntime:
                 )
                 self._executors[case_id] = executor
                 execution = executor.execute(request)
+            if execution.reason_codes == ("execution_outcome_unknown",):
+                # An earlier commit through this executor raised; the Provider
+                # may or may not have changed. Fail closed, never re-commit.
+                raise CaseConflictError(
+                    "capability execution outcome is unknown; reconcile the "
+                    "Provider state before retrying"
+                )
             if execution.status not in {
                 CapabilityExecutionStatus.EXECUTED,
                 CapabilityExecutionStatus.REUSED,

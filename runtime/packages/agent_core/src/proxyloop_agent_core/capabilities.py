@@ -72,7 +72,9 @@ class CapabilityExecutor:
     its claims stay and any later request for that key or approval is
     rejected (``execution_outcome_unknown``) instead of executing again.
     Reconciling such an execution is the caller's job, against the adapter's
-    own state (the runtime does this with its persisted execution claim).
+    own state; the executor never clears the unresolved mark. The runtime
+    reconciles through its ``provider.confirmation`` short-circuit before it
+    calls the executor at all.
 
     ``terms_derivation`` optionally recomputes the material terms of the
     snapshot offer so an offer whose terms changed under an unchanged

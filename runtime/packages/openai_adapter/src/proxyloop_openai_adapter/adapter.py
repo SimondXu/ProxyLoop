@@ -22,7 +22,7 @@ from .outputs import (
     compile_slow_output,
 )
 
-_DATED_SNAPSHOT_SUFFIX = re.compile(r"\d{4}-\d{2}-\d{2}")
+_DATED_SNAPSHOT_SUFFIX = re.compile(r"\d{4}-\d{2}-\d{2}|\d{8}")
 
 # Bump when the adapter's request shaping or the system prompts in
 # ``_messages`` change; both are recorded on every ModelTrace.
@@ -210,8 +210,8 @@ def _validate_response_model(response: object, requested_model: str) -> None:
     if not isinstance(response_model, str) or not response_model:
         raise OpenAICompatibleAdapterError(ModelFailureKind.MODEL_METADATA)
     # An alias such as ``gpt-4o`` may be served by its dated snapshot
-    # ``gpt-4o-2024-08-06``; any other suffix (``gpt-4o-mini``) is a
-    # different model.
+    # ``gpt-4o-2024-08-06`` (or ``-YYYYMMDD``, e.g. ``-20240806``); any other
+    # suffix (``gpt-4o-mini``, ``-latest``) is a different model.
     if not (
         response_model == requested_model
         or (

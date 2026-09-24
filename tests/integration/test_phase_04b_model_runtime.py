@@ -215,11 +215,16 @@ def test_model_adapter_rejects_invalid_or_wrong_metadata(
     [
         ("runtime-model", True),
         ("runtime-model-2024-08-06", True),
+        ("runtime-model-20240806", True),
         # B1-6: a sibling model sharing the requested prefix is not the model.
         ("runtime-model-mini", False),
         ("runtime-model-mini-2024-08-06", False),
-        ("runtime-model-20240806", False),
+        ("runtime-model-mini-20240806", False),
         ("runtime-model-2024-08-06-preview", False),
+        ("runtime-model-2024086", False),
+        ("runtime-model-2024-0806", False),
+        ("runtime-model-latest", False),
+        ("runtime-model-v2", False),
     ],
 )
 def test_model_adapter_accepts_only_the_requested_model_or_its_dated_snapshot(

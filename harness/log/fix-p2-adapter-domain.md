@@ -7,7 +7,8 @@ Branch `fix/p2-adapter-domain` from `main` @ `5bedcce`.
 ## What changed
 
 - `openai_adapter/adapter.py`: response model must equal the configured
-  model or be it plus `-YYYY-MM-DD` (B1-6); a pydantic `ValidationError`
+  model or be it plus `-YYYY-MM-DD` or `-YYYYMMDD` (B1-6; the 8-digit form
+  added after review); a pydantic `ValidationError`
   from `completions.parse()` is `INVALID_OUTPUT`, not `TRANSPORT` (B1-7).
 - `telecom_domain/domain.py`: `verify_completion` rejects
   `offer_case_mismatch` (B1-8). `verifier_version` unchanged.
@@ -53,11 +54,29 @@ Not changed: `interfaces.py`, `runtime.py`, `repository.py`,
   `execution_outcome_unknown` and the runtime raises `CaseConflictError`
   instead of calling `commit()` again. With the in-memory Provider a
   pre-mutation raise is deterministic, so the old retry failed the same
-  way; a raise after mutation is already short-circuited by the runtime's
-  `provider.confirmation` check. Evicting the executor on that reason code
-  would be a `runtime.py` change and is not made here.
+  way. A raise after mutation is short-circuited by the runtime's
+  `provider.confirmation` check only with the in-memory repository, which
+  keeps the same Provider object; PostgreSQL rebuilds the Provider from the
+  pre-commit state, so a fresh process commits once. After review (root
+  decision) the cached executor is kept on `execution_outcome_unknown`
+  (fail closed), and the runtime raises it with its own message: "capability
+  execution outcome is unknown; reconcile the Provider state before
+  retrying" (same `CaseConflictError` class, no new API or Temporal
+  category).
 - B1-6: a relay that reports a model name other than the configured one or
-  its dated snapshot now fails `model_metadata`.
+  its dated snapshot (`-YYYY-MM-DD` or `-YYYYMMDD`) now fails
+  `model_metadata`.
+
+## Recorded limits (review Minor 3 and 4, not changed)
+
+- B1-7: `parse()` validates content before `_validate_response_model` runs,
+  so a swapped model that also returns schema-invalid content is recorded
+  as `invalid_output`, not `model_metadata`.
+- The frozen `ml/` checks keep the old prefix rule:
+  `ml/evaluation/src/proxyloop_evaluation/openai_frontier.py:589` and
+  `replay.py:252` (`startswith(f"{FRONTIER_MODEL}-")`). Out of scope.
+- `runtime.py` binds a case's executor with `self._executors.setdefault(...)`
+  to the first adapter it was built with; that binding is unchanged here.
 
 ## Update to origin/main (2026-09-24)
 
@@ -95,3 +114,35 @@ Checks after the merge (worktree, no `PROXYLOOP_TEST_*` set):
 - Not run: `make preflight`, `make postgres-check`, `make phase05a-check`,
   `make phase06b1-check` (the shared test DB was in use elsewhere),
   independent review.
+
+## Review follow-up (2026-09-24)
+
+Independent review: Approve, no Blocking or Important findings. Root
+decisions applied:
+
+- Minor 1: `runtime.py` `_execute_claim` raises `CaseConflictError("capability
+  execution outcome is unknown; reconcile the Provider state before
+  retrying")` when the executor answers `execution_outcome_unknown`; the
+  cached executor is kept (fail closed). `capabilities.py` docstring and
+  "Known behaviour changes" above corrected.
+- Minor 2: B1-6 also accepts `-YYYYMMDD`.
+- Minor 3 and 4: recorded under "Recorded limits" above.
+
+Red → green:
+
+| Item | Test | Red | Green |
+|---|---|---|---|
+| Minor 1 | `test_same_process_retry_after_a_raising_provider_commit_fails_closed` (`test_phase_05a_case_runtime.py`) | on the branch before the message change: message `deterministic capability execution was rejected`; with `main`'s `capabilities.py`: the retry re-ran the Provider commit (second `RuntimeError`) | `CaseConflictError` "outcome is unknown", Provider commit called once, claim still pending |
+| Minor 2 | `test_model_adapter_accepts_only_the_requested_model_or_its_dated_snapshot` (11 cases; `-20240806` accepted; `-mini-20240806`, `-2024086`, `-2024-0806`, `-latest`, `-v2` rejected) | `[runtime-model-20240806-True]` failed | 11 pass |
+
+Checks (final diff):
+
+- Passed: `make format-check lint typecheck`; `make preflight-fast`.
+- Passed: `make test` — runtime 1190 passed / 46 skipped, ML 390 passed /
+  1 skipped, every artifact gate valid.
+- Passed, serially, values on the command line only:
+  `make postgres-check` 27 passed; `make phase05a-check` 37 passed;
+  `make phase06b1-check` 34 passed.
+- Passed: `make preflight` (runtime 1190 passed / 46 skipped, ML 390 /
+  1 skipped, web 99 tests passed, web build compiled).
+- `git status --short data/` empty.
