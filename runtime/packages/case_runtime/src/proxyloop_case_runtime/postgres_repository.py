@@ -1255,6 +1255,11 @@ def _reconstruct_provider(envelope: _CaseStorageEnvelope) -> FictionalMobileProv
         approval=approval,
         executed_at=confirmation_evidence.observed_at,
     )
+    _verify_delivery_callback_pairs(
+        snapshot,
+        approval_cursor=approval_cursor,
+        confirmation_evidence=confirmation_evidence,
+    )
     if (
         confirmation_evidence.evidence_id
         not in snapshot.completion_decision.evidence_ids
@@ -1304,6 +1309,40 @@ def _is_delivery_callback_event(event: VisibleCaseEvent) -> bool:
         and event.actor is EventActor.PROVIDER
         and event.content in _DELIVERY_CALLBACK_CONTENT
     )
+
+
+def _verify_delivery_callback_pairs(
+    snapshot: CaseContextSnapshot,
+    *,
+    approval_cursor: int,
+    confirmation_evidence: Evidence,
+) -> None:
+    """Pair each callback event after the approval with its Evidence.
+
+    A delivery callback on a terminal Case appends one callback event and one
+    Provider-event Evidence at the same instant. The delivery id that seeds
+    both ids is not stored, so the pairing is by order and time: the i-th
+    event after the approval cursor matches the i-th Provider-event Evidence
+    after the confirmation Evidence, with ``observed_at`` and ``captured_at``
+    equal to the event's ``occurred_at``.
+    """
+
+    events = [
+        event
+        for event in snapshot.visible_events
+        if event.event_cursor > approval_cursor
+    ]
+    executed = snapshot.evidence.index(confirmation_evidence)
+    evidence = [
+        item
+        for item in snapshot.evidence[executed + 1 :]
+        if item.source_type is EvidenceType.PROVIDER_EVENT
+    ]
+    if len(events) != len(evidence) or any(
+        item.observed_at != event.occurred_at or item.captured_at != event.occurred_at
+        for event, item in zip(events, evidence, strict=True)
+    ):
+        raise ValueError("terminal Case callback events do not match their Evidence")
 
 
 def _verify_no_execution_fields(envelope: _CaseStorageEnvelope) -> None:
