@@ -182,6 +182,56 @@ def validate_approval_use(
         raise ApprovalBindingError("approval does not bind to the exact action")
 
 
+def case_offer_violations(
+    case: Case,
+    offer: ProviderOffer,
+    *,
+    evaluated_at: datetime,
+    applied_changes: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    """Return offer-compliance reason codes for one Case; total on valid input.
+
+    The contract admits values outside the policy's domain: a negative fee
+    sum from a credit line, or a repeated token in a goal or offer tuple.
+    Those fail closed as one reason code instead of raising, so no caller
+    can approve or complete on them and none crashes on them.
+    """
+
+    bill = case.bill_snapshot
+    if bill is None:
+        return ("missing_bill_snapshot",)
+    target = case.goal.target_monthly_total
+    try:
+        context = OfferComplianceContext(
+            evaluated_at=evaluated_at,
+            current_monthly_minor=bill.monthly_total.amount_minor,
+            currency=bill.monthly_total.currency,
+            target_monthly_minor=target.amount_minor if target is not None else None,
+            target_currency=target.currency if target is not None else None,
+            required_features=tuple(
+                str(value) for value in case.goal.required_features
+            ),
+            forbidden_changes=tuple(
+                str(value) for value in case.goal.forbidden_changes
+            ),
+        )
+    except ValueError:
+        return ("compliance_context_invalid",)
+    try:
+        terms = OfferComplianceTerms(
+            monthly_price_minor=offer.monthly_price.amount_minor,
+            total_cost_12_months_minor=offer.total_cost.amount_minor,
+            currency=offer.monthly_price.currency,
+            fees_minor=sum(item.amount.amount_minor for item in offer.fees),
+            features=tuple(str(value) for value in offer.features),
+            applied_changes=applied_changes,
+            expires_at=offer.expires_at,
+        )
+    except ValueError:
+        return ("offer_terms_invalid",)
+    return offer_compliance_violations(context, terms)
+
+
 def verify_completion(request: CompletionVerification) -> CompletionDecision:
     reason_codes: list[str] = []
 
@@ -207,38 +257,16 @@ def verify_completion(request: CompletionVerification) -> CompletionDecision:
     if request.offer.case_id != request.case.case_id:
         reject("offer_case_mismatch")
 
-    bill_snapshot = request.case.bill_snapshot
-    if bill_snapshot is None:
-        reject("missing_bill_snapshot")
-    else:
-        target = request.case.goal.target_monthly_total
-        policy_context = OfferComplianceContext(
-            evaluated_at=request.evaluated_at,
-            current_monthly_minor=bill_snapshot.monthly_total.amount_minor,
-            currency=bill_snapshot.monthly_total.currency,
-            target_monthly_minor=target.amount_minor if target is not None else None,
-            target_currency=target.currency if target is not None else None,
-            required_features=tuple(
-                str(value) for value in request.case.goal.required_features
-            ),
-            forbidden_changes=tuple(
-                str(value) for value in request.case.goal.forbidden_changes
-            ),
-        )
-        policy_terms = OfferComplianceTerms(
-            monthly_price_minor=request.offer.monthly_price.amount_minor,
-            total_cost_12_months_minor=request.offer.total_cost.amount_minor,
-            currency=request.offer.monthly_price.currency,
-            fees_minor=sum(item.amount.amount_minor for item in request.offer.fees),
-            features=tuple(str(value) for value in request.offer.features),
-            applied_changes=request.confirmation.applied_changes,
-            expires_at=request.offer.expires_at,
-        )
-        policy_reason_map = {
-            "forbidden_change_present": "forbidden_change_applied",
-        }
-        for violation in offer_compliance_violations(policy_context, policy_terms):
-            reject(policy_reason_map.get(violation, violation))
+    policy_reason_map = {
+        "forbidden_change_present": "forbidden_change_applied",
+    }
+    for violation in case_offer_violations(
+        request.case,
+        request.offer,
+        evaluated_at=request.evaluated_at,
+        applied_changes=request.confirmation.applied_changes,
+    ):
+        reject(policy_reason_map.get(violation, violation))
 
     expected_offer_ref = OfferReference(
         offer_id=request.offer.offer_id,
