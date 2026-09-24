@@ -5,6 +5,7 @@ import os
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import httpx
@@ -41,12 +42,21 @@ from proxyloop_workflow_worker.workflow import (
     update_id_for_command,
 )
 from temporalio import activity
+from temporalio import workflow as temporal_workflow
 from temporalio.api.workflowservice.v1 import RegisterNamespaceRequest
-from temporalio.client import Client, WorkflowExecutionStatus, WorkflowUpdateStage
+from temporalio.client import (
+    Client,
+    WorkflowExecutionStatus,
+    WorkflowHandle,
+    WorkflowHistory,
+    WorkflowUpdateFailedError,
+    WorkflowUpdateHandle,
+    WorkflowUpdateStage,
+)
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
-from temporalio.worker import Replayer, Worker
+from temporalio.worker import Replayer, UnsandboxedWorkflowRunner, Worker
 
 TABLE = "proxyloop_case_runtime_states"
 
@@ -95,11 +105,15 @@ class _ExhaustingAdapter(CaseCommandActivityAdapter):
         super().__init__(runtime)
         self.blocked_command_id = blocked_command_id
         self.blocked_attempts = 0
+        self.blocking = True
 
     def apply_command(self, command: CaseCommand) -> CaseTransitionRef:
         if command.command_id == self.blocked_command_id:
             self.blocked_attempts += 1
-            raise ApplicationError("injected unavailable", type="storage_unavailable")
+            if self.blocking:
+                raise ApplicationError(
+                    "injected unavailable", type="storage_unavailable"
+                )
         return super().apply_command(command)
 
 
@@ -135,10 +149,11 @@ class _ExpiryFaultingAdapter(CaseCommandActivityAdapter):
 
 
 class _FinalWriteOutageRepository(PostgresCaseRepository):
-    """Lose the final approval write once, after the Provider is committed."""
+    """Lose the final approval write ``failures`` times, after the Provider is
+    committed."""
 
-    def __init__(self, database_url: str) -> None:
-        self.fail_final_write = True
+    def __init__(self, database_url: str, *, failures: int = 1) -> None:
+        self.final_write_failures = failures
         super().__init__(database_url)
 
     def replace(
@@ -148,8 +163,11 @@ class _FinalWriteOutageRepository(PostgresCaseRepository):
         expected_revision: int,
         state: CaseRuntimeState,
     ) -> CaseRuntimeState:
-        if state.snapshot.completion_decision is not None and self.fail_final_write:
-            self.fail_final_write = False
+        if (
+            state.snapshot.completion_decision is not None
+            and self.final_write_failures > 0
+        ):
+            self.final_write_failures -= 1
             raise StorageUnavailableError("injected final write outage")
         return super().replace(
             case_id,
@@ -187,6 +205,23 @@ class _GatedApprovalActivity:
     @activity.defn(name=ACTIVITY_NAME)
     async def apply_command(self, command: CaseCommand) -> CaseTransitionRef:
         if command.command_type == CaseCommandType.DECIDE_APPROVAL:
+            self.entered.set()
+            await self.release.wait()
+        return await asyncio.to_thread(self.adapter.apply_command, command)
+
+
+class _GatedCommandActivity:
+    """Hold one command's activity until released, so another Update queues."""
+
+    def __init__(self, runtime: ThinAgentRuntime, gated_command_id: UUID) -> None:
+        self.adapter = CaseCommandActivityAdapter(runtime)
+        self.gated_command_id = gated_command_id
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+
+    @activity.defn(name=ACTIVITY_NAME)
+    async def apply_command(self, command: CaseCommand) -> CaseTransitionRef:
+        if command.command_id == self.gated_command_id:
             self.entered.set()
             await self.release.wait()
         return await asyncio.to_thread(self.adapter.apply_command, command)
@@ -1420,3 +1455,291 @@ def test_live_temporal_changed_body_after_success_is_runtime_conflict() -> None:
         assert state.transitions[-1].after_revision == applied.after_revision
 
     _run_live(scenario)
+
+
+async def _run_id(handle: WorkflowHandle) -> str:
+    description = await handle.describe()
+    return description.raw_description.workflow_execution_info.execution.run_id
+
+
+async def _start_queued(
+    handle: WorkflowHandle, request: CaseCommandRequest
+) -> WorkflowUpdateHandle[CaseTransitionRef]:
+    # ACCEPTED means the handler has started and is waiting on the lock.
+    return await handle.start_update(
+        UPDATE_NAME,
+        request,
+        wait_for_stage=WorkflowUpdateStage.ACCEPTED,
+        id=update_id_for_command(request.command_id, request.semantic_fingerprint()),
+        result_type=CaseTransitionRef,
+    )
+
+
+def _failure_type(error: BaseException) -> str | None:
+    # The first ApplicationError is the activity's category; deeper ones are
+    # the converted Python causes.
+    current: BaseException | None = error
+    while current is not None:
+        if isinstance(current, ApplicationError) and current.type:
+            return current.type
+        current = current.__cause__
+    return None
+
+
+def test_live_temporal_identical_retry_after_exhaustion_reaches_runtime() -> None:
+    """R-1 T1: retryable exhaustion rolls the run, so the identical retry is
+    executed instead of answered with the cached ``temporal_unavailable``."""
+
+    async def scenario(database_url: str, address: str) -> None:
+        task_queue = f"proxyloop-phase05a-exhausted-retry-{uuid4()}"
+        settings = TemporalSettings(target_host=address, task_queue=task_queue)
+        client, namespace = await _connected(address)
+        settings = replace(settings, namespace=namespace)
+        runtime = ThinAgentRuntime(PostgresCaseRepository(database_url))
+        blocked_id = uuid4()
+        adapter = _ExhaustingAdapter(runtime, blocked_id)
+        temporal = TemporalCaseClient(client, settings)
+        worker = Worker(
+            client,
+            task_queue=task_queue,
+            workflows=[CaseWorkflow],
+            activities=[activity_for_adapter(adapter)],
+        )
+        async with worker:
+            created = await temporal.apply_command(_create_request())
+            handle = client.get_workflow_handle(temporal.workflow_id(SCRIPTED_CASE_ID))
+            first_run_id = await _run_id(handle)
+            blocked = _append_request(blocked_id, created.after_revision)
+            with pytest.raises(TemporalDispatchError) as raised:
+                await temporal.apply_command(blocked)
+            adapter.blocking = False
+            retried = await temporal.apply_command(blocked)
+            final_run_id = await _run_id(handle)
+
+        assert raised.value.category == "temporal_unavailable"
+        assert adapter.blocked_attempts == 6
+        assert retried.command_id == blocked_id
+        assert retried.deduplicated is False
+        assert retried.approval_id is not None
+        assert final_run_id != first_run_id
+        state = runtime.repository.get(SCRIPTED_CASE_ID)
+        assert state is not None
+        assert len(state.transitions) == 2
+
+    _run_live(scenario)
+
+
+def test_live_temporal_identical_approval_retry_finishes_exhausted_claim() -> None:
+    """R-1 T2: an approval whose final write exhausted the activity retries is
+    finished by its own identical retry, without a second Provider execution."""
+
+    async def scenario(database_url: str, address: str) -> None:
+        task_queue = f"proxyloop-phase05a-exhausted-claim-{uuid4()}"
+        settings = TemporalSettings(target_host=address, task_queue=task_queue)
+        client, namespace = await _connected(address)
+        settings = replace(settings, namespace=namespace)
+        runtime = ThinAgentRuntime(
+            _FinalWriteOutageRepository(database_url, failures=5)
+        )
+        adapter = _RecordingAdapter(runtime)
+        temporal = TemporalCaseClient(client, settings)
+        worker = Worker(
+            client,
+            task_queue=task_queue,
+            workflows=[CaseWorkflow],
+            activities=[activity_for_adapter(adapter)],
+        )
+        async with worker:
+            waiting = await _pending_approval(temporal)
+            approve_request = CaseCommandRequest(
+                command_id=uuid4(),
+                case_id=SCRIPTED_CASE_ID,
+                command_type=CaseCommandType.DECIDE_APPROVAL,
+                approval_id=waiting.approval_id,
+                decision="approved",
+                expected_revision=waiting.after_revision,
+            )
+            with pytest.raises(TemporalDispatchError) as raised:
+                await temporal.apply_command(approve_request)
+            stuck = PostgresCaseRepository(database_url).get(SCRIPTED_CASE_ID)
+            completed = await temporal.apply_command(approve_request)
+
+        assert raised.value.category == "temporal_unavailable"
+        assert stuck is not None
+        assert stuck.snapshot.pending_execution is True
+        assert stuck.execution_claim is not None
+        assert completed.terminal is True
+        assert adapter.outcomes[approve_request.command_id] == [
+            *["storage_unavailable"] * 5,
+            "terminal",
+        ]
+        state = PostgresCaseRepository(database_url).get(SCRIPTED_CASE_ID)
+        assert state is not None
+        assert state.snapshot.pending_execution is False
+        assert state.execution_claim is None
+        assert state.execution_count == 1
+        assert [item.source_type.value for item in state.snapshot.evidence].count(
+            "confirmation"
+        ) == 1
+        assert [item.value for item in state.provider.state_history].count(
+            "confirmed"
+        ) == 1
+
+    _run_live(scenario)
+
+
+def test_live_temporal_exhaustion_with_queued_command_rolls_after_it() -> None:
+    """R-1 T3: a command queued behind the exhausted one still runs, and the
+    exhausted command's identical retry then reaches the Runtime."""
+
+    async def scenario(database_url: str, address: str) -> None:
+        task_queue = f"proxyloop-phase05a-exhausted-queued-{uuid4()}"
+        settings = TemporalSettings(target_host=address, task_queue=task_queue)
+        client, namespace = await _connected(address)
+        settings = replace(settings, namespace=namespace)
+        runtime = ThinAgentRuntime(PostgresCaseRepository(database_url))
+        blocked_id = uuid4()
+        adapter = _ExhaustingAdapter(runtime, blocked_id)
+        temporal = TemporalCaseClient(client, settings)
+        worker = Worker(
+            client,
+            task_queue=task_queue,
+            workflows=[CaseWorkflow],
+            activities=[activity_for_adapter(adapter)],
+        )
+        async with worker:
+            created = await temporal.apply_command(_create_request())
+            handle = client.get_workflow_handle(temporal.workflow_id(SCRIPTED_CASE_ID))
+            first_run_id = await _run_id(handle)
+            blocked = _append_request(blocked_id, created.after_revision)
+            blocked_task = asyncio.create_task(temporal.apply_command(blocked))
+            for _ in range(200):
+                if adapter.blocked_attempts >= 1:
+                    break
+                await asyncio.sleep(0.05)
+            assert adapter.blocked_attempts >= 1
+            queued_request = _append_request(uuid4(), created.after_revision)
+            queued = await _start_queued(handle, queued_request)
+            with pytest.raises(TemporalDispatchError) as raised:
+                await blocked_task
+            queued_result = await asyncio.wait_for(queued.result(), timeout=30)
+            adapter.blocking = False
+            with pytest.raises(TemporalDispatchError) as retried:
+                await temporal.apply_command(blocked)
+            final_run_id = await _run_id(handle)
+
+        assert raised.value.category == "temporal_unavailable"
+        assert queued_result.command_id == queued_request.command_id
+        assert queued_result.deduplicated is False
+        assert retried.value.category == "case_conflict"
+        assert adapter.blocked_attempts == 6
+        assert final_run_id != first_run_id
+        state = runtime.repository.get(SCRIPTED_CASE_ID)
+        assert state is not None
+        assert len(state.transitions) == 2
+        assert state.transitions[-1].after_revision == queued_result.after_revision
+
+    _run_live(scenario)
+
+
+def test_live_temporal_continue_as_new_waits_for_queued_command() -> None:
+    """R-1b T4: reaching the Continue-As-New threshold while another Update is
+    queued on the lock must not spin the Workflow task; both complete."""
+
+    async def scenario(database_url: str, address: str) -> None:
+        task_queue = f"proxyloop-phase05a-threshold-queued-{uuid4()}"
+        settings = TemporalSettings(
+            target_host=address,
+            task_queue=task_queue,
+            continue_as_new_after=2,
+        )
+        client, namespace = await _connected(address)
+        settings = replace(settings, namespace=namespace)
+        runtime = ThinAgentRuntime(PostgresCaseRepository(database_url))
+        stuck_id = uuid4()
+        gated = _GatedCommandActivity(runtime, stuck_id)
+        temporal = TemporalCaseClient(client, settings)
+        worker = Worker(
+            client,
+            task_queue=task_queue,
+            workflows=[CaseWorkflow],
+            activities=[gated.apply_command],
+        )
+        async with worker:
+            created = await temporal.apply_command(_create_request())
+            handle = client.get_workflow_handle(temporal.workflow_id(SCRIPTED_CASE_ID))
+            first_run_id = await _run_id(handle)
+            stuck_request = _append_request(stuck_id, created.after_revision)
+            stuck_task = asyncio.create_task(temporal.apply_command(stuck_request))
+            await asyncio.wait_for(gated.entered.wait(), timeout=10)
+            queued_request = _append_request(uuid4(), created.after_revision)
+            queued = await _start_queued(handle, queued_request)
+            gated.release.set()
+            try:
+                stuck_result = await asyncio.wait_for(stuck_task, timeout=30)
+                with pytest.raises(WorkflowUpdateFailedError) as queued_failed:
+                    await asyncio.wait_for(queued.result(), timeout=30)
+            finally:
+                stuck_task.cancel()
+            for _ in range(100):
+                final_run_id = await _run_id(handle)
+                if final_run_id != first_run_id:
+                    break
+                await asyncio.sleep(0.05)
+
+        assert stuck_result.command_id == stuck_id
+        assert stuck_result.approval_id is not None
+        # The queued append reached the Runtime, which refuses it because the
+        # stuck append moved the Case to a pending approval.
+        assert _failure_type(queued_failed.value) == "case_conflict"
+        assert final_run_id != first_run_id
+        state = runtime.repository.get(SCRIPTED_CASE_ID)
+        assert state is not None
+        assert len(state.transitions) == 2
+
+    _run_live(scenario)
+
+
+# Recorded on main @ 14d3fcf (before R-1) against the Compose Temporal: create,
+# an append that exhausts five ``storage_unavailable`` attempts, then a
+# distinct append that succeeds in the same run. Stack traces and client
+# identities were blanked.
+_PRE_R1_HISTORY = (
+    Path(__file__).resolve().parents[1]
+    / "fixtures"
+    / "temporal_history.case-workflow-exhaustion-then-success.pre-r1.json"
+)
+
+
+def test_replay_pre_r1_history_keeps_the_patch_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R-1 T5: a history recorded before the fix replays on the patched code,
+    and would not replay if the roll were not behind ``workflow.patched``."""
+
+    history = WorkflowHistory.from_json(
+        f"proxyloop-case/{SCRIPTED_CASE_ID}",
+        _PRE_R1_HISTORY.read_text(encoding="utf-8"),
+    )
+
+    async def replay(runner: UnsandboxedWorkflowRunner | None = None) -> None:
+        replayer = (
+            Replayer(
+                workflows=[CaseWorkflow],
+                data_converter=pydantic_data_converter,
+            )
+            if runner is None
+            else Replayer(
+                workflows=[CaseWorkflow],
+                data_converter=pydantic_data_converter,
+                workflow_runner=runner,
+            )
+        )
+        await replayer.replay_workflow(history)
+
+    asyncio.run(replay())
+
+    # Forcing the patch on during replay stands in for an ungated change.
+    monkeypatch.setattr(temporal_workflow, "patched", lambda patch_id: True)
+    with pytest.raises(temporal_workflow.NondeterminismError, match="Continue as new"):
+        asyncio.run(replay(UnsandboxedWorkflowRunner()))
