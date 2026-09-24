@@ -15,7 +15,7 @@ from proxyloop_case_runtime.commands import (
 )
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ActivityError, ApplicationError
+from temporalio.exceptions import ActivityError, ApplicationError, RetryState
 from temporalio.exceptions import TimeoutError as ActivityTimeoutError
 
 from .models import CaseCommandRequest, CaseWorkflowInput, ChannelDeliveryRequest
@@ -45,6 +45,8 @@ ACTIVITY_RETRY_POLICY = RetryPolicy(
     ),
 )
 NON_RETRYABLE_ERROR_TYPES = ACTIVITY_RETRY_POLICY.non_retryable_error_types
+# Server-reported states in which an activity failed with its retries used up.
+_EXHAUSTED_RETRY_STATES = (RetryState.MAXIMUM_ATTEMPTS_REACHED, RetryState.TIMEOUT)
 EXPIRY_RETRY_INITIAL_BACKOFF = timedelta(seconds=15)
 EXPIRY_RETRY_MAXIMUM_BACKOFF = timedelta(minutes=5)
 
@@ -61,7 +63,12 @@ def update_id_for_command(command_id: UUID, request_fingerprint: str) -> str:
     Temporal caches an Update outcome per Update ID within a run, so the ID
     binds the semantic request fingerprint too: an identical retry reuses the
     cached outcome, while a corrected body under the same command id reaches
-    the Runtime, whose receipt fingerprint rules decide.
+    the Runtime, whose receipt fingerprint rules decide. A failure whose
+    activity retries were exhausted (server retry state: maximum attempts or
+    timeout) rolls the run by Continue-As-New once no other handler is
+    active, which clears the cache, so its identical retry reaches the
+    Runtime too; a retry that arrives before the roll still gets the cached
+    failure.
     """
 
     return (
@@ -192,11 +199,7 @@ class CaseWorkflow:
         del input
 
         while True:
-            if (
-                self._continue_requested
-                and self._active_handlers == 0
-                and not self._activity_in_flight
-            ):
+            if self._can_continue_as_new():
                 self._continue_as_new()
 
             observed = self._wake_version
@@ -222,7 +225,7 @@ class CaseWorkflow:
                     def wake_changed(observed_version: int = observed) -> bool:
                         return (
                             self._wake_version != observed_version
-                            or self._continue_requested
+                            or self._can_continue_as_new()
                         )
 
                     await workflow.wait_condition(
@@ -237,7 +240,7 @@ class CaseWorkflow:
                 def wake_changed(observed_version: int = observed) -> bool:
                     return (
                         self._wake_version != observed_version
-                        or self._continue_requested
+                        or self._can_continue_as_new()
                     )
 
                 await workflow.wait_condition(
@@ -263,7 +266,18 @@ class CaseWorkflow:
         self._active_handlers += 1
         try:
             async with self._command_lock:
-                transition = await self._execute_command(command)
+                try:
+                    transition = await self._execute_command(command)
+                except ActivityError as error:
+                    # Temporal caches this Update's failure for the rest of the
+                    # run; when the server reports the retries exhausted, roll
+                    # the run so the identical retry reaches the Runtime.
+                    # Non-retryable outcomes stay cached.
+                    if error.retry_state in _EXHAUSTED_RETRY_STATES and (
+                        workflow.patched("retryable-update-failure-continues-as-new")
+                    ):
+                        self._continue_requested = True
+                    raise
                 if transition.case_id != self._case_id:
                     raise ApplicationError(
                         "invalid activity result",
@@ -276,7 +290,7 @@ class CaseWorkflow:
                         transition.after_revision,
                     )
                 self._commands_in_run += 1
-                self._continue_requested = (
+                self._continue_requested = self._continue_requested or (
                     self._commands_in_run >= self._continue_as_new_after
                 )
                 self._wake_version += 1
@@ -398,7 +412,7 @@ class CaseWorkflow:
                     transition.after_revision,
                 )
             self._commands_in_run += 1
-            self._continue_requested = (
+            self._continue_requested = self._continue_requested or (
                 self._commands_in_run >= self._continue_as_new_after
             )
             self._wake_version += 1
@@ -425,6 +439,15 @@ class CaseWorkflow:
         self._expiry_failures = 0
         self._expiry_retry_at = None
         self._expiry_abandoned_for = None
+
+    def _can_continue_as_new(self) -> bool:
+        # Waking on ``_continue_requested`` alone spins the Workflow task
+        # while a queued handler forbids Continue-As-New (R-1b).
+        return (
+            self._continue_requested
+            and self._active_handlers == 0
+            and not self._activity_in_flight
+        )
 
     def _continue_as_new(self) -> None:
         case_id = self._case_id

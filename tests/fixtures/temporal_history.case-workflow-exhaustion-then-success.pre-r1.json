@@ -1,0 +1,771 @@
+{
+  "events": [
+    {
+      "eventId": "1",
+      "eventTime": "2026-09-24T06:08:27.391953922Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_STARTED",
+      "taskId": "23076417",
+      "workflowExecutionStartedEventAttributes": {
+        "workflowType": {
+          "name": "CaseWorkflow"
+        },
+        "taskQueue": {
+          "name": "proxyloop-phase05a-record-7f12f989-0bab-4c3c-8f90-7a28cd4011f1",
+          "kind": "TASK_QUEUE_KIND_NORMAL"
+        },
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "data": "eyJzY2hlbWFfdmVyc2lvbiI6InBoYXNlLTA1YS12MSIsImNhc2VfaWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEiLCJydW5fZ2VuZXJhdGlvbiI6MCwiY29tbWFuZHNfaW5fcnVuIjowLCJjb250aW51ZV9hc19uZXdfYWZ0ZXIiOjMyLCJsYXN0X3RyYW5zaXRpb24iOm51bGx9"
+            }
+          ]
+        },
+        "workflowTaskTimeout": "10s",
+        "originalExecutionRunId": "01a0d207-94ff-7e8b-bcc0-c58794a6b70f",
+        "identity": "proxyloop-phase05a-recorder",
+        "firstExecutionRunId": "01a0d207-94ff-7e8b-bcc0-c58794a6b70f",
+        "attempt": 1,
+        "firstWorkflowTaskBackoff": "0s",
+        "workflowId": "proxyloop-case/11111111-1111-4111-8111-111111111111",
+        "priority": {}
+      }
+    },
+    {
+      "eventId": "2",
+      "eventTime": "2026-09-24T06:08:27.392428297Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId": "23076418",
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "proxyloop-phase05a-record-7f12f989-0bab-4c3c-8f90-7a28cd4011f1",
+          "kind": "TASK_QUEUE_KIND_NORMAL"
+        },
+        "startToCloseTimeout": "10s",
+        "attempt": 1
+      }
+    },
+    {
+      "eventId": "3",
+      "eventTime": "2026-09-24T06:08:27.398642547Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId": "23076422",
+      "workflowTaskStartedEventAttributes": {
+        "scheduledEventId": "2",
+        "identity": "proxyloop-phase05a-recorder",
+        "requestId": "aa71ec0e-1b0d-41ec-a67b-5f16af24c72b",
+        "historySizeBytes": "595",
+        "workerVersion": {
+          "buildId": "b89fdfc5e8768b59ea58ac57df86daf8"
+        }
+      }
+    },
+    {
+      "eventId": "4",
+      "eventTime": "2026-09-24T06:08:27.543046547Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId": "23076426",
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": "2",
+        "startedEventId": "3",
+        "identity": "proxyloop-phase05a-recorder",
+        "workerVersion": {
+          "buildId": "b89fdfc5e8768b59ea58ac57df86daf8"
+        },
+        "sdkMetadata": {
+          "coreUsedFlags": [
+            1,
+            2,
+            3
+          ],
+          "sdkName": "temporal-python",
+          "sdkVersion": "1.32.0"
+        },
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "eventId": "5",
+      "eventTime": "2026-09-24T06:08:27.543249380Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_UPDATE_ACCEPTED",
+      "taskId": "23076427",
+      "workflowExecutionUpdateAcceptedEventAttributes": {
+        "protocolInstanceId": "case-command/e510be40-8fea-4173-99c3-ff9529e82d6d:ea01248662e2b263",
+        "acceptedRequestMessageId": "case-command/e510be40-8fea-4173-99c3-ff9529e82d6d:ea01248662e2b263/request",
+        "acceptedRequestSequencingEventId": "2",
+        "acceptedRequest": {
+          "meta": {
+            "updateId": "case-command/e510be40-8fea-4173-99c3-ff9529e82d6d:ea01248662e2b263",
+            "identity": "proxyloop-phase05a-recorder"
+          },
+          "input": {
+            "name": "apply_case_command",
+            "args": {
+              "payloads": [
+                {
+                  "metadata": {
+                    "encoding": "anNvbi9wbGFpbg=="
+                  },
+                  "data": "eyJzY2hlbWFfdmVyc2lvbiI6InBoYXNlLTA1YS12MSIsImNvbW1hbmRfaWQiOiJlNTEwYmU0MC04ZmVhLTQxNzMtOTljMy1mZjk1MjllODJkNmQiLCJjYXNlX2lkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwiY29tbWFuZF90eXBlIjoiY3JlYXRlX2Nhc2UiLCJleHBlY3RlZF9yZXZpc2lvbiI6bnVsbCwiY3VycmVudF9tb250aGx5X3RvdGFsIjp7ImFtb3VudF9taW5vciI6OTEwMCwiY3VycmVuY3kiOiJVU0QifSwidGFyZ2V0X21vbnRobHlfdG90YWwiOnsiYW1vdW50X21pbm9yIjo3MjAwLCJjdXJyZW5jeSI6IlVTRCJ9LCJtb2JpbGVfaG90c3BvdF9yZXF1aXJlZCI6dHJ1ZSwiZGV2aWNlX2ZpbmFuY2luZ19jaGFuZ2VfZm9yYmlkZGVuIjp0cnVlLCJjb250ZW50IjpudWxsLCJldmVudF90eXBlIjpudWxsLCJhcHByb3ZhbF9pZCI6bnVsbCwiZGVjaXNpb24iOm51bGwsImV4cGVjdGVkX2Nhc2VfcmV2aXNpb24iOm51bGwsImV4cGVjdGVkX2FjdGlvbl9pbnRlbnRfcmV2aXNpb24iOm51bGwsImFwcHJvdmFsX2V4cGlyZXNfYXQiOm51bGwsImNoYW5uZWxfb2NjdXJyZWRfYXQiOm51bGwsImNoYW5uZWxfa2luZCI6bnVsbCwiYmluZGluZ19yZWYiOm51bGwsImV2ZW50X2lkIjpudWxsLCJjb250ZW50X2hhc2giOm51bGwsInBheWxvYWRfaGFzaCI6bnVsbCwiZGVsaXZlcnlfaWQiOm51bGwsInByb3ZpZGVyX21lc3NhZ2VfaWQiOm51bGwsImRlbGl2ZXJ5X3N0YXR1cyI6bnVsbCwiYXJ0aWZhY3RfaGFzaCI6bnVsbH0="
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "eventId": "6",
+      "eventTime": "2026-09-24T06:08:27.543322297Z",
+      "eventType": "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId": "23076428",
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "case-command/e510be40-8fea-4173-99c3-ff9529e82d6d",
+        "activityType": {
+          "name": "apply_case_command_activity"
+        },
+        "taskQueue": {
+          "name": "proxyloop-phase05a-record-7f12f989-0bab-4c3c-8f90-7a28cd4011f1",
+          "kind": "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header": {},
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "data": "eyJzY2hlbWFfdmVyc2lvbiI6InBoYXNlLTA1YS12MSIsImNvbW1hbmRfaWQiOiJlNTEwYmU0MC04ZmVhLTQxNzMtOTljMy1mZjk1MjllODJkNmQiLCJjYXNlX2lkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwiY29tbWFuZF90eXBlIjoiY3JlYXRlX2Nhc2UiLCJvY2N1cnJlZF9hdCI6IjIwMjYtMDktMjRUMDY6MDg6MjcuMzk4NjQzWiIsImV4cGVjdGVkX3JldmlzaW9uIjpudWxsLCJjdXJyZW50X21vbnRobHlfdG90YWwiOnsiYW1vdW50X21pbm9yIjo5MTAwLCJjdXJyZW5jeSI6IlVTRCJ9LCJ0YXJnZXRfbW9udGhseV90b3RhbCI6eyJhbW91bnRfbWlub3IiOjcyMDAsImN1cnJlbmN5IjoiVVNEIn0sIm1vYmlsZV9ob3RzcG90X3JlcXVpcmVkIjp0cnVlLCJkZXZpY2VfZmluYW5jaW5nX2NoYW5nZV9mb3JiaWRkZW4iOnRydWUsImNvbnRlbnQiOm51bGwsImV2ZW50X3R5cGUiOm51bGwsImFwcHJvdmFsX2lkIjpudWxsLCJkZWNpc2lvbiI6bnVsbCwiZXhwZWN0ZWRfY2FzZV9yZXZpc2lvbiI6bnVsbCwiZXhwZWN0ZWRfYWN0aW9uX2ludGVudF9yZXZpc2lvbiI6bnVsbCwiYXBwcm92YWxfZXhwaXJlc19hdCI6bnVsbCwiY2hhbm5lbF9raW5kIjpudWxsLCJiaW5kaW5nX3JlZiI6bnVsbCwiZXZlbnRfaWQiOm51bGwsImNvbnRlbnRfaGFzaCI6bnVsbCwicGF5bG9hZF9oYXNoIjpudWxsLCJkZWxpdmVyeV9pZCI6bnVsbCwicHJvdmlkZXJfbWVzc2FnZV9pZCI6bnVsbCwiZGVsaXZlcnlfc3RhdHVzIjpudWxsLCJhcnRpZmFjdF9oYXNoIjpudWxsfQ=="
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": "120s",
+        "scheduleToStartTimeout": "120s",
+        "startToCloseTimeout": "30s",
+        "heartbeatTimeout": "0s",
+        "workflowTaskCompletedEventId": "4",
+        "retryPolicy": {
+          "initialInterval": "1s",
+          "backoffCoefficient": 2.0,
+          "maximumInterval": "10s",
+          "maximumAttempts": 5,
+          "nonRetryableErrorTypes": [
+            "invalid_command",
+            "case_not_found",
+            "case_conflict",
+            "approval_expired",
+            "state_invalid",
+            "model_path"
+          ]
+        },
+        "useWorkflowBuildId": true,
+        "priority": {}
+      }
+    },
+    {
+      "eventId": "7",
+      "eventTime": "2026-09-24T06:08:27.553852172Z",
+      "eventType": "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId": "23076435",
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": "6",
+        "identity": "proxyloop-phase05a-recorder",
+        "requestId": "9b29f340-5b6d-4cef-8b9a-f8025cfd37eb",
+        "attempt": 1,
+        "workerVersion": {
+          "buildId": "b89fdfc5e8768b59ea58ac57df86daf8"
+        }
+      }
+    },
+    {
+      "eventId": "8",
+      "eventTime": "2026-09-24T06:08:27.581681338Z",
+      "eventType": "EVENT_TYPE_ACTIVITY_TASK_COMPLETED",
+      "taskId": "23076436",
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "data": "eyJzY2hlbWFfdmVyc2lvbiI6InBoYXNlLTA1YS12MSIsImNvbW1hbmRfaWQiOiJlNTEwYmU0MC04ZmVhLTQxNzMtOTljMy1mZjk1MjllODJkNmQiLCJjYXNlX2lkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwiY29tbWFuZF90eXBlIjoiY3JlYXRlX2Nhc2UiLCJiZWZvcmVfcmV2aXNpb24iOm51bGwsImFmdGVyX3JldmlzaW9uIjoyLCJldmVudF9jdXJzb3IiOjEsInJvdXRlIjoic2xvd19yZWZyZXNoIiwiYXBwcm92YWxfaWQiOm51bGwsImFwcHJvdmFsX2V4cGlyZXNfYXQiOm51bGwsImNvbW1hbmRfZmluZ2VycHJpbnQiOiJlYTAxMjQ4NjYyZTJiMjYzYTM1MTQ0YjQ3ZTBmNTc0MTVlMTE5MTQ5NTA4NjkwZjNlNmM1NTUxNGZiYmE0MjUwIiwiZGVsaXZlcnlfaWQiOm51bGwsImRlbGl2ZXJ5X3N0YXR1cyI6bnVsbCwidGVybWluYWwiOmZhbHNlLCJkZWR1cGxpY2F0ZWQiOmZhbHNlfQ=="
+            }
+          ]
+        },
+        "scheduledEventId": "6",
+        "startedEventId": "7",
+        "identity": "proxyloop-phase05a-recorder"
+      }
+    },
+    {
+      "eventId": "9",
+      "eventTime": "2026-09-24T06:08:27.581684755Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId": "23076437",
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "proxyloop-phase05a-recorder-6442b6f25855483b839214875ab87233",
+          "kind": "TASK_QUEUE_KIND_STICKY",
+          "normalName": "proxyloop-phase05a-record-7f12f989-0bab-4c3c-8f90-7a28cd4011f1"
+        },
+        "startToCloseTimeout": "10s",
+        "attempt": 1
+      }
+    },
+    {
+      "eventId": "10",
+      "eventTime": "2026-09-24T06:08:27.584492463Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId": "23076441",
+      "workflowTaskStartedEventAttributes": {
+        "scheduledEventId": "9",
+        "identity": "proxyloop-phase05a-recorder",
+        "requestId": "88956c74-5b28-453d-b5ba-249fe17f2b2f",
+        "historySizeBytes": "3945",
+        "workerVersion": {
+          "buildId": "b89fdfc5e8768b59ea58ac57df86daf8"
+        }
+      }
+    },
+    {
+      "eventId": "11",
+      "eventTime": "2026-09-24T06:08:27.589458463Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId": "23076445",
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": "9",
+        "startedEventId": "10",
+        "identity": "proxyloop-phase05a-recorder",
+        "workerVersion": {
+          "buildId": "b89fdfc5e8768b59ea58ac57df86daf8"
+        },
+        "sdkMetadata": {},
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "eventId": "12",
+      "eventTime": "2026-09-24T06:08:27.589501838Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_UPDATE_COMPLETED",
+      "taskId": "23076446",
+      "workflowExecutionUpdateCompletedEventAttributes": {
+        "meta": {
+          "updateId": "case-command/e510be40-8fea-4173-99c3-ff9529e82d6d:ea01248662e2b263",
+          "identity": "proxyloop-phase05a-recorder"
+        },
+        "outcome": {
+          "success": {
+            "payloads": [
+              {
+                "metadata": {
+                  "encoding": "anNvbi9wbGFpbg=="
+                },
+                "data": "eyJzY2hlbWFfdmVyc2lvbiI6InBoYXNlLTA1YS12MSIsImNvbW1hbmRfaWQiOiJlNTEwYmU0MC04ZmVhLTQxNzMtOTljMy1mZjk1MjllODJkNmQiLCJjYXNlX2lkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwiY29tbWFuZF90eXBlIjoiY3JlYXRlX2Nhc2UiLCJiZWZvcmVfcmV2aXNpb24iOm51bGwsImFmdGVyX3JldmlzaW9uIjoyLCJldmVudF9jdXJzb3IiOjEsInJvdXRlIjoic2xvd19yZWZyZXNoIiwiYXBwcm92YWxfaWQiOm51bGwsImFwcHJvdmFsX2V4cGlyZXNfYXQiOm51bGwsImNvbW1hbmRfZmluZ2VycHJpbnQiOiJlYTAxMjQ4NjYyZTJiMjYzYTM1MTQ0YjQ3ZTBmNTc0MTVlMTE5MTQ5NTA4NjkwZjNlNmM1NTUxNGZiYmE0MjUwIiwiZGVsaXZlcnlfaWQiOm51bGwsImRlbGl2ZXJ5X3N0YXR1cyI6bnVsbCwidGVybWluYWwiOmZhbHNlLCJkZWR1cGxpY2F0ZWQiOmZhbHNlfQ=="
+              }
+            ]
+          }
+        },
+        "acceptedEventId": "5"
+      }
+    },
+    {
+      "eventId": "13",
+      "eventTime": "2026-09-24T06:08:27.594482922Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId": "23076453",
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "proxyloop-phase05a-recorder-6442b6f25855483b839214875ab87233",
+          "kind": "TASK_QUEUE_KIND_STICKY",
+          "normalName": "proxyloop-phase05a-record-7f12f989-0bab-4c3c-8f90-7a28cd4011f1"
+        },
+        "startToCloseTimeout": "10s",
+        "attempt": 1
+      }
+    },
+    {
+      "eventId": "14",
+      "eventTime": "2026-09-24T06:08:27.594757588Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId": "23076454",
+      "workflowTaskStartedEventAttributes": {
+        "scheduledEventId": "13",
+        "identity": "proxyloop-phase05a-recorder",
+        "requestId": "d09bd4e5-f591-462f-8cb1-7e7523f8acf0",
+        "historySizeBytes": "4812",
+        "workerVersion": {
+          "buildId": "b89fdfc5e8768b59ea58ac57df86daf8"
+        }
+      }
+    },
+    {
+      "eventId": "15",
+      "eventTime": "2026-09-24T06:08:27.597443505Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId": "23076455",
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": "13",
+        "startedEventId": "14",
+        "identity": "proxyloop-phase05a-recorder",
+        "workerVersion": {
+          "buildId": "b89fdfc5e8768b59ea58ac57df86daf8"
+        },
+        "sdkMetadata": {},
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "eventId": "16",
+      "eventTime": "2026-09-24T06:08:27.597483172Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_UPDATE_ACCEPTED",
+      "taskId": "23076456",
+      "workflowExecutionUpdateAcceptedEventAttributes": {
+        "protocolInstanceId": "case-command/93c89a6f-3c79-4782-88b3-c41ea1a12316:3e7a684a127100ef",
+        "acceptedRequestMessageId": "case-command/93c89a6f-3c79-4782-88b3-c41ea1a12316:3e7a684a127100ef/request",
+        "acceptedRequestSequencingEventId": "13",
+        "acceptedRequest": {
+          "meta": {
+            "updateId": "case-command/93c89a6f-3c79-4782-88b3-c41ea1a12316:3e7a684a127100ef",
+            "identity": "proxyloop-phase05a-recorder"
+          },
+          "input": {
+            "name": "apply_case_command",
+            "args": {
+              "payloads": [
+                {
+                  "metadata": {
+                    "encoding": "anNvbi9wbGFpbg=="
+                  },
+                  "data": "eyJzY2hlbWFfdmVyc2lvbiI6InBoYXNlLTA1YS12MSIsImNvbW1hbmRfaWQiOiI5M2M4OWE2Zi0zYzc5LTQ3ODItODhiMy1jNDFlYTFhMTIzMTYiLCJjYXNlX2lkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwiY29tbWFuZF90eXBlIjoiYXBwZW5kX2V2ZW50IiwiZXhwZWN0ZWRfcmV2aXNpb24iOjIsImN1cnJlbnRfbW9udGhseV90b3RhbCI6bnVsbCwidGFyZ2V0X21vbnRobHlfdG90YWwiOm51bGwsIm1vYmlsZV9ob3RzcG90X3JlcXVpcmVkIjpudWxsLCJkZXZpY2VfZmluYW5jaW5nX2NoYW5nZV9mb3JiaWRkZW4iOm51bGwsImNvbnRlbnQiOiJSZXZpZXcgdGhlIGZpY3Rpb25hbCBvZmZlci4iLCJldmVudF90eXBlIjoiY29uc3VtZXJfbWVzc2FnZSIsImFwcHJvdmFsX2lkIjpudWxsLCJkZWNpc2lvbiI6bnVsbCwiZXhwZWN0ZWRfY2FzZV9yZXZpc2lvbiI6bnVsbCwiZXhwZWN0ZWRfYWN0aW9uX2ludGVudF9yZXZpc2lvbiI6bnVsbCwiYXBwcm92YWxfZXhwaXJlc19hdCI6bnVsbCwiY2hhbm5lbF9vY2N1cnJlZF9hdCI6bnVsbCwiY2hhbm5lbF9raW5kIjpudWxsLCJiaW5kaW5nX3JlZiI6bnVsbCwiZXZlbnRfaWQiOm51bGwsImNvbnRlbnRfaGFzaCI6bnVsbCwicGF5bG9hZF9oYXNoIjpudWxsLCJkZWxpdmVyeV9pZCI6bnVsbCwicHJvdmlkZXJfbWVzc2FnZV9pZCI6bnVsbCwiZGVsaXZlcnlfc3RhdHVzIjpudWxsLCJhcnRpZmFjdF9oYXNoIjpudWxsfQ=="
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "eventId": "17",
+      "eventTime": "2026-09-24T06:08:27.597506838Z",
+      "eventType": "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId": "23076457",
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "case-command/93c89a6f-3c79-4782-88b3-c41ea1a12316",
+        "activityType": {
+          "name": "apply_case_command_activity"
+        },
+        "taskQueue": {
+          "name": "proxyloop-phase05a-record-7f12f989-0bab-4c3c-8f90-7a28cd4011f1",
+          "kind": "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header": {},
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "data": "eyJzY2hlbWFfdmVyc2lvbiI6InBoYXNlLTA1YS12MSIsImNvbW1hbmRfaWQiOiI5M2M4OWE2Zi0zYzc5LTQ3ODItODhiMy1jNDFlYTFhMTIzMTYiLCJjYXNlX2lkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwiY29tbWFuZF90eXBlIjoiYXBwZW5kX2V2ZW50Iiwib2NjdXJyZWRfYXQiOiIyMDI2LTA5LTI0VDA2OjA4OjI3LjU5NDc1OFoiLCJleHBlY3RlZF9yZXZpc2lvbiI6MiwiY3VycmVudF9tb250aGx5X3RvdGFsIjpudWxsLCJ0YXJnZXRfbW9udGhseV90b3RhbCI6bnVsbCwibW9iaWxlX2hvdHNwb3RfcmVxdWlyZWQiOm51bGwsImRldmljZV9maW5hbmNpbmdfY2hhbmdlX2ZvcmJpZGRlbiI6bnVsbCwiY29udGVudCI6IlJldmlldyB0aGUgZmljdGlvbmFsIG9mZmVyLiIsImV2ZW50X3R5cGUiOiJjb25zdW1lcl9tZXNzYWdlIiwiYXBwcm92YWxfaWQiOm51bGwsImRlY2lzaW9uIjpudWxsLCJleHBlY3RlZF9jYXNlX3JldmlzaW9uIjpudWxsLCJleHBlY3RlZF9hY3Rpb25faW50ZW50X3JldmlzaW9uIjpudWxsLCJhcHByb3ZhbF9leHBpcmVzX2F0IjpudWxsLCJjaGFubmVsX2tpbmQiOm51bGwsImJpbmRpbmdfcmVmIjpudWxsLCJldmVudF9pZCI6bnVsbCwiY29udGVudF9oYXNoIjpudWxsLCJwYXlsb2FkX2hhc2giOm51bGwsImRlbGl2ZXJ5X2lkIjpudWxsLCJwcm92aWRlcl9tZXNzYWdlX2lkIjpudWxsLCJkZWxpdmVyeV9zdGF0dXMiOm51bGwsImFydGlmYWN0X2hhc2giOm51bGx9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": "120s",
+        "scheduleToStartTimeout": "120s",
+        "startToCloseTimeout": "30s",
+        "heartbeatTimeout": "0s",
+        "workflowTaskCompletedEventId": "15",
+        "retryPolicy": {
+          "initialInterval": "1s",
+          "backoffCoefficient": 2.0,
+          "maximumInterval": "10s",
+          "maximumAttempts": 5,
+          "nonRetryableErrorTypes": [
+            "invalid_command",
+            "case_not_found",
+            "case_conflict",
+            "approval_expired",
+            "state_invalid",
+            "model_path"
+          ]
+        },
+        "useWorkflowBuildId": true,
+        "priority": {}
+      }
+    },
+    {
+      "eventId": "18",
+      "eventTime": "2026-09-24T06:08:42.666462096Z",
+      "eventType": "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId": "23076480",
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": "17",
+        "identity": "proxyloop-phase05a-recorder",
+        "requestId": "8fc9d7c4-b0ee-4911-a885-ac2cb3f1646c",
+        "attempt": 5,
+        "lastFailure": {
+          "message": "injected unavailable",
+          "stackTrace": "",
+          "applicationFailureInfo": {
+            "type": "storage_unavailable"
+          }
+        },
+        "workerVersion": {
+          "buildId": "b89fdfc5e8768b59ea58ac57df86daf8"
+        }
+      }
+    },
+    {
+      "eventId": "19",
+      "eventTime": "2026-09-24T06:08:42.674705137Z",
+      "eventType": "EVENT_TYPE_ACTIVITY_TASK_FAILED",
+      "taskId": "23076481",
+      "activityTaskFailedEventAttributes": {
+        "failure": {
+          "message": "injected unavailable",
+          "stackTrace": "",
+          "applicationFailureInfo": {
+            "type": "storage_unavailable"
+          }
+        },
+        "scheduledEventId": "17",
+        "startedEventId": "18",
+        "identity": "proxyloop-phase05a-recorder",
+        "retryState": "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+      }
+    },
+    {
+      "eventId": "20",
+      "eventTime": "2026-09-24T06:08:42.674713096Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId": "23076482",
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "proxyloop-phase05a-recorder-6442b6f25855483b839214875ab87233",
+          "kind": "TASK_QUEUE_KIND_STICKY",
+          "normalName": "proxyloop-phase05a-record-7f12f989-0bab-4c3c-8f90-7a28cd4011f1"
+        },
+        "startToCloseTimeout": "10s",
+        "attempt": 1
+      }
+    },
+    {
+      "eventId": "21",
+      "eventTime": "2026-09-24T06:08:42.677801179Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId": "23076486",
+      "workflowTaskStartedEventAttributes": {
+        "scheduledEventId": "20",
+        "identity": "proxyloop-phase05a-recorder",
+        "requestId": "d959ffe7-551e-4d6b-adfb-d9f8321a9b75",
+        "historySizeBytes": "11605",
+        "workerVersion": {
+          "buildId": "b89fdfc5e8768b59ea58ac57df86daf8"
+        }
+      }
+    },
+    {
+      "eventId": "22",
+      "eventTime": "2026-09-24T06:08:42.681739471Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId": "23076490",
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": "20",
+        "startedEventId": "21",
+        "identity": "proxyloop-phase05a-recorder",
+        "workerVersion": {
+          "buildId": "b89fdfc5e8768b59ea58ac57df86daf8"
+        },
+        "sdkMetadata": {},
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "eventId": "23",
+      "eventTime": "2026-09-24T06:08:42.681777304Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_UPDATE_COMPLETED",
+      "taskId": "23076491",
+      "workflowExecutionUpdateCompletedEventAttributes": {
+        "meta": {
+          "updateId": "case-command/93c89a6f-3c79-4782-88b3-c41ea1a12316:3e7a684a127100ef",
+          "identity": "proxyloop-phase05a-recorder"
+        },
+        "outcome": {
+          "failure": {
+            "message": "Activity task failed",
+            "cause": {
+              "message": "injected unavailable",
+              "stackTrace": "",
+              "applicationFailureInfo": {
+                "type": "storage_unavailable"
+              }
+            },
+            "activityFailureInfo": {
+              "scheduledEventId": "17",
+              "startedEventId": "18",
+              "identity": "proxyloop-phase05a-recorder",
+              "activityType": {
+                "name": "apply_case_command_activity"
+              },
+              "activityId": "case-command/93c89a6f-3c79-4782-88b3-c41ea1a12316",
+              "retryState": "RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED"
+            }
+          }
+        },
+        "acceptedEventId": "16"
+      }
+    },
+    {
+      "eventId": "24",
+      "eventTime": "2026-09-24T06:08:42.685116637Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId": "23076497",
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "proxyloop-phase05a-recorder-6442b6f25855483b839214875ab87233",
+          "kind": "TASK_QUEUE_KIND_STICKY",
+          "normalName": "proxyloop-phase05a-record-7f12f989-0bab-4c3c-8f90-7a28cd4011f1"
+        },
+        "startToCloseTimeout": "10s",
+        "attempt": 1
+      }
+    },
+    {
+      "eventId": "25",
+      "eventTime": "2026-09-24T06:08:42.685349804Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId": "23076498",
+      "workflowTaskStartedEventAttributes": {
+        "scheduledEventId": "24",
+        "identity": "proxyloop-phase05a-recorder",
+        "requestId": "801e2278-1db3-405a-8ca0-b7e0328e4cfc",
+        "historySizeBytes": "14053",
+        "workerVersion": {
+          "buildId": "b89fdfc5e8768b59ea58ac57df86daf8"
+        }
+      }
+    },
+    {
+      "eventId": "26",
+      "eventTime": "2026-09-24T06:08:42.688671929Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId": "23076499",
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": "24",
+        "startedEventId": "25",
+        "identity": "proxyloop-phase05a-recorder",
+        "workerVersion": {
+          "buildId": "b89fdfc5e8768b59ea58ac57df86daf8"
+        },
+        "sdkMetadata": {},
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "eventId": "27",
+      "eventTime": "2026-09-24T06:08:42.688710679Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_UPDATE_ACCEPTED",
+      "taskId": "23076500",
+      "workflowExecutionUpdateAcceptedEventAttributes": {
+        "protocolInstanceId": "case-command/9b29a9e3-45c8-413d-ba54-0f854f296617:59e62abb47155f8a",
+        "acceptedRequestMessageId": "case-command/9b29a9e3-45c8-413d-ba54-0f854f296617:59e62abb47155f8a/request",
+        "acceptedRequestSequencingEventId": "24",
+        "acceptedRequest": {
+          "meta": {
+            "updateId": "case-command/9b29a9e3-45c8-413d-ba54-0f854f296617:59e62abb47155f8a",
+            "identity": "proxyloop-phase05a-recorder"
+          },
+          "input": {
+            "name": "apply_case_command",
+            "args": {
+              "payloads": [
+                {
+                  "metadata": {
+                    "encoding": "anNvbi9wbGFpbg=="
+                  },
+                  "data": "eyJzY2hlbWFfdmVyc2lvbiI6InBoYXNlLTA1YS12MSIsImNvbW1hbmRfaWQiOiI5YjI5YTllMy00NWM4LTQxM2QtYmE1NC0wZjg1NGYyOTY2MTciLCJjYXNlX2lkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwiY29tbWFuZF90eXBlIjoiYXBwZW5kX2V2ZW50IiwiZXhwZWN0ZWRfcmV2aXNpb24iOjIsImN1cnJlbnRfbW9udGhseV90b3RhbCI6bnVsbCwidGFyZ2V0X21vbnRobHlfdG90YWwiOm51bGwsIm1vYmlsZV9ob3RzcG90X3JlcXVpcmVkIjpudWxsLCJkZXZpY2VfZmluYW5jaW5nX2NoYW5nZV9mb3JiaWRkZW4iOm51bGwsImNvbnRlbnQiOiJSZXZpZXcgdGhlIGZpY3Rpb25hbCBvZmZlci4iLCJldmVudF90eXBlIjoiY29uc3VtZXJfbWVzc2FnZSIsImFwcHJvdmFsX2lkIjpudWxsLCJkZWNpc2lvbiI6bnVsbCwiZXhwZWN0ZWRfY2FzZV9yZXZpc2lvbiI6bnVsbCwiZXhwZWN0ZWRfYWN0aW9uX2ludGVudF9yZXZpc2lvbiI6bnVsbCwiYXBwcm92YWxfZXhwaXJlc19hdCI6bnVsbCwiY2hhbm5lbF9vY2N1cnJlZF9hdCI6bnVsbCwiY2hhbm5lbF9raW5kIjpudWxsLCJiaW5kaW5nX3JlZiI6bnVsbCwiZXZlbnRfaWQiOm51bGwsImNvbnRlbnRfaGFzaCI6bnVsbCwicGF5bG9hZF9oYXNoIjpudWxsLCJkZWxpdmVyeV9pZCI6bnVsbCwicHJvdmlkZXJfbWVzc2FnZV9pZCI6bnVsbCwiZGVsaXZlcnlfc3RhdHVzIjpudWxsLCJhcnRpZmFjdF9oYXNoIjpudWxsfQ=="
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "eventId": "28",
+      "eventTime": "2026-09-24T06:08:42.688738346Z",
+      "eventType": "EVENT_TYPE_ACTIVITY_TASK_SCHEDULED",
+      "taskId": "23076501",
+      "activityTaskScheduledEventAttributes": {
+        "activityId": "case-command/9b29a9e3-45c8-413d-ba54-0f854f296617",
+        "activityType": {
+          "name": "apply_case_command_activity"
+        },
+        "taskQueue": {
+          "name": "proxyloop-phase05a-record-7f12f989-0bab-4c3c-8f90-7a28cd4011f1",
+          "kind": "TASK_QUEUE_KIND_NORMAL"
+        },
+        "header": {},
+        "input": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "data": "eyJzY2hlbWFfdmVyc2lvbiI6InBoYXNlLTA1YS12MSIsImNvbW1hbmRfaWQiOiI5YjI5YTllMy00NWM4LTQxM2QtYmE1NC0wZjg1NGYyOTY2MTciLCJjYXNlX2lkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwiY29tbWFuZF90eXBlIjoiYXBwZW5kX2V2ZW50Iiwib2NjdXJyZWRfYXQiOiIyMDI2LTA5LTI0VDA2OjA4OjQyLjY4NTM1MFoiLCJleHBlY3RlZF9yZXZpc2lvbiI6MiwiY3VycmVudF9tb250aGx5X3RvdGFsIjpudWxsLCJ0YXJnZXRfbW9udGhseV90b3RhbCI6bnVsbCwibW9iaWxlX2hvdHNwb3RfcmVxdWlyZWQiOm51bGwsImRldmljZV9maW5hbmNpbmdfY2hhbmdlX2ZvcmJpZGRlbiI6bnVsbCwiY29udGVudCI6IlJldmlldyB0aGUgZmljdGlvbmFsIG9mZmVyLiIsImV2ZW50X3R5cGUiOiJjb25zdW1lcl9tZXNzYWdlIiwiYXBwcm92YWxfaWQiOm51bGwsImRlY2lzaW9uIjpudWxsLCJleHBlY3RlZF9jYXNlX3JldmlzaW9uIjpudWxsLCJleHBlY3RlZF9hY3Rpb25faW50ZW50X3JldmlzaW9uIjpudWxsLCJhcHByb3ZhbF9leHBpcmVzX2F0IjpudWxsLCJjaGFubmVsX2tpbmQiOm51bGwsImJpbmRpbmdfcmVmIjpudWxsLCJldmVudF9pZCI6bnVsbCwiY29udGVudF9oYXNoIjpudWxsLCJwYXlsb2FkX2hhc2giOm51bGwsImRlbGl2ZXJ5X2lkIjpudWxsLCJwcm92aWRlcl9tZXNzYWdlX2lkIjpudWxsLCJkZWxpdmVyeV9zdGF0dXMiOm51bGwsImFydGlmYWN0X2hhc2giOm51bGx9"
+            }
+          ]
+        },
+        "scheduleToCloseTimeout": "120s",
+        "scheduleToStartTimeout": "120s",
+        "startToCloseTimeout": "30s",
+        "heartbeatTimeout": "0s",
+        "workflowTaskCompletedEventId": "26",
+        "retryPolicy": {
+          "initialInterval": "1s",
+          "backoffCoefficient": 2.0,
+          "maximumInterval": "10s",
+          "maximumAttempts": 5,
+          "nonRetryableErrorTypes": [
+            "invalid_command",
+            "case_not_found",
+            "case_conflict",
+            "approval_expired",
+            "state_invalid",
+            "model_path"
+          ]
+        },
+        "useWorkflowBuildId": true,
+        "priority": {}
+      }
+    },
+    {
+      "eventId": "29",
+      "eventTime": "2026-09-24T06:08:42.692563887Z",
+      "eventType": "EVENT_TYPE_ACTIVITY_TASK_STARTED",
+      "taskId": "23076508",
+      "activityTaskStartedEventAttributes": {
+        "scheduledEventId": "28",
+        "identity": "proxyloop-phase05a-recorder",
+        "requestId": "3cbd0f95-c079-4862-bdc1-471478437cf5",
+        "attempt": 1,
+        "workerVersion": {
+          "buildId": "b89fdfc5e8768b59ea58ac57df86daf8"
+        }
+      }
+    },
+    {
+      "eventId": "30",
+      "eventTime": "2026-09-24T06:08:42.724524096Z",
+      "eventType": "EVENT_TYPE_ACTIVITY_TASK_COMPLETED",
+      "taskId": "23076509",
+      "activityTaskCompletedEventAttributes": {
+        "result": {
+          "payloads": [
+            {
+              "metadata": {
+                "encoding": "anNvbi9wbGFpbg=="
+              },
+              "data": "eyJzY2hlbWFfdmVyc2lvbiI6InBoYXNlLTA1YS12MSIsImNvbW1hbmRfaWQiOiI5YjI5YTllMy00NWM4LTQxM2QtYmE1NC0wZjg1NGYyOTY2MTciLCJjYXNlX2lkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwiY29tbWFuZF90eXBlIjoiYXBwZW5kX2V2ZW50IiwiYmVmb3JlX3JldmlzaW9uIjoyLCJhZnRlcl9yZXZpc2lvbiI6NCwiZXZlbnRfY3Vyc29yIjoyLCJyb3V0ZSI6IndhaXRfZm9yX2FwcHJvdmFsIiwiYXBwcm92YWxfaWQiOiI4MTI5MWIzMi1hOWYyLTQ3NDAtYTc2YS1hZmI2ZTM4YmM3YTciLCJhcHByb3ZhbF9leHBpcmVzX2F0IjoiMjAyNi0wOS0yNFQwNzowODoyNy4zOTg2NDNaIiwiY29tbWFuZF9maW5nZXJwcmludCI6IjU5ZTYyYWJiNDcxNTVmOGEyMWNhMjU1YjJlMjQyMTc3MjdiNmU3NmY4ZDgyODY1ZDA5NTA3Njg4Mjk4NzM1MjEiLCJkZWxpdmVyeV9pZCI6bnVsbCwiZGVsaXZlcnlfc3RhdHVzIjpudWxsLCJ0ZXJtaW5hbCI6ZmFsc2UsImRlZHVwbGljYXRlZCI6ZmFsc2V9"
+            }
+          ]
+        },
+        "scheduledEventId": "28",
+        "startedEventId": "29",
+        "identity": "proxyloop-phase05a-recorder"
+      }
+    },
+    {
+      "eventId": "31",
+      "eventTime": "2026-09-24T06:08:42.724527887Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_SCHEDULED",
+      "taskId": "23076510",
+      "workflowTaskScheduledEventAttributes": {
+        "taskQueue": {
+          "name": "proxyloop-phase05a-recorder-6442b6f25855483b839214875ab87233",
+          "kind": "TASK_QUEUE_KIND_STICKY",
+          "normalName": "proxyloop-phase05a-record-7f12f989-0bab-4c3c-8f90-7a28cd4011f1"
+        },
+        "startToCloseTimeout": "10s",
+        "attempt": 1
+      }
+    },
+    {
+      "eventId": "32",
+      "eventTime": "2026-09-24T06:08:42.726771387Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_STARTED",
+      "taskId": "23076514",
+      "workflowTaskStartedEventAttributes": {
+        "scheduledEventId": "31",
+        "identity": "proxyloop-phase05a-recorder",
+        "requestId": "b7d46d29-9af4-4a63-ae61-dce175d2f947",
+        "historySizeBytes": "17538",
+        "workerVersion": {
+          "buildId": "b89fdfc5e8768b59ea58ac57df86daf8"
+        }
+      }
+    },
+    {
+      "eventId": "33",
+      "eventTime": "2026-09-24T06:08:42.731034554Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_TASK_COMPLETED",
+      "taskId": "23076518",
+      "workflowTaskCompletedEventAttributes": {
+        "scheduledEventId": "31",
+        "startedEventId": "32",
+        "identity": "proxyloop-phase05a-recorder",
+        "workerVersion": {
+          "buildId": "b89fdfc5e8768b59ea58ac57df86daf8"
+        },
+        "sdkMetadata": {},
+        "meteringMetadata": {}
+      }
+    },
+    {
+      "eventId": "34",
+      "eventTime": "2026-09-24T06:08:42.731064887Z",
+      "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_UPDATE_COMPLETED",
+      "taskId": "23076519",
+      "workflowExecutionUpdateCompletedEventAttributes": {
+        "meta": {
+          "updateId": "case-command/9b29a9e3-45c8-413d-ba54-0f854f296617:59e62abb47155f8a",
+          "identity": "proxyloop-phase05a-recorder"
+        },
+        "outcome": {
+          "success": {
+            "payloads": [
+              {
+                "metadata": {
+                  "encoding": "anNvbi9wbGFpbg=="
+                },
+                "data": "eyJzY2hlbWFfdmVyc2lvbiI6InBoYXNlLTA1YS12MSIsImNvbW1hbmRfaWQiOiI5YjI5YTllMy00NWM4LTQxM2QtYmE1NC0wZjg1NGYyOTY2MTciLCJjYXNlX2lkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwiY29tbWFuZF90eXBlIjoiYXBwZW5kX2V2ZW50IiwiYmVmb3JlX3JldmlzaW9uIjoyLCJhZnRlcl9yZXZpc2lvbiI6NCwiZXZlbnRfY3Vyc29yIjoyLCJyb3V0ZSI6IndhaXRfZm9yX2FwcHJvdmFsIiwiYXBwcm92YWxfaWQiOiI4MTI5MWIzMi1hOWYyLTQ3NDAtYTc2YS1hZmI2ZTM4YmM3YTciLCJhcHByb3ZhbF9leHBpcmVzX2F0IjoiMjAyNi0wOS0yNFQwNzowODoyNy4zOTg2NDNaIiwiY29tbWFuZF9maW5nZXJwcmludCI6IjU5ZTYyYWJiNDcxNTVmOGEyMWNhMjU1YjJlMjQyMTc3MjdiNmU3NmY4ZDgyODY1ZDA5NTA3Njg4Mjk4NzM1MjEiLCJkZWxpdmVyeV9pZCI6bnVsbCwiZGVsaXZlcnlfc3RhdHVzIjpudWxsLCJ0ZXJtaW5hbCI6ZmFsc2UsImRlZHVwbGljYXRlZCI6ZmFsc2V9"
+              }
+            ]
+          }
+        },
+        "acceptedEventId": "27"
+      }
+    },
+    {
+      "eventId": "35",
+      "eventTime": "2026-09-24T06:08:42.731083179Z",
+      "eventType": "EVENT_TYPE_TIMER_STARTED",
+      "taskId": "23076520",
+      "timerStartedEventAttributes": {
+        "timerId": "1",
+        "startToFireTimeout": "3584.672s",
+        "workflowTaskCompletedEventId": "33"
+      },
+      "userMetadata": {
+        "summary": {
+          "metadata": {
+            "encoding": "anNvbi9wbGFpbg=="
+          },
+          "data": "ImNhc2UgYXBwcm92YWwgZXhwaXJ5Ig=="
+        }
+      }
+    }
+  ]
+}
