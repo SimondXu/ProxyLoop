@@ -57,9 +57,17 @@ The validator was an independent re-computation of the runtime's basis;
 after the change both use one function, so that cross-check no longer
 catches a formula error in the shared function itself. It still catches a
 runtime that passes the wrong inputs (for example a provider config or
-manifest that differs from the snapshot's). Independent oracles for the
-formula remain in `tests/contract/test_contract_set_1_1.py` (its own 1.0/1.1
-switch) and the committed fixtures checked by the contracts drift gate.
+manifest that differs from the snapshot's). Before this change nothing else
+pinned the full formula: no committed JSON fixture carries component
+fingerprints (the contracts drift gate checks schema shape only), and
+`tests/contract/test_contract_set_1_1.py` `_components` pins only the
+version switch and the provider config (empty verified facts, constraints
+in fixture order). The change therefore adds an independent reference test,
+`runtime/packages/contracts/tests/test_planning_basis_components.py`
+(added after independent review): hand-ordered expectations for mixed-status
+facts, constraints and 1.0 offers/approvals that arrive out of id order, a
+non-default provider config, both versions, and snapshot rejection of a
+basis built without the filter or a sort.
 
 ## Acceptance
 
