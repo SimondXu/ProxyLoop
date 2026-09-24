@@ -130,3 +130,20 @@ the target is removed from `test:`. On the real Makefile they pass.
 Not run: `make typecheck` (no Python source changed besides one test), `make
 web-check`, `make preflight`, and the real-dependency gates (`postgres-check`,
 `phase05a-check`, `phase06b1-check`, no `PROXYLOOP_TEST_*` by instruction).
+
+## Update from `origin/main` @ `f989613` (#70, #71)
+
+Merged, not rebased; no conflicts. The merge touched no file this branch
+changes, nor `Makefile`, `contracts/`, or `runtime/packages/contracts`.
+Re-checked after the merge: `CANONICAL_MODELS` still holds 25 entries, and
+`PROXYLOOP_TEST_` with `pytest.skip` still appears in exactly the four files
+named in the docs.
+
+Verification (no `PROXYLOOP_TEST_*` set):
+
+- `make format-check lint typecheck`: exit 0.
+- `make preflight-fast`: exit 0.
+- `make test`: exit 0. Runtime `1158 passed, 46 skipped`; ML
+  `390 passed, 1 skipped`. `git status --short data/` empty.
+
+Not run: `make web-check`, `make preflight`, and the real-dependency gates.
