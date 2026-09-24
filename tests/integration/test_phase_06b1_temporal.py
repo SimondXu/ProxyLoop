@@ -78,7 +78,8 @@ def _truncate(database_url: str) -> None:
             "proxyloop_channel_outbox_records, "
             "proxyloop_channel_inbox_receipts, "
             "proxyloop_channel_bindings, "
-            "proxyloop_case_runtime_states"
+            "proxyloop_case_runtime_states, "
+            "proxyloop_model_traces"
         )
 
 

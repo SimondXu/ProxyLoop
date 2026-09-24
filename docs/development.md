@@ -116,7 +116,7 @@ last `scripts/check_gated_skips.py`. It starts no container.
 database tests when `PROXYLOOP_TEST_DATABASE_URL` is unset; their Temporal
 tests also need `PROXYLOOP_TEST_TEMPORAL_ADDRESS`:
 
-- `test_phase_04c_persistent_case_store.py` (23 tests)
+- `test_phase_04c_persistent_case_store.py` (29 tests)
 - `test_phase_05a_case_runtime.py` (2)
 - `test_phase_05a_temporal_workflow.py` (24)
 - `test_phase_06b1_channel_runtime.py` (2: one through a fixture imported
@@ -125,7 +125,7 @@ tests also need `PROXYLOOP_TEST_TEMPORAL_ADDRESS`:
   starts the Temporal test server)
 - `test_phase_06b1_temporal.py` (4)
 
-With the variables unset, `make preflight` exits 0 and skips those 55 tests,
+With the variables unset, `make preflight` exits 0 and skips those 61 tests,
 so a "preflight passed" claim covers none of them. `unit-test` writes the
 runtime pytest JUnit report to `.gate/runtime-junit.xml` (git-ignored); the
 last preflight step counts the tests skipped with a `PROXYLOOP_TEST_*` reason,
