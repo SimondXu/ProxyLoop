@@ -20,6 +20,7 @@ members = [
   "packages/case_runtime",
   "packages/contracts",
   "packages/connectors",
+  "packages/local_fast",
   "packages/provider_simulator",
   "packages/telecom_domain",
   "packages/openai_adapter",
