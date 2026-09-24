@@ -5,6 +5,7 @@ description = "Temporal orchestration adapter for ProxyLoop Case commands."
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "proxyloop-case-runtime==0.0.0",
+  "proxyloop-local-fast==0.0.0",
   "pydantic>=2.11,<3",
   "temporalio>=1.32,<2",
 ]
@@ -14,6 +15,7 @@ proxyloop-workflow-worker = "proxyloop_workflow_worker.worker:main"
 
 [tool.uv.sources]
 proxyloop-case-runtime = { workspace = true }
+proxyloop-local-fast = { workspace = true }
 
 [build-system]
 requires = ["hatchling>=1.27,<2"]

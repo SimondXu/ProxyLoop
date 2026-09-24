@@ -29,8 +29,10 @@ models, or exactly-once external effects.
 Prerequisites are Docker with Compose, `uv`, `pnpm`, and the repository's
 installed dependencies. The demo uses only loopback ports, the repository's
 local PostgreSQL fixture credentials, the deterministic scripted Runtime, the
-synthetic mailbox, and the fictional Provider simulator. It does not download
-or call a model and does not contact Gmail, Voice, or an external Provider.
+synthetic mailbox, and the fictional Provider simulator. By default it does
+not download or call a model (the opt-in local Fast backend below calls a
+cached local one), and it never contacts Gmail, Voice, or an external
+Provider.
 
 ```text
 make portfolio-demo
@@ -67,6 +69,36 @@ in the browser Case projection.
 lost-response/idempotent retry path against PostgreSQL and Temporal; it needs
 the primary Temporal service from `make portfolio-demo` and creates and stops
 only the temporary `postgres-test` service.
+
+### Opt-in local Fast backend (PR-11)
+
+```text
+FAST_BACKEND=distilled make portfolio-demo    # or FAST_BACKEND=untuned
+```
+
+runs the same demo with the Temporal worker's Fast turns served by the local
+Phase 03C model gateway: `distilled` is the Local Opt-in Candidate, `untuned`
+the untuned local baseline; the default `FAST_BACKEND=scripted` is the demo
+above. The launcher does not start the gateway. Start it first in its own
+terminal with PR-9b's `make local-fast-gateway BACKEND=distilled` (Apple
+silicon, the cached base model, about 17 GB of memory); `serve` probes its
+`/v1/identity` before it starts Compose or any host process and refuses with
+that command in the message if the gateway is absent or serves another
+backend. The flag sets `PROXYLOOP_FAST_BACKEND` for the worker and the API
+alike, overriding any value inherited from the shell; the start banner prints
+the backend and its label.
+
+What changes: each consumer turn in Scene A gets the gate-passed model line
+or the fixed fallback line, and its Fast trace names the local model and
+gateway identity. PR-9 expects the distilled line to be withheld and replaced
+by the fallback on nearly every turn; that is the measured result, not a
+fault. A Fast call can take up to 25 s (the timeout); a timeout, a busy
+gateway, or a gateway that stops mid-demo delivers the fallback and the Case
+continues. Scene B is unchanged: channel commands keep the scripted Fast, so
+the synthetic outbound body stays the constant line and no model is called.
+The recovery check is unchanged. This is a local opt-in run on one machine:
+no latency, capacity, or quality claim, and the gateway has no
+authentication.
 
 Troubleshooting: if startup reports an unavailable port or dependency, inspect
 the printed log directory and
@@ -107,9 +139,10 @@ local synthetic acceptance and delivery, not real-provider delivery.
 - The local mailbox is a fixture adapter. Gmail, OAuth, credentials, real
   inboxes, real Provider contact, MCP, SMS, LiveKit, SIP, and voice persistence
   remain unauthorized.
-- The scripted Runtime is deterministic. No model is downloaded or called,
-  and no model promotion, serving-capacity, or production-readiness result is
-  implied.
+- The scripted Runtime is deterministic. By default no model is downloaded or
+  called; with `FAST_BACKEND=distilled|untuned` only the already-cached local
+  model behind the loopback gateway is called, for Fast turns only. No model
+  promotion, serving-capacity, or production-readiness result is implied.
 - PostgreSQL/Temporal recovery is a local fault-path observation. It does not
   establish production exactly-once external effects or production capacity.
 - Browser completion passed locally at 1280x900 and 375x812 without horizontal
