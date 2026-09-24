@@ -45,4 +45,5 @@ to a real delivery needs a storage change (see the fix log).
 
 Non-DB checks green after merging `main` @ `c73f6a7` (`make lint`,
 `make typecheck`, `make test`, `make preflight`). The serial DB/Temporal gates
-on the merged branch are pending.
+on the merged branch passed: `postgres-check` 27, `phase05a-check` 42,
+`phase06b1-check` 35.

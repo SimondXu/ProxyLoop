@@ -44,7 +44,8 @@ The nine R-10 tests in the file pass before and after.
   passed, 1 skipped).
 
 After merging `origin/main` @ `e1c8371` (#81; one status-file conflict,
-both sides kept):
+both sides kept). Superseded by the gates on the merged branch after the
+review fix (below):
 
 - Passed: `make test` (exit 0; runtime 1231 passed, 51 skipped; ml 397
   passed, 1 skipped).
@@ -89,9 +90,11 @@ After merging `origin/main` @ `c73f6a7` (#86; clean merge), no DB:
 - Passed: `make preflight` (exit 0 after `ruff format` of the test file;
   runtime 1263 passed, 51 skipped; ml 397 passed, 1 skipped; web 140
   passed).
-- Not run (DB lane held elsewhere): `make postgres-check`,
-  `make phase05a-check`, `make phase06b1-check` on the merged branch. The
-  earlier DB-gate results above predate the review fix and this merge.
+- Passed, one at a time against the Compose `postgres-test` DB and
+  Temporal, on `6c3e9d3` (review fix merged with `main` @ `c73f6a7`):
+  `make postgres-check` (27 passed), `make phase05a-check` (42 passed),
+  `make phase06b1-check` (35 passed). These replace the `e1c8371` gate
+  results above.
 
 ## Known limits
 
