@@ -144,9 +144,12 @@ No approval, state, receipt, or Provider expectation changed.
 - Byte identity: `git diff --stat origin/main -- contracts/ ml/ data/
   runtime/packages/contracts` shows only
   `data/evaluation/fast-slow-split-scripted.json`.
-- Not run (by instruction; PR-9b holds the DB lane): `make postgres-check`,
-  `make phase05a-check`, `make phase06b1-check`. Ready for DB. The DB-gated
-  churn above is verified only there.
+- DB lane, serially on `2db340b` (variables on the make command line only,
+  local Compose `postgres-test` on 55432 and `temporal` on 7233):
+  `make postgres-check` 38 passed (this is the first real run of the 04C
+  `_logged_flow` churn, the Judge trace round-tripping PostgreSQL);
+  `make phase05a-check` 73 passed; `make phase06b1-check` 56 passed. The
+  counts equal PR-13's on its merged tree (38, 73, 56).
 - Not run: `/security-review`, independent review (the root's).
 
 ## Known limits (root answers 4 and 5; unreachable while no product Slow implements the feedback protocol)
