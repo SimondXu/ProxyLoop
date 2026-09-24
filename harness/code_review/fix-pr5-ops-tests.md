@@ -42,5 +42,10 @@ Merged `main` @ `f4a2487` (#90's per-file gated-skip pin). No
 at the pin (`test_phase_06b1_channel_runtime.py: expected 1, found 3`); the
 pin and `docs/development.md` were updated to 3 (total 55), then `make
 preflight`, `make lint`, `make typecheck`, `make test` all exit 0 (numbers in
-the log). The C-8 tests and the stricter C-7 call sites are unrun until the
-DB lane runs `make postgres-check` and `make phase06b1-check`.
+the log).
+
+After merging `main` @ `1573a42` (#91; total pin 61): `make test` and `make
+preflight` exit 0; real-dependency gates run serially: `make postgres-check` 38
+passed, `make phase05a-check` 53 passed, `make phase06b1-check` 37 passed
+(0 skipped). The condition of the Approve is met; no test needed a fix.
+Line numbers above refer to the pre-#91 tree; the log maps them to `1573a42`.

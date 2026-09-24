@@ -13,6 +13,12 @@ edited.
 
 ## Validity on `main` @ `74fb993`
 
+Line numbers in this section are as of `74fb993`. After #91 (`1573a42`):
+`runtime.py` Provider construction `:735`, callback regression check `:560`;
+`postgres_repository.py` `replace_with_delivery_receipt` `:807`, Outbox
+regression check `:847-850`, receipt mismatch `:867-868`, `prior_receipt is
+None` branch `:869-873`, `_reconstruct_provider` `:1293-1305`.
+
 | Id | Verdict | Evidence |
 |---|---|---|
 | C-5 | still valid | `scripts/run_phase_07a_portfolio_demo.py:786-790` raises "already has a process state" inside the `try`; the `finally` at `:835` unlinked `pids.json` unconditionally; host services start with `start_new_session=True` (`:564`) and survive the crashed supervisor |
@@ -33,9 +39,10 @@ edited.
   PIDs that now belong to other processes (stop refuses to signal them).
 - **C-7** `_assert_non_provider_fields_equal` iterates
   `dataclasses.fields(CaseRuntimeState)` minus `provider`, so it compares all
-  eleven non-Provider fields and any field added later. The three DB-gated
-  call sites (`postgres-check`) now also compare `transitions`,
-  `last_fast_decision`, `execution_claim`, `model_traces`; each compares two
+  non-Provider fields and any field added later (eleven on `74fb993`; ten
+  after #91 moved `model_traces` to the append-only trace log). The three
+  DB-gated call sites (`postgres-check`) now also compare `transitions`,
+  `last_fast_decision`, `execution_claim`; each compares two
   reads of the same row or a no-write repeat. A DB-free test,
   `test_every_non_provider_field_survives_the_postgres_codec`, sends a
   waiting and an executed terminal in-memory state (both reached through
@@ -121,7 +128,9 @@ security-relevant choice):
    `expires_at`; or (b) persist the TTL in the Provider configuration
    (`provider_config_ref` or an envelope field) — keeps tamper detection,
    needs a storage decision (PR-7 bumps `storage_version` to 3 anyway).
-   Recommendation: (b).
+   Recommendation: (b). **Root decision (2026-09-24): (b)** — store the TTL
+   in the Provider configuration as an optional field defaulting to today's
+   1 h, in a follow-up PR after PR-7.
 
 Test plan:
 
@@ -143,7 +152,10 @@ The two C-8 tests are gated on `PROXYLOOP_TEST_DATABASE_URL`. After merging
 `main` @ `f4a2487`, `make preflight` failed only at the #90 pin
 (`test_phase_06b1_channel_runtime.py: expected 1, found 3`; total 53 → 55).
 `EXPECTED_GATED_SKIPS_PER_FILE` in `scripts/check_gated_skips.py` and the
-list in `docs/development.md` now say 3 (total 55).
+list in `docs/development.md` now say 3 (total 55). After merging `main` @
+`1573a42` (#91: 04c pin 29), the per-file pin is 04c 29 (this PR adds no
+gated 04c test), 05a_case_runtime 2, 05a_temporal_workflow 24,
+06b1_channel_runtime 3, 06b1_temporal 3: total 61.
 
 ## Checks
 
@@ -161,5 +173,24 @@ After review and the `f4a2487` merge, no `PROXYLOOP_TEST_*` set:
   no issues). `make test`: exit 0 (runtime 1288 passed, 55 skipped; ML 397
   passed, 1 skipped). Run after the last code change; only the log, status
   and review-artifact text changed after `make preflight`.
-- Not run (lane held): `make postgres-check` (C-7 call sites),
-  `make phase06b1-check` (the two C-8 tests).
+After the `1573a42` merge (#91), no `PROXYLOOP_TEST_*` in the environment:
+
+- `make test`: exit 0 (runtime 1298 passed, 61 skipped; ML 397 passed,
+  1 skipped).
+- `make preflight`: exit 0 (runtime 1298 passed, 61 skipped; ML 397 passed,
+  1 skipped; web 140 passed; "Gated-skip counts match the pinned 61 per
+  file.").
+- Merge check: `CaseRuntimeState` has no `model_traces` after #91; the C-7
+  helper derives its fields from the dataclass and the codec round-trip test
+  passes unchanged. `replace_with_delivery_receipt`'s signature is unchanged
+  by #91, so `_InboxWriteFailureRepository` needed no change.
+
+Real-dependency gates, serially from this worktree, variables on the make
+command line only (Compose `postgres-test` on `127.0.0.1:55432`, `temporal`
+on `127.0.0.1:7233`):
+
+- `make postgres-check`: 38 passed (first real run of the stricter C-7 call
+  sites).
+- `make phase05a-check`: 53 passed.
+- `make phase06b1-check`: 37 passed, 0 skipped (first real run of the two
+  C-8 tests). No test needed a fix.
