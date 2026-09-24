@@ -129,3 +129,13 @@ Independent review: `harness/code_review/fix-b2-8-threadpool-runtime-calls.md`.
    is accepted. A command pinning `expected_revision` gets 409
    `{"detail": "stale_cas"}` instead. Temporal mode serializes commands per
    Case in the Workflow and is not affected.
+3. **Process-wide lock (re-review M1).** The direct-command lock is not
+   per Case: a slow model call on Case X delays commands on Case Y, and each
+   queued command holds one of the 40 threadpool slots. Command throughput
+   equals `main`'s (where the event loop serialized every command); reads
+   and liveness are strictly better. A per-Case lock is not needed now.
+4. **Count-bounded settle (re-review M2).** `_settle` in
+   `tests/integration/test_direct_mode_command_path.py:100-105` polls for at
+   most 200 `sleep(0)` iterations; with the expiry in a worker thread it
+   depends on thread scheduling. It passed 25/25 idle and 25/25 under load;
+   switch to a time-based wait if it ever flakes.
