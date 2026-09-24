@@ -29,14 +29,24 @@ def test_hosted_rerun_has_a_separate_module_command_artifact_and_make_gate() -> 
 
     assert not missing, f"missing Phase 03A1-R surface: {missing}"
     makefile = document("Makefile")
+    lines = makefile.splitlines()
     assert "hosted-rerun-source-check:" in makefile
-    assert "hosted-rerun-check:" in makefile
     assert "scripts.run_phase_03a1_hosted_rerun --check-sources" in makefile
-    assert "scripts.run_phase_03a1_hosted_rerun --check" in makefile
-    test_target = next(
-        line for line in makefile.splitlines() if line.startswith("test:")
-    )
-    assert "hosted-rerun-check" in test_target
+    # The r4 gate in `make test` is the rescore check; pin the dependency and
+    # its recipe exactly so dropping either fails here.
+    assert "hosted-rerun-check: hosted-rescore-check" in lines
+    alias = lines.index("hosted-rerun-check: hosted-rescore-check")
+    assert not lines[alias + 1].startswith("\t"), "hosted-rerun-check is an alias"
+    rescore = lines.index("hosted-rescore-check:")
+    assert lines[rescore + 1].split() == [
+        "$(ML_PYTHON_RUN)",
+        "python",
+        "-m",
+        "scripts.run_phase_03a1_hosted_rescore",
+        "--check",
+    ]
+    test_target = next(line for line in lines if line.startswith("test:"))
+    assert "hosted-rerun-check" in test_target.split()[1:]
 
 
 def test_r4_artifact_path_cannot_alias_immutable_r2_or_r3() -> None:

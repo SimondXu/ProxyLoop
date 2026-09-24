@@ -29,7 +29,7 @@ The counterparty offering or managing a consumer service; all research-MVP Provi
 _Avoid_: Vendor, carrier when used generically
 
 **Bill Snapshot**:
-An evidence-linked representation of the Consumer's current service and charges at a specific version.
+An evidence-linked representation of the Consumer's current service and charges at a specific revision.
 _Avoid_: Bill, account state
 
 **Offer**:
@@ -81,7 +81,7 @@ A typed request to perform a side effect that remains inert until deterministic 
 _Avoid_: Tool call, command
 
 **Approval Request**:
-A request for Consumer authorization tied to a specific action, terms, Case version, and expiry.
+A request for Consumer authorization tied to a specific action, terms, Case revision, and expiry.
 _Avoid_: Confirmation, consent dialog
 
 **Evidence**:
