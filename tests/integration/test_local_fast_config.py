@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from collections.abc import Iterator
 
 import pytest
 from local_fast_fake_gateway import FakeGateway, fixture_bytes
 from proxyloop_agent_core.local_fast_wire import encode_json
-from proxyloop_api.config import runtime_from_environment, services_from_environment
+from proxyloop_api.config import runtime_from_environment
 from proxyloop_local_fast import (
     DEFAULT_TIMEOUT_S,
     MAX_TIMEOUT_S,
@@ -91,18 +90,6 @@ def test_local_fast_backend_requires_scripted_runtime_and_direct_mode(
     # F3 / AC3: on main every one of these started a Runtime.
     with pytest.raises(ValueError, match=message):
         runtime_from_environment(environ=environ)
-
-
-def test_temporal_refuses_a_local_fast_backend() -> None:
-    # F3 / AC3, L11: until PR-11 the Temporal path is scripted only.
-    environ = {
-        "PROXYLOOP_ORCHESTRATION_MODE": "temporal",
-        "PROXYLOOP_STORAGE_MODE": "postgres",
-        "PROXYLOOP_DATABASE_URL": "postgresql://unused.invalid/none",
-        "PROXYLOOP_FAST_BACKEND": "distilled",
-    }
-    with pytest.raises(ValueError, match="Temporal orchestration requires"):
-        asyncio.run(services_from_environment(environ=environ))
 
 
 def test_a_missing_gateway_refuses_to_start() -> None:

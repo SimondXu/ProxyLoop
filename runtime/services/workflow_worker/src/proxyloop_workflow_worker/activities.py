@@ -1,4 +1,4 @@
-"""Temporal activity adapter around the shared scripted Case Runtime."""
+"""Temporal activity adapter around the shared Case Runtime (scripted Slow)."""
 
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ from proxyloop_connectors import (
     DeliveryObservation,
     LocalMailboxAdapter,
 )
+from proxyloop_local_fast import fast_adapter_from_environment
 from pydantic import ValidationError
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
@@ -37,14 +38,23 @@ REDRIVABLE_OUTBOX_STATES = frozenset({"pending", "failed_retryable", "unknown"})
 
 
 class CaseCommandActivityAdapter:
-    """Adapt one Runtime instance to the Temporal activity contract."""
+    """Adapt one Runtime instance to the Temporal activity contract.
+
+    ``channel_runtime`` (default: ``runtime``) applies the channel commands.
+    With a local Fast backend it is a scripted-Fast Runtime over the same
+    repository, so a channel ingest keeps the constant outbound body and
+    never calls the model (PR-11 D5, PR-8 I7).
+    """
 
     def __init__(
         self,
         runtime: ThinAgentRuntime,
         local_mailbox: DeliveryAdapter | None = None,
+        *,
+        channel_runtime: ThinAgentRuntime | None = None,
     ) -> None:
         self.runtime = runtime
+        self.channel_runtime = channel_runtime or runtime
         self.local_mailbox = local_mailbox or LocalMailboxAdapter()
 
     def apply_command(self, command: CaseCommand) -> Any:
@@ -53,7 +63,10 @@ class CaseCommandActivityAdapter:
         parsed: CaseCommand | None = None
         try:
             parsed = _coerce_command(command)
-            return self.runtime.apply_command(parsed)
+            runtime = (
+                self.channel_runtime if _is_channel_command(parsed) else self.runtime
+            )
+            return runtime.apply_command(parsed)
         except ApplicationError:
             raise
         except ChannelDependencyUnavailableError as exc:
@@ -261,10 +274,15 @@ def _channel_conflict_category(exc: BaseException) -> str:
     return "channel_conflict"
 
 
-def runtime_from_environment(
+def activity_adapter_from_environment(
     environ: Mapping[str, str] | None = None,
-) -> ThinAgentRuntime:
-    """Build the explicit scripted/PostgreSQL Runtime used by the worker."""
+) -> CaseCommandActivityAdapter:
+    """Build the worker's scripted-Slow/PostgreSQL Runtime and its Fast backend.
+
+    ``PROXYLOOP_FAST_BACKEND`` goes through the API's one parse and start-time
+    identity probe, before the database is opened, so a refused start
+    touches nothing. Slow stays scripted (decision 17).
+    """
 
     values = os.environ if environ is None else environ
     if values.get("PROXYLOOP_RUNTIME_MODE", "scripted") != "scripted":
@@ -274,7 +292,22 @@ def runtime_from_environment(
     database_url = values.get("PROXYLOOP_DATABASE_URL")
     if not database_url or not database_url.strip():
         raise ValueError("Temporal worker requires PROXYLOOP_DATABASE_URL")
-    return ThinAgentRuntime(PostgresCaseRepository(database_url))
+    fast = fast_adapter_from_environment(values)
+    repository = PostgresCaseRepository(database_url)
+    if fast is None:
+        return CaseCommandActivityAdapter(ThinAgentRuntime(repository))
+    return CaseCommandActivityAdapter(
+        ThinAgentRuntime(repository, fast=fast),
+        channel_runtime=ThinAgentRuntime(repository),
+    )
+
+
+def runtime_from_environment(
+    environ: Mapping[str, str] | None = None,
+) -> ThinAgentRuntime:
+    """The Runtime that applies the worker's Case commands."""
+
+    return activity_adapter_from_environment(environ).runtime
 
 
 def activity_for_adapter(adapter: CaseCommandActivityAdapter) -> Any:
@@ -309,7 +342,7 @@ _default_adapter: CaseCommandActivityAdapter | None = None
 def _get_default_adapter() -> CaseCommandActivityAdapter:
     global _default_adapter
     if _default_adapter is None:
-        _default_adapter = CaseCommandActivityAdapter(runtime_from_environment())
+        _default_adapter = activity_adapter_from_environment()
     return _default_adapter
 
 
@@ -332,6 +365,7 @@ async def dispatch_channel_delivery_activity(request: ChannelDeliveryRequest) ->
 __all__ = [
     "REDRIVABLE_OUTBOX_STATES",
     "CaseCommandActivityAdapter",
+    "activity_adapter_from_environment",
     "activity_for_adapter",
     "apply_case_command_activity",
     "channel_activity_for_adapter",

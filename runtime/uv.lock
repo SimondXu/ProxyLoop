@@ -521,6 +521,7 @@ version = "0.0.0"
 source = { editable = "services/workflow_worker" }
 dependencies = [
     { name = "proxyloop-case-runtime" },
+    { name = "proxyloop-local-fast" },
     { name = "pydantic" },
     { name = "temporalio" },
 ]
@@ -528,6 +529,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "proxyloop-case-runtime", editable = "packages/case_runtime" },
+    { name = "proxyloop-local-fast", editable = "packages/local_fast" },
     { name = "pydantic", specifier = ">=2.11,<3" },
     { name = "temporalio", specifier = ">=1.32,<2" },
 ]

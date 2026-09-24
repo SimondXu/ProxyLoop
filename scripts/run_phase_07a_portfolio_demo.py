@@ -34,6 +34,11 @@ from proxyloop_connectors import (
     SCHEMA_VERSION,
     build_fixture_headers,
 )
+from proxyloop_local_fast import (
+    FAST_BACKEND_VARIABLE,
+    LocalFastStartupError,
+    fast_adapter_from_environment,
+)
 from temporalio.api.workflowservice.v1 import DescribeNamespaceRequest
 from temporalio.client import Client
 from temporalio.service import RPCError
@@ -79,6 +84,12 @@ MODEL_ENVIRONMENT_KEYS = (
     "PROXYLOOP_MODEL_BASE_URL",
     "PROXYLOOP_MODEL_NAME",
 )
+# PR-11: the FAST_BACKEND flag; the two local backends need PR-9b's gateway.
+FAST_BACKENDS = ("scripted", "distilled", "untuned")
+FAST_BACKEND_LABELS = {
+    "local_distilled_candidate": "local opt-in candidate",
+    "local_untuned_baseline": "untuned local baseline",
+}
 INBOUND_EVENT_ID = UUID("77777777-7777-4777-8777-777777777777")
 CALLBACK_EVENT_ID = UUID("88888888-8888-4888-8888-888888888888")
 CREATE_IDEMPOTENCY_KEY = "33333333-3333-4333-8333-333333333333"
@@ -120,14 +131,25 @@ def parse_utc(value: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
-def build_demo_environment(environ: Mapping[str, str] | None = None) -> dict[str, str]:
-    """Return explicit demo settings without inheriting model credentials."""
+def build_demo_environment(
+    environ: Mapping[str, str] | None = None,
+    *,
+    fast_backend: str = "scripted",
+) -> dict[str, str]:
+    """Return explicit demo settings without inheriting model credentials.
 
+    ``fast_backend`` (the ``FAST_BACKEND`` flag) is set for every child
+    process, so the worker and the API always read the same selection.
+    """
+
+    if fast_backend not in FAST_BACKENDS:
+        raise ValueError("unknown fast backend")
     values = dict(os.environ if environ is None else environ)
     for key in MODEL_ENVIRONMENT_KEYS:
         values.pop(key, None)
     values.update(
         {
+            "PROXYLOOP_FAST_BACKEND": fast_backend,
             "PROXYLOOP_RUNTIME_MODE": "scripted",
             "PROXYLOOP_STORAGE_MODE": "postgres",
             "PROXYLOOP_ORCHESTRATION_MODE": "temporal",
@@ -139,6 +161,27 @@ def build_demo_environment(environ: Mapping[str, str] | None = None) -> dict[str
         }
     )
     return values
+
+
+def check_fast_backend(environment: Mapping[str, str]) -> str | None:
+    """Probe the local Fast gateway the demo expects; ``None`` for scripted.
+
+    The same parse and identity probe the worker and API run at start. The
+    launcher never starts the gateway (PR-9b's ``make local-fast-gateway``).
+    """
+
+    backend = environment.get(FAST_BACKEND_VARIABLE, "scripted")
+    if backend == "scripted":
+        return None
+    try:
+        adapter = fast_adapter_from_environment(environment)
+    except (ValueError, LocalFastStartupError) as exc:
+        raise DemoScenarioError(
+            f"FAST_BACKEND={backend} needs its local Fast gateway ({exc}); "
+            f"start it with make local-fast-gateway BACKEND={backend}, then retry"
+        ) from None
+    assert adapter is not None  # a local backend connects or raises
+    return FAST_BACKEND_LABELS[adapter.fast_backend_label]
 
 
 def build_provider_message_body(occurred_at: datetime) -> bytes:
@@ -509,10 +552,12 @@ def _build_web_app(state_dir: Path) -> None:
         raise DemoScenarioError("Web build failed; inspect logs/web-build.log")
 
 
-def _spawn_host_services(state_dir: Path) -> dict[str, subprocess.Popen[bytes]]:
+def _spawn_host_services(
+    state_dir: Path, *, fast_backend: str = "scripted"
+) -> dict[str, subprocess.Popen[bytes]]:
     log_dir = _log_dir(state_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
-    environment = build_demo_environment()
+    environment = build_demo_environment(fast_backend=fast_backend)
     commands = {
         "worker": [
             "uv",
@@ -777,7 +822,9 @@ def _start_compose_dependencies() -> None:
         raise
 
 
-def start_demo(*, state_dir: Path | None = None) -> None:
+def start_demo(
+    *, state_dir: Path | None = None, fast_backend: str = "scripted"
+) -> None:
     selected = _state_dir(state_dir)
     _initialize_startup_state(selected)
     processes: dict[str, subprocess.Popen[bytes]] = {}
@@ -789,13 +836,17 @@ def start_demo(*, state_dir: Path | None = None) -> None:
                 "make portfolio-demo-stop"
             )
         _raise_if_stop_requested(selected)
+        # Before anything starts: a local backend needs its gateway running.
+        fast_label = check_fast_backend(
+            build_demo_environment(fast_backend=fast_backend)
+        )
         _check_startup_ports()
         _start_compose_dependencies()
         compose_started = True
         _raise_if_stop_requested(selected)
         _build_web_app(selected)
         _raise_if_stop_requested(selected)
-        processes = _spawn_host_services(selected)
+        processes = _spawn_host_services(selected, fast_backend=fast_backend)
         _raise_if_stop_requested(selected)
         _assert_processes_alive(processes)
         if not _wait_for_url(
@@ -811,6 +862,12 @@ def start_demo(*, state_dir: Path | None = None) -> None:
         print(f"Web: {DEFAULT_WEB_URL}")
         print(f"Runtime readiness: {DEFAULT_RUNTIME_URL}/health/ready")
         print(f"Temporal server: {DEFAULT_TEMPORAL_ADDRESS}")
+        print(
+            "Fast backend: scripted"
+            if fast_label is None
+            else f"Fast backend: {fast_backend} ({fast_label}; the gateway is "
+            "not supervised by this demo)"
+        )
         print(
             "Scene order: Scene A Web Case, then reset, then Scene B synthetic "
             "local_mailbox."
@@ -1114,7 +1171,13 @@ def main(argv: list[str] | None = None) -> int:
         description="Run the Phase 07A local portfolio demo"
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("serve", help="start Compose and host demo processes")
+    serve = subparsers.add_parser("serve", help="start Compose and host demo processes")
+    serve.add_argument(
+        "--fast-backend",
+        choices=FAST_BACKENDS,
+        default="scripted",
+        help="distilled/untuned expect a running local Fast gateway",
+    )
     subparsers.add_parser("stop", help="stop host processes and Compose dependencies")
     subparsers.add_parser("reset", help="remove only the named demo PostgreSQL volume")
     channel = subparsers.add_parser(
@@ -1127,7 +1190,7 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGTERM, _handle_signal)
     try:
         if args.command == "serve":
-            start_demo()
+            start_demo(fast_backend=args.fast_backend)
         elif args.command == "stop":
             stop_demo()
         elif args.command == "reset":
@@ -1159,6 +1222,7 @@ __all__ = [
     "CALLBACK_EVENT_ID",
     "CREATE_IDEMPOTENCY_KEY",
     "DEFAULT_DATABASE_URL",
+    "FAST_BACKENDS",
     "INBOUND_CONTENT",
     "INBOUND_EVENT_ID",
     "DemoScenarioError",
@@ -1168,6 +1232,7 @@ __all__ = [
     "build_demo_environment",
     "build_fixture_headers",
     "build_provider_message_body",
+    "check_fast_backend",
     "main",
     "parse_utc",
     "reset_demo",

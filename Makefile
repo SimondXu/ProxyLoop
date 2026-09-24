@@ -291,7 +291,8 @@ phase05a-check:
 		$(PYTHON_RUN) pytest -c runtime/pyproject.toml -q \
 		tests/integration/test_phase_05a_case_runtime.py \
 		tests/integration/test_phase_05a_temporal_api.py \
-		tests/integration/test_phase_05a_temporal_workflow.py
+		tests/integration/test_phase_05a_temporal_workflow.py \
+		tests/integration/test_fast_under_temporal.py
 
 phase06b1-check:
 	@test -n "$(PROXYLOOP_TEST_DATABASE_URL)" || (echo 'PROXYLOOP_TEST_DATABASE_URL is required' >&2; exit 1)
@@ -307,8 +308,11 @@ phase06b1-check:
 runtime-server:
 	$(PYTHON_RUN) python -m proxyloop_api.server --host 127.0.0.1 --port 8000
 
+# FAST_BACKEND=distilled|untuned expects a running local Fast gateway (PR-11).
+FAST_BACKEND ?= scripted
+
 portfolio-demo:
-	$(PYTHON_RUN) python scripts/run_phase_07a_portfolio_demo.py serve
+	$(PYTHON_RUN) python scripts/run_phase_07a_portfolio_demo.py serve --fast-backend "$(FAST_BACKEND)"
 
 portfolio-demo-stop:
 	$(PYTHON_RUN) python scripts/run_phase_07a_portfolio_demo.py stop
