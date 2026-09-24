@@ -20,6 +20,7 @@ from proxyloop_agent_core import (
     CoordinatorOutcome,
     CoordinatorStatus,
     FastAdapter,
+    LabelledFastBackend,
     PreparedSimulatorExecution,
     RouteRequest,
     ScriptedDialogueFastAdapter,
@@ -97,7 +98,14 @@ from .repository import (
 
 RuntimeDecision = Literal["approved", "rejected"]
 SnapshotVersion = Literal["1.0", "1.1"]
-AdapterMode = Literal["scripted", "model"]
+AdapterMode = Literal[
+    "scripted", "model", "local_distilled_candidate", "local_untuned_baseline"
+]
+# The opt-in local Fast backends (Slow stays scripted), by their own label.
+_LOCAL_FAST_MODES: Final[tuple[AdapterMode, ...]] = (
+    "local_distilled_candidate",
+    "local_untuned_baseline",
+)
 StorageMode = Literal["memory", "postgres"]
 TransitionSchemaVersion = Literal["phase-05a-v1", "phase-06b1-v1"]
 DeliveryStatus = Literal["pending", "accepted", "delivered", "bounced"]
@@ -921,9 +929,10 @@ class ThinAgentRuntime:
             ),
             fast=self._fast,
         )
-        # Gate-passed Fast text is delivered; gate-withheld text is replaced by
-        # the fallback and the command still applies; a validation reject fails.
-        if outcome.fast_disclosure_rejected:
+        # Gate-passed Fast text is delivered; gate-withheld text or a captured
+        # Fast failure is replaced by the fallback and the command still
+        # applies; a validation reject fails.
+        if outcome.fast_disclosure_rejected or outcome.fast_failed:
             line = FAST_FALLBACK_TEXT
         elif (
             outcome.status is CoordinatorStatus.ACCEPTED
@@ -1694,11 +1703,13 @@ class ThinAgentRuntime:
         # clock's reading for the operation, and lasts the measured latency.
         # The Runtime clock itself is not handed over: every extra read would
         # move the operation times an injected clock defines.
-        # Only the Runtime gates Fast text for display; ML callers do not.
+        # Only the Runtime gates Fast text for display and captures a typed
+        # Fast failure as a FAILED trace plus the fallback; ML callers do not.
         return CaseCoordinator(
             snapshot=snapshot,
             monotonic=time.perf_counter,
             fast_gate=fast_disclosure_violations,
+            capture_fast_failures=True,
         )
 
     def now(self) -> datetime:
@@ -2262,6 +2273,16 @@ def _channel_repository(repository: CaseRepository) -> Any:
 
 
 def _infer_adapter_mode(fast: FastAdapter, slow: SlowAdapter) -> AdapterMode:
+    if isinstance(fast, LabelledFastBackend):
+        # An opt-in backend names itself; an unknown name is refused, never
+        # reported as ``model`` (review M3).
+        label = fast.fast_backend_label
+        mode = next((item for item in _LOCAL_FAST_MODES if item == label), None)
+        if mode is None:
+            raise ValueError("unrecognised Fast backend label")
+        if isinstance(slow, ScriptedSlowAdapter):
+            return mode
+        return "model"
     if isinstance(fast, _SCRIPTED_FAST_TYPES) and isinstance(slow, ScriptedSlowAdapter):
         return "scripted"
     return "model"

@@ -84,6 +84,14 @@ _Avoid_: Safety filter, content moderation, Judge
 A Runtime-authored visible Case event carrying the one dialogue line shown after each applied Consumer event: Fast text that passed the Disclosure Gate, or the fixed fallback. It is dialogue, never authority: no approval, execution, or completion depends on it.
 _Avoid_: Fast response, model reply, bot message
 
+**Fast Backend**:
+The one source of Fast Turn Decisions a Runtime process uses, chosen when it starts and fixed while it runs: the scripted dialogue policy by default, or an explicitly selected local model. A Fast call that fails yields the fixed fallback line for that turn; the process never switches to another backend on its own.
+_Avoid_: Model router, failover, automatic fallback
+
+**Local Opt-in Candidate**:
+The Phase 03C distilled Fast model served on the local machine only when explicitly selected, with every result it produces labelled as such and carrying its evaluation caveats. It is neither promoted nor production; its untuned base, served the same way, is the untuned local baseline it is compared with.
+_Avoid_: Promoted model, production model, trained Fast
+
 **Action Intent**:
 A typed request to perform a side effect that remains inert until deterministic policy and approval checks authorize it.
 _Avoid_: Tool call, command

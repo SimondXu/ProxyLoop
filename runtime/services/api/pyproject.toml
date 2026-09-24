@@ -9,6 +9,7 @@ dependencies = [
   "uvicorn>=0.35,<1",
   "proxyloop-agent-core==0.0.0",
   "proxyloop-case-runtime==0.0.0",
+  "proxyloop-local-fast==0.0.0",
   "proxyloop-openai-adapter==0.0.0",
   "proxyloop-provider-simulator==0.0.0",
   "proxyloop-telecom-domain==0.0.0",
@@ -18,6 +19,7 @@ dependencies = [
 [tool.uv.sources]
 proxyloop-agent-core = { workspace = true }
 proxyloop-case-runtime = { workspace = true }
+proxyloop-local-fast = { workspace = true }
 proxyloop-openai-adapter = { workspace = true }
 proxyloop-provider-simulator = { workspace = true }
 proxyloop-telecom-domain = { workspace = true }

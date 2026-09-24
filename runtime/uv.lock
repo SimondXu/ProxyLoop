@@ -9,6 +9,7 @@ members = [
     "proxyloop-case-runtime",
     "proxyloop-connectors",
     "proxyloop-contracts",
+    "proxyloop-local-fast",
     "proxyloop-openai-adapter",
     "proxyloop-provider-simulator",
     "proxyloop-runtime",
@@ -365,6 +366,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "proxyloop-agent-core" },
     { name = "proxyloop-case-runtime" },
+    { name = "proxyloop-local-fast" },
     { name = "proxyloop-openai-adapter" },
     { name = "proxyloop-provider-simulator" },
     { name = "proxyloop-telecom-domain" },
@@ -378,6 +380,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.116,<1" },
     { name = "proxyloop-agent-core", editable = "packages/agent_core" },
     { name = "proxyloop-case-runtime", editable = "packages/case_runtime" },
+    { name = "proxyloop-local-fast", editable = "packages/local_fast" },
     { name = "proxyloop-openai-adapter", editable = "packages/openai_adapter" },
     { name = "proxyloop-provider-simulator", editable = "packages/provider_simulator" },
     { name = "proxyloop-telecom-domain", editable = "packages/telecom_domain" },
@@ -426,6 +429,23 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "pydantic", specifier = ">=2.12,<3" }]
+
+[[package]]
+name = "proxyloop-local-fast"
+version = "0.0.0"
+source = { editable = "packages/local_fast" }
+dependencies = [
+    { name = "proxyloop-agent-core" },
+    { name = "proxyloop-contracts" },
+    { name = "proxyloop-openai-adapter" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "proxyloop-agent-core", editable = "packages/agent_core" },
+    { name = "proxyloop-contracts", editable = "packages/contracts" },
+    { name = "proxyloop-openai-adapter", editable = "packages/openai_adapter" },
+]
 
 [[package]]
 name = "proxyloop-openai-adapter"

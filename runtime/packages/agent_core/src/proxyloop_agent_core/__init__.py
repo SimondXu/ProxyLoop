@@ -20,13 +20,24 @@ from .disclosure_gate import (
     FastGate,
     fast_disclosure_violations,
 )
+from .fast_observation import (
+    FAST_OBSERVATION_REFUSAL_CODES,
+    FAST_OBSERVATION_VERSION,
+    ObservationRefusal,
+    fast_public_observation,
+)
 from .interfaces import (
     BOUNDED_FAST_STATUS_TEXT,
+    FAST_ADAPTER_FAILURE_CODES,
+    FAST_ADAPTER_FAILURE_DETAIL_CODES,
     FastAdapter,
+    FastAdapterFailure,
     FastAdapterResult,
     IdentifiedAdapter,
+    LabelledFastBackend,
     ModelCallUsage,
     ModelIdentity,
+    ObservingFastAdapter,
     PreparedSimulatorExecution,
     SimulatorCapabilityAdapter,
     SlowAdapter,
@@ -34,6 +45,7 @@ from .interfaces import (
     UsageReportingSlowAdapter,
 )
 from .observation import (
+    OFFER_CLASSIFICATION_CODES,
     OracleAction,
     OracleDecision,
     OraclePrecedence,
@@ -41,6 +53,7 @@ from .observation import (
     SafeObservationAdapter,
     SafeOffer,
     ScriptedOracleConsumer,
+    classify_provider_offer,
 )
 from .router import (
     ALLOWED_FAST_REASONER_REASONS,
@@ -60,9 +73,14 @@ from .scripted import (
 __all__ = [
     "ALLOWED_FAST_REASONER_REASONS",
     "BOUNDED_FAST_STATUS_TEXT",
+    "FAST_ADAPTER_FAILURE_CODES",
+    "FAST_ADAPTER_FAILURE_DETAIL_CODES",
     "FAST_GATE_ALLOWED_ACTS",
     "FAST_GATE_UNICODE_DATA_VERSION",
     "FAST_GATE_VERSION",
+    "FAST_OBSERVATION_REFUSAL_CODES",
+    "FAST_OBSERVATION_VERSION",
+    "OFFER_CLASSIFICATION_CODES",
     "ROUTER_PRECEDENCE",
     "SCRIPTED_DIALOGUE_LINES",
     "SCRIPTED_PENDING_SLOW_LINE",
@@ -75,11 +93,15 @@ __all__ = [
     "CoordinatorStatus",
     "DeterministicRouter",
     "FastAdapter",
+    "FastAdapterFailure",
     "FastAdapterResult",
     "FastGate",
     "IdentifiedAdapter",
+    "LabelledFastBackend",
     "ModelCallUsage",
     "ModelIdentity",
+    "ObservationRefusal",
+    "ObservingFastAdapter",
     "OracleAction",
     "OracleDecision",
     "OraclePrecedence",
@@ -99,5 +121,7 @@ __all__ = [
     "UsageReportingFastAdapter",
     "UsageReportingSlowAdapter",
     "accepted_fast_reasoner_trigger",
+    "classify_provider_offer",
     "fast_disclosure_violations",
+    "fast_public_observation",
 ]

@@ -22,6 +22,7 @@ PYTHON_PATHS := runtime/packages/contracts/src runtime/packages/contracts/tests 
 	runtime/packages/agent_core/src \
 	runtime/packages/case_runtime/src \
 	runtime/packages/connectors/src \
+	runtime/packages/local_fast/src \
 	runtime/packages/openai_adapter/src \
 	runtime/packages/telecom_domain/src runtime/packages/provider_simulator/src \
 	runtime/packages/provider_simulator/tests \
@@ -103,6 +104,7 @@ typecheck:
 		runtime/packages/contracts/src runtime/packages/agent_core/src \
 		runtime/packages/case_runtime/src \
 		runtime/packages/connectors/src \
+		runtime/packages/local_fast/src \
 		runtime/packages/openai_adapter/src \
 		runtime/packages/telecom_domain/src \
 		runtime/services/api/src \

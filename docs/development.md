@@ -195,6 +195,20 @@ repository. Storage and orchestration modes are explicit and never fall back:
 
   The server does not load `.env` files. No real model smoke is part of the
   automated gate.
+- A local Fast backend is opt-in, direct mode only, with scripted Runtime
+  mode (Slow stays scripted); Temporal refuses it until PR-11:
+
+  | Variable | Values | Rule |
+  |---|---|---|
+  | `PROXYLOOP_FAST_BACKEND` | `scripted` (default), `distilled`, `untuned` | `distilled` is the Phase 03C Local Opt-in Candidate, `untuned` its base |
+  | `PROXYLOOP_FAST_GATEWAY_URL` | default `http://127.0.0.1:8765` | an `http://` loopback origin only (`127.0.0.1`, `::1`, `localhost`) |
+  | `PROXYLOOP_FAST_TIMEOUT_S` | default `25` (the cap) | a number in [0.1, 25]; a distilled call can hold the direct-mode app lock for up to this long |
+
+  The server refuses to start unless the gateway answers `/v1/identity`
+  with the selected backend. A failed Fast call delivers the fallback line
+  and is traced `FAILED`; nothing retries or switches backend. Roll back by
+  setting `scripted` and restarting. The gateway process and its runbook are
+  PR-9b's (`ml/serving/`); CI uses only the in-test fake gateway.
 
 For the Web app alone, run `pnpm --filter @proxyloop/web dev` against a
 running Runtime ([apps/README.md](../apps/README.md)).
