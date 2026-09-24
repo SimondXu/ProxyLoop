@@ -35,7 +35,7 @@ Repository checks are `make` targets; the installed `fix` Skill (Yarn) does not 
 
 - Focused: `make lint`, `make typecheck`, `make test`, `make format`, `make web-check`
 - Fast gate while iterating: `make preflight-fast`
-- Final local gate, run once on the stable diff: `make preflight` (skips the DB/Temporal-gated integration tests, then prints their count and fails if it differs from the pinned count; a change under `case_runtime`, `workflow_worker`, `connectors`, or `api` also needs the real-dependency gates below)
+- Final local gate, run once on the stable diff: `make preflight` (skips the DB/Temporal-gated integration tests, then prints their count and fails if it differs from the per-file pin; with both `PROXYLOOP_TEST_DATABASE_URL` and `PROXYLOOP_TEST_TEMPORAL_ADDRESS` set it requires 0 gated skips, with only one set it reports without enforcing; a change under `case_runtime`, `workflow_worker`, `connectors`, or `api` also needs the real-dependency gates below)
 - Real-dependency gates (all need the Compose `postgres-test` profile, `phase05a-check` and `phase06b1-check` also the `temporal` service; run them one at a time from one worktree, per `AGENTS.md`): `make postgres-check`, `make phase05a-check`, `make phase06b1-check`. Variables and details: `docs/development.md`, "Local gate and real-dependency gates".
 
 Report passed, failed, blocked, skipped, manual, and unrun checks separately. Never claim a check passed without its output.

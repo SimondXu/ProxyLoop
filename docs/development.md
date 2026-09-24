@@ -128,11 +128,15 @@ so a "preflight passed" claim covers none of them. `unit-test` writes the
 runtime pytest JUnit report to `.gate/runtime-junit.xml` (git-ignored); the
 last preflight step counts the tests skipped with a `PROXYLOOP_TEST_*` reason,
 prints the count per file, and names the three real-dependency targets below.
-The count is pinned (`EXPECTED_GATED_SKIPS` in `scripts/check_gated_skips.py`):
-a test that newly skips on a missing variable, or a gated test that is removed
-or renamed, fails preflight until the pin and this list change together. With
-any `PROXYLOOP_TEST_*` variable set, `unit-test` runs the gated tests it can
-reach, and the count is printed but the pin is not enforced. A change under
+The count is pinned per file (`EXPECTED_GATED_SKIPS_PER_FILE` in
+`scripts/check_gated_skips.py`): a test that newly skips on a missing
+variable, or a gated test that is removed, added, or moved between files,
+fails preflight until the pin and this list change together. Only
+`PROXYLOOP_TEST_DATABASE_URL` and `PROXYLOOP_TEST_TEMPORAL_ADDRESS` decide
+enforcement (other `PROXYLOOP_TEST_*` names are ignored): with neither set
+the pin is enforced; with both set no gated test may skip; with exactly one
+set `unit-test` runs the gated tests it can reach and the count is printed
+but not enforced. A change under
 `case_runtime`, `workflow_worker`, `connectors`, or `api` therefore also needs
 the real-dependency gates below.
 

@@ -98,16 +98,50 @@ C = 20p + W - 1e-9 = 0.142077 (22.55p).
 - R-15, 200 fresh pytest processes of the test (sequential, no other load):
   `passed=200 failed=0`.
 
+## Review and root decisions
+
+Independent review: Approve (`harness/code_review/fix-gate-honesty-r15-g1.md`).
+Root decisions, applied on this branch:
+
+- `scripts/check_gated_skips.py`: only `PROXYLOOP_TEST_DATABASE_URL` and
+  `PROXYLOOP_TEST_TEMPORAL_ADDRESS` decide enforcement (other
+  `PROXYLOOP_TEST_*` names are ignored). Neither set: pin enforced. Both
+  set: 0 gated skips required. Exactly one set: report only.
+- The pin is per file (`EXPECTED_GATED_SKIPS_PER_FILE`; the total is its
+  sum), so a deleted gated test plus an unrelated new gated skip no longer
+  cancel out. A failure lists each file whose count differs.
+- Wording: "removed or renamed" became "removed, added, or moved between
+  files" (a rename does not change the count) in the script and
+  `docs/development.md`; the `CLAUDE.md` gate bullet states the
+  enforcement rule.
+- `tests/contract/test_gated_skips_check.py`: 9 tests; new cases cover an
+  unknown variable ignored, both set with 0 skips passing, both set with
+  skips failing, one set report-only (each variable), a per-file mismatch
+  with the same total failing. Red first: the new tests failed to import
+  `EXPECTED_GATED_SKIPS_PER_FILE` before the script change.
+- Recorded limit (review Minor 4): a break of the R-15 barrier surfaces as
+  a provider failure, so the test still fails, but indirectly.
+- Follow-up (review Minor 5): the real-dependency gates do not themselves
+  require 0 gated skips; added to the open list in
+  `harness/context/audit-remediation-status.md`.
+
+Checks after the change (no `PROXYLOOP_TEST_*` set, no DB/Temporal):
+`make lint` exit 0; `make typecheck` exit 0; `make test` exit 0; `make
+preflight` exit 0 with runtime 1260 passed, 51 skipped; ml 397 passed, 1
+skipped; web 140 passed; last line `Gated-skip counts match the pinned 51
+per file.`
+
+Merge order is PR-4 -> PR-2 -> PR-1. PR-2 adds 2 gated tests (its
+preflight showed 53), so the per-file pin changes when this branch merges
+`main` after PR-2.
+
 ## Not run / remaining
 
 - No DB/Temporal gates run (none needed; no service code changed).
-- No independent review yet; no PR opened (not requested).
+- No PR opened (not requested).
 
-## Open questions for the root
+## Notes
 
-- Open for review: the pin is not enforced when any `PROXYLOOP_TEST_*` is set (a partial set
-  would otherwise fail); acceptable, or enforce "0 gated skips" when both are
-  set?
 - xunit1 is pytest's legacy JUnit family, used only for the per-test `file`
   attribute (xunit2 reports an empty `classname` for tests outside the
   `runtime/` rootdir).

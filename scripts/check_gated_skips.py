@@ -3,10 +3,12 @@
 
 ``make unit-test`` writes the runtime pytest JUnit report; ``make preflight``
 ends by running this script over it.  A test is gated when pytest skipped it
-with a reason naming a ``PROXYLOOP_TEST_*`` variable.  With every such
-variable unset, the gated-skip count must equal ``EXPECTED_GATED_SKIPS``, so
-a test that newly skips on a missing variable, or a gated test that
-disappears, fails the gate instead of passing silently.
+with a reason naming a ``PROXYLOOP_TEST_*`` variable.  Only the two
+variables the gated tests read decide enforcement: with neither set, the
+per-file gated-skip counts must equal ``EXPECTED_GATED_SKIPS_PER_FILE``, so a
+gated test that newly skips, disappears, or moves fails the gate instead of
+passing silently; with both set, no gated test may skip; with exactly one
+set, the counts are reported only.
 """
 
 import os
@@ -18,8 +20,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPORT = ROOT / ".gate" / "runtime-junit.xml"
 GATE_PREFIX = "PROXYLOOP_TEST_"
+DATABASE_VARIABLE = "PROXYLOOP_TEST_DATABASE_URL"
+TEMPORAL_VARIABLE = "PROXYLOOP_TEST_TEMPORAL_ADDRESS"
 # Change only together with the tests it counts (and docs/development.md).
-EXPECTED_GATED_SKIPS = 51
+EXPECTED_GATED_SKIPS_PER_FILE = {
+    "tests/integration/test_phase_04c_persistent_case_store.py": 23,
+    "tests/integration/test_phase_05a_case_runtime.py": 2,
+    "tests/integration/test_phase_05a_temporal_workflow.py": 22,
+    "tests/integration/test_phase_06b1_channel_runtime.py": 1,
+    "tests/integration/test_phase_06b1_temporal.py": 3,
+}
+EXPECTED_GATED_SKIPS = sum(EXPECTED_GATED_SKIPS_PER_FILE.values())
 REAL_DEPENDENCY_TARGETS = ("postgres-check", "phase05a-check", "phase06b1-check")
 
 
@@ -37,9 +48,11 @@ def gated_skips(report: Path) -> Counter[str]:
 
 
 def gate_variables_set(environ: dict[str, str]) -> list[str]:
-    return sorted(
-        key for key, value in environ.items() if key.startswith(GATE_PREFIX) and value
-    )
+    """The enforcement-deciding variables that are set to a non-empty value."""
+
+    return [
+        name for name in (DATABASE_VARIABLE, TEMPORAL_VARIABLE) if environ.get(name)
+    ]
 
 
 def check(report: Path, environ: dict[str, str]) -> tuple[bool, list[str]]:
@@ -60,21 +73,43 @@ def check(report: Path, environ: dict[str, str]) -> tuple[bool, list[str]]:
         '(docs/development.md, "Local gate and real-dependency gates").'
     )
     variables = gate_variables_set(environ)
-    if variables:
+    if len(variables) == 2:
+        if total:
+            lines.append(
+                f"FAIL: {DATABASE_VARIABLE} and {TEMPORAL_VARIABLE} are set, but "
+                f"{total} gated test{'s' if total != 1 else ''} skipped."
+            )
+            return False, lines
         lines.append(
-            f"Pin of {EXPECTED_GATED_SKIPS} not enforced: {', '.join(variables)} "
-            "set, so gated tests may have run instead of skipping."
+            f"{DATABASE_VARIABLE} and {TEMPORAL_VARIABLE} set: no gated test skipped."
         )
         return True, lines
-    if total != EXPECTED_GATED_SKIPS:
+    if variables:
+        lines.append(
+            f"Pin not enforced: only {variables[0]} is set, "
+            "so gated tests may have run instead of skipping."
+        )
+        return True, lines
+    mismatches = [
+        f"  {name}: expected {EXPECTED_GATED_SKIPS_PER_FILE.get(name, 0)}, "
+        f"found {counts.get(name, 0)}"
+        for name in sorted(set(counts) | set(EXPECTED_GATED_SKIPS_PER_FILE))
+        if counts.get(name, 0) != EXPECTED_GATED_SKIPS_PER_FILE.get(name, 0)
+    ]
+    if mismatches:
         lines.append(
             f"FAIL: expected {EXPECTED_GATED_SKIPS} gated skips, found {total}. "
+            f"Per-file differences from the pin:"
+        )
+        lines += mismatches
+        lines.append(
             f"A test newly skips on a missing {GATE_PREFIX}* variable, or a gated "
-            "test was removed or renamed. If intended, update EXPECTED_GATED_SKIPS "
-            "in scripts/check_gated_skips.py and docs/development.md."
+            "test was removed, added, or moved between files. If intended, update "
+            "EXPECTED_GATED_SKIPS_PER_FILE in scripts/check_gated_skips.py and "
+            "docs/development.md."
         )
         return False, lines
-    lines.append(f"Gated-skip count matches the pinned {EXPECTED_GATED_SKIPS}.")
+    lines.append(f"Gated-skip counts match the pinned {EXPECTED_GATED_SKIPS} per file.")
     return True, lines
 
 
