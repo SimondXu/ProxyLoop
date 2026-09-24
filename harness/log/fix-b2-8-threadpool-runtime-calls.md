@@ -43,17 +43,6 @@ original exception object, so the same exception handlers map it.
   so the same Runtime is already driven from worker threads in production
   shape.
 
-Residual (reported to the root, not changed): the direct-mode clock guard
-in `apply_direct` (`now()` then `repository.get` then `apply_command` with an
-explicit `occurred_at`) is a check-then-act outside the Runtime's lane.
-Before this change it was atomic only because every direct command ran
-synchronously on the one event loop. Two concurrent commands on the same
-Case that both omit `expected_revision` can now append events whose
-`occurred_at` order differs from their cursor order (window: the clock read
-to the lane acquisition, one repository read). With `expected_revision` the
-second command fails stale CAS as before. The same window already exists
-across processes (several uvicorn workers against PostgreSQL).
-
 ## Red / green
 
 New `tests/integration/test_api_event_loop.py`: a repository whose `create`
@@ -74,11 +63,51 @@ call is still blocked.
   Temporal gated); ML tests 397 passed, 1 skipped; every artifact gate
   through `negotiation-check` green.
 - `make preflight`: exit 0 (same Python counts; Web 140 passed).
-- Not run (shared DB lane, root schedules): `make postgres-check`,
-  `make phase05a-check`, `make phase06b1-check`.
+- DB lane (held exclusively, serial, variables on the make command line
+  only: `PROXYLOOP_TEST_DATABASE_URL` = the Compose `postgres-test`
+  database on `127.0.0.1:55432/proxyloop_test`,
+  `PROXYLOOP_TEST_TEMPORAL_ADDRESS=127.0.0.1:7233`):
+  `make postgres-check` exit 0, 27 passed; `make phase05a-check` exit 0,
+  42 passed; `make phase06b1-check` exit 0, 35 passed.
 - Not done here: independent review.
 
-## Out of scope, noted
+## Known limits
 
-`direct_expiry.py` `_expire` still calls `runtime.apply_command` on the
-event loop when a direct-mode approval timer fires (not an `app.py` call).
+Root decision (option (a)): accepted and documented, not changed.
+
+1. **Direct-mode clock-guard race.** `apply_direct` reads the clock, reads
+   the Case (`repository.get`), and then calls `apply_command` with that
+   explicit `occurred_at`; the guard runs outside the Runtime's per-Case
+   lane. Before this change the sequence was atomic only because every
+   direct command ran synchronously on the one event loop. Now a command
+   whose guard read is stale can carry an `occurred_at` earlier than an event
+   another command appended in between. The same window already exists
+   across processes (several uvicorn workers on PostgreSQL).
+2. **It fails closed.** Building the next snapshot runs the
+   `CaseContextSnapshot` validator, which rejects a timestamp earlier than
+   its predecessor (`contracts.py:1211-1213`, "visible event timestamps
+   must be ordered"; equal timestamps pass). The Runtime raises before any
+   repository write, so nothing out of order is stored (scratch probe:
+   revision and event list unchanged).
+3. **What the client gets** (scratch probes against this branch, not
+   committed; the `app.py` mapping is unchanged):
+   - When the race reaches the validator, the Runtime raises
+     `pydantic_core.ValidationError` (a `ValueError`). No exception handler
+     maps it, so `observe_operation`'s catch-all answers
+     **500 `{"detail": {"code": "internal_error", "message": "internal
+     operation failed safely"}}`**, with operation `error_category`
+     `internal_error` and the correlation-id header. Reproduced by an
+     event whose guard read ran before `POST /cases` (guard saw no Case,
+     event time 12:00:10 < creation 12:00:20).
+   - With the scripted adapters the two-event form of the race does not
+     reach the validator: the first event leaves an approval pending, so the
+     late command is refused in the lane with "case is awaiting approval"
+     and gets **409 `{"detail": "case_conflict"}`** (reproduced). With a
+     model Fast turn that does not gate the Case, the two-event form would
+     take the 500 path above (inferred, not reproduced).
+   - A command that pins `expected_revision` gets 409
+     `{"detail": "stale_cas"}` as before.
+4. **Out of scope:** `direct_expiry.py` `_expire` still calls
+   `runtime.apply_command` on the event loop when a direct-mode approval
+   timer fires (not an `app.py` call), so an expiry blocks the loop for one
+   Runtime call.
