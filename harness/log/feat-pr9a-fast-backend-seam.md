@@ -129,9 +129,15 @@ On the final tree, with no `PROXYLOOP_TEST_*` variable set:
 - `make preflight`: passed, exit 0 (format-check, lint, typecheck, test,
   check-layout, web-check with 140 Web tests and a production build, lock-check,
   compileall, compose config). Gated-skip counts match the pinned 63 per file.
-- Not run here (queued lane, per the task): `make postgres-check`,
-  `make phase05a-check`, `make phase06b1-check`. `runtime.py` and `api/config.py`
-  changed, so these are required before merge. No DB-gated test was added.
+- Merged with `origin/main` @ `c018390` (#95, Web assistant lines; the status
+  file kept both §0 rows) as `b79e807`. On the merge, with no
+  `PROXYLOOP_TEST_*` set: `make test` exit 0 (runtime 1559 passed, 63 skipped;
+  ml 397 passed, 1 skipped; every `*-check` passed) and `make preflight`
+  exit 0 (Web 156 tests, gated skips equal the pinned 63).
+- DB lane on the merge, run serially with the variables on the make command
+  line only (Compose `postgres-test` on 55432, `temporal` on 7233):
+  `make postgres-check` 38 passed; `make phase05a-check` 53 passed;
+  `make phase06b1-check` 56 passed. No DB-gated test was added.
 - Not run: independent review, `/security-review` (new loopback HTTP client and
   failure path), any real gateway or model (PR-9b's manual lane).
 
