@@ -57,7 +57,7 @@ nothing except the bypass. Delete the bypass; no new condition.
 
 ## Non-goals
 
-No contract, coordinator, runtime, `ml/`, `data/`, or ADR text change.
+No contract, coordinator, runtime, `ml/`, or `data/` change.
 
 ## Acceptance
 
@@ -66,9 +66,11 @@ No contract, coordinator, runtime, `ml/`, `data/`, or ADR text change.
   committed artifact change.
 - `make format-check lint typecheck`, `make preflight-fast`, `make test` pass.
 
-## Open for the root
+## ADR amendment (root decision 2026-09-24)
 
-ADR `docs/decisions/2026-08-23-fast-slow-orchestration.md` row 3 still says
-"... and the triggering event is not the Consumer's approval decision."
-That clause described the removed bypass; it needs a wording decision (docs
-are outside this change).
+`docs/decisions/2026-08-23-fast-slow-orchestration.md` row 3 now reads "A
+current, unexpired PENDING Approval Request blocks consequential work; a
+recorded decision leaves it non-PENDING, so a decided approval never blocks."
+A dated `## Amendment 2026-09-24` section records the change, following the
+amendment style of `2026-08-22-implementation-defaults.md`. No test pinned the
+removed clause, so no pin changed.

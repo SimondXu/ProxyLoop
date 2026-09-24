@@ -70,10 +70,21 @@ the decision paths record APPROVED/REJECTED before routing.
   `1200 passed, 51 skipped`, ml `397 passed, 1 skipped`; all artifact gates
   passed. The `drifted_since_r1` / `drifted_since_03b` / `drifted_since_bundle`
   lines are the gates' documented historical states, not changes here.
-- Not run: `make postgres-check`, `make phase05a-check`, `make
+- Not run in the first commit: `make postgres-check`, `make phase05a-check`, `make
   phase06b1-check` (root schedules the shared DB), `make preflight`.
 
-## Open
+## Root decisions applied (second commit)
 
-ADR row 3 still carries the "triggering event is not the Consumer's approval
-decision" clause; wording decision for the root.
+- ADR row 3 amended in place, plus a dated `## Amendment 2026-09-24 — Approval
+  wait keyed on approval state` section (style of the 2026-09-21 amendment in
+  `2026-08-22-implementation-defaults.md`). No test pins the removed clause
+  (`grep "triggering event is not" tests scripts ml` is empty); the 03A0
+  docs-freeze tests only pin outcome names and order within `### Routing`, so
+  no pin changed. `tests/contract` → `106 passed`.
+- `grep -rn trigger_is_approval_decision ml scripts` plus every
+  `_R4_EXECUTION_PATHS` file → no match (exit 1); no `ml/` or `scripts/` file
+  differs from `origin/main`.
+- `make phase05a-check` (shared Compose PostgreSQL + Temporal, variables on the
+  command line only) → exit 0, `42 passed in 97.93s`, 0 skipped.
+- `make preflight-fast` → exit 0. `make test` not rerun: only the ADR and
+  harness docs changed after the run recorded above.
