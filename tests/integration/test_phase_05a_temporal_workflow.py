@@ -17,6 +17,7 @@ from proxyloop_case_runtime import (
     SCRIPTED_CASE_ID,
     CaseCommand,
     CaseCommandType,
+    CaseConflictError,
     CaseRuntimeState,
     CaseTransitionRef,
     PostgresCaseRepository,
@@ -118,7 +119,11 @@ class _ExhaustingAdapter(CaseCommandActivityAdapter):
 
 
 class _ExpiryFaultingAdapter(CaseCommandActivityAdapter):
-    """Fail inside the EXPIRE_APPROVAL activity only, until the switch flips."""
+    """Fail inside the EXPIRE_APPROVAL activity only, until the switch flips.
+
+    With ``cause`` the fault is raised ``from`` it, the shape the production
+    adapter gives every converted Runtime exception.
+    """
 
     def __init__(
         self,
@@ -126,10 +131,12 @@ class _ExpiryFaultingAdapter(CaseCommandActivityAdapter):
         *,
         error_type: str,
         non_retryable: bool = False,
+        cause: Exception | None = None,
     ) -> None:
         super().__init__(runtime)
         self.error_type = error_type
         self.non_retryable = non_retryable
+        self.cause = cause
         self.faulting = True
         self.expiry_attempts = 0
         self.other_commands: list[UUID] = []
@@ -142,7 +149,7 @@ class _ExpiryFaultingAdapter(CaseCommandActivityAdapter):
                     "injected expiry fault",
                     type=self.error_type,
                     non_retryable=self.non_retryable,
-                )
+                ) from self.cause
         else:
             self.other_commands.append(command.command_id)
         return super().apply_command(command)
@@ -902,7 +909,14 @@ async def _later_distinct_update_reaches_runtime(
     assert adapter.other_commands[seen:] == [later.command_id]
 
 
-def test_time_skipping_expiry_retry_exhaustion_keeps_workflow_alive() -> None:
+@pytest.mark.parametrize(
+    "cause",
+    [None, StorageUnavailableError("injected storage outage")],
+    ids=["unchained", "chained"],
+)
+def test_time_skipping_expiry_retry_exhaustion_keeps_workflow_alive(
+    cause: Exception | None,
+) -> None:
     database_url = _database_url()
     _truncate(database_url)
 
@@ -915,7 +929,9 @@ def test_time_skipping_expiry_retry_exhaustion_keeps_workflow_alive() -> None:
             settings = TemporalSettings(task_queue=task_queue)
             runtime = ThinAgentRuntime(PostgresCaseRepository(database_url))
             temporal = TemporalCaseClient(environment.client, settings)
-            adapter = _ExpiryFaultingAdapter(runtime, error_type="storage_unavailable")
+            adapter = _ExpiryFaultingAdapter(
+                runtime, error_type="storage_unavailable", cause=cause
+            )
             worker = Worker(
                 environment.client,
                 task_queue=task_queue,
@@ -986,7 +1002,17 @@ def test_time_skipping_expiry_retry_exhaustion_keeps_workflow_alive() -> None:
     asyncio.run(scenario())
 
 
-def test_time_skipping_non_retryable_expiry_failure_does_not_spin() -> None:
+@pytest.mark.parametrize(
+    "cause",
+    [None, CaseConflictError("injected expiry conflict")],
+    ids=["unchained", "chained"],
+)
+def test_time_skipping_non_retryable_expiry_failure_does_not_spin(
+    cause: Exception | None,
+) -> None:
+    """R-16: a real activity failure is chained (``raise ... from exc``); the
+    expiry is abandoned on the activity's own category, not on its cause."""
+
     database_url = _database_url()
     _truncate(database_url)
 
@@ -1000,7 +1026,7 @@ def test_time_skipping_non_retryable_expiry_failure_does_not_spin() -> None:
             runtime = ThinAgentRuntime(PostgresCaseRepository(database_url))
             temporal = TemporalCaseClient(environment.client, settings)
             adapter = _ExpiryFaultingAdapter(
-                runtime, error_type="case_conflict", non_retryable=True
+                runtime, error_type="case_conflict", non_retryable=True, cause=cause
             )
             worker = Worker(
                 environment.client,
@@ -1711,35 +1737,76 @@ _PRE_R1_HISTORY = (
 )
 
 
+def _replay(
+    history_path: Path, runner: UnsandboxedWorkflowRunner | None = None
+) -> None:
+    history = WorkflowHistory.from_json(
+        f"proxyloop-case/{SCRIPTED_CASE_ID}",
+        history_path.read_text(encoding="utf-8"),
+    )
+    replayer = (
+        Replayer(
+            workflows=[CaseWorkflow],
+            data_converter=pydantic_data_converter,
+        )
+        if runner is None
+        else Replayer(
+            workflows=[CaseWorkflow],
+            data_converter=pydantic_data_converter,
+            workflow_runner=runner,
+        )
+    )
+    asyncio.run(replayer.replay_workflow(history))
+
+
 def test_replay_pre_r1_history_keeps_the_patch_gate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """R-1 T5: a history recorded before the fix replays on the patched code,
     and would not replay if the roll were not behind ``workflow.patched``."""
 
-    history = WorkflowHistory.from_json(
-        f"proxyloop-case/{SCRIPTED_CASE_ID}",
-        _PRE_R1_HISTORY.read_text(encoding="utf-8"),
-    )
-
-    async def replay(runner: UnsandboxedWorkflowRunner | None = None) -> None:
-        replayer = (
-            Replayer(
-                workflows=[CaseWorkflow],
-                data_converter=pydantic_data_converter,
-            )
-            if runner is None
-            else Replayer(
-                workflows=[CaseWorkflow],
-                data_converter=pydantic_data_converter,
-                workflow_runner=runner,
-            )
-        )
-        await replayer.replay_workflow(history)
-
-    asyncio.run(replay())
+    _replay(_PRE_R1_HISTORY)
 
     # Forcing the patch on during replay stands in for an ungated change.
     monkeypatch.setattr(temporal_workflow, "patched", lambda patch_id: True)
     with pytest.raises(temporal_workflow.NondeterminismError, match="Continue as new"):
-        asyncio.run(replay(UnsandboxedWorkflowRunner()))
+        _replay(_PRE_R1_HISTORY, UnsandboxedWorkflowRunner())
+
+
+# Recorded on main @ d23aff9 (before R-16) against the local time-skipping
+# test server with the production activity adapter over an in-memory
+# repository: create; an append that leaves a pending approval; a rejection
+# applied to the Runtime outside the Workflow; the expiry, whose activity
+# fails once with ``case_conflict`` raised ``from`` ``CaseConflictError``, is
+# classified retryable and starts a 15 s retry timer. Stack traces and
+# identities were blanked.
+_PRE_R16_HISTORY = (
+    Path(__file__).resolve().parents[1]
+    / "fixtures"
+    / "temporal_history.case-workflow-expiry-chained-conflict.pre-r16.json"
+)
+
+
+def test_replay_pre_r16_history_keeps_the_expiry_patch_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R-16: a history whose chained non-retryable expiry failure was retried
+    before the fix replays on the patched code, and would not replay if the
+    outermost-cause classification were not behind ``workflow.patched``."""
+
+    _replay(_PRE_R16_HISTORY)
+
+    # Force only this patch on; the history reaches no other patch call.
+    patched = temporal_workflow.patched
+    monkeypatch.setattr(
+        temporal_workflow,
+        "patched",
+        lambda patch_id: (
+            patch_id == "expiry-failure-outermost-cause" or patched(patch_id)
+        ),
+    )
+    # Event 35 is the 15 s expiry retry timer; the patched code abandons.
+    with pytest.raises(
+        temporal_workflow.NondeterminismError, match="id: 35, TimerStarted"
+    ):
+        _replay(_PRE_R16_HISTORY, UnsandboxedWorkflowRunner())
