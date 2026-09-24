@@ -1,0 +1,103 @@
+# Fix log: gate honesty (R-15, G-1 strong form)
+
+Spec: `harness/context/fix-gate-honesty-r15-g1-preflight.md`.
+Branch `fix/gate-honesty-r15-g1` from `origin/main` @ `e1c8371`.
+
+## R-15 diagnosis
+
+Not a ledger bug; `calls <= 20` was a guess. Numbers for this test
+(`claude-sonnet-5`, 3/15 USD per M, `max_output_tokens` 512):
+`per_call` p = 0.0063; worst cases over the 40 rows range from
+w_min = 0.015645 to W = 0.016077 (2.48p to 2.55p); ceiling
+C = 20p + W - 1e-9 = 0.142077 (22.55p).
+
+- Upper bound (reservation rule): when the last call was admitted, every
+  other call was settled (p) or still reserved (w >= p), so
+  `(calls - 1) * p + w_min <= C`, i.e. calls <= 21. The ceiling alone would
+  allow 22.
+- Lower bound: the refused reservation saw at most 7 other in-flight worst
+  cases, each of which still became a call, so
+  `(calls - 7) * p + 8 * W > C`, i.e. calls >= 10.
+- 21 is reachable even sequentially: after 20 calls the 11th prompt's worst
+  case (below W) still fits (simulated in scratch, concurrency 1: 21 calls).
+  The old comment "no more calls than the sequential twenty" was wrong.
+
+## What changed
+
+- `ml/tests/test_teacher_pipeline.py`: new `_FirstWaveCompletions` fake; the
+  first 8 calls wait at a `threading.Barrier(8, timeout=10)` whose action
+  snapshots the ledger and asks it to `reserve` the cheapest worst case. The
+  test asserts: nothing settled, `reserved == sum of the first eight worst
+  cases <= ceiling`, the ninth reservation refused; then the derived bounds
+  above instead of `8 <= calls <= 20`. Later calls take 10 ms so workers keep
+  overlapping. No source change.
+- `scripts/check_gated_skips.py` (stdlib only): parses the runtime pytest
+  JUnit (xunit1, for the `file` attribute) report, counts skips whose message
+  contains `PROXYLOOP_TEST_`, prints them per file, names the three
+  real-dependency targets, and fails unless the count equals
+  `EXPECTED_GATED_SKIPS = 51`. A missing report fails. With any non-empty
+  `PROXYLOOP_TEST_*` set the pin is reported, not enforced.
+- `Makefile`: `unit-test` runtime pytest adds
+  `-o junit_family=xunit1 --junitxml=.gate/runtime-junit.xml`; `preflight`
+  ends with `python3 scripts/check_gated_skips.py`; the script is in the
+  runtime ruff and mypy lists. `.gitignore`: `.gate/`.
+- `tests/contract/test_gated_skips_check.py`: 5 tests (per-file count
+  ignoring other skips, pinned pass naming the targets, count +/-1 fails,
+  missing report fails, pin not enforced with a variable set, empty variable
+  counts as unset).
+- Docs: `docs/development.md` (make-target table, gate section: five gated
+  files with counts, the mechanism), `CLAUDE.md` gate bullet,
+  `harness/context/audit-remediation-status.md` (R-15 and G-1 strong form
+  closed on this branch).
+- Finding: a fifth gated file, `test_phase_06b1_channel_runtime.py` (1 test,
+  skipped through a fixture imported from `test_phase_06b1_temporal.py`),
+  was missing from the docs list; `phase06b1-check` already runs it.
+
+## Evidence
+
+- R-15, 200 fresh pytest processes of the test: `passed=200 failed=0`
+  (ran concurrently with the distribution run below, so under CPU load).
+  An earlier loop was stopped and discarded: it ran while the file was being
+  edited and its 6 failures were half-applied edits (`too many values to
+  unpack`).
+- Distribution, 200 in-process runs: final test 13 calls in all 200; without
+  the 10 ms tail delay 21 in all 200 (so the old `<= 20` fails
+  deterministically against an instant fake).
+- Mutation: `would_exceed` ignoring `reserved_usd` -> the final test fails
+  (`assert True is False`, the ninth reservation admitted); file restored.
+  Without the barrier probe this mutation passed, which is why the probe
+  exists.
+- G-1 output after `make test` (exit 0):
+
+  ```
+  Gated tests skipped for a missing PROXYLOOP_TEST_* variable: 51
+    tests/integration/test_phase_04c_persistent_case_store.py: 23
+    tests/integration/test_phase_05a_case_runtime.py: 2
+    tests/integration/test_phase_05a_temporal_workflow.py: 22
+    tests/integration/test_phase_06b1_channel_runtime.py: 1
+    tests/integration/test_phase_06b1_temporal.py: 3
+  Skipped gated tests are covered only by the real-dependency gates: make postgres-check, make phase05a-check, make phase06b1-check (docs/development.md, "Local gate and real-dependency gates").
+  Gated-skip count matches the pinned 51.
+  ```
+
+- `make format-check lint typecheck`: exit 0 (ruff clean; mypy no issues in
+  67 and 59 source files).
+- `make preflight-fast`: exit 0.
+- `make test` (after `pnpm install --frozen-lockfile`): exit 0; runtime 1228
+  passed, 51 skipped; ml 397 passed, 1 skipped.
+
+## Not run / remaining
+
+- `make preflight` not run (session handoff). It is the remaining check;
+  it should end with the output above. CI runs it without the variables.
+- No DB/Temporal gates run (none needed; no service code changed).
+- No independent review yet; no PR opened (not requested).
+
+## Open questions for the root
+
+- The pin is not enforced when any `PROXYLOOP_TEST_*` is set (a partial set
+  would otherwise fail); acceptable, or enforce "0 gated skips" when both are
+  set?
+- xunit1 is pytest's legacy JUnit family, used only for the per-test `file`
+  attribute (xunit2 reports an empty `classname` for tests outside the
+  `runtime/` rootdir).

@@ -24,10 +24,9 @@ the merged #44, #46 and #71. P1 is closed. Resume in this order:
 
 1. **The rest of P2 (§4)**, grouped into batches — see the P2 batch plan
    once recorded (the root is inventorying the open items now).
-2. **The §4a backlog**: R-2, R-5, R-6, R-11, R-12, R-13, R-14, R-15, R-16,
-   R-17, R-18, R-19, as the root schedules them. A separate fix task has been
-   proposed for R-15 (the flaky ML test); R-16 needs a second workflow
-   patch gate.
+2. **The §4a backlog**: R-2, R-5, R-6, R-11, R-12, R-13, R-14, R-16,
+   R-17, R-18, R-19, as the root schedules them. R-16 needs a second
+   workflow patch gate. (R-15 is fixed on `fix/gate-honesty-r15-g1`.)
 3. **The proposal stages (§5).** **Before stage 1, ask the user about
    decision 15** (training-after-V0 vs Phase 03C GO_DISTILLED); the Phase
    03C next-phase choice (A promote / C Phase 07 / B 06B2) is also the
@@ -136,6 +135,7 @@ Closed in the third session:
 | B1-12 | the Router waits on approval state, not an event label: `RouteRequest.trigger_is_approval_decision` removed, a current PENDING approval always routes `WAIT_FOR_APPROVAL`; precedence and reason codes unchanged | #80 | `fix-p2-router-precedence.md` |
 | grep-based architecture tests → Router precedence tests (audit §3, lane A) | the grep test over `router.py`/`coordinator.py` is deleted; `test_router_precedence_ladder_matches_the_frozen_table` checks each row of `ROUTER_PRECEDENCE` behaviourally, plus a slow-result planning-basis rejection test; the 03A0 docs-invariant tests are kept | #80 | `fix-p2-router-precedence.md` |
 | B1-9 | the Case-vs-offer policy check is total: `case_offer_violations` (telecom domain) turns a contract-valid but out-of-domain input (negative fee sum from a credit line, duplicate goal/offer/applied-change tokens) into `offer_terms_invalid` / `compliance_context_invalid` instead of raising; `verify_completion` and the runtime approval gate both use it (NEEDS_REPLAN / no approval). A non-UTC `evaluated_at` still raises (caller bug). No wire or fee-netting change; non-negative fees at the wire deferred to 1.2 | `fix/b1-9-total-offer-policy` | `fix-b1-9-total-offer-policy.md` |
+| G-1 (strong form) | `unit-test` writes the runtime pytest JUnit report to `.gate/runtime-junit.xml`; the last `make preflight` step, `scripts/check_gated_skips.py`, prints the tests skipped on a `PROXYLOOP_TEST_*` reason per file, names `postgres-check`, `phase05a-check`, `phase06b1-check`, and fails unless the count equals the pinned 51 (not enforced when a `PROXYLOOP_TEST_*` variable is set). Found a fifth gated file, `test_phase_06b1_channel_runtime.py` (1 test, via a `test_phase_06b1_temporal.py` fixture; covered by `phase06b1-check`) | `fix/gate-honesty-r15-g1` | `fix-gate-honesty-r15-g1.md` |
 
 Recorded as limits by #74 (`fix-p2-ml-eval-hygiene.md`), still open:
 deleting the D3-7 `rejection_reasons` field (emitted in the committed
@@ -143,8 +143,7 @@ deleting the D3-7 `rejection_reasons` field (emitted in the committed
 (frozen modules or committed hosted-report bytes); audit N1, the
 `_matches_environment` fallback at `pipeline.py:566`.
 
-Open: G-1's stronger form (`preflight` asserts the gated-skip count or
-names the real-dependency gates), G-3, A-3, A-5, A-7f, A-9,
+Open: G-3, A-3, A-5, A-7f, A-9,
 B2-7…B2-9, C-5, C-7, C-8, D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
 deletion only), D3-8, D3-9.
 
@@ -158,6 +157,7 @@ Closed:
 | R-1 (Important), R-1b | option (f): a retry-exhausted Update still fails with `temporal_unavailable` and the run requests Continue-As-New (patch gate `retryable-update-failure-continues-as-new`), so the identical retry reaches the Runtime; the classifier reads `ActivityError.retry_state` (`MAXIMUM_ATTEMPTS_REACHED`, `TIMEOUT`); `_can_continue_as_new()` ends the R-1b busy-loop | #78 | `fix-r1-retryable-update-continues-as-new.md` |
 | R-3 (= E-9) | see §4 | #77 | `fix-p2-web-hygiene.md` |
 | R-8 | documented: the browser `event_cursor`/`revision` count channel events; `snapshot.completion` is a synthetic `not_done` | #77 | `fix-p2-web-hygiene.md` |
+| R-15 | not a ledger bug: `calls <= 20` was a guess. From the reservation rule, `(calls - 1) * per_call + min_worst <= ceiling` and `(calls - 7) * per_call + 8 * max_worst > ceiling`, i.e. 10 <= calls <= 21 here; a sequential run also admits 21. The test now holds the first eight calls at a barrier (eight joint reservations, the ledger refuses a ninth) and asserts the derived bounds; 200/200 fresh-process runs pass | `fix/gate-honesty-r15-g1` | `fix-gate-honesty-r15-g1.md` |
 
 Specs: `harness/context/fix-r10-terminal-delivery-callback-preflight.md`,
 `harness/context/fix-r1-retryable-update-continues-as-new-preflight.md`.
@@ -183,7 +183,6 @@ Other items (Minor unless marked):
 - **R-12 (Important, proposal stage 1)** rejected-result traces reach `CoordinatorOutcome` but the runtime raises before writing; needs a traces-only append.
 - R-13 `model_traces` retention unbounded.
 - R-14 the 1.0/1.1 basis switch is duplicated in `runtime.py` and `contracts.py`.
-- R-15 flaky: `ml/tests/test_teacher_pipeline.py::test_concurrent_workers_cannot_jointly_exceed_the_ceiling` asserts `8 <= calls <= 20` and saw 21 on CI (#71, a docs-only PR); the bound is timing-dependent — tighten the test or make the concurrency deterministic. Failed CI again on #75 (2026-09-24, run 35961699413 attempt 1: `assert 21 <= 20`; attempt 2 passed). A separate fix task has been proposed.
 - **R-16 (Important; severity confirmed by the root)** the expiry path's `_expiry_failure_category` reads the innermost typed `ApplicationError`; every real activity failure is raised `from exc`, so the converter chain is `[('ApplicationError','case_conflict',True), ('ApplicationError','CaseConflictError',False)]` and a real non-retryable expiry failure (e.g. `case_conflict`) is classified retryable and retried with backoff instead of abandoned. The expiry tests miss it because their injected faults carry no `__cause__`. The fix changes expiry-path commands for recorded histories, so it needs a second workflow patch gate. See `harness/log/fix-r1-retryable-update-continues-as-new.md`.
 - R-17 a channel ingest that exhausts on the delivery activity is not re-driven on redelivery (pre-existing; found in the R-1 design, `fix-r1-retryable-update-continues-as-new.md`).
 - R-18 callback events on a terminal Case are not paired with their Provider-event Evidence: delivered/bounced `provider_event`s forged after the approval cursor without Evidence, or a deleted callback event whose Evidence remains, are accepted. Root decided it is out of scope for R-10 (`fix-r10-terminal-delivery-callback.md`, Known limits).
