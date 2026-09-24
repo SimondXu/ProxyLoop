@@ -604,7 +604,7 @@ def test_no_trace_id_reaches_the_snapshot_views_or_browser_payload(
         occurred_at=T0 + timedelta(minutes=1),
     )
 
-    assert {trace.role for trace in traces} == {"fast", "slow"}
+    assert {trace.role for trace in traces} == {"fast", "slow", "judge"}
     trace_ids = {str(trace.trace_id) for trace in traces}
     for result in (created, waiting):
         snapshot = result.snapshot

@@ -214,3 +214,32 @@ enforcement point"; its other bullets stand, and no wire contract changes.
   compiles an Action Intent only from a standing proposal that is admissible
   at the event time and whose offer deterministic policy finds compliant;
   the Runtime, not the model, still authors the intent and the approval.
+
+## Amendment 2026-09-25 — the advisory Judge seam (PR-14)
+
+Amended 2026-09-25 (build-plan PR-14, decisions 7, 17 and 20; spec
+`harness/context/pr14-judge-seam-preflight.md`). No wire contract changes.
+
+- The Runtime's single coordinator has a Judge
+  (`runtime/packages/agent_core/src/proxyloop_agent_core/judge.py`, passed
+  only by `ThinAgentRuntime._coordinator()`). It reviews every Slow result
+  that validation and the A-3 admission check admitted, before Fast and
+  before deterministic policy. The ML evaluator's coordinator has none.
+- The verdict is advisory: `accept` or `revise` with closed reason codes.
+  There is no `block`, and the Judge authorizes, compiles, and edits
+  nothing; deterministic policy, the approval, and the executor stay the
+  authority.
+- A binding `revise` retries a Slow adapter that implements the feedback
+  protocol once, on the same Slow Work Request, with the verdict passed in
+  process. It is not a `SlowWorkRequest` field (decision 20) and is never
+  read from the trace log. The retry is admitted exactly like the first
+  result and is final. A rejected retry, a typed Judge failure, or a verdict
+  for another request or result leaves the first admitted result, so the
+  Judge never turns an admitted result into a failure through those paths.
+- Every Judge call is a `role=judge` Model Trace. The Judge never enters an
+  evaluation metric (decision 7); reports count its calls apart and never
+  its verdicts.
+- The Judge is scripted in every mode (decision 17). The scripted Judge
+  revises only a Slow result that proposes nothing while an offer is live
+  and the manifest can act on it, which the default scripted Slow never
+  returns.

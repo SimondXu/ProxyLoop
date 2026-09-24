@@ -20,11 +20,13 @@ from proxyloop_agent_core import (
     CoordinatorOutcome,
     CoordinatorStatus,
     FastAdapter,
+    JudgeAdapter,
     LabelledFastBackend,
     PreparedSimulatorExecution,
     RouteRequest,
     ScriptedDialogueFastAdapter,
     ScriptedFastAdapter,
+    ScriptedJudgeAdapter,
     ScriptedProposingSlowAdapter,
     ScriptedSlowAdapter,
     SlowAdapter,
@@ -228,6 +230,7 @@ class ThinAgentRuntime:
         clock: Callable[[], datetime] | None = None,
         fast: FastAdapter | None = None,
         slow: SlowAdapter | None = None,
+        judge: JudgeAdapter | None = None,
     ) -> None:
         self.repository = (
             repository if repository is not None else InMemoryCaseRepository()
@@ -235,6 +238,9 @@ class ThinAgentRuntime:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._slow = slow if slow is not None else ScriptedProposingSlowAdapter()
         self._fast = fast if fast is not None else ScriptedDialogueFastAdapter()
+        # Advisory only (PR-14); scripted in every mode (decision 17). It is
+        # not part of ``adapter_mode``.
+        self._judge = judge if judge is not None else ScriptedJudgeAdapter()
         self._lanes_lock = RLock()
         self._lanes: dict[UUID, RLock] = {}
         self._executors: dict[UUID, CapabilityExecutor] = {}
@@ -1743,13 +1749,15 @@ class ThinAgentRuntime:
         # Only the Runtime gates Fast text for display and captures a typed
         # Fast failure as a FAILED trace plus the fallback; ML callers do not.
         # It also admits a Slow result only if its proposals pass the A-3
-        # check (PR-13); the ML callers' coordinator does not run it.
+        # check (PR-13), and has the Judge review each admitted Slow result
+        # (PR-14); the ML callers' coordinator does neither.
         return CaseCoordinator(
             snapshot=snapshot,
             monotonic=time.perf_counter,
             fast_gate=fast_disclosure_violations,
             capture_fast_failures=True,
             slow_proposal_check=slow_proposal_violations,
+            judge=self._judge,
         )
 
     def now(self) -> datetime:

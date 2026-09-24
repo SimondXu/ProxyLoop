@@ -888,7 +888,8 @@ def _logged_flow(repository: PostgresCaseRepository) -> tuple[ModelTrace, ...]:
     )
     _waiting(runtime)
     traces = repository.list_model_traces(CASE_ID)
-    assert [trace.role for trace in traces] == ["slow", "fast"]
+    # PR-14: the Judge's trace follows the admitted Slow call and round-trips.
+    assert [trace.role for trace in traces] == ["slow", "judge", "fast"]
     return traces
 
 
@@ -907,14 +908,14 @@ def test_postgres_trace_log_appends_in_order_without_touching_the_case(
     repository: PostgresCaseRepository,
 ) -> None:
     database_url = os.environ["PROXYLOOP_TEST_DATABASE_URL"]
-    slow, fast = _logged_flow(repository)
+    slow, judge, fast = _logged_flow(repository)
     before = _raw_row(database_url)
 
     # Indistinguishable calls are two rows; order is append order (I4, I10).
     repository.append_model_traces(CASE_ID, (fast, slow))
     repository.append_model_traces(CASE_ID, ())
 
-    assert repository.list_model_traces(CASE_ID) == (slow, fast, fast, slow)
+    assert repository.list_model_traces(CASE_ID) == (slow, judge, fast, fast, slow)
     assert _raw_row(database_url) == before  # I5: revision and bytes unchanged
     other = UUID("22222222-2222-4222-8222-222222222222")
     with pytest.raises(ValueError, match="another Case"):
