@@ -154,3 +154,13 @@ only):
 - `make preflight` (variables unset): pass; runtime 1216 passed, 51
   skipped; ml 397 passed, 1 skipped; Web 140 passed; artifact checks
   passed.
+
+After merging `origin/main` @ `e1c8371` (#81, B1-9) at `a0ec014`: conflict
+only in `harness/context/audit-remediation-status.md` (both sides kept);
+`runtime.py` auto-merged. `make preflight-fast` pass; focused pytest 114
+passed; `make test` runtime 1236 passed, 51 skipped, ml 397 passed, 1
+skipped. Then serially, DB held exclusively:
+
+- `make postgres-check`: 27 passed.
+- `make phase05a-check`: 42 passed (100 s).
+- `make phase06b1-check`: 35 passed.
