@@ -6,8 +6,8 @@ proposal (`docs/research/2026-09-21-target-architecture-proposal.md`).
 Authorization and adopted decisions: `harness/context/audit-remediation-decisions.md`.
 Group 2 design: `harness/context/group2-evaluator-proposal.md`.
 
-**Updated 2026-09-24 (third session: P1 closed, first four P2 batches,
-R-10 and R-1 merged, #72–#78). `main` @ `74e2073`.
+**Updated 2026-09-24 (build plan and decisions 16–20 adopted; P1 closed,
+first P2 batches, R-10, R-1, B1-12 and B1-9 merged, #72–#81). `main` @ `e1c8371`.
 Everything below is merged to `main` unless the row says otherwise.**
 
 A new session should read, in order: `harness/status.toml`, this file
@@ -16,22 +16,20 @@ spec and log named by the item it picks up.
 
 ## 0. Next session — start here
 
-No work is in flight. Every branch from the earlier sessions is merged
-(#72–#78), no PR is open, and no WIP branch remains; the remote branches
-still listed (`docs/audit-claim-corrections`,
-`fix/workflow-dedup-transition-guard`, `docs/handoff-p1-close`) belong to
-the merged #44, #46 and #71. P1 is closed. Resume in this order:
-
-1. **The rest of P2 (§4)**, grouped into batches — see the P2 batch plan
-   once recorded (the root is inventorying the open items now).
-2. **The §4a backlog**: R-5, R-6, R-11, R-12, R-13, R-14, R-15, R-16,
-   R-17, R-18, R-19, as the root schedules them. A separate fix task has been
-   proposed for R-15 (the flaky ML test); R-16 needs a second workflow
-   patch gate.
-3. **The proposal stages (§5).** **Before stage 1, ask the user about
-   decision 15** (training-after-V0 vs Phase 03C GO_DISTILLED); the Phase
-   03C next-phase choice (A promote / C Phase 07 / B 06B2) is also the
-   user's.
+**Resume from `harness/context/build-plan-to-complete.md`** (adopted
+2026-09-24): Wave 0 (in flight: #80 and #81 B1-9 merged; #82 API hygiene and
+#83 contract-semantics limits open; `refactor/r14-basis-switch-owner`
+pushed), then Waves 1–6 = PR-1..PR-17 in order, under its serialization
+rules and "do not do" list. Decisions 16–20 in
+`harness/context/audit-remediation-decisions.md` govern it: 16 extends the
+authorization to a complete build within the unchanged hard limits; 17
+supersedes decision 15 (no V0, scripted gates, no further training); 18
+takes Phase 03C option A in local-only form ("local opt-in candidate"),
+then option C, and excludes option B (06B2); 19 keeps contract set 1.2
+narrow and droppable; 20 passes Stage 2 feedback outside the contract.
+The §4/§4a backlog (R-5, R-6, R-11, R-12, R-13, R-14, R-15, R-16,
+R-17, R-18, R-19) and the §5 stages below are scheduled by that plan;
+R-19 (found in the #81 review) is not yet assigned to a build-plan PR.
 
 Working mode: implementation, noisy checks and review run in subagents;
 the root decides, reviews the final diffs and merges. To bring a pushed
@@ -144,8 +142,16 @@ deleting the D3-7 `rejection_reasons` field (emitted in the committed
 (frozen modules or committed hosted-report bytes); audit N1, the
 `_matches_environment` fallback at `pipeline.py:566`.
 
+Recorded as limits (documentation plus characterization tests, no
+behaviour change) on branch `docs/contract-semantics-limits`
+(`docs-contract-semantics-limits.md`): A-3 (the executor is the only
+enforcement point for the capability/action join), A-5 (`Evidence.content_hash`
+referent table), A-9 (ephemeral values and write-once records keep
+`revision=1`). The contract changes the audit proposed for them stay open as
+separate decisions.
+
 Open: G-1's stronger form (`preflight` asserts the gated-skip count or
-names the real-dependency gates), A-3, A-5, A-7f, A-9,
+names the real-dependency gates), A-7f,
 B2-8, C-5, C-7, C-8, D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
 deletion only), D3-8, D3-9.
 
@@ -180,9 +186,9 @@ Other items (Minor unless marked):
 - R-6 persisted Cases keep their 1-day manifest; a runtime > 24 h test needs an injectable offer TTL.
 - R-7 `_snapshot(manifest=None)` re-mint — **done** in #68 (manifest required).
 - R-9 shared `proxyloop_test` DB → run DB/Temporal gates serially (documented in #73); a per-run schema would remove the hazard.
-- R-11 the canonical `material_terms_hash` excludes fees and applied changes.
+- R-11 the canonical `material_terms_hash` excludes fees and applied changes. Option (a) **done** on branch `docs/contract-semantics-limits` (`CONTEXT.md` Material Terms states the implemented definition and its limits); option (b), binding fees, credits, and applied changes (R-11b), deferred to contract set 1.2.
 - **R-12 (Important, proposal stage 1)** rejected-result traces reach `CoordinatorOutcome` but the runtime raises before writing; needs a traces-only append.
-- R-13 `model_traces` retention unbounded.
+- R-13 `model_traces` retention unbounded. Option (c) **done** on branch `docs/contract-semantics-limits` (documented in `docs/architecture.md`); option (b), a separate append-only trace log at `storage_version` 3, planned with R-12.
 - R-14 the 1.0/1.1 basis switch is duplicated in `runtime.py` and `contracts.py`.
 - R-15 flaky: `ml/tests/test_teacher_pipeline.py::test_concurrent_workers_cannot_jointly_exceed_the_ceiling` asserts `8 <= calls <= 20` and saw 21 on CI (#71, a docs-only PR); the bound is timing-dependent — tighten the test or make the concurrency deterministic. Failed CI again on #75 (2026-09-24, run 35961699413 attempt 1: `assert 21 <= 20`; attempt 2 passed). A separate fix task has been proposed.
 - **R-16 (Important; severity confirmed by the root)** the expiry path's `_expiry_failure_category` reads the innermost typed `ApplicationError`; every real activity failure is raised `from exc`, so the converter chain is `[('ApplicationError','case_conflict',True), ('ApplicationError','CaseConflictError',False)]` and a real non-retryable expiry failure (e.g. `case_conflict`) is classified retryable and retried with backoff instead of abandoned. The expiry tests miss it because their injected faults carry no `__cause__`. The fix changes expiry-path commands for recorded histories, so it needs a second workflow patch gate. See `harness/log/fix-r1-retryable-update-continues-as-new.md`.
@@ -191,8 +197,9 @@ Other items (Minor unless marked):
 - R-19 `SafeObservationAdapter._adapt_offer` (`agent_core/observation.py`) raises on a contract-valid `ProviderOffer` with a negative fee sum or a duplicate feature, via `SafeOffer.__post_init__` (the same out-of-domain inputs B1-9 made total in the policy check). Used today by the `ml/` pipeline and evaluation and the `scripts/` benchmark/harness runners, not by the product runtime. Found in the B1-9 review.
 
 Still open from the audit P2 list and not yet batched: runtime/router/api
-hygiene (B2-8, A-7f, R-5, R-14), ops/tests (C-5, C-7, C-8, R-6),
-and the design-first items A-3, A-5, A-9 (route through `architect`). **Do not do**: D3-5/D3-6 (`qwen_mlx.py`
+hygiene (B2-8, A-7f, R-5, R-14) and ops/tests (C-5, C-7, C-8, R-6).
+The design-first items are settled: B1-9 is closed above, and A-3, A-5, A-9
+are recorded as limits above. **Do not do**: D3-5/D3-6 (`qwen_mlx.py`
 frozen by r4); D1-10/11/12 (V1 simulator frozen, superseded by V2); D2-9 and
 D3-8 only if a check proves no committed report byte moves.
 
@@ -223,9 +230,10 @@ Each needs its own spec under `harness/context/` before implementation.
 3. **Stateless intake** `POST /intake/proposals` (proposal §12.5), so the
    Case invariant "goal is consumer-confirmed" stays typed.
 4. **Agent Status Bar** = rendering `CaseContextSnapshot` in the Web.
-5. Phase order (decision 12) said training waits for V0's numbers. Phase
-   03C has since closed at **GO_DISTILLED** (#51, `harness/log/phase-03c-stage2-stage3.md`),
-   so re-read that decision against the new evidence before planning V0.
+5. Phase order: decision 17 supersedes decision 15 (no V0, scripted gates,
+   no further training) and decision 18 takes Phase 03C's **GO_DISTILLED**
+   adapter (#51, `harness/log/phase-03c-stage2-stage3.md`) as a local opt-in
+   Fast candidate, then Phase 07 (`harness/context/audit-remediation-decisions.md`).
 
 ## 6. Known limits carried deliberately
 
