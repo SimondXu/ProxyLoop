@@ -32,7 +32,7 @@ needs the real-dependency gates.
 | #83 contract-semantics limits (`docs/contract-semantics-limits`) | merged (`f6d2871`) |
 | #84 decisions 16–20 and this plan | merged (`af67774`) |
 
-Wave 0 is complete. Wave 1 in flight at the 2026-09-24 handoff: PR-1 (`fix/gate-honesty-r15-g1`), PR-2 (`fix/r16-expiry-classifier`), PR-4 (`fix/r18-callback-evidence-pairing`) — pushed, no PR; see the status file §0.
+Wave 0 is complete. Wave 1: PR-2 (R-16) merged as #87, PR-4 (R-18) as #88, PR-6 (B2-8) as #89; PR-1 (`fix/gate-honesty-r15-g1`) is open as #90; see the status file §0.
 
 ## Waves 1–6 — PR-1..PR-17
 

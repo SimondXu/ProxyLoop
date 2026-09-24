@@ -874,19 +874,84 @@ def test_concurrent_sampling_matches_the_sequential_run(
     assert again.prompts_skipped == 40 and again.prompts_sampled == 0
 
 
+@dataclass
+class _FirstWaveCompletions(_Completions):
+    """The fake relay that holds its first ``wave`` calls until all are in flight.
+
+    A worker's calls are sequential, so the first ``wave`` calls come from
+    ``wave`` distinct workers that each hold a reservation at the same time.
+    The barrier action snapshots the shared ledger at exactly that point and
+    asks it to admit one more ``probe_usd`` call; later calls take 10 ms so
+    workers keep overlapping up to the budget stop.
+    """
+
+    ledger: TeacherLedger | None = None
+    wave: int = 8
+    probe_usd: float = 0.0
+    snapshot: tuple[int, float, float, bool] | None = None
+    _entered: int = 0
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    _barrier: threading.Barrier = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._barrier = threading.Barrier(
+            self.wave, action=self._snapshot, timeout=10.0
+        )
+
+    def _snapshot(self) -> None:
+        assert self.ledger is not None
+        admitted = self.ledger.reserve(self.probe_usd)
+        if admitted:
+            self.ledger.release(self.probe_usd)
+        self.snapshot = (
+            self.ledger.total_calls,
+            self.ledger.total_estimated_usd,
+            self.ledger.reserved_usd,
+            admitted,
+        )
+
+    def create(self, **kwargs: object) -> SimpleNamespace:
+        with self._lock:
+            self._entered += 1
+            in_first_wave = self._entered <= self.wave
+        if in_first_wave:
+            self._barrier.wait()
+        else:
+            time.sleep(0.01)
+        with self._lock:
+            return super().create(**kwargs)
+
+
 def test_concurrent_workers_cannot_jointly_exceed_the_ceiling(
     forty_rows: tuple[PromptSetRow, ...],
     forty_contexts: dict[str, CandidateContext],
     tmp_path: Path,
 ) -> None:
     k = 2
+    concurrency = 8
     probe = adapter(fake_client(forty_contexts), TeacherLedger(usd_ceiling=1.0))
-    worst = max(probe.worst_case_call_usd(c.view) for c in forty_contexts.values())
+    worst_by_row = [
+        probe.worst_case_call_usd(forty_contexts[row.prompt_id].view)
+        for row in forty_rows
+    ]
+    worst = max(worst_by_row)
+    least_worst = min(worst_by_row)
     per_call = 1_500 * 3.0 / 1e6 + 120 * 15.0 / 1e6
-    # Room for about ten prompts (twenty real calls) plus one reservation.
+    assert per_call < least_worst
     ceiling = 20 * per_call + worst - 1e-9
+    # The executor hands out prompts in submission order, so the first wave
+    # is the first eight rows; their eight reservations fit the ceiling
+    # together, and nothing else fits beside them.
+    first_wave = sum(worst_by_row[:concurrency])
+    assert first_wave <= ceiling < first_wave + least_worst
     ledger = TeacherLedger(usd_ceiling=ceiling)
-    client = slow_client(forty_contexts)
+    completions = _FirstWaveCompletions(
+        fake_client(forty_contexts).completions.by_user_prompt,
+        ledger=ledger,
+        wave=concurrency,
+        probe_usd=least_worst,
+    )
+    client = _Client(completions)
 
     run = sample_teacher(
         forty_rows,
@@ -894,18 +959,34 @@ def test_concurrent_workers_cannot_jointly_exceed_the_ceiling(
         k=k,
         out_dir=tmp_path,
         ledger=ledger,
-        concurrency=8,
+        concurrency=concurrency,
     )
 
+    # Eight workers held a reservation at once: nothing settled yet, the
+    # joint worst case reserved within the ceiling, and the ledger refused
+    # even the cheapest further call on nothing but those reservations.
+    assert completions.snapshot is not None
+    settled, spent, reserved, admitted = completions.snapshot
+    assert settled == 0
+    assert spent == 0.0
+    assert reserved == pytest.approx(first_wave)
+    assert spent + reserved <= ceiling
+    assert admitted is False
     assert run.budget_stopped is True
     assert ledger.total_estimated_usd <= ceiling
     assert ledger.reserved_usd == 0.0
     calls = len(client.completions.calls)
     assert calls == ledger.total_calls == run.calls_written
-    # Reservations are conservative: in-flight worst cases count against the
-    # cap, so eight workers admit no more calls than the sequential twenty.
-    assert 8 <= calls <= 20
     assert ledger.total_estimated_usd == pytest.approx(calls * per_call)
+    # How many calls fit depends on scheduling; these bounds do not.  The
+    # last admitted call found every earlier call settled (``per_call``) or
+    # still reserved (at least ``per_call``) beside its own worst case.  The
+    # refused reservation found at most seven other in-flight worst cases,
+    # each of which still became a call.  Here that is 10 <= calls <= 21: a
+    # sequential run admits 21 as well, because the eleventh prompt's worst
+    # case is below the largest one.
+    assert (calls - 1) * per_call + least_worst <= ceiling
+    assert (calls - (concurrency - 1)) * per_call + concurrency * worst > ceiling
     samples = load_samples(samples_path(tmp_path, MODEL))
     assert len(samples) == calls
     assert all(s.content is not None for s in samples)
