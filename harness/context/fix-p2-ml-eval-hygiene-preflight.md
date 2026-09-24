@@ -20,8 +20,8 @@ D2-9 and D3-8 are out of scope.
 
 | Item | Fix location | Frozen? | Disposition |
 |---|---|---|---|
-| D3-7 reason codes | `ml/data_pipeline/.../pipeline.py` `_intrinsic_rejection` | no | fix the two mislabels |
-| D3-7 `rejection_reasons` | `models.py` field, emitted in `data/schemas/normalized-trajectory-v1.schema.json` | no, but committed schema | known limit |
+| D3-7 reason codes | `ml/data_pipeline/.../pipeline.py` `_intrinsic_rejection` | no | fix the mislabels (root-decided codes after review round 1) |
+| D3-7 `rejection_reasons` | `models.py` field, emitted in `data/schemas/normalized-trajectory-v1.schema.json` | no, but committed schema | accept-gap fixed as `declared_rejection`; deleting the field deferred (committed schema bytes) |
 | D3-9 model match / unbounded `str(exc)` | `openai_frontier.py:287-370, 587-590` | yes | known limit |
 | D2-6 r2 labels not replayed once r3 exists | `artifacts_v2.check_r2_artifacts` | yes | non-frozen check in `ml/tests` |
 | D2-7 `router_outcome_mismatch` on every Slow failure | `runner_v2.py:1142-1147`; label in committed r2-r5 reports | yes | known limit |
@@ -29,15 +29,24 @@ D2-9 and D3-8 are out of scope.
 
 ## Frozen design
 
-1. **D3-7.** In `_intrinsic_rejection`:
+1. **D3-7.** In `_intrinsic_rejection` (codes as amended by the root
+   orchestrator in review round 1):
+   - an absent or `None` `source` returns `missing_provenance` (a null
+     `source` previously fell through to schema validation);
    - `ValidationError` from `NormalizedTrajectory.model_validate` returns
-     `schema_invalid` (was `missing_provenance`; an absent `source` key is still
-     `missing_provenance` from the earlier check).
+     `schema_invalid` (was `missing_provenance`);
+   - a non-empty `rejection_reasons`, checked after schema validation, returns
+     `declared_rejection` (was accepted);
+   - a `derivation_parent_id` that names no scenario returns
+     `unknown_derivation_parent` (was `split_mismatch`);
+   - `source`/`generation` present but different from the expected record
+     returns `provenance_mismatch` (was `missing_provenance`);
    - `content_hash` or `semantic_fingerprint` disagreeing with the recomputed
      value returns `hash_mismatch` (was `invalid_verifier_outcome`).
-   - No other branch changes. None of the eight pilot probes reaches either
-     branch, so the committed quarantine manifest and quality report are
-     byte-identical (`data-pilot-check`).
+   - No other branch changes; the `_matches_environment` fallback in
+     `curate_candidates` (audit N1) is out of scope. None of the eight pilot
+     probes reaches a changed branch, so the committed quarantine manifest and
+     quality report are byte-identical (`data-pilot-check`).
 2. **D2-6.** A test replays the committed r2 report through the public
    `replay_report_v2` and asserts the conditions with a semantic mismatch are
    exactly the conditions whose episode rows r3 corrected (today:

@@ -108,8 +108,8 @@ under `data/` changed.
   same three informational drift states. The main checkout collects 391 ML
   tests (390 passed + 1 skipped) and this worktree 394 (393 + 1); the one
   `make test` run that reported `390 passed, 1 skipped` matches main's
-  collection (root orchestrator: it ran on main after a cwd reset) and is not
-  evidence for this branch.
+  collection, so it is inferred (not confirmed) to have run on main after a
+  cwd reset; it is not evidence for this branch.
 - `git status --short data/`: empty. `git diff --stat origin/main -- ml/ data/`:
   only `pipeline.py`, `test_pipeline.py`, `test_phase03a1_erratum_artifacts.py`.
 
@@ -127,3 +127,15 @@ under `data/` changed.
   origin/main -- ml/ data/` lists only `pipeline.py`, `test_pipeline.py`,
   `test_phase03a1_erratum_artifacts.py`.
 - Not run: `make preflight`, `make web-check`, the real-dependency gates.
+
+## Final local gate (2026-09-24)
+
+- Root accepted the `_intrinsic_rejection` diff (no re-review). Merged
+  `origin/main` @ `c914c1b` (#73, docs) with `git merge`, conflict-free, and
+  brought the spec's table and frozen design in line with this log.
+- `make preflight` (no `PROXYLOOP_TEST_*` set) on merge `93f9476`: exit 0;
+  runtime `1174 passed, 46 skipped`, ML `397 passed, 1 skipped`, web
+  `Test Files 2 passed (2)`, `Tests 99 passed (99)`.
+- `git status --short data/`: empty.
+- Not run: the real-dependency gates (`postgres-check`, `phase05a-check`,
+  `phase06b1-check`); no runtime, API, workflow or web code changed.
