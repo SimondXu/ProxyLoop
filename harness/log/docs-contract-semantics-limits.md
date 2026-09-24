@@ -236,3 +236,19 @@ evaluation runner increments `PlanningBasis.revision` when it rebuilds a basis
 path). Nothing reads that value. The product runtime writes 1 at every site.
 The `CONTEXT.md` sentence therefore now says "that the product runtime always
 writes as 1", and `docs/architecture.md` names the exception.
+
+## Update from `origin/main` @ `ff35dca` (#79) and final gate
+
+`git fetch origin && git merge origin/main` produced merge commit `64ffc07`
+with no conflicts. #79 touched only `harness/context/audit-remediation-status.md`
+and a new log, and R-12 is still listed there. With no `PROXYLOOP_TEST_*` set:
+
+- `make contracts-check`: exit 0.
+- `make format-check lint typecheck`: exit 0.
+- `make preflight-fast`: exit 0.
+- `make preflight` (once): exit 0. Runtime unit tests 1203 passed, 51
+  skipped (DB/Temporal-gated); ML tests 397 passed, 1 skipped; web vitest 140
+  passed (2 files); every `*-check` target, `lock-check`, `compileall`, and
+  `docker compose config --quiet` passed.
+- Not run: the DB/Temporal gates (no runtime behaviour change; another agent
+  holds the DB) and independent review.
