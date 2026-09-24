@@ -153,6 +153,18 @@ Merge order is PR-4 -> PR-2 -> PR-1.
   passed, 1 skipped; web 140 passed; ruff and mypy clean; last line
   `Gated-skip counts match the pinned 53 per file.`
 
+## Merge of `main` @ `74fb993` (#88 R-18, #89 B2-8)
+
+- Merge: conflict only in `harness/context/audit-remediation-status.md`.
+  Per the root, the file was also tidied: PR-2, PR-4, PR-6 rows left the §0
+  in-flight table; R-16 (#87), R-18 (#88), B2-8 (#89) moved to the §4a
+  Closed table and out of the open lists; the Wave 1 line in
+  `harness/context/build-plan-to-complete.md` updated likewise.
+- `make preflight`: exit 0; runtime 1284 passed, 53 skipped (was 1269 /
+  53, so #88 and #89 add 15 tests and no gated skip); ml 397 passed, 1
+  skipped; web 140 passed; ruff and mypy clean; `Gated-skip counts match
+  the pinned 53 per file.` Pin unchanged.
+
 ## Not run / remaining
 
 - No DB/Temporal gates run (none needed; no service code changed).
