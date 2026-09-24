@@ -38,8 +38,16 @@ local Hugging Face cache.
    `data/experiments/phase-03c/local-parity/parity-report.json`.
    `make phase03c-local-parity-check` (in `make test`) replays the committed
    raw outputs through the repository evaluator without a model.
-3. `make local-fast-gateway BACKEND=distilled|untuned` serves
-   `local-fast-wire-v1` on `127.0.0.1:8765`.
+3. `make phase03c-product-parity BACKEND=distilled`, then `BACKEND=untuned`:
+   the M2 run of the same 240 rows through the product rendering path
+   (resumable), then `python -m scripts.run_phase03c_product_parity --write`
+   for `data/experiments/phase-03c/local-parity/product-path-report.json`.
+   `make phase03c-product-parity-check` (in `make test`) replays it without a
+   model.
+4. `make local-fast-gateway BACKEND=distilled|untuned` serves
+   `local-fast-wire-v1` on `127.0.0.1:8765`. With the gateway running,
+   `make fast-slow-split-report FAST_BACKEND=distilled|untuned` writes
+   `data/evaluation/fast-slow-split-<backend>.json`.
 
 ## Fail-closed start
 
@@ -74,9 +82,8 @@ committed PEFT `adapter_config.json`.
   queue), `500 gateway_error`. Error bodies carry a code only; logs carry no
   prompt, observation, or model text.
 
-The gateway side of the wire lives in `local_fast/wire.py` until PR-9a lands
-`agent_core/local_fast_wire.py`; the gateway then switches to that module so
-the wire has one owner.
+The wire has one owner, `proxyloop_agent_core.local_fast_wire` (PR-9a); the
+gateway imports it and has no copy.
 
 ## M1 result
 
@@ -85,8 +92,8 @@ trained-format prompts the local distilled arm reaches act agreement
 236/240 = 0.983 (cloud A3: 236/240) and per-row act concordance with cloud
 A3 of 240/240; the untuned arm 133/240 (cloud A1: 130/240). Details, per-row
 raw outputs and the claim boundary: the parity report and
-`harness/log/feat-pr9b-local-fast-gateway.md`. M2 (the product rendering
-path) is not measured yet.
+`harness/log/feat-pr9b-local-fast-gateway.md`. M1 measures the trained
+prompt format only; the product path is M2 below.
 
 What the committed report can and cannot prove: `--check` verifies that
 every derived field, the exact row set and order (the cloud arm's prompt ids)
@@ -97,6 +104,75 @@ document; it is a consistency check, not a signature. Each arm records the
 code state it ran from (`code_state`); for this run it was reconstructed after
 the fact, with a byte-identical regeneration of sampled rows from the
 committed code as evidence (see the log).
+
+## M2 result: a negative product result
+
+The frozen spec's root answer Q1 records this as the headline product number
+and does not hide it. The run covered the same 240 held-out rows, rendered through the product
+path (a plain Provider message plus `fast_public_observation`,
+`fast-observation-v1`). They were generated locally and replayed through the
+runtime delivery rules (compile, `validate_fast_result`, `fast-gate-v1`).
+Report: `data/experiments/phase-03c/local-parity/product-path-report.json`.
+
+- **Delivered distilled lines: 0/240.** 40 rows (all of the refusal-transfer
+  family) are refused before the model: the family has no offer, so
+  `fast_public_observation` refuses (`fast_observation_offer_missing`). The
+  runtime delivers the fallback line for them. All 200 outputs that reach the
+  gate are withheld by `fast-gate-v1`: 200/200 carry a dialogue act the gate
+  does not allow (`fast_gate_dialogue_act`) and 200/200 a number the strategy
+  does not allow (`fast_gate_number_not_allowed`). Also flagged:
+  `fast_gate_completion` 181, `fast_gate_non_ascii_text` 72,
+  `fast_gate_text_too_long` 47. No output failed compilation,
+  `validate_fast_result`, or the no-fact-updates rule. The model was trained on
+  minor-unit arithmetic and confirm/counter acts, which the gate withholds by
+  design.
+- **Untuned baseline: 8/240 delivered** (192 gate-rejected, on the act and
+  number rules; the same 40 refused before the model).
+- **Act agreement with the true oracle: distilled 157/240 = 0.654**
+  (0.983 on the trained path, M1); untuned 97/240 (133/240 on M1).
+- **Causes.** D4: the product observation carries no `applied_changes`, and
+  all 200 generated rows lose them. No product prompt equals its trained
+  prompt. Without the applied change the oracle itself changes on
+  promotion-credit (confirm to counter) and unsupported-action (counter to
+  confirm). The distilled model follows its input: 40/40 on those two families
+  against the product-observation oracle, 0/40 against the true one. The
+  other cause is the 40 refusal rows refused before the model. D3 (the
+  declared Provider-state defaults) changed no held-out row.
+- On the trained path (the M1 outputs), the gate would also pass 0/240
+  distilled and 44/240 untuned lines. The gate, not only the renderer, blocks
+  the distilled output.
+- Latency (descriptive, one M4 Pro, sequential, measured while other work ran
+  on the machine): distilled product-path generation p50 23.9 s, max 32.5 s;
+  untuned p50 10.4 s, max 12.9 s. 64 of the 200 distilled generations ran
+  longer than 25 s. Under the 25 s default timeout, the runtime would end
+  each of those calls as `fast_adapter_timeout`. This is more than the M1
+  rate (15/240); the load on the machine was not controlled.
+
+What M2 does not measure: the strategy text is the training fixture's, not the
+product Slow's (D6). The product prompt never contains the consumer's words
+(D5).
+
+## Local Fast/Slow split reports
+
+`data/evaluation/fast-slow-split-distilled.json` and `-untuned.json` run
+PR-8's two scenarios through the real runtime path against the real gateway.
+The runtime was in-process, with the in-memory repository and the stepping
+clock. Calls were sequential, with the default 25 s timeout. On both backends
+the turn structure equals the scripted replay:
+
+- demo path: 1 slow-only and 1 fast-only turn;
+- dialogue path: 1 slow-only, 5 fast-only and 2 slow-then-fast turns.
+
+Every one of the 8 Fast calls per backend returned `succeeded` and was
+withheld by the gate. So `fast_model_line_rate` is 0.0, every Fast turn
+delivered the fallback, and `fallback_cause` is `gate` 8, `failure` 0. The
+gate codes: distilled, act, number and completion on every call; untuned, act
+and number. No call timed out or got `busy`. Distilled Fast calls took
+21.0–24.1 s (p50 22.1 s on the dialogue path), untuned 10.4–12.1 s. Every call had the
+same token counts (1869 in; 184 out distilled, 78 out untuned). That fits D5:
+the product prompt does not carry the consumer's words, so these scenarios
+give the model the same input on every turn. `make fast-slow-split-check`
+verifies integrity and structural invariance only. It cannot replay the model.
 
 ## Local limits
 
