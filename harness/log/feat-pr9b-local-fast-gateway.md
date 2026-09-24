@@ -390,10 +390,83 @@ The session paused at a usage limit. This section is the exact state.
   …/fast_output.py` is empty; no weights, adapters or converted files are
   tracked.
 
+### Root decisions after the gates (`e85a75d`)
+
+- `docs/ml-evidence.md`: the Phase 03C row and the held-out results now say
+  the 98.3% is act agreement on the trained prompt path. They point to the M2
+  negative product result: 0/240 delivered, 0.654 product-path act
+  agreement, a link to the README M2 section.
+- `make local-fast-gateway` takes `PORT` (default 8765), documented in
+  `ml/serving/README.md` step 4. `make -n local-fast-gateway PORT=8775` ends in
+  `--port 8775`; the Browser check below started the gateway through it with
+  `PORT=8776`. `make check-layout` and `git diff --check` clean.
+
+### Browser check (spec §6.7 step 4, DB/Compose lane held by this branch)
+
+Headless Chromium via Python Playwright at 1440x1000. Throwaway Compose
+project `proxyloop-pr9b-browser` (postgres only, port 55473, fresh volume).
+Distilled gateway started by `make local-fast-gateway BACKEND=distilled
+PORT=8776` (identity `c83bdd6b…`). Runtime `proxyloop_api.server --mode
+scripted` on 8021 with `PROXYLOOP_STORAGE_MODE=postgres`,
+`PROXYLOOP_ORCHESTRATION_MODE=direct`, `PROXYLOOP_FAST_BACKEND=distilled`,
+`PROXYLOOP_FAST_GATEWAY_URL=http://127.0.0.1:8776`, no model credentials.
+Readiness: `{"ready":true,"dependency":"postgres","adapter_mode":"local_distilled_candidate","storage_mode":"postgres","orchestration_mode":"direct"}`.
+Web: `next start` on 3021, the production build of `7e6c1ce` (`apps/web`
+unchanged since `04a8ed5`). Its `/api/runtime` rewrite targets 8000 (taken),
+so Playwright forwarded `/api/runtime/**` to 8021, as in the PR-8b and PR-10
+checks. Scratch launcher and script: `scratchpad/impl-pr9b2/browser-launch.sh`,
+`browser_check.py`.
+
+- Flow: intake $92 / $75 / yes / yes, Create fictional Case, then "Keep
+  both unchanged and continue" (the first consumer turn, one Fast call).
+- After the first consumer turn: the one Assistant Message is the fallback
+  line "I am checking that and will update you." with the automated-message
+  label once. `POST /cases/{id}/events` took 23,389 ms, click to line
+  23,456 ms. Status Bar: "Waiting for your approval of the exact terms.", as
+  of Case revision 4, phase Awaiting Approval, approval Pending with its
+  expiry, execution Not started. The Fast trace in the log table is
+  `rejected` with `fast_gate_completion`, `fast_gate_dialogue_act`,
+  `fast_gate_number_not_allowed`, model version `distilled:c83bdd6ba873cb8f`,
+  latency 23,326 ms, tokens 1876 in / 184 out. The gateway said `succeeded`,
+  the gate withheld the text, and the fallback was delivered, as M2 and the
+  split reports predict. No console errors or warnings.
+- **After reload the Web does not restore the Case.** It shows "Blocked ·
+  Runtime state not verified: Recovery requires the durable
+  Temporal/PostgreSQL/scripted Runtime profile. The direct Runtime makes no
+  restart-recovery claim." The Status Bar is not rendered. Only
+  `GET /health/ready` was called. This is the Web's designed fail-closed rule
+  (`conversation-workspace.tsx`, the readiness check before restore): it
+  restores only when readiness is temporal + postgres + `adapter_mode`
+  `scripted`. So a Case on a local Fast backend is never restored after a
+  reload, in direct mode or under Temporal. The rule is documented in
+  `docs/architecture.md` ("makes no recovery claim for any value but
+  `scripted`"). It is not a PR-9b defect, and no code was changed. The Case
+  itself was durable: `GET /cases/{id}` on the Runtime after the reload
+  returned revision 4 with the visible events provider_offer,
+  consumer_message and the `assistant_message` "I am checking that and will
+  update you." (no `fast` key).
+- Run 1 (same setup, earlier) showed the same line, label, revision 4 and
+  trace (`rejected`, same codes, 23,091 ms, 1876 / 184 tokens). Its script
+  stopped at the reload wait. The throwaway volume was reset with `down -v`
+  (the scripted Case id is fixed) and run 2 above recorded the reload state.
+- Screenshots (scratch, not committed), in `scratchpad/impl-pr9b2/browser/`:
+  `01-after-create.png`, `02-after-first-consumer-turn.png`,
+  `03-after-reload.png`, `run1-01-after-create.png`,
+  `run1-02-after-first-consumer-turn.png`. Text in `result.json`, the
+  post-reload Case read in `run2-case-after-reload.json`, the traces in
+  `run2-traces.txt` and `run1-fast-trace.txt`.
+- Teardown: only this check's gateway (8776), Runtime (8021), Web (3021)
+  and their launchers were stopped; `docker compose -p
+  proxyloop-pr9b-browser down -v` removed its container, volume and network.
+  `proxyloop-postgres-1`, `proxyloop-postgres-test-1`,
+  `proxyloop-temporal-1`, `proxyloop_postgres-data` and
+  `proxyloop-portfolio-demo_postgres-data` are unchanged. DB lane released.
+
 ### Remaining
 
 1. Independent review of the second half (wire switch, M2 script and report,
-   split-report extension and reports, docs).
-2. Browser check (distilled backend through the Web, direct mode, spec §6.7
-   step 4): needs a lane; not started.
+   split-report extension and reports, docs), in progress.
+2. Root call: a reloaded Case on a local Fast backend shows "Runtime state
+   not verified" by the Web's existing rule (above). Changing that is a Web
+   decision outside PR-9b.
 3. PR, CI, merge.
