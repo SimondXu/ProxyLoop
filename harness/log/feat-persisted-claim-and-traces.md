@@ -89,15 +89,49 @@ traces the real coordinator returns; the stub is gone.
   command is deduplicated by command id before any coordinator run, so no
   trace is appended twice.
 
-## Checks
+## Review
 
-- Passed: new file 12/12; focused suite (new + 04a, 05a, 06b1 channel,
-  strategy basis, 04c codec-free) 85 passed / 25 gated skips, including the
-  P0-1 claim-retry tests; runtime unit suite 1120 passed / 46 gated skips;
-  `make format-check`, `make lint`, `make typecheck`; `make test` (runtime
-  1120 / 46 skipped, ML 388 / 1 skipped, all artifact gates); `data/` clean.
-- Not run (root runs serially, Compose): `make postgres-check`,
-  `make phase05a-check`, `make phase06b1-check`; `make preflight`.
+Independent review (`reviewer`, on `126df56`): **Approve**, no Critical.
+It confirmed the root's clock decision (only `monotonic` is passed).
+
+1. I1, carry-forward untested on delivery, expiry, rejection. Applied:
+   `test_traces_survive_an_approval_that_does_not_execute` (rejected,
+   expired) and `test_delivery_callbacks_carry_the_traces_forward` (first
+   and exact-duplicate callback). Mutation check: deleting any
+   `model_traces` line in `runtime.py` now fails a test in this file.
+2. I2, a rejected model result is never persisted, so every stored trace
+   has `result=SUCCEEDED`; the channel path also drops accepted traces on a
+   `response_text` mismatch or an unauthorized send. Recorded below as the
+   remaining A-2 gap (needs a trace-only write or a side table: a new
+   decision, outside PR4's frozen "no separate write").
+3. M1, trace times are the Case operation time plus measured latency, not a
+   wall-clock call window: a Slow refresh and the Fast call in the same
+   event share `started_at`; after a Temporal retry `started_at` is the
+   workflow-assigned time; `trace_id` hashes `latency_ms`, so it is as stable
+   as that measurement. Documented here, not changed.
+4. M6, the timing test patched the process-wide `time.perf_counter`.
+   Applied: it now replaces only the runtime module's `time`.
+5. Not applied, recorded: M2 (the in-memory state checks claim presence, not
+   its Case/intent binding or a trace's Case; the Postgres codec enforces
+   both), M3 (the v2 envelope accepts duplicate `trace_id`s), M4 (the version
+   tag accepts `true`/`1.0`/`2.0` by equality, pre-existing), M5 (direct
+   `approve(command_id=X)` without a fingerprint fails with a pydantic error;
+   no caller), M8 (every write re-validates and rewrites all traces).
+   M7 (WIP commit title) is resolved by the squash-merge message.
+
+## Checks (on the final diff)
+
+- Passed: `tests/integration/test_persisted_claim_and_traces.py` 16/16;
+  `test_phase_04a_agent_runtime.py` 29/29 (two of its `SequenceClock` tests
+  had failed with `clock=self.now`); `make format-check`, `make lint`,
+  `make typecheck`; `make test` (runtime 1171 / 46 skipped, ML 390 / 1
+  skipped, all artifact gates); `make preflight` (exit 0; runtime 1171 / 46,
+  ML 390 / 1, web 99); `data/` clean.
+- Passed, Compose, run one at a time, before the review's test-only
+  additions: `make postgres-check` 27, `make phase05a-check` 36,
+  `make phase06b1-check` 34.
+- Earlier, on `6932596` before the rebase: new file 12/12, focused suite 85
+  passed / 25 gated skips, runtime unit suite 1120 / 46.
 
 ## Known limits
 
@@ -113,3 +147,8 @@ traces the real coordinator returns; the stub is gone.
 - A direct `runtime.approve(..., command_id=X)` without a fingerprint now
   fails at the claim write (canonical contract: both or neither), before any
   write. No caller does this.
+- Remaining A-2 gap (review I2): traces of a rejected model result, and
+  accepted traces on a channel `response_text` mismatch or unauthorized
+  send, are never persisted, so stored traces are all `SUCCEEDED`.
+- A trace's `started_at` is the Case operation time, not a wall-clock call
+  start (review M1).

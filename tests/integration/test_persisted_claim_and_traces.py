@@ -8,11 +8,13 @@ writes and decodes it on every read.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from dataclasses import replace
 from datetime import timedelta
+from types import SimpleNamespace
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -30,6 +32,7 @@ from proxyloop_case_runtime import (
 from proxyloop_case_runtime import runtime as runtime_module
 from proxyloop_case_runtime.commands import semantic_command_fingerprint
 from proxyloop_case_runtime.postgres_repository import PostgresCaseRepository
+from proxyloop_connectors import BINDING_REF, CHANNEL_KIND, LocalMailboxEventKind
 from proxyloop_contracts import (
     CasePhase,
     EvidenceType,
@@ -43,7 +46,7 @@ from test_phase_05a_case_runtime import (
     _event_command,
     _runtime,
 )
-from test_phase_06b1_channel_runtime import _ChannelRepository
+from test_phase_06b1_channel_runtime import _ChannelRepository, _message_event
 from test_slow_refresh_strategy_expiry import _channel_command
 from test_strategy_basis_binding import _as_stored_1_0, _ClaimCrashRepository
 
@@ -432,8 +435,12 @@ def test_persisted_traces_share_the_case_time_base(
     # Each trace starts at the time of the Case event whose route ran the
     # model and lasts the measured latency (a fake perf counter: 0.25 s per
     # call), so a persisted trace never needs a second clock to be placed.
+    # Only the runtime's measurement source is replaced, not the process-wide
+    # ``time.perf_counter``; the coordinator reads it before and after a call.
     ticks = iter(range(1_000))
-    monkeypatch.setattr(runtime_module.time, "perf_counter", lambda: next(ticks) / 4)
+    monkeypatch.setattr(
+        runtime_module, "time", SimpleNamespace(perf_counter=lambda: next(ticks) / 4)
+    )
     repository = _RecordingRepository()
     runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)
     runtime.apply_command(_create_command())
@@ -450,6 +457,41 @@ def test_persisted_traces_share_the_case_time_base(
         assert trace.completed_at == trace.started_at + timedelta(milliseconds=250)
 
 
+@pytest.mark.parametrize("ending", ["rejected", "expired"])
+def test_traces_survive_an_approval_that_does_not_execute(
+    issued: list[ModelTrace], ending: str
+) -> None:
+    repository = _RecordingRepository()
+    runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)
+    runtime.apply_command(_create_command())
+    event = runtime.apply_command(_event_command())
+    decide = _approval_command(event.after_revision, event.approval_id)
+    if ending == "rejected":
+        command = decide.model_copy(update={"decision": "rejected"})
+    else:
+        waiting = repository.get(SCRIPTED_CASE_ID)
+        assert waiting is not None
+        (approval,) = waiting.snapshot.approval_requests
+        command = CaseCommand(
+            command_id=uuid4(),
+            case_id=SCRIPTED_CASE_ID,
+            command_type=CaseCommandType.EXPIRE_APPROVAL,
+            occurred_at=approval.expires_at,
+            expected_revision=event.after_revision,
+            approval_id=approval.approval_id,
+            approval_expires_at=approval.expires_at,
+        )
+    before = len(repository.writes)
+    runtime.apply_command(command)
+
+    assert len(repository.writes) == before + 1
+    assert [trace.role for trace in issued] == ["slow", "fast"]
+    stored = repository.get(SCRIPTED_CASE_ID)
+    assert stored is not None
+    assert stored.snapshot.revision > event.after_revision
+    assert stored.model_traces == tuple(issued)
+
+
 class _RecordingChannelRepository(_ChannelRepository):
     def __init__(self) -> None:
         super().__init__()
@@ -458,6 +500,10 @@ class _RecordingChannelRepository(_ChannelRepository):
     def replace_with_channel_outbox(self, *args: Any, **kwargs: Any) -> Any:
         self.writes.append(kwargs["state"])
         return super().replace_with_channel_outbox(*args, **kwargs)
+
+    def replace_with_delivery_receipt(self, *args: Any, **kwargs: Any) -> Any:
+        self.writes.append(kwargs["state"])
+        return super().replace_with_delivery_receipt(*args, **kwargs)
 
 
 def test_a_channel_event_writes_its_refresh_and_fast_traces_once(
@@ -482,6 +528,54 @@ def test_a_channel_event_writes_its_refresh_and_fast_traces_once(
     assert stored is not None
     assert stored.model_traces == tuple(issued)
     _assert_not_projected(stored, issued)
+
+
+def test_delivery_callbacks_carry_the_traces_forward(
+    issued: list[ModelTrace],
+) -> None:
+    repository = _RecordingChannelRepository()
+    runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)
+    runtime.apply_command(_create_command())
+    applied = runtime.apply_command(_channel_command(repository, BASE_TIME))
+    assert applied.delivery_id is not None
+    traces = tuple(issued)
+    assert len(traces) >= 2
+    accepted = repository.get_outbox_record(applied.delivery_id)
+    assert accepted is not None
+    repository.outbox[applied.delivery_id] = replace(
+        accepted, state="accepted", provider_message_id="local-provider-test"
+    )
+
+    def callback(expected_revision: int) -> CaseCommand:
+        event = _message_event(uuid4(), kind=LocalMailboxEventKind.DELIVERY)
+        inbox = repository.reserve_channel_event(event, received_at=BASE_TIME)
+        return CaseCommand(
+            schema_version="phase-06b1-v1",
+            command_id=inbox.command_id,
+            case_id=SCRIPTED_CASE_ID,
+            command_type=CaseCommandType.RECORD_CHANNEL_DELIVERY,
+            occurred_at=BASE_TIME,
+            expected_revision=expected_revision,
+            channel_kind=CHANNEL_KIND,
+            binding_ref=BINDING_REF,
+            event_id=event.event_id,
+            delivery_id=applied.delivery_id,
+            provider_message_id="local-provider-test",
+            delivery_status="delivered",
+            artifact_hash=hashlib.sha256(b"artifact").hexdigest(),
+            payload_hash=event.raw_payload_hash,
+        )
+
+    first = runtime.apply_command(callback(applied.after_revision))
+    runtime.apply_command(callback(first.after_revision))  # an exact duplicate
+
+    first_write, duplicate_write = repository.writes[-2:]
+    assert first_write.snapshot.revision == first.after_revision
+    assert first_write.model_traces == duplicate_write.model_traces == traces
+    assert tuple(issued) == traces  # a callback runs no model
+    stored = repository.get(SCRIPTED_CASE_ID)
+    assert stored is not None
+    assert stored.model_traces == traces
 
 
 def test_the_browser_projection_never_carries_a_trace(
