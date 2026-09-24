@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import unicodedata
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
 from proxyloop_agent_core import (
     BOUNDED_FAST_STATUS_TEXT,
+    FAST_GATE_UNICODE_DATA_VERSION,
     FAST_GATE_VERSION,
     SCRIPTED_DIALOGUE_LINES,
     SCRIPTED_PENDING_SLOW_LINE,
@@ -85,6 +87,12 @@ def test_the_fixture_is_the_runtime_case() -> None:
     assert FAST_GATE_VERSION == "fast-gate-v1"
 
 
+def test_the_gate_runs_on_the_unicode_data_it_was_validated_against() -> None:
+    # The character-category rules read Python's Unicode database; a new
+    # Python must fail here loudly rather than change the gate silently.
+    assert unicodedata.unidata_version == FAST_GATE_UNICODE_DATA_VERSION == "15.0.0"
+
+
 # G1 Numbers.
 @pytest.mark.parametrize(
     "text",
@@ -112,6 +120,14 @@ def test_g1_offer_and_disclosed_numbers_pass(text: str) -> None:
         "It is 72pct off.",
         "A credit of -$72.",
         "A credit of -72.",
+        "A credit of ($72).",
+        "A credit of (72).",
+        "That is minus $72.",
+        "That is minus 72.",
+        "A credit of \N{EN DASH}72.",
+        "It went from 72\N{EN DASH}72.",
+        "A credit of \N{FULLWIDTH HYPHEN-MINUS}$72.",
+        "A credit of \N{SMALL HYPHEN-MINUS}72.",
     ],
 )
 def test_g1_undisclosed_numbers_are_rejected(text: str) -> None:
@@ -183,7 +199,21 @@ def test_g2_a_lookalike_or_mixed_script_word_is_rejected(text: str) -> None:
     assert _codes(text) == ("fast_gate_non_ascii_text",)
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "It is acc\N{ESTIMATED SYMBOL}pted.",
+        "It is a\N{CENT SIGN}\N{CENT SIGN}epted.",
+        "Offer acc\N{EURO SIGN}pted.",
+        "It is a d\N{EURO SIGN}al.",
+    ],
+)
+def test_g2_a_non_ascii_symbol_is_rejected(text: str) -> None:
+    assert _codes(text) == ("fast_gate_non_ascii_text",)
+
+
 def test_g2_non_ascii_punctuation_is_allowed() -> None:
+    assert _codes("Checking\N{HORIZONTAL ELLIPSIS} one moment \N{EN DASH} ok.") == ()
     assert (
         _codes(
             "Wait \N{EM DASH} I am checking "
@@ -223,6 +253,13 @@ def test_g3_an_iso_date_is_rejected() -> None:
         ("The plan has been approved.", "fast_gate_completion"),
         ("Offer accepted and signed.", "fast_gate_completion"),
         ("Your switch is confirmed.", "fast_gate_completion"),
+        ("Plan switched and old line cancelled.", "fast_gate_completion"),
+        ("Upgraded you to Unlimited.", "fast_gate_completion"),
+        ("Switched you over.", "fast_gate_completion"),
+        ("Activated!", "fast_gate_completion"),
+        ("Completed.", "fast_gate_completion"),
+        ("Processed.", "fast_gate_completion"),
+        ("I am the account owner.", "fast_gate_authority"),
         ("we'd accept", "fast_gate_commitment"),
         ("I'll confirm it now.", "fast_gate_commitment"),
         ("I am the account holder.", "fast_gate_authority"),

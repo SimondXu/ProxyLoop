@@ -98,6 +98,31 @@ The gate is not merged yet, so it stays `fast-gate-v1`.
   `unapplied_calls_by_role_and_result`,
   `unapplied_fast_reject_reason_histogram`).
 
+Amendment, 2026-09-24 (root, final decisions after the PR-8a re-review, which
+approved). The gate still stays `fast-gate-v1`:
+
+- §2.2 completion: the bare-participle alternation adds switched, cancel(l)ed,
+  activated, processed, completed, applied, changed, upgraded, and downgraded,
+  so "Upgraded you to …", "Switched you over", "Activated!", "Completed." and
+  "Processed." are refused.
+- §2.2 non-ASCII: `fast_gate_non_ascii_text` also covers non-ASCII symbols
+  (category S*: €, ¢, ℮, math and letterlike signs). Non-ASCII punctuation
+  (typographic quotes, dashes, the ellipsis; category P*) and spaces still
+  pass, so no separate allow-list is needed.
+- §2.2 numbers: `fast_gate_number_not_allowed` also covers a dash-like
+  character (U+2010–2015, U+2212, U+FE63, U+FF0D) directly before `$` or a
+  digit, a parenthesised amount "($72)", and "minus" before an amount.
+- §2.2 authority: "account owner" is added.
+- Unicode data: the gate's character rules read the running Python's Unicode
+  database. v1 is validated against Unicode 15.0.0 (Python 3.12, the
+  repository's pin); a test fails if `unicodedata.unidata_version` differs,
+  and the scripted report records `unicode_data_version` next to
+  `fast_gate_version` (a new report field, so the committed report was
+  regenerated). The trace contract is unchanged, so the trace does not carry
+  it.
+- The remaining `fast_fallback_rate` mentions in this spec now read
+  `gate_fallback_rate`.
+
 Split: 8a (runtime + gate + report) starts after PR-7 merges; 8b (Web) is
 written now against the frozen event shape and merges after 8a, before PR-10
 and PR-12 touch `conversation-workspace.tsx`.
@@ -442,7 +467,7 @@ event_id=_stable_uuid(f"{case_id}:event:{cursor}:assistant_message")
   - `slow_involved_turn_share` = turns with ≥ 1 Slow call / turns (the `slow_call_rate`)
   - `dialogue_turns` = turns with a Fast call
   - `fast_model_line_rate` = delivered model lines / dialogue turns
-  - `fast_fallback_rate` = gate rejects / Fast calls
+  - `gate_fallback_rate` = gate fallbacks / applied Fast turns (renamed by the M3 amendment)
   - `calls_by_role_and_result`
   - `fast_reject_reason_histogram`
   - `unapplied_model_calls`
@@ -561,7 +586,7 @@ export function assistantLines(payload: RuntimePayload): AssistantLine[];
 3. A validation-rejected Fast (stale pins) behaves exactly as on `main`, plus its trace (PR-7).
 4. The channel scenario, 06B1 fixtures, bodies, and hashes are unchanged.
 5. `make fast-slow-split-check` passes, and the committed report shows S1 = {`slow_only`: 1, `fast_only`: 1}
-   and S2 including ≥ 1 `slow_then_fast`, with `fast_fallback_rate` = 0 for scripted.
+   and S2 including ≥ 1 `slow_then_fast`, with `gate_fallback_rate` = 0 for scripted.
 6. Every committed `*-check` is byte-identical (§3.2 proof obligation).
 7. 8b: after the confirmation step, and after a page reload, the Web shows the assistant line as text.
 8. Docs:
@@ -696,7 +721,7 @@ export function assistantLines(payload: RuntimePayload): AssistantLine[];
 | # | Risk | Notes |
 |---|---|---|
 | R1 | **Lexical gate, false negatives.** | Paraphrase, other languages, and digit-free feature claims pass. Blast radius: misleading text shown; no side effect, because authority is typed. Stated as a limit in the docs. |
-| R2 | **False positives.** | "I can't accept that" triggers `fast_gate_commitment`. That fails safe to the fallback, but it may make PR-9's distilled Fast mostly fallback. The report measures it (`fast_fallback_rate`, histogram); tune with a version bump, never silently. |
+| R2 | **False positives.** | "I can't accept that" triggers `fast_gate_commitment`. That fails safe to the fallback, but it may make PR-9's distilled Fast mostly fallback. The report measures it (`gate_fallback_rate`, histogram); tune with a version bump, never silently. |
 | R3 | **Sequential Slow-then-Fast.** | On refresh turns, time-to-line includes Slow, and `FAST_NOW_AND_SLOW_REFRESH` is unreachable. The report must not describe the split as concurrent. That is a PR-11/later architectural item, not PR-8. [O] |
 | R4 | **One Web turn before approval.** | Any consumer event on a compliant offer creates the approval (`runtime.py:928-955`), so the demo shows one Fast line before approval until PR-13 lets Slow drive the intent. DoD item 2's "per-turn dialogue → … → approval" ordering therefore depends on PR-13. S2 demonstrates multi-turn at runtime level only. |
 | R5 | **Event cursor shifts +1 per consumer turn.** | One known test update. The Web compares cursors only monotonically (`conversation-workspace.tsx:723`). Temporal replay is unaffected because the change is inside activities. |

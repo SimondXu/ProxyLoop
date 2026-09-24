@@ -15,6 +15,7 @@ from .coordinator import (
 )
 from .disclosure_gate import (
     FAST_GATE_ALLOWED_ACTS,
+    FAST_GATE_UNICODE_DATA_VERSION,
     FAST_GATE_VERSION,
     FastGate,
     fast_disclosure_violations,
@@ -60,6 +61,7 @@ __all__ = [
     "ALLOWED_FAST_REASONER_REASONS",
     "BOUNDED_FAST_STATUS_TEXT",
     "FAST_GATE_ALLOWED_ACTS",
+    "FAST_GATE_UNICODE_DATA_VERSION",
     "FAST_GATE_VERSION",
     "ROUTER_PRECEDENCE",
     "SCRIPTED_DIALOGUE_LINES",

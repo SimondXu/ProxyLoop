@@ -14,6 +14,7 @@ import argparse
 import hashlib
 import json
 import sys
+import unicodedata
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
@@ -194,6 +195,8 @@ def build_report() -> dict[str, object]:
         "schema_version": SCHEMA_VERSION,
         "fast_backend": FAST_BACKEND,
         "fast_gate_version": FAST_GATE_VERSION,
+        # The gate's rules read this Python's Unicode character database.
+        "unicode_data_version": unicodedata.unidata_version,
         "claim_boundary": CLAIM_BOUNDARY,
         "scenarios": {
             "demo_path": _split(run_demo_path()),

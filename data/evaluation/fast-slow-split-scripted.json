@@ -2,7 +2,7 @@
   "claim_boundary": "scripted adapters; shares describe routing structure, not model quality or latency",
   "fast_backend": "scripted_dialogue",
   "fast_gate_version": "fast-gate-v1",
-  "report_fingerprint": "de18a21a2cfb96d852b37321acee6ff724af07382bd37a5e13d2275f09db4c07",
+  "report_fingerprint": "5413400a11beb5a526d74c8dbfa573efc58ca13eda7c9c1c518eb1eaeaf9f8e0",
   "scenarios": {
     "demo_path": {
       "aggregates": {
@@ -213,5 +213,6 @@
       ]
     }
   },
-  "schema_version": "fast-slow-split-v1"
+  "schema_version": "fast-slow-split-v1",
+  "unicode_data_version": "15.0.0"
 }

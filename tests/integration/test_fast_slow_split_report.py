@@ -296,6 +296,7 @@ def test_s3_the_committed_report_is_current_and_deterministic() -> None:
     assert report["schema_version"] == "fast-slow-split-v1"
     assert report["fast_backend"] == "scripted_dialogue"
     assert report["fast_gate_version"] == "fast-gate-v1"
+    assert report["unicode_data_version"] == "15.0.0"
 
 
 def test_s3_the_report_meets_the_acceptance_values() -> None:

@@ -115,3 +115,29 @@ assistant line's time equals its trigger's time.
 
 See `harness/log/feat-pr8a-fast-dialogue.md`, section "After the review
 fixes". `runtime.py` did not change, so the DB gates were not rerun.
+
+## Re-review: Approve, then final root additions
+
+The re-review approved the fixes. The root then added final decisions, applied
+on this branch with the gate still at `fast-gate-v1` and recorded in a dated
+spec amendment:
+
+- **Important**: the bare-participle completion rule adds switched,
+  cancel(l)ed, activated, processed, completed, applied, changed, upgraded, and
+  downgraded. "Plan switched and old line cancelled.", "Upgraded you to
+  Unlimited.", "Switched you over.", "Activated!", "Completed.", and
+  "Processed." are refused.
+- **Minor 1**: `fast_gate_non_ascii_text` also covers non-ASCII symbols (S*).
+  "acc℮pted", "a¢¢epted", "Offer acc€pted", and "d€al" are refused.
+  Typographic quotes, dashes, and the ellipsis are punctuation (P*), so they
+  still pass without a separate allow-list, and so do all scripted lines and
+  `BOUNDED_FAST_STATUS_TEXT` (G7).
+- **Minor 2**: the gate refuses a dash-like character (U+2010–2015, U+2212,
+  U+FE63, U+FF0D) directly before `$` or a digit, "($72)", and "minus 72".
+- **Minor 3**: "account owner" is added to the authority rule.
+- **Minor 4**: `FAST_GATE_UNICODE_DATA_VERSION = "15.0.0"`. A test asserts
+  that `unicodedata.unidata_version` equals it. The report gains
+  `unicode_data_version` next to `fast_gate_version`, and the committed report
+  was regenerated because of that new field. The trace contract is unchanged.
+- **Minor 5**: the remaining `fast_fallback_rate` mentions in the spec
+  were renamed.

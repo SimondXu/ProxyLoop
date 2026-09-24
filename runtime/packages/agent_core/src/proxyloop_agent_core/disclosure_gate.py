@@ -6,10 +6,15 @@ not semantic safety: it treats every line as if the Provider could read it and
 refuses anything that could state an undisclosed number, a commitment, a
 completion, an authority claim, an identifier, or a consequential act.
 
-Text outside plain ASCII letters is refused (``fast_gate_non_ascii_text``):
-an invisible format character or a lookalike letter would otherwise split or
-disguise a word the phrase rules look for. Non-ASCII punctuation and symbols
-(an em dash, a curly quote) are allowed.
+A non-ASCII letter, mark, symbol, or format character is refused
+(``fast_gate_non_ascii_text``): an invisible character, a lookalike letter, or
+a symbol such as a euro sign would otherwise split or disguise a word the phrase
+rules look for. Non-ASCII punctuation (typographic quotes, dashes, the
+ellipsis) and spaces are allowed.
+
+The rules depend on the Unicode character database of the running Python
+(``unicodedata.unidata_version``); v1 was validated against
+``FAST_GATE_UNICODE_DATA_VERSION`` and a test fails if that changes.
 
 Known v1 limits (it does not check): paraphrased commitments, non-English
 text, one to nine written as words, feature or plan claims without digits,
@@ -32,6 +37,7 @@ FAST_GATE_ALLOWED_ACTS: Final = frozenset(
     {DialogueAct.CLARIFY, DialogueAct.CHALLENGE, DialogueAct.ESCALATE}
 )
 FAST_GATE_MAX_TEXT_LENGTH: Final = 600
+FAST_GATE_UNICODE_DATA_VERSION: Final = "15.0.0"
 
 FastGate = Callable[[FastTurnDecision, CaseContextSnapshot], tuple[str, ...]]
 
@@ -52,6 +58,12 @@ _QUOTES = str.maketrans(
 _DIGIT_TOKEN = re.compile(r"((?<!\w)[-+\u2212])?([$]?\d[\d,]*(?:\.\d+)?)")
 # "72 %", "72 percent", and "72pct" all state a rate.
 _PERCENT = re.compile(r"%|(?<![a-z])(?:per\s*cent|pct)\b")
+# A negative or accounting-style amount: a dash-like character right before
+# "$" or a digit (raw text, before normalisation), "($72)", or "minus 72".
+_DASH_BEFORE_AMOUNT = re.compile(r"[\u2010-\u2015\u2212\ufe63\uff0d][$\d]")
+_NEGATIVE_AMOUNT = re.compile(
+    r"\(\s*[$]?\s*\d[\d,]*(?:\.\d+)?\s*\)|\bminus\s*[$]?\s*\d"
+)
 _NUMBER_WORD = re.compile(
     r"\b(?:ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen"
     r"|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety"
@@ -86,14 +98,17 @@ _COMPLETION = re.compile(
     + r"\s+(?:completed?|done|finali[sz]ed|applied|changed|switched|cancell?ed"
     r"|activated|processed)\b"
     # A consequential participle states an outcome with or without an
-    # auxiliary ("Offer accepted and signed."). "accept" itself is allowed.
-    r"|\b(?:accepted|approved|signed|agreed|confirmed|finali[sz]ed)\b"
+    # auxiliary ("Offer accepted and signed.", "Switched you over."). "accept"
+    # itself is allowed.
+    r"|\b(?:accepted|approved|signed|agreed|confirmed|finali[sz]ed|switched"
+    r"|cancell?ed|activated|processed|completed|applied|changed|upgraded"
+    r"|downgraded)\b"
     r"|\blocked\s+(?:(?:it|this|that)\s+)?in\b"
     r"|\ball\s+set\b|\byou're\s+set\b"
 )
 _AUTHORITY = re.compile(
     r"\b(?:i\s+am|i'm)\s+(?:(?:the|a|an)\s+)?"
-    r"(?:account\s+holder|customer|owner|subscriber)\b"
+    r"(?:account\s+(?:holder|owner)|customer|owner|subscriber)\b"
     r"|\bauthori[sz]ed\s+to\b"
 )
 
@@ -136,10 +151,12 @@ def fast_disclosure_violations(
 
 
 def _has_hidden_or_lookalike_character(text: str) -> bool:
-    # Letters (L*), combining marks (M*), and format, control, private-use,
-    # surrogate, or unassigned code points (C*) outside ASCII.
+    # Letters (L*), combining marks (M*), symbols (S*: currency, math, and
+    # letterlike signs such as the estimated sign), and format, control, private-use,
+    # surrogate, or unassigned code points (C*) outside ASCII. Punctuation (P*)
+    # and spaces (Z*) pass.
     return any(
-        not char.isascii() and unicodedata.category(char)[0] in {"L", "M", "C"}
+        not char.isascii() and unicodedata.category(char)[0] in {"L", "M", "S", "C"}
         for char in text
     )
 
@@ -185,7 +202,11 @@ def _has_undisclosed_number(
         for char in original
     ):
         return True
-    if _PERCENT.search(normalised.lower()):
+    if (
+        _PERCENT.search(normalised.lower())
+        or _DASH_BEFORE_AMOUNT.search(original)
+        or _NEGATIVE_AMOUNT.search(normalised.lower())
+    ):
         return True
     money, integers = _allowed_numbers(snapshot)
     for match in _DIGIT_TOKEN.finditer(normalised):
@@ -209,6 +230,7 @@ def _has_undisclosed_number(
 __all__ = [
     "FAST_GATE_ALLOWED_ACTS",
     "FAST_GATE_MAX_TEXT_LENGTH",
+    "FAST_GATE_UNICODE_DATA_VERSION",
     "FAST_GATE_VERSION",
     "FastGate",
     "fast_disclosure_violations",
