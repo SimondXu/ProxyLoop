@@ -175,3 +175,17 @@ the variables on the make command line only:
 - Passed: `make preflight` (exit 0, variables unset: runtime 1285 passed, 59
   skipped; ml 397 passed, 1 skipped; web 140 passed). Six of the 59 skips are
   this branch's new DB-gated items.
+
+## Merge with `main` @ `f4a2487` (PR-1 #90, gated-skip pin)
+
+Merge commit `9df9225`. #90 touches no runtime or storage code, so the DB gates
+from the `74fb993` merge still stand. The status file keeps `main`'s in-flight
+table (PR-4 and PR-6 closed there) plus the PR-7 row.
+
+- `make preflight` first failed only on the pin: "expected 53 gated skips,
+  found 59 … `test_phase_04c_persistent_case_store.py`: expected 23, found 29".
+- `EXPECTED_GATED_SKIPS_PER_FILE` now has 04c at 29 (from 23), for a total of
+  59. `docs/development.md` is updated to match: the 04c count and "those 59
+  tests".
+- Passed: `make preflight` (exit 0: runtime 1294 passed, 59 skipped; ml 397
+  passed, 1 skipped; web 140 passed; the per-file gated-skip check matches).

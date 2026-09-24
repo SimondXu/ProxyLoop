@@ -24,7 +24,7 @@ DATABASE_VARIABLE = "PROXYLOOP_TEST_DATABASE_URL"
 TEMPORAL_VARIABLE = "PROXYLOOP_TEST_TEMPORAL_ADDRESS"
 # Change only together with the tests it counts (and docs/development.md).
 EXPECTED_GATED_SKIPS_PER_FILE = {
-    "tests/integration/test_phase_04c_persistent_case_store.py": 23,
+    "tests/integration/test_phase_04c_persistent_case_store.py": 29,
     "tests/integration/test_phase_05a_case_runtime.py": 2,
     "tests/integration/test_phase_05a_temporal_workflow.py": 24,
     "tests/integration/test_phase_06b1_channel_runtime.py": 1,
