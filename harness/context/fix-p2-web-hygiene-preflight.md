@@ -45,4 +45,4 @@ sticky-blocked and #66 direct-mode copy).
    unchanged and now agrees with the parser.
 5. **R-8.** Document only (`docs/ui/state-matrix.md` projection note).
 
-No runtime-package change. No visual redesign.
+No runtime-package change; the one service change is the `runtime/services/api` `app.py` browser projection (E-9). No visual redesign.

@@ -66,3 +66,37 @@ Rerun on the merged tree (no `PROXYLOOP_TEST_*` set):
 - Still not run: `make preflight`, real-dependency gates
   (`postgres-check`, `phase05a-check`, `phase06b1-check`), Browser/manual
   smoke.
+
+## Review round 1 (Request Changes): root decisions applied
+
+All in `apps/web/app/components/conversation-workspace.tsx` and its test
+file unless noted. Red was observed before each change.
+
+| Item | Change | Red → green |
+|---|---|---|
+| I-2 / E-10 | `parseUsdMoney`: step 1 counts loose candidates `\$\s*[\d.,]+` or `[\d.,]+\s*USD`, rejecting unless exactly one; step 2 validates that one strictly (`^(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?$`) after removing one trailing period or a trailing comma before whitespace/end | 8 new cases red (accept `$92, thanks`, `$1,500, please`, `92 USD, thanks`; reject `$1,50 or $70`, `$92, $93`, `$12,34 then $5`, `92,5 USD and $4`, `$92.5 and $1,5`) → green |
+| M-2 / E-10 | Only a bare `$` or `USD` counts as USD. Rejected: a letter directly before the candidate (`A$`, `C$`, `HK$`, `NZ$`, `R$`, and also `US$`, by decision), an uppercase non-USD 3-letter code after a `$` amount (`$92 AUD`, `$92 MXN`), a dash next to the candidate (`$92–95`, `$5-`), or a letter glued to it | 9 new cases red → green; `$92-95` was already rejected by the negative-number rule and is kept as a pin. Prompt copy unchanged (it states no grammar); `docs/ui/state-matrix.md` intake row updated |
+| I-3 | The event and approval POST failure paths fall back to `confirm`/`approval` only when `phaseForPayload(payloadRef.current)` is that phase | New vitest "I-3: a failed event POST keeps the approval a poll already read…": red (approval card gone after the network reject) → green. The approval path has the same guard but no dedicated test |
+| M-1 | A poll read that `acceptPayload` rejects for the same Case (so the only possible cause is a lower revision) is dropped without `setError`. `stalePollTick` re-arms both poll effects so that polling still does not stop silently; it stays bounded by the 5-read budget | New vitest "M-1: a stale (lower-revision) poll read is dropped silently and polling continues": red (alert shown) → green |
+| M-4 / E-8 | Finalizing title: "Finalizing the approved fictional transition" only when `payload.approval.decision === "approved"`, else "Finalizing the fictional transition"; the working title "Comparing fictional Provider options" (no payload backs it) becomes "Waiting for the Runtime decision" | The two E-8 tests, updated, were red → green. New M-4 approved-title test passes on both sides (pin). 13 existing assertions whose fixtures carry no approved approval now use the neutral titles |
+| M-5 | `tests/integration/test_browser_projection_allowlist.py` `EXCLUDED_KEYS` gains `model_traces`, `execution_claim`, `trace_id`, `claimed_at` | Guard only: the allow-list already kept them out, so it cannot be red first |
+| M-3 | No code change | n/a |
+| spec | "No runtime-package change" now names the `runtime/services/api` `app.py` projection change | n/a |
+| I-1 | **Not applied, escalated.** "Skip the poll timer while in flight" (prototyped) turns the I-1 regression test green but reds 4 tests: #63's `B1` and `sticky I1`, the E-7 test, and the item-4 I-3 test. All four need a poll during the in-flight event POST. Keeping the polls but not charging the budget passes everything except the I-1 assertion "`getCase` called 0 times" (7 reads in 10.5 s) | open: root decision needed |
+
+Limits (M-3): no local upper bound on amounts; the server `Money` has none
+either.
+
+Checks on this tree (no `PROXYLOOP_TEST_*` set):
+
+- `make web-check`: pass (2 files, 136 vitest tests, build).
+- `uv run --project runtime --all-packages pytest -q tests/integration/test_browser_projection_allowlist.py`: 1 passed.
+- `make format-check lint typecheck`: pass.
+- `make preflight-fast`: pass.
+- `make test`: pass (1174 passed, 46 skipped; 390 passed, 1 skipped;
+  V2 ceiling report current). The first suite collected 1230 at the merge
+  run and 1220 now. A clean detached worktree at `49a10a3` also collects
+  1220 with an identical per-file count, so this diff did not change it;
+  the cause is not established.
+- `git status --short data/`: empty.
+- Not run: `make preflight`, real-dependency gates, Browser/manual smoke.

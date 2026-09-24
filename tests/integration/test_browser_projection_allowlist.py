@@ -89,6 +89,11 @@ EXCLUDED_KEYS = {
     "approval_requests",
     "idempotency_key",
     "provider_config_ref",
+    # Runtime-internal CaseRuntimeState fields persisted by #72 (M-5).
+    "model_traces",
+    "execution_claim",
+    "trace_id",
+    "claimed_at",
 }
 
 

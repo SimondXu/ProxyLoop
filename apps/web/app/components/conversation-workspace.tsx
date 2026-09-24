@@ -102,17 +102,37 @@ function intakePrompt(field: IntakeField): string {
   return "Should device financing remain unchanged? Reply yes or no. This local journey cannot change financing.";
 }
 
+const MONEY_CANDIDATE = /\$\s*([\d.,]+)|([\d.,]+)\s*USD\b/gi;
+const STRICT_USD_AMOUNT = /^(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?$/;
+
+// E-10: (1) exactly one loose money candidate (`$…` or `… USD`) in the text;
+// (2) that candidate is validated strictly: comma-grouped thousands or plain
+// digits, at most two decimals. One trailing sentence period ("$92.") or a
+// trailing comma before whitespace/end ("$92, thanks") ends the amount.
+// Only a bare `$` or `USD` counts as USD: a letter-prefixed `$` (A$, US$, …),
+// a following non-USD ISO code ("$92 AUD"), a range dash ("$92–95", "$5-"),
+// or a glued letter ("$92k") rejects.
 function parseUsdMoney(text: string): RuntimeMoney | null {
   if (/[€£¥]|\b(?:EUR|CAD|GBP|JPY)\b/i.test(text) || /-\s*\$?\s*\d/.test(text)) {
     return null;
   }
-  // One amount: comma-grouped thousands or plain digits, at most two decimals.
-  // A trailing sentence period ("$92.00.", "$92.") ends the amount; a decimal
-  // comma ("$1,50"), a third decimal, or a digit run glued to letters rejects (E-10).
-  const matches = [...text.matchAll(/(?:\$\s*((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)|(?<![\d.,])((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)\s*USD\b)(?![\dA-Za-z,]|\.\d)/gi)];
+  const matches = [...text.matchAll(MONEY_CANDIDATE)];
   if (matches.length !== 1) return null;
-  const raw = matches[0][1] ?? matches[0][2];
+  const [token, dollarRaw, usdRaw] = matches[0];
+  const start = matches[0].index;
+  const before = text.slice(0, start);
+  const after = text.slice(start + token.length);
+  if (/[A-Za-z]$/.test(before) || /[-–—]\s*$/.test(before)) return null;
+  let raw = dollarRaw ?? usdRaw;
   if (!raw) return null;
+  if (dollarRaw !== undefined) {
+    if (/^\s*[-–—]/.test(after) || /^[A-Za-z]/.test(after) || /^\s*(?!USD\b)[A-Z]{3}\b/.test(after)) {
+      return null;
+    }
+    if (raw.endsWith(".")) raw = raw.slice(0, -1);
+    else if (raw.endsWith(",") && /^(?:\s|$)/.test(after)) raw = raw.slice(0, -1);
+  }
+  if (!STRICT_USD_AMOUNT.test(raw)) return null;
   const normalised = raw.replaceAll(",", "");
   const [whole, fraction = ""] = normalised.split(".");
   const amountMinor = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
@@ -417,8 +437,13 @@ function TaskBriefArtifact({
 
 // Only steps the accepted payload backs (E-8): the Case revision the Web read and
 // validated against the confirmed facts, and the Runtime result still awaited.
+// The title claims an approval only when the payload carries it (M-4).
 function ProgressArtifact({ payload, finalizing }: { payload: RuntimePayload; finalizing: boolean }) {
-  const label = finalizing ? "Finalizing the approved fictional transition" : "Comparing fictional Provider options";
+  const label = !finalizing
+    ? "Waiting for the Runtime decision"
+    : payload.approval?.decision === "approved"
+      ? "Finalizing the approved fictional transition"
+      : "Finalizing the fictional transition";
   return (
     <section aria-labelledby="progress-title" className="chat-artifact progress-artifact">
       <div className="artifact-heading">
@@ -610,6 +635,8 @@ export function ConversationWorkspace() {
   // set, a poll read may advance the phase or block, but never step back to the
   // pre-command confirm phase (E-7).
   const commandInFlightRef = useRef<number | null>(null);
+  // Bumped when a stale poll read is dropped (M-1) so the poll effects re-arm.
+  const [stalePollTick, setStalePollTick] = useState(0);
 
   function enterBlocked(message: string) {
     blockedRef.current = true;
@@ -749,6 +776,12 @@ export function ConversationWorkspace() {
       throw new BlockedStateError(message);
     }
     if (!acceptPayload(recovered, facts)) {
+      // M-1: a poll read older than the accepted payload for the same Case is
+      // dropped silently; the tick re-arms the poll so it never stops silently.
+      if (poll && payloadRef.current?.case_id === recovered.case_id) {
+        setStalePollTick((tick) => tick + 1);
+        return recovered;
+      }
       throw new RuntimeClientError(
         "The local Runtime returned a stale or mismatched Case. No unverified state is shown.",
         "invalid",
@@ -1020,7 +1053,7 @@ export function ConversationWorkspace() {
   // The callback intentionally reads the current session ref; adding it would
   // restart the deadline timer on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confirmedFacts, isVisible, payload, phase]);
+  }, [confirmedFacts, isVisible, payload, phase, stalePollTick]);
 
   useEffect(() => {
     const shouldPoll = phase === "restoring" || phase === "working" || phase === "finalizing";
@@ -1041,7 +1074,7 @@ export function ConversationWorkspace() {
     }, 1500);
     return () => window.clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confirmedFacts, isVisible, payload, phase]);
+  }, [confirmedFacts, isVisible, payload, phase, stalePollTick]);
 
   function editIntakeField(field: IntakeField) {
     if (phase !== "intake" || busy) return;
@@ -1152,7 +1185,10 @@ export function ConversationWorkspace() {
         }
       }
       if (holdBlocked(caught)) return;
-      setPhase("confirm");
+      // I-3: fall back to confirm only if the authoritative payload still implies it;
+      // a poll may already have advanced the Case while this command was in flight.
+      const authoritative = payloadRef.current;
+      if (authoritative === null || phaseForPayload(authoritative) === "confirm") setPhase("confirm");
       setError(caught instanceof Error ? caught.message : "The Runtime failed safely. Retry or restart the demo.");
     } finally {
       if (commandInFlightRef.current === requestId) commandInFlightRef.current = null;
@@ -1221,7 +1257,10 @@ export function ConversationWorkspace() {
         }
       }
       if (holdBlocked(caught)) return;
-      setPhase("approval");
+      // I-3: fall back to approval only if the authoritative payload still implies it;
+      // a poll may already have advanced the Case while this command was in flight.
+      const authoritative = payloadRef.current;
+      if (authoritative === null || phaseForPayload(authoritative) === "approval") setPhase("approval");
       setError(caught instanceof Error ? caught.message : "The Runtime failed safely. Retry or restart the demo.");
     } finally {
       if (commandInFlightRef.current === requestId) commandInFlightRef.current = null;

@@ -909,7 +909,7 @@ describe("ConversationWorkspace", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(screen.getByRole("heading", { name: "Finalizing the approved fictional transition" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Finalizing the fictional transition" })).toBeInTheDocument();
 
     vi.mocked(runtime.getCase).mockRejectedValueOnce(new runtime.RuntimeClientError("offline", "network"));
     await act(async () => {
@@ -969,7 +969,7 @@ describe("ConversationWorkspace", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(screen.getByRole("heading", { name: "Finalizing the approved fictional transition" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Finalizing the fictional transition" })).toBeInTheDocument();
     expect(runtime.getCase).toHaveBeenCalledTimes(1);
     await act(async () => {
       vi.advanceTimersByTime(1500);
@@ -1009,7 +1009,7 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.getCase).mockResolvedValue(finalizing);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
 
-    expect(await screen.findByRole("heading", { name: "Finalizing the approved fictional transition" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Finalizing the fictional transition" })).toBeInTheDocument();
     expect(screen.getAllByText("Finalizing").length).toBeGreaterThan(0);
   });
 
@@ -1132,7 +1132,7 @@ describe("ConversationWorkspace", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(screen.getByRole("heading", { name: "Finalizing the approved fictional transition" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Finalizing the fictional transition" })).toBeInTheDocument();
 
     await act(async () => {
       vi.advanceTimersByTime(1500);
@@ -1142,7 +1142,7 @@ describe("ConversationWorkspace", () => {
       pendingPoll.resolve(stale);
       await pendingPoll.promise;
     });
-    expect(screen.getByRole("heading", { name: "Finalizing the approved fictional transition" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Finalizing the fictional transition" })).toBeInTheDocument();
   });
 
   it("surfaces a 409 on the constraint event when the reconcile read does not advance the revision", async () => {
@@ -1229,7 +1229,7 @@ describe("ConversationWorkspace", () => {
       fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
       for (let i = 0; i < 6; i += 1) await Promise.resolve();
     });
-    expect(screen.getByRole("heading", { name: "Finalizing the approved fictional transition" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Finalizing the fictional transition" })).toBeInTheDocument();
     const readsBeforePolling = vi.mocked(runtime.getCase).mock.calls.length;
 
     for (let poll = 0; poll < 8; poll += 1) {
@@ -1240,7 +1240,7 @@ describe("ConversationWorkspace", () => {
     }
     expect(vi.mocked(runtime.getCase).mock.calls.length - readsBeforePolling).toBe(5);
     expect(screen.getByRole("alert")).toHaveTextContent("Still waiting for the authoritative result after 5 reads");
-    expect(screen.getByRole("heading", { name: "Finalizing the approved fictional transition" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Finalizing the fictional transition" })).toBeInTheDocument();
 
     vi.mocked(runtime.checkReadiness).mockResolvedValue({
       status: "ok", ready: true, dependency: "postgres", adapter_mode: "scripted",
@@ -1258,7 +1258,7 @@ describe("ConversationWorkspace", () => {
       vi.mocked(runtime.appendConsumerEvent).mock.calls[0]?.[3],
     );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Finalizing the approved fictional transition" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Finalizing the fictional transition" })).toBeInTheDocument();
   });
 
   it("keeps and replays the exact pending approval while the approved execution is still pending", async () => {
@@ -1801,11 +1801,11 @@ describe("ConversationWorkspace", () => {
       .mockImplementation(async () => ({ ...INCOMPLETE_APPROVAL, event_cursor: 3, revision: 7 }));
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
     await flushMicrotasks();
-    expect(screen.getByRole("heading", { name: "Finalizing the approved fictional transition" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Finalizing the fictional transition" })).toBeInTheDocument();
 
     await flushMicrotasks(1500);
     expectStickyBlocked();
-    expect(screen.queryByRole("heading", { name: "Finalizing the approved fictional transition" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Finalizing the fictional transition" })).not.toBeInTheDocument();
     const reads = vi.mocked(runtime.getCase).mock.calls.length;
     for (let poll = 0; poll < 6; poll += 1) await flushMicrotasks(1500);
     expect(runtime.getCase).toHaveBeenCalledTimes(reads);
@@ -1952,7 +1952,7 @@ describe("ConversationWorkspace", () => {
     expect(runtime.getCase).toHaveBeenCalledTimes(1);
     expect(screen.getAllByText("Working").length).toBeGreaterThan(0);
     expect(screen.queryByText("Needs input")).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Comparing fictional Provider options" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Waiting for the Runtime decision" })).toBeInTheDocument();
     expect(document.getElementById("task-brief-confirm")).toBeDisabled();
 
     vi.mocked(runtime.getCase).mockImplementation(async () => waiting);
@@ -1960,6 +1960,74 @@ describe("ConversationWorkspace", () => {
     await flushMicrotasks();
     expect(screen.getByRole("heading", { name: "Accept these exact fictional terms?" })).toBeInTheDocument();
     expect(runtime.appendConsumerEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("I-3: a failed event POST keeps the approval a poll already read instead of re-enabling confirm", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const pendingEvent = deferred<RuntimePayload>();
+    const waiting = payload({
+      approval: {
+        action_intent_revision: 1,
+        approval_id: "22222222-2222-4222-8222-222222222222",
+        case_revision: 2,
+        decision: "pending",
+        expires_at: NORMAL_PENDING_APPROVAL_EXPIRES_AT,
+        material_terms_hash: "hash-1",
+      },
+      event_cursor: 2,
+      revision: 4,
+      route: "wait_for_approval",
+    });
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockReturnValue(pendingEvent.promise);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.useFakeTimers();
+    vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => waiting);
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await flushMicrotasks();
+    await flushMicrotasks(1500);
+    expect(screen.getByRole("heading", { name: "Accept these exact fictional terms?" })).toBeInTheDocument();
+
+    pendingEvent.reject(new runtime.RuntimeClientError("offline", "network"));
+    await flushMicrotasks();
+    expect(screen.getByRole("heading", { name: "Accept these exact fictional terms?" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Keep both unchanged/ })).not.toBeInTheDocument();
+    expect(document.getElementById("task-brief-confirm")).toBeDisabled();
+    expect(runtime.appendConsumerEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("M-1: a stale (lower-revision) poll read is dropped silently and polling continues", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const finalizing = payload({
+      event_cursor: 2,
+      revision: 6,
+      route: "fast_now",
+      snapshot: { ...payload().snapshot, pending_execution: true },
+    });
+    const stale = { ...finalizing, revision: 5 };
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(finalizing);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.useFakeTimers();
+    vi.mocked(runtime.getCase).mockReset().mockImplementation(async () => ({ ...finalizing }));
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+    await flushMicrotasks();
+    expect(screen.getByRole("heading", { name: "Finalizing the fictional transition" })).toBeInTheDocument();
+    const reads = vi.mocked(runtime.getCase).mock.calls.length;
+
+    vi.mocked(runtime.getCase).mockImplementation(async () => ({ ...stale }));
+    await flushMicrotasks(1500);
+    expect(runtime.getCase).toHaveBeenCalledTimes(reads + 1);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Finalizing the fictional transition" })).toBeInTheDocument();
+
+    await flushMicrotasks(1500);
+    expect(runtime.getCase).toHaveBeenCalledTimes(reads + 2);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("E-8: the working Progress artifact shows only steps backed by the accepted payload", async () => {
@@ -1972,7 +2040,8 @@ describe("ConversationWorkspace", () => {
     await completeLocalIntake(true, "yes", true, [payload()]);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
 
-    const progress = screen.getByRole("heading", { name: "Comparing fictional Provider options" }).closest("section") as HTMLElement;
+    expect(screen.queryByRole("heading", { name: "Comparing fictional Provider options" })).not.toBeInTheDocument();
+    const progress = screen.getByRole("heading", { name: "Waiting for the Runtime decision" }).closest("section") as HTMLElement;
     expect(within(progress).queryByText("Guardrails checked")).not.toBeInTheDocument();
     expect(within(progress).getByText("Case revision 2 read")).toBeInTheDocument();
     expect(progress.querySelectorAll("li.done")).toHaveLength(1);
@@ -1995,12 +2064,41 @@ describe("ConversationWorkspace", () => {
     vi.mocked(runtime.getCase).mockResolvedValue(finalizing);
     fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
 
-    const heading = await screen.findByRole("heading", { name: "Finalizing the approved fictional transition" });
+    // M-4: no approved approval in this payload, so the title does not claim one.
+    const heading = await screen.findByRole("heading", { name: "Finalizing the fictional transition" });
+    expect(screen.queryByRole("heading", { name: "Finalizing the approved fictional transition" })).not.toBeInTheDocument();
     const progress = heading.closest("section") as HTMLElement;
     expect(within(progress).queryByText("Guardrails checked")).not.toBeInTheDocument();
     expect(within(progress).getByText("Case revision 6 read")).toBeInTheDocument();
     expect(progress.querySelectorAll("li.done")).toHaveLength(1);
     expect(progress.querySelector("li.active")).toHaveTextContent("Execution pending");
+  });
+
+  it("M-4: the finalizing title says approved only when the payload carries the approved approval", async () => {
+    const runtime = await import("../../lib/runtime-client");
+    const approvedFinalizing = payload({
+      approval: {
+        action_intent_revision: 1,
+        approval_id: "22222222-2222-4222-8222-222222222222",
+        case_revision: 2,
+        decision: "approved",
+        expires_at: NORMAL_PENDING_APPROVAL_EXPIRES_AT,
+        material_terms_hash: "hash-1",
+      },
+      event_cursor: 2,
+      revision: 6,
+      route: "fast_now",
+      snapshot: { ...payload().snapshot, pending_execution: true },
+    });
+    vi.mocked(runtime.createCase).mockResolvedValue(payload());
+    vi.mocked(runtime.appendConsumerEvent).mockReset().mockResolvedValue(approvedFinalizing);
+
+    render(<ConversationWorkspace />);
+    await completeLocalIntake(true, "yes", true, [payload()]);
+    vi.mocked(runtime.getCase).mockResolvedValue(approvedFinalizing);
+    fireEvent.click(screen.getByRole("button", { name: /Keep both unchanged/ }));
+
+    expect(await screen.findByRole("heading", { name: "Finalizing the approved fictional transition" })).toBeInTheDocument();
   });
 
   it("E-9: the Usage row renders the projected usage.data_megabytes", async () => {
@@ -2038,6 +2136,9 @@ describe("ConversationWorkspace", () => {
     ["$12345", "$12,345.00"],
     ["$1,500", "$1,500.00"],
     ["92 USD.", "$92.00"],
+    ["$92, thanks", "$92.00"],
+    ["$1,500, please", "$1,500.00"],
+    ["92 USD, thanks", "$92.00"],
   ])("E-10: accepts the USD input %s as %s", (input, shown) => {
     render(<ConversationWorkspace />);
     fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "Lower my mobile bill" } });
@@ -2056,6 +2157,22 @@ describe("ConversationWorkspace", () => {
     "12.345 USD",
     "$92.00.5",
     "$.50",
+    "$1,50 or $70",
+    "$92, $93",
+    "$12,34 then $5",
+    "92,5 USD and $4",
+    "$92.5 and $1,5",
+    "A$92",
+    "C$92",
+    "HK$92",
+    "NZ$92",
+    "R$92",
+    "US$92",
+    "$92 AUD",
+    "$92 MXN",
+    "$92–95",
+    "$92-95",
+    "$5-",
   ])("E-10: rejects the ambiguous USD input %s locally", (input) => {
     render(<ConversationWorkspace />);
     fireEvent.change(screen.getByPlaceholderText("Message ProxyLoop"), { target: { value: "Lower my mobile bill" } });
