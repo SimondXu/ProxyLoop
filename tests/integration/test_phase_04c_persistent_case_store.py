@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, replace
 from datetime import UTC, datetime, timedelta
 from threading import Barrier
 from types import SimpleNamespace
@@ -174,13 +175,93 @@ def _assert_non_provider_fields_equal(
     expected: CaseRuntimeState,
     actual: CaseRuntimeState,
 ) -> None:
-    assert actual.snapshot == expected.snapshot
-    assert actual.events == expected.events
-    assert actual.execution_count == expected.execution_count
-    assert actual.execution_source_pins == expected.execution_source_pins
-    assert actual.execution_intent == expected.execution_intent
-    assert actual.execution_approval == expected.execution_approval
-    assert actual.execution_proposal == expected.execution_proposal
+    # Derived from the dataclass so a field added later is compared too.
+    for field in fields(CaseRuntimeState):
+        if field.name == "provider":
+            continue
+        assert getattr(actual, field.name) == getattr(expected, field.name), field.name
+
+
+def _in_memory_waiting() -> tuple[ThinAgentRuntime, CaseRuntimeState]:
+    """An in-memory Case awaiting approval, reached through a command so that
+    `transitions` and `last_fast_decision` are populated."""
+
+    runtime = ThinAgentRuntime(
+        InMemoryCaseRepository(),
+        clock=_clock(
+            BASE_TIME,
+            BASE_TIME + timedelta(minutes=1),
+            BASE_TIME + timedelta(minutes=2),
+        ),
+    )
+    created = runtime.create_case()
+    runtime.apply_command(
+        CaseCommand(
+            command_id=UUID("dddddddd-dddd-4ddd-8ddd-dddddddddddd"),
+            case_id=CASE_ID,
+            command_type=CaseCommandType.APPEND_EVENT,
+            occurred_at=BASE_TIME + timedelta(minutes=1),
+            expected_revision=created.snapshot.revision,
+            content="Review the offer.",
+            event_type="consumer_message",
+        )
+    )
+    state = runtime.repository.get(CASE_ID)
+    assert state is not None
+    assert state.transitions
+    assert state.last_fast_decision is not None
+    return runtime, state
+
+
+def _codec_round_trip(state: CaseRuntimeState) -> CaseRuntimeState:
+    payload = json.loads(json.dumps(PostgresCaseRepository._encode_state(state)))
+    return PostgresCaseRepository._decode_state(
+        state.snapshot.case.case_id, state.snapshot.revision, payload
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "other_value"),
+    [("transitions", ()), ("last_fast_decision", None)],
+)
+def test_round_trip_helper_compares_every_non_provider_field(
+    field: str, other_value: object
+) -> None:
+    # C-7: AC3 says every non-Provider field round-trips; the helper must notice
+    # a difference in any of them, not only the execution fields.
+    _, state = _in_memory_waiting()
+    changed = replace(state, **{field: other_value})
+
+    with pytest.raises(AssertionError):
+        _assert_non_provider_fields_equal(state, changed)
+
+
+def test_every_non_provider_field_survives_the_postgres_codec() -> None:
+    # C-7 without a database: the write/read codec keeps every non-Provider
+    # field, for a waiting Case and for the executed terminal Case.
+    runtime, waiting = _in_memory_waiting()
+    _assert_non_provider_fields_equal(waiting, _codec_round_trip(waiting))
+
+    approval = waiting.snapshot.approval_requests[0]
+    runtime.apply_command(
+        CaseCommand(
+            command_id=APPROVAL_COMMAND_ID,
+            case_id=CASE_ID,
+            command_type=CaseCommandType.DECIDE_APPROVAL,
+            occurred_at=BASE_TIME + timedelta(minutes=2),
+            expected_revision=waiting.snapshot.revision,
+            approval_id=approval.approval_id,
+            decision="approved",
+            expected_case_revision=approval.case_revision,
+            expected_action_intent_revision=approval.action_intent_revision,
+        )
+    )
+    terminal = runtime.repository.get(CASE_ID)
+    assert terminal is not None
+    assert terminal.execution_count == 1
+    assert terminal.execution_source_pins is not None
+    assert len(terminal.transitions) == len(waiting.transitions) + 1
+    _assert_non_provider_fields_equal(terminal, _codec_round_trip(terminal))
 
 
 def _terminal_state(repository: PostgresCaseRepository) -> CaseRuntimeState:

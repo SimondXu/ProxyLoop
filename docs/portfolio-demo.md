@@ -73,6 +73,9 @@ the printed log directory and
 `docker compose --project-name proxyloop-portfolio-demo ps`, then run
 `make portfolio-demo-stop` before retrying. If Scene B reports that state is
 not fresh, stop/reset, restart `make portfolio-demo`, and rerun Scene B.
+If `make portfolio-demo-stop` refuses because a stale `pids.json` names PIDs
+that now belong to other processes, delete
+`$TMPDIR/proxyloop-portfolio-demo/pids.json` by hand.
 
 ## Demo narration
 

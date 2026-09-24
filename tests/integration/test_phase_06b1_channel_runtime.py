@@ -1427,3 +1427,237 @@ def test_postgres_delivery_callback_after_complete_is_stored() -> None:
         ).fetchone()
     assert row is not None
     assert row[0] == 1
+
+
+class _InboxWriteFailureRepository(PostgresCaseRepository):
+    """Point the final Inbox write of one delivery callback at a missing row."""
+
+    def __init__(self, database_url: str) -> None:
+        self.fail_inbox_write = False
+        super().__init__(database_url)
+
+    def replace_with_delivery_receipt(
+        self,
+        case_id: UUID,
+        *,
+        expected_revision: int,
+        state: CaseRuntimeState,
+        inbox_event_id: UUID,
+        receipt: DeliveryReceiptRecord,
+        outbox_state: str,
+    ) -> CaseRuntimeState:
+        if self.fail_inbox_write:
+            self.fail_inbox_write = False
+            inbox_event_id = uuid4()
+        return super().replace_with_delivery_receipt(
+            case_id,
+            expected_revision=expected_revision,
+            state=state,
+            inbox_event_id=inbox_event_id,
+            receipt=receipt,
+            outbox_state=outbox_state,
+        )
+
+
+def _postgres_accepted_delivery(
+    repository: PostgresCaseRepository,
+) -> tuple[ThinAgentRuntime, UUID, int]:
+    """An in-progress Case whose one outbound reply the adapter accepted."""
+
+    runtime = ThinAgentRuntime(repository, clock=lambda: BASE_TIME)
+    created = runtime.apply_command(_create_command())
+    event = _message_event(uuid4())
+    inbox = repository.reserve_channel_event(event, received_at=BASE_TIME)
+    applied = runtime.apply_command(
+        CaseCommand(
+            schema_version="phase-06b1-v1",
+            command_id=inbox.command_id,
+            case_id=SCRIPTED_CASE_ID,
+            command_type=CaseCommandType.INGEST_CHANNEL_EVENT,
+            occurred_at=event.occurred_at,
+            expected_revision=created.after_revision,
+            channel_kind=CHANNEL_KIND,
+            binding_ref=BINDING_REF,
+            event_id=event.event_id,
+            content_hash=hashlib.sha256(event.content.encode()).hexdigest(),
+            payload_hash=event.raw_payload_hash,
+        )
+    )
+    assert applied.delivery_id is not None
+    outbox = repository.get_outbox_record(applied.delivery_id)
+    assert outbox is not None
+    repository.record_delivery_observation(
+        applied.delivery_id,
+        idempotency_key=outbox.idempotency_key,
+        state="accepted",
+        provider_message_id="local-provider-test",
+    )
+    return runtime, applied.delivery_id, applied.after_revision
+
+
+def _postgres_delivery_callback(
+    repository: PostgresCaseRepository,
+    *,
+    delivery_id: UUID,
+    expected_revision: int,
+    delivery_status: str = "delivered",
+) -> CaseCommand:
+    event = _message_event(uuid4(), kind=LocalMailboxEventKind.DELIVERY)
+    inbox = repository.reserve_channel_event(event, received_at=BASE_TIME)
+    return CaseCommand(
+        schema_version="phase-06b1-v1",
+        command_id=inbox.command_id,
+        case_id=SCRIPTED_CASE_ID,
+        command_type=CaseCommandType.RECORD_CHANNEL_DELIVERY,
+        occurred_at=BASE_TIME,
+        expected_revision=expected_revision,
+        channel_kind=CHANNEL_KIND,
+        binding_ref=BINDING_REF,
+        event_id=event.event_id,
+        delivery_id=delivery_id,
+        provider_message_id="local-provider-test",
+        delivery_status=delivery_status,
+        artifact_hash=hashlib.sha256(b"artifact").hexdigest(),
+        payload_hash=event.raw_payload_hash,
+    )
+
+
+def _delivery_receipt_rows(database_url: str) -> int:
+    with psycopg.connect(database_url) as connection:
+        row = connection.execute(
+            "SELECT count(*) FROM proxyloop_channel_delivery_receipts"
+        ).fetchone()
+    assert row is not None
+    return int(row[0])
+
+
+def test_postgres_delivery_callback_write_is_atomic_and_retryable() -> None:
+    """C-8: a failed callback write leaves no partial Case, Outbox or receipt."""
+
+    database_url = _database_url()
+    _truncate(database_url)
+    repository = _InboxWriteFailureRepository(database_url)
+    runtime, delivery_id, revision = _postgres_accepted_delivery(repository)
+    before = PostgresCaseRepository(database_url).get(SCRIPTED_CASE_ID)
+    assert before is not None
+    assert before.snapshot.completion_decision is None
+    callback = _postgres_delivery_callback(
+        repository, delivery_id=delivery_id, expected_revision=revision
+    )
+
+    # The Case UPDATE, Outbox UPDATE and receipt INSERT run before the Inbox
+    # write fails, so only a single transaction keeps them from persisting.
+    repository.fail_inbox_write = True
+    with pytest.raises(CaseConflictError, match="inbox reservation is not pending"):
+        runtime.apply_command(callback)
+
+    fresh = PostgresCaseRepository(database_url)
+    unchanged = fresh.get(SCRIPTED_CASE_ID)
+    assert unchanged is not None
+    assert unchanged.snapshot == before.snapshot
+    assert unchanged.transitions == before.transitions
+    outbox = fresh.get_outbox_record(delivery_id)
+    assert outbox is not None
+    assert outbox.state == "accepted"
+    inbox = fresh.get_inbox_receipt(callback.event_id)
+    assert inbox is not None
+    assert inbox.processing_state == "reserved"
+    assert fresh.get_delivery_receipt(delivery_id) is None
+    assert _delivery_receipt_rows(database_url) == 0
+
+    delivered = runtime.apply_command(callback)
+
+    assert delivered.after_revision == revision + 1
+    after = PostgresCaseRepository(database_url).get(SCRIPTED_CASE_ID)
+    assert after is not None
+    assert after.snapshot.revision == revision + 1
+    added = after.snapshot.evidence[len(before.snapshot.evidence) :]
+    assert [item.source_type.value for item in added] == ["provider_event"]
+    receipt = fresh.get_delivery_receipt(delivery_id)
+    assert receipt is not None
+    assert receipt.evidence_id == added[0].evidence_id
+    assert receipt.observation_state == "delivered"
+    outbox_after = fresh.get_outbox_record(delivery_id)
+    assert outbox_after is not None
+    assert outbox_after.state == "delivered"
+    inbox_after = fresh.get_inbox_receipt(callback.event_id)
+    assert inbox_after is not None
+    assert inbox_after.processing_state == "applied"
+    assert _delivery_receipt_rows(database_url) == 1
+
+
+def test_postgres_repeated_delivery_callback_keeps_one_receipt() -> None:
+    """C-8: a repeated callback keeps one receipt; a regression writes nothing.
+
+    The repeat is not a no-op: it keeps the snapshot and the receipt but
+    records its transition, marks its Inbox applied, and rewrites the Outbox
+    with the same state.
+    """
+
+    database_url = _database_url()
+    _truncate(database_url)
+    repository = PostgresCaseRepository(database_url)
+    runtime, delivery_id, revision = _postgres_accepted_delivery(repository)
+    first = runtime.apply_command(
+        _postgres_delivery_callback(
+            repository, delivery_id=delivery_id, expected_revision=revision
+        )
+    )
+    after_first = PostgresCaseRepository(database_url).get(SCRIPTED_CASE_ID)
+    assert after_first is not None
+    receipt = repository.get_delivery_receipt(delivery_id)
+    assert receipt is not None
+
+    repeated = _postgres_delivery_callback(
+        repository, delivery_id=delivery_id, expected_revision=first.after_revision
+    )
+    duplicate = runtime.apply_command(repeated)
+
+    assert duplicate.after_revision == first.after_revision
+    after_duplicate = PostgresCaseRepository(database_url).get(SCRIPTED_CASE_ID)
+    assert after_duplicate is not None
+    assert after_duplicate.snapshot == after_first.snapshot
+    assert len(after_duplicate.transitions) == len(after_first.transitions) + 1
+    assert repository.get_delivery_receipt(delivery_id) == receipt
+    repeated_inbox = repository.get_inbox_receipt(repeated.event_id)
+    assert repeated_inbox is not None
+    assert repeated_inbox.processing_state == "applied"
+    assert _delivery_receipt_rows(database_url) == 1
+
+    bounced = _postgres_delivery_callback(
+        repository,
+        delivery_id=delivery_id,
+        expected_revision=first.after_revision,
+        delivery_status="bounced",
+    )
+    # The Runtime refuses the regression before it reaches storage ...
+    with pytest.raises(ChannelConflictError, match="regressed"):
+        runtime.apply_command(bounced)
+    # ... so drive the storage checks directly: an Outbox regression
+    # (delivered -> bounced) and a receipt that differs from the stored one.
+    for outbox_state, regressing in (
+        ("bounced", replace(receipt, observation_state="bounced")),
+        ("delivered", replace(receipt, artifact_hash="0" * 64)),
+    ):
+        with pytest.raises(CaseConflictError, match="delivery observation regressed"):
+            repository.replace_with_delivery_receipt(
+                SCRIPTED_CASE_ID,
+                expected_revision=after_duplicate.snapshot.revision,
+                state=after_duplicate,
+                inbox_event_id=bounced.event_id,
+                receipt=regressing,
+                outbox_state=outbox_state,
+            )
+
+    final = PostgresCaseRepository(database_url).get(SCRIPTED_CASE_ID)
+    assert final is not None
+    assert final.snapshot == after_first.snapshot
+    assert final.transitions == after_duplicate.transitions
+    outbox = repository.get_outbox_record(delivery_id)
+    assert outbox is not None
+    assert outbox.state == "delivered"
+    bounced_inbox = repository.get_inbox_receipt(bounced.event_id)
+    assert bounced_inbox is not None
+    assert bounced_inbox.processing_state == "reserved"
+    assert repository.get_delivery_receipt(delivery_id) == receipt
+    assert _delivery_receipt_rows(database_url) == 1

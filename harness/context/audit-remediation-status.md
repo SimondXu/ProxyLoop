@@ -40,6 +40,7 @@ recorded — the relay is exhausted), force-push, destructive operations.
 |---|---|---|---|
 | `fix/gate-honesty-r15-g1` | PR-1, R-15 + G-1 strong form | Review: Approve (`harness/code_review/fix-gate-honesty-r15-g1.md`); root decisions applied (enforcement decided by the two variables only, per-file pin); merged with `main` @ `5266b6d` (#87); per-file pin updated to 53 (`test_phase_05a_temporal_workflow.py` 22 → 24: #87 parametrized two gated expiry tests `[unchained]`/`[chained]`); merged with `main` @ `74fb993` (#88, #89): pin unchanged, `make preflight` green at 53; R-15 test 200/200 fresh-process passes (after the `c73f6a7` merge). R-15: the `<= 20` bound was wrong (true invariant 10 ≤ calls ≤ 21; 21 is reachable with one worker) — barrier-based deterministic test, 200/200 passes. G-1: `scripts/check_gated_skips.py` pins 51 gated skips and names the real-dependency gates at the end of `make preflight` | #90 open; CI; root final integration review; merge |
 | `fix/r12-model-trace-log` | PR-7, R-12 + R-13b | Implemented per the frozen spec `harness/context/r12-model-trace-log-design.md` (append-only model-trace log, `storage_version` 3, bootstrap backfill of version 2 rows under an advisory lock, `_advance` as the single coordinator call with a source guard); red evidence in `harness/log/fix-r12-model-trace-log.md`; merged with `main` @ `74fb993` (PR-4); `make test`, `make preflight` green; gates green on the merge: `postgres-check` 35, `phase05a-check` 53, `phase06b1-check` 35 | PR; CI; merge. Independent review: Approve (M1–M6 applied, M7 deferred to PR-8; `harness/code_review/fix-r12-model-trace-log.md`). It adds 6 DB-gated test items: merged with `main` @ `f4a2487` (PR-1), the per-file pin is updated to 59 (`test_phase_04c_persistent_case_store.py` 23 → 29) and `make preflight` is green |
+| `fix/pr5-ops-tests` | PR-5, C-5 + C-7 + C-8 (R-6 deferred) | Review: Approve, conditional on the DB gates; Minors 1-6 applied (`harness/code_review/fix-pr5-ops-tests.md`); merged with `main` @ `df733f7` (#91, #92). C-5 a refused `make portfolio-demo` keeps a crashed supervisor's `pids.json` (red/green, real second-start path with a stale lock); C-7 the 04C round-trip helper compares every non-Provider field of `CaseRuntimeState` (red/green) plus a DB-free codec round-trip test; C-8 two real-PostgreSQL delivery-callback tests on an in-progress Case: rollback + retry, and a repeated callback (keeps one receipt; records a transition, marks its Inbox applied, rewrites the Outbox) plus direct storage-level regression calls. Gated-skip pin: `test_phase_06b1_channel_runtime.py` +2 (4 with #92's re-drive test; total 63). R-6 needs `runtime.py` + `postgres_repository.py` (PR-7): seam and test plan in the log. On `df733f7`: `make test`, `preflight` green (63 gated skips); on `1573a42`: `postgres-check` 38, `phase05a-check` 53, `phase06b1-check` 37 passed (not rerun after #92: it touched only `app.py`, activities and tests the C-8 tests do not use) | PR #93; CI; merge. R-6 follow-up after PR-7: option (b), the TTL stored in the Provider config as an optional field defaulting to today's 1 h. Log `fix-pr5-ops-tests.md` |
 
 R-19 (`SafeObservationAdapter` raises on negative-fee / duplicate-feature
 offers; used by `ml/` and two scripts) is assigned to PR-9, whose parity
@@ -193,7 +194,7 @@ separate decisions.
 
 Open: A-7f,
 G-1 follow-up (the real-dependency gates do not themselves require 0
-gated skips; review Minor 5 of `fix-gate-honesty-r15-g1`), C-5, C-7, C-8, D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
+gated skips; review Minor 5 of `fix-gate-honesty-r15-g1`), C-5, C-7, C-8 (in flight, PR-5, §0), D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
 deletion only), D3-8, D3-9.
 
 ## 4a. Found during the P1 and P2 runs (R-1 … R-19)
@@ -228,7 +229,7 @@ the window and exceeds the 30 s Next proxy timeout.
 Other items (Minor unless marked):
 - R-4 the ML compiler resolves capabilities by exact id (frozen via r4; consistent today).
 - R-5 the channel route reads `expected_revision` outside the lock (redelivery recovers since #62). **Implemented on `fix/r17-r5-channel-redrive` (PR-3), gates green, review findings applied**: on `channel_conflict` the route re-reads and re-sends once with the advanced revision, only when the event still has no receipt and the revision moved; a delivery conflict after the ingest committed stays a 409 after one dispatch (spec `fix-r17-r5-channel-redrive-preflight.md`, log `fix-r17-r5-channel-redrive.md`).
-- R-6 persisted Cases keep their 1-day manifest; a runtime > 24 h test needs an injectable offer TTL.
+- R-6 persisted Cases keep their 1-day manifest; a runtime > 24 h test needs an injectable offer TTL. Deferred from PR-5 until PR-7 merges: the seam needs `runtime.py` (`create_case` builds the Provider) and `postgres_repository.py` (`_reconstruct_provider` regenerates the offer with the default TTL); proposed seam, storage options, and test plan in `harness/log/fix-pr5-ops-tests.md`. Root decision: option (b), the TTL stored in the Provider config as an optional field defaulting to today's 1 h, in a follow-up PR after PR-7 (which merged as #91).
 - R-7 `_snapshot(manifest=None)` re-mint — **done** in #68 (manifest required).
 - R-9 shared `proxyloop_test` DB → run DB/Temporal gates serially (documented in #73); a per-run schema would remove the hazard.
 - R-11 the canonical `material_terms_hash` excludes fees and applied changes. Option (a) **done** in #83 (`CONTEXT.md` Material Terms states the implemented definition and its limits); option (b), binding fees, credits, and applied changes (R-11b), deferred to contract set 1.2.
@@ -239,7 +240,7 @@ Other items (Minor unless marked):
 - R-19 `SafeObservationAdapter._adapt_offer` (`agent_core/observation.py`) raises on a contract-valid `ProviderOffer` with a negative fee sum or a duplicate feature, via `SafeOffer.__post_init__` (the same out-of-domain inputs B1-9 made total in the policy check). Used today by the `ml/` pipeline and evaluation and the `scripts/` benchmark/harness runners, not by the product runtime. Found in the B1-9 review.
 
 Still open from the audit P2 list and not yet batched: runtime/router/api
-hygiene (A-7f, R-5) and ops/tests (C-5, C-7, C-8, R-6).
+hygiene (A-7f, R-5) and ops/tests (C-5, C-7, C-8 in flight as PR-5; R-6 deferred until after PR-7).
 The design-first items are settled: B1-9 is closed above, and A-3, A-5, A-9
 are recorded as limits above. **Do not do**: D3-5/D3-6 (`qwen_mlx.py`
 frozen by r4); D1-10/11/12 (V1 simulator frozen, superseded by V2); D2-9 and
