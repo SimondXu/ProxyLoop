@@ -18,6 +18,7 @@ from proxyloop_api import (
     create_app,
 )
 from proxyloop_api.operations import CORRELATION_ID_HEADER
+from test_phase_05a_temporal_api import FailingTemporalCaseClient, _client_for
 
 BASE_TIME = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
 CREATE_CASE_REQUEST = {
@@ -79,7 +80,7 @@ async def _test_conflict_and_not_found_details_are_category_only() -> None:
             json={"decision": "approved"},
         )
         assert missing_approval.status_code == 404
-        assert missing_approval.json() == {"detail": "case not found"}
+        assert missing_approval.json() == {"detail": "not_found"}
 
 
 def test_internal_conflict_text_is_logged_not_returned(
@@ -161,3 +162,16 @@ def test_repeat_decision_on_rejected_approval_reads_no_clock() -> None:
     with pytest.raises(CaseConflictError, match="approval is already terminal"):
         runtime.approve(case_id, waiting.approval.approval_id, decision="rejected")
     assert clock.reads == reads_before
+
+
+def test_temporal_not_found_detail_is_the_category_code() -> None:
+    runtime = ThinAgentRuntime()
+    temporal = FailingTemporalCaseClient(runtime, "case_not_found")
+
+    async def request() -> httpx.Response:
+        async with _client_for(runtime, temporal) as client:
+            return await client.post("/cases", json=CREATE_CASE_REQUEST)
+
+    response = asyncio.run(request())
+    assert response.status_code == 404
+    assert response.json() == {"detail": "not_found"}

@@ -227,8 +227,8 @@ def create_app(
     ) -> JSONResponse:
         request.state.operation_error_category = "case_not_found"
         _log_refusal(request, "case_not_found", exc)
-        # The same content-free detail the Temporal branch returns.
-        return JSONResponse(status_code=404, content={"detail": "case not found"})
+        # One content-free code for every 404: the Case or an approval.
+        return JSONResponse(status_code=404, content={"detail": "not_found"})
 
     @api.exception_handler(CaseConflictError)
     async def handle_conflict(request: Request, exc: CaseConflictError) -> JSONResponse:
@@ -341,7 +341,7 @@ def create_app(
         category = exc.category
         request.state.operation_error_category = category
         if category == "case_not_found":
-            return JSONResponse(status_code=404, content={"detail": "case not found"})
+            return JSONResponse(status_code=404, content={"detail": "not_found"})
         if category in {"case_conflict", "approval_expired"}:
             return JSONResponse(status_code=409, content={"detail": category})
         if category in {

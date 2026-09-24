@@ -155,7 +155,7 @@ async def _test_api_missing_case_and_stale_revision() -> None:
     ) as client:
         missing = await client.get(f"/cases/{uuid4()}")
         assert missing.status_code == 404
-        assert missing.json() == {"detail": "case not found"}
+        assert missing.json() == {"detail": "not_found"}
 
         created = (await client.post("/cases", json=CREATE_CASE_REQUEST)).json()
         stale = await client.post(

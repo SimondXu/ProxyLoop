@@ -44,8 +44,10 @@ does not, see R-2).
 
 ## Frozen design
 
-1. **R-2.** The two handlers return the same string-shaped detail the
-   Temporal branch already returns: 404 → `{"detail": "case not found"}`;
+1. **R-2.** The two handlers return a string-shaped detail like the
+   Temporal branch: 404 → `{"detail": "not_found"}` (root decision: one
+   snake_case code for every 404, including the Temporal branch, since
+   "case not found" is wrong for an unknown approval id);
    409 → `{"detail": <category>}` where category is the unchanged
    `_conflict_category(exc)` (`stale_cas` or `case_conflict`). Status codes
    and operation-record categories are unchanged. The exception text is
