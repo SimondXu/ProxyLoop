@@ -25,9 +25,12 @@ from proxyloop_agent_core import (
     RouteRequest,
     ScriptedDialogueFastAdapter,
     ScriptedFastAdapter,
+    ScriptedProposingSlowAdapter,
     ScriptedSlowAdapter,
     SlowAdapter,
     fast_disclosure_violations,
+    slow_proposal_violations,
+    standing_proposal_offer,
 )
 from proxyloop_connectors import BINDING_REF, CHANNEL_KIND
 from proxyloop_contracts import (
@@ -60,6 +63,7 @@ from proxyloop_contracts import (
     ProviderOffer,
     RoutingDecision,
     RoutingOutcome,
+    SlowWorkResult,
     StrategyPacket,
     VisibleCaseEvent,
     planning_basis_components,
@@ -229,7 +233,7 @@ class ThinAgentRuntime:
             repository if repository is not None else InMemoryCaseRepository()
         )
         self._clock = clock or (lambda: datetime.now(UTC))
-        self._slow = slow if slow is not None else ScriptedSlowAdapter()
+        self._slow = slow if slow is not None else ScriptedProposingSlowAdapter()
         self._fast = fast if fast is not None else ScriptedDialogueFastAdapter()
         self._lanes_lock = RLock()
         self._lanes: dict[UUID, RLock] = {}
@@ -460,8 +464,13 @@ class ThinAgentRuntime:
                 phase=snapshot.case.phase,
                 manifest=snapshot.capability_manifest,
             )
-            next_snapshot = self._refresh_strategy_if_required(
+            next_snapshot, refreshed = self._refresh_strategy_if_required(
                 next_snapshot, event, event_time
+            )
+            standing = (
+                _standing_proposal(refreshed, next_snapshot)
+                if refreshed is not None
+                else state.standing_proposal
             )
             outcome = self._advance(
                 RouteRequest(
@@ -521,6 +530,7 @@ class ThinAgentRuntime:
                 execution_proposal=state.execution_proposal,
                 transitions=(*state.transitions, transition),
                 last_fast_decision=outcome.fast_decision,
+                standing_proposal=standing,
             )
             repository.replace_with_channel_outbox(
                 command.case_id,
@@ -604,6 +614,7 @@ class ThinAgentRuntime:
                     transitions=(*state.transitions, transition),
                     last_fast_decision=state.last_fast_decision,
                     execution_claim=state.execution_claim,
+                    standing_proposal=state.standing_proposal,
                 )
                 repository.replace_with_delivery_receipt(
                     command.case_id,
@@ -701,6 +712,7 @@ class ThinAgentRuntime:
                 execution_proposal=state.execution_proposal,
                 transitions=(*state.transitions, transition),
                 last_fast_decision=state.last_fast_decision,
+                standing_proposal=state.standing_proposal,
             )
             repository.replace_with_delivery_receipt(
                 command.case_id,
@@ -830,6 +842,9 @@ class ThinAgentRuntime:
                 events=(provider_event,),
                 provider=state.provider,
                 transitions=transitions,
+                standing_proposal=_standing_proposal(
+                    outcome.slow_result, strategy_snapshot
+                ),
             )
         )
         return RuntimeResult(
@@ -918,8 +933,13 @@ class ThinAgentRuntime:
             phase=snapshot.case.phase,
             manifest=snapshot.capability_manifest,
         )
-        event_snapshot = self._refresh_strategy_if_required(
+        event_snapshot, refreshed = self._refresh_strategy_if_required(
             event_snapshot, event, occurred_at
+        )
+        standing = (
+            _standing_proposal(refreshed, event_snapshot)
+            if refreshed is not None
+            else state.standing_proposal
         )
         outcome = self._advance(
             RouteRequest(
@@ -943,18 +963,26 @@ class ThinAgentRuntime:
             raise ModelRuntimeError("fast")
         policy_snapshot = event_snapshot
         approval: ApprovalRequest | None = None
-        if event_snapshot.offers and not offer_compliance_violations_for_case(
+        # Slow proposes; the intent is compiled only from an admissible
+        # standing proposal whose offer deterministic policy finds compliant.
+        # Otherwise the command applies and the dialogue continues.
+        offer = standing_proposal_offer(
+            standing, event_snapshot, evaluated_at=occurred_at
+        )
+        if offer is not None and not offer_compliance_violations_for_case(
             event_snapshot.case,
-            event_snapshot.offers[0],
+            offer,
             evaluated_at=occurred_at,
         ):
             intent, approval = _build_approval(
                 event_snapshot.case,
                 event_snapshot.strategy,
-                event_snapshot.offers[0],
+                offer,
                 requested_at=occurred_at,
                 manifest=event_snapshot.capability_manifest,
             )
+            # The approval consumes the proposal in the same write.
+            standing = None
             policy_snapshot = _snapshot(
                 case=event_snapshot.case,
                 ledger=event_snapshot.fact_ledger,
@@ -1024,6 +1052,7 @@ class ThinAgentRuntime:
             execution_source_pins=state.execution_source_pins,
             transitions=transitions,
             last_fast_decision=outcome.fast_decision,
+            standing_proposal=standing,
         )
         if approval is not None:
             # Persist the pending approval before changing Provider state.  A
@@ -1620,12 +1649,14 @@ class ThinAgentRuntime:
         event_snapshot: CaseContextSnapshot,
         event: VisibleCaseEvent,
         occurred_at: datetime,
-    ) -> CaseContextSnapshot:
+    ) -> tuple[CaseContextSnapshot, SlowWorkResult | None]:
         """Install a Slow-refreshed strategy when the Router demands one.
 
         The strategy lifetime is a refresh trigger, not a session bound: an
         event after expiry routes to Slow, and the caller's Fast step then runs
-        on the refreshed snapshot. Any other route returns the snapshot as is.
+        on the refreshed snapshot. Any other route returns the snapshot as is
+        and no result; a refresh also returns the admitted Slow result, whose
+        proposal replaces the standing proposal.
         """
 
         outcome = self._advance(
@@ -1640,7 +1671,7 @@ class ThinAgentRuntime:
         # FAST_NOW_AND_SLOW_REFRESH is unreachable here; a caller that sets it
         # must pass ``fast`` too.
         if outcome.route.outcome is not RoutingOutcome.SLOW_REFRESH:
-            return event_snapshot
+            return event_snapshot, None
         installed = event_snapshot.strategy
         strategy = (
             outcome.slow_result.strategy_proposal
@@ -1673,7 +1704,7 @@ class ThinAgentRuntime:
             pending_execution=event_snapshot.pending_execution,
             receipt=event_snapshot.completion_receipt,
         )
-        return refreshed
+        return refreshed, outcome.slow_result
 
     def _advance(
         self,
@@ -1705,11 +1736,14 @@ class ThinAgentRuntime:
         # move the operation times an injected clock defines.
         # Only the Runtime gates Fast text for display and captures a typed
         # Fast failure as a FAILED trace plus the fallback; ML callers do not.
+        # It also admits a Slow result only if its proposals pass the A-3
+        # check (PR-13); the ML callers' coordinator does not run it.
         return CaseCoordinator(
             snapshot=snapshot,
             monotonic=time.perf_counter,
             fast_gate=fast_disclosure_violations,
             capture_fast_failures=True,
+            slow_proposal_check=slow_proposal_violations,
         )
 
     def now(self) -> datetime:
@@ -1832,6 +1866,21 @@ def _offer_for_approval(
         if offer.offer_id == approval.offer_ref.offer_id
         and offer.revision == approval.offer_ref.offer_revision
     )
+
+
+def _standing_proposal(
+    result: SlowWorkResult, snapshot: CaseContextSnapshot
+) -> CapabilityProposal | None:
+    """The standing proposal an admitted Slow result installs.
+
+    Each admitted result replaces it, with None when the result proposes
+    nothing. A Case that holds an approval, of any decision, never holds one:
+    an approval consumes it and no consumer event is accepted after one.
+    """
+
+    if snapshot.approval_requests or not result.capability_proposals:
+        return None
+    return result.capability_proposals[0]
 
 
 def _capability_proposal(

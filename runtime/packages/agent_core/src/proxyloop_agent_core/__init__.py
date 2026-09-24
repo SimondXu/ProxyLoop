@@ -55,6 +55,12 @@ from .observation import (
     ScriptedOracleConsumer,
     classify_provider_offer,
 )
+from .proposal_admission import (
+    SLOW_PROPOSAL_CHECK_VERSION,
+    SlowProposalCheck,
+    slow_proposal_violations,
+    standing_proposal_offer,
+)
 from .router import (
     ALLOWED_FAST_REASONER_REASONS,
     ROUTER_PRECEDENCE,
@@ -67,6 +73,7 @@ from .scripted import (
     SCRIPTED_PENDING_SLOW_LINE,
     ScriptedDialogueFastAdapter,
     ScriptedFastAdapter,
+    ScriptedProposingSlowAdapter,
     ScriptedSlowAdapter,
 )
 
@@ -84,6 +91,7 @@ __all__ = [
     "ROUTER_PRECEDENCE",
     "SCRIPTED_DIALOGUE_LINES",
     "SCRIPTED_PENDING_SLOW_LINE",
+    "SLOW_PROPOSAL_CHECK_VERSION",
     "CapabilityExecutionOutcome",
     "CapabilityExecutionRequest",
     "CapabilityExecutionStatus",
@@ -114,9 +122,11 @@ __all__ = [
     "ScriptedDialogueFastAdapter",
     "ScriptedFastAdapter",
     "ScriptedOracleConsumer",
+    "ScriptedProposingSlowAdapter",
     "ScriptedSlowAdapter",
     "SimulatorCapabilityAdapter",
     "SlowAdapter",
+    "SlowProposalCheck",
     "SnapshotCommit",
     "UsageReportingFastAdapter",
     "UsageReportingSlowAdapter",
@@ -124,4 +134,6 @@ __all__ = [
     "classify_provider_offer",
     "fast_disclosure_violations",
     "fast_public_observation",
+    "slow_proposal_violations",
+    "standing_proposal_offer",
 ]

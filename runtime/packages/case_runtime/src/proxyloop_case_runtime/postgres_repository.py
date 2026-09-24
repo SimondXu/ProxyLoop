@@ -17,6 +17,7 @@ from proxyloop_connectors import (
 )
 from proxyloop_contracts import (
     ActionIntent,
+    ActionType,
     ApprovalDecision,
     ApprovalRequest,
     CapabilityArgument,
@@ -65,7 +66,10 @@ from .repository import (
 # Version 3 carries the canonical ExecutionClaim and no model traces: those live
 # in the append-only trace log table. Version 1 rows are still read and
 # upgraded, and every write is version 3. Version 2 rows (traces inline) are
-# moved to the log at bootstrap and are otherwise rejected.
+# moved to the log at bootstrap and are otherwise rejected. PR-13 added the
+# optional ``standing_proposal`` to version 3 without a bump: a row written
+# before it has no key and reads as None. A process from before PR-13 cannot
+# read a row that carries the key (mixed versions are unsupported).
 _STORAGE_VERSION: Literal[3] = 3
 _INLINE_TRACES_STORAGE_VERSION: Literal[2] = 2
 _LEGACY_STORAGE_VERSION: Literal[1] = 1
@@ -107,6 +111,7 @@ class _CaseStorageEnvelope(BaseModel):
     transitions: tuple[CaseTransitionRef, ...] = ()
     last_fast_decision: FastTurnDecision | None = None
     execution_claim: ExecutionClaim | None = None
+    standing_proposal: CapabilityProposal | None = None
 
     @model_validator(mode="after")
     def state_history_matches_snapshot(self) -> _CaseStorageEnvelope:
@@ -1091,11 +1096,19 @@ class PostgresCaseRepository:
                 transitions=state.transitions,
                 last_fast_decision=state.last_fast_decision,
                 execution_claim=state.execution_claim,
+                standing_proposal=state.standing_proposal,
             )
             _verify_provider_state(state, envelope)
         except (ValidationError, ValueError, RuntimeError):
             raise RuntimeError("Case state failed storage validation") from None
-        return envelope.model_dump(mode="json")
+        # Without a standing proposal the key is omitted, so the row is the
+        # same document a pre-PR-13 writer produced.
+        return envelope.model_dump(
+            mode="json",
+            exclude=(
+                {"standing_proposal"} if envelope.standing_proposal is None else None
+            ),
+        )
 
     @staticmethod
     def _decode_state(
@@ -1134,6 +1147,7 @@ class PostgresCaseRepository:
             transitions=envelope.transitions,
             last_fast_decision=envelope.last_fast_decision,
             execution_claim=envelope.execution_claim,
+            standing_proposal=envelope.standing_proposal,
         )
 
 
@@ -1307,6 +1321,7 @@ def _reconstruct_provider(envelope: _CaseStorageEnvelope) -> FictionalMobileProv
     matching_offer_evidence = _evidence_by_id(snapshot.evidence, offer.evidence_ids)
     if matching_offer_evidence != generated_offer_evidence:
         raise ValueError("stored offer Evidence does not match the Provider")
+    _verify_standing_proposal(envelope, snapshot)
 
     intents = snapshot.action_intents
     approvals = snapshot.approval_requests
@@ -1484,6 +1499,43 @@ def _verify_delivery_callback_pairs(
         )
     ):
         raise ValueError("terminal Case callback events do not match their Evidence")
+
+
+def _verify_standing_proposal(
+    envelope: _CaseStorageEnvelope, snapshot: CaseContextSnapshot
+) -> None:
+    """The standing proposal's structure; its expiry is checked at use.
+
+    None while any approval exists; otherwise it names the manifest's
+    accept-offer capability and exactly one ``offer_id``, the stored offer's.
+    A model-authored proposal cannot be replayed, so only this is checked.
+    """
+
+    proposal = envelope.standing_proposal
+    if proposal is None:
+        return
+    if snapshot.approval_requests:
+        raise ValueError("stored standing proposal outlives an approval")
+    definition = next(
+        (
+            item
+            for item in snapshot.capability_manifest.capabilities
+            if item.capability_id == proposal.capability.capability_id
+            and item.version == proposal.capability.version
+        ),
+        None,
+    )
+    if definition is None or definition.allowed_action_types != (
+        ActionType.ACCEPT_OFFER,
+    ):
+        raise ValueError("stored standing proposal names an unsupported capability")
+    offer_ids = tuple(
+        str(argument.value)
+        for argument in proposal.arguments
+        if argument.name == "offer_id"
+    )
+    if offer_ids != (str(snapshot.offers[0].offer_id),):
+        raise ValueError("stored standing proposal names another offer")
 
 
 def _verify_no_execution_fields(envelope: _CaseStorageEnvelope) -> None:

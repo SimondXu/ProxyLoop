@@ -37,6 +37,7 @@ from proxyloop_contracts.contracts import (
     ReasonerRequest,
 )
 from proxyloop_openai_adapter import (
+    AcceptOfferCapabilityModelOutput,
     FastModelOutput,
     OpenAICompatibleAdapter,
     SlowModelOutput,
@@ -124,6 +125,16 @@ def _slow_output() -> SlowModelOutput:
             escalation_conditions=("Material terms change.",),
             replan_conditions=("Planning basis changes.",),
         )
+    )
+
+
+def _slow_output_proposing_accept() -> SlowModelOutput:
+    return _slow_output().model_copy(
+        update={
+            "next_capability": AcceptOfferCapabilityModelOutput(
+                capability="accept_offer", offer_position=0
+            )
+        }
     )
 
 
@@ -321,8 +332,9 @@ def test_postgres_explicit_model_to_scripted_switch_continues_case(
     repository: PostgresCaseRepository,
 ) -> None:
     database_url = os.environ["PROXYLOOP_TEST_DATABASE_URL"]
+    # PR-13: the model Slow proposes the accept, so the event opens approval.
     fake_transport = _FakeCompletions(
-        [_Response(_slow_output()), _Response(_fast_output())]
+        [_Response(_slow_output_proposing_accept()), _Response(_fast_output())]
     )
     fake_adapter = OpenAICompatibleAdapter(
         model="runtime-model",
@@ -337,6 +349,11 @@ def test_postgres_explicit_model_to_scripted_switch_continues_case(
         slow=fake_adapter,
     )
     created = model_runtime.create_case()
+    # The model-authored standing proposal (5-minute expiry) survives the row.
+    stored = PostgresCaseRepository(database_url).get(CASE_ID)
+    assert stored is not None
+    assert stored.standing_proposal is not None
+    assert stored.standing_proposal.expires_at == BASE_TIME + timedelta(minutes=5)
     waiting = model_runtime.append_event(CASE_ID, content="Review the offer.")
     assert created.snapshot.case.case_id == CASE_ID
     assert waiting.approval is not None

@@ -44,7 +44,12 @@ from proxyloop_openai_adapter import (
     compile_slow_output,
 )
 from test_phase_06b1_channel_runtime import BASE_TIME, _ChannelRepository
-from test_slow_refresh_strategy_expiry import _channel_command, _Clock, _CountingSlow
+from test_slow_refresh_strategy_expiry import (
+    _channel_command,
+    _Clock,
+    _CountingProposingSlow,
+    _CountingSlow,
+)
 
 T0 = BASE_TIME
 _BASIS_COMPONENTS = (
@@ -279,7 +284,7 @@ def test_the_coordinator_rejects_a_strategy_bound_to_another_basis() -> None:
 
 
 def test_an_expired_approval_is_not_material_and_makes_no_slow_call() -> None:
-    slow = _CountingSlow()
+    slow = _CountingProposingSlow()
     repository = _ChannelRepository()
     runtime, _, _ = _created(slow, repository)
     # Refresh after the first strategy lifetime so a strategy is current when
@@ -316,7 +321,7 @@ def test_an_expired_approval_is_not_material_and_makes_no_slow_call() -> None:
 
 
 def test_an_approval_expiring_after_its_strategy_records_the_router_route() -> None:
-    slow = _CountingSlow()
+    slow = _CountingProposingSlow()
     runtime, repository, _ = _created(slow)
     pending = runtime.append_event(
         SCRIPTED_CASE_ID,
@@ -378,7 +383,7 @@ def test_a_bounded_acknowledgement_requires_a_compatible_strategy() -> None:
 
 
 def test_a_rejected_approval_routes_slow_refresh_and_refreshes_once() -> None:
-    slow = _CountingSlow()
+    slow = _CountingProposingSlow()
     repository = _ChannelRepository()
     runtime, _, _ = _created(slow, repository)
     pending = runtime.append_event(
@@ -448,7 +453,7 @@ def test_a_full_approved_flow_ends_in_a_bound_1_1_completion_receipt() -> None:
 
 
 def test_a_stored_1_0_case_refreshes_its_strategy_on_the_next_event() -> None:
-    slow = _CountingSlow()
+    slow = _CountingProposingSlow()
     runtime, repository, _ = _created(slow)
     created = _state(repository)
     legacy = _through_postgres_envelope(_as_stored_1_0(created))
