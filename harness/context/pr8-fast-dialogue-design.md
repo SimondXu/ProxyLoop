@@ -58,6 +58,46 @@ S2 has ≥ 1 `slow_then_fast`; the scripted fallback rate is 0. S1 (`demo_path`)
 also carries one repeated `create_case` (the M7 note), counted as an unapplied
 attempt; it adds no turn.
 
+Amendment, 2026-09-24 (root, from the PR-8a review, `harness/code_review/feat-pr8a-fast-dialogue.md`).
+The gate is not merged yet, so it stays `fast-gate-v1`.
+
+- §2.2, B1: new code `fast_gate_non_ascii_text`. Any non-ASCII character in
+  Unicode category C* (format, control, private use, surrogate, unassigned),
+  L* (letters), or M* (combining marks) is refused on the raw text: invisible
+  characters and lookalike letters otherwise split or disguise the words the
+  phrase rules look for. (The root named Cf, Co, Cs and L*; the implementation
+  also refuses non-ASCII Cc, Cn and M*, which split words the same way.)
+  Non-ASCII punctuation and symbols (an em dash, curly quotes) are allowed.
+- §2.2, I1: `fast_gate_completion` adds {is, are, was, has been, have been}
+  [now|just|already] + the existing list, and a bare consequential participle
+  {accepted, approved, signed, agreed, confirmed, finalized/finalised, locked
+  [it|this|that] in} with or without an auxiliary. `fast_gate_commitment` is
+  first person + optional contraction ('ll, 've, 'd, 'm, 're) + optional
+  auxiliary (will, have, am, are) + optional adverb {now, just, already} +
+  {accept(ed), agree(d), approve(d), sign(ed), commit(ted), confirm(ed),
+  switch(ed), cancel(l)ed, upgrade(d), downgrade(d), purchase(d), pay, paid,
+  order(ed), lock(ed) [it|this|that] in}. Refusals such as "I can't accept
+  that", "I won't accept that", "I will not accept that", "I cannot sign that"
+  and "We don't agree to that" pass; the passive "That can't be accepted" is
+  refused by the bare-participle rule (a safe false positive).
+- §2.2, M1: `fast_gate_number_not_allowed` also covers `%` anywhere, "percent",
+  "per cent", "pct", and a signed amount ("-$72", "-72") whose sign does not
+  join two words.
+- §2.2, M2: `fast_gate_identifier_or_link` also covers any `scheme://` and a
+  scheme-less domain (a word, a dot, two or more letters); "e.g." and "i.e."
+  pass.
+- §5.1, M4: "the last in log order is the delivered attempt" holds within one
+  process, where the Case lane and the API's direct lock serialize a Case's
+  commands; across processes log order is not guaranteed, and a concurrent
+  losing attempt at the same cursor can be mistaken for the delivered one (R6).
+- §5.2, M3: `fast_fallback_rate` is renamed `gate_fallback_rate` = applied
+  Fast turns whose line was the gate fallback / applied Fast turns.
+  `fallback_cause_counts`, `calls_by_role_and_result`, and
+  `fast_reject_reason_histogram` count applied turns and calls only; unapplied
+  attempts are reported apart (`unapplied_model_calls`,
+  `unapplied_calls_by_role_and_result`,
+  `unapplied_fast_reject_reason_histogram`).
+
 Split: 8a (runtime + gate + report) starts after PR-7 merges; 8b (Web) is
 written now against the frozen event shape and merges after 8a, before PR-10
 and PR-12 touch `conversation-workspace.tsx`.

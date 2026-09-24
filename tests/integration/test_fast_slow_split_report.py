@@ -98,8 +98,10 @@ def test_s1_a_repeated_create_case_is_an_unapplied_attempt() -> None:
         "delivered": "none",
         "fast_reject_codes": [],
     }
-    assert split["aggregates"]["unapplied_model_calls"] == 1
-    assert split["aggregates"]["calls_by_role_and_result"]["slow"]["succeeded"] == 2
+    aggregates = split["aggregates"]
+    assert aggregates["unapplied_model_calls"] == 1
+    assert aggregates["calls_by_role_and_result"]["slow"]["succeeded"] == 1
+    assert aggregates["unapplied_calls_by_role_and_result"]["slow"]["succeeded"] == 1
 
 
 def test_s1_the_last_fast_trace_at_a_cursor_is_the_delivered_attempt() -> None:
@@ -123,12 +125,16 @@ def test_s1_the_last_fast_trace_at_a_cursor_is_the_delivered_attempt() -> None:
         "succeeded",
         "model",
     )
-    assert split["aggregates"]["unapplied_model_calls"] == 1
-    assert split["aggregates"]["fast_reject_reason_histogram"] == {
+    aggregates = split["aggregates"]
+    assert aggregates["unapplied_model_calls"] == 1
+    # The failed attempt is reported apart from the applied calls.
+    assert aggregates["fast_reject_reason_histogram"] == {}
+    assert aggregates["unapplied_fast_reject_reason_histogram"] == {
         "stale_fast_result": 1
     }
+    assert aggregates["unapplied_calls_by_role_and_result"]["fast"]["rejected"] == 1
     # A validation reject is not a fallback.
-    assert split["aggregates"]["fast_fallback_rate"] == 0.0
+    assert aggregates["gate_fallback_rate"] == 0.0
 
 
 def test_s1_a_retried_refresh_keeps_only_the_delivered_slow_call() -> None:
@@ -186,7 +192,8 @@ def test_s1_a_fallback_turn_records_its_cause_and_no_text(
         "gate": int(cause == "gate"),
         "failure": int(cause == "failure"),
     }
-    assert aggregates["fast_fallback_rate"] == (1.0 if cause == "gate" else 0.0)
+    assert aggregates["gate_fallback_rate"] == (1.0 if cause == "gate" else 0.0)
+    assert aggregates["fast_reject_reason_histogram"] == dict.fromkeys(codes, 1)
     assert aggregates["fast_model_line_rate"] == 0.0
 
 
@@ -305,7 +312,7 @@ def test_s3_the_report_meets_the_acceptance_values() -> None:
     assert demo["unapplied_model_calls"] == 1
     assert dialogue["turns_by_class"]["slow_then_fast"] >= 1
     for aggregates in (demo, dialogue):
-        assert aggregates["fast_fallback_rate"] == 0.0
+        assert aggregates["gate_fallback_rate"] == 0.0
         assert aggregates["fallback_cause_counts"] == {"gate": 0, "failure": 0}
     for scenario in report["scenarios"].values():
         for turn in scenario["turns"]:

@@ -7,8 +7,11 @@ an event of any other type is refused, so a new type cannot fall through.
 
 Traces join a turn by ``input_pins.event_cursor``: a Slow refresh and the Fast
 call after it run on snapshots with the trigger's cursor. The log has no
-command id, so attempts that share a cursor are resolved by log order, which
-is call order:
+command id, so attempts that share a cursor are resolved by log order. Log
+order is call order within one process (the Case lane and the API's direct
+lock serialize a Case's commands); across processes it is not guaranteed, so a
+concurrent losing attempt at the same cursor can be mistaken for the delivered
+one (spec risk R6; an exact join needs a command id on the trace):
 
 - a trace at a cursor that is no applied trigger is an unapplied attempt;
 - the turn's Fast call is the last Fast trace at its cursor (the delivered
@@ -18,9 +21,10 @@ is call order:
   call at that cursor before it conflicts;
 - every other trace at an applied cursor is an unapplied attempt.
 
-The split describes routing structure only. A refresh turn runs Slow before
-Fast, sequentially; nothing here measures latency or model quality, and no
-model text is read or emitted.
+Aggregates count applied calls only; unapplied attempts are reported
+separately (``unapplied_*``). The split describes routing structure only. A
+refresh turn runs Slow before Fast, sequentially; nothing here measures
+latency or model quality, and no model text is read or emitted.
 """
 
 from __future__ import annotations
@@ -79,7 +83,11 @@ def fast_slow_split(
         )
     return {
         "turns": turns,
-        "aggregates": _aggregates(turns, traces, len(traces) - len(applied)),
+        "aggregates": _aggregates(
+            turns,
+            [trace for index, trace in enumerate(traces) if index in applied],
+            [trace for index, trace in enumerate(traces) if index not in applied],
+        ),
     }
 
 
@@ -146,8 +154,7 @@ def _fallback_cause(fast: ModelTrace | None) -> str | None:
 def _is_gate_reject(trace: ModelTrace) -> bool:
     codes = trace.reason_codes or ()
     return (
-        trace.role == "fast"
-        and trace.result is ModelResult.REJECTED
+        trace.result is ModelResult.REJECTED
         and bool(codes)
         and all(code.startswith(_GATE_CODE_PREFIX) for code in codes)
     )
@@ -165,20 +172,16 @@ def _turn_class(slow_calls: int, fast_calls: int) -> TurnClass:
 
 def _aggregates(
     turns: list[dict[str, object]],
-    traces: tuple[ModelTrace, ...],
-    unapplied: int,
+    applied: list[ModelTrace],
+    unapplied: list[ModelTrace],
 ) -> dict[str, object]:
+    """Turn aggregates count applied calls only; unapplied attempts are apart."""
+
     count = len(turns)
     by_class = {
         name: sum(turn["class"] == name for turn in turns) for name in TURN_CLASSES
     }
     dialogue = [turn for turn in turns if turn["fast_calls"]]
-    fast_traces = [trace for trace in traces if trace.role == "fast"]
-    histogram: dict[str, int] = {}
-    for trace in fast_traces:
-        if trace.result is ModelResult.REJECTED:
-            for code in trace.reason_codes or ():
-                histogram[code] = histogram.get(code, 0) + 1
     return {
         "turns": count,
         "turns_by_class": by_class,
@@ -190,25 +193,43 @@ def _aggregates(
         "fast_model_line_rate": _share(
             sum(turn["delivered"] == "model" for turn in dialogue), len(dialogue)
         ),
-        "fast_fallback_rate": _share(
-            sum(_is_gate_reject(trace) for trace in fast_traces), len(fast_traces)
+        # Applied Fast turns whose line was the fallback because of the gate.
+        "gate_fallback_rate": _share(
+            sum(turn["fallback_cause"] == "gate" for turn in dialogue), len(dialogue)
         ),
         "fallback_cause_counts": {
             cause: sum(turn["fallback_cause"] == cause for turn in turns)
             for cause in FALLBACK_CAUSES
         },
-        "calls_by_role_and_result": {
-            role: {
-                result.value: sum(
-                    trace.role == role and trace.result is result for trace in traces
-                )
-                for result in ModelResult
-            }
-            for role in ("fast", "slow")
-        },
-        "fast_reject_reason_histogram": dict(sorted(histogram.items())),
-        "unapplied_model_calls": unapplied,
+        "calls_by_role_and_result": _calls_by_role_and_result(applied),
+        "fast_reject_reason_histogram": _fast_reject_histogram(applied),
+        "unapplied_model_calls": len(unapplied),
+        "unapplied_calls_by_role_and_result": _calls_by_role_and_result(unapplied),
+        "unapplied_fast_reject_reason_histogram": _fast_reject_histogram(unapplied),
     }
+
+
+def _calls_by_role_and_result(
+    traces: list[ModelTrace],
+) -> dict[str, dict[str, int]]:
+    return {
+        role: {
+            result.value: sum(
+                trace.role == role and trace.result is result for trace in traces
+            )
+            for result in ModelResult
+        }
+        for role in ("fast", "slow")
+    }
+
+
+def _fast_reject_histogram(traces: list[ModelTrace]) -> dict[str, int]:
+    histogram: dict[str, int] = {}
+    for trace in traces:
+        if trace.role == "fast" and trace.result is ModelResult.REJECTED:
+            for code in trace.reason_codes or ():
+                histogram[code] = histogram.get(code, 0) + 1
+    return dict(sorted(histogram.items()))
 
 
 def _share(part: int, whole: int) -> float:

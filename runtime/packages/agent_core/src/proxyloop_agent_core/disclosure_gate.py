@@ -6,6 +6,11 @@ not semantic safety: it treats every line as if the Provider could read it and
 refuses anything that could state an undisclosed number, a commitment, a
 completion, an authority claim, an identifier, or a consequential act.
 
+Text outside plain ASCII letters is refused (``fast_gate_non_ascii_text``):
+an invisible format character or a lookalike letter would otherwise split or
+disguise a word the phrase rules look for. Non-ASCII punctuation and symbols
+(an em dash, a curly quote) are allowed.
+
 Known v1 limits (it does not check): paraphrased commitments, non-English
 text, one to nine written as words, feature or plan claims without digits,
 and non-numeric disclosure of constraints. Any rule change bumps
@@ -43,7 +48,10 @@ _QUOTES = str.maketrans(
         "\u2033": '"',
     }
 )
-_DIGIT_TOKEN = re.compile(r"[$]?\d[\d,]*(?:\.\d+)?%?")
+# A leading sign counts only when it does not join two words ("7-5", "x-2").
+_DIGIT_TOKEN = re.compile(r"((?<!\w)[-+\u2212])?([$]?\d[\d,]*(?:\.\d+)?)")
+# "72 %", "72 percent", and "72pct" all state a rate.
+_PERCENT = re.compile(r"%|(?<![a-z])(?:per\s*cent|pct)\b")
 _NUMBER_WORD = re.compile(
     r"\b(?:ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen"
     r"|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety"
@@ -57,18 +65,30 @@ _DATE = re.compile(
 )
 _IDENTIFIER_OR_LINK = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-    r"|http|www\.|@"
+    r"|http|www\.|@|\w+://"
+    # A scheme-less domain: a word, a dot, and two or more letters ("e.g." and
+    # "i.e." have one letter after the dot).
+    r"|\b[a-z][a-z0-9-]*\.[a-z]{2,}\b"
 )
+_ADVERB = r"(?:\s+(?:now|just|already))?"
+_LOCK_IN = r"lock(?:ed)?\s+(?:(?:it|this|that)\s+)?in"
 _COMMITMENT = re.compile(
-    r"\b(?:i|we)(?:'ll|'ve|'m|'re)?(?:\s+(?:will|have|am|are))?\s+"
-    r"(?:accept(?:ed)?|agreed?|approved?|sign(?:ed)?|commit(?:ted)?"
-    r"|switch(?:ed)?|cancell?ed|upgrade|downgrade|purchase|pay|order|lock\s+in)\b"
+    r"\b(?:i|we)(?:'ll|'ve|'d|'m|'re)?(?:\s+(?:will|have|am|are))?"
+    + _ADVERB
+    + r"\s+(?:accept(?:ed)?|agreed?|approved?|sign(?:ed)?|commit(?:ted)?"
+    r"|confirm(?:ed)?|switch(?:ed)?|cancell?ed|upgraded?|downgraded?"
+    r"|purchased?|pay|paid|order(?:ed)?|" + _LOCK_IN + r")\b"
     r"|\b(?:deal|guarantee[ds]?|promise[ds]?)\b"
 )
 _COMPLETION = re.compile(
-    r"\b(?:is|has\s+been|have\s+been|was|are)\s+(?:now\s+)?"
-    r"(?:completed?|done|finali[sz]ed|applied|changed|switched|cancell?ed"
+    r"\b(?:is|has\s+been|have\s+been|was|are)"
+    + _ADVERB
+    + r"\s+(?:completed?|done|finali[sz]ed|applied|changed|switched|cancell?ed"
     r"|activated|processed)\b"
+    # A consequential participle states an outcome with or without an
+    # auxiliary ("Offer accepted and signed."). "accept" itself is allowed.
+    r"|\b(?:accepted|approved|signed|agreed|confirmed|finali[sz]ed)\b"
+    r"|\blocked\s+(?:(?:it|this|that)\s+)?in\b"
     r"|\ball\s+set\b|\byou're\s+set\b"
 )
 _AUTHORITY = re.compile(
@@ -92,6 +112,8 @@ def fast_disclosure_violations(
     normalised = unicodedata.normalize("NFKC", text).translate(_QUOTES)
     lowered = normalised.lower()
     codes: set[str] = set()
+    if _has_hidden_or_lookalike_character(text):
+        codes.add("fast_gate_non_ascii_text")
     if _has_undisclosed_number(text, normalised, snapshot):
         codes.add("fast_gate_number_not_allowed")
     if _NUMBER_WORD.search(lowered):
@@ -111,6 +133,15 @@ def fast_disclosure_violations(
     if len(text) > FAST_GATE_MAX_TEXT_LENGTH:
         codes.add("fast_gate_text_too_long")
     return tuple(sorted(codes))
+
+
+def _has_hidden_or_lookalike_character(text: str) -> bool:
+    # Letters (L*), combining marks (M*), and format, control, private-use,
+    # surrogate, or unassigned code points (C*) outside ASCII.
+    return any(
+        not char.isascii() and unicodedata.category(char)[0] in {"L", "M", "C"}
+        for char in text
+    )
 
 
 def _allowed_disclosures(snapshot: CaseContextSnapshot) -> frozenset[str]:
@@ -154,10 +185,12 @@ def _has_undisclosed_number(
         for char in original
     ):
         return True
+    if _PERCENT.search(normalised.lower()):
+        return True
     money, integers = _allowed_numbers(snapshot)
     for match in _DIGIT_TOKEN.finditer(normalised):
-        token = match.group().rstrip(",")
-        if token.endswith("%"):
+        sign, token = match.group(1), match.group(2).rstrip(",")
+        if sign:
             return True
         is_money = token.startswith("$")
         digits = token.lstrip("$").replace(",", "")

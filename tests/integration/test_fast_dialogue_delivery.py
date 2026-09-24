@@ -169,6 +169,7 @@ def test_gate_withholds_undisclosed_text_and_delivers_fallback(
     assert fast[0].result is ModelResult.REJECTED
     assert fast[0].reason_codes == (
         "fast_gate_commitment",
+        "fast_gate_completion",
         "fast_gate_number_not_allowed",
     )
 
@@ -256,7 +257,7 @@ def test_each_applied_turn_gets_exactly_one_line_in_order() -> None:
     ("fast", "code"),
     [
         (LeakyFast("They offered $61."), "fast_gate_number_not_allowed"),
-        (LeakyFast("I accepted it for you."), "fast_gate_commitment"),
+        (LeakyFast("I accept it for you."), "fast_gate_commitment"),
         (LeakyFast("Your plan has been switched."), "fast_gate_completion"),
         (
             LeakyFast(
@@ -436,3 +437,58 @@ def test_the_gate_is_wired_at_the_single_coordinator_site() -> None:
     assert source.count(".advance(") == 1
     assert source.count("CaseCoordinator(") == 1
     assert source.count("fast_gate=fast_disclosure_violations") == 1
+
+
+def test_an_invisible_character_bypass_is_withheld_end_to_end() -> None:
+    # Review B1: zero-width spaces inside "accepted" and "finalized" used to
+    # pass every phrase rule and be stored as the assistant line.
+    text = (
+        "I a\N{ZERO WIDTH SPACE}ccepted the offer and it is "
+        "fin\N{ZERO WIDTH SPACE}alized for you."
+    )
+    repository = InMemoryCaseRepository()
+    runtime = ThinAgentRuntime(repository, clock=SteppingClock(), fast=LeakyFast(text))
+    runtime.create_case(occurred_at=T0)
+    result = runtime.append_event(SCRIPTED_CASE_ID, content="Please review.")
+
+    assert result.fast_decision is None
+    assert result.snapshot.visible_events[-1].content == FAST_FALLBACK_TEXT
+    (trace,) = _fast_traces(repository)
+    assert trace.result is ModelResult.REJECTED
+    assert trace.reason_codes == ("fast_gate_non_ascii_text",)
+    assert "ccepted" not in repr(repository.get(SCRIPTED_CASE_ID))
+
+
+def test_a_gate_reject_on_the_channel_path_fails_closed() -> None:
+    # Review M6, I7: a channel turn has no fallback; nothing is sent.
+    repository = _ChannelRepository()
+    base = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
+    runtime = ThinAgentRuntime(
+        repository, clock=lambda: base, fast=LeakyFast("I accept the offer.")
+    )
+    runtime.apply_command(_create_command())
+    before = repository.get(SCRIPTED_CASE_ID)
+    event = _message_event(uuid4())
+    inbox = repository.reserve_channel_event(event, received_at=base)
+    with pytest.raises(ModelRuntimeError):
+        runtime.apply_command(
+            CaseCommand(
+                schema_version="phase-06b1-v1",
+                command_id=inbox.command_id,
+                case_id=SCRIPTED_CASE_ID,
+                command_type=CaseCommandType.INGEST_CHANNEL_EVENT,
+                occurred_at=event.occurred_at,
+                expected_revision=2,
+                channel_kind=CHANNEL_KIND,
+                binding_ref=BINDING_REF,
+                event_id=event.event_id,
+                content_hash=hashlib.sha256(event.content.encode()).hexdigest(),
+                payload_hash=event.raw_payload_hash,
+            )
+        )
+    assert repository.get(SCRIPTED_CASE_ID) is before
+    assert repository.outbox == {}
+    assert repository.inbox[event.event_id].processing_state == "reserved"
+    (trace,) = _fast_traces(repository)
+    assert trace.result is ModelResult.REJECTED
+    assert trace.reason_codes == ("fast_gate_commitment",)

@@ -181,3 +181,6 @@ async def _test_concurrent_direct_events(*, frozen_clock: bool) -> None:
         if event.event_type != "assistant_message"
     ]
     assert all(later > earlier for earlier, later in pairwise(times)), times
+    for trigger, line in pairwise(state.snapshot.visible_events):
+        if line.event_type == "assistant_message":
+            assert line.occurred_at == trigger.occurred_at

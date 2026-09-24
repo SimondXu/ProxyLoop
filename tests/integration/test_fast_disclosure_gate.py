@@ -102,7 +102,17 @@ def test_g1_offer_and_disclosed_numbers_pass(text: str) -> None:
 
 @pytest.mark.parametrize(
     "text",
-    ["They offered $61.", "That is 7200 cents.", "A 10% discount.", "$72.001 now."],
+    [
+        "They offered $61.",
+        "That is 7200 cents.",
+        "A 10% discount.",
+        "$72.001 now.",
+        "It is 72 % off.",
+        "It is 72 percent off.",
+        "It is 72pct off.",
+        "A credit of -$72.",
+        "A credit of -72.",
+    ],
 )
 def test_g1_undisclosed_numbers_are_rejected(text: str) -> None:
     assert _codes(text) == ("fast_gate_number_not_allowed",)
@@ -128,13 +138,59 @@ def test_g1_the_target_is_always_rejected(text: str) -> None:
             "fast_gate_number_not_allowed",
         ),
         ("That is seventy-five dollars.", "fast_gate_number_word"),
+        ("That is 7\N{ZERO WIDTH SPACE}2 dollars.", "fast_gate_number_not_allowed"),
         ("About twenty dollars less.", "fast_gate_number_word"),
     ],
 )
 def test_g2_full_width_digits_and_number_words_are_rejected(
     text: str, code: str
 ) -> None:
-    assert _codes(text) == (code,)
+    codes = _codes(text)
+    assert code in codes
+    assert set(codes) <= {code, "fast_gate_non_ascii_text"}
+
+
+INVISIBLE = ("\u200b", "\u200c", "\u200d", "\u2060", "\ufeff")
+
+
+@pytest.mark.parametrize("mark", INVISIBLE)
+@pytest.mark.parametrize(
+    "template",
+    [
+        "I a{}ccepted the offer.",
+        "It is fin{}alized for you.",
+        "It is a de{}al.",
+        "That is sev{}enty dollars.",
+    ],
+)
+def test_g2_an_invisible_character_inside_a_word_is_rejected(
+    template: str, mark: str
+) -> None:
+    assert _codes(template.format(mark)) == ("fast_gate_non_ascii_text",)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I \N{CYRILLIC SMALL LETTER A}ccepted the offer.",
+        "It is a \N{CYRILLIC SMALL LETTER DE}eal.",
+        "I acc\N{GREEK SMALL LETTER EPSILON}pted the offer.",
+        "I acce\N{COMBINING ACUTE ACCENT}pted the offer.",
+        "\N{FULLWIDTH LATIN CAPITAL LETTER H}ello.",
+    ],
+)
+def test_g2_a_lookalike_or_mixed_script_word_is_rejected(text: str) -> None:
+    assert _codes(text) == ("fast_gate_non_ascii_text",)
+
+
+def test_g2_non_ascii_punctuation_is_allowed() -> None:
+    assert (
+        _codes(
+            "Wait \N{EM DASH} I am checking "
+            "\N{LEFT DOUBLE QUOTATION MARK}that\N{RIGHT DOUBLE QUOTATION MARK}."
+        )
+        == ()
+    )
 
 
 # G3 Dates.
@@ -152,7 +208,7 @@ def test_g3_an_iso_date_is_rejected() -> None:
 @pytest.mark.parametrize(
     ("text", "code"),
     [
-        ("I accepted the offer for you.", "fast_gate_commitment"),
+        ("I accept the offer for you.", "fast_gate_commitment"),
         (
             "We\N{RIGHT SINGLE QUOTATION MARK}ll switch you over.",
             "fast_gate_commitment",
@@ -163,6 +219,12 @@ def test_g3_an_iso_date_is_rejected() -> None:
         ("Your plan has been changed.", "fast_gate_completion"),
         ("The switch is now complete.", "fast_gate_completion"),
         ("You're all set.", "fast_gate_completion"),
+        ("Your offer is accepted.", "fast_gate_completion"),
+        ("The plan has been approved.", "fast_gate_completion"),
+        ("Offer accepted and signed.", "fast_gate_completion"),
+        ("Your switch is confirmed.", "fast_gate_completion"),
+        ("we'd accept", "fast_gate_commitment"),
+        ("I'll confirm it now.", "fast_gate_commitment"),
         ("I am the account holder.", "fast_gate_authority"),
         ("I'm authorized to change the plan.", "fast_gate_authority"),
     ],
@@ -173,8 +235,42 @@ def test_g4_commitment_completion_and_authority_are_rejected(
     assert _codes(text) == (code,)
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I've confirmed the new plan.",
+        "I have now accepted the offer.",
+        "I just signed you up.",
+        "We've locked it in.",
+    ],
+)
+def test_g4_a_first_person_outcome_is_a_commitment_and_a_completion(
+    text: str,
+) -> None:
+    assert _codes(text) == ("fast_gate_commitment", "fast_gate_completion")
+
+
 def test_g4_negotiating_on_behalf_of_the_consumer_passes() -> None:
     assert _codes("I am negotiating on behalf of the consumer.") == ()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I can't accept that.",
+        "I won't accept that.",
+        "I will not accept that.",
+        "I cannot sign that.",
+        "We don't agree to that.",
+    ],
+)
+def test_g4_a_refusal_passes(text: str) -> None:
+    assert _codes(text) == ()
+
+
+def test_g4_a_passive_refusal_is_a_safe_false_positive() -> None:
+    # The bare participle rule cannot tell a refusal from an outcome.
+    assert _codes("That can't be accepted.") == ("fast_gate_completion",)
 
 
 def test_g4_a_candidate_completion_claim_is_rejected() -> None:
@@ -205,10 +301,16 @@ def test_g5_dialogue_acts_pass(act: DialogueAct) -> None:
         "See https example page.",
         "Visit www.example.test for details.",
         "Write to someone@example.test please.",
+        "Visit example.com today.",
+        "Try ftp://files later.",
     ],
 )
 def test_g6_identifiers_and_links_are_rejected(text: str) -> None:
     assert "fast_gate_identifier_or_link" in _codes(text)
+
+
+def test_g6_abbreviations_are_not_domains() -> None:
+    assert _codes("A plan, e.g. the fictional one, i.e. this offer.") == ()
 
 
 def test_g6_text_over_600_characters_is_rejected() -> None:
@@ -234,7 +336,7 @@ def test_g8_the_verdict_is_deterministic_and_sorted() -> None:
     text = "Deal: I signed you up at $61 on December 1, see www.x.test."
     first = _codes(text, dialogue_act=DialogueAct.CONFIRM)
     assert first == tuple(sorted(set(first)))
-    assert len(first) == 5
+    assert len(first) == 6
     for _ in range(5):
         assert _codes(text, dialogue_act=DialogueAct.CONFIRM) == first
 
@@ -281,7 +383,11 @@ def test_c1_a_gate_reject_withholds_the_decision_and_traces_the_codes() -> None:
     outcome = _advance(
         _TextFast("I signed you up at $61."), fast_gate=fast_disclosure_violations
     )
-    codes = ("fast_gate_commitment", "fast_gate_number_not_allowed")
+    codes = (
+        "fast_gate_commitment",
+        "fast_gate_completion",
+        "fast_gate_number_not_allowed",
+    )
     assert outcome.fast_disclosure_rejected is True
     assert outcome.fast_decision is None
     assert outcome.audits[-1].accepted is False

@@ -135,3 +135,31 @@ services, with the variables on the make command line only.
   resolved correctly only because each attempt re-runs its own refresh.
 - The report carries no latency and no model text; it describes routing
   structure of the scripted adapters only.
+
+## After the review fixes (Request Changes; `harness/code_review/feat-pr8a-fast-dialogue.md`)
+
+The fixes are B1 (`fast_gate_non_ascii_text`), I1 (completion and commitment
+phrasings), M1 (percent, signed amounts), M2 (schemes, scheme-less domains), M3
+(`gate_fallback_rate` over applied Fast turns, unapplied attempts reported
+apart), M4 (log order is call order only within one process, R6), M5 (status
+table), and M6 (channel gate-reject test), plus the optional assistant-time
+assertion. The gate stays `fast-gate-v1`, and spec §2.2, §5.1, and §5.2 carry a
+dated amendment. `runtime.py` is unchanged, so the DB gates were not rerun.
+
+Refusals that pass: "I can't accept that.", "I won't accept that.", "I will not
+accept that.", "I cannot sign that.", and "We don't agree to that." The passive
+"That can't be accepted." is refused (`fast_gate_completion`); this is a safe
+false positive.
+
+| Check | Result |
+|---|---|
+| `make lint` | passed |
+| `make typecheck` | passed (70 and 59 source files) |
+| `make test` | passed (exit 0); runtime pytest 1443 passed, 61 skipped; ml 397 passed, 1 skipped; `Fast/Slow split report is current.` |
+| byte identity | `git diff --stat origin/main -- data/ contracts/ ml/` lists only `data/evaluation/fast-slow-split-scripted.json` (new, regenerated for M3) |
+| `make preflight` | passed (exit 0); gated-skip counts match the pinned 61 per file |
+| DB gates | not rerun (no `runtime.py` change since the green run at 35 / 53 / 54) |
+
+The regenerated report still meets AC 5. `demo_path` is {`slow_only` 1,
+`fast_only` 1} with 1 unapplied Slow call (the repeated create). `dialogue_path`
+has 2 `slow_then_fast` turns. `gate_fallback_rate` is 0 in both.
