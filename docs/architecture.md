@@ -53,6 +53,8 @@ The diagram is a target shape, not an inventory of implemented services. Reposit
 
 The current research runtime uses an in-memory Case repository in default direct mode and may explicitly opt into a synchronous PostgreSQL adapter that stores one strict, versioned JSONB aggregate with revision compare-and-swap. A separate explicit Temporal mode requires scripted decisions and PostgreSQL; it durably orders commands, waits, timers, retries, worker recovery, and Continue-As-New while PostgreSQL remains the only business truth. The bounded `local_mailbox` mode adds strict raw-fixture verification, server-owned binding, inbox deduplication, atomic Case-plus-first-outbox writes, and compact delivery activities; PostgreSQL remains authoritative for channel receipts and outbox state. The slice still bypasses Gmail, MCP, and LiveKit. Its idempotency and recovery claims apply only to the deterministic fictional Provider and local fixture; it does not claim exactly-once real external effects. Configuration never falls back automatically.
 
+Model traces live inside the Case aggregate (`model_traces` on `CaseRuntimeState` and in the PostgreSQL `storage_version` 2 envelope), and their retention is unbounded: nothing prunes them. Every PostgreSQL write re-encodes and rewrites the whole envelope, so each write costs O(n) in the traces already stored. The direct flow stays small in practice: its three commands (create, event, approval) store two traces, one Slow and one Fast. A `local_mailbox` Case instead appends the Fast trace of every inbound message, plus a Slow trace whenever the strategy is refreshed, so its envelope and its per-write cost grow with the conversation. The planned fix is a separate append-only trace log with `storage_version` 3, planned together with backlog item R-12 (persisting the traces of a rejected model result, `harness/context/audit-remediation-status.md`); neither is implemented.
+
 ## Architectural Layers
 
 ### Experience Layer
@@ -190,7 +192,7 @@ A planning-basis fingerprint binds the Strategy Packet to material goal, constra
 
 The complete decision and evidence boundary is frozen in `docs/decisions/2026-08-23-fast-slow-orchestration.md`.
 
-`CapabilityManifest` is the sole model-facing vocabulary for executable actions. Approval state, executor dispatch, adapter configuration, and Evidence rules remain deterministic internal mechanisms rather than model "skills." The current runtime has one simulator capability family, so it does not introduce a parallel skills registry or a speculative internal capability catalog.
+`CapabilityManifest` is the only vocabulary the capability executor will execute, and the executor alone binds an `ActionIntent` to a manifest capability: it looks up the proposal's capability id and version in the snapshot's manifest and rejects a miss (`unsupported_capability`) or a capability that does not allow the intent's action type (`capability_action_mismatch`) (`CapabilityExecutor` in `runtime/packages/agent_core/src/proxyloop_agent_core/capabilities.py`). Contract validation does not bind them: an `ActionIntent` names an `ActionType` but carries no capability or proposal reference, `DelegatedAuthority` is expressed over `ActionType`, and `SlowWorkResult` does not cross-check `action_proposals` against `capability_proposals` (nor does the coordinator's Slow result audit). The contracts therefore carry two vocabularies, the closed `ActionType` enum and manifest capabilities, joined only at execution. Approval state, executor dispatch, adapter configuration, and Evidence rules remain deterministic internal mechanisms rather than model "skills." The current runtime has one simulator capability family, so it does not introduce a parallel skills registry or a speculative internal capability catalog.
 
 ## Core Domain Contracts
 
@@ -203,10 +205,10 @@ The canonical contract layer defines Pydantic contracts before service code. The
 - `FactLedger`: append-only candidate/verified/rejected facts with provenance.
 - `StrategyPacket`: Slow Reasoner output described above.
 - `FastTurnDecision`: Fast Model output described above.
-- `ProviderOffer`: monthly price, total cost, features, fees, term, expiry, and provider evidence.
-- `ActionIntent`: proposed external or simulator action.
-- `ApprovalRequest`: exact action-intent and offer revisions, material-terms hash, and expiry that the user approves or rejects.
-- `Evidence`: message, provider event, confirmation ID, bill, or simulator state transition.
+- `ProviderOffer`: monthly price, total cost, features, fees, term, expiry, and provider evidence. Its material terms (`offer_material_terms` in `runtime/packages/contracts/src/proxyloop_contracts/material_terms.py`) are monthly price, 12-month total, currency, term, features, and expiry; fees and credits are bound only in aggregate through the 12-month total (`fee_total_mismatch`) and the offer id and revision, and the offer has no applied-changes field.
+- `ActionIntent`: proposed external or simulator action; it names an `ActionType`, not a capability.
+- `ApprovalRequest`: exact action-intent and offer revisions, material-terms hash, and expiry that the user approves or rejects. It binds neither the fee breakdown nor the changes the Provider will apply; a forbidden applied change is caught only by the completion verifier after execution.
+- `Evidence`: message, provider event, confirmation ID, bill, or simulator state transition; its `content_hash` is defined below.
 - `CompletionDecision`: deterministic verifier result and missing evidence.
 - `ModelTrace`: model/data/prompt versions, latency, token usage, result, and safety flags.
 
@@ -214,7 +216,20 @@ Phase 03A1 implemented and generated the canonical wire contracts for `CaseConte
 
 Contract set 1.1 added `ExecutionClaim` and `CompletionReceipt`; per-type version rules are in `contracts/README.md`.
 
-Every canonical contract carries a Contract Schema Version (`schema_version`); all except `Evidence` and `FastTurnDecision` also carry an Entity Revision (`revision`, an optimistic sequence number starting at 1). References to another entity pin its revision (`case_revision`, `strategy_revision`, `constraint_set_revision`, `offer_revision`, and so on). An approval is valid only for the exact case, strategy, constraint-set, and offer revisions it references.
+`Evidence.content_hash` is the SHA-256 of the canonical bytes of the artifact named by `(source_type, source_ref)`. The referent depends on the source type:
+
+| `source_type` | Producer | `source_ref` | Hashed bytes |
+|---|---|---|---|
+| `provider_message` (simulator quote) | `FictionalMobileProvider.issue_offer` | quote id, e.g. `pine-mobile:offer:pine-value-5g:v1` | compact, key-sorted JSON of the quoted `case_id`, `provider_id`, `plan_id`, `monthly_price_minor`, `currency`, and `features` |
+| `provider_message` (local-mailbox message) | `ThinAgentRuntime.ingest_channel_event` | channel `event_id` | the UTF-8 message text |
+| `provider_event` (local-mailbox delivery callback) | `ThinAgentRuntime.record_channel_delivery` | `provider_message_id` | the raw callback payload bytes (the API passes the verified raw payload hash as `artifact_hash`) |
+| `confirmation` | `FictionalMobileProvider.execute_approved_offer` | `confirmation_id` | `confirmation_hash`: compact, key-sorted, non-ASCII-preserving JSON of the applied-offer confirmation |
+| `simulator_transition` | the executor's simulator adapter | `idempotency_key` | producer-defined; see below |
+| `bill` | none today | — | undefined until a producer exists |
+
+The confirmation hash is the only content hash that completion verification uses: the completion verifier checks it against the Provider's confirmation (`evidence_hash_mismatch`), and a 1.1 `CompletionReceipt` recomputes it from its own confirmation fields as `confirmation_content_hash`, which a 1.1 `CaseContextSnapshot` requires to match the confirmation Evidence. A `simulator_transition` Evidence is an executor attestation minted in `prepare()`, before the Provider commit, so it names no Provider artifact; its hash is whatever its producer defines (the runtime hashes its own idempotency key, the ML evaluation runner hashes its simulator attempt) and must not be relied on. Separately, the PostgreSQL codec replays the deterministic simulator when it loads a Case and requires the stored quote, confirmation, and simulator-transition Evidence to equal the replayed values; that storage-integrity check ties stored rows to the runtime's current formulas, so changing any of them is a storage decision. `tests/integration/test_contract_semantics_limits.py` recomputes every hash of a completed runtime Case from this table.
+
+Every canonical contract carries a Contract Schema Version (`schema_version`); all except `Evidence` and `FastTurnDecision` also carry a `revision` field. For a mutable business entity such as `Case`, `StrategyPacket`, `ProviderOffer`, `ActionIntent`, or `ApprovalRequest`, that field is its Entity Revision, an optimistic sequence number starting at 1. The ephemeral one-shot values `ModelInputPins`, `PlanningBasis`, `VisibleCaseEvent`, `CapabilityManifest`, `FastModelView`, `SlowReasonerView`, `RoutingDecision`, `SlowWorkRequest`, and `SlowWorkResult` are not entities: the shared base class requires the field, every product producer writes `revision=1`, and consumers must not compare it. They are identified by their pins, fingerprints, event cursor, or, for the manifest, `manifest_version`. References to another entity pin its revision (`case_revision`, `strategy_revision`, `constraint_set_revision`, `offer_revision`, and so on). An approval is valid only for the exact case, strategy, constraint-set, and offer revisions it references.
 
 ## State Ownership
 
@@ -268,7 +283,7 @@ Phase 02 validated only ingestion, normalization, curation, and export plumbing 
 - External text and speech are untrusted inputs and may contain prompt injection.
 - Model output never bypasses deterministic authorization and disclosure gates.
 - Model output with stale context or planning-basis pins is never delivered, merged, or executed.
-- The capability manifest is the sole advertised action vocabulary; unavailable MCP/channel capabilities cannot appear in accepted model work.
+- The capability manifest is the only vocabulary the executor will execute. Contracts restrict capability references to the `simulator` namespace, so MCP/channel capabilities cannot appear in accepted model work; whether a simulator capability is in the current manifest and allows the intent's action type is checked only by the executor (`unsupported_capability`, `capability_action_mismatch`), not by contract validation.
 - Real side-effecting activities require an outbox record, provider event ID when available, and an idempotency key; that mechanism remains deferred.
 - Phase 05A Temporal retries use PostgreSQL command receipts to avoid duplicate fictional-Provider execution, approvals, and Evidence. No equivalent real-effect exactly-once claim is made.
 - A stale strategy or approval cannot authorize a changed offer.

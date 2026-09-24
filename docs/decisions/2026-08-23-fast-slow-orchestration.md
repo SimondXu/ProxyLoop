@@ -120,7 +120,7 @@ This compare-and-swap behavior is implemented locally for the text research MVP.
 
 ### Capabilities and side effects
 
-A versioned `CapabilityManifest` is the only action/tool vocabulary available to models and the executor. Phase 03A1 contains local fictional-Provider simulator capabilities only. It does not advertise MCP, Gmail, telephony, LiveKit, real Provider, or production credentials.
+A versioned `CapabilityManifest` is the only action/tool vocabulary available to models and the executor. Phase 03A1 contains local fictional-Provider simulator capabilities only. It does not advertise MCP, Gmail, telephony, LiveKit, real Provider, or production credentials. (Where this vocabulary is enforced is recorded in Amendment 2026-09-24 below.)
 
 Slow may propose a bounded capability/action plan. The deterministic compiler and policy gate translate a valid proposal into inert Action Intents. The capability executor is the only module allowed to invoke an adapter and must re-check current strategy/basis, authorization, approval, expiry, and idempotency immediately before execution.
 
@@ -152,3 +152,30 @@ It is not trained to own strategy generation, multi-step tool selection or argum
 - Phase 03A1 must compare untuned Fast with Slow disabled and enabled, plus scripted-oracle and frontier reference baselines.
 - Open-data SFT and project-specific generation remain later evidence-driven decisions.
 - Canonical Phase 00B contracts are not changed by this decision; any wire-schema change requires its own implementation and drift gate.
+
+## Amendment 2026-09-24 — where the capability vocabulary is enforced
+
+The statement in "Capabilities and side effects" that the `CapabilityManifest`
+is the only action/tool vocabulary available to models and the executor
+describes the design intent. Facts recorded against the implementation at the
+time of this amendment (audit A-3):
+
+- The manifest is the only vocabulary the capability executor will execute,
+  and the executor alone binds an Action Intent to a manifest capability. It
+  looks up the proposal's capability id and version in the snapshot's manifest
+  and rejects a miss (`unsupported_capability`) or a capability that does not
+  allow the intent's action type (`capability_action_mismatch`)
+  (`runtime/packages/agent_core/src/proxyloop_agent_core/capabilities.py`).
+- Contract validation does not bind them. `ActionIntent` names an action type
+  from the closed `ActionType` enum but carries no capability or proposal
+  reference; `DelegatedAuthority` is expressed over `ActionType`;
+  `SlowWorkResult` does not cross-check `action_proposals` against
+  `capability_proposals`, and neither does the coordinator's Slow result
+  audit. The contracts only restrict capability references to the `simulator`
+  namespace.
+- Moving the binding into the contracts (for example a capability reference
+  on `ActionIntent`) is a wire-schema change and needs its own decision and
+  drift gate; this amendment does not make it.
+
+The paragraph above is retained as the 2026-08-23 decision; where it conflicts
+with this amendment, the amendment wins.

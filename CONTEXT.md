@@ -85,7 +85,7 @@ A request for Consumer authorization tied to a specific action, terms, Case revi
 _Avoid_: Confirmation, consent dialog
 
 **Evidence**:
-An immutable reference to a simulator or controlled external artifact used to support facts or completion.
+An immutable reference to a simulator or controlled external artifact used to support facts or completion. Its content hash is the SHA-256 of the canonical bytes of the artifact named by its source type and source reference; the referent for each source type is listed in `docs/architecture.md`. Only a confirmation's content hash is an input to completion verification; a simulator-transition content hash is an executor attestation whose value its producer defines, and it must not be relied on.
 _Avoid_: Claim, model output, log line
 
 **Completion Candidate**:
@@ -105,7 +105,7 @@ The identifier for the shape and meaning of a serialized ProxyLoop contract, ind
 _Avoid_: Entity version, database migration
 
 **Entity Revision**:
-The optimistic sequence number of one immutable snapshot in a mutable business entity's history.
+The optimistic sequence number of one immutable snapshot in a mutable business entity's history. The ephemeral contract values `ModelInputPins`, `PlanningBasis`, `VisibleCaseEvent`, `CapabilityManifest`, `FastModelView`, `SlowReasonerView`, `RoutingDecision`, `SlowWorkRequest`, and `SlowWorkResult` carry a `revision` field that is always 1 and is not an Entity Revision; consumers must not compare it.
 _Avoid_: Schema version, timestamp
 
 **Money**:
@@ -113,7 +113,7 @@ An exact monetary amount paired with its currency, used for prices, fees, credit
 _Avoid_: Float, formatted price string
 
 **Material Terms**:
-The price, fees, credits, effective date, duration, expiry, and feature changes whose alteration can invalidate an action or approval.
+The offer terms an Action Intent and Approval Request bind through their material-terms hash: monthly price, 12-month total, currency, term, features, and offer expiry; a change to any of them invalidates the action or approval. Fees and credits are bound only in aggregate, through the 12-month total (policy rejects a total that disagrees with the monthly price, fees, and known credits as `fee_total_mismatch`) and the exact offer identity and revision the approval pins. An approval binds neither the fee breakdown nor the changes the Provider will apply: an Offer has no applied-changes field, so a forbidden applied change is caught only by the completion verifier after execution.
 _Avoid_: Summary, offer text
 
 **Simulator Episode**:

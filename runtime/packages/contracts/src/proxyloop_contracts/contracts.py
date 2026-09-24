@@ -488,6 +488,12 @@ class ApprovalRequest(VersionedContract):
         return self
 
 
+# ``content_hash`` is the SHA-256 of the canonical bytes of the artifact named
+# by ``(source_type, source_ref)``; docs/architecture.md lists the referent per
+# source type. Only a CONFIRMATION hash is a completion-verification input. A
+# SIMULATOR_TRANSITION hash is a producer-defined executor attestation minted
+# before commit and must not be relied on. (A comment, not a docstring: a class
+# docstring would become the JSON Schema description of the generated contract.)
 class Evidence(ContractModel):
     contract_type: Literal["evidence"]
     schema_version: SchemaVersion
