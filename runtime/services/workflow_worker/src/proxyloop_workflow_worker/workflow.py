@@ -144,6 +144,28 @@ def _expiry_failure_category(error: BaseException) -> tuple[str, bool]:
     return category, non_retryable
 
 
+def _outermost_failure_category(error: BaseException) -> tuple[str, bool]:
+    """Name the failure the activity (or this Workflow) raised.
+
+    The activity's typed ``ApplicationError`` is the ``ActivityError``'s
+    outermost cause; deeper causes are the converted Python exceptions it was
+    raised ``from``. It is non-retryable exactly when the server would not
+    retry it: flagged ``non_retryable`` or its type is in the activity retry
+    policy's non-retryable list.
+    """
+
+    failure = error.cause if isinstance(error, ActivityError) else error
+    if isinstance(failure, ApplicationError):
+        category = failure.type or "activity_failed"
+        non_retryable = failure.non_retryable or category in (
+            NON_RETRYABLE_ERROR_TYPES or ()
+        )
+        return category, non_retryable
+    if isinstance(failure, ActivityTimeoutError):
+        return "activity_timeout", False
+    return "activity_failed", False
+
+
 def _expiry_retry_backoff(failures: int) -> timedelta:
     # Cap the exponent before multiplying so a long outage cannot overflow.
     doublings = min(max(failures - 1, 0), 5)
@@ -386,7 +408,13 @@ class CaseWorkflow:
                 # The expiry timer must never fail the run: a failed run cannot
                 # be recreated under REJECT_DUPLICATE, so later Updates would
                 # be lost for the whole Case.
-                category, non_retryable = _expiry_failure_category(error)
+                # Histories recorded before the patch classified by the
+                # innermost cause and must replay with it.
+                category, non_retryable = (
+                    _outermost_failure_category(error)
+                    if workflow.patched("expiry-failure-outermost-cause")
+                    else _expiry_failure_category(error)
+                )
                 if non_retryable:
                     # The aggregate moved without this Workflow; the next
                     # Update carries the truth, so do not re-arm this timer.
