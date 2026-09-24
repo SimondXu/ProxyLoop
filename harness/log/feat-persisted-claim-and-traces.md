@@ -60,9 +60,24 @@ they guard the new binding checks.
 | channel event writes refresh + fast traces once | no `model_traces` | pass |
 | browser projection never carries a trace | no `model_traces` | pass |
 
-Traces are injected by monkeypatching the runtime's `CaseCoordinator` with a
-subclass that appends one 1.1 stub trace per adapter result, since PR3 has
-not landed (`CoordinatorOutcome.traces` is `()` on `main`).
+Before PR3 landed, traces were injected by a stub coordinator. After the
+rebase onto `main` @ `f989613` (PR3 #70 merged) the fixture only records the
+traces the real coordinator returns; the stub is gone.
+
+## After the rebase onto PR3 (`f989613`)
+
+- `runtime.py`: all eight `CaseCoordinator(...)` constructions go through
+  `ThinAgentRuntime._coordinator`, which passes `clock=self.now` and
+  `monotonic=time.perf_counter`. Without it a persisted trace started at the
+  route request's time and, with no adapter-reported latency, completed at
+  the same instant with `latency_ms=0`.
+- New `test_persisted_traces_are_timed_on_the_runtime_clock` (ticking runtime
+  clock; every trace's `started_at`/`completed_at` is a reading that clock
+  returned, and `completed_at > started_at`). Red with the helper reverted to
+  `CaseCoordinator(snapshot=snapshot)`: `started_at` not among the readings.
+- From the PR3 review: `trace_id` is not an idempotency key; a replayed
+  command is deduplicated by command id before any coordinator run, so no
+  trace is appended twice.
 
 ## Checks
 

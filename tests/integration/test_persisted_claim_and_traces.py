@@ -10,9 +10,9 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import httpx
 import pytest
@@ -34,7 +34,6 @@ from proxyloop_contracts import (
     CasePhase,
     EvidenceType,
     ExecutionClaim,
-    ModelResult,
     ModelTrace,
 )
 from test_phase_05a_case_runtime import (
@@ -330,40 +329,11 @@ def test_the_claim_is_present_exactly_while_execution_is_pending() -> None:
 
 @pytest.fixture
 def issued(monkeypatch: pytest.MonkeyPatch) -> list[ModelTrace]:
-    """Stand in for the PR3 producer: one 1.1 trace per adapter result."""
+    """Record every trace the coordinator (PR3) returns to the runtime."""
 
     traces: list[ModelTrace] = []
 
-    def _trace(request: RouteRequest, role: str) -> ModelTrace:
-        trace = ModelTrace.model_validate(
-            {
-                "contract_type": "model_trace",
-                "schema_version": "1.1",
-                "revision": 1,
-                "trace_id": uuid4(),
-                "case_id": request.snapshot.case.case_id,
-                "started_at": request.created_at,
-                "completed_at": request.created_at,
-                "provider": "stub",
-                "model": "stub-model",
-                "model_version": "stub-1",
-                "adapter_version": "stub-1",
-                "prompt_version": "stub-1",
-                "input_schema_version": "1.1",
-                "output_schema_version": "1.1",
-                "latency_ms": 0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "result": ModelResult.SUCCEEDED,
-                "safety_flags": (),
-                "role": role,
-                "reason_codes": (),
-            }
-        )
-        traces.append(trace)
-        return trace
-
-    class _TracingCoordinator(CaseCoordinator):
+    class _RecordingCoordinator(CaseCoordinator):
         def advance(
             self,
             request: RouteRequest,
@@ -372,17 +342,10 @@ def issued(monkeypatch: pytest.MonkeyPatch) -> list[ModelTrace]:
             slow: SlowAdapter | None = None,
         ) -> CoordinatorOutcome:
             outcome = super().advance(request, fast=fast, slow=slow)
-            produced = tuple(
-                _trace(request, role)
-                for role, result in (
-                    ("slow", outcome.slow_result),
-                    ("fast", outcome.fast_decision),
-                )
-                if result is not None
-            )
-            return replace(outcome, traces=(*outcome.traces, *produced))
+            traces.extend(outcome.traces)
+            return outcome
 
-    monkeypatch.setattr(runtime_module, "CaseCoordinator", _TracingCoordinator)
+    monkeypatch.setattr(runtime_module, "CaseCoordinator", _RecordingCoordinator)
     return traces
 
 
@@ -461,6 +424,33 @@ def test_traces_are_appended_in_the_same_write_and_survive_completion(
     foreign["model_traces"][0]["case_id"] = "22222222-2222-4222-8222-222222222222"
     with pytest.raises(RuntimeError, match=INVALID):
         _decode(foreign)
+
+
+def test_persisted_traces_are_timed_on_the_runtime_clock(
+    issued: list[ModelTrace],
+) -> None:
+    # A clock that advances on every read: a trace timed on it starts and
+    # completes at readings the runtime clock actually returned, never
+    # collapsed onto the route request's time.
+    readings: list[datetime] = []
+
+    def ticking() -> datetime:
+        readings.append(BASE_TIME + timedelta(milliseconds=len(readings)))
+        return readings[-1]
+
+    repository = _RecordingRepository()
+    runtime = ThinAgentRuntime(repository, clock=ticking)
+    runtime.apply_command(_create_command())
+    runtime.apply_command(_event_command())
+
+    stored = repository.get(SCRIPTED_CASE_ID)
+    assert stored is not None
+    assert [trace.role for trace in stored.model_traces] == ["slow", "fast"]
+    assert stored.model_traces == tuple(issued)
+    for trace in stored.model_traces:
+        assert trace.started_at in readings
+        assert trace.completed_at in readings
+        assert trace.completed_at > trace.started_at
 
 
 class _RecordingChannelRepository(_ChannelRepository):

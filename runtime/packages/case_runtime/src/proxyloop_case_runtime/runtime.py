@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -443,7 +444,7 @@ class ThinAgentRuntime:
             next_snapshot, refresh_traces = self._refresh_strategy_if_required(
                 next_snapshot, event, event_time
             )
-            outcome = CaseCoordinator(snapshot=next_snapshot).advance(
+            outcome = self._coordinator(next_snapshot).advance(
                 RouteRequest(
                     snapshot=next_snapshot,
                     created_at=event_time,
@@ -760,7 +761,7 @@ class ThinAgentRuntime:
             events=(provider_event,),
             provider=provider,
         )
-        outcome = CaseCoordinator(snapshot=snapshot).advance(
+        outcome = self._coordinator(snapshot).advance(
             RouteRequest(
                 snapshot=snapshot,
                 created_at=provider_event.occurred_at,
@@ -900,7 +901,7 @@ class ThinAgentRuntime:
         event_snapshot, refresh_traces = self._refresh_strategy_if_required(
             event_snapshot, event, occurred_at
         )
-        outcome = CaseCoordinator(snapshot=event_snapshot).advance(
+        outcome = self._coordinator(event_snapshot).advance(
             RouteRequest(
                 snapshot=event_snapshot,
                 created_at=occurred_at,
@@ -941,7 +942,7 @@ class ThinAgentRuntime:
                 phase=CasePhase.AWAITING_APPROVAL,
                 manifest=event_snapshot.capability_manifest,
             )
-        routed = CaseCoordinator(snapshot=policy_snapshot).advance(
+        routed = self._coordinator(policy_snapshot).advance(
             RouteRequest(
                 snapshot=policy_snapshot,
                 created_at=occurred_at,
@@ -1248,7 +1249,7 @@ class ThinAgentRuntime:
                 phase=CasePhase.NEGOTIATING,
                 manifest=snapshot.capability_manifest,
             )
-            routed = CaseCoordinator(snapshot=expired_snapshot).advance(
+            routed = self._coordinator(expired_snapshot).advance(
                 RouteRequest(snapshot=expired_snapshot, created_at=approval.expires_at)
             )
             route = routed.route
@@ -1421,7 +1422,7 @@ class ThinAgentRuntime:
                     command_fingerprint=command_fingerprint,
                 ),
             )
-        routed = CaseCoordinator(snapshot=final_snapshot).advance(
+        routed = self._coordinator(final_snapshot).advance(
             RouteRequest(snapshot=final_snapshot, created_at=evaluated_at)
         )
         final_state = CaseRuntimeState(
@@ -1487,7 +1488,7 @@ class ThinAgentRuntime:
             phase=CasePhase.NEGOTIATING,
             manifest=state.snapshot.capability_manifest,
         )
-        routed = CaseCoordinator(snapshot=snapshot).advance(
+        routed = self._coordinator(snapshot).advance(
             RouteRequest(snapshot=snapshot, created_at=decided_at)
         )
         route = routed.route
@@ -1583,7 +1584,7 @@ class ThinAgentRuntime:
         The coordinator's traces are returned for the caller's state write.
         """
 
-        outcome = CaseCoordinator(snapshot=event_snapshot).advance(
+        outcome = self._coordinator(event_snapshot).advance(
             RouteRequest(
                 snapshot=event_snapshot,
                 created_at=occurred_at,
@@ -1629,6 +1630,13 @@ class ThinAgentRuntime:
             receipt=event_snapshot.completion_receipt,
         )
         return refreshed, outcome.traces
+
+    def _coordinator(self, snapshot: CaseContextSnapshot) -> CaseCoordinator:
+        # Model traces are timed on the Runtime clock, so a persisted trace
+        # carries the same time base as the Case's events.
+        return CaseCoordinator(
+            snapshot=snapshot, clock=self.now, monotonic=time.perf_counter
+        )
 
     def now(self) -> datetime:
         """Return the Runtime clock's current UTC time."""
