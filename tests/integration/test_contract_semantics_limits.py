@@ -6,10 +6,14 @@ change together with it:
 
 - A-3: the Slow output compilers build the capability/action join, but an
   Action Intent carries no capability reference, and neither the
-  ``SlowWorkResult`` contract nor the coordinator's Slow result audit checks
-  an action proposal against a capability proposal; only the capability
-  executor does (``unsupported_capability`` and ``capability_action_mismatch``
-  are asserted in ``test_phase_03a1_agent_core.py``).
+  ``SlowWorkResult`` contract nor ``validate_slow_result`` (the coordinator's
+  Slow result audit, also the ML evaluator's validity function) checks an
+  action proposal against a capability proposal. On the Runtime path the
+  coordinator's A-3 admission check does (PR-13,
+  ``test_slow_proposal_admission.py``), and the capability executor checks it
+  again at execution (``unsupported_capability`` and
+  ``capability_action_mismatch`` are asserted in
+  ``test_phase_03a1_agent_core.py``).
 - A-5: every Evidence ``content_hash`` in a completed runtime Case recomputes
   from the artifact its ``(source_type, source_ref)`` names, per the referent
   table in ``docs/architecture.md``. The channel commands copy the API
