@@ -58,3 +58,40 @@ Not changed: `interfaces.py`, `runtime.py`, `repository.py`,
   would be a `runtime.py` change and is not made here.
 - B1-6: a relay that reports a model name other than the configured one or
   its dated snapshot now fails `model_metadata`.
+
+## Update to origin/main (2026-09-24)
+
+Merged (not rebased) `origin/main` @ `c914c1b` (#70–#73) into the branch.
+
+- Conflict, one file: `openai_adapter/adapter.py`. Kept #70's ModelTrace
+  timing (`time`/`Callable` imports, `ADAPTER_VERSION`/`PROMPT_VERSION`,
+  `elapsed` measured right after `parse()` inside the `try`) and this
+  branch's B1-6 `_DATED_SNAPSHOT_SUFFIX` and B1-7 `except ValidationError`
+  handler, which now follows the timing line. A schema failure raises
+  before `elapsed` is read, exactly as any other `parse()` failure does.
+- No conflict in `capabilities.py`, `runtime.py`, or the tests. #72
+  replaced the runtime's private `ExecutionClaimRecord` with the canonical
+  `ExecutionClaim` 1.1 and persists model traces, but did not change how
+  `_execute_claim` or `_repeat_approved` call the cached per-case
+  `CapabilityExecutor`, nor the `provider.confirmation` short-circuit. The
+  B1-10 runtime edge case in "Known behaviour changes" is therefore the
+  same after the merge. One more path the reviewer should weigh:
+  `_repeat_approved` (a command-less repeat of a terminal approval) asks the
+  cached executor for `REUSED`; if that executor's commit had raised after
+  mutating and the claim was then completed through the
+  `provider.confirmation` short-circuit, the key is still unresolved and the
+  repeat raises `CaseConflictError("approved continuation lost idempotency
+  state")`. That raises before B1-10 too, because the executor had no
+  record of the key; only the path to the error differs.
+
+Checks after the merge (worktree, no `PROXYLOOP_TEST_*` set):
+
+- Passed: `make format-check lint typecheck` (ruff format 115 + 90 files
+  already formatted, ruff check "All checks passed!" ×2, mypy 66 and 59
+  source files with no issues); `make preflight-fast`.
+- Passed: `make test` — runtime 1184 passed / 46 skipped, ML 390 passed /
+  1 skipped; every artifact gate valid. `git status --short data/` empty.
+- Passed: the branch's regression tests on their own (10 passed).
+- Not run: `make preflight`, `make postgres-check`, `make phase05a-check`,
+  `make phase06b1-check` (the shared test DB was in use elsewhere),
+  independent review.

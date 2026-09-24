@@ -2,8 +2,11 @@
 
 Bounded P2 batch under the standing audit-remediation authorization
 (`harness/context/audit-remediation-status.md` §4). Branch
-`fix/p2-adapter-domain` from `main` @ `5bedcce`. Resolves audit findings
-**B1-6, B1-7, B1-8, B1-10, B1-11** (all Minor) from
+`fix/p2-adapter-domain` from `main` @ `5bedcce`. Merged with
+`origin/main` @ `c914c1b` on 2026-09-24 (see the log's "Update to
+origin/main"); the runtime's persisted claim is now the canonical
+`ExecutionClaim` 1.1 (#72), which does not change the design below.
+Resolves audit findings **B1-6, B1-7, B1-8, B1-10, B1-11** (all Minor) from
 `harness/code_review/repo-audit-B1.md`. Out of scope: B1-9 (negative fees,
 a policy decision), B1-12.
 
