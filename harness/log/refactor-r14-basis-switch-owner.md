@@ -84,8 +84,22 @@ Merged `origin/main` @ `ff35dca` (docs only, no overlap), then reran:
 - `make preflight-fast`: exit 0.
 - `make test`: exit 0; runtime 1212 passed, 51 skipped (DB/Temporal gated);
   ML 397 passed, 1 skipped (`yaml`); every artifact `--check` gate green.
-- Still not run (root schedules): `postgres-check`, `phase05a-check`,
-  `phase06b1-check`, `make preflight`.
+
+## Real-dependency gates and final preflight
+
+On the branch after merging `origin/main` @ `d23aff9` (#80) and marking
+R-14 done in the status file (tree of `41a9672`). The shared
+`proxyloop_test` DB was held exclusively and the gates ran serially, with
+the variables on the make command line only:
+
+- `make postgres-check`: exit 0, 27 passed.
+- `make phase05a-check` (Temporal `localhost:7233`): exit 0, 42 passed.
+- `make phase06b1-check`: exit 0, 35 passed.
+- No `case_not_found` / `state_invalid`.
+- `make preflight` (once): exit 0; runtime 1215 passed, 51 skipped
+  (DB/Temporal gated, covered by the gates above); ML 397 passed, 1 skipped
+  (`yaml`); contracts drift clean; Web lint, typecheck, 140 Vitest tests
+  and build green; lock checks and `docker compose config` clean.
 
 ## Residual risk and known limits
 
