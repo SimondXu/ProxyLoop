@@ -59,13 +59,24 @@ from .repository import (
     InboxReceiptRecord,
     OutboxRecord,
     StorageUnavailableError,
+    check_model_trace_case,
 )
 
-# Version 2 carries the canonical ExecutionClaim and the model traces. Version 1
-# rows are still read and upgraded; every write is version 2.
-_STORAGE_VERSION: Literal[2] = 2
+# Version 3 carries the canonical ExecutionClaim and no model traces: those live
+# in the append-only trace log table. Version 1 rows are still read and
+# upgraded, and every write is version 3. Version 2 rows (traces inline) are
+# moved to the log at bootstrap and are otherwise rejected.
+_STORAGE_VERSION: Literal[3] = 3
+_INLINE_TRACES_STORAGE_VERSION: Literal[2] = 2
 _LEGACY_STORAGE_VERSION: Literal[1] = 1
 _TABLE_NAME = "proxyloop_case_runtime_states"
+_TRACES_TABLE = "proxyloop_model_traces"
+# Serializes bootstrap DDL and the one-time version 2 backfill across processes.
+_BOOTSTRAP_LOCK_KEY = int.from_bytes(
+    hashlib.sha256(b"proxyloop_case_storage_bootstrap").digest()[:8],
+    "big",
+    signed=True,
+)
 _PROVIDER_CONFIG_REF = "pine-mobile:runtime-v1"
 _BINDINGS_TABLE = "proxyloop_channel_bindings"
 _INBOX_TABLE = "proxyloop_channel_inbox_receipts"
@@ -85,7 +96,7 @@ class _CaseStorageEnvelope(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    storage_version: Literal[2]
+    storage_version: Literal[3]
     snapshot: CaseContextSnapshot
     events: tuple[VisibleCaseEvent, ...]
     execution_count: int = Field(ge=0)
@@ -96,7 +107,6 @@ class _CaseStorageEnvelope(BaseModel):
     transitions: tuple[CaseTransitionRef, ...] = ()
     last_fast_decision: FastTurnDecision | None = None
     execution_claim: ExecutionClaim | None = None
-    model_traces: tuple[ModelTrace, ...] = ()
 
     @model_validator(mode="after")
     def state_history_matches_snapshot(self) -> _CaseStorageEnvelope:
@@ -104,10 +114,6 @@ class _CaseStorageEnvelope(BaseModel):
             raise ValueError("stored event history does not match snapshot")
         if (self.execution_claim is not None) != self.snapshot.pending_execution:
             raise ValueError("stored execution claim does not match pending state")
-        if any(
-            trace.case_id != self.snapshot.case.case_id for trace in self.model_traces
-        ):
-            raise ValueError("stored model trace references another Case")
         command_ids: set[UUID] = set()
         prior_revision = 0
         for transition in self.transitions:
@@ -321,6 +327,66 @@ class PostgresCaseRepository:
             raise StorageUnavailableError(
                 "PostgreSQL Case storage operation failed"
             ) from None
+
+    def append_model_traces(
+        self, case_id: UUID, traces: tuple[ModelTrace, ...]
+    ) -> None:
+        """Append one coordinator run's traces in their own transaction.
+
+        The append never reads or writes the Case row and does not need it to
+        exist; it is all-or-nothing for the given traces.
+        """
+
+        check_model_trace_case(case_id, traces)
+        if not traces:
+            return
+        rows = [(case_id, Jsonb(trace.model_dump(mode="json"))) for trace in traces]
+        try:
+            with (
+                self._connect() as connection,
+                connection.transaction(),
+                connection.cursor() as cursor,
+            ):
+                cursor.executemany(
+                    f"INSERT INTO {_TRACES_TABLE} (case_id, trace) VALUES (%s, %s)",
+                    rows,
+                )
+        except psycopg.Error:
+            raise StorageUnavailableError(
+                "PostgreSQL model trace operation failed"
+            ) from None
+
+    def list_model_traces(self, case_id: UUID) -> tuple[ModelTrace, ...]:
+        """Return one Case's traces in append order; fail closed on bad rows."""
+
+        try:
+            with (
+                self._connect() as connection,
+                connection.transaction(),
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(
+                    f"""
+                    SELECT trace FROM {_TRACES_TABLE}
+                    WHERE case_id = %s ORDER BY log_id
+                    """,
+                    (case_id,),
+                )
+                rows = cursor.fetchall()
+        except psycopg.Error:
+            raise StorageUnavailableError(
+                "PostgreSQL model trace operation failed"
+            ) from None
+        traces: list[ModelTrace] = []
+        for (value,) in rows:
+            try:
+                trace = ModelTrace.model_validate_json(json.dumps(value))
+            except ValueError:
+                raise RuntimeError("stored model trace is invalid") from None
+            if trace.case_id != case_id:
+                raise RuntimeError("stored model trace is invalid")
+            traces.append(trace)
+        return tuple(traces)
 
     def check_readiness(self) -> None:
         """Run the read-only dependency probe used by the control plane."""
@@ -888,6 +954,9 @@ class PostgresCaseRepository:
                 connection.cursor() as cursor,
             ):
                 cursor.execute(
+                    "SELECT pg_advisory_xact_lock(%s)", (_BOOTSTRAP_LOCK_KEY,)
+                )
+                cursor.execute(
                     f"""
                             CREATE TABLE IF NOT EXISTS {_TABLE_NAME} (
                                 case_id uuid PRIMARY KEY,
@@ -984,6 +1053,24 @@ class PostgresCaseRepository:
                     ON {_DELIVERY_TABLE} (delivery_id)
                     """
                 )
+                # No foreign key to the Case table: a rejected create has no
+                # Case row, and the log outlives a compensating rollback.
+                cursor.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS {_TRACES_TABLE} (
+                        log_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                        case_id uuid NOT NULL,
+                        trace jsonb NOT NULL
+                    )
+                    """
+                )
+                cursor.execute(
+                    f"""
+                    CREATE INDEX IF NOT EXISTS {_TRACES_TABLE}_case_idx
+                    ON {_TRACES_TABLE} (case_id, log_id)
+                    """
+                )
+                _backfill_inline_traces(cursor)
         except psycopg.Error:
             raise StorageUnavailableError(
                 "PostgreSQL Case storage schema initialization failed"
@@ -1004,7 +1091,6 @@ class PostgresCaseRepository:
                 transitions=state.transitions,
                 last_fast_decision=state.last_fast_decision,
                 execution_claim=state.execution_claim,
-                model_traces=state.model_traces,
             )
             _verify_provider_state(state, envelope)
         except (ValidationError, ValueError, RuntimeError):
@@ -1048,7 +1134,45 @@ class PostgresCaseRepository:
             transitions=envelope.transitions,
             last_fast_decision=envelope.last_fast_decision,
             execution_claim=envelope.execution_claim,
-            model_traces=envelope.model_traces,
+        )
+
+
+def _backfill_inline_traces(cursor: Any) -> None:
+    """Move each version 2 row's inline traces to the log, once, in order.
+
+    Runs inside the bootstrap transaction under its advisory lock, so two
+    processes never copy the same row. The row becomes version 3 at the same
+    revision; ``updated_at`` is not touched. A row without a ``model_traces``
+    key had no traces (the version 2 envelope defaulted it to empty) and is
+    migrated with none. A row whose ``model_traces`` is present but not a JSON
+    array is left as version 2 and fails closed when it is read.
+    """
+
+    cursor.execute(
+        f"""
+        SELECT case_id, COALESCE(payload->'model_traces', '[]'::jsonb)
+        FROM {_TABLE_NAME}
+        WHERE payload->'storage_version' = %s
+        ORDER BY case_id
+        FOR UPDATE
+        """,
+        (Jsonb(_INLINE_TRACES_STORAGE_VERSION),),
+    )
+    for case_id, traces in cursor.fetchall():
+        if not isinstance(traces, list):
+            continue
+        if traces:
+            cursor.executemany(
+                f"INSERT INTO {_TRACES_TABLE} (case_id, trace) VALUES (%s, %s)",
+                [(case_id, Jsonb(trace)) for trace in traces],
+            )
+        cursor.execute(
+            f"""
+            UPDATE {_TABLE_NAME}
+            SET payload = (payload - 'model_traces') || %s
+            WHERE case_id = %s
+            """,
+            (Jsonb({"storage_version": _STORAGE_VERSION}), case_id),
         )
 
 
