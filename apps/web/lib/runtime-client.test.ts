@@ -324,7 +324,7 @@ describe("runtime client", () => {
 
   it("does not promise a Case read in the case_conflict copy", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      detail: "case already exists",
+      detail: "case_conflict",
     }), { status: 409 })));
 
     const rejected = await createCase(facts).catch((caught: unknown) => caught);

@@ -3,10 +3,12 @@
 The key/body matrix runs against the default direct mode and against the
 fake Temporal client of the existing Temporal API tests. The modes match on
 status codes and deduplication behaviour. The fake calls the Runtime directly,
-so its error ``detail`` equals direct mode's; under a real Temporal server the
-activity error is classified (for example ``{"detail": "case_conflict"}``), a
-pre-existing difference this change does not touch. Direct mode also expires a
-pending approval in process.
+so its error ``detail`` equals direct mode's: a content-free category
+(P2 R-2). Direct mode and a real Temporal server agree on ``case_conflict``,
+``approval_expired`` and ``not_found``; for a stale revision direct mode and
+the fake return ``stale_cas`` while the real workflow activity classifies it
+``case_conflict`` (known limit; the fix belongs in ``activities.py``). Direct
+mode also expires a pending approval in process.
 """
 
 from __future__ import annotations
@@ -38,7 +40,7 @@ CREATE_CASE_REQUEST = {
     "mobile_hotspot_required": True,
     "device_financing_change_forbidden": True,
 }
-REUSED = {"detail": "command id was reused for a different command"}
+REUSED = {"detail": "case_conflict"}
 MALFORMED = {"detail": {"code": "invalid_command", "message": "command rejected"}}
 MODES = ("direct", "temporal")
 
@@ -149,7 +151,7 @@ def test_create_key_body_matrix_is_mode_independent(mode: str) -> None:
 
             fresh = await client.post("/cases", json=CREATE_CASE_REQUEST)
             assert fresh.status_code == 409
-            assert fresh.json() == {"detail": "case already exists"}
+            assert fresh.json() == {"detail": "case_conflict"}
 
         state = runtime.repository.get(SCRIPTED_CASE_ID)
         assert state is not None
@@ -199,7 +201,7 @@ def test_event_key_body_matrix_is_mode_independent(mode: str) -> None:
 
             fresh = await client.post(url, json=body)
             assert fresh.status_code == 409
-            assert fresh.json() == {"detail": "case snapshot revision is stale"}
+            assert fresh.json() == {"detail": "stale_cas"}
 
         state = runtime.repository.get(SCRIPTED_CASE_ID)
         assert state is not None
@@ -263,11 +265,11 @@ def test_approval_key_body_matrix_is_mode_independent(mode: str) -> None:
 
             fresh = await client.post(url, json=body)
             assert fresh.status_code == 409
-            assert fresh.json() == {"detail": "case snapshot revision is stale"}
+            assert fresh.json() == {"detail": "stale_cas"}
 
             pin_less = await client.post(url, json={"decision": "approved"})
             assert pin_less.status_code == 409
-            assert pin_less.json() == {"detail": "approval is already terminal"}
+            assert pin_less.json() == {"detail": "case_conflict"}
 
         state = runtime.repository.get(SCRIPTED_CASE_ID)
         assert state is not None
@@ -589,7 +591,7 @@ def test_direct_mode_refuses_a_clock_that_does_not_advance_past_the_last_event()
                 json={"content": "Please review the current offer."},
             )
             assert backwards.status_code == 409
-            assert backwards.json() == {"detail": "clock time must advance event time"}
+            assert backwards.json() == {"detail": "case_conflict"}
             after = runtime.repository.get(SCRIPTED_CASE_ID)
             assert after is not None
             assert after.snapshot == before.snapshot
