@@ -84,9 +84,10 @@ make phase03c-rescore-check  Re-score the stored Phase 03C cloud raw outputs
                              with a notice when no cloud run is present
 make postgres-check          Phase 04C PostgreSQL gate (needs postgres-test)
 make phase04d-check          Phase 04D control-plane operation tests
-make phase04d-profile-check  Phase 04D profile: fresh report, asserts
-                             p95 >= p50 and a non-zero timeout rate; no
-                             committed baseline
+make phase04d-profile-check  Phase 04D profile: fresh report compared with
+                             the shape baseline committed in the script
+                             (keys, types, exact counts and rates) plus
+                             p95 >= p50; no timing thresholds
 make phase05a-check          Phase 05A Temporal CaseWorkflow gate
 make phase06b1-check         Phase 06B1 local mailbox gate
 make runtime-server / dev    Scripted Runtime on 127.0.0.1:8000

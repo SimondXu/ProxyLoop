@@ -355,7 +355,14 @@ class BoundTerms:
 
     They mirror ``proxyloop_contracts.offer_material_terms`` exactly (a parity
     test pins the hash).  Known limit of the canonical derivation: fees and
-    applied changes are not material terms, so they are not bound.
+    credits are not separate material terms, so the hash binds them only in
+    aggregate through ``total_cost_12_months_minor`` (policy rejects a total
+    that disagrees as ``fee_total_mismatch``) and, in the runtime, through the
+    approved offer id and revision.  Applied changes are not bound at all:
+    ``offer_violations`` checks them on this simulator's public offer, but a
+    runtime ``ProviderOffer`` has no applied-changes field, so there a
+    forbidden applied change is caught only by the completion verifier after
+    commit (``CONTEXT.md``, Material Terms).
     """
 
     monthly_price_minor: int

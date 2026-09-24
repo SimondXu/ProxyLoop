@@ -27,6 +27,7 @@ from ._base import (
     PositiveInt,
     Revision,
     SchemaVersion,
+    SchemaVersion10Or11,
     Sha256,
     UtcDateTime,
     VersionedContract,
@@ -488,6 +489,14 @@ class ApprovalRequest(VersionedContract):
         return self
 
 
+# For every source type except SIMULATOR_TRANSITION (producer-defined) and BILL
+# (no producer), ``content_hash`` is the SHA-256 of the canonical or raw bytes
+# of the artifact named by ``(source_type, source_ref)``; docs/architecture.md
+# lists the referent and the bytes per source type. Only a CONFIRMATION hash
+# is a completion-verification input. A SIMULATOR_TRANSITION hash is a
+# producer-defined executor attestation minted before commit and must not be
+# relied on. (A comment, not a docstring: a class docstring would become the
+# JSON Schema description of the generated contract.)
 class Evidence(ContractModel):
     contract_type: Literal["evidence"]
     schema_version: SchemaVersion
@@ -898,6 +907,61 @@ def approval_state_fingerprint(approvals: tuple[ApprovalRequest, ...]) -> str:
     )
 
 
+def planning_basis_components(
+    *,
+    schema_version: SchemaVersion10Or11,
+    case: Case,
+    fact_ledger: FactLedger,
+    offers: tuple[ProviderOffer, ...],
+    approval_requests: tuple[ApprovalRequest, ...],
+    provider_config_ref: str,
+    capability_manifest: CapabilityManifest,
+) -> dict[str, str]:
+    """The ``PlanningBasis`` component fingerprints of material Case state.
+
+    The single owner of the 1.0/1.1 switch: at 1.1 the offer and approval
+    components use the narrowed formula; at 1.0 they hash the full offers and
+    approvals sorted by id.
+    """
+
+    verified_facts = tuple(
+        sorted(
+            (
+                item
+                for item in fact_ledger.entries
+                if item.status is FactStatus.VERIFIED
+            ),
+            key=lambda item: str(item.fact_id),
+        )
+    )
+    return {
+        "goal_fingerprint": canonical_fingerprint(case.goal),
+        "constraints_fingerprint": canonical_fingerprint(
+            tuple(sorted(case.constraints, key=lambda item: str(item.constraint_id)))
+        ),
+        "delegated_authority_fingerprint": canonical_fingerprint(
+            case.delegated_authority
+        ),
+        "verified_facts_fingerprint": canonical_fingerprint(verified_facts),
+        "material_offers_fingerprint": (
+            material_offers_fingerprint(offers)
+            if schema_version == "1.1"
+            else canonical_fingerprint(
+                tuple(sorted(offers, key=lambda item: str(item.offer_id)))
+            )
+        ),
+        "approval_state_fingerprint": (
+            approval_state_fingerprint(approval_requests)
+            if schema_version == "1.1"
+            else canonical_fingerprint(
+                tuple(sorted(approval_requests, key=lambda item: str(item.approval_id)))
+            )
+        ),
+        "provider_config_fingerprint": canonical_fingerprint(provider_config_ref),
+        "capability_manifest_fingerprint": canonical_fingerprint(capability_manifest),
+    }
+
+
 def strategy_basis_binding(basis: PlanningBasis) -> dict[str, Any]:
     """The version and basis binding a strategy producer stamps on a strategy.
 
@@ -1177,56 +1241,15 @@ class CaseContextSnapshot(VersionedContract10Or11):
         if actual != expected:
             raise ValueError("snapshot pins must exactly match snapshot state")
 
-        verified_facts = tuple(
-            sorted(
-                (
-                    item
-                    for item in self.fact_ledger.entries
-                    if item.status is FactStatus.VERIFIED
-                ),
-                key=lambda item: str(item.fact_id),
-            )
+        planning_components = planning_basis_components(
+            schema_version=self.schema_version,
+            case=self.case,
+            fact_ledger=self.fact_ledger,
+            offers=self.offers,
+            approval_requests=self.approval_requests,
+            provider_config_ref=self.provider_config_ref,
+            capability_manifest=self.capability_manifest,
         )
-        planning_components = {
-            "goal_fingerprint": canonical_fingerprint(self.case.goal),
-            "constraints_fingerprint": canonical_fingerprint(
-                tuple(
-                    sorted(
-                        self.case.constraints,
-                        key=lambda item: str(item.constraint_id),
-                    )
-                )
-            ),
-            "delegated_authority_fingerprint": canonical_fingerprint(
-                self.case.delegated_authority
-            ),
-            "verified_facts_fingerprint": canonical_fingerprint(verified_facts),
-            "material_offers_fingerprint": (
-                material_offers_fingerprint(self.offers)
-                if self.schema_version == "1.1"
-                else canonical_fingerprint(
-                    tuple(sorted(self.offers, key=lambda item: str(item.offer_id)))
-                )
-            ),
-            "approval_state_fingerprint": (
-                approval_state_fingerprint(self.approval_requests)
-                if self.schema_version == "1.1"
-                else canonical_fingerprint(
-                    tuple(
-                        sorted(
-                            self.approval_requests,
-                            key=lambda item: str(item.approval_id),
-                        )
-                    )
-                )
-            ),
-            "provider_config_fingerprint": canonical_fingerprint(
-                self.provider_config_ref
-            ),
-            "capability_manifest_fingerprint": canonical_fingerprint(
-                self.capability_manifest
-            ),
-        }
         actual_components = {
             key: getattr(self.planning_basis, key) for key in planning_components
         }
