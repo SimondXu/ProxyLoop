@@ -15,6 +15,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Final, Literal
 
+from proxyloop_agent_core.local_fast_wire import LOCAL_FAST_WIRE_VERSION
+
 from proxyloop_evaluation.phase03b_experiment import (
     PHASE03B_PUBLIC_MARKER,
     QwenDecodingProfile,
@@ -23,7 +25,6 @@ from proxyloop_evaluation.phase03c_experiment import PHASE03C_COMPILER_VERSIONS
 from proxyloop_evaluation.qwen_spec import QWEN3_8B_BF16_SPEC
 
 from .trained_view import TRAINED_VIEW_VERSION
-from .wire import LOCAL_FAST_WIRE_VERSION
 
 Backend = Literal["distilled", "untuned"]
 BACKENDS: Final[tuple[Backend, ...]] = ("distilled", "untuned")

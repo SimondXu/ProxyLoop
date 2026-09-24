@@ -1,10 +1,13 @@
 """Loopback-only stdlib HTTP server for ``local-fast-wire-v1``.
 
+The wire itself (request decoding, response encoding) is the one owner in
+``proxyloop_agent_core.local_fast_wire``, shared with the PR-9a client.
 ``GET /v1/identity`` answers during a generation (threaded server);
 ``POST /v1/fast/decide`` is single-flight: a second call while one runs gets
 ``503 busy``, with no queue.  Every request must carry ``Host:
-127.0.0.1:<port>`` (DNS rebinding) and a decide call ``Content-Type:
-application/json`` (no browser simple POST); socket reads time out after
+127.0.0.1:<port>`` or ``Host: localhost:<port>`` (DNS rebinding) and a decide
+call ``Content-Type: application/json`` (no browser simple POST); socket
+reads time out after
 ``SOCKET_TIMEOUT_S``.  Error bodies carry a code only.  Logs carry the
 endpoint, HTTP status, gateway status, latency and token counts; never the
 prompt, the observation, or model text (L9).
@@ -18,37 +21,38 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Final
 
-from .gateway_core import GatewayModelError, GatewayResult, LocalFastGatewayCore
-from .trained_view import ObservationMismatchError
-from .wire import (
+from proxyloop_agent_core.local_fast_wire import (
+    DECIDE_PATH,
+    IDENTITY_PATH,
     LOCAL_FAST_WIRE_VERSION,
     MAX_REQUEST_BYTES,
+    DecideResponse,
     WireError,
     decode_decide_request,
+    encode_decide_response,
     encode_json,
 )
 
+from .gateway_core import GatewayModelError, GatewayResult, LocalFastGatewayCore
+from .trained_view import ObservationMismatchError
+
 LOOPBACK_HOST: Final = "127.0.0.1"
-IDENTITY_PATH: Final = "/v1/identity"
-DECIDE_PATH: Final = "/v1/fast/decide"
+ALLOWED_HOST_NAMES: Final = ("127.0.0.1", "localhost")
 SOCKET_TIMEOUT_S: Final = 10.0
 LOG = logging.getLogger("proxyloop.local_fast.gateway")
 
 
-def encode_decide_response(identity_fingerprint: str, result: GatewayResult) -> bytes:
-    return encode_json(
-        {
-            "wire_version": LOCAL_FAST_WIRE_VERSION,
-            "identity_fingerprint": identity_fingerprint,
-            "status": result.status,
-            "output": result.output,
-            "detail_code": result.detail_code,
-            "usage": {
-                "input_tokens": result.input_tokens,
-                "output_tokens": result.output_tokens,
-                "generation_ms": result.generation_ms,
-            },
-        }
+def decide_response(identity_fingerprint: str, result: GatewayResult) -> DecideResponse:
+    """The wire answer for one core result; ``raw_output`` is never sent."""
+
+    return DecideResponse(
+        identity_fingerprint=identity_fingerprint,
+        status=result.status,
+        output=result.output,
+        detail_code=result.detail_code,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        generation_ms=result.generation_ms,
     )
 
 
@@ -80,11 +84,19 @@ class _Handler(BaseHTTPRequestHandler):
         self.connection.settimeout(self.server.socket_timeout)
 
     def _host_allowed(self) -> bool:
-        """DNS rebinding: only the exact bound ``127.0.0.1:port`` Host."""
+        """DNS rebinding: only a Host a loopback client of this socket sends.
 
-        return self.headers.get("Host") == (
-            f"{LOOPBACK_HOST}:{self.server.server_address[1]}"
-        )
+        The PR-9a client accepts ``127.0.0.1``, ``localhost`` and ``::1``;
+        ``http.client`` sends the URL host with the port.  This server binds
+        IPv4 ``127.0.0.1`` only, so ``[::1]`` never reaches it, and the two
+        names that can are accepted with the bound port.  A rebinding page
+        sends its own domain name and is refused.
+        """
+
+        port = self.server.server_address[1]
+        return self.headers.get("Host") in {
+            f"{name}:{port}" for name in ALLOWED_HOST_NAMES
+        }
 
     def log_message(self, format: str, *args: object) -> None:
         """Silence the default request-line log; ``_send`` logs content-free."""
@@ -176,7 +188,9 @@ class _Handler(BaseHTTPRequestHandler):
             self.server.decide_lock.release()
         self._send(
             200,
-            encode_decide_response(self.server.identity_fingerprint, result),
+            encode_decide_response(
+                decide_response(self.server.identity_fingerprint, result)
+            ),
             started=started,
             status=result.status,
             detail_code=result.detail_code,
@@ -218,7 +232,7 @@ __all__ = [
     "IDENTITY_PATH",
     "LOOPBACK_HOST",
     "GatewayServer",
-    "encode_decide_response",
+    "decide_response",
     "make_server",
     "serve",
 ]

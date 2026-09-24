@@ -460,7 +460,15 @@ def test_http_refuses_an_oversized_body_without_reading_it() -> None:
 
 @pytest.mark.parametrize(
     "host",
-    [None, "127.0.0.1", "localhost:{port}", "attacker.example:{port}", "127.0.0.1:1"],
+    [
+        None,
+        "127.0.0.1",
+        "localhost",
+        "[::1]:{port}",
+        "attacker.example:{port}",
+        "127.0.0.1:1",
+        "localhost:1",
+    ],
 )
 def test_http_refuses_a_host_other_than_the_bound_loopback(host: str | None) -> None:
     """DNS rebinding: a browser page on another name reaches 127.0.0.1 with

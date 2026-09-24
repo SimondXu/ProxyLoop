@@ -19,9 +19,13 @@ from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Literal
 
 from proxyloop_agent_core import SafeObservation
+from proxyloop_agent_core.local_fast_wire import (
+    INVALID_OUTPUT_DETAIL_CODES,
+    UNRENDERABLE_DETAIL_CODES,
+    DecideStatus,
+)
 from proxyloop_contracts import FastModelView
 
 from proxyloop_evaluation.fast_output import FastModelOutput
@@ -44,25 +48,9 @@ from .mlx_adapter_conversion import (
 )
 from .trained_view import TrainedViewError, trained_view
 
-GatewayStatus = Literal["succeeded", "invalid_output", "unrenderable"]
-# Every INVALID_OUTPUT code ``Phase03CQwenAdapter.generate`` can return.
-INVALID_OUTPUT_DETAIL_CODES: Final = frozenset(
-    {
-        "output_too_large",
-        "thinking_leak",
-        "duplicate_json_key",
-        "invalid_json",
-        "invalid_json_after_fence_strip",
-        "json_object_required",
-        "fast_action_intent_forbidden",
-        "schema_validation_error",
-        "canonical_validation_error",
-        "generator_return_type",
-    }
-)
-UNRENDERABLE_DETAIL_CODES: Final = frozenset(
-    {"no_provider_event", "trained_view_invalid", "prompt_render_refused"}
-)
+GatewayStatus = DecideStatus
+# The detail allow-lists are owned by the wire (``INVALID_OUTPUT_DETAIL_CODES``
+# includes the gateway's ``invalid_output`` catch-all).
 
 
 class LoraLoadError(RuntimeError):
