@@ -6,8 +6,8 @@ proposal (`docs/research/2026-09-21-target-architecture-proposal.md`).
 Authorization and adopted decisions: `harness/context/audit-remediation-decisions.md`.
 Group 2 design: `harness/context/group2-evaluator-proposal.md`.
 
-**Updated 2026-09-24 (third session: P1 closed, first four P2 batches,
-R-10 and R-1 merged, #72–#78). `main` @ `74e2073`.
+**Updated 2026-09-24 (build plan and decisions 16–20 adopted; P1 closed,
+first P2 batches, R-10, R-1 and B1-12 merged, #72–#80). `main` @ `d23aff9`.
 Everything below is merged to `main` unless the row says otherwise.**
 
 A new session should read, in order: `harness/status.toml`, this file
@@ -216,9 +216,10 @@ Each needs its own spec under `harness/context/` before implementation.
 3. **Stateless intake** `POST /intake/proposals` (proposal §12.5), so the
    Case invariant "goal is consumer-confirmed" stays typed.
 4. **Agent Status Bar** = rendering `CaseContextSnapshot` in the Web.
-5. Phase order (decision 12) said training waits for V0's numbers. Phase
-   03C has since closed at **GO_DISTILLED** (#51, `harness/log/phase-03c-stage2-stage3.md`),
-   so re-read that decision against the new evidence before planning V0.
+5. Phase order: decision 17 supersedes decision 15 (no V0, scripted gates,
+   no further training) and decision 18 takes Phase 03C's **GO_DISTILLED**
+   adapter (#51, `harness/log/phase-03c-stage2-stage3.md`) as a local opt-in
+   Fast candidate, then Phase 07 (`harness/context/audit-remediation-decisions.md`).
 
 ## 6. Known limits carried deliberately
 

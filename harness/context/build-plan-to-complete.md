@@ -12,8 +12,11 @@ no deployment or release, no hosted spend beyond a recorded budget, no
 force-push, no destructive operation. Decision 17: every gate runs on
 scripted adapters, Slow stays scripted, no further training.
 
-Waves group the PRs in order; the per-PR dependencies and the serialization
-rules below are what bind. "Architect first" means the root obtains an
+Waves (architect's grouping): 1 backlog = PR-1..PR-7; 2 Stage 1 = PR-8..PR-11;
+3 Stage 3 = PR-12; 4 Stage 2 = PR-13, PR-14; 5 optional = PR-15; 6 Phase 07 =
+PR-16, PR-17. "W0" means Wave 0. The per-PR dependencies bind, and the
+serialization rules below (one writer per hot file, one DB-gate lane) apply
+on top of them. "Architect first" means the root obtains an
 `architect` proposal, decides, and freezes a spec under `harness/context/`
 before an `implementer` starts. "DB" means the PR touches a service that
 needs the real-dependency gates.
@@ -33,22 +36,22 @@ needs the real-dependency gates.
 | PR | Wave | Objective | Key files | Depends on | Architect first | Verification |
 |---|---|---|---|---|---|---|
 | PR-1 | 1 | Gate honesty: R-15 deterministic test for the ML concurrency ceiling; G-1 strong form — `make preflight` prints and pins the gated-skip count and names the real-dependency targets | `ml/tests/test_teacher_pipeline.py`, `Makefile` | — | no | `make preflight` |
-| PR-2 | 1 | R-16: the expiry failure classifier reads the outermost typed `ApplicationError`; second workflow patch gate | `workflow.py` | — | no | `make preflight`; DB lane |
-| PR-3 | 1 | R-17 + R-5: a channel ingest exhausted on the delivery activity is re-driven on redelivery; `expected_revision` is read under the lock. Reproduce first | `workflow.py`, `app.py` channel route | PR-2 (`workflow.py`) | no | `make preflight`; DB lane |
-| PR-4 | 1 | R-18: the terminal codec rule pairs callback events with their Provider-event Evidence | `postgres_repository.py` | — | no | `make preflight`; DB lane |
-| PR-5 | 1 | Ops/tests: C-5, C-7, C-8, R-6 | `scripts/run_phase_07a_portfolio_demo.py` (C-5), tests | — | no | `make preflight`; DB lane |
-| PR-6 | 1 | B2-8: synchronous runtime calls run via `run_in_threadpool` | `app.py` | PR-3, #82 (`app.py`) | no | `make preflight`; DB lane |
-| PR-7 | 2 | R-12 + R-13b: append-only model-trace log (rejected-result traces are written), `storage_version` 3 | `runtime.py`, `postgres_repository.py` | PR-4, R-14 branch | **yes** | `make preflight`; DB lane |
-| PR-8 | 3 | Stage 1a: Fast dialogue reaches the product, scripted, through a deterministic disclosure gate, with per-turn measurement (`make fast-slow-split-report`) | `runtime.py`, `app.py`, `conversation-workspace.tsx` | PR-7 | **yes** | `make preflight`, `make web-check`; DB lane |
-| PR-9 | 3 | Stage 1b: local distilled Fast backend via an `ml/serving` gateway + runtime HTTP Fast adapter + `PROXYLOOP_FAST_BACKEND`, with the local parity re-measure (decision 18) | `ml/serving/`, runtime Fast adapter | PR-8 | **yes** | CI uses a fake gateway; the local model run is manual and recorded in the PR log |
-| PR-10 | 3 | Stage 4: Agent Status Bar, `render_status_block(snapshot)`; it must not become the distilled Fast prompt | `conversation-workspace.tsx`, a renderer module | PR-8 | no | `make preflight`, `make web-check` |
-| PR-11 | 3 | Stage 1c: model-backed Fast under Temporal + a 07A launcher flag, inside the 30 s activity limit | `workflow.py`, launcher | PR-9, PR-3 | no | `make preflight`; DB lane |
-| PR-12 | 4 | Stage 3: stateless `POST /intake/proposals` with a deterministic parser; a Web card replaces the wizard | `app.py`, `conversation-workspace.tsx` | PR-6, PR-10 | no | `make preflight`, `make web-check`; DB lane |
-| PR-13 | 4 | Slow's proposal drives the intent + A-3 coordinator validator (replaces A-3a, decision 19); scripted Slow reproduces today's behaviour exactly | `runtime.py` | PR-8, PR-12 | **yes** | `make preflight` with every committed `*-check` byte-identical; DB lane |
-| PR-14 | 4 | Stage 2: Judge seam — scripted Judge, at most one Slow retry, `role=judge` traces, evaluation never imports the Judge; feedback passed outside the contract (decision 20) | `runtime.py`, Judge module | PR-7, PR-13 | no | `make preflight` + an import-boundary test; DB lane |
-| PR-15 | 5 | Narrow contracts 1.2 (decision 19: R-11b, B1-9b). Optional and droppable | `contracts.py`, contract fixtures | PR-10, #81 | **yes** | `make preflight` with every committed `*-check` byte-identical; DB lane |
-| PR-16 | 6 | Phase 07: contract under `harness/build/`, demo scenes, `make ops-report` | `harness/build/`, demo scripts, `Makefile` | PR-14 (PR-15 if taken) | no | `make preflight`; DB lane; demo run recorded |
-| PR-17 | 6 | Reports: `docs/ml-evidence.md`, architecture reconciliation (A-7f), observed-vs-proposed README, limitations and negative results, cost (relay ≈ USD 146, Modal USD 22.25), fresh-clone reproduction; `harness/status.toml` back to `idle` | docs | PR-16 | no | `make preflight`; fresh-clone reproduction recorded |
+| PR-2 | 1 | R-16: the expiry failure classifier reads the outermost typed `ApplicationError`; second workflow patch gate | `workflow.py` | W0 | no | `make preflight`; DB lane |
+| PR-3 | 1 | R-17 + R-5: a channel ingest exhausted on the delivery activity is re-driven on redelivery; `expected_revision` is read under the lock. Reproduce first | `workflow.py`, `app.py` channel route | PR-2 | no | `make preflight`; DB lane |
+| PR-4 | 1 | R-18: the terminal codec rule pairs callback events with their Provider-event Evidence | `postgres_repository.py` | W0 | no | `make preflight`; DB lane |
+| PR-5 | 1 | Ops/tests: C-5, C-7, C-8, R-6 | `scripts/run_phase_07a_portfolio_demo.py` (C-5), tests | PR-4 | no | `make preflight`; DB lane |
+| PR-6 | 1 | B2-8: synchronous runtime calls run via `run_in_threadpool` | `app.py` | W0 | no | `make preflight`; DB lane |
+| PR-7 | 1 | R-12 + R-13b: append-only model-trace log (rejected-result traces are written), `storage_version` 3 | `runtime.py`, `postgres_repository.py` | PR-4, PR-5 | **yes** | `make preflight`; DB lane |
+| PR-8 | 2 | Stage 1a: Fast dialogue reaches the product, scripted, through a deterministic disclosure gate, with per-turn measurement (`make fast-slow-split-report`) | `runtime.py`, `app.py`, `conversation-workspace.tsx` | PR-6, PR-7 | **yes** | `make preflight`, `make web-check`; DB lane |
+| PR-9 | 2 | Stage 1b: local distilled Fast backend via an `ml/serving` gateway + runtime HTTP Fast adapter + `PROXYLOOP_FAST_BACKEND`, with the local parity re-measure (decision 18) | `ml/serving/`, runtime Fast adapter | PR-8 | **yes** | CI uses a fake gateway; the local model run is manual and recorded in the PR log |
+| PR-10 | 2 | Stage 4: Agent Status Bar, `render_status_block(snapshot)`; it must not become the distilled Fast prompt | `conversation-workspace.tsx`, a renderer module | PR-8 (parallel with PR-9) | no | `make preflight`, `make web-check` |
+| PR-11 | 2 | Stage 1c: model-backed Fast under Temporal + a 07A launcher flag, inside the 30 s activity limit | `workflow.py`, launcher | PR-3, PR-9 | no | `make preflight`; DB lane |
+| PR-12 | 3 | Stage 3: stateless `POST /intake/proposals` with a deterministic parser; a Web card replaces the wizard | `app.py`, `conversation-workspace.tsx` | PR-10 | no | `make preflight`, `make web-check`; DB lane |
+| PR-13 | 4 | Slow's proposal drives the intent + A-3 coordinator validator (replaces A-3a, decision 19); scripted Slow reproduces today's behaviour exactly | `runtime.py` | PR-8 | **yes** | `make preflight` with every committed `*-check` byte-identical; DB lane |
+| PR-14 | 4 | Stage 2: Judge seam — scripted Judge, at most one Slow retry, `role=judge` traces, evaluation never imports the Judge; feedback passed outside the contract (decision 20) | `runtime.py`, Judge module | PR-13 | no | `make preflight` + an import-boundary test; DB lane |
+| PR-15 | 5 | Narrow contracts 1.2 (decision 19: R-11b, B1-9b). Optional and droppable | `contracts.py`, contract fixtures | PR-10, PR-13 | **yes** | `make preflight` with every committed `*-check` byte-identical; DB lane |
+| PR-16 | 6 | Phase 07: contract under `harness/build/`, demo scenes, `make ops-report` | `harness/build/`, demo scripts, `Makefile` | all above | no | `make preflight`; DB lane; demo run recorded |
+| PR-17 | 6 | Reports: `docs/ml-evidence.md`, architecture reconciliation (A-7f), observed-vs-proposed README, limitations and negative results, cost (relay ≈ USD 146 total per `phase-03c-stage2-handoff.md` §5, ≈ USD 121.59 for Stages 1b/1c per `post-phase-03c-handoff.md` §4; Modal USD 22.25), fresh-clone reproduction; `harness/status.toml` back to `idle` | docs | PR-16 | no | `make preflight`; fresh-clone reproduction recorded |
 
 File paths: `workflow.py` =
 `runtime/services/workflow_worker/src/proxyloop_workflow_worker/workflow.py`;
