@@ -61,6 +61,8 @@ PHASE03C_TOKENIZER_PATH ?=
 QWEN3_8B_MLX_PATH ?= $(HOME)/.cache/huggingface/hub/models--Qwen--Qwen3-8B-MLX-bf16/snapshots/6766fd4b8101fa4201cc55c5a2e464f3d301f792
 PHASE03C_PEFT_ADAPTER ?= data/experiments/phase-03c/training/cloud-run-01/train/adapter
 BACKEND ?= distilled
+# Loopback port of `make local-fast-gateway`; point PROXYLOOP_FAST_GATEWAY_URL / FAST_GATEWAY_URL at the same port.
+PORT ?= 8765
 # Split report backend (scripted, or distilled|untuned against a running local gateway).
 FAST_BACKEND ?= scripted
 FAST_GATEWAY_URL ?= http://127.0.0.1:8765
@@ -294,7 +296,7 @@ phase03c-product-parity-check:
 
 local-fast-gateway:
 	HF_HUB_OFFLINE=1 $(ML_PYTHON_RUN) python -m scripts.run_local_fast_gateway \
-		--backend $(BACKEND) --model-path "$(QWEN3_8B_MLX_PATH)"
+		--backend $(BACKEND) --model-path "$(QWEN3_8B_MLX_PATH)" --port $(PORT)
 
 phase03c-cloud-bundle-check:
 	$(ML_PYTHON_RUN) python -m scripts.build_phase03c_cloud_bundle --check

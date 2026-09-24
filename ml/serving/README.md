@@ -45,7 +45,12 @@ local Hugging Face cache.
    `make phase03c-product-parity-check` (in `make test`) replays it without a
    model.
 4. `make local-fast-gateway BACKEND=distilled|untuned` serves
-   `local-fast-wire-v1` on `127.0.0.1:8765`. With the gateway running,
+   `local-fast-wire-v1` on `127.0.0.1:$(PORT)`, default `PORT=8765`. If that
+   port is taken, pass another, for example `PORT=8775`, and point the
+   clients at the same port: `PROXYLOOP_FAST_GATEWAY_URL` for the Runtime,
+   `FAST_GATEWAY_URL` for the split report. Make also takes `PORT` from the
+   environment, so an exported `PORT` meant for another tool moves the
+   gateway too. With the gateway running,
    `make fast-slow-split-report FAST_BACKEND=distilled|untuned` writes
    `data/evaluation/fast-slow-split-<backend>.json`.
 
