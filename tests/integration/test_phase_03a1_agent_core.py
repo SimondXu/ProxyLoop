@@ -1133,6 +1133,53 @@ def test_coordinator_serializes_snapshot_compare_and_swap() -> None:
     assert stale_route.route.pins == next_snapshot.pins
 
 
+def test_slow_result_on_another_planning_basis_is_rejected() -> None:
+    snapshot, _ = _snapshot()
+    initial = _without_strategy(snapshot)
+    request = CaseCoordinator.build_slow_request(
+        initial,
+        reason_code="case_initialization",
+        created_at=NOW,
+    )
+    current = _Slow(initial.pins).reason(request)
+    other_basis = _basis(
+        case=initial.case,
+        ledger=initial.fact_ledger,
+        offers=(),
+        approvals=(),
+        provider_config_ref=initial.provider_config_ref,
+        manifest=initial.capability_manifest,
+    )
+    assert (
+        other_basis.planning_basis_fingerprint
+        != initial.planning_basis.planning_basis_fingerprint
+    )
+    other = SlowWorkResult(
+        **{
+            **current.__dict__,
+            "planning_basis": other_basis,
+            "pins": initial.pins.model_copy(
+                update={
+                    "planning_basis_fingerprint": (
+                        other_basis.planning_basis_fingerprint
+                    )
+                }
+            ),
+        }
+    )
+
+    accepted = CaseCoordinator.validate_slow_result(
+        current, initial, expected_request=request, evaluated_at=NOW
+    )
+    rejected = CaseCoordinator.validate_slow_result(
+        other, initial, expected_request=request, evaluated_at=NOW
+    )
+
+    assert accepted.accepted is True
+    assert rejected.accepted is False
+    assert "planning_basis_fingerprint_mismatch" in rejected.reason_codes
+
+
 def test_slow_result_must_match_request_and_current_strategy_revisions() -> None:
     snapshot, _ = _snapshot()
     initial = _without_strategy(snapshot)
@@ -1314,11 +1361,15 @@ def test_a_recorded_approval_decision_releases_the_approval_wait() -> None:
 
 
 def test_router_precedence_ladder_matches_the_frozen_table() -> None:
-    """Every row wins while every lower row's condition also holds.
+    """Rows 1-3 each win while every lower row's condition also holds.
 
-    Start with a snapshot matching all six rows, then clear the highest
-    matching condition one step at a time. The outcomes, read in order, are
-    the precedence table; ``ROUTER_PRECEDENCE`` must name the same order.
+    Steps 1-3 carry a terminal Case, pending execution, a current approval,
+    and a mandatory Slow trigger with an allowed acknowledgement; each step
+    clears the highest of those conditions. Rows 4 and 5 are mutually
+    exclusive rather than ordered: with a mandatory Slow trigger, row 5
+    applies only when a bounded acknowledgement is allowed under a current
+    strategy, so steps 4 and 5 differ only in that flag. The outcomes, read
+    in order, must equal ``ROUTER_PRECEDENCE``.
     """
 
     snapshot, _ = _snapshot(approval_current=True)
@@ -1380,20 +1431,35 @@ def test_stale_approval_and_expired_strategy_route_to_slow() -> None:
     snapshot, _ = _snapshot(approval_current=True)
     router = DeterministicRouter()
 
-    # A pending approval bound to an older Case revision is not current: the
-    # Router does not wait on it and instead requires Slow work.
+    # A PENDING approval that is not current (other Case revision, expired, or
+    # bound to a superseded offer revision) does not wait; it requires Slow.
     pending = snapshot.approval_requests[0]
-    stale = pending.model_copy(update={"case_revision": snapshot.case.revision + 1})
-    stale_route = router.route(
-        RouteRequest(
-            snapshot=snapshot.model_copy(update={"approval_requests": (stale,)}),
-            created_at=NOW,
+    assert pending.offer_ref is not None
+    stale_approvals = {
+        "case_revision": pending.model_copy(
+            update={"case_revision": snapshot.case.revision + 1}
+        ),
+        "expired": pending.model_copy(update={"expires_at": NOW}),
+        "offer_revision": pending.model_copy(
+            update={
+                "offer_ref": pending.offer_ref.model_copy(
+                    update={"offer_revision": pending.offer_ref.offer_revision + 1}
+                )
+            }
+        ),
+    }
+    for label, stale in stale_approvals.items():
+        stale_route = router.route(
+            RouteRequest(
+                snapshot=snapshot.model_copy(update={"approval_requests": (stale,)}),
+                created_at=NOW,
+            )
         )
-    )
-    assert stale_route.outcome is RoutingOutcome.SLOW_REFRESH
-    assert "stale_approval" in stale_route.reason_codes
+        assert stale_route.outcome is RoutingOutcome.SLOW_REFRESH, label
+        assert "stale_approval" in stale_route.reason_codes, label
 
-    # Row 4 over row 5: an expired strategy cannot permit an acknowledgement.
+    # An expired strategy cannot permit an acknowledgement, so row 5's
+    # condition does not hold and row 4 applies.
     assert snapshot.strategy is not None
     expired = snapshot.strategy.model_copy(update={"expires_at": NOW})
     expired_route = router.route(

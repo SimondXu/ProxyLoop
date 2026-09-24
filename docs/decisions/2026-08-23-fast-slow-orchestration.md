@@ -83,6 +83,7 @@ Every decision records deterministic reason codes and the snapshot pins that pro
 - changed Consumer Goal, hard constraint, or Delegated Authority;
 - Provider refusal or a materially changed offer;
 - expired or planning-basis-incompatible Strategy Packet;
+- a PENDING Approval Request that is no longer current (`stale_approval`);
 - conflicting facts;
 - stalled or repeated dialogue;
 - Fast `reasoner_request` accepted by Router policy;
@@ -155,4 +156,4 @@ It is not trained to own strategy generation, multi-step tool selection or argum
 
 ## Amendment 2026-09-24 — Approval wait keyed on approval state
 
-Amended 2026-09-24 (audit B1-12, branch `fix/p2-router-precedence`): the event-label bypass was removed; approval state alone releases the wait. Routing row 3 above carries the amended condition.
+Amended 2026-09-24 (audit B1-12, branch `fix/p2-router-precedence`): the event-label bypass was removed; approval state alone releases the wait. Row 3 previously ended its condition with "and the triggering event is not the Consumer's approval decision"; it now carries the amended condition above. The mandatory-Slow list also names the existing `stale_approval` trigger, a PENDING Approval Request that is no longer current.

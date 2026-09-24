@@ -37,7 +37,7 @@ mutation that evaluates the approval wait before `verify_only` fails it
 |---|---|---|
 | `test_phase_03a1_architecture.py::test_phase_03a1_router_precedence_and_fast_action_boundary_are_executable` (deleted) | outcome literals ordered in `router.py` | `test_router_precedence_ladder_matches_the_frozen_table` (each row wins while all lower rows hold; outcomes == `ROUTER_PRECEDENCE`) |
 | same test | words `action_intent`, `stale` in `coordinator.py` | existing `test_coordinator_rejects_stale_fast_and_forbidden_action_intent` (`stale_fast_result`, `fast_action_intent_forbidden`), `test_missing_slow_is_typed_and_slow_results_use_compare_and_swap` (`stale_slow_result`) |
-| same test | word `planning_basis_fingerprint` in `coordinator.py` | existing `test_each_material_snapshot_change_invalidates_the_planning_basis`, `tests/integration/test_strategy_basis_binding.py` |
+| same test | word `planning_basis_fingerprint` in `coordinator.py` | new `test_slow_result_on_another_planning_basis_is_rejected` (`validate_slow_result` → `planning_basis_fingerprint_mismatch`); `test_each_material_snapshot_change_invalidates_the_planning_basis` covers only the fingerprint computation, not the coordinator check |
 
 Kept, because they guard docs invariants no behaviour test can express: all
 eleven tests in `test_phase_03a0_architecture.py` (ADR, build contract,
@@ -88,3 +88,30 @@ the decision paths record APPROVED/REJECTED before routing.
   command line only) → exit 0, `42 passed in 97.93s`, 0 skipped.
 - `make preflight-fast` → exit 0. `make test` not rerun: only the ADR and
   harness docs changed after the run recorded above.
+
+## Independent review: Approve, four Minors applied (third commit)
+
+1. `test_stale_approval_and_expired_strategy_route_to_slow` now also covers a
+   PENDING approval with `expires_at <= created_at` and one whose
+   `offer_ref.offer_revision` no longer matches the current offer; both route
+   `SLOW_REFRESH` with `stale_approval`.
+2. Ladder docstring (and the expired-strategy comment) no longer calls rows 4
+   and 5 a precedence: they are mutually exclusive on whether a bounded
+   acknowledgement is allowed under a current strategy.
+3. ADR amendment quotes the removed clause verbatim and the mandatory-Slow
+   list names `stale_approval` (a Router-internal reason code in
+   `_mandatory_slow_reasons`). `slow_work_pending` is not added: it has no
+   producer (audit A-8).
+4. Mapping row corrected (above); new
+   `test_slow_result_on_another_planning_basis_is_rejected`.
+
+Mutation checks (scratch edit, run, restore in the same process; `runtime/`
+matches HEAD afterwards):
+
+| Mutation | Test | Result |
+|---|---|---|
+| delete `and approval.expires_at > created_at` (`router.py` `_approval_is_current`) | `test_stale_approval_and_expired_strategy_route_to_slow` | `1 failed` (`AssertionError: expired`) |
+| delete `and offer_current` | same | `1 failed` (`AssertionError: offer_revision`) |
+| drop `planning_basis_fingerprint_mismatch` append (`coordinator.py`) | `test_slow_result_on_another_planning_basis_is_rejected` | `1 failed` (reasons `('stale_slow_result',)`) |
+
+Unmutated: `tests/integration/test_phase_03a1_agent_core.py` → `28 passed`.
