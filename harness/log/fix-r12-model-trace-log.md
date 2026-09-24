@@ -154,3 +154,24 @@ Checks after the follow-ups (no `PROXYLOOP_TEST_*` set):
   Slow trace before it fails with `CaseConflictError` (I6: log before acting).
   A per-turn Fast/Slow split read from `list_model_traces` must not count it
   as a turn.
+
+## Merge with `main` @ `74fb993` (PR-4 R-18, #87, #89) and final gates
+
+Merge commit `03a6ca9`. `postgres_repository.py` merged cleanly. R-18's
+`_verify_delivery_callback_pairs` (called from `_reconstruct_provider`) and
+this branch's v3 envelope, bootstrap lock, backfill, and log methods touch
+separate regions. Both behaviours are kept. The status file conflicted only
+in the §0 in-flight table: both rows are kept (PR-6 from `main`, PR-7 here).
+
+Checks on the merged tree, run serially with the DB lane held exclusively and
+the variables on the make command line only:
+
+- Passed: `make test` (exit 0: runtime 1285 passed, 59 skipped; ml 397 passed,
+  1 skipped; negotiation gate current).
+- Passed: `make postgres-check` (35 passed, 0 skipped). This includes G6, G7,
+  the M1 no-key backfill, and the M4 error mapping.
+- Passed: `make phase05a-check` (53 passed).
+- Passed: `make phase06b1-check` (35 passed).
+- Passed: `make preflight` (exit 0, variables unset: runtime 1285 passed, 59
+  skipped; ml 397 passed, 1 skipped; web 140 passed). Six of the 59 skips are
+  this branch's new DB-gated items.
