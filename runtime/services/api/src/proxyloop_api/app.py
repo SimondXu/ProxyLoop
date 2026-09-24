@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
@@ -11,8 +12,7 @@ from time import perf_counter
 from typing import Any, Literal, Protocol
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, Request, Response
-from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from proxyloop_case_runtime import (
@@ -68,6 +68,8 @@ from .operations import (
     OperationRecorder,
 )
 from .readiness import check_readiness, liveness_payload, readiness_payload
+
+logger = logging.getLogger(__name__)
 
 
 class TemporalCommandClient(Protocol):
@@ -214,21 +216,39 @@ def create_app(
     @api.exception_handler(RequestValidationError)
     async def handle_request_validation(
         request: Request, exc: RequestValidationError
-    ) -> Response:
+    ) -> JSONResponse:
         request.state.operation_error_category = "request_invalid"
-        return await request_validation_exception_handler(request, exc)
+        # Field locations and error types only; never the rejected input.
+        _log_refusal(
+            request,
+            "request_invalid",
+            [
+                (".".join(str(part) for part in error["loc"]), error["type"])
+                for error in exc.errors()
+            ],
+        )
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": {"code": "request_invalid", "message": "request rejected"}
+            },
+        )
 
     @api.exception_handler(CaseNotFoundError)
     async def handle_not_found(
         request: Request, exc: CaseNotFoundError
     ) -> JSONResponse:
         request.state.operation_error_category = "case_not_found"
-        return JSONResponse(status_code=404, content={"detail": str(exc)})
+        _log_refusal(request, "case_not_found", exc)
+        # One content-free code for every 404: the Case or an approval.
+        return JSONResponse(status_code=404, content={"detail": "not_found"})
 
     @api.exception_handler(CaseConflictError)
     async def handle_conflict(request: Request, exc: CaseConflictError) -> JSONResponse:
-        request.state.operation_error_category = _conflict_category(exc)
-        return JSONResponse(status_code=409, content={"detail": str(exc)})
+        category = _conflict_category(exc)
+        request.state.operation_error_category = category
+        _log_refusal(request, category, exc)
+        return JSONResponse(status_code=409, content={"detail": category})
 
     @api.exception_handler(StorageUnavailableError)
     async def handle_storage_unavailable(
@@ -334,7 +354,7 @@ def create_app(
         category = exc.category
         request.state.operation_error_category = category
         if category == "case_not_found":
-            return JSONResponse(status_code=404, content={"detail": "case not found"})
+            return JSONResponse(status_code=404, content={"detail": "not_found"})
         if category in {"case_conflict", "approval_expired"}:
             return JSONResponse(status_code=409, content={"detail": category})
         if category in {
@@ -796,7 +816,25 @@ def _policy_outcome(snapshot: Any) -> str:
     return "none"
 
 
+def _log_refusal(request: Request, category: str, reason: object) -> None:
+    """Keep the refusal reason server-side, keyed by correlation id.
+
+    ``reason`` is a Runtime exception (static text) or a validation summary
+    of field locations and error types; never request input.
+    """
+
+    logger.info(
+        "request refused: correlation_id=%s category=%s reason=%s",
+        request.state.correlation_id,
+        category,
+        reason,
+    )
+
+
 def _conflict_category(exc: CaseConflictError) -> str:
+    # Mirrors the workflow activity's classification of an expired approval.
+    if "approval expired" in str(exc).lower():
+        return "approval_expired"
     return "stale_cas" if "stale" in str(exc) else "case_conflict"
 
 

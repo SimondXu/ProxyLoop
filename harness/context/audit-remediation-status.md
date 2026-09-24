@@ -27,7 +27,7 @@ supersedes decision 15 (no V0, scripted gates, no further training); 18
 takes Phase 03C option A in local-only form ("local opt-in candidate"),
 then option C, and excludes option B (06B2); 19 keeps contract set 1.2
 narrow and droppable; 20 passes Stage 2 feedback outside the contract.
-The §4/§4a backlog (R-2, R-5, R-6, R-11, R-12, R-13, R-14, R-15, R-16,
+The §4/§4a backlog (R-5, R-6, R-11, R-12, R-13, R-14, R-15, R-16,
 R-17, R-18, R-19) and the §5 stages below are scheduled by that plan;
 R-19 (found in the #81 review) is not yet assigned to a build-plan PR.
 
@@ -131,6 +131,7 @@ Closed in the third session:
 | D3-7, D2-6 | pipeline reason codes: `schema_invalid`, `hash_mismatch`, `declared_rejection` (a non-empty `rejection_reasons` is quarantined, no longer accepted), `provenance_mismatch`, `unknown_derivation_parent`, `missing_provenance` for a null `source`; a non-frozen test replays the committed r2 and pins its one r3-corrected mismatch | #74 | `fix-p2-ml-eval-hygiene.md` |
 | B1-6, B1-7, B1-8, B1-10, B1-11 | model match is exact or a dated snapshot; SDK `ValidationError` → `invalid_output`; `offer_case_mismatch`; a `commit()` that raised is never re-run (`execution_outcome_unknown`); the credit constant is owned by `offer_policy.py` | #76 | `fix-p2-adapter-domain.md` |
 | E-7, E-8, E-9 (= R-3), E-10 | polls never regress an in-flight command; Progress shows only payload-backed steps; `usage.data_megabytes` allow-listed and rendered; strict USD parsing | #77 | `fix-p2-web-hygiene.md` |
+| B2-7, B2-9, G-3 | a replayed receipt reports its route and Fast decision only if it produced the current snapshot (otherwise `terminal`/`current`, no `fast`); the dead clock read in the terminal-approval branch is gone; `phase04d-profile-check` compares a committed shape baseline and exact counts and exits 1 with named failures (no bare `assert`) | branch `fix/p2-api-hygiene` (PR pending) | `fix-p2-api-hygiene.md` |
 | B1-12 | the Router waits on approval state, not an event label: `RouteRequest.trigger_is_approval_decision` removed, a current PENDING approval always routes `WAIT_FOR_APPROVAL`; precedence and reason codes unchanged | #80 | `fix-p2-router-precedence.md` |
 | grep-based architecture tests → Router precedence tests (audit §3, lane A) | the grep test over `router.py`/`coordinator.py` is deleted; `test_router_precedence_ladder_matches_the_frozen_table` checks each row of `ROUTER_PRECEDENCE` behaviourally, plus a slow-result planning-basis rejection test; the 03A0 docs-invariant tests are kept | #80 | `fix-p2-router-precedence.md` |
 | B1-9 | the Case-vs-offer policy check is total: `case_offer_violations` (telecom domain) turns a contract-valid but out-of-domain input (negative fee sum from a credit line, duplicate goal/offer/applied-change tokens) into `offer_terms_invalid` / `compliance_context_invalid` instead of raising; `verify_completion` and the runtime approval gate both use it (NEEDS_REPLAN / no approval). A non-UTC `evaluated_at` still raises (caller bug). No wire or fee-netting change; non-negative fees at the wire deferred to 1.2 | `fix/b1-9-total-offer-policy` | `fix-b1-9-total-offer-policy.md` |
@@ -150,8 +151,8 @@ referent table), A-9 (ephemeral values and write-once records keep
 separate decisions.
 
 Open: G-1's stronger form (`preflight` asserts the gated-skip count or
-names the real-dependency gates), G-3, A-7f,
-B2-7…B2-9, C-5, C-7, C-8, D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
+names the real-dependency gates), A-7f,
+B2-8, C-5, C-7, C-8, D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
 deletion only), D3-8, D3-9.
 
 ## 4a. Found during the P1 and P2 runs (R-1 … R-19)
@@ -164,6 +165,7 @@ Closed:
 | R-1 (Important), R-1b | option (f): a retry-exhausted Update still fails with `temporal_unavailable` and the run requests Continue-As-New (patch gate `retryable-update-failure-continues-as-new`), so the identical retry reaches the Runtime; the classifier reads `ActivityError.retry_state` (`MAXIMUM_ATTEMPTS_REACHED`, `TIMEOUT`); `_can_continue_as_new()` ends the R-1b busy-loop | #78 | `fix-r1-retryable-update-continues-as-new.md` |
 | R-3 (= E-9) | see §4 | #77 | `fix-p2-web-hygiene.md` |
 | R-8 | documented: the browser `event_cursor`/`revision` count channel events; `snapshot.completion` is a synthetic `not_done` | #77 | `fix-p2-web-hygiene.md` |
+| R-2 | error details are content-free category codes: 404 `{"detail": "not_found"}` in both modes; 409 `{"detail": "stale_cas" \| "case_conflict" \| "approval_expired"}`; request validation 422 `{"detail": {"code": "request_invalid", "message": "request rejected"}}` instead of FastAPI's default body (which echoed input). The Runtime text (or, for 422, field locations and error types only) is logged server-side with the correlation id | branch `fix/p2-api-hygiene` (PR pending) | `fix-p2-api-hygiene.md` |
 
 Specs: `harness/context/fix-r10-terminal-delivery-callback-preflight.md`,
 `harness/context/fix-r1-retryable-update-continues-as-new-preflight.md`.
@@ -179,7 +181,6 @@ Update ID per request, which drops Update-level dedup globally and reverses
 the window and exceeds the 30 s Next proxy timeout.
 
 Other items (Minor unless marked):
-- R-2 `app.py` error handlers echo `str(exc)` to the browser.
 - R-4 the ML compiler resolves capabilities by exact id (frozen via r4; consistent today).
 - R-5 the channel route reads `expected_revision` outside the lock (redelivery recovers since #62).
 - R-6 persisted Cases keep their 1-day manifest; a runtime > 24 h test needs an injectable offer TTL.
@@ -196,7 +197,7 @@ Other items (Minor unless marked):
 - R-19 `SafeObservationAdapter._adapt_offer` (`agent_core/observation.py`) raises on a contract-valid `ProviderOffer` with a negative fee sum or a duplicate feature, via `SafeOffer.__post_init__` (the same out-of-domain inputs B1-9 made total in the policy check). Used today by the `ml/` pipeline and evaluation and the `scripts/` benchmark/harness runners, not by the product runtime. Found in the B1-9 review.
 
 Still open from the audit P2 list and not yet batched: runtime/router/api
-hygiene (B2-7, B2-8, B2-9, A-7f, R-2, R-5, R-14) and ops/tests (C-5, C-7, C-8, G-3, R-6).
+hygiene (B2-8, A-7f, R-5, R-14) and ops/tests (C-5, C-7, C-8, R-6).
 The design-first items are settled: B1-9 is closed above, and A-3, A-5, A-9
 are recorded as limits above. **Do not do**: D3-5/D3-6 (`qwen_mlx.py`
 frozen by r4); D1-10/11/12 (V1 simulator frozen, superseded by V2); D2-9 and
@@ -246,6 +247,16 @@ Each is recorded in the log of the change that introduced or found it.
   (P1 B2-4). Workflow runs that already FAILED on `main` before #40 are not
   recovered. After continue-as-new the expiry backoff restarts at zero
   (worst case one extra attempt round).
+- **API errors** (`fix-p2-api-hygiene.md`). For a stale revision, direct
+  mode (and the fake Temporal client) return `{"detail": "stale_cas"}` while
+  real Temporal returns `case_conflict`, because the workflow activity
+  classifies it; the fix belongs in `workflow_worker/activities.py`. A
+  replayed receipt the Case has since moved past returns the current
+  route and no `fast` (not the original turn's); no public command can
+  follow the approval-opening event, so the "later event" case is covered
+  only by a test that writes the later state directly into the repository.
+  The 422 log names field locations, which for an extra field is the
+  client-chosen key (never its value).
 - **Web.** The `case_conflict` copy says "retry if the action is still
   offered" while the action needs a reconnect first; the two new
   `statusMessage` entries have no test in `runtime-client.test.ts`; the
