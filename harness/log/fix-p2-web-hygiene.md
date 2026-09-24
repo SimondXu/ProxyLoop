@@ -173,3 +173,19 @@ Checks on this tree (no `PROXYLOOP_TEST_*` set):
   V2 ceiling report current).
 - `git status --short data/`: empty.
 - Not run: `make preflight`, real-dependency gates, Browser/manual smoke.
+
+## Final integration: update to origin/main @ 8e1522a (#76)
+
+Merged `origin/main` @ `8e1522a` (#76): no conflicts. With the shared
+test DB held exclusively, the variables were set on the make command line
+only, and the gates ran one at a time:
+
+- `make test`: pass (1199 passed, 47 skipped; 397 passed, 1 skipped;
+  V2 ceiling report current).
+- `make postgres-check PROXYLOOP_TEST_DATABASE_URL=…/proxyloop_test`: 27 passed.
+- `make phase05a-check` (+ `PROXYLOOP_TEST_TEMPORAL_ADDRESS=localhost:7233`): 37 passed.
+- `make phase06b1-check` (same variables): 35 passed.
+- `make preflight`: pass (1199 passed, 47 skipped; 397 passed, 1 skipped;
+  140 vitest tests; V2 ceiling report current).
+- `git status --short data/`: empty.
+- Not run: Browser/manual smoke.
