@@ -3,6 +3,7 @@ attestation (no weights are needed; CI has no MLX and no adapter file)."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import struct
 import subprocess
@@ -16,6 +17,7 @@ from proxyloop_evaluation.local_fast.mlx_adapter_conversion import (
     file_sha256,
     load_attestation,
     read_safetensors_header,
+    render_mlx_config,
     tensor_content_fingerprint,
     verify_mlx_adapter,
 )
@@ -264,6 +266,26 @@ def test_committed_attestation_binds_the_03c_adapter() -> None:
     assert (attestation.num_layers, attestation.lora_layers) == (36, 252)
     assert attestation.tensor_count == 504
     assert (attestation.rank, attestation.alpha, attestation.scale) == (32, 64, 2.0)
+
+
+def test_committed_attestation_config_hash_follows_from_the_peft_config() -> None:
+    """``output.config_sha256`` is recomputable in CI: the MLX config is a
+    deterministic rendering of the committed PEFT ``adapter_config.json``."""
+
+    attestation = load_attestation(ATTESTATION)
+    rendered = render_mlx_config(
+        RUN_MANIFEST.parent / "adapter/adapter_config.json",
+        num_layers=attestation.num_layers,
+    )
+    assert hashlib.sha256(rendered.encode("utf-8")).hexdigest() == (
+        attestation.mlx_config_sha256
+    )
+    config = json.loads(rendered)["lora_parameters"]
+    assert (config["rank"], config["scale"], tuple(config["keys"])) == (
+        attestation.rank,
+        attestation.scale,
+        attestation.keys,
+    )
 
 
 def test_default_converted_adapter_path_is_git_ignored() -> None:

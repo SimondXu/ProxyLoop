@@ -53,6 +53,13 @@ check requires exactly the 252 attested LoRA modules, each with a non-zero
 `lora_b` (the untuned backend requires none). A real load of a renamed copy
 returned without error, created 252 LoRA modules with 0 non-zero `lora_b`,
 and the check refused it (`harness/log/feat-pr9b-local-fast-gateway.md`).
+A second check then fingerprints every loaded `lora_a` and `lora_b` with the
+attestation formula and requires the committed `content_fingerprint`. It
+refuses a partial load (one `lora_a` left at its random init while every
+`lora_b` loaded, which the layer check passes) and a file changed between
+the file check and the model load, because it binds the weights in memory,
+not the file. The attested `config_sha256` is recomputable in CI from the
+committed PEFT `adapter_config.json`.
 
 ## Endpoints (`local-fast-wire-v1`)
 
@@ -81,11 +88,30 @@ raw outputs and the claim boundary: the parity report and
 `harness/log/feat-pr9b-local-fast-gateway.md`. M2 (the product rendering
 path) is not measured yet.
 
+What the committed report can and cannot prove: `--check` verifies that
+every derived field, the exact row set and order (the cloud arm's prompt ids)
+and each arm's identity follow from the recorded fields. It cannot verify
+that the raw outputs came from the model: that needs the git-ignored adapter
+and a rerun. `report_fingerprint` is computed by the script over the
+document; it is a consistency check, not a signature. Each arm records the
+code state it ran from (`code_state`); for this run it was reconstructed after
+the fact, with a byte-identical regeneration of sampled rows from the
+committed code as evidence (see the log).
+
 ## Local limits
 
-Loopback only, no authentication: any local process can call it. All model
-work runs on one thread (MLX streams are thread-local) and `decide` is single
-flight. MLX cannot cancel a running generation. Observed on one M4 Pro,
-sequentially: distilled generation p50 21.3 s, max 26.9 s (134 of 240 above
-20 s); untuned p50 9.9 s. No p95, capacity, concurrency, OOM, or production
-latency is measured or claimed.
+- Loopback only, no authentication: any local process can call it. Requests
+  must carry `Host: 127.0.0.1:<port>` (DNS rebinding) and decide calls
+  `Content-Type: application/json` (no browser simple POST); socket reads time
+  out after 10 s.
+- All model work runs on one thread (MLX streams are thread-local) and
+  `decide` is single flight with no queue.
+- MLX cannot cancel a running generation. With PR-9a's default Fast timeout of
+  25 s (the cap, root decision), a call the client abandons still occupies the
+  gateway until its generation ends, so the next Fast call in that window gets
+  `503 busy` and the runtime delivers the fallback line.
+- Observed on one M4 Pro, sequentially, while other work ran on the same
+  machine during the distilled arm: distilled generation p50 21.3 s, max
+  26.9 s (134 of 240 above 20 s, 15 above 25 s); untuned p50 9.9 s. These are
+  descriptive single-machine numbers under uncontrolled load. No p95,
+  capacity, concurrency, OOM, or production latency is measured or claimed.

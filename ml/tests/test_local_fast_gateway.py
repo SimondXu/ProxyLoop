@@ -17,30 +17,36 @@ from pathlib import Path
 import pytest
 from proxyloop_agent_core import CaseCoordinator
 from proxyloop_contracts import CaseContextSnapshot, FastModelView
+from proxyloop_evaluation.local_fast import gateway_core
 from proxyloop_evaluation.local_fast.gateway_core import (
     INVALID_OUTPUT_DETAIL_CODES,
     GatewayModelError,
     LocalFastGatewayCore,
     LoraLoadError,
+    check_loaded_lora_weights,
     check_lora_layers,
     collect_lora_layers,
 )
 from proxyloop_evaluation.local_fast.http_server import make_server
+from proxyloop_evaluation.local_fast.identity import MAX_TOKENS
 from proxyloop_evaluation.local_fast.mlx_adapter_conversion import (
     ConversionAttestation,
     convert_peft_lora_to_mlx,
     read_safetensors_header,
+    verify_mlx_adapter,
 )
 from proxyloop_evaluation.local_fast.trained_view import (
     ObservationMismatchError,
     trained_view,
 )
+from proxyloop_evaluation.phase03c_experiment import Phase03CQwenAdapter
 from proxyloop_evaluation.phase03c_prompt_set import (
     build_parameterised_snapshot,
     render_prompt,
     render_prompt_view,
 )
 from proxyloop_evaluation.phase03c_scenarios import FastPosition, harvest_positions
+from proxyloop_evaluation.qwen_spec import QWEN3_8B_BF16_SPEC
 from proxyloop_provider_simulator.scenarios import (
     SCENARIO_FAMILIES,
     BenchmarkScenario,
@@ -50,13 +56,16 @@ from test_mlx_adapter_conversion import _peft_dir
 
 from scripts.build_phase03c_cloud_bundle import heldout_families, render_eval_row
 
+Tensor = tuple[tuple[int, ...], bytes]
+
 
 class _FakeLoRA:
-    """``mlx_lm``'s LoRALinear as the guard sees it: lora_b starts at zero."""
+    """``mlx_lm``'s LoRALinear as the guard sees it: ``lora_a`` starts random
+    (non-zero), ``lora_b`` at zero.  Values are ``(shape, F32 bytes)``."""
 
     def __init__(self) -> None:
-        self.lora_a: list[float] = [0.5]
-        self.lora_b: list[float] = [0.0]
+        self.lora_a: Tensor = ((1,), struct.pack("<f", 0.5))
+        self.lora_b: Tensor = ((1,), struct.pack("<f", 0.0))
 
 
 class _FakeModel:
@@ -78,18 +87,26 @@ def _fake_mlx_load(adapter_dir: Path, attestation: ConversionAttestation) -> _Fa
         name: _FakeLoRA() for name in attestation.expected_lora_modules()
     }
     modules["model.embed_tokens"] = object()
-    table, _ = read_safetensors_header(adapter_dir / "adapters.safetensors")
-    for key in table:
+    weights = adapter_dir / "adapters.safetensors"
+    table, data_start = read_safetensors_header(weights)
+    raw = weights.read_bytes()
+    for key, entry in table.items():
         owner, _, param = key.rpartition(".")
         module = modules.get(owner)
-        if isinstance(module, _FakeLoRA) and param == "lora_b":
-            module.lora_b = [1.0]
+        if isinstance(module, _FakeLoRA) and param in ("lora_a", "lora_b"):
+            data = raw[data_start + entry.start : data_start + entry.end]
+            setattr(module, param, (entry.shape, data))
     return _FakeModel(modules)
 
 
 def _nonzero(value: object) -> bool:
-    assert isinstance(value, list)
-    return any(item != 0 for item in value)
+    assert isinstance(value, tuple)
+    return any(value[1])
+
+
+def _tensor_bytes(value: object) -> tuple[str, tuple[int, ...], bytes]:
+    assert isinstance(value, tuple)
+    return "F32", value[0], value[1]
 
 
 def _converted(tmp_path: Path) -> tuple[Path, ConversionAttestation]:
@@ -149,6 +166,51 @@ def test_guard_refuses_lora_layers_on_the_untuned_backend(tmp_path: Path) -> Non
     with pytest.raises(LoraLoadError, match="expected 0 LoRA layers"):
         check_lora_layers(layers, expected=frozenset())
     check_lora_layers({}, expected=frozenset())
+
+
+def test_weight_check_accepts_the_attested_tensors(tmp_path: Path) -> None:
+    out, attestation = _converted(tmp_path)
+    model = _fake_mlx_load(out, attestation)
+    check_loaded_lora_weights(model, attestation, tensor_bytes=_tensor_bytes)
+
+
+def test_weight_check_refuses_a_partial_load_the_layer_guard_misses(
+    tmp_path: Path,
+) -> None:
+    """Only one ``lora_a`` misses its module: ``lora_b`` loaded, so every layer
+    is non-zero and the layer guard passes, but the weights are not the
+    attested ones (that ``lora_a`` kept its random init)."""
+
+    out, attestation = _converted(tmp_path)
+    _rename_tensors(
+        out / "adapters.safetensors",
+        "model.layers.1.mlp.up_proj.lora_a",
+        "model.layers.1.mlp.up_proj.lora_A",
+    )
+    model = _fake_mlx_load(out, attestation)
+    check_lora_layers(
+        collect_lora_layers(model, nonzero=_nonzero),
+        expected=attestation.expected_lora_modules(),
+    )
+    with pytest.raises(LoraLoadError, match="differ from the attested"):
+        check_loaded_lora_weights(model, attestation, tensor_bytes=_tensor_bytes)
+
+
+def test_weight_check_refuses_a_file_changed_after_verification(
+    tmp_path: Path,
+) -> None:
+    """TOCTOU: the file passed ``verify_mlx_adapter``, then changed before the
+    model read it; the committed hash is checked against memory, not the file."""
+
+    out, attestation = _converted(tmp_path)
+    verify_mlx_adapter(out, attestation)
+    weights = out / "adapters.safetensors"
+    data = bytearray(weights.read_bytes())
+    data[-1] ^= 0x01
+    weights.write_bytes(bytes(data))
+    model = _fake_mlx_load(out, attestation)
+    with pytest.raises(LoraLoadError, match="differ from the attested"):
+        check_loaded_lora_weights(model, attestation, tensor_bytes=_tensor_bytes)
 
 
 # --- G1: trained view and core ------------------------------------------------
@@ -374,18 +436,116 @@ def test_http_refuses_invalid_requests(
     assert calls == []
 
 
+def _raw(port: int, head: str, body: bytes = b"") -> bytes:
+    with socket.create_connection(("127.0.0.1", port)) as sock:
+        sock.sendall(head.format(port=port).encode() + b"\r\n\r\n" + body)
+        return sock.makefile("rb").read()
+
+
+def _error_body(code: str) -> bytes:
+    return f'{{"error":"{code}","wire_version":"local-fast-wire-v1"}}'.encode()
+
+
 def test_http_refuses_an_oversized_body_without_reading_it() -> None:
     core = LocalFastGatewayCore.with_generator(lambda _: "{}")
-    with _running(core) as port, socket.create_connection(("127.0.0.1", port)) as sock:
-        sock.sendall(
-            b"POST /v1/fast/decide HTTP/1.1\r\nHost: 127.0.0.1\r\n"
-            b"Content-Length: 262145\r\n\r\n"
+    with _running(core) as port:
+        reply = _raw(
+            port,
+            "POST /v1/fast/decide HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
+            "Content-Type: application/json\r\nContent-Length: 262145",
         )
-        reply = sock.makefile("rb").read()
     assert reply.startswith(b"HTTP/1.0 413 ")
-    assert reply.endswith(
-        b'{"error":"request_too_large","wire_version":"local-fast-wire-v1"}'
-    )
+    assert reply.endswith(_error_body("request_too_large"))
+
+
+@pytest.mark.parametrize(
+    "host",
+    [None, "127.0.0.1", "localhost:{port}", "attacker.example:{port}", "127.0.0.1:1"],
+)
+def test_http_refuses_a_host_other_than_the_bound_loopback(host: str | None) -> None:
+    """DNS rebinding: a browser page on another name reaches 127.0.0.1 with
+    its own Host header; only the exact bound host:port is served."""
+
+    scenario, position = _heldout_positions()[0]
+    calls: list[str] = []
+
+    def generator(prompt: str) -> str:
+        calls.append(prompt)
+        return "{}"
+
+    core = LocalFastGatewayCore.with_generator(generator)
+    body = _request_body(_product_view(scenario, position), position.observation)
+    host_line = "" if host is None else f"\r\nHost: {host}"
+    with _running(core) as port:
+        post = _raw(
+            port,
+            f"POST /v1/fast/decide HTTP/1.1{host_line}\r\n"
+            f"Content-Type: application/json\r\nContent-Length: {len(body)}",
+            body,
+        )
+        get = _raw(port, f"GET /v1/identity HTTP/1.1{host_line}")
+    for reply in (post, get):
+        assert reply.startswith(b"HTTP/1.0 400 ")
+        assert reply.endswith(_error_body("host_not_allowed"))
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "content_type", [None, "text/plain", "application/x-www-form-urlencoded"]
+)
+def test_http_refuses_a_simple_cross_origin_post(content_type: str | None) -> None:
+    scenario, position = _heldout_positions()[0]
+    core = LocalFastGatewayCore.with_generator(lambda _: "{}")
+    body = _request_body(_product_view(scenario, position), position.observation)
+    type_line = "" if content_type is None else f"\r\nContent-Type: {content_type}"
+    with _running(core) as port:
+        reply = _raw(
+            port,
+            "POST /v1/fast/decide HTTP/1.1\r\nHost: 127.0.0.1:{port}"
+            f"{type_line}\r\nContent-Length: {len(body)}",
+            body,
+        )
+    assert reply.startswith(b"HTTP/1.0 415 ")
+    assert reply.endswith(_error_body("unsupported_media_type"))
+
+
+def test_http_accepts_a_json_content_type_with_parameters() -> None:
+    scenario, position = _heldout_positions()[0]
+    oracle = _oracle_json(scenario, position)
+    core = LocalFastGatewayCore.with_generator(lambda _: oracle)
+    body = _request_body(_product_view(scenario, position), position.observation)
+    with _running(core) as port:
+        reply = _raw(
+            port,
+            "POST /v1/fast/decide HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
+            f"Content-Type: application/json; charset=utf-8\r\n"
+            f"Content-Length: {len(body)}",
+            body,
+        )
+    assert reply.startswith(b"HTTP/1.0 200 ")
+
+
+def test_http_times_out_a_body_that_never_arrives() -> None:
+    core = LocalFastGatewayCore.with_generator(lambda _: "{}")
+    server = make_server(core, host="127.0.0.1", port=0, socket_timeout=0.5)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    try:
+        with socket.create_connection(("127.0.0.1", port)) as sock:
+            sock.settimeout(10)
+            sock.sendall(
+                f"POST /v1/fast/decide HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
+                "Content-Type: application/json\r\nContent-Length: 100\r\n\r\n"
+                "{".encode()
+            )
+            reply = sock.makefile("rb").read()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+    assert reply.startswith(b"HTTP/1.0 408 ")
+    assert reply.endswith(_error_body("request_timeout"))
 
 
 def test_http_refuses_an_observation_for_another_revision() -> None:
@@ -452,6 +612,58 @@ def test_generation_runs_on_one_model_thread_whatever_thread_calls() -> None:
     assert len(threads) == 4
     assert len(set(threads)) == 1
     assert threads[0].startswith("local-fast-model")
+
+
+def test_load_and_decide_run_on_the_same_model_thread(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The real ``load`` path (untuned: no adapter) with the MLX calls replaced
+    by recorders: construction, ``_load_mlx`` and every generation share one
+    thread, whichever thread calls ``load`` and ``decide``."""
+
+    scenario, position = _heldout_positions()[0]
+    oracle = _oracle_json(scenario, position)
+    events: list[tuple[str, str]] = []
+
+    def record(step: str) -> None:
+        events.append((step, threading.current_thread().name))
+
+    class _Recording(Phase03CQwenAdapter):
+        def __init__(self, **kwargs: object) -> None:
+            record("construct")
+            super().__init__(
+                generator=self._generate,
+                max_tokens=MAX_TOKENS,
+                model_spec=QWEN3_8B_BF16_SPEC,
+                prompt_version="v6",
+            )
+
+        def _generate(self, _: str) -> str:
+            record("generate")
+            return oracle
+
+        def _load_mlx(self) -> tuple[object, object, Callable[..., object]]:
+            record("load")
+            return _FakeModel({}), object(), lambda *_, **__: ""
+
+    monkeypatch.setattr(gateway_core, "Phase03CQwenAdapter", _Recording)
+    core = LocalFastGatewayCore.load(backend="untuned", model_path=tmp_path)
+    view = _product_view(scenario, position)
+    assert core.decide(view, position.observation).status == "succeeded"
+    body = _request_body(view, position.observation)
+    with _running(core) as port:
+        assert _call(port, "POST", "/v1/fast/decide", body)[0] == 200
+
+    assert [step for step, _ in events] == [
+        "construct",
+        "load",
+        "generate",
+        "generate",
+    ]
+    threads = {name for _, name in events}
+    assert len(threads) == 1
+    assert next(iter(threads)).startswith("local-fast-model")
+    assert threading.current_thread().name not in threads
 
 
 def test_http_model_failure_is_a_content_free_500() -> None:

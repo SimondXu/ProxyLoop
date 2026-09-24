@@ -25,6 +25,7 @@ import re
 import struct
 import sys
 from array import array
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -189,15 +190,25 @@ def tensor_content_fingerprint(path: Path) -> str:
     """sha256 over sorted ``(key, dtype, shape, sha256(bytes))`` rows."""
 
     table, data_start = read_safetensors_header(path)
-    rows = [
-        [
-            key,
-            entry.dtype,
-            list(entry.shape),
-            hashlib.sha256(_read_tensor(path, entry, data_start)).hexdigest(),
-        ]
-        for key, entry in sorted(table.items())
-    ]
+    return content_fingerprint(
+        (key, entry.dtype, entry.shape, _read_tensor(path, entry, data_start))
+        for key, entry in table.items()
+    )
+
+
+def content_fingerprint(
+    tensors: Iterable[tuple[str, str, tuple[int, ...], bytes]],
+) -> str:
+    """The attestation formula over ``(key, dtype, shape, bytes)`` tensors.
+
+    Shared by the file check and by the gateway's check of the tensors the
+    model actually loaded, so both compare against the same committed value.
+    """
+
+    rows = sorted(
+        [key, dtype, list(shape), hashlib.sha256(data).hexdigest()]
+        for key, dtype, shape, data in tensors
+    )
     encoded = json.dumps(rows, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
@@ -235,6 +246,27 @@ def _write_safetensors(
         stream.write(encoded)
         for key in sorted(tensors):
             stream.write(tensors[key][1])
+
+
+def render_mlx_config(peft_config: Path, *, num_layers: int) -> str:
+    """The ``mlx_lm`` ``adapter_config.json`` text for a PEFT LoRA config.
+
+    Deterministic in the committed PEFT config and the layer count, so CI can
+    recompute the attested ``config_sha256`` without the weights.
+    """
+
+    rank, alpha, modules = _peft_lora_config(peft_config)
+    config = {
+        "fine_tune_type": "lora",
+        "num_layers": num_layers,
+        "lora_parameters": {
+            "rank": rank,
+            "scale": alpha / rank,
+            "dropout": 0.0,
+            "keys": [f"{MODULE_GROUPS[module]}.{module}" for module in modules],
+        },
+    }
+    return json.dumps(config, indent=2, sort_keys=True) + "\n"
 
 
 def _peft_lora_config(path: Path) -> tuple[int, int, tuple[str, ...]]:
@@ -321,20 +353,10 @@ def convert_peft_lora_to_mlx(
         tensors[name] = ((cols, rows), _transpose_f32(data, rows, cols))
 
     keys = tuple(f"{MODULE_GROUPS[module]}.{module}" for module in modules)
-    mlx_config = {
-        "fine_tune_type": "lora",
-        "num_layers": num_layers,
-        "lora_parameters": {
-            "rank": rank,
-            "scale": alpha / rank,
-            "dropout": 0.0,
-            "keys": list(keys),
-        },
-    }
     destination.mkdir(parents=True, exist_ok=True)
     _write_safetensors(destination / MLX_WEIGHTS, tensors)
     (destination / MLX_CONFIG).write_text(
-        json.dumps(mlx_config, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        render_mlx_config(config_path, num_layers=num_layers), encoding="utf-8"
     )
     return ConversionAttestation(
         source_weights_sha256=source_sha,
@@ -374,11 +396,13 @@ __all__ = [
     "ATTESTATION_SCHEMA_VERSION",
     "CONVERTER_VERSION",
     "ConversionAttestation",
+    "content_fingerprint",
     "convert_peft_lora_to_mlx",
     "file_sha256",
     "load_attestation",
     "read_safetensors_header",
     "render_attestation",
+    "render_mlx_config",
     "tensor_content_fingerprint",
     "verify_mlx_adapter",
 ]

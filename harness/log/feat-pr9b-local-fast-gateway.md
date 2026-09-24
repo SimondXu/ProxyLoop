@@ -154,7 +154,11 @@ Latency (descriptive, one machine, sequential; other work ran on the machine
 during the distilled arm): 134/240 distilled generations exceeded 20 s and
 15/240 exceeded 25 s. The spec's estimate was 10–16 s (§2.7, [I]). Under the
 spec's default `PROXYLOOP_FAST_TIMEOUT_S` 20, most distilled calls would end
-as `fast_adapter_timeout`; this is a Q10 input for the root, not a 9b change.
+as `fast_adapter_timeout`. Root decision after the review: PR-9a's default is
+25 s (the cap). Consequence recorded here and in `ml/serving/README.md`: MLX
+cannot cancel a generation, so after a client timeout the gateway stays busy
+until that generation ends and the next Fast call in that window gets
+`503 busy` and falls back.
 
 Report: `data/experiments/phase-03c/local-parity/parity-report.json`
 (1.1 MB; the 03C precedent `heldout-report.json` is 2.4 MB; no paths,
@@ -180,3 +184,65 @@ with `parity-report.json is stale or was edited` (then restored with git).
   …/qwen_mlx.py …/fast_output.py runtime apps` is empty.
 - Not run: independent review (root's call), the DB/Temporal gates (not
   applicable), the Browser check (pending with 9a).
+
+## Review remediation (review: Request Changes, no Blocking)
+
+Review artifact: `harness/code_review/feat-pr9b-local-fast-gateway.md`.
+
+- I1: `--write` and `--check` now run `validate_observed` first: each arm
+  must hold exactly the cloud arm's prompt ids in cloud order, and its
+  identity must equal `GatewayIdentity(backend, attested adapter fingerprint,
+  recorded mlx_versions)` including `identity_fingerprint` (and agree with the
+  host's MLX versions). Tests fail on dropped wrong rows (the reviewer's
+  236/236 forgery, also through `main(["--check"])`), duplicated rows,
+  reordered rows, a zeroed `decoding_fingerprint`, a swapped label, and an
+  edit with a re-computed fingerprint. The integrity limits are stated in the
+  report's `claim_boundary` and the README.
+- M1: after load, the gateway fingerprints every loaded `lora_a`/`lora_b` with
+  the attestation formula and requires the committed `content_fingerprint`
+  (`check_loaded_lora_weights`). This compares memory against the committed
+  hash instead of re-reading `adapters.safetensors`: a re-read would see the
+  same swapped file as the load, so only this closes the verify/load gap.
+  Real MLX: the attested adapter loaded with both checks in 12.1 s; a copy
+  with only `model.layers.7.mlp.up_proj.lora_a` renamed passed the layer
+  guard (252 layers, all `lora_b` non-zero) and was refused by the weight
+  check. CI tests: partial load and file-changed-after-verify.
+- M2 (code state of the M1 run). Distilled arm: started 11:01:32 UTC at
+  `5429076` with the PR-9b code uncommitted (first code commits `6d5ed75`,
+  `afeec4d` at 11:07 UTC). Untuned arm: started 12:18:11 UTC at `afeec4d`
+  with `parity.py` and the runner uncommitted (committed unchanged in
+  `1e74da0`). Both runs predate `f148362` (same calls, moved onto one
+  dedicated thread). Per the session record, the distilled arm's uncommitted
+  generation-path files differ from their first commits only by `ruff
+  format`, the runner's import mechanics, and a `RecursionError` catch in
+  `wire.py` (imported only for its version constant). The raw pre-commit
+  bytes were not kept, so that is not byte-verifiable. **Finding: the
+  generation path is byte-identical in behaviour.** Evidence:
+  `prompt_fingerprint_matches` 240/240 against the bundle rows (prompt
+  building); the frozen 03C decoding and parsing modules are base-commit bytes
+  (the frozen-path diff is empty); at `31edadb` with a clean tree,
+  `m2_replay.py` regenerated 10 distilled rows (the first of each family plus
+  all 4 oracle-disagreeing rows) and 6 untuned rows with byte-identical
+  `raw_output`, input/output token counts and prompt fingerprints, and both
+  identities equal to the report's. (The untuned replay process started with
+  uncommitted edits only in files it does not import: the runner,
+  `http_server.py`, tests.) No rerun needed. Each arm's `code_state` in the
+  report records this; future runs capture `head` and `dirty_paths` in the
+  run header automatically. The rule "two unparseable outputs count as
+  concordant" was written after the run; `both_unparseable_rows` is 0 in
+  both arms, so it decided no row.
+- M3: `--run` refuses without `HF_HUB_OFFLINE=1`
+  (`set HF_HUB_OFFLINE=1: the parity run never downloads`).
+- M4: every request needs `Host: 127.0.0.1:<port>` (400 `host_not_allowed`
+  otherwise, including `localhost:<port>`: the PR-9a client must use
+  `127.0.0.1`), decide calls need `Content-Type: application/json` (415), and
+  socket reads time out after 10 s (408 `request_timeout`). Tests for each.
+- M5: `test_load_and_decide_run_on_the_same_model_thread` drives the real
+  `load` path with recording stand-ins for the MLX calls; construction,
+  `_load_mlx` and both generations (direct and HTTP) run on one
+  `local-fast-model` thread, not the caller's.
+- M6: `render_mlx_config` derives the MLX config from the committed PEFT
+  `adapter_config.json`; a test recomputes the attested `config_sha256`.
+  The real conversion still reproduces the committed attestation (`matches`).
+- M7: the README and the log state that the distilled latency was measured
+  while other work ran on the machine.

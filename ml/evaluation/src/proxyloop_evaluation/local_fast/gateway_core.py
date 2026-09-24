@@ -37,7 +37,11 @@ from .identity import (
     GatewayIdentity,
     installed_mlx_versions,
 )
-from .mlx_adapter_conversion import ConversionAttestation, verify_mlx_adapter
+from .mlx_adapter_conversion import (
+    ConversionAttestation,
+    content_fingerprint,
+    verify_mlx_adapter,
+)
 from .trained_view import TrainedViewError, trained_view
 
 GatewayStatus = Literal["succeeded", "invalid_output", "unrenderable"]
@@ -102,6 +106,44 @@ def check_lora_layers(layers: Mapping[str, bool], *, expected: frozenset[str]) -
             f"{len(zero)} of {len(layers)} LoRA layers have all-zero lora_b; "
             "the adapter weights did not load"
         )
+
+
+TensorBytes = Callable[[object], tuple[str, tuple[int, ...], bytes]]
+
+
+def check_loaded_lora_weights(
+    model: object, attestation: ConversionAttestation, *, tensor_bytes: TensorBytes
+) -> None:
+    """Refuse unless the loaded LoRA tensors *are* the attested adapter.
+
+    Fingerprints every ``lora_a``/``lora_b`` the model holds after loading with
+    the attestation formula and compares it with the committed value.  This
+    catches a partial load (a ``lora_a`` left at its random init while
+    ``lora_b`` loaded) and a file changed between ``verify_mlx_adapter`` and
+    ``mlx_lm.load``: the committed hash binds the weights in memory, not a file.
+    """
+
+    named_modules = getattr(model, "named_modules", None)
+    if not callable(named_modules):
+        raise LoraLoadError("model does not expose named_modules")
+    tensors = []
+    for name, module in named_modules():
+        if hasattr(module, "lora_a") and hasattr(module, "lora_b"):
+            for param in ("lora_a", "lora_b"):
+                dtype, shape, data = tensor_bytes(getattr(module, param))
+                tensors.append((f"{name}.{param}", dtype, shape, data))
+    if content_fingerprint(tensors) != attestation.content_fingerprint:
+        raise LoraLoadError(
+            "the loaded LoRA weights differ from the attested adapter content"
+        )
+
+
+def _mlx_tensor_bytes(value: object) -> tuple[str, tuple[int, ...], bytes]:
+    mx = importlib.import_module("mlx.core")
+    mx.eval(value)
+    dtype = "F32" if value.dtype == mx.float32 else str(value.dtype)  # type: ignore[attr-defined]
+    shape = tuple(int(item) for item in value.shape)  # type: ignore[attr-defined]
+    return dtype, shape, bytes(memoryview(value))  # type: ignore[arg-type]
 
 
 def _model_thread() -> ThreadPoolExecutor:
@@ -207,6 +249,10 @@ class LocalFastGatewayCore:
                     else frozenset()
                 ),
             )
+            if attestation is not None:
+                check_loaded_lora_weights(
+                    model, attestation, tensor_bytes=_mlx_tensor_bytes
+                )
             return adapter
 
         model_thread = _model_thread()
@@ -307,6 +353,7 @@ __all__ = [
     "GatewayStatus",
     "LocalFastGatewayCore",
     "LoraLoadError",
+    "check_loaded_lora_weights",
     "check_lora_layers",
     "collect_lora_layers",
 ]

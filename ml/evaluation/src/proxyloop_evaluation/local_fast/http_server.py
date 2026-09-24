@@ -2,7 +2,10 @@
 
 ``GET /v1/identity`` answers during a generation (threaded server);
 ``POST /v1/fast/decide`` is single-flight: a second call while one runs gets
-``503 busy``, with no queue.  Error bodies carry a code only.  Logs carry the
+``503 busy``, with no queue.  Every request must carry ``Host:
+127.0.0.1:<port>`` (DNS rebinding) and a decide call ``Content-Type:
+application/json`` (no browser simple POST); socket reads time out after
+``SOCKET_TIMEOUT_S``.  Error bodies carry a code only.  Logs carry the
 endpoint, HTTP status, gateway status, latency and token counts; never the
 prompt, the observation, or model text (L9).
 """
@@ -28,6 +31,7 @@ from .wire import (
 LOOPBACK_HOST: Final = "127.0.0.1"
 IDENTITY_PATH: Final = "/v1/identity"
 DECIDE_PATH: Final = "/v1/fast/decide"
+SOCKET_TIMEOUT_S: Final = 10.0
 LOG = logging.getLogger("proxyloop.local_fast.gateway")
 
 
@@ -55,8 +59,11 @@ def _error(code: str) -> bytes:
 class GatewayServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, port: int, core: LocalFastGatewayCore) -> None:
+    def __init__(
+        self, port: int, core: LocalFastGatewayCore, *, socket_timeout: float
+    ) -> None:
         self.core = core
+        self.socket_timeout = socket_timeout
         self.decide_lock = threading.Lock()
         self.identity_body = encode_json(core.identity.to_dict())
         self.identity_fingerprint = core.identity.identity_fingerprint
@@ -65,6 +72,19 @@ class GatewayServer(ThreadingHTTPServer):
 
 class _Handler(BaseHTTPRequestHandler):
     server: GatewayServer
+
+    def setup(self) -> None:
+        # Per socket operation (request line, headers, body, response write);
+        # the generation itself runs off the socket and is not bounded by it.
+        super().setup()
+        self.connection.settimeout(self.server.socket_timeout)
+
+    def _host_allowed(self) -> bool:
+        """DNS rebinding: only the exact bound ``127.0.0.1:port`` Host."""
+
+        return self.headers.get("Host") == (
+            f"{LOOPBACK_HOST}:{self.server.server_address[1]}"
+        )
 
     def log_message(self, format: str, *args: object) -> None:
         """Silence the default request-line log; ``_send`` logs content-free."""
@@ -89,6 +109,9 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         started = time.monotonic()
+        if not self._host_allowed():
+            self._send(400, _error("host_not_allowed"), started=started)
+            return
         if self.path != IDENTITY_PATH:
             self._send(404, _error("not_found"), started=started)
             return
@@ -96,8 +119,16 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         started = time.monotonic()
+        if not self._host_allowed():
+            self._send(400, _error("host_not_allowed"), started=started)
+            return
         if self.path != DECIDE_PATH:
             self._send(404, _error("not_found"), started=started)
+            return
+        # A browser "simple" cross-origin POST cannot send application/json.
+        media_type = self.headers.get("Content-Type", "").split(";", 1)[0]
+        if media_type.strip().lower() != "application/json":
+            self._send(415, _error("unsupported_media_type"), started=started)
             return
         try:
             length = int(self.headers.get("Content-Length", ""))
@@ -111,7 +142,12 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(400, _error("request_invalid"), started=started)
             return
         try:
-            view, observation = decode_decide_request(self.rfile.read(length))
+            body = self.rfile.read(length)
+        except TimeoutError:
+            self._send(408, _error("request_timeout"), started=started)
+            return
+        try:
+            view, observation = decode_decide_request(body)
         except WireError:
             self._send(400, _error("request_invalid"), started=started)
             return
@@ -150,10 +186,16 @@ class _Handler(BaseHTTPRequestHandler):
         )
 
 
-def make_server(core: LocalFastGatewayCore, *, host: str, port: int) -> GatewayServer:
+def make_server(
+    core: LocalFastGatewayCore,
+    *,
+    host: str,
+    port: int,
+    socket_timeout: float = SOCKET_TIMEOUT_S,
+) -> GatewayServer:
     if host != LOOPBACK_HOST:
         raise ValueError("the local Fast gateway binds 127.0.0.1 only")
-    return GatewayServer(port, core)
+    return GatewayServer(port, core, socket_timeout=socket_timeout)
 
 
 def serve(core: LocalFastGatewayCore, *, host: str, port: int) -> None:

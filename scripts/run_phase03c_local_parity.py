@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -37,6 +38,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from proxyloop_evaluation.local_fast.identity import (  # noqa: E402
+    BACKENDS,
     installed_mlx_versions,
 )
 from proxyloop_evaluation.local_fast.parity import (  # noqa: E402
@@ -70,7 +72,6 @@ ATTESTATION = ROOT / "ml/serving/phase-03c-cloud-run-01-mlx-attestation.json"
 DEFAULT_ADAPTER = (
     ROOT / "data/experiments/phase-03c/training/cloud-run-01/train/mlx/adapters"
 )
-BACKENDS = ("distilled", "untuned")
 OBSERVED_ROW_KEYS = (
     "prompt_id",
     "raw_output",
@@ -82,7 +83,8 @@ OBSERVED_ROW_KEYS = (
     "wall_ms",
     "prompt_fingerprint",
 )
-OBSERVED_ARM_KEYS = ("identity", "host", "load_ms")
+OBSERVED_ARM_KEYS = ("identity", "host", "load_ms", "code_state")
+CODE_STATE_KEYS = frozenset({"head", "dirty_paths", "note"})
 CLAIM_BOUNDARY = (
     "M1 stack parity only (E2): the trained-format prompts of the 240 Phase 03C "
     "held-out rows, generated sequentially on one Apple-silicon machine with "
@@ -91,7 +93,12 @@ CLAIM_BOUNDARY = (
     "path (M2 is pending), and it measures no p95, capacity, concurrency, OOM or "
     "production latency. The distilled backend is a local opt-in candidate, "
     "never promoted; the four Phase 03C caveats and E1-E5 of decision 18 "
-    "(harness/context/audit-remediation-decisions.md) apply to every number."
+    "(harness/context/audit-remediation-decisions.md) apply to every number. "
+    "Integrity limits: --check verifies that every derived field, the row set "
+    "and order, and each arm's identity follow from the recorded fields; it "
+    "cannot verify that the raw outputs came from the model (that needs the "
+    "git-ignored adapter and a rerun), and report_fingerprint is computed by "
+    "this script over the document, a consistency check, not a signature."
 )
 NOT_MEASURED = (
     "M2 input parity through the product rendering path (needs PR-9a)",
@@ -112,7 +119,31 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model-path", type=Path)
     parser.add_argument("--adapter-path", type=Path, default=DEFAULT_ADAPTER)
     parser.add_argument("--limit", type=int, default=None, help="smoke: first N rows")
+    parser.add_argument(
+        "--code-state",
+        type=Path,
+        default=None,
+        help="--write: JSON {backend: code_state} for run files whose header "
+        "predates automatic code-state capture",
+    )
     return parser.parse_args(argv)
+
+
+def _git(*args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout
+
+
+def current_code_state() -> dict[str, object]:
+    """The commit and the uncommitted paths the run process imports from."""
+
+    dirty = sorted(line[3:] for line in _git("status", "--porcelain").splitlines())
+    return {
+        "head": _git("rev-parse", "HEAD").strip(),
+        "dirty_paths": dirty,
+        "note": None,
+    }
 
 
 def _sha256(path: Path) -> str:
@@ -155,6 +186,8 @@ def run(args: argparse.Namespace) -> int:
 
     if args.backend is None or args.model_path is None:
         raise SystemExit("--run needs --backend and --model-path")
+    if os.environ.get("HF_HUB_OFFLINE") != "1":
+        raise SystemExit("set HF_HUB_OFFLINE=1: the parity run never downloads")
     cloud = json.loads(CLOUD_REPORT.read_text(encoding="utf-8"))
     prompt_ids = _cloud_prompt_ids(cloud, args.backend)[: args.limit]
     index = build_index(PROMPT_VERSION)
@@ -189,6 +222,7 @@ def run(args: argparse.Namespace) -> int:
             "identity": identity,
             "host": host_facts(),
             "load_ms": load_ms,
+            "code_state": current_code_state(),
         }
         path.write_text(json.dumps(header, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -224,16 +258,25 @@ def run(args: argparse.Namespace) -> int:
     return 0
 
 
-def _observed_from_runs() -> dict[str, dict[str, Any]]:
+def _observed_from_runs(code_state_path: Path | None) -> dict[str, dict[str, Any]]:
     cloud = json.loads(CLOUD_REPORT.read_text(encoding="utf-8"))
+    supplied: dict[str, Any] = (
+        json.loads(code_state_path.read_text(encoding="utf-8"))
+        if code_state_path is not None
+        else {}
+    )
     observed: dict[str, dict[str, Any]] = {}
     for backend in BACKENDS:
         path = RUNS_DIR / f"{backend}.jsonl"
         lines = [json.loads(line) for line in path.read_text("utf-8").splitlines()]
         header, rows = lines[0], {str(row["prompt_id"]): row for row in lines[1:]}
         order = _cloud_prompt_ids(cloud, backend)
-        if set(rows) != set(order):
-            raise SystemExit(f"{path.name} has {len(rows)}/{len(order)} rows")
+        if set(rows) != set(order) or len(lines) - 1 != len(order):
+            raise SystemExit(f"{path.name} has {len(lines) - 1}/{len(order)} rows")
+        if "code_state" not in header:
+            if backend not in supplied:
+                raise SystemExit(f"{path.name} has no code_state; pass --code-state")
+            header = {**header, "code_state": supplied[backend]}
         observed[backend] = {
             **{key: header[key] for key in OBSERVED_ARM_KEYS},
             "rows": [
@@ -241,6 +284,50 @@ def _observed_from_runs() -> dict[str, dict[str, Any]]:
             ],
         }
     return observed
+
+
+def validate_observed(observed: dict[str, dict[str, Any]]) -> None:
+    """Refuse a row set, order, or identity that the run could not have produced.
+
+    Every arm must hold exactly the cloud arm's prompt ids in the cloud order
+    (no dropped, duplicated, or reordered rows), and its identity must equal
+    the one ``GatewayIdentity`` computes for that backend, the committed
+    adapter attestation, and the recorded MLX versions, fingerprint included.
+    """
+
+    from proxyloop_evaluation.local_fast.identity import GatewayIdentity
+
+    cloud = json.loads(CLOUD_REPORT.read_text(encoding="utf-8"))
+    attestation = json.loads(ATTESTATION.read_text(encoding="utf-8"))
+    if set(observed) != set(BACKENDS):
+        raise SystemExit("the report needs both the distilled and untuned arms")
+    for backend in BACKENDS:
+        arm = observed[backend]
+        prompt_ids = [str(row["prompt_id"]) for row in arm["rows"]]
+        if prompt_ids != _cloud_prompt_ids(cloud, backend):
+            raise SystemExit(
+                f"{backend} rows differ from the cloud {CLOUD_ARMS[backend]} "
+                "prompt ids (dropped, duplicated, or reordered rows)"
+            )
+        recorded = arm["identity"]
+        expected = GatewayIdentity(
+            backend=backend,
+            adapter_fingerprint=(
+                str(attestation["output"]["content_fingerprint"])
+                if backend == "distilled"
+                else None
+            ),
+            mlx_versions=dict(recorded.get("mlx_versions", {})),
+        ).to_dict()
+        if recorded != expected:
+            raise SystemExit(f"{backend} identity differs from the served identity")
+        if recorded["mlx_versions"] != arm["host"]["packages"]:
+            raise SystemExit(f"{backend} identity and host disagree on MLX versions")
+        state = arm["code_state"]
+        if not isinstance(state, dict) or set(state) != CODE_STATE_KEYS:
+            raise SystemExit(
+                f"{backend} code_state must carry {sorted(CODE_STATE_KEYS)}"
+            )
 
 
 def _observed_from_report(report: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -261,6 +348,9 @@ def _count(rows: list[dict[str, Any]], key: str) -> dict[str, float | int]:
 
 
 def build_report(observed: dict[str, dict[str, Any]]) -> dict[str, object]:
+    """Derive every non-observed field.  Callers validate first
+    (``validate_observed``); tests replay row subsets through this directly."""
+
     cloud = json.loads(CLOUD_REPORT.read_text(encoding="utf-8"))
     attestation = json.loads(ATTESTATION.read_text(encoding="utf-8"))
     index = build_index(PROMPT_VERSION)
@@ -331,6 +421,11 @@ def build_report(observed: dict[str, dict[str, Any]]) -> dict[str, object]:
                 "local_act_agreement": aggregate(scored)["dialogue_act_accuracy"],
                 "cloud_act_agreement": _count(rows, "cloud_act_agreement"),
                 "cloud_act_concordance": _count(rows, "act_concordant"),
+                "both_unparseable_rows": sum(
+                    1
+                    for row in rows
+                    if row["local_act"] is None and row["cloud_act"] is None
+                ),
                 "raw_exact_match_cloud": _count(rows, "raw_exact_match_cloud"),
                 "input_tokens_equal_cloud": _count(rows, "input_tokens_equal_cloud"),
                 "prompt_fingerprint_matches": _count(
@@ -385,6 +480,11 @@ def build_report(observed: dict[str, dict[str, Any]]) -> dict[str, object]:
                 "local and cloud outputs name the same dialogue_act after tolerant "
                 "JSON extraction; two unparseable outputs count as concordant"
             ),
+            "concordance_definition_timing": (
+                "the bar was pre-registered; the rule for two unparseable outputs "
+                "was written after the run; each arm's both_unparseable_rows shows "
+                "how many rows it decides"
+            ),
         },
         "source_cloud_report": {
             "path": str(CLOUD_REPORT.relative_to(ROOT)),
@@ -432,13 +532,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.run:
         return run(args)
     if args.write:
-        rendered = _render(build_report(_observed_from_runs()))
+        observed = _observed_from_runs(args.code_state)
+        validate_observed(observed)
+        rendered = _render(build_report(observed))
         REPORT.parent.mkdir(parents=True, exist_ok=True)
         REPORT.write_text(rendered, encoding="utf-8")
         print(f"wrote {REPORT.relative_to(ROOT)}")
     else:
         committed = REPORT.read_text(encoding="utf-8")
-        rendered = _render(build_report(_observed_from_report(json.loads(committed))))
+        observed = _observed_from_report(json.loads(committed))
+        validate_observed(observed)
+        rendered = _render(build_report(observed))
         if committed != rendered:
             raise SystemExit(f"{REPORT.relative_to(ROOT)} is stale or was edited")
         print(f"checked {REPORT.relative_to(ROOT)}")
