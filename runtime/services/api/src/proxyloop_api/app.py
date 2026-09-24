@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import logging
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from time import perf_counter
@@ -26,6 +26,7 @@ from proxyloop_case_runtime import (
     CaseTransitionRef,
     ChannelConflictError,
     ChannelDependencyUnavailableError,
+    InboxReceiptRecord,
     ModelRuntimeError,
     RuntimeResult,
     StorageUnavailableError,
@@ -35,6 +36,7 @@ from proxyloop_connectors import (
     SCHEMA_VERSION,
     LocalMailboxEventKind,
     LocalMailboxVerificationError,
+    VerifiedLocalMailboxEvent,
     verify_local_mailbox_event,
 )
 from proxyloop_contracts import (
@@ -48,6 +50,7 @@ from proxyloop_contracts import (
 )
 from proxyloop_openai_adapter import OpenAICompatibleAdapterError
 from proxyloop_workflow_worker import (
+    REDRIVABLE_OUTBOX_STATES,
     CaseCommandRequest,
     TemporalDispatchError,
     TemporalReadinessResult,
@@ -603,64 +606,51 @@ def create_app(
         state = await run_in_threadpool(service.repository.get, inbox.case_id)
         if state is None:
             raise CaseNotFoundError("case not found")
-        prior = next(
-            (item for item in state.transitions if item.command_id == inbox.command_id),
-            None,
-        )
+        prior = _find_receipt(state.transitions, inbox.command_id)
         # The Case receipt is written in the same transaction that marks the
         # inbox applied, so the receipt alone proves the event applied; the
         # inbox copy read above may predate a racing first dispatch's commit.
         if prior is not None:
             request.state.revision = prior.after_revision
             request.state.delivery_state = prior.delivery_status
+            redrive = await run_in_threadpool(
+                _redrive_request, repository, event, inbox, prior
+            )
+            if redrive is not None:
+                # The ingest committed but its delivery never settled (for
+                # example the delivery activity exhausted). The identical
+                # request keeps the Update ID, so once the run has rolled the
+                # Workflow re-runs the delivery activity; a failure here is
+                # returned as is for the sender to redeliver.
+                prior = await temporal_client.apply_command(redrive)
+                request.state.revision = prior.after_revision
+                request.state.delivery_state = prior.delivery_status
             return _channel_result_payload(
                 event, prior.model_copy(update={"deduplicated": True})
             )
-        if event.kind is LocalMailboxEventKind.PROVIDER_MESSAGE:
-            command_type = CaseCommandType.INGEST_CHANNEL_EVENT
-        else:
-            command_type = CaseCommandType.RECORD_CHANNEL_DELIVERY
-        command_values: dict[str, Any] = {
-            "schema_version": CHANNEL_COMMAND_SCHEMA_VERSION,
-            "command_id": inbox.command_id,
-            "case_id": inbox.case_id,
-            "command_type": command_type,
-            "expected_revision": state.snapshot.revision,
-            "channel_occurred_at": event.occurred_at,
-            "channel_kind": "local_mailbox",
-            "binding_ref": event.binding_ref,
-            "event_id": event.event_id,
-        }
-        if event.kind is LocalMailboxEventKind.PROVIDER_MESSAGE:
-            if event.content is None:
-                raise LocalMailboxVerificationError("malformed_channel_event")
-            command_values.update(
-                {
-                    "content_hash": hashlib.sha256(
-                        event.content.encode("utf-8")
-                    ).hexdigest(),
-                    "payload_hash": event.raw_payload_hash,
-                }
+        dispatched_revision = state.snapshot.revision
+        try:
+            transition = await temporal_client.apply_command(
+                _channel_command_request(event, inbox, dispatched_revision)
             )
-        else:
+        except TemporalDispatchError as error:
+            # The revision was read outside the Case lane, so a concurrent
+            # commit can make it stale. Retry once, only when the Case moved
+            # and this event still has no receipt; anything else (a genuine
+            # conflict, or a delivery conflict after the ingest committed)
+            # is returned unchanged.
+            if error.category != "channel_conflict":
+                raise
+            raced = await run_in_threadpool(service.repository.get, inbox.case_id)
             if (
-                event.delivery_id is None
-                or event.provider_message_id is None
-                or event.delivery_status is None
+                raced is None
+                or _find_receipt(raced.transitions, inbox.command_id) is not None
+                or raced.snapshot.revision <= dispatched_revision
             ):
-                raise LocalMailboxVerificationError("malformed_channel_event")
-            command_values.update(
-                {
-                    "delivery_id": event.delivery_id,
-                    "provider_message_id": event.provider_message_id,
-                    "delivery_status": event.delivery_status,
-                    "artifact_hash": event.raw_payload_hash,
-                    "payload_hash": event.raw_payload_hash,
-                }
+                raise
+            transition = await temporal_client.apply_command(
+                _channel_command_request(event, inbox, raced.snapshot.revision)
             )
-        transition = await temporal_client.apply_command(
-            CaseCommandRequest(**command_values)
-        )
         request.state.revision = transition.after_revision
         request.state.delivery_state = transition.delivery_status
         return _channel_result_payload(event, transition)
@@ -1074,6 +1064,100 @@ def _browser_approval(approval: ApprovalRequest) -> dict[str, Any]:
 
 def _is_channel_visible_event(event: VisibleCaseEvent) -> bool:
     return event.actor == "provider" and event.event_type in _CHANNEL_EVENT_TYPES
+
+
+def _find_receipt(
+    transitions: Sequence[CaseTransitionRef], command_id: UUID
+) -> CaseTransitionRef | None:
+    return next((item for item in transitions if item.command_id == command_id), None)
+
+
+def _channel_command_request(
+    event: VerifiedLocalMailboxEvent,
+    inbox: InboxReceiptRecord,
+    expected_revision: int | None,
+) -> CaseCommandRequest:
+    """Build the channel command for one reserved event (pure).
+
+    The first dispatch and a re-drive both build it here, so a re-drive with
+    the original ``expected_revision`` is the identical request.
+    """
+
+    if event.kind is LocalMailboxEventKind.PROVIDER_MESSAGE:
+        command_type = CaseCommandType.INGEST_CHANNEL_EVENT
+    else:
+        command_type = CaseCommandType.RECORD_CHANNEL_DELIVERY
+    command_values: dict[str, Any] = {
+        "schema_version": CHANNEL_COMMAND_SCHEMA_VERSION,
+        "command_id": inbox.command_id,
+        "case_id": inbox.case_id,
+        "command_type": command_type,
+        "expected_revision": expected_revision,
+        "channel_occurred_at": event.occurred_at,
+        "channel_kind": "local_mailbox",
+        "binding_ref": event.binding_ref,
+        "event_id": event.event_id,
+    }
+    if event.kind is LocalMailboxEventKind.PROVIDER_MESSAGE:
+        if event.content is None:
+            raise LocalMailboxVerificationError("malformed_channel_event")
+        command_values.update(
+            {
+                "content_hash": hashlib.sha256(
+                    event.content.encode("utf-8")
+                ).hexdigest(),
+                "payload_hash": event.raw_payload_hash,
+            }
+        )
+    else:
+        if (
+            event.delivery_id is None
+            or event.provider_message_id is None
+            or event.delivery_status is None
+        ):
+            raise LocalMailboxVerificationError("malformed_channel_event")
+        command_values.update(
+            {
+                "delivery_id": event.delivery_id,
+                "provider_message_id": event.provider_message_id,
+                "delivery_status": event.delivery_status,
+                "artifact_hash": event.raw_payload_hash,
+                "payload_hash": event.raw_payload_hash,
+            }
+        )
+    return CaseCommandRequest(**command_values)
+
+
+def _redrive_request(
+    repository: Any,
+    event: VerifiedLocalMailboxEvent,
+    inbox: InboxReceiptRecord,
+    prior: CaseTransitionRef,
+) -> CaseCommandRequest | None:
+    """Return the identical original request when the delivery is unsettled.
+
+    Only an ingest receipt whose outbox the delivery activity would still send
+    is re-driven. The original ``expected_revision`` is the candidate whose
+    fingerprint equals the receipt's; if none does, nothing is re-sent.
+    """
+
+    if (
+        prior.command_type is not CaseCommandType.INGEST_CHANNEL_EVENT
+        or prior.delivery_id is None
+        or prior.command_fingerprint is None
+    ):
+        return None
+    get_outbox = getattr(repository, "get_outbox_record", None)
+    if not callable(get_outbox):
+        return None
+    outbox = get_outbox(prior.delivery_id)
+    if outbox is None or outbox.state not in REDRIVABLE_OUTBOX_STATES:
+        return None
+    for expected_revision in (prior.before_revision, None):
+        candidate = _channel_command_request(event, inbox, expected_revision)
+        if candidate.semantic_fingerprint() == prior.command_fingerprint:
+            return candidate
+    return None
 
 
 def _channel_result_payload(

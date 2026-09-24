@@ -31,6 +31,10 @@ from temporalio.exceptions import ApplicationError
 from .models import ChannelDeliveryRequest
 from .workflow import ACTIVITY_NAME, CHANNEL_DELIVERY_ACTIVITY_NAME
 
+# Outbox states the delivery activity still sends. The channel route re-drives
+# a redelivered event's delivery only while its outbox is in one of them.
+REDRIVABLE_OUTBOX_STATES = frozenset({"pending", "failed_retryable", "unknown"})
+
 
 class CaseCommandActivityAdapter:
     """Adapt one Runtime instance to the Temporal activity contract."""
@@ -150,7 +154,7 @@ class CaseCommandActivityAdapter:
                 return outbox
             if outbox.state == "failed_terminal":
                 raise ChannelConflictError("terminal delivery has no accepted truth")
-            if outbox.state not in {"pending", "failed_retryable", "unknown"}:
+            if outbox.state not in REDRIVABLE_OUTBOX_STATES:
                 raise ChannelConflictError("stored delivery state is invalid")
             attempt = DeliveryAttempt(
                 delivery_id=outbox.delivery_id,
@@ -159,11 +163,15 @@ class CaseCommandActivityAdapter:
                 body=outbox.body,
                 body_hash=outbox.body_hash,
             )
+            # Always look up first, on every attempt and outbox state: an
+            # earlier attempt or activity (a re-drive starts again at attempt
+            # 1) may have sent and then failed to record, even on a
+            # ``pending`` outbox. Send only when the adapter knows nothing.
+            del activity_attempt
             observation: DeliveryObservation | None = None
-            if activity_attempt > 1:
-                lookup_result = self.local_mailbox.lookup(attempt)
-                if isinstance(lookup_result, DeliveryObservation):
-                    observation = lookup_result
+            lookup_result = self.local_mailbox.lookup(attempt)
+            if isinstance(lookup_result, DeliveryObservation):
+                observation = lookup_result
             if observation is None:
                 try:
                     observation = self.local_mailbox.send(attempt)
@@ -322,6 +330,7 @@ async def dispatch_channel_delivery_activity(request: ChannelDeliveryRequest) ->
 
 
 __all__ = [
+    "REDRIVABLE_OUTBOX_STATES",
     "CaseCommandActivityAdapter",
     "activity_for_adapter",
     "apply_case_command_activity",
