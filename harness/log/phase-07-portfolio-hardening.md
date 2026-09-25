@@ -472,44 +472,45 @@ unchanged; it returns to `idle` in the final commit at the gate.
 
 ## Fresh-clone reproduction (DoD 4)
 
-Run on 2026-09-25 (UTC 02:10–02:18) on the development machine: Apple M4
-Pro, macOS 26.5.1, uv 0.8.4, pnpm 10.31.0, Node 22.15.1, Python 3.12.10,
-Docker 28.3.2. The clone was in a scratch directory outside every worktree,
-and the steps followed the README only.
+**Record of record: PR-17's head `c44bbb2`** (after the review fixes), run
+2026-09-25 05:18 UTC on the development machine (Apple M4 Pro, macOS
+26.5.1) in a fresh scratch directory outside every worktree, with no
+`PROXYLOOP_TEST_*` variable set. The commands are the README's "Reproduce the
+simulator benchmark" block, verbatim and in order; the one addition is the
+`git checkout`, because a plain clone checks out `main`, which does not yet
+contain PR-17. Tools: uv 0.8.4, pnpm 10.31.0, Node v22.15.1, Python 3.12.10
+(`python3`), Docker 28.3.2 with Compose 2.39.1, git 2.50.1 — the same
+versions CI pins.
 
-| Step | Command | Wall time | Result |
-|---|---|---|---|
-| clone | `git clone --branch feat/pr16-phase07-contract https://github.com/SimondXu/ProxyLoop.git` | 63 s | exit 0, HEAD `ecfef63` |
-| install | `pnpm install --frozen-lockfile` | 3 s | exit 0; 438 packages, all reused from the local pnpm store (0 downloaded); a warning that the build scripts of `sharp` and `unrs-resolver` were ignored, with no effect on the checks |
-| gate | `make preflight` | 347 s | exit 0. `uv run` created `runtime/.venv` (52 packages) and `ml/.venv` (20) from the local uv cache, with no explicit `uv sync`. Runtime 2113 passed, 66 skipped; ML 498 passed, 1 skipped (`test_phase03c_training.py:360`: `yaml`, an optional extra, is not installed); vitest 268 passed; the Web build passed; the lock, compile and Compose checks passed; "Gated-skip counts match the pinned 66 per file" |
-| benchmark check | `make benchmark-check` | 1 s | exit 0: "Phase 01B benchmark artifacts and ceiling gate are valid." |
-| regenerate | `make benchmark` | < 1 s | exit 0; 32 scenarios, 32 valid outcomes, 10 completed, 0 false completions, 0 leakage violations, `gate_passed: true` |
-| byte check | `git diff --exit-code`, on the two `data/manifests/phase-01b-*.json` and then on the whole tree | — | exit 0 both times; `git status --porcelain` was empty before and after |
+| # | Command | rc | Wall time | Result |
+|---|---|---|---|---|
+| 1 | `git clone https://github.com/SimondXu/ProxyLoop.git` | 0 | 1 s | |
+| 2 | `git checkout --detach c44bbb2` (not in the README; selects PR-17's head) | 0 | 0 s | HEAD `c44bbb2b37e5168cd3a090b9d6449a8203608850` |
+| 3 | `pnpm install --frozen-lockfile` | 0 | 3 s | 438 packages, all reused from the local pnpm store, 0 downloaded |
+| 4 | `make preflight` | 0 | 370 s | `uv run` created `runtime/.venv` (52 packages) and `ml/.venv` (20) from the uv cache; runtime 2150 passed, 67 skipped; ML 498 passed, 1 skipped (`test_phase03c_training.py:360`, the optional `yaml` extra); vitest 269 passed; Web build passed; "Gated-skip counts match the pinned 67 per file" |
+| 5 | `make benchmark-check` | 0 | 1 s | "Phase 01B benchmark artifacts and ceiling gate are valid." |
+| 6 | `make benchmark` | 0 | < 1 s | 32 scenarios, 32 valid outcomes, 10 completed, 0 false completions, 0 leakage violations, `gate_passed: true` |
+| 7 | `git diff --exit-code` | 0 | < 1 s | no committed byte changed; `git status --porcelain` empty afterwards |
 
-This record is for `ecfef63`, which pins 66 gated skips; `main` pins 67
-since #104, and the merged head's checks are recorded below.
+The run hit no README gap, so no second clone was needed. The wall times are
+for a warm machine: the pnpm store and the uv cache already held every
+package. A machine without those caches downloads them first and takes
+longer.
 
-These wall times are for a warm machine: the pnpm store and the uv cache
-already held every package, so nothing was downloaded. A machine without
-those caches downloads them first and takes longer. The ML tests were the
-largest part of `make preflight` (204 s).
+**Superseded: the first run at `ecfef63`** (2026-09-25 02:10 UTC, PR-16's
+head before review; it pinned 66 gated skips). All steps passed: clone 63 s,
+`pnpm install` 3 s, `make preflight` 347 s (runtime 2113 passed / 66
+skipped, ML 498 / 1 skipped, vitest 268), `make benchmark-check` 1 s,
+`make benchmark` then `git diff --exit-code` clean. That run found three
+README gaps, fixed before the record of record:
 
-Doc gaps found and fixed:
-
-1. The README did not say how to reproduce the simulator benchmark, and
-   DoD 4 requires following only the README. The new section "Reproduce the
-   simulator benchmark" names the commands above and the expected report
-   values.
-2. The README's Development block ran `make preflight` without
-   `pnpm install --frozen-lockfile`, which the Web checks inside it need.
-   Both places now include it.
-3. The README did not say that `make preflight` needs the Docker CLI
-   (`docker compose config --quiet`) but starts no container, or that `uv`
-   creates the environments itself. It now does.
-
-Not run here, by design: the three real-dependency gates and every Compose
-demo scene. They need the shared DB/Temporal lane and run at the phase gate
-(below).
+1. The README did not say how to reproduce the simulator benchmark at all
+   (DoD 4 requires following only the README).
+2. Its Development block ran `make preflight` without
+   `pnpm install --frozen-lockfile`.
+3. It did not state the prerequisites (the Docker CLI for
+   `docker compose config --quiet`; `uv` creating the environments). The
+   PR-17 review (M-7) added `python3` 3.11 or newer and the CI pins.
 
 ## Cost figures, checked against their sources
 
@@ -534,7 +535,7 @@ The table in `docs/limitations.md` ("Cost") cites each figure's file.
   programme's whole relay spend.
 - **Local compute:** one Apple M4 Pro; no dollar cost is recorded.
 
-## DoD 1 closure table (draft for the root's inspection)
+## DoD 1 closure table
 
 Blocking and Important audit findings, and the Important R-items, each
 closed by a merged PR. The sources are `harness/context/audit-remediation-status.md`
@@ -581,8 +582,10 @@ in `docs/limitations.md`.
 | C-5 residual | recorded limit | host services can be orphaned by a signal during spawn (`fix-pr5-ops-tests.md`) |
 | audit lane E, N5 | recorded limit | the Web has no reject control |
 
-DoD 1 is verified by root inspection, so the root must confirm this table
-against the primary evidence. Not checked here: each PR's merge commit.
+Final: the PR-17 independent review verified the table's coverage against
+the audit and the status file, and its findings (M-2, M-3) are applied. DoD 1
+is verified by root inspection; the root checks each row against the merged
+commits at the gate.
 
 ## PR-17 checks (no `PROXYLOOP_TEST_*` set)
 
@@ -610,17 +613,56 @@ On the merged head (`origin/main` @ `abd1027` merged; the tree differs from
   "Gated-skip counts match the pinned 67 per file".
 - This section was edited after that run; `make preflight-fast` covers it.
 
-Not run: the three real-dependency gates, the demo scenes, CI.
+The phase gate below reruns `make preflight` and adds the three
+real-dependency gates on the head after the review fixes.
 
-## Phase gate (not run; runs at the gate)
+## Phase gate (2026-09-25, PR-17 head `c44bbb2`)
 
-The contract's phase-gate procedure runs on PR-17's final head once it is up
-to date with `origin/main` (PR-16 merged). In one fresh worktree, after
-`pnpm install --frozen-lockfile`, with the demo stopped, run one at a time:
-`make preflight`, `make postgres-check`, `make phase05a-check`,
-`make phase06b1-check`. Then CI and the independent review, then the squash
-merge and the tree-identity check on `git rev-parse origin/main^{tree}`. The
-final commit sets `harness/status.toml` back to `idle`.
+`origin/main` had not moved since the merge (`abd1027`, #105), so no second
+merge was needed. The DB/Compose lane was held exclusively; the demo stack
+was not running (no `proxyloop-portfolio-demo` container). The gate ran in
+this worktree, serially, 05:25–05:34 UTC, with the variables on the make
+command line only (`postgres-test` at `127.0.0.1:55432/proxyloop_test`,
+`temporal` at `127.0.0.1:7233`):
+
+| Step | Command | rc | Wall time | Result |
+|---|---|---|---|---|
+| 1 | `make preflight` | 0 | 344 s | runtime 2150 passed, 67 skipped; ML 498 passed, 1 skipped; vitest 269 passed; Web build passed; "Gated-skip counts match the pinned 67 per file" |
+| 2 | `make postgres-check` | 0 | 5 s | 39 passed |
+| 3 | `make phase05a-check` | 0 | 120 s | 73 passed |
+| 4 | `make phase06b1-check` | 0 | 37 s | 56 passed |
+
+No gated test skipped in steps 2–4, and no traceback was printed. The
+fresh-clone run above also passed `make preflight` on the same head.
+
+The contract asks for "one fresh worktree"; the four steps ran in this
+implementer worktree (clean, at `c44bbb2`, `pnpm install --frozen-lockfile`
+run first), and the fresh clone ran `make preflight` independently.
+
+After the gate, one commit changes only harness and doc files: this log, the
+status transition below, and the Phase 07 rows in `PLANS.md` and
+`docs/README.md`. `make check-layout` validates the idle status. The tree
+identity after the squash merge (D8) and CI are the root's steps.
+
+## Definition of done: evidence
+
+| DoD | Criterion | Evidence | State |
+|---|---|---|---|
+| 1 | Every Blocking and Important finding closed; remaining Minors closed or recorded with a reason | "DoD 1 closure table" above; `harness/context/audit-remediation-status.md` §0–§4a; `docs/limitations.md` | met; root verifies against merged commits |
+| 2 | The credential-free demo runs the whole journey in the product's order; recovery and mailbox scenes pass | PR-16 lane run above: Scenes 0, A (desktop and 375x812), J (twice, byte-identical), A-D (distilled, fallback line, verified receipt), B and R all pass; amendments A2 and A3 | met (PR-16, #105) |
+| 3 | Local measurements committed: scripted, distilled and untuned split reports and the M1/M2 parity re-measure | `data/evaluation/fast-slow-split-{scripted,distilled,untuned}.json`, `data/experiments/phase-03c/local-parity/{parity-report,product-path-report}.json`; their `--check` targets and `ops-report-check` pass in `make test` above | met |
+| 4 | Phase 07 deliverables exist; a reviewer reproduces the simulator benchmark from a fresh clone following the README | PR-16's scenes, `make ops-report` and journey artifact (#105); PR-17's `docs/ml-evidence.md`, `docs/limitations.md`, architecture reconciliation, README "Observed versus proposed"; "Fresh-clone reproduction" above (`c44bbb2`, every step rc 0, `git diff --exit-code` clean) | met |
+| 5 | `make preflight` and the three DB gates pass serially on the final head; CI green; every material PR independently reviewed | "Phase gate" above; PR-16 review Approve with 8 Minors applied; PR-17 review Request Changes, no Blocking, all findings applied | gate passed on `c44bbb2`; CI and the post-merge tree identity pending (root) |
+| 6 | Everything blocked is stated as not done | `docs/limitations.md` "Not done"; README "What is not done"; `docs/portfolio-demo.md` not-done list; `data/evaluation/ops-report.json` "not measured / not done" block | met |
+
+## Status transition
+
+The final PR-17 commit sets `harness/status.toml` to `idle`, per the
+contract's "Harness status transitions": `active_product_phase` and
+`active_contract` empty, `next_phase_authorized = false`, `updated_at`
+2026-09-25, a boundaries summary that states Phase 07 is complete within the
+authorized limits and lists what remains not done, and every `inactive`
+entry kept. The next phase is a new user decision.
 
 ## Independent review (PR-17): Request Changes, no Blocking
 

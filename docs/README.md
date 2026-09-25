@@ -61,6 +61,7 @@ historical [`harness/build-log.md`](../harness/build-log.md).
 | 06A Durable Web resume | [contract](../harness/build/phase-06a-durable-web-resume.md) | [preflight](../harness/context/phase-06a-preflight.md) | [review](../harness/code_review/phase-06a-durable-web-resume.md) | [log](../harness/log/phase-06a-durable-web-resume.md) |
 | 06B1 Local controlled mailbox | [contract](../harness/build/phase-06b1-local-controlled-mailbox.md) | [preflight](../harness/context/phase-06b-controlled-channels-preflight.md) | [review](../harness/code_review/phase-06b1-local-controlled-mailbox.md) | [log](../harness/log/phase-06b1-local-controlled-mailbox.md) |
 | 07A Reproducible local portfolio demo | [contract](../harness/build/phase-07a-reproducible-local-portfolio-demo.md) | — | [review](../harness/code_review/phase-07a-reproducible-local-portfolio-demo.md) | [log](../harness/log/phase-07a-reproducible-local-portfolio-demo.md) |
+| 07 Portfolio hardening | [contract](../harness/build/phase-07-portfolio-hardening.md) | — | — (reviews summarized in the log) | [log](../harness/log/phase-07-portfolio-hardening.md) |
 | 03C Fast model distillation (`GO_DISTILLED`, not promoted) | [contract](../harness/build/phase-03c-fast-model-distillation.md) | [preflight](../harness/context/phase-03c-preflight.md) | [Stage 3 decision review](../harness/code_review/phase-03c-stage3-decision.md) | [log](../harness/log/phase-03c-stage2-stage3.md) |
 
 Phase 03B is closed: one frozen QLoRA training run and one canonical Arm B
@@ -69,10 +70,6 @@ evaluation are recorded as descriptive evidence, and the accepted decision is
 promotion, or deployment is authorized. The pre-approval proposal that preceded
 the executed contract was removed from `docs/planning/` on 2026-09-21; its
 content survives in Git history and the executed contract above.
-
-## In progress
-
-- [Phase 07 Portfolio Hardening](../harness/build/phase-07-portfolio-hardening.md) (build-plan PR-16 and PR-17; [log](../harness/log/phase-07-portfolio-hardening.md)). The phase gate is at the end of PR-17.
 
 ## Not started
 

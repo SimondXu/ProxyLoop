@@ -1,13 +1,13 @@
 schema_version = 1
-product_phase_state = "in_progress"
-active_product_phase = "07"
-active_contract = "harness/build/phase-07-portfolio-hardening.md"
+product_phase_state = "idle"
+active_product_phase = ""
+active_contract = ""
 next_phase_authorized = false
 integration_baseline = "main"
 updated_at = "2026-09-25"
 
 [boundaries]
-summary = "Phase 03C is closed at GO_DISTILLED: the distilled Qwen3-8B adapter reaches 0.983 act agreement against 0.542 untuned on 240 held-out rows from six families absent from training, re-scored locally with zero disagreements (harness/log/phase-03c-stage2-stage3.md). Nothing is promoted. Decisions 16-18 (harness/context/audit-remediation-decisions.md, 2026-09-24) extend the audit authorization to the build plan in harness/context/build-plan-to-complete.md: the adapter may be served locally as an opt-in Fast backend, labelled a local opt-in candidate, never promoted or production; V0 and further training are not done (budget); Phase 07 comes last. Production serving, real-model load, capacity, p95, OOM and automatic fallback, further training or data expansion, Phase 06B2, every real channel, and deployment remain unauthorized. Phase 07 (Portfolio Hardening, build-plan PR-16 and PR-17) is in progress under the frozen contract harness/build/phase-07-portfolio-hardening.md (root decisions D1-D9, 2026-09-25): the credential-free 07A demo runs the whole journey, plus an offline make ops-report; PR-17 returns this file to idle at the phase gate. Decision 21 dropped PR-15 (contracts 1.2)."
+summary = "Phase 07 (Portfolio Hardening, build-plan PR-16 and PR-17, contract harness/build/phase-07-portfolio-hardening.md) is complete within the authorized limits: the credential-free 07A demo runs the whole journey in the product's order (intake, card, Case, Standing Proposal and scripted Judge, one Assistant Message, approval, one execution, verified receipt), make ops-report summarizes the gates and measurements offline, and the final reports are docs/ml-evidence.md, docs/limitations.md, the architecture reconciliation and the README. The gate passed on PR-17's head: make preflight (67 gated skips = pin), postgres-check 39, phase05a-check 73, phase06b1-check 56 (harness/log/phase-07-portfolio-hardening.md). This closes the audit-remediation and build-to-complete programme (decisions 16-21; harness/context/audit-remediation-status.md). Phase 03C stays GO_DISTILLED on the trained prompt path only: through the product path the local opt-in adapter delivers 0/240 lines; nothing is promoted. Not done (docs/limitations.md): production serving, real-model load, p95, capacity, concurrency, OOM and automatic fallback; production exactly-once effects, monitoring and readiness; deployment, hosting and release; Phase 06B2 and every real channel and credential; V0, frontier-as-Fast and a second-family Judge (not measured, budget); a model Judge; further training, data expansion, reruns or promotion; narrow contracts 1.2 (PR-15, dropped by decision 21); the build-plan Do-not-do items. No phase is active; the next one is a new user decision."
 inactive = [
   "Phase 03A1 continuation or r6/r7",
   "any model training, data expansion, or promotion; Phase 03A1/03B artifact rewrites (Stage 0 writes only new phase-03c artifacts)",

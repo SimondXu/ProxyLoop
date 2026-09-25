@@ -37,7 +37,7 @@ not promote a model or make a production-serving claim.
 | 06B1 | Local controlled mailbox | Complete; synthetic-only and independently approved | `harness/build/phase-06b1-local-controlled-mailbox.md` |
 | 06B2 | Real controlled integration | Not started; separate user gate | Real Provider/email/MCP/credentials remain unauthorized |
 | 07A | Reproducible Local Portfolio Demo | Complete; locally verified and independently approved bounded subphase | `harness/build/phase-07a-reproducible-local-portfolio-demo.md` |
-| 07 | Portfolio hardening | In progress: PR-16 (demo scenes, Scene J, `make ops-report`) and PR-17 (final reports: `docs/ml-evidence.md`, `docs/limitations.md`, architecture reconciliation, observed-versus-proposed README, fresh-clone reproduction); the phase gate runs on PR-17's up-to-date head | `harness/build/phase-07-portfolio-hardening.md` |
+| 07 | Portfolio hardening | Complete: PR-16 merged as #105 (demo scenes, Scene J, `make ops-report`); PR-17 (final reports: `docs/ml-evidence.md`, `docs/limitations.md`, architecture reconciliation, observed-versus-proposed README, fresh-clone reproduction); phase gate passed on PR-17's head (`make preflight`, `postgres-check` 39, `phase05a-check` 73, `phase06b1-check` 56); no phase is active | `harness/build/phase-07-portfolio-hardening.md` |
 
 ## Critical Dependency Chain
 
