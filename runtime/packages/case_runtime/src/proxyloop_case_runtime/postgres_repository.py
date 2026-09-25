@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
@@ -36,7 +36,11 @@ from proxyloop_contracts import (
     ProviderOffer,
     VisibleCaseEvent,
 )
-from proxyloop_provider_simulator.provider import FictionalMobileProvider
+from proxyloop_provider_simulator.provider import (
+    DEFAULT_OFFER_TTL,
+    MAX_OFFER_TTL,
+    FictionalMobileProvider,
+)
 from proxyloop_telecom_domain import CompletionVerification, verify_completion
 from psycopg.rows import tuple_row
 from psycopg.types.json import Jsonb
@@ -69,7 +73,9 @@ from .repository import (
 # moved to the log at bootstrap and are otherwise rejected. PR-13 added the
 # optional ``standing_proposal`` to version 3 without a bump: a row written
 # before it has no key and reads as None. A process from before PR-13 cannot
-# read a row that carries the key (mixed versions are unsupported).
+# read a row that carries the key (mixed versions are unsupported). R-6 added
+# the optional ``provider_offer_ttl_seconds`` the same way: it is omitted for
+# the default TTL and read as the default when absent.
 _STORAGE_VERSION: Literal[3] = 3
 _INLINE_TRACES_STORAGE_VERSION: Literal[2] = 2
 _LEGACY_STORAGE_VERSION: Literal[1] = 1
@@ -112,6 +118,24 @@ class _CaseStorageEnvelope(BaseModel):
     last_fast_decision: FastTurnDecision | None = None
     execution_claim: ExecutionClaim | None = None
     standing_proposal: CapabilityProposal | None = None
+    # The Provider configuration's offer TTL, when it is not the default. The
+    # offer is regenerated with it on read, so ``expires_at`` stays checked.
+    provider_offer_ttl_seconds: int | None = Field(
+        default=None, gt=0, le=MAX_OFFER_TTL // timedelta(seconds=1)
+    )
+
+    @model_validator(mode="after")
+    def default_offer_ttl_is_omitted(self) -> _CaseStorageEnvelope:
+        # One document per Case: the default TTL is stored only by omission,
+        # never by value and never as an explicit null.
+        if self.provider_offer_ttl_seconds == DEFAULT_OFFER_TTL.total_seconds():
+            raise ValueError("the default offer TTL is stored by omission")
+        if (
+            self.provider_offer_ttl_seconds is None
+            and "provider_offer_ttl_seconds" in self.model_fields_set
+        ):
+            raise ValueError("the default offer TTL is stored by omission")
+        return self
 
     @model_validator(mode="after")
     def state_history_matches_snapshot(self) -> _CaseStorageEnvelope:
@@ -1084,6 +1108,7 @@ class PostgresCaseRepository:
     @staticmethod
     def _encode_state(state: CaseRuntimeState) -> dict[str, object]:
         try:
+            offer_ttl_seconds = _stored_offer_ttl(state.provider)
             envelope = _CaseStorageEnvelope(
                 storage_version=_STORAGE_VERSION,
                 snapshot=state.snapshot,
@@ -1097,18 +1122,23 @@ class PostgresCaseRepository:
                 last_fast_decision=state.last_fast_decision,
                 execution_claim=state.execution_claim,
                 standing_proposal=state.standing_proposal,
+                **(
+                    {}
+                    if offer_ttl_seconds is None
+                    else {"provider_offer_ttl_seconds": offer_ttl_seconds}
+                ),
             )
             _verify_provider_state(state, envelope)
         except (ValidationError, ValueError, RuntimeError):
             raise RuntimeError("Case state failed storage validation") from None
-        # Without a standing proposal the key is omitted, so the row is the
-        # same document a pre-PR-13 writer produced.
-        return envelope.model_dump(
-            mode="json",
-            exclude=(
-                {"standing_proposal"} if envelope.standing_proposal is None else None
-            ),
-        )
+        # Without a standing proposal or a non-default offer TTL the key is
+        # omitted, so the row is the same document an earlier writer produced.
+        omitted = {
+            name
+            for name in ("standing_proposal", "provider_offer_ttl_seconds")
+            if getattr(envelope, name) is None
+        }
+        return envelope.model_dump(mode="json", exclude=omitted or None)
 
     @staticmethod
     def _decode_state(
@@ -1133,7 +1163,7 @@ class PostgresCaseRepository:
             if row_revision != envelope.snapshot.revision:
                 raise ValueError("stored relational revision does not match payload")
             provider = _reconstruct_provider(envelope)
-        except (ValidationError, ValueError, RuntimeError):
+        except (ValidationError, ValueError, RuntimeError, OverflowError):
             raise RuntimeError("stored Case payload is invalid") from None
         return CaseRuntimeState(
             snapshot=envelope.snapshot,
@@ -1304,6 +1334,15 @@ def _delivery_observation_is_monotonic(current: str, incoming: str) -> bool:
     }
 
 
+def _stored_offer_ttl(provider: FictionalMobileProvider) -> int | None:
+    ttl = provider.offer_ttl
+    if ttl == DEFAULT_OFFER_TTL:
+        return None
+    if ttl % timedelta(seconds=1):
+        raise ValueError("offer TTL must be a whole number of seconds")
+    return ttl // timedelta(seconds=1)
+
+
 def _reconstruct_provider(envelope: _CaseStorageEnvelope) -> FictionalMobileProvider:
     snapshot = envelope.snapshot
     if snapshot.provider_config_ref != _PROVIDER_CONFIG_REF:
@@ -1311,13 +1350,20 @@ def _reconstruct_provider(envelope: _CaseStorageEnvelope) -> FictionalMobileProv
     if len(snapshot.offers) != 1:
         raise ValueError("stored Case must contain one deterministic offer")
     offer = snapshot.offers[0]
-    provider = FictionalMobileProvider()
+    stored_ttl = envelope.provider_offer_ttl_seconds
+    provider = FictionalMobileProvider(
+        offer_ttl=(
+            DEFAULT_OFFER_TTL if stored_ttl is None else timedelta(seconds=stored_ttl)
+        )
+    )
     generated_offer, generated_offer_evidence = provider.issue_offer(
         snapshot.case,
         issued_at=offer.created_at,
     )
     if generated_offer != offer:
         raise ValueError("stored offer does not match the deterministic Provider")
+    if offer.expires_at > snapshot.capability_manifest.expires_at:
+        raise ValueError("stored offer outlives the capability manifest")
     matching_offer_evidence = _evidence_by_id(snapshot.evidence, offer.evidence_ids)
     if matching_offer_evidence != generated_offer_evidence:
         raise ValueError("stored offer Evidence does not match the Provider")

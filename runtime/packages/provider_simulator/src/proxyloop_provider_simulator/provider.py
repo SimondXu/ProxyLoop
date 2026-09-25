@@ -34,12 +34,22 @@ class IllegalOfferTransitionError(RuntimeError):
     """The requested Provider operation is illegal in the current offer state."""
 
 
+DEFAULT_OFFER_TTL = timedelta(hours=1)
+# The longest offer TTL the Runtime may inject and the codec will read (R-6).
+# It equals the runtime Case deadline window (A-11), so an offer issued at Case
+# creation never outlives the capability manifest.
+MAX_OFFER_TTL = timedelta(days=9)
+
+
 class FictionalMobileProvider:
     provider_id = "pine-mobile"
     plan_id = "pine-value-5g"
     plan_name = "Pine Value 5G"
 
-    def __init__(self) -> None:
+    def __init__(self, *, offer_ttl: timedelta = DEFAULT_OFFER_TTL) -> None:
+        if offer_ttl <= timedelta(0):
+            raise ValueError("offer_ttl must be positive")
+        self._offer_ttl = offer_ttl
         self._state = OfferState.AVAILABLE
         self._state_history = [self._state]
         self._case: Case | None = None
@@ -47,6 +57,10 @@ class FictionalMobileProvider:
         self._intent: ActionIntent | None = None
         self._confirmation: AppliedOfferConfirmation | None = None
         self._confirmation_evidence: Evidence | None = None
+
+    @property
+    def offer_ttl(self) -> timedelta:
+        return self._offer_ttl
 
     @property
     def state(self) -> OfferState:
@@ -111,7 +125,7 @@ class FictionalMobileProvider:
             provider_id=self.provider_id,
             revision=1,
             created_at=issued_at,
-            expires_at=issued_at + timedelta(hours=1),
+            expires_at=issued_at + self._offer_ttl,
             monthly_price=Money(amount_minor=7200, currency="USD"),
             total_cost=Money(amount_minor=86400, currency="USD"),
             fees=(),
