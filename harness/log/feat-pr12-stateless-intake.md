@@ -584,3 +584,13 @@ one is the amended-card journey above.
 
 The review artifact now covers every round. Final verdict: Approve, after the
 `like it` branch was removed.
+
+Docs-only follow-up, made after the `make preflight` run above: the
+`docs/architecture.md` intake paragraphs now describe the amended rules:
+- the card-opening rule (c) with its closed cue list and the M-4 exclusion;
+- the intake failure copy;
+- the tiered role cues;
+- the 4000-character NFKC cap;
+- retractions.
+
+`make lint` exit 0 afterwards.
