@@ -525,8 +525,8 @@ final commit sets `harness/status.toml` back to `idle`.
 - Resolved (root decision 1, 2026-09-25): follow the primary logs. The
   build plan's PR-17 row is corrected, and `post-phase-03c-handoff.md` §4
   gains a dated correction note; its original sentence stays. Decision 17 in
-  `audit-remediation-decisions.md` repeats the old wording ("≈ USD 146 total
-  …; ≈ USD 121.59 for Stages 1b/1c") and is left to the root.
+  `audit-remediation-decisions.md` gets the same dated note (root-authorised),
+  appended after its original text.
 - `harness/context/audit-remediation-status.md` still lists A-7f as open and
   several merged PRs as in flight. That file is outside PR-17's file list.
 - `origin/main` moved after this branch's base: #104 (`1309c71`) closes the
