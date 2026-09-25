@@ -13,7 +13,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from proxyloop_agent_core import ModelIdentity, ScriptedJudgeAdapter
+from proxyloop_case_runtime import ThinAgentRuntime
 
+import scripts.run_fast_slow_split_report as split_report
 from scripts.run_fast_slow_split_report import (
     TURN_STRUCTURE_KEYS,
     _canonical_json,
@@ -52,6 +55,11 @@ def test_a_local_report_keeps_the_scripted_structure_and_passes_its_check(
             json.loads(_canonical_json(scripted)), scenario
         )
     assert report["gateway_identity"]["backend"] == backend
+    # PR-14: a local report written now carries the Judge's calls, apart.
+    assert report["schema_version"] == "fast-slow-split-local-v2"
+    demo = report["scenarios"]["demo_path"]
+    assert demo["turns"][0]["judge_calls"] == 1
+    assert demo["aggregates"]["judge_calls_by_result"]["succeeded"] == 1
     assert report["adapter_mode"] == f"local_{backend}_" + (
         "candidate" if backend == "distilled" else "baseline"
     )
@@ -148,6 +156,35 @@ def test_the_committed_local_reports_carry_the_attested_identity(
     backend: str,
 ) -> None:
     assert check_local_report(backend, build_report()) == ()
+
+
+@pytest.mark.parametrize("backend", ["distilled", "untuned"])
+def test_the_committed_local_reports_predate_the_judge(backend: str) -> None:
+    # PR-14 / review M6: observed before the Judge, kept at v1, never
+    # rewritten; their Fast/Slow structure still equals the v2 scripted one.
+    report = _committed(backend)
+    assert report["schema_version"] == "fast-slow-split-local-v1"
+    for scenario in report["scenarios"].values():
+        assert all("judge_calls" not in turn for turn in scenario["turns"])
+        assert "judge_calls_by_result" not in scenario["aggregates"]
+
+
+class _OtherJudge(ScriptedJudgeAdapter):
+    model_identity = ModelIdentity("scripted", "other_judge", "x", "x", "x")
+
+
+class _OtherJudgeRuntime(ThinAgentRuntime):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, judge=_OtherJudge(), **kwargs)
+
+
+def test_a_local_run_refuses_a_judge_that_is_not_the_scripted_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Review M6: the local mode checks the Judge traces' model too.
+    monkeypatch.setattr(split_report, "ThinAgentRuntime", _OtherJudgeRuntime)
+    with pytest.raises(RuntimeError, match="not from the scripted Judge"):
+        _local("distilled")
 
 
 def _reidentify(report: dict[str, Any]) -> None:

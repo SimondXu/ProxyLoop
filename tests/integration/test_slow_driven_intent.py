@@ -449,8 +449,9 @@ def test_a_case_with_a_decided_approval_holds_no_standing_proposal() -> None:
         _channel_command(repository, BASE_TIME + timedelta(minutes=7))
     )
 
-    slow, _fast = repository.list_model_traces(SCRIPTED_CASE_ID)[logged:]
+    slow, judge, _fast = repository.list_model_traces(SCRIPTED_CASE_ID)[logged:]
     assert (slow.role, slow.result) == ("slow", ModelResult.SUCCEEDED)
+    assert judge.role == "judge"
     assert _state(repository).standing_proposal is None
 
 
@@ -489,7 +490,9 @@ def test_a_proposal_outliving_its_offer_opens_no_approval() -> None:
         for trace in repository.list_model_traces(SCRIPTED_CASE_ID)
     ] == [
         ("slow", ModelResult.SUCCEEDED),
+        ("judge", ModelResult.SUCCEEDED),
         ("slow", ModelResult.SUCCEEDED),
+        ("judge", ModelResult.SUCCEEDED),
         ("fast", ModelResult.SUCCEEDED),
     ]
     assert result.approval is None
@@ -789,11 +792,12 @@ def _consumer_turns(repository: InMemoryCaseRepository) -> tuple[int, int]:
     [
         # A Slow that proposes nothing: the turn applies without an approval.
         pytest.param(ScriptedSlowAdapter, timedelta(minutes=1), 1, id="dialogue"),
-        # The default Slow after the offer expired: refresh, then no approval.
+        # The default Slow after the offer expired: refresh (Slow, then its
+        # Judge call), then no approval.
         pytest.param(
             ScriptedProposingSlowAdapter,
             timedelta(minutes=61),
-            2,
+            3,
             id="offer-expired",
         ),
     ],

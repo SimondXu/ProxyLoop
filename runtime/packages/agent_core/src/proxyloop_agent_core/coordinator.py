@@ -44,6 +44,13 @@ from .interfaces import (
     UsageReportingFastAdapter,
     UsageReportingSlowAdapter,
 )
+from .judge import (
+    JUDGE_VERDICT_VERSION,
+    FeedbackReasoningSlowAdapter,
+    JudgeAdapter,
+    JudgeAdapterFailure,
+    JudgeVerdict,
+)
 from .proposal_admission import SlowProposalCheck
 from .router import DeterministicRouter, RouteRequest
 
@@ -118,6 +125,16 @@ class CaseCoordinator:
     audit with the check's codes (the trace records them) and withholds the
     whole result. Without a check the behaviour is unchanged.
 
+    ``judge`` (the product Runtime only) reviews every Slow result the
+    validation and ``slow_proposal_check`` admitted; it is advisory. A binding
+    ``revise`` retries a ``FeedbackReasoningSlowAdapter`` once with the
+    verdict, on the same request, through the same admission; the retry's
+    result is used only if admitted, and nothing is judged twice. A captured
+    ``JudgeAdapterFailure``, a verdict for another request or result, a
+    return that is not a verdict, and a rejected retry all keep the first
+    admitted result. Each Judge call is one
+    ``role=judge`` trace and audit. Without a Judge the behaviour is unchanged.
+
     ``capture_fast_failures`` (the product Runtime only) turns a
     ``FastAdapterFailure`` raised by the Fast call into a ``FAILED`` Fast trace
     and ``fast_failed``; there is no retry and no other adapter. Any other
@@ -138,6 +155,7 @@ class CaseCoordinator:
         fast_gate: FastGate | None = None,
         capture_fast_failures: bool = False,
         slow_proposal_check: SlowProposalCheck | None = None,
+        judge: JudgeAdapter | None = None,
     ) -> None:
         self._router = router or DeterministicRouter()
         self._lock = RLock()
@@ -147,6 +165,7 @@ class CaseCoordinator:
         self._fast_gate = fast_gate
         self._capture_fast_failures = capture_fast_failures
         self._slow_proposal_check = slow_proposal_check
+        self._judge = judge
 
     @property
     def current_snapshot(self) -> CaseContextSnapshot | None:
@@ -255,37 +274,33 @@ class CaseCoordinator:
                 )
             else:
                 slow_output = slow.reason(slow_request)
-            audit = self.validate_slow_result(
-                slow_output,
-                request.snapshot,
-                expected_request=slow_request,
-                evaluated_at=request.created_at,
-            )
-            if audit.accepted and self._slow_proposal_check is not None:
-                proposal_codes = self._slow_proposal_check(
-                    slow_output, request.snapshot, request.created_at
-                )
-                if proposal_codes:
-                    audit = replace(audit, accepted=False, reason_codes=proposal_codes)
+            audit = self._admit_slow(slow_output, request, slow_request)
             audits.append(audit)
             if traced:
                 traces.append(
-                    _model_trace(
-                        role="slow",
-                        adapter=slow,
-                        snapshot=request.snapshot,
-                        audit=audit,
-                        window=window,
-                        usage=slow_usage,
-                        request_id=slow_request.request_id,
-                        input_schema_version=slow_request.schema_version,
-                        output_schema_version=slow_output.schema_version,
-                        output_id=slow_output.result_id,
-                        result=_audit_result(audit),
+                    _slow_trace(
+                        slow,
+                        request,
+                        slow_request,
+                        slow_output,
+                        audit,
+                        window,
+                        slow_usage,
                     )
                 )
             if audit.accepted:
                 slow_result = slow_output
+                if self._judge is not None:
+                    slow_result = self._judged(
+                        self._judge,
+                        slow,
+                        request,
+                        slow_request,
+                        slow_output,
+                        traced=traced,
+                        audits=audits,
+                        traces=traces,
+                    )
 
         if route.outcome in {
             RoutingOutcome.FAST_NOW,
@@ -383,6 +398,126 @@ class CaseCoordinator:
             fast_disclosure_rejected=fast_disclosure_rejected,
             fast_failed=fast_failed,
         )
+
+    def _admit_slow(
+        self,
+        output: SlowWorkResult,
+        request: RouteRequest,
+        slow_request: SlowWorkRequest,
+    ) -> ResultAudit:
+        """Validation, then (Runtime only) the A-3 admission check."""
+
+        audit = self.validate_slow_result(
+            output,
+            request.snapshot,
+            expected_request=slow_request,
+            evaluated_at=request.created_at,
+        )
+        if audit.accepted and self._slow_proposal_check is not None:
+            proposal_codes = self._slow_proposal_check(
+                output, request.snapshot, request.created_at
+            )
+            if proposal_codes:
+                audit = replace(audit, accepted=False, reason_codes=proposal_codes)
+        return audit
+
+    def _judged(
+        self,
+        judge: JudgeAdapter,
+        slow: SlowAdapter,
+        request: RouteRequest,
+        slow_request: SlowWorkRequest,
+        first: SlowWorkResult,
+        *,
+        traced: bool,
+        audits: list[ResultAudit],
+        traces: list[ModelTrace],
+    ) -> SlowWorkResult:
+        """The Slow result to use after the Judge's advisory review of ``first``."""
+
+        snapshot = request.snapshot
+        window: _CallWindow | None = None
+        if traced:
+            called, window = self._timed(
+                lambda: _judge(judge, slow_request, first), request.created_at
+            )
+        else:
+            called = _judge(judge, slow_request, first)
+        verdict: JudgeVerdict | None = None
+        if isinstance(called, JudgeAdapterFailure):
+            codes = called.reason_codes
+            result = ModelResult.FAILED
+        elif not isinstance(called, JudgeVerdict):
+            # Like a verdict for another result: recorded, then ignored.
+            codes = ("judge_verdict_invalid",)
+            result = ModelResult.REJECTED
+        else:
+            codes = _verdict_binding_violations(called, slow_request, first)
+            if codes:
+                result = ModelResult.REJECTED
+            else:
+                verdict = called
+                codes = (f"judge_{called.verdict}", *called.reason_codes)
+                result = ModelResult.SUCCEEDED
+        audit = ResultAudit(
+            source="judge",
+            accepted=verdict is not None,
+            reason_codes=codes,
+            input_pins=snapshot.pins,
+            current_pins=snapshot.pins,
+        )
+        audits.append(audit)
+        if window is not None:
+            traces.append(
+                _model_trace(
+                    role="judge",
+                    adapter=judge,
+                    snapshot=snapshot,
+                    audit=audit,
+                    window=window,
+                    usage=None,
+                    request_id=slow_request.request_id,
+                    input_schema_version=first.schema_version,
+                    output_schema_version=(
+                        "none"
+                        if result is ModelResult.FAILED
+                        else JUDGE_VERDICT_VERSION
+                    ),
+                    output_id=None,
+                    result=result,
+                )
+            )
+        if (
+            verdict is None
+            or verdict.verdict != "revise"
+            or not isinstance(slow, FeedbackReasoningSlowAdapter)
+        ):
+            return first
+        # One retry, on the same request, with the verdict passed in process.
+        # Its result is final: it is admitted like the first, never judged.
+        reviser = slow
+        if traced:
+            (retry, retry_usage), retry_window = self._timed(
+                lambda: reviser.reason_with_feedback(slow_request, verdict),
+                request.created_at,
+            )
+        else:
+            retry, retry_usage = reviser.reason_with_feedback(slow_request, verdict)
+        retry_audit = self._admit_slow(retry, request, slow_request)
+        audits.append(retry_audit)
+        if traced:
+            traces.append(
+                _slow_trace(
+                    slow,
+                    request,
+                    slow_request,
+                    retry,
+                    retry_audit,
+                    retry_window,
+                    retry_usage,
+                )
+            )
+        return retry if retry_audit.accepted else first
 
     def _captured(self, call: Callable[[], _T]) -> _T | FastAdapterFailure:
         """The call's value, or its ``FastAdapterFailure`` when captured."""
@@ -632,6 +767,56 @@ def _reason(
     return slow.reason(request), None
 
 
+def _judge(
+    judge: JudgeAdapter, request: SlowWorkRequest, result: SlowWorkResult
+) -> object:
+    """What the Judge returned, or its captured typed failure.
+
+    Typed as ``object``: the coordinator does not trust the adapter's return
+    type. Any exception other than ``JudgeAdapterFailure`` propagates.
+    """
+
+    try:
+        return judge.judge(request, result)
+    except JudgeAdapterFailure as failure:
+        return failure
+
+
+def _verdict_binding_violations(
+    verdict: JudgeVerdict, request: SlowWorkRequest, result: SlowWorkResult
+) -> tuple[str, ...]:
+    codes: list[str] = []
+    if verdict.request_id != request.request_id:
+        codes.append("judge_verdict_request_mismatch")
+    if verdict.result_id != result.result_id:
+        codes.append("judge_verdict_result_mismatch")
+    return tuple(codes)
+
+
+def _slow_trace(
+    slow: SlowAdapter,
+    request: RouteRequest,
+    slow_request: SlowWorkRequest,
+    output: SlowWorkResult,
+    audit: ResultAudit,
+    window: _CallWindow,
+    usage: ModelCallUsage | None,
+) -> ModelTrace:
+    return _model_trace(
+        role="slow",
+        adapter=slow,
+        snapshot=request.snapshot,
+        audit=audit,
+        window=window,
+        usage=usage,
+        request_id=slow_request.request_id,
+        input_schema_version=slow_request.schema_version,
+        output_schema_version=output.schema_version,
+        output_id=output.result_id,
+        result=_audit_result(audit),
+    )
+
+
 def _decide(
     fast: FastAdapter, view: FastModelView, snapshot: CaseContextSnapshot
 ) -> tuple[FastAdapterResult, ModelCallUsage | None]:
@@ -668,7 +853,7 @@ def _audit_result(audit: ResultAudit) -> ModelResult:
 
 def _model_trace(
     *,
-    role: Literal["fast", "slow"],
+    role: Literal["fast", "slow", "judge"],
     adapter: object,
     snapshot: CaseContextSnapshot,
     audit: ResultAudit,

@@ -81,11 +81,12 @@ def test_s1_classes_on_the_scripted_dialogue_path() -> None:
 
 
 def test_s1_a_repeated_create_case_is_an_unapplied_attempt() -> None:
-    # M7: the repeated create traces a succeeded Slow call at cursor 1, then
-    # conflicts. It is not a second Slow call of the creation turn.
+    # M7: the repeated create traces a succeeded Slow call (and its Judge
+    # call) at cursor 1, then conflicts. It is not a second Slow call of the
+    # creation turn.
     traces, state = _run(run_demo_path())
-    assert _roles(traces) == ["slow", "slow", "fast"]
-    assert [trace.result for trace in traces[:2]] == [ModelResult.SUCCEEDED] * 2
+    assert _roles(traces) == ["slow", "judge", "slow", "judge", "fast"]
+    assert [trace.result for trace in traces[:4]] == [ModelResult.SUCCEEDED] * 4
     split = fast_slow_split(traces, state)
     assert _turn(split, 1) == {
         "turn": 1,
@@ -97,9 +98,12 @@ def test_s1_a_repeated_create_case_is_an_unapplied_attempt() -> None:
         "fallback_cause": None,
         "delivered": "none",
         "fast_reject_codes": [],
+        "judge_calls": 1,
+        "slow_retry": None,
     }
     aggregates = split["aggregates"]
     assert aggregates["unapplied_model_calls"] == 1
+    assert aggregates["unapplied_judge_calls_by_result"]["succeeded"] == 1
     assert aggregates["calls_by_role_and_result"]["slow"]["succeeded"] == 1
     assert aggregates["unapplied_calls_by_role_and_result"]["slow"]["succeeded"] == 1
 
@@ -146,11 +150,12 @@ def test_s1_a_retried_refresh_keeps_only_the_delivered_slow_call() -> None:
         and trace.input_pins
         and trace.input_pins.event_cursor > 1
     )
-    slow, fast = traces[slow_index], traces[slow_index + 1]
-    assert fast.role == "fast"
+    slow, judge, fast = traces[slow_index : slow_index + 3]
+    assert (judge.role, fast.role) == ("judge", "fast")
     retried = (
         *traces[:slow_index],
         slow,
+        judge,
         _as(fast, ModelResult.REJECTED, "stale_fast_result"),
         *traces[slow_index:],
     )
@@ -162,7 +167,9 @@ def test_s1_a_retried_refresh_keeps_only_the_delivered_slow_call() -> None:
         1,
         1,
     )
+    assert turn["judge_calls"] == 1
     assert split["aggregates"]["unapplied_model_calls"] == 2
+    assert split["aggregates"]["unapplied_judge_calls_by_result"]["succeeded"] == 1
 
 
 @pytest.mark.parametrize(
@@ -235,6 +242,207 @@ def test_s1_an_unclassified_event_type_is_refused() -> None:
         fast_slow_split((), state)
 
 
+# S4 The Judge (PR-14): its calls are counted apart and never in a share.
+def _judge(
+    slow: ModelTrace, *codes: str, result: ModelResult = ModelResult.SUCCEEDED
+) -> ModelTrace:
+    return slow.model_copy(
+        update={
+            "role": "judge",
+            "result": result,
+            "reason_codes": codes or ("judge_accept",),
+            "output_ref": None,
+            "output_schema_version": "judge-verdict-v1",
+        }
+    )
+
+
+def _refresh_turn(
+    build: Any,
+) -> tuple[dict[str, Any], int]:
+    """The dialogue path with its first refresh turn's calls rebuilt."""
+
+    traces, state = _run(run_dialogue_path())
+    plain = [trace for trace in traces if trace.role != "judge"]
+    slow_index = next(
+        index
+        for index, trace in enumerate(plain)
+        if trace.role == "slow"
+        and trace.input_pins
+        and trace.input_pins.event_cursor > 1
+    )
+    slow, fast = plain[slow_index], plain[slow_index + 1]
+    assert fast.role == "fast" and fast.input_pins is not None
+    rebuilt = (*plain[:slow_index], *build(slow, fast), *plain[slow_index + 2 :])
+    return fast_slow_split(rebuilt, state), fast.input_pins.event_cursor
+
+
+def test_s4_split_counts_judge_calls_apart() -> None:
+    split, cursor = _refresh_turn(lambda slow, fast: (slow, _judge(slow), fast))
+    turn = _turn(split, cursor)
+    assert (turn["class"], turn["slow_calls"], turn["fast_calls"]) == (
+        "slow_then_fast",
+        1,
+        1,
+    )
+    assert (turn["judge_calls"], turn["slow_retry"]) == (1, None)
+    aggregates = split["aggregates"]
+    assert set(aggregates["calls_by_role_and_result"]) == {"fast", "slow"}
+    assert aggregates["judge_calls_by_result"] == {
+        "failed": 0,
+        "rejected": 0,
+        "succeeded": 1,
+    }
+    assert aggregates["slow_retry_counts"] == {"admitted": 0, "rejected": 0}
+    assert aggregates["unapplied_model_calls"] == 0
+    assert aggregates["slow_involved_turn_share"] == 0.375
+
+
+@pytest.mark.parametrize(
+    ("retry_result", "outcome"),
+    [(ModelResult.SUCCEEDED, "admitted"), (ModelResult.REJECTED, "rejected")],
+)
+def test_s4_a_slow_retry_after_a_revise_belongs_to_the_turn(
+    retry_result: ModelResult, outcome: str
+) -> None:
+    def build(slow: ModelTrace, fast: ModelTrace) -> tuple[ModelTrace, ...]:
+        revise = _judge(slow, "judge_revise", "judge_premature_give_up")
+        return (slow, revise, _as(slow, retry_result, "slow_result_current"), fast)
+
+    split, cursor = _refresh_turn(build)
+    turn = _turn(split, cursor)
+    assert (turn["slow_calls"], turn["judge_calls"], turn["slow_retry"]) == (
+        2,
+        1,
+        outcome,
+    )
+    aggregates = split["aggregates"]
+    assert aggregates["slow_retry_counts"] == {
+        "admitted": int(outcome == "admitted"),
+        "rejected": int(outcome == "rejected"),
+    }
+    assert aggregates["unapplied_model_calls"] == 0
+
+
+def test_s4_a_slow_after_an_accept_starts_a_new_attempt() -> None:
+    # Create, then a repeated create at the same cursor: two groups.
+    traces, state = _run(run_demo_path())
+    plain = [trace for trace in traces if trace.role != "judge"]
+    first, again, fast = plain
+    split = fast_slow_split((first, _judge(first), again, _judge(again), fast), state)
+    turn = _turn(split, 1)
+    assert (turn["slow_calls"], turn["judge_calls"], turn["slow_retry"]) == (
+        1,
+        1,
+        None,
+    )
+    aggregates = split["aggregates"]
+    assert aggregates["unapplied_model_calls"] == 1
+    assert aggregates["unapplied_judge_calls_by_result"]["succeeded"] == 1
+    assert aggregates["judge_calls_by_result"]["succeeded"] == 1
+
+
+def _creation(build: Any) -> dict[str, Any]:
+    """The demo path's creation turn with its Slow and Judge calls rebuilt."""
+
+    traces, state = _run(run_demo_path())
+    plain = [trace for trace in traces if trace.role != "judge"]
+    first, again, fast = plain
+    return fast_slow_split((*build(first, again), fast), state)
+
+
+REVISE = ("judge_revise", "judge_premature_give_up")
+
+
+def test_s4_a_judged_slow_after_a_revise_is_a_new_attempt() -> None:
+    # Review I1: [S J(revise) S J]; a retry is never judged, so the second
+    # Slow call is a repeated create's own attempt.
+    split = _creation(
+        lambda first, again: (
+            first,
+            _judge(first, *REVISE),
+            again,
+            _judge(again, *REVISE),
+        )
+    )
+    turn = _turn(split, 1)
+    assert (turn["slow_calls"], turn["judge_calls"], turn["slow_retry"]) == (
+        1,
+        1,
+        None,
+    )
+    aggregates = split["aggregates"]
+    assert aggregates["unapplied_model_calls"] == 1
+    assert aggregates["unapplied_judge_calls_by_result"]["succeeded"] == 1
+    assert aggregates["slow_retry_counts"] == {"admitted": 0, "rejected": 0}
+
+
+def test_s4_a_rejected_slow_after_a_revise_is_read_as_the_retry() -> None:
+    # Review I1, the recorded limit: [S J(revise) S(REJECTED)] is a rejected
+    # retry, though a new attempt rejected there would log the same.
+    split = _creation(
+        lambda first, again: (
+            first,
+            _judge(first, *REVISE),
+            _as(again, ModelResult.REJECTED, "stale_slow_result"),
+        )
+    )
+    turn = _turn(split, 1)
+    assert (turn["slow_calls"], turn["judge_calls"], turn["slow_retry"]) == (
+        2,
+        1,
+        "rejected",
+    )
+    assert split["aggregates"]["slow_retry_counts"] == {"admitted": 0, "rejected": 1}
+    assert split["aggregates"]["unapplied_model_calls"] == 0
+
+
+@pytest.mark.parametrize(
+    ("result", "codes"),
+    [
+        (ModelResult.FAILED, ("judge_adapter_timeout",)),
+        (ModelResult.REJECTED, ("judge_verdict_result_mismatch",)),
+    ],
+)
+def test_s4_a_failed_or_rejected_judge_call_is_counted_apart(
+    result: ModelResult, codes: tuple[str, ...]
+) -> None:
+    # Review M5: neither is a revise, so a later Slow call is a new attempt.
+    split, cursor = _refresh_turn(
+        lambda slow, fast: (slow, _judge(slow, *codes, result=result), fast)
+    )
+    turn = _turn(split, cursor)
+    assert (turn["slow_calls"], turn["judge_calls"], turn["slow_retry"]) == (
+        1,
+        1,
+        None,
+    )
+    aggregates = split["aggregates"]
+    assert aggregates["judge_calls_by_result"] == {
+        "failed": int(result is ModelResult.FAILED),
+        "rejected": int(result is ModelResult.REJECTED),
+        "succeeded": 0,
+    }
+    assert aggregates["calls_by_role_and_result"]["slow"]["succeeded"] == 3
+    assert aggregates["unapplied_model_calls"] == 0
+
+    split = _creation(
+        lambda first, again: (
+            first,
+            _judge(first, *codes, result=result),
+            again,
+            _judge(again),
+        )
+    )
+    assert _turn(split, 1)["slow_retry"] is None
+    assert split["aggregates"]["unapplied_model_calls"] == 1
+
+
+def test_s4_an_orphan_judge_trace_is_refused() -> None:
+    with pytest.raises(ValueError, match="orphan judge trace"):
+        _refresh_turn(lambda slow, fast: (_judge(slow), fast))
+
+
 # S2 Every emitted event type is classified.
 def _emitted_event_types() -> set[str]:
     runtime = ThinAgentRuntime(clock=lambda: T0 + timedelta(hours=2))
@@ -293,8 +501,11 @@ def test_s3_the_committed_report_is_current_and_deterministic() -> None:
     assert not [key for key in _keys(report) if "latency" in key or key.endswith("_ms")]
     for line in (BOUNDED_FAST_STATUS_TEXT, *SCRIPTED_DIALOGUE_LINES):
         assert line not in text
-    assert report["schema_version"] == "fast-slow-split-v1"
+    assert report["schema_version"] == "fast-slow-split-v2"
     assert report["fast_backend"] == "scripted_dialogue"
+    assert report["judge_backend"] == "scripted_judge"
+    # No verdict distribution is reported (decision 7).
+    assert not [key for key in _keys(report) if "verdict" in key]
     assert report["fast_gate_version"] == "fast-gate-v1"
     assert report["unicode_data_version"] == "15.0.0"
 
@@ -312,7 +523,13 @@ def test_s3_the_report_meets_the_acceptance_values() -> None:
     }
     assert demo["unapplied_model_calls"] == 1
     assert dialogue["turns_by_class"]["slow_then_fast"] >= 1
+    # PR-14: one Judge call per admitted Slow call, none of them a revise on
+    # the default Slow, so no retry.
+    assert demo["judge_calls_by_result"]["succeeded"] == 1
+    assert demo["unapplied_judge_calls_by_result"]["succeeded"] == 1
+    assert dialogue["judge_calls_by_result"]["succeeded"] == 3
     for aggregates in (demo, dialogue):
+        assert aggregates["slow_retry_counts"] == {"admitted": 0, "rejected": 0}
         assert aggregates["gate_fallback_rate"] == 0.0
         assert aggregates["fallback_cause_counts"] == {"gate": 0, "failure": 0}
     for scenario in report["scenarios"].values():

@@ -389,12 +389,12 @@ def test_the_log_holds_every_issued_trace_across_the_direct_flow(
     runtime = ThinAgentRuntime(repository, clock=lambda: clock)
 
     runtime.apply_command(_create_command())
-    assert [trace.role for trace in issued] == ["slow"]
+    assert [trace.role for trace in issued] == ["slow", "judge"]
     assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
 
     clock = BASE_TIME + timedelta(minutes=1)
     event = runtime.apply_command(_event_command())
-    assert [trace.role for trace in issued] == ["slow", "fast"]
+    assert [trace.role for trace in issued] == ["slow", "judge", "fast"]
     assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
 
     clock = BASE_TIME + timedelta(minutes=2)
@@ -403,7 +403,7 @@ def test_the_log_holds_every_issued_trace_across_the_direct_flow(
     final = repository.get(SCRIPTED_CASE_ID)
     assert final is not None
     assert final.snapshot.case.phase is CasePhase.COMPLETE
-    assert [trace.role for trace in issued] == ["slow", "fast"]
+    assert [trace.role for trace in issued] == ["slow", "judge", "fast"]
     assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
     stored = repository.payloads[SCRIPTED_CASE_ID]
     assert stored["storage_version"] == 3
@@ -441,7 +441,7 @@ def test_an_approval_that_does_not_execute_leaves_the_log_as_issued(
     assert stored is not None
     assert stored.snapshot.revision > event.after_revision
     # The decision and expiry paths run no model: the log is exactly as issued.
-    assert [trace.role for trace in issued] == ["slow", "fast"]
+    assert [trace.role for trace in issued] == ["slow", "judge", "fast"]
     assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
     assert "model_traces" not in repository.payloads[SCRIPTED_CASE_ID]
 
@@ -457,7 +457,13 @@ def test_the_log_holds_every_issued_trace_across_the_channel_flow(
         _channel_command(repository, BASE_TIME + timedelta(minutes=31))
     )
     assert applied.delivery_id is not None
-    assert [trace.role for trace in issued] == ["slow", "slow", "fast"]
+    assert [trace.role for trace in issued] == [
+        "slow",
+        "judge",
+        "slow",
+        "judge",
+        "fast",
+    ]
     assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
     accepted = repository.get_outbox_record(applied.delivery_id)
     assert accepted is not None
@@ -489,7 +495,13 @@ def test_the_log_holds_every_issued_trace_across_the_channel_flow(
     runtime.apply_command(callback(first.after_revision))  # an exact duplicate
 
     # A callback runs no model, so it logs nothing.
-    assert [trace.role for trace in issued] == ["slow", "slow", "fast"]
+    assert [trace.role for trace in issued] == [
+        "slow",
+        "judge",
+        "slow",
+        "judge",
+        "fast",
+    ]
     assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
     stored = repository.get(SCRIPTED_CASE_ID)
     assert stored is not None
@@ -516,7 +528,7 @@ def test_persisted_traces_share_the_case_time_base(
     stored = repository.get(SCRIPTED_CASE_ID)
     assert stored is not None
     logged = repository.list_model_traces(SCRIPTED_CASE_ID)
-    assert [trace.role for trace in logged] == ["slow", "fast"]
+    assert [trace.role for trace in logged] == ["slow", "judge", "fast"]
     assert logged == tuple(issued)
     event_times = {event.occurred_at for event in stored.events}
     for trace in logged:
@@ -560,7 +572,7 @@ def test_a_rejected_fast_result_is_traced(issued: list[ModelTrace]) -> None:
         runtime.apply_command(_event_command())
 
     assert raised.value.source == "fast"
-    assert [trace.role for trace in issued] == ["slow", "fast"]
+    assert [trace.role for trace in issued] == ["slow", "judge", "fast"]
     rejected = issued[-1]
     assert rejected.result is ModelResult.REJECTED
     assert rejected.reason_codes
@@ -618,7 +630,13 @@ def test_a_channel_refusal_keeps_its_accepted_traces(
         assert raised.value.source == "fast"
     else:
         assert str(raised.value) == "channel send is not authorized"
-    assert [trace.role for trace in issued] == ["slow", "slow", "fast"]
+    assert [trace.role for trace in issued] == [
+        "slow",
+        "judge",
+        "slow",
+        "judge",
+        "fast",
+    ]
     assert {trace.result for trace in issued} == {ModelResult.SUCCEEDED}
     assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
     after = repository.get(SCRIPTED_CASE_ID)
@@ -654,7 +672,7 @@ def test_the_append_event_rollback_keeps_its_traces(
     assert after is not None
     assert after.snapshot == before.snapshot
     assert after.transitions == before.transitions
-    assert [trace.role for trace in issued] == ["slow", "fast"]
+    assert [trace.role for trace in issued] == ["slow", "judge", "fast"]
     assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
 
 
@@ -678,7 +696,7 @@ def test_a_compare_and_swap_loser_keeps_its_traces(
     with pytest.raises(CaseConflictError):
         runtime.apply_command(_event_command())
 
-    assert [trace.role for trace in issued] == ["slow", "fast"]
+    assert [trace.role for trace in issued] == ["slow", "judge", "fast"]
     assert repository.list_model_traces(SCRIPTED_CASE_ID) == tuple(issued)
 
 
@@ -715,7 +733,7 @@ def test_a_trace_append_is_for_one_case_and_empty_is_a_no_op(
 ) -> None:
     memory = InMemoryCaseRepository()
     ThinAgentRuntime(memory, clock=lambda: BASE_TIME).apply_command(_create_command())
-    (trace,) = issued
+    trace, judge = issued
     foreign = trace.model_copy(
         update={"case_id": UUID("22222222-2222-4222-8222-222222222222")}
     )
@@ -728,7 +746,7 @@ def test_a_trace_append_is_for_one_case_and_empty_is_a_no_op(
     repository.append_model_traces(SCRIPTED_CASE_ID, ())
 
     # All or nothing: the valid trace in the refused append was not written.
-    assert memory.list_model_traces(SCRIPTED_CASE_ID) == (trace,)
+    assert memory.list_model_traces(SCRIPTED_CASE_ID) == (trace, judge)
 
 
 def test_the_browser_projection_never_carries_a_trace(

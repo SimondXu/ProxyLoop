@@ -72,6 +72,10 @@ _Avoid_: Executed plan, agent state, reasoning trace
 The capability proposal of the last Slow Work Result accepted for a Case, held until a later accepted result replaces it or an Approval Request consumes it. It authorizes nothing: an Action Intent is compiled from it only while it is current and deterministic policy finds the offer it names compliant.
 _Avoid_: Pending action, queued intent, model plan
 
+**Judge**:
+An advisory, quality-only reviewer of an admitted Slow Work Result. Its verdict is accept or revise, and a revise may cause one Slow retry. It authorizes, blocks, and measures nothing.
+_Avoid_: Critic, verifier, approval, reward model
+
 **Routing Decision**:
 The deterministic, version-pinned selection of Fast work, Slow work, approval wait, verification, or terminal handling for one Case event.
 _Avoid_: Model choice, handoff guess, confidence threshold
