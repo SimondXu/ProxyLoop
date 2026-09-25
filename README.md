@@ -24,15 +24,24 @@ make portfolio-demo
 
 This starts PostgreSQL and Temporal in Compose, then the workflow worker, the
 FastAPI Runtime, and a production build of the Next.js Web app on loopback
-ports, and prints the Web URL plus the two-scene order:
+ports (8000 and 3000; `RUNTIME_PORT=` and `WEB_PORT=` override them, and a
+taken port fails closed), and prints the Web URL plus the scene order. Each
+scene starts from fresh state (`make portfolio-demo-stop`, then
+`make portfolio-demo-reset`, then `make portfolio-demo` again):
 
-1. **Scene A — Web Case.** Open the Web URL, state the current bill, target
-   bill, that the hotspot must stay, and that device financing must not
-   change. The Runtime creates one Case, proposes one offer, waits for your
-   exact approval, executes once against the fictional provider, and shows a
-   receipt only after the Evidence predicate passes. Stop and restart the stack
-   and the same Case comes back from PostgreSQL/Temporal.
-2. **Scene B — controlled channel.** After `make portfolio-demo-reset` and a
+1. **Scene A — Web Case.** Open the Web URL and describe the bill in one
+   message. The card shows what was read and asks only for what was not.
+   Creating the Case brings in the fictional offer; Slow proposes it and a
+   scripted Judge reviews that proposal (visible only in the Model Traces).
+   Your confirmation turn gets one automated assistant line and opens the
+   exact approval; the Status Bar follows each step. Approve, and the Runtime
+   executes once and shows a receipt only after the Evidence predicate passes.
+   Stop and restart the stack and the same Case comes back from
+   PostgreSQL/Temporal.
+2. **Scene J — scripted journey.** `make portfolio-demo-journey` drives the
+   same HTTP routes and checks the whole journey, including an exact approval
+   replay that does not execute again and the Model Trace counts.
+3. **Scene B — controlled channel.** After `make portfolio-demo-reset` and a
    fresh `make portfolio-demo`, run `make portfolio-demo-channel` in a second
    terminal. It posts a SHA-256-fingerprinted synthetic provider e-mail (unkeyed
    integrity check, not authentication), replays it, and
@@ -41,7 +50,8 @@ ports, and prints the Web URL plus the two-scene order:
 
 `make portfolio-demo-stop` stops everything and keeps data;
 `make portfolio-demo-recovery` runs the Temporal lost-response recovery
-check. Details, expected output, and troubleshooting are in
+check. `make ops-report` summarizes the gates and the committed local
+measurements offline. Details, expected output, and troubleshooting are in
 [docs/portfolio-demo.md](docs/portfolio-demo.md).
 
 ## How it works

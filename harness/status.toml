@@ -1,13 +1,13 @@
 schema_version = 1
-product_phase_state = "idle"
-active_product_phase = ""
-active_contract = ""
+product_phase_state = "in_progress"
+active_product_phase = "07"
+active_contract = "harness/build/phase-07-portfolio-hardening.md"
 next_phase_authorized = false
 integration_baseline = "main"
-updated_at = "2026-09-24"
+updated_at = "2026-09-25"
 
 [boundaries]
-summary = "Phase 03C is closed at GO_DISTILLED: the distilled Qwen3-8B adapter reaches 0.983 act agreement against 0.542 untuned on 240 held-out rows from six families absent from training, re-scored locally with zero disagreements (harness/log/phase-03c-stage2-stage3.md). Nothing is promoted. Decisions 16-18 (harness/context/audit-remediation-decisions.md, 2026-09-24) extend the audit authorization to the build plan in harness/context/build-plan-to-complete.md: the adapter may be served locally as an opt-in Fast backend, labelled a local opt-in candidate, never promoted or production; V0 and further training are not done (budget); Phase 07 comes last. Production serving, real-model load, capacity, p95, OOM and automatic fallback, further training or data expansion, Phase 06B2, every real channel, and deployment remain unauthorized. No phase contract is active; the build plan is audit and proposal work, not a product phase."
+summary = "Phase 03C is closed at GO_DISTILLED: the distilled Qwen3-8B adapter reaches 0.983 act agreement against 0.542 untuned on 240 held-out rows from six families absent from training, re-scored locally with zero disagreements (harness/log/phase-03c-stage2-stage3.md). Nothing is promoted. Decisions 16-18 (harness/context/audit-remediation-decisions.md, 2026-09-24) extend the audit authorization to the build plan in harness/context/build-plan-to-complete.md: the adapter may be served locally as an opt-in Fast backend, labelled a local opt-in candidate, never promoted or production; V0 and further training are not done (budget); Phase 07 comes last. Production serving, real-model load, capacity, p95, OOM and automatic fallback, further training or data expansion, Phase 06B2, every real channel, and deployment remain unauthorized. Phase 07 (Portfolio Hardening, build-plan PR-16 and PR-17) is in progress under the frozen contract harness/build/phase-07-portfolio-hardening.md (root decisions D1-D9, 2026-09-25): the credential-free 07A demo runs the whole journey, plus an offline make ops-report; PR-17 returns this file to idle at the phase gate. Decision 21 dropped PR-15 (contracts 1.2)."
 inactive = [
   "Phase 03A1 continuation or r6/r7",
   "any model training, data expansion, or promotion; Phase 03A1/03B artifact rewrites (Stage 0 writes only new phase-03c artifacts)",
