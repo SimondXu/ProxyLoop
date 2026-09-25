@@ -51,6 +51,23 @@ The diagram is a target shape, not an inventory of implemented services. Reposit
 - **Implemented bounded local slice**: `apps/web` keeps conversation as the primary workspace and calls the existing local FastAPI Thin Runtime through one Next rewrite and one narrow runtime client. It renders Runtime-derived Case facts, one offer, exact approval pins, and a receipt only after the completion Evidence predicate passes.
 - **Target/deferred**: normalized production data models and migrations, real-effect outbox/reconciliation, external provider/email/MCP connectors, voice, promoted-model serving, authentication, production UI, deployment, and release remain separately gated. The `local_mailbox` slice is synthetic and does not make a production Pine clone claim.
 
+Built versus proposed, node by node (reconciled at the end of Phase 07, audit finding A-7f; limits are in [limitations.md](limitations.md)):
+
+| Diagram node | State |
+|---|---|
+| Authoritative Case State, Case Context Snapshot, Deterministic Router, Fast Model View, Slow Work Request | Built. |
+| Fast Model Adapter | Built. The default is the scripted dialogue adapter. A local opt-in backend serves the Phase 03C adapter or its untuned base through a loopback MLX gateway; through the product path the distilled backend delivers 0/240 lines ([ML evidence](ml-evidence.md#the-product-path-a-negative-result)). An OpenAI-compatible adapter exists for direct model mode only. |
+| Slow Reasoner Adapter | Built with a scripted default (`ScriptedProposingSlowAdapter`). A hosted Slow exists only as the opt-in OpenAI-compatible adapter in direct model mode; it is not part of the demo and was not measured after decision 17. |
+| Judge (not drawn; between Slow and the gate) | Built as a scripted, advisory Judge (PR-14). No model Judge. |
+| Policy and Current-State Gate, Approval Coordinator, Capability Executor, Fictional Provider Simulator | Built. |
+| Evidence and Completion Verifier | Built. `verify_completion` produces two outcomes, `complete` and `needs_replan`; see "Agent Decision Loop". |
+| Email / MCP Adapter | Proposed, not built. Only the synthetic `local_mailbox` connector exists. |
+| LiveKit / SIP Adapter | Proposed, not built. `voice/` is a placeholder. |
+| Trace and Feedback Export | Partly built: an append-only Model Trace log (observability only). Nothing exports traces or feedback to the data pipeline. |
+| Data Curation Pipeline | Built for generated data (Phase 02 pilot; Phase 03C oracle-filtered teacher samples). It has never consumed product traces. |
+| QLoRA / SFT | Ran twice, offline: the Phase 03B smoke (`NO_GO_STOP_PHASE03B`) and the Phase 03C LoRA run on Modal (`GO_DISTILLED` on the trained path). |
+| Model and Dataset Registry | Proposed, not built. Datasets and runs are recorded by committed manifests and hashes; there is no MLflow or registry, and no model is promoted. |
+
 The current research runtime uses an in-memory Case repository in default direct mode and may explicitly opt into a synchronous PostgreSQL adapter that stores one strict, versioned JSONB aggregate with revision compare-and-swap. A separate explicit Temporal mode requires scripted Slow decisions (Fast is scripted or the local opt-in backend, PR-11) and PostgreSQL; it durably orders commands, waits, timers, retries, worker recovery, and Continue-As-New while PostgreSQL remains the only business truth. The bounded `local_mailbox` mode adds strict raw-fixture verification, server-owned binding, inbox deduplication, atomic Case-plus-first-outbox writes, and compact delivery activities; PostgreSQL remains authoritative for channel receipts and outbox state. An exact duplicate of an applied Provider message whose outbox is still `pending`, `failed_retryable`, or `unknown` (`REDRIVABLE_OUTBOX_STATES`) re-sends the identical ingest request, so once the run has rolled the Workflow re-runs the delivery activity; the only re-drive trigger is the sender's redelivery. A channel dispatch that fails with `channel_conflict` is re-sent once with the current revision whenever the Case revision has advanced and the event still has no receipt (whatever caused the conflict, not only a lost route-read revision); any other failure is returned unchanged. The delivery activity always looks up the delivery identity before sending, on every attempt and outbox state, and sends only when the adapter reports nothing, so a send whose observation write failed is not repeated by a retry or a re-drive. The residual duplicate-send window is a send whose effect is not yet visible to `lookup`, for example when a schedule-to-close `TIMEOUT` lets a new attempt or re-drive run while the timed-out attempt is still in flight. The slice still bypasses Gmail, MCP, and LiveKit. Its idempotency and recovery claims apply only to the deterministic fictional Provider and local fixture; it does not claim exactly-once real external effects. Configuration never falls back automatically.
 
 Model traces are not Case state. They live in a separate append-only trace log: `InMemoryCaseRepository` keeps a per-Case list, and PostgreSQL keeps the table `proxyloop_model_traces` (`log_id` identity, `case_id`, `trace` jsonb), with no foreign key to the Case table. The Runtime reaches the coordinator only through `ThinAgentRuntime._advance`, which appends every trace the coordinator issued for that run, in call order and in its own short transaction, before the Runtime inspects the outcome. A rejected result, a lost compare-and-swap, a channel refusal, and a rolled-back approval write therefore keep their model calls, and a rejected create is logged without any Case row (backlog item R-12). The log is append-only: no product API updates or deletes a row. An append must be wholly about one Case or it is refused before any write. An empty append is a no-op. An append never reads or writes a Case row, never changes a revision, and never joins a Case transaction. Reads (`list_model_traces`) return append order and fail closed on a stored trace that is invalid or belongs to another Case, and storage failures surface as `StorageUnavailableError`. `trace_id` is not unique: two indistinguishable calls are two rows. Traces never enter `CaseRuntimeState`, the snapshot, the stored envelope, views, receipts, or the API. Nothing on the Runtime's decision path reads the log: it is observability only. A trace's `result` is the coordinator's validation verdict, not delivery or application. A `SUCCEEDED` Fast trace from a channel event that was then refused was never delivered, and delivery and application are recorded only by the Case transitions. An adapter that raises produces no coordinator outcome and so no trace (a known coordinator gap), except a Fast adapter's typed `FastAdapterFailure` in the product Runtime, which is traced as `FAILED` (PR-9a, "Local opt-in Fast backend"), and a Judge adapter's typed `JudgeAdapterFailure`, likewise traced as `FAILED` (PR-14). A Judge trace's `result` is the coordinator's verdict on the Judge's output: `SUCCEEDED` means a well-formed verdict for the judged request and result, whether it accepts or revises; the verdict itself is in its reason codes (`judge_accept`, or `judge_revise` followed by the revise codes). The PostgreSQL envelope is `storage_version` 3 and carries no traces, so the size of a Case write no longer grows with the number of traces (R-13b). Version 1 rows are still upgraded on read and rewritten as version 3. Every process's bootstrap takes a PostgreSQL advisory lock and moves each version 2 row's inline traces into the log once, in their stored order, rewriting the row as version 3 at the same revision. A version 2 row with no `model_traces` key migrates with no traces, as the version 2 envelope defaulted it to empty. A version 2 row whose traces are present but not an array is left alone and fails closed on read. The backfill copies inline traces without validating them, so a version 2 row that used to fail closed only because an inline trace was invalid or belonged to another Case is now readable as a Case, while `list_model_traces` fails closed on that trace. The tamper signal moves from the Case read to the log read, as intended. Otherwise, versions 2 and 4+ are rejected. Mixed code versions against one database are unsupported: stop all processes before upgrading. Retention is still unbounded: nothing prunes the log, and pruning is a separate policy decision.
@@ -90,13 +107,13 @@ Model traces are not Case state. They live in a separate append-only trace log: 
 
 - `runtime/packages/provider_simulator`: fictional telecom provider, plan catalog, account/bill state, retention policy, provider personas, and deterministic mutations.
 - `runtime/packages/connectors`: strict credential-free `local_mailbox` fixture verification plus deterministic send/lookup and fault-injection adapters. Real email and other asynchronous channel adapters remain deferred.
-- `voice/worker`: LiveKit agent and SIP integration added only after text-policy gates pass.
+- `voice/worker`: LiveKit agent and SIP integration added only after text-policy gates pass. Proposed, not built: the directory is a placeholder.
 - Channel adapters translate events; they do not decide negotiation strategy or case completion.
 
 ### ML and Data Layer
 
 - `ml/data_pipeline`: ingestion, normalization, synthetic rollout generation, quality filters, lineage, leakage detection, and split manifests.
-- Target `ml/training`: base-model experiments, QLoRA/SFT, loss configuration, checkpoints, and reproducibility metadata. Training has not started.
+- `ml/training/phase03c_cloud`: the Phase 03C LoRA training and held-out evaluation runner for Modal (one full run, 2026-09-22; `harness/log/phase-03c-stage2-stage3.md`). The Phase 03B smoke ran from `scripts/run_phase03b_smoke.py`. Checkpoints and adapters are git-ignored; only manifests and reports are committed.
 - `ml/evaluation`: policy-field, end-to-end, safety, cost, latency, and statistical evaluation.
 - `ml/serving` (PR-9b): the local opt-in MLX Fast gateway's README and adapter-conversion attestation (the gateway code lives under `proxyloop_evaluation/local_fast/` because `ml/pyproject.toml` is frozen). Apple-local inference stays behind the typed Fast protocol (see "Local opt-in Fast backend"). Promoted Linux/CUDA serving (vLLM) remains deferred.
 - Large datasets, audio, and checkpoints live in object storage; Git stores schemas, manifests, small fixtures, and reports.
@@ -107,7 +124,7 @@ Phase 02 implements the first narrow Data Factory seam as a separate CPU-only `m
 
 ### Slow Reasoner
 
-The initial Slow Reasoner is a hosted frontier model called through a provider-neutral adapter with structured outputs. Its exact provider/model remains an implementation default subject to measured cost and quality gates. A deterministic Router requests Slow work at Case initialization and on material goal, constraint, authority, offer, Evidence, strategy-validity, stalled-dialogue, high-risk, or completion events.
+The initial Slow Reasoner was planned as a hosted frontier model called through a provider-neutral adapter with structured outputs. As built, the Runtime's default Slow is scripted (`ScriptedProposingSlowAdapter`), in every gate and in the demo (decision 17); the hosted path exists only as the opt-in OpenAI-compatible adapter in direct model mode. A hosted Slow was measured only by the Phase 03A1 evaluation runners, which use their own adapter under `ml/`. The contract below is what both implement. A deterministic Router requests Slow work at Case initialization and on material goal, constraint, authority, offer, Evidence, strategy-validity, stalled-dialogue, high-risk, or completion events.
 
 Slow receives a version-pinned `SlowWorkRequest` derived from a `SlowReasonerView`. It may reason over a broader safe Case snapshot, relevant visible-event history or deterministic summary, domain policy, and the current simulator capability manifest.
 
@@ -128,7 +145,7 @@ Slow may also return bounded clarification, escalation, capability, or Action In
 
 ### Fast Response Model
 
-The Fast Response Model is the only model the project intends to train. One bounded Phase 03B QLoRA smoke ran on it and returned `NO_GO_STOP_PHASE03B`; no promoted or production checkpoint exists, and the serving path currently uses either the deterministic scripted policy or an untuned OpenAI-compatible endpoint in explicit model mode. The initial checkpoint was `Qwen/Qwen3-4B-Instruct-2507` in its native non-thinking mode; the prepared Phase 03C redo targets `Qwen/Qwen3-8B` with non-thinking mode forced (`docs/decisions/2026-08-22-implementation-defaults.md`, amendment 2026-09-21). It receives a safe, bounded view:
+The Fast Response Model is the only model the project intends to train. One bounded Phase 03B QLoRA smoke ran on it and returned `NO_GO_STOP_PHASE03B`; the Phase 03C LoRA distillation then reached `GO_DISTILLED` on the trained prompt path. No promoted or production checkpoint exists. The serving path uses the deterministic scripted dialogue adapter by default, the Phase 03C adapter or its untuned base as a local opt-in backend (below), or an untuned OpenAI-compatible endpoint in explicit direct model mode. The initial checkpoint was `Qwen/Qwen3-4B-Instruct-2507` in its native non-thinking mode; Phase 03C used `Qwen/Qwen3-8B` with non-thinking mode forced (`docs/decisions/2026-08-22-implementation-defaults.md`, amendment 2026-09-21). It receives a safe, bounded view:
 
 - consumer brief;
 - current valid `StrategyPacket`;
@@ -288,8 +305,8 @@ Every canonical contract carries a Contract Schema Version (`schema_version`); a
 | Cases, constraints, offers, approvals, evidence, command receipts, fact ledger, event log, context projection, channel bindings, inbox/outbox/delivery receipts | Local memory store in default direct mode; PostgreSQL versioned aggregate plus channel tables in explicit Temporal/local-mailbox mode | Business source of truth and audit surface. Temporal carries only compact transition references. Production normalization, migrations, and real external-effect reconciliation remain deferred. |
 | Timers, retries, waits, workflow phase | Temporal | Stores IDs and control state, not a second business database. |
 | Provider simulator episode | Simulator store | Resettable and versioned per benchmark episode. |
-| Raw/curated datasets, audio, checkpoints | Object storage | Addressed by immutable manifest and content hash. |
-| Experiment runs and promoted model metadata | MLflow OSS | SQLite/local artifacts for the first experiments; database-backed registry and S3-compatible artifacts for integrated deployment. |
+| Raw/curated datasets, audio, checkpoints | Object storage (target) | Addressed by immutable manifest and content hash. As built: git-ignored local files and a Modal volume, bound by committed manifests and hashes; no object store. |
+| Experiment runs and promoted model metadata | MLflow OSS (target) | SQLite/local artifacts for the first experiments; database-backed registry and S3-compatible artifacts for integrated deployment. As built: committed run manifests and reports under `data/`; no MLflow, and no promoted model. |
 | Prompt context | Ephemeral model request | Reconstructed from approved business state; never authoritative. |
 
 ## Agent Decision Loop
@@ -309,7 +326,7 @@ Phase 04A currently demonstrates the fixed simulator offer path: it installs the
 7. The policy gate and approval coordinator transform current permitted proposals into inert Action Intents.
 8. The capability executor revalidates strategy, authority, approval, expiry, capability, and idempotency immediately before invoking the fictional simulator or a later controlled adapter.
 9. Results are captured as immutable Evidence and cause a new snapshot and route.
-10. The verifier decides `continue`, `needs_user`, `needs_replan`, `candidate_complete`, or `complete`; completion requires current material terms and sufficient external Evidence.
+10. The verifier decides `complete` or `needs_replan`; completion requires current material terms and sufficient external Evidence. `CompletionOutcome` also defines `continue`, `needs_user`, and `candidate_complete`, and the Router handles `candidate_complete`, but no producer emits those three today: `verify_completion` (`runtime/packages/telecom_domain/src/proxyloop_telecom_domain/domain.py`) returns `complete` when every check passes and `needs_replan` otherwise (audit finding A-7f).
 
 ## Data and Training Flow
 
@@ -328,6 +345,8 @@ Phase 04A currently demonstrates the fixed simulator offer path: it installs the
 
 Phase 02 validated only ingestion, normalization, curation, and export plumbing through a one-turn scripted pilot. Its deterministic scripted consumer substituted for a paid teacher to verify the Data Factory interface and recorded zero external token cost; it did not call a model, establish training readiness, or implement the multi-turn evaluation and training stages above.
 
+What the flow above actually ran, by the end of Phase 07: steps 1 and 3–5 (Phases 01B, 02 and 03A1, including the untuned and frontier-reference baselines), and a teacher-distillation form of steps 8–11 in Phase 03C (generated scenarios, `claude-sonnet-5` teacher samples filtered by schema, oracle agreement and detectors, LoRA on the Fast output, evaluation on six held-out families). Not done: the open-data SFT of steps 6–7 (the Phase 03B smoke that stood in for it stopped at `NO_GO_STOP_PHASE03B`), random human review in step 9 (none is recorded for Phase 03C), multiple training seeds in step 11 (one training run), and step 12 (no model is promoted). The details are in [ML evidence](ml-evidence.md).
+
 ## Safety and Reliability Invariants
 
 - External text and speech are untrusted inputs and may contain prompt injection.
@@ -344,6 +363,8 @@ Phase 02 validated only ingestion, normalization, curation, and export plumbing 
 - Every trace links `case -> prompt/model -> evidence -> dataset derivation -> model version` where applicable.
 
 ## Observability
+
+This section is the target. What is built: the append-only Model Trace log (per model call: role, provider, model and version, adapter, prompt and schema versions, latency, token counts, result, reason codes and safety flags; no dataset version and no cost), one content-free JSON operation record per API request on the Runtime's stderr, liveness and readiness endpoints, the offline Fast/Slow split reports, and the offline `make ops-report`. No OpenTelemetry, span export, metrics backend or dashboard exists.
 
 Every model/channel/workflow span should carry:
 
@@ -379,6 +400,8 @@ Dashboards should separate model quality from infrastructure reliability:
   the durable profile; the direct in-memory mode remains for iteration).
 
 ### Integrated Portfolio Demo
+
+The target list below is not all built. Built locally: the Web app, the control plane, PostgreSQL, Temporal and the worker, and a local opt-in Fast inference gateway. Not built: a hosted Slow in the demo (Slow is scripted), a Gmail or real test mailbox (only the synthetic `local_mailbox`), LiveKit and an owned number, and OpenTelemetry.
 
 - Next.js web app;
 - FastAPI control plane;

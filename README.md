@@ -54,6 +54,82 @@ check. `make ops-report` summarizes the gates and the committed local
 measurements offline. Details, expected output, and troubleshooting are in
 [docs/portfolio-demo.md](docs/portfolio-demo.md).
 
+## Reproduce the simulator benchmark
+
+This starts no container and needs no credentials and no model. From a
+fresh clone, with `uv`, `pnpm`, Python 3.12, Node 22 and the Docker CLI
+(`make preflight` runs `docker compose config --quiet`, which only validates
+`compose.yaml`):
+
+```bash
+git clone https://github.com/SimondXu/ProxyLoop.git && cd ProxyLoop
+pnpm install --frozen-lockfile   # the Web checks in make preflight need it
+make preflight                   # the full local gate; uv creates both venvs
+make benchmark-check             # re-runs the Phase 01B benchmark, byte-compares
+make benchmark                   # regenerates data/manifests/phase-01b-*.json
+git diff --exit-code             # the regeneration changes no committed byte
+```
+
+`make benchmark` prints the report: 16 families × 2 provider configurations,
+32 scenarios, 32 valid outcomes, 10 completions, 0 false completions, 0
+leakage violations, `gate_passed: true`. That is the scripted oracle's
+ceiling on the simulator, not a model result. `make preflight` skips the
+tests that need PostgreSQL or Temporal, prints their count per file and
+fails if it differs from the pin; those tests run in the three
+real-dependency gates ([docs/development.md](docs/development.md)). The
+recorded fresh-clone run, with wall times, is in
+[the Phase 07 log](harness/log/phase-07-portfolio-hardening.md).
+
+## Observed versus proposed
+
+The 2026-09-21 proposal
+([docs/research/2026-09-21-target-architecture-proposal.md](docs/research/2026-09-21-target-architecture-proposal.md))
+described a model-driven journey. This is what the demo does today, in the
+order the product runs it:
+
+1. **Intake.** One free-text message goes to `POST /intake/proposals`. A
+   deterministic, model-free parser (`intake-parser-v1`) reads up to four
+   facts into a card; the consumer supplies what it could not read. Nothing
+   is stored until "Create fictional Case".
+2. **Create.** `POST /cases` creates the Case. Inside that one command the
+   fictional Offer arrives, the scripted Slow proposes accepting it (the
+   Standing Proposal), and the scripted Judge reviews that proposal.
+3. **Confirm.** The consumer's confirmation turn gets one Assistant Message
+   through the Disclosure Gate and opens the exact Approval Request.
+4. **Approve.** The Runtime executes once against the fictional Provider.
+5. **Receipt.** The receipt appears only after the Evidence predicate passes.
+
+The Status Bar follows each step. The Judge is not visible in the Web; it
+appears only as a Model Trace.
+
+| Stage | Proposed (2026-09-21) | Observed today |
+|---|---|---|
+| Intake | Slow reads the free text into a goal proposal | A deterministic parser; no model is called |
+| Planning | a hosted frontier Slow | scripted Slow in every gate and in the demo; a hosted Slow exists only in opt-in direct model mode (decision 17) |
+| Dialogue | a Fast model speaks every turn under a disclosure gate, against an LLM Provider counterpart | one consumer turn after creation, with one scripted line; the opt-in local distilled model's output was withheld by the gate in every measured call (0/240 product-path rows, 8/8 split-run calls), so the consumer sees the fallback line; the Provider side is the scripted simulator |
+| Judge | a model Judge, a second model family where possible, one Slow retry on revise | a scripted Judge that accepts on the default path; the retry runs only in tests |
+| Status block | one renderer feeding both model prompts | a Web-only Status Bar built from the browser projection; it is not a model prompt |
+| Approval | exact pins, approve and reject | exact pins and expiry; approve only, no reject control |
+| Execution and completion | at-most-once with a persisted claim, completion verified against Provider state, a receipt; `ActionIntent` naming a capability; an execution-claim Evidence type | the approval ledger, persisted claim, state-verified completion and receipt are built, against the fictional Provider only; the two contract changes are not (the capability/action join is checked at Slow admission instead, A-3; A-5 is a recorded limit) |
+| Evaluation | a Fast/Slow condition matrix and V0 (frontier in both slots) before any training | V0 not measured (no budget); training ran first (Phase 03C); per-turn Fast/Slow split reports for the scripted, distilled and untuned backends |
+| Channels, voice, memory | deferred | still not built; the mailbox is synthetic |
+
+## What is not done
+
+Not done, and not claimed: production serving, load, p95, capacity,
+concurrency, OOM or automatic fallback for the distilled adapter, and
+production exactly-once effects, monitoring or readiness; deployment, hosting and
+release; Phase 06B2 and every real channel (real Providers, Gmail and OAuth,
+e-mail, MCP, SMS, voice) and every credential; V0, frontier-as-Fast and a
+second-family Judge (not measured, budget); a model Judge and any Judge
+verdict distribution; further training, data expansion, reruns or
+promotion; narrow contracts 1.2 (PR-15, dropped by decision 21); the
+build-plan "Do not do" items; a Web free-text turn after creation, Web views
+of channels or the Judge, and any UI redesign; hosted spend of any kind in
+Phase 07 (no budget is recorded).
+Every limit, negative result, and the cost record are in
+[docs/limitations.md](docs/limitations.md).
+
 ## How it works
 
 ```mermaid
@@ -84,7 +160,7 @@ flowchart LR
     CORE --> MAIL
     API --> PG
     CORE --> PG
-    MAIL -- "signed raw-byte fixture" --> API
+    MAIL -- "SHA-256-fingerprinted raw-byte fixture" --> API
 ```
 
 The design choices that matter:
@@ -125,7 +201,7 @@ vocabulary: [CONTEXT.md](CONTEXT.md).
 | Next.js conversation UI with four-fact intake and durable resume | Implemented |
 | Synthetic `local_mailbox` channel (SHA-256-fingerprinted fixtures, inbox/outbox, dedup, callbacks) | Implemented |
 | Multi-turn evaluation harness and untuned hosted baselines | Implemented (research) |
-| Post-training of the Fast model | Phase 03C distillation ran and reached `GO_DISTILLED` (0.542 → 0.983 on held-out families); the earlier QLoRA smoke was stopped (`NO_GO`). The adapter is **not** promoted to serving — see [ML evidence](docs/ml-evidence.md) |
+| Post-training of the Fast model | Phase 03C distillation ran and reached `GO_DISTILLED` on the trained prompt path (0.542 → 0.983 on held-out families); the earlier QLoRA smoke was stopped (`NO_GO`). Served only as a local opt-in candidate, never promoted; through the product path it delivers **0/240** lines — see [ML evidence](docs/ml-evidence.md) |
 | Real e-mail / MCP / provider integration, voice, auth, deployment | Not started, separately gated |
 
 The Web demo, mailbox, and recovery claims are local observations against the
@@ -136,7 +212,9 @@ effects or real-provider delivery.
 
 The Fast model is meant to be a project-trained small model (Qwen3-8B), with
 a hosted reasoner as the Slow model. Phase 03C trained one; nothing has been
-promoted to serving, so the runtime still runs the untuned model.
+promoted. The Runtime's default Fast and Slow are scripted; the trained
+adapter can be served locally as an opt-in Fast backend, labelled a local
+opt-in candidate.
 
 Phase 03C distilled it from an oracle-filtered teacher set: 8,003
 `claude-sonnet-5` samples, 807 quarantined (499 for disagreeing with the
@@ -147,17 +225,34 @@ distilled** — decision `GO_DISTILLED`, every raw output re-scored locally
 against the repository evaluator with zero disagreements. No policy violation
 fires on that set, but the set contains no disclosure-risk row, so that zero
 is partly untested: on the in-family dev rows the distilled model still names
-a restricted field 4 times in 400 (the untuned model, 7).
+a restricted field 4 times in 400 (the untuned model, 7). Sources:
+`data/experiments/phase-03c/training/cloud-run-01/eval/heldout-rescored.json`
+and `dev-rescored.json` beside it.
 
 The write-up states what that does *not* show: the 240 rows carry only six
 distinct decision rules, the gain is one repaired defect (the untuned model
 almost never said `confirm`), the constrained-decoding arms were handicapped
-by a token cap, and nothing has been promoted to serving. Earlier runs — the
+by a token cap, and nothing has been promoted to serving.
+
+**Through the product path the result is negative.** Rendered the way the
+Runtime renders a turn and replayed through its delivery rules, the same
+240 rows give **0/240** delivered distilled lines (40 refused before the
+model because the family has no offer; the Disclosure Gate withholds all
+200 others) and act agreement **0.654**. The drop splits about evenly
+between the no-offer refusals and a missing input field (`applied_changes`,
+D4). About a third of the distilled calls ran over the 25 s timeout on one
+Apple M4 Pro. The untuned baseline delivers 8/240. A consumer on the local
+distilled backend sees the fixed fallback line. Sources:
+`data/experiments/phase-03c/local-parity/product-path-report.json`; the
+latency figure is in `harness/log/feat-pr9b-local-fast-gateway.md`.
+
+Earlier runs — the
 evaluation harness, untuned baselines, a hosted reliability rerun, a
-six-episode validity diagnostic (0/6 → 5/6 after fixing model/oracle input
-parity) and the Phase 03B QLoRA smoke that returned invalid structured
-output — are recorded with the same honesty, including costs.
-Read [docs/ml-evidence.md](docs/ml-evidence.md).
+six-episode validity diagnostic (0/6 → 5/6 after giving the model the
+oracle's inputs and its decision rules) and the Phase 03B QLoRA smoke that
+returned invalid structured output — are recorded with the same honesty.
+Read [docs/ml-evidence.md](docs/ml-evidence.md); costs are in
+[docs/limitations.md](docs/limitations.md#cost).
 
 ## Repository layout
 
@@ -178,6 +273,7 @@ voice/        Deferred LiveKit/SIP worker placeholder
 ## Development
 
 ```bash
+pnpm install --frozen-lockfile   # once per clone or worktree, before validate/preflight
 make preflight-fast   # layout, syntax, whitespace — run while iterating
 make validate         # format, lint, mypy, tests, contract drift, layout
 make preflight        # the full local gate CI runs
