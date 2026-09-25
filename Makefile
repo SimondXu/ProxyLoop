@@ -61,11 +61,12 @@ PHASE03C_TOKENIZER_PATH ?=
 QWEN3_8B_MLX_PATH ?= $(HOME)/.cache/huggingface/hub/models--Qwen--Qwen3-8B-MLX-bf16/snapshots/6766fd4b8101fa4201cc55c5a2e464f3d301f792
 PHASE03C_PEFT_ADAPTER ?= data/experiments/phase-03c/training/cloud-run-01/train/adapter
 BACKEND ?= distilled
-# Loopback port of `make local-fast-gateway`; point PROXYLOOP_FAST_GATEWAY_URL / FAST_GATEWAY_URL at the same port.
-PORT ?= 8765
+# Loopback port of `make local-fast-gateway`; FAST_GATEWAY_URL follows it (set
+# PROXYLOOP_FAST_GATEWAY_URL to the same port for the Runtime).
+LOCAL_FAST_PORT ?= 8765
 # Split report backend (scripted, or distilled|untuned against a running local gateway).
 FAST_BACKEND ?= scripted
-FAST_GATEWAY_URL ?= http://127.0.0.1:8765
+FAST_GATEWAY_URL ?= http://127.0.0.1:$(LOCAL_FAST_PORT)
 
 help:
 	@printf '%s\n' 'Targets: preflight, preflight-fast, validate, format, format-check, lint, typecheck, test, postgres-check, phase04d-check, phase04d-profile-check, phase05a-check, phase06b1-check, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, negotiation-check, fast-slow-split-report, fast-slow-split-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, baselines-historical-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, hosted-rescore, hosted-rescore-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, phase03c-smoke-check, phase03c-invariants, phase03c-invariants-check, phase03c-prompt-set-check, phase03c-teacher-pilot-check, phase03c-teacher-generation-check, phase03c-cloud-bundle, phase03c-cloud-bundle-check, phase03c-training-data, phase03c-training-check, phase03c-mlx-adapter, phase03c-local-parity, phase03c-local-parity-check, phase03c-product-parity, phase03c-product-parity-check, local-fast-gateway, check-layout, lock-check, runtime-server, portfolio-demo, portfolio-demo-stop, portfolio-demo-reset, portfolio-demo-channel, portfolio-demo-recovery, dev'
@@ -296,7 +297,7 @@ phase03c-product-parity-check:
 
 local-fast-gateway:
 	HF_HUB_OFFLINE=1 $(ML_PYTHON_RUN) python -m scripts.run_local_fast_gateway \
-		--backend $(BACKEND) --model-path "$(QWEN3_8B_MLX_PATH)" --port $(PORT)
+		--backend $(BACKEND) --model-path "$(QWEN3_8B_MLX_PATH)" --port $(LOCAL_FAST_PORT)
 
 phase03c-cloud-bundle-check:
 	$(ML_PYTHON_RUN) python -m scripts.build_phase03c_cloud_bundle --check

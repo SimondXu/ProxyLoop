@@ -114,3 +114,79 @@ def test_validation_refuses_a_rewritten_row_set_or_identity(
     tamper(observed)
     with pytest.raises(SystemExit):
         m2.validate_observed(observed, list(_plan()))
+
+
+def _committed_copy(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> Any:
+    copy_path = tmp_path / "product-path-report.json"
+    copy_path.write_text(m2.REPORT.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(m2, "REPORT", copy_path)
+    monkeypatch.setattr(m2, "plan_rows", lambda: copy.deepcopy(list(_plan())))
+    return copy_path
+
+
+def test_rebuild_from_report_without_a_code_change_is_byte_identical(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    before = m2.REPORT.read_text(encoding="utf-8")
+    path = _committed_copy(tmp_path, monkeypatch)
+    assert m2.main(["--rebuild-from-report"]) == 0
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_rebuild_from_report_regenerates_after_a_derivation_change(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A changed derivation (here the claim boundary) fails --check; the
+    model-free rebuild writes the new bytes and --check passes again."""
+
+    path = _committed_copy(tmp_path, monkeypatch)
+    monkeypatch.setattr(m2, "CLAIM_BOUNDARY", m2.CLAIM_BOUNDARY + " Changed.")
+    with pytest.raises(SystemExit, match="--rebuild-from-report"):
+        m2.main(["--check"])
+    assert m2.main(["--rebuild-from-report"]) == 0
+    assert json.loads(path.read_text("utf-8"))["claim_boundary"].endswith("Changed.")
+    assert m2.main(["--check"]) == 0
+
+
+def test_rebuild_from_report_refuses_when_a_product_prompt_changed(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _committed_copy(tmp_path, monkeypatch)
+    report = json.loads(path.read_text("utf-8"))
+    report["arms"]["untuned"]["generated_rows"][3]["prompt_fingerprint"] = "0" * 64
+    path.write_text(json.dumps(report), encoding="utf-8")
+    with pytest.raises(SystemExit, match="model must run again"):
+        m2.main(["--rebuild-from-report"])
+
+
+def _edit_raw_output(report: dict[str, Any]) -> None:
+    row = report["arms"]["distilled"]["generated_rows"][0]
+    output = json.loads(row["raw_output"])
+    output["dialogue_act"] = "clarify"
+    row["raw_output"] = json.dumps(output)
+
+
+def _reorder_generated_rows(report: dict[str, Any]) -> None:
+    rows = report["arms"]["untuned"]["generated_rows"]
+    rows[0], rows[1] = rows[1], rows[0]
+
+
+@pytest.mark.parametrize(
+    ("tamper", "message"),
+    [
+        (_edit_raw_output, "stale or was edited"),
+        (_reorder_generated_rows, "differ from the diverging product rows"),
+    ],
+)
+def test_check_refuses_an_edited_raw_output_or_reordered_rows(
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: Callable[[dict[str, Any]], None],
+    message: str,
+) -> None:
+    path = _committed_copy(tmp_path, monkeypatch)
+    report = json.loads(path.read_text("utf-8"))
+    tamper(report)
+    path.write_text(m2._render(report), encoding="utf-8")
+    with pytest.raises(SystemExit, match=message):
+        m2.main(["--check"])

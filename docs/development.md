@@ -206,7 +206,7 @@ repository. Storage and orchestration modes are explicit and never fall back:
   | Variable | Values | Rule |
   |---|---|---|
   | `PROXYLOOP_FAST_BACKEND` | `scripted` (default), `distilled`, `untuned` | `distilled` is the Phase 03C Local Opt-in Candidate, `untuned` its base |
-  | `PROXYLOOP_FAST_GATEWAY_URL` | default `http://127.0.0.1:8765` | an `http://` loopback origin only (`127.0.0.1`, `::1`, `localhost`) |
+  | `PROXYLOOP_FAST_GATEWAY_URL` | default `http://127.0.0.1:8765` | an `http://` loopback origin only; the Runtime accepts `127.0.0.1`, `::1` and `localhost`, but PR-9b's gateway listens on IPv4 `127.0.0.1` only, so `http://[::1]:<port>` fails at startup (the identity probe cannot connect). Use `127.0.0.1` or `localhost` with the gateway's port (`make local-fast-gateway LOCAL_FAST_PORT=<port>`) |
   | `PROXYLOOP_FAST_TIMEOUT_S` | default `25` (the cap) | a number in [0.1, 25]; a distilled call can hold the direct-mode app lock for up to this long |
 
   The server, and under Temporal the worker, refuses to start unless the

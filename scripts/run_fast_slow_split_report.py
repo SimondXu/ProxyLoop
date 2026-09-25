@@ -265,8 +265,36 @@ TURN_STRUCTURE_KEYS = (
 )
 
 
+M1_PARITY_REPORT = (
+    ROOT / "data" / "experiments" / "phase-03c" / "local-parity" / "parity-report.json"
+)
+ATTESTATION = ROOT / "ml" / "serving" / "phase-03c-cloud-run-01-mlx-attestation.json"
+
+
 def local_report_path(backend: str) -> Path:
     return ROOT / "data" / "evaluation" / f"fast-slow-split-{backend}.json"
+
+
+def attested_identity(backend: str) -> dict[str, Any] | None:
+    """The gateway identity a committed local report must carry.
+
+    It is the identity the M1 parity report recorded for this backend (whose
+    own check binds it to the attested adapter and the decoding profile), and
+    the distilled adapter fingerprint must equal the committed attestation's
+    ``content_fingerprint`` (the untuned backend has none).  ``None`` when the
+    two committed sources disagree.
+    """
+
+    identity = json.loads(M1_PARITY_REPORT.read_text(encoding="utf-8"))["arms"][
+        backend
+    ]["identity"]
+    attestation = json.loads(ATTESTATION.read_text(encoding="utf-8"))
+    adapter = (
+        attestation["output"]["content_fingerprint"] if backend == "distilled" else None
+    )
+    if identity.get("adapter_fingerprint") != adapter:
+        return None
+    return dict(identity)
 
 
 class _TimedFast:
@@ -485,10 +513,61 @@ def _turn_aggregates(turns: list[dict[str, Any]]) -> dict[str, object]:
     }
 
 
+def _measured_consistent(split: dict[str, Any], measured: dict[str, Any]) -> bool:
+    """The timed calls agree with the per-turn Fast outcomes.
+
+    Every applied turn has at most one Fast call; unapplied calls are counted
+    in the aggregates.  A call the gateway answered (``succeeded``) is a turn
+    whose trace succeeded or was rejected; any other outcome is a failed turn.
+    """
+
+    calls = measured.get("fast_calls")
+    if not isinstance(calls, list):
+        return False
+    applied = [turn for turn in split["turns"] if turn["fast_calls"]]
+    unapplied = sum(
+        split["aggregates"]["unapplied_calls_by_role_and_result"]["fast"].values()
+    )
+    fast_ms = [int(call["fast_call_ms"]) for call in calls]
+    if (
+        len(calls) != len(applied) + unapplied
+        or len(measured.get("fast_tokens", [])) != len(calls)
+        or measured.get("fast_call_ms")
+        != {"p50": _nearest_rank(fast_ms, 50), "max": max(fast_ms, default=None)}
+    ):
+        return False
+    for turn in applied:
+        at_turn = [call for call in calls if call["turn"] == turn["turn"]]
+        if not at_turn:
+            return False
+        answered = at_turn[-1]["outcome"] == "succeeded"
+        codes = turn["fast_reject_codes"]
+        gate = bool(codes) and all(code.startswith("fast_gate_") for code in codes)
+        expected: tuple[bool, str | None, str]
+        if turn["fast_result"] == "failed":
+            expected = (False, "failure", "fallback")
+        elif turn["fast_result"] == "rejected":
+            expected = (True, "gate" if gate else None, "fallback" if gate else "none")
+        elif turn["fast_result"] == "succeeded":
+            expected = (True, None, "model")
+        else:
+            return False
+        if (answered, turn["fallback_cause"], turn["delivered"]) != expected:
+            return False
+    return True
+
+
 def check_local_report(
-    backend: str, scripted: dict[str, Any], path: Path | None = None
+    backend: str,
+    scripted: dict[str, Any],
+    path: Path | None = None,
+    reference_identity: dict[str, Any] | None = None,
 ) -> tuple[str, ...]:
-    """Integrity only: the model outputs are not replayable without the model."""
+    """Integrity only: the model outputs are not replayable without the model.
+
+    ``reference_identity`` defaults to :func:`attested_identity`; tests of
+    reports from the in-test fake gateway pass the fake's identity.
+    """
 
     path = path if path is not None else local_report_path(backend)
     if not path.exists():
@@ -514,6 +593,13 @@ def check_local_report(
     fingerprint = identity.pop("identity_fingerprint", None)
     if identity.get("backend") != backend or canonical_sha256(identity) != fingerprint:
         failures.append("gateway_identity")
+    attested = (
+        reference_identity
+        if reference_identity is not None
+        else attested_identity(backend)
+    )
+    if attested is None or report.get("gateway_identity") != attested:
+        failures.append("gateway_identity_not_attested")
     if _text_keys(report):
         failures.append("text_keys_present")
     for name, split in report.get("scenarios", {}).items():
@@ -529,7 +615,12 @@ def check_local_report(
             [turn[key] for key in TURN_STRUCTURE_KEYS] for turn in reference
         ]:
             failures.append(f"{name}_structure_differs_from_scripted")
-    if set(report.get("scenarios", {})) != set(scripted["scenarios"]):
+        measured = report.get("measured", {}).get(name)
+        if not isinstance(measured, dict) or not _measured_consistent(split, measured):
+            failures.append(f"{name}_measured_inconsistent")
+    if set(report.get("scenarios", {})) != set(scripted["scenarios"]) or set(
+        report.get("measured", {})
+    ) != set(scripted["scenarios"]):
         failures.append("scenario_set")
     return tuple(failures)
 

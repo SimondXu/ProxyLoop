@@ -43,14 +43,18 @@ local Hugging Face cache.
    (resumable), then `python -m scripts.run_phase03c_product_parity --write`
    for `data/experiments/phase-03c/local-parity/product-path-report.json`.
    `make phase03c-product-parity-check` (in `make test`) replays it without a
-   model.
+   model. After a change to the gate, validation, compile or observation,
+   `python -m scripts.run_phase03c_product_parity --rebuild-from-report`
+   re-derives every delivery stage, gate code and aggregate from the
+   committed per-row raw outputs. It needs no model and no git-ignored run
+   files. It refuses if a generated row's product prompt changed; then the
+   model must run again.
 4. `make local-fast-gateway BACKEND=distilled|untuned` serves
-   `local-fast-wire-v1` on `127.0.0.1:$(PORT)`, default `PORT=8765`. If that
-   port is taken, pass another, for example `PORT=8775`, and point the
-   clients at the same port: `PROXYLOOP_FAST_GATEWAY_URL` for the Runtime,
-   `FAST_GATEWAY_URL` for the split report. Make also takes `PORT` from the
-   environment, so an exported `PORT` meant for another tool moves the
-   gateway too. With the gateway running,
+   `local-fast-wire-v1` on `127.0.0.1:$(LOCAL_FAST_PORT)`, default
+   `LOCAL_FAST_PORT=8765`. If that port is taken, pass another, for example
+   `LOCAL_FAST_PORT=8775`. The split report's `FAST_GATEWAY_URL` follows it;
+   start the Runtime with `PROXYLOOP_FAST_GATEWAY_URL` on the same port. With
+   the gateway running,
    `make fast-slow-split-report FAST_BACKEND=distilled|untuned` writes
    `data/evaluation/fast-slow-split-<backend>.json`.
 
@@ -135,23 +139,37 @@ Report: `data/experiments/phase-03c/local-parity/product-path-report.json`.
   number rules; the same 40 refused before the model).
 - **Act agreement with the true oracle: distilled 157/240 = 0.654**
   (0.983 on the trained path, M1); untuned 97/240 (133/240 on M1).
-- **Causes.** D4: the product observation carries no `applied_changes`, and
-  all 200 generated rows lose them. No product prompt equals its trained
-  prompt. Without the applied change the oracle itself changes on
-  promotion-credit (confirm to counter) and unsupported-action (counter to
-  confirm). The distilled model follows its input: 40/40 on those two families
-  against the product-observation oracle, 0/40 against the true one. The
-  other cause is the 40 refusal rows refused before the model. D3 (the
-  declared Provider-state defaults) changed no held-out row.
+- **Where the drop from 236 to 157 comes from** (distilled, agreement with
+  the true oracle per family, M1 → M2). The net drop is 79: 80 rows lost,
+  one gained.
+  - refusal-transfer 40 → 0 (−40). The family has no offer, so
+    `fast_public_observation` refuses and the model is never called. This is
+    not D4.
+  - unsupported-action 40 → 0 (−40), from D4. The product observation carries
+    no `applied_changes`; without the applied change its oracle act is
+    confirm instead of the true counter. The model answers confirm on all 40
+    rows, following its input (40/40 against the product-observation oracle).
+  - required-feature-loss 36 → 37 (+1).
+  - promotion-credit stays 40/40 against the true oracle. D4 changes its
+    product-observation act from confirm to counter, but the model keeps
+    confirm (0/40 against the product oracle). The input changed; the act did
+    not.
+
+  So D4 accounts for 40 of the 80 lost rows, about half; the refusal family
+  accounts for the other 40. All 200 generated rows lose `applied_changes`,
+  and no product prompt equals its trained prompt. D3 (the declared
+  Provider-state defaults) changed no held-out row.
 - On the trained path (the M1 outputs), the gate would also pass 0/240
   distilled and 44/240 untuned lines. The gate, not only the renderer, blocks
   the distilled output.
 - Latency (descriptive, one M4 Pro, sequential, measured while other work ran
   on the machine): distilled product-path generation p50 23.9 s, max 32.5 s;
   untuned p50 10.4 s, max 12.9 s. 64 of the 200 distilled generations ran
-  longer than 25 s. Under the 25 s default timeout, the runtime would end
-  each of those calls as `fast_adapter_timeout`. This is more than the M1
-  rate (15/240); the load on the machine was not controlled.
+  longer than 25 s by `generation_ms` (65 by `wall_ms`), roughly a third.
+  Under the 25 s default timeout the runtime would end each of those calls as
+  `fast_adapter_timeout`. The trained-path rate (M1, 15/240) is context only;
+  the load on the machine was not controlled in either run. The split runs
+  below saw 0 of 16 calls over 25 s.
 
 What M2 does not measure: the strategy text is the training fixture's, not the
 product Slow's (D6). The product prompt never contains the consumer's words
@@ -181,8 +199,10 @@ verifies integrity and structural invariance only. It cannot replay the model.
 
 ## Local limits
 
-- Loopback only, no authentication: any local process can call it. Requests
-  must carry `Host: 127.0.0.1:<port>` (DNS rebinding) and decide calls
+- Loopback only, no authentication: any local process can call it. The
+  gateway listens on IPv4 `127.0.0.1` only. Requests must carry
+  `Host: 127.0.0.1:<port>` or `Host: localhost:<port>` (DNS rebinding); every
+  other name is refused, and `[::1]` cannot reach the socket. Decide calls
   `Content-Type: application/json` (no browser simple POST); socket reads time
   out after 10 s.
 - All model work runs on one thread (MLX streams are thread-local) and

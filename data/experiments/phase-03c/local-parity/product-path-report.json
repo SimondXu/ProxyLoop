@@ -16754,7 +16754,7 @@
       }
     }
   },
-  "claim_boundary": "M2 input parity (E1) and the gate pass rate: the 240 Phase 03C held-out rows rendered through the product path (plain Provider message, fast_public_observation with its declared Provider-state defaults and no applied changes), generated locally with MLX on one Apple-silicon machine, and replayed through the runtime delivery rules offline (compile, validate_fast_result with bounded=False, fast-gate-v1). The strategy text is the training fixture's, not the product Slow's (D6), and the prompt never contains the consumer's words (D5): neither is measured here. Integrity limits as in M1: --check cannot verify that raw outputs came from the model, and report_fingerprint is not a signature. A local opt-in candidate, never promoted; the four Phase 03C caveats and E1-E5 apply.",
+  "claim_boundary": "M2 input parity (E1) and the gate pass rate: the 240 Phase 03C held-out rows rendered through the product path (plain Provider message, fast_public_observation with its declared Provider-state defaults and no applied changes), generated locally with MLX on one Apple-silicon machine, and replayed through the runtime delivery rules offline (compile, validate_fast_result with bounded=False, fast-gate-v1). The strategy text is the training fixture's, not the product Slow's (D6), and the prompt never contains the consumer's words (D5): neither is measured here. Integrity limits as in M1: --check cannot verify that raw outputs came from the model, and report_fingerprint is not a signature. Latencies are descriptive (one machine, sequential, uncontrolled load), not p95 or capacity. A local opt-in candidate, never promoted; the four Phase 03C caveats and E1-E5 apply.",
   "definitions": {
     "act_agreement_product_oracle": "the same, against the oracle's act for the product-rendered observation; the difference is renderer information loss",
     "act_agreement_true_oracle": "the gateway succeeded and its dialogue_act equals the oracle act of the row's true observation",
@@ -20577,7 +20577,7 @@
       "trained_prompt_fingerprint": "41f89426306d76a237b9480786d608f90501e2655c3a15b3eb46e12b84235fab"
     }
   ],
-  "report_fingerprint": "36b031b9a35926486191c864e6f545277948b954e1265be5674bd2a32861d229",
+  "report_fingerprint": "b37b70f2b7b2e8eab7842cf7bc0208f661318da24107f68637cce2b7736eaf2f",
   "result_role": "local_measurement",
   "schema_version": "phase-03c-product-path-v1",
   "source_m1_report": {

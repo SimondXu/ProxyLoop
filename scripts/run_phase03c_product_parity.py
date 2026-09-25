@@ -23,6 +23,13 @@ Modes, as in ``run_phase03c_local_parity``:
                 committed ``product-path-report.json``.
 ``--check``     validate the row sets and identities, recompute every derived
                 field, and require the committed bytes.  No model.
+``--rebuild-from-report``
+                re-derive every delivery stage, gate code and aggregate from
+                the committed per-row raw outputs and rewrite the report.  No
+                model and no git-ignored run files: after a change to the gate,
+                validation, compile or the observation, this regenerates the
+                report, as long as every generated row's product prompt is
+                unchanged (otherwise the model must run again).
 """
 
 from __future__ import annotations
@@ -115,15 +122,28 @@ CLAIM_BOUNDARY = (
     "is the training fixture's, not the product Slow's (D6), and the prompt "
     "never contains the consumer's words (D5): neither is measured here. "
     "Integrity limits as in M1: --check cannot verify that raw outputs came "
-    "from the model, and report_fingerprint is not a signature. A local opt-in "
-    "candidate, never promoted; the four Phase 03C caveats and E1-E5 apply."
+    "from the model, and report_fingerprint is not a signature. Latencies are "
+    "descriptive (one machine, sequential, uncontrolled load), not p95 or "
+    "capacity. A local opt-in candidate, never promoted; the four Phase 03C "
+    "caveats and E1-E5 apply."
+)
+
+
+def _display(path: Path) -> Path:
+    return path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
+
+
+REBUILD_HINT = (
+    "if a gate, validation, compile or observation change made it stale, run "
+    "`python -m scripts.run_phase03c_product_parity --rebuild-from-report` "
+    "(model-free; refuses if a product prompt changed) and review the diff"
 )
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
-    for name in ("plan", "run", "write", "check"):
+    for name in ("plan", "run", "write", "check", "rebuild-from-report"):
         mode.add_argument(f"--{name}", action="store_true")
     parser.add_argument("--backend", choices=BACKENDS)
     parser.add_argument("--model-path", type=Path)
@@ -408,6 +428,18 @@ def validate_observed(
             raise SystemExit(f"{backend} identity differs from the served identity")
         if set(arm["code_state"]) != CODE_STATE_KEYS:
             raise SystemExit(f"{backend} code_state is malformed")
+        prompts = {row["prompt_id"]: row["product_prompt_fingerprint"] for row in plan}
+        changed = sum(
+            1
+            for row in arm["rows"]
+            if row["prompt_fingerprint"] != prompts[row["prompt_id"]]
+        )
+        if changed:
+            raise SystemExit(
+                f"{backend}: {changed} generated rows answer a product prompt that "
+                "is no longer the recomputed one; the model must run again "
+                "(--run, then --write)"
+            )
 
 
 def _rate(rows: list[dict[str, Any]], key: str) -> dict[str, float | int]:
@@ -606,18 +638,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         validate_observed(observed, plan)
         rendered = _render(build_report(observed, plan))
         REPORT.write_text(rendered, encoding="utf-8")
-        print(f"wrote {REPORT.relative_to(ROOT)}")
+        print(f"wrote {_display(REPORT)}")
+    elif args.rebuild_from_report:
+        committed = REPORT.read_text(encoding="utf-8")
+        observed = _observed_from_report(json.loads(committed))
+        validate_observed(observed, plan)
+        rendered = _render(build_report(observed, plan))
+        REPORT.write_text(rendered, encoding="utf-8")
+        state = "unchanged" if rendered == committed else "changed"
+        print(f"rebuilt {_display(REPORT)} from its raw outputs ({state})")
     else:
         committed = REPORT.read_text(encoding="utf-8")
         report = json.loads(committed)
         if report["plan"] != plan:
-            raise SystemExit("the committed plan differs from the recomputed one")
+            raise SystemExit(
+                f"the committed plan differs from the recomputed one; {REBUILD_HINT}"
+            )
         observed = _observed_from_report(report)
         validate_observed(observed, plan)
         rendered = _render(build_report(observed, plan))
         if committed != rendered:
-            raise SystemExit(f"{REPORT.relative_to(ROOT)} is stale or was edited")
-        print(f"checked {REPORT.relative_to(ROOT)}")
+            raise SystemExit(
+                f"{_display(REPORT)} is stale or was edited; {REBUILD_HINT}"
+            )
+        print(f"checked {_display(REPORT)}")
     _print_summary(json.loads(rendered))
     return 0
 

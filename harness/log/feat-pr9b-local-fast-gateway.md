@@ -20,24 +20,13 @@ Not in (no frozen or hot file touched): `qwen_mlx.py`, `fast_output.py`,
 file. No download (`HF_HUB_OFFLINE=1`), no hosted call, no credential, no
 network except 127.0.0.1.
 
-## Pending (after PR-9a lands)
+## Status of the first-half pending list
 
-- M2 input parity through the product rendering path (needs
-  `agent_core/fast_observation.py`, 9a).
-- Gate pass rate under PR-8's `fast_disclosure_violations` (needs PR-8a).
-- Local Fast/Slow split reports (`--fast-backend distilled|untuned`) and
-  `fast-slow-split-check` (need `ObservingFastAdapter` and the runtime path).
-- After the root says 9a merged: switch the gateway from the interim
-  `local_fast/wire.py` to `agent_core/local_fast_wire.py` (its
-  `encode_decide_response(DecideResponse)` takes a different argument) and
-  delete the interim copy; check the 9a golden fixtures under
-  `tests/fixtures/local-fast-wire/` from the ml side (identity goldens =
-  the `with_generator` identities; the A20 schema comparison drops
-  `description`, the only difference from ml's frozen `FastModelOutput`).
-  9a's files are not edited on this branch.
-- Docs listed in spec §6.3 item 9 that describe the runtime side
-  (`docs/architecture.md`, `docs/development.md`, `docs/ml-evidence.md`).
-- The optional Browser check (spec §6.7 step 4).
+Everything the first half deferred until PR-9a landed is done on this branch:
+the M2 run, the gate pass rate, the local split reports, the switch to the
+shared wire module (the interim `local_fast/wire.py` is deleted) with the 9a
+golden fixtures checked from the ml side, the docs, and the Browser check. See
+the sections from "Second half after PR-9a" on.
 
 ## Local inputs (redacted)
 
@@ -317,9 +306,14 @@ The session paused at a usage limit. This section is the exact state.
   confirm once the applied change is gone; refusal-transfer refused).
 - Act agreement with the true oracle: distilled 157/240 (0.654) vs 236/240 on
   the trained path (M1); untuned 97/240 vs 133/240. Against the oracle of the
-  product observation: distilled 157/240, untuned 87/240. Per family, the
-  distilled model follows its input: 40/40 on promotion-credit and
-  unsupported-action against the product oracle, 0/40 against the true one.
+  product observation: distilled 157/240, untuned 87/240. Per family
+  (distilled, true oracle, M1 → M2; corrected after the second-half review,
+  I1): refusal-transfer 40 → 0 (no offer, refused before the model, not D4),
+  unsupported-action 40 → 0 (D4: the model answers confirm, which follows the
+  product input, 40/40 against the product oracle), required-feature-loss
+  36 → 37, and promotion-credit 40 → 40 (the model keeps confirm although D4
+  changes the product oracle to counter: 0/40 against the product oracle).
+  D4 is about half of the drop (40 of the 80 lost rows), not the main cause.
 - **Headline (Q1): delivered distilled lines through the product path: 0/240.**
   All 200 outputs that reach the gate are withheld by `fast-gate-v1`
   (`fast_gate_dialogue_act` 200, `fast_gate_number_not_allowed` 200,
@@ -399,7 +393,8 @@ The session paused at a usage limit. This section is the exact state.
 - `make local-fast-gateway` takes `PORT` (default 8765), documented in
   `ml/serving/README.md` step 4. `make -n local-fast-gateway PORT=8775` ends in
   `--port 8775`; the Browser check below started the gateway through it with
-  `PORT=8776`. `make check-layout` and `git diff --check` clean.
+  `PORT=8776`. `make check-layout` and `git diff --check` clean. (Renamed
+  `LOCAL_FAST_PORT` after the second-half review; see below.)
 
 ### Browser check (spec §6.7 step 4, DB/Compose lane held by this branch)
 
@@ -462,11 +457,83 @@ checks. Scratch launcher and script: `scratchpad/impl-pr9b2/browser-launch.sh`,
   `proxyloop-temporal-1`, `proxyloop_postgres-data` and
   `proxyloop-portfolio-demo_postgres-data` are unchanged. DB lane released.
 
+### Second-half review remediation
+
+Review (independent `reviewer`, second half: wire switch, M2, split reports,
+docs): Request Changes, no Blocking. Artifact:
+`harness/code_review/feat-pr9b-local-fast-gateway.md` (second-half section).
+All items are root decisions, applied:
+
+- I1: the per-family explanation was wrong in the README, this log and
+  `docs/architecture.md` (and the status row). It was re-verified from
+  `product-path-report.json` and the M1 report (distilled, true oracle):
+  refusal-transfer 40 → 0, unsupported-action 40 → 0, required-feature-loss
+  36 → 37, and the other three families unchanged; promotion-credit is
+  40/40 true and 0/40 product (the model keeps confirm), unsupported-action
+  0/40 true and 40/40 product. All four places were corrected. D4 is about
+  half of the drop.
+- M1: `docs/architecture.md` "Recorded local limits" now uses the
+  product-path timeout figure: 64/200 over 25 s by `generation_ms`, 65/200 by
+  `wall_ms`, roughly a third. The trained-path 15/240 is context, and the
+  split runs saw 0/16. The same figures are in the README.
+- M2: the README Host rule is `127.0.0.1:<port>` or `localhost:<port>`.
+  `docs/development.md` says the gateway listens on IPv4 only, so
+  `http://[::1]:<port>` fails at startup.
+- M3: `check_local_report` binds `gateway_identity` to the committed
+  sources. It must equal the M1 report's recorded identity for the backend,
+  and the distilled `adapter_fingerprint` must equal the attestation's
+  `content_fingerprint`; otherwise the check fails with
+  `gateway_identity_not_attested`. Tests on fake-gateway reports pass the
+  fake identity explicitly. The check also cross-checks the measured block
+  (`<scenario>_measured_inconsistent`):
+  - the call count equals applied Fast turns plus unapplied Fast calls, and
+    `fast_tokens` has one entry per call;
+  - `fast_call_ms` p50 and max are recomputed from the calls;
+  - each applied Fast turn has a call at its cursor, whose outcome agrees
+    with `fast_result`, `fallback_cause` and `delivered`.
+
+  New tests: committed reports pass for both backends; a self-consistent
+  re-identified report, a call turned into a timeout, a dropped call, an
+  edited max, and a call moved to another turn each fail. Red: against the
+  previous script the five new tamper tests failed (13 failed / 3 passed in
+  the file, the other failures from the new argument); green: 29 passed with
+  `test_fast_slow_split_report.py`.
+- M4: `run_phase03c_product_parity.py --rebuild-from-report` re-derives
+  every delivery stage, gate code and aggregate from the committed per-row
+  raw outputs (`_observed_from_report`), with no model and no run files.
+  `validate_observed` now also requires every generated row's
+  `prompt_fingerprint` to equal the recomputed product prompt. The rebuild
+  therefore refuses (the model must run again) when a change alters a
+  prompt. The `--check` failure message names the rebuild. Documented in
+  the README (step 3) and the module docstring. Tests: rebuild with no code
+  change gives identical bytes; a derivation change fails `--check`, and
+  after a rebuild `--check` passes; a changed prompt fingerprint is refused.
+- M5: tests where `main(["--check"])` fails on an edited `raw_output`
+  (`stale or was edited`) and on two swapped generated rows (`differ from
+  the diverging product rows`). `ml/tests/test_product_parity.py`: 18
+  passed.
+- Nits:
+  - The make variable is `LOCAL_FAST_PORT` (default 8765), and
+    `FAST_GATEWAY_URL` defaults to `http://127.0.0.1:$(LOCAL_FAST_PORT)`;
+    `make -n` shows `--port 8775` and `--gateway-url
+    http://127.0.0.1:8775` for `LOCAL_FAST_PORT=8775`.
+  - The M2 `CLAIM_BOUNDARY` adds "Latencies are descriptive (one machine,
+    sequential, uncontrolled load), not p95 or capacity". That changed the
+    report bytes, so the report was regenerated with `--rebuild-from-report`
+    (output `changed`). The diff is `claim_boundary` and
+    `report_fingerprint` only (`36b031b9…` → `b37b70f2…`); every count is
+    unchanged. `make phase03c-product-parity-check` passes.
+  - The stale "Pending (after PR-9a lands)" list was replaced by a status
+    note.
+
+Known limit (on the follow-up list): the Web does not restore a Case on a
+local Fast backend after a page reload. Restore requires
+`adapter_mode=scripted` (with temporal and postgres), so a reload shows
+"Runtime state not verified" even though the Runtime still returns the Case
+and its line (Browser check above).
+
 ### Remaining
 
-1. Independent review of the second half (wire switch, M2 script and report,
-   split-report extension and reports, docs), in progress.
-2. Root call: a reloaded Case on a local Fast backend shows "Runtime state
-   not verified" by the Web's existing rule (above). Changing that is a Web
-   decision outside PR-9b.
-3. PR, CI, merge.
+1. Follow-up (not PR-9b): the Web's restore rule for a Case on a local Fast
+   backend (known limit above).
+2. PR, CI, merge.
