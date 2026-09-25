@@ -197,6 +197,11 @@ the product prompt does not carry the consumer's words, so these scenarios
 give the model the same input on every turn. `make fast-slow-split-check`
 verifies integrity and structural invariance only. It cannot replay the model.
 
+Both reports predate the Stage 2 Judge (PR-14). They stay at
+`fast-slow-split-local-v1` with no Judge calls and are not rewritten; a run
+now writes `fast-slow-split-local-v2`, which also counts the scripted Judge's
+calls apart from the Fast/Slow counts (`docs/architecture.md`).
+
 ## Local limits
 
 - Loopback only, no authentication: any local process can call it. The

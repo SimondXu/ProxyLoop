@@ -8,6 +8,10 @@ report ``fast-slow-split-<backend>.json``);
 the default scripted adapters, through ``apply_command``, so receipts and
 deduplication are real. The report is deterministic: it carries no latency, no
 timestamps, and no model text.
+
+Version 2 (PR-14) adds the Judge: its calls and the Slow retries are counted
+apart from the Fast/Slow counts and shares, which keep their version 1 values;
+no verdict is reported (decision 7). The script never imports the Judge.
 """
 
 from __future__ import annotations
@@ -53,8 +57,10 @@ from proxyloop_local_fast import (
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT_PATH = ROOT / "data" / "evaluation" / "fast-slow-split-scripted.json"
-SCHEMA_VERSION = "fast-slow-split-v1"
+SCHEMA_VERSION = "fast-slow-split-v2"
 FAST_BACKEND = "scripted_dialogue"
+# The model name every Judge trace must carry (the scripted Judge's).
+SCRIPTED_JUDGE_MODEL = "scripted_judge"
 CLAIM_BOUNDARY = (
     "scripted adapters; shares describe routing structure, not model quality or latency"
 )
@@ -196,6 +202,11 @@ def _split(runtime: ThinAgentRuntime) -> dict[str, object]:
     fast_model = ScriptedDialogueFastAdapter.model_identity.model
     if any(trace.role == "fast" and trace.model != fast_model for trace in traces):
         raise RuntimeError("a Fast trace is not from the scripted dialogue adapter")
+    if any(
+        trace.role == "judge" and trace.model != SCRIPTED_JUDGE_MODEL
+        for trace in traces
+    ):
+        raise RuntimeError("a Judge trace is not from the scripted Judge")
     return fast_slow_split(traces, state)
 
 
@@ -214,6 +225,7 @@ def build_report() -> dict[str, object]:
     body: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
         "fast_backend": FAST_BACKEND,
+        "judge_backend": SCRIPTED_JUDGE_MODEL,
         "fast_gate_version": FAST_GATE_VERSION,
         # The gate's rules read this Python's Unicode character database.
         "unicode_data_version": unicodedata.unidata_version,
@@ -242,7 +254,13 @@ def check_report(path: Path = REPORT_PATH) -> tuple[str, ...]:
 # --- local backends (PR-9b): the real runtime against a running gateway ------
 
 LOCAL_BACKENDS = ("distilled", "untuned")
-LOCAL_SCHEMA_VERSION = "fast-slow-split-local-v1"
+# A local report written now carries the Judge's calls (PR-14), so it is v2.
+LOCAL_SCHEMA_VERSION = "fast-slow-split-local-v2"
+# The committed local reports were observed before the Judge existed and only
+# the local model can regenerate them: v1, still accepted by the check. Their
+# Fast/Slow structure equals the v2 scripted replay's (the Judge adds no Slow
+# or Fast call on the default Slow), which the check compares.
+PRE_JUDGE_LOCAL_SCHEMA_VERSION = "fast-slow-split-local-v1"
 LOCAL_CLAIM_BOUNDARY = (
     "local opt-in candidate (distilled) or untuned local baseline, served by the "
     "loopback MLX gateway on one Apple-silicon machine; sequential calls; the "
@@ -374,6 +392,8 @@ def _local_scenario(
             or not trace.model_version.startswith(f"{backend}:")
         ):
             raise RuntimeError("a Fast trace is not from the local backend")
+        if trace.role == "judge" and trace.model != SCRIPTED_JUDGE_MODEL:
+            raise RuntimeError("a Judge trace is not from the scripted Judge")
     split = fast_slow_split(traces, state)
     fast_ms = [int(call["fast_call_ms"]) for call in timed.calls]
     tokens = [
@@ -581,7 +601,8 @@ def check_local_report(
     ):
         failures.append("fingerprint_or_encoding")
     if (
-        report.get("schema_version") != LOCAL_SCHEMA_VERSION
+        report.get("schema_version")
+        not in {LOCAL_SCHEMA_VERSION, PRE_JUDGE_LOCAL_SCHEMA_VERSION}
         or report.get("fast_backend") != backend
         or report.get("label") != BACKEND_LABELS[backend]
         or report.get("adapter_mode") != ADAPTER_MODE_BY_BACKEND[backend]

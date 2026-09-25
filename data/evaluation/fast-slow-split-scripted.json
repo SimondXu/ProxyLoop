@@ -2,7 +2,8 @@
   "claim_boundary": "scripted adapters; shares describe routing structure, not model quality or latency",
   "fast_backend": "scripted_dialogue",
   "fast_gate_version": "fast-gate-v1",
-  "report_fingerprint": "5413400a11beb5a526d74c8dbfa573efc58ca13eda7c9c1c518eb1eaeaf9f8e0",
+  "judge_backend": "scripted_judge",
+  "report_fingerprint": "6ce4c8edf581662328aff3154e880551134064948f4fdc5aaa6a9e87ff0bc7c9",
   "scenarios": {
     "demo_path": {
       "aggregates": {
@@ -27,7 +28,16 @@
         "fast_only_turn_share": 0.5,
         "fast_reject_reason_histogram": {},
         "gate_fallback_rate": 0.0,
+        "judge_calls_by_result": {
+          "failed": 0,
+          "rejected": 0,
+          "succeeded": 1
+        },
         "slow_involved_turn_share": 0.5,
+        "slow_retry_counts": {
+          "admitted": 0,
+          "rejected": 0
+        },
         "turns": 2,
         "turns_by_class": {
           "fast_only": 1,
@@ -48,6 +58,11 @@
           }
         },
         "unapplied_fast_reject_reason_histogram": {},
+        "unapplied_judge_calls_by_result": {
+          "failed": 0,
+          "rejected": 0,
+          "succeeded": 1
+        },
         "unapplied_model_calls": 1
       },
       "turns": [
@@ -58,7 +73,9 @@
           "fast_calls": 0,
           "fast_reject_codes": [],
           "fast_result": null,
+          "judge_calls": 1,
           "slow_calls": 1,
+          "slow_retry": null,
           "trigger_event_type": "provider_offer",
           "turn": 1
         },
@@ -69,7 +86,9 @@
           "fast_calls": 1,
           "fast_reject_codes": [],
           "fast_result": "succeeded",
+          "judge_calls": 0,
           "slow_calls": 0,
+          "slow_retry": null,
           "trigger_event_type": "consumer_message",
           "turn": 2
         }
@@ -98,7 +117,16 @@
         "fast_only_turn_share": 0.625,
         "fast_reject_reason_histogram": {},
         "gate_fallback_rate": 0.0,
+        "judge_calls_by_result": {
+          "failed": 0,
+          "rejected": 0,
+          "succeeded": 3
+        },
         "slow_involved_turn_share": 0.375,
+        "slow_retry_counts": {
+          "admitted": 0,
+          "rejected": 0
+        },
         "turns": 8,
         "turns_by_class": {
           "fast_only": 5,
@@ -119,6 +147,11 @@
           }
         },
         "unapplied_fast_reject_reason_histogram": {},
+        "unapplied_judge_calls_by_result": {
+          "failed": 0,
+          "rejected": 0,
+          "succeeded": 0
+        },
         "unapplied_model_calls": 0
       },
       "turns": [
@@ -129,7 +162,9 @@
           "fast_calls": 0,
           "fast_reject_codes": [],
           "fast_result": null,
+          "judge_calls": 1,
           "slow_calls": 1,
+          "slow_retry": null,
           "trigger_event_type": "provider_offer",
           "turn": 1
         },
@@ -140,7 +175,9 @@
           "fast_calls": 1,
           "fast_reject_codes": [],
           "fast_result": "succeeded",
+          "judge_calls": 1,
           "slow_calls": 1,
+          "slow_retry": null,
           "trigger_event_type": "consumer_message",
           "turn": 2
         },
@@ -151,7 +188,9 @@
           "fast_calls": 1,
           "fast_reject_codes": [],
           "fast_result": "succeeded",
+          "judge_calls": 0,
           "slow_calls": 0,
+          "slow_retry": null,
           "trigger_event_type": "consumer_message",
           "turn": 4
         },
@@ -162,7 +201,9 @@
           "fast_calls": 1,
           "fast_reject_codes": [],
           "fast_result": "succeeded",
+          "judge_calls": 0,
           "slow_calls": 0,
+          "slow_retry": null,
           "trigger_event_type": "consumer_message",
           "turn": 6
         },
@@ -173,7 +214,9 @@
           "fast_calls": 1,
           "fast_reject_codes": [],
           "fast_result": "succeeded",
+          "judge_calls": 0,
           "slow_calls": 0,
+          "slow_retry": null,
           "trigger_event_type": "consumer_message",
           "turn": 8
         },
@@ -184,7 +227,9 @@
           "fast_calls": 1,
           "fast_reject_codes": [],
           "fast_result": "succeeded",
+          "judge_calls": 0,
           "slow_calls": 0,
+          "slow_retry": null,
           "trigger_event_type": "consumer_message",
           "turn": 10
         },
@@ -195,7 +240,9 @@
           "fast_calls": 1,
           "fast_reject_codes": [],
           "fast_result": "succeeded",
+          "judge_calls": 1,
           "slow_calls": 1,
+          "slow_retry": null,
           "trigger_event_type": "consumer_message",
           "turn": 12
         },
@@ -206,13 +253,15 @@
           "fast_calls": 1,
           "fast_reject_codes": [],
           "fast_result": "succeeded",
+          "judge_calls": 0,
           "slow_calls": 0,
+          "slow_retry": null,
           "trigger_event_type": "consumer_message",
           "turn": 14
         }
       ]
     }
   },
-  "schema_version": "fast-slow-split-v1",
+  "schema_version": "fast-slow-split-v2",
   "unicode_data_version": "15.0.0"
 }

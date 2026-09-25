@@ -258,13 +258,16 @@ def _assert_channel_refusal_persisted_no_case_state(
     command: CaseCommand,
     before_revision: int,
     before_outbox_count: int,
+    refused_roles: list[str],
 ) -> None:
     logged = len(_logged(repository))
     with pytest.raises(ModelRuntimeError) as raised:
         runtime.apply_command(command)
     assert raised.value.source == "slow"
-    # The refused refresh's Slow trace is kept; the Case state is not changed.
-    assert [trace.role for trace in _logged(repository)[logged:]] == ["slow"]
+    # The refused refresh's traces are kept; the Case state is not changed.
+    # A result the coordinator admitted (the Runtime refuses it afterwards)
+    # was also judged (PR-14).
+    assert [trace.role for trace in _logged(repository)[logged:]] == refused_roles
     stored = repository.get(SCRIPTED_CASE_ID)
     assert stored is not None
     assert stored.snapshot.revision == before_revision
@@ -284,7 +287,12 @@ def test_t5_channel_rejected_slow_refresh_persists_no_case_state(
     command = _channel_command(repository, BASE_TIME + timedelta(minutes=31))
 
     _assert_channel_refusal_persisted_no_case_state(
-        runtime, repository, command, before_revision=2, before_outbox_count=0
+        runtime,
+        repository,
+        command,
+        before_revision=2,
+        before_outbox_count=0,
+        refused_roles=["slow", "judge"] if slow is _SameRevisionSlow else ["slow"],
     )
     assert adapter.reason_codes == ["case_initialization", "strategy_expired"]
 
@@ -307,6 +315,7 @@ def test_t5_channel_rejects_a_same_id_revision_regression() -> None:
         command,
         before_revision=refreshed.snapshot.revision,
         before_outbox_count=1,
+        refused_roles=["slow", "judge"],
     )
     assert adapter.reason_codes == [
         "case_initialization",
@@ -343,7 +352,7 @@ def test_t5_rejected_slow_refresh_persists_no_case_state(
     before = repository.get(SCRIPTED_CASE_ID)
     assert before is not None
     created_traces = _logged(repository)
-    assert [trace.role for trace in created_traces] == ["slow"]
+    assert [trace.role for trace in created_traces] == ["slow", "judge"]
     clock.now = T0 + timedelta(minutes=31)
 
     with pytest.raises(ModelRuntimeError) as raised:
@@ -356,14 +365,16 @@ def test_t5_rejected_slow_refresh_persists_no_case_state(
     assert after.snapshot.revision == before.snapshot.revision
     assert after.snapshot == before.snapshot
     logged = _logged(repository)
-    assert logged[:1] == created_traces
-    assert [trace.role for trace in logged] == ["slow", "slow"]
+    assert logged[:2] == created_traces
     # I11: ``result`` is the coordinator's verdict. A same-revision refresh
-    # passes the coordinator and is refused by the Runtime afterwards.
-    expected = (
-        ModelResult.SUCCEEDED if slow is _SameRevisionSlow else ModelResult.REJECTED
-    )
-    assert logged[1].result is expected
+    # passes the coordinator (so it is also judged, PR-14) and is refused by
+    # the Runtime afterwards; an expired strategy is rejected and not judged.
+    if slow is _SameRevisionSlow:
+        assert [trace.role for trace in logged] == ["slow", "judge", "slow", "judge"]
+        assert logged[2].result is ModelResult.SUCCEEDED
+    else:
+        assert [trace.role for trace in logged] == ["slow", "judge", "slow"]
+        assert logged[2].result is ModelResult.REJECTED
 
 
 def test_t6_current_strategy_makes_no_slow_call() -> None:
