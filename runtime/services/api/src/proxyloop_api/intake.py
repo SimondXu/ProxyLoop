@@ -99,7 +99,9 @@ _STRICT_AMOUNT = re.compile(r"^(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]{1,2
 _RANGE_AFTER = re.compile(r"^\s*[-\u2013\u2014]\s*\$?[0-9]")
 # The end-anchored patterns run only on a bounded, right-stripped tail of the
 # text before an amount, and none has two adjacent optional whitespace runs
-# (review I-A: those backtracked quadratically on long whitespace).
+# (review I-A: those backtracked quadratically on long whitespace). The
+# history and role-cue scans are not end-anchored and read the whole clause
+# before the amount (fifth amendment).
 _TAIL_CHARS = 48
 # More amounts than this in one request are not read one by one: both amounts
 # are ambiguous, which also bounds the per-amount work.
@@ -140,7 +142,7 @@ _AFTER_TARGET = re.compile(
 # meets a strong current cue leaves the amount without a role. Under these
 # rules strong and weak target cues act the same, so they share one list.
 _BEFORE_TARGET = re.compile(
-    r"\b(?:(?<!comes )to|under|below|target|goal|at\s+most|no\s+more\s+than"
+    r"\b(?:to|under|below|target|goal|at\s+most|no\s+more\s+than"
     r"|less\s+than|lower\s+than|cheaper\s+than|max|maximum|reach|want|aim|budget"
     r"|(?:i'd|i\s+would|would|we'd)\s+like|like\s+it\s+(?:to\s+be|at)|hoping"
     r"|hope\s+for|happy\s+with|happy\s+at)\b"
@@ -188,9 +190,13 @@ _ORPHAN_DOUBT = re.compile(rf"\b(?:{_NEGATION}|{_CHANGE_WORDS})\b")
 # "Actually, forget it, I want to change both.").
 _ALL_DOUBT = re.compile(r"\b(?:both|all|everything|actually)\b")
 # A retraction casts doubt on every named feature ("Wait, no.", "No.",
-# "Never mind.", "Scratch that.").
+# "Never mind.", "Scratch that.", "Just kidding."). No two optional
+# whitespace runs are adjacent (review I-A).
 _RETRACTION = re.compile(
-    r"^\s*no\s*$|\bwait\s*,?\s*no\b|\bnever\s*mind\b|\bscratch\s+that\b"
+    r"^\s*no\s*$|\b(?:nope|nah|just\s+kidding|never\s*mind"
+    r"|(?:scratch|forget|cancel|ignore|disregard)\s+that"
+    r"|wait\s*(?:,\s*)?no|no\s*(?:,\s*)?(?:sorry|wait)"
+    r"|on\s+second\s+thought\s*(?:,\s*)?no)\b"
 )
 
 _ORDER: tuple[IntakeField, ...] = (
@@ -359,7 +365,7 @@ def _role(segment: str, before: str, after: str) -> _Role | None:
     """The amount's role, or ``None`` when it has none or it is unsure."""
 
     tail = _tail(before)
-    if _HISTORY.search(tail):
+    if _HISTORY.search(before):
         return None  # "went up to $92", "jumped from $85 to $110"
     if _FROM_BEFORE.search(tail) and _TO_AMOUNT_AFTER.match(after):
         return "current"  # "from $92 to $75"
@@ -374,12 +380,11 @@ def _role(segment: str, before: str, after: str) -> _Role | None:
     if _AFTER_TARGET.match(after):
         return "target"
     # The words since the previous amount decide; with no cue there, the
-    # clause before the amount does ("target $75 or maybe $78"). Both see
-    # only the bounded tail. A change cue nearer than any role cue ("save
-    # $20", "by $10") has no role. A target cue beats a weak current cue
-    # ("I only want to pay $75"); a target cue with a strong current cue has
-    # no role ("hoping … my bill is $92").
-    for words in (_tail(segment), tail):
+    # clause before the amount does ("target $75 or maybe $78"). A change cue
+    # nearer than any role cue ("save $20", "by $10") has no role. A target
+    # cue beats a weak current cue ("I only want to pay $75"); a target cue
+    # with a strong current cue has no role ("hoping … my bill is $92").
+    for words in (segment, before):
         change = _last_match(_CHANGE_BEFORE, words)
         target = _last_match(_BEFORE_TARGET, words)
         strong_current = _last_match(_STRONG_CURRENT, words)

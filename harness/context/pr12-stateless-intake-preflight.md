@@ -444,3 +444,47 @@ Root decisions on the focused re-review. The rule set is still
   200 whose body is not JSON or is not a valid proposal. The message is "I
   couldn't read that message right now. Nothing was created." and has no Case
   wording.
+
+## Amendment 2026-09-24 — final review: fifth set of rules
+
+Root decisions on the final review. The rule set is still `intake-parser-v1`,
+because nothing under that name has been merged. This amendment replaces two
+parts of the fourth: the 48-character tail for the history and role-cue scans,
+and "the `to` in 'comes to' is not a target cue".
+
+- **I-1 history.** `_HISTORY` searches the whole clause before the amount
+  again. It is not end-anchored, so the scan stays linear. A history verb
+  anywhere before the amount in its clause leaves the amount without a role.
+  These are all ambiguous now:
+  - "My phone bill went down a lot after the promotional discount finally
+    ended from $95 to $85. Keep hotspot, keep financing unchanged."
+  - "My bill changed a lot over the last two or three years from $95 to $85"
+  - "The price moved around quite a bit over the past twelve months from $95
+    to $85"
+  - "My bill has gone up over the last couple of years to a whopping $92"
+  - "They raised my monthly price once the promotional period on my line ended
+    to $92"
+- **I-2 / M-b role cues.** Target, weak-current and strong-current cues are
+  found by a linear scan that is not anchored. The scan reads the words since
+  the previous amount, then the whole clause before the amount. The tail is
+  kept only for the end-anchored patterns that can backtrack (`from … to`, the
+  range `… to`). A strong current cue can no longer be lost at the tail
+  boundary. Outcomes:
+  - "The amount I want to see each month on the statement from my carrier is
+    $75" → target $75. `want` is a target cue; `from` and `is` are weak current
+    cues.
+  - "My target for the total amount that appears on my monthly phone bill is
+    $75" → **ambiguous**. `target` meets the strong current cue "bill is"
+    (tiered rule).
+- **"comes to"** (implementer fix, reported to the root). The fourth-amendment
+  choice to exclude the `to` of "comes to" from the target cues made "I hope
+  it comes to $75" read $75 as the current bill. That is a guessed value. The
+  exclusion is removed: "comes to" now holds a target cue and a strong current
+  cue, so the amount is ambiguous. "My bill comes to $92" is ambiguous too.
+- **M-a retractions.** A sentence with any of the following casts doubt on
+  every feature already named: "nope", "nah", "no, sorry", "no wait", "on
+  second thought, no", "forget that", "cancel that", "ignore that", "disregard
+  that", or "just kidding". This adds to "No", "wait, no", "never mind" and
+  "scratch that". Like "No rush" earlier, an unrelated use ("Never mind the
+  rush") also casts doubt. This fails safe.
+- **M-c.** No change; the behaviour matches this spec.

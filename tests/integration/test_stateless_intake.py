@@ -523,11 +523,16 @@ def test_a_strong_target_cue_beats_a_weak_current_cue(text: str, target: int) ->
     assert _clarifications(text)["current_monthly_total"] == "missing"
 
 
-def test_comes_to_is_a_current_cue_not_a_target_cue() -> None:
-    body = _body("My bill comes to $92")
+# Fifth amendment: "comes to" holds both a target cue ("to") and a strong
+# current cue, so the amount is ambiguous rather than a guessed current bill
+# ("I hope it comes to $75" is not a current bill of $75).
+@pytest.mark.parametrize("text", ["My bill comes to $92", "I hope it comes to $75"])
+def test_comes_to_is_ambiguous(text: str) -> None:
+    body = _body(text)
 
-    assert body["proposal"]["current_monthly_total"] == _usd(9200)
-    assert _clarifications("My bill comes to $92")["target_monthly_total"] == "missing"
+    assert body["proposal"]["current_monthly_total"] is None
+    assert body["proposal"]["target_monthly_total"] is None
+    assert _clarifications(text)["current_monthly_total"] == "ambiguous"
 
 
 @pytest.mark.parametrize(
@@ -548,9 +553,26 @@ def test_an_amount_with_both_role_cues_is_ambiguous(text: str) -> None:
     assert _clarifications(text)["target_monthly_total"] == "ambiguous"
 
 
-# Fourth amendment M-3: a retraction after named features doubts all of them.
+# Fourth amendment M-3 and fifth amendment M-a: a retraction after named
+# features doubts all of them.
 @pytest.mark.parametrize(
-    "retraction", ["Wait, no.", "No.", "Never mind.", "Scratch that."]
+    "retraction",
+    [
+        "Wait, no.",
+        "No.",
+        "Never mind.",
+        "Scratch that.",
+        "Nope.",
+        "Nah.",
+        "No, sorry.",
+        "No wait.",
+        "On second thought, no.",
+        "Forget that.",
+        "Cancel that.",
+        "Ignore that.",
+        "Disregard that.",
+        "Just kidding.",
+    ],
 )
 def test_a_retraction_doubts_every_named_feature(retraction: str) -> None:
     text = f"Keep my hotspot. Keep financing unchanged. {retraction}"
@@ -559,6 +581,68 @@ def test_a_retraction_doubts_every_named_feature(retraction: str) -> None:
 
     assert clarifications["mobile_hotspot_required"] == "ambiguous"
     assert clarifications["device_financing_change_forbidden"] == "ambiguous"
+
+
+def test_a_retraction_in_the_same_sentence_doubts_every_named_feature() -> None:
+    text = "Keep my hotspot and keep financing unchanged, just kidding"
+
+    clarifications = _clarifications(text)
+
+    assert clarifications["mobile_hotspot_required"] == "ambiguous"
+    assert clarifications["device_financing_change_forbidden"] == "ambiguous"
+
+
+# Fifth amendment I-1: a price-history verb anywhere before the amount in its
+# clause leaves it without a role, however far back it is.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "My phone bill went down a lot after the promotional discount finally "
+        "ended from $95 to $85. Keep hotspot, keep financing unchanged.",
+        "My bill changed a lot over the last two or three years from $95 to $85",
+        "The price moved around quite a bit over the past twelve months "
+        "from $95 to $85",
+        "My bill has gone up over the last couple of years to a whopping $92",
+        "They raised my monthly price once the promotional period on my line "
+        "ended to $92",
+    ],
+)
+def test_a_distant_history_verb_still_leaves_amounts_ambiguous(text: str) -> None:
+    body = _body(text)
+
+    assert body["proposal"]["current_monthly_total"] is None
+    assert body["proposal"]["target_monthly_total"] is None
+    assert _clarifications(text)["current_monthly_total"] == "ambiguous"
+    assert _clarifications(text)["target_monthly_total"] == "ambiguous"
+
+
+# Fifth amendment I-2 / M-b: role cues are read from the whole clause, not the
+# 48-character tail, so a distant cue still counts.
+def test_a_distant_target_cue_is_read() -> None:
+    text = "The amount I want to see each month on the statement from my carrier is $75"
+
+    body = _body(text)
+
+    assert body["proposal"]["target_monthly_total"] == _usd(7500)
+    assert _clarifications(text)["current_monthly_total"] == "missing"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # "target" is far back; "bill is" is a strong current cue (tiered rule).
+        "My target for the total amount that appears on my monthly phone bill is $75",
+        # "I'm paying" lies outside the old tail; it is still a strong current
+        # cue against the target cue "to".
+        "I'm paying what I would want to see my monthly total lowered to: $75",
+    ],
+)
+def test_a_distant_strong_current_cue_still_counts(text: str) -> None:
+    body = _body(text)
+
+    assert body["proposal"]["current_monthly_total"] is None
+    assert body["proposal"]["target_monthly_total"] is None
+    assert _clarifications(text)["target_monthly_total"] == "ambiguous"
 
 
 # Fourth amendment M-1: text whose NFKC form is longer than 4000 characters is
@@ -603,6 +687,9 @@ _WORST_CASES = {
         "keep hotspot, " + "\u2116, " * 350 + "\ufdfa" * 2000
     )[:INTAKE_TEXT_MAX_LENGTH],
     "keep hotspot, 500 x no,": "keep hotspot, " + "no, " * 500,
+    # Fifth amendment: the role scans read the whole clause; the reviewer's
+    # slowest input for that is one long clause with 8 amounts.
+    "one clause, 988 x No-sign, 8 x $5": "\u2116 " * 988 + " $5" * 8,
     "near the cap: U+FDFA x 100, keep hotspot, 470 x no,": (
         "\ufdfa" * 100 + "keep hotspot, " + "no, " * 470
     ),

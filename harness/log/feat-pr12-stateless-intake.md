@@ -412,3 +412,131 @@ scratch directory, not committed.
 
 **Not run.** The DB gates and a Browser pass were not run; only the parser's
 role cues and tests changed in this step.
+
+## Fifth amendment (final review: I-1, I-2/M-b, M-a, M-c)
+
+Changed: `intake.py` has three changes:
+- `_HISTORY` searches the whole clause before the amount again.
+- The role-cue scans read the segment since the previous amount, then the
+  whole clause before the amount, instead of the tail.
+- `_RETRACTION` is extended. None of its patterns has adjacent optional
+  whitespace.
+
+The implementer also removed the fourth-amendment `comes to` exclusion
+("I hope it comes to $75" had become a guessed current bill of $75). Tests
+and the spec amendment are updated. M-c: no change, as it matches the spec.
+
+**Red → green.** 21 new test items fail against `6f34ff0`, and all 296 pass
+after the change:
+- M-a: 10 new retraction rows plus 1 same-sentence case;
+- I-1: 5 history sentences;
+- I-2 / M-b: 1 distant target cue and 2 distant strong-current cues;
+- "comes to": 2 rows.
+
+The earlier required sets still pass: the I-1 `get` set, the tiered-cue set,
+and "My bill is $92 and I'd like $75" → 92 / 75.
+
+**Timing** (best of 5, ms; the reviewer's `timing_c.py` against `6f34ff0` →
+this change):
+
+| Input | NFKC length | Before | After |
+|---|---|---|---|
+| `№ ` x ~cap, one clause, 8 × `$` | 2988 | 0.60 | 3.66 |
+| 8 amounts separated by `№` runs | 2991 | 0.61 | 1.97 |
+| ﬃ words ~cap + 8 amounts | 3924 | 0.70 | 1.33 |
+| 8 amounts separated by ㎓ runs | 3912 | 0.50 | 1.10 |
+| keep hotspot, `№, ` ~cap | 2662 | 1.09 | 1.10 |
+| above cap max (U+FDFA × 2000) | 36000 | 1.18 | 1.16 |
+
+The other `timing_c.py` inputs take 0.3–0.8 ms. The earlier `timing.py` and
+`timing2.py` inputs take ≤ 1.21 ms.
+
+The pytest timing table gained the slowest new input, "one clause, 988 × No-sign,
+8 × $5", at 3.60 ms. There are now 14 cases, each asserted < 250 ms; the
+largest measured is 3.60 ms.
+
+**Every changed reading between `0b589f4` and this head** on the reviewer's
+corpora: `corpus.txt` 11 of 394, `tier.txt` 2 of 137, `tail2.txt` 1 of 8,
+`tail.txt` 31 of 94.
+
+Columns are current / target / hotspot / financing. "–" means no value: the
+field has a clarification. No changed reading gains or changes a value (checked
+by script): every change turns a value into a clarification.
+
+`corpus.txt` (11 changed):
+
+| Text | 0b589f4 | head |
+|---|---|---|
+| Can I get it lower than $92? | – / $92 / – / – | – / – / – / – |
+| Hoping you can explain why my bill is $92 | – / $92 / – / – | – / – / – / – |
+| I'd like to lower my phone bill that is currently $92 | – / $92 / – / – | – / – / – / – |
+| I'm happy at $92, I'd rather keep it | – / $92 / – / – | – / – / – / – |
+| Is $80 realistic to get? | $80 / – / – / – | – / – / – / – |
+| Is it lower than $92? | – / $92 / – / – | – / – / – / – |
+| My bill comes to $92 | – / $92 / – / – | – / – / – / – |
+| My goal is what I'm paying right now: $92 | – / $92 / – / – | – / – / – / – |
+| Should I get the $92 plan? | $92 / – / – / – | – / – / – / – |
+| Should I get the $92 plan? I want to pay under $80. | $92 / $80 / – / – | – / – / – / – |
+| Why did my bill get to $92? | – / $92 / – / – | – / – / – / – |
+
+`tier.txt` (2 changed):
+
+| Text | 0b589f4 | head |
+|---|---|---|
+| Under my plan it costs $92 | – / $92 / – / – | – / – / – / – |
+| Under my plan it is $92 | – / $92 / – / – | – / – / – / – |
+
+`tail2.txt` (1 changed):
+
+| Text | 0b589f4 | head |
+|---|---|---|
+| I pay for the phone that I really want to keep on my account each month $92 | – / $92 / – / – | – / – / – / – |
+
+`tail.txt` (31 changed):
+
+| Text | 0b589f4 | head |
+|---|---|---|
+| My goal for this whole negotiation with the carrier over my phone bill is $75 | – / $75 / – / – | – / – / – / – |
+| My target for the total amount that appears on my monthly phone bill is $75 | – / $75 / – / – | – / – / – / – |
+| My target for the total amount that appears on my monthly phone bill is $75. I pay $92. | $92 / $75 / – / – | – / – / – / – |
+| I pay $92. My target for the total amount that appears on my monthly phone bill is $75. | $92 / $75 / – / – | – / – / – / – |
+| I pay $92. My budget for the total amount that shows up each month on the bill is $80. | $92 / $80 / – / – | – / – / – / – |
+| I want to be paying something like a lot less than what I pay now $92 | – / $92 / – / – | – / – / – / – |
+| I hope it comes to $75 | – / $75 / – / – | – / – / – / – |
+| I hope it comes to $75, keep hotspot | – / $75 / keep / – | – / – / keep / – |
+| Ideally it comes to $75 and I pay $92 now | $92 / $75 / – / – | – / – / – / – |
+| Hopefully it comes to $75. I'm on the $92 plan. | $92 / $75 / – / – | – / – / – / – |
+| Could you get my bill lower than $92? | – / $92 / – / – | – / – / – / – |
+| Why is it lower than $92? | – / $92 / – / – | – / – / – / – |
+| Is it possible to get it cheaper than $92? | – / $92 / – / – | – / – / – / – |
+| Keep hotspot, keep financing unchanged. Wait, no, I pay $92, target $80. | $92 / $80 / keep / – | $92 / $80 / – / – |
+| I pay $92, target $80, keep hotspot, keep financing unchanged. Wait no. | $92 / $80 / keep / – | $92 / $80 / – / – |
+| I pay $92, target $80, keep hotspot, keep financing unchanged. No. | $92 / $80 / keep / – | $92 / $80 / – / – |
+| I pay $92, target $80, keep hotspot, keep financing unchanged. No! | $92 / $80 / keep / – | $92 / $80 / – / – |
+| I pay $92, target $80, keep hotspot, keep financing unchanged. Nah. | $92 / $80 / keep / – | $92 / $80 / – / – |
+| I pay $92, target $80, keep hotspot, keep financing unchanged. Never mind. | $92 / $80 / keep / – | $92 / $80 / – / – |
+| I pay $92, target $80, keep hotspot, keep financing unchanged. Nevermind. | $92 / $80 / keep / keep | $92 / $80 / – / – |
+| I pay $92, target $80, keep hotspot, keep financing unchanged. Scratch that. | $92 / $80 / keep / keep | $92 / $80 / – / – |
+| I pay $92, target $80, keep hotspot, keep financing unchanged. Scratch that, keep only the hotspot. | $92 / $80 / keep / keep | $92 / $80 / – / – |
+| I pay $92, target $80, keep hotspot, keep financing unchanged. Forget that. | $92 / $80 / keep / – | $92 / $80 / – / – |
+| I pay $92, target $80, keep hotspot, keep financing unchanged. Ignore that. | $92 / $80 / keep / keep | $92 / $80 / – / – |
+| I pay $92, target $80, keep hotspot, keep financing unchanged. Disregard that. | $92 / $80 / keep / keep | $92 / $80 / – / – |
+| I pay $92, target $80, keep hotspot, keep financing unchanged. Cancel that. | $92 / $80 / keep / – | $92 / $80 / – / – |
+| I pay $92, target $80, keep hotspot, keep financing unchanged. On second thought, no. | $92 / $80 / keep / – | $92 / $80 / – / – |
+| I pay $92, target $80, keep hotspot, keep financing unchanged. Just kidding. | $92 / $80 / keep / keep | $92 / $80 / – / – |
+| I pay $92, target $80, keep hotspot, keep financing unchanged. No, sorry. | $92 / $80 / keep / – | $92 / $80 / – / – |
+| I pay $92, target $80, keep hotspot, keep financing unchanged. No wait. | $92 / $80 / keep / – | $92 / $80 / – / – |
+| Keep hotspot and financing unchanged. Never mind the rush. I pay $92, target $80. | $92 / $80 / keep / – | $92 / $80 / – / – |
+
+**Checks** (fifth amendment):
+
+| Check | Result |
+|---|---|
+| `make lint` | exit 0 on the second run. The first run failed on one comment line over 88 characters (E501); the comment was rewrapped. |
+| `make typecheck` | exit 0 (59 files, no issues) |
+| `make test` | exit 0: runtime 1911 passed / 66 skipped; ML 397 / 1 skipped |
+| `make web-check` | exit 0: vitest 250 passed, `next build` |
+| `make preflight` | exit 0, after the rewrap: runtime 1911 / 66, ML 397 / 1, vitest 250, gated-skip pin 66 |
+
+**Not run.** The DB gates and a Browser pass were not run: only the parser,
+its tests, and the harness docs changed.
