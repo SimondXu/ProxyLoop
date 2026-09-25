@@ -24,11 +24,16 @@ from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NoReturn, Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 import psycopg
-from proxyloop_case_runtime import SCRIPTED_CASE_ID, PostgresCaseRepository
+from proxyloop_agent_core import SCRIPTED_DIALOGUE_LINES
+from proxyloop_case_runtime import (
+    FAST_FALLBACK_TEXT,
+    SCRIPTED_CASE_ID,
+    PostgresCaseRepository,
+)
 from proxyloop_connectors import (
     BINDING_REF,
     SCHEMA_VERSION,
@@ -50,8 +55,17 @@ DEFAULT_DATABASE_URL = (
     f"postgresql://proxyloop:proxyloop@127.0.0.1:{DEFAULT_POSTGRES_PORT}/proxyloop"
 )
 DEFAULT_TEMPORAL_ADDRESS = f"127.0.0.1:{DEFAULT_TEMPORAL_PORT}"
-DEFAULT_RUNTIME_URL = "http://127.0.0.1:8000"
-DEFAULT_WEB_URL = "http://127.0.0.1:3000"
+# The focused recovery check's temporary `postgres-test` service.
+RECOVERY_POSTGRES_PORT = 55434
+# Phase 07 D2: the Runtime and Web ports may be overridden explicitly
+# (`--runtime-port`/`--web-port`); the launcher never picks a port on its own.
+DEFAULT_RUNTIME_PORT = 8000
+DEFAULT_WEB_PORT = 3000
+DEFAULT_RUNTIME_URL = f"http://127.0.0.1:{DEFAULT_RUNTIME_PORT}"
+DEFAULT_WEB_URL = f"http://127.0.0.1:{DEFAULT_WEB_PORT}"
+# Read by apps/web/next.config.ts at build and start: where the Web's
+# `/api/runtime/*` rewrite sends requests. Always set from the Runtime port.
+RUNTIME_ORIGIN_VARIABLE = "PROXYLOOP_RUNTIME_ORIGIN"
 DEFAULT_STATE_DIR = Path(tempfile.gettempdir()) / "proxyloop-portfolio-demo"
 COMPOSE_PROJECT_NAME = "proxyloop-portfolio-demo"
 COMPOSE_VOLUME_NAME = f"{COMPOSE_PROJECT_NAME}_postgres-data"
@@ -94,9 +108,7 @@ INBOUND_EVENT_ID = UUID("77777777-7777-4777-8777-777777777777")
 CALLBACK_EVENT_ID = UUID("88888888-8888-4888-8888-888888888888")
 CREATE_IDEMPOTENCY_KEY = "33333333-3333-4333-8333-333333333333"
 INBOUND_CONTENT = "Synthetic Provider message for the local portfolio demo."
-RECOVERY_DATABASE_URL = (
-    "postgresql://proxyloop:proxyloop@127.0.0.1:55434/proxyloop_test"
-)
+RECOVERY_DATABASE_URL = f"postgresql://proxyloop:proxyloop@127.0.0.1:{RECOVERY_POSTGRES_PORT}/proxyloop_test"
 
 
 class DemoScenarioError(RuntimeError):
@@ -131,10 +143,37 @@ def parse_utc(value: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
+def runtime_origin(runtime_port: int) -> str:
+    """The loopback origin the Web's Runtime rewrite targets (D2)."""
+
+    return f"http://127.0.0.1:{runtime_port}"
+
+
+def validate_demo_ports(runtime_port: int, web_port: int) -> None:
+    """Refuse an out-of-range or colliding port before anything starts (D2)."""
+
+    for name, port in (("Runtime", runtime_port), ("Web", web_port)):
+        if not 1 <= port <= 65535:
+            raise DemoScenarioError(f"{name} port {port} is out of range")
+    reserved = {
+        DEFAULT_POSTGRES_PORT: "the demo PostgreSQL",
+        DEFAULT_TEMPORAL_PORT: "the demo Temporal server",
+        RECOVERY_POSTGRES_PORT: "the recovery PostgreSQL",
+    }
+    for name, port in (("Runtime", runtime_port), ("Web", web_port)):
+        if port in reserved:
+            raise DemoScenarioError(
+                f"{name} port {port} is reserved for {reserved[port]}"
+            )
+    if runtime_port == web_port:
+        raise DemoScenarioError("Runtime and Web port must differ")
+
+
 def build_demo_environment(
     environ: Mapping[str, str] | None = None,
     *,
     fast_backend: str = "scripted",
+    runtime_port: int = DEFAULT_RUNTIME_PORT,
 ) -> dict[str, str]:
     """Return explicit demo settings without inheriting model credentials.
 
@@ -142,6 +181,8 @@ def build_demo_environment(
     inherited value. ``serve`` passes the ``FAST_BACKEND`` flag here for the
     host worker and API, so both read the same selection; the Web build and
     the recovery check call it with the ``scripted`` default.
+    ``PROXYLOOP_RUNTIME_ORIGIN`` is always derived from ``runtime_port``, so
+    an inherited value never redirects the Web's Runtime rewrite.
     """
 
     if fast_backend not in FAST_BACKENDS:
@@ -160,6 +201,7 @@ def build_demo_environment(
             "PROXYLOOP_TEMPORAL_NAMESPACE": "default",
             "PROXYLOOP_TEMPORAL_TASK_QUEUE": "proxyloop-case-workflow",
             "PROXYLOOP_TEMPORAL_CONTINUE_AS_NEW_AFTER": "32",
+            RUNTIME_ORIGIN_VARIABLE: runtime_origin(runtime_port),
         }
     )
     return values
@@ -443,7 +485,7 @@ def _compose(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]
             "POSTGRES_USER": "proxyloop",
             "POSTGRES_PASSWORD": "proxyloop",
             "POSTGRES_PORT": str(DEFAULT_POSTGRES_PORT),
-            "POSTGRES_TEST_PORT": "55434",
+            "POSTGRES_TEST_PORT": str(RECOVERY_POSTGRES_PORT),
             "TEMPORAL_PORT": str(DEFAULT_TEMPORAL_PORT),
         }
     )
@@ -523,10 +565,12 @@ def _port_is_free(port: int) -> bool:
         return True
 
 
-def _check_startup_ports() -> None:
+def _check_startup_ports(
+    *, runtime_port: int = DEFAULT_RUNTIME_PORT, web_port: int = DEFAULT_WEB_PORT
+) -> None:
     for port in (
-        3000,
-        8000,
+        web_port,
+        runtime_port,
         DEFAULT_POSTGRES_PORT,
         DEFAULT_TEMPORAL_PORT,
     ):
@@ -534,7 +578,9 @@ def _check_startup_ports() -> None:
             raise DemoScenarioError(f"required host port {port} is unavailable")
 
 
-def _build_web_app(state_dir: Path) -> None:
+def _build_web_app(
+    state_dir: Path, *, runtime_port: int = DEFAULT_RUNTIME_PORT
+) -> None:
     log_dir = _log_dir(state_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
     try:
@@ -542,7 +588,7 @@ def _build_web_app(state_dir: Path) -> None:
             result = subprocess.run(
                 ["pnpm", "--filter", "@proxyloop/web", "build"],
                 cwd=REPOSITORY_ROOT,
-                env=build_demo_environment(),
+                env=build_demo_environment(runtime_port=runtime_port),
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 check=False,
@@ -555,11 +601,17 @@ def _build_web_app(state_dir: Path) -> None:
 
 
 def _spawn_host_services(
-    state_dir: Path, *, fast_backend: str = "scripted"
+    state_dir: Path,
+    *,
+    fast_backend: str = "scripted",
+    runtime_port: int = DEFAULT_RUNTIME_PORT,
+    web_port: int = DEFAULT_WEB_PORT,
 ) -> dict[str, subprocess.Popen[bytes]]:
     log_dir = _log_dir(state_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
-    environment = build_demo_environment(fast_backend=fast_backend)
+    environment = build_demo_environment(
+        fast_backend=fast_backend, runtime_port=runtime_port
+    )
     commands = {
         "worker": [
             "uv",
@@ -585,7 +637,7 @@ def _spawn_host_services(
             "--host",
             "127.0.0.1",
             "--port",
-            "8000",
+            str(runtime_port),
         ],
         "web": [
             "pnpm",
@@ -595,7 +647,7 @@ def _spawn_host_services(
             "--hostname",
             "127.0.0.1",
             "--port",
-            "3000",
+            str(web_port),
         ],
     }
     processes: dict[str, subprocess.Popen[bytes]] = {}
@@ -825,8 +877,15 @@ def _start_compose_dependencies() -> None:
 
 
 def start_demo(
-    *, state_dir: Path | None = None, fast_backend: str = "scripted"
+    *,
+    state_dir: Path | None = None,
+    fast_backend: str = "scripted",
+    runtime_port: int = DEFAULT_RUNTIME_PORT,
+    web_port: int = DEFAULT_WEB_PORT,
 ) -> None:
+    validate_demo_ports(runtime_port, web_port)
+    runtime_url = f"http://127.0.0.1:{runtime_port}"
+    web_url = f"http://127.0.0.1:{web_port}"
     selected = _state_dir(state_dir)
     _initialize_startup_state(selected)
     processes: dict[str, subprocess.Popen[bytes]] = {}
@@ -842,27 +901,32 @@ def start_demo(
         fast_label = check_fast_backend(
             build_demo_environment(fast_backend=fast_backend)
         )
-        _check_startup_ports()
+        _check_startup_ports(runtime_port=runtime_port, web_port=web_port)
         _start_compose_dependencies()
         compose_started = True
         _raise_if_stop_requested(selected)
-        _build_web_app(selected)
+        _build_web_app(selected, runtime_port=runtime_port)
         _raise_if_stop_requested(selected)
-        processes = _spawn_host_services(selected, fast_backend=fast_backend)
+        processes = _spawn_host_services(
+            selected,
+            fast_backend=fast_backend,
+            runtime_port=runtime_port,
+            web_port=web_port,
+        )
         _raise_if_stop_requested(selected)
         _assert_processes_alive(processes)
         if not _wait_for_url(
-            f"{DEFAULT_RUNTIME_URL}/health/ready", timeout=45, expected_status={200}
+            f"{runtime_url}/health/ready", timeout=45, expected_status={200}
         ):
             raise DemoScenarioError(
                 "Runtime readiness did not pass; inspect logs/runtime.log"
             )
         _assert_processes_alive(processes)
-        if not _wait_for_url(DEFAULT_WEB_URL, timeout=45, expected_status={200}):
+        if not _wait_for_url(web_url, timeout=45, expected_status={200}):
             raise DemoScenarioError("Web did not become ready; inspect logs/web.log")
         _assert_processes_alive(processes)
-        print(f"Web: {DEFAULT_WEB_URL}")
-        print(f"Runtime readiness: {DEFAULT_RUNTIME_URL}/health/ready")
+        print(f"Web: {web_url}")
+        print(f"Runtime readiness: {runtime_url}/health/ready")
         print(f"Temporal server: {DEFAULT_TEMPORAL_ADDRESS}")
         print(
             "Fast backend: scripted"
@@ -871,8 +935,9 @@ def start_demo(
             "not supervised by this demo)"
         )
         print(
-            "Scene order: Scene A Web Case, then reset, then Scene B synthetic "
-            "local_mailbox."
+            "Scene order (stop and reset between scenes): Scene A Web journey, "
+            "Scene J make portfolio-demo-journey, Scene B make "
+            "portfolio-demo-channel, then make portfolio-demo-recovery."
         )
         print(
             f"Logs: {_log_dir(selected)}/web-build.log, "
@@ -1116,6 +1181,426 @@ def run_channel_scene(
     )
 
 
+# Phase 07 Scene J: the journey the Web drives, over the same HTTP routes.
+# The message carries a marker that must never reach a log or a response.
+JOURNEY_MARKER = "zebra-7731"
+JOURNEY_MESSAGE = (
+    "My mobile bill is $92 and I want to get it under $75. Keep my hotspot. "
+    f"({JOURNEY_MARKER})"
+)
+# Must equal CONFIRMATION_EVENT in apps/web/app/components/conversation-workspace.tsx.
+CONFIRMATION_EVENT = (
+    "Keep mobile hotspot and device financing unchanged. "
+    "Continue with the fictional offer."
+)
+JOURNEY_LOG_FILES = ("runtime.log", "web.log", "worker.log")
+JOURNEY_EVIDENCE_PATH = (
+    REPOSITORY_ROOT / "data" / "evaluation" / "phase-07-demo-journey-scripted.json"
+)
+JOURNEY_SCHEMA_VERSION = "phase-07-demo-journey-v1"
+JOURNEY_CLAIM_BOUNDARY = (
+    "One local run of the credential-free 07A demo on the scripted Fast, "
+    "scripted Slow and scripted Judge (decision 17), through the Web's HTTP "
+    "routes against PostgreSQL and Temporal. Content-free: no ids, timestamps, "
+    "latencies, text, or host identity. It is not a model-quality, latency, "
+    "capacity, or production claim."
+)
+INTAKE_READ_FIELDS = (
+    "current_monthly_total",
+    "target_monthly_total",
+    "mobile_hotspot_required",
+)
+# The Web's financing question, answered "no change": the device-financing
+# change is forbidden (the Draft Task Brief row reads "Confirmed · unchanged").
+INTAKE_CLARIFIED_FIELD = "device_financing_change_forbidden"
+TRACE_ROLES = ("fast", "judge", "slow")
+TRACE_RESULTS = ("failed", "rejected", "succeeded")
+# From the split report's demo_path and PR-14 §5: one Slow result at create,
+# judged once and accepted (no retry), then one Fast turn on the confirmation.
+EXPECTED_SCRIPTED_TRACE_COUNTS = {
+    "fast": {"failed": 0, "rejected": 0, "succeeded": 1},
+    "judge": {"failed": 0, "rejected": 0, "succeeded": 1},
+    "slow": {"failed": 0, "rejected": 0, "succeeded": 1},
+}
+CONFIRM_EVENT_TYPES = (
+    ("provider", "provider_offer"),
+    ("consumer", "consumer_message"),
+    ("system", "assistant_message"),
+)
+REFERENCE_REVISIONS = {"create": 2, "confirm": 4, "approve": 6}
+# F1 (root decision, 2026-09-25): one allowlisted operation record per journey
+# request in runtime.log. Nothing else may call the Runtime during Scene J.
+EXPECTED_JOURNEY_OPERATIONS = {
+    "append_event": 1,
+    "create_case": 1,
+    "decide_approval": 2,
+    "get_case": 1,
+    "health_ready": 1,
+    "intake_proposal": 1,
+}
+OPERATION_RECORD_WAIT_S = 5.0
+
+
+class _JourneyRepository(Protocol):
+    def get(self, case_id: UUID) -> Any: ...
+
+    def list_model_traces(self, case_id: UUID) -> Sequence[Any]: ...
+
+
+def completion_has_verified_evidence(payload: Mapping[str, Any]) -> bool:
+    """The Web's receipt predicate (``completionHasVerifiedEvidence``)."""
+
+    completion = payload.get("completion")
+    evidence = payload.get("evidence")
+    if not isinstance(completion, Mapping) or not isinstance(evidence, list):
+        return False
+    evidence_ids = completion.get("evidence_ids")
+    known = {
+        item.get("evidence_id")
+        for item in evidence
+        if isinstance(item, Mapping)
+        and isinstance(item.get("evidence_id"), str)
+        and item.get("evidence_id", "").strip()
+    }
+    return (
+        completion.get("decision") == "complete"
+        and payload.get("execution_count") == 1
+        and isinstance(evidence_ids, list)
+        and len(evidence_ids) > 0
+        and all(
+            isinstance(item, str) and item.strip() and item in known
+            for item in evidence_ids
+        )
+    )
+
+
+def _journey_json(
+    response: httpx.Response, *, expected_status: int, step: str
+) -> dict[str, Any]:
+    if response.status_code != expected_status:
+        raise DemoScenarioError(f"journey step {step} failed ({response.status_code})")
+    try:
+        value = response.json()
+    except ValueError:
+        raise DemoScenarioError(f"journey step {step} was not JSON") from None
+    if not isinstance(value, dict):
+        raise DemoScenarioError(f"journey step {step} shape was invalid")
+    return value
+
+
+def _visible_events(payload: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    snapshot = payload.get("snapshot")
+    events = snapshot.get("visible_events") if isinstance(snapshot, Mapping) else None
+    if not isinstance(events, list):
+        raise DemoScenarioError("journey payload has no visible events")
+    return [item for item in events if isinstance(item, Mapping)]
+
+
+def _trace_counts(traces: Sequence[Any]) -> dict[str, dict[str, int]]:
+    counts = {role: dict.fromkeys(TRACE_RESULTS, 0) for role in TRACE_ROLES}
+    for trace in traces:
+        role = str(trace.role)
+        result = str(getattr(trace.result, "value", trace.result))
+        if role not in counts or result not in counts[role]:
+            raise DemoScenarioError("unexpected model trace role or result")
+        counts[role][result] += 1
+    return counts
+
+
+def _operation_records(log_path: Path, offset: int) -> list[Mapping[str, Any]]:
+    """The JSON operation records appended to ``log_path`` after ``offset``."""
+
+    with log_path.open("rb") as log_file:
+        log_file.seek(offset)
+        text = log_file.read().decode("utf-8", errors="replace")
+    records: list[Mapping[str, Any]] = []
+    for line in text.splitlines():
+        try:
+            value = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(value, dict) and "correlation_id" in value:
+            records.append(value)
+    return records
+
+
+def _journey_operation_records(log_path: Path, offset: int) -> dict[str, Any]:
+    expected_total = sum(EXPECTED_JOURNEY_OPERATIONS.values())
+    deadline = time.monotonic() + OPERATION_RECORD_WAIT_S
+    records = _operation_records(log_path, offset)
+    while len(records) < expected_total and time.monotonic() < deadline:
+        time.sleep(0.1)
+        records = _operation_records(log_path, offset)
+    by_operation: dict[str, int] = {}
+    categories: dict[str, int] = {}
+    for record in records:
+        operation = str(record.get("operation"))
+        category = str(record.get("error_category"))
+        by_operation[operation] = by_operation.get(operation, 0) + 1
+        categories[category] = categories.get(category, 0) + 1
+        status = record.get("status")
+        if not isinstance(status, int) or not 200 <= status < 300:
+            raise DemoScenarioError("a journey operation record was not a success")
+    if by_operation != EXPECTED_JOURNEY_OPERATIONS:
+        raise DemoScenarioError(
+            "runtime.log did not hold one operation record per journey request"
+        )
+    if categories != {"none": expected_total}:
+        raise DemoScenarioError("a journey operation record had an error category")
+    return {
+        "count": len(records),
+        "by_operation": dict(sorted(by_operation.items())),
+        "error_categories": categories,
+    }
+
+
+def _intake_create_request(proposal: Mapping[str, Any]) -> dict[str, Any]:
+    facts = proposal.get("proposal")
+    clarifications = proposal.get("clarifications")
+    if not isinstance(facts, Mapping) or not isinstance(clarifications, list):
+        raise DemoScenarioError("intake proposal shape was invalid")
+    read = sorted(key for key, value in facts.items() if value is not None)
+    clarified = sorted(
+        str(item.get("field")) for item in clarifications if isinstance(item, Mapping)
+    )
+    if read != sorted(INTAKE_READ_FIELDS) or clarified != [INTAKE_CLARIFIED_FIELD]:
+        raise DemoScenarioError("intake did not read the expected facts")
+    request = {key: facts[key] for key in INTAKE_READ_FIELDS}
+    request[INTAKE_CLARIFIED_FIELD] = True
+    return request
+
+
+def run_journey(
+    *,
+    client: httpx.Client,
+    repository: _JourneyRepository,
+    log_dir: Path,
+    evidence_path: Path | None = None,
+) -> dict[str, Any]:
+    """Drive Scene J and return its content-free evidence; raise on a deviation."""
+
+    try:
+        if repository.get(SCRIPTED_CASE_ID) is not None:
+            raise DemoScenarioError(
+                "demo state is not fresh; run make portfolio-demo-reset first"
+            )
+        runtime_log = log_dir / "runtime.log"
+        if not runtime_log.is_file():
+            raise DemoScenarioError("journey log runtime.log is missing")
+        runtime_log_offset = runtime_log.stat().st_size
+        ready = _journey_json(
+            client.get("/health/ready"), expected_status=200, step="readiness"
+        )
+        readiness = {
+            key: str(ready.get(key))
+            for key in ("adapter_mode", "storage_mode", "orchestration_mode")
+        }
+        if readiness["storage_mode"] != "postgres" or (
+            readiness["orchestration_mode"] != "temporal"
+        ):
+            raise DemoScenarioError("journey needs the PostgreSQL/Temporal demo")
+        scripted = readiness["adapter_mode"] == "scripted"
+        if evidence_path is not None and not scripted:
+            raise DemoScenarioError(
+                "journey evidence is committed for the scripted backend only"
+            )
+
+        proposal_response = client.post(
+            "/intake/proposals", json={"text": JOURNEY_MESSAGE}
+        )
+        if JOURNEY_MARKER in proposal_response.text:
+            raise DemoScenarioError("intake marker was echoed by the proposal")
+        proposal = _journey_json(proposal_response, expected_status=200, step="intake")
+        create_body = _intake_create_request(proposal)
+
+        created = _journey_json(
+            client.post(
+                "/cases",
+                json=create_body,
+                headers={"Idempotency-Key": str(uuid4())},
+            ),
+            expected_status=201,
+            step="create",
+        )
+        if created.get("case_id") != str(SCRIPTED_CASE_ID):
+            raise DemoScenarioError("Runtime created an unexpected Case")
+        case_path = f"/cases/{SCRIPTED_CASE_ID}"
+
+        confirmed = _journey_json(
+            client.post(
+                f"{case_path}/events",
+                json={
+                    "content": CONFIRMATION_EVENT,
+                    "event_type": "consumer_message",
+                    "expected_revision": created.get("revision"),
+                },
+                headers={"Idempotency-Key": str(uuid4())},
+            ),
+            expected_status=200,
+            step="confirm",
+        )
+        events = _visible_events(confirmed)
+        event_types = [(item.get("actor"), item.get("event_type")) for item in events]
+        if tuple(event_types) != CONFIRM_EVENT_TYPES:
+            raise DemoScenarioError("confirmation events were not offer, turn, line")
+        line = events[-1].get("content")
+        if line == FAST_FALLBACK_TEXT:
+            line_class = "fallback"
+        elif isinstance(line, str) and line.strip():
+            line_class = "model"
+        else:
+            raise DemoScenarioError("assistant line was missing")
+        if scripted and line != SCRIPTED_DIALOGUE_LINES[0]:
+            raise DemoScenarioError(
+                "assistant line was not the first scripted dialogue line"
+            )
+        approval = confirmed.get("approval")
+        if not isinstance(approval, Mapping) or approval.get("decision") != "pending":
+            raise DemoScenarioError("confirmation did not open a pending approval")
+
+        approval_path = f"{case_path}/approvals/{approval.get('approval_id')}"
+        approval_body = {
+            "decision": "approved",
+            "expected_action_intent_revision": approval.get("action_intent_revision"),
+            "expected_case_revision": approval.get("case_revision"),
+            "expected_revision": confirmed.get("revision"),
+        }
+        approval_headers = {"Idempotency-Key": str(uuid4())}
+        approved = _journey_json(
+            client.post(approval_path, json=approval_body, headers=approval_headers),
+            expected_status=200,
+            step="approve",
+        )
+        if approved.get("execution_count") != 1:
+            raise DemoScenarioError("execution count was not 1 after approval")
+        replayed = _journey_json(
+            client.post(approval_path, json=approval_body, headers=approval_headers),
+            expected_status=200,
+            step="approve-replay",
+        )
+        final = _journey_json(
+            client.get(case_path), expected_status=200, step="final-read"
+        )
+        if replayed.get("execution_count") != 1 or final.get("execution_count") != 1:
+            raise DemoScenarioError("replayed approval executed again")
+        if not completion_has_verified_evidence(final):
+            raise DemoScenarioError("receipt predicate did not hold")
+
+        trace_counts = _trace_counts(repository.list_model_traces(SCRIPTED_CASE_ID))
+        if scripted:
+            if trace_counts != EXPECTED_SCRIPTED_TRACE_COUNTS:
+                raise DemoScenarioError("unexpected model trace counts")
+        elif (
+            trace_counts["slow"] != EXPECTED_SCRIPTED_TRACE_COUNTS["slow"]
+            or trace_counts["judge"] != EXPECTED_SCRIPTED_TRACE_COUNTS["judge"]
+            or sum(trace_counts["fast"].values()) != 1
+        ):
+            raise DemoScenarioError("unexpected model trace counts")
+
+        operation_records = _journey_operation_records(runtime_log, runtime_log_offset)
+        marker_absent: dict[str, bool] = {"proposal_response": True}
+        for name in JOURNEY_LOG_FILES:
+            path = log_dir / name
+            if not path.is_file():
+                raise DemoScenarioError(f"journey log {name} is missing")
+            if JOURNEY_MARKER.encode() in path.read_bytes():
+                raise DemoScenarioError(f"intake marker was found in {name}")
+            marker_absent[name] = True
+    except (httpx.HTTPError, psycopg.Error):
+        raise DemoScenarioError("journey failed safely") from None
+
+    evidence: dict[str, Any] = {
+        "schema_version": JOURNEY_SCHEMA_VERSION,
+        "claim_boundary": JOURNEY_CLAIM_BOUNDARY,
+        "readiness": readiness,
+        "intake": {
+            "parser": str(proposal.get("parser")),
+            "read_fields": sorted(INTAKE_READ_FIELDS),
+            "clarified_fields": [INTAKE_CLARIFIED_FIELD],
+        },
+        "revisions": {
+            "create": created.get("revision"),
+            "confirm": confirmed.get("revision"),
+            "approve": approved.get("revision"),
+        },
+        "replay_revision_unchanged": replayed.get("revision")
+        == approved.get("revision")
+        == final.get("revision"),
+        "event_types_after_confirm": [kind for _, kind in event_types],
+        "assistant_line": line_class,
+        "approval_after_confirm": "pending",
+        "execution_count": {
+            "after_approve": approved.get("execution_count"),
+            "after_replay": replayed.get("execution_count"),
+        },
+        "completion_decision": "complete",
+        "receipt_predicate": True,
+        "trace_counts": trace_counts,
+        "marker_absent": marker_absent,
+        "operation_records": operation_records,
+    }
+    if not evidence["replay_revision_unchanged"]:
+        raise DemoScenarioError("replayed approval changed the Case revision")
+    if evidence_path is not None:
+        evidence_path.write_text(render_journey_evidence(evidence))
+    return evidence
+
+
+def render_journey_evidence(evidence: Mapping[str, Any]) -> str:
+    return json.dumps(evidence, indent=2, sort_keys=True) + "\n"
+
+
+def run_journey_command(
+    *,
+    runtime_url: str,
+    database_url: str = DEFAULT_DATABASE_URL,
+    log_dir: Path | None = None,
+    write_evidence: bool = False,
+) -> None:
+    selected_logs = log_dir if log_dir is not None else _log_dir()
+    try:
+        repository = PostgresCaseRepository(database_url)
+    except (psycopg.Error, ValueError):
+        raise DemoScenarioError("journey database was unavailable") from None
+    with httpx.Client(base_url=runtime_url, timeout=45.0) as client:
+        evidence = run_journey(
+            client=client,
+            repository=repository,
+            log_dir=selected_logs,
+            evidence_path=JOURNEY_EVIDENCE_PATH if write_evidence else None,
+        )
+    revisions = evidence["revisions"]
+    print(
+        "Scene J passed: intake read three facts and asked one; the Case was "
+        "created; the confirmation turn got one "
+        f"{evidence['assistant_line']} line and a pending approval; one "
+        "execution, unchanged by an exact approval replay; the receipt predicate "
+        "holds."
+    )
+    counts = evidence["trace_counts"]
+    print(
+        "Model traces (PostgreSQL): "
+        + "; ".join(
+            f"{role} "
+            + ", ".join(f"{result} {count}" for result, count in results.items())
+            for role, results in counts.items()
+        )
+        + ". The intake marker is absent from the proposal and the demo logs."
+    )
+    records = evidence["operation_records"]
+    print(
+        f"Operation records (runtime.log): {records['count']}, one per journey "
+        "request, all with error category none."
+    )
+    if revisions != REFERENCE_REVISIONS:
+        print(
+            f"Note: Case revisions {revisions} differ from the reference "
+            f"{REFERENCE_REVISIONS}; record and explain this in the phase log."
+        )
+    if write_evidence:
+        print(f"Evidence written: {JOURNEY_EVIDENCE_PATH.relative_to(REPOSITORY_ROOT)}")
+
+
 def run_recovery_check() -> None:
     if not _wait_for_tcp("127.0.0.1", DEFAULT_TEMPORAL_PORT, timeout=2):
         raise DemoScenarioError("Temporal is not ready; run make portfolio-demo first")
@@ -1180,6 +1665,8 @@ def main(argv: list[str] | None = None) -> int:
         default="scripted",
         help="distilled/untuned expect a running local Fast gateway",
     )
+    serve.add_argument("--runtime-port", type=int, default=DEFAULT_RUNTIME_PORT)
+    serve.add_argument("--web-port", type=int, default=DEFAULT_WEB_PORT)
     subparsers.add_parser("stop", help="stop host processes and Compose dependencies")
     subparsers.add_parser("reset", help="remove only the named demo PostgreSQL volume")
     channel = subparsers.add_parser(
@@ -1187,12 +1674,26 @@ def main(argv: list[str] | None = None) -> int:
     )
     channel.add_argument("--runtime-url", default=DEFAULT_RUNTIME_URL)
     channel.add_argument("--database-url", default=DEFAULT_DATABASE_URL)
+    journey = subparsers.add_parser(
+        "journey", help="drive the Scene J journey through the Web's HTTP routes"
+    )
+    journey.add_argument("--runtime-url", default=DEFAULT_RUNTIME_URL)
+    journey.add_argument("--database-url", default=DEFAULT_DATABASE_URL)
+    journey.add_argument(
+        "--write-evidence",
+        action="store_true",
+        help="write the committed content-free evidence (scripted backend only)",
+    )
     subparsers.add_parser("recovery", help="run the focused real local recovery check")
     args = parser.parse_args(argv)
     signal.signal(signal.SIGTERM, _handle_signal)
     try:
         if args.command == "serve":
-            start_demo(fast_backend=args.fast_backend)
+            start_demo(
+                fast_backend=args.fast_backend,
+                runtime_port=args.runtime_port,
+                web_port=args.web_port,
+            )
         elif args.command == "stop":
             stop_demo()
         elif args.command == "reset":
@@ -1200,6 +1701,12 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "scene-channel":
             run_channel_scene(
                 runtime_url=args.runtime_url, database_url=args.database_url
+            )
+        elif args.command == "journey":
+            run_journey_command(
+                runtime_url=args.runtime_url,
+                database_url=args.database_url,
+                write_evidence=args.write_evidence,
             )
         elif args.command == "recovery":
             run_recovery_check()
@@ -1222,11 +1729,17 @@ if __name__ == "__main__":
 
 __all__ = [
     "CALLBACK_EVENT_ID",
+    "CONFIRMATION_EVENT",
     "CREATE_IDEMPOTENCY_KEY",
     "DEFAULT_DATABASE_URL",
+    "DEFAULT_RUNTIME_PORT",
+    "DEFAULT_WEB_PORT",
     "FAST_BACKENDS",
     "INBOUND_CONTENT",
     "INBOUND_EVENT_ID",
+    "JOURNEY_EVIDENCE_PATH",
+    "JOURNEY_LOG_FILES",
+    "RECOVERY_POSTGRES_PORT",
     "DemoScenarioError",
     "assert_authoritative_channel_evidence",
     "assert_browser_projection_isolated",
@@ -1235,12 +1748,18 @@ __all__ = [
     "build_fixture_headers",
     "build_provider_message_body",
     "check_fast_backend",
+    "completion_has_verified_evidence",
     "main",
     "parse_utc",
+    "render_journey_evidence",
     "reset_demo",
     "run_channel_scene",
+    "run_journey",
+    "run_journey_command",
     "run_recovery_check",
+    "runtime_origin",
     "sha256_hex",
     "start_demo",
     "stop_demo",
+    "validate_demo_ports",
 ]

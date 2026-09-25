@@ -13,7 +13,7 @@
 	phase03c-product-parity phase03c-product-parity-check \
 	lock-check postgres-check phase04d-check phase04d-profile-check phase05a-check phase06b1-check web-check \
 	runtime-server portfolio-demo portfolio-demo-stop portfolio-demo-reset \
-	portfolio-demo-channel portfolio-demo-recovery dev
+	portfolio-demo-channel portfolio-demo-journey portfolio-demo-recovery ops-report ops-report-check dev
 
 PYTHON_RUN := uv run --project runtime --all-packages
 # Runtime pytest JUnit report; `make preflight` pins its gated-skip count.
@@ -35,7 +35,7 @@ PYTHON_PATHS := runtime/packages/contracts/src runtime/packages/contracts/tests 
 	scripts/run_negotiation_ceiling.py scripts/run_fast_slow_split_report.py \
 	scripts/run_phase_04d_control_plane_profile.py \
 	scripts/run_phase_07a_portfolio_demo.py \
-	scripts/validate_layout.py scripts/check_gated_skips.py
+	scripts/validate_layout.py scripts/check_gated_skips.py scripts/run_ops_report.py
 ML_PYTHON_PATHS := ml/data_pipeline/src ml/evaluation/src ml/tests \
 	scripts/run_phase_02_data_pilot.py scripts/run_phase_03a1_baselines.py \
 	scripts/run_phase_03a1_evaluation_erratum.py \
@@ -69,7 +69,7 @@ FAST_BACKEND ?= scripted
 FAST_GATEWAY_URL ?= http://127.0.0.1:$(LOCAL_FAST_PORT)
 
 help:
-	@printf '%s\n' 'Targets: preflight, preflight-fast, validate, format, format-check, lint, typecheck, test, postgres-check, phase04d-check, phase04d-profile-check, phase05a-check, phase06b1-check, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, negotiation-check, fast-slow-split-report, fast-slow-split-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, baselines-historical-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, hosted-rescore, hosted-rescore-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, phase03c-smoke-check, phase03c-invariants, phase03c-invariants-check, phase03c-prompt-set-check, phase03c-teacher-pilot-check, phase03c-teacher-generation-check, phase03c-cloud-bundle, phase03c-cloud-bundle-check, phase03c-training-data, phase03c-training-check, phase03c-mlx-adapter, phase03c-local-parity, phase03c-local-parity-check, phase03c-product-parity, phase03c-product-parity-check, local-fast-gateway, check-layout, lock-check, runtime-server, portfolio-demo, portfolio-demo-stop, portfolio-demo-reset, portfolio-demo-channel, portfolio-demo-recovery, dev'
+	@printf '%s\n' 'Targets: preflight, preflight-fast, validate, format, format-check, lint, typecheck, test, postgres-check, phase04d-check, phase04d-profile-check, phase05a-check, phase06b1-check, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, negotiation-check, fast-slow-split-report, fast-slow-split-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, baselines-historical-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, hosted-rescore, hosted-rescore-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, phase03c-smoke-check, phase03c-invariants, phase03c-invariants-check, phase03c-prompt-set-check, phase03c-teacher-pilot-check, phase03c-teacher-generation-check, phase03c-cloud-bundle, phase03c-cloud-bundle-check, phase03c-training-data, phase03c-training-check, phase03c-mlx-adapter, phase03c-local-parity, phase03c-local-parity-check, phase03c-product-parity, phase03c-product-parity-check, local-fast-gateway, check-layout, lock-check, runtime-server, portfolio-demo, portfolio-demo-stop, portfolio-demo-reset, portfolio-demo-channel, portfolio-demo-journey, portfolio-demo-recovery, ops-report, ops-report-check, dev'
 
 preflight: validate lock-check
 	python3 -m compileall -q scripts
@@ -121,7 +121,7 @@ typecheck:
 		scripts/run_negotiation_ceiling.py scripts/run_fast_slow_split_report.py \
 		scripts/run_phase_04d_control_plane_profile.py \
 		scripts/run_phase_07a_portfolio_demo.py scripts/validate_layout.py \
-		scripts/check_gated_skips.py
+		scripts/check_gated_skips.py scripts/run_ops_report.py
 	$(ML_PYTHON_RUN) mypy --config-file ml/pyproject.toml \
 		ml/data_pipeline/src ml/evaluation/src scripts/run_phase_02_data_pilot.py \
 		scripts/run_phase_03a1_baselines.py \
@@ -149,7 +149,7 @@ unit-test:
 		-o junit_family=xunit1 --junitxml=$(GATED_SKIPS_REPORT)
 	$(ML_PYTHON_RUN) pytest -c ml/pyproject.toml ml/tests -q
 
-test: unit-test contracts-check benchmark-check data-pilot-check harness-check baselines-historical-check errata-check hosted-rerun-check validity-smoke-check phase03b-readiness-check phase03b-experiment-check phase03c-smoke-check phase03c-invariants-check phase03c-prompt-set-check phase03c-teacher-pilot-check phase03c-teacher-generation-check phase03c-cloud-bundle-check phase03c-training-check phase03c-rescore-check phase03c-local-parity-check phase03c-product-parity-check negotiation-check fast-slow-split-check
+test: unit-test contracts-check benchmark-check data-pilot-check harness-check baselines-historical-check errata-check hosted-rerun-check validity-smoke-check phase03b-readiness-check phase03b-experiment-check phase03c-smoke-check phase03c-invariants-check phase03c-prompt-set-check phase03c-teacher-pilot-check phase03c-teacher-generation-check phase03c-cloud-bundle-check phase03c-training-check phase03c-rescore-check phase03c-local-parity-check phase03c-product-parity-check negotiation-check fast-slow-split-check ops-report-check
 
 contracts:
 	$(PYTHON_RUN) python scripts/generate_contracts.py
@@ -176,6 +176,13 @@ fast-slow-split-report:
 
 fast-slow-split-check:
 	$(PYTHON_RUN) python scripts/run_fast_slow_split_report.py --check
+
+# Phase 07 D5: one offline summary of the committed gates and measurements.
+ops-report:
+	$(PYTHON_RUN) python scripts/run_ops_report.py --write
+
+ops-report-check:
+	$(PYTHON_RUN) python scripts/run_ops_report.py --check
 
 data-pilot:
 	$(ML_PYTHON_RUN) python scripts/run_phase_02_data_pilot.py
@@ -354,9 +361,16 @@ runtime-server:
 
 # FAST_BACKEND=distilled|untuned expects a running local Fast gateway (PR-11).
 FAST_BACKEND ?= scripted
+# Phase 07 D2: explicit loopback ports for the demo Runtime and Web; an occupied
+# port fails closed. The scene commands follow RUNTIME_PORT.
+RUNTIME_PORT ?= 8000
+WEB_PORT ?= 3000
+# WRITE_EVIDENCE=1 makes Scene J write its committed evidence (scripted only).
+WRITE_EVIDENCE ?=
 
 portfolio-demo:
-	$(PYTHON_RUN) python scripts/run_phase_07a_portfolio_demo.py serve --fast-backend "$(FAST_BACKEND)"
+	$(PYTHON_RUN) python scripts/run_phase_07a_portfolio_demo.py serve --fast-backend "$(FAST_BACKEND)" \
+		--runtime-port "$(RUNTIME_PORT)" --web-port "$(WEB_PORT)"
 
 portfolio-demo-stop:
 	$(PYTHON_RUN) python scripts/run_phase_07a_portfolio_demo.py stop
@@ -365,7 +379,11 @@ portfolio-demo-reset:
 	$(PYTHON_RUN) python scripts/run_phase_07a_portfolio_demo.py reset
 
 portfolio-demo-channel:
-	$(PYTHON_RUN) python scripts/run_phase_07a_portfolio_demo.py scene-channel
+	$(PYTHON_RUN) python scripts/run_phase_07a_portfolio_demo.py scene-channel --runtime-url "http://127.0.0.1:$(RUNTIME_PORT)"
+
+portfolio-demo-journey:
+	$(PYTHON_RUN) python scripts/run_phase_07a_portfolio_demo.py journey --runtime-url "http://127.0.0.1:$(RUNTIME_PORT)" \
+		$(if $(filter 1,$(WRITE_EVIDENCE)),--write-evidence)
 
 portfolio-demo-recovery:
 	$(PYTHON_RUN) python scripts/run_phase_07a_portfolio_demo.py recovery

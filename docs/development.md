@@ -91,8 +91,14 @@ make phase04d-profile-check  Phase 04D profile: fresh report compared with
 make phase05a-check          Phase 05A Temporal CaseWorkflow gate
 make phase06b1-check         Phase 06B1 local mailbox gate
 make runtime-server / dev    Scripted Runtime on 127.0.0.1:8000
-make portfolio-demo[-stop|-reset|-channel|-recovery]
-                             Phase 07A local demo lifecycle
+make portfolio-demo[-stop|-reset|-channel|-journey|-recovery]
+                             Phase 07A/07 local demo lifecycle; RUNTIME_PORT
+                             and WEB_PORT (default 8000/3000) override the
+                             loopback ports and fail closed when taken
+make ops-report / -check     Phase 07 offline summary: gate inventory, the
+                             gated-skip pin, the split reports, the M1/M2
+                             parity headlines, trace health; writes or
+                             byte-compares data/evaluation/ops-report.json
 ```
 
 The artifact checks make zero external model calls, but they prove different
@@ -102,7 +108,11 @@ their artifacts from code and byte-compare them. `errata-check`,
 `validity-smoke-check`, `hosted-rescore-check`, and `phase03c-rescore-check`
 re-derive scores from stored raw model outputs with the current evaluator.
 `baselines-historical-check` checks integrity only. `baselines-check` fails
-by design. The other `phase03c-*` checks in the `test:` list are not
+by design. `ops-report-check` re-derives the Phase 07 operations report from
+committed files only (plus `pytest --collect-only` counts for the three
+real-dependency gates, which need no database); a change to a split or parity
+report, the gated-skip pin, a gate's file list, or the Scene J evidence needs
+`make ops-report`. The other `phase03c-*` checks in the `test:` list are not
 described here; see the Makefile.
 
 ## Local gate and real-dependency gates

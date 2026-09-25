@@ -1,0 +1,76 @@
+{
+  "approval_after_confirm": "pending",
+  "assistant_line": "model",
+  "claim_boundary": "One local run of the credential-free 07A demo on the scripted Fast, scripted Slow and scripted Judge (decision 17), through the Web's HTTP routes against PostgreSQL and Temporal. Content-free: no ids, timestamps, latencies, text, or host identity. It is not a model-quality, latency, capacity, or production claim.",
+  "completion_decision": "complete",
+  "event_types_after_confirm": [
+    "provider_offer",
+    "consumer_message",
+    "assistant_message"
+  ],
+  "execution_count": {
+    "after_approve": 1,
+    "after_replay": 1
+  },
+  "intake": {
+    "clarified_fields": [
+      "device_financing_change_forbidden"
+    ],
+    "parser": "intake-parser-v1",
+    "read_fields": [
+      "current_monthly_total",
+      "mobile_hotspot_required",
+      "target_monthly_total"
+    ]
+  },
+  "marker_absent": {
+    "proposal_response": true,
+    "runtime.log": true,
+    "web.log": true,
+    "worker.log": true
+  },
+  "operation_records": {
+    "by_operation": {
+      "append_event": 1,
+      "create_case": 1,
+      "decide_approval": 2,
+      "get_case": 1,
+      "health_ready": 1,
+      "intake_proposal": 1
+    },
+    "count": 7,
+    "error_categories": {
+      "none": 7
+    }
+  },
+  "readiness": {
+    "adapter_mode": "scripted",
+    "orchestration_mode": "temporal",
+    "storage_mode": "postgres"
+  },
+  "receipt_predicate": true,
+  "replay_revision_unchanged": true,
+  "revisions": {
+    "approve": 6,
+    "confirm": 4,
+    "create": 2
+  },
+  "schema_version": "phase-07-demo-journey-v1",
+  "trace_counts": {
+    "fast": {
+      "failed": 0,
+      "rejected": 0,
+      "succeeded": 1
+    },
+    "judge": {
+      "failed": 0,
+      "rejected": 0,
+      "succeeded": 1
+    },
+    "slow": {
+      "failed": 0,
+      "rejected": 0,
+      "succeeded": 1
+    }
+  }
+}

@@ -403,6 +403,26 @@ projection excludes channel material. This package does not claim real
 Provider delivery, production exactly-once effects, production readiness, or
 completion of the broader Integrated Portfolio Demo target.
 
+Phase 07 extends the same package without changing any service. Scene A now
+runs the whole journey in the product's order: stateless intake and the typed
+card, then Case creation (the Offer, Slow's Standing Proposal, and the
+advisory scripted Judge all run inside that one command), then the
+confirmation turn (one Assistant Message through the Disclosure Gate, and the
+exact Approval Request), then approval, one execution, and the verified
+receipt, with the Status Bar rendering each step. Scene J
+(`make portfolio-demo-journey`) drives the same HTTP routes from a script and
+reads the Case's Model Trace log through the existing PostgreSQL repository
+seam; its committed evidence is content-free. The supervisor takes explicit
+Runtime and Web ports and fails closed on a taken or reserved one; the Web's
+Runtime rewrite takes its destination from a loopback-only
+`PROXYLOOP_RUNTIME_ORIGIN`, fixed at build time (`next start` only
+re-validates it). `make ops-report` is an offline summary of committed artifacts (gate
+inventory, gated-skip pin, split and parity reports, trace health); it opens
+no socket. The Runtime server writes each allowlisted JSON operation record as
+one stderr line (`configure_operation_logging` in `proxyloop_api/server.py`,
+Phase 07 F1), so the demo's `runtime.log` holds one content-free record per
+request and Scene J checks them.
+
 The future Gmail seam remains proposed at the API verification/channel-adapter
 boundary. The future Voice seam remains proposed at the deferred LiveKit/SIP
 channel worker. Both are unauthorized until separate policy, credential,
