@@ -66,6 +66,7 @@ from pydantic import (
 )
 
 from .direct_expiry import DirectApprovalExpiry, Sleep
+from .intake import MAX_AMOUNT_MINOR, IntakeProposalRequest, propose_intake
 from .operations import (
     CORRELATION_ID_HEADER,
     JsonLoggingOperationRecorder,
@@ -129,6 +130,9 @@ class CreateCaseRequest(BaseModel):
             raise ValueError("current_monthly_total must be greater than 7200 cents")
         if self.target_monthly_total.amount_minor < 7200:
             raise ValueError("target_monthly_total must be at least 7200 cents")
+        if self.current_monthly_total.amount_minor > MAX_AMOUNT_MINOR:
+            # The same cap as the intake parser and the Web (PR-12 M-3).
+            raise ValueError("current_monthly_total is above the supported maximum")
         if (
             self.target_monthly_total.amount_minor
             >= self.current_monthly_total.amount_minor
@@ -481,6 +485,16 @@ def create_app(
             )
             return JSONResponse(status_code=503, content=payload)
         return JSONResponse(status_code=200, content=payload)
+
+    @api.post("/intake/proposals")
+    def intake_proposal(command: IntakeProposalRequest) -> dict[str, Any]:
+        """Stateless intake (PR-12): read free text into a typed proposal.
+
+        No Case, Runtime, Temporal, model, or storage call, and no lock; the
+        text is never logged, echoed, or kept. A 422 is the content-free body.
+        """
+
+        return propose_intake(command.text).model_dump(mode="json")
 
     @api.post("/cases", status_code=201)
     async def create_case(

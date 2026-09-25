@@ -13,6 +13,7 @@ import {
   hasValidTaskBrief,
   isValidPersistedWorkspace,
   loadPersistedWorkspace,
+  proposeIntake,
   RUNTIME_STORAGE_KEY,
   savePersistedWorkspace,
   type IntakeFacts,
@@ -616,5 +617,60 @@ describe("runtime client", () => {
 
     expect(hasValidTaskBrief(parsed, facts)).toBe(true);
     expect(assistantLines(parsed)).toEqual([{ eventCursor: 4, text: "Noted." }]);
+  });
+});
+
+describe("stateless intake proposal (PR-12)", () => {
+  const proposal = {
+    parser: "intake-parser-v1",
+    proposal: {
+      current_monthly_total: { amount_minor: 9200, currency: "USD" },
+      target_monthly_total: null,
+      mobile_hotspot_required: true,
+      device_financing_change_forbidden: null,
+    },
+    clarifications: [
+      { field: "target_monthly_total", reason: "ambiguous" },
+      { field: "device_financing_change_forbidden", reason: "missing" },
+    ],
+  };
+
+  it("posts only the text, with no command identity, and returns the typed proposal", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(proposal), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(proposeIntake("I pay $92")).resolves.toEqual(proposal);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("/api/runtime/intake/proposals");
+    expect(init).toMatchObject({ body: JSON.stringify({ text: "I pay $92" }), method: "POST" });
+    expect(init.headers).not.toHaveProperty("Idempotency-Key");
+  });
+
+  it.each([
+    ["an extra root key", { ...proposal, text: "I pay $92" }],
+    ["an unknown parser", { ...proposal, parser: "intake-parser-v2" }],
+    ["a non-USD amount", { ...proposal, proposal: { ...proposal.proposal, current_monthly_total: { amount_minor: 9200, currency: "EUR" } } }],
+    ["a fractional amount", { ...proposal, proposal: { ...proposal.proposal, current_monthly_total: { amount_minor: 92.5, currency: "USD" } } }],
+    ["a false boolean", { ...proposal, proposal: { ...proposal.proposal, mobile_hotspot_required: false } }],
+    ["an extra proposal key", { ...proposal, proposal: { ...proposal.proposal, deadline: null } }],
+    ["an unknown reason", { ...proposal, clarifications: [{ field: "target_monthly_total", reason: "guess" }] }],
+    ["an unknown field", { ...proposal, clarifications: [{ field: "deadline", reason: "missing" }] }],
+    ["a repeated field", { ...proposal, clarifications: [proposal.clarifications[0], proposal.clarifications[0]] }],
+  ])("rejects a proposal with %s", async (_label, body) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 })));
+
+    await expect(proposeIntake("I pay $92")).rejects.toMatchObject({ kind: "invalid" });
+  });
+
+  it("surfaces the content-free 422 as request_invalid", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ detail: { code: "request_invalid", message: "request rejected" } }),
+      { status: 422 },
+    )));
+
+    await expect(proposeIntake("x")).rejects.toMatchObject({ category: "request_invalid", status: 422 });
   });
 });

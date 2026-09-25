@@ -18,13 +18,18 @@ import {
   getCase,
   hasValidPendingApproval,
   hasValidTaskBrief,
+  type IntakeClarificationReason,
   type IntakeFacts,
+  type IntakeProposal,
+  type IntakeProposalField,
+  INTAKE_TEXT_MAX_LENGTH,
   type JsonObject,
   loadPersistedWorkspace,
   savePersistedWorkspace,
   type PersistedPendingCommand,
   type PersistedWorkspaceState,
   phaseForPayload,
+  proposeIntake,
   RuntimeClientError,
   type RuntimeMoney,
   type RuntimePayload,
@@ -55,12 +60,43 @@ type IntakeDraft = {
   deviceFinancingChangeForbidden: true | null;
 };
 
+type IntakeClarifications = Partial<Record<IntakeField, IntakeClarificationReason>>;
+
 const EMPTY_INTAKE: IntakeDraft = {
   currentMonthlyTotal: null,
   targetMonthlyTotal: null,
   mobileHotspotRequired: null,
   deviceFinancingChangeForbidden: null,
 };
+
+const INTAKE_FIELD_ORDER: readonly IntakeField[] = ["current", "target", "hotspot", "financing"];
+
+const PROPOSAL_FIELDS: Record<IntakeProposalField, IntakeField> = {
+  current_monthly_total: "current",
+  target_monthly_total: "target",
+  mobile_hotspot_required: "hotspot",
+  device_financing_change_forbidden: "financing",
+};
+
+// Card copy for the API's closed clarification codes (PR-12).
+const CLARIFICATION_LABELS: Record<IntakeClarificationReason, string> = {
+  missing: "Missing",
+  ambiguous: "Needs clarification · more than one reading",
+  invalid_amount: "Needs clarification · not a valid USD amount",
+  unsupported_currency: "Needs clarification · USD only",
+  below_fixed_offer: "below the $72.00 fictional offer",
+  target_not_below_current: "must stay below the current bill",
+};
+
+// $999,999.99: the same cap as the intake parser and `CreateCaseRequest`.
+const MAX_AMOUNT_MINOR = 99_999_999;
+
+const VALUE_RULE_REASONS = new Set<IntakeClarificationReason>(["below_fixed_offer", "target_not_below_current"]);
+
+const UNSUPPORTED_INTENT_MESSAGE =
+  "This local demo only supports lowering a fictional mobile bill. Try a clear request such as “Lower my mobile bill.”";
+
+const INTAKE_FAILURE_MESSAGE = "I couldn't read that message right now. Nothing was created.";
 
 // A response the Web classifies as blocked (a predicate rejects the projection
 // or the Case reaches a state it cannot show). Terminal: handlers must not fall
@@ -89,12 +125,78 @@ export function isSupportedMobileBillIntent(text: string): boolean {
   );
 }
 
-function firstMissingIntakeField(draft: IntakeDraft): IntakeField | null {
-  if (draft.currentMonthlyTotal === null) return "current";
-  if (draft.targetMonthlyTotal === null) return "target";
-  if (draft.mobileHotspotRequired === null) return "hotspot";
-  if (draft.deviceFinancingChangeForbidden === null) return "financing";
-  return null;
+function draftValue(draft: IntakeDraft, field: IntakeField): unknown {
+  if (field === "current") return draft.currentMonthlyTotal;
+  if (field === "target") return draft.targetMonthlyTotal;
+  if (field === "hotspot") return draft.mobileHotspotRequired;
+  return draft.deviceFinancingChangeForbidden;
+}
+
+// The first fact the consumer still has to supply: a missing value or an
+// open clarification from the intake proposal, then any amount the local
+// rules reject, so Create is never disabled without a prompt (review I-3).
+function firstFieldNeedingInput(draft: IntakeDraft, clarifications: IntakeClarifications): IntakeField | null {
+  return INTAKE_FIELD_ORDER.find(
+    (field) => draftValue(draft, field) === null || clarifications[field] !== undefined,
+  ) ?? INTAKE_FIELD_ORDER.find(
+    (field) => (field === "current" || field === "target") && intakeValueError(field, draft) !== null,
+  ) ?? null;
+}
+
+function draftFromProposal(result: IntakeProposal): IntakeDraft {
+  return {
+    currentMonthlyTotal: result.proposal.current_monthly_total,
+    targetMonthlyTotal: result.proposal.target_monthly_total,
+    mobileHotspotRequired: result.proposal.mobile_hotspot_required,
+    deviceFinancingChangeForbidden: result.proposal.device_financing_change_forbidden,
+  };
+}
+
+function clarificationsFromProposal(result: IntakeProposal): IntakeClarifications {
+  return Object.fromEntries(
+    result.clarifications.map((item) => [PROPOSAL_FIELDS[item.field], item.reason]),
+  );
+}
+
+// A closed list of bill or payment cues (third amendment). Bare "plan" is not
+// a cue, so "Help me plan a vacation for $2,000" gets the scope reply.
+const BILL_OR_PAYMENT_CUE =
+  /\b(?:bill|pay|paying|paid|monthly|per\s+month|a\s+month|carrier|phone|mobile|cell|wireless|data|hotspot|financing)\b|\/mo\b/i;
+
+// Whether the proposal is about a bill: it read at least one value (review
+// M-1), or it has a clarification on an amount and the text has a bill or
+// payment cue (third amendment), so on-topic text without a phone word still
+// opens the card while off-topic text that mentions money does not. A foreign
+// currency is not an amount clarification here (fourth amendment M-4).
+function proposalOpensCard(result: IntakeProposal, text: string): boolean {
+  return (
+    Object.values(result.proposal).some((value) => value !== null) ||
+    (BILL_OR_PAYMENT_CUE.test(text) &&
+      result.clarifications.some(
+        (item) =>
+          (item.field === "current_monthly_total" || item.field === "target_monthly_total") &&
+          item.reason !== "missing" &&
+          item.reason !== "unsupported_currency",
+      ))
+  );
+}
+
+// Once the consumer supplies a field, its proposal clarification is resolved.
+// The other amount keeps a value-rule code until its own rule passes locally
+// with the new value (review I-3).
+function resolveClarification(
+  clarifications: IntakeClarifications,
+  field: IntakeField,
+  draft: IntakeDraft,
+): IntakeClarifications {
+  return Object.fromEntries(
+    Object.entries(clarifications).filter(([key, reason]) =>
+      key !== field &&
+      !((key === "current" || key === "target") &&
+        VALUE_RULE_REASONS.has(reason) &&
+        intakeValueError(key, draft) === null),
+    ),
+  );
 }
 
 function intakePrompt(field: IntakeField): string {
@@ -192,12 +294,18 @@ function intakeFacts(draft: IntakeDraft): IntakeFacts | null {
 function intakeValueError(field: IntakeField, draft: IntakeDraft): string | null {
   const current = draft.currentMonthlyTotal?.amount_minor;
   const target = draft.targetMonthlyTotal?.amount_minor;
+  if (
+    (field === "current" && current !== undefined && current > MAX_AMOUNT_MINOR) ||
+    (field === "target" && target !== undefined && target > MAX_AMOUNT_MINOR)
+  ) {
+    return "Amounts above $999,999.99 are not supported.";
+  }
   if (field === "current") {
     if (current !== undefined && current <= 7200) {
       return "The current bill must be greater than $72.00 for this fictional offer.";
     }
     return current !== undefined && target !== undefined && target >= current
-      ? "The current bill must stay above the confirmed target. Enter a higher current USD amount."
+      ? "The current bill must stay above the target. Enter a higher current USD amount."
       : null;
   }
   if (field === "target") {
@@ -205,7 +313,7 @@ function intakeValueError(field: IntakeField, draft: IntakeDraft): string | null
       return "The target must be at least $72.00.";
     }
     if (target !== undefined && current !== undefined && target >= current) {
-      return "The target must stay below the confirmed current bill. Enter a lower USD amount.";
+      return "The target must stay below the current bill. Enter a lower USD amount.";
     }
   }
   return null;
@@ -352,8 +460,22 @@ function UserMessage({ children }: { children: ReactNode }) {
   );
 }
 
+const READ_FROM_MESSAGE = "Read from your message";
+
+function factValue(
+  value: string | null,
+  reason: IntakeClarificationReason | undefined,
+  readFromMessage: boolean,
+): string {
+  const shown = value !== null && readFromMessage ? `${value} · ${READ_FROM_MESSAGE}` : value;
+  if (reason === undefined) return shown ?? "Missing";
+  return shown === null ? CLARIFICATION_LABELS[reason] : `${shown} · ${CLARIFICATION_LABELS[reason]}`;
+}
+
 function DraftTaskBrief({
   draft,
+  clarifications,
+  readFromMessage,
   activeField,
   intakeError,
   busy,
@@ -361,6 +483,8 @@ function DraftTaskBrief({
   onCreate,
 }: {
   draft: IntakeDraft;
+  clarifications: IntakeClarifications;
+  readFromMessage: readonly IntakeField[];
   activeField: IntakeField | null;
   intakeError: string | null;
   busy: boolean;
@@ -371,22 +495,30 @@ function DraftTaskBrief({
     {
       field: "current" as const,
       label: "Current monthly total",
-      value: draft.currentMonthlyTotal === null ? "Missing" : formatMoney(draft.currentMonthlyTotal),
+      value: factValue(draft.currentMonthlyTotal === null ? null : formatMoney(draft.currentMonthlyTotal), clarifications.current, readFromMessage.includes("current")),
     },
     {
       field: "target" as const,
       label: "Target monthly total",
-      value: draft.targetMonthlyTotal === null ? "Missing" : formatMoney(draft.targetMonthlyTotal),
+      value: factValue(draft.targetMonthlyTotal === null ? null : formatMoney(draft.targetMonthlyTotal), clarifications.target, readFromMessage.includes("target")),
     },
     {
       field: "hotspot" as const,
       label: "Mobile hotspot required",
-      value: draft.mobileHotspotRequired === true ? "Confirmed · required" : "Missing",
+      value: factValue(
+        draft.mobileHotspotRequired !== true ? null : readFromMessage.includes("hotspot") ? "Required" : "Confirmed · required",
+        clarifications.hotspot,
+        readFromMessage.includes("hotspot"),
+      ),
     },
     {
       field: "financing" as const,
       label: "Device financing change forbidden",
-      value: draft.deviceFinancingChangeForbidden === true ? "Confirmed · unchanged" : "Missing",
+      value: factValue(
+        draft.deviceFinancingChangeForbidden !== true ? null : readFromMessage.includes("financing") ? "Unchanged" : "Confirmed · unchanged",
+        clarifications.financing,
+        readFromMessage.includes("financing"),
+      ),
     },
   ];
   const ready =
@@ -400,7 +532,7 @@ function DraftTaskBrief({
     <section aria-labelledby="draft-task-brief-title" className="chat-artifact draft-task-brief">
       <div className="artifact-heading">
         <div>
-          <span className="artifact-kicker">Local intake · Draft Task Brief</span>
+          <span className="artifact-kicker">Intake proposal · Draft Task Brief</span>
           <h2 id="draft-task-brief-title">Confirm the facts before creating a Case.</h2>
         </div>
         <StatusBadge tone={ready ? "complete" : "neutral"}>{ready ? "Ready" : "Needs input"}</StatusBadge>
@@ -419,7 +551,7 @@ function DraftTaskBrief({
         ))}
       </dl>
       <p className="artifact-note">
-        These facts stay local until you choose the explicit create action. The Runtime will receive exactly these four fields.
+        Facts marked &quot;Read from your message&quot; are my reading, not yet your confirmation; the Runtime did not store your message. Check each one: choosing Create fictional Case confirms them, and the Runtime will receive exactly these four fields.
       </p>
       <button className="primary-button" disabled={!ready || busy} onClick={onCreate} type="button">
         {busy ? "Creating fictional Case…" : "Create fictional Case"}
@@ -651,6 +783,10 @@ export function ConversationWorkspace() {
   const [payload, setPayload] = useState<RuntimePayload | null>(null);
   const [confirmedFacts, setConfirmedFacts] = useState<IntakeFacts | null>(null);
   const [intake, setIntake] = useState<IntakeDraft>(EMPTY_INTAKE);
+  const [clarifications, setClarifications] = useState<IntakeClarifications>({});
+  // Fields whose value came from the intake proposal and that the consumer
+  // has not supplied again; shown as "Read from your message" (review I-1).
+  const [readFromMessage, setReadFromMessage] = useState<IntakeField[]>([]);
   const [activeField, setActiveField] = useState<IntakeField | null>(null);
   const [intakeError, setIntakeError] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -1035,6 +1171,8 @@ export function ConversationWorkspace() {
     payloadRef.current = null;
     setConfirmedFacts(null);
     setIntake(EMPTY_INTAKE);
+    setClarifications({});
+    setReadFromMessage([]);
     setActiveField(null);
     setIntakeError(null);
     clearFailure();
@@ -1145,8 +1283,11 @@ export function ConversationWorkspace() {
   }
 
   function submitIntakeValue(text: string) {
-    const field = activeField ?? firstMissingIntakeField(intake);
-    if (!field) return;
+    const field = activeField ?? firstFieldNeedingInput(intake, clarifications);
+    if (!field) {
+      addMessage("assistant", "All four facts are on the Draft Task Brief. Choose Edit on a fact to change it, or Create fictional Case when it matches.");
+      return;
+    }
     let next = intake;
     if (field === "current" || field === "target") {
       const value = parseUsdMoney(text);
@@ -1176,9 +1317,13 @@ export function ConversationWorkspace() {
         ? { ...intake, mobileHotspotRequired: true }
         : { ...intake, deviceFinancingChangeForbidden: true };
     }
+    const remaining = resolveClarification(clarifications, field, next);
+    const remainingRead = readFromMessage.filter((item) => item !== field);
     setIntake(next);
+    setClarifications(remaining);
+    setReadFromMessage(remainingRead);
     setIntakeError(null);
-    const nextField = firstMissingIntakeField(next);
+    const nextField = firstFieldNeedingInput(next, remaining);
     setActiveField(nextField);
     addMessage(
       "assistant",
@@ -1317,6 +1462,43 @@ export function ConversationWorkspace() {
     }
   }
 
+  // Stateless intake (PR-12): the Runtime reads the text into a typed proposal
+  // and keeps nothing; the card opens with it and the consumer confirms it.
+  async function proposeFromText(text: string) {
+    const requestId = sessionId.current;
+    setBusy(true);
+    try {
+      const result = await proposeIntake(text);
+      if (requestId !== sessionId.current) return;
+      if (!proposalOpensCard(result, text) && !isSupportedMobileBillIntent(text)) {
+        addMessage("assistant", UNSUPPORTED_INTENT_MESSAGE);
+        return;
+      }
+      const next = draftFromProposal(result);
+      const pending = clarificationsFromProposal(result);
+      const field = firstFieldNeedingInput(next, pending);
+      setIntake(next);
+      setClarifications(pending);
+      setReadFromMessage(INTAKE_FIELD_ORDER.filter((item) => draftValue(next, item) !== null));
+      setIntakeError(null);
+      setActiveField(field);
+      setPhase("intake");
+      addMessage(
+        "assistant",
+        field
+          ? `I read your request into the Draft Task Brief below. ${intakePrompt(field)}`
+          : "I read all four facts from your request into the Draft Task Brief below. Check them, then choose Create fictional Case when they match.",
+      );
+    } catch {
+      // Every failure of the proposal request gets the same intake copy
+      // (fourth amendment M-5): no Case exists yet, so no Case wording.
+      if (requestId !== sessionId.current) return;
+      addMessage("assistant", INTAKE_FAILURE_MESSAGE);
+    } finally {
+      if (requestId === sessionId.current) setBusy(false);
+    }
+  }
+
   function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = draft.trim();
@@ -1324,16 +1506,11 @@ export function ConversationWorkspace() {
     addMessage("user", text);
     setDraft("");
     if (phase === "blank") {
-      if (!isSupportedMobileBillIntent(text)) {
-        addMessage(
-          "assistant",
-          "This local demo only supports lowering a fictional mobile bill. Try a clear request such as “Lower my mobile bill.”",
-        );
+      if (text.length > INTAKE_TEXT_MAX_LENGTH) {
+        addMessage("assistant", `Please keep the request under ${INTAKE_TEXT_MAX_LENGTH.toLocaleString("en-US")} characters. Nothing was sent.`);
         return;
       }
-      setPhase("intake");
-      setActiveField("current");
-      addMessage("assistant", intakePrompt("current"));
+      void proposeFromText(text);
       return;
     }
     if (phase === "intake") {
@@ -1410,6 +1587,8 @@ export function ConversationWorkspace() {
               <DraftTaskBrief
                 activeField={activeField}
                 busy={busy}
+                clarifications={clarifications}
+                readFromMessage={readFromMessage}
                 draft={intake}
                 intakeError={intakeError}
                 onCreate={createIntakeCase}

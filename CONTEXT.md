@@ -20,6 +20,10 @@ _Avoid_: Prompt, request, task description
 A hard prohibition or soft preference that bounds acceptable actions and outcomes for a Case.
 _Avoid_: Rule, setting
 
+**Intake Proposal**:
+An inert, typed reading of the Consumer's own words into a candidate Consumer Goal and Constraints, with each fact it could not read named for clarification. It creates no Case and keeps no copy of the words; its facts become the Case's Consumer Goal and Constraints only when the Consumer confirms them.
+_Avoid_: Draft Case, parsed goal, intake session
+
 **Delegated Authority**:
 The explicit, bounded permission a Consumer grants ProxyLoop to act for a Case.
 _Avoid_: Autonomy, blanket consent
