@@ -40,10 +40,34 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(socket, "create_connection", refuse)
 
 
-def test_report_is_deterministic_and_opens_no_socket(no_network: None) -> None:
+def test_report_is_deterministic(no_network: None) -> None:
     first = ops.render(ops.build_report(ROOT, collector=_fake_collector))
     second = ops.render(ops.build_report(ROOT, collector=_fake_collector))
     assert first == second
+
+
+def test_check_passes_with_sockets_blocked(
+    no_network: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The contract's isolation check: `--check` with connect blocked in process.
+
+    The collector is stubbed with the committed counts; the real collector's
+    `pytest --collect-only` subprocess only imports and collects test modules.
+    """
+
+    committed = json.loads((ROOT / ops.REPORT_PATH).read_text())
+    counts = {
+        tuple(gate["files"]): gate["collected_test_items"]
+        for gate in committed["gates"]["real_dependency_gates"].values()
+    }
+    monkeypatch.setattr(ops, "collect_count", lambda _root, files: counts[files])
+    assert ops.main(["--check"]) == 0
+
+
+def test_committed_report_carries_no_stale_pending_text() -> None:
+    text = (ROOT / ops.REPORT_PATH).read_text()
+    assert "M2 is pending" not in text
+    assert "(needs PR-" not in text
 
 
 def test_gates_come_from_the_makefile_and_the_pin() -> None:

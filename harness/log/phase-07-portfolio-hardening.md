@@ -23,7 +23,7 @@ with root decisions D1–D9. Branch `feat/pr16-phase07-contract`, which merged
     set for the Web build, the worker, the Runtime and `next start`.
   - `apps/web/next.config.ts` reads that variable through the new
     `apps/web/lib/runtime-origin.ts`. It accepts only
-    `http://{127.0.0.1|localhost|[::1]}:port`, with no path, query or
+    `http://{127.0.0.1|localhost}:port` (review M1 removed `[::1]`), with no path, query or
     credentials. Anything else throws, so the build fails. The default is
     `http://127.0.0.1:8000`.
   - `portfolio-demo-channel` and `portfolio-demo-journey` pass
@@ -315,8 +315,52 @@ against the shared `postgres-test` (55432, `proxyloop_test`) and `temporal`
 - vitest: 268 passed, and the Web build passed.
 - Gated skips were 66 and matched the per-file pin.
 
-## Open for the root
+## Root decisions after the lane
 
-- Amendment A2, the Status Bar text after create, needs the root's
-  confirmation.
-- Independent review of PR-16 and the PR itself are not started.
+- A2 is confirmed (2026-09-25). The Status Bar after create reads "Waiting
+  for you to confirm the Task Brief.", which is current product behaviour
+  after the PR-10 review fix. Removing the #103 reload limit from the docs is
+  also confirmed.
+
+## Independent review (PR-16): Approve, with 8 Minors
+
+The root decided each Minor, and all eight are applied:
+
+1. **`[::1]` removed.** `runtime-origin.ts` now accepts only 127.0.0.1 and
+   localhost. `[::1]` passed validation, but Next's `prepareDestination` fails
+   on it at request time with "Missing parameter name at 1". A new vitest case
+   asserts it is refused: it failed red, then passed.
+2. **Comments corrected.** The `runtime-origin.ts` header and
+   `docs/architecture.md` now say the destination is fixed at build time and
+   that `next start` only re-validates it.
+3. **Not-done list completed.** `NOT_MEASURED` in `scripts/run_ops_report.py`
+   and the not-done list in `docs/portfolio-demo.md` now cover every DoD-6
+   item. The additions are production exactly-once effects, monitoring and
+   readiness; hosting; the build-plan "Do not do" list; Web free-text turns,
+   Web-exposed channels or the Judge, and UI redesign; and hosted spend.
+   `ops-report.json` was regenerated.
+4. **Architecture edits ratified.** The root accepted the
+   `docs/architecture.md` edits as a description of what is built. PR-17
+   continues the A-7f reconciliation.
+5. **Contract amendment A3.** A Web restore on a local backend was done by
+   #103, so the Non-goals list and Scene A-D are corrected. D7's "no reload"
+   is superseded.
+6. **M1 boundary referenced, not restated.** Its text predates M2 and calls
+   M2 pending, so the report now points to the source file and notes that M2
+   is reported below. A new test asserts the committed report contains no
+   "M2 is pending" or "(needs PR-" text.
+7. **Socket-isolation test.** It now runs `main(["--check"])` with
+   in-process socket connect blocked and the collector stubbed with the
+   committed counts. `collect_count`'s docstring states that its
+   `pytest --collect-only` subprocess only imports and collects test modules,
+   so it opens no connection. `build_report` resolves its collector at call
+   time so the stub applies.
+8. **`configure_operation_logging` unit test.** A repeated call returns the
+   same single handler. `propagate` is False, the logger level is INFO, and
+   the root logger and an unrelated logger keep their levels. A logged message
+   is written to the stream as the bare line.
+
+None of these changes touch runtime or storage behaviour: they are Web
+config validation, the ops report, tests and docs. The DB gates run on
+`ecfef63` (`postgres-check` 38, `phase05a-check` 73, `phase06b1-check` 56)
+therefore stand, and were not rerun.

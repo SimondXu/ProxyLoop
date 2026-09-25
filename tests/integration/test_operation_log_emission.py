@@ -8,7 +8,9 @@ runs the real server command and reads its stderr.
 
 from __future__ import annotations
 
+import io
 import json
+import logging
 import os
 import socket
 import subprocess
@@ -17,7 +19,7 @@ import time
 from pathlib import Path
 
 import httpx
-from proxyloop_api import OPERATION_RECORD_FIELDS
+from proxyloop_api import OPERATION_RECORD_FIELDS, server
 
 ROOT = Path(__file__).resolve().parents[2]
 MARKER = "zebra-7731"
@@ -106,3 +108,32 @@ def test_one_request_writes_exactly_one_content_free_operation_record(
     assert record["operation"] == "intake_proposal"
     assert record["status"] == 200
     assert record["error_category"] == "none"
+
+
+def test_configure_operation_logging_is_idempotent_and_isolated() -> None:
+    logger = logging.getLogger(server.OPERATION_LOGGER_NAME)
+    saved = (list(logger.handlers), logger.level, logger.propagate)
+    root_level = logging.getLogger().level
+    other = logging.getLogger("proxyloop_api.unrelated")
+    other_level = other.level
+    stream = io.StringIO()
+    try:
+        first = server.configure_operation_logging(stream)
+        second = server.configure_operation_logging(io.StringIO())
+        assert second is first
+        attached = [
+            handler
+            for handler in logger.handlers
+            if isinstance(handler, server._OperationRecordHandler)
+        ]
+        assert attached == [first]
+        assert logger.propagate is False
+        assert logger.level == logging.INFO
+        assert logging.getLogger().level == root_level
+        assert other.level == other_level
+        logger.info('{"correlation_id":"c"}')
+        assert stream.getvalue() == '{"correlation_id":"c"}\n'
+    finally:
+        logger.handlers[:] = saved[0]
+        logger.setLevel(saved[1])
+        logger.propagate = saved[2]

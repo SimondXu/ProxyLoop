@@ -86,6 +86,16 @@ Also noted: #103 closed the PR-9b limit. The Web now restores a Case after
 reload under Temporal and PostgreSQL for `local_distilled_candidate` and
 `local_untuned_baseline`, so Scene A-D may include a reload as an observation.
 
+## Amendment A3 (2026-09-25): Web restore on a local backend is done
+
+The PR-16 review found that "Non-goals and hard limits" still listed "a Web
+restore of a Case on a local backend after reload" as not done, and that
+Scene A-D still described the PR-9b known limit. #103 (merged at
+`e543d64`) implemented that restore, and the PR-16 distilled run observed it.
+Both passages are corrected in place: the restore is no longer a non-goal,
+and Scene A-D records the reload as an observation. D7's "no reload" is
+superseded by this amendment; the rest of D7 stands.
+
 ## Authorization
 
 Decision 16 (`harness/context/audit-remediation-decisions.md`) authorizes the
@@ -336,9 +346,9 @@ an automatic failure.
     Scene A, because Fast cannot change routing.
   - A model line that passes the gate is a new observation to record. It is
     not a failure.
-- **Known limit, not re-tested:** after a reload, the Web shows "Runtime state
-  not verified". The Web restores a Case only when `adapter_mode` is
-  `scripted` (PR-9b).
+- **Reload (A3):** since #103 the Web restores the Case after a reload on a
+  local backend under Temporal and PostgreSQL; the run records the reload as
+  an observation.
 - **Evidence:** the log records the banner, the delivered-line class, the
   trace result and model name, and the Case end state. Nothing is committed
   (D7).
@@ -525,8 +535,8 @@ Mapped to the build-plan Definition of done.
 - The build-plan "Do not do" list: D3-5, D3-6, D1-10 to D1-12, D2-7 to D2-9,
   D3-7 to D3-9, A-9b, and `SlowWorkRequest.revision_feedback`.
 - A Web free-text turn after Case creation, Web exposure of channels or the
-  Judge, a Web restore of a Case on a local backend after reload, and any UI
-  redesign.
+  Judge, and any UI redesign. (A Web restore on a local backend is done by
+  #103; amendment A3.)
 - Hosted spend of any kind. No budget is recorded.
 
 ## Harness status transitions

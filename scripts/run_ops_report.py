@@ -51,18 +51,30 @@ PRE_JUDGE_NOTE = (
     "pre-Judge observed artifact: recorded before the PR-14 Judge seam and not "
     "regenerated (Phase 07 D6); never compared on Judge fields"
 )
+# Every "not done" item of the Phase 07 contract (Non-goals and hard limits,
+# DoD item 6) plus the measurement gaps of the inputs above.
 NOT_MEASURED = (
+    "production of any kind: production serving of the distilled adapter, "
+    "real-model load, p95, capacity, concurrency, OOM, automatic fallback under "
+    "load, production exactly-once effects, production monitoring, and "
+    "production readiness (decision 18)",
+    "deployment, hosting, and release",
+    "Phase 06B2 and every real channel: real Providers, Gmail and OAuth, e-mail, "
+    "MCP, SMS, Voice (LiveKit, SIP, telephony), and any credential",
     "V0 (a hosted frontier model in both slots), frontier-as-Fast, and a "
     "second-family Judge: not measured (budget; decision 17)",
     "a model Judge and any Judge verdict distribution (decisions 7 and 17)",
-    "production serving of the distilled adapter, real-model load, p95, "
-    "capacity, concurrency, OOM, and automatic fallback under load (decision 18)",
-    "further training, data expansion, reruns, or promotion (decision 17)",
-    "Phase 06B2: real Providers, e-mail, MCP, SMS, Voice, and credentials",
-    "deployment and release",
-    "the local distilled and untuned split reports after the Judge seam (D6)",
-    "fresh-clone reproduction of the local model outputs (the adapter is git-ignored)",
+    "further training, data expansion, reruns, or promotion; Phase 03B stays "
+    "NO_GO_STOP_PHASE03B (decision 17)",
     "narrow contracts 1.2 (PR-15, dropped by decision 21)",
+    "the build-plan Do-not-do list: D3-5, D3-6, D1-10 to D1-12, D2-7 to D2-9, "
+    "D3-7 to D3-9, A-9b, and SlowWorkRequest.revision_feedback",
+    "a Web free-text turn after Case creation, Web exposure of channels or the "
+    "Judge, and any UI redesign",
+    "hosted spend of any kind (no budget is recorded)",
+    "the local distilled and untuned split reports after the Judge seam (D6)",
+    "fresh-clone reproduction of the local model outputs (the adapter is "
+    "not committed)",
 )
 _COLLECTED = re.compile(r"(\d+) tests? collected")
 
@@ -117,7 +129,11 @@ def _make_targets(makefile: str) -> dict[str, str]:
 
 
 def collect_count(root: Path, files: tuple[str, ...]) -> int:
-    """Count the test items pytest collects for ``files`` (no DB or Temporal)."""
+    """Count the test items pytest collects for ``files`` (no DB or Temporal).
+
+    The subprocess only imports the test modules and collects them; no test
+    or fixture runs, so it opens no database, Temporal, or network connection.
+    """
 
     environment = {
         key: value
@@ -262,7 +278,12 @@ def _parity(m1: Mapping[str, Any], m2: Mapping[str, Any]) -> dict[str, Any]:
             "result_role": m1["result_role"],
             "verdict": m1["verdict"],
             "labels": m1["labels"],
-            "claim_boundary": m1["claim_boundary"],
+            # Referenced, not restated: M1's text predates M2 and calls it
+            # pending; M2 is reported below as m2_product_path.
+            "claim_boundary": (
+                f"see claim_boundary in {M1_REPORT}; it predates M2, which is "
+                "reported below as m2_product_path"
+            ),
         },
         "m2_product_path": {
             "schema_version": m2["schema_version"],
@@ -339,7 +360,7 @@ def _journey_health(journey: Mapping[str, Any] | None) -> dict[str, Any]:
 
 
 def build_report(
-    root: Path = ROOT, *, collector: Collector = collect_count
+    root: Path = ROOT, *, collector: Collector | None = None
 ) -> dict[str, Any]:
     gated = _load_gated_skips(root)
     splits = {name: _read_json(root, path) for name, path in SPLIT_REPORTS.items()}
@@ -354,7 +375,7 @@ def build_report(
     inputs = [*SPLIT_REPORTS.values(), M1_REPORT, M2_REPORT]
     if journey is not None:
         inputs.append(JOURNEY_REPORT)
-    gates = _gates(root, gated, collector)
+    gates = _gates(root, gated, collector if collector is not None else collect_count)
     return {
         "schema_version": SCHEMA_VERSION,
         "claim_boundary": CLAIM_BOUNDARY,

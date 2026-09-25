@@ -49,7 +49,8 @@ port that is taken, out of range, equal to the other, or reserved for the
 demo's PostgreSQL/Temporal/recovery services makes the command fail closed
 before anything starts; the launcher never picks another port. The Web's
 Runtime rewrite follows `RUNTIME_PORT` through `PROXYLOOP_RUNTIME_ORIGIN`, which
-`apps/web/next.config.ts` accepts only as a loopback `http://host:port` origin.
+`apps/web/next.config.ts` accepts only as an `http://127.0.0.1:port` or
+`http://localhost:port` origin; the destination is fixed at build time.
 The scene commands take the same `RUNTIME_PORT`.
 
 The demo Case has a fixed id, so every scene starts from fresh state: run
@@ -249,14 +250,24 @@ local synthetic acceptance and delivery, not real-provider delivery.
 - The unchanged Phase 03B decision is `NO_GO_STOP_PHASE03B`; Phase 07A does not
   authorize retraining, data expansion, reruns, or promotion.
 
-Not done, and not claimed anywhere in this demo: production serving of the
-distilled adapter, real-model load, p95, capacity, concurrency, OOM, and
-automatic fallback under load; deployment and release; Phase 06B2 and every
-real channel (real Providers, Gmail/OAuth, e-mail, MCP, SMS, Voice) and every
-credential; V0, frontier-as-Fast, and a second-family Judge (not measured,
-budget); a model Judge and any Judge verdict distribution; further training,
-data expansion, reruns, or promotion; narrow contracts 1.2 (dropped); hosted
-spend of any kind.
+Not done, and not claimed anywhere in this demo:
+
+- production of any kind: production serving of the distilled adapter,
+  real-model load, p95, capacity, concurrency, OOM, automatic fallback under
+  load, production exactly-once effects, production monitoring, and
+  production readiness;
+- deployment, hosting, and release;
+- Phase 06B2 and every real channel (real Providers, Gmail/OAuth, e-mail, MCP,
+  SMS, Voice) and every credential;
+- V0, frontier-as-Fast, and a second-family Judge (not measured, budget);
+- a model Judge and any Judge verdict distribution;
+- further training, data expansion, reruns, or promotion;
+- narrow contracts 1.2 (dropped by decision 21);
+- the build-plan "Do not do" list (D3-5, D3-6, D1-10 to D1-12, D2-7 to D2-9,
+  D3-7 to D3-9, A-9b, and a `SlowWorkRequest.revision_feedback` field);
+- a Web free-text turn after Case creation, Web exposure of channels or the
+  Judge, and any UI redesign;
+- hosted spend of any kind.
 
 The future Gmail seam is proposed at the API verification/channel-adapter
 boundary. The future Voice seam is proposed at the deferred LiveKit/SIP

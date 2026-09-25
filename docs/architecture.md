@@ -414,8 +414,9 @@ receipt, with the Status Bar rendering each step. Scene J
 reads the Case's Model Trace log through the existing PostgreSQL repository
 seam; its committed evidence is content-free. The supervisor takes explicit
 Runtime and Web ports and fails closed on a taken or reserved one; the Web's
-Runtime rewrite reads a loopback-only `PROXYLOOP_RUNTIME_ORIGIN` at build and
-start. `make ops-report` is an offline summary of committed artifacts (gate
+Runtime rewrite takes its destination from a loopback-only
+`PROXYLOOP_RUNTIME_ORIGIN`, fixed at build time (`next start` only
+re-validates it). `make ops-report` is an offline summary of committed artifacts (gate
 inventory, gated-skip pin, split and parity reports, trace health); it opens
 no socket. The Runtime server writes each allowlisted JSON operation record as
 one stderr line (`configure_operation_logging` in `proxyloop_api/server.py`,
