@@ -12,11 +12,13 @@ describe("runtimeOrigin (Phase 07 D2)", () => {
   it("accepts an explicit loopback origin", () => {
     expect(runtimeOrigin("http://127.0.0.1:8011")).toBe("http://127.0.0.1:8011");
     expect(runtimeOrigin("http://localhost:8011")).toBe("http://localhost:8011");
-    expect(runtimeOrigin("http://[::1]:8011")).toBe("http://[::1]:8011");
     expect(runtimeOrigin("http://127.0.0.1:8011/")).toBe("http://127.0.0.1:8011");
   });
 
   it.each([
+    // Next's rewrite compiler cannot parse a bracketed IPv6 host at request
+    // time ("Missing parameter name at 1"), so it is refused at build time.
+    "http://[::1]:8011",
     "http://example.com:8000",
     "http://10.0.0.5:8000",
     "https://127.0.0.1:8000",

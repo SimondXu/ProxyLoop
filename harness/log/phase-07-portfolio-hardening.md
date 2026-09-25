@@ -23,7 +23,7 @@ with root decisions D1–D9. Branch `feat/pr16-phase07-contract`, which merged
     set for the Web build, the worker, the Runtime and `next start`.
   - `apps/web/next.config.ts` reads that variable through the new
     `apps/web/lib/runtime-origin.ts`. It accepts only
-    `http://{127.0.0.1|localhost|[::1]}:port`, with no path, query or
+    `http://{127.0.0.1|localhost}:port` (review M1 removed `[::1]`), with no path, query or
     credentials. Anything else throws, so the build fails. The default is
     `http://127.0.0.1:8000`.
   - `portfolio-demo-channel` and `portfolio-demo-journey` pass
@@ -315,16 +315,104 @@ against the shared `postgres-test` (55432, `proxyloop_test`) and `temporal`
 - vitest: 268 passed, and the Web build passed.
 - Gated skips were 66 and matched the per-file pin.
 
-## Open for the root
+## Root decisions after the lane
 
-- Amendment A2, the Status Bar text after create, needs the root's
-  confirmation.
-- Independent review of PR-16 and the PR itself are not started.
+- A2 is confirmed (2026-09-25). The Status Bar after create reads "Waiting
+  for you to confirm the Task Brief.", which is current product behaviour
+  after the PR-10 review fix. Removing the #103 reload limit from the docs is
+  also confirmed.
+
+## Independent review (PR-16): Approve, with 8 Minors
+
+The root decided each Minor, and all eight are applied:
+
+1. **`[::1]` removed.** `runtime-origin.ts` now accepts only 127.0.0.1 and
+   localhost. `[::1]` passed validation, but Next's `prepareDestination` fails
+   on it at request time with "Missing parameter name at 1". A new vitest case
+   asserts it is refused: it failed red, then passed.
+2. **Comments corrected.** The `runtime-origin.ts` header and
+   `docs/architecture.md` now say the destination is fixed at build time and
+   that `next start` only re-validates it.
+3. **Not-done list completed.** `NOT_MEASURED` in `scripts/run_ops_report.py`
+   and the not-done list in `docs/portfolio-demo.md` now cover every DoD-6
+   item. The additions are production exactly-once effects, monitoring and
+   readiness; hosting; the build-plan "Do not do" list; Web free-text turns,
+   Web-exposed channels or the Judge, and UI redesign; and hosted spend.
+   `ops-report.json` was regenerated.
+4. **Architecture edits ratified.** The root accepted the
+   `docs/architecture.md` edits as a description of what is built. PR-17
+   continues the A-7f reconciliation.
+5. **Contract amendment A3.** A Web restore on a local backend was done by
+   #103, so the Non-goals list and Scene A-D are corrected. D7's "no reload"
+   is superseded.
+6. **M1 boundary referenced, not restated.** Its text predates M2 and calls
+   M2 pending, so the report now points to the source file and notes that M2
+   is reported below. A new test asserts the committed report contains no
+   "M2 is pending" or "(needs PR-" text.
+7. **Socket-isolation test.** It now runs `main(["--check"])` with
+   in-process socket connect blocked and the collector stubbed with the
+   committed counts. `collect_count`'s docstring states that its
+   `pytest --collect-only` subprocess only imports and collects test modules,
+   so it opens no connection. `build_report` resolves its collector at call
+   time so the stub applies.
+8. **`configure_operation_logging` unit test.** A repeated call returns the
+   same single handler. `propagate` is False, the logger level is INFO, and
+   the root logger and an unrelated logger keep their levels. A logged message
+   is written to the stream as the bare line.
+
+None of these changes touch runtime or storage behaviour: they are Web
+config validation, the ops report, tests and docs. The DB gates run on
+`ecfef63` (`postgres-check` 38, `phase05a-check` 73, `phase06b1-check` 56)
+therefore stand, and were not rerun.
+
+## Merge of R-6 (#104) and gate rerun (2026-09-25)
+
+The branch merged `origin/main` @ `1309c71` (#104, R-6: an injectable offer
+TTL stored as an optional v3 Provider field).
+
+- The status-file conflict was resolved by keeping both rows.
+- The gated-skip pin now comes from `main`: 67 in total, with
+  `test_phase_04c_persistent_case_store.py` at 30. PR-16 adds no gated test,
+  so the per-file sum is `main`'s pin.
+- `ops-report.json` was regenerated:
+  - `postgres-check` now collects 39 test items;
+  - the pin reads 67.
+
+R-6 changed `runtime.py`, `postgres_repository.py` and the Provider
+underneath the Phase 07 scenes, so the three DB gates were rerun serially on
+the merged head, with the demo stopped:
+
+| Gate | Result |
+|---|---|
+| `make postgres-check` | 39 passed |
+| `make phase05a-check` | 73 passed (116.04 s) |
+| `make phase06b1-check` | 56 passed |
+
+`phase05a-check` also printed one `BrokenPipeError` traceback from the
+test-only fake gateway's server thread (`local_fast_fake_gateway.py`, `_send`).
+This happens when a timeout test's client disconnects before the fake writes
+its reply. The traceback came after the passing result, and no test failed.
+
+The demo scenes were not rerun. R-6 keeps the default TTL unchanged (1 h),
+so the scenes' behaviour is unchanged, and none of the three gates failed. The
+lane-run evidence above therefore stands.
+
+Final checks on the merged head: `make lint typecheck test web-check
+preflight` exited 0.
+- lint: passed.
+- mypy: 79 and 70 source files.
+- Runtime tests: 2150 passed, 67 skipped.
+- ML tests: 499 passed.
+- `ops-report.json is current`.
+- vitest: 269 passed, and the Web build passed.
+- Gated skips were 67 and matched the per-file pin.
 
 # PR-17: final reports
 
 Branch `docs/pr17-phase07-reports`, cut from `origin/feat/pr16-phase07-contract`
-@ `ecfef63` while PR-16 is in review. Docs only: no code, contract, schema,
+@ `ecfef63` while PR-16 was in review, then brought up to date with
+`origin/main` @ `abd1027` (PR-16 squash merged as #105, which includes #104)
+by a merge, not a rebase. Docs only: no code, contract, schema,
 test or committed `*-check` artifact changes. `harness/status.toml` is
 unchanged; it returns to `idle` in the final commit at the gate.
 
@@ -397,6 +485,9 @@ and the steps followed the README only.
 | benchmark check | `make benchmark-check` | 1 s | exit 0: "Phase 01B benchmark artifacts and ceiling gate are valid." |
 | regenerate | `make benchmark` | < 1 s | exit 0; 32 scenarios, 32 valid outcomes, 10 completed, 0 false completions, 0 leakage violations, `gate_passed: true` |
 | byte check | `git diff --exit-code`, on the two `data/manifests/phase-01b-*.json` and then on the whole tree | — | exit 0 both times; `git status --porcelain` was empty before and after |
+
+This record is for `ecfef63`, which pins 66 gated skips; `main` pins 67
+since #104, and the merged head's checks are recorded below.
 
 These wall times are for a warm machine: the pnpm store and the uv cache
 already held every package, so nothing was downloaded. A machine without
@@ -477,7 +568,7 @@ in `docs/limitations.md`.
 |---|---|---|
 | A-7f | closed by this PR | the docs now match `verify_completion` |
 | R-11b, B1-9b | recorded limit | decision 21 dropped contracts 1.2 (PR-15) |
-| R-6 | injectable offer TTL closed by #104 on `main` (after this branch's base); the pre-#61 one-day-manifest half stays a recorded limit | no migration of persisted Cases (A-11 log, `fix-r6-injectable-offer-ttl.md`) |
+| R-6 | injectable offer TTL closed by #104; the pre-#61 one-day-manifest half stays a recorded limit | no migration of persisted Cases (A-11 log, `fix-r6-injectable-offer-ttl.md`) |
 | D2-7, D2-8, D2-9 | recorded limit | the code is in frozen r2–r5 files, and the values are committed report bytes |
 | D3-5, D3-6 | recorded limit | `qwen_mlx.py` is frozen by the r4 execution contract |
 | D3-7 | accept-gap fixed (#74); field deletion recorded | the field is emitted in the committed trajectory schema |
@@ -492,21 +583,33 @@ in `docs/limitations.md`.
 DoD 1 is verified by root inspection, so the root must confirm this table
 against the primary evidence. Not checked here: each PR's merge commit.
 
-## PR-17 checks (this branch, no `PROXYLOOP_TEST_*` set)
+## PR-17 checks (no `PROXYLOOP_TEST_*` set)
 
-- `make check-layout`: exit 0.
-- `make lint`: exit 0.
+On the branch before the merge (base `ecfef63`):
+
+- `make check-layout`, `make lint`: exit 0.
 - `make test`: exit 0. Runtime 2113 passed, 66 skipped; ML 498 passed,
   1 skipped; every artifact check current, including `ops-report-check`.
-- `make preflight`: exit 0 (341 s). The same counts, vitest 268 passed, the
-  Web build passed, "Gated-skip counts match the pinned 66 per file".
+- `make preflight`: exit 0 (341 s); vitest 268; "Gated-skip counts match the
+  pinned 66 per file".
 - The tests that read the edited docs
   (`tests/contract/test_phase_03a0_architecture.py`,
   `test_phase_03a1_architecture.py`,
   `test_phase_03a1_hosted_rerun_architecture.py`,
   `tests/integration/test_contract_semantics_limits.py`): 22 passed.
-- This section was added after that run; `make preflight-fast` covers it.
-- Not run: the three real-dependency gates, the demo scenes, CI.
+
+On the merged head (`origin/main` @ `abd1027` merged; the tree differs from
+`main` only in PR-17's docs and harness files):
+
+- `make check-layout`, `make lint`: exit 0.
+- `make test`: exit 0 (324 s). Runtime 2150 passed, 67 skipped; ML 498
+  passed, 1 skipped; every artifact check current, including
+  `ops-report-check`.
+- `make preflight`: exit 0 (352 s); vitest 269 passed; the Web build passed;
+  "Gated-skip counts match the pinned 67 per file".
+- This section was edited after that run; `make preflight-fast` covers it.
+
+Not run: the three real-dependency gates, the demo scenes, CI.
 
 ## Phase gate (not run; runs at the gate)
 
@@ -520,18 +623,19 @@ final commit sets `harness/status.toml` back to `idle`.
 
 ## Open for the root (PR-17)
 
-- Resolved (root decision 2): PR-16 amends the contract for the #103
-  non-goal (review Minor 5); the PR-17 docs stay as written.
+- Resolved (root decision 2): PR-16 amended the contract for the #103
+  non-goal (amendment A3). After the merge, `docs/limitations.md` says the
+  restore is done by #103 and is no longer a non-goal.
 - Resolved (root decision 1, 2026-09-25): follow the primary logs. The
   build plan's PR-17 row is corrected, and `post-phase-03c-handoff.md` §4
   gains a dated correction note; its original sentence stays. Decision 17 in
   `audit-remediation-decisions.md` gets the same dated note (root-authorised),
   appended after its original text.
-- `harness/context/audit-remediation-status.md` still lists A-7f as open and
-  several merged PRs as in flight. That file is outside PR-17's file list.
-- `origin/main` moved after this branch's base: #104 (`1309c71`) closes the
-  offer-TTL half of R-6 and raises the gated-skip pin from 66 to 67. The
-  PR-17 docs already say so (R-6 in `docs/limitations.md`; the README no
-  longer hard-codes the skip count). The fresh-clone record above is for
-  `ecfef63` and says 66, which is what that head pins. After merging
-  `origin/main`, the gate's `make preflight` should print 67.
+- Done (root decision 3, scope extension): the final pass on
+  `harness/context/audit-remediation-status.md` closes A-7f, replaces the
+  stale in-flight table with the merged PRs #87–#105 (PR-17 pending), and
+  marks R-5, R-6, R-12, R-13b, R-17, R-19 and A-3 done with their PRs.
+- Resolved by the merge of `origin/main` @ `abd1027`: #104 closed the
+  offer-TTL half of R-6 and raised the gated-skip pin from 66 to 67. The
+  fresh-clone record above is for `ecfef63` and keeps 66, which that head
+  pins; the checks on the merged head below show 67.

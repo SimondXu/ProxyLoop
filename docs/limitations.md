@@ -15,8 +15,7 @@ keeps a short "not done" list of its own.
 
 ## Not done
 
-Everything below is not done, except the one Web item marked as built
-outside the phase. The sources are the Phase 07 contract ("Non-goals and hard
+Everything below is not done. The sources are the Phase 07 contract ("Non-goals and hard
 limits"), `harness/context/build-plan-to-complete.md` ("Blocked by the hard
 limits", "Do not do") and decisions 16–21 in
 `harness/context/audit-remediation-decisions.md`.
@@ -47,12 +46,10 @@ limits", "Do not do") and decisions 16–21 in
   (dropped by decision 19), and a `SlowWorkRequest.revision_feedback` field
   (decision 20). Their content is under "Evaluation-code limits" below.
 - **Web.** No free-text turn after Case creation, no Web view of channels or
-  of the Judge, and no UI redesign. The Phase 07 contract also lists "a Web
-  restore of a Case on a local backend after reload" as a non-goal, but #103
-  (merged before PR-16) added that restore, and the PR-16 lane run observed
-  it once on the distilled backend (contract amendment A2;
-  `harness/log/phase-07-portfolio-hardening.md`). It works; it was built
-  outside Phase 07.
+  of the Judge, and no UI redesign. (A Web restore of a Case on a local
+  backend after reload is done: #103 built it, the PR-16 lane run observed it
+  on the distilled backend, and contract amendment A3 removed it from the
+  non-goals; `harness/log/phase-07-portfolio-hardening.md`.)
 - **Hosted spend.** None in Phase 07. The spend before it is in
   [Cost](#cost).
 
@@ -127,8 +124,7 @@ limits", "Do not do") and decisions 16–21 in
   raw outputs came from the model; that needs the git-ignored adapter and a
   rerun (`ml/serving/README.md`).
 - **The local gate skips the database tests.** `make preflight` skips the
-  tests that need PostgreSQL or Temporal (66 at PR-16's head, 67 on `main`
-  after #104) and pins that count per file. A "preflight passed" covers none
+  67 tests that need PostgreSQL or Temporal and pins that count per file. A "preflight passed" covers none
   of them; `make postgres-check`, `make phase05a-check`
   and `make phase06b1-check` run them, one at a time (`docs/development.md`).
   The real-dependency gates do not themselves require zero gated skips

@@ -467,13 +467,13 @@
     "every_pinned_file_is_in_a_gate": true,
     "per_file": {
       "tests/integration/test_fast_under_temporal.py": 3,
-      "tests/integration/test_phase_04c_persistent_case_store.py": 29,
+      "tests/integration/test_phase_04c_persistent_case_store.py": 30,
       "tests/integration/test_phase_05a_case_runtime.py": 2,
       "tests/integration/test_phase_05a_temporal_workflow.py": 24,
       "tests/integration/test_phase_06b1_channel_runtime.py": 4,
       "tests/integration/test_phase_06b1_temporal.py": 4
     },
-    "total": 66
+    "total": 67
   },
   "gates": {
     "make_test_check_count": 23,
@@ -522,7 +522,7 @@
         ]
       },
       "postgres-check": {
-        "collected_test_items": 38,
+        "collected_test_items": 39,
         "files": [
           "tests/integration/test_phase_04c_persistent_case_store.py"
         ]
@@ -557,20 +557,23 @@
     }
   ],
   "not_measured_or_not_done": [
+    "production of any kind: production serving of the distilled adapter, real-model load, p95, capacity, concurrency, OOM, automatic fallback under load, production exactly-once effects, production monitoring, and production readiness (decision 18)",
+    "deployment, hosting, and release",
+    "Phase 06B2 and every real channel: real Providers, Gmail and OAuth, e-mail, MCP, SMS, Voice (LiveKit, SIP, telephony), and any credential",
     "V0 (a hosted frontier model in both slots), frontier-as-Fast, and a second-family Judge: not measured (budget; decision 17)",
     "a model Judge and any Judge verdict distribution (decisions 7 and 17)",
-    "production serving of the distilled adapter, real-model load, p95, capacity, concurrency, OOM, and automatic fallback under load (decision 18)",
-    "further training, data expansion, reruns, or promotion (decision 17)",
-    "Phase 06B2: real Providers, e-mail, MCP, SMS, Voice, and credentials",
-    "deployment and release",
+    "further training, data expansion, reruns, or promotion; Phase 03B stays NO_GO_STOP_PHASE03B (decision 17)",
+    "narrow contracts 1.2 (PR-15, dropped by decision 21)",
+    "the build-plan Do-not-do list: D3-5, D3-6, D1-10 to D1-12, D2-7 to D2-9, D3-7 to D3-9, A-9b, and SlowWorkRequest.revision_feedback",
+    "a Web free-text turn after Case creation, Web exposure of channels or the Judge, and any UI redesign",
+    "hosted spend of any kind (no budget is recorded)",
     "the local distilled and untuned split reports after the Judge seam (D6)",
-    "fresh-clone reproduction of the local model outputs (the adapter is git-ignored)",
-    "narrow contracts 1.2 (PR-15, dropped by decision 21)"
+    "fresh-clone reproduction of the local model outputs (the adapter is not committed)"
   ],
   "parity": {
     "caveats": "The distilled backend is a Local Opt-in Candidate, never promoted; decision 18's E1-E5 and the four Phase 03C caveats apply to every number (harness/context/audit-remediation-decisions.md).",
     "m1_stack_parity": {
-      "claim_boundary": "M1 stack parity only (E2): the trained-format prompts of the 240 Phase 03C held-out rows, generated sequentially on one Apple-silicon machine with MLX and the unmerged LoRA adapter, compared with the committed cloud outputs (vLLM, merged bf16 checkpoint, A100). It is not the product input path (M2 is pending), and it measures no p95, capacity, concurrency, OOM or production latency. The distilled backend is a local opt-in candidate, never promoted; the four Phase 03C caveats and E1-E5 of decision 18 (harness/context/audit-remediation-decisions.md) apply to every number. Integrity limits: --check verifies that every derived field, the row set and order, and each arm's identity follow from the recorded fields; it cannot verify that the raw outputs came from the model (that needs the git-ignored adapter and a rerun), and report_fingerprint is computed by this script over the document, a consistency check, not a signature.",
+      "claim_boundary": "see claim_boundary in data/experiments/phase-03c/local-parity/parity-report.json; it predates M2, which is reported below as m2_product_path",
       "labels": {
         "distilled": "local opt-in candidate",
         "untuned": "untuned local baseline"
