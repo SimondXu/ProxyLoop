@@ -1,10 +1,49 @@
 # Phase 07 — Portfolio Hardening
 
-**Status**: Drafted on 2026-09-24 for build-plan items PR-16 and PR-17
-(`harness/context/build-plan-to-complete.md`). Not active:
-`harness/status.toml` stays `idle` until the PR-16 implementation branch
-activates it (see "Harness status transitions"). The root decisions listed at
-the end must be taken before an `implementer` starts.
+**Status**: **Frozen** by the root orchestrator on 2026-09-25, for build-plan
+items PR-16 and PR-17 (`harness/context/build-plan-to-complete.md`). It was
+drafted on 2026-09-24. The phase is not active yet: `harness/status.toml`
+stays `idle` until the PR-16 implementation branch activates it (see "Harness
+status transitions"). Implementation starts only after PR-14
+(`feat/pr14-judge-seam`) merges, because Scene J asserts the Judge trace
+count, and only when the root gives the go.
+
+## Root decisions (2026-09-25)
+
+The root accepted every recommendation in "Root decisions needed" below. Each
+decision binds this contract.
+
+1. **D1.** This contract covers both PR-16 and PR-17, with one phase gate at
+   the end of PR-17.
+2. **D2.** The launcher gains port overrides: `--runtime-port`/`--web-port`,
+   with the Make variables `RUNTIME_PORT`/`WEB_PORT`. `apps/web/next.config.ts`
+   gains a build-time override of the Runtime address. The defaults stay
+   8000, 3000 and `http://127.0.0.1:8000`. Only loopback addresses are
+   accepted, and a port that is in use makes the command fail closed. The
+   launcher never picks another port on its own.
+3. **D3.** The Scene J journey driver (`make portfolio-demo-journey`) and its
+   committed, content-free artifact
+   `data/evaluation/phase-07-demo-journey-scripted.json` are in scope.
+4. **D4.** Browser verification uses scratch Python Playwright and is
+   recorded in the log. It is not committed, and the repository gains no
+   Playwright dependency and no browser in CI.
+5. **D5.** `make ops-report` writes a committed, deterministic
+   `data/evaluation/ops-report.json`. `make ops-report-check` joins
+   `make test`. The report reads only committed files, plus the test counts
+   from `pytest --collect-only`.
+6. **D6.** The distilled and untuned split reports are not regenerated. They
+   stay the pre-Judge observed artifacts (v1), labelled as such.
+7. **D7.** The distilled scene is one manual run recorded in the log. It has
+   no committed artifact and no reload. A run that the machine cannot host is
+   reported as blocked, never as passed and never skipped silently.
+8. **D8.** The final gate runs on PR-17's head once it is up to date with
+   `main`. After the squash merge, the tree of `origin/main` must equal the
+   tested tree. There is no separate gate-only PR.
+9. **D9.** The docs, the narration and the completion claim describe the
+   product's real order, as stated under "Objective", not the DoD's narrative
+   order.
+
+Also taken: decision 21 (PR-15 dropped; see the end of this contract).
 
 ## Authorization
 
@@ -500,7 +539,8 @@ Mapped to the build-plan Definition of done.
 
 ## Root decisions needed
 
-Each decision below carries the drafter's recommendation.
+Each decision below carries the drafter's recommendation. All nine were
+accepted on 2026-09-25; see "Root decisions (2026-09-25)" at the top.
 
 | # | Decision | Recommendation |
 |---|---|---|
