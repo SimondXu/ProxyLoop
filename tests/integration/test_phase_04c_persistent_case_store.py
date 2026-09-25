@@ -760,6 +760,56 @@ def test_postgres_rejects_relational_revision_tampering(
     assert "revision" not in str(raised.value)
 
 
+def test_postgres_keeps_an_injected_offer_ttl_and_checks_the_offer_expiry(
+    repository: PostgresCaseRepository,
+) -> None:
+    # R-6: the TTL is stored with the Case, so a fresh repository regenerates
+    # the 48 h offer, a default-TTL Runtime approves it after 25 hours, and a
+    # tampered expires_at still fails the deterministic comparison.
+    database_url = os.environ["PROXYLOOP_TEST_DATABASE_URL"]
+    ttl = timedelta(hours=48)
+    runtime = ThinAgentRuntime(
+        repository,
+        clock=_clock(BASE_TIME, BASE_TIME + timedelta(minutes=1)),
+        offer_ttl=ttl,
+    )
+    _, approval = _waiting(runtime)
+    assert approval.expires_at == BASE_TIME + ttl
+    waiting = PostgresCaseRepository(database_url).get(CASE_ID)
+    assert waiting is not None
+    assert waiting.provider.offer_ttl == ttl
+    assert waiting.provider.state.value == "awaiting_approval"
+
+    completed = ThinAgentRuntime(
+        PostgresCaseRepository(database_url),
+        clock=_clock(BASE_TIME + timedelta(hours=25)),
+    ).approve(CASE_ID, approval.approval_id)
+    assert completed.execution_count == 1
+    final = PostgresCaseRepository(database_url).get(CASE_ID)
+    assert final is not None
+    assert final.snapshot.case.phase is CasePhase.COMPLETE
+    assert final.provider.offer_ttl == ttl
+
+    with psycopg.connect(database_url) as connection:
+        stored = connection.execute(
+            f"SELECT payload->'provider_offer_ttl_seconds' FROM {TABLE} "
+            "WHERE case_id = %s",
+            (CASE_ID,),
+        ).fetchone()
+        assert stored == (172800,)
+        connection.execute(
+            f"UPDATE {TABLE} SET payload = jsonb_set(payload, %s::text[], %s) "
+            "WHERE case_id = %s",
+            (
+                ["snapshot", "offers", "0", "expires_at"],
+                Jsonb((BASE_TIME + ttl + timedelta(hours=1)).isoformat()),
+                CASE_ID,
+            ),
+        )
+    with pytest.raises(RuntimeError, match="stored Case payload is invalid"):
+        repository.get(CASE_ID)
+
+
 def test_postgres_rejects_version_one_extra_payload_fields(
     repository: PostgresCaseRepository,
 ) -> None:

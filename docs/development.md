@@ -129,7 +129,7 @@ tests also need `PROXYLOOP_TEST_TEMPORAL_ADDRESS`:
 - `test_fast_under_temporal.py` (3: time-skipping Workflow tests on an
   in-memory repository, gated on `PROXYLOOP_TEST_TEMPORAL_ADDRESS` alone
   like the re-drive test below; run in `phase05a-check`)
-- `test_phase_04c_persistent_case_store.py` (29 tests)
+- `test_phase_04c_persistent_case_store.py` (30 tests)
 - `test_phase_05a_case_runtime.py` (2)
 - `test_phase_05a_temporal_workflow.py` (24)
 - `test_phase_06b1_channel_runtime.py` (4: three through a fixture imported
@@ -138,7 +138,7 @@ tests also need `PROXYLOOP_TEST_TEMPORAL_ADDRESS`:
   starts the Temporal test server)
 - `test_phase_06b1_temporal.py` (4)
 
-With the variables unset, `make preflight` exits 0 and skips those 66 tests,
+With the variables unset, `make preflight` exits 0 and skips those 67 tests,
 so a "preflight passed" claim covers none of them. `unit-test` writes the
 runtime pytest JUnit report to `.gate/runtime-junit.xml` (git-ignored); the
 last preflight step counts the tests skipped with a `PROXYLOOP_TEST_*` reason,
