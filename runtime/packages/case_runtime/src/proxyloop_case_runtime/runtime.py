@@ -72,7 +72,10 @@ from proxyloop_contracts import (
     planning_basis_fingerprint,
 )
 from proxyloop_provider_simulator.episode import Phase01AEpisode
-from proxyloop_provider_simulator.provider import FictionalMobileProvider
+from proxyloop_provider_simulator.provider import (
+    DEFAULT_OFFER_TTL,
+    FictionalMobileProvider,
+)
 from proxyloop_telecom_domain import (
     AppliedOfferConfirmation,
     CompletionVerification,
@@ -117,6 +120,9 @@ TransitionSchemaVersion = Literal["phase-05a-v1", "phase-06b1-v1"]
 DeliveryStatus = Literal["pending", "accepted", "delivered", "bounced"]
 RUNTIME_PROVIDER_CONFIG = "pine-mobile:runtime-v1"
 RUNTIME_MANIFEST_VERSION = "phase-04a-runtime-v1"
+# A runtime Case's goal deadline, and so its manifest, ends this long after
+# creation (A-11). An offer issued at creation cannot outlive it (R-6).
+_CASE_DEADLINE_WINDOW: Final = timedelta(days=9)
 SCRIPTED_CASE_ID = Phase01AEpisode.success().case.case_id
 # The Runtime-authored dialogue line after each applied consumer event; a
 # caller can never append this event type.
@@ -231,7 +237,15 @@ class ThinAgentRuntime:
         fast: FastAdapter | None = None,
         slow: SlowAdapter | None = None,
         judge: JudgeAdapter | None = None,
+        offer_ttl: timedelta = DEFAULT_OFFER_TTL,
     ) -> None:
+        # The fictional Provider's offer lifetime; approvals expire with it.
+        # Whole seconds, because PostgreSQL storage keeps it as seconds (R-6).
+        if not timedelta(0) < offer_ttl <= _CASE_DEADLINE_WINDOW:
+            raise ValueError("offer_ttl must be positive and within the Case deadline")
+        if offer_ttl % timedelta(seconds=1):
+            raise ValueError("offer_ttl must be a whole number of seconds")
+        self._offer_ttl = offer_ttl
         self.repository = (
             repository if repository is not None else InMemoryCaseRepository()
         )
@@ -771,7 +785,7 @@ class ThinAgentRuntime:
             mobile_hotspot_required=mobile_hotspot_required,
             device_financing_change_forbidden=device_financing_change_forbidden,
         )
-        provider = FictionalMobileProvider()
+        provider = FictionalMobileProvider(offer_ttl=self._offer_ttl)
         offer, offer_evidence = provider.issue_offer(
             case,
             issued_at=created_at,
@@ -2019,7 +2033,7 @@ def _case_at(case: Case, created_at: datetime) -> Case:
         update={
             "created_at": created_at,
             "updated_at": created_at,
-            "deadline": created_at + timedelta(days=9),
+            "deadline": created_at + _CASE_DEADLINE_WINDOW,
         }
     )
     constraints = tuple(
