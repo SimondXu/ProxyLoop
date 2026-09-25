@@ -526,6 +526,21 @@ All items are root decisions, applied:
   - The stale "Pending (after PR-9a lands)" list was replaced by a status
     note.
 
+### Merge and gates after the remediation (`2bbd622`, main @ `37f6bab`, #99 PR-13)
+
+- Conflict: the status file only (the PR-9b and PR-13 rows both kept; PR-11's
+  row unchanged).
+- `make lint`: passed. `make typecheck`: passed (runtime 76, ml 70 source
+  files). `make test`: passed (runtime 1717 passed, 66 gated skips; ml 499
+  passed). Every `*-check` passed, including M1 `stack parity held`, the
+  product-path report, and "Fast/Slow split reports are current" with the
+  new identity and measured-call checks. `make preflight`: passed
+  (format-check, web 189 tests and the build, `ml/uv.lock` unchanged, gated
+  skips matching the pin of 66). No `PROXYLOOP_TEST_*` set; no DB lane (no
+  service change on this branch).
+- `git diff origin/main -- ml/pyproject.toml ml/uv.lock …/qwen_mlx.py
+  …/fast_output.py` is empty; no weight files are tracked.
+
 Known limit (on the follow-up list): the Web does not restore a Case on a
 local Fast backend after a page reload. Restore requires
 `adapter_mode=scripted` (with temporal and postgres), so a reload shows
