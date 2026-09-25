@@ -70,6 +70,9 @@ const EMPTY_INTAKE: IntakeDraft = {
 };
 
 const INTAKE_FIELD_ORDER: readonly IntakeField[] = ["current", "target", "hotspot", "financing"];
+// Adapter modes whose Cases are restored after a reload under Temporal + PostgreSQL:
+// the scripted profile and the local opt-in Fast backends. Hosted `model` is excluded.
+const RESTORABLE_ADAPTER_MODES: readonly string[] = ["scripted", "local_distilled_candidate", "local_untuned_baseline"];
 
 const PROPOSAL_FIELDS: Record<IntakeProposalField, IntakeField> = {
   current_monthly_total: "current",
@@ -1009,10 +1012,10 @@ export function ConversationWorkspace() {
       if (
         readiness.orchestration_mode !== "temporal" ||
         readiness.storage_mode !== "postgres" ||
-        readiness.adapter_mode !== "scripted"
+        !RESTORABLE_ADAPTER_MODES.includes(readiness.adapter_mode ?? "")
       ) {
         throw new RuntimeClientError(
-          "Recovery requires the durable Temporal/PostgreSQL/scripted Runtime profile. The direct Runtime makes no restart-recovery claim.",
+          "Recovery requires the durable Temporal/PostgreSQL Runtime in scripted Runtime mode. The direct Runtime makes no restart-recovery claim.",
           "invalid",
           null,
           "dependency_not_ready",

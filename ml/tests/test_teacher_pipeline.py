@@ -786,6 +786,40 @@ def slow_client(contexts: dict[str, CandidateContext]) -> _Client:
     return _Client(_SlowCompletions(fast.completions.by_user_prompt))
 
 
+@dataclass
+class _OverlapCompletions(_Completions):
+    """The fake relay that proves ``wave`` calls were in flight at once.
+
+    The first ``wave`` calls wait at a barrier that opens only when all of
+    them have arrived, so it opens only if ``wave`` workers overlap; a
+    sequential run breaks it on the timeout instead.  Later calls take 10 ms
+    so workers keep interleaving their writes.
+    """
+
+    wave: int = 8
+    overlapped: bool = False
+    _entered: int = 0
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    _barrier: threading.Barrier = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._barrier = threading.Barrier(self.wave, action=self._opened, timeout=10.0)
+
+    def _opened(self) -> None:
+        self.overlapped = True
+
+    def create(self, **kwargs: object) -> SimpleNamespace:
+        with self._lock:
+            self._entered += 1
+            in_first_wave = self._entered <= self.wave
+        if in_first_wave:
+            self._barrier.wait()
+        else:
+            time.sleep(0.01)
+        with self._lock:
+            return super().create(**kwargs)
+
+
 @pytest.fixture(scope="module")
 def forty_rows(all_rows: tuple[PromptSetRow, ...]) -> tuple[PromptSetRow, ...]:
     return select_pilot_rows(all_rows, per_family=4, seed=0)
@@ -815,9 +849,12 @@ def test_concurrent_sampling_matches_the_sequential_run(
     )
 
     ledger = TeacherLedger(usd_ceiling=5.0)
-    client = slow_client(forty_contexts)
+    concurrency = 8
+    completions = _OverlapCompletions(
+        fake_client(forty_contexts).completions.by_user_prompt, wave=concurrency
+    )
+    client = _Client(completions)
     progress_calls: list[tuple[int, int]] = []
-    started = time.perf_counter()
     run = sample_teacher(
         forty_rows,
         adapter(client, ledger),
@@ -825,12 +862,11 @@ def test_concurrent_sampling_matches_the_sequential_run(
         out_dir=tmp_path / "concurrent",
         ledger=ledger,
         progress=lambda done, total: progress_calls.append((done, total)),
-        concurrency=8,
+        concurrency=concurrency,
     )
-    elapsed = time.perf_counter() - started
 
-    # 80 calls x 10 ms sequentially is >= 0.8 s; eight workers overlap.
-    assert elapsed < 0.6
+    # All eight workers had a call in flight at once (no wall-clock bound).
+    assert completions.overlapped is True
     assert run.prompts_sampled == 40 and run.prompts_skipped == 0
     assert run.calls_written == 80 == len(client.completions.calls)
     assert not run.budget_stopped

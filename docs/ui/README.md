@@ -26,8 +26,10 @@ authoritative GET response after the approval command.
 After Case creation, confirmed intake facts are immutable in this local demo.
 The browser stores only a versioned Case locator, those four facts, and at most
 one exact pending command for safe retry; it does not persist the transcript.
-Reload recovery is claimed only when readiness reports scripted Temporal and
-PostgreSQL. Changing one requires restarting the local Runtime and choosing
+Reload recovery is claimed only when readiness reports Temporal and PostgreSQL
+with `adapter_mode` `scripted`, `local_distilled_candidate`, or
+`local_untuned_baseline`; direct orchestration and the hosted `model` get no
+recovery claim. Changing one requires restarting the local Runtime and choosing
 `New task`; there is no PATCH or second-Case mutation path.
 
 See [research.md](research.md) for the evidence boundary, [user-flows.md](user-flows.md)
