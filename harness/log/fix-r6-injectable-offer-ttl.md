@@ -120,7 +120,10 @@ Merged `main` @ `e543d64` (#103) first: clean, pin unchanged at 67.
 - `make lint`, `make typecheck`: passed. `make preflight` (runs `make test`):
   passed; runtime 2105 passed, 67 skipped; ml 498 passed, 1 skipped; vitest
   256 passed; committed checks current; gated skips 67 matching the pin.
-- `make postgres-check` after the codec change: not yet run (DB lane).
+- DB gates after the codec change, serially on `57377e4` (`main` still at
+  `e543d64`), same local services and command-line variables:
+  `make postgres-check` 39 passed, `make phase05a-check` 73 passed,
+  `make phase06b1-check` 56 passed.
 
 ## Known limits
 

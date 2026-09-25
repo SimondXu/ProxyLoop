@@ -43,8 +43,8 @@ forgeries do not raise. After the fixes all 34 pass.
 - `make preflight` (runs `make test`): passed; runtime 2105 passed,
   67 skipped; ml 498 passed, 1 skipped; vitest 256 passed; committed checks
   current; gated skips 67, matching the per-file pin.
-- `make postgres-check`: not yet rerun after the codec change (needs the DB
-  lane). Before the fixes, on `4442472`: `postgres-check` 39,
+- DB gates after the fixes, on `57377e4`: `postgres-check` 39,
+  `phase05a-check` 73, `phase06b1-check` 56 passed. Before the fixes, on `4442472`: `postgres-check` 39,
   `phase05a-check` 73, `phase06b1-check` 56 passed.
 
 Re-review: the root decides whether the I-1 change warrants one.
