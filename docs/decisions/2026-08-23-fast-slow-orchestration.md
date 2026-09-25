@@ -189,3 +189,28 @@ time of this amendment (audit A-3):
 
 The "Capabilities and side effects" paragraph is retained as the 2026-08-23
 decision; where it conflicts with this amendment, the amendment wins.
+
+## Amendment 2026-09-24 — A-3 coordinator admission check (PR-13)
+
+Amended 2026-09-24 (build-plan PR-13, decisions 19 and 20; spec
+`harness/context/pr13-slow-drives-intent-design.md`). This supersedes the
+previous amendment's bullet "The capability executor is therefore the only
+enforcement point"; its other bullets stand, and no wire contract changes.
+
+- On the Runtime path the join is checked when a Slow result is admitted.
+  The Runtime's single coordinator runs `slow_proposal_violations`
+  (`runtime/packages/agent_core/src/proxyloop_agent_core/proposal_admission.py`)
+  after `validate_slow_result` accepts a result: at most one capability
+  proposal paired with one action proposal, the capability in the manifest
+  and allowing the action type, nothing expired, the `offer_id` argument
+  naming the action's current offer and material terms, the Case and strategy
+  bindings, and delegated authority. Any violation rejects the whole result
+  (`slow_proposal_*` codes on a `REJECTED` Slow trace); the proposal is never
+  silently stripped.
+- The executor still checks the join at execution and stays authoritative
+  there. `validate_slow_result`, the ML evaluator's validity function, does
+  not run the admission check, so evaluation paths are unchanged.
+- The admitted proposal becomes the Case's standing proposal. The Runtime
+  compiles an Action Intent only from a standing proposal that is admissible
+  at the event time and whose offer deterministic policy finds compliant;
+  the Runtime, not the model, still authors the intent and the approval.

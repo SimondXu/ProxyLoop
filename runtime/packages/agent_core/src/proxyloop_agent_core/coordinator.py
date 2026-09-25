@@ -44,6 +44,7 @@ from .interfaces import (
     UsageReportingFastAdapter,
     UsageReportingSlowAdapter,
 )
+from .proposal_admission import SlowProposalCheck
 from .router import DeterministicRouter, RouteRequest
 
 _T = TypeVar("_T")
@@ -112,6 +113,11 @@ class CaseCoordinator:
     the gate's codes, withholds the decision, and sets
     ``fast_disclosure_rejected``. Without a gate the behaviour is unchanged.
 
+    ``slow_proposal_check`` (the product Runtime only) runs on a Slow output
+    that passed ``validate_slow_result``. A non-empty verdict rejects the Slow
+    audit with the check's codes (the trace records them) and withholds the
+    whole result. Without a check the behaviour is unchanged.
+
     ``capture_fast_failures`` (the product Runtime only) turns a
     ``FastAdapterFailure`` raised by the Fast call into a ``FAILED`` Fast trace
     and ``fast_failed``; there is no retry and no other adapter. Any other
@@ -131,6 +137,7 @@ class CaseCoordinator:
         monotonic: Callable[[], float] | None = None,
         fast_gate: FastGate | None = None,
         capture_fast_failures: bool = False,
+        slow_proposal_check: SlowProposalCheck | None = None,
     ) -> None:
         self._router = router or DeterministicRouter()
         self._lock = RLock()
@@ -139,6 +146,7 @@ class CaseCoordinator:
         self._monotonic = monotonic
         self._fast_gate = fast_gate
         self._capture_fast_failures = capture_fast_failures
+        self._slow_proposal_check = slow_proposal_check
 
     @property
     def current_snapshot(self) -> CaseContextSnapshot | None:
@@ -253,6 +261,12 @@ class CaseCoordinator:
                 expected_request=slow_request,
                 evaluated_at=request.created_at,
             )
+            if audit.accepted and self._slow_proposal_check is not None:
+                proposal_codes = self._slow_proposal_check(
+                    slow_output, request.snapshot, request.created_at
+                )
+                if proposal_codes:
+                    audit = replace(audit, accepted=False, reason_codes=proposal_codes)
             audits.append(audit)
             if traced:
                 traces.append(

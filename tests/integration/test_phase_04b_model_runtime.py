@@ -153,8 +153,9 @@ def _adapter(
 
 
 def test_model_backed_runtime_reaches_pending_approval_with_fake_transport() -> None:
+    # PR-13: the approval follows Slow's accept proposal, not the event.
     adapter, transport = _adapter(
-        _Response(_slow_output()),
+        _Response(_slow_output_proposing_accept()),
         _Response(_fast_output()),
     )
     runtime = ThinAgentRuntime(fast=adapter, slow=adapter)
@@ -296,7 +297,7 @@ def test_model_mode_requires_explicit_complete_process_configuration() -> None:
     with pytest.raises(ValueError, match="requires API key"):
         runtime_from_environment(mode="model", environ={})
     scripted = runtime_from_environment(mode="scripted", environ={})
-    assert scripted._slow.__class__.__name__ == "ScriptedSlowAdapter"
+    assert scripted._slow.__class__.__name__ == "ScriptedProposingSlowAdapter"
 
 
 @pytest.mark.parametrize("timeout", [math.nan, math.inf, -math.inf])
