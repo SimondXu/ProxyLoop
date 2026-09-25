@@ -306,16 +306,16 @@ Apple M4 Pro and measured it twice over the same 240 held-out rows
   where the true act is counter. D3, the declared Provider-state defaults,
   changed no held-out row. All 200 generated rows lose `applied_changes`,
   and no product prompt equals its trained prompt.
-- **Latency.** Distilled product-path generation p50 23.9 s, max 32.5 s;
-  64 of 200 ran longer than 25 s by `generation_ms` (65 by `wall_ms`),
-  roughly a third, and each would end as `fast_adapter_timeout` with the
-  fallback line. Untuned p50 10.4 s, max 12.9 s. One machine, sequential,
-  other work running on it; descriptive, not p95. The committed M2 report
-  carries only the maximum (32,544 ms) and the total; the p50 and the
-  over-25 s count are recorded in the PR-9b log from the git-ignored per-row
-  run files.
+- **Latency.** Distilled product-path generation: median 23,928 ms, max
+  32,544 ms; 64 of 200 ran longer than 25 s by `generation_ms` (65 by
+  `wall_ms`), roughly a third, and each would end as `fast_adapter_timeout`
+  with the fallback line. Untuned: median 10,429 ms, max 12,872 ms, none over
+  25 s. Computed from `arms.<arm>.generated_rows[*].generation_ms` and
+  `.wall_ms` in `data/experiments/phase-03c/local-parity/product-path-report.json`. One machine, sequential, other work running on it;
+  descriptive, not p95.
 - **In the running product.** The local Fast/Slow split runs saw the same:
-  on both backends 8/8 Fast calls succeeded and were withheld by the gate
+  on both backends all 8 Fast calls returned output and were rejected by the
+  gate (trace `rejected` 8; fallback cause `gate` 8)
   (`data/evaluation/fast-slow-split-distilled.json`, `-untuned.json`), and
   in the Phase 07 Scene A-D run the consumer saw the fallback line "I am
   checking that and will update you." (`harness/log/phase-07-portfolio-hardening.md`).

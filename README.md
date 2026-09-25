@@ -56,10 +56,21 @@ measurements offline. Details, expected output, and troubleshooting are in
 
 ## Reproduce the simulator benchmark
 
-This starts no container and needs no credentials and no model. From a
-fresh clone, with `uv`, `pnpm`, Python 3.12, Node 22 and the Docker CLI
-(`make preflight` runs `docker compose config --quiet`, which only validates
-`compose.yaml`):
+This starts no container and needs no credentials and no model.
+Prerequisites on `PATH`:
+
+- `uv`, which provides the Python 3.12 environments (`requires-python =
+  ">=3.12,<3.13"`);
+- `python3` 3.11 or newer, because the Makefile calls it directly and
+  `scripts/validate_layout.py` needs `tomllib`;
+- Node 22 and `pnpm` (the root `package.json` pins `pnpm@10.31.0`;
+  `corepack enable` provides it);
+- the Docker CLI with the Compose v2 plugin (`docker compose`): `make
+  preflight` runs `docker compose config --quiet`, which only validates
+  `compose.yaml`.
+
+CI pins uv 0.8.4, Node 22.15.1, Python 3.12.10 and pnpm 10.31.0
+(`.github/workflows/ci.yml`, `package.json`). Then, from a fresh clone:
 
 ```bash
 git clone https://github.com/SimondXu/ProxyLoop.git && cd ProxyLoop
@@ -106,7 +117,7 @@ appears only as a Model Trace.
 |---|---|---|
 | Intake | Slow reads the free text into a goal proposal | A deterministic parser; no model is called |
 | Planning | a hosted frontier Slow | scripted Slow in every gate and in the demo; a hosted Slow exists only in opt-in direct model mode (decision 17) |
-| Dialogue | a Fast model speaks every turn under a disclosure gate, against an LLM Provider counterpart | one consumer turn after creation, with one scripted line; the opt-in local distilled model's output was withheld by the gate in every measured call (0/240 product-path rows, 8/8 split-run calls), so the consumer sees the fallback line; the Provider side is the scripted simulator |
+| Dialogue | a Fast model speaks every turn under a disclosure gate, against an LLM Provider counterpart | one consumer turn after creation, with one scripted line; the opt-in local distilled model delivered no line in any measured call (product path 0/240 delivered: 40 refused before the model, 200/200 gated outputs withheld; split runs: 8/8 calls rejected by the gate), so the consumer sees the fallback line; the Provider side is the scripted simulator |
 | Judge | a model Judge, a second model family where possible, one Slow retry on revise | a scripted Judge that accepts on the default path; the retry runs only in tests |
 | Status block | one renderer feeding both model prompts | a Web-only Status Bar built from the browser projection; it is not a model prompt |
 | Approval | exact pins, approve and reject | exact pins and expiry; approve only, no reject control |
@@ -166,8 +177,9 @@ flowchart LR
 The design choices that matter:
 
 - **Models propose, code decides.** A deterministic router splits each turn
-  into a *Fast* view (small project-owned model, or the scripted policy) and
-  optional *Slow* work (hosted reasoner). Both return typed structures that a
+  into a *Fast* view (the scripted policy by default, or an opt-in local
+  model) and optional *Slow* work (scripted in the demo and every gate; a
+  hosted reasoner is possible only in opt-in direct model mode). Both return typed structures that a
   policy gate checks against current Case state before anything happens.
 - **Approvals are version-bound.** An approval pins the exact offer revision;
   a stale or drifted approval is rejected, not silently re-applied.
@@ -242,9 +254,8 @@ model because the family has no offer; the Disclosure Gate withholds all
 between the no-offer refusals and a missing input field (`applied_changes`,
 D4). About a third of the distilled calls ran over the 25 s timeout on one
 Apple M4 Pro. The untuned baseline delivers 8/240. A consumer on the local
-distilled backend sees the fixed fallback line. Sources:
-`data/experiments/phase-03c/local-parity/product-path-report.json`; the
-latency figure is in `harness/log/feat-pr9b-local-fast-gateway.md`.
+distilled backend sees the fixed fallback line. Source, including the
+per-row latencies: `data/experiments/phase-03c/local-parity/product-path-report.json`.
 
 Earlier runs — the
 evaluation harness, untuned baselines, a hosted reliability rerun, a

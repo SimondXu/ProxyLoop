@@ -548,7 +548,8 @@ closed by a merged PR. The sources are `harness/context/audit-remediation-status
 | C-3 | Important | #40 (P0-3b follow-up #46) |
 | E-1, E-2, E-3 | Important | #43 |
 | E-5, E-6 | Important | #63 |
-| D2-1, D3-3 (claim); D2-4, F-1, C-6 | Blocking; Important | #44 (claims corrected, r5 reworded) |
+| D2-1, D3-3 (claim); D2-4, F-1 | Blocking; Important | #44 (claims corrected, r5 reworded) |
+| C-6 | Important | #44; residual "signed" wording closed in PR-17 |
 | D2-5, D2-2 | Important | #48, #59 |
 | B1-5/D1-2, B1-4, D1-7 | Important | #47 |
 | D1-3, D1-4, D2-3 | Important | #49 |
@@ -620,6 +621,45 @@ to date with `origin/main` (PR-16 merged). In one fresh worktree, after
 `make phase06b1-check`. Then CI and the independent review, then the squash
 merge and the tree-identity check on `git rev-parse origin/main^{tree}`. The
 final commit sets `harness/status.toml` back to `idle`.
+
+## Independent review (PR-17): Request Changes, no Blocking
+
+The root accepted every finding; all are applied.
+
+- **I-1.** The M2 latencies are derivable from the committed
+  `product-path-report.json` (`arms.<arm>.generated_rows[*].generation_ms`
+  and `.wall_ms`); the earlier "per-row files are not committed" sentence
+  was wrong. Recomputed from that file: distilled median 23,928 ms, max
+  32,544 ms, 64/200 over 25 s by `generation_ms` (65 by `wall_ms`); untuned
+  median 10,429 ms, max 12,872 ms. `docs/ml-evidence.md`,
+  `docs/limitations.md` and the README cite the file.
+- **M-1.** "8/8 succeeded and were withheld" now reads "returned output and
+  were rejected by the gate (trace `rejected` 8; fallback cause `gate` 8)",
+  checked against both split reports.
+- **M-2.** C-6: "#44; residual wording closed in PR-17".
+- **M-3.** Status-file rows B1-9 → #81, G-1 → #90 (pin now 67), R-15 → #90.
+- **M-4.** The README's dialogue row reads "0/240 delivered: 40 refused
+  before the model, 200/200 gated outputs withheld".
+- **M-5.** The architecture table gains the Consumer/Provider/Channel Event
+  node and the two contract nodes (`FastTurnDecision` `contracts.py:738`;
+  `SlowWorkResult` `:1464` and `StrategyPacket` `:302`).
+- **M-6.** Data and Training Flow: step 2's real status (a license gate that
+  has admitted only the project's synthetic source), and the Phase 03C gaps
+  against step 11 (one seed, no paired Fast/Slow baselines, held out by
+  family only, with both provider configurations in the held-out rows).
+- **M-7.** README prerequisites: `python3` 3.11 or newer (`tomllib`), the
+  Compose v2 plugin, and the CI pins (uv 0.8.4, Node 22.15.1, Python 3.12.10
+  from `.github/workflows/ci.yml`; pnpm 10.31.0 from `package.json`).
+- **M-8.** The cost table states in its first row that its rows are not
+  additive.
+- **M-9.** Edits outside the contract's PR-17 file list, each authorised by
+  the root: `docs/portfolio-demo.md` (the C-6 residual "signed"), the
+  build-plan PR-17 row and the `post-phase-03c-handoff.md` correction note
+  (decision 1), the decision-17 correction note, and the final pass on
+  `harness/context/audit-remediation-status.md` (decision 3). `docs/README.md`
+  gained the limitations link and the 03C and 07 rows.
+- **Nit.** The README's design bullet says Slow is scripted and a hosted
+  reasoner is possible only in opt-in direct model mode.
 
 ## Open for the root (PR-17)
 

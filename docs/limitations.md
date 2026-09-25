@@ -65,21 +65,20 @@ limits", "Do not do") and decisions 16–21 in
   `ml/serving/README.md`, "M2 result".) Details and causes are in
   [ML evidence](ml-evidence.md#the-product-path-a-negative-result).
 - **Every local Fast call in the split runs was gate-withheld.** On both the
-  distilled and the untuned backend, 8/8 Fast calls succeeded and were
-  withheld by the gate, so `fast_model_line_rate` is 0.0
+  distilled and the untuned backend, all 8 Fast calls returned output and
+  were rejected by the gate (trace `rejected` 8; fallback cause `gate` 8),
+  so `fast_model_line_rate` is 0.0
   (`data/evaluation/fast-slow-split-distilled.json`,
   `data/evaluation/fast-slow-split-untuned.json`). In the PR-16 Scene A-D
   run the consumer saw the fallback line
   (`harness/log/phase-07-portfolio-hardening.md`).
 - **A third of distilled product-path calls would time out.** 64 of 200
   distilled product-path generations ran longer than 25 s by
-  `generation_ms` (65 by `wall_ms`); p50 23.9 s, max 32.5 s. At the 25 s
-  default each ends as `fast_adapter_timeout` and delivers the fallback
-  line. One Apple M4 Pro, sequential, other work running on it: descriptive,
-  not p95 (`harness/log/feat-pr9b-local-fast-gateway.md`,
-  `ml/serving/README.md`). The committed M2 report carries only the maximum
-  (32,544 ms) and the total; the p50 and the over-25 s count come from the
-  git-ignored per-row run files and are recorded in the log.
+  `generation_ms` (65 by `wall_ms`); median 23,928 ms, max 32,544 ms
+  (untuned: median 10,429 ms, max 12,872 ms). At the 25 s default each ends
+  as `fast_adapter_timeout` and delivers the fallback line. One Apple M4
+  Pro, sequential, other work running on it: descriptive, not p95. Computed
+  from `arms.<arm>.generated_rows[*]` in `data/experiments/phase-03c/local-parity/product-path-report.json`.
 - **The distilled model still names a restricted field** 4 times in 400
   in-family dev rows (untuned: 7). The held-out "zero policy violations"
   is partly untested: no held-out row can trip the disclosure detector
@@ -291,6 +290,7 @@ cost. Modal is a console reading, not a repository artifact.
 
 | Item | Figure | Source |
 |---|---|---|
+| **Rows are not additive** | The Phase 03C relay rows overlap: the v6 run is part of "Stage 1c, all runs", which is part of "Stages 1b and 1c" (≈ USD 146). The accounted estimates also differ from the real usage. Do not sum the column. | — |
 | Phase 03A1-B (r1) hosted conditions | ≈ USD 1.58 (sum of `actual_cost_microusd` over conditions) | `data/evaluation/phase-03a1-baselines-report.json` |
 | Phase 03A1-E (r2) | one hosted failure of unknown cost | `docs/ml-evidence.md`, `PLANS.md` |
 | Phase 03A1-R (r4) | ≈ USD 3.11 | `data/evaluation/phase-03a1-r4-hosted-rerun-report.json` (`actual_cost_microusd` 3,114,128) |
