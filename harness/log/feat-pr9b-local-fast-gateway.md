@@ -541,14 +541,15 @@ All items are root decisions, applied:
 - `git diff origin/main -- ml/pyproject.toml ml/uv.lock …/qwen_mlx.py
   …/fast_output.py` is empty; no weight files are tracked.
 
-Known limit (on the follow-up list): the Web does not restore a Case on a
-local Fast backend after a page reload. Restore requires
-`adapter_mode=scripted` (with temporal and postgres), so a reload shows
-"Runtime state not verified" even though the Runtime still returns the Case
-and its line (Browser check above).
+Known limit at merge, since closed by `fix/followup-web-restore-flaky`
+(log `harness/log/fix-followup-web-restore-flaky.md`): the Web did not
+restore a Case on a local Fast backend after a page reload, because restore
+required `adapter_mode=scripted` (with temporal and postgres), so a reload
+showed "Runtime state not verified" even though the Runtime still returned
+the Case and its line (Browser check above). The Web now also restores under
+temporal + postgres with `local_distilled_candidate` or
+`local_untuned_baseline`; direct mode and hosted `model` stay excluded.
 
 ### Remaining
 
-1. Follow-up (not PR-9b): the Web's restore rule for a Case on a local Fast
-   backend (known limit above).
-2. PR, CI, merge.
+1. PR, CI, merge.

@@ -1814,6 +1814,9 @@ describe("ConversationWorkspace", () => {
     ["storage_mode memory", { storage_mode: "memory" }],
     ["direct with PostgreSQL storage", { orchestration_mode: "direct" }],
     ["adapter_mode other than scripted", { adapter_mode: "hosted" }],
+    ["hosted adapter_mode model", { adapter_mode: "model" }],
+    ["direct with PostgreSQL storage and local_distilled_candidate", { orchestration_mode: "direct", adapter_mode: "local_distilled_candidate" }],
+    ["direct with PostgreSQL storage and local_untuned_baseline", { orchestration_mode: "direct", adapter_mode: "local_untuned_baseline" }],
   ])("makes no recovery claim against a non-durable readiness profile: %s", async (_label, change) => {
     const runtime = await import("../../lib/runtime-client");
     runtime.savePersistedWorkspace(storedWorkspace(null));
@@ -1828,6 +1831,22 @@ describe("ConversationWorkspace", () => {
     expect(runtime.getCase).not.toHaveBeenCalled();
     expect(screen.queryByRole("heading", { name: "Here is what I will work from." })).not.toBeInTheDocument();
   });
+
+  it.each(["local_distilled_candidate", "local_untuned_baseline"])(
+    "restores a stored Case on a local Fast backend under Temporal and PostgreSQL: %s",
+    async (adapterMode) => {
+      const runtime = await import("../../lib/runtime-client");
+      runtime.savePersistedWorkspace(storedWorkspace(null));
+      vi.mocked(runtime.checkReadiness).mockResolvedValue({ ...DURABLE_READY, adapter_mode: adapterMode });
+      vi.mocked(runtime.getCase).mockReset().mockResolvedValue(payload());
+
+      render(<ConversationWorkspace />);
+
+      expect(await screen.findByRole("heading", { name: "Here is what I will work from." })).toBeInTheDocument();
+      expect(runtime.getCase).toHaveBeenCalledWith(payload().case_id);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    },
+  );
 
   it("names the direct one-Case limit and the Runtime restart instead of a durable-recovery block", async () => {
     const runtime = await import("../../lib/runtime-client");

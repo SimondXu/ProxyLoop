@@ -199,3 +199,7 @@ refused.
 The Web does not restore a Case on a local Fast backend after a reload, because
 restore requires `adapter_mode=scripted` (see the Browser check in the log).
 This is on the follow-up list and is outside PR-9b.
+
+Closed by `fix/followup-web-restore-flaky`: the Web now restores under
+temporal + postgres with `adapter_mode` `scripted`, `local_distilled_candidate`
+or `local_untuned_baseline` (log `harness/log/fix-followup-web-restore-flaky.md`).
