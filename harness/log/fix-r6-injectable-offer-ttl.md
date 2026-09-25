@@ -85,8 +85,13 @@ list in `docs/development.md` updated.
   artifact moved.
 - `make preflight`: passed; web vitest 250 passed; gated skips 67, matching
   the per-file pin.
-- Not run: `postgres-check`, `phase05a-check`, `phase06b1-check` (DB gates;
-  `PROXYLOOP_TEST_*` not set, by instruction). Independent review not done.
+- DB gates, run serially on `4442472` (`main` had not moved past
+  `973258a`, no merge needed) against the local Compose `postgres-test`
+  (`proxyloop_test`, port 55432) and `temporal` (`127.0.0.1:7233`), variables
+  on the make command line only: `make postgres-check` 39 passed (38 before
+  plus the new test, its first real run, passing unchanged);
+  `make phase05a-check` 73 passed; `make phase06b1-check` 56 passed.
+- Independent review: in progress (root).
 
 ## Known limits
 
