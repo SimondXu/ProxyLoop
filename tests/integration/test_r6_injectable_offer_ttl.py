@@ -10,6 +10,7 @@ with the stored TTL and still compares it, so a tampered ``expires_at`` fails.
 from __future__ import annotations
 
 import json
+from dataclasses import fields
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -21,9 +22,16 @@ from proxyloop_case_runtime import (
     InMemoryCaseRepository,
     ThinAgentRuntime,
 )
-from proxyloop_case_runtime.postgres_repository import PostgresCaseRepository
+from proxyloop_case_runtime import runtime as runtime_module
+from proxyloop_case_runtime.postgres_repository import (
+    PostgresCaseRepository,
+    _CaseStorageEnvelope,
+)
 from proxyloop_contracts import CasePhase, EvidenceType
-from proxyloop_provider_simulator.provider import FictionalMobileProvider
+from proxyloop_provider_simulator.provider import (
+    MAX_OFFER_TTL,
+    FictionalMobileProvider,
+)
 from test_phase_04c_persistent_case_store import _assert_non_provider_fields_equal
 from test_r10_terminal_delivery_callback import _CodecChannelRepository, _round_trip
 
@@ -31,6 +39,7 @@ T0 = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
 TWO_DAYS = timedelta(hours=48)
 KEY = "provider_offer_ttl_seconds"
 INVALID = "stored Case payload is invalid"
+REFUSED = "Case state failed storage validation"
 
 
 def _waiting(
@@ -192,13 +201,35 @@ def _default_ttl_by_value(payload: dict[str, Any]) -> None:
     payload[KEY] = 3600
 
 
-def _non_positive_ttl(payload: dict[str, Any]) -> None:
-    payload[KEY] = 0
+def _ttl(value: object) -> Any:
+    def edit(payload: dict[str, Any]) -> None:
+        payload[KEY] = value
+
+    edit.__name__ = f"ttl_{value!r}"
+    return edit
+
+
+MAX_SECONDS = MAX_OFFER_TTL // timedelta(seconds=1)
 
 
 @pytest.mark.parametrize(
     "edit",
-    [_tamper_expiry, _tamper_ttl, _drop_ttl, _non_positive_ttl],
+    [
+        _tamper_expiry,
+        _tamper_ttl,
+        _drop_ttl,
+        _ttl(0),
+        _ttl(-5),
+        _ttl(None),
+        _ttl(MAX_SECONDS + 1),
+        # Past the bound; unbounded, these overflowed timedelta or datetime.
+        _ttl(10**12),
+        _ttl(10**15),
+        _ttl(172800.0),
+        _ttl("172800"),
+        _ttl(True),
+    ],
+    ids=lambda edit: edit.__name__,
 )
 def test_the_codec_rejects_an_offer_that_does_not_match_the_stored_ttl(
     edit: Any,
@@ -211,14 +242,113 @@ def test_the_codec_rejects_an_offer_that_does_not_match_the_stored_ttl(
         _decode(waiting, payload)
 
 
-def test_the_codec_rejects_the_default_ttl_stored_by_value() -> None:
-    # The default is stored only by omission, so each Case has one document.
+@pytest.mark.parametrize(
+    "edit",
+    # The default is stored only by omission, so each Case has one document:
+    # neither by value nor as an explicit null; nor may a TTL be added to a
+    # default row.
+    [_default_ttl_by_value, _ttl(None), _ttl(7200), _ttl(10**15)],
+    ids=lambda edit: edit.__name__,
+)
+def test_the_codec_rejects_a_ttl_key_on_a_default_row(edit: Any) -> None:
     waiting = _state(_waiting(InMemoryCaseRepository()))
     payload = _payload(waiting)
-    _default_ttl_by_value(payload)
+    edit(payload)
 
     with pytest.raises(RuntimeError, match=rf"^{INVALID}$"):
         _decode(waiting, payload)
+
+
+def _unchecked_payload(state: CaseRuntimeState, offer_ttl: timedelta) -> dict[str, Any]:
+    """The document a writer without the codec's checks would store."""
+
+    values = {
+        field.name: getattr(state, field.name)
+        for field in fields(CaseRuntimeState)
+        if field.name != "provider"
+    }
+    envelope = _CaseStorageEnvelope.model_construct(
+        storage_version=3,
+        provider_offer_ttl_seconds=offer_ttl // timedelta(seconds=1),
+        **values,
+    )
+    payload: dict[str, Any] = json.loads(
+        envelope.model_dump_json(
+            exclude={"standing_proposal"} if state.standing_proposal is None else None
+        )
+    )
+    return payload
+
+
+def test_the_unchecked_payload_helper_writes_a_valid_document() -> None:
+    # Control for the two forgeries below: the helper alone changes nothing.
+    waiting = _state(_waiting(InMemoryCaseRepository(), offer_ttl=TWO_DAYS))
+
+    assert _unchecked_payload(waiting, TWO_DAYS) == _payload(waiting)
+
+
+def test_a_consistent_30_day_row_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Offer, Evidence, intent and approval all agree on a 30-day TTL; only the
+    # approval-time manifest guard is bypassed to build it.
+    build_approval = runtime_module._build_approval
+
+    def unguarded(*args: Any, **kwargs: Any) -> Any:
+        offer = args[2]
+        manifest = kwargs["manifest"].model_copy(
+            update={"expires_at": offer.expires_at}
+        )
+        return build_approval(*args, **{**kwargs, "manifest": manifest})
+
+    monkeypatch.setattr(runtime_module, "_build_approval", unguarded)
+    runtime = ThinAgentRuntime(InMemoryCaseRepository())
+    runtime._offer_ttl = timedelta(days=30)
+    runtime.create_case(occurred_at=T0)
+    runtime.append_event(
+        SCRIPTED_CASE_ID,
+        content="Review the offer.",
+        occurred_at=T0 + timedelta(minutes=1),
+    )
+    forged = _state(runtime)
+    (approval,) = forged.snapshot.approval_requests
+    assert approval.expires_at == T0 + timedelta(days=30)
+
+    with pytest.raises(RuntimeError, match=rf"^{REFUSED}$"):
+        PostgresCaseRepository._encode_state(forged)
+    with pytest.raises(RuntimeError, match=rf"^{INVALID}$"):
+        _decode(forged, _unchecked_payload(forged, timedelta(days=30)))
+
+
+def test_an_offer_outliving_the_manifest_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A 48 h offer on a Case whose manifest ends after one day (the pre-A-11
+    # lifetime): the TTL is in range, but the offer would outlive the manifest.
+    manifest = runtime_module._manifest
+
+    def one_day(case: Any) -> Any:
+        minted = manifest(case)
+        expires_at = T0 + timedelta(days=1)
+        return minted.model_copy(
+            update={
+                "expires_at": expires_at,
+                "capabilities": tuple(
+                    item.model_copy(update={"expires_at": expires_at})
+                    for item in minted.capabilities
+                ),
+            }
+        )
+
+    monkeypatch.setattr(runtime_module, "_manifest", one_day)
+    runtime = ThinAgentRuntime(InMemoryCaseRepository(), offer_ttl=TWO_DAYS)
+    runtime.create_case(occurred_at=T0)
+    created = _state(runtime)
+    assert created.snapshot.capability_manifest.expires_at == T0 + timedelta(days=1)
+    assert created.snapshot.offers[0].expires_at == T0 + TWO_DAYS
+
+    with pytest.raises(RuntimeError, match=rf"^{REFUSED}$"):
+        PostgresCaseRepository._encode_state(created)
+    with pytest.raises(RuntimeError, match=rf"^{INVALID}$"):
+        _decode(created, _unchecked_payload(created, TWO_DAYS))
 
 
 def test_a_default_ttl_row_with_a_tampered_expiry_is_still_rejected() -> None:

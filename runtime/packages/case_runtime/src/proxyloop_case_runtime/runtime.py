@@ -74,6 +74,7 @@ from proxyloop_contracts import (
 from proxyloop_provider_simulator.episode import Phase01AEpisode
 from proxyloop_provider_simulator.provider import (
     DEFAULT_OFFER_TTL,
+    MAX_OFFER_TTL,
     FictionalMobileProvider,
 )
 from proxyloop_telecom_domain import (
@@ -121,8 +122,9 @@ DeliveryStatus = Literal["pending", "accepted", "delivered", "bounced"]
 RUNTIME_PROVIDER_CONFIG = "pine-mobile:runtime-v1"
 RUNTIME_MANIFEST_VERSION = "phase-04a-runtime-v1"
 # A runtime Case's goal deadline, and so its manifest, ends this long after
-# creation (A-11). An offer issued at creation cannot outlive it (R-6).
-_CASE_DEADLINE_WINDOW: Final = timedelta(days=9)
+# creation (A-11). It is the Provider's longest offer TTL, so an offer
+# issued at creation cannot outlive it (R-6).
+_CASE_DEADLINE_WINDOW: Final = MAX_OFFER_TTL
 SCRIPTED_CASE_ID = Phase01AEpisode.success().case.case_id
 # The Runtime-authored dialogue line after each applied consumer event; a
 # caller can never append this event type.
@@ -241,7 +243,7 @@ class ThinAgentRuntime:
     ) -> None:
         # The fictional Provider's offer lifetime; approvals expire with it.
         # Whole seconds, because PostgreSQL storage keeps it as seconds (R-6).
-        if not timedelta(0) < offer_ttl <= _CASE_DEADLINE_WINDOW:
+        if not timedelta(0) < offer_ttl <= MAX_OFFER_TTL:
             raise ValueError("offer_ttl must be positive and within the Case deadline")
         if offer_ttl % timedelta(seconds=1):
             raise ValueError("offer_ttl must be a whole number of seconds")

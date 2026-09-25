@@ -38,6 +38,7 @@ from proxyloop_contracts import (
 )
 from proxyloop_provider_simulator.provider import (
     DEFAULT_OFFER_TTL,
+    MAX_OFFER_TTL,
     FictionalMobileProvider,
 )
 from proxyloop_telecom_domain import CompletionVerification, verify_completion
@@ -119,12 +120,20 @@ class _CaseStorageEnvelope(BaseModel):
     standing_proposal: CapabilityProposal | None = None
     # The Provider configuration's offer TTL, when it is not the default. The
     # offer is regenerated with it on read, so ``expires_at`` stays checked.
-    provider_offer_ttl_seconds: int | None = Field(default=None, gt=0)
+    provider_offer_ttl_seconds: int | None = Field(
+        default=None, gt=0, le=MAX_OFFER_TTL // timedelta(seconds=1)
+    )
 
     @model_validator(mode="after")
     def default_offer_ttl_is_omitted(self) -> _CaseStorageEnvelope:
-        # One document per Case: the default TTL is stored only by omission.
+        # One document per Case: the default TTL is stored only by omission,
+        # never by value and never as an explicit null.
         if self.provider_offer_ttl_seconds == DEFAULT_OFFER_TTL.total_seconds():
+            raise ValueError("the default offer TTL is stored by omission")
+        if (
+            self.provider_offer_ttl_seconds is None
+            and "provider_offer_ttl_seconds" in self.model_fields_set
+        ):
             raise ValueError("the default offer TTL is stored by omission")
         return self
 
@@ -1099,6 +1108,7 @@ class PostgresCaseRepository:
     @staticmethod
     def _encode_state(state: CaseRuntimeState) -> dict[str, object]:
         try:
+            offer_ttl_seconds = _stored_offer_ttl(state.provider)
             envelope = _CaseStorageEnvelope(
                 storage_version=_STORAGE_VERSION,
                 snapshot=state.snapshot,
@@ -1112,7 +1122,11 @@ class PostgresCaseRepository:
                 last_fast_decision=state.last_fast_decision,
                 execution_claim=state.execution_claim,
                 standing_proposal=state.standing_proposal,
-                provider_offer_ttl_seconds=_stored_offer_ttl(state.provider),
+                **(
+                    {}
+                    if offer_ttl_seconds is None
+                    else {"provider_offer_ttl_seconds": offer_ttl_seconds}
+                ),
             )
             _verify_provider_state(state, envelope)
         except (ValidationError, ValueError, RuntimeError):
@@ -1149,7 +1163,7 @@ class PostgresCaseRepository:
             if row_revision != envelope.snapshot.revision:
                 raise ValueError("stored relational revision does not match payload")
             provider = _reconstruct_provider(envelope)
-        except (ValidationError, ValueError, RuntimeError):
+        except (ValidationError, ValueError, RuntimeError, OverflowError):
             raise RuntimeError("stored Case payload is invalid") from None
         return CaseRuntimeState(
             snapshot=envelope.snapshot,
@@ -1348,6 +1362,8 @@ def _reconstruct_provider(envelope: _CaseStorageEnvelope) -> FictionalMobileProv
     )
     if generated_offer != offer:
         raise ValueError("stored offer does not match the deterministic Provider")
+    if offer.expires_at > snapshot.capability_manifest.expires_at:
+        raise ValueError("stored offer outlives the capability manifest")
     matching_offer_evidence = _evidence_by_id(snapshot.evidence, offer.evidence_ids)
     if matching_offer_evidence != generated_offer_evidence:
         raise ValueError("stored offer Evidence does not match the Provider")

@@ -35,6 +35,10 @@ class IllegalOfferTransitionError(RuntimeError):
 
 
 DEFAULT_OFFER_TTL = timedelta(hours=1)
+# The longest offer TTL the Runtime may inject and the codec will read (R-6).
+# It equals the runtime Case deadline window (A-11), so an offer issued at Case
+# creation never outlives the capability manifest.
+MAX_OFFER_TTL = timedelta(days=9)
 
 
 class FictionalMobileProvider:

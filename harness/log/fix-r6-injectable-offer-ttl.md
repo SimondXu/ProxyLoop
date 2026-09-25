@@ -91,7 +91,36 @@ list in `docs/development.md` updated.
   on the make command line only: `make postgres-check` 39 passed (38 before
   plus the new test, its first real run, passing unchanged);
   `make phase05a-check` 73 passed; `make phase06b1-check` 56 passed.
-- Independent review: in progress (root).
+- Independent review: Request Changes, no Blocking
+  (`harness/code_review/fix-r6-injectable-offer-ttl.md`); fixes below.
+
+## Review fixes (I-1, M-1..M-3)
+
+Merged `main` @ `e543d64` (#103) first: clean, pin unchanged at 67.
+
+- I-1: `MAX_OFFER_TTL = timedelta(days=9)` moved to `provider.py`; it is the
+  Runtime constructor bound, the Runtime Case deadline window, and the
+  envelope field's `le=` (one source of truth). `_reconstruct_provider`
+  refuses an offer whose `expires_at` is after the Case's manifest expiry.
+  `_decode_state` also catches `OverflowError` (defense in depth; with `le=`
+  pydantic refuses such values first).
+- M-1: an explicit `"provider_offer_ttl_seconds": null` is refused (the
+  validator checks `model_fields_set`; the encoder passes the field only for a
+  non-default TTL).
+- M-2 tests (the R-6 file is now 34 items): the 48 h tamper list adds −5,
+  null, `MAX + 1`, `10**12`, `10**15`, float, string, bool; a default row
+  refuses the default by value, null, 7200 and `10**15`; a consistent 30-day
+  row and a 48 h offer on a one-day manifest are refused on write and on read
+  (payload built by an unchecked-envelope helper, itself checked against a
+  valid 48 h row).
+- Red: with `runtime.py` and `postgres_repository.py` from `2ace7fb`, 6 of 34
+  fail (`10**12`: `OverflowError` date out of range; `10**15`: `OverflowError`
+  in `timedelta`; null on a default row, the 30-day and the one-day-manifest
+  forgeries do not raise). Green: 34 passed.
+- `make lint`, `make typecheck`: passed. `make preflight` (runs `make test`):
+  passed; runtime 2105 passed, 67 skipped; ml 498 passed, 1 skipped; vitest
+  256 passed; committed checks current; gated skips 67 matching the pin.
+- `make postgres-check` after the codec change: not yet run (DB lane).
 
 ## Known limits
 
@@ -101,3 +130,11 @@ list in `docs/development.md` updated.
   `provider_offer_ttl_seconds` (mixed versions unsupported, as for PR-13).
 - Nothing in the product selects a non-default TTL; the seam is for tests
   and future configuration.
+- A consistent multi-field forgery (TTL, offer `expires_at`, offer Evidence,
+  intent and approval expiry changed together) within the 9-day bound and the
+  manifest is accepted. The codec's integrity comes from simulator replay,
+  with no authentication: the same class as R-18's consistent-forgery limit.
+  The 9-day bound and the manifest check cap the window (M-3).
+- Follow-up: `standing_proposal` still accepts an explicit `null` as absent,
+  so such a row has two encodings (the gap M-1 closed for the TTL). Not
+  changed here, by root decision.
