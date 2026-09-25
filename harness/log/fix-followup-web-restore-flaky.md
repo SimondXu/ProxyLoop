@@ -78,6 +78,10 @@ status row now record the #100 merge. `main` was merged in afterwards.
   both `uv lock --check`, gated skips match the pin of 66. The concurrency
   test passed again after the reformat; the 100x and mutation runs above were
   on the pre-format text (same code).
+- After the review decisions (`origin/main` still `eee47a3` on fetch, so the
+  merge was a no-op): `make lint`, `typecheck`, `test`, `web-check`,
+  `preflight` all exit 0; runtime 2016 passed / 66 skipped, ML 498 passed /
+  1 skipped, vitest 256 (one new deny row), build, gated skips match 66.
 
 Not run: the DB gates (`postgres-check`, `phase05a-check`, `phase06b1-check`)
 and no `PROXYLOOP_TEST_*` variable set (no service change); the Browser check
