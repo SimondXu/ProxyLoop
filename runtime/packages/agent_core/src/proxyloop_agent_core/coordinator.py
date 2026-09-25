@@ -130,8 +130,9 @@ class CaseCoordinator:
     ``revise`` retries a ``FeedbackReasoningSlowAdapter`` once with the
     verdict, on the same request, through the same admission; the retry's
     result is used only if admitted, and nothing is judged twice. A captured
-    ``JudgeAdapterFailure``, a verdict for another request or result, and a
-    rejected retry all keep the first admitted result. Each Judge call is one
+    ``JudgeAdapterFailure``, a verdict for another request or result, a
+    return that is not a verdict, and a rejected retry all keep the first
+    admitted result. Each Judge call is one
     ``role=judge`` trace and audit. Without a Judge the behaviour is unchanged.
 
     ``capture_fast_failures`` (the product Runtime only) turns a
@@ -446,6 +447,10 @@ class CaseCoordinator:
         if isinstance(called, JudgeAdapterFailure):
             codes = called.reason_codes
             result = ModelResult.FAILED
+        elif not isinstance(called, JudgeVerdict):
+            # Like a verdict for another result: recorded, then ignored.
+            codes = ("judge_verdict_invalid",)
+            result = ModelResult.REJECTED
         else:
             codes = _verdict_binding_violations(called, slow_request, first)
             if codes:
@@ -764,8 +769,12 @@ def _reason(
 
 def _judge(
     judge: JudgeAdapter, request: SlowWorkRequest, result: SlowWorkResult
-) -> JudgeVerdict | JudgeAdapterFailure:
-    """The verdict, or the captured typed failure; anything else propagates."""
+) -> object:
+    """What the Judge returned, or its captured typed failure.
+
+    Typed as ``object``: the coordinator does not trust the adapter's return
+    type. Any exception other than ``JudgeAdapterFailure`` propagates.
+    """
 
     try:
         return judge.judge(request, result)

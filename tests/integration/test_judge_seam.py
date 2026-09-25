@@ -40,11 +40,13 @@ from proxyloop_case_runtime import (
     SCRIPTED_CASE_ID,
     CaseCommand,
     CaseCommandType,
+    CaseConflictError,
     CaseRuntimeState,
     InMemoryCaseRepository,
     ThinAgentRuntime,
 )
 from proxyloop_case_runtime import runtime as runtime_module
+from proxyloop_case_runtime.turn_split import fast_slow_split
 from proxyloop_contracts import (
     CaseContextSnapshot,
     CasePhase,
@@ -314,6 +316,34 @@ def test_a_non_binding_verdict_is_rejected_and_the_first_result_used(
     assert outcome.traces[1].reason_codes == (code,)
     _assert_audits_pair_with_traces(outcome)
     assert slow.feedback == []
+    assert outcome.slow_result is not None
+    assert outcome.slow_result.capability_proposals == ()
+
+
+class NotAVerdictJudge:
+    """A Judge whose adapter returns something that is not a verdict."""
+
+    def judge(self, request: SlowWorkRequest, result: SlowWorkResult) -> object:
+        return {"verdict": "revise"}
+
+
+def test_a_return_that_is_not_a_verdict_is_rejected_and_the_first_result_used() -> None:
+    # Review M1: recorded like a non-binding verdict, never raised.
+    snapshot = _snapshot()
+    slow = GivingUpSlow()
+
+    outcome = _refresh(snapshot, slow=slow, judge=NotAVerdictJudge())
+
+    assert _roles(outcome.traces) == ["slow", "judge"]
+    judge = outcome.traces[1]
+    assert (judge.result, judge.reason_codes) == (
+        ModelResult.REJECTED,
+        ("judge_verdict_invalid",),
+    )
+    assert judge.output_schema_version == JUDGE_VERDICT_VERSION
+    _assert_audits_pair_with_traces(outcome)
+    assert slow.feedback == []
+    assert outcome.status is CoordinatorStatus.ACCEPTED
     assert outcome.slow_result is not None
     assert outcome.slow_result.capability_proposals == ()
 
@@ -608,6 +638,38 @@ def test_a_rejected_retry_leaves_the_dialogue_going_end_to_end() -> None:
     assert result.snapshot.case.phase is CasePhase.STRATEGY
 
 
+def test_a_repeated_create_after_an_unretried_revise_splits_cleanly() -> None:
+    # Review I1 (the reviewer's repro): a Slow without the feedback protocol
+    # is revised and not retried; the repeated create's judged Slow call is a
+    # new attempt, not a retry.
+    repository = InMemoryCaseRepository()
+    runtime = ThinAgentRuntime(
+        repository, clock=SteppingClock(), slow=ScriptedSlowAdapter()
+    )
+    runtime.create_case(occurred_at=T0)
+    with pytest.raises(CaseConflictError):
+        runtime.create_case(occurred_at=T0)
+
+    traces = repository.list_model_traces(SCRIPTED_CASE_ID)
+    assert [(trace.role, trace.reason_codes) for trace in traces] == [
+        ("slow", ("slow_result_current",)),
+        ("judge", ("judge_revise", GIVE_UP)),
+        ("slow", ("slow_result_current",)),
+        ("judge", ("judge_revise", GIVE_UP)),
+    ]
+    state = repository.get(SCRIPTED_CASE_ID)
+    assert state is not None
+    split = fast_slow_split(traces, state)
+    (turn,) = split["turns"]
+    assert (turn["slow_calls"], turn["judge_calls"], turn["slow_retry"]) == (
+        1,
+        1,
+        None,
+    )
+    assert split["aggregates"]["unapplied_model_calls"] == 1
+    assert split["aggregates"]["unapplied_judge_calls_by_result"]["succeeded"] == 1
+
+
 def test_the_runtime_wires_the_judge_only_through_its_coordinator() -> None:
     # G1: PR-7's G8 guard, extended to the Judge.
     source = inspect.getsource(runtime_module)
@@ -618,3 +680,11 @@ def test_the_runtime_wires_the_judge_only_through_its_coordinator() -> None:
     for call in (".judge(", ".reason_with_feedback(", ".decide(", ".reason("):
         assert source.count(call) == 0, call
     assert "verdict" not in source.lower()
+    # Review M2: the Judge's codes live in the outcome's audits and traces.
+    # The Runtime never reads the audits and touches the traces only in
+    # ``_advance``, to append them to the log.
+    assert source.count(".audits") == 0
+    assert source.count(".traces") == 2
+    assert "if outcome.traces:\n            self.repository.append_model_traces(" in (
+        source
+    )

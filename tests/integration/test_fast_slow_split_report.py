@@ -342,6 +342,102 @@ def test_s4_a_slow_after_an_accept_starts_a_new_attempt() -> None:
     assert aggregates["judge_calls_by_result"]["succeeded"] == 1
 
 
+def _creation(build: Any) -> dict[str, Any]:
+    """The demo path's creation turn with its Slow and Judge calls rebuilt."""
+
+    traces, state = _run(run_demo_path())
+    plain = [trace for trace in traces if trace.role != "judge"]
+    first, again, fast = plain
+    return fast_slow_split((*build(first, again), fast), state)
+
+
+REVISE = ("judge_revise", "judge_premature_give_up")
+
+
+def test_s4_a_judged_slow_after_a_revise_is_a_new_attempt() -> None:
+    # Review I1: [S J(revise) S J]; a retry is never judged, so the second
+    # Slow call is a repeated create's own attempt.
+    split = _creation(
+        lambda first, again: (
+            first,
+            _judge(first, *REVISE),
+            again,
+            _judge(again, *REVISE),
+        )
+    )
+    turn = _turn(split, 1)
+    assert (turn["slow_calls"], turn["judge_calls"], turn["slow_retry"]) == (
+        1,
+        1,
+        None,
+    )
+    aggregates = split["aggregates"]
+    assert aggregates["unapplied_model_calls"] == 1
+    assert aggregates["unapplied_judge_calls_by_result"]["succeeded"] == 1
+    assert aggregates["slow_retry_counts"] == {"admitted": 0, "rejected": 0}
+
+
+def test_s4_a_rejected_slow_after_a_revise_is_read_as_the_retry() -> None:
+    # Review I1, the recorded limit: [S J(revise) S(REJECTED)] is a rejected
+    # retry, though a new attempt rejected there would log the same.
+    split = _creation(
+        lambda first, again: (
+            first,
+            _judge(first, *REVISE),
+            _as(again, ModelResult.REJECTED, "stale_slow_result"),
+        )
+    )
+    turn = _turn(split, 1)
+    assert (turn["slow_calls"], turn["judge_calls"], turn["slow_retry"]) == (
+        2,
+        1,
+        "rejected",
+    )
+    assert split["aggregates"]["slow_retry_counts"] == {"admitted": 0, "rejected": 1}
+    assert split["aggregates"]["unapplied_model_calls"] == 0
+
+
+@pytest.mark.parametrize(
+    ("result", "codes"),
+    [
+        (ModelResult.FAILED, ("judge_adapter_timeout",)),
+        (ModelResult.REJECTED, ("judge_verdict_result_mismatch",)),
+    ],
+)
+def test_s4_a_failed_or_rejected_judge_call_is_counted_apart(
+    result: ModelResult, codes: tuple[str, ...]
+) -> None:
+    # Review M5: neither is a revise, so a later Slow call is a new attempt.
+    split, cursor = _refresh_turn(
+        lambda slow, fast: (slow, _judge(slow, *codes, result=result), fast)
+    )
+    turn = _turn(split, cursor)
+    assert (turn["slow_calls"], turn["judge_calls"], turn["slow_retry"]) == (
+        1,
+        1,
+        None,
+    )
+    aggregates = split["aggregates"]
+    assert aggregates["judge_calls_by_result"] == {
+        "failed": int(result is ModelResult.FAILED),
+        "rejected": int(result is ModelResult.REJECTED),
+        "succeeded": 0,
+    }
+    assert aggregates["calls_by_role_and_result"]["slow"]["succeeded"] == 3
+    assert aggregates["unapplied_model_calls"] == 0
+
+    split = _creation(
+        lambda first, again: (
+            first,
+            _judge(first, *codes, result=result),
+            again,
+            _judge(again),
+        )
+    )
+    assert _turn(split, 1)["slow_retry"] is None
+    assert split["aggregates"]["unapplied_model_calls"] == 1
+
+
 def test_s4_an_orphan_judge_trace_is_refused() -> None:
     with pytest.raises(ValueError, match="orphan judge trace"):
         _refresh_turn(lambda slow, fast: (_judge(slow), fast))

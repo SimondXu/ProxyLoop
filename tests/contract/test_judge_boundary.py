@@ -5,7 +5,13 @@ D2-1. This is a static tripwire over the import graph and the source names:
 no ML or script source, and no authority, storage, or measurement module of
 the Runtime, imports or names the Judge. The Judge module itself depends on
 the contracts and the adapter interfaces only, and the coordinator's outcome
-carries no Judge output for the Runtime to read.
+has no Judge field. Evaluation code cannot obtain the Judge indirectly either:
+it passes no ``judge=`` to a coordinator and constructs no Runtime (whose
+coordinator has the Judge by default); only the named product-Runtime drivers
+may.
+
+Out of scope: a dynamic import (``importlib``, ``__import__``) or a name built
+at run time. This is a static tripwire, not a proof.
 """
 
 from __future__ import annotations
@@ -99,6 +105,43 @@ def _judge_references(path: Path) -> list[str]:
     return found
 
 
+# The scripts that drive the product Runtime (and so its Judge) on purpose:
+# they measure or demonstrate the product path, never evaluate a model.
+PRODUCT_RUNTIME_DRIVERS = frozenset(
+    {
+        "scripts/run_fast_slow_split_report.py",
+        "scripts/run_phase_04d_control_plane_profile.py",
+        "scripts/run_phase_07a_portfolio_demo.py",
+    }
+)
+
+
+def _call_name(node: ast.Call) -> str | None:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
+
+
+def _indirect_judge_uses(path: Path) -> list[str]:
+    """A ``judge=`` passed to a coordinator, or any Runtime construction."""
+
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = _call_name(node)
+        if name == "CaseCoordinator" and any(
+            keyword.arg == "judge" for keyword in node.keywords
+        ):
+            found.append("CaseCoordinator(judge=...)")
+        if name == "ThinAgentRuntime":
+            found.append("ThinAgentRuntime(...)")
+    return found
+
+
 def _offenders(paths: list[Path]) -> list[str]:
     return sorted(
         f"{path.relative_to(ROOT)}: {name}"
@@ -115,6 +158,40 @@ def test_b1_no_ml_or_script_source_references_the_judge() -> None:
     assert "scripts/run_fast_slow_split_report.py" in names
     assert "ml/evaluation/src/proxyloop_evaluation/runner_v2.py" in names
     assert _offenders(sources) == []
+
+
+def test_b1_no_evaluation_source_reaches_the_judge_through_a_runtime() -> None:
+    sources = [
+        path
+        for root in (ROOT / "ml", ROOT / "scripts")
+        for path in _python_sources(root)
+        if path.relative_to(ROOT).as_posix() not in PRODUCT_RUNTIME_DRIVERS
+    ]
+    names = {path.relative_to(ROOT).as_posix() for path in sources}
+    assert "ml/evaluation/src/proxyloop_evaluation/runner.py" in names
+    assert "scripts/run_phase_03a1_harness.py" in names
+    offenders = sorted(
+        f"{path.relative_to(ROOT)}: {use}"
+        for path in sources
+        for use in _indirect_judge_uses(path)
+    )
+    assert offenders == []
+    # The drivers exist, so the allow-list cannot go stale silently.
+    assert all((ROOT / name).is_file() for name in PRODUCT_RUNTIME_DRIVERS)
+
+
+def test_b1_the_indirect_use_scan_detects_both_forms(tmp_path: Path) -> None:
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        "CaseCoordinator(snapshot=s, judge=j)\n"
+        "CaseCoordinator(snapshot=s)\n"
+        "runtime_module.ThinAgentRuntime()\n",
+        encoding="utf-8",
+    )
+    assert _indirect_judge_uses(probe) == [
+        "CaseCoordinator(judge=...)",
+        "ThinAgentRuntime(...)",
+    ]
 
 
 def test_b2_no_authority_storage_or_measurement_module_references_the_judge() -> None:

@@ -164,3 +164,41 @@ No approval, state, receipt, or Provider expectation changed.
 - PR-9b's local split reports, when merged, stay pre-Judge observed
   artifacts; `check_local_report` compares only the Fast/Slow structure keys,
   which v2 leaves unchanged.
+
+## Review fixes (Request Changes, no Blocking; `harness/code_review/feat-pr14-judge-seam.md`)
+
+- I1: `turn_split._attempts` reads a Slow call after a `judge_revise` trace as
+  the retry only if no Judge trace follows it (a retry is never judged). Red
+  on `2db340b`: `test_s4_a_judged_slow_after_a_revise_is_a_new_attempt` and
+  the Runtime-level repro `test_a_repeated_create_after_an_unretried_revise_splits_cleanly`
+  both failed with `ValueError: orphan judge trace` (`2 failed, 1 passed`).
+  Known limit recorded (docstring, architecture): a rejected new-attempt
+  Slow call right after an unretried revise is counted as a rejected retry;
+  `test_s4_a_rejected_slow_after_a_revise_is_read_as_the_retry` pins it.
+  `scratchpad/rev-pr14/repro_split.py` on the fix: one turn,
+  `slow_calls 1, judge_calls 1, slow_retry None`.
+- M1: a non-`JudgeVerdict` return is a `REJECTED` Judge trace
+  (`judge_verdict_invalid`) and the first result is used. Red on `2db340b`:
+  `AttributeError: 'dict' object has no attribute 'request_id'`.
+- M2: G1 pins `.audits` (0) and `.traces` (2, the `_advance` append) in
+  `runtime.py`; the architecture wording on the outcome is corrected.
+- M3: the boundary test flags `CaseCoordinator(judge=...)` and any
+  `ThinAgentRuntime(...)` under `ml/` and `scripts/` except the three named
+  product-Runtime drivers; dynamic imports are stated out of scope.
+- M4: the OpenAI 5-minute proposal-expiry limit is back in the
+  standing-proposal paragraph (byte-identical to `main` again).
+- M5: split tests for `FAILED` and `REJECTED` Judge traces.
+- M6 (follow-ups for the PR-9b merge, not done here because 9b is not on
+  `main`): 9b's `_local_scenario` should check every Judge trace's `model`
+  as the scripted report does; `LOCAL_SCHEMA_VERSION` must bump if the local
+  reports are ever regenerated (they would then contain Judge calls). The
+  docs (architecture split paragraph) now state that the local reports
+  predate the Judge and are not rewritten by PR-14.
+
+Checks after the fixes: `make lint` passed; `make typecheck` passed (77 and
+59 source files); `make test` passed (runtime `1753 passed, 66 skipped`, ml
+`397 passed, 1 skipped`, every `*-check` current); `make preflight` passed
+(exit 0; web vitest 189; gated-skip pin 66 matches). `runtime.py` did not
+change in this round, so the DB gates were not rerun. Byte identity is
+unchanged: only `data/evaluation/fast-slow-split-scripted.json` differs from
+`main` under `contracts/`, `ml/`, `data/`.

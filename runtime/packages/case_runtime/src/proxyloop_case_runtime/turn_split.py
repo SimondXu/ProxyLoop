@@ -17,9 +17,16 @@ needs a command id on the trace).
 The traces at one cursor parse, in log order, into attempts. A Slow group is
 ``S [J [S']]``: a Judge trace follows the group's succeeded first Slow call
 (anything else is an orphan and is refused), and a Slow call directly after a
-Judge trace whose first code is ``judge_revise`` is that group's retry; any
-other Slow call starts a new group. An attempt is a group, a group followed
-directly by its Fast call, or a lone Fast call.
+Judge trace whose first code is ``judge_revise`` is that group's retry unless
+a Judge trace follows it: a retry is never judged, so a judged Slow call there
+is a new attempt (a Slow adapter without the feedback protocol is not retried,
+and a repeated command then starts its own group). Any other Slow call starts
+a new group. An attempt is a group, a group followed directly by its Fast
+call, or a lone Fast call.
+
+Known limit: a new attempt's Slow call that the coordinator rejects, logged
+right after a ``revise`` that was not retried, is not judged either, so it is
+indistinguishable from a rejected retry and is counted as one.
 
 - a trace at a cursor that is no applied trigger is an unapplied attempt;
 - the delivered attempt is the one holding the last Fast trace at the cursor;
@@ -136,7 +143,7 @@ def _attempts(traces: Sequence[ModelTrace], at_cursor: list[int]) -> list[list[i
 
     attempts: list[list[int]] = []
     current: list[int] | None = None  # the open attempt, until its Fast call
-    for index in at_cursor:
+    for position, index in enumerate(at_cursor):
         trace = traces[index]
         if trace.role == "judge":
             if (
@@ -148,10 +155,15 @@ def _attempts(traces: Sequence[ModelTrace], at_cursor: list[int]) -> list[list[i
                 raise ValueError("orphan judge trace")
             current.append(index)
         elif trace.role == "slow":
+            judged = (
+                position + 1 < len(at_cursor)
+                and traces[at_cursor[position + 1]].role == "judge"
+            )
             if (
                 current is not None
                 and len(current) == 2
                 and _is_revise(traces[current[1]])
+                and not judged
             ):
                 current.append(index)
             else:
