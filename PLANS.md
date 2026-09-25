@@ -30,13 +30,14 @@ not promote a model or make a production-serving claim.
 | Minimal local Web demo | Thin Runtime-backed conversation UI | Complete; squash merged through PR #18 as `ef2ce53`; post-merge Repository checks passed | `harness/build/phase-minimal-local-web-demo.md` |
 | Local Conversation Intake UX | Four-fact Runtime-owned fictional Case intake and exact Web snapshot verification | Complete; squash merged through PR #20 as `02466df`; post-merge Repository checks passed | `harness/build/phase-local-conversation-intake-ux.md` |
 | 03B | Open-data SFT, gap-driven project data, and evaluation | Complete; final `NO_GO_STOP_PHASE03B`; squash merged as PR #15 (`f441335` short); no promotion or expansion; Decided from Phase 03A1 failure slices | `harness/build/phase-03b-qwen-qlora-smoke.md` |
+| 03C | Fast model re-baseline and verifier-filtered distillation | Complete; squash merged as `059d333` through PR #51; `GO_DISTILLED` on the trained prompt path (0.542 → 0.983 held-out), not promoted; through the product path the local opt-in adapter delivers 0/240 lines (PR-9b, #100; `docs/ml-evidence.md`) | `harness/build/phase-03c-fast-model-distillation.md` |
 | 04 | Broader serving and control plane | Bounded 04A/04B/04C/04D complete; promoted serving deferred | Real-model serving, OOM/capacity, promotion, and production rollout remain separately gated |
 | 05A | Durable agent loop / Temporal | Complete; independently approved | `harness/build/phase-05a-temporal-case-workflow.md` |
 | 06A | Durable Web Case resume and progress | Complete; independently approved | `harness/build/phase-06a-durable-web-resume.md` |
 | 06B1 | Local controlled mailbox | Complete; synthetic-only and independently approved | `harness/build/phase-06b1-local-controlled-mailbox.md` |
 | 06B2 | Real controlled integration | Not started; separate user gate | Real Provider/email/MCP/credentials remain unauthorized |
 | 07A | Reproducible Local Portfolio Demo | Complete; locally verified and independently approved bounded subphase | `harness/build/phase-07a-reproducible-local-portfolio-demo.md` |
-| 07 | Portfolio hardening | In progress (build-plan PR-16, then PR-17); gate at the end of PR-17 | `harness/build/phase-07-portfolio-hardening.md` |
+| 07 | Portfolio hardening | Complete: PR-16 merged as #105 (demo scenes, Scene J, `make ops-report`); PR-17 (final reports: `docs/ml-evidence.md`, `docs/limitations.md`, architecture reconciliation, observed-versus-proposed README, fresh-clone reproduction); phase gate passed on PR-17's head (`make preflight`, `postgres-check` 39, `phase05a-check` 73, `phase06b1-check` 56); no phase is active | `harness/build/phase-07-portfolio-hardening.md` |
 
 ## Critical Dependency Chain
 

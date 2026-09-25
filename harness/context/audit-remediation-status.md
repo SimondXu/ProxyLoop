@@ -6,66 +6,57 @@ proposal (`docs/research/2026-09-21-target-architecture-proposal.md`).
 Authorization and adopted decisions: `harness/context/audit-remediation-decisions.md`.
 Group 2 design: `harness/context/group2-evaluator-proposal.md`.
 
-**Updated 2026-09-24, end of the third session (#72–#85 merged; build plan and
-decisions 16–20 adopted). `main` @ `903a7ba`.
-Everything below is merged to `main` unless the row says otherwise.**
+**Updated 2026-09-25, final pass at the close of the programme (PR-17).
+`main` @ `abd1027` (#105). Every build-plan item except PR-17 is merged;
+PR-15 was dropped (decision 21). Everything below is merged to `main`
+unless the row says otherwise.**
 
 A new session should read, in order: `harness/status.toml`, this file
 (§0 first), `harness/context/audit-remediation-decisions.md`, then only the
 spec and log named by the item it picks up.
 
-## 0. Next session — start here
+## 0. Programme close — start here
 
-**Handoff 2026-09-24 (end of the third session).** `main` @ `903a7ba`.
-This session merged #72–#85: 1.1 PR4 (P1 closed), R-10, R-1/R-1b, the four
-P2 WIP batches, B1-12 + Router precedence tests, API hygiene (R-2, B2-7,
-B2-9, G-3), B1-9, R-14, the contract-semantics limits (A-3, A-5, A-9,
-R-11a, R-13c), and decisions 16–20 with the build plan.
+The programme closes with build-plan PR-17 (Phase 07 reports) and the
+Phase 07 gate. The plan of record was `harness/context/build-plan-to-complete.md`,
+governed by decisions 16–21 in `harness/context/audit-remediation-decisions.md`.
+Its hard limits still hold after the close: real credentials, real external
+channels and Providers (06B2), deployment or release, hosted spend beyond a
+recorded budget (none is recorded; the relay is exhausted), force-push, and
+destructive operations each need a new user decision. What is not done is
+listed in `docs/limitations.md`.
 
-**The plan of record is `harness/context/build-plan-to-complete.md`**
-(PR-1..PR-17 in six waves, dependencies, serialization rules, "do not do"
-list, definition of done), governed by decisions 16–20 in
-`harness/context/audit-remediation-decisions.md`. Decision 16 is the
-user's standing authorization for a complete build: do not stop to ask
-for design or routine decisions — consult `architect` (or a reviewer) when
-unsure, decide, and record the decision; every PR updates the docs it
-affects; merge after CI + independent review. Hard limits still need the
-user: real credentials, real external channels/Providers (06B2),
-deployment/release, hosted spend beyond a recorded budget (none is
-recorded — the relay is exhausted), force-push, destructive operations.
+The third session (2026-09-24) merged #72–#85; see §2–§4a. Merged since then:
 
-### In flight — finish these first
+| PR | Branch | Build-plan item | What it closed | Log |
+|---|---|---|---|---|
+| #87 | `fix/r16-expiry-classifier` | PR-2 | R-16 | `fix-r16-expiry-classifier.md` |
+| #88 | `fix/r18-callback-evidence-pairing` | PR-4 | R-18 | `fix-r18-callback-evidence-pairing.md` |
+| #89 | `fix/b2-8-threadpool-runtime-calls` | PR-6 | B2-8 | `fix-b2-8-threadpool-runtime-calls.md` |
+| #90 | `fix/gate-honesty-r15-g1` | PR-1 | R-15; G-1 strong form (per-file gated-skip pin) | `fix-gate-honesty-r15-g1.md` |
+| #91 | `fix/r12-model-trace-log` | PR-7 | R-12, R-13b (append-only trace log, `storage_version` 3) | `fix-r12-model-trace-log.md` |
+| #92 | `fix/r17-r5-channel-redrive` | PR-3 | R-17, R-5 | `fix-r17-r5-channel-redrive.md` |
+| #93 | `fix/pr5-ops-tests` | PR-5 | C-5, C-7, C-8 (R-6 deferred) | `fix-pr5-ops-tests.md` |
+| #94 | `feat/pr8a-fast-dialogue` | PR-8a | A-4 Stage 1a: Fast dialogue behind `fast-gate-v1`, split report | `feat-pr8a-fast-dialogue.md` |
+| #95 | `feat/pr8b-web-assistant-lines` | PR-8b | Stage 1a Web: Assistant Messages rendered | `feat-pr8b-web-assistant-lines.md` |
+| #96 | `feat/pr10-agent-status-bar` | PR-10 | Stage 4: Agent Status Bar (Web only) | `feat-pr10-agent-status-bar.md` |
+| #97 | `feat/pr9a-fast-backend-seam` | PR-9a | local Fast backend seam; R-19 | `feat-pr9a-fast-backend-seam.md` |
+| #98 | `feat/pr11-fast-under-temporal` | PR-11 | Stage 1c: local Fast under Temporal, 07A `FAST_BACKEND` flag | `feat-pr11-fast-under-temporal.md` |
+| #99 | `feat/pr13-slow-drives-intent` | PR-13 | Slow's proposal drives the intent; A-3 admission check | `feat-pr13-slow-drives-intent.md` |
+| #100 | `feat/pr9b-local-fast-gateway` | PR-9b | local MLX gateway; M1 (stack parity held), M2 (negative product result); local split reports | `feat-pr9b-local-fast-gateway.md` |
+| #101 | `feat/pr12-stateless-intake` | PR-12 | Stage 3: stateless intake, typed card | `feat-pr12-stateless-intake.md` |
+| #102 | `feat/pr14-judge-seam` | PR-14 | Stage 2: scripted, advisory Judge seam | `feat-pr14-judge-seam.md` |
+| #103 | `fix/followup-web-restore-flaky` | follow-up | PR-9b Web-restore limit; ML wall-clock test flake | `fix-followup-web-restore-flaky.md` |
+| #104 | `fix/r6-injectable-offer-ttl` | R-6 follow-up | R-6 injectable offer TTL (root option (b)); gated-skip pin 67 | `fix-r6-injectable-offer-ttl.md` |
+| #105 | `feat/pr16-phase07-contract` | PR-16 | Phase 07 demo scenes, Scene J, `make ops-report`, operation-record logging | `phase-07-portfolio-hardening.md` |
+| pending | `docs/pr17-phase07-reports` | PR-17 | final reports (`docs/ml-evidence.md`, `docs/limitations.md`, A-7f, observed-versus-proposed README, fresh-clone reproduction); `harness/status.toml` back to `idle` at the gate | `phase-07-portfolio-hardening.md` |
 
-| Branch | Plan item | State | Remaining |
-|---|---|---|---|
-| `fix/gate-honesty-r15-g1` | PR-1, R-15 + G-1 strong form | Review: Approve (`harness/code_review/fix-gate-honesty-r15-g1.md`); root decisions applied (enforcement decided by the two variables only, per-file pin); merged with `main` @ `5266b6d` (#87); per-file pin updated to 53 (`test_phase_05a_temporal_workflow.py` 22 → 24: #87 parametrized two gated expiry tests `[unchained]`/`[chained]`); merged with `main` @ `74fb993` (#88, #89): pin unchanged, `make preflight` green at 53; R-15 test 200/200 fresh-process passes (after the `c73f6a7` merge). R-15: the `<= 20` bound was wrong (true invariant 10 ≤ calls ≤ 21; 21 is reachable with one worker) — barrier-based deterministic test, 200/200 passes. G-1: `scripts/check_gated_skips.py` pins 51 gated skips and names the real-dependency gates at the end of `make preflight` | #90 open; CI; root final integration review; merge |
-| `fix/r12-model-trace-log` | PR-7, R-12 + R-13b | Implemented per the frozen spec `harness/context/r12-model-trace-log-design.md` (append-only model-trace log, `storage_version` 3, bootstrap backfill of version 2 rows under an advisory lock, `_advance` as the single coordinator call with a source guard); red evidence in `harness/log/fix-r12-model-trace-log.md`; merged with `main` @ `74fb993` (PR-4); `make test`, `make preflight` green; gates green on the merge: `postgres-check` 35, `phase05a-check` 53, `phase06b1-check` 35 | PR; CI; merge. Independent review: Approve (M1–M6 applied, M7 deferred to PR-8; `harness/code_review/fix-r12-model-trace-log.md`). It adds 6 DB-gated test items: merged with `main` @ `f4a2487` (PR-1), the per-file pin is updated to 59 (`test_phase_04c_persistent_case_store.py` 23 → 29) and `make preflight` is green |
-| `feat/pr8a-fast-dialogue` | PR-8a, A-4 / decision 7 stage 1a (runtime + gate + report) | Implemented per the frozen spec `harness/context/pr8-fast-dialogue-design.md` (with the root's dated §5.2 amendment): `ScriptedDialogueFastAdapter` is the default Fast adapter, every applied consumer event gets one `assistant_message` visible event, the `fast-gate-v1` disclosure gate withholds text and delivers the fallback, `make fast-slow-split-check` replays the committed `data/evaluation/fast-slow-split-scripted.json`; no committed artifact moved; no DB-gated test added (pin unchanged); red evidence in `harness/log/feat-pr8a-fast-dialogue.md`. S2 redefined by a dated spec amendment (a $70 target is refused at intake; S2 talks after the offer expires); `make lint`, `make typecheck`, `make test`, `make phase04d-profile-check`, `make preflight` green; merged with `main` @ `df733f7` (#92), DB gates green on the merge: `postgres-check` 35, `phase05a-check` 53, `phase06b1-check` 54. Review: Request Changes (`harness/code_review/feat-pr8a-fast-dialogue.md`), B1/I1/M1–M6 applied (gate stays `fast-gate-v1`, spec §2.2 amended) | re-review; PR; CI; merge before PR-8b |
-| `feat/pr8b-web-assistant-lines` | PR-8b (Web part of Stage 1a; spec `pr8-fast-dialogue-design.md` §4.3) | Implemented against the frozen §4.1 event shape with fixtures; merged with `main` @ `29c8671` (8a, #94): pure `assistantLines(payload)` in `runtime-client.ts`; `conversation-workspace.tsx` renders `system`/`assistant_message` lines from `snapshot.visible_events` as plain-text bubbles with the decision-8 label; no new fetch, no `fast` read, no free-text turn. 9 new vitest cases red on `main`, green on the branch; independent review Approve with Minors, M1–M3 applied (cursor dedupe, `overflow-wrap`, Case-isolation and stale-poll tests), M4 recorded (review: `harness/code_review/feat-pr8b-web-assistant-lines.md`); `make web-check` (156 passed) and `make preflight` green on the 8a merge; Browser check against the real durable Runtime passed (line and label after confirmation and after reload; long line wraps; Runtime on 8001 because 8000 was taken, see log) (log: `harness/log/feat-pr8b-web-assistant-lines.md`) | PR; CI; squash merge; must merge before PR-10/PR-12 touch `conversation-workspace.tsx` |
-| `feat/pr10-agent-status-bar` | PR-10, Stage 4 Agent Status Bar (spec `harness/context/pr10-agent-status-bar-preflight.md`, amended after review) | Implemented from `main` @ `c018390`. The pure `renderStatusBlock(payload, { blocked })` in the new `apps/web/lib/status-block.ts` is the only builder of the Status Bar text: a doing-now line plus "as of Case revision N", then phase, goal, constraints, current offer, approval with expiry, execution, and completion/receipt. It renders as the first context-rail section. The doing-now line follows the workspace's own `phaseForPayload`, now shared in `runtime-client.ts`, so a Blocked workspace or payload reads "Stopped — state not verified". No API or projection change, and `fast` is never read. The root accepted two limits: "Current offer", and execution status instead of delivery status. I12 is enforced by placement, with a tripwire in `tests/contract/test_status_block_boundary.py` (every `runtime/*/*/src` and `ml/`) and a Web importer test. Review: Request Changes; I-1..I-3 and the Minors are applied (`harness/code_review/feat-pr10-agent-status-bar.md`). Checks: `make web-check` (vitest 187) and `make preflight` green on `081109b`. The Browser check against the real durable Runtime passed at create, pending approval with expiry, approve, verified completion, and reload (throwaway Compose project, removed) (log: `harness/log/feat-pr10-agent-status-bar.md`) | re-review if the root wants it; PR; CI; merge before PR-12 touches `conversation-workspace.tsx` |
-| `feat/pr12-stateless-intake` | PR-12, Stage 3 stateless intake (spec `harness/context/pr12-stateless-intake-preflight.md`) | Implemented from `main` @ `04a8ed5`. Stateless `POST /intake/proposals` in `services/api`: the pure, deterministic, model-free parser `proxyloop_api/intake.py` (`intake-parser-v1`) returns the four `CreateCaseRequest` keys plus at most one closed-code clarification per key; no Case, Runtime, repository, Temporal, or model call; the text is never logged, echoed, or persisted (content-free 422; operation record has no body). The Web card replaces the wizard: one free-text message fills the Draft Task Brief, only unreadable facts are asked for, and only "Create fictional Case" sends the confirmed typed facts. No contract, `CreateCaseRequest`, projection, or `runtime.py` change; no DB-gated test (pin unchanged). Red→green: `tests/integration/test_stateless_intake.py` (119 items) and 11 `runtime-client` + 76 workspace vitest cases fail on `main`'s code and pass on the branch (log: `harness/log/feat-pr12-stateless-intake.md`) . Merged with `main` @ `a8fdf5b` (#97). Review: Request Changes, with no Blocking finding. I-1..I-3, M-1..M-3 and M-6 are applied as dated `intake-parser-v1` rule amendments ("any uncertainty becomes a clarification"); M-4 is recorded (`harness/code_review/feat-pr12-stateless-intake.md`). Checks on the amended tree: `make preflight` green (runtime 1813 passed / 63 skipped, vitest 218). DB gates: `postgres-check` 38, `phase05a-check` 53, `phase06b1-check` 56. The Browser journey (free text → card → missing fact → Case → approve → verified receipt → reload) passed against the real durable Runtime | re-review if the root wants it; PR; CI; merge |
-| `fix/pr5-ops-tests` | PR-5, C-5 + C-7 + C-8 (R-6 deferred) | Review: Approve, conditional on the DB gates; Minors 1-6 applied (`harness/code_review/fix-pr5-ops-tests.md`); merged with `main` @ `df733f7` (#91, #92). C-5 a refused `make portfolio-demo` keeps a crashed supervisor's `pids.json` (red/green, real second-start path with a stale lock); C-7 the 04C round-trip helper compares every non-Provider field of `CaseRuntimeState` (red/green) plus a DB-free codec round-trip test; C-8 two real-PostgreSQL delivery-callback tests on an in-progress Case: rollback + retry, and a repeated callback (keeps one receipt; records a transition, marks its Inbox applied, rewrites the Outbox) plus direct storage-level regression calls. Gated-skip pin: `test_phase_06b1_channel_runtime.py` +2 (4 with #92's re-drive test; total 63). R-6 needs `runtime.py` + `postgres_repository.py` (PR-7): seam and test plan in the log. On `df733f7`: `make test`, `preflight` green (63 gated skips); on `1573a42`: `postgres-check` 38, `phase05a-check` 53, `phase06b1-check` 37 passed (not rerun after #92: it touched only `app.py`, activities and tests the C-8 tests do not use) | PR #93; CI; merge. R-6 follow-up after PR-7: option (b), the TTL stored in the Provider config as an optional field defaulting to today's 1 h. Log `fix-pr5-ops-tests.md` |
-| `feat/pr9a-fast-backend-seam` | PR-9a, stage 1b runtime half (seam, R-19, HTTP Fast adapter, fake gateway, `PROXYLOOP_FAST_BACKEND`) | Implemented per the frozen spec `harness/context/pr9-local-distilled-fast-design.md` (root answers Q1–Q12) from `main` @ `29c8671`: `agent_core` gains `ObservingFastAdapter`, `LabelledFastBackend`, the allow-listed `FastAdapterFailure`, `fast_public_observation` (`fast-observation-v1`, total by refusal codes), the wire owner `local_fast_wire.py`, and `CaseCoordinator(capture_fast_failures=...)` / `fast_failed`; the Runtime captures a typed Fast failure as a `FAILED` trace plus the fallback line (no retry, no backend switch); new package `runtime/packages/local_fast`; `adapter_mode` gains `local_distilled_candidate` / `local_untuned_baseline`; R-19 made total (§4a). No committed `*-check` artifact moved; no DB-gated test added (pin unchanged at 63). Red evidence and checks in the log | DB gates (`postgres-check`, `phase05a-check`, `phase06b1-check`, serially); independent review + `/security-review` (new network client); PR; CI; merge before PR-9b. Log `feat-pr9a-fast-backend-seam.md` |
-| `feat/pr9b-local-fast-gateway` | PR-9b (ml side of stage 1b; frozen spec `harness/context/pr9-local-distilled-fast-design.md`) | Stdlib PEFT → MLX converter with the committed hash attestation (`ml/serving/`); silent-load guard (252 LoRA layers, all non-zero `lora_b`) plus a loaded-weight fingerprint check; loopback gateway (`proxyloop_evaluation/local_fast/`) on 9a's shared wire module `agent_core/local_fast_wire.py` (interim copy deleted; 9a golden fixtures checked from the ml side). M1 (trained format): **stack parity held** (distilled act agreement 0.983, cloud concordance 1.000). M2 (product path), a **negative product result** recorded per Q1: distilled delivers **0/240** lines (40 refusal-transfer rows refused before the model, no offer; all 200 gated outputs withheld by `fast-gate-v1` on the act and undisclosed-number rules); act agreement 157/240 = 0.654 (untuned 97/240); of the drop from 236, D4 (no `applied_changes`) is about half (unsupported-action −40) and the 40 refusal-transfer rows refused before the model (no offer) the other half; untuned delivers 8/240; distilled product-path generation p50 23.9 s, max 32.5 s (64/200 over 25 s; descriptive, other work on the machine). Local split reports committed (`data/evaluation/fast-slow-split-{distilled,untuned}.json`): turn structure equals scripted; on both backends 8/8 Fast calls succeeded and were gate-withheld (fallback cause `gate` 8, `failure` 0). `phase03c-local-parity-check`, `phase03c-product-parity-check`, `fast-slow-split-check` in `make test`. Evidence: `harness/log/feat-pr9b-local-fast-gateway.md` | First review: Request Changes, no Blocking; I1 and M1–M7 applied (`harness/code_review/feat-pr9b-local-fast-gateway.md`). Merged with `main` @ `e10443d` (#98). `docs/ml-evidence.md` points from the 98.3% (trained path) to the M2 result; `make local-fast-gateway LOCAL_FAST_PORT=`. Browser check done (direct, postgres, distilled): the first consumer turn shows the fallback line (Fast trace `rejected` on the gate); after reload the Web shows "Runtime state not verified" by its existing rule (restore only for temporal + postgres + `scripted`), while the Runtime still returns the line. Second-half review: Request Changes, no Blocking; I1 and M1–M5 plus the nits applied (`--rebuild-from-report`, split-report identity bound to M1 and the attestation, measured-call cross-check). Known limit (the Web did not restore a Case on a local backend after reload) closed by `fix/followup-web-restore-flaky`. Merged as #100 (`e455f71`) |
-| `feat/pr13-slow-drives-intent` | PR-13, Slow's proposal drives the intent + A-3 coordinator validator (decisions 19, 20) | Implemented per the frozen spec `harness/context/pr13-slow-drives-intent-design.md` (root answers 1–8) from `main` @ `a8fdf5b`: new `agent_core/proposal_admission.py` (`slow_proposal_violations`, 11 `slow_proposal_*` rules; `standing_proposal_offer`), `CaseCoordinator(slow_proposal_check=...)` passed only by the Runtime's coordinator (a violation rejects the whole Slow result), `ScriptedProposingSlowAdapter` (`proposing-v1`) as the Runtime default with `ScriptedSlowAdapter` unchanged, and the standing proposal on `CaseRuntimeState` and as an optional `storage_version` 3 field (omitted when none). The approval opens only from an admissible standing proposal whose offer policy finds compliant; otherwise the command applies with the assistant line. No committed `*-check` artifact moved (`fast-slow-split-scripted.json` included); a main-vs-branch state differential over 57 scenario states is identical except the Slow trace `model_version` and wall-clock latency. No DB-gated test added (the gated 04C model→scripted switch test now proposes the accept). Review: Request Changes (B1: an unpinned retry could apply twice) → `_check_not_applied` in the Case lane (`9d24a3a`) and M1–M6, I1 (`a414804`) → re-review Request Changes (the first-callback delivery race) → fixed at `23932a2` → re-verification Approve; the in-lane guarantee holds per Runtime instance, cross-instance races resolve through the PostgreSQL revision CAS (pre-dates PR-13) (`harness/code_review/feat-pr13-slow-drives-intent.md`). Merged with `main` @ `e10443d` (#98): both worker Runtimes default to `ScriptedProposingSlowAdapter`; the channel Runtime still refuses a Case with a pending approval and never opens one. On the merged tree: `make test` and `make preflight` green (runtime 1701 passed, 66 skipped; pin 66); `postgres-check` 38, `phase05a-check` 73, `phase06b1-check` 56 passed. `/security-review` not run | PR; CI; merge before PR-14. Log `feat-pr13-slow-drives-intent.md` |
-| `feat/pr11-fast-under-temporal` | PR-11, stage 1c: model-backed Fast under Temporal + the 07A `FAST_BACKEND` flag | Implemented from `main` @ `a8fdf5b` (#97) per the implementer spec `harness/context/pr11-fast-under-temporal-preflight.md`: the worker builds Fast from `PROXYLOOP_FAST_BACKEND` through the same `fast_adapter_from_environment` (refusal matrix and identity probe, before the database opens); the API lifts its Temporal refusal and labels `adapter_mode` (`config.py` only, no `app.py` edit); a typed Fast failure applies the command, so the activity completes and is not retried; channel commands keep scripted Fast on a second Runtime over the same repository, so the outbound body stays constant (D5-A, recommended; root to confirm). No Workflow, retry-policy, or `runtime.py` change; no replay fixture needed. `FAST_BACKEND=distilled make portfolio-demo` expects PR-9b's gateway and refuses before starting anything without it. Gated-skip pin 63 → 66 (`test_fast_under_temporal.py`: 3 time-skipping tests, run in `phase05a-check`). Red evidence and checks in the log | Review: Approve; I-1 and M-1..M-5 applied (`harness/code_review/feat-pr11-fast-under-temporal.md`), D5-A stands; `make preflight` green after review (pin 66); DB gates green on `d8460fe`: `postgres-check` 38, `phase05a-check` 73, `phase06b1-check` 56 | PR; CI; merge. Manual run after PR-9b. Log `feat-pr11-fast-under-temporal.md` |
-| `fix/followup-web-restore-flaky` | Follow-ups: PR-9b known limit (Web restore on a local Fast backend) + the ML flaky wall-clock test | Implemented from `main` @ `eee47a3`. (1) `restorePersisted` restores under temporal + postgres with `adapter_mode` `scripted`, `local_distilled_candidate` or `local_untuned_baseline` (root decision); direct mode and hosted `model` stay blocked; 2 restore cases red on the old rule, green after; 3 new blocked rows; `docs/architecture.md` and `docs/ui/state-matrix.md` updated; PR-9b known limit marked closed. (2) `test_concurrent_sampling_matches_the_sequential_run`: `elapsed < 0.6` replaced by a barrier that opens only when eight calls are in flight at once (R-15 precedent; test file only); fails under a scratch `max_workers=1` mutation; 100/100 fresh-process passes, 20/20 beside 42 CPU hogs. `make lint`, `typecheck`, `test`, `web-check`, `preflight` green; no DB gate (no service change); no Browser check (log: `harness/log/fix-followup-web-restore-flaky.md`) | independent review; PR; CI; merge |
-
-| `feat/pr14-judge-seam` | PR-14, Stage 2 Judge seam (decisions 7, 17, 20) | Implemented per the frozen spec `harness/context/pr14-judge-seam-preflight.md` (root answers 1–9, 2026-09-25): new `agent_core/judge.py` (`JudgeVerdict` accept/revise with the one closed code `judge_premature_give_up`, no block; `JudgeAdapterFailure`; the optional `FeedbackReasoningSlowAdapter`; `ScriptedJudgeAdapter`, which never revises the default Slow); `CaseCoordinator(judge=...)` passed only by the Runtime's coordinator reviews every admitted Slow result, retries a feedback-capable Slow once on a binding revise (same request, verdict in process, retry admitted like the first and final), and falls back to the first admitted result otherwise; one `role=judge` trace per call. `turn_split` parses Judge calls and retries and counts them apart; `fast-slow-split-scripted.json` regenerated at `fast-slow-split-v2` (every v1 value identical; the only committed report that moved); the local reports stay pre-Judge at `fast-slow-split-local-v1`, a new local run writes `-local-v2`. Import-boundary AST test and the extended G8 guard; `CONTEXT.md` gains "Judge". No contract change, no DB-gated test added (pin 66). Review: Request Changes, no Blocking → I1, M1–M6 applied (`harness/code_review/feat-pr14-judge-seam.md`). Merged with `main` @ `eee47a3` (#100, #101): `make lint`, `typecheck`, `test`, `preflight` green (runtime 2071 passed, 66 skipped; ml 498 passed); `postgres-check` 38, `phase05a-check` 73, `phase06b1-check` 56 passed | PR; CI; root integration review; merge. Log `feat-pr14-judge-seam.md` |
-| `feat/pr16-phase07-contract` | PR-16, Phase 07 (frozen contract `harness/build/phase-07-portfolio-hardening.md`, root decisions D1–D9, 2026-09-25; decision 21 drops PR-15) | Implemented from `main` @ `973258a` (#102): `harness/status.toml` `in_progress` (phase 07); D2 fail-closed loopback port overrides (`RUNTIME_PORT`/`WEB_PORT`, `--runtime-port`/`--web-port`, `PROXYLOOP_RUNTIME_ORIGIN` read by `apps/web/next.config.ts` through `lib/runtime-origin.ts`); D3 Scene J `make portfolio-demo-journey` (intake → create → confirmation → approval → exact approval replay → final read; PostgreSQL Model Trace counts slow/judge/fast 1/1/1; marker absent from the proposal and the logs; `WRITE_EVIDENCE=1` writes the content-free `data/evaluation/phase-07-demo-journey-scripted.json`); D5 `make ops-report` / `ops-report-check` (in `make test`) writing `data/evaluation/ops-report.json`. No runtime/API/workflow source change; no committed `*-check` artifact moved; gated-skip pin unchanged (66). F1 (root decision (b), contract amendment A1): `proxyloop_api/server.py` emits the operation records to stderr, and Scene J checks one per request. Lane run on 8011/3011 (log): Scenes 0, A (desktop + 375x812), J (twice, byte-identical; evidence and ops-report committed), A-D distilled (fallback line, gate-rejected Fast trace, verified receipt, reload restored), B, R all pass; `postgres-check` 38, `phase05a-check` 73, `phase06b1-check` 56; `make preflight` green (66). Amendment A2: the Status Bar after create reads "Waiting for you to confirm the Task Brief." Log `harness/log/phase-07-portfolio-hardening.md` | Root confirms A2; independent review; PR; CI |
-| `fix/r6-injectable-offer-ttl` | R-6 follow-up (root decision (b)) | Implemented from `main` @ `973258a`: `FictionalMobileProvider(offer_ttl=...)` (default `DEFAULT_OFFER_TTL` = 1 h, refuses a non-positive TTL) and `ThinAgentRuntime(offer_ttl=...)` (positive, whole seconds, at most the 9-day Case deadline, so an approval never outlives the manifest), passed to the Provider in `create_case`. The PostgreSQL codec stores a non-default TTL as the optional `storage_version` 3 field `provider_offer_ttl_seconds` (no version bump), omits it for the default (a default row is the earlier document) and refuses the default stored by value; `_reconstruct_provider` regenerates the offer with the stored TTL and still compares it, so a tampered `expires_at`, a tampered or dropped TTL are rejected. No contract change; no committed `*-check` artifact moved. Red → green: `tests/integration/test_r6_injectable_offer_ttl.py` (20 items, 17 red on `main`), including an in-memory and a codec-backed approval at T+25 h that completes, and the default-TTL counter-control refused as `approval expired`. One new DB-gated test in `test_phase_04c_persistent_case_store.py` (48 h round trip on a fresh repository, approve at +25 h, tampered `expires_at` via SQL): pin 29 → 30, total 66 → 67. `make lint`, `typecheck`, `test`, `preflight` green (see log); DB gates green on `4442472`: `postgres-check` 39 (the new test passes on its first real run), `phase05a-check` 73, `phase06b1-check` 56. Root accepted the three implementation decisions (flat field, TTL <= 9 days at construction, default stored by value refused) . Review: Request Changes, no Blocking; I-1 (MAX_OFFER_TTL in `provider.py` as the one bound, `le=` on read, offer must not outlive the manifest, `OverflowError` → invalid payload) and M-1..M-3 applied (`harness/code_review/fix-r6-injectable-offer-ttl.md`); merged `main` @ `e543d64`; `make preflight` green (runtime 2105 passed, 67 skipped) ; DB gates green again on `57377e4`: `postgres-check` 39, `phase05a-check` 73, `phase06b1-check` 56 | PR; CI; merge. Log `fix-r6-injectable-offer-ttl.md` |
-
-R-19 (`SafeObservationAdapter` raises on negative-fee / duplicate-feature
-offers; used by `ml/` and two scripts) is assigned to PR-9 and implemented
-on `feat/pr9a-fast-backend-seam` (PR-9a; see §4a).
-
-### Then
-
-Wave 1 continues with PR-3 (PR-2 merged), PR-5 (PR-4 merged), PR-7
-(R-12 + R-13b trace log, **architect design first**); PR-2 (#87), PR-4
-(#88) and PR-6 (#89) are merged;
-then Waves 2–6 per the plan. Items marked "architect first" get an
-`architect` proposal before any `implementer` starts.
+PR-15 (narrow contracts 1.2) was dropped by decision 21; R-11b and B1-9b
+stay recorded limits. The Phase 07 gate (`make preflight` and the three DB
+gates, serially, on PR-17's up-to-date head; CI; independent review; the
+squash merge with the tree-identity check) is recorded in
+`harness/log/phase-07-portfolio-hardening.md`. Nothing after it starts
+another phase.
 
 ### How to run it (harness)
 
@@ -94,7 +85,7 @@ then Waves 2–6 per the plan. Items marked "architect first" get an
   shared; agents overwrote each other's files once).
 - `gh pr checks --watch` can die on a GitHub TLS timeout; poll
   `gh pr checks <n>` in a loop instead. The ML test R-15 flaked on CI
-  twice before PR-1; if it recurs before PR-1 lands, rerun the failed job.
+  twice before PR-1; #90 made it deterministic.
 - Fresh worktrees need `pnpm install --frozen-lockfile` before `make test`.
 
 ## 1. Where the programme stands
@@ -105,19 +96,21 @@ then Waves 2–6 per the plan. Items marked "architect first" get an
 | Group 1 | every Blocking and the Important defects in the runtime, workflow and Web | **done**, #38 #39 #40 #43 #44 #46 |
 | Group 2 | simulator / evaluation authority, evaluator evolution, verifier, leakage | **done**, #47 #48 #49 #50 |
 | P1 | 11 backlog rows, staged | **done** (#54–#70, #72, see §3) |
-| P2 | ~40 hygiene items + R-1…R-18 found in the P1/P2 runs | first four batches merged (#73 #74 #76 #77), R-10 and R-1/R-1b fixed (#75 #78); the rest open (§4, §4a) |
-| Proposal stages | intake, Fast dialogue wiring, Judge, Agent Status Bar | **not started** (see §5) |
+| P2 | ~40 hygiene items + R-1…R-19 found in the P1/P2 runs | **done**: each closed, or recorded as a limit with a reason (§4, §4a; #73–#93, #97, #104, and A-7f in PR-17) |
+| Proposal stages | intake, Fast dialogue wiring, Judge, Agent Status Bar | **done in scripted or Web-only form** (#94–#102; see §5) |
+| Phase 07 | demo scenes, ops report, final reports | PR-16 merged (#105); PR-17 pending, then the gate |
 
-Every audit finding rated Blocking or Important is closed. What remains is
-feature work (the proposal), hygiene (P2) and the §4a backlog.
+Every audit finding rated Blocking or Important is closed, and so are the
+Important R-items (R-1, R-10, R-12, R-16) and R-17 and R-18. The remaining
+Minors are closed or recorded as limits (§4, §4a, `docs/limitations.md`).
 
-Latest recorded gates: #77 and #78 each merged `origin/main` @ `8e1522a`
-(#76) and ran `make preflight` exit 0 there, with the real-dependency
-gates one at a time — #78 (`fix-r1-retryable-update-continues-as-new.md`):
-runtime 1200 passed / 51 skipped, ML 397 / 1 skipped, web 99;
-`phase05a-check` 42, `phase06b1-check` 35, `postgres-check` 27. No gate
-has been recorded on the combined tip `74e2073` (#77 + #78). Real-dependency
-gates are not part of `preflight`; run them serially.
+Latest recorded gates: on PR-16's merged head (with #104), `make preflight`
+exited 0 (runtime 2150 passed / 67 skipped, vitest 269, 67 gated skips
+matching the pin), and `postgres-check` (39), `phase05a-check` (73) and
+`phase06b1-check` (56) passed serially
+(`harness/log/phase-07-portfolio-hardening.md`). The final gate runs on
+PR-17's up-to-date head. Real-dependency gates are not part of
+`preflight`; run them serially.
 
 ## 2. Closed items, with the evidence
 
@@ -188,8 +181,8 @@ Closed in the third session:
 | B2-7, B2-9, G-3 | a replayed receipt reports its route and Fast decision only if it produced the current snapshot (otherwise `terminal`/`current`, no `fast`); the dead clock read in the terminal-approval branch is gone; `phase04d-profile-check` compares a committed shape baseline and exact counts and exits 1 with named failures (no bare `assert`) | #82 | `fix-p2-api-hygiene.md` |
 | B1-12 | the Router waits on approval state, not an event label: `RouteRequest.trigger_is_approval_decision` removed, a current PENDING approval always routes `WAIT_FOR_APPROVAL`; precedence and reason codes unchanged | #80 | `fix-p2-router-precedence.md` |
 | grep-based architecture tests → Router precedence tests (audit §3, lane A) | the grep test over `router.py`/`coordinator.py` is deleted; `test_router_precedence_ladder_matches_the_frozen_table` checks each row of `ROUTER_PRECEDENCE` behaviourally, plus a slow-result planning-basis rejection test; the 03A0 docs-invariant tests are kept | #80 | `fix-p2-router-precedence.md` |
-| B1-9 | the Case-vs-offer policy check is total: `case_offer_violations` (telecom domain) turns a contract-valid but out-of-domain input (negative fee sum from a credit line, duplicate goal/offer/applied-change tokens) into `offer_terms_invalid` / `compliance_context_invalid` instead of raising; `verify_completion` and the runtime approval gate both use it (NEEDS_REPLAN / no approval). A non-UTC `evaluated_at` still raises (caller bug). No wire or fee-netting change; non-negative fees at the wire deferred to 1.2 | `fix/b1-9-total-offer-policy` | `fix-b1-9-total-offer-policy.md` |
-| G-1 (strong form) | `unit-test` writes the runtime pytest JUnit report to `.gate/runtime-junit.xml`; the last `make preflight` step, `scripts/check_gated_skips.py`, prints the tests skipped on a `PROXYLOOP_TEST_*` reason per file, names `postgres-check`, `phase05a-check`, `phase06b1-check`, and fails unless the per-file counts equal the pin (53 in total after #87). Only `PROXYLOOP_TEST_DATABASE_URL` and `PROXYLOOP_TEST_TEMPORAL_ADDRESS` decide enforcement: neither set, the pin is enforced; both set, 0 gated skips are required; exactly one set, report only. Found a fifth gated file, `test_phase_06b1_channel_runtime.py` (1 test, via a `test_phase_06b1_temporal.py` fixture; covered by `phase06b1-check`) | `fix/gate-honesty-r15-g1` | `fix-gate-honesty-r15-g1.md` |
+| B1-9 | the Case-vs-offer policy check is total: `case_offer_violations` (telecom domain) turns a contract-valid but out-of-domain input (negative fee sum from a credit line, duplicate goal/offer/applied-change tokens) into `offer_terms_invalid` / `compliance_context_invalid` instead of raising; `verify_completion` and the runtime approval gate both use it (NEEDS_REPLAN / no approval). A non-UTC `evaluated_at` still raises (caller bug). No wire or fee-netting change; non-negative fees at the wire deferred to 1.2 | #81 | `fix-b1-9-total-offer-policy.md` |
+| G-1 (strong form) | `unit-test` writes the runtime pytest JUnit report to `.gate/runtime-junit.xml`; the last `make preflight` step, `scripts/check_gated_skips.py`, prints the tests skipped on a `PROXYLOOP_TEST_*` reason per file, names `postgres-check`, `phase05a-check`, `phase06b1-check`, and fails unless the per-file counts equal the pin (53 in total after #87; 67 on `main` after #104). Only `PROXYLOOP_TEST_DATABASE_URL` and `PROXYLOOP_TEST_TEMPORAL_ADDRESS` decide enforcement: neither set, the pin is enforced; both set, 0 gated skips are required; exactly one set, report only. Found a fifth gated file, `test_phase_06b1_channel_runtime.py` (1 test, via a `test_phase_06b1_temporal.py` fixture; covered by `phase06b1-check`) | #90 | `fix-gate-honesty-r15-g1.md` |
 
 Recorded as limits by #74 (`fix-p2-ml-eval-hygiene.md`), still open:
 deleting the D3-7 `rejection_reasons` field (emitted in the committed
@@ -201,8 +194,7 @@ Recorded as limits (documentation plus characterization tests, no
 behaviour change) in #83
 (`docs-contract-semantics-limits.md`): A-3 (the executor is the only
 enforcement point for the capability/action join; **moved from a recorded
-limit to the coordinator validator on `feat/pr13-slow-drives-intent`
-(PR-13), DB gates pending**: the Runtime's coordinator runs the A-3
+limit to the coordinator validator in #99 (PR-13)**: the Runtime's coordinator runs the A-3
 admission check on every Slow result, the executor still checks at
 execution and remains the only check on the ML evaluation path, and no
 contract changes), A-5 (`Evidence.content_hash`
@@ -210,10 +202,18 @@ referent table), A-9 (ephemeral values and write-once records keep
 `revision=1`). The contract changes the audit proposed for them stay open as
 separate decisions.
 
-Open: A-7f,
-G-1 follow-up (the real-dependency gates do not themselves require 0
-gated skips; review Minor 5 of `fix-gate-honesty-r15-g1`), C-5, C-7, C-8 (in flight, PR-5, §0), D1-10…D1-12, D2-7…D2-9, D3-5, D3-6, D3-7 (field
-deletion only), D3-8, D3-9.
+Closed at the programme's end: A-7f (PR-17: `docs/architecture.md` says
+the verifier produces only `complete` and `needs_replan`, and marks each
+diagram node built or proposed); C-5, C-7, C-8 (#93; a C-5 residual, host
+services orphaned by a signal during spawn, is recorded in
+`fix-pr5-ops-tests.md`).
+
+Recorded limits, not fixed (each with its reason in `docs/limitations.md`):
+the G-1 follow-up (the real-dependency gates do not themselves require 0
+gated skips; review Minor 5 of `fix-gate-honesty-r15-g1`); D1-10…D1-12 (V1
+simulator frozen); D2-7…D2-9, D3-8, D3-9 (frozen modules or committed
+report bytes); D3-5, D3-6 (`qwen_mlx.py` frozen by r4); D3-7 field deletion
+(emitted in the committed trajectory schema).
 
 ## 4a. Found during the P1 and P2 runs (R-1 … R-19)
 
@@ -225,7 +225,7 @@ Closed:
 | R-1 (Important), R-1b | option (f): a retry-exhausted Update still fails with `temporal_unavailable` and the run requests Continue-As-New (patch gate `retryable-update-failure-continues-as-new`), so the identical retry reaches the Runtime; the classifier reads `ActivityError.retry_state` (`MAXIMUM_ATTEMPTS_REACHED`, `TIMEOUT`); `_can_continue_as_new()` ends the R-1b busy-loop | #78 | `fix-r1-retryable-update-continues-as-new.md` |
 | R-3 (= E-9) | see §4 | #77 | `fix-p2-web-hygiene.md` |
 | R-8 | documented: the browser `event_cursor`/`revision` count channel events; `snapshot.completion` is a synthetic `not_done` | #77 | `fix-p2-web-hygiene.md` |
-| R-15 | not a ledger bug: `calls <= 20` was a guess. From the reservation rule, `(calls - 1) * per_call + min_worst <= ceiling` and `(calls - 7) * per_call + 8 * max_worst > ceiling`, i.e. 10 <= calls <= 21 here; a sequential run also admits 21. The test now holds the first eight calls at a barrier (eight joint reservations, the ledger refuses a ninth) and asserts the derived bounds; 200/200 fresh-process runs pass | `fix/gate-honesty-r15-g1` | `fix-gate-honesty-r15-g1.md` |
+| R-15 | not a ledger bug: `calls <= 20` was a guess. From the reservation rule, `(calls - 1) * per_call + min_worst <= ceiling` and `(calls - 7) * per_call + 8 * max_worst > ceiling`, i.e. 10 <= calls <= 21 here; a sequential run also admits 21. The test now holds the first eight calls at a barrier (eight joint reservations, the ledger refuses a ninth) and asserts the derived bounds; 200/200 fresh-process runs pass | #90 | `fix-gate-honesty-r15-g1.md` |
 | R-2 | error details are content-free category codes: 404 `{"detail": "not_found"}` in both modes; 409 `{"detail": "stale_cas" \| "case_conflict" \| "approval_expired"}`; request validation 422 `{"detail": {"code": "request_invalid", "message": "request rejected"}}` instead of FastAPI's default body (which echoed input). The Runtime text (or, for 422, field locations and error types only) is logged server-side with the correlation id | #82 | `fix-p2-api-hygiene.md` |
 | R-16 (Important) | the expiry path classifies the outermost typed failure (`_outermost_failure_category`) behind the second patch gate `expiry-failure-outermost-cause`, so a chained non-retryable expiry failure is abandoned, not retried; a pre-R-16 replay fixture keeps recorded histories on the old path | #87 | `fix-r16-expiry-classifier.md` |
 | R-18 | the terminal codec rule pairs the callback events after the approval-decision cursor with the `PROVIDER_EVENT` Evidence after the confirmation Evidence (same count, in order, equal times); a forged event without Evidence or a deleted event whose Evidence remains is rejected | #88 | `fix-r18-callback-evidence-pairing.md` |
@@ -246,22 +246,21 @@ the window and exceeds the 30 s Next proxy timeout.
 
 Other items (Minor unless marked):
 - R-4 the ML compiler resolves capabilities by exact id (frozen via r4; consistent today).
-- R-5 the channel route reads `expected_revision` outside the lock (redelivery recovers since #62). **Implemented on `fix/r17-r5-channel-redrive` (PR-3), gates green, review findings applied**: on `channel_conflict` the route re-reads and re-sends once with the advanced revision, only when the event still has no receipt and the revision moved; a delivery conflict after the ingest committed stays a 409 after one dispatch (spec `fix-r17-r5-channel-redrive-preflight.md`, log `fix-r17-r5-channel-redrive.md`).
-- R-6 persisted Cases keep their 1-day manifest; a runtime > 24 h test needs an injectable offer TTL. Deferred from PR-5 until PR-7 merges: the seam needs `runtime.py` (`create_case` builds the Provider) and `postgres_repository.py` (`_reconstruct_provider` regenerates the offer with the default TTL); proposed seam, storage options, and test plan in `harness/log/fix-pr5-ops-tests.md`. Root decision: option (b), the TTL stored in the Provider config as an optional field defaulting to today's 1 h, in a follow-up PR after PR-7 (which merged as #91). **Closed, pending merge** on `fix/r6-injectable-offer-ttl`: the injectable TTL, persisted as the optional envelope field `provider_offer_ttl_seconds`, and a runtime approval at T+25 h (log `harness/log/fix-r6-injectable-offer-ttl.md`). The "persisted Cases keep their 1-day manifest" half stays an accepted known limit (no migration).
+- R-5 the channel route reads `expected_revision` outside the lock (redelivery recovers since #62). **Done** in #92 (PR-3): on `channel_conflict` the route re-reads and re-sends once with the advanced revision, only when the event still has no receipt and the revision moved; a delivery conflict after the ingest committed stays a 409 after one dispatch (spec `fix-r17-r5-channel-redrive-preflight.md`, log `fix-r17-r5-channel-redrive.md`).
+- R-6 persisted Cases keep their 1-day manifest; a runtime > 24 h test needs an injectable offer TTL. Deferred from PR-5 until PR-7 merges: the seam needs `runtime.py` (`create_case` builds the Provider) and `postgres_repository.py` (`_reconstruct_provider` regenerates the offer with the default TTL); proposed seam, storage options, and test plan in `harness/log/fix-pr5-ops-tests.md`. Root decision: option (b), the TTL stored in the Provider config as an optional field defaulting to today's 1 h, in a follow-up PR after PR-7 (which merged as #91). **Done** in #104 (`fix/r6-injectable-offer-ttl`); the pre-#61 one-day-manifest half stays a recorded limit: the injectable TTL, persisted as the optional envelope field `provider_offer_ttl_seconds`, and a runtime approval at T+25 h (log `harness/log/fix-r6-injectable-offer-ttl.md`). The "persisted Cases keep their 1-day manifest" half stays an accepted known limit (no migration).
 - R-7 `_snapshot(manifest=None)` re-mint — **done** in #68 (manifest required).
 - R-9 shared `proxyloop_test` DB → run DB/Temporal gates serially (documented in #73); a per-run schema would remove the hazard.
 - R-11 the canonical `material_terms_hash` excludes fees and applied changes. Option (a) **done** in #83 (`CONTEXT.md` Material Terms states the implemented definition and its limits); option (b), binding fees, credits, and applied changes (R-11b), deferred to contract set 1.2.
-- **R-12 (Important)** rejected-result traces reach `CoordinatorOutcome` but the runtime raises before writing. **Implemented on `fix/r12-model-trace-log` (PR-7), DB gates pending**: every coordinator run goes through `ThinAgentRuntime._advance`, which appends its traces to an append-only log before the runtime acts on the outcome (spec `harness/context/r12-model-trace-log-design.md`, log `harness/log/fix-r12-model-trace-log.md`). Known limit: an adapter that raises produces no outcome and so no trace.
-- R-13 `model_traces` retention unbounded. Option (c) **done** in #83 (documented in `docs/architecture.md`); option (b) (R-13b), a separate append-only trace log at `storage_version` 3, **implemented on `fix/r12-model-trace-log` (PR-7), DB gates pending**: the envelope carries no traces, and bootstrap moves version 2 inline traces into the log under an advisory lock. Retention is still unbounded (pruning is a separate policy decision).
+- **R-12 (Important)** rejected-result traces reach `CoordinatorOutcome` but the runtime raises before writing. **Done** in #91 (PR-7): every coordinator run goes through `ThinAgentRuntime._advance`, which appends its traces to an append-only log before the runtime acts on the outcome (spec `harness/context/r12-model-trace-log-design.md`, log `harness/log/fix-r12-model-trace-log.md`). Known limit: an adapter that raises produces no outcome and so no trace.
+- R-13 `model_traces` retention unbounded. Option (c) **done** in #83 (documented in `docs/architecture.md`); option (b) (R-13b), a separate append-only trace log at `storage_version` 3, **done** in #91 (PR-7): the envelope carries no traces, and bootstrap moves version 2 inline traces into the log under an advisory lock. Retention is still unbounded (pruning is a separate policy decision).
 - R-14 the 1.0/1.1 basis switch is duplicated in `runtime.py` and `contracts.py` — **done** in #85: one owner, `planning_basis_components` in the contracts package, called by the snapshot validator and the runtime's `_basis`; pinned by `runtime/packages/contracts/tests/test_planning_basis_components.py`. See `harness/log/refactor-r14-basis-switch-owner.md`.
-- R-17 a channel ingest that exhausts on the delivery activity is not re-driven on redelivery (pre-existing; found in the R-1 design, `fix-r1-retryable-update-continues-as-new.md`). **Implemented on `fix/r17-r5-channel-redrive` (PR-3), gates green, review findings applied**: a duplicate whose outbox is in `REDRIVABLE_OUTBOX_STATES` re-sends the identical ingest request (same Update ID), and the Workflow re-runs the delivery activity once R-1 has rolled the run; no `workflow.py` change. The delivery activity always looks up before sending (every attempt and outbox state) and sends only when the lookup finds nothing (review I-1). Residual risk: a send whose effect is not yet visible to `lookup`, e.g. a schedule-to-close `TIMEOUT` letting a retry or re-drive run while the timed-out attempt is still in flight.
-- R-19 `SafeObservationAdapter._adapt_offer` (`agent_core/observation.py`) raises on a contract-valid `ProviderOffer` with a negative fee sum or a duplicate feature, via `SafeOffer.__post_init__` (the same out-of-domain inputs B1-9 made total in the policy check). Used today by the `ml/` pipeline and evaluation and the `scripts/` benchmark/harness runners, not by the product runtime. Found in the B1-9 review. **Implemented on `feat/pr9a-fast-backend-seam` (PR-9a), DB gates pending**: made total by refusal codes. `classify_provider_offer` returns a `SafeOffer` or codes (`offer_case_mismatch`, `offer_provider_mismatch`, `offer_fee_sum_negative`, `offer_features_duplicate`) for every contract-valid `ProviderOffer`, and the product path (`fast_public_observation`) turns them into an `ObservationRefusal`. `SafeObservationAdapter.build` delegates to it and raises the pre-R-19 message for the first code, so the ML `build` path is unchanged on every previously-returning input and raises the same `ValueError` on every previously-raising one (differential fuzz, 20k seeded inputs, 0 differences: `tests/integration/test_fast_observation_renderer.py`).
+- R-17 a channel ingest that exhausts on the delivery activity is not re-driven on redelivery (pre-existing; found in the R-1 design, `fix-r1-retryable-update-continues-as-new.md`). **Done** in #92 (PR-3): a duplicate whose outbox is in `REDRIVABLE_OUTBOX_STATES` re-sends the identical ingest request (same Update ID), and the Workflow re-runs the delivery activity once R-1 has rolled the run; no `workflow.py` change. The delivery activity always looks up before sending (every attempt and outbox state) and sends only when the lookup finds nothing (review I-1). Residual risk: a send whose effect is not yet visible to `lookup`, e.g. a schedule-to-close `TIMEOUT` letting a retry or re-drive run while the timed-out attempt is still in flight.
+- R-19 `SafeObservationAdapter._adapt_offer` (`agent_core/observation.py`) raises on a contract-valid `ProviderOffer` with a negative fee sum or a duplicate feature, via `SafeOffer.__post_init__` (the same out-of-domain inputs B1-9 made total in the policy check). Used today by the `ml/` pipeline and evaluation and the `scripts/` benchmark/harness runners, not by the product runtime. Found in the B1-9 review. **Done** in #97 (PR-9a): made total by refusal codes. `classify_provider_offer` returns a `SafeOffer` or codes (`offer_case_mismatch`, `offer_provider_mismatch`, `offer_fee_sum_negative`, `offer_features_duplicate`) for every contract-valid `ProviderOffer`, and the product path (`fast_public_observation`) turns them into an `ObservationRefusal`. `SafeObservationAdapter.build` delegates to it and raises the pre-R-19 message for the first code, so the ML `build` path is unchanged on every previously-returning input and raises the same `ValueError` on every previously-raising one (differential fuzz, 20k seeded inputs, 0 differences: `tests/integration/test_fast_observation_renderer.py`).
 
-Still open from the audit P2 list and not yet batched: runtime/router/api
-hygiene (A-7f, R-5) and ops/tests (C-5, C-7, C-8 in flight as PR-5; R-6 deferred until after PR-7).
-The design-first items are settled: B1-9 is closed above, A-5 and A-9
-are recorded as limits above, and A-3 is recorded above and moves to the
-PR-13 coordinator validator. **Do not do**: D3-5/D3-6 (`qwen_mlx.py`
+Nothing from the audit P2 list is left unbatched: A-7f closes in PR-17,
+R-5 in #92, C-5/C-7/C-8 in #93, R-6 in #104. The design-first items are
+settled: B1-9 is closed above, A-5 and A-9 are recorded as limits above,
+and A-3 moved to the PR-13 coordinator validator (#99). **Do not do**: D3-5/D3-6 (`qwen_mlx.py`
 frozen by r4); D1-10/11/12 (V1 simulator frozen, superseded by V2); D2-9 and
 D3-8 only if a check proves no committed report byte moves.
 
@@ -277,8 +276,10 @@ state is sticky; V2 `false_completion` ≠ V1's (a hazardous accept is
 
 ## 5. Proposal stages — the gap between "audited" and "a Pine-style demo"
 
-These are the changes that make the product demonstrable; none is started.
-Each needs its own spec under `harness/context/` before implementation.
+These are the changes that make the product demonstrable. Each was built
+from its own spec under `harness/context/`, in scripted or Web-only form;
+what the demo does against what the proposal envisioned is in the README,
+"Observed versus proposed".
 
 1. **Fast dialogue reaches the product** (A-4, B1-3, decision 7). **Stage 1a
    done, scripted only** (PR-8a, `feat/pr8a-fast-dialogue`,
@@ -286,13 +287,15 @@ Each needs its own spec under `harness/context/` before implementation.
    adapter's line reaches the Case as an `assistant_message` visible event
    behind the `fast-gate-v1` disclosure gate, and the per-turn Fast/Slow
    split is measured and committed (`data/evaluation/fast-slow-split-scripted.json`).
-   The Web rendering is PR-8b; no model-backed Fast text is measured yet
-   (PR-9); the channel body stays constant (PR-11); multi-turn Web dialogue
-   waits for PR-13.
+   Merged as #94; the Web rendering as #95 (PR-8b). The local distilled Fast
+   backend (#97, #100, #98) delivers 0/240 lines through the product path
+   (M2, a negative result); the channel body stays constant (#98); the Web
+   has one consumer turn after creation.
 2. **Judge pass before the deterministic gate** (decision 7). Quality only,
    never in metrics or authority — a Judge that reaches metrics repeats
-   D2-1. Second model family when a second credential exists, recorded in
-   the trace.
+   D2-1. **Done, scripted** in #102 (PR-14): an advisory scripted Judge with
+   at most one Slow retry; on the default Slow it always accepts. A model
+   Judge and a second model family are not built (decision 17).
 3. **Stateless intake** `POST /intake/proposals` (proposal §12.5), so the
    Case invariant "goal is consumer-confirmed" stays typed. **Implemented**
    (PR-12, `feat/pr12-stateless-intake`,
@@ -300,8 +303,9 @@ Each needs its own spec under `harness/context/` before implementation.
    model-free parser returns a typed Intake Proposal with closed-code
    clarifications; the Web card replaces the wizard and only the consumer's
    explicit create click sends the confirmed typed facts to `POST /cases`. No
-   contract change; a model-backed intake is not built (decision 17).
-4. **Agent Status Bar** = rendering `CaseContextSnapshot` in the Web. **Implemented, Web only** (PR-10, `feat/pr10-agent-status-bar`, `harness/context/pr10-agent-status-bar-preflight.md`): `renderStatusBlock` over the allow-listed browser projection, no API change. It is not a model prompt (I12 boundary test); a prompt-side status block (proposal §7) is not built.
+   contract change; a model-backed intake is not built (decision 17). Merged
+   as #101.
+4. **Agent Status Bar** = rendering `CaseContextSnapshot` in the Web. **Implemented, Web only** (#96, PR-10, `feat/pr10-agent-status-bar`, `harness/context/pr10-agent-status-bar-preflight.md`): `renderStatusBlock` over the allow-listed browser projection, no API change. It is not a model prompt (I12 boundary test); a prompt-side status block (proposal §7) is not built.
 5. Phase order: decision 17 supersedes decision 15 (no V0, scripted gates,
    no further training) and decision 18 takes Phase 03C's **GO_DISTILLED**
    adapter (#51, `harness/log/phase-03c-stage2-stage3.md`) as a local opt-in

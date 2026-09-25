@@ -85,6 +85,11 @@ exists for it; see `harness/code_review/phase-03c-stage3-decision.md` I5.
 - **The relay keys are exhausted.** All three in `.env` (`api`, `备用key1`,
   `备用key2`, `key:value` lines, never print them). No teacher call is
   possible or needed. Real relay usage over Stages 1b/1c was ≈ USD 121.59.
+  *Correction (2026-09-25, PR-17):* USD 121.59 is the accounted estimate
+  for the v6 full generation run alone. Real relay usage across all Stage
+  1b/1c runs was ≈ USD 146 (`harness/log/phase-03c-stage1c-full-generation.md`,
+  `harness/context/phase-03c-stage2-handoff.md` §5). The original sentence is
+  kept above; the full cost table is in `docs/limitations.md`.
 - **Modal is set up**: CLI installed with `uv tool install modal`,
   authenticated for workspace `simondxu`. The run cost ≈ USD 18 of the
   USD 30 monthly free credit, USD 22.25 including six smoke runs. Billing is

@@ -118,7 +118,7 @@ backend only).
 ### Scene B — synthetic `local_mailbox` (unchanged from 07A)
 
 From a second terminal, on fresh state, run `make portfolio-demo-channel`. It
-creates a fresh scripted Case, posts the signed raw-byte `local_mailbox`
+creates a fresh scripted Case, posts the SHA-256-fingerprinted raw-byte `local_mailbox`
 fixture, replays it exactly, observes one accepted synthetic delivery, posts
 the delivered callback, and verifies browser-projection isolation from
 PostgreSQL authority.
@@ -217,7 +217,7 @@ checks the Model Trace log: one Slow, one Judge, and one Fast trace.
 
 I stop and reset the local state before Scene B because the scenes are
 intentionally independent, then restart the stack and wait for readiness. The channel driver creates the same four-fact Case
-through the Runtime API, posts a signed synthetic raw-byte Provider message,
+through the Runtime API, posts a SHA-256-fingerprinted synthetic raw-byte Provider message,
 replays the exact fixture, and checks one deduplicated inbox identity and one
 outbox delivery identity through the existing PostgreSQL seam. It posts the
 synthetic delivered callback, checks one receipt and the Provider-message/event

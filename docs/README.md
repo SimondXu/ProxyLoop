@@ -10,6 +10,7 @@ chronological delivery record is the [progress log](planning/progress.md).
 - [Architecture overview](architecture.md)
 - [Development guide](development.md) — environments, Make targets, CI, Runtime modes, phase-gated workflow
 - [ML evidence](ml-evidence.md) — what the evaluation and post-training results do and do not show
+- [Limitations and negative results](limitations.md) — everything not done, the negative results, the recorded limits, and the cost record
 - [Phase 07A portfolio demo narrative](portfolio-demo.md)
 - [Local Web demo UI notes](ui/README.md), [state matrix](ui/state-matrix.md), [conversation flow](ui/user-flows.md), [UI research boundary](ui/research.md)
 
@@ -60,6 +61,8 @@ historical [`harness/build-log.md`](../harness/build-log.md).
 | 06A Durable Web resume | [contract](../harness/build/phase-06a-durable-web-resume.md) | [preflight](../harness/context/phase-06a-preflight.md) | [review](../harness/code_review/phase-06a-durable-web-resume.md) | [log](../harness/log/phase-06a-durable-web-resume.md) |
 | 06B1 Local controlled mailbox | [contract](../harness/build/phase-06b1-local-controlled-mailbox.md) | [preflight](../harness/context/phase-06b-controlled-channels-preflight.md) | [review](../harness/code_review/phase-06b1-local-controlled-mailbox.md) | [log](../harness/log/phase-06b1-local-controlled-mailbox.md) |
 | 07A Reproducible local portfolio demo | [contract](../harness/build/phase-07a-reproducible-local-portfolio-demo.md) | — | [review](../harness/code_review/phase-07a-reproducible-local-portfolio-demo.md) | [log](../harness/log/phase-07a-reproducible-local-portfolio-demo.md) |
+| 07 Portfolio hardening | [contract](../harness/build/phase-07-portfolio-hardening.md) | — | — (reviews summarized in the log) | [log](../harness/log/phase-07-portfolio-hardening.md) |
+| 03C Fast model distillation (`GO_DISTILLED`, not promoted) | [contract](../harness/build/phase-03c-fast-model-distillation.md) | [preflight](../harness/context/phase-03c-preflight.md) | [Stage 3 decision review](../harness/code_review/phase-03c-stage3-decision.md) | [log](../harness/log/phase-03c-stage2-stage3.md) |
 
 Phase 03B is closed: one frozen QLoRA training run and one canonical Arm B
 evaluation are recorded as descriptive evidence, and the accepted decision is
@@ -68,14 +71,11 @@ promotion, or deployment is authorized. The pre-approval proposal that preceded
 the executed contract was removed from `docs/planning/` on 2026-09-21; its
 content survives in Git history and the executed contract above.
 
-## Prepared, not activated
-
-- [Phase 03C Fast model re-baseline and verifier-filtered distillation](../harness/build/phase-03c-fast-model-distillation.md) — staged redo of the Phase 03B experiment (Stage 0 local and free; Stages 1–2 need hosted-spend and GPU gates). Requires explicit user activation. Session handoff: [`harness/context/phase-03c-handoff.md`](../harness/context/phase-03c-handoff.md).
-
 ## Not started
 
-Phase 06B2 (real Provider/email/MCP/credential integration), the remainder of
-Phase 07 hardening, voice, authentication, production UI, promoted-model
-serving, deployment, and release remain separate unauthorized gates.
+Phase 06B2 (real Provider/email/MCP/credential integration), voice,
+authentication, production UI, promoted-model serving, deployment, and
+release remain separate unauthorized gates. The full not-done list is in
+[limitations.md](limitations.md#not-done).
 
 The telecom specification is the v1 scope. `ProxyLoop` is the platform name, not a claim that telecom, auto negotiation, or other future verticals are already implemented.

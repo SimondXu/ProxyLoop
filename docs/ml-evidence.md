@@ -1,7 +1,18 @@
 # ML evidence
 
 What the project's evaluation and post-training work does and does not show.
-Every number links to a committed artifact; nothing here is a projection.
+Every number links to a committed artifact or the log that recorded it;
+nothing here is a projection.
+
+**In one paragraph.** Phase 03C distilled Qwen3-8B on oracle-filtered
+teacher data. On 240 held-out rows, in the prompt format it was trained on,
+act agreement rose from 0.542 untuned to 0.983 distilled (`GO_DISTILLED`).
+Through the product's own input path the same adapter delivers **0/240**
+lines to a consumer, and its act agreement falls to **0.654**; about a third
+of its product-path calls would also exceed the 25 s timeout. Both results
+stand. The adapter is a local opt-in candidate, never promoted. Everything
+was measured on one machine or one cloud GPU, not in production.
+Limitations and cost: [limitations.md](limitations.md).
 
 ## The setup
 
@@ -122,8 +133,12 @@ five filters before it could be trained on:
 8,003 calls (7,999 samples plus 4 failures) → 807 quarantined → **7,196
 accepted** over all ten training
 families, `training_ready = true` with zero cross-split families and zero
-forbidden model-input keys. Teacher spend USD 121.59 of a USD 140 ceiling
-(`data/experiments/phase-03c/teacher-full-v6/phase-03c-teacher-generation-report.json`).
+forbidden model-input keys. This final generation run's accounted teacher
+spend was USD 121.59 of a USD 140 ceiling
+(`data/experiments/phase-03c/teacher-full-v6/phase-03c-teacher-generation-report.json`);
+real relay usage across every Stage 1b and 1c run was about USD 146
+(`harness/log/phase-03c-stage1c-full-generation.md`). The full cost table
+is in [limitations.md](limitations.md#cost).
 
 ### Training
 
@@ -133,8 +148,11 @@ optimizer steps at effective batch 16, LR 1.5e-4 cosine with 3 % warmup,
 `max_length` 2,304 (**zero rows dropped**; the longest is 2,228 tokens).
 Loss is masked to the assistant span only, and training refuses to start
 unless the decoded labels equal the assistant JSON plus `<|im_end|>` — that
-self-check passed. One A100-80GB on Modal, 6.6 h, USD 22.25 of free credit
-(`ml/training/phase03c_cloud/modal_run.py`,
+self-check passed. One A100-80GB on Modal: 6.6 h of training, 6.75 h in
+total. Modal metered USD 22.25 of free credit for the whole phase, about
+USD 18.09 of it for this run and USD 4.16 for six smoke runs and three CPU
+probes; USD 0.00 was billed (`harness/log/phase-03c-stage2-stage3.md`,
+`ml/training/phase03c_cloud/modal_run.py`,
 `data/experiments/phase-03c/training/cloud-run-01/train/run-manifest.json`).
 
 Checkpoints were selected by the evaluator, never by loss: highest dev
@@ -177,7 +195,7 @@ rate unchanged). Every raw output was re-scored locally with the repository
 evaluator (`scripts/rescore_phase03c_heldout.py`): **2,560 row-level
 comparisons, zero disagreements** with the cloud scorer.
 
-### Six things this result is not
+### Five things this result is not
 
 1. **It is not 240 independent trials.** Every family's 40 rows share one
    oracle act, so the experiment contains **six decision rules**, not 240
@@ -219,7 +237,7 @@ comparisons, zero disagreements** with the cloud scorer.
    than** five points and the gap is 34 even on the favourable restricted
    numbers.
 
-5. **"Zero policy violations" on the held-out set is partly untested, and the
+4. **"Zero policy violations" on the held-out set is partly untested, and the
    same run shows a real leak elsewhere.** `policy_violation` is the union of
    disclosure, authority, false-completion and stale-pin. All 240 held-out
    rows have an empty `requested_disclosures` and no oracle act of
@@ -241,10 +259,101 @@ comparisons, zero disagreements** with the cloud scorer.
    should not omit the one safety detector the model still trips.
    Constrained decoding suppresses it entirely: A4 is 0 in 400.
 
-6. **It says nothing about the product.** This is a single categorical field
+5. **It says nothing about the product.** This is a single categorical field
    chosen from a structured JSON view of a scripted simulator. Speech, a real
    provider that does not follow a script, multi-turn planning, tool use and
-   recovery are all absent. Nothing here has been promoted to serving.
+   recovery are all absent. Nothing here has been promoted to serving. The
+   next section measures the product path directly, and the result is
+   negative.
+
+### The product path: a negative result
+
+Decision 18 (`harness/context/audit-remediation-decisions.md`) let the
+adapter be served locally as an opt-in Fast backend, labelled **local opt-in
+candidate**, never promoted or production. PR-9b converted it to MLX on one
+Apple M4 Pro and measured it twice over the same 240 held-out rows
+(`ml/serving/README.md`, `harness/log/feat-pr9b-local-fast-gateway.md`):
+
+- **M1, the trained prompt format** (stack parity, E2): local distilled act
+  agreement 236/240 = 0.983, per-row concordance with the cloud run 240/240;
+  untuned 133/240 (cloud A1: 130/240). The MLX stack reproduces the cloud
+  result (`data/experiments/phase-03c/local-parity/parity-report.json`).
+- **M2, the product's own input path** (E1): the rows rendered by
+  `fast_public_observation` and replayed through the Runtime's delivery rules
+  (compile, `validate_fast_result`, `fast-gate-v1`)
+  (`data/experiments/phase-03c/local-parity/product-path-report.json`).
+
+| Arm | Trained path, cloud (act agreement) | Trained path, local M1 | Product path M2, act agreement vs the true oracle (95 % CI) | Product path M2, lines delivered |
+|---|---|---|---|---|
+| untuned (baseline) | 130/240 = 0.542 (A1) | 133/240 | 97/240 = 0.404 [0.344, 0.467] | 8/240 |
+| distilled (local opt-in candidate) | 236/240 = 0.983 (A3) | 236/240 | 157/240 = 0.654 [0.592, 0.711] | **0/240** |
+
+- **Nothing reaches the consumer.** 40 rows (all of refusal-transfer) are
+  refused before the model, because that family has no offer and
+  `fast_public_observation` refuses (`fast_observation_offer_missing`). The
+  gate withholds all 200 outputs that reach it: every one carries a dialogue
+  act the gate does not allow and a number the strategy does not allow. The
+  gate would also withhold all 240 distilled outputs on the trained path, so
+  the gate, not only the renderer, blocks the model. The model was trained
+  on confirm/counter acts and minor-unit arithmetic, which the gate
+  withholds by design.
+- **Why act agreement falls from 236 to 157.** The net drop is 79: 80 rows
+  lost, one gained. About half comes from each of two causes:
+  refusal-transfer loses 40 because the observation is refused before the
+  model is called; unsupported-action loses 40 because of D4, the product
+  observation carrying no `applied_changes` (1.1 `ProviderOffer` has no such
+  field, R-11b), so the model sees an acceptable offer and answers confirm
+  where the true act is counter. D3, the declared Provider-state defaults,
+  changed no held-out row. All 200 generated rows lose `applied_changes`,
+  and no product prompt equals its trained prompt.
+- **Latency.** Distilled product-path generation: median 23,928 ms, max
+  32,544 ms; 64 of 200 ran longer than 25 s by `generation_ms` (65 by
+  `wall_ms`), roughly a third, and each would end as `fast_adapter_timeout`
+  with the fallback line. Untuned: median 10,429 ms, max 12,872 ms, none over
+  25 s. Computed from `arms.<arm>.generated_rows[*].generation_ms` and
+  `.wall_ms` in `data/experiments/phase-03c/local-parity/product-path-report.json`. One machine, sequential, other work running on it;
+  descriptive, not p95.
+- **In the running product.** The local Fast/Slow split runs saw the same:
+  on both backends all 8 Fast calls returned output and were rejected by the
+  gate (trace `rejected` 8; fallback cause `gate` 8)
+  (`data/evaluation/fast-slow-split-distilled.json`, `-untuned.json`), and
+  in the Phase 07 Scene A-D run the consumer saw the fallback line "I am
+  checking that and will update you." (`harness/log/phase-07-portfolio-hardening.md`).
+
+So the 0.983 is a result about the trained prompt format. A person using the
+local distilled backend today sees the fixed fallback line, not model text.
+
+### Claim boundaries
+
+Every Phase 03C and PR-9b number above carries these boundaries:
+
+- **The four Phase 03C caveats:** six decision rules, not 240 independent
+  trials; one repaired defect (the base model rarely said `confirm`); the
+  guided-JSON arms measured truncation, not constrained decoding; and "zero
+  policy violations" is partly untested on held-out, with 4/400 restricted
+  field mentions on dev (points 1–4 above).
+- **Decision 18, E1–E5:** (E1) the product never produced the trained
+  observation input, and M2 now measures that gap; (E2) a different
+  inference stack, MLX on Apple silicon instead of vLLM on an A100, which M1
+  measured as parity held; (E3) no product latency beyond the descriptive
+  single-machine numbers above; (E4) act agreement has little product
+  consequence today: Fast cannot change routing, approval or execution, and
+  the gate decides whether its text is delivered; (E5) nothing about Slow,
+  the Judge, multi-turn dialogue or outcomes.
+- **PR-9b divergences D3–D6**
+  (`harness/context/pr9-local-distilled-fast-design.md` §1): (D3) the
+  product has no source for the five Provider-state signals, so the
+  observation declares constants; (D4) no `applied_changes`; (D5) the
+  product prompt never contains the consumer's words; (D6) the strategy text
+  in M2 is the training fixture's, not the product Slow's. D5 and D6 are not
+  measured.
+- **One machine, one run.** One Apple M4 Pro (48 GiB) for every PR-9b
+  local number (M1, M2, the split runs); one A100-80GB run for training. No p95, capacity, concurrency, OOM
+  or production latency is measured or claimed.
+- **Not production.** The adapter is served only locally, opt-in, behind a
+  loopback gateway, and is never promoted. V0 (a hosted frontier model in
+  both slots), frontier-as-Fast and a second-family Judge were not measured,
+  because no hosted budget remains (decision 17).
 
 ### What would still count as evidence
 

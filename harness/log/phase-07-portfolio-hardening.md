@@ -406,3 +406,318 @@ preflight` exited 0.
 - `ops-report.json is current`.
 - vitest: 269 passed, and the Web build passed.
 - Gated skips were 67 and matched the per-file pin.
+
+# PR-17: final reports
+
+Branch `docs/pr17-phase07-reports`, cut from `origin/feat/pr16-phase07-contract`
+@ `ecfef63` while PR-16 was in review, then brought up to date with
+`origin/main` @ `abd1027` (PR-16 squash merged as #105, which includes #104)
+by a merge, not a rebase. Docs only: no code, contract, schema,
+test or committed `*-check` artifact changes. `harness/status.toml` is
+unchanged; it returns to `idle` in the final commit at the gate.
+
+## What PR-17 adds
+
+- **`docs/ml-evidence.md`, final pass.**
+  - A one-paragraph summary at the top.
+  - A new section, "The product path: a negative result". Its table puts the
+    trained path (cloud A1/A3, local M1) next to the product path (M2):
+    distilled 0/240 delivered and act agreement 157/240 = 0.654
+    [0.592, 0.711]; untuned 8/240 and 97/240. It gives the causes
+    (refusal-transfer refused before the model, −40; D4 on
+    unsupported-action, −40; about half each) and the latency (64/200 over
+    25 s).
+  - A "Claim boundaries" section: the four 03C caveats, E1–E5, D3–D6, one
+    machine, not p95, not production.
+  - The "Six things" list had five items (1, 2, 3, 5, 6); it is renumbered
+    "Five things".
+  - The Modal figure separates the run (≈ USD 18.09) from the phase total
+    (USD 22.25). The teacher figure names USD 121.59 as the v6 run and
+    ≈ USD 146 as all of Stages 1b/1c.
+- **Architecture reconciliation (A-7f).** `docs/architecture.md` gains a
+  node-by-node built-versus-proposed table under the diagram. Step 10 of the
+  decision loop now says the verifier produces only `complete` or
+  `needs_replan` (`verify_completion` in `telecom_domain/domain.py`); the
+  other three `CompletionOutcome` values have no producer. Also corrected:
+  - "Training has not started" (Phase 03C trained);
+  - the Slow Reasoner (scripted by default; hosted only in direct model
+    mode);
+  - the Fast model paragraph (the 03C result and the local opt-in backend);
+  - the State Ownership rows for object storage and MLflow (target, not
+    built);
+  - `voice/worker` (a placeholder);
+  - Observability (what is built; no OpenTelemetry);
+  - the Integrated Portfolio Demo list;
+  - what the Data and Training Flow actually ran.
+- **README.**
+  - New sections: "Reproduce the simulator benchmark", "Observed versus
+    proposed" (the product's real order, D9, and a stage-by-stage table
+    against the 2026-09-21 proposal), and "What is not done".
+  - The ML section adds the product-path negative result with its sources.
+    It no longer says the runtime runs the untuned model; the default Fast
+    is scripted.
+  - The mailbox arrow no longer says "signed" (audit C-6). The same word is
+    fixed twice in `docs/portfolio-demo.md`.
+- **`docs/limitations.md` (new).** One page for every not-done item,
+  negative result, measurement boundary and still-open recorded limit,
+  grouped, each with its source, plus the cost table. It is a separate page,
+  not a README section, because the limits span ML, the Runtime, the durable
+  lane, the Web, the evaluation code and the gates; a README section that
+  long would bury the overview. The README keeps a short not-done list and
+  links the page.
+- **`PLANS.md`.** A Phase 03C row (it had none) and the Phase 07 row.
+- **`docs/README.md`.** It links `limitations.md`. Phase 03C moves from
+  "Prepared, not activated" to the completed table, and Phase 07 is listed as
+  in progress.
+
+## Fresh-clone reproduction (DoD 4)
+
+**Record of record: PR-17's head `c44bbb2`** (after the review fixes), run
+2026-09-25 05:18 UTC on the development machine (Apple M4 Pro, macOS
+26.5.1) in a fresh scratch directory outside every worktree, with no
+`PROXYLOOP_TEST_*` variable set. The commands are the README's "Reproduce the
+simulator benchmark" block, verbatim and in order; the one addition is the
+`git checkout`, because a plain clone checks out `main`, which does not yet
+contain PR-17. Tools: uv 0.8.4, pnpm 10.31.0, Node v22.15.1, Python 3.12.10
+(`python3`), Docker 28.3.2 with Compose 2.39.1, git 2.50.1 — the same
+versions CI pins.
+
+| # | Command | rc | Wall time | Result |
+|---|---|---|---|---|
+| 1 | `git clone https://github.com/SimondXu/ProxyLoop.git` | 0 | 1 s | |
+| 2 | `git checkout --detach c44bbb2` (not in the README; selects PR-17's head) | 0 | 0 s | HEAD `c44bbb2b37e5168cd3a090b9d6449a8203608850` |
+| 3 | `pnpm install --frozen-lockfile` | 0 | 3 s | 438 packages, all reused from the local pnpm store, 0 downloaded |
+| 4 | `make preflight` | 0 | 370 s | `uv run` created `runtime/.venv` (52 packages) and `ml/.venv` (20) from the uv cache; runtime 2150 passed, 67 skipped; ML 498 passed, 1 skipped (`test_phase03c_training.py:360`, the optional `yaml` extra); vitest 269 passed; Web build passed; "Gated-skip counts match the pinned 67 per file" |
+| 5 | `make benchmark-check` | 0 | 1 s | "Phase 01B benchmark artifacts and ceiling gate are valid." |
+| 6 | `make benchmark` | 0 | < 1 s | 32 scenarios, 32 valid outcomes, 10 completed, 0 false completions, 0 leakage violations, `gate_passed: true` |
+| 7 | `git diff --exit-code` | 0 | < 1 s | no committed byte changed; `git status --porcelain` empty afterwards |
+
+The run hit no README gap, so no second clone was needed. The wall times are
+for a warm machine: the pnpm store and the uv cache already held every
+package. A machine without those caches downloads them first and takes
+longer.
+
+**Superseded: the first run at `ecfef63`** (2026-09-25 02:10 UTC, PR-16's
+head before review; it pinned 66 gated skips). All steps passed: clone 63 s,
+`pnpm install` 3 s, `make preflight` 347 s (runtime 2113 passed / 66
+skipped, ML 498 / 1 skipped, vitest 268), `make benchmark-check` 1 s,
+`make benchmark` then `git diff --exit-code` clean. That run found three
+README gaps, fixed before the record of record:
+
+1. The README did not say how to reproduce the simulator benchmark at all
+   (DoD 4 requires following only the README).
+2. Its Development block ran `make preflight` without
+   `pnpm install --frozen-lockfile`.
+3. It did not state the prerequisites (the Docker CLI for
+   `docker compose config --quiet`; `uv` creating the environments). The
+   PR-17 review (M-7) added `python3` 3.11 or newer and the CI pins.
+
+## Cost figures, checked against their sources
+
+The table in `docs/limitations.md` ("Cost") cites each figure's file.
+
+- **≈ USD 146**, real relay usage for all Phase 03C Stage 1b/1c runs:
+  `harness/log/phase-03c-stage1c-full-generation.md` ("real relay usage
+  across all Stage 1b/1c runs ≈ USD 146") and
+  `harness/context/phase-03c-stage2-handoff.md` §5.
+- **USD 121.59**, the v6 full generation run alone, accounted:
+  `phase-03c-teacher-generation-report.json` (`ledger.total_estimated_usd`
+  121.5926, ceiling 140.0) and the Stage 1c log's run table.
+  `harness/context/post-phase-03c-handoff.md` §4 calls USD 121.59 the "real
+  relay usage over Stages 1b/1c". That conflicts with the primary log, and
+  the docs follow the primary log.
+- **Modal USD 22.25** for the phase (≈ USD 18.09 for the run, USD 4.16 for
+  smokes and probes), billed USD 0.00: `harness/log/phase-03c-stage2-stage3.md`.
+  `post-phase-03c-handoff.md` §4 agrees.
+- **Phase 03A1 relay estimates:** r1 ≈ USD 1.58 (the sum of the conditions'
+  `actual_cost_microusd`), r4 ≈ USD 3.11, r5 ≈ USD 0.117; r2 had one hosted
+  failure of unknown cost. So ≈ USD 146 covers Phase 03C only, not the
+  programme's whole relay spend.
+- **Local compute:** one Apple M4 Pro; no dollar cost is recorded.
+
+## DoD 1 closure table
+
+Blocking and Important audit findings, and the Important R-items, each
+closed by a merged PR. The sources are `harness/context/audit-remediation-status.md`
+§2–§4a and the logs it names.
+
+| Findings (audit §3 group) | Severity | Closed by |
+|---|---|---|
+| B2-1, C-1; B2-2, C-2 | Blocking; Important | #38 |
+| B1-1, B1-2 | Important | #39 |
+| B2-4, E-4 | Important | #66 |
+| C-3 | Important | #40 (P0-3b follow-up #46) |
+| E-1, E-2, E-3 | Important | #43 |
+| E-5, E-6 | Important | #63 |
+| D2-1, D3-3 (claim); D2-4, F-1 | Blocking; Important | #44 (claims corrected, r5 reworded) |
+| C-6 | Important | #44; residual "signed" wording closed in PR-17 |
+| D2-5, D2-2 | Important | #48, #59 |
+| B1-5/D1-2, B1-4, D1-7 | Important | #47 |
+| D1-3, D1-4, D2-3 | Important | #49 |
+| D1-1, D3-1, D3-2 | Important | #50 |
+| B1-3 | Important | #54 |
+| B2-3 | Important | #56 |
+| D1-5, D1-6, D1-8 | Important | #64, #67, #60 |
+| A-1, A-2 (with A-6, A-10, Minor or Note) | Important | #65, #68, #70, #72, #91 |
+| A-4 (central to the demo claim) | Minor as a defect | #94, #95 |
+| R-1, R-10, R-12, R-16 | Important | #78, #75, #91, #87 |
+| R-17, R-18 (named by DoD 1) | — | #92, #88 |
+
+The remaining Minors are closed or recorded as limits with a reason. Each is
+in `docs/limitations.md`.
+
+| Item | State | Reason |
+|---|---|---|
+| A-7f | closed by this PR | the docs now match `verify_completion` |
+| R-11b, B1-9b | recorded limit | decision 21 dropped contracts 1.2 (PR-15) |
+| R-6 | injectable offer TTL closed by #104; the pre-#61 one-day-manifest half stays a recorded limit | no migration of persisted Cases (A-11 log, `fix-r6-injectable-offer-ttl.md`) |
+| D2-7, D2-8, D2-9 | recorded limit | the code is in frozen r2–r5 files, and the values are committed report bytes |
+| D3-5, D3-6 | recorded limit | `qwen_mlx.py` is frozen by the r4 execution contract |
+| D3-7 | accept-gap fixed (#74); field deletion recorded | the field is emitted in the committed trajectory schema |
+| D3-8, D3-9 | recorded limit | frozen modules or committed report bytes would move |
+| D1-10, D1-11, D1-12 | recorded limit | the V1 simulator is frozen, and V2 supersedes it |
+| A-3, A-5, A-9 | recorded limit (#83); A-3 is also checked at Slow admission since PR-13 | the contract changes stay separate decisions |
+| R-4, R-9, R-13 (retention), audit N1 | recorded limit | a frozen ML compiler; a shared test DB run serially; pruning is a policy decision; a frozen pipeline fallback |
+| G-1 follow-up | recorded limit | the real-dependency gates do not themselves require zero gated skips |
+| C-5 residual | recorded limit | host services can be orphaned by a signal during spawn (`fix-pr5-ops-tests.md`) |
+| audit lane E, N5 | recorded limit | the Web has no reject control |
+
+Final: the PR-17 independent review verified the table's coverage against
+the audit and the status file, and its findings (M-2, M-3) are applied. DoD 1
+is verified by root inspection; the root checks each row against the merged
+commits at the gate.
+
+## PR-17 checks (no `PROXYLOOP_TEST_*` set)
+
+On the branch before the merge (base `ecfef63`):
+
+- `make check-layout`, `make lint`: exit 0.
+- `make test`: exit 0. Runtime 2113 passed, 66 skipped; ML 498 passed,
+  1 skipped; every artifact check current, including `ops-report-check`.
+- `make preflight`: exit 0 (341 s); vitest 268; "Gated-skip counts match the
+  pinned 66 per file".
+- The tests that read the edited docs
+  (`tests/contract/test_phase_03a0_architecture.py`,
+  `test_phase_03a1_architecture.py`,
+  `test_phase_03a1_hosted_rerun_architecture.py`,
+  `tests/integration/test_contract_semantics_limits.py`): 22 passed.
+
+On the merged head (`origin/main` @ `abd1027` merged; the tree differs from
+`main` only in PR-17's docs and harness files):
+
+- `make check-layout`, `make lint`: exit 0.
+- `make test`: exit 0 (324 s). Runtime 2150 passed, 67 skipped; ML 498
+  passed, 1 skipped; every artifact check current, including
+  `ops-report-check`.
+- `make preflight`: exit 0 (352 s); vitest 269 passed; the Web build passed;
+  "Gated-skip counts match the pinned 67 per file".
+- This section was edited after that run; `make preflight-fast` covers it.
+
+The phase gate below reruns `make preflight` and adds the three
+real-dependency gates on the head after the review fixes.
+
+## Phase gate (2026-09-25, PR-17 head `c44bbb2`)
+
+`origin/main` had not moved since the merge (`abd1027`, #105), so no second
+merge was needed. The DB/Compose lane was held exclusively; the demo stack
+was not running (no `proxyloop-portfolio-demo` container). The gate ran in
+this worktree, serially, 05:25–05:34 UTC, with the variables on the make
+command line only (`postgres-test` at `127.0.0.1:55432/proxyloop_test`,
+`temporal` at `127.0.0.1:7233`):
+
+| Step | Command | rc | Wall time | Result |
+|---|---|---|---|---|
+| 1 | `make preflight` | 0 | 344 s | runtime 2150 passed, 67 skipped; ML 498 passed, 1 skipped; vitest 269 passed; Web build passed; "Gated-skip counts match the pinned 67 per file" |
+| 2 | `make postgres-check` | 0 | 5 s | 39 passed |
+| 3 | `make phase05a-check` | 0 | 120 s | 73 passed |
+| 4 | `make phase06b1-check` | 0 | 37 s | 56 passed |
+
+No gated test skipped in steps 2–4, and no traceback was printed. The
+fresh-clone run above also passed `make preflight` on the same head.
+
+The contract asks for "one fresh worktree"; the four steps ran in this
+implementer worktree (clean, at `c44bbb2`, `pnpm install --frozen-lockfile`
+run first), and the fresh clone ran `make preflight` independently.
+
+After the gate, one commit changes only harness and doc files: this log, the
+status transition below, and the Phase 07 rows in `PLANS.md` and
+`docs/README.md`. `make check-layout` validates the idle status. The tree
+identity after the squash merge (D8) and CI are the root's steps.
+
+## Definition of done: evidence
+
+| DoD | Criterion | Evidence | State |
+|---|---|---|---|
+| 1 | Every Blocking and Important finding closed; remaining Minors closed or recorded with a reason | "DoD 1 closure table" above; `harness/context/audit-remediation-status.md` §0–§4a; `docs/limitations.md` | met; root verifies against merged commits |
+| 2 | The credential-free demo runs the whole journey in the product's order; recovery and mailbox scenes pass | PR-16 lane run above: Scenes 0, A (desktop and 375x812), J (twice, byte-identical), A-D (distilled, fallback line, verified receipt), B and R all pass; amendments A2 and A3 | met (PR-16, #105) |
+| 3 | Local measurements committed: scripted, distilled and untuned split reports and the M1/M2 parity re-measure | `data/evaluation/fast-slow-split-{scripted,distilled,untuned}.json`, `data/experiments/phase-03c/local-parity/{parity-report,product-path-report}.json`; their `--check` targets and `ops-report-check` pass in `make test` above | met |
+| 4 | Phase 07 deliverables exist; a reviewer reproduces the simulator benchmark from a fresh clone following the README | PR-16's scenes, `make ops-report` and journey artifact (#105); PR-17's `docs/ml-evidence.md`, `docs/limitations.md`, architecture reconciliation, README "Observed versus proposed"; "Fresh-clone reproduction" above (`c44bbb2`, every step rc 0, `git diff --exit-code` clean) | met |
+| 5 | `make preflight` and the three DB gates pass serially on the final head; CI green; every material PR independently reviewed | "Phase gate" above; PR-16 review Approve with 8 Minors applied; PR-17 review Request Changes, no Blocking, all findings applied | gate passed on `c44bbb2`; CI and the post-merge tree identity pending (root) |
+| 6 | Everything blocked is stated as not done | `docs/limitations.md` "Not done"; README "What is not done"; `docs/portfolio-demo.md` not-done list; `data/evaluation/ops-report.json` "not measured / not done" block | met |
+
+## Status transition
+
+The final PR-17 commit sets `harness/status.toml` to `idle`, per the
+contract's "Harness status transitions": `active_product_phase` and
+`active_contract` empty, `next_phase_authorized = false`, `updated_at`
+2026-09-25, a boundaries summary that states Phase 07 is complete within the
+authorized limits and lists what remains not done, and every `inactive`
+entry kept. The next phase is a new user decision.
+
+## Independent review (PR-17): Request Changes, no Blocking
+
+The root accepted every finding; all are applied.
+
+- **I-1.** The M2 latencies are derivable from the committed
+  `product-path-report.json` (`arms.<arm>.generated_rows[*].generation_ms`
+  and `.wall_ms`); the earlier "per-row files are not committed" sentence
+  was wrong. Recomputed from that file: distilled median 23,928 ms, max
+  32,544 ms, 64/200 over 25 s by `generation_ms` (65 by `wall_ms`); untuned
+  median 10,429 ms, max 12,872 ms. `docs/ml-evidence.md`,
+  `docs/limitations.md` and the README cite the file.
+- **M-1.** "8/8 succeeded and were withheld" now reads "returned output and
+  were rejected by the gate (trace `rejected` 8; fallback cause `gate` 8)",
+  checked against both split reports.
+- **M-2.** C-6: "#44; residual wording closed in PR-17".
+- **M-3.** Status-file rows B1-9 → #81, G-1 → #90 (pin now 67), R-15 → #90.
+- **M-4.** The README's dialogue row reads "0/240 delivered: 40 refused
+  before the model, 200/200 gated outputs withheld".
+- **M-5.** The architecture table gains the Consumer/Provider/Channel Event
+  node and the two contract nodes (`FastTurnDecision` `contracts.py:738`;
+  `SlowWorkResult` `:1464` and `StrategyPacket` `:302`).
+- **M-6.** Data and Training Flow: step 2's real status (a license gate that
+  has admitted only the project's synthetic source), and the Phase 03C gaps
+  against step 11 (one seed, no paired Fast/Slow baselines, held out by
+  family only, with both provider configurations in the held-out rows).
+- **M-7.** README prerequisites: `python3` 3.11 or newer (`tomllib`), the
+  Compose v2 plugin, and the CI pins (uv 0.8.4, Node 22.15.1, Python 3.12.10
+  from `.github/workflows/ci.yml`; pnpm 10.31.0 from `package.json`).
+- **M-8.** The cost table states in its first row that its rows are not
+  additive.
+- **M-9.** Edits outside the contract's PR-17 file list, each authorised by
+  the root: `docs/portfolio-demo.md` (the C-6 residual "signed"), the
+  build-plan PR-17 row and the `post-phase-03c-handoff.md` correction note
+  (decision 1), the decision-17 correction note, and the final pass on
+  `harness/context/audit-remediation-status.md` (decision 3). `docs/README.md`
+  gained the limitations link and the 03C and 07 rows.
+- **Nit.** The README's design bullet says Slow is scripted and a hosted
+  reasoner is possible only in opt-in direct model mode.
+
+## Open for the root (PR-17)
+
+- Resolved (root decision 2): PR-16 amended the contract for the #103
+  non-goal (amendment A3). After the merge, `docs/limitations.md` says the
+  restore is done by #103 and is no longer a non-goal.
+- Resolved (root decision 1, 2026-09-25): follow the primary logs. The
+  build plan's PR-17 row is corrected, and `post-phase-03c-handoff.md` §4
+  gains a dated correction note; its original sentence stays. Decision 17 in
+  `audit-remediation-decisions.md` gets the same dated note (root-authorised),
+  appended after its original text.
+- Done (root decision 3, scope extension): the final pass on
+  `harness/context/audit-remediation-status.md` closes A-7f, replaces the
+  stale in-flight table with the merged PRs #87–#105 (PR-17 pending), and
+  marks R-5, R-6, R-12, R-13b, R-17, R-19 and A-3 done with their PRs.
+- Resolved by the merge of `origin/main` @ `abd1027`: #104 closed the
+  offer-TTL half of R-6 and raised the gated-skip pin from 66 to 67. The
+  fresh-clone record above is for `ecfef63` and keeps 66, which that head
+  pins; the checks on the merged head below show 67.
