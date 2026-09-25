@@ -202,3 +202,43 @@ Checks after the fixes: `make lint` passed; `make typecheck` passed (77 and
 change in this round, so the DB gates were not rerun. Byte identity is
 unchanged: only `data/evaluation/fast-slow-split-scripted.json` differs from
 `main` under `contracts/`, `ml/`, `data/`.
+
+## M6 and the final merges
+
+- Merged `origin/main` @ `e455f71` (PR-9b, #100) as `a3fda4c` and @ `eee47a3`
+  (PR-12, #101) as `760541a`, both without conflicts (git auto-merged
+  `scripts/run_fast_slow_split_report.py`: 9b's local mode and PR-14's v2 are
+  in different parts of the file; the status file and docs kept both sides).
+- M6 (`51cf629`): `_local_scenario` refuses a Judge trace that is not the
+  scripted Judge's (`test_a_local_run_refuses_a_judge_that_is_not_the_scripted_one`).
+  The committed `fast-slow-split-distilled.json` / `-untuned.json` do **not**
+  need regenerating: `check_local_report` still accepts them (it passed on
+  the merged tree before any M6 edit), because it recomputes only the
+  Fast/Slow aggregates and compares only `TURN_STRUCTURE_KEYS` (turn,
+  trigger, class, Slow and Fast calls) with the scripted replay, which v2
+  leaves unchanged. They stay byte-unchanged at `fast-slow-split-local-v1`
+  as pre-Judge observed artifacts (`test_the_committed_local_reports_predate_the_judge`).
+  A local report written now carries Judge calls, so the writer's
+  `LOCAL_SCHEMA_VERSION` is `fast-slow-split-local-v2`, and the check accepts
+  v1 (`PRE_JUDGE_LOCAL_SCHEMA_VERSION`) and v2; the fake-gateway test pins a
+  fresh report at v2 with the Judge's calls. `docs/architecture.md` and
+  `ml/serving/README.md` say the local reports predate the Judge.
+
+## Checks on the final merged tree (`760541a`)
+
+- `make lint`: passed. `make typecheck`: passed (78 and 70 source files).
+- `make test`: passed — runtime `2071 passed, 66 skipped`, ml
+  `498 passed, 1 skipped`; every `*-check` current, including
+  `fast-slow-split-check` ("scripted replayed; local integrity"),
+  `phase03c-local-parity-check`, `phase03c-product-parity-check`, the r4
+  execution contract (unchanged) and the rescored artifact.
+- `make preflight`: passed (exit 0; web vitest 250; "Gated-skip counts match
+  the pinned 66 per file").
+- `make phase04d-profile-check`: passed.
+- Byte identity against `origin/main` @ `eee47a3`: under `contracts/`, `ml/`,
+  `data/` and the contracts package only
+  `data/evaluation/fast-slow-split-scripted.json` (v2) and the
+  `ml/serving/README.md` note differ; the local reports are unchanged.
+- DB lane, serially, variables on the make command line only:
+  `make postgres-check` 38 passed, `make phase05a-check` 73 passed,
+  `make phase06b1-check` 56 passed.
