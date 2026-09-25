@@ -1,0 +1,396 @@
+{
+  "adapter_mode": "local_distilled_candidate",
+  "claim_boundary": "local opt-in candidate (distilled) or untuned local baseline, served by the loopback MLX gateway on one Apple-silicon machine; sequential calls; the two scripted scenarios through ThinAgentRuntime with the scripted Slow. Turn structure equals the scripted replay by construction (Fast cannot change routing); the Fast outcome and the measured block are what the backend changes. Not p95, capacity, concurrency or production latency; E1-E5 and the four Phase 03C caveats apply (decision 18).",
+  "fast_backend": "distilled",
+  "fast_gate_version": "fast-gate-v1",
+  "fast_observation_version": "fast-observation-v1",
+  "fast_timeout_s": 25.0,
+  "gateway_identity": {
+    "adapter_fingerprint": "73f38d003bfc144121f93f675f8aa4ffd4c05de6a30330cc21fb280a97d24b19",
+    "backend": "distilled",
+    "base_model": "Qwen/Qwen3-8B-MLX-bf16",
+    "base_revision": "6766fd4b8101fa4201cc55c5a2e464f3d301f792",
+    "compiler_version": "phase-03c-fast-compiler-v6",
+    "decoding_fingerprint": "b86ae09b3216411a5eb1683c278e6f290446fe59a46ebdf13b7cb1a54503391a",
+    "identity_fingerprint": "c83bdd6ba873cb8f3379b97d8cfc49e762d42d6fd827b692128cc059a341eaa7",
+    "label": "local opt-in candidate",
+    "mlx_versions": {
+      "mlx": "0.32.1",
+      "mlx-lm": "0.31.3"
+    },
+    "observation_renderer_version": "PHASE_03B_PUBLIC_SAFE_OBSERVATION_V1",
+    "prompt_version": "v6",
+    "trained_view_version": "phase-03c-trained-view-v1",
+    "wire_version": "local-fast-wire-v1"
+  },
+  "host": {
+    "chip": "Apple M4 Pro",
+    "machine": "arm64",
+    "memory_bytes": 51539607552,
+    "os": "macOS 26.5.1"
+  },
+  "label": "local opt-in candidate",
+  "measured": {
+    "demo_path": {
+      "command_ms": {
+        "max": 24107,
+        "p50": 2
+      },
+      "fast_call_ms": {
+        "max": 24106,
+        "p50": 24106
+      },
+      "fast_calls": [
+        {
+          "fast_call_ms": 24106,
+          "outcome": "succeeded",
+          "turn": 2
+        }
+      ],
+      "fast_tokens": [
+        {
+          "input_tokens": 1869,
+          "output_tokens": 184,
+          "turn": 2
+        }
+      ]
+    },
+    "dialogue_path": {
+      "command_ms": {
+        "max": 22823,
+        "p50": 21463
+      },
+      "fast_call_ms": {
+        "max": 22821,
+        "p50": 22084
+      },
+      "fast_calls": [
+        {
+          "fast_call_ms": 21462,
+          "outcome": "succeeded",
+          "turn": 2
+        },
+        {
+          "fast_call_ms": 22084,
+          "outcome": "succeeded",
+          "turn": 4
+        },
+        {
+          "fast_call_ms": 21084,
+          "outcome": "succeeded",
+          "turn": 6
+        },
+        {
+          "fast_call_ms": 21039,
+          "outcome": "succeeded",
+          "turn": 8
+        },
+        {
+          "fast_call_ms": 22498,
+          "outcome": "succeeded",
+          "turn": 10
+        },
+        {
+          "fast_call_ms": 22821,
+          "outcome": "succeeded",
+          "turn": 12
+        },
+        {
+          "fast_call_ms": 22304,
+          "outcome": "succeeded",
+          "turn": 14
+        }
+      ],
+      "fast_tokens": [
+        {
+          "input_tokens": 1869,
+          "output_tokens": 184,
+          "turn": 2
+        },
+        {
+          "input_tokens": 1869,
+          "output_tokens": 184,
+          "turn": 4
+        },
+        {
+          "input_tokens": 1869,
+          "output_tokens": 184,
+          "turn": 6
+        },
+        {
+          "input_tokens": 1869,
+          "output_tokens": 184,
+          "turn": 8
+        },
+        {
+          "input_tokens": 1869,
+          "output_tokens": 184,
+          "turn": 10
+        },
+        {
+          "input_tokens": 1869,
+          "output_tokens": 184,
+          "turn": 12
+        },
+        {
+          "input_tokens": 1869,
+          "output_tokens": 184,
+          "turn": 14
+        }
+      ]
+    }
+  },
+  "report_fingerprint": "0e6a716973d5134aaa44a6341b3cd6423e34570cb096014e341f5ab600090e49",
+  "scenarios": {
+    "demo_path": {
+      "aggregates": {
+        "calls_by_role_and_result": {
+          "fast": {
+            "failed": 0,
+            "rejected": 1,
+            "succeeded": 0
+          },
+          "slow": {
+            "failed": 0,
+            "rejected": 0,
+            "succeeded": 1
+          }
+        },
+        "dialogue_turns": 1,
+        "fallback_cause_counts": {
+          "failure": 0,
+          "gate": 1
+        },
+        "fast_model_line_rate": 0.0,
+        "fast_only_turn_share": 0.5,
+        "fast_reject_reason_histogram": {
+          "fast_gate_completion": 1,
+          "fast_gate_dialogue_act": 1,
+          "fast_gate_number_not_allowed": 1
+        },
+        "gate_fallback_rate": 1.0,
+        "slow_involved_turn_share": 0.5,
+        "turns": 2,
+        "turns_by_class": {
+          "fast_only": 1,
+          "no_model": 0,
+          "slow_only": 1,
+          "slow_then_fast": 0
+        },
+        "unapplied_calls_by_role_and_result": {
+          "fast": {
+            "failed": 0,
+            "rejected": 0,
+            "succeeded": 0
+          },
+          "slow": {
+            "failed": 0,
+            "rejected": 0,
+            "succeeded": 1
+          }
+        },
+        "unapplied_fast_reject_reason_histogram": {},
+        "unapplied_model_calls": 1
+      },
+      "turns": [
+        {
+          "class": "slow_only",
+          "delivered": "none",
+          "fallback_cause": null,
+          "fast_calls": 0,
+          "fast_reject_codes": [],
+          "fast_result": null,
+          "slow_calls": 1,
+          "trigger_event_type": "provider_offer",
+          "turn": 1
+        },
+        {
+          "class": "fast_only",
+          "delivered": "fallback",
+          "fallback_cause": "gate",
+          "fast_calls": 1,
+          "fast_reject_codes": [
+            "fast_gate_completion",
+            "fast_gate_dialogue_act",
+            "fast_gate_number_not_allowed"
+          ],
+          "fast_result": "rejected",
+          "slow_calls": 0,
+          "trigger_event_type": "consumer_message",
+          "turn": 2
+        }
+      ]
+    },
+    "dialogue_path": {
+      "aggregates": {
+        "calls_by_role_and_result": {
+          "fast": {
+            "failed": 0,
+            "rejected": 7,
+            "succeeded": 0
+          },
+          "slow": {
+            "failed": 0,
+            "rejected": 0,
+            "succeeded": 3
+          }
+        },
+        "dialogue_turns": 7,
+        "fallback_cause_counts": {
+          "failure": 0,
+          "gate": 7
+        },
+        "fast_model_line_rate": 0.0,
+        "fast_only_turn_share": 0.625,
+        "fast_reject_reason_histogram": {
+          "fast_gate_completion": 7,
+          "fast_gate_dialogue_act": 7,
+          "fast_gate_number_not_allowed": 7
+        },
+        "gate_fallback_rate": 1.0,
+        "slow_involved_turn_share": 0.375,
+        "turns": 8,
+        "turns_by_class": {
+          "fast_only": 5,
+          "no_model": 0,
+          "slow_only": 1,
+          "slow_then_fast": 2
+        },
+        "unapplied_calls_by_role_and_result": {
+          "fast": {
+            "failed": 0,
+            "rejected": 0,
+            "succeeded": 0
+          },
+          "slow": {
+            "failed": 0,
+            "rejected": 0,
+            "succeeded": 0
+          }
+        },
+        "unapplied_fast_reject_reason_histogram": {},
+        "unapplied_model_calls": 0
+      },
+      "turns": [
+        {
+          "class": "slow_only",
+          "delivered": "none",
+          "fallback_cause": null,
+          "fast_calls": 0,
+          "fast_reject_codes": [],
+          "fast_result": null,
+          "slow_calls": 1,
+          "trigger_event_type": "provider_offer",
+          "turn": 1
+        },
+        {
+          "class": "slow_then_fast",
+          "delivered": "fallback",
+          "fallback_cause": "gate",
+          "fast_calls": 1,
+          "fast_reject_codes": [
+            "fast_gate_completion",
+            "fast_gate_dialogue_act",
+            "fast_gate_number_not_allowed"
+          ],
+          "fast_result": "rejected",
+          "slow_calls": 1,
+          "trigger_event_type": "consumer_message",
+          "turn": 2
+        },
+        {
+          "class": "fast_only",
+          "delivered": "fallback",
+          "fallback_cause": "gate",
+          "fast_calls": 1,
+          "fast_reject_codes": [
+            "fast_gate_completion",
+            "fast_gate_dialogue_act",
+            "fast_gate_number_not_allowed"
+          ],
+          "fast_result": "rejected",
+          "slow_calls": 0,
+          "trigger_event_type": "consumer_message",
+          "turn": 4
+        },
+        {
+          "class": "fast_only",
+          "delivered": "fallback",
+          "fallback_cause": "gate",
+          "fast_calls": 1,
+          "fast_reject_codes": [
+            "fast_gate_completion",
+            "fast_gate_dialogue_act",
+            "fast_gate_number_not_allowed"
+          ],
+          "fast_result": "rejected",
+          "slow_calls": 0,
+          "trigger_event_type": "consumer_message",
+          "turn": 6
+        },
+        {
+          "class": "fast_only",
+          "delivered": "fallback",
+          "fallback_cause": "gate",
+          "fast_calls": 1,
+          "fast_reject_codes": [
+            "fast_gate_completion",
+            "fast_gate_dialogue_act",
+            "fast_gate_number_not_allowed"
+          ],
+          "fast_result": "rejected",
+          "slow_calls": 0,
+          "trigger_event_type": "consumer_message",
+          "turn": 8
+        },
+        {
+          "class": "fast_only",
+          "delivered": "fallback",
+          "fallback_cause": "gate",
+          "fast_calls": 1,
+          "fast_reject_codes": [
+            "fast_gate_completion",
+            "fast_gate_dialogue_act",
+            "fast_gate_number_not_allowed"
+          ],
+          "fast_result": "rejected",
+          "slow_calls": 0,
+          "trigger_event_type": "consumer_message",
+          "turn": 10
+        },
+        {
+          "class": "slow_then_fast",
+          "delivered": "fallback",
+          "fallback_cause": "gate",
+          "fast_calls": 1,
+          "fast_reject_codes": [
+            "fast_gate_completion",
+            "fast_gate_dialogue_act",
+            "fast_gate_number_not_allowed"
+          ],
+          "fast_result": "rejected",
+          "slow_calls": 1,
+          "trigger_event_type": "consumer_message",
+          "turn": 12
+        },
+        {
+          "class": "fast_only",
+          "delivered": "fallback",
+          "fallback_cause": "gate",
+          "fast_calls": 1,
+          "fast_reject_codes": [
+            "fast_gate_completion",
+            "fast_gate_dialogue_act",
+            "fast_gate_number_not_allowed"
+          ],
+          "fast_result": "rejected",
+          "slow_calls": 0,
+          "trigger_event_type": "consumer_message",
+          "turn": 14
+        }
+      ]
+    }
+  },
+  "schema_version": "fast-slow-split-local-v1",
+  "unicode_data_version": "15.0.0"
+}

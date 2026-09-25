@@ -9,6 +9,8 @@
 	validity-smoke-check phase03b-readiness-check phase03b-experiment-check \
 	phase03c-errata phase03c-smoke-check phase03c-invariants phase03c-invariants-check \
 	phase03c-cloud-bundle phase03c-cloud-bundle-check phase03c-training-data phase03c-training-check phase03c-rescore-check \
+	phase03c-mlx-adapter phase03c-local-parity phase03c-local-parity-check local-fast-gateway \
+	phase03c-product-parity phase03c-product-parity-check \
 	lock-check postgres-check phase04d-check phase04d-profile-check phase05a-check phase06b1-check web-check \
 	runtime-server portfolio-demo portfolio-demo-stop portfolio-demo-reset \
 	portfolio-demo-channel portfolio-demo-recovery dev
@@ -48,13 +50,26 @@ ML_PYTHON_PATHS := ml/data_pipeline/src ml/evaluation/src ml/tests \
 	scripts/run_phase03c_teacher_pilot.py scripts/run_phase03c_teacher_generation.py \
 	scripts/build_phase03c_cloud_bundle.py ml/training/phase03c_cloud \
 	scripts/prepare_phase03c_training_data.py scripts/run_phase03c_training.py \
-	scripts/run_phase03c_dev_eval.py scripts/rescore_phase03c_heldout.py
+	scripts/run_phase03c_dev_eval.py scripts/rescore_phase03c_heldout.py \
+	scripts/convert_phase03c_adapter_mlx.py scripts/run_local_fast_gateway.py \
+	scripts/run_phase03c_local_parity.py scripts/run_phase03c_product_parity.py
 # Cloud bundle inputs: the accepted teacher JSONL and an optional local Qwen3-8B tokenizer snapshot for token stats.
 PHASE03C_ACCEPTED ?= data/experiments/phase-03c/teacher-full-v6/claude-sonnet-5-accepted.jsonl
 PHASE03C_TOKENIZER_PATH ?=
+# PR-9b local Fast backend (manual lane, one model run at a time): the cached base snapshot and the
+# git-ignored PEFT adapter; nothing is downloaded (HF_HUB_OFFLINE=1).
+QWEN3_8B_MLX_PATH ?= $(HOME)/.cache/huggingface/hub/models--Qwen--Qwen3-8B-MLX-bf16/snapshots/6766fd4b8101fa4201cc55c5a2e464f3d301f792
+PHASE03C_PEFT_ADAPTER ?= data/experiments/phase-03c/training/cloud-run-01/train/adapter
+BACKEND ?= distilled
+# Loopback port of `make local-fast-gateway`; FAST_GATEWAY_URL follows it (set
+# PROXYLOOP_FAST_GATEWAY_URL to the same port for the Runtime).
+LOCAL_FAST_PORT ?= 8765
+# Split report backend (scripted, or distilled|untuned against a running local gateway).
+FAST_BACKEND ?= scripted
+FAST_GATEWAY_URL ?= http://127.0.0.1:$(LOCAL_FAST_PORT)
 
 help:
-	@printf '%s\n' 'Targets: preflight, preflight-fast, validate, format, format-check, lint, typecheck, test, postgres-check, phase04d-check, phase04d-profile-check, phase05a-check, phase06b1-check, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, negotiation-check, fast-slow-split-report, fast-slow-split-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, baselines-historical-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, hosted-rescore, hosted-rescore-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, phase03c-smoke-check, phase03c-invariants, phase03c-invariants-check, phase03c-prompt-set-check, phase03c-teacher-pilot-check, phase03c-teacher-generation-check, phase03c-cloud-bundle, phase03c-cloud-bundle-check, phase03c-training-data, phase03c-training-check, check-layout, lock-check, runtime-server, portfolio-demo, portfolio-demo-stop, portfolio-demo-reset, portfolio-demo-channel, portfolio-demo-recovery, dev'
+	@printf '%s\n' 'Targets: preflight, preflight-fast, validate, format, format-check, lint, typecheck, test, postgres-check, phase04d-check, phase04d-profile-check, phase05a-check, phase06b1-check, web-check, contracts, contracts-check, simulator, benchmark, benchmark-check, negotiation-check, fast-slow-split-report, fast-slow-split-check, data-pilot, data-pilot-check, harness, harness-check, baselines, baselines-check, baselines-historical-check, errata, errata-check, hosted-rerun-source-check, hosted-rerun-check, hosted-rescore, hosted-rescore-check, validity-smoke-check, phase03b-readiness-check, phase03b-experiment-check, phase03c-smoke-check, phase03c-invariants, phase03c-invariants-check, phase03c-prompt-set-check, phase03c-teacher-pilot-check, phase03c-teacher-generation-check, phase03c-cloud-bundle, phase03c-cloud-bundle-check, phase03c-training-data, phase03c-training-check, phase03c-mlx-adapter, phase03c-local-parity, phase03c-local-parity-check, phase03c-product-parity, phase03c-product-parity-check, local-fast-gateway, check-layout, lock-check, runtime-server, portfolio-demo, portfolio-demo-stop, portfolio-demo-reset, portfolio-demo-channel, portfolio-demo-recovery, dev'
 
 preflight: validate lock-check
 	python3 -m compileall -q scripts
@@ -122,7 +137,9 @@ typecheck:
 		scripts/run_phase03c_teacher_pilot.py scripts/run_phase03c_teacher_generation.py \
 		scripts/build_phase03c_cloud_bundle.py \
 		scripts/prepare_phase03c_training_data.py scripts/run_phase03c_training.py \
-		scripts/run_phase03c_dev_eval.py scripts/rescore_phase03c_heldout.py
+		scripts/run_phase03c_dev_eval.py scripts/rescore_phase03c_heldout.py \
+		scripts/convert_phase03c_adapter_mlx.py scripts/run_local_fast_gateway.py \
+		scripts/run_phase03c_local_parity.py scripts/run_phase03c_product_parity.py
 
 unit-test:
 	$(PYTHON_RUN) pytest -c runtime/pyproject.toml -q \
@@ -132,7 +149,7 @@ unit-test:
 		-o junit_family=xunit1 --junitxml=$(GATED_SKIPS_REPORT)
 	$(ML_PYTHON_RUN) pytest -c ml/pyproject.toml ml/tests -q
 
-test: unit-test contracts-check benchmark-check data-pilot-check harness-check baselines-historical-check errata-check hosted-rerun-check validity-smoke-check phase03b-readiness-check phase03b-experiment-check phase03c-smoke-check phase03c-invariants-check phase03c-prompt-set-check phase03c-teacher-pilot-check phase03c-teacher-generation-check phase03c-cloud-bundle-check phase03c-training-check phase03c-rescore-check negotiation-check fast-slow-split-check
+test: unit-test contracts-check benchmark-check data-pilot-check harness-check baselines-historical-check errata-check hosted-rerun-check validity-smoke-check phase03b-readiness-check phase03b-experiment-check phase03c-smoke-check phase03c-invariants-check phase03c-prompt-set-check phase03c-teacher-pilot-check phase03c-teacher-generation-check phase03c-cloud-bundle-check phase03c-training-check phase03c-rescore-check phase03c-local-parity-check phase03c-product-parity-check negotiation-check fast-slow-split-check
 
 contracts:
 	$(PYTHON_RUN) python scripts/generate_contracts.py
@@ -154,7 +171,8 @@ negotiation-check:
 	$(PYTHON_RUN) python scripts/run_negotiation_ceiling.py --check
 
 fast-slow-split-report:
-	$(PYTHON_RUN) python scripts/run_fast_slow_split_report.py --write
+	$(PYTHON_RUN) python scripts/run_fast_slow_split_report.py --write --fast-backend $(FAST_BACKEND) \
+		--gateway-url $(FAST_GATEWAY_URL)
 
 fast-slow-split-check:
 	$(PYTHON_RUN) python scripts/run_fast_slow_split_report.py --check
@@ -254,6 +272,32 @@ phase03c-rescore-check:
 	$(ML_PYTHON_RUN) python -m scripts.rescore_phase03c_heldout --check \
 		--report $(PHASE03C_RUN_EVAL)/dev-report.json \
 		--out $(PHASE03C_RUN_EVAL)/dev-rescored.json
+
+# PEFT adapter -> git-ignored MLX adapter; must reproduce ml/serving/phase-03c-cloud-run-01-mlx-attestation.json.
+phase03c-mlx-adapter:
+	$(ML_PYTHON_RUN) python -m scripts.convert_phase03c_adapter_mlx --source "$(PHASE03C_PEFT_ADAPTER)"
+
+# M1 stack parity, one arm per call (BACKEND=distilled|untuned; resumable); --write then combines both arms.
+phase03c-local-parity:
+	HF_HUB_OFFLINE=1 $(ML_PYTHON_RUN) python -m scripts.run_phase03c_local_parity --run \
+		--backend $(BACKEND) --model-path "$(QWEN3_8B_MLX_PATH)"
+
+# Replays the committed parity report's raw outputs through the repository evaluator; no model.
+phase03c-local-parity-check:
+	$(ML_PYTHON_RUN) python -m scripts.run_phase03c_local_parity --check
+
+# M2 product-path parity: one arm per call (BACKEND=distilled|untuned; resumable); --write combines.
+phase03c-product-parity:
+	HF_HUB_OFFLINE=1 $(ML_PYTHON_RUN) python -m scripts.run_phase03c_product_parity --run \
+		--backend $(BACKEND) --model-path "$(QWEN3_8B_MLX_PATH)"
+
+# Replays the committed product-path report (plan, delivery rules, gate); no model.
+phase03c-product-parity-check:
+	$(ML_PYTHON_RUN) python -m scripts.run_phase03c_product_parity --check
+
+local-fast-gateway:
+	HF_HUB_OFFLINE=1 $(ML_PYTHON_RUN) python -m scripts.run_local_fast_gateway \
+		--backend $(BACKEND) --model-path "$(QWEN3_8B_MLX_PATH)" --port $(LOCAL_FAST_PORT)
 
 phase03c-cloud-bundle-check:
 	$(ML_PYTHON_RUN) python -m scripts.build_phase03c_cloud_bundle --check
