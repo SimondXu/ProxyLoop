@@ -72,8 +72,9 @@ volume), then `make portfolio-demo` again.
    that Slow result. The Judge is advisory and invisible in the Web: it
    appears only as a `role=judge` Model Trace, and on the default scripted
    Slow it always accepts, so its revise-and-retry path runs only in tests.
-   The Status Bar reads "Planning from your confirmed goal." (the reference
-   run showed Case revision 2).
+   The Status Bar reads "Waiting for you to confirm the Task Brief." at Case
+   revision 2, because the workspace now waits for the constraint
+   confirmation below.
 3. **Confirmation turn.** "Keep both unchanged and continue" is the consumer
    turn. It gets exactly one Assistant Message, "Thanks. I'm reviewing the
    fictional offer against your constraints now.", labelled "ProxyLoop AI ·

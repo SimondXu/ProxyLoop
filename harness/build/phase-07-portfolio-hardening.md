@@ -71,6 +71,17 @@ The root chose option (b):
 - The records are content-free by design (#82).
 - The gated-skip pin is unchanged, because the new test is not gated.
 
+## Amendment A2 (2026-09-25): the Status Bar after create
+
+In the PR-16 Browser run the Status Bar after create read "Waiting for you to
+confirm the Task Brief." at revision 2, not "Planning from your confirmed
+goal.". The contract took that string from the PR-10 reference run, which
+predates the PR-10 review amendment that added the workspace's
+`awaitingConsumer` state (`apps/web/lib/status-block.ts`). The observed text
+is the current product behaviour. Scene A's expected text after create is
+therefore "Waiting for you to confirm the Task Brief.", and nothing else
+changes.
+
 Also noted: #103 closed the PR-9b limit. The Web now restores a Case after
 reload under Temporal and PostgreSQL for `local_distilled_candidate` and
 `local_untuned_baseline`, so Scene A-D may include a reload as an observation.

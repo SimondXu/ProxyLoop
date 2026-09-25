@@ -88,29 +88,41 @@ with root decisions D1–D9. Branch `feat/pr16-phase07-contract`, which merged
   - `docs/architecture.md` has a Phase 07 paragraph.
   - `docs/development.md` and the demo section of `README.md` are updated.
 
-Nothing under `runtime/`, and none of the hot files, changed. No committed
-`*-check` artifact moved, and the gated-skip pin is unchanged at 66.
+The only Runtime source change is F1's logging handler in
+`proxyloop_api/server.py` (amendment A1). None of the hot files changed, no
+committed `*-check` artifact moved, and the gated-skip pin is unchanged at 66.
 
-## Finding F1 (escalated to the root)
+## Finding F1 and root decision (b), 2026-09-25
 
-The contract's Scene J expects that "every journey request has one JSON
-operation record in the Runtime log". This cannot be observed.
+The contract's Scene J expects "one JSON operation record per journey
+request in the Runtime log". Before F1 that could not be observed:
 
 - `JsonLoggingOperationRecorder` logs at INFO to `proxyloop_api.operations`.
-- `proxyloop_api/server.py` runs uvicorn with `log_level="error"` and attaches
-  no handler to that logger. INFO records therefore fall through to Python's
+- `proxyloop_api/server.py` ran uvicorn with `log_level="error"` and attached
+  no handler to that logger, so INFO records fell through to Python's
   last-resort handler, which prints WARNING and above only.
-- A local probe confirmed it: a direct-mode server on port 8123 answered
-  `POST /intake/proposals` and `GET /health/ready`, and wrote nothing to its
-  output.
+- A local probe confirmed it. A direct-mode server on port 8123 answered
+  `POST /intake/proposals` and `GET /health/ready` and wrote nothing.
 
-Making the check pass needs a change to `runtime/services/api` (a handler in
-`server.py`), which is outside the contract's frozen scope. The
-operation-record assertion is therefore not implemented. The ops report says
-"not reported" for operation records, and `docs/architecture.md` states the
-limit. The root's options are (a) amend the contract to drop the check, or
-(b) authorize a small logging-handler change in `server.py`, which would also
-need the DB gates.
+The root chose option (b), recorded as contract amendment A1:
+
+- `configure_operation_logging()` in `server.py` attaches one stderr
+  `StreamHandler` at INFO. The handler uses the existing JSON message as the
+  line, and `main()` calls it before `uvicorn.run`.
+- Scene J's check is restored: `health_ready`, `intake_proposal`,
+  `create_case`, `append_event` and `get_case` once each, `decide_approval`
+  twice, all 2xx with category `none`.
+- `ops-report` copies those counts from the journey evidence.
+- Red → green:
+  - Red: `tests/integration/test_operation_log_emission.py` runs the real
+    server command, sends one intake request, and reads stderr. It failed
+    with `assert 0 == 1`.
+  - Green: it passed after the handler was added.
+- Three new unit tests cover the journey check: one record per request, a
+  missing record, and an extra or failed record.
+
+The #103 merge closed the PR-9b reload limit, so the distilled scene now
+includes a reload.
 
 ## Red → green
 
@@ -136,30 +148,175 @@ need the DB gates.
   - The default build from `make web-check` rewrites to
     `http://127.0.0.1:8000/:path*`.
 
-## Checks (PR-16 head before commit)
+## Checks at the first PR-16 commit (`d6cf93f`)
 
-- `make lint`: exit 0 (the first run failed on 5 E501 errors; ruff format
-  fixed them).
-- `make typecheck`: exit 0 (79 and 70 source files; `scripts/run_ops_report.py`
-  added to the mypy list).
-- `make test`: exit 0. Runtime 2109 passed, 66 skipped. ML 498 passed,
-  1 skipped. `ops-report.json is current`.
-- `make web-check`: exit 0. vitest 262 passed, and the build passed. The
-  `outputFileTracingRoot` multiple-lockfiles warning comes from the worktree
-  sitting inside the main checkout.
-- `make preflight`: exit 0. Gated skips were 66 and matched the per-file pin.
+- `make lint`: exit 0. The first run failed on 5 E501 errors; `ruff format`
+  fixed them.
+- `make typecheck`: exit 0.
+- `make test`: exit 0. Runtime 2109 passed, 66 skipped.
+- `make web-check`: exit 0, vitest 262 passed.
+- `make preflight`: exit 0, 66 gated skips.
 
-## Needs the lane (not run)
+## Lane run (2026-09-25; DB/Compose lane held exclusively)
 
-The DB and Compose lane is required, so none of these were run. The DB gates
-were not run, and no `PROXYLOOP_TEST_*` variable was set.
+Every scene ran from the documented commands, with `RUNTIME_PORT=8011` and
+`WEB_PORT=3011`. That exercises D2, and it leaves any process on 8000 alone;
+at this run 8000 and 8765 were in fact free. Before each scene the demo ran
+`make portfolio-demo-stop` and then `make portfolio-demo-reset`, which prints
+its scope and removes only `proxyloop-portfolio-demo_postgres-data`. The
+other `proxyloop-*` containers and volumes were not touched. Screenshots and
+`result.json` files are in the scratch directories `impl-pr16/scene-a/` and
+`impl-pr16/scene-ad/` (not committed).
 
-- Scene 0 on the real stack.
-- Scene A in the Browser, at desktop and mobile widths.
-- Scene J, then `WRITE_EVIDENCE=1`, then `make ops-report`, then committing
-  both artifacts.
-- Scene A-D, a manual run with the distilled backend.
-- Scene B.
-- Scene R.
-- `make postgres-check`, `make phase05a-check` and `make phase06b1-check`,
-  run serially.
+| Scene | Result |
+|---|---|
+| 0 startup | **pass** |
+| A Web journey (scripted) | **pass**, with one expected-text deviation (amendment A2) |
+| J journey driver | **pass**, twice, byte-identical |
+| A-D distilled (manual) | **pass** |
+| B mailbox | **pass** |
+| R recovery | **pass** |
+
+**Scene 0, startup.**
+- The banner listed the Web at `http://127.0.0.1:3011`, Runtime readiness at
+  `http://127.0.0.1:8011/health/ready`, Temporal at `127.0.0.1:7234`, "Fast
+  backend: scripted", the scene order, the logs and the stop command.
+- Readiness returned
+  `{"ready":true,"adapter_mode":"scripted","storage_mode":"postgres","orchestration_mode":"temporal"}`.
+- The Web's own rewrite reached the Runtime:
+  `GET http://127.0.0.1:3011/api/runtime/health/live` returned 200.
+- Fail-closed checks:
+  - `RUNTIME_PORT=55433` was refused with "Runtime port 55433 is reserved for
+    the demo PostgreSQL".
+  - `RUNTIME_PORT=WEB_PORT=8012` was refused with "Runtime and Web port must
+    differ".
+  - With a scratch listener holding 8011, the demo refused with "required
+    host port 8011 is unavailable" before starting Compose.
+- The banner reaches a piped file only at exit, because stdout is buffered.
+  `PYTHONUNBUFFERED=1` shows it immediately.
+
+**Scene A, Web journey (scripted).** Headless Chromium through Python
+Playwright 1.54, with no route forwarding.
+- Intake card:
+  - "$92.00 · Read from your message", "$75.00 · Read from your message",
+    "Required · Read from your message", and financing "Missing".
+  - Create stayed disabled until the answer "no change", after which the row
+    read "Confirmed · unchanged".
+- After create: the Status Bar read "Waiting for you to confirm the Task
+  Brief.", as of Case revision 2, phase Strategy, approval None, execution Not
+  started. The contract expected "Planning from your confirmed goal." here;
+  see amendment A2.
+- After confirm:
+  - One assistant line: "Thanks. I'm reviewing the fictional offer against
+    your constraints now.", with the label "ProxyLoop AI · automated message
+    — it cannot accept, sign, or change anything without your approval.".
+  - The Status Bar read "Waiting for your approval of the exact terms.", as
+    of revision 4, "Pending · expires 2026-09-25T02:48:31.801782Z", the same
+    expiry as the approval card.
+- After approve: the Status Bar read "Done: the Runtime verified completion
+  against Provider Evidence.", as of revision 6, "Executed 1 time", "Verified
+  complete · 1 matching Evidence ID · receipt shown". The receipt was shown.
+- After reload: identical rows.
+- Mobile, 375x812:
+  - The intake card read the same, with no horizontal overflow.
+  - The restored receipt showed the same assistant line, with no overflow.
+  - The Status Bar was hidden, which is the recorded rail limit below
+    1120 px.
+- Desktop had no overflow.
+- The console had no errors or warnings.
+- The marker `zebra-7731` was absent from `localStorage` (before create and
+  after completion), from the proposal responses, and from `runtime.log`,
+  `worker.log` and `web.log`.
+- Runtime calls: `POST /intake/proposals`, `POST /cases`, `GET`,
+  `POST …/events`, `GET`, `POST …/approvals/{id}`, `GET`, then after the
+  reload `GET /health/ready` and `GET`.
+- `runtime.log` held 15 operation records: the supervisor's readiness probe,
+  two manual probes, and the 12 Browser requests.
+
+**Scene J, journey driver.**
+- Ran `make portfolio-demo-journey RUNTIME_PORT=8011 WRITE_EVIDENCE=1`. It
+  passed:
+  - intake read three facts and asked one;
+  - one model line and a pending approval;
+  - one execution, unchanged by the exact replay;
+  - the receipt predicate held;
+  - traces fast, judge and slow were each `succeeded 1`;
+  - 7 operation records, all with category `none`;
+  - the marker was absent.
+- Revisions were 2, 4 and 6, matching the reference.
+- A second run after stop, reset and start produced a byte-identical
+  `data/evaluation/phase-07-demo-journey-scripted.json` (`cmp`).
+- `make ops-report` then reported "Scene J journey evidence: recorded". Both
+  artifacts were committed in `ab59886`.
+
+**Scene A-D, distilled (manual).**
+- Base snapshot: the cached `Qwen3-8B-MLX-bf16` revision `6766fd4b`, present.
+- Adapter:
+  - `make phase03c-mlx-adapter` with `PHASE03C_PEFT_ADAPTER` pointing at the
+    main checkout's git-ignored PEFT adapter converted it into this
+    worktree's git-ignored `mlx/` directory. The result "matches
+    ml/serving/phase-03c-cloud-run-01-mlx-attestation.json".
+  - `uv sync --project ml --extra evaluation --offline` installed
+    `mlx-lm` 0.31.3 from the uv cache. No download happened.
+- Gateway: `make local-fast-gateway BACKEND=distilled LOCAL_FAST_PORT=8775`,
+  with `HF_HUB_OFFLINE=1` from the Make target. Its `/v1/identity` reported
+  identity fingerprint `c83bdd6b…`, the same as the M2 report, labelled
+  "local opt-in candidate".
+- Demo: `PROXYLOOP_FAST_GATEWAY_URL=http://127.0.0.1:8775 make portfolio-demo
+  FAST_BACKEND=distilled RUNTIME_PORT=8011 WEB_PORT=3011`.
+  - The banner read "Fast backend: distilled (local opt-in candidate; the
+    gateway is not supervised by this demo)".
+  - Readiness reported `adapter_mode` `local_distilled_candidate`.
+- Browser run (the same script):
+  - After confirm, the assistant line was the fallback "I am checking that
+    and will update you.", with the label.
+  - The Fast trace was `rejected` by the gate (`fast_gate_completion`,
+    `fast_gate_dialogue_act`, `fast_gate_number_not_allowed`). It came from
+    model `Qwen/Qwen3-8B-MLX-bf16`, version `distilled:c83bdd6ba873cb8f`,
+    provider `local_mlx_gateway`, in 22 683 ms. The gateway logged one
+    `POST /v1/fast/decide` with 1876 input and 184 output tokens.
+  - The slow and judge traces were `succeeded`.
+  - Approval, `execution_count` 1 and the verified receipt matched Scene A.
+    The reload restored the receipt, which #103 now allows.
+  - The console was clean and the marker was absent.
+- This is one local observation, not a latency or quality claim.
+- The gateway process was stopped afterwards.
+
+**Scene B, mailbox.** `make portfolio-demo-channel RUNTIME_PORT=8011`
+returned "Scene B passed: … one verified inbound, one deduplicated replay,
+one accepted synthetic delivery, one delivered callback, and two
+authoritative channel Evidence records.", followed by "Browser projection
+isolation passed".
+
+**Scene R, recovery.** `make portfolio-demo-recovery` passed 1 test, then
+printed "Recovery check passed: the accepted Phase 06B1 lost-response retry
+preserved one logical local delivery.". Only the demo project's
+`postgres-test` service was started and then stopped.
+
+**Real-dependency gates.** These ran serially, with the demo stopped,
+against the shared `postgres-test` (55432, `proxyloop_test`) and `temporal`
+(7233). The variables were set on the make command line only.
+
+| Gate | Result |
+|---|---|
+| `make postgres-check` | 38 passed |
+| `make phase05a-check` | 73 passed (116.57 s) |
+| `make phase06b1-check` | 56 passed |
+
+## Final checks (after the lane run)
+
+`make lint typecheck test web-check preflight` exited 0:
+- lint: all checks passed.
+- mypy: 79 and 70 source files.
+- Runtime tests: 2113 passed, 66 skipped.
+- ML tests: 499 passed. `mlx-lm` is now installed, so the previously skipped
+  MLX test ran.
+- `ops-report.json is current`.
+- vitest: 268 passed, and the Web build passed.
+- Gated skips were 66 and matched the per-file pin.
+
+## Open for the root
+
+- Amendment A2, the Status Bar text after create, needs the root's
+  confirmation.
+- Independent review of PR-16 and the PR itself are not started.
