@@ -592,6 +592,29 @@ def test_a_retraction_in_the_same_sentence_doubts_every_named_feature() -> None:
     assert clarifications["device_financing_change_forbidden"] == "ambiguous"
 
 
+# Fifth amendment (final verification): "like it at" is not a target cue, so
+# "I don't like it at $92" is never a target. "at" is a weak current cue, so
+# these read the current bill.
+@pytest.mark.parametrize(
+    ("text", "current"),
+    [
+        ("I like it at $92", 9200),
+        ("I don't like it at $92", 9200),
+        (
+            "It's $95 now, I don't like it at $95, keep hotspot, "
+            "keep financing unchanged",
+            9500,
+        ),
+    ],
+)
+def test_like_it_at_is_not_a_target_cue(text: str, current: int) -> None:
+    body = _body(text)
+
+    assert body["proposal"]["current_monthly_total"] == _usd(current)
+    assert body["proposal"]["target_monthly_total"] is None
+    assert _clarifications(text)["target_monthly_total"] == "missing"
+
+
 # Fifth amendment I-1: a price-history verb anywhere before the amount in its
 # clause leaves it without a role, however far back it is.
 @pytest.mark.parametrize(

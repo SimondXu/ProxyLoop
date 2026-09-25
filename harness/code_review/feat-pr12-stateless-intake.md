@@ -54,3 +54,23 @@ The DB gate counts, the Browser run, and the red counts below are
 | I-A (with M-5) | `_TO_AMOUNT_BEFORE` and `_FROM_TO_BEFORE` had adjacent `\s*…\s+`, and `_role` ran them on the whole text before every amount. The cost was quadratic: `("from 1" + " "*1300 + "$5 "*231)[:2000]` took about 1.6 s. | Applied. The patterns no longer have adjacent optional whitespace and see only the right-stripped last 48 characters. More than 8 amounts make both amounts ambiguous without reading each one. A timing regression test covers spaces, tabs, repeated "＄⑳", "$1-", and long-whitespace cases under the 8-amount cap, each asserted < 250 ms. Implementer-measured: 1.7 s → ≤ 1.8 ms (see the log). The spec's "every regex is linear" claim is corrected. |
 | UX (accepted) | Common target cues. Lowering requests, including as a question. "Actually … both" and "Actually no." should reach every feature. The card should open on an amount clarification. "confirmed" should be dropped from the copy. The non-422 reply should say "Nothing was created." | Applied, with tests for each new phrasing. |
 | Limits (root) | An unrelated later negation makes the last feature ambiguous. "from $X to $Y" with no verb is read as current → target. | Recorded in the spec; no change. |
+
+## Later rounds (after the re-review)
+
+The root recorded each round as a dated spec amendment
+(`harness/context/pr12-stateless-intake-preflight.md`) and a log section
+(`harness/log/feat-pr12-stateless-intake.md`). Every change stayed under the
+name `intake-parser-v1`, because nothing under that name was merged.
+
+| Round | Target | Findings | Disposition |
+|---|---|---|---|
+| Root decision (3rd amendment) | `0b589f4` | Off-topic text with money opened the card ("vacation for $2,000"). | Card rule (c): an amount clarification opens the card only with a closed-list bill or payment cue. Bare `plan` is not a cue (option A); "My plan went up to $92" gets the scope reply, a documented limit. |
+| Focused re-review (4th amendment) | `0b589f4` | **I-1** bare `get` made non-lowering questions read values. **M-1** per-clause doubt scan; NFKC expansion. **M-2** target-first order decided mixed cues. **M-3** missing retractions. **M-4** `unsupported_currency` opened the card. **M-5** the intake failure copy used Case or Runtime wording. | Applied. `get` only with a lowering word, not before `than`. A 4000-character cap after NFKC (all fields `missing`). Doubt is computed per sentence. Retractions added. M-4 and M-5 applied in the Web. The implementer's first M-2 reading ("nearer current cue") was rejected by the root, because it made common target phrasings ambiguous. It was replaced by the root's tiered cues (`6f34ff0`). |
+| Final review (5th amendment) | `6f34ff0` | **I-1** the 48-character tail hid distant history verbs, so "went down … from $95 to $85" was read. **I-2 / M-b** role cues outside the tail were lost. **M-a** more retractions. **M-c** per spec. | Applied at `7d684ed`. History and role cues read the whole clause; the tail is kept only for the end-anchored patterns. Retractions extended. The implementer also removed its own `comes to` exclusion, which had made "I hope it comes to $75" a guessed current bill. M-c: no change. |
+| Final verification | `7d684ed` | The fixes are confirmed. One guessed-value source was left: `like it (to be\|at)` ("I don't like it at $92" → target $92). | Deleted (root decision). The reviewer's fuzz, seeds 1–3 against `0b589f4`, finds 0 readings that gain or change a value (100,000 inputs per seed). |
+
+**Final verdict: Approve.** The reviewer approved once the
+`like it (to be|at)` branch was removed. No finding is open. The documented
+limits in the spec remain: over-asking and fail-safe misreadings, such as "No
+rush", "Never mind the rush", "My plan went up to $92", "I'd be happy at
+$75", and "My bill comes to $92".

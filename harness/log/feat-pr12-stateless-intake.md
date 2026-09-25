@@ -540,3 +540,47 @@ by script): every change turns a value into a clarification.
 
 **Not run.** The DB gates and a Browser pass were not run: only the parser,
 its tests, and the harness docs changed.
+
+## Final verification: `like it (to be|at)` removed
+
+The verification confirmed the fifth-amendment fixes. It found one remaining
+source of a guessed value: the target cue `like it (to be|at)`, added in the
+`0b589f4..6f34ff0` range. With it, "I don't like it at $92" read as target $92.
+Root decision: the branch is deleted, and the spec's fifth amendment records
+it.
+
+- **Red → green.** Three new items fail with the branch and pass without it.
+  - "I like it at $92" → current $92, target `missing`. Not ambiguous: `at`
+    is a weak current cue.
+  - "I don't like it at $92" → current $92, target `missing`.
+  - "It's $95 now, I don't like it at $95, keep hotspot, keep financing
+    unchanged" → current $95, target `missing`.
+
+  299 intake items pass. The M-2 required outcomes all still pass, and "I'd
+  like it at $75", "I want it at $75" and "I want it to be $75" still read
+  target $75.
+- **Fuzz.** The reviewer's `fuzz.py` (`0b589f4` against head):
+
+  | Parser | Seeds | Inputs per seed | Readings that gain or change a value |
+  |---|---|---|---|
+  | head | 1, 2, 3 | 100,000 | **0** |
+  | head | 1, 2, 3 | 20,000 | 0 |
+  | before the deletion (`7d684ed`) | 1, 2, 3 | 20,000 | 76, 78, 72; every one contains `like it at` |
+
+**Checks:**
+
+| Check | Result |
+|---|---|
+| `make lint` | exit 0 |
+| `make typecheck` | exit 0 (59 files, no issues) |
+| `make test` | exit 0: runtime 1914 passed / 66 skipped; ML 397 / 1 skipped |
+| `make web-check` | exit 0: vitest 250 passed, `next build` |
+| `make preflight` | exit 0: runtime 1914 / 66, ML 397 / 1, vitest 250, gated-skip pin 66 |
+
+**Not run.** The DB gates were not rerun: they passed 38 / 53 / 56 after the
+first review round, and the later rounds changed only the parser, the Web
+opening rule and copy, tests, and docs. No new Browser pass was run; the last
+one is the amended-card journey above.
+
+The review artifact now covers every round. Final verdict: Approve, after the
+`like it` branch was removed.

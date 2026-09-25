@@ -144,8 +144,8 @@ _AFTER_TARGET = re.compile(
 _BEFORE_TARGET = re.compile(
     r"\b(?:to|under|below|target|goal|at\s+most|no\s+more\s+than"
     r"|less\s+than|lower\s+than|cheaper\s+than|max|maximum|reach|want|aim|budget"
-    r"|(?:i'd|i\s+would|would|we'd)\s+like|like\s+it\s+(?:to\s+be|at)|hoping"
-    r"|hope\s+for|happy\s+with|happy\s+at)\b"
+    r"|(?:i'd|i\s+would|would|we'd)\s+like|hoping|hope\s+for|happy\s+with"
+    r"|happy\s+at)\b"
 )
 # "happy at" is also a strong current cue: "I'm happy at $92" may describe the
 # bill as it is.

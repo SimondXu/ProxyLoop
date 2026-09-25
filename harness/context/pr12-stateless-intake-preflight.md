@@ -488,3 +488,19 @@ and "the `to` in 'comes to' is not a target cue".
   "scratch that". Like "No rush" earlier, an unrelated use ("Never mind the
   rush") also casts doubt. This fails safe.
 - **M-c.** No change; the behaviour matches this spec.
+- **Final verification: `like it (to be|at)` removed.** The fourth-amendment
+  target cue `like it (to be|at)` guessed values:
+  - "I don't like it at $92" read as target $92;
+  - "It's $95 now, I don't like it at $95, …" read as current $95 and target
+    $95.
+
+  Root decision: the branch is deleted. "I'd like it at $75" and "want it at"
+  are still read by `i'd like`, `would like` and `want`, and "to be" by `to`.
+  "I like it at $92" and "I don't like it at $92" now read **current $92**,
+  because `at` is a weak current cue. They are never read as a target. The
+  three-clause example reads current $95 with the target `missing`.
+- **Fuzz.** The reviewer's `fuzz.py` compares this head with `0b589f4`, with
+  seeds 1, 2 and 3 at 100,000 inputs each. It finds **zero** readings that
+  gain a value or change one. Before the deletion, the same run at 20,000
+  inputs per seed found 76, 78 and 72 such readings for seeds 1, 2 and 3.
+  Every one of them contained `like it at`.
