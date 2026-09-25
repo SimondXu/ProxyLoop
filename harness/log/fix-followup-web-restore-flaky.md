@@ -15,12 +15,14 @@ mode stays excluded (not durable); the hosted `model` stays excluded.
 
 - Rule: `restorePersisted` in `apps/web/app/components/conversation-workspace.tsx`
   now checks `RESTORABLE_ADAPTER_MODES` instead of `adapter_mode !== "scripted"`.
-  The blocked-profile copy is unchanged ("Temporal/PostgreSQL/scripted Runtime
-  profile"; a local backend still requires `PROXYLOOP_RUNTIME_MODE=scripted`).
+  The blocked-profile copy now reads "Recovery requires the durable
+  Temporal/PostgreSQL Runtime in scripted Runtime mode" (root decision after
+  review), so it no longer suggests switching `PROXYLOOP_FAST_BACKEND`.
 - Tests (`conversation-workspace.test.tsx`): a restore succeeds for each local
   label under temporal + postgres (authoritative GET, Task Brief shown, no
-  alert); the non-durable `it.each` gains hosted `model`, and direct +
-  PostgreSQL with each local label.
+  alert); the non-durable `it.each` gains hosted `model`, direct +
+  PostgreSQL with each local label, and (after review) temporal + PostgreSQL
+  with no `adapter_mode`.
 - Red on `eee47a3`'s rule: the two restore cases failed (`findByRole` for the
   Task Brief heading timed out); the three new blocked rows passed (they guard
   the exclusions). Green after the change: 9/9 of the selected cases.
@@ -54,6 +56,14 @@ by deterministic evidence of overlap; only the test file changed.
   teacher's breaker stopped after five failed calls), `1 failed in 10.53s`.
 - Repeat runs, fresh pytest process each: 100/100 passed with no other load;
   20/20 passed beside 42 busy-loop processes.
+
+## Review
+
+Independent review: Approve. Root decisions applied afterwards: the rule is
+also stated in `docs/ui/README.md`; `docs/architecture.md` says `adapter_mode`
+is opaque to the Web outside the allow-list; the new blocking copy (above);
+a deny row for temporal + PostgreSQL with no `adapter_mode`; the PR-9b log and
+status row now record the #100 merge. `main` was merged in afterwards.
 
 ## Checks
 

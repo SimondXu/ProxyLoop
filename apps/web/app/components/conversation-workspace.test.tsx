@@ -1815,6 +1815,7 @@ describe("ConversationWorkspace", () => {
     ["direct with PostgreSQL storage", { orchestration_mode: "direct" }],
     ["adapter_mode other than scripted", { adapter_mode: "hosted" }],
     ["hosted adapter_mode model", { adapter_mode: "model" }],
+    ["temporal and PostgreSQL with no adapter_mode", { adapter_mode: undefined }],
     ["direct with PostgreSQL storage and local_distilled_candidate", { orchestration_mode: "direct", adapter_mode: "local_distilled_candidate" }],
     ["direct with PostgreSQL storage and local_untuned_baseline", { orchestration_mode: "direct", adapter_mode: "local_untuned_baseline" }],
   ])("makes no recovery claim against a non-durable readiness profile: %s", async (_label, change) => {
@@ -1826,7 +1827,7 @@ describe("ConversationWorkspace", () => {
     render(<ConversationWorkspace />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Recovery requires the durable Temporal/PostgreSQL/scripted Runtime profile. The direct Runtime makes no restart-recovery claim.",
+      "Recovery requires the durable Temporal/PostgreSQL Runtime in scripted Runtime mode. The direct Runtime makes no restart-recovery claim.",
     );
     expect(runtime.getCase).not.toHaveBeenCalled();
     expect(screen.queryByRole("heading", { name: "Here is what I will work from." })).not.toBeInTheDocument();

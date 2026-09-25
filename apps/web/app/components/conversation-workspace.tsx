@@ -1015,7 +1015,7 @@ export function ConversationWorkspace() {
         !RESTORABLE_ADAPTER_MODES.includes(readiness.adapter_mode ?? "")
       ) {
         throw new RuntimeClientError(
-          "Recovery requires the durable Temporal/PostgreSQL/scripted Runtime profile. The direct Runtime makes no restart-recovery claim.",
+          "Recovery requires the durable Temporal/PostgreSQL Runtime in scripted Runtime mode. The direct Runtime makes no restart-recovery claim.",
           "invalid",
           null,
           "dependency_not_ready",

@@ -552,4 +552,4 @@ temporal + postgres with `local_distilled_candidate` or
 
 ### Remaining
 
-1. PR, CI, merge.
+None: merged to `main` as #100 (`e455f71`).
