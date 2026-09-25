@@ -467,13 +467,13 @@
     "every_pinned_file_is_in_a_gate": true,
     "per_file": {
       "tests/integration/test_fast_under_temporal.py": 3,
-      "tests/integration/test_phase_04c_persistent_case_store.py": 29,
+      "tests/integration/test_phase_04c_persistent_case_store.py": 30,
       "tests/integration/test_phase_05a_case_runtime.py": 2,
       "tests/integration/test_phase_05a_temporal_workflow.py": 24,
       "tests/integration/test_phase_06b1_channel_runtime.py": 4,
       "tests/integration/test_phase_06b1_temporal.py": 4
     },
-    "total": 66
+    "total": 67
   },
   "gates": {
     "make_test_check_count": 23,
@@ -522,7 +522,7 @@
         ]
       },
       "postgres-check": {
-        "collected_test_items": 38,
+        "collected_test_items": 39,
         "files": [
           "tests/integration/test_phase_04c_persistent_case_store.py"
         ]

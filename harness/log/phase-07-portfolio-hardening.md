@@ -364,3 +364,45 @@ None of these changes touch runtime or storage behaviour: they are Web
 config validation, the ops report, tests and docs. The DB gates run on
 `ecfef63` (`postgres-check` 38, `phase05a-check` 73, `phase06b1-check` 56)
 therefore stand, and were not rerun.
+
+## Merge of R-6 (#104) and gate rerun (2026-09-25)
+
+The branch merged `origin/main` @ `1309c71` (#104, R-6: an injectable offer
+TTL stored as an optional v3 Provider field).
+
+- The status-file conflict was resolved by keeping both rows.
+- The gated-skip pin now comes from `main`: 67 in total, with
+  `test_phase_04c_persistent_case_store.py` at 30. PR-16 adds no gated test,
+  so the per-file sum is `main`'s pin.
+- `ops-report.json` was regenerated:
+  - `postgres-check` now collects 39 test items;
+  - the pin reads 67.
+
+R-6 changed `runtime.py`, `postgres_repository.py` and the Provider
+underneath the Phase 07 scenes, so the three DB gates were rerun serially on
+the merged head, with the demo stopped:
+
+| Gate | Result |
+|---|---|
+| `make postgres-check` | 39 passed |
+| `make phase05a-check` | 73 passed (116.04 s) |
+| `make phase06b1-check` | 56 passed |
+
+`phase05a-check` also printed one `BrokenPipeError` traceback from the
+test-only fake gateway's server thread (`local_fast_fake_gateway.py`, `_send`).
+This happens when a timeout test's client disconnects before the fake writes
+its reply. The traceback came after the passing result, and no test failed.
+
+The demo scenes were not rerun. R-6 keeps the default TTL unchanged (1 h),
+so the scenes' behaviour is unchanged, and none of the three gates failed. The
+lane-run evidence above therefore stands.
+
+Final checks on the merged head: `make lint typecheck test web-check
+preflight` exited 0.
+- lint: passed.
+- mypy: 79 and 70 source files.
+- Runtime tests: 2150 passed, 67 skipped.
+- ML tests: 499 passed.
+- `ops-report.json is current`.
+- vitest: 269 passed, and the Web build passed.
+- Gated skips were 67 and matched the per-file pin.
