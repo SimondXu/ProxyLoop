@@ -60,3 +60,5 @@ data/experiments/phase-03c/training/**/*.tar.gz
 !data/experiments/phase-03c/training/*/train.log
 !data/experiments/phase-03c/training/*/eval-heldout.log
 !data/experiments/phase-03c/training/*/eval-dev.log
+# PR-9b local parity: resumable per-row run files stay local; parity-report.json is committed.
+data/experiments/phase-03c/local-parity/**/*.jsonl
