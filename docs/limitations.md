@@ -306,11 +306,12 @@ cost. Modal is a console reading, not a repository artifact.
 | Phase 03C Stage 2 training (Modal) | USD 22.25 metered for the phase, of which ≈ USD 18.09 was the training run and USD 4.16 six smoke runs and three CPU probes; billed USD 0.00 (free credit) | `harness/log/phase-03c-stage2-stage3.md`; `harness/context/post-phase-03c-handoff.md` §4 |
 | Local compute | one Apple M4 Pro; no dollar cost recorded | `data/experiments/phase-03c/local-parity/product-path-report.json` (`host`) |
 
-Two sources disagree on the Stage 1b/1c relay figure.
-`harness/context/post-phase-03c-handoff.md` §4 says "Real relay usage over
-Stages 1b/1c was ≈ USD 121.59"; the primary log
+The Stage 1b/1c relay figure was recorded two ways.
+`harness/context/post-phase-03c-handoff.md` §4 called USD 121.59 the "real
+relay usage over Stages 1b/1c"; the primary log
 (`harness/log/phase-03c-stage1c-full-generation.md`) gives USD 121.59 as the
 v6 full run alone and ≈ USD 146 for all Stage 1b/1c runs, as does
-`harness/context/phase-03c-stage2-handoff.md` §5. This page follows the
-primary log. The ≈ USD 146 covers Phase 03C only; the Phase 03A1 runs above
-also used the relay.
+`harness/context/phase-03c-stage2-handoff.md` §5. The root decided to follow
+the primary log (2026-09-25); the handoff carries a dated correction note.
+The ≈ USD 146 covers Phase 03C only; the Phase 03A1 runs above also used the
+relay.
