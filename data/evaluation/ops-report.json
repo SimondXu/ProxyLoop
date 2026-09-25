@@ -550,6 +550,10 @@
     {
       "path": "data/experiments/phase-03c/local-parity/product-path-report.json",
       "sha256": "9256e83778b8514dd72c81970125c118e01af3bf29f6bac733fdb3a3550d7f1c"
+    },
+    {
+      "path": "data/evaluation/phase-07-demo-journey-scripted.json",
+      "sha256": "62c9cf26016afa8f17bd53afd70edfd7917671a356ecfddd405e4cda21f43a45"
     }
   ],
   "not_measured_or_not_done": [
@@ -656,8 +660,57 @@
   ],
   "trace_and_log_health": {
     "journey": {
-      "path": "data/evaluation/phase-07-demo-journey-scripted.json",
-      "status": "not_recorded"
+      "executed_once_after_replay": true,
+      "execution_count": {
+        "after_approve": 1,
+        "after_replay": 1
+      },
+      "judge_calls_equal_slow_results": true,
+      "marker_absent": {
+        "proposal_response": true,
+        "runtime.log": true,
+        "web.log": true,
+        "worker.log": true
+      },
+      "marker_absent_everywhere": true,
+      "operation_records": {
+        "by_operation": {
+          "append_event": 1,
+          "create_case": 1,
+          "decide_approval": 2,
+          "get_case": 1,
+          "health_ready": 1,
+          "intake_proposal": 1
+        },
+        "count": 7,
+        "error_categories": {
+          "none": 7
+        }
+      },
+      "readiness": {
+        "adapter_mode": "scripted",
+        "orchestration_mode": "temporal",
+        "storage_mode": "postgres"
+      },
+      "receipt_predicate": true,
+      "status": "recorded",
+      "trace_counts": {
+        "fast": {
+          "failed": 0,
+          "rejected": 0,
+          "succeeded": 1
+        },
+        "judge": {
+          "failed": 0,
+          "rejected": 0,
+          "succeeded": 1
+        },
+        "slow": {
+          "failed": 0,
+          "rejected": 0,
+          "succeeded": 1
+        }
+      }
     },
     "split_reports": {
       "distilled": {
