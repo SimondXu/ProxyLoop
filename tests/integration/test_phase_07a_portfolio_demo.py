@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Self
 
@@ -744,6 +745,21 @@ def _logs(directory: Path, extra: str = "") -> Path:
     return directory
 
 
+def _operation(request: httpx.Request) -> str:
+    path = request.url.path
+    if path == "/health/ready":
+        return "health_ready"
+    if path == "/intake/proposals":
+        return "intake_proposal"
+    if path == "/cases":
+        return "create_case"
+    if path.endswith("/events"):
+        return "append_event"
+    if "/approvals/" in path:
+        return "decide_approval"
+    return "get_case"
+
+
 def _run(
     tmp_path: Path,
     transport: httpx.MockTransport,
@@ -752,12 +768,42 @@ def _run(
     fresh: bool = True,
     log_dir: Path | None = None,
     evidence_path: Path | None = None,
+    record: Callable[[httpx.Request, httpx.Response], list[dict[str, object]]]
+    | None = None,
 ) -> dict[str, object]:
-    with httpx.Client(base_url="http://127.0.0.1:8000", transport=transport) as client:
+    """Run the journey; the fake Runtime appends its operation records (F1)."""
+
+    selected = log_dir if log_dir is not None else _logs(tmp_path / "logs")
+
+    def recorded(request: httpx.Request) -> httpx.Response:
+        response = transport.handle_request(request)
+        response.read()
+        lines = (
+            record(request, response)
+            if record is not None
+            else [
+                {
+                    "correlation_id": "c",
+                    "operation": _operation(request),
+                    "error_category": "none",
+                    "status": response.status_code,
+                }
+            ]
+        )
+        runtime_log = selected / "runtime.log"
+        if runtime_log.is_file():
+            with runtime_log.open("a") as log_file:
+                for line in lines:
+                    log_file.write(json.dumps(line) + "\n")
+        return response
+
+    with httpx.Client(
+        base_url="http://127.0.0.1:8000", transport=httpx.MockTransport(recorded)
+    ) as client:
         return demo.run_journey(
             client=client,
             repository=_FakeRepository(traces, fresh=fresh),
-            log_dir=log_dir if log_dir is not None else _logs(tmp_path / "logs"),
+            log_dir=selected,
             evidence_path=evidence_path,
         )
 
@@ -911,3 +957,53 @@ def test_journey_uses_the_web_confirmation_and_intake_marker() -> None:
     workspace = Path("apps/web/app/components/conversation-workspace.tsx").read_text()
     assert f'"{demo.CONFIRMATION_EVENT}"' in workspace
     assert demo.JOURNEY_MARKER in demo.JOURNEY_MESSAGE
+
+
+def test_journey_records_one_operation_record_per_request(tmp_path: Path) -> None:
+    evidence = _run(tmp_path, _fake_runtime()[0], _scripted_traces())
+    assert evidence["operation_records"] == {
+        "count": 7,
+        "by_operation": demo.EXPECTED_JOURNEY_OPERATIONS,
+        "error_categories": {"none": 7},
+    }
+
+
+def test_journey_refuses_missing_operation_records(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(demo, "OPERATION_RECORD_WAIT_S", 0.2)
+    with pytest.raises(demo.DemoScenarioError, match="operation record"):
+        _run(
+            tmp_path,
+            _fake_runtime()[0],
+            _scripted_traces(),
+            record=lambda _request, _response: [],
+        )
+
+
+def test_journey_refuses_an_extra_or_failed_operation_record(tmp_path: Path) -> None:
+    def doubled(request: httpx.Request, response: httpx.Response):
+        line = {
+            "correlation_id": "c",
+            "operation": _operation(request),
+            "error_category": "none",
+            "status": response.status_code,
+        }
+        return [line, line] if request.url.path == "/intake/proposals" else [line]
+
+    with pytest.raises(demo.DemoScenarioError, match="operation record"):
+        _run(tmp_path, _fake_runtime()[0], _scripted_traces(), record=doubled)
+
+    def failed(request: httpx.Request, response: httpx.Response):
+        category = "stale_cas" if request.url.path.endswith("/events") else "none"
+        return [
+            {
+                "correlation_id": "c",
+                "operation": _operation(request),
+                "error_category": category,
+                "status": response.status_code,
+            }
+        ]
+
+    with pytest.raises(demo.DemoScenarioError, match="operation record"):
+        _run(tmp_path / "second", _fake_runtime()[0], _scripted_traces(), record=failed)

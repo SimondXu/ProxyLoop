@@ -659,7 +659,6 @@
       "path": "data/evaluation/phase-07-demo-journey-scripted.json",
       "status": "not_recorded"
     },
-    "operation_records": "not reported: the demo Runtime does not write its operation records to runtime.log (see harness/log/phase-07-portfolio-hardening.md)",
     "split_reports": {
       "distilled": {
         "demo_path": {

@@ -117,6 +117,11 @@ def test_journey_is_reported_as_not_recorded_until_it_exists(tmp_path: Path) -> 
         "execution_count": {"after_approve": 1, "after_replay": 1},
         "receipt_predicate": True,
         "marker_absent": {"proposal_response": True, "runtime.log": True},
+        "operation_records": {
+            "count": 7,
+            "by_operation": {"get_case": 7},
+            "error_categories": {"none": 7},
+        },
     }
     (root / ops.JOURNEY_REPORT).write_text(json.dumps(journey))
     recorded = ops.build_report(root, collector=_fake_collector)
@@ -125,6 +130,7 @@ def test_journey_is_reported_as_not_recorded_until_it_exists(tmp_path: Path) -> 
     assert health["executed_once_after_replay"] is True
     assert health["judge_calls_equal_slow_results"] is True
     assert health["marker_absent_everywhere"] is True
+    assert health["operation_records"]["error_categories"] == {"none": 7}
     assert any(item["path"] == str(ops.JOURNEY_REPORT) for item in recorded["inputs"])
 
 

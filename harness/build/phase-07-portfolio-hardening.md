@@ -45,6 +45,36 @@ decision binds this contract.
 
 Also taken: decision 21 (PR-15 dropped; see the end of this contract).
 
+## Amendment A1 (2026-09-25): operation records (F1)
+
+During PR-16 the implementer found that the Runtime's allowlisted JSON
+operation records never reached the process output: `proxyloop_api/server.py`
+attached no handler to the `proxyloop_api.operations` logger, which logs at
+INFO. Scene J's operation-record check could not pass, and its "marker absent
+from `runtime.log`" check was vacuous.
+
+The root chose option (b):
+
+- `proxyloop_api/server.py` gains `configure_operation_logging()`. It attaches
+  one stderr handler at INFO to that logger, with the existing
+  `JsonLoggingOperationRecorder` message as the whole line, so the format is
+  unchanged. `main()` calls it before `uvicorn.run`.
+- This is the only Runtime source change in PR-16, and it is added to "Frozen
+  scope". `tests/integration/test_operation_log_emission.py` runs the real
+  server command and asserts that one request writes exactly one record with
+  the allowlisted keys and no request content.
+- The Scene J operation-record check is restored. It reads the records
+  appended to `runtime.log` during the journey: `health_ready`,
+  `intake_proposal`, `create_case`, `append_event` and `get_case` once each,
+  `decide_approval` twice, all with 2xx status and error category `none`.
+  Nothing else may call the Runtime during Scene J.
+- The records are content-free by design (#82).
+- The gated-skip pin is unchanged, because the new test is not gated.
+
+Also noted: #103 closed the PR-9b limit. The Web now restores a Case after
+reload under Temporal and PostgreSQL for `local_distilled_candidate` and
+`local_untuned_baseline`, so Scene A-D may include a reload as an observation.
+
 ## Authorization
 
 Decision 16 (`harness/context/audit-remediation-decisions.md`) authorizes the

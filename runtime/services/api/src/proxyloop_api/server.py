@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import os
+import sys
+from typing import TextIO
 
 import uvicorn
 
@@ -12,6 +15,34 @@ from .app import create_app
 from .config import runtime_from_environment, services_from_environment
 
 app = create_app()
+
+OPERATION_LOGGER_NAME = "proxyloop_api.operations"
+
+
+class _OperationRecordHandler(logging.StreamHandler[TextIO]):
+    """Marks the one handler this module attaches."""
+
+
+def configure_operation_logging(stream: TextIO | None = None) -> logging.Handler:
+    """Emit the allowlisted operation records to stderr, one line each.
+
+    ``JsonLoggingOperationRecorder`` already renders each record as one
+    allowlisted JSON message at INFO; this only attaches the handler that the
+    server lacked (Phase 07 F1), with the message as the whole line. Calling
+    it again returns the handler already attached.
+    """
+
+    logger = logging.getLogger(OPERATION_LOGGER_NAME)
+    for existing in logger.handlers:
+        if isinstance(existing, _OperationRecordHandler):
+            return existing
+    handler = _OperationRecordHandler(stream if stream is not None else sys.stderr)
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    return handler
 
 
 def main() -> None:
@@ -31,6 +62,7 @@ def main() -> None:
             temporal_client = services.temporal_client
     except (ValueError, RuntimeError) as exc:
         parser.error(str(exc))
+    configure_operation_logging()
     uvicorn.run(
         create_app(
             runtime,
@@ -46,4 +78,4 @@ if __name__ == "__main__":
     main()
 
 
-__all__ = ["app", "main"]
+__all__ = ["app", "configure_operation_logging", "main"]

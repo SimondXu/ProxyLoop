@@ -417,9 +417,10 @@ Runtime and Web ports and fails closed on a taken or reserved one; the Web's
 Runtime rewrite reads a loopback-only `PROXYLOOP_RUNTIME_ORIGIN` at build and
 start. `make ops-report` is an offline summary of committed artifacts (gate
 inventory, gated-skip pin, split and parity reports, trace health); it opens
-no socket. The Runtime's allowlisted JSON operation records are not written to
-the demo's `runtime.log` (the server attaches no handler to their logger), so
-the demo cannot report them.
+no socket. The Runtime server writes each allowlisted JSON operation record as
+one stderr line (`configure_operation_logging` in `proxyloop_api/server.py`,
+Phase 07 F1), so the demo's `runtime.log` holds one content-free record per
+request and Scene J checks them.
 
 The future Gmail seam remains proposed at the API verification/channel-adapter
 boundary. The future Voice seam remains proposed at the deferred LiveKit/SIP

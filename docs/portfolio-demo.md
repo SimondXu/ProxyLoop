@@ -104,8 +104,11 @@ scripted line on the scripted backend) and a pending approval; that the
 execution count is 1 after the approval and still 1 after the replay, with the
 revision unchanged; that the Web's receipt predicate holds; that the
 PostgreSQL Model Trace log for the Case holds exactly one `slow`, one `judge`,
-and one `fast` trace, all `succeeded` (no Judge retry); and that the marker
-is absent from the proposal response and the Runtime, worker, and Web logs.
+and one `fast` trace, all `succeeded` (no Judge retry); that `runtime.log`
+gained exactly one content-free operation record per journey request, all
+with error category `none`; and that the marker is absent from the proposal
+response and the Runtime, worker, and Web logs. Close the Web tab first:
+nothing else may call the Runtime during Scene J.
 `make portfolio-demo-journey WRITE_EVIDENCE=1` also writes the committed,
 content-free `data/evaluation/phase-07-demo-journey-scripted.json` (scripted
 backend only).
@@ -166,8 +169,8 @@ What changes: each consumer turn in Scene A gets the gate-passed model line
 or the fixed fallback line ("I am checking that and will update you."), and
 its Fast trace names the local model and gateway identity; the approval, the
 single execution, and the receipt are unchanged because Fast cannot change
-routing. After a reload the Web shows "Runtime state not verified": it
-restores a Case only on the scripted backend (a recorded limit). PR-9 expects the distilled line to be withheld and replaced
+routing. Since #103 the Web also restores the Case after a reload on the
+local backends (under Temporal and PostgreSQL). PR-9 expects the distilled line to be withheld and replaced
 by the fallback on nearly every turn; that is the measured result, not a
 fault. A Fast call can take up to 25 s (the timeout); a timeout, a busy
 gateway, or a gateway that stops mid-demo delivers the fallback and the Case

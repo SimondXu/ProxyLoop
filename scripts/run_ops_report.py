@@ -51,10 +51,6 @@ PRE_JUDGE_NOTE = (
     "pre-Judge observed artifact: recorded before the PR-14 Judge seam and not "
     "regenerated (Phase 07 D6); never compared on Judge fields"
 )
-OPERATION_RECORDS_NOTE = (
-    "not reported: the demo Runtime does not write its operation records to "
-    "runtime.log (see harness/log/phase-07-portfolio-hardening.md)"
-)
 NOT_MEASURED = (
     "V0 (a hosted frontier model in both slots), frontier-as-Fast, and a "
     "second-family Judge: not measured (budget; decision 17)",
@@ -338,6 +334,7 @@ def _journey_health(journey: Mapping[str, Any] | None) -> dict[str, Any]:
         "receipt_predicate": journey["receipt_predicate"],
         "marker_absent": journey["marker_absent"],
         "marker_absent_everywhere": all(journey["marker_absent"].values()),
+        "operation_records": journey["operation_records"],
     }
 
 
@@ -376,7 +373,6 @@ def build_report(
                 name: _split_health(report) for name, report in splits.items()
             },
             "journey": _journey_health(journey),
-            "operation_records": OPERATION_RECORDS_NOTE,
         },
         "not_measured_or_not_done": list(NOT_MEASURED),
     }

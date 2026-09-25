@@ -1228,6 +1228,17 @@ CONFIRM_EVENT_TYPES = (
     ("system", "assistant_message"),
 )
 REFERENCE_REVISIONS = {"create": 2, "confirm": 4, "approve": 6}
+# F1 (root decision, 2026-09-25): one allowlisted operation record per journey
+# request in runtime.log. Nothing else may call the Runtime during Scene J.
+EXPECTED_JOURNEY_OPERATIONS = {
+    "append_event": 1,
+    "create_case": 1,
+    "decide_approval": 2,
+    "get_case": 1,
+    "health_ready": 1,
+    "intake_proposal": 1,
+}
+OPERATION_RECORD_WAIT_S = 5.0
 
 
 class _JourneyRepository(Protocol):
@@ -1296,6 +1307,53 @@ def _trace_counts(traces: Sequence[Any]) -> dict[str, dict[str, int]]:
     return counts
 
 
+def _operation_records(log_path: Path, offset: int) -> list[Mapping[str, Any]]:
+    """The JSON operation records appended to ``log_path`` after ``offset``."""
+
+    with log_path.open("rb") as log_file:
+        log_file.seek(offset)
+        text = log_file.read().decode("utf-8", errors="replace")
+    records: list[Mapping[str, Any]] = []
+    for line in text.splitlines():
+        try:
+            value = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(value, dict) and "correlation_id" in value:
+            records.append(value)
+    return records
+
+
+def _journey_operation_records(log_path: Path, offset: int) -> dict[str, Any]:
+    expected_total = sum(EXPECTED_JOURNEY_OPERATIONS.values())
+    deadline = time.monotonic() + OPERATION_RECORD_WAIT_S
+    records = _operation_records(log_path, offset)
+    while len(records) < expected_total and time.monotonic() < deadline:
+        time.sleep(0.1)
+        records = _operation_records(log_path, offset)
+    by_operation: dict[str, int] = {}
+    categories: dict[str, int] = {}
+    for record in records:
+        operation = str(record.get("operation"))
+        category = str(record.get("error_category"))
+        by_operation[operation] = by_operation.get(operation, 0) + 1
+        categories[category] = categories.get(category, 0) + 1
+        status = record.get("status")
+        if not isinstance(status, int) or not 200 <= status < 300:
+            raise DemoScenarioError("a journey operation record was not a success")
+    if by_operation != EXPECTED_JOURNEY_OPERATIONS:
+        raise DemoScenarioError(
+            "runtime.log did not hold one operation record per journey request"
+        )
+    if categories != {"none": expected_total}:
+        raise DemoScenarioError("a journey operation record had an error category")
+    return {
+        "count": len(records),
+        "by_operation": dict(sorted(by_operation.items())),
+        "error_categories": categories,
+    }
+
+
 def _intake_create_request(proposal: Mapping[str, Any]) -> dict[str, Any]:
     facts = proposal.get("proposal")
     clarifications = proposal.get("clarifications")
@@ -1326,6 +1384,10 @@ def run_journey(
             raise DemoScenarioError(
                 "demo state is not fresh; run make portfolio-demo-reset first"
             )
+        runtime_log = log_dir / "runtime.log"
+        if not runtime_log.is_file():
+            raise DemoScenarioError("journey log runtime.log is missing")
+        runtime_log_offset = runtime_log.stat().st_size
         ready = _journey_json(
             client.get("/health/ready"), expected_status=200, step="readiness"
         )
@@ -1435,6 +1497,7 @@ def run_journey(
         ):
             raise DemoScenarioError("unexpected model trace counts")
 
+        operation_records = _journey_operation_records(runtime_log, runtime_log_offset)
         marker_absent: dict[str, bool] = {"proposal_response": True}
         for name in JOURNEY_LOG_FILES:
             path = log_dir / name
@@ -1474,6 +1537,7 @@ def run_journey(
         "receipt_predicate": True,
         "trace_counts": trace_counts,
         "marker_absent": marker_absent,
+        "operation_records": operation_records,
     }
     if not evidence["replay_revision_unchanged"]:
         raise DemoScenarioError("replayed approval changed the Case revision")
@@ -1522,6 +1586,11 @@ def run_journey_command(
             for role, results in counts.items()
         )
         + ". The intake marker is absent from the proposal and the demo logs."
+    )
+    records = evidence["operation_records"]
+    print(
+        f"Operation records (runtime.log): {records['count']}, one per journey "
+        "request, all with error category none."
     )
     if revisions != REFERENCE_REVISIONS:
         print(
