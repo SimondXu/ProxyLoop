@@ -137,8 +137,10 @@ def test_a_value_not_in_the_cited_user_message_stays_private() -> None:
         ("plan.current_price_usd", "4821", "u-7"),  # said, but not shareable
     ]
     for key, value, ref in cases:
-        ((_, fact),) = tools.fact(bb, key, value, ref).effects
+        result = tools.fact(bb, key, value, ref)
+        ((_, fact),) = result.effects
         assert (fact["scope"], fact["source"]) == ("private", "user"), (key, ref)
+        assert ("cite the utt" in result.text) == (key in KEYS)
     assert tools.shareable == {}
 
 

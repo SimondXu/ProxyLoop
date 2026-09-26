@@ -177,7 +177,10 @@ class SlowTools:
             st.PublicFact.model_validate(fact | {"source": source})
             self.shareable |= {key: value} if source == "shareable" else {}
         recorded = fact | {"source": source, "scope": where}
-        return Result(True, f"recorded {where}", (("fact.recorded", recorded),))
+        text = f"recorded {where}"
+        if where == "private" and key in self._shareable_keys:  # how to share it
+            text += ": to make it public, cite the utt of the user message that says it"
+        return Result(True, text, (("fact.recorded", recorded),))
 
 
 def _partner(bb: st.Blackboard, lane: Lane) -> dict[str, str]:  # utt id -> text
