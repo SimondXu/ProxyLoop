@@ -43,3 +43,18 @@ serve-probe:
 serve-attest-local:
 	uv run --no-project --with huggingface_hub==2.0.0 python -m scripts.mod.attest_local --shards 1,4 \
 		--against $(MOD_DATA)/vllm-probe.json --out $(MOD_DATA)/vllm-attest-local.json
+
+# S0-MOD-02 (ADR-0003). train-modules runs on this CPU with no weights and no keys: the
+# meta-device named_modules() dump plus real PEFT over the train targets. train-smoke is
+# root-run (G): the 50-step smoke on one H100; --detach keeps a paid run going if the
+# local process disconnects (rerun with --run-id <id> to resume from its checkpoints).
+MOD_TRAIN_CPU := uv run --no-project --with torch==2.13.0 --with transformers==5.17.0 \
+	--with peft==0.21.0 --with accelerate==1.15.0 python
+
+.PHONY: train-modules train-smoke
+
+train-modules:
+	$(MOD_TRAIN_CPU) -m training_jobs.sft $(MOD_DATA)/peft-modules.json
+
+train-smoke:
+	$(MOD_MODAL) run --detach -m training_jobs.modal_train --out $(MOD_DATA)/peft-train-smoke.json
