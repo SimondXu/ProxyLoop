@@ -49,6 +49,7 @@ FORBIDDEN = str(BASE_SCENARIO.case.goal.forbidden_changes[0])
 HASH_VARIANTS: tuple[tuple[str, dict[str, Any]], ...] = (
     ("unsorted-features", {"features": ("zeta", "alpha", "mid")}),
     ("no-features", {"features": ()}),
+    ("duplicate-features", {"features": ("mobile", "mobile", "alpha")}),
     ("padded-features", {"features": (" mobile", "hotspot ")}),
     ("padded-currency", {"currency": " USD"}),
     ("over-long-features", {"features": ("x" * 4001,)}),

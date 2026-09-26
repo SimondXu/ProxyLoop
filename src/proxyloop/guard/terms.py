@@ -13,7 +13,7 @@ import hashlib
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,10 +28,11 @@ class Fee:
 class Terms:
     """``pl.terms/2``: the material terms of one offer revision.
 
-    ``credits`` use the same ``{code, amount_minor}`` shape as ``fees``.
-    ``total_cost_12m_minor`` is derived by whoever builds the offer (monthly
-    price x 12 + fees - credits) and is stored so the hash binds the quoted
-    total.
+    ``credits`` use the same ``{code, amount_minor}`` shape as ``fees``. List
+    fields are multisets: the hash sorts them and keeps duplicates.
+    ``expires_at`` must be timezone-aware and is normalised to UTC.
+    ``total_cost_12m_minor`` is stored as quoted; stored vs derived is deferred
+    to S0-CON-01, which owns the terms types.
     """
 
     monthly_price_minor: int
@@ -45,6 +46,11 @@ class Terms:
     offer_id: str
     offer_revision: int
     expires_at: datetime
+
+    def __post_init__(self) -> None:
+        if self.expires_at.tzinfo is None or self.expires_at.utcoffset() is None:
+            raise ValueError("expires_at must be timezone-aware")
+        object.__setattr__(self, "expires_at", self.expires_at.astimezone(UTC))
 
 
 def terms_hash(terms: Terms) -> str:

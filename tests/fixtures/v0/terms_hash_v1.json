@@ -1216,6 +1216,24 @@
    "inputs": {
     "currency": "USD",
     "features": [
+     "mobile",
+     "mobile",
+     "alpha"
+    ],
+    "monthly_price_minor": 7200,
+    "offer_expires_at": "2026-08-23T13:00:00+00:00",
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "material_terms_hash": "ff6aa2f6a76f020bd5f7b283f0e741da3f8e1758ca3c892c8b7b81c20aca0a9e",
+   "offer": "variant",
+   "scenario_id": "duplicate-features"
+  },
+  {
+   "catalogue": "synthetic",
+   "inputs": {
+    "currency": "USD",
+    "features": [
      " mobile",
      "hotspot "
     ],
