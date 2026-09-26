@@ -58,3 +58,10 @@ train-modules:
 
 train-smoke:
 	$(MOD_MODAL) run --detach -m training_jobs.modal_train --out $(MOD_DATA)/peft-train-smoke.json
+
+# S1-MOD-02: the EVAL §7 metrics of a bundle, or of a folder of bundles, as JSON. Offline:
+# no keys, no GPU (`make metrics RUN=evidence/s0/<run_id>`).
+.PHONY: metrics
+
+metrics:
+	uv run python -m proxyloop.eval.metrics $(RUN)
