@@ -629,6 +629,7 @@ mod = [
     { name = "starlette" },
 ]
 sys = [
+    { name = "httpx" },
     { name = "pyyaml" },
 ]
 
@@ -650,7 +651,10 @@ mod = [
     { name = "modal", specifier = "==1.5.5" },
     { name = "starlette", specifier = "==1.7.0" },
 ]
-sys = [{ name = "pyyaml", specifier = "==6.0.3" }]
+sys = [
+    { name = "httpx", specifier = "==0.28.1" },
+    { name = "pyyaml", specifier = "==6.0.3" },
+]
 
 [[package]]
 name = "pydantic"
