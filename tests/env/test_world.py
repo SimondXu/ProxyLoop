@@ -110,6 +110,10 @@ def test_an_identifier_must_be_voiced_verbatim() -> None:
     assert fidelity_ok(template(done, "Northwind"), done)
 
 
+def test_the_whole_call_bound_is_the_old_worst_case() -> None:
+    assert world.TIMEOUT_S == 60.0  # provisional: 3 attempts x the old 20 s
+
+
 def test_one_deadline_bounds_every_attempt_together() -> None:
     seen: list[int] = []
 

@@ -43,8 +43,8 @@ def test_the_defaults_keep_todays_models() -> None:
     fast = ModelRef(kind=REAL, endpoint="vllm", model_id="Qwen3.5-9B")
     assert cfg.fast_user == cfg.fast_cp == fast  # no effort: vLLM keeps its own
     assert cfg.slow == ModelRef(
-        kind=REAL, endpoint="relay", model_id="claude-sonnet-5", reasoning_effort="low"
-    )
+        kind=REAL, endpoint="relay", model_id="claude-sonnet-5"
+    )  # reasoning_effort None: the default cfg_hash is unchanged
     world = ModelRef(
         kind=REAL, endpoint="teamrouter", model_id=cli.WORLD, reasoning_effort="low"
     )
@@ -70,6 +70,18 @@ def test_the_fast_and_slow_models_are_chosen_by_id_and_endpoint() -> None:
     )
     hosted = _cfg("--fast-endpoint", "relay", "--fast-effort", "minimal")
     assert hosted.fast_cp.reasoning_effort == "minimal"
+
+
+def test_a_teamrouter_slow_pins_the_provisional_effort() -> None:
+    cfg = _cfg("--slow-model", "gemini-3.8-flash", "--slow-endpoint", "teamrouter")
+    assert cfg.slow == ModelRef(
+        kind=REAL,
+        endpoint="teamrouter",
+        model_id="gemini-3.8-flash",
+        reasoning_effort="low",
+    )
+    relay = _cfg("--slow-effort", "high")  # an explicit override on the relay
+    assert relay.slow.reasoning_effort == "high"
 
 
 def test_each_world_role_takes_its_own_effort() -> None:

@@ -21,7 +21,8 @@ llm-smoke:
 # override it per world role (unset: WORLD_EFFORT).
 # FAST/FAST_ENDPOINT and SLOW/SLOW_ENDPOINT pick the Fast and Slow ModelRefs (unset: the
 # CLI defaults, Qwen3.5-9B@vllm and claude-sonnet-5@relay); FAST_EFFORT (hosted Fast only)
-# and SLOW_EFFORT pin reasoning_effort (unset: the CLI's provisional values).
+# and SLOW_EFFORT pin reasoning_effort (unset: the CLI's provisional values for a hosted
+# Fast and a TeamRouter Slow; a vLLM Fast and a relay Slow keep the provider's default).
 # FAST_CP_BASE_URL: the dead-endpoint smoke only, a dead server root for fast_cp.
 # CLAIM=0 checks the bundle offline instead of --claim (a hosted Fast); removed by S1-SYS-14.
 WORLD_EFFORT ?= low

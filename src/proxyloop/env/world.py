@@ -25,7 +25,9 @@ from typing import Literal, Protocol
 from proxyloop.contract import llm
 from proxyloop.contract.llm import LLMCallRecord, LLMClient, TextRequest, ToolRequest
 
-MAX_REGENERATIONS, TIMEOUT_S = 2, 20.0  # TIMEOUT_S: one call, all its attempts
+MAX_REGENERATIONS = 2
+# One call, all its attempts (D6); 60 s = the old worst case (3 x 20 s).
+TIMEOUT_S = 60.0  # provisional until S0-ROOT-12 + the user's confirmation
 MAX_TOKENS = 512  # bounds neither reasoning nor latency here (ADR-0005 Risks)
 
 

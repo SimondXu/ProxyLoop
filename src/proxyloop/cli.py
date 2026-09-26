@@ -36,7 +36,7 @@ SLOW, SLOW_ENDPOINT = "claude-sonnet-5", "relay"
 WORLD = "gemini-3.8-flash"  # ADR-0005
 WORLD_ROLES = ("ear", "mouth", "simuser")
 WORLD_EFFORT = "low"  # provisional: ADR-0005; S1 probe decides
-SLOW_EFFORT = "low"  # provisional until S0-ROOT-12; the user's setting
+TEAMROUTER_SLOW_EFFORT = "low"  # provisional until S0-ROOT-12; the user's setting
 HOSTED_FAST_EFFORT = "low"  # provisional until S0-ROOT-12; the user's setting
 SHOWN = {  # what a person follows in a replay: the payload field per event type
     **{"user.msg": "text", "utt.final": "text", "utt.delivered": "text_heard"},
@@ -52,13 +52,16 @@ def _ref(endpoint: Endpoint, model_id: str, effort: ReasoningEffort | None) -> M
 
 
 def live_config(args: argparse.Namespace) -> SessionConfig:
-    """The session's models from the options; a vLLM Fast keeps the provider's
-    effort, a hosted one pins it."""
+    """The session's models from the options; a vLLM Fast and a relay Slow keep
+    the provider's effort, a hosted Fast and a TeamRouter Slow pin it."""
 
     fast_effort = args.fast_effort
     if args.fast_endpoint != "vllm" and fast_effort is None:
         fast_effort = HOSTED_FAST_EFFORT
     fast = _ref(args.fast_endpoint, args.fast_model, fast_effort)
+    slow_effort = args.slow_effort  # the relay's Slow keeps the provider's default
+    if args.slow_endpoint == "teamrouter" and slow_effort is None:
+        slow_effort = TEAMROUTER_SLOW_EFFORT
     world = {
         role: _ref(
             "teamrouter", WORLD, getattr(args, f"{role}_effort") or args.world_effort
@@ -68,7 +71,7 @@ def live_config(args: argparse.Namespace) -> SessionConfig:
     return SessionConfig(
         fast_user=fast,
         fast_cp=fast,
-        slow=_ref(args.slow_endpoint, args.slow_model, args.slow_effort),
+        slow=_ref(args.slow_endpoint, args.slow_model, slow_effort),
         world=WorldModels(**world),
         fast_sampling=Sampling(temperature=0.3, top_p=0.9, max_tokens=160),  # §6.3
         seed=args.seed,
@@ -139,7 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--fast-effort", choices=efforts, help="hosted Fast only")
         p.add_argument("--slow-model", default=SLOW, help="a ModelRef model_id")
         p.add_argument("--slow-endpoint", default=SLOW_ENDPOINT, choices=endpoints)
-        p.add_argument("--slow-effort", default=SLOW_EFFORT, choices=efforts)
+        p.add_argument("--slow-effort", choices=efforts, help="unset: see live_config")
         p.add_argument(
             "--fast-cp-base-url", help="dead-endpoint smoke only: fast_cp's server root"
         )
