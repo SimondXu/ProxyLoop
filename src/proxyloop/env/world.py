@@ -3,9 +3,10 @@
 A world output failing its schema or check is regenerated at most twice, each
 attempt its own call and counted in the result event's ``attempts``; then
 ``WorldError`` ends the episode, unless the caller names the spec'd fallback
-(only the Mouth's ``fidelity_fallback``, ARCHITECTURE §10.1). Every attempt
-has a wall-clock timeout (a ``WorldError``); the cancelled call's record still
-reaches ``World.record``. ``LLMUnavailable`` always propagates (I8).
+(only the Mouth's ``fidelity_fallback``, ARCHITECTURE §10.1). One wall-clock
+deadline bounds the whole call, all its attempts together (D6): past it, a
+``WorldError``; the cancelled call's record still reaches ``World.record``.
+``LLMUnavailable`` always propagates (I8).
 
 Every world ``llm.call`` event is written from one place: ``World.record``,
 the ``on_record`` sink of the world's clients, which receives every record
@@ -24,7 +25,7 @@ from typing import Literal, Protocol
 from proxyloop.contract import llm
 from proxyloop.contract.llm import LLMCallRecord, LLMClient, TextRequest, ToolRequest
 
-MAX_REGENERATIONS, TIMEOUT_S = 2, 20.0
+MAX_REGENERATIONS, TIMEOUT_S = 2, 20.0  # TIMEOUT_S: one call, all its attempts
 MAX_TOKENS = 512  # bounds neither reasoning nor latency here (ADR-0005 Risks)
 
 
@@ -123,23 +124,33 @@ async def bounded[R, T](
     timeout_s: float,
     exhausted: Callable[[], T] | None = None,
 ) -> tuple[T, int, bool]:
-    """Run ``attempt(n)`` until ``check`` passes: ``(value, attempts, valid)``."""
+    """Run ``attempt(n)`` until ``check`` passes: ``(value, attempts, valid)``.
+    ``timeout_s`` bounds all the attempts together, not each one."""
 
-    last: Invalid | None = None
-    for n in range(MAX_REGENERATIONS + 1):
-        try:
-            raw = await asyncio.wait_for(attempt(n), timeout_s)
-        except TimeoutError as err:
-            raise WorldError(f"{what}: no answer within {timeout_s} s") from err
-        try:
-            return check(raw), n + 1, True
-        except Invalid as err:
-            last = err
-    if exhausted is None:
-        raise WorldError(
-            f"{what}: invalid after {MAX_REGENERATIONS} regenerations: {last}"
-        )
-    return exhausted(), MAX_REGENERATIONS + 1, False
+    async def attempts() -> tuple[T, int, bool]:
+        last: Invalid | None = None
+        for n in range(MAX_REGENERATIONS + 1):
+            raw = await attempt(n)
+            try:
+                return check(raw), n + 1, True
+            except Invalid as err:
+                last = err
+        if exhausted is None:
+            raise WorldError(
+                f"{what}: invalid after {MAX_REGENERATIONS} regenerations: {last}"
+            )
+        return exhausted(), MAX_REGENERATIONS + 1, False
+
+    try:
+        return await asyncio.wait_for(attempts(), timeout_s)
+    except TimeoutError as err:
+        raise WorldError(f"{what}: no answer within {timeout_s} s") from err
+
+
+def norm(value: str) -> str:
+    """Letters and digits only, casefolded: how a spoken fact is compared."""
+
+    return "".join(ch for ch in value.casefold() if ch.isalnum())
 
 
 def numbers(text: str) -> set[Decimal]:

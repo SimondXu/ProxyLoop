@@ -4,8 +4,9 @@ GREET -> IDENTIFY -> DISCOVER -> OFFER(k) -> FINAL -> CONFIRM -> CONFIRMED |
 TRANSFER | ENDED. The rep knows only the acts it heard, its offers and the
 clock (no agent state). Each distinct lever unlocks the next ladder rung;
 hidden terms are said only on a read-back; offers expire after their TTL;
-silence over ``silence_s`` while the floor is free (``floor``), or a hold over
-``hold_s``, is a strike, and the last strike hangs up.
+silence over ``silence_s`` while the floor is free (``floor``), a hold over
+``hold_s``, or any act but ``provide_fact`` while identifying (hold and
+supervisor requests aside) is a strike, and the last strike hangs up.
 
 World rule (for S1-SYS-04 to confirm): accepting an open offer by name commits
 at once (``rep.commit_heard``) and the ledger binds all its terms, hidden ones
@@ -27,7 +28,7 @@ from proxyloop.contract.base import Frozen, sha256_text
 from proxyloop.env.counterparty.ear import EarAct, Lever
 from proxyloop.env.ledger import Ledger
 from proxyloop.env.tasks.schema import CounterpartySpec, OfferSpec
-from proxyloop.env.world import numbers
+from proxyloop.env.world import norm, numbers
 
 State = Literal[
     "GREET",
@@ -104,10 +105,6 @@ class _Offer:
     status: Literal["open", "expired", "accepted"] = "open"
 
 
-def _norm(value: str) -> str:
-    return "".join(ch for ch in value.casefold() if ch.isalnum())
-
-
 class Policy:
     def __init__(
         self, spec: CounterpartySpec, identity: Mapping[str, str], t0_ms: int = 0
@@ -146,9 +143,13 @@ class Policy:
             return []
         out = self._expire(t_ms)
         self._free_since, self._hold_since = None, None
-        before = self.state
+        before, strikes = self.state, self.strikes
         intent, commit = self._react(act, utt_id, heard, t_ms)
-        return [*out, Decision(before, self.state, intent, self._rung(), commit)]
+        struck = self.strikes > strikes
+        return [
+            *out,
+            Decision(before, self.state, intent, self._rung(), commit, struck),
+        ]
 
     def tick(self, t_ms: int) -> list[Decision]:
         """Timers: offer expiry, silence and hold strikes, the hang-up."""
@@ -184,13 +185,16 @@ class Policy:
             if a != "provide_fact":
                 return PublicIntent(kind="greet", ask=self._missing()), None
         if self.state == "IDENTIFY":
-            key, value = act.key or "", _norm(act.value or "")
-            if (
-                a == "provide_fact"
-                and value
-                and value == _norm(self.identity.get(key, ""))
-            ):
-                self._verified.add(key)
+            facts = act.facts if a == "provide_fact" else ()
+            if a != "provide_fact":  # identity patience
+                self.strikes += 1
+                if self.strikes >= self.spec.patience.strikes:
+                    self.state = "ENDED"
+                    return PublicIntent(kind="hang_up"), None
+            for fact in facts:  # a wrong value is asked again, not struck
+                value = norm(fact.value)
+                if value and value == norm(self.identity.get(fact.key, "")):
+                    self._verified.add(fact.key)
             if missing := self._missing():
                 return PublicIntent(kind="ask_identity", ask=missing), None
             self.state = "DISCOVER"
