@@ -1,0 +1,121 @@
+{
+ "profile": "pl_cp_v1",
+ "view": {
+  "lane": "cp",
+  "brief": "You are calling Contoso Mobile to ask for a lower monthly price.",
+  "private_summary": null,
+  "public_summary": "The rep offered $65.00 a month for 12 months, with a $30.00 activation fee.",
+  "action_log": [
+   "opened the call",
+   "recorded an offer",
+   "asked for a read-back"
+  ],
+  "offers": [
+   {
+    "offer_ref": "o1",
+    "revision": 1,
+    "slots": [
+     {
+      "field": "monthly_price",
+      "value": "6500",
+      "unit": "usd_minor",
+      "role": "recurring",
+      "source_utt": null,
+      "span": null,
+      "status": "confirmed"
+     },
+     {
+      "field": "term_months",
+      "value": "12",
+      "unit": "months",
+      "role": "recurring",
+      "source_utt": null,
+      "span": null,
+      "status": "confirmed"
+     },
+     {
+      "field": "fee:activation",
+      "value": "3000",
+      "unit": "usd_minor",
+      "role": "one_time",
+      "source_utt": null,
+      "span": null,
+      "status": "confirmed"
+     },
+     {
+      "field": "changes_none",
+      "value": "true",
+      "unit": "bool",
+      "role": "change",
+      "source_utt": null,
+      "span": null,
+      "status": "confirmed"
+     },
+     {
+      "field": "expires",
+      "value": "2026-10-15",
+      "unit": "iso",
+      "role": "expiry",
+      "source_utt": null,
+      "span": null,
+      "status": "confirmed"
+     }
+    ],
+    "status": "open",
+    "expires_ms": null,
+    "terms_hash": "c0ffee"
+   }
+  ],
+  "public_facts": [
+   {
+    "key": "competitor_quote",
+    "value": "$55.00 a month from Northwind",
+    "source": "shareable",
+    "source_ref": "task"
+   },
+   {
+    "key": "rep.name",
+    "value": "Jordan",
+    "source": "cp_utt",
+    "source_ref": "c2"
+   }
+  ],
+  "pending_approval": null,
+  "guidance": [],
+  "hold": null,
+  "status": "IN_CALL",
+  "transcript": [
+   {
+    "utt_id": "c1",
+    "speaker": "agent",
+    "text": "Hi, I'm an AI assistant calling for Dana."
+   },
+   {
+    "utt_id": "c2",
+    "speaker": "partner",
+    "text": "Hi, this is Jordan. How can I help?"
+   },
+   {
+    "utt_id": "c3",
+    "speaker": "partner",
+    "text": "I can do $65 a month for 12 months, plus a $30 activation fee."
+   }
+  ],
+  "trigger": {
+   "kind": "rep_spoke",
+   "msg_id": null,
+   "wait_s": null
+  },
+  "slow_msg": null
+ },
+ "messages": [
+  {
+   "role": "system",
+   "content": "You are the voice of an AI assistant on a live phone call with a company representative, calling on behalf of your customer. You have already said you are an AI assistant. Never agree to or accept anything yourself; stall with @hold at decisions. Say only facts in the context; never invent prices, quotes or personal data.\n\nBehind you, a CASE AGENT plans the call and sends you CASE AGENT GUIDANCE; follow it.\n- When the representative states a price, fee, term, change or other fact, relay it: `@slow: fact <key>=<value>` (several: `; `), or `@slow: <note>` for anything else the case agent should know.\n- When the representative asks you to accept, decide or share something, stall politely and add one `@hold <offer|decision|fact_request|pressure|unclear>` line.\n- Output `@wait` when you should deliberately stay silent. Output `@end_call` only when the guidance says to close the call.\n\nOutput format (strict):\n1. FIRST: the words to speak, as plain conversational text. Short (usually 1-2 sentences), phone-appropriate. No markdown, no lists, no stage directions. Numbers said naturally.\n2. THEN (optional): one or more `@slow: ...` lines.\n3. THEN (optional): one `@hold <reason>` or `@wait` line.\n4. THEN (optional): `@end_call`.\nSpeak first, directives after."
+  },
+  {
+   "role": "user",
+   "content": "TASK CONTEXT: You are calling Contoso Mobile to ask for a lower monthly price.\n\nCASE AGENT SUMMARY: The rep offered $65.00 a month for 12 months, with a $30.00 activation fee.\n\nCASE AGENT RECENT ACTIONS:\n- opened the call\n- recorded an offer\n- asked for a read-back\n\nOFFERS ON THE TABLE:\n- o1 (revision 1, open): monthly_price $65.00 [confirmed]; term_months 12 months [confirmed]; fee:activation $30.00 [confirmed]; changes_none true [confirmed]; expires 2026-10-15 [confirmed]\n\nCASE AGENT GUIDANCE:\n(none)\n\nHOLD STATUS: (none)\n\nCASE STATUS: IN_CALL\n\nCONVERSATION SO FAR:\nAGENT: Hi, I'm an AI assistant calling for Dana.\nREP: Hi, this is Jordan. How can I help?\nREP: I can do $65 a month for 12 months, plus a $30 activation fee.\n\nTRIGGER: The representative just spoke (last REP line). Respond.\n\nRespond now per the output format."
+  }
+ ]
+}
