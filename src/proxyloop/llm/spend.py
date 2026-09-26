@@ -7,9 +7,10 @@ Three pricing bases, so no call is ever silently priced at zero:
 - ``unpriced``: no measured rate (TeamRouter's world model, ADR-0005; GPT
   output rates, ADR-0001) or no usage reported. Counted, never summed.
 
-The runaway guard raises ``RunawaySpend`` once the priced total passes
-``RUNAWAY_FACTOR`` times the projected episode cost; the charge that crossed
-the line travels with the exception.
+Two runaway guards raise ``RunawaySpend``, with the charge that crossed the line:
+the priced total passes ``RUNAWAY_FACTOR`` times the projected episode cost, or
+the unpriced calls pass ``RUNAWAY_FACTOR`` times the projected calls per episode
+(no rate is invented for them).
 """
 
 from __future__ import annotations
@@ -61,11 +62,15 @@ class RunawaySpend(RuntimeError):
 
 class SpendLedger:
     def __init__(
-        self, projected_episode_micro_usd: int, rates: Mapping[str, Rate] = RELAY_RATES
+        self,
+        projected_episode_micro_usd: int,
+        projected_calls: int,
+        rates: Mapping[str, Rate] = RELAY_RATES,
     ) -> None:
-        if projected_episode_micro_usd <= 0:
-            raise ValueError("the projected episode cost must be positive")
+        if projected_episode_micro_usd <= 0 or projected_calls <= 0:
+            raise ValueError("the episode projections must be positive")
         self.limit_micro_usd = RUNAWAY_FACTOR * projected_episode_micro_usd
+        self.limit_unpriced_calls = RUNAWAY_FACTOR * projected_calls
         self._rates = rates
         self._by_role: dict[str, int] = {}
         self.unpriced_calls = 0
@@ -101,13 +106,13 @@ class SpendLedger:
         if charge.micro_usd:
             role = charge.role
             self._by_role[role] = self._by_role.get(role, 0) + charge.micro_usd
-        total = self.spend.micro_usd
+        total, unpriced = self.spend.micro_usd, self.unpriced_calls
         if total > self.limit_micro_usd:
-            raise RunawaySpend(
-                f"runaway spend: {total} micro-USD > {self.limit_micro_usd} "
-                f"({RUNAWAY_FACTOR}x the projected episode cost)",
-                charge,
-            )
+            limit = self.limit_micro_usd
+            raise RunawaySpend(f"runaway spend: {total} > {limit} micro-USD", charge)
+        if unpriced > self.limit_unpriced_calls:
+            limit = self.limit_unpriced_calls
+            raise RunawaySpend(f"runaway calls: {unpriced} > {limit} unpriced", charge)
         return charge
 
     @property

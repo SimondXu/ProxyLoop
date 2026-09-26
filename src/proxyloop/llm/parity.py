@@ -13,17 +13,19 @@ from proxyloop.llm.vllm import VLLMClient
 
 @dataclass(frozen=True)
 class GoldenPrompt:
-    """One P2 case: the rendered messages and the ids P2 committed for them."""
+    """One P2 case: its rendered messages, its ``render_prompt`` text (what vLLM
+    is sent) and the ids P2 committed for them."""
 
     name: str
     messages: tuple[Mapping[str, str], ...]
+    prompt: str
     ids: tuple[int, ...]
 
 
 @dataclass(frozen=True)
 class ParityResult:
-    served_model: str
-    equal: Mapping[str, bool]  # per golden case
+    requested_model: str
+    equal: Mapping[str, bool]  # per golden case: both /tokenize paths match
 
     @property
     def passed(self) -> bool:
@@ -35,6 +37,7 @@ async def check_parity(
 ) -> ParityResult:
     equal: dict[str, bool] = {}
     for golden in goldens:
-        ids = await client.tokenize(golden.messages)
-        equal[golden.name] = tuple(ids) == golden.ids
-    return ParityResult(served_model=client.ref.model_id, equal=equal)
+        chat = await client.tokenize(messages=golden.messages)
+        sent = await client.tokenize(prompt=golden.prompt)
+        equal[golden.name] = tuple(chat) == tuple(sent) == golden.ids
+    return ParityResult(requested_model=client.ref.model_id, equal=equal)

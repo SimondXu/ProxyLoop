@@ -1,13 +1,14 @@
 """Hosted models over OpenAI-compatible ``/v1/chat/completions`` (ADR-0001, ADR-0005).
 
 One class for both chat endpoints, ``relay`` (Slow, teacher, hosted Fast) and
-``teamrouter`` (the world). Text streams; tool calls are one non-streamed
+``teamrouter`` (the world). Text streams; a tool call is one non-streamed
 response. Structured output is a forced tool call: ``response_format`` is never
 sent. Tool names and arguments pass through unrepaired; the caller validates.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 
 from proxyloop.contract.llm import (
@@ -48,6 +49,22 @@ def _delta_text(chunk: Json) -> str | None:
     return "".join(d.get("content") or "" for d in deltas) or None
 
 
+def _tools(body: Json) -> str:
+    """A whole tool-call response as the content ``response_sha`` hashes."""
+
+    message: Json = body["choices"][0]["message"]
+    raw: list[Json] = message.get("tool_calls") or []
+    calls = tuple(
+        ToolCall(
+            call_id=c["id"],
+            name=c["function"]["name"],
+            arguments=c["function"]["arguments"],
+        )
+        for c in raw
+    )
+    return tool_response_content(message.get("content") or "", calls)
+
+
 class ChatClient(HTTPAdapter):
     ENDPOINTS = ("relay", "teamrouter")
 
@@ -63,9 +80,7 @@ class ChatClient(HTTPAdapter):
 
     def stream_text(self, request: TextRequest) -> AsyncIterator[str | LLMCallRecord]:
         if not request.messages:
-            raise ValueError(
-                "a chat endpoint takes messages, not a pre-rendered prompt"
-            )
+            raise ValueError("a chat endpoint takes messages, not a prompt")
         body = self._body(request.messages, request.max_tokens)
         body |= {"temperature": request.temperature, "stream": True}
         body["stream_options"] = {"include_usage": True}
@@ -73,7 +88,7 @@ class ChatClient(HTTPAdapter):
             body["top_p"] = request.top_p
         if request.seed is not None:
             body["seed"] = request.seed
-        return self._stream(request, PATH, body, _delta_text)
+        return self._call(request, PATH, body, _delta_text)
 
     async def chat_tools(self, request: ToolRequest) -> ToolResponse:
         body = self._body(request.messages, request.max_tokens)
@@ -88,21 +103,10 @@ class ChatClient(HTTPAdapter):
             }
         if request.temperature is not None:
             body["temperature"] = request.temperature
-        attempt, data = await self._post(request, PATH, body)
-        try:
-            message: Json = data["choices"][0]["message"]
-            text: str = message.get("content") or ""
-            raw: list[Json] = message.get("tool_calls") or []
-            calls = tuple(
-                ToolCall(
-                    call_id=c["id"],
-                    name=c["function"]["name"],
-                    arguments=c["function"]["arguments"],
-                )
-                for c in raw
-            )
-        except (KeyError, IndexError, TypeError, ValueError) as exc:
-            raise self._fail(attempt, "", exc) from exc
-        content = tool_response_content(text, calls)
-        record = attempt.record(self._clock(), content)
-        return ToolResponse(text=text, tool_calls=calls, record=record)
+        *parts, record = [
+            item async for item in self._call(request, PATH, body, _tools)
+        ]
+        assert isinstance(record, LLMCallRecord)
+        content = json.loads("".join(str(p) for p in parts))
+        calls = tuple(ToolCall.model_validate(c) for c in content["tool_calls"])
+        return ToolResponse(text=content["text"], tool_calls=calls, record=record)

@@ -4,18 +4,23 @@ Every endpoint reads exactly two variables at client construction,
 ``PL_<ENDPOINT>_BASE_URL`` (the server root, without ``/v1``) and
 ``PL_<ENDPOINT>_API_KEY``. Neither value is ever logged or recorded.
 
+Records: every record an adapter produces goes to the ``on_record`` sink given at
+construction (required, so none is ever lost): each failed attempt, each success,
+and a cancelled or abandoned stream (``error="cancelled"``, the delivered text
+hashed). The success record is also yielded or returned, per the contract.
+
 Retry rule (AGENTS rules 6 and 12): at most one retry, only for a connection
-failure (nothing was sent back, so no token exists), and only when the caller
-gave ``on_retry``, which receives the failed attempt's record. Without it no
-retry happens, so no record is ever dropped. Everything else raises
-``LLMUnavailable`` at once.
+failure before the first token. Everything else raises ``LLMUnavailable`` at once,
+with its record; a malformed body is such a failure, never a raw exception.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from contextlib import aclosing
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -39,7 +44,13 @@ Json = dict[str, Any]
 # A dead endpoint fails within 2 x the connect timeout (< 5 s, the acceptance bound).
 TIMEOUT = httpx.Timeout(120.0, connect=2.0, pool=2.0)
 CONNECTION_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout)
+# Everything an endpoint can do wrong; LookupError covers KeyError and IndexError.
+FAILURES = (httpx.HTTPError, ValueError, LookupError, TypeError, AttributeError)
 ATTEMPTS: tuple[Literal[0, 1], ...] = (0, 1)
+
+
+class EndpointError(ValueError):
+    """The endpoint answered, but not with a usable response."""
 
 
 class LLMConfigError(RuntimeError):
@@ -96,7 +107,7 @@ class Attempt:
     echo: str | None = None
     usage: Usage | None = None
     finish_reason: str | None = None
-    done: bool = False
+    saw_done: bool = False  # the SSE "[DONE]" line
 
     def headers(self, resp: httpx.Response) -> None:
         self.request_id = resp.headers.get("x-request-id") or resp.headers.get(
@@ -107,7 +118,10 @@ class Attempt:
         """The fields every OpenAI-compatible body or stream chunk may carry."""
 
         self.request_id = self.request_id or chunk.get("id")
-        self.echo = self.echo or chunk.get("model")
+        model = chunk.get("model")
+        if self.echo and model and model != self.echo:
+            raise EndpointError(f"echoed model changed mid-stream: {model!r}")
+        self.echo = self.echo or model
         usage: Json | None = chunk.get("usage")
         if usage:
             details: Json = usage.get("completion_tokens_details") or {}
@@ -120,7 +134,11 @@ class Attempt:
         for choice in choices:
             if reason := choice.get("finish_reason"):
                 self.finish_reason = reason
-                self.done = True
+
+    def complete(self) -> bool:
+        """A stream finished: ``[DONE]``, or a finish reason and the usage chunk."""
+
+        return self.saw_done or (self.finish_reason is not None and bool(self.usage))
 
     def record(
         self, t_end: int, response: str | None, error: str | None = None
@@ -154,12 +172,12 @@ class HTTPAdapter:
         self,
         ref: ModelRef,
         clock: Clock,
-        on_retry: RecordSink | None = None,
+        on_record: RecordSink,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         if ref.endpoint not in self.ENDPOINTS:
             raise ValueError(f"{type(self).__name__} serves {self.ENDPOINTS}")
-        self._ref, self._clock, self._on_retry = ref, clock, on_retry
+        self._ref, self._clock, self._on_record = ref, clock, on_record
         self._env = EndpointEnv.load(ref.endpoint)
         self._http = self._env.client(transport)
 
@@ -170,34 +188,25 @@ class HTTPAdapter:
     async def aclose(self) -> None:
         await self._http.aclose()
 
-    def _fail(
-        self, attempt: Attempt, text: str, exc: Exception | str
-    ) -> LLMUnavailable:
-        detail = exc if isinstance(exc, str) else f"{type(exc).__name__}: {exc}"
-        error = self._env.redact(detail)[:500]
-        # Delivered text stays hashed, so a partial response keeps its provenance.
-        record = attempt.record(self._clock(), text or None, error)
-        return LLMUnavailable(f"{self._ref.model_id} unavailable: {error}", record)
+    def _emit(self, attempt: Attempt, text: str, error: str | None) -> LLMCallRecord:
+        """Close the attempt's record and hand it to the sink; a failure hashes
+        only text actually delivered."""
+        response = text if error is None else (text or None)
+        record = attempt.record(self._clock(), response, error)
+        self._on_record(record)
+        return record
 
-    def _retry(self, attempt: Attempt, exc: Exception) -> bool:
-        if not (
-            attempt.attempt == 0
-            and self._on_retry
-            and isinstance(exc, CONNECTION_ERRORS)
-        ):
-            return False
-        self._on_retry(self._fail(attempt, "", exc).record)
-        return True
-
-    async def _stream(
+    async def _call(
         self,
-        request: TextRequest,
+        request: TextRequest | ToolRequest,
         path: str,
         body: Json,
-        text_of: Callable[[Json], str | None],
+        parse: Callable[[Json], str | None],
     ) -> AsyncIterator[str | LLMCallRecord]:
-        """POST a streamed call; yield text deltas, then the record."""
+        """POST one call: yield its text (stream deltas, or a whole body's content
+        from ``parse``), then its record."""
 
+        streaming = bool(body.get("stream"))
         for n in ATTEMPTS:
             attempt = Attempt(self._ref, request, n, self._clock())
             text: list[str] = []
@@ -206,62 +215,48 @@ class HTTPAdapter:
                     attempt.headers(resp)
                     if resp.status_code != 200:
                         detail = (await resp.aread()).decode(errors="replace")[:300]
-                        raise self._fail(
-                            attempt, "", f"HTTP {resp.status_code}: {detail}"
-                        )
-                    async for line in resp.aiter_lines():
-                        if not line.startswith("data:"):
-                            continue
-                        data = line[5:].strip()
-                        if data == "[DONE]":
-                            attempt.done = True
-                            continue
-                        chunk: Json = json.loads(data)
-                        if "error" in chunk:
-                            raise self._fail(
-                                attempt,
-                                "".join(text),
-                                f"stream error: {chunk['error']}",
-                            )
-                        attempt.body(chunk)
-                        if delta := text_of(chunk):
-                            if attempt.t_first_token is None:
-                                attempt.t_first_token = self._clock()
-                            text.append(delta)
-                            yield delta
-            except LLMUnavailable:
-                raise
-            except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
-                if self._retry(attempt, exc):
+                        raise EndpointError(f"HTTP {resp.status_code}: {detail}")
+                    async with aclosing(_chunks(resp, attempt, streaming)) as chunks:
+                        async for chunk in chunks:
+                            attempt.body(chunk)
+                            if delta := parse(chunk):
+                                if attempt.t_first_token is None:
+                                    attempt.t_first_token = self._clock()
+                                text.append(delta)
+                                yield delta
+                if streaming and not attempt.complete():
+                    raise EndpointError("stream ended without finishing")
+            except FAILURES as exc:
+                error = self._env.redact(f"{type(exc).__name__}: {exc}")[:500]
+                record = self._emit(attempt, "".join(text), error)
+                retry = attempt.t_first_token is None and n == 0
+                if retry and isinstance(exc, CONNECTION_ERRORS):
                     continue
-                raise self._fail(attempt, "".join(text), exc) from exc
-            if not attempt.done:
-                raise self._fail(
-                    attempt, "".join(text), "stream ended without finishing"
-                )
-            yield attempt.record(self._clock(), "".join(text))
+                message = f"{self._ref.model_id} unavailable: {error}"
+                raise LLMUnavailable(message, record) from exc
+            except (asyncio.CancelledError, GeneratorExit):
+                self._emit(attempt, "".join(text), "cancelled")
+                raise
+            yield self._emit(attempt, "".join(text), None)
             return
 
-    async def _post(
-        self, request: ToolRequest, path: str, body: Json
-    ) -> tuple[Attempt, Json]:
-        """POST a non-streamed call; return the attempt and the response body."""
 
-        for n in ATTEMPTS:
-            attempt = Attempt(self._ref, request, n, self._clock())
-            try:
-                resp = await self._http.post(path, json=body)
-                attempt.headers(resp)
-                if resp.status_code != 200:
-                    detail = f"HTTP {resp.status_code}: {resp.text[:300]}"
-                    raise self._fail(attempt, "", detail)
-                data: Json = resp.json()
-                attempt.body(data)
-                return attempt, data
-            except LLMUnavailable:
-                raise
-            except (httpx.HTTPError, ValueError) as exc:
-                if self._retry(attempt, exc):
-                    continue
-                raise self._fail(attempt, "", exc) from exc
-        raise AssertionError("unreachable: the second attempt returns or raises")
+async def _chunks(
+    resp: httpx.Response, attempt: Attempt, streaming: bool
+) -> AsyncGenerator[Json]:
+    """The JSON chunks of an SSE stream, or the one body of a plain response."""
+
+    if not streaming:
+        yield json.loads(await resp.aread())
+        return
+    async for line in resp.aiter_lines():
+        if not line.startswith("data:"):
+            continue
+        data = line[5:].strip()
+        if data == "[DONE]":
+            attempt.saw_done = True
+            continue
+        chunk: Json = json.loads(data)
+        if "error" in chunk:
+            raise EndpointError(f"stream error: {chunk['error']}")
+        yield chunk

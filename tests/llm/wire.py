@@ -7,6 +7,7 @@ Transport-level test doubles only: the adapters under test are the real ones.
 
 from __future__ import annotations
 
+import asyncio
 import itertools
 import json
 from collections.abc import AsyncIterator, Callable
@@ -85,14 +86,16 @@ def stream_response(body: bytes, **headers: str) -> httpx.Response:
 
 
 class BrokenStream(httpx.AsyncByteStream):
-    """Delivers ``first`` and then drops the connection mid-stream."""
+    """Delivers ``first``, then fails with ``error`` (or stalls, if ``None``)."""
 
-    def __init__(self, first: bytes) -> None:
-        self.first = first
+    def __init__(self, first: bytes, error: Exception | None) -> None:
+        self.first, self.error = first, error
 
     async def __aiter__(self) -> AsyncIterator[bytes]:
         yield self.first
-        raise httpx.ReadError("connection reset by peer")
+        if self.error is None:
+            await asyncio.Event().wait()  # never set: a stalled endpoint
+        raise self.error or AssertionError("unreachable")
 
 
 class Recorder:

@@ -25,15 +25,15 @@ def make_client(
     *,
     live: bool,
     clock: Clock,
-    on_retry: RecordSink | None = None,
+    on_record: RecordSink,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> LLMClient:
-    """``on_retry`` enables the one connection retry and receives the failed
-    attempt's record; ``transport`` is a test seam (httpx.MockTransport)."""
+    """``on_record`` receives every record the client produces (``llm.http``);
+    ``transport`` is a test seam (httpx.MockTransport)."""
 
     if ref.kind is not AdapterKind.REAL_HTTP:
         if live:
             raise LiveModeError(f"live mode accepts only real_http, not {ref.kind}")
         raise ValueError(f"src/ builds only real_http adapters, not {ref.kind}")
     cls = VLLMClient if ref.endpoint == "vllm" else ChatClient
-    return cls(ref, clock, on_retry, transport)
+    return cls(ref, clock, on_record, transport)

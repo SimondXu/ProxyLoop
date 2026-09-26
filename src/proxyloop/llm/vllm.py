@@ -37,34 +37,35 @@ class VLLMClient(HTTPAdapter):
         }
         if request.seed is not None:
             body["seed"] = request.seed
-        return self._stream(request, "/v1/completions", body, _completion_text)
+        return self._call(request, "/v1/completions", body, _completion_text)
 
     async def chat_tools(self, request: ToolRequest) -> ToolResponse:
-        raise TypeError(
-            "the vLLM Fast adapter serves text only; tools go to a chat endpoint"
-        )
+        raise TypeError("the vLLM Fast adapter serves text only")
 
-    async def tokenize(self, messages: Sequence[Mapping[str, str]]) -> list[int]:
-        """vLLM's own chat-template ids for ``messages``, thinking off (P3)."""
+    async def tokenize(
+        self,
+        messages: Sequence[Mapping[str, str]] | None = None,
+        prompt: str | None = None,
+    ) -> list[int]:
+        """vLLM's ids for ``messages`` (its chat template, thinking off) or for a
+        pre-rendered ``prompt`` (encoded as sent, no special tokens added) (P3)."""
 
-        resp = await self._http.post(
-            "/tokenize",
-            json={
-                "model": self.ref.model_id,
-                "messages": list(messages),
-                "add_generation_prompt": True,
-                "chat_template_kwargs": {"enable_thinking": False},
-            },
-        )
-        if resp.status_code != 200:
-            raise RuntimeError(f"/tokenize returned HTTP {resp.status_code}")
-        return [int(i) for i in resp.json()["tokens"]]
+        body: Json = {"model": self.ref.model_id}
+        if prompt is not None:
+            body |= {"prompt": prompt, "add_special_tokens": False}
+        else:
+            body |= {"messages": list(messages or ()), "add_generation_prompt": True}
+            body["chat_template_kwargs"] = {"enable_thinking": False}
+        return [int(i) for i in (await self._json("POST", "/tokenize", body))["tokens"]]
 
     async def attest(self) -> Json:
         """The served weights' ``GET /pl/attest`` document (ARCHITECTURE §13)."""
 
-        resp = await self._http.get("/pl/attest")
+        return await self._json("GET", "/pl/attest")
+
+    async def _json(self, method: str, path: str, body: Json | None = None) -> Json:
+        resp = await self._http.request(method, path, json=body)
         if resp.status_code != 200:
-            raise RuntimeError(f"/pl/attest returned HTTP {resp.status_code}")
+            raise RuntimeError(f"{path} returned HTTP {resp.status_code}")
         doc: Json = resp.json()
         return doc

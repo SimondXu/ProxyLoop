@@ -14,12 +14,16 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
+import os
 import sys
 import time
+import traceback
 from pathlib import Path
 from typing import Any
 
+import httpx
 from tests.golden.cases import CASES, GOLDEN
 from tests.golden.tokenizer import load_tokenizer
 
@@ -33,7 +37,7 @@ from proxyloop.contract.llm import (
     ToolRequest,
     ToolSpec,
 )
-from proxyloop.contract.protocol import render_messages, render_prompt
+from proxyloop.contract.protocol import ChatTokenizer, render_messages, render_prompt
 from proxyloop.llm.factory import make_client
 from proxyloop.llm.parity import GoldenPrompt, check_parity
 from proxyloop.llm.vllm import VLLMClient
@@ -68,8 +72,8 @@ UTTERANCES = (
 )
 
 
-def golden_prompts() -> list[GoldenPrompt]:
-    """The P2 cases: rendered messages and the committed P2 ids (ARCHITECTURE §12)."""
+def golden_prompts(tok: ChatTokenizer) -> list[GoldenPrompt]:
+    """The P2 cases: messages, ``render_prompt`` text and committed ids (§12)."""
     p2: Json = json.loads((GOLDEN / "p2_ids.json").read_text("utf-8"))
     out: list[GoldenPrompt] = []
     for case in CASES:
@@ -77,9 +81,22 @@ def golden_prompts() -> list[GoldenPrompt]:
             {"role": m.role, "content": m.content}
             for m in render_messages(case.view(), case.profile)
         )
+        prompt = render_prompt(case.view(), case.profile, tok)
         ids = tuple(int(i) for i in p2["cases"][case.name].split())
-        out.append(GoldenPrompt(case.name, messages, ids))
+        out.append(GoldenPrompt(case.name, messages, prompt, ids))
     return out
+
+
+def redact(text: str) -> str:
+    """``text`` without any PL_* endpoint value or host."""
+    for endpoint in ("VLLM", "RELAY"):
+        base = os.environ.get(f"PL_{endpoint}_BASE_URL", "").strip()
+        key = os.environ.get(f"PL_{endpoint}_API_KEY", "").strip()
+        host = httpx.URL(base).host if base else ""
+        for secret in (key, base, host):
+            if secret:
+                text = text.replace(secret, "<redacted>")
+    return text
 
 
 def clock() -> int:
@@ -93,36 +110,30 @@ def row(record: LLMCallRecord) -> Json:
     return out
 
 
-async def vllm_streams(
-    llm: VLLMClient, n: int, retries: list[LLMCallRecord]
-) -> list[Json]:
-    tok = load_tokenizer()  # the pinned P2 tokenizer (= the serving revision)
-    rows: list[Json] = []
+def final(records: list[LLMCallRecord]) -> list[LLMCallRecord]:
+    """Each call's last record (a retried call has two)."""
+    return list({r.call_id: r for r in records}.values())
+
+
+async def vllm_streams(llm: VLLMClient, tok: ChatTokenizer, n: int) -> None:
     for k in range(n):
         case = CASES[k % len(CASES)]
-        prompt = render_prompt(case.view(), case.profile, tok)
         request = TextRequest(
-            call_id=f"smoke-fast-{k}",
+            call_id=f"smoke-fast-{k}-{case.name}",
             role="fast_user" if case.profile == "pl_user_v1" else "fast_cp",
-            prompt=prompt,
+            prompt=render_prompt(case.view(), case.profile, tok),
             max_tokens=160,
             temperature=0.3,
             top_p=0.9,
             seed=k,
         )
-        try:
-            items = [item async for item in llm.stream_text(request)]
-            record = items[-1]
-            assert isinstance(record, LLMCallRecord)
-            rows.append({"case": case.name, **row(record)})
-        except LLMUnavailable as exc:
-            rows.append({"case": case.name, **row(exc.record)})
-    return rows + [{"retried": True, **row(r)} for r in retries]
+        with contextlib.suppress(LLMUnavailable):  # its record is in the sink
+            _ = [item async for item in llm.stream_text(request)]
 
 
-async def sonnet_tools(retries: list[LLMCallRecord]) -> list[Json]:
-    llm = make_client(SONNET, live=True, clock=clock, on_retry=retries.append)
-    rows: list[Json] = []
+async def sonnet_tools(records: list[LLMCallRecord]) -> dict[str, Json]:
+    llm = make_client(SONNET, live=True, clock=clock, on_record=records.append)
+    extras: dict[str, Json] = {}
     for k, text in enumerate(UTTERANCES):
         request = ToolRequest(
             call_id=f"smoke-slow-{k}",
@@ -134,23 +145,18 @@ async def sonnet_tools(retries: list[LLMCallRecord]) -> list[Json]:
         )
         try:
             response = await llm.chat_tools(request)
-        except LLMUnavailable as exc:
-            rows.append(row(exc.record))
-            continue
-        calls = [c.model_dump(mode="json") for c in response.tool_calls]
+        except LLMUnavailable:
+            continue  # its record is in the sink
         well_formed = [
             c.name == "classify" and _json_object(c.arguments)
             for c in response.tool_calls
         ]
-        rows.append(
-            {
-                **row(response.record),
-                "text": response.text,
-                "tool_calls": calls,
-                "well_formed": bool(well_formed) and all(well_formed),
-            }
-        )
-    return rows + [{"retried": True, **row(r)} for r in retries]
+        extras[request.call_id] = {
+            "text": response.text,
+            "tool_calls": [c.model_dump(mode="json") for c in response.tool_calls],
+            "well_formed": bool(well_formed) and all(well_formed),
+        }
+    return extras
 
 
 def _json_object(text: str) -> bool:
@@ -161,33 +167,39 @@ def _json_object(text: str) -> bool:
 
 
 async def smoke(n_streams: int) -> Json:
-    retries: list[LLMCallRecord] = []
-    llm = make_client(QWEN, live=True, clock=clock, on_retry=retries.append)
+    fast: list[LLMCallRecord] = []
+    slow: list[LLMCallRecord] = []
+    llm = make_client(QWEN, live=True, clock=clock, on_record=fast.append)
     assert isinstance(llm, VLLMClient)
-    parity = await check_parity(llm, golden_prompts())
-    report: Json = {
+    tok = load_tokenizer()  # the pinned P2 tokenizer (= the serving revision)
+    parity = await check_parity(llm, golden_prompts(tok))
+    attest = await llm.attest()
+    await vllm_streams(llm, tok, n_streams)
+    extras = await sonnet_tools(slow)
+    streams, tools = final(fast), final(slow)
+    return {
         "task": "S0-SYS-04",
         "measured_at": time.time(),
-        "attest": await llm.attest(),
+        "attest": attest,
         "p3": {
-            "served_model": parity.served_model,
+            "requested_model": parity.requested_model,
             "equal": dict(parity.equal),
             "passed": parity.passed,
         },
-        "vllm_streams": await vllm_streams(llm, n_streams, retries),
-        "sonnet_tool_calls": await sonnet_tools([]),  # its own retry list
+        "vllm_streams": [row(r) for r in fast],  # every attempt, retries included
+        "sonnet_tool_calls": [row(r) | extras.get(r.call_id, {}) for r in slow],
+        "checks": {
+            "p3_passed": parity.passed,
+            "vllm_streams_ok": sum(
+                r.error is None and bool(r.request_id) for r in streams
+            ),
+            "vllm_echo_ok": all(r.served_model_echo == QWEN.model_id for r in streams),
+            "sonnet_tools_ok": sum(e["well_formed"] is True for e in extras.values()),
+            "sonnet_echo_ok": all(
+                r.served_model_echo == SONNET.model_id for r in tools
+            ),
+        },
     }
-    streams = [r for r in report["vllm_streams"] if not r.get("retried")]
-    tools = [r for r in report["sonnet_tool_calls"] if not r.get("retried")]
-    report["checks"] = {
-        "p3_passed": parity.passed,
-        "vllm_streams_ok": sum(
-            r["error"] is None and bool(r["request_id"]) for r in streams
-        ),
-        "vllm_echo_ok": all(r["served_model_echo"] == QWEN.model_id for r in streams),
-        "sonnet_tools_ok": sum(r.get("well_formed") is True for r in tools),
-    }
-    return report
 
 
 def passed(report: Json, n_streams: int) -> bool:
@@ -197,6 +209,7 @@ def passed(report: Json, n_streams: int) -> bool:
         and checks["vllm_streams_ok"] == n_streams
         and checks["vllm_echo_ok"] is True
         and checks["sonnet_tools_ok"] == len(UTTERANCES)
+        and checks["sonnet_echo_ok"] is True
     )
 
 
@@ -209,15 +222,12 @@ def main(argv: list[str] | None = None) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
         report = asyncio.run(smoke(args.streams))
-    except (
-        Exception
-    ) as exc:  # recorded, then re-raised: the smoke never hides a failure
-        out.write_text(
-            json.dumps({"task": "S0-SYS-04", "error": f"{type(exc).__name__}: {exc}"})
-            + "\n"
-        )
-        raise
-    out.write_text(json.dumps(report, indent=1) + "\n")
+    except Exception as exc:  # recorded and reported, redacted, never hidden
+        error = redact(f"{type(exc).__name__}: {exc}")
+        out.write_text(json.dumps({"task": "S0-SYS-04", "error": error}) + "\n")
+        print(redact(traceback.format_exc()), file=sys.stderr)
+        return 2
+    out.write_text(redact(json.dumps(report, indent=1)) + "\n")
     print(json.dumps(report["checks"], indent=1))
     return 0 if passed(report, args.streams) else 1
 
