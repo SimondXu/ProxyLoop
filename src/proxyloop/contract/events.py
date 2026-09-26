@@ -128,6 +128,14 @@ class EpochBump(Frozen):
     reason: Literal["mandate_decided", "slow_revoke", "tighten_mandate", "f2s_revoke"]
 
 
+class MandateProposal(Mandate):
+    @model_validator(mode="after")
+    def _proposed(self) -> Self:
+        if self.status != "proposed" or self.decided_by is not None:
+            raise ValueError("a proposed mandate is undecided")
+        return self
+
+
 class ActionAuthorized(Frozen):
     intent: Intent
     capability: Capability
@@ -145,7 +153,7 @@ _MODELS: dict[str, type[Frozen]] = {
     "approval.requested": ApprovalCard,
     "approval.post": ApprovalPost,
     "approval.decided": ApprovalDecided,
-    "mandate.proposed": Mandate,
+    "mandate.proposed": MandateProposal,
     "mandate.decided": MandateDecided,
     "authority.epoch": EpochBump,
     "action.authorized": ActionAuthorized,
@@ -177,21 +185,31 @@ EVENT_TYPES: MappingProxyType[str, EventSpec] = MappingProxyType(_registry())
 _WORLD = {f"world.{r}" for r in ("ear", "policy", "mouth", "simuser", "ledger")}
 _AGENT = {"fast.user", "fast.cp", "slow", "guard", "kernel", "ui", "sim_approver"}
 ACTORS = frozenset(_AGENT | _WORLD)
-# Allowed emitters (§4, §9); no model role (fast.*, slow, world.*) is among them.
+# Allowed emitters for the §4.2 authority group and the state types that feed
+# it; no model role (fast.*, slow, world.*) is among them. Slow's tool effects
+# are guard events. Restrict-only types (action.denied, speak.revoked,
+# declass.denied) and information (fact.recorded) accept any actor.
 _EMITTER_TABLE: str = """
 approval.post       ui sim_approver
 approval.decided    kernel
 mandate.decided     kernel
-mandate.proposed    guard
+authority.fence     kernel guard
 authority.epoch     kernel guard
+mandate.proposed    guard
+approval.requested  guard
 action.authorized   guard
+speak.verbatim      guard
+speak.released      guard
+screen.redacted     guard
+evidence.recorded   guard
+offer.recorded      guard
+readback.updated    guard
 completion.decided  guard
 status.changed      guard
 """
 EMITTERS: MappingProxyType[str, frozenset[str]] = MappingProxyType(
     {r.split()[0]: frozenset(r.split()[1:]) for r in _EMITTER_TABLE.strip().split("\n")}
 )
-_CITES = {"approval.decided": "approval.post", "mandate.decided": "approval.post"}
 
 
 def event_id(run_id: str, seq: int) -> str:
@@ -245,11 +263,34 @@ class Event(Frozen):
         return self
 
 
-def check_causes(events: Sequence[Event]) -> None:
-    """Log-level rule: a decision cites the ``approval.post`` it decides."""
+def _decides(decision: Event, post: Event) -> bool:
+    """Whether ``decision`` records exactly what ``post`` decided."""
 
-    types = {e.event_id: e.type for e in events}
+    d, p = decision.payload, post.payload
+    subject = "approval" if decision.type == "approval.decided" else "mandate"
+    same = (p["subject"], p["subject_id"], p["decision"], post.actor) == (
+        subject,
+        d[f"{subject}_id"],
+        d["decision"],
+        d["by"],
+    )
+    return same and (subject == "approval" or p["subject_hash"] == d["mandate_hash"])
+
+
+def check_causes(events: Sequence[Event]) -> None:
+    """Log rules: every cause is an earlier event; a decision cites the one
+    ``approval.post`` it decides, and each post is decided once."""
+
+    seen: dict[str, Event] = {}
+    decided: set[str] = set()
     for e in events:
-        cited = _CITES.get(e.type)
-        if cited and not any(types.get(c) == cited for c in e.cause_ids):
-            raise ValueError(f"{e.event_id} ({e.type}) must cite an {cited}")
+        if unknown := [c for c in e.cause_ids if c not in seen]:
+            raise ValueError(f"{e.event_id} cites unknown events {unknown}")
+        if e.type in ("approval.decided", "mandate.decided"):
+            posts = [seen[c] for c in e.cause_ids if seen[c].type == "approval.post"]
+            if len(posts) != 1 or not _decides(e, posts[0]):
+                raise ValueError(f"{e.event_id} must cite the approval.post it decides")
+            if posts[0].event_id in decided:
+                raise ValueError(f"{posts[0].event_id} is already decided")
+            decided.add(posts[0].event_id)
+        seen[e.event_id] = e

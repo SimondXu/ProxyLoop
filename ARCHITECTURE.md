@@ -148,7 +148,7 @@ proxyloop/
 - `t_ms` is the kernel wall clock: monotonic ms since `session.started`. There is no dilated mode (C8).
 - `cause_ids` is required for every derived event (the table below lists the causes), and may be empty only for exogenous ingress: `utt.final`, `user.msg`, `approval.post`, `session.started` and timers.
 - `epoch` is the authority epoch at emission (§9.4).
-- `actor` is one of `fast.user`, `fast.cp`, `slow`, `guard`, `kernel`, `ui`, `sim_approver`, `world.ear`, `world.policy`, `world.mouth`, `world.simuser`, `world.ledger`. Fixed emitters: `approval.post` ← `ui` or `sim_approver`; `approval.decided`, `mandate.decided` ← `kernel` (citing their `approval.post`); `authority.epoch` ← `kernel` or `guard`; `mandate.proposed`, `action.authorized`, `completion.decided`, `status.changed` ← `guard`. No `fast.*`, `slow` or `world.*` actor emits an authority type.
+- `actor` is one of `fast.user`, `fast.cp`, `slow`, `guard`, `kernel`, `ui`, `sim_approver`, `world.ear`, `world.policy`, `world.mouth`, `world.simuser`, `world.ledger`. Fixed emitters: `approval.post` ← `ui` or `sim_approver`; `approval.decided`, `mandate.decided` ← `kernel`, each citing the one `approval.post` it decides (same subject, id, decision, `by` = the post's actor, and for a mandate the hash), and each post decided once; `authority.fence`, `authority.epoch` ← `kernel` or `guard`; `mandate.proposed`, `approval.requested`, `action.authorized`, `speak.verbatim`, `speak.released`, `screen.redacted`, `evidence.recorded`, `offer.recorded`, `readback.updated`, `completion.decided`, `status.changed` ← `guard` (Slow's tool effects are `guard` events). Restrict-only types (`action.denied`, `speak.revoked`, `declass.denied`) and `fact.recorded` accept any actor. No `fast.*`, `slow` or `world.*` actor emits a restricted type.
 - `stream=world` events are written by world actors through the same bus. The reducers put them into a `WorldShadow` that no view reads (enforced by `contract.views` taking only agent fields).
 
 ### 4.2 Event types (the S0–S1 set is complete; additions go through the root with an ADR)
@@ -558,7 +558,7 @@ vllm serve Qwen/Qwen3.5-9B@<rev> --served-model-name Qwen3.5-9B --dtype bfloat16
 
 | Area | S0 | S1 adds | S0–S1 total |
 |---|---|---|---|
-| contract (types, views, protocol, profiles) | 1,850 | 0 | 1,850 |
+| contract (types, views, protocol, profiles) | 1,900 | 0 | 1,900 |
 | core + kernel (log, fold, lanes, speaker, fence, channels) | 700 | 350 | 1,050 |
 | slow | 300 | 200 | 500 |
 | guard (ported terms/policy + readback, authorize, capability, declass, verify) | 200 | 550 | 750 |
@@ -566,6 +566,6 @@ vllm serve Qwen/Qwen3.5-9B@<rev> --served-model-name Qwen3.5-9B --dtype bfloat16
 | env (1 family → 4; SimRep, SimUser, approver) | 450 | 250 | 700 |
 | evidence + obs + serve + cli | 300 | 300 | 600 |
 | models + training + eval (MOD) | 300 | 450 | 750 |
-| **Total** | **≈ 4,400** | **≈ 2,150** | **≈ 6,550** |
+| **Total** | **≈ 4,450** | **≈ 2,150** | **≈ 6,600** |
 
 Tripwires (PLAN §0.6): `src/` over 3,700 at S0 close or over 5,800 at S1 close means stop and ask. The web app is capped at 1,500 TypeScript lines through S1, and `serving/` + `training_jobs/` at 700 lines.

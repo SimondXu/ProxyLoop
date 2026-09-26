@@ -5,7 +5,7 @@
 - **Task:** S0-CON-01
 
 ## Context
-S0-SYS-03…06 and S0-MOD-02 need one frozen contract under `src/proxyloop/contract/` (ARCHITECTURE §2, §4–§7, §12, §14). It must import only the standard library and pydantic. ADR-0001 and the user added constraints on the LLM types. The user raised this task's budget to about 1,700 changed lines, then src to 1,850 for the review fixes (2026-09-26).
+S0-SYS-03…06 and S0-MOD-02 need one frozen contract under `src/proxyloop/contract/` (ARCHITECTURE §2, §4–§7, §12, §14). It must import only the standard library and pydantic. ADR-0001 and the user added constraints on the LLM types. The user raised this task's budget to about 1,700 changed lines, then src to 1,850 and 1,900 for the review rounds (2026-09-26).
 
 ## Decision
 Contract v1 (`CONTRACT_VERSION = "v1"`) is these modules, all pydantic models that are frozen and have `extra="forbid"`:
@@ -37,18 +37,26 @@ Decisions beyond the ARCHITECTURE text:
    - `ToolRequest.tool_choice` names the one tool the model must call.
    - There is no `response_format` or JSON mode.
    - `request_content` and `tool_response_content` define what `prompt_sha` and `response_sha` hash.
-7. **Actors (review M3, root decision).** `Event.actor` is one of `fast.user`, `fast.cp`, `slow`, `guard`, `kernel`, `ui`, `sim_approver`, `world.ear`, `world.policy`, `world.mouth`, `world.simuser`, `world.ledger` (`events.ACTORS`). The allowed emitters (`events.EMITTERS`) are:
+   - Model or world text over a contract bound (for example `FastToSlow.text` over 240 characters) is rejected and counted at the write boundary, never truncated.
+7. **Actors (review M3, root decisions).** `Event.actor` is one of `fast.user`, `fast.cp`, `slow`, `guard`, `kernel`, `ui`, `sim_approver`, `world.ear`, `world.policy`, `world.mouth`, `world.simuser`, `world.ledger` (`events.ACTORS`). The allowed emitters (`events.EMITTERS`) cover the §4.2 authority group and the state types that feed it:
 
    | Event | Allowed actors |
    |---|---|
    | `approval.post` | `ui`, `sim_approver` |
    | `approval.decided`, `mandate.decided` | `kernel` |
-   | `authority.epoch` | `kernel`, `guard` |
-   | `mandate.proposed`, `action.authorized`, `completion.decided`, `status.changed` | `guard` |
+   | `authority.fence`, `authority.epoch` | `kernel`, `guard` |
+   | `mandate.proposed`, `approval.requested`, `action.authorized`, `speak.verbatim`, `speak.released`, `screen.redacted`, `evidence.recorded`, `offer.recorded`, `readback.updated`, `completion.decided`, `status.changed` | `guard` |
 
-   Other types accept any actor. No `fast.*`, `slow` or `world.*` actor may emit an authority type.
+   - Slow's tool effects reach the log as `guard` events.
+   - The restrict-only types (`action.denied`, `speak.revoked`, `declass.denied`) and `fact.recorded` (information) accept any actor: models may restrict authority, never grant it.
+   - No `fast.*`, `slow` or `world.*` actor may emit a restricted type.
 
-   `approval.decided` and `mandate.decided` must cite their `approval.post` in `cause_ids`. `events.check_causes` checks this over the log, and `read_bundle` runs it. Mandate decisions arrive through the same endpoint, so `approval.post` is `{subject: approval|mandate, subject_id, decision, subject_hash, authority_epoch}`, where `subject_hash` is the card's `terms_hash` or the `mandate_hash`. This is the only payload change of that commit.
+   `events.check_causes` checks the log; `read_bundle` runs it:
+   - every cause is an earlier event of the log;
+   - each `approval.decided`/`mandate.decided` cites exactly one `approval.post`, matching its subject, subject id, decision and `by` (which must equal the post's actor), and, for a mandate, `subject_hash == mandate_hash`;
+   - each post is decided at most once.
+
+   Mandate decisions arrive through the same endpoint, so `approval.post` is `{subject: approval|mandate, subject_id, decision, subject_hash, authority_epoch}`, where `subject_hash` is the card's `terms_hash` or the `mandate_hash`. `mandate.proposed` requires `status == "proposed"` and no `decided_by`.
 8. **`SessionConfig`.** It has `teacher: ModelRef | None`, set iff a `teacher_repair_*` ablation is (part of `cfg_hash`). With `live=True`, no role may be `test_fake` or `recorded_replay`, and `baseline` (the FSM) is allowed only on `fast_user`/`fast_cp`.
 
 Grammar (§6.2):
@@ -92,13 +100,13 @@ Grammar (§6.2):
 - **ARCHITECTURE diff:**
   - §2: the view signatures take `brief`;
   - §2: the `contract.config` row states the `teacher` and live-mode rules;
-  - §4.1: the actor vocabulary and the fixed emitters;
+  - §4.1: the actor vocabulary, the fixed emitters and the decision-citation rule;
   - §4.2: lists `approval.post{subject, subject_id, decision, subject_hash, authority_epoch}`, the payloads of `authority.epoch` (with its reasons), `mandate.proposed`, `mandate.decided` and `status.changed`, the `llm.call` fields `requested_model`, `finish_reason` and `attempt`, and that these payloads are typed;
-  - §16: the contract row goes 950 → 1,850 lines, so the S0 total becomes ≈ 4,400 and the S0–S1 total ≈ 6,550.
+  - §16: the contract row goes 950 → 1,900 lines, so the S0 total becomes ≈ 4,450 and the S0–S1 total ≈ 6,600.
 - **Data invalidated:** none.
 - **Migration:** SYS and MOD import only from `proxyloop.contract`. `.importlinter` forbids the contract from importing the rest of `proxyloop`, the tests and the tokenizer libraries. Adapters run `tests/contract/llm_conformance.py`.
 - **Risks:**
-  - **S0 size tripwire.** The §16 S0 total (≈ 4,400) now exceeds PLAN §0.6's 3,700-line S0 tripwire. The tripwire was left unchanged, so the root must decide.
+  - **S0 size tripwire.** The §16 S0 total (≈ 4,450) now exceeds PLAN §0.6's 3,700-line S0 tripwire. The tripwire was left unchanged, so the root must decide.
   - **`reasoning_effort` on TeamRouter.** The values accepted for `gemini-3.8-flash` are unprobed.
   - **P2 needs the Hugging Face tokenizer.** It comes from the network or the cache; the files are not vendored.
   - **Known P7 divergences from TalkAct (S4):**

@@ -24,17 +24,42 @@
    "sim_approver",
    "ui"
   ],
+  "approval.requested": [
+   "guard"
+  ],
   "authority.epoch": [
+   "guard",
+   "kernel"
+  ],
+  "authority.fence": [
    "guard",
    "kernel"
   ],
   "completion.decided": [
    "guard"
   ],
+  "evidence.recorded": [
+   "guard"
+  ],
   "mandate.decided": [
    "kernel"
   ],
   "mandate.proposed": [
+   "guard"
+  ],
+  "offer.recorded": [
+   "guard"
+  ],
+  "readback.updated": [
+   "guard"
+  ],
+  "screen.redacted": [
+   "guard"
+  ],
+  "speak.released": [
+   "guard"
+  ],
+  "speak.verbatim": [
    "guard"
   ],
   "status.changed": [

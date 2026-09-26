@@ -41,7 +41,7 @@ READBACK_FIELD = (
 class ReadbackSlot(Frozen):
     """One read-back slot of an offer (§9.2). ``value`` is normalised text."""
 
-    field: str = Field(pattern=READBACK_FIELD, max_length=40)
+    field: str = Field(pattern=READBACK_FIELD, max_length=base.MAX_SLOT_FIELD)
     value: str = Field(max_length=base.MAX_SLOT_VALUE)
     unit: Literal["usd_minor", "months", "bool", "iso"]
     role: Literal["recurring", "one_time", "credit", "change", "feature", "expiry"]
@@ -213,7 +213,7 @@ class PublicState(Frozen):
     offers: dict[str, OfferPublic] = Field(
         default_factory=dict[str, OfferPublic], max_length=base.MAX_OFFERS
     )
-    guidance_cp: tuple[Guide, ...] = Field(default=(), max_length=3)
+    guidance_cp: tuple[Guide, ...] = Field(default=(), max_length=base.MAX_GUIDES)
     action_log: tuple[str, ...] = Field(default=(), max_length=12)  # value-free
     status: CaseStatus = CaseStatus.INTAKE
     cp_hold: HoldState | None = None

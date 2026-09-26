@@ -128,6 +128,8 @@ TYPED_BAD: list[tuple[str, dict[str, Any]]] = [
                        "subject_hash": "t", "authority_epoch": 1}),
     ("mandate.proposed", {"mandate_id": "m1", "mandate_hash": "h", "status": "granted",
                           "epoch": 0}),
+    ("mandate.proposed", {"mandate_id": "m1", "mandate_hash": "h", "status": "granted",
+                          "epoch": 0, "decided_by": "ui"}),
     ("authority.epoch", {"new": 2, "reason": "the model asked"}),
     ("action.authorized", {"intent": "accept_offer", "capability": CAP, "extra": 1}),
     ("status.changed", {"previous": "IN_CALL", "status": "DONE"}),
@@ -158,7 +160,32 @@ AUTHORITY = [
     "authority.epoch",
 ]
 MODEL_ROLES = sorted(a for a in ACTORS if a.startswith(("fast.", "slow", "world.")))
-PAYLOADS = dict(TYPED_OK)
+CARD = {
+    "approval_id": "a1",
+    "offer_ref": "o1",
+    "revision": 1,
+    "terms_hash": "t",
+    "readback_text": "r",
+    "authority_epoch": 1,
+    "expires_ms": 9,
+    "binding": {
+        "offer_ref": "o1",
+        "revision": 1,
+        "account_ref": "a",
+        "principal_ref": "p",
+        "purpose": "x",
+        "authority_epoch": 1,
+    },
+}
+
+
+def _payload(kind: str) -> dict[str, Any]:
+    """A valid payload for ``kind``."""
+
+    if kind == "approval.requested":
+        return CARD
+    typed = dict(TYPED_OK)
+    return typed.get(kind) or dict.fromkeys(EVENT_TYPES[kind].payload_keys, "x")
 
 
 def test_actor_tables_match_the_snapshot() -> None:
@@ -176,34 +203,102 @@ def test_actor_must_be_in_the_vocabulary() -> None:
         Event.model_validate(_event(actor="user"))
 
 
-@pytest.mark.parametrize("kind", AUTHORITY)
+def test_every_authority_type_is_restricted() -> None:
+    assert set(AUTHORITY) <= set(EMITTERS)
+    assert {"action.denied", "speak.revoked", "declass.denied"}.isdisjoint(EMITTERS)
+    assert "fact.recorded" not in EMITTERS
+
+
+@pytest.mark.parametrize("kind", sorted(EMITTERS))
 @pytest.mark.parametrize("actor", MODEL_ROLES)
-def test_no_model_role_emits_an_authority_type(kind: str, actor: str) -> None:
+def test_no_model_role_emits_a_restricted_type(kind: str, actor: str) -> None:
+    allowed = min(EMITTERS[kind])
+    Event.model_validate(_event(type=kind, actor=allowed, payload=_payload(kind)))
     assert actor not in EMITTERS[kind]
-    event = _event(type=kind, actor=actor, payload=PAYLOADS[kind])
     with pytest.raises(ValueError, match="may not emit"):
-        Event.model_validate(event)
+        Event.model_validate(_event(type=kind, actor=actor, payload=_payload(kind)))
 
 
-def _decision(kind: str, causes: list[str]) -> Event:
-    return Event.model_validate(
-        _event(type=kind, actor="kernel", payload=PAYLOADS[kind], cause_ids=causes)
-    )
+@pytest.mark.parametrize("kind", ["action.denied", "speak.revoked", "declass.denied"])
+def test_models_may_restrict(kind: str) -> None:
+    Event.model_validate(_event(type=kind, actor="slow", payload=_payload(kind)))
 
 
-@pytest.mark.parametrize("kind", ["approval.decided", "mandate.decided"])
-def test_a_decision_must_cite_its_approval_post(kind: str) -> None:
-    post = Event.model_validate(
-        _event(
-            type="approval.post",
-            actor="ui",
-            seq=2,
-            event_id="r1:2",
-            cause_ids=[],
-            payload=dict(TYPED_OK)["approval.post"],
-        )
-    )
-    other = Event.model_validate(_event(seq=3, event_id="r1:3", cause_ids=["r1:2"]))
-    check_causes([post, other, _decision(kind, ["r1:2"])])
-    with pytest.raises(ValueError, match=r"must cite an approval\.post"):
-        check_causes([post, other, _decision(kind, ["r1:3"])])
+POSTS = {
+    "approval.decided": (
+        "ui",
+        {"subject": "approval", "subject_id": "a1", "decision": "granted"},
+        {"approval_id": "a1", "decision": "granted", "by": "ui"},
+    ),
+    "mandate.decided": (
+        "sim_approver",
+        {"subject": "mandate", "subject_id": "m1", "decision": "granted"},
+        {"mandate_id": "m1", "mandate_hash": "h", "decision": "granted",
+         "by": "sim_approver"},
+    ),
+}  # fmt: skip
+
+
+def _log(
+    kind: str, post: dict[str, Any], decision: dict[str, Any], n_decisions: int = 1
+) -> list[Event]:
+    actor, post_body, decided = POSTS[kind]
+    body = post_body | {"subject_hash": "h", "authority_epoch": 1} | post
+    first = _event(
+        type="approval.post", actor=actor, seq=1, event_id="r1:1", cause_ids=[],
+        payload=body,
+    )  # fmt: skip
+    log = [Event.model_validate(first)]
+    for seq in range(2, 2 + n_decisions):
+        event = _event(
+            type=kind, actor="kernel", seq=seq, event_id=f"r1:{seq}",
+            cause_ids=["r1:1"], payload=decided | decision,
+        )  # fmt: skip
+        log.append(Event.model_validate(event))
+    return log
+
+
+@pytest.mark.parametrize("kind", sorted(POSTS))
+def test_a_decision_citing_its_post_passes(kind: str) -> None:
+    check_causes(_log(kind, {}, {}))
+
+
+@pytest.mark.parametrize(
+    ("kind", "post", "decision"),
+    [
+        ("approval.decided", {"subject": "mandate"}, {}),
+        ("approval.decided", {"subject_id": "a2"}, {}),
+        ("approval.decided", {}, {"decision": "denied"}),
+        ("approval.decided", {}, {"by": "sim_approver"}),
+        ("mandate.decided", {"subject": "approval"}, {}),
+        ("mandate.decided", {"subject_id": "m2"}, {}),
+        ("mandate.decided", {}, {"decision": "denied"}),
+        ("mandate.decided", {}, {"by": "ui"}),
+        ("mandate.decided", {"subject_hash": "h2"}, {}),
+    ],
+)
+def test_a_decision_must_match_its_post(
+    kind: str, post: dict[str, Any], decision: dict[str, Any]
+) -> None:
+    with pytest.raises(ValueError, match=r"must cite the approval\.post it decides"):
+        check_causes(_log(kind, post, decision))
+
+
+def test_a_decision_must_cite_a_post() -> None:
+    post, decision = _log("approval.decided", {}, {})
+    other = Event.model_validate(_event(seq=2, event_id="r1:2", cause_ids=["r1:1"]))
+    moved = decision.model_copy(update={"cause_ids": ("r1:2",)})
+    with pytest.raises(ValueError, match="must cite"):
+        check_causes([post, other, moved])
+
+
+@pytest.mark.parametrize("kind", sorted(POSTS))
+def test_a_post_is_decided_once(kind: str) -> None:
+    with pytest.raises(ValueError, match="already decided"):
+        check_causes(_log(kind, {}, {}, n_decisions=2))
+
+
+def test_a_cause_must_exist_earlier_in_the_log() -> None:
+    orphan = Event.model_validate(_event(seq=5, event_id="r1:5", cause_ids=["r1:3"]))
+    with pytest.raises(ValueError, match="cites unknown events"):
+        check_causes([orphan])

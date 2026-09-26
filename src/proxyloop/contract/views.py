@@ -64,7 +64,7 @@ class FastView(Frozen):
     offers: tuple[OfferPublic, ...] = Field(max_length=base.MAX_OFFERS)
     public_facts: tuple[PublicFact, ...] = ()  # cp lane: resolves guide slots
     pending_approval: ApprovalCard | None = None  # user lane only
-    guidance: tuple[Guide, ...] = Field(default=(), max_length=3)  # cp lane
+    guidance: tuple[Guide, ...] = Field(default=(), max_length=base.MAX_GUIDES)
     hold: HoldState | None = None  # cp lane only
     status: CaseStatus
     transcript: tuple[Line, ...]
