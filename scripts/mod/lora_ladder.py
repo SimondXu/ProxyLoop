@@ -1,17 +1,29 @@
 """LoRA ladder (ADR-0002): which ARCHITECTURE §13 targets does the pinned vLLM load and apply?
+Root-run, its own Modal app: `make -f mk/mod.mk serve-lora-ladder`.
 
-Runs in the Modal ladder image. Builds PEFT adapters on a meta-device model (only LoRA tensors
-are materialised), then compares prompt_logprobs against base in one offline vLLM engine:
-  zero-all / zero-attn-mlp: lora_B = 0 over rung 1 / rung 2; must equal base within 1e-4;
-  probe-<parent>.<proj>: one target with non-zero lora_B; "applied" needs a mean |difference|
-  above 1e-3 nats, which tells an applied module from one vLLM loads but silently ignores.
-A load failure is recorded with its error; nothing is retried.
+Builds PEFT adapters on a meta-device model (only LoRA tensors are materialised) into the adapters
+volume, then compares prompt_logprobs against base in one offline vLLM engine with the served
+engine arguments. Per rung R (all | attn-mlp):
+  zero-R: lora_B = 0 over R's targets; must equal base within ZERO_MAX_DIFF;
+  live-R: lora_B != 0 over R's targets; mean |Δ| must exceed LIVE_MIN_MEAN_DIFF.
+Per target, probe-<parent>.<proj> (non-zero, one target) must also exceed LIVE_MIN_MEAN_DIFF:
+that separates an applied module from one vLLM loads but silently ignores. zero-R and live-R are
+the two served slots. A failed load is recorded with its error; a dead engine aborts the run.
 """
 
+import json
 import math
+from importlib import metadata
 from pathlib import Path
 
-from serving import config
+import modal
+
+from serving import config, modal_vllm
+
+app = modal.App("proxyloop-lora-ladder")
+image = modal_vllm.base_image.uv_pip_install(
+    f"peft=={config.PEFT_VERSION}", f"accelerate=={config.ACCELERATE_VERSION}"
+).add_local_python_source("serving")
 
 
 def build_adapter(model_dir: Path, out_dir: Path, targets, *, zero: bool, seed: int = 20260926) -> None:
@@ -43,8 +55,10 @@ def build_adapter(model_dir: Path, out_dir: Path, targets, *, zero: bool, seed: 
 
 
 def adapter_plan() -> dict[str, tuple[tuple, bool]]:
-    plan = {name: (targets, True) for name, targets in config.RUNGS.items()}
-    plan.update({f"probe-{p}.{m}": (((p, m),), False) for p, m in config.RUNGS["zero-all"]})
+    plan = {}
+    for rung, targets in config.RUNGS.items():
+        plan[f"zero-{rung}"], plan[f"live-{rung}"] = (targets, True), (targets, False)
+    plan.update({f"probe-{p}.{m}": (((p, m),), False) for p, m in config.RUNGS["all"]})
     return plan
 
 
@@ -54,27 +68,29 @@ def diff_stats(base: list[list[float]], other: list[list[float]]) -> dict:
 
 
 def summarise(results: dict) -> dict:
-    def applied(p: str, m: str) -> bool:
-        r = results.get(f"probe-{p}.{m}", {})
+    def live(name: str) -> bool:
+        r = results.get(name, {})
         return r.get("loaded", False) and r["mean_abs_diff"] > config.LIVE_MIN_MEAN_DIFF
 
-    def rung_ok(name: str) -> bool:
-        r = results.get(name, {})
-        return (r.get("loaded", False) and r["max_abs_diff"] <= config.ZERO_MAX_DIFF
-                and all(applied(p, m) for p, m in config.RUNGS[name]))
+    def rung_ok(rung: str) -> bool:
+        zero = results.get(f"zero-{rung}", {})
+        return (zero.get("loaded", False) and zero["max_abs_diff"] <= config.ZERO_MAX_DIFF
+                and live(f"live-{rung}") and all(live(f"probe-{p}.{m}") for p, m in config.RUNGS[rung]))
 
-    return {"applied_targets": [f"{p}.{m}" for p, m in config.RUNGS["zero-all"] if applied(p, m)],
-            **{f"rung_ok:{name}": rung_ok(name) for name in config.RUNGS}}
+    return {"applied_targets": [f"{p}.{m}" for p, m in config.RUNGS["all"] if live(f"probe-{p}.{m}")],
+            **{f"rung_ok:{rung}": rung_ok(rung) for rung in config.RUNGS}}
 
 
 def run(model_dir: Path, adapter_root: Path) -> dict:
     from transformers import AutoTokenizer
     from vllm import LLM, SamplingParams
     from vllm.lora.request import LoRARequest
+    from vllm.v1.engine.exceptions import EngineDeadError
 
     plan = adapter_plan()
     for name, (targets, zero) in plan.items():
         build_adapter(model_dir, adapter_root / name, targets, zero=zero)
+    modal_vllm.adapter_volume.commit()
     tokenizer = AutoTokenizer.from_pretrained(model_dir)
     pairs = [config.pair_ids(tokenizer, pair) for pair in config.PAIRS]
     llm = LLM(model=str(model_dir), **config.ENGINE_KWARGS)
@@ -92,9 +108,24 @@ def run(model_dir: Path, adapter_root: Path) -> dict:
         try:
             record.update(loaded=True, **diff_stats(base, logprobs(
                 LoRARequest(name, lora_id, str(adapter_root / name)))))
-        except Exception as exc:  # noqa: BLE001 -- the load failure is the measurement; recorded
+        except EngineDeadError:
+            raise  # every later adapter would "fail" for a reason that is not its own
+        except Exception as exc:  # noqa: BLE001 -- a rejected adapter is the measurement; recorded
             record.update(loaded=False, error=f"{type(exc).__name__}: {exc}")
         results[name] = record
     return {"model": {"id": config.MODEL_ID, "revision": config.MODEL_REVISION},
             "engine_kwargs": config.ENGINE_KWARGS, "lora_rank": config.LORA_RANK,
             "adapters": results, "summary": summarise(results)}
+
+
+@app.function(image=image, gpu=config.GPU, volumes=modal_vllm.VOLUMES, timeout=60 * 60)
+def lora_ladder() -> dict:
+    result = run(modal_vllm.download_model(), Path(modal_vllm.ADAPTER_DIR))
+    return {**result, "runtime": {**modal_vllm.runtime(), "peft_version": metadata.version("peft")}}
+
+
+@app.local_entrypoint()
+def main(out: str = "docs/decisions/data/vllm-lora-ladder.json") -> None:
+    result = lora_ladder.remote()
+    Path(out).write_text(json.dumps(result, indent=2) + "\n")
+    print(json.dumps(result["summary"], indent=2))

@@ -1,6 +1,6 @@
 """The one pinned serving configuration for Qwen3.5-9B on vLLM (ADR-0002, ARCHITECTURE §13).
 
-Pure data and helpers, imported on the Mac (probe, tests) and in the Modal container.
+Pure data and helpers, imported on the Mac and in the Modal containers.
 """
 
 MODEL_ID = "Qwen/Qwen3.5-9B"
@@ -14,10 +14,12 @@ GPU, PORT = "H100", 8000
 APP_NAME = SECRET_NAME = "proxyloop-vllm"  # the secret provides VLLM_API_KEY in the container
 TOKENIZER_FILES = ("tokenizer.json", "tokenizer_config.json", "vocab.json", "merges.txt",
                    "chat_template.jinja")
+EMPTY_THINK = "<think>\n\n</think>\n\n"  # what enable_thinking=False appends after the assistant tag
 LORA_RANK, LORA_ALPHA, MAX_LORAS, MAX_MODEL_LEN = 32, 64, 4, 16384
 ZERO_MAX_DIFF = 1e-4  # zero-initialised adapter: prompt_logprobs equal to base within this
 LIVE_MIN_MEAN_DIFF = 1e-3  # non-zero adapter: mean |difference| above this (nats)
-ZERO_LORA_NAME = "Qwen3.5-9B-zero"  # served LoRA slot; its directory is the ladder rung chosen
+# Two served LoRA slots, both built for the chosen ladder rung: lora_B = 0, and lora_B != 0.
+ZERO_LORA_NAME, LIVE_LORA_NAME = "Qwen3.5-9B-zero", "Qwen3.5-9B-live"
 
 # Prefix caching is OFF in the pinned configuration; the other variant is measure-only.
 VARIANTS = {
@@ -34,7 +36,7 @@ ATTN = tuple(("self_attn", p) for p in ("q_proj", "k_proj", "v_proj", "o_proj"))
 GDN = tuple(("linear_attn", p) for p in ("in_proj_qkv", "in_proj_z", "in_proj_b", "in_proj_a",
                                           "out_proj"))
 MLP = tuple(("mlp", p) for p in ("gate_proj", "up_proj", "down_proj"))
-RUNGS = {"zero-all": ATTN + GDN + MLP, "zero-attn-mlp": ATTN + MLP}  # ladder rungs 1 and 2
+RUNGS = {"all": ATTN + GDN + MLP, "attn-mlp": ATTN + MLP}  # ladder rungs 1 and 2
 
 
 def app_name(variant: str) -> str:
@@ -43,15 +45,20 @@ def app_name(variant: str) -> str:
     return APP_NAME if variant == "pinned" else f"{APP_NAME}-{variant}"
 
 
-def serve_args(model_path: str, variant: str, zero_lora_path: str) -> list[str]:
+def lora_slots(rung: str, adapter_root: str) -> dict[str, str]:
+    if rung not in RUNGS:
+        raise ValueError(f"unknown rung {rung!r}; known: {sorted(RUNGS)}")
+    return {ZERO_LORA_NAME: f"{adapter_root}/zero-{rung}", LIVE_LORA_NAME: f"{adapter_root}/live-{rung}"}
+
+
+def serve_args(model_path: str, variant: str, slots: dict[str, str]) -> list[str]:
     """argv for `vllm serve`. No API key in argv: vLLM reads VLLM_API_KEY from the environment."""
     app_name(variant)
     return ["vllm", "serve", model_path, "--served-model-name", SERVED_NAME, "--dtype", "bfloat16",
             "--language-model-only", "--enable-lora", "--max-lora-rank", str(LORA_RANK),
             "--max-loras", str(MAX_LORAS), "--max-model-len", str(MAX_MODEL_LEN),
-            "--port", str(PORT), *VARIANTS[variant],
-            "--middleware", "serving.attest.attest_middleware",
-            "--lora-modules", f"{ZERO_LORA_NAME}={zero_lora_path}"]
+            "--port", str(PORT), *VARIANTS[variant], "--middleware", "serving.attest.AttestMiddleware",
+            "--lora-modules", *(f"{name}={path}" for name, path in slots.items())]
 
 
 def target_regex(targets: tuple[tuple[str, str], ...]) -> str:
@@ -64,10 +71,14 @@ def target_regex(targets: tuple[tuple[str, str], ...]) -> str:
 
 
 def chat_ids(tokenizer, messages: list[dict]) -> list[int]:
-    """HF ids as P3 defines them: apply_chat_template(add_generation_prompt, enable_thinking=False)."""
+    """HF ids as P3 defines them; raises unless they end with the empty-think generation prompt."""
     text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True,
                                          enable_thinking=False)
-    return tokenizer.encode(text, add_special_tokens=False)
+    ids = tokenizer.encode(text, add_special_tokens=False)
+    tail = tokenizer.encode(EMPTY_THINK, add_special_tokens=False)
+    if ids[-len(tail):] != tail:
+        raise ValueError(f"rendered prompt does not end with the {EMPTY_THINK!r} ids {tail}")
+    return ids
 
 
 def pair_ids(tokenizer, pair: tuple[list[dict], str]) -> tuple[list[int], int]:
@@ -96,11 +107,3 @@ PAIRS = (
       {"role": "user", "content": "Now ask the agent to hold."}],
      "Could you please hold for a moment while I check?"),
 )
-
-
-def latency_messages(index: int, n_notes: int) -> list[dict]:
-    """Synthetic latency prompt: a shared n_notes-line prefix and a unique last line."""
-    notes = "\n".join(f"Note {i}: the customer asked about invoice {1000 + i} and the monthly "
-                      "service charge." for i in range(n_notes))
-    return [{"role": "system", "content": "You are a concise assistant. Answer in two sentences."},
-            {"role": "user", "content": f"{notes}\n\nRequest {index}: summarise the notes above."}]

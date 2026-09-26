@@ -1,16 +1,18 @@
-"""Modal app: the pinned vLLM server for Qwen3.5-9B and the LoRA-ladder job (ADR-0002). Root-run.
+"""Modal app: the pinned vLLM server for Qwen3.5-9B (ADR-0002). Root-run: `make -f mk/mod.mk serve-*`.
 
-    modal run -m serving.modal_vllm --out docs/decisions/data/vllm-lora-ladder.json  # ladder first
-    make -f mk/mod.mk serve-probe                                                      # then serve
-PL_SERVE_VARIANT (pinned | prefix-align) and PL_ZERO_LORA (the ladder rung directory served as
-the zero-LoRA slot) are read at deploy time and baked into the image env, so the container runs
-exactly the deployed configuration.
+PL_SERVE_VARIANT (pinned | prefix-align) and PL_LORA_RUNG (all | attn-mlp: the ladder rung whose
+zero and live adapters fill the two LoRA slots) are read at deploy time and baked into the image
+env, so the container runs exactly the deployed configuration. The container exits as soon as
+vLLM exits or anything before it fails, so a dead server never holds the GPU.
 """
 
 import json
 import os
 import subprocess
+import sys
+import threading
 import time
+import traceback
 from importlib import metadata
 from pathlib import Path
 
@@ -19,22 +21,16 @@ import modal
 from serving import config
 
 VARIANT = os.environ.get("PL_SERVE_VARIANT", "pinned")
-ZERO_LORA = os.environ.get("PL_ZERO_LORA", "zero-all")
-if ZERO_LORA not in config.RUNGS:
-    raise ValueError(f"PL_ZERO_LORA must be one of {sorted(config.RUNGS)}")
+RUNG = os.environ.get("PL_LORA_RUNG", "all")
 HF_DIR, ADAPTER_DIR, ATTEST_FILE = "/hf", "/adapters", "/tmp/pl-attest.json"
+config.lora_slots(RUNG, ADAPTER_DIR)  # validates RUNG at deploy time
 hf_volume = modal.Volume.from_name("proxyloop-hf-cache", create_if_missing=True)
 adapter_volume = modal.Volume.from_name("proxyloop-adapters", create_if_missing=True)
 VOLUMES = {HF_DIR: hf_volume, ADAPTER_DIR: adapter_volume}
-
 base_image = modal.Image.from_registry(
     config.VLLM_IMAGE,  # ships python3 only, with ENTRYPOINT ["vllm", "serve"]
     setup_dockerfile_commands=["RUN ln -s /usr/bin/python3 /usr/local/bin/python", "ENTRYPOINT []"],
-).env({"HF_HOME": HF_DIR, "PL_SERVE_VARIANT": VARIANT, "PL_ZERO_LORA": ZERO_LORA})
-image = base_image.add_local_python_source("serving")
-ladder_image = base_image.uv_pip_install(
-    f"peft=={config.PEFT_VERSION}", f"accelerate=={config.ACCELERATE_VERSION}"
-).add_local_python_source("serving")
+).env({"HF_HOME": HF_DIR, "PL_SERVE_VARIANT": VARIANT, "PL_LORA_RUNG": RUNG})
 app = modal.App(config.app_name(VARIANT))
 
 
@@ -52,39 +48,39 @@ def runtime() -> dict:
     return {"vllm_version": metadata.version("vllm"), "gpu_name": gpu}
 
 
-@app.function(image=image, gpu=config.GPU, volumes=VOLUMES, timeout=60 * 60,
-              secrets=[modal.Secret.from_name(config.SECRET_NAME)],
-              scaledown_window=5 * 60, max_containers=1)
-@modal.concurrent(max_inputs=64)
-@modal.web_server(port=config.PORT, startup_timeout=30 * 60)
-def serve() -> None:
-    started_at = time.time()
+def _exit_with(proc: subprocess.Popen) -> None:
+    code = proc.wait()
+    print(f"[pl] vLLM exited with {code}; stopping the container", flush=True)
+    os._exit(1)
+
+
+def _start_vllm(started_at: float) -> subprocess.Popen:
     if not os.environ.get("VLLM_API_KEY"):
         raise RuntimeError("VLLM_API_KEY missing: the Modal secret proxyloop-vllm must provide it")
     from serving.attest import attest_files
 
-    model_dir, zero_dir = download_model(), Path(ADAPTER_DIR) / ZERO_LORA
-    doc = attest_files(model_dir, {config.ZERO_LORA_NAME: zero_dir}, Path(HF_DIR) / "pl-attest-cache.json")
+    model_dir, slots = download_model(), config.lora_slots(RUNG, ADAPTER_DIR)
+    doc = attest_files(model_dir, {n: Path(p) for n, p in slots.items()},
+                       Path(HF_DIR) / "pl-attest-cache.json")
     hf_volume.commit()
-    args = config.serve_args(str(model_dir), VARIANT, str(zero_dir))
-    doc["runtime"] = {**runtime(), "variant": VARIANT, "zero_lora_rung": ZERO_LORA,
-                      "serve_args": args, "container_started_at": started_at}
+    args = config.serve_args(str(model_dir), VARIANT, slots)
+    doc["runtime"] = {**runtime(), "variant": VARIANT, "lora_rung": RUNG, "serve_args": args,
+                      "container_started_at": started_at}
     Path(ATTEST_FILE).write_text(json.dumps(doc))
     env = {**os.environ, "PL_ATTEST_FILE": ATTEST_FILE, "HF_HUB_OFFLINE": "1", "PYTHONPATH": "/root"}
-    subprocess.Popen(args, env=env, cwd="/root")
+    return subprocess.Popen(args, env=env, cwd="/root")
 
 
-@app.function(image=ladder_image, gpu=config.GPU, volumes=VOLUMES, timeout=60 * 60)
-def lora_ladder() -> dict:
-    from serving import zero_lora
-
-    result = zero_lora.run(download_model(), Path(ADAPTER_DIR))
-    adapter_volume.commit()
-    return {**result, "runtime": {**runtime(), "peft_version": metadata.version("peft")}}
-
-
-@app.local_entrypoint()
-def main(out: str = "docs/decisions/data/vllm-lora-ladder.json") -> None:
-    result = lora_ladder.remote()
-    Path(out).write_text(json.dumps(result, indent=2) + "\n")
-    print(json.dumps(result["summary"], indent=2))
+@app.function(image=base_image.add_local_python_source("serving"), gpu=config.GPU, volumes=VOLUMES,
+              secrets=[modal.Secret.from_name(config.SECRET_NAME)], timeout=60 * 60,
+              scaledown_window=5 * 60, max_containers=1)
+@modal.concurrent(max_inputs=64)
+@modal.web_server(port=config.PORT, startup_timeout=30 * 60)
+def serve() -> None:
+    try:
+        proc = _start_vllm(time.time())
+    except BaseException:  # noqa: BLE001 -- not swallowed: logged, then the container exits
+        traceback.print_exc()
+        sys.stderr.flush()
+        os._exit(1)
+    threading.Thread(target=_exit_with, args=(proc,), daemon=True).start()

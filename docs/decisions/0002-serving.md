@@ -40,44 +40,65 @@ Facts checked while writing the configuration (sources, not measurements):
 - **Flags:** ARCHITECTURE §13 exactly, with prefix caching explicitly off:
   `vllm serve <snapshot> --served-model-name Qwen3.5-9B --dtype bfloat16 --language-model-only --enable-lora
   --max-lora-rank 32 --max-loras 4 --max-model-len 16384 --port 8000 --no-enable-prefix-caching
-  --middleware serving.attest.attest_middleware --lora-modules Qwen3.5-9B-zero=/adapters/<rung>`.
+  --middleware serving.attest.AttestMiddleware
+  --lora-modules Qwen3.5-9B-zero=/adapters/zero-<rung> Qwen3.5-9B-live=/adapters/live-<rung>`.
   Two deliberate equivalences to the §13 text: the API key comes from `VLLM_API_KEY` in the container
   environment (the Modal secret `proxyloop-vllm`), never from argv, so it cannot leak through the process list
   or `/pl/attest`; and the model argument is the local HF snapshot at the pinned revision, loaded with
   `HF_HUB_OFFLINE=1`, so the files hashed are the files loaded.
+- **Two LoRA slots** from the chosen rung (`PL_LORA_RUNG`): `Qwen3.5-9B-zero` (`lora_B = 0`) and
+  `Qwen3.5-9B-live` (`lora_B != 0`, same targets). Liveness in the served process (`serving/liveness.py`, also
+  used by pull-through) requires zero: max |Δ prompt_logprob| ≤ 1e-4 and live: mean |Δ| > 1e-3 nats against base
+  on the 5 fixed pairs, and every response must echo the requested model.
 - **Measure-only variant:** `prefix-align` (`--enable-prefix-caching --mamba-cache-mode align`) deploys as a
   separate Modal app (`proxyloop-vllm-prefix-align`) and is never the pinned configuration.
 - **Attestation:** at container start, before vLLM starts, sha256 of every `*.safetensors` shard, the tokenizer
   files (`tokenizer.json`, `tokenizer_config.json`, `vocab.json`, `merges.txt`, `chat_template.jinja`) and every
-  file in each LoRA slot. Digests are cached on the HF volume per (real path, size, mtime_ns). The document
-  (`pl.attest/1`, plus a `runtime` block: vLLM version, GPU name, argv, variant, rung, container start time) is
-  served at `GET /pl/attest` by a bearer-authenticated middleware inside the vLLM API server process. No index
-  file and no greedy-output hashes. The `session.started.attest` field shape is S0-CON-01's to freeze.
-- **LoRA ladder** (`serving/zero_lora.py`, one offline vLLM engine with the served engine arguments): PEFT
-  adapters built on a meta-device model: `zero-all` (rung 1 targets, `lora_B = 0`), `zero-attn-mlp` (rung 2),
-  and one non-zero single-target probe per §13 target. A target counts as **applied** only when its probe loads
-  and moves the mean |Δ prompt_logprob| above 1e-3 nats; a rung is OK when its zero adapter loads, equals base
-  within 1e-4, and all its targets are applied. Rule: serve rung 1 if `rung_ok:zero-all`, else rung 2 if
-  `rung_ok:zero-attn-mlp`, else escalate to rung 3 (merged BF16 as a separate process).
+  file in each LoRA slot. Shard and tokenizer digests are cached on the HF volume per (real path, size,
+  mtime_ns); adapter digests are never cached; `digest_source` records "cached" or "fresh" per file. The
+  document (`pl.attest/1`, plus a `runtime` block: vLLM version, GPU name, argv, variant, rung, container start
+  time) is served at `GET /pl/attest` by a pure ASGI middleware inside the vLLM API server process: it answers
+  that path only (bearer-authenticated) and hands every other scope to vLLM untouched. No index file and no
+  greedy-output hashes. The `session.started.attest` field shape is S0-CON-01's to freeze.
+- **LoRA ladder** (`scripts/mod/lora_ladder.py`, its own Modal app, one offline vLLM engine with the served
+  engine arguments): PEFT adapters built on a meta-device model into the adapters volume. Per rung R
+  (`all` = attention + GDN + MLP, `attn-mlp`): `zero-R` (`lora_B = 0`) and `live-R` (`lora_B != 0`); plus one
+  non-zero single-target probe per §13 target. A target counts as **applied** only when its probe loads and moves
+  the mean |Δ prompt_logprob| above 1e-3 nats. A rung is OK when `zero-R` loads and equals base within 1e-4,
+  `live-R` moves the mean above 1e-3, and all of R's targets are applied. A dead engine aborts the run. Rule:
+  serve `all` if `rung_ok:all`, else `attn-mlp` if `rung_ok:attn-mlp`, else escalate to rung 3 (merged BF16 as a
+  separate process). The probe fails unless the ladder JSON says `rung_ok:<served rung>`.
   **Rung chosen:** <!-- root-run: fill from docs/decisions/data/vllm-lora-ladder.json (summary) -->
 - **Modal shape:** one container (`max_containers=1`, 64 concurrent inputs), idle scale-down after 5 min,
-  1 h function timeout; `make -f mk/mod.mk serve-probe` stops the app from a shell trap.
+  1 h function timeout. The container exits as soon as vLLM exits or anything before it fails, so a dead server
+  does not hold the GPU until the start-up timeout. `serve-up` stops the app when the deploy or the health wait
+  (900 s) fails; `serve-probe` also stops it from a shell trap (EXIT, HUP, INT, TERM).
+- **Probe checks** (`scripts/mod/probe.py`; exit non-zero if any fails, the JSON is written either way): `/tokenize`
+  = HF ids on the 5 prompts (every rendered prompt must end with the ids of `<think>\n\n</think>\n\n`); zero and
+  live liveness; no failed request in any block, warm-ups included (an HTTP error, a stream error, a missing
+  finish, or an echoed model different from the requested one all count); every request in every block has a
+  TTFS; keyless `GET /v1/models` and keyless `GET /pl/attest` both return 401; the served rung is OK in the
+  ladder JSON. TTFS: the first `[.!?]` followed by whitespace, or a final `[.!?]` once the stream has finished.
+  Each latency request has its own prompt index, so only the shared prefix is cacheable.
 
 ## Evidence
-No number below is typed by hand; each is filled from the committed raw JSON after the root's run.
+No number below is typed by hand; each is copied from the committed raw JSON (derived rows from the probe's
+`derived` block) after the root's run. All `make` targets are `make -f mk/mod.mk <target>`.
 
 | Measurement | Value | Raw artefact | Command |
 |---|---|---|---|
-| Ladder: applied targets, rung verdicts | <!-- root-run --> | `data/vllm-lora-ladder.json` | `make -f mk/mod.mk serve-lora-ladder` |
-| vLLM version, GPU name, `/v1/models` | <!-- root-run --> | `data/vllm-probe.json` | `make -f mk/mod.mk serve-probe` |
-| Cold start (deploy → `/health` 200) | <!-- root-run --> | `data/vllm-coldstart.json` | same |
-| TTFT p50/p95, concurrency 1 and 4 (~1.5k-token prompt, 20 requests, from the Mac) | <!-- root-run --> | `data/vllm-probe.json` | same |
-| TTFS p50/p95, concurrency 1 and 4 | <!-- root-run --> | `data/vllm-probe.json` | same |
-| `/tokenize` ids = HF ids, 5 prompts | <!-- root-run --> | `data/vllm-probe.json` | same |
-| Zero-LoRA liveness: max \|Δ prompt_logprob\| (≤ 1e-4) | <!-- root-run --> | `data/vllm-probe.json` | same |
-| LoRA overhead: TTFT p50, zero-LoRA minus base | <!-- root-run --> | `data/vllm-probe.json` | same |
-| `/pl/attest` = local recomputation, 2 shards | <!-- root-run --> | `data/vllm-attest-local.json` | `make -f mk/mod.mk serve-attest-local` |
-| Prefix caching (align) TTFT vs pinned, measure-only | <!-- root-run --> | `data/vllm-probe-prefix-align.json` | `make -f mk/mod.mk serve-probe SERVE_VARIANT=prefix-align` |
+| Ladder: applied targets, rung verdicts | <!-- root-run --> | `data/vllm-lora-ladder.json` | `serve-lora-ladder` |
+| vLLM version, GPU name, `/v1/models` | <!-- root-run --> | `data/vllm-probe.json` | `serve-probe` |
+| Cold start: from `modal deploy` returning to `/health` 200 (includes the first model download and hashing when the volume is cold) | <!-- root-run --> | `data/vllm-coldstart.json` | `serve-probe` (via `serve-up`) |
+| TTFT p50/p95, concurrency 1 and 4 (~1.5k-token prompt, 20 requests, from the Mac) | <!-- root-run --> | `data/vllm-probe.json` | `serve-probe` |
+| TTFS p50/p95, concurrency 1 and 4 | <!-- root-run --> | `data/vllm-probe.json` | `serve-probe` |
+| `/tokenize` ids = HF ids, 5 prompts | <!-- root-run --> | `data/vllm-probe.json` | `serve-probe` |
+| Zero-LoRA liveness: max \|Δ prompt_logprob\| (≤ 1e-4) | <!-- root-run --> | `data/vllm-probe.json` | `serve-probe` |
+| Live-LoRA liveness: mean \|Δ prompt_logprob\| (> 1e-3) | <!-- root-run --> | `data/vllm-probe.json` | `serve-probe` |
+| Keyless `/v1/models` and `/pl/attest` → 401 | <!-- root-run --> | `data/vllm-probe.json` | `serve-probe` |
+| LoRA overhead: TTFT/TTFS p50, zero-LoRA minus base (`derived.lora_overhead`) | <!-- root-run --> | `data/vllm-probe.json` | `serve-probe` |
+| `/pl/attest` = local recomputation, 2 shards | <!-- root-run --> | `data/vllm-attest-local.json` | `serve-attest-local` |
+| Prefix caching (align) minus pinned, TTFT/TTFS p50, measure-only (`derived.minus_baseline`) | <!-- root-run --> | `data/vllm-probe-prefix-align.json` | `serve-probe SERVE_VARIANT=prefix-align` |
 
 ## Consequences
 - **Contract / fingerprint impact:** none. `/tokenize` parity here uses fixed probe prompts; P3 on the
@@ -92,4 +113,8 @@ No number below is typed by hand; each is filled from the committed raw JSON aft
   - The Modal image build on the vLLM registry image (python symlink, cleared ENTRYPOINT) is unverified until
     the first deploy.
   - Mac-side latency includes the network path to Modal; latency claims need a co-located client (§13).
-  - The attest cache trusts (path, size, mtime_ns); a volume edit that preserves all three would not be re-hashed.
+  - The attest cache trusts (path, size, mtime_ns) for shards and tokenizer files; a volume edit that preserves
+    all three would not be re-hashed. Adapter files are always hashed fresh.
+  - The Modal endpoint is public at the HTTP layer: `/health`, `/version` and `/tokenize` answer without the key
+    (vLLM guards only `/v1/...`), and anyone can wake a GPU container with a request. Modal's
+    `requires_proxy_auth` would close that; it is deferred (it changes every client, including the probe).

@@ -2,20 +2,23 @@ import json
 
 import pytest
 
-from serving import probe
+from scripts.mod import probe
+from serving import config
+
+MODEL = "Qwen3.5-9B"
 
 
-def record() -> dict:
-    return {"server_id": None, "ttft_s": None, "ttfs_s": None, "prompt_tokens": None,
-            "completion_tokens": None, "text": "", "error": None}
+def record(model: str = MODEL) -> dict:
+    return probe.new_record(model, "measured", 0)
 
 
 def sse(obj) -> str:
     return "data: " + json.dumps(obj)
 
 
-def chunk(text: str) -> str:
-    return sse({"id": "cmpl-pl-probe-1", "choices": [{"index": 0, "text": text}]})
+def chunk(text: str, finish: str | None = None, model: str = MODEL) -> str:
+    return sse({"id": "cmpl-pl-probe-1", "model": model,
+                "choices": [{"index": 0, "text": text, "finish_reason": finish}]})
 
 
 def test_absorb_times_first_token_and_first_sentence():
@@ -24,24 +27,48 @@ def test_absorb_times_first_token_and_first_sentence():
     probe.absorb(r, chunk(""), 0.05)
     assert r["ttft_s"] is None
     probe.absorb(r, chunk("Sure"), 0.10)
-    probe.absorb(r, chunk(", the total is 3.5"), 0.20)  # a decimal point is not a sentence end
+    probe.absorb(r, chunk(", the total is 3.5"), 0.20)
     assert (r["ttft_s"], r["ttfs_s"]) == (0.10, None)
     probe.absorb(r, chunk(" dollars. Anything"), 0.30)
-    probe.absorb(r, chunk(" else?"), 0.40)
-    probe.absorb(r, sse({"id": "cmpl-pl-probe-1", "choices": [],
+    probe.absorb(r, chunk(" else?", finish="stop"), 0.40)
+    probe.absorb(r, sse({"id": "cmpl-pl-probe-1", "model": MODEL, "choices": [],
                          "usage": {"prompt_tokens": 1500, "completion_tokens": 9}}), 0.41)
     probe.absorb(r, "data: [DONE]", 0.42)
-    assert (r["ttft_s"], r["ttfs_s"]) == (0.10, 0.30)
+    assert (r["ttft_s"], r["ttfs_s"], r["finished"]) == (0.10, 0.30, True)
     assert r["text"] == "Sure, the total is 3.5 dollars. Anything else?"
-    assert r["server_id"] == "cmpl-pl-probe-1"
+    assert (r["server_id"], r["echoed_models"]) == ("cmpl-pl-probe-1", [MODEL])
     assert (r["prompt_tokens"], r["completion_tokens"]) == (1500, 9)
     assert r["error"] is None
 
 
-def test_sentence_end_at_stream_end_counts():
+def test_decimal_split_across_chunks_is_not_a_sentence_end():
+    r = record()
+    probe.absorb(r, chunk("Invoice 1003."), 0.1)
+    assert r["ttfs_s"] is None
+    probe.absorb(r, chunk("5 is due"), 0.2)
+    probe.absorb(r, chunk(" now."), 0.3)
+    assert r["ttfs_s"] is None  # a terminator at the end of the text counts only once finished
+    probe.absorb(r, chunk("", finish="stop"), 0.4)
+    assert r["ttfs_s"] == 0.4
+
+
+def test_done_marker_finishes_the_stream():
     r = record()
     probe.absorb(r, chunk("Done."), 0.2)
-    assert r["ttfs_s"] == 0.2
+    probe.absorb(r, "data: [DONE]", 0.25)
+    assert (r["ttfs_s"], r["finished"]) == (0.25, True)
+
+
+def test_no_sentence_end_leaves_ttfs_empty():
+    r = record()
+    probe.absorb(r, chunk("no terminator here", finish="length"), 0.2)
+    assert r["finished"] and r["ttfs_s"] is None
+
+
+def test_echoed_model_mismatch_is_an_error():
+    r = record("Qwen3.5-9B-zero")
+    probe.absorb(r, chunk("Hi.", model=MODEL), 0.1)
+    assert "echoed model" in r["error"] and r["echoed_models"] == [MODEL]
 
 
 def test_absorb_records_a_stream_error():
@@ -54,7 +81,7 @@ def measured(ttft, ttfs=None, error=None):
     return {"ttft_s": ttft, "ttfs_s": ttfs, "error": error}
 
 
-def test_summary_percentiles_exclude_failures():
+def test_summary_percentiles_and_failures():
     records = [measured(float(i), float(i) + 1) for i in range(1, 21)]
     records.append(measured(None, None, error="HTTP 500: boom"))
     s = probe.summarise(records)
@@ -62,19 +89,35 @@ def test_summary_percentiles_exclude_failures():
     assert s["ttft_p50_s"] == pytest.approx(10.5)
     assert s["ttft_p95_s"] == pytest.approx(19.05)  # numpy.percentile(1..20, 95), linear
     assert s["ttfs_p50_s"] == pytest.approx(11.5)
+    assert s["ttfs_complete"] is False
 
 
-def test_summary_edge_cases():
-    s = probe.summarise([measured(0.4), measured(None, error="ReadTimeout: x")])
-    assert (s["ttft_p50_s"], s["ttft_p95_s"], s["ttfs_n"], s["ttfs_p50_s"]) == (0.4, 0.4, 0, None)
+def test_a_request_without_a_sentence_end_fails_ttfs_but_is_counted():
+    s = probe.summarise([measured(0.4, 0.9), measured(0.5, None)])
+    assert (s["n"], s["failed"], s["ttft_n"], s["ttfs_n"], s["ttfs_complete"]) == (2, 0, 2, 1, False)
+    assert probe.summarise([measured(0.4, 0.6)])["ttfs_complete"] is True
     assert probe.summarise([])["ttft_p50_s"] is None
 
 
-def test_prompt_logprobs_reads_the_actual_token_at_each_completion_position():
-    ids = [11, 22, 33, 44]
-    body = {"choices": [{"prompt_logprobs": [
-        None,
-        {"22": {"logprob": -1.0, "rank": 1}},
-        {"33": {"logprob": -2.5, "rank": 3}, "7": {"logprob": -0.1, "rank": 1}},
-        {"44": {"logprob": -0.25, "rank": 1}}]}]}
-    assert probe.prompt_logprobs(body, ids, start=2) == [-2.5, -0.25]
+def block(ttft: float, ttfs: float) -> dict:
+    return {"summary": {"ttft_p50_s": ttft, "ttfs_p50_s": ttfs}}
+
+
+def test_derived_rows():
+    zero, base = config.ZERO_LORA_NAME, config.SERVED_NAME
+    lat = {f"{base}@c1": block(0.30, 0.50), f"{zero}@c1": block(0.32, 0.55),
+           f"{base}@c4": block(0.40, 0.70), f"{zero}@c4": block(0.40, None), f"{base}@warmup": block(9, 9)}
+    d = probe.derived(lat, None)
+    assert d["lora_overhead"]["c1.ttft_p50_s"] == pytest.approx(0.02)
+    assert d["lora_overhead"]["c4.ttfs_p50_s"] is None and "minus_baseline" not in d
+    baseline = {"latency": {k: block(0.25, 0.45) for k in lat}}
+    minus = probe.derived(lat, baseline)["minus_baseline"]
+    assert minus[f"{base}@c1.ttft_p50_s"] == pytest.approx(0.05)
+    assert not any("warmup" in k for k in minus)
+
+
+def test_latency_prompt_shares_a_prefix_and_differs_at_the_end():
+    a, b = probe.latency_messages(0, 30), probe.latency_messages(1, 30)
+    assert a[0] == b[0] and a[1]["content"] != b[1]["content"]
+    prefix = a[1]["content"].split("Request ")[0]
+    assert b[1]["content"].startswith(prefix)

@@ -5,7 +5,7 @@ import pytest
 from serving import config
 
 MODEL = "/hf/hub/models--Qwen--Qwen3.5-9B/snapshots/rev"
-ZERO = "/adapters/zero-all"
+SLOTS = config.lora_slots("all", "/adapters")
 
 
 def flag_value(args: list[str], flag: str) -> str:
@@ -13,7 +13,7 @@ def flag_value(args: list[str], flag: str) -> str:
 
 
 def test_pinned_args_are_architecture_13_with_prefix_caching_off():
-    args = config.serve_args(MODEL, "pinned", ZERO)
+    args = config.serve_args(MODEL, "pinned", SLOTS)
     assert args[:3] == ["vllm", "serve", MODEL]
     assert flag_value(args, "--served-model-name") == "Qwen3.5-9B"
     assert flag_value(args, "--dtype") == "bfloat16"
@@ -23,26 +23,34 @@ def test_pinned_args_are_architecture_13_with_prefix_caching_off():
     assert flag_value(args, "--port") == "8000"
     assert {"--language-model-only", "--enable-lora", "--no-enable-prefix-caching"} <= set(args)
     assert "--enable-prefix-caching" not in args and "--mamba-cache-mode" not in args
-    assert flag_value(args, "--middleware") == "serving.attest.attest_middleware"
-    assert args[-2:] == ["--lora-modules", f"Qwen3.5-9B-zero={ZERO}"]
+    assert flag_value(args, "--middleware") == "serving.attest.AttestMiddleware"
+    assert args[-3:] == ["--lora-modules", "Qwen3.5-9B-zero=/adapters/zero-all",
+                         "Qwen3.5-9B-live=/adapters/live-all"]
+
+
+def test_lora_slots_serve_the_zero_and_live_adapter_of_one_rung():
+    assert config.lora_slots("attn-mlp", "/a") == {"Qwen3.5-9B-zero": "/a/zero-attn-mlp",
+                                                   "Qwen3.5-9B-live": "/a/live-attn-mlp"}
+    with pytest.raises(ValueError):
+        config.lora_slots("zero-all", "/a")
 
 
 def test_api_key_never_in_argv():
     for variant in config.VARIANTS:
-        assert not any("api-key" in a or "KEY" in a for a in config.serve_args(MODEL, variant, ZERO))
+        assert not any("api-key" in a or "KEY" in a for a in config.serve_args(MODEL, variant, SLOTS))
 
 
 def test_prefix_align_variant_is_separate_and_measure_only():
-    args = config.serve_args(MODEL, "prefix-align", ZERO)
+    args = config.serve_args(MODEL, "prefix-align", SLOTS)
     assert "--enable-prefix-caching" in args and "--no-enable-prefix-caching" not in args
     assert flag_value(args, "--mamba-cache-mode") == "align"
     assert config.app_name("prefix-align") != config.app_name("pinned") == "proxyloop-vllm"
     with pytest.raises(ValueError):
-        config.serve_args(MODEL, "prefix", ZERO)
+        config.serve_args(MODEL, "prefix", SLOTS)
 
 
 def test_engine_kwargs_mirror_the_served_flags():
-    args = config.serve_args(MODEL, "pinned", ZERO)
+    args = config.serve_args(MODEL, "pinned", SLOTS)
     kw = config.ENGINE_KWARGS
     assert kw["served_model_name"] == flag_value(args, "--served-model-name")
     assert kw["dtype"] == flag_value(args, "--dtype")
@@ -72,23 +80,16 @@ NEVER = ["model.visual.blocks.0.attn.qkv", "model.visual.blocks.0.mlp.linear_fc1
 
 
 def test_rung_1_regex_matches_every_target_and_nothing_else():
-    regex = re.compile(config.target_regex(config.RUNGS["zero-all"]))
+    regex = re.compile(config.target_regex(config.RUNGS["all"]))
     assert all(regex.fullmatch(name) for name in ALL_TARGETS)
     assert not any(regex.fullmatch(name) for name in NEVER)
 
 
 def test_rung_2_regex_drops_the_gdn_projections():
-    regex = re.compile(config.target_regex(config.RUNGS["zero-attn-mlp"]))
+    regex = re.compile(config.target_regex(config.RUNGS["attn-mlp"]))
     matched = {name for name in ALL_TARGETS if regex.fullmatch(name)}
     assert matched == {n for n in ALL_TARGETS if "linear_attn" not in n}
     assert len(matched) == 7
-
-
-def test_latency_prompt_shares_a_prefix_and_differs_at_the_end():
-    a, b = config.latency_messages(0, 30), config.latency_messages(1, 30)
-    assert a[0] == b[0] and a[1]["content"] != b[1]["content"]
-    common = len(a[1]["content"].split("Request ")[0])
-    assert a[1]["content"][:common] == b[1]["content"][:common]
 
 
 def test_five_fixed_pairs():
