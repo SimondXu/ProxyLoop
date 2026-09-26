@@ -142,6 +142,8 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
 - #115 (SYS): `fetch_external.sh` clones into a temp dir then moves; drop the stale `!.env.example` in `.gitignore`; pin the CI Python patch release; add shellcheck; amend S0-SYS-02's acceptance grep to the exclusions actually used.
 - Hook (#114): protect the worktree parent `../pl-wt`; track `pushd`; the heredoc false positive (text that mentions recursive deletes near data/external is blocked when shlex cannot parse it).
 - Process: the S0 PR count is at 10 of the 16 tripwire with ~7 tasks left; ROOT evidence PRs are excluded.
+- Docs:
+  - EVAL §9.4: stratify the Ear-audit sampling frame by speaker model (Fast condition) and report Ear accuracy per speaker model (S0-ROOT-08 could not edit EVAL.md).
 
 ---
 

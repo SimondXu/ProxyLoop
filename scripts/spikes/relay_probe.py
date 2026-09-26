@@ -420,11 +420,13 @@ def validate_act(obj: Any) -> list[str]:
     return errs
 
 
-def oai_forced(c: openai.OpenAI, model: str, utterance: str) -> dict[str, Any]:
+def oai_forced(
+    c: openai.OpenAI, model: str, utterance: str, max_tokens: int = 128
+) -> dict[str, Any]:
     t0 = time.perf_counter()
     r = c.chat.completions.create(
         model=model,
-        max_tokens=128,
+        max_tokens=max_tokens,
         tools=[CLASSIFY],
         tool_choice=FORCED_CHOICE,
         messages=[
@@ -461,7 +463,7 @@ def oai_forced(c: openai.OpenAI, model: str, utterance: str) -> dict[str, Any]:
 
 
 def forced_model(
-    root_v1: str, key: str, model: str, n: int, scrub: Scrub
+    root_v1: str, key: str, model: str, n: int, scrub: Scrub, max_tokens: int = 128
 ) -> dict[str, Any]:
     c = oai_client(root_v1, key)
     calls = []
@@ -469,7 +471,10 @@ def forced_model(
         u = FORCED_UTTERANCES[i % len(FORCED_UTTERANCES)]
         try:
             calls.append(
-                {"utterance_idx": i % len(FORCED_UTTERANCES), **oai_forced(c, model, u)}
+                {
+                    "utterance_idx": i % len(FORCED_UTTERANCES),
+                    **oai_forced(c, model, u, max_tokens),
+                }
             )
         except Exception as e:
             calls.append({"utterance_idx": i % len(FORCED_UTTERANCES), **err(e, scrub)})
@@ -978,11 +983,16 @@ def main_part(
 
 
 def forced_part(
-    root_v1: str, key: str, scrub: Scrub, models: list[str], n: int
+    root_v1: str,
+    key: str,
+    scrub: Scrub,
+    models: list[str],
+    n: int,
+    max_tokens: int = 128,
 ) -> dict[str, Any]:
     started = utc()
     results = run_parallel(
-        models, lambda m: forced_model(root_v1, key, m, n, scrub), scrub
+        models, lambda m: forced_model(root_v1, key, m, n, scrub, max_tokens), scrub
     )
     return {
         "schema": "pl.relay_forced_tool/1",
@@ -991,6 +1001,7 @@ def forced_part(
         "finished_utc": utc(),
         "models": models,
         "calls_per_model": n,
+        "forced_max_tokens": max_tokens,
         "tool": CLASSIFY,
         "tool_choice": FORCED_CHOICE,
         "utterances": FORCED_UTTERANCES,
@@ -1064,6 +1075,12 @@ def main() -> None:
         default=10,
         help="forced tool calls per model (--part forced)",
     )
+    ap.add_argument(
+        "--forced-max-tokens",
+        type=int,
+        default=128,
+        help="max_tokens of each forced tool call (--part forced)",
+    )
     args = ap.parse_args()
     models = (
         [m.strip() for m in args.models.split(",") if m.strip()]
@@ -1108,7 +1125,9 @@ def main() -> None:
         )
         return
     if args.part == "forced":
-        report = forced_part(root_v1, key, scrub, models, args.forced_n)
+        report = forced_part(
+            root_v1, key, scrub, models, args.forced_n, args.forced_max_tokens
+        )
     elif args.part == "cost-input":
         report = cost_input(root_v1, key, models, scrub)
         report["summary"] = {
