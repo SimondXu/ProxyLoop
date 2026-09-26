@@ -1,6 +1,6 @@
 # PLAN.md: the single state file
 
-**Current:** S0 in progress (the user gave the go on 2026-09-26). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01. **In flight:** S0-SYS-02 (review), S0-MOD-01 (#113, provisional, GPU runs pending), S0-ROOT-07 (this PR). **Next:** S0-CON-01. **Last closed stage:** none. **Contract version:** none yet (S0-CON-01 creates v1).
+**Current:** S0 in progress (the user gave the go on 2026-09-26). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01, S0-SYS-02 (#115), S0-ROOT-07 (#114), S0-CON-01 (#116), S0-MOD-01 (#113, provisional: `serve-attest-local` pending the user's go). **In flight:** S0-ROOT-08 (this PR), S0-SYS-03. **Next:** S0-MOD-02, S0-SYS-04. **Last closed stage:** none. **Contract version:** v1 (ADR-0004; fingerprints `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`, `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490`).
 
 **Merge authority:** granted to the root by the user on 2026-09-26, from S0 on until revoked: the root squash-merges PRs that pass the fresh-context reviewer, CI and the reality rule. Stage closes, contract changes after `semantics-v1`, publishing, the split draw, the unseal and destructive steps still need the user.
 
@@ -74,6 +74,7 @@ Legend:
 - **PR count:** S0 > 16 PRs, S1 > 14, S2 > 10, S3 > 10. Root evidence PRs are excluded.
 - **Code size:**
   - `src/` Python over 3,700 lines at S0 close, over 5,800 at S1 close, or over 7,000 at S3 close;
+    - ARCHITECTURE §16 now totals ≈ 4,450 for S0 after contract v1 (ADR-0004); the user decides at S0 close whether to raise this tripwire.
   - web TypeScript over 1,500 lines through S1;
   - `serving/` + `training_jobs/` over 700 lines.
   - A module over 600 lines is a warning.
@@ -110,6 +111,37 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
 - #114: CLAUDE.md's "Commit and PR creation are root actions" reads as contradicting implementer commits on task branches.
 - #114: root-session rules (never authors, log agent, decisions changed) live only in CLAUDE.md, not in a tool-agnostic file.
 - #114: the PLAN.md header status line goes stale between PRs.
+- #116 (contract; for the lane named):
+  - N1 `fingerprint()` hashes profile text, not the rendering code; paths no golden covers can change unseen.
+  - N3 ARCH §5 view table gives `FastView[user]` "case facts"; `view_user` has none: align the doc.
+  - N4 `RoleModel.served_model` duplicates `ModelRef.model_id`; state which one evidence-check compares (SYS-03).
+  - N5 `Manifest` does not check that reality, models and cfg agree (SYS-03 evidence/reality).
+  - N7 snapshot tests rewrite under `PL_UPDATE_SNAPSHOTS`; CI must never set it.
+  - N8 `Manifest.split` has no value for demo/smoke runs.
+  - N9 no hook for the C2f 3-shot block (S4-CON-01).
+  - N11 the allow-list test is vacuous for `c01_empty`.
+  - Unbounded ints (`OfferPublic.revision`, `Trigger.wait_s`) can still exceed the render budget.
+  - Parser: mid-sentence `@Hold`/`@Wait` are case-sensitive while `@end_call` is not.
+  - SYS: `guard/terms._utc_text` emits microseconds (27 chars) > `MAX_SLOT_VALUE` 24; format expiry without them.
+  - SYS-03: `check_causes` does not require increasing unique seq or a single `run_id`; `read_bundle` does not check `event.run_id == manifest.run_id`.
+  - SYS-03: `Event.payload` is a mutable dict; `model_copy`/`model_construct` skip validation, so the bus must validate at append.
+  - SYS: `fact.recorded` is untyped and open; the reducer enforces I4 source binding.
+  - Guard: a decision is accepted without a prior `approval.requested` / `mandate.proposed`; Guard must join.
+- #113 (MOD):
+  - `lora_ladder` `main()` gates on `aborted_at`, not `summary["complete"]`.
+  - No test drives `run()`'s loop (a fake `vllm` module in `sys.modules` would).
+  - Exceptions outside the per-adapter try are neither saved to the volume nor move a stale `--out`.
+  - `diff_stats` `max()` ignores NaN after the first element; a NaN zero-R could pass.
+  - Run attn-mlp probes before GDN probes, so a GDN engine kill still measures attn-mlp.
+  - `lora_ladder.py` whole-file pyright exclude → a file pragma like `scripts/sys/capture_v0_fixtures.py`.
+  - The pyproject comment "Every tool covers src, tests and scripts" is stale; ruff `src` lacks `serving`.
+  - `mk/mod.mk` `--with` pins duplicate the pyproject groups (drift risk).
+  - ADR-0002 hand-types "8.6 GB", "adapter 10 of 16", "9 finished records".
+  - `default-groups` now installs the mod group (21 packages, httpx pinned) for every lane.
+  - `tests/serving` test doubles live outside `tests/support` (AGENTS rule 5).
+- #115 (SYS): `fetch_external.sh` clones into a temp dir then moves; drop the stale `!.env.example` in `.gitignore`; pin the CI Python patch release; add shellcheck; amend S0-SYS-02's acceptance grep to the exclusions actually used.
+- Hook (#114): protect the worktree parent `../pl-wt`; track `pushd`; the heredoc false positive (text that mentions recursive deletes near data/external is blocked when shlex cannot parse it).
+- Process: the S0 PR count is at 10 of the 16 tripwire with ~7 tasks left; ROOT evidence PRs are excluded.
 
 ---
 
@@ -208,7 +240,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** `uv run pytest tests/port -q`; `uv run lint-imports`.
 - **Escalate if:** the v0 hashes cannot be reproduced.
 
-### S0-SYS-02 Deletion, new Makefile/CI, `external/` handling — SYS — L — todo
+### S0-SYS-02 Deletion, new Makefile/CI, `external/` handling — SYS — L — done
 - **Objective:**
   - Physically delete `runtime/`, `ml/`, old `tests/` and `scripts/`, `data/`, `harness/`, `contracts/`, `infra/`, `voice/`, old `apps/`, `compose.yaml`, `PLANS.md`, `PROMPTS.md`, `GOALS.md`, `CONTEXT.md`, `package.json` and the pnpm files. Everything stays at `v0-legacy`.
   - A new `Makefile` (`check lint typecheck test docs-check`, `include mk/*.mk`), plus empty `mk/sys.mk` and `mk/mod.mk`.
@@ -228,7 +260,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
   - `tests/port` stays green.
 - **Escalate if:** a deletion hits anything outside this list.
 
-### S0-CON-01 Freeze the shared contract (contract v1) — CON — L — todo — **first build PR**
+### S0-CON-01 Freeze the shared contract (contract v1) — CON — L — done — **first build PR**
 - **Objective:** implement `src/proxyloop/contract/` exactly as ARCHITECTURE §4–§7, §12 and §14 specify:
   - `events.py`: `pl.event/2` and the event registry;
   - `state.py`: `Blackboard`, `PublicState`, `PrivateState`, `OfferPublic`, `ReadbackSlot`, `ReadbackBinding`, `Mandate`, `ApprovalCard`, `Approval`, `Capability`, `CaseStatus`, `Fence`;
@@ -255,7 +287,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** `uv run pytest tests/contract tests/golden -q`; `uv run pyright src/proxyloop/contract`.
 - **Escalate if:** a TalkAct-compatibility conflict; the think bytes differ between chat-template paths; any need for a field not in ARCHITECTURE §5–§7 (the root decides).
 
-### S0-MOD-01 Pinned CUDA serving configuration for Qwen3.5-9B (ADR-0002) — MOD — M — flags G (root runs) — todo
+### S0-MOD-01 Pinned CUDA serving configuration for Qwen3.5-9B (ADR-0002) — MOD — M — flags G (root runs) — provisional (merged in #113; the root's `serve-attest-local` run awaits the user's go)
 - **Objective:**
   - `serving/modal_vllm.py`: pinned image digest, vLLM version and HF revision; ARCHITECTURE §13 flags (`--language-model-only`, LoRA enabled, prefix caching **off**).
   - `serving/attest.py`: per-shard sha256 at container start → `GET /pl/attest`.
@@ -336,6 +368,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
   - `tasks/families/cp-direct-discount.yaml` with `mode: info_only`;
   - `env/counterparty/{policy,ear,mouth}.py`: ladder, identity, hidden terms until read-back, TTL, cp patience, and `rep.commit_heard` + ledger write if the agent's speech accepts;
   - `env/user/simuser.py`: JSON `revealed`, reply delay, no patience;
+  - the world model (Ear, Mouth, SimUser) is `gemini-3.8-flash` via TeamRouter (`ModelRef.endpoint = "teamrouter"`), superseding ADR-0001's world choice (ADR-0005, to be added by S0-ROOT-08);
   - `python -m proxyloop.cli rep-chat --family cp-direct-discount`.
 - **Owned paths:** `src/proxyloop/env/**` (it may extend the ledger), `tasks/families/cp-direct-discount.yaml`, `tests/env/**`.
 - **Deps:** S0-CON-01, S0-SYS-04.
@@ -404,6 +437,13 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - The docs gate S0 is met (DOCS §7).
 - Spend summary #1.
 - PLAN.md is updated: contract v1 and fingerprints.
+
+### S0-ROOT-08 Docs sync and world-model probe (ADR-0005) — ROOT — S — flags L (root runs the probe) — review
+- **Objective:** bring PLAN/ARCHITECTURE/EVAL/DOCS/retrospective in line with contract v1, S0-MOD-01 and the
+  user's world-model decision; record review follow-ups; add a TeamRouter env mode to the relay probe; after the
+  root's probe run, write ADR-0005 (world model = `gemini-3.8-flash` via TeamRouter) citing the committed probe JSON.
+- **Owned paths:** see the packet (root-owned docs granted).
+- **Acceptance:** `make check` green; no measured number typed into prose (AGENTS rule 13); ADR-0005 cites JSON keys.
 
 ---
 

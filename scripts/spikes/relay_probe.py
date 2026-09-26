@@ -18,6 +18,15 @@ from everything it writes.
     ... --part forced --models claude-sonnet-5,gemini-3.6-flash \\
         --out docs/decisions/data/relay-forced.json
     ... --part cost-input --out docs/decisions/data/relay-cost-input-heavy.json
+
+The same probe against TeamRouter (S0-ROOT-08, ADR-0005; `.env.local` is dotenv style):
+
+    ... --env .env.local --env-format dotenv --task S0-ROOT-08 \\
+        --models gemini-3.8-flash --ttft-n 10 \\
+        --out docs/decisions/data/teamrouter-probe-main.json
+    ... --env .env.local --env-format dotenv --task S0-ROOT-08 --part forced \\
+        --models gemini-3.8-flash \\
+        --out docs/decisions/data/teamrouter-probe-forced.json
 """
 
 from __future__ import annotations
@@ -143,13 +152,48 @@ COST_NOTE = (
 GROUP_RE = re.compile(r"under group [^()]*\(")
 
 
-def load_env(path: pathlib.Path) -> tuple[str, str]:
+# (base variable, key variable) per env-file format.
+ENV_VARS = {
+    "keyvalue": ("base_url", "备用key2"),
+    "dotenv": ("TEAMOROUTER_BASE_URL", "TEAMOROUTER_API_KEY"),
+}
+
+
+def read_env(path: pathlib.Path, fmt: str) -> dict[str, str]:
     kv = {}
     for line in path.read_text().splitlines():
-        if ":" in line:
-            k, v = line.split(":", 1)
-            kv[k.strip()] = v.strip()
-    return kv["base_url"].rstrip("/"), kv["备用key2"]
+        if fmt == "keyvalue":
+            if ":" in line:
+                k, v = line.split(":", 1)
+                kv[k.strip()] = v.strip()
+            continue
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.removeprefix("export ").split("=", 1)
+        v = v.strip()
+        if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+            v = v[1:-1]
+        kv[k.strip()] = v
+    return kv
+
+
+def load_env(
+    path: pathlib.Path,
+    fmt: str = "keyvalue",
+    base_var: str | None = None,
+    key_var: str | None = None,
+) -> tuple[str, str]:
+    """Return (OpenAI-compatible `/v1` root, key).
+
+    keyvalue: `base_url` already ends in `/v1`; dotenv: the API is at BASE_URL + `/v1`.
+    """
+    default_base, default_key = ENV_VARS[fmt]
+    kv = read_env(path, fmt)
+    base = kv[base_var or default_base].rstrip("/")
+    if fmt == "dotenv":
+        base += "/v1"
+    return base, kv[key_var or default_key]
 
 
 class Scrub:
@@ -851,8 +895,19 @@ def summary_of(results: dict[str, Any], fn: Any) -> dict[str, Any]:
     return {m: {"crashed": True} if "crash" in r else fn(r) for m, r in results.items()}
 
 
+RELAY_NOTE = (
+    "OpenAI-compatible third-party relay (host redacted; see the git-ignored .env)"
+)
+
+
 def main_part(
-    root_v1: str, root: str, key: str, scrub: Scrub, models: list[str], ttft_n: int
+    root_v1: str,
+    root: str,
+    key: str,
+    scrub: Scrub,
+    models: list[str],
+    ttft_n: int,
+    relay: str = RELAY_NOTE,
 ) -> dict[str, Any]:
     started = utc()
     bal0 = balance(root_v1, key, scrub)
@@ -865,10 +920,7 @@ def main_part(
         "task": "S0-ROOT-04",
         "started_utc": started,
         "finished_utc": utc(),
-        "relay": (
-            "OpenAI-compatible third-party relay "
-            "(host redacted; see the git-ignored .env)"
-        ),
+        "relay": relay,
         "sdk_versions": {
             "openai": openai.__version__,
             "anthropic": anthropic.__version__,
@@ -923,6 +975,30 @@ def write(path: str, report: dict[str, Any], scrub: Scrub) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--env", default=".env")
+    ap.add_argument(
+        "--env-format",
+        choices=sorted(ENV_VARS),
+        default="keyvalue",
+        help=(
+            "keyvalue: `name: value` lines, base_url ends in /v1 (the relay .env); "
+            "dotenv: `NAME=value` lines, the API is at BASE_URL + /v1 (TeamRouter)"
+        ),
+    )
+    ap.add_argument(
+        "--base-var",
+        help="env variable holding the base URL (default: base_url | "
+        "TEAMOROUTER_BASE_URL by format)",
+    )
+    ap.add_argument(
+        "--key-var",
+        help="env variable holding the key (default: 备用key2 | "
+        "TEAMOROUTER_API_KEY by format)",
+    )
+    ap.add_argument(
+        "--task",
+        default="S0-ROOT-04",
+        help="task id written into the report (--part main|forced|cost-input)",
+    )
     ap.add_argument("--out", required=True)
     ap.add_argument(
         "--part", choices=["main", "followup", "forced", "cost-input"], default="main"
@@ -951,8 +1027,15 @@ def main() -> None:
     )
     if not models:
         ap.error("--models is empty")
-    root_v1, key = load_env(pathlib.Path(args.env))
+    env_path = pathlib.Path(args.env)
+    root_v1, key = load_env(env_path, args.env_format, args.base_var, args.key_var)
     root = root_v1.removesuffix("/v1")
+    relay = (
+        RELAY_NOTE
+        if args.env_format == "keyvalue"
+        else f"OpenAI-compatible endpoint (host redacted; see the git-ignored "
+        f"{env_path.name})"
+    )
     host = httpx.URL(root).host
     scrub = Scrub(key, root_v1, root, host)
     if args.part == "followup":
@@ -998,7 +1081,8 @@ def main() -> None:
             for m, r in report["results"].items()
         }
     else:
-        report = main_part(root_v1, root, key, scrub, models, args.ttft_n)
+        report = main_part(root_v1, root, key, scrub, models, args.ttft_n, relay)
+    report["task"] = args.task
     write(args.out, report, scrub)
     print(scrub(json.dumps(report["summary"], indent=2, default=str)))
 

@@ -431,7 +431,7 @@ Voice confirmation (S5) is labelled "not authenticated consent".
 ## 10. Simulated world (SYS lane)
 
 ### 10.1 Counterparty = Ear → deterministic policy → Mouth
-- **Ear** (`gemini-3.6-flash`, JSON schema, closed enum):
+- **Ear** (`gemini-3.8-flash` via TeamRouter, ADR-0005; JSON schema, closed enum):
   - `ask_discount`, `cite_competitor{price}`, `cancel_intent`, `tenure`;
   - `ask_readback{offer_ref}`, `accept{offer_ref}`, `decline`;
   - `provide_fact{key, value}`, `refuse_fact{key}`, `ask_supervisor`, `hold_request`;
@@ -447,10 +447,10 @@ Voice confirmation (S5) is labelled "not authenticated consent".
   - on `accept` of a confirmed offer, `rep.commit_heard` plus a ledger write binding the heard terms (honest, misquote or absent mode). The rep cannot see our capabilities; whether a commitment was authorised is decided by metrics from the cause chain (was the heard accept a released `speak.verbatim`?).
 
   The ported pure parts are the ledger/binding, `offer_compliance_violations` [O `offer_policy.py:105`] and the salted split [O `negotiation_splits.py:81-119`]. The transition policy is written fresh.
-- **Mouth** (`gemini-3.6-flash`) voices `PublicIntent`. A number-fidelity check allows at most 2 regenerations, then falls back to a template flagged `fidelity_fallback` (a metric).
+- **Mouth** (`gemini-3.8-flash` via TeamRouter, ADR-0005) voices `PublicIntent`. A number-fidelity check allows at most 2 regenerations, then falls back to a template flagged `fidelity_fallback` (a metric).
 
 ### 10.2 Simulated user (async chat) [C7]
-- An LLM (`gemini-3.6-flash`) plays a hidden profile. It returns JSON `{text, revealed: {key: value}}`, and a deterministic check verifies that every revealed value appears in `text`. This gives relay ground truth without an Ear (EVAL §7).
+- An LLM (`gemini-3.8-flash` via TeamRouter, ADR-0005) plays a hidden profile. It returns JSON `{text, revealed: {key: value}}`, and a deterministic check verifies that every revealed value appears in `text`. This gives relay ground truth without an Ear (EVAL §7).
 - **Reply delay:** sampled per persona, 2–20 s [E], on the wall clock. There is no patience, no strikes and no give-up.
 - **Corrections and mind changes** come from the schema (`corrections`, `mind_change`, `stop: {trigger, text}`) for the `x-user-mind-change` family.
 - **Approver (deterministic):** decides an `ApprovalCard` from the hidden constraints after a sampled 3–15 s delay, and posts it through the same endpoint semantics (`by: sim_approver`).
