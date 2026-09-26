@@ -142,7 +142,7 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
   - `tests/serving` test doubles live outside `tests/support` (AGENTS rule 5).
 - #115 (SYS): `fetch_external.sh` clones into a temp dir then moves; drop the stale `!.env.example` in `.gitignore`; pin the CI Python patch release; add shellcheck; amend S0-SYS-02's acceptance grep to the exclusions actually used.
 - Hook (#114): protect the worktree parent `../pl-wt`; track `pushd`; the heredoc false positive (text that mentions recursive deletes near data/external is blocked when shlex cannot parse it).
-- Process: the S0 PR count is at 10 of the 16 tripwire with ~7 tasks left; ROOT evidence PRs are excluded.
+- Process: S0 PR count: 14 merged (#108–#121) + S0-ROOT-09 = 15; S0-SYS-06 makes 16 (the tripwire); S0-MOD-03 would be the 17th. Root evidence PRs (S0-ROOT-05/06) are excluded. The user decides before S0-MOD-03 opens.
 - Docs:
   - EVAL §9.4: stratify the Ear-audit sampling frame by speaker model (Fast condition) and report Ear accuracy per speaker model (S0-ROOT-08 could not edit EVAL.md).
 - #118 (SYS evidence):
@@ -412,7 +412,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** `make test`.
 - **Escalate if:** the Ear misclassifies more than 3 of 30 hand-checked utterances, or the policy needs agent-side state.
 
-### S0-SYS-06 Kernel, two lanes, minimal Slow, bundle, CLI, terminal replay — SYS — L — flags L+G for the smoke — todo
+### S0-SYS-06 Kernel, two lanes, minimal Slow, bundle, CLI, terminal replay — SYS — L — flags L+G for the smoke — doing
 - **Objective:**
   - `kernel/{session,lanes,speaker,channels,watchdog}.py`: `run_session`; FastU as async chat; FastC in real time with the speech clock and barge-in; the Guard-authored AI-disclosure line as the first cp utterance.
   - `slow/{loop,tools,prompt}.py` with `ask_user`, `tell_user`, `wait`, `guide_fast`, `record_fact`, `record_offer` (no statuses yet) and `finish(info_only)`, over a **relay-only** SlowView.
