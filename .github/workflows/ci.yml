@@ -1,4 +1,4 @@
-name: Repository checks
+name: CI
 
 on:
   pull_request:
@@ -9,72 +9,16 @@ permissions:
   contents: read
 
 jobs:
-  phase-gate:
+  check:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: proxyloop_test
-          POSTGRES_USER: proxyloop
-          POSTGRES_PASSWORD: proxyloop
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U proxyloop -d proxyloop_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
-      temporal:
-        image: temporalio/auto-setup:1.28.1
-        env:
-          DB: postgres12
-          DB_PORT: 5432
-          POSTGRES_SEEDS: postgres
-          POSTGRES_USER: proxyloop
-          POSTGRES_PWD: proxyloop
-        ports:
-          - 7233:7233
     steps:
       - uses: actions/checkout@v4
         with:
+          # docs-check resolves v0-legacy:<path> references against the tag.
           fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12.10"
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.8.4"
           enable-cache: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-      - run: corepack enable
-      - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: uv sync --project runtime --all-packages --frozen
-      - run: uv sync --project ml --frozen
-      - run: make preflight
-      - name: Phase 04C PostgreSQL integration
-        env:
-          PROXYLOOP_TEST_DATABASE_URL: postgresql://proxyloop:proxyloop@127.0.0.1:5432/proxyloop_test
-        run: make postgres-check
-      - name: Phase 04D control-plane operation checks
-        run: make phase04d-check
-      - name: Phase 04D local diagnostic profile
-        run: make phase04d-profile-check
-      - name: Phase 05A PostgreSQL and Temporal integration
-        env:
-          PROXYLOOP_TEST_DATABASE_URL: postgresql://proxyloop:proxyloop@127.0.0.1:5432/proxyloop_test
-          PROXYLOOP_TEST_TEMPORAL_ADDRESS: 127.0.0.1:7233
-        run: make phase05a-check
-      - name: Phase 06B1 local mailbox integration
-        env:
-          PROXYLOOP_TEST_DATABASE_URL: postgresql://proxyloop:proxyloop@127.0.0.1:5432/proxyloop_test
-          PROXYLOOP_TEST_TEMPORAL_ADDRESS: 127.0.0.1:7233
-        run: make phase06b1-check
-      - name: Check committed diff whitespace
-        if: github.event_name == 'pull_request'
-        run: git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
-      - name: Check pushed commit range whitespace
-        if: github.event_name == 'push'
-        run: git diff --check "${{ github.event.before }}...${{ github.sha }}"
+      - run: uv sync --frozen
+      - run: make check

@@ -23,26 +23,27 @@ mod = []
 [tool.uv]
 default-groups = ["dev"]
 
-# The v0 tree (runtime/, ml/, tests/{contract,integration}, scripts/*.py) stays
-# in place until S0-SYS-02; every tool below covers only the new tree.
+# Every tool covers src, tests and scripts. scripts/spikes is root-run with
+# dependencies outside this environment: ruff checks it, pyright skips it.
 [tool.ruff]
 target-version = "py312"
 line-length = 88
-src = ["src", "tests/port", "scripts/sys"]
+src = ["src", "tests", "scripts"]
 include = [
-  "src/proxyloop/**/*.py",
-  "tests/port/**/*.py",
-  "scripts/sys/**/*.py",
+  "src/**/*.py",
+  "tests/**/*.py",
+  "scripts/**/*.py",
 ]
 
 [tool.ruff.lint]
 select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]
 
 [tool.pyright]
-include = ["src/proxyloop", "tests/port", "scripts/sys"]
+include = ["src", "tests", "scripts"]
+exclude = ["scripts/spikes"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 
 [tool.pytest.ini_options]
 addopts = "-ra --import-mode=importlib"
-testpaths = ["tests/port"]
+testpaths = ["tests"]

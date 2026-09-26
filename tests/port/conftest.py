@@ -6,13 +6,8 @@ import json
 from pathlib import Path
 
 import pytest
-from hypothesis import settings
 
 V0_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "v0"
-
-# Deterministic runs, and no example database written into the worktree.
-settings.register_profile("port", database=None, derandomize=True)
-settings.load_profile("port")
 
 
 def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
