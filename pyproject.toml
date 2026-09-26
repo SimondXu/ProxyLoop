@@ -31,7 +31,7 @@ mod = [
 ]
 
 [tool.uv]
-default-groups = ["dev", "mod"]
+default-groups = ["dev", "mod", "sys"]
 
 # Every tool covers src, tests and scripts. scripts/spikes is root-run with
 # dependencies outside this environment: ruff checks it, pyright skips it.

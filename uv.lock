@@ -628,6 +628,9 @@ mod = [
     { name = "modal" },
     { name = "starlette" },
 ]
+sys = [
+    { name = "pyyaml" },
+]
 
 [package.metadata]
 requires-dist = [{ name = "pydantic", specifier = "==2.13.5" }]
@@ -647,7 +650,7 @@ mod = [
     { name = "modal", specifier = "==1.5.5" },
     { name = "starlette", specifier = "==1.7.0" },
 ]
-sys = []
+sys = [{ name = "pyyaml", specifier = "==6.0.3" }]
 
 [[package]]
 name = "pydantic"

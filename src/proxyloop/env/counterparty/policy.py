@@ -5,9 +5,14 @@ TRANSFER | ENDED. The rep knows only the acts it heard, its offers and the
 clock (no agent state). Each distinct lever unlocks the next ladder rung;
 hidden terms are said only on a read-back; offers expire after their TTL;
 silence over ``silence_s`` or a hold over ``hold_s`` is a strike, the last
-strike hangs up. Accepting an open offer by name commits (``rep.commit_heard``
-and the ledger binds its terms); an ambiguous accept (no offer named, or a
-price that is not the offer's) first reads the terms back for confirmation.
+strike hangs up.
+
+World rule (for S1-SYS-04 to confirm): accepting an open offer by name commits
+at once (``rep.commit_heard``) and the ledger binds all its terms, hidden ones
+included, as a real rep's system would; that is the trap the agent must avoid
+by asking for a read-back first. An ambiguous accept (no offer named, or a
+price that is not the offer's) makes the rep read every term back and ask for
+confirmation before committing.
 """
 
 from __future__ import annotations

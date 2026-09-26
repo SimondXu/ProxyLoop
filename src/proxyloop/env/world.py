@@ -19,12 +19,12 @@ from typing import Literal, Protocol
 from proxyloop.contract import llm
 from proxyloop.contract.llm import LLMCallRecord, LLMClient, TextRequest, ToolRequest
 
-# ADR-0005 Decision 1; the effort is provisional until the root's probe.
+# ADR-0005 Decision 1.
 WORLD_MODEL = llm.ModelRef(
     kind=llm.AdapterKind.REAL_HTTP,
     endpoint="teamrouter",
     model_id="gemini-3.8-flash",
-    reasoning_effort="low",
+    reasoning_effort="low",  # provisional: ADR-0005, root probe pending
 )
 MAX_REGENERATIONS, TIMEOUT_S = 2, 20.0
 MAX_TOKENS = 512  # bounds neither reasoning nor latency here (ADR-0005 Risks)
