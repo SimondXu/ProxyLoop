@@ -17,7 +17,7 @@ from proxyloop.contract.llm import ToolCall
 from proxyloop.contract.messages import Guide, SlowToFast
 from proxyloop.contract.protocol import GuideSlotError, render_messages
 from proxyloop.contract.views import Trigger, view_cp
-from proxyloop.guard.declass import declassify, numbers, rep_numbers
+from proxyloop.guard.declass import declassify, numbers, spoken
 
 if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
@@ -103,7 +103,7 @@ class SlowTools:
             denied = {"intent": "guide_fast", "reason": "guide_slot_not_public"}
             return _no("a slot is not public", ("action.denied", denied))
         if name == "record_fact":
-            return self._fact(bb, str(a["key"]), str(a["value"]), a.get("utt_ref"))
+            return self.fact(bb, str(a["key"]), str(a["value"]), a.get("utt_ref"))
         if name == "record_offer":
             return record_offer(bb, str(a["offer_ref"]), a["offer_slots"])
         if name != "finish":
@@ -125,7 +125,7 @@ class SlowTools:
             True, f"sent {msg.msg_id}", (("s2f.msg", msg.model_dump(mode="json")),)
         )
 
-    def _fact(self, bb: st.Blackboard, key: str, value: str, ref: object) -> Result:
+    def fact(self, bb: st.Blackboard, key: str, value: str, ref: object) -> Result:
         """Public iff the rep said it in ``ref``, or shareable and user-relayed."""
         said = {
             x.utt_id: x.text for x in bb.channels["cp"].lines if x.speaker == "partner"
@@ -135,7 +135,7 @@ class SlowTools:
             digits <= numbers(line) if digits else value.casefold() in line.casefold()
         )
         relays = [r for r in bb.f2s_pending if r.lane == "user"]
-        hits = [r.msg_id for r in relays if (key, value) in r.facts or value in r.text]
+        hits = [r.msg_id for r in relays if (key, value) in r.facts]  # typed only
         shareable = key in self._shareable_keys and hits
         source = "cp_utt" if line and in_line else "shareable" if shareable else "user"
         ref = str(ref) if source == "cp_utt" else hits[0] if shareable else ref
@@ -167,11 +167,12 @@ def record_offer(
     bb: st.Blackboard, ref: str, raw: Sequence[Mapping[str, Any]]
 ) -> Result:  # every money or term value is one the rep said
     slots = [st.ReadbackSlot(source_utt=s.get("utt_ref"), **_slot(s)) for s in raw]
-    heard, scale = rep_numbers(bb), {"usd_minor": 100, "months": 1}
+    said = {x.utt_id: x.text for x in bb.channels["cp"].lines if x.speaker == "partner"}
     unbound = [
-        f"{s.field}={s.value} was not said by the rep"
+        f"{s.field}={s.value} is not in rep line {s.source_utt}"
         for s in slots
-        if s.unit in scale and Decimal(s.value) / scale[s.unit] not in heard
+        if (line := said.get(str(s.source_utt))) is None
+        or not _value(s) <= spoken(line, s.unit)
     ]
     if unbound:
         return _no("; ".join(unbound), ("declass.denied", {"violations": unbound}))
@@ -183,6 +184,12 @@ def record_offer(
     recorded = offer.model_dump(mode="json", include={"offer_ref", "revision", "slots"})
     recorded["terms_hash"] = None  # pl.terms/2 needs confirmed slots (S1)
     return Result(True, f"recorded {ref} r{revision}", (("offer.recorded", recorded),))
+
+
+def _value(s: st.ReadbackSlot) -> set[Decimal]:  # in the unit as spoken
+    if s.unit in ("usd_minor", "months"):
+        return {Decimal(s.value) / (100 if s.unit == "usd_minor" else 1)}
+    return numbers(s.value)
 
 
 def _slot(s: Mapping[str, Any]) -> dict[str, Any]:

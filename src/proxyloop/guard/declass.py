@@ -18,6 +18,20 @@ def numbers(text: str) -> set[Decimal]:  # 1,068.50 is 1068.50
     return {Decimal(m) for m in _NUMBER.findall(text)}
 
 
+_UNIT = {  # a value of this unit, as a rep says it: "$75", "75.00", "12 months"
+    "usd_minor": r"\$\s?(\d+(?:\.\d+)?)|(\d+\.\d\d)\b|(\d+(?:\.\d+)?)\s*dollars?\b",
+    "months": r"(\d+)\s*-?\s*months?\b",
+}
+
+
+def spoken(text: str, unit: str) -> set[Decimal]:  # in dollars for usd_minor
+    if unit not in _UNIT:
+        return numbers(text)
+    text = re.sub(r"(?<=\d),(?=\d{3})", "", text)
+    found = re.finditer(_UNIT[unit], text, re.IGNORECASE)
+    return {Decimal(g) for m in found for g in m.groups() if g}
+
+
 def rep_numbers(bb: Blackboard) -> set[Decimal]:
     lines = bb.channels.get("cp", ChannelState()).lines
     return {
