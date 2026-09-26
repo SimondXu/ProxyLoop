@@ -5,7 +5,7 @@
 - **Task:** S0-CON-01
 
 ## Context
-S0-SYS-03…06 and S0-MOD-02 need one frozen contract under `src/proxyloop/contract/` (ARCHITECTURE §2, §4–§7, §12, §14). It must import only the standard library and pydantic. ADR-0001 and the user added constraints on the LLM types. The user raised this task's budget to about 1,700 changed lines (2026-09-26).
+S0-SYS-03…06 and S0-MOD-02 need one frozen contract under `src/proxyloop/contract/` (ARCHITECTURE §2, §4–§7, §12, §14). It must import only the standard library and pydantic. ADR-0001 and the user added constraints on the LLM types. The user raised this task's budget to about 1,700 changed lines, then src to 1,850 for the review fixes (2026-09-26).
 
 ## Decision
 Contract v1 (`CONTRACT_VERSION = "v1"`) is these modules, all pydantic models that are frozen and have `extra="forbid"`:
@@ -16,6 +16,8 @@ Contract v1 (`CONTRACT_VERSION = "v1"`) is these modules, all pydantic models th
 
 Every S1 section is rendered from S0 on, with `(none)` when empty. `CONTEXT_BUDGET_CHARS = 12_000` covers the system and user text together. Over budget, the renderer drops the oldest transcript lines first, then the oldest actions; an overflow after that raises `ContextBudgetError`.
 
+**Render bounds** (`base.MAX_*`): brief 800, private summary 1,200, public summary and Slow's user text 400, read-back text 600, public fact value 120, slot value 24 and field 40, 6 offers of at most 10 slots, 3 guide slots of at most 80 characters, offer refs of at most 24. A view with every bounded field at its maximum fits the budget, and the transcript and action log absorb the rest (`tests/contract/test_budget.py`). So `ContextBudgetError` is unreachable for validated views.
+
 Decisions beyond the ARCHITECTURE text:
 1. **`brief` is an argument** to `view_user`, `view_cp` and `view_slow`. The task's brief is task data, not blackboard state, so no state field was added.
 2. **`ReadbackBinding` sits on `ApprovalCard`.** A validator requires its offer, revision and epoch to equal the card's.
@@ -25,36 +27,51 @@ Decisions beyond the ARCHITECTURE text:
    - ingress: `session.started`, `user.msg`, `utt.final`, `approval.post`;
    - types a timer can emit: `session.ended`, `parity.checked`, `attest.recorded`, `chan.strike`, `fast.request`, `slow.step.started`, `rep.policy`.
 
-   `approval.post` is added to the registry, since §4.1 names it as ingress. Every cause must be an earlier event of the same run. Payloads must carry the §4.2 keys and may carry more.
+   `approval.post` is added to the registry, since §4.1 names it as ingress. Every cause must be an earlier event of the same run.
+
+   **Typed payloads.** `llm.call` (`LLMCallRecord`), `f2s.msg`, `s2f.msg`, `approval.requested` (`ApprovalCard`), `approval.post`, `approval.decided`, `mandate.proposed` (`Mandate`), `mandate.decided{mandate_id, mandate_hash, decision, by}`, `authority.epoch{new, reason: mandate_decided|slow_revoke|tighten_mandate|f2s_revoke}`, `action.authorized{intent, capability}`, `status.changed{previous, status}` and `completion.decided` are validated through closed models. Other payloads must carry their §4.2 keys and may carry more. A granted or denied `Mandate` must name `decided_by`.
 6. **`LLMClient.stream_text`** yields text deltas, then exactly one `LLMCallRecord` as its last item.
-   - A dead endpoint raises `LLMUnavailable`, which may carry the failed call's record.
-   - `LLMCallRecord` stores `requested_model` (which must equal `model_ref.model_id`), `served_model_echo` and `usage.reasoning_tokens`.
+   - A dead endpoint raises `LLMUnavailable`, which always carries the failed call's record.
+   - `LLMCallRecord` stores `requested_model` (which must equal `model_ref.model_id`), `served_model_echo`, `usage.reasoning_tokens`, `finish_reason` and `attempt` (0 or 1). There is one record per HTTP attempt, so a retry is two records.
+   - For `real_http`, the conformance kit requires a non-empty `request_id` and `completion_tokens > 0` (ARCHITECTURE §14).
    - `ToolRequest.tool_choice` names the one tool the model must call.
    - There is no `response_format` or JSON mode.
    - `request_content` and `tool_response_content` define what `prompt_sha` and `response_sha` hash.
+7. **`SessionConfig`.** It has `teacher: ModelRef | None`, set iff a `teacher_repair_*` ablation is (part of `cfg_hash`). With `live=True`, no role may be `test_fake` or `recorded_replay`, and `baseline` (the FSM) is allowed only on `fast_user`/`fast_cp`.
 
 Grammar (§6.2):
-- The parser accepts TalkAct's tolerant rules (`fast_agent.py:168-191`):
-  - inline `@slow:` is split out;
+- The parser keeps exactly TalkAct's tolerances (`fast_agent.py:168-191`) and no others:
+  - inline, case-insensitive `@slow:` is split out;
   - `FIRST:`/`THEN:` echoes are stripped;
-  - only a line *starting* with `@end_call` ends the call.
-- Wrong-lane directives, bad or duplicate holds, malformed typed facts, unknown `@` lines and empty turns become counted `ParseIssue` items.
-- `format_turn` writes the canonical order.
+  - a trailing `@end_call` is stripped;
+  - only a line *starting* with `@end_call` (case-insensitive) ends the call.
+
+  Everything else is case-sensitive.
+- Every deviation becomes a counted `ParseIssue`:
+  - `wrong_lane`, `unknown_directive`, `bad_hold_reason`, `duplicate_pause`, `duplicate_end_call`, `empty_turn`;
+  - `malformed_fact`, and `malformed_relay` (an empty `@slow:`, a wrong-case or textless typed head, or an unknown head followed by `key=value` pairs); these stay a NOTE, as in TalkAct;
+  - `stray_directive`: a line or sentence that starts with `@` after scaffold stripping is never spoken;
+  - `inline_directive`: a mid-sentence `@hold`/`@wait`/`@end_call` stays spoken, as in TalkAct; a trailing `@end_call` is stripped and not honoured;
+  - `scaffold_echo`: a sentence that still starts with `FIRST:`/`THEN:` or ends in a scaffold.
+- `format_turn` keeps item order and refuses a Speech that is not a canonical sentence (for example one starting with `@`). For any text x, `parse(format(strip_issues(parse(x)))) == strip_issues(parse(x))`, and streaming parse equals batch parse.
 
 ## Evidence
 - **Fingerprints** (`tests/contract/snapshots/fingerprints.json`):
   - `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`;
-  - `pl_cp_v1` = `1efb67b22aa0814058b70c0f079a085701e2f674c3fbec104e25efc6b9252d0b`.
+  - `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490`.
+
+  The renderer bytes did not change in the review round. The `pl_cp_v1` golden `c07` changed (its long brief exceeds the new bound; long actions force the trimming instead), so the cp P2 ids and fingerprint changed.
 - **P2** (`tests/golden/p2_ids.json`):
   - the tokenizer is `Qwen/Qwen3.5-9B@c202236235762e1c871ad0ccb60c8ee5ba337b9a`, called with `enable_thinking=False`;
   - the empty think block is `"<think>\n\n</think>\n\n"`, hex `3c7468696e6b3e0a0a3c2f7468696e6b3e0a0a`, ids `[248068, 271, 248069, 271]`;
   - `apply_chat_template(tokenize=True)` equals `tokenize=False` plus `encode` on all 13 goldens;
-  - the worst case is `c06_over_budget` at 3,605 tokens.
+  - the worst-case token count is recorded under `worst_case` in `tests/golden/p2_ids.json` and asserted by `tests/golden/test_p2.py::test_worst_case_is_recorded`.
 - **P1:** 13 goldens (6 user, 7 cp) in `tests/golden/views/`.
 - **Contract tests** in `tests/contract/`:
-  - P4 on 64 canonical turns, every split point, plus 300 arbitrary texts;
-  - the private-value counterfactual over 500 blackboards;
-  - the `view_cp` AST rule;
+  - P4 on 64 canonical turns at every split point, plus 500 arbitrary texts for streaming equals batch and for the parse/format fixpoint;
+  - the counterfactual over 500 blackboards, perturbing every Blackboard field except `public` and `channels["cp"]`, with a non-vacuity check on `view_user`;
+  - the `view_cp` AST rule (only `bb.public` and `bb.channels` with the literal key `"cp"`);
+  - the render-bounds test;
   - the registry and manifest snapshots.
 - **Run:** `uv run pytest tests/contract tests/golden -q`.
 
@@ -62,16 +79,17 @@ Grammar (§6.2):
 - **Contract and fingerprints:** new (none → v1). The first `make pull-through` records the fingerprints above.
 - **ARCHITECTURE diff:**
   - §2: the view signatures take `brief`;
-  - §4.2: lists `approval.post{approval_id, decision, terms_hash, authority_epoch}`;
-  - §16: the contract row goes 950 → 1,700 lines, so the S0 total becomes ≈ 4,250 and the S0–S1 total ≈ 6,400.
+  - §2: the `contract.config` row states the `teacher` and live-mode rules;
+  - §4.2: lists `approval.post{approval_id, decision, terms_hash, authority_epoch}`, the payloads of `authority.epoch` (with its reasons), `mandate.proposed`, `mandate.decided` and `status.changed`, the `llm.call` fields `requested_model`, `finish_reason` and `attempt`, and that these payloads are typed;
+  - §16: the contract row goes 950 → 1,850 lines, so the S0 total becomes ≈ 4,400 and the S0–S1 total ≈ 6,550.
 - **Data invalidated:** none.
 - **Migration:** SYS and MOD import only from `proxyloop.contract`. `.importlinter` forbids the contract from importing the rest of `proxyloop`, the tests and the tokenizer libraries. Adapters run `tests/contract/llm_conformance.py`.
 - **Risks:**
-  - **S0 size tripwire.** The §16 S0 total (≈ 4,250) now exceeds PLAN §0.6's 3,700-line S0 tripwire. The tripwire was left unchanged, so the root must decide.
+  - **S0 size tripwire.** The §16 S0 total (≈ 4,400) now exceeds PLAN §0.6's 3,700-line S0 tripwire. The tripwire was left unchanged, so the root must decide.
+  - **Per-type actor sets are not yet enforced (review M3).** ARCHITECTURE defines no actor vocabulary, so the root must decide it first.
   - **`reasoning_effort` on TeamRouter.** The values accepted for `gemini-3.8-flash` are unprobed.
   - **P2 needs the Hugging Face tokenizer.** It comes from the network or the cache; the files are not vendored.
   - **Known P7 divergences from TalkAct (S4):**
-    - unknown `@` lines are dropped as issues, where TalkAct speaks them;
-    - speech is re-joined sentence by sentence with single spaces;
-    - `@hold` after a `FIRST:` echo is spoken.
+    - lines or sentences starting with `@`, and sentences that still carry a scaffold, are dropped as issues, where TalkAct speaks them;
+    - speech is re-joined sentence by sentence with single spaces.
   - **`FastToSlow.text` is capped at 240 characters.** The kernel must decide how to handle a longer relay (count it, never repair it).

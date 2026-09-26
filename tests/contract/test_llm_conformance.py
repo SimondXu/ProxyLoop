@@ -20,6 +20,7 @@ from proxyloop.contract.llm import (
     ToolRequest,
     ToolResponse,
     ToolSpec,
+    Usage,
     request_content,
     tool_response_content,
 )
@@ -68,6 +69,9 @@ def test_malformed_streams_fail(items: list[str | LLMCallRecord], message: str) 
         _record("Hello there.", usage=None),
         _record("Hello there.", served_model_echo=None),
         _record("Hello there.", t_first_token=None),
+        _record("Hello there.", request_id=None),
+        _record("Hello there.", request_id=""),
+        _record("Hello there.", usage=Usage(prompt_tokens=5, completion_tokens=0)),
     ],
 )
 def test_inconsistent_records_fail(record: LLMCallRecord) -> None:
@@ -107,8 +111,13 @@ def test_tool_response_hashes_text_and_calls() -> None:
 def test_unavailable_checks() -> None:
     failed = call_record(response_sha=None, error="connect refused", t_first_token=None)
     check_unavailable(LLMUnavailable("dead", failed), [])
-    check_unavailable(LLMUnavailable("dead"), [])
     with pytest.raises(AssertionError, match="no text"):
-        check_unavailable(LLMUnavailable("dead"), ["partial"])
+        check_unavailable(LLMUnavailable("dead", failed), ["partial"])
     with pytest.raises(AssertionError, match="names the error"):
         check_unavailable(LLMUnavailable("dead", call_record(response_sha=None)), [])
+
+
+def test_a_retry_is_a_second_record() -> None:
+    assert call_record(attempt=1).attempt == 1
+    with pytest.raises(ValueError):
+        call_record(attempt=2)

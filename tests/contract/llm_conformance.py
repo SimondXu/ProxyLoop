@@ -46,8 +46,11 @@ def check_record(
     assert record.response_sha == sha256_text(response)
     if response and isinstance(request, TextRequest):
         assert record.t_first_token is not None
-    if ref.kind is AdapterKind.REAL_HTTP:
-        assert record.usage is not None, "real_http calls report usage"
+    if ref.kind is AdapterKind.REAL_HTTP:  # ARCHITECTURE §14
+        assert record.request_id, "real_http calls record a request id"
+        assert record.usage is not None and record.usage.completion_tokens > 0, (
+            "real_http calls report completion tokens"
+        )
         assert record.served_model_echo, "real_http calls record the echoed model"
 
 
@@ -95,9 +98,8 @@ def check_unavailable(error: LLMUnavailable, delivered: Sequence[object]) -> Non
     """A dead endpoint raises ``LLMUnavailable`` and delivers no text."""
 
     assert not delivered, "no text may be delivered from a dead endpoint"
-    if error.record is not None:
-        assert error.record.error, "the failed call's record names the error"
-        assert error.record.response_sha is None
+    assert error.record.error, "the failed call's record names the error"
+    assert error.record.response_sha is None
 
 
 async def assert_unavailable(client: LLMClient, request: TextRequest) -> None:

@@ -1,8 +1,8 @@
 """The event envelope ``pl.event/2`` and the event registry (ARCHITECTURE §4).
 
 A registry entry fixes the type's streams, whether it needs ``cause_ids``, and
-its required payload keys (§4.2). Extra payload keys are allowed; types §4.2
-lists without fields require none yet. Additions need an ADR.
+its required payload keys (§4.2). Types with a payload model (``_MODELS``) are
+validated through it; the others may carry extra keys. Additions need an ADR.
 """
 
 from __future__ import annotations
@@ -17,7 +17,14 @@ from pydantic import ConfigDict, Field, model_validator
 from proxyloop.contract.base import Frozen
 from proxyloop.contract.llm import LLMCallRecord
 from proxyloop.contract.messages import FastToSlow, SlowToFast
-from proxyloop.contract.state import ApprovalCard
+from proxyloop.contract.state import (
+    ApprovalCard,
+    Capability,
+    CaseStatus,
+    CompletionDecision,
+    Intent,
+    Mandate,
+)
 
 EVENT_SCHEMA = "pl.event/2"
 Stream = Literal["agent", "world", "ops"]
@@ -67,22 +74,22 @@ declass.denied       agent        +  violations
 fact.recorded        agent        +
 offer.recorded       agent        +  offer_ref revision slots terms_hash
 readback.updated     agent        +  offer_ref slot_statuses
-approval.post        agent        -  approval_id decision terms_hash authority_epoch
+approval.post        agent        -  *
 authority.fence      agent        +  op fence_id utt_id
-authority.epoch      agent        +  new reason
-mandate.proposed     agent        +
-mandate.decided      agent        +
+authority.epoch      agent        +  *
+mandate.proposed     agent        +  *
+mandate.decided      agent        +  *
 approval.requested   agent        +  *
-approval.decided     agent        +  approval_id decision by
-action.authorized    agent        +  intent capability
+approval.decided     agent        +  *
+action.authorized    agent        +  *
 action.denied        agent        +  intent reason
 speak.verbatim       agent        +  lane kind text
 speak.released       agent        +
 speak.revoked        agent        +  reason
 screen.redacted      agent        +
 evidence.recorded    agent        +
-status.changed       agent        +
-completion.decided   agent        +  verdict reasons
+status.changed       agent        +  *
+completion.decided   agent        +  *
 rep.ear              world        +  utt_id act args call_id
 rep.policy           world        -  from to intent rung
 rep.mouth            world        +  intent text fidelity_ok attempts
@@ -90,11 +97,58 @@ rep.commit_heard     world        +  utt_id offer_ref
 ledger.write         world        +  confirmation_id binding
 user.sim             world        +  text revealed delay_s
 """
+Decision = Literal["granted", "denied"]
+Approver = Literal["ui", "sim_approver"]
+
+
+class ApprovalPost(Frozen):
+    approval_id: str
+    decision: Decision
+    terms_hash: str
+    authority_epoch: int
+
+
+class ApprovalDecided(Frozen):
+    approval_id: str
+    decision: Decision
+    by: Approver
+
+
+class MandateDecided(Frozen):
+    mandate_id: str
+    mandate_hash: str
+    decision: Decision
+    by: Approver
+
+
+class EpochBump(Frozen):
+    new: int = Field(ge=1)
+    reason: Literal["mandate_decided", "slow_revoke", "tighten_mandate", "f2s_revoke"]
+
+
+class ActionAuthorized(Frozen):
+    intent: Intent
+    capability: Capability
+
+
+class StatusChanged(Frozen):
+    previous: CaseStatus
+    status: CaseStatus
+
+
 _MODELS: dict[str, type[Frozen]] = {
     "llm.call": LLMCallRecord,
     "f2s.msg": FastToSlow,
     "s2f.msg": SlowToFast,
     "approval.requested": ApprovalCard,
+    "approval.post": ApprovalPost,
+    "approval.decided": ApprovalDecided,
+    "mandate.proposed": Mandate,
+    "mandate.decided": MandateDecided,
+    "authority.epoch": EpochBump,
+    "action.authorized": ActionAuthorized,
+    "status.changed": StatusChanged,
+    "completion.decided": CompletionDecision,
 }
 
 
@@ -160,7 +214,9 @@ class Event(Frozen):
             run, _, seq = cause.rpartition(":")
             if run != self.run_id or not seq.isdigit() or int(seq) >= self.seq:
                 raise ValueError(f"cause {cause!r} is not an earlier event of this run")
-        missing = [key for key in spec.payload_keys if key not in self.payload]
-        if missing:
+        model = _MODELS.get(self.type)
+        if model is not None:  # typed payload
+            model.model_validate(self.payload)
+        elif missing := [k for k in spec.payload_keys if k not in self.payload]:
             raise ValueError(f"{self.type} payload lacks {missing}")
         return self

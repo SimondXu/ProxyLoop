@@ -7,6 +7,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import Field, StringConstraints, model_validator
 
+from proxyloop.contract import base
 from proxyloop.contract.base import FACT_KEY, Frozen, Lane
 
 
@@ -25,18 +26,20 @@ class GuideMove(StrEnum):
     CLOSE_CALL = "close_call"
 
 
-OFFER_REF = r"[A-Za-z0-9_-]+"
+OFFER_REF = r"[A-Za-z0-9_-]{1,24}"
 SLOT_FIELD = r"[a-z_]+(?::[A-Za-z0-9_.:-]+)?"
 SLOT_REF = rf"^(?:fact:{FACT_KEY}|offer:{OFFER_REF}(?:\.{SLOT_FIELD})?)$"
 # "fact:<key>" | "offer:<ref>" | "offer:<ref>.<field>"; resolved in public state only.
-SlotRef = Annotated[str, StringConstraints(pattern=SLOT_REF)]
+SlotRef = Annotated[
+    str, StringConstraints(pattern=SLOT_REF, max_length=base.MAX_SLOT_REF)
+]
 
 
 class Guide(Frozen):
     """GUIDE = enum + slot references; it carries no free text (I4)."""
 
     move: GuideMove
-    slots: tuple[SlotRef, ...] = ()
+    slots: tuple[SlotRef, ...] = Field(default=(), max_length=base.MAX_GUIDE_SLOTS)
 
 
 F2SType = Literal["USER_UPDATE", "CP_UPDATE", "REQUEST", "REVOKE", "NOTE", "HOLD"]
@@ -80,7 +83,7 @@ class SlowToFast(Frozen):
     msg_id: str
     lane: Lane
     type: S2FType
-    text: str = ""  # user lane only (ASK_USER / TELL_USER)
+    text: str = Field(default="", max_length=base.MAX_PUBLIC_TEXT)  # user lane only
     guide: Guide | None = None  # cp lane only
     approval_id: str | None = None  # APPROVAL_NOTICE: the card's readback_text
 

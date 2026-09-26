@@ -12,6 +12,7 @@ from typing import Literal, Self, get_args
 
 from pydantic import Field, model_validator
 
+from proxyloop.contract import base
 from proxyloop.contract.base import Frozen, Lane
 from proxyloop.contract.config import SlowViewMode
 from proxyloop.contract.messages import FastToSlow, Guide, SlowToFast
@@ -54,14 +55,16 @@ class FastView(Frozen):
     """Everything one Fast generation may see; stored in ``prompts.jsonl``."""
 
     lane: Lane
-    brief: str
-    private_summary: str | None = None  # user lane only
-    public_summary: str
+    brief: str = Field(max_length=base.MAX_BRIEF)
+    private_summary: str | None = Field(
+        default=None, max_length=base.MAX_PRIVATE_SUMMARY
+    )
+    public_summary: str = Field(max_length=base.MAX_PUBLIC_TEXT)
     action_log: tuple[str, ...]
-    offers: tuple[OfferPublic, ...]
+    offers: tuple[OfferPublic, ...] = Field(max_length=base.MAX_OFFERS)
     public_facts: tuple[PublicFact, ...] = ()  # cp lane: resolves guide slots
     pending_approval: ApprovalCard | None = None  # user lane only
-    guidance: tuple[Guide, ...] = ()  # cp lane only
+    guidance: tuple[Guide, ...] = Field(default=(), max_length=3)  # cp lane
     hold: HoldState | None = None  # cp lane only
     status: CaseStatus
     transcript: tuple[Line, ...]

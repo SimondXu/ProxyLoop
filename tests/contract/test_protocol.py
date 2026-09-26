@@ -146,9 +146,41 @@ def test_p4_round_trip_and_every_prefix_split(
     assert _stream(list(text), lane) == turn
 
 
-@settings(max_examples=300, deadline=None)
+ANY_TEXT = st.text(
+    alphabet="ab .!?:@\n$5THENFIRSTslowendcalhodwitfcr=;_REVOKQ", max_size=80
+) | st.lists(
+    st.sampled_from(
+        [
+            "@slow:",
+            "@SLOW:",
+            "@end_call",
+            "@END_CALL",
+            "@hold",
+            "@wait",
+            " offer",
+            "FIRST:",
+            "THEN:",
+            "then:",
+            "fact",
+            "revoke",
+            "REVOKE",
+            " a=b",
+            ";",
+            "x.",
+            " ",
+            "\n",
+            "Hi",
+            "?",
+            "@",
+        ]
+    ),
+    max_size=12,
+).map("".join)
+
+
+@settings(max_examples=500, deadline=None)
 @given(
-    text=st.text(alphabet="ab .!?:@\n$5THENFIRSTslowendcalhodwitfc=;", max_size=80),
+    text=ANY_TEXT,
     cuts=st.lists(st.integers(0, 80), max_size=4),
     lane=st.sampled_from(["user", "cp"]),
 )
@@ -171,7 +203,10 @@ TOLERANT: list[tuple[Lane, str, tuple[TurnItem, ...]]] = [
         Speech(text="Hello there."), Relay(type="note", text="name is Dana"))),
     ("cp", "A. @slow: x @SLOW: y", (
         Speech(text="A."), Relay(type="note", text="x"), Relay(type="note", text="y"))),
-    ("cp", "Bye now. @end_call", (Speech(text="Bye now."),)),  # inline: not honoured
+    # a trailing @end_call is stripped and not honoured (TalkAct), and counted
+    ("cp", "Bye now. @end_call", (
+        Speech(text="Bye now."),
+        ParseIssue(reason="inline_directive", text="@end_call"))),
     ("cp", "Thanks!\n@END_CALL now", (Speech(text="Thanks!"), EndCall())),
     ("user", "Okay. THEN:", (Speech(text="Okay."),)),
     ("user", "Hi.\nHow are you?", (Speech(text="Hi."), Speech(text="How are you?"))),
@@ -200,6 +235,35 @@ TOLERANT: list[tuple[Lane, str, tuple[TurnItem, ...]]] = [
         ParseIssue(reason="unknown_directive", text="@frobnicate"),
         ParseIssue(reason="empty_turn"))),
     ("user", "", (ParseIssue(reason="empty_turn"),)),
+    # M1: a line that still starts with "@" after scaffold stripping is only an issue
+    ("cp", "THEN: @hold offer", (
+        ParseIssue(reason="stray_directive", text="@hold offer"),
+        ParseIssue(reason="empty_turn"))),
+    ("cp", "Sure. @wait", (
+        Speech(text="Sure."), ParseIssue(reason="stray_directive", text="@wait"))),
+    ("cp", "Let me @hold offer check.", (
+        Speech(text="Let me @hold offer check."),
+        ParseIssue(reason="inline_directive", text="Let me @hold offer check."))),
+    ("cp", "Hi. FIRST: there.", (
+        Speech(text="Hi."), ParseIssue(reason="scaffold_echo", text="FIRST: there."))),
+    ("cp", "Hi. @slow:", (Speech(text="Hi."), ParseIssue(reason="malformed_relay"))),
+    ("user", "@slow: REVOKE stop", (
+        Relay(type="note", text="REVOKE stop"),
+        ParseIssue(reason="malformed_relay", text="REVOKE stop"))),
+    ("user", "@slow: request", (
+        Relay(type="note", text="request"),
+        ParseIssue(reason="malformed_relay", text="request"))),
+    ("cp", "@slow: update price=6500", (
+        Relay(type="note", text="update price=6500"),
+        ParseIssue(reason="malformed_relay", text="update price=6500"))),
+    ("cp", "@slow: the rep said price=65 is final", (
+        Relay(type="note", text="the rep said price=65 is final"),)),
+    ("cp", "Bye.\n@end_call\n@end_call", (
+        Speech(text="Bye."), EndCall(),
+        ParseIssue(reason="duplicate_end_call", text="@end_call"))),
+    ("cp", "@Hold offer", (
+        ParseIssue(reason="unknown_directive", text="@Hold offer"),
+        ParseIssue(reason="empty_turn"))),
 ]
 # fmt: on
 
@@ -215,6 +279,25 @@ def test_tolerant_vectors(
 def test_parse_issues_have_no_canonical_text() -> None:
     with pytest.raises(ValueError, match="parse issue"):
         format_turn((ParseIssue(reason="empty_turn"),))
+
+
+@pytest.mark.parametrize("text", ["@hold offer", "FIRST: hi", "bye @end_call", ""])
+def test_format_refuses_speech_that_is_not_a_sentence(text: str) -> None:
+    with pytest.raises(ValueError, match="canonical sentence"):
+        format_turn((Speech(text=text),))
+
+
+def _strip(items: tuple[TurnItem, ...]) -> tuple[TurnItem, ...]:
+    return tuple(i for i in items if not isinstance(i, ParseIssue))
+
+
+@settings(max_examples=500, deadline=None)
+@given(text=ANY_TEXT, lane=st.sampled_from(["user", "cp"]))
+def test_parse_of_format_is_a_fixpoint_on_any_text(text: str, lane: Lane) -> None:
+    """parse(format(strip_issues(parse(x)))) == strip_issues(parse(x))."""
+
+    items = _strip(parse_turn(text, lane))
+    assert _strip(parse_turn(format_turn(items), lane)) == items
 
 
 def test_closed_parser_refuses_input() -> None:
@@ -273,7 +356,10 @@ def test_public_guide_slots_resolve() -> None:
 
 
 def test_over_budget_without_anything_to_trim_is_an_error() -> None:
-    view = view_cp(Blackboard(), Trigger(kind="rep_spoke"), "x" * 20_000)
+    """Validated views cannot get here (test_budget.py); unvalidated ones raise."""
+
+    base = view_cp(Blackboard(), Trigger(kind="rep_spoke"), "b")
+    view = base.model_copy(update={"brief": "x" * 20_000})
     with pytest.raises(ContextBudgetError):
         render_messages(view, "pl_cp_v1")
 

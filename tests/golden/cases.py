@@ -180,7 +180,9 @@ GUIDES = (
         slots=("offer:o1.monthly_price", "offer:o1.fee:activation"),
     ),
 )
-ACTIONS = tuple(f"action number {i}: recorded a fact" for i in range(12))
+ACTIONS = tuple(
+    f"action number {i}: " + "recorded a fact and a note. " * 32 for i in range(12)
+)
 
 
 @dataclass(frozen=True)
@@ -258,6 +260,5 @@ CASES = (
         "c07_over_budget_actions",
         _bb(public=_public(action_log=ACTIONS)),
         Trigger(kind="rep_spoke"),
-        brief=CP_BRIEF + " " + "Background detail. " * 518,
     ),
 )

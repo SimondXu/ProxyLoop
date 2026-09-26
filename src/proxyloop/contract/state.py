@@ -11,6 +11,7 @@ from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
+from proxyloop.contract import base
 from proxyloop.contract.base import FACT_KEY, Frozen, HoldReason, Lane
 from proxyloop.contract.messages import OFFER_REF, FastToSlow, Guide, SlowToFast
 
@@ -40,8 +41,8 @@ READBACK_FIELD = (
 class ReadbackSlot(Frozen):
     """One read-back slot of an offer (§9.2). ``value`` is normalised text."""
 
-    field: str = Field(pattern=READBACK_FIELD)
-    value: str
+    field: str = Field(pattern=READBACK_FIELD, max_length=40)
+    value: str = Field(max_length=base.MAX_SLOT_VALUE)
     unit: Literal["usd_minor", "months", "bool", "iso"]
     role: Literal["recurring", "one_time", "credit", "change", "feature", "expiry"]
     source_utt: str | None = None
@@ -61,7 +62,7 @@ class ReadbackBinding(Frozen):
 class OfferPublic(Frozen):
     offer_ref: str = Field(pattern=rf"^{OFFER_REF}$")
     revision: int = Field(ge=1)
-    slots: tuple[ReadbackSlot, ...] = ()
+    slots: tuple[ReadbackSlot, ...] = Field(default=(), max_length=base.MAX_SLOTS)
     status: Literal["open", "withdrawn", "expired", "declined", "accepted"] = "open"
     expires_ms: int | None = None
     terms_hash: str | None = None
@@ -71,7 +72,7 @@ class PublicFact(Frozen):
     """A source-bound public fact: said by the rep, or allow-listed shareable."""
 
     key: str = Field(pattern=rf"^{FACT_KEY}$")
-    value: str
+    value: str = Field(max_length=base.MAX_FACT_VALUE)
     source: Literal["cp_utt", "shareable"]
     source_ref: str
 
@@ -100,6 +101,12 @@ class Mandate(Frozen):
     expires_ms: int | None = None
     decided_by: Literal["ui", "sim_approver"] | None = None
 
+    @model_validator(mode="after")
+    def _decided(self) -> Self:
+        if self.status in ("granted", "denied") and self.decided_by is None:
+            raise ValueError(f"a {self.status} mandate needs decided_by")
+        return self
+
 
 class ApprovalCard(Frozen):
     """``approval.requested`` (§9.3). ``readback_text`` is Guard-written."""
@@ -108,7 +115,7 @@ class ApprovalCard(Frozen):
     offer_ref: str
     revision: int
     terms_hash: str
-    readback_text: str
+    readback_text: str = Field(max_length=base.MAX_READBACK_TEXT)
     authority_epoch: int
     expires_ms: int
     binding: ReadbackBinding
@@ -201,9 +208,11 @@ class Spend(Frozen):
 
 
 class PublicState(Frozen):
-    summary: str = Field(default="", max_length=400)  # passes declassify()
+    summary: str = Field(default="", max_length=base.MAX_PUBLIC_TEXT)  # declassified
     facts: dict[str, PublicFact] = Field(default_factory=dict[str, PublicFact])
-    offers: dict[str, OfferPublic] = Field(default_factory=dict[str, OfferPublic])
+    offers: dict[str, OfferPublic] = Field(
+        default_factory=dict[str, OfferPublic], max_length=base.MAX_OFFERS
+    )
     guidance_cp: tuple[Guide, ...] = Field(default=(), max_length=3)
     action_log: tuple[str, ...] = Field(default=(), max_length=12)  # value-free
     status: CaseStatus = CaseStatus.INTAKE
@@ -211,7 +220,7 @@ class PublicState(Frozen):
 
 
 class PrivateState(Frozen):
-    summary: str = ""
+    summary: str = Field(default="", max_length=base.MAX_PRIVATE_SUMMARY)
     case_facts: dict[str, Fact] = Field(default_factory=dict[str, Fact])
     mandate: Mandate | None = None
     pending_approval: ApprovalCard | None = None

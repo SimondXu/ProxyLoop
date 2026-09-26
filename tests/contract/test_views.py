@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+from collections.abc import Callable
 
 import pytest
 from hypothesis import given, settings
@@ -11,15 +12,21 @@ from hypothesis import strategies as st
 
 from proxyloop.contract import views
 from proxyloop.contract.config import SlowViewMode
-from proxyloop.contract.messages import FastToSlow, Guide, GuideMove
+from proxyloop.contract.llm import ChatMessage
+from proxyloop.contract.messages import FastToSlow, Guide, GuideMove, SlowToFast
 from proxyloop.contract.protocol import render_messages
 from proxyloop.contract.state import (
     Approval,
     ApprovalCard,
+    Authorization,
     Blackboard,
+    Capability,
     CaseStatus,
     ChannelState,
+    CompletionDecision,
+    Evidence,
     Fact,
+    Fence,
     HoldState,
     Line,
     Mandate,
@@ -29,6 +36,7 @@ from proxyloop.contract.state import (
     PublicState,
     ReadbackBinding,
     ReadbackSlot,
+    Spend,
 )
 from proxyloop.contract.views import FastView, Trigger, view_cp, view_slow, view_user
 
@@ -110,6 +118,7 @@ def privates(draw: st.DrawFn) -> PrivateState:
         mandate_id=f"m{n}",
         mandate_hash=f"h{n}",
         status=draw(st.sampled_from(["proposed", "granted", "denied", "revoked"])),
+        decided_by="ui",
         epoch=n % 5,
         max_monthly_price_minor=n,
         max_term_months=n % 48,
@@ -156,12 +165,61 @@ def privates(draw: st.DrawFn) -> PrivateState:
     )
 
 
+def _agent_state(draw: st.DrawFn, n: int) -> dict[str, object]:
+    """Every Blackboard field besides public, private and channels."""
+
+    guide = Guide(move=GuideMove.ASK_DISCOUNT)
+    s2f = (
+        SlowToFast(
+            msg_id=f"s{n}", lane="user", type="TELL_USER", text=draw(TEXT) or "t"
+        ),
+        SlowToFast(msg_id=f"g{n}", lane="cp", type="GUIDE", guide=guide),
+    )
+    cap = Capability(
+        cap_id=f"c{n}",
+        business_action_id=f"b{n}",
+        intent="accept_offer",
+        terms_hash=f"t{n}",
+        epoch=n % 3,
+        expires_ms=n,
+    )
+    return {
+        "seq": n,
+        "t_ms": n * 7,
+        "epoch": n % 5,
+        "fences": (Fence(fence_id=f"f{n}", utt_id=f"u{n}", raised_seq=n),),
+        "f2s_pending": (
+            FastToSlow(
+                msg_id=f"r{n}",
+                lane="cp",
+                gen_id="g",
+                utt_ref=None,
+                type="NOTE",
+                text=draw(TEXT),
+            ),
+        ),
+        "s2f_pending": {"user": s2f[:1], "cp": s2f[1:]} if n % 2 else {},
+        "authorizations": (
+            Authorization(
+                intent="accept_offer",
+                offer_ref="o1",
+                terms_hash=f"t{n}",
+                cap_id=f"c{n}",
+                epoch=n % 3,
+            ),
+        ),
+        "capabilities": {f"c{n}": cap},
+        "evidence": (
+            Evidence(evidence_id=f"e{n}", kind="ledger", confirmation_id=f"x{n}"),
+        ),
+        "completion": CompletionDecision(verdict="ok" if n % 2 else "fail"),
+        "spend": Spend(micro_usd=n, by_role={"slow": n}),
+    }
+
+
 @st.composite
 def blackboards(draw: st.DrawFn) -> Blackboard:
-    return Blackboard(
-        seq=draw(st.integers(0, 500)),
-        t_ms=draw(st.integers(0, 10**6)),
-        epoch=draw(st.integers(0, 5)),
+    bb = Blackboard(
         public=draw(publics()),
         private=draw(privates()),
         channels={
@@ -171,6 +229,7 @@ def blackboards(draw: st.DrawFn) -> Blackboard:
             ),
         },
     )
+    return bb.model_copy(update=_agent_state(draw, draw(st.integers(0, 10_000))))
 
 
 CP_TRIGGERS = st.sampled_from(
@@ -183,23 +242,57 @@ CP_TRIGGERS = st.sampled_from(
 )
 
 
-def _cp_render(bb: Blackboard, trigger: Trigger) -> tuple[object, ...]:
-    return render_messages(view_cp(bb, trigger, "Call the company."), "pl_cp_v1")
+def _perturbations(bb: Blackboard, other: Blackboard) -> dict[str, Blackboard]:
+    """``bb`` with each field but ``public`` and ``channels["cp"]`` from ``other``."""
+
+    out: dict[str, Blackboard] = {}
+    user_only = {"cp": bb.channels["cp"], "user": other.channels["user"]}
+    for name in Blackboard.model_fields:
+        if name != "public":
+            value = user_only if name == "channels" else getattr(other, name)
+            out[name] = bb.model_copy(update={name: value})
+    out["all"] = other.model_copy(update={"public": bb.public, "channels": user_only})
+    return out
+
+
+Render = Callable[[Blackboard], tuple[ChatMessage, ChatMessage]]
+
+
+def _changed(render: Render, bb: Blackboard, other: Blackboard) -> set[str]:
+    base = render(bb)
+    return {n for n, p in _perturbations(bb, other).items() if render(p) != base}
 
 
 @settings(max_examples=500, deadline=None)
-@given(bb=blackboards(), other=privates(), trigger=CP_TRIGGERS)
+@given(bb=blackboards(), other=blackboards(), trigger=CP_TRIGGERS)
 def test_private_value_counterfactual(
-    bb: Blackboard, other: PrivateState, trigger: Trigger
+    bb: Blackboard, other: Blackboard, trigger: Trigger
 ) -> None:
-    """Perturbing any PrivateState field leaves the cp render byte-identical."""
+    """Perturbing any field besides public state and the cp channel (private
+    state, the user channel, pending messages, fences, epoch, capabilities,
+    ...) leaves the cp render byte-identical."""
 
-    base = _cp_render(bb, trigger)
-    for name in PrivateState.model_fields:
-        private = bb.private.model_copy(update={name: getattr(other, name)})
-        perturbed = bb.model_copy(update={"private": private})
-        assert _cp_render(perturbed, trigger) == base, name
-    assert _cp_render(bb.model_copy(update={"private": other}), trigger) == base
+    def render(b: Blackboard) -> tuple[ChatMessage, ChatMessage]:
+        return render_messages(view_cp(b, trigger, "Call the company."), "pl_cp_v1")
+
+    assert _changed(render, bb, other) == set()
+
+
+def test_the_counterfactual_harness_is_not_vacuous() -> None:
+    """The same harness on view_user sees private and user-channel changes."""
+
+    def render(b: Blackboard) -> tuple[ChatMessage, ChatMessage]:
+        return render_messages(
+            view_user(b, Trigger(kind="user_msg"), "b"), "pl_user_v1"
+        )
+
+    line = Line(utt_id="u1", speaker="partner", text="hello")
+    bb = Blackboard(private=PrivateState(summary="bound is 7150"))
+    other = Blackboard(
+        private=PrivateState(summary="bound is 9999"),
+        channels={"user": ChannelState(lines=(line,)), "cp": ChannelState()},
+    )
+    assert {"private", "channels", "all"} <= _changed(render, bb, other)
 
 
 def _function(name: str) -> ast.FunctionDef:
@@ -209,8 +302,25 @@ def _function(name: str) -> ast.FunctionDef:
     )
 
 
+def _key(node: ast.AST | None, parents: dict[ast.AST, ast.AST]) -> str:
+    """The literal key of ``bb.channels[...]`` or ``bb.channels.get(...)``."""
+
+    if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant):
+        return str(node.slice.value)
+    call = parents.get(node) if isinstance(node, ast.Attribute) else None
+    if (
+        isinstance(node, ast.Attribute)
+        and node.attr == "get"
+        and isinstance(call, ast.Call)
+    ):
+        first = call.args[0] if call.args else None
+        if isinstance(first, ast.Constant):
+            return str(first.value)
+    return "?"
+
+
 def _bb_uses(fn: ast.FunctionDef) -> set[str]:
-    """Every way ``bb`` is used: an attribute name, or ``<bare>`` for anything else."""
+    """Every use of ``bb``: an attribute, ``channels[<key>]`` or ``<bare>``."""
 
     parents = {
         child: node for node in ast.walk(fn) for child in ast.iter_child_nodes(node)
@@ -219,21 +329,25 @@ def _bb_uses(fn: ast.FunctionDef) -> set[str]:
     for node in ast.walk(fn):
         if isinstance(node, ast.Name) and node.id == "bb":
             parent = parents.get(node)
-            uses.add(parent.attr if isinstance(parent, ast.Attribute) else "<bare>")
+            if not isinstance(parent, ast.Attribute):
+                uses.add("<bare>")
+            elif parent.attr == "channels":
+                uses.add(f"channels[{_key(parents.get(parent), parents)}]")
+            else:
+                uses.add(parent.attr)
     return uses
 
 
-def test_view_cp_reads_only_public_and_channels() -> None:
+def test_view_cp_reads_only_public_and_the_cp_channel() -> None:
     fn = _function("view_cp")
-    assert _bb_uses(fn) == {"public", "channels"}
-    assert not [
-        n for n in ast.walk(fn) if isinstance(n, ast.Attribute) and n.attr == "private"
-    ]
+    assert _bb_uses(fn) == {"public", "channels[cp]"}
     assert "private" not in ast.unparse(fn)
 
 
 def test_the_ast_rule_is_not_vacuous() -> None:
-    assert "private" in _bb_uses(_function("view_user"))
+    uses = _bb_uses(_function("view_user"))
+    assert {"private", "channels[user]", "s2f_pending"} <= uses
+    assert "channels[?]" in _bb_uses(_function("view_slow"))
 
 
 def _bb_with_relays() -> Blackboard:

@@ -18,6 +18,11 @@ HOLD_REASONS: tuple[HoldReason, ...] = (
     "unclear",
 )
 FACT_KEY = r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*"
+# Render bounds (ADR-0004): a FastView with every bounded field at its maximum
+# still fits CONTEXT_BUDGET_CHARS; the transcript and action log absorb the rest.
+MAX_BRIEF, MAX_PRIVATE_SUMMARY, MAX_PUBLIC_TEXT = 800, 1_200, 400
+MAX_READBACK_TEXT, MAX_FACT_VALUE, MAX_SLOT_VALUE = 600, 120, 24
+MAX_OFFERS, MAX_SLOTS, MAX_GUIDE_SLOTS, MAX_SLOT_REF = 6, 10, 3, 80
 
 
 class Frozen(BaseModel):

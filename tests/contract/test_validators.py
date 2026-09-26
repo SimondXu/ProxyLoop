@@ -18,7 +18,7 @@ from proxyloop.contract.llm import (
     request_content,
 )
 from proxyloop.contract.messages import FastToSlow, Guide, SlowToFast
-from proxyloop.contract.state import ApprovalCard, ReadbackBinding
+from proxyloop.contract.state import ApprovalCard, Mandate, ReadbackBinding
 
 
 def _f2s(**update: Any) -> dict[str, Any]:
@@ -163,3 +163,33 @@ def test_approval_card_binding_must_match_the_card() -> None:
             expires_ms=5,
             binding=binding,
         )
+
+
+def test_live_mode_refuses_fakes_and_replays_and_baseline_outside_fast() -> None:
+    fake = QWEN.model_copy(update={"kind": AdapterKind.TEST_FAKE})
+    replay = QWEN.model_copy(update={"kind": AdapterKind.RECORDED_REPLAY})
+    fsm = ModelRef(kind=AdapterKind.BASELINE, endpoint=None, model_id="fsm")
+    assert session_config(fast_cp=fsm).live  # baseline is a Fast condition
+    for update in ({"fast_user": fake}, {"slow": replay}, {"slow": fsm}):
+        with pytest.raises(ValueError, match="live mode refuses"):
+            session_config(**update)
+    assert not session_config(live=False, fast_user=fake).live
+
+
+def test_teacher_iff_teacher_repair() -> None:
+    repair = [AblationId.TEACHER_REPAIR_CP]
+    with pytest.raises(ValueError, match="teacher is set iff"):
+        session_config(ablations=repair)
+    with pytest.raises(ValueError, match="teacher is set iff"):
+        session_config(teacher=GEMINI)
+    cfg = session_config(ablations=repair, teacher=GEMINI)
+    assert config_hash(cfg) != config_hash(
+        session_config(ablations=repair, teacher=QWEN)
+    )
+
+
+def test_decided_mandate_names_who_decided() -> None:
+    body = {"mandate_id": "m", "mandate_hash": "h", "epoch": 1}
+    with pytest.raises(ValueError, match="needs decided_by"):
+        Mandate.model_validate(body | {"status": "granted"})
+    assert Mandate.model_validate(body | {"status": "granted", "decided_by": "ui"})

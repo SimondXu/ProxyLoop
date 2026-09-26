@@ -128,6 +128,8 @@ class LLMCallRecord(Frozen):
     t_start: int
     t_first_token: int | None
     t_end: int
+    finish_reason: str | None  # as the provider reports it; None on error
+    attempt: Literal[0, 1]  # one record per HTTP attempt: a retry is a second
     error: str | None = None
 
     @model_validator(mode="after")
@@ -149,9 +151,10 @@ class ToolResponse(Frozen):
 
 
 class LLMUnavailable(Exception):
-    """The endpoint is dead: the session aborts (no fallback, I8)."""
+    """The endpoint is dead: the session aborts (no fallback, I8). The failed
+    call's record always travels with it."""
 
-    def __init__(self, message: str, record: LLMCallRecord | None = None) -> None:
+    def __init__(self, message: str, record: LLMCallRecord) -> None:
         super().__init__(message)
         self.record = record
 

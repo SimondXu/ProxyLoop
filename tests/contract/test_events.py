@@ -89,3 +89,49 @@ def test_llm_call_payload_keys_follow_the_record() -> None:
     keys = EVENT_TYPES["llm.call"].payload_keys
     assert {"requested_model", "served_model_echo", "request_id", "usage"} <= set(keys)
     assert EVENT_TYPES["llm.call"].streams == ("agent", "world")
+
+
+CAP = {
+    "cap_id": "c1",
+    "business_action_id": "b1",
+    "intent": "accept_offer",
+    "terms_hash": "t",
+    "epoch": 1,
+    "expires_ms": 9,
+}
+TYPED_OK: list[tuple[str, dict[str, Any]]] = [
+    ("approval.post", {"approval_id": "a1", "decision": "granted", "terms_hash": "t",
+                       "authority_epoch": 1}),
+    ("approval.decided", {"approval_id": "a1", "decision": "denied", "by": "ui"}),
+    ("mandate.proposed", {"mandate_id": "m1", "mandate_hash": "h", "status": "proposed",
+                          "epoch": 0}),
+    ("mandate.decided", {"mandate_id": "m1", "mandate_hash": "h", "decision": "granted",
+                         "by": "sim_approver"}),
+    ("authority.epoch", {"new": 2, "reason": "f2s_revoke"}),
+    ("action.authorized", {"intent": "accept_offer", "capability": CAP}),
+    ("status.changed", {"previous": "IN_CALL", "status": "AWAITING_APPROVAL"}),
+    ("completion.decided", {"verdict": "ok", "reasons": []}),
+]  # fmt: skip
+TYPED_BAD: list[tuple[str, dict[str, Any]]] = [
+    ("approval.decided", {"approval_id": "a1", "decision": "granted", "by": "slow"}),
+    ("approval.post", {"approval_id": "a1", "decision": "yes", "terms_hash": "t",
+                       "authority_epoch": 1}),
+    ("mandate.proposed", {"mandate_id": "m1", "mandate_hash": "h", "status": "granted",
+                          "epoch": 0}),
+    ("authority.epoch", {"new": 2, "reason": "the model asked"}),
+    ("action.authorized", {"intent": "accept_offer", "capability": CAP, "extra": 1}),
+    ("status.changed", {"previous": "IN_CALL", "status": "DONE"}),
+    ("completion.decided", {"verdict": "probably", "reasons": []}),
+    ("llm.call", {"call_id": "k1"}),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize(("kind", "payload"), TYPED_OK)
+def test_typed_payloads_accept(kind: str, payload: dict[str, Any]) -> None:
+    Event.model_validate(_event(type=kind, actor="guard", payload=payload))
+
+
+@pytest.mark.parametrize(("kind", "payload"), TYPED_BAD)
+def test_typed_payloads_reject(kind: str, payload: dict[str, Any]) -> None:
+    with pytest.raises(ValueError):
+        Event.model_validate(_event(type=kind, actor="guard", payload=payload))

@@ -11,7 +11,7 @@ from typing import Self
 from pydantic import Field, field_validator, model_validator
 
 from proxyloop.contract.base import Frozen, canonical_json, sha256_text
-from proxyloop.contract.llm import ModelRef
+from proxyloop.contract.llm import AdapterKind, ModelRef
 
 
 class AblationId(StrEnum):
@@ -65,12 +65,32 @@ class SessionConfig(Frozen):
     seed: int  # run seed; per-generation seeds derive from it
     ablations: tuple[AblationId, ...] = ()
     slow_view: SlowViewMode = SlowViewMode.RELAY_ONLY
+    teacher: ModelRef | None = None  # iff a teacher_repair ablation is set
     live: bool
 
     @field_validator("ablations")
     @classmethod
     def _sorted(cls, value: tuple[AblationId, ...]) -> tuple[AblationId, ...]:
         return tuple(sorted(set(value)))
+
+    @model_validator(mode="after")
+    def _roles(self) -> Self:
+        repair = {AblationId.TEACHER_REPAIR_CP, AblationId.TEACHER_REPAIR_USER}
+        if (self.teacher is not None) != bool(repair & set(self.ablations)):
+            raise ValueError("teacher is set iff a teacher_repair ablation is")
+        if not self.live:
+            return self
+        world = self.world
+        roles = {"slow": self.slow, "ear": world.ear, "mouth": world.mouth}
+        roles |= {"simuser": world.simuser, "teacher": self.teacher}
+        roles |= {"fast_user": self.fast_user, "fast_cp": self.fast_cp}
+        for role, ref in roles.items():  # the baseline FSM only as a Fast condition
+            allowed = {AdapterKind.REAL_HTTP}
+            if role.startswith("fast_"):
+                allowed.add(AdapterKind.BASELINE)
+            if ref is not None and ref.kind not in allowed:
+                raise ValueError(f"live mode refuses {ref.kind} for {role}")
+        return self
 
 
 def config_hash(cfg: SessionConfig) -> str:

@@ -252,6 +252,8 @@
    "t_start",
    "t_first_token",
    "t_end",
+   "finish_reason",
+   "attempt",
    "error"
   ]
  },
@@ -260,14 +262,31 @@
    "agent"
   ],
   "cause_required": true,
-  "payload_keys": []
+  "payload_keys": [
+   "mandate_id",
+   "mandate_hash",
+   "decision",
+   "by"
+  ]
  },
  "mandate.proposed": {
   "streams": [
    "agent"
   ],
   "cause_required": true,
-  "payload_keys": []
+  "payload_keys": [
+   "mandate_id",
+   "mandate_hash",
+   "status",
+   "epoch",
+   "max_monthly_price_minor",
+   "max_term_months",
+   "max_one_time_fees_minor",
+   "required_features",
+   "forbidden_changes",
+   "expires_ms",
+   "decided_by"
+  ]
  },
  "offer.recorded": {
   "streams": [
@@ -472,7 +491,10 @@
    "agent"
   ],
   "cause_required": true,
-  "payload_keys": []
+  "payload_keys": [
+   "previous",
+   "status"
+  ]
  },
  "summary.updated": {
   "streams": [

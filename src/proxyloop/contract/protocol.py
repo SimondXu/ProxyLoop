@@ -243,7 +243,8 @@ class EndCall(Frozen):
 
 IssueReason = (
     Literal["wrong_lane", "unknown_directive", "bad_hold_reason", "duplicate_pause"]
-    | Literal["malformed_fact", "empty_turn"]
+    | Literal["malformed_fact", "malformed_relay", "empty_turn", "duplicate_end_call"]
+    | Literal["stray_directive", "inline_directive", "scaffold_echo"]
 )
 
 
@@ -259,21 +260,48 @@ TurnItem = Annotated[
     Speech | Relay | Hold | Wait | EndCall | ParseIssue, Field(discriminator="kind")
 ]
 
-# TalkAct's tolerant rules (fast_agent.py:168-191), applied line by line.
+# TalkAct's tolerances (fast_agent.py:168-191), and no others: inline and
+# case-insensitive @slow:, FIRST:/THEN: stripping, a trailing @end_call strip,
+# a case-insensitive @end_call line. Everything else is case-sensitive.
 _SLOW = re.compile(r"@slow:\s*", re.IGNORECASE)
 _LEAD = re.compile(r"^(?:FIRST|THEN)\s*:\s*", re.IGNORECASE)
 _TRAIL_END = re.compile(r"@end_call\s*$", re.IGNORECASE)
 _TRAIL_SCAFFOLD = re.compile(r"\b(?:THEN|FIRST)\s*:\s*$", re.IGNORECASE)
+_INLINE = re.compile(r"@(?:hold|wait)\b|(?i:@end_call)")
 _BREAK = re.compile(r"(?<=[.!?])\s+")
 _KEY = re.compile(rf"^{FACT_KEY}$")
-_USER_ONLY = ("correction", "request", "revoke")
+_HEADS = ("fact", "correction", "request", "revoke")
 
 
-def _sentences(spoken: str) -> list[str]:
+def _clean(spoken: str) -> tuple[str, bool]:
+    """TalkAct's scaffold strips; also says whether a trailing @end_call went."""
+
     text = _LEAD.sub("", spoken.strip()).strip()
-    text = _TRAIL_END.sub("", text).strip()
-    text = _TRAIL_SCAFFOLD.sub("", text).strip()
-    return [s for s in _BREAK.split(text) if s]
+    cut = _TRAIL_END.sub("", text).strip()
+    return _TRAIL_SCAFFOLD.sub("", cut).strip(), cut != text
+
+
+def _speakable(text: str) -> bool:
+    """A canonical sentence: it re-parses to itself."""
+
+    return bool(text) and not (
+        text.startswith("@")
+        or "\n" in text
+        or text != text.strip()
+        or _SLOW.search(text)
+        or _LEAD.match(text)
+        or _TRAIL_END.search(text)
+        or _TRAIL_SCAFFOLD.search(text)
+    )
+
+
+def _sentence(text: str) -> list[TurnItem]:
+    if not _speakable(text):
+        reason = "stray_directive" if text.startswith("@") else "scaffold_echo"
+        return [ParseIssue(reason=reason, text=text)]
+    if _INLINE.search(text):  # TalkAct speaks it; we count it
+        return [Speech(text=text), ParseIssue(reason="inline_directive", text=text)]
+    return [Speech(text=text)]
 
 
 def _pairs(text: str) -> tuple[tuple[str, str], ...] | None:
@@ -295,6 +323,7 @@ class StreamParser:
         self._buf = ""
         self._emitted = 0  # sentences of the current line already returned
         self._paused = False  # one @hold / @wait per turn
+        self._ended = False
         self._any = False
         self._closed = False
 
@@ -324,12 +353,17 @@ class StreamParser:
         if text.startswith("@") and not _SLOW.match(text):
             return self._directive(text) if final else []
         parts = _SLOW.split(text)
-        sentences = _sentences(parts[0])
+        spoken, cut = _clean(parts[0])
+        sentences = [] if spoken.startswith("@") else _BREAK.split(spoken)
         if not final:  # the last sentence may still grow
-            ready = sentences[self._emitted : -1]
+            ready = [s for s in sentences[self._emitted : -1] if s]
             self._emitted += len(ready)
-            return [Speech(text=s) for s in ready]
-        items: list[TurnItem] = [Speech(text=s) for s in sentences[self._emitted :]]
+            return [item for s in ready for item in _sentence(s)]
+        items = [i for s in sentences[self._emitted :] if s for i in _sentence(s)]
+        if spoken.startswith("@"):  # neither speech nor a directive
+            items.append(ParseIssue(reason="stray_directive", text=spoken))
+        elif cut:
+            items.append(ParseIssue(reason="inline_directive", text="@end_call"))
         self._emitted = 0
         for segment in parts[1:]:
             items += self._relay(segment.strip())
@@ -337,6 +371,9 @@ class StreamParser:
 
     def _directive(self, text: str) -> list[TurnItem]:
         if text.lower().startswith("@end_call"):
+            if self._ended:
+                return [ParseIssue(reason="duplicate_end_call", text=text)]
+            self._ended = True
             return [EndCall()]
         words = text.split()
         if words[0] == "@hold":
@@ -359,22 +396,24 @@ class StreamParser:
 
     def _relay(self, segment: str) -> list[TurnItem]:
         if not segment:
-            return []
+            return [ParseIssue(reason="malformed_relay")]
         head, _, rest = segment.partition(" ")
         rest = rest.strip()
-        if head in _USER_ONLY and self._lane != "user":
+        note: list[TurnItem] = [Relay(type="note", text=segment)]
+        if head in ("correction", "request", "revoke") and self._lane != "user":
             return [ParseIssue(reason="wrong_lane", text=segment)]
         if head == "fact" or head == "correction":
             pairs = _pairs(rest)
             if pairs is None or (head == "correction" and len(pairs) != 1):
-                return [
-                    Relay(type="note", text=segment),
-                    ParseIssue(reason="malformed_fact", text=segment),
-                ]
+                return [*note, ParseIssue(reason="malformed_fact", text=segment)]
             return [Relay(type=head, facts=pairs)]
         if (head == "request" or head == "revoke") and rest:
             return [Relay(type=head, text=rest)]
-        return [Relay(type="note", text=segment)]
+        wrong_case = head.lower() in _HEADS  # e.g. REVOKE, or a head with no text
+        unknown_typed = head.isalpha() and head.islower() and _pairs(rest) is not None
+        if wrong_case or unknown_typed:
+            return [*note, ParseIssue(reason="malformed_relay", text=segment)]
+        return note
 
 
 def parse_turn(text: str, lane: Lane) -> tuple[TurnItem, ...]:
@@ -391,11 +430,22 @@ def _relay_text(relay: Relay) -> str:
 
 
 def format_turn(items: tuple[TurnItem, ...]) -> str:
-    """Canonical text: speech on one line, then ``@slow:`` lines, pause, end."""
+    """Canonical text, in item order: one line per directive; consecutive
+    sentences share a line after a closing ``.!?``."""
 
-    speech = " ".join(i.text for i in items if isinstance(i, Speech))
-    lines = [speech] if speech else []
+    lines: list[str] = []
+    joinable = False
     for item in items:
+        if isinstance(item, Speech):
+            if not _speakable(item.text):
+                raise ValueError(f"not a canonical sentence: {item.text!r}")
+            if joinable and lines[-1][-1] in ".!?":
+                lines[-1] += " " + item.text
+            else:
+                lines.append(item.text)
+            joinable = True
+            continue
+        joinable = False
         if isinstance(item, Relay):
             lines.append(f"@slow: {_relay_text(item)}")
         elif isinstance(item, Hold):
@@ -404,6 +454,6 @@ def format_turn(items: tuple[TurnItem, ...]) -> str:
             lines.append("@wait")
         elif isinstance(item, EndCall):
             lines.append("@end_call")
-        elif isinstance(item, ParseIssue):
+        else:
             raise ValueError("a parse issue has no canonical text")
     return "\n".join(lines)

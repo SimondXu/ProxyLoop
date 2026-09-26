@@ -45,5 +45,7 @@ def call_record(ref: ModelRef = QWEN, **update: object) -> LLMCallRecord:
         t_start=100,
         t_first_token=150,
         t_end=300,
+        finish_reason="stop",
+        attempt=0,
     )
     return LLMCallRecord.model_validate(base.model_dump() | update)
