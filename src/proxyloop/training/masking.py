@@ -20,6 +20,8 @@ IM_END = "<|im_end|>"  # ends every training completion (TRAINING §6)
 class Decoder(Protocol):
     def decode(self, token_ids: list[int], skip_special_tokens: bool = ...) -> str: ...
 
+    def convert_tokens_to_ids(self, tokens: str) -> int: ...
+
 
 def verify_trained_span(
     input_ids: Sequence[int],
@@ -42,11 +44,13 @@ def verify_trained_span(
     trained_ids = [input_ids[i] for i in trained]
     trained_text = tokenizer.decode(trained_ids, skip_special_tokens=False)
     prefix_text = tokenizer.decode(list(input_ids[:start]), skip_special_tokens=False)
+    im_end = tokenizer.convert_tokens_to_ids(IM_END)
     report: dict[str, Any] = {
         "trained_tokens": len(trained),
         "masked_prefix_tokens": start,
         "contiguous": contiguous,
         "labels_equal_input_ids": all(labels[i] == input_ids[i] for i in trained),
+        "ends_with_im_end_id": trained_ids[-1:] == [im_end],
         "trained_text_equals_target": trained_text == expected_completion,
         "masked_prefix_ends_with_empty_think": prefix_text.endswith(EMPTY_THINK),
         "trained_text_head": trained_text[:80],
@@ -57,6 +61,7 @@ def verify_trained_span(
         for k in (
             "contiguous",
             "labels_equal_input_ids",
+            "ends_with_im_end_id",
             "trained_text_equals_target",
             "masked_prefix_ends_with_empty_think",
         )

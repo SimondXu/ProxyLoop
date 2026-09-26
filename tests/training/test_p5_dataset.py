@@ -9,7 +9,6 @@ from typing import Any, cast
 import pytest
 from tests.golden.cases import GOLDEN
 from tests.golden.tokenizer import load_tokenizer
-from training_jobs import sft
 
 from proxyloop.contract.protocol import EMPTY_THINK, fingerprint, render_prompt
 from proxyloop.contract.views import FastView
@@ -27,6 +26,7 @@ from proxyloop.training.masking import (
     verify_batch,
     verify_trained_span,
 )
+from training_jobs import sft
 
 GOLDEN_VIEWS = sorted((GOLDEN / "views").glob("*.json"))
 
@@ -70,6 +70,7 @@ def test_p5_passes_on_every_smoke_row():
         assert report["ok"], report
         assert report["trained_text_equals_target"]
         assert report["masked_prefix_ends_with_empty_think"]
+        assert report["ends_with_im_end_id"]
 
 
 def pad_batch(rows: list[dict[str, list[int]]], pad_id: int) -> dict[str, Any]:
@@ -103,7 +104,8 @@ def test_p5_catches_label_drift():
     assert not report["masked_prefix_ends_with_empty_think"]
     # <|im_end|> masked out: the model would never learn to stop.
     no_end = [*labels[:-1], IGNORE_INDEX]
-    assert not verify_trained_span(ids, no_end, tok(), row.completion)["ok"]
+    report = verify_trained_span(ids, no_end, tok(), row.completion)
+    assert not report["ok"] and not report["ends_with_im_end_id"]
     # A hole in the span.
     hole = [*labels[: start + 1], IGNORE_INDEX, *labels[start + 2 :]]
     report = verify_trained_span(ids, hole, tok(), row.completion)

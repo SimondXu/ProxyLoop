@@ -1,12 +1,9 @@
-"""Modal app: the S0 SFT smoke on one H100 (ADR-0003). Root-run: make train-smoke.
-Artefacts go to the adapters volume, train/<run_id>/. A preempted input restarts with
-the same run_id and resumes from its latest complete checkpoint (after a local
-disconnect, rerun with --run-id <id>). Metrics stream as JSON lines.
-"""
+"""Modal app: the S0 SFT smoke (ADR-0003), make -f mk/mod.mk train-smoke (root, G)."""
 
 # pyright: basic
 
 import json
+import subprocess
 import time
 from pathlib import Path
 
@@ -16,6 +13,7 @@ from serving import config, modal_vllm
 from training_jobs import sft
 
 REPO = Path(__file__).resolve().parents[1]
+GIT_SHA = ["git", "describe", "--always", "--dirty", "--abbrev=40", "--exclude=*"]
 app = modal.App("proxyloop-train")
 image = (
     modal.Image.debian_slim(python_version="3.12")
@@ -27,10 +25,10 @@ image = (
 
 
 @app.function(image=image, gpu=config.GPU, volumes=modal_vllm.VOLUMES, timeout=7200)
-def train_smoke(run_id: str, views: list[tuple[str, str]]) -> dict:
+def train_smoke(run_id: str, views: list[tuple[str, str]], git_sha: str) -> dict:
     run_dir = Path(modal_vllm.ADAPTER_DIR) / "train" / run_id
     commit = modal_vllm.adapter_volume.commit
-    return sft.train(modal_vllm.download_model(), run_dir, views, commit)
+    return sft.train(modal_vllm.download_model(), run_dir, views, git_sha, commit)
 
 
 @app.local_entrypoint()
@@ -40,4 +38,5 @@ def main(out: str = "docs/decisions/data/peft-train-smoke.json", run_id: str = "
     run_id = run_id or time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     print(json.dumps({"run_id": run_id}), flush=True)
     views = [(d["profile"], json.dumps(d["view"])) for d in docs]
-    sft.write_json(Path(out), train_smoke.remote(run_id, views))
+    sha = subprocess.check_output(GIT_SHA, text=True).strip()  # "-dirty" if uncommitted
+    sft.write_json(Path(out), train_smoke.remote(run_id, views, sha))

@@ -1,18 +1,17 @@
-"""BF16 LoRA SFT on Qwen3.5-9B (ADR-0003, TRAINING §8), run by modal_train.py.
-`python -m training_jobs.sft <out.json>` is the CPU named_modules() dump (meta device).
-Module level is stdlib + serving.config: torch, peft, trl and proxyloop load lazily.
-"""
+"""BF16 LoRA SFT on Qwen3.5-9B (ADR-0003, TRAINING §8), run by modal_train.py; run as
+a script, the CPU named_modules() dump. Torch, peft, trl and proxyloop load lazily."""
 
 # pyright: basic, reportMissingImports=false
 
 import hashlib
+import inspect
 import json
-import math
 import os
 import re
 import subprocess
 import sys
-from collections.abc import Callable, Iterable, Mapping
+import time
+from collections.abc import Callable, Mapping
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -39,11 +38,8 @@ TARGETS = config.RUNGS["all"]  # the served rung (ADR-0002): train = serve
 TARGET_REGEX = config.target_regex(TARGETS)
 LORA: dict[str, Any] = {"r": config.LORA_RANK, "lora_alpha": config.LORA_ALPHA}
 LORA["lora_dropout"] = 0.05  # TRAINING §8
-LORA_PARAM = re.compile(
-    rf"base_model\.model\.({TARGET_REGEX})\.lora_[AB]\.default\.weight"
-)
-# transformers 5.17.0 modeling_qwen3_5 wraps these at import; each wrapper keeps the
-# implementation it resolved from the package, or silently the torch reference.
+LORA_PARAM = re.compile(rf"base_model\.model\.({TARGET_REGEX})\.lora_[AB]\.\w+\.weight")
+# Wrappers in transformers 5.17.0 modeling_qwen3_5 -> the package of the fused kernel.
 FUSED = {
     "causal_conv1d_fn": "causal_conv1d",
     "causal_conv1d_update": "causal_conv1d",
@@ -56,8 +52,6 @@ RECIPE: dict[str, Any] = {  # SFTConfig kwargs over the defaults (TRAINING §8)
     "warmup_steps": 0.03,
     "bf16": True,
     "num_train_epochs": 2,
-    # 64 rows a step in 8 micro-batches of balanced padded cost (length-sorted: long
-    # rows go in smaller micro-batches). No packing (ADR-0003).
     "per_device_train_batch_size": 8,
     "gradient_accumulation_steps": 8,
     "train_sampling_strategy": "batch_rebalance",
@@ -85,36 +79,28 @@ SMOKE_TURNS = {  # synthetic plumbing targets, canonicalised like teacher turns
 
 
 def smoke_rows(views: list[tuple[str, str]], n: int = 64) -> list[tuple[str, ...]]:
-    """(profile, FastView JSON, teacher turn), cycling views and lane turns."""
     rows = [(*views[i % len(views)], i // len(views)) for i in range(n)]
     return [(p, v, SMOKE_TURNS[json.loads(v)["lane"]][k % 3]) for p, v, k in rows]
 
 
-def fused_kernels() -> dict[str, str]:
-    import inspect
+def fused_kernels(impl: Mapping[str, str] | None = None) -> dict[str, str]:
+    """{wrapper: implementation module} from each wrapper's import-time `implementation`
+    closure (silently the torch reference on failure); raises unless all are fused."""
+    if impl is None:
+        from transformers.models.qwen3_5 import modeling_qwen3_5 as qwen
 
-    from transformers.models.qwen3_5 import modeling_qwen3_5 as qwen
-
-    impl = {n: inspect.getclosurevars(getattr(qwen, n)).nonlocals for n in FUSED}
-    return kernel_verdict({n: c["implementation"].__module__ for n, c in impl.items()})
-
-
-def kernel_verdict(impl_modules: Mapping[str, str]) -> dict[str, str]:
-    """{wrapper: implementation module}; raises unless all are the fused kernels."""
-    bad = {n: m for n, m in impl_modules.items() if m.split(".")[0] != FUSED.get(n)}
-    if bad or set(impl_modules) != set(FUSED):
+        cells = {n: inspect.getclosurevars(getattr(qwen, n)).nonlocals for n in FUSED}
+        impl = {n: c["implementation"].__module__ for n, c in cells.items()}
+    bad = {n: m for n, m in impl.items() if m.split(".")[0] != FUSED.get(n)}
+    if bad or set(impl) != set(FUSED):
         raise RuntimeError(f"GDN/conv on the torch fallback, not fused kernels: {bad}")
-    return dict(impl_modules)
+    return dict(impl)
 
 
-def target_report(trainable: Iterable[str]) -> dict[str, Any]:
-    """LoRA modules per target in trainable parameter names; raises unless the set is
-    exactly the served targets on every layer that has them."""
-    names = list(trainable)
+def target_report(names: list[str]) -> dict[str, Any]:
+    """LoRA modules per target; raises unless exactly the served targets train."""
     modules = sorted({m[1] for n in names if (m := LORA_PARAM.fullmatch(n))})
-    per = {
-        f"{p}.{q}": sum(m.endswith(f".{p}.{q}") for m in modules) for p, q in TARGETS
-    }
+    per = {t: sum(m.endswith("." + t) for m in modules) for t in map(".".join, TARGETS)}
     bad = [n for n in names if not LORA_PARAM.fullmatch(n)]
     if bad or 0 in per.values():
         raise RuntimeError(f"not exactly the served targets: {per}, untargeted {bad}")
@@ -123,18 +109,38 @@ def target_report(trainable: Iterable[str]) -> dict[str, Any]:
 
 def latest_checkpoint(ckpt_dir: Path) -> Path | None:
     """Highest-step complete checkpoint; Trainer writes trainer_state.json last."""
-    done = [
-        (int(m[1]), p)
-        for p in ckpt_dir.glob("checkpoint-*")
-        if (m := re.fullmatch(r"checkpoint-(\d+)", p.name))
-        and (p / "trainer_state.json").is_file()
-    ]
-    return max(done)[1] if done else None
+    states = ckpt_dir.glob("checkpoint-*/trainer_state.json")
+    done = {int(s.parent.name[11:]): s.parent for s in states}
+    return done[max(done)] if done else None
 
 
 def write_json(path: Path, doc: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(doc, indent=2, default=str) + "\n")  # never lose a run
+
+
+def claim_run_dir(run_dir: Path, views: list[tuple[str, str]], git_sha: str) -> str:
+    """One config per run dir: never resume or return a result under another."""
+    body = {"pins": PINS, "target_regex": TARGET_REGEX, "lora": LORA, "smoke": SMOKE}
+    body |= {"views": views, "git_sha": git_sha}
+    new = hashlib.sha256(json.dumps(body).encode()).hexdigest()
+    if not (path := run_dir / "config.json").is_file():
+        write_json(path, {"hash": new, **body})
+    elif (old := json.loads(path.read_text())["hash"]) != new:
+        raise RuntimeError(f"{run_dir} belongs to config {old}, not {new}")
+    return new
+
+
+def perf_record(
+    metrics: dict[str, Any], tokens: int, commit_s: float, peak: float, resumed: Any
+) -> dict[str, Any]:
+    """Whole-run performance; nulls with a reason when only a resumed segment ran."""
+    keys = ("train", "tokens", "tokens_per_s", "peak_mem_gib")
+    if resumed:
+        why = f"resumed from {resumed}: only a segment was measured"
+        return {**dict.fromkeys(keys), "null_reason": why, "segment": metrics}
+    rate = tokens / (metrics["train_runtime"] - commit_s)  # volume commits excluded
+    return dict(zip(keys, (metrics, tokens, rate, peak), strict=True))
 
 
 def peft_model(path: str, *, meta: bool) -> tuple[Any, dict[str, Any]]:
@@ -154,8 +160,8 @@ def peft_model(path: str, *, meta: bool) -> tuple[Any, dict[str, Any]]:
     model = get_peft_model(model, LoraConfig(**LORA, target_modules=TARGET_REGEX))
     trainable, total = model.get_nb_trainable_parameters()
     names = [n for n, p in model.named_parameters() if p.requires_grad]
-    report = {**target_report(names), "trainable_params": trainable}
-    return model, {**report, "all_params": total, "named_modules": modules}
+    report = target_report(names) | {"trainable_params": trainable, "all_params": total}
+    return model, report | ({"named_modules": modules} if meta else {})
 
 
 def runtime() -> dict[str, Any]:
@@ -163,21 +169,18 @@ def runtime() -> dict[str, Any]:
 
     smi = ["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"]
     gpu, driver = subprocess.check_output(smi, text=True).strip().split(", ")
-    return {
-        "provider": "modal",
-        "gpu_name": gpu,
-        "driver_version": driver,
-        "torch_cuda": torch.version.cuda,
-        "modal_image_id": os.environ.get("MODAL_IMAGE_ID"),
-        "image_spec": {"base": "debian_slim python 3.12", "pins": PINS},
-        "versions": {d: metadata.version(d) for d in DISTS},
-    }
+    rt = {"provider": "modal", "gpu_name": gpu, "driver_version": driver}
+    img = os.environ.get("MODAL_IMAGE_ID")
+    rt |= {"torch_cuda": torch.version.cuda, "modal_image_id": img}
+    rt |= {"image_spec": {"base": "debian_slim python 3.12", "pins": PINS}}
+    return rt | {"versions": {d: metadata.version(d) for d in DISTS}}
 
 
 def train(
-    model_dir: Path, run_dir: Path, views: list[tuple[str, str]], commit: Callable
+    model_dir: Path, run_dir: Path, views: list, git_sha: str, commit: Callable
 ) -> dict[str, Any]:
     """The S0 smoke: resumable, P5 on the real batch, adapter + merged BF16 copy."""
+    config_hash = claim_run_dir(run_dir, views, git_sha)
     if (done := run_dir / "result.json").is_file():
         return json.loads(done.read_text())
     import torch
@@ -188,18 +191,18 @@ def train(
     from proxyloop.contract.views import FastView
     from proxyloop.training import dataset, masking
 
-    kernels = fused_kernels()  # before the model loads: a fallback aborts the run
+    kernels, rt = fused_kernels(), runtime()  # a kernel fallback aborts before loading
     tok = AutoTokenizer.from_pretrained(model_dir)
     parsed = [(p, FastView.model_validate_json(v), t) for p, v, t in smoke_rows(views)]
     rows = [dataset.build_row(v, p, t, tok) for p, v, t in parsed]
-    data = [dataset.tokenize_row(r, tok) for r in rows]
-    targets = {
-        tuple(d["input_ids"]): r.completion for d, r in zip(data, rows, strict=True)
-    }
+    pairs = [(r, dataset.tokenize_row(r, tok)) for r in rows]
+    data = [d for _, d in pairs]
+    targets = {tuple(d["input_ids"]): r.completion for r, d in pairs}
     model, lora = peft_model(str(model_dir), meta=False)
-    del lora["named_modules"]
 
     class Stream(TrainerCallback):
+        commit_s = 0.0
+
         def on_log(self, args, state, control, logs=None, **kwargs):
             line = json.dumps({"step": state.global_step, **(logs or {})})
             print(line, flush=True)
@@ -207,19 +210,20 @@ def train(
                 f.write(line + "\n")
 
         def on_save(self, args, state, control, **kwargs):
+            start = time.monotonic()
             commit()  # a preempted restart resumes from here
+            self.commit_s += time.monotonic() - start
 
-    run_dir.mkdir(parents=True, exist_ok=True)
     args = SFTConfig(output_dir=str(run_dir / "checkpoints"), **SMOKE)
     train_set = Dataset.from_list(data)
     trainer = SFTTrainer(model, args, train_dataset=train_set, processing_class=tok)
-    trainer.add_callback(Stream())
+    trainer.add_callback(stream := Stream())
     batch = next(iter(trainer.get_train_dataloader()))
     p5 = masking.verify_batch({k: v.tolist() for k, v in batch.items()}, tok, targets)
     if not all(r["ok"] for r in p5):
         raise RuntimeError(f"P5 failed on the first batch: {p5}")
     sampler, plan = trainer._get_train_sampler(), []
-    epochs = math.ceil(args.max_steps * args.gradient_accumulation_steps / len(sampler))
+    epochs = args.max_steps * args.gradient_accumulation_steps // len(sampler) + 1
     for epoch in range(epochs):
         sampler.set_epoch(epoch)
         plan += list(sampler)
@@ -227,7 +231,11 @@ def train(
     resume = latest_checkpoint(run_dir / "checkpoints")
     torch.cuda.reset_peak_memory_stats()
     out = trainer.train(resume_from_checkpoint=str(resume) if resume else None).metrics
-    peak_gib = torch.cuda.max_memory_allocated() / 2**30  # before the merge
+    if not (perf_file := run_dir / "perf.json").is_file():  # else a finished run's
+        peak = torch.cuda.max_memory_allocated() / 2**30  # before the merge
+        tokens, resumed = trainer._total_train_tokens, resume and resume.name
+        write_json(perf_file, perf_record(out, tokens, stream.commit_s, peak, resumed))
+        commit()
     if any(not p.abs().max() > 0 for n, p in model.named_parameters() if "lora_B" in n):
         raise RuntimeError("a lora_B tensor is still zero after training")
     model.peft_config["default"].base_model_name_or_path = config.MODEL_ID
@@ -240,21 +248,21 @@ def train(
     shas = {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in files}
     result = {
         "run_id": run_dir.name,
+        "config_hash": config_hash,
+        "git_sha": git_sha,
+        "rows": "synthetic-smoke",
+        "claim": False,
         "model": {"id": config.MODEL_ID, "revision": config.MODEL_REVISION},
-        "target_regex": TARGET_REGEX,
-        "lora": {**LORA, **lora},
+        "lora": {**LORA, **lora, "target_regex": TARGET_REGEX},
         "sft_config": args.to_dict(),
         "fused_kernels": kernels,
         "p5": {"ok": True, "rows": p5},
         "fingerprints": sorted({r.fingerprint for r in rows}),
         "resumed_from": resume and resume.name,
         "max_microbatch_padded_tokens": worst,
-        "train": out,
-        "tokens": trainer._total_train_tokens,  # non-pad tokens, this segment
-        "tokens_per_s": trainer._total_train_tokens / out["train_runtime"],
-        "peak_mem_gib": peak_gib,
+        **json.loads(perf_file.read_text()),
         "adapter_sha256": shas,
-        "runtime": runtime(),
+        "runtime": rt,
     }
     write_json(done, result)
     commit()
@@ -262,14 +270,9 @@ def train(
 
 
 if __name__ == "__main__":
-    import peft
-    import torch
-    import transformers
-
     doc = {
         "model": {"id": config.MODEL_ID, "revision": config.MODEL_REVISION},
-        "device": "meta",
-        "versions": {m.__name__: m.__version__ for m in (torch, transformers, peft)},
+        "versions": {d: metadata.version(d) for d in ("torch", "transformers", "peft")},
         "target_regex": TARGET_REGEX,
         **peft_model(config.MODEL_ID, meta=True)[1],
     }

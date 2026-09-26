@@ -5,8 +5,8 @@
 check: lint typecheck test imports docs-check
 
 lint:
-	uv run ruff check src tests scripts serving
-	uv run ruff format --check src tests scripts serving
+	uv run ruff check src tests scripts serving training_jobs
+	uv run ruff format --check src tests scripts serving training_jobs
 
 typecheck:
 	uv run pyright
@@ -22,7 +22,7 @@ docs-check:
 	uv run python scripts/lint_readme.py
 
 format:
-	uv run ruff check --fix src tests scripts serving
-	uv run ruff format src tests scripts serving
+	uv run ruff check --fix src tests scripts serving training_jobs
+	uv run ruff format src tests scripts serving training_jobs
 
 -include mk/*.mk

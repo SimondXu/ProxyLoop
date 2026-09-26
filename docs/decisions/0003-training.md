@@ -54,7 +54,7 @@ Facts checked in the pinned sources (not measurements):
   in TRL, and a row over 4,096 tokens raises.
 - **P5** (`proxyloop.training.masking.verify_trained_span` / `verify_batch`): on every row of the first batch from
   the trainer's own dataloader and collator, the trained span must be one contiguous run, equal the input ids,
-  decode to exactly the target completion (ending in `<|im_end|>`), and the masked prefix must end with
+  end with the `<|im_end|>` token id, decode to exactly the target completion, and the masked prefix must end with
   `<think>\n\n</think>\n\n`. Any failure aborts before step 1.
 - **Micro-batching:** `batch_rebalance` with an effective 64 rows per step (8 × 8; smoke 4 × 2). Before step 1
   the job plans every micro-batch of the run and aborts if one pads to more than 16,384 tokens
@@ -64,10 +64,19 @@ Facts checked in the pinned sources (not measurements):
   attention layers); a mistake leaks one sample into the next with no error. Before enabling it we would need a
   boundary test: for rows A and B packed as [A, B], the per-token logits and loss of B equal B run alone within
   BF16 tolerance, and B's loss gradient with respect to A's tokens is zero.
+- **One config per run dir:** on entry the job hashes the pins, the target regex, the LoRA recipe, the smoke
+  config, the view set and the local git SHA (`git describe --always --dirty`, passed in by the local entrypoint)
+  and writes `train/<run_id>/config.json`. If that file already holds another hash the job raises: it never
+  returns a stale `result.json` and never resumes under a different config (`sft.claim_run_dir`).
 - **Resumable:** checkpoints every `save_steps` into `train/<run_id>/checkpoints` on the `proxyloop-adapters`
   volume, committed from the trainer's `on_save`. A restarted input resumes from the highest checkpoint that has
   `trainer_state.json` (`sft.latest_checkpoint`); a run whose `result.json` exists returns it. `train-smoke`
   runs detached; after a local disconnect, rerun with `--run-id <id>`.
+- **Performance is whole-run or null:** the runtime block is recorded before training. As soon as
+  `trainer.train()` returns, `{train, tokens, tokens_per_s, peak_mem_gib}` goes to `train/<run_id>/perf.json` and
+  the volume is committed; a restart reuses that file. Throughput excludes the time spent in volume commits. If
+  the only training that ran was a resumed segment, all four are null with `null_reason` (the segment's metrics
+  are kept under `segment`): a partial segment is never reported as the run's throughput or memory.
 - **Smoke** (`make -f mk/mod.mk train-smoke`): 64 rows from the 13 contract golden views paired with fixed
   synthetic turns (plumbing only: no claim), 50 steps. Per-step metrics stream as JSON lines and to
   `train/<run_id>/metrics.jsonl`. After training every `lora_B` must be non-zero; the adapter (with base model id
@@ -86,12 +95,12 @@ All `make` targets are `make -f mk/mod.mk <target>`.
 | Same on the real model in the job | `lora.per_target`, `lora.lora_modules`, `lora.trainable_params` | `data/peft-train-smoke.json` | `train-smoke` (root, G) |
 | Fused kernels active | `fused_kernels` (wrapper → implementation module) | `data/peft-train-smoke.json` | `train-smoke` |
 | P5 on the real first batch | `p5.ok`, `p5.rows[*]` | `data/peft-train-smoke.json` | `train-smoke` |
-| Throughput (non-pad tokens / train runtime) | `tokens_per_s`, `tokens`, `train.train_runtime` | `data/peft-train-smoke.json` | `train-smoke` |
-| Peak GPU memory during training | `peak_mem_gib` | `data/peft-train-smoke.json` | `train-smoke` |
+| Throughput (non-pad tokens / train runtime minus volume commits) | `tokens_per_s`, `tokens`, `train.train_runtime`; null with `null_reason` after a resume | `data/peft-train-smoke.json` | `train-smoke` |
+| Peak GPU memory during training | `peak_mem_gib` (same null rule) | `data/peft-train-smoke.json` | `train-smoke` |
 | Largest planned micro-batch | `max_microbatch_padded_tokens` | `data/peft-train-smoke.json` | `train-smoke` |
 | Loss, per step and final | `train.train_loss`; per step `train/<run_id>/metrics.jsonl` on the volume | `data/peft-train-smoke.json` | `train-smoke` |
 | Adapter files; resume | `adapter_sha256`, `resumed_from` | `data/peft-train-smoke.json` | `train-smoke` |
-| Runtime provenance | `runtime.*` | `data/peft-train-smoke.json` | `train-smoke` |
+| Runtime provenance; run config | `runtime.*`; `config_hash`, `git_sha`; `rows` = `synthetic-smoke`, `claim` = false | `data/peft-train-smoke.json` | `train-smoke` |
 | Adapter liveness in the served process (mean \|Δ prompt_logprob\| > 1e-3) | pending: needs a serving slot for a trained adapter (Risks) | – | root run |
 
 The root compares `tokens_per_s` with TRAINING §8's 3–5k tok/s estimate.
@@ -120,4 +129,5 @@ The root compares `tokens_per_s` with TRAINING §8's 3–5k tok/s estimate.
     fallback, so only the root run can show them active.
   - `batch_rebalance` balances cost within a step but does not itself cap tokens; the pre-flight budget check does.
     If it trips on real data, raise `gradient_accumulation_steps` rather than the budget.
-  - A run resumed after its last checkpoint reports throughput over the resumed segment only (`resumed_from`).
+  - A preempted smoke reports no throughput or peak memory (null, `null_reason`); rerun under a new `--run-id`
+    to measure them. `metrics.jsonl` can repeat the steps between the last checkpoint and a preemption.

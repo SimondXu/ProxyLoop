@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from training_jobs import sft
 
 from serving import config
+from training_jobs import sft
 
 REPO = Path(__file__).resolve().parents[2]
 DATA = REPO / "docs/decisions/data"
@@ -79,20 +79,20 @@ def test_target_report_rejects_untargeted_or_missing_trainables():
         sft.target_report([n for n in names if ".mlp.down_proj." not in n])
 
 
-def test_kernel_verdict_fails_on_any_torch_fallback():
+def test_fused_kernel_check_fails_on_any_torch_fallback():
     fused = {
         "causal_conv1d_fn": "causal_conv1d.causal_conv1d_interface",
         "causal_conv1d_update": "causal_conv1d.causal_conv1d_interface",
         "torch_chunk_gated_delta_rule": "fla.ops.gated_delta_rule.chunk",
         "torch_recurrent_gated_delta_rule": "fla.ops.gated_delta_rule.fused_recurrent",
     }
-    assert sft.kernel_verdict(fused) == fused
+    assert sft.fused_kernels(fused) == fused
     torch_ref = "transformers.models.qwen3_5.modeling_qwen3_5"
     for name in fused:
         with pytest.raises(RuntimeError, match="torch fallback"):
-            sft.kernel_verdict({**fused, name: torch_ref})
+            sft.fused_kernels({**fused, name: torch_ref})
     with pytest.raises(RuntimeError):
-        sft.kernel_verdict({k: v for k, v in fused.items() if "update" not in k})
+        sft.fused_kernels({k: v for k, v in fused.items() if "update" not in k})
 
 
 def test_latest_checkpoint_picks_the_highest_complete_step(tmp_path: Path):
@@ -141,3 +141,31 @@ def test_recipe_is_training_8_without_packing_or_truncation():
     for recipe in (sft.RECIPE, smoke):
         assert recipe["max_length"] is None and not recipe.get("packing")
     assert smoke["max_steps"] == 50 and smoke["save_steps"] < smoke["max_steps"]
+
+
+VIEWS = [("pl_cp_v1", '{"lane": "cp"}')]
+
+
+def test_a_run_dir_never_resumes_or_returns_under_another_config(tmp_path: Path):
+    run = tmp_path / "train" / "r1"
+    first = sft.claim_run_dir(run, VIEWS, "a" * 40)
+    stored = json.loads((run / "config.json").read_text())
+    assert stored["hash"] == first and stored["git_sha"] == "a" * 40
+    assert stored["pins"] == list(sft.PINS) and stored["views"] == [list(VIEWS[0])]
+    assert sft.claim_run_dir(run, VIEWS, "a" * 40) == first  # same config: resume
+    (run / "result.json").write_text("{}")  # a finished run under the first config
+    for views, sha in ((VIEWS, "b" * 40), ([*VIEWS, VIEWS[0]], "a" * 40)):
+        with pytest.raises(RuntimeError, match=first):
+            sft.claim_run_dir(run, views, sha)
+    assert json.loads((run / "config.json").read_text())["hash"] == first  # untouched
+
+
+def test_perf_is_whole_run_or_null_never_a_resumed_segment():
+    metrics = {"train_runtime": 110.0, "train_loss": 1.5}
+    whole = sft.perf_record(metrics, 50_000, 10.0, 40.0, None)
+    assert whole["tokens_per_s"] == 500.0  # 110 s minus 10 s of volume commits
+    assert whole["peak_mem_gib"] == 40.0 and whole["train"] == metrics
+    part = sft.perf_record(metrics, 20_000, 0.0, 30.0, "checkpoint-30")
+    for key in ("train", "tokens", "tokens_per_s", "peak_mem_gib"):
+        assert part[key] is None
+    assert "checkpoint-30" in part["null_reason"] and part["segment"] == metrics
