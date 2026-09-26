@@ -6,13 +6,18 @@ volume, then compares prompt_logprobs against base in one offline vLLM engine wi
 engine arguments. Per rung R (all | attn-mlp):
   zero-R: lora_B = 0 over R's targets; must equal base within ZERO_MAX_DIFF;
   live-R: lora_B != 0 over R's targets; mean |Δ| must exceed LIVE_MIN_MEAN_DIFF.
-Per target, probe-<parent>.<proj> (non-zero, one target) must also exceed LIVE_MIN_MEAN_DIFF:
-that separates an applied module from one vLLM loads but silently ignores. zero-R and live-R are
-the two served slots. A failed load is recorded with its error; a dead engine aborts the run.
+Per target, probe-<parent>.<proj> (non-zero on that target only) must also exceed LIVE_MIN_MEAN_DIFF:
+that separates an applied module from one vLLM loads but silently ignores. An adapter that holds a
+trailing packed member without its leader (config.PACKS_NEEDING_LEADER: in_proj_z without in_proj_qkv)
+kills the vLLM 0.29.0 engine, so that leader is added with lora_B = 0. zero-R and live-R are the two
+served slots. Each finished record is printed as one JSON line. Any engine exception stops the run: the
+result keeps the records so far with aborted_at and the error, and its summary is a failure. The result
+is also saved on the adapters volume (results/lora-ladder-<UTC time>.json) before it is returned.
 """
 
 import json
 import math
+import time
 from importlib import metadata
 from pathlib import Path
 
@@ -26,7 +31,11 @@ image = modal_vllm.base_image.uv_pip_install(
 ).add_local_python_source("serving")
 
 
-def build_adapter(model_dir: Path, out_dir: Path, targets, *, zero: bool, seed: int = 20260926) -> None:
+def build_adapter(model_dir: Path, out_dir: Path, targets, *, zero: bool, zero_targets=frozenset(),
+                  seed: int = 20260926) -> None:
+    """lora_B = 0 on every target when `zero`, else only on `zero_targets`; lora_A initialised as usual."""
+    if not set(zero_targets) <= set(targets):
+        raise ValueError(f"zero_targets {sorted(zero_targets)} not in targets {targets}")
     import torch
     from peft import LoraConfig, get_peft_model
     from peft.tuners.lora import LoraLayer
@@ -40,12 +49,14 @@ def build_adapter(model_dir: Path, out_dir: Path, targets, *, zero: bool, seed: 
         target_modules=config.target_regex(targets)))
     generator = torch.Generator().manual_seed(seed)
     with torch.no_grad():
-        for layer in (m for m in peft_model.modules() if isinstance(m, LoraLayer)):
+        for name, layer in peft_model.named_modules():
+            if not isinstance(layer, LoraLayer):
+                continue
             for a, b in zip(layer.lora_A.values(), layer.lora_B.values(), strict=True):
                 a.to_empty(device="cpu")
                 b.to_empty(device="cpu")
                 torch.nn.init.kaiming_uniform_(a.weight, a=math.sqrt(5), generator=generator)
-                if zero:
+                if zero or tuple(name.split(".")[-2:]) in zero_targets:
                     b.weight.zero_()
                 else:
                     b.weight.normal_(std=1e-2, generator=generator)
@@ -54,11 +65,16 @@ def build_adapter(model_dir: Path, out_dir: Path, targets, *, zero: bool, seed: 
     peft_model.save_pretrained(out_dir)
 
 
-def adapter_plan() -> dict[str, tuple[tuple, bool]]:
+def adapter_plan() -> dict[str, tuple[tuple, bool, frozenset]]:
+    """name -> (targets, zero, zero_targets); missing packed leaders are added with lora_B = 0."""
+    def spec(targets: tuple, zero: bool) -> tuple[tuple, bool, frozenset]:
+        leaders = config.missing_pack_leaders(targets)
+        return (*targets, *leaders), zero, frozenset(leaders)
+
     plan = {}
     for rung, targets in config.RUNGS.items():
-        plan[f"zero-{rung}"], plan[f"live-{rung}"] = (targets, True), (targets, False)
-    plan.update({f"probe-{p}.{m}": (((p, m),), False) for p, m in config.RUNGS["all"]})
+        plan[f"zero-{rung}"], plan[f"live-{rung}"] = spec(targets, True), spec(targets, False)
+    plan.update({f"probe-{p}.{m}": spec(((p, m),), False) for p, m in config.RUNGS["all"]})
     return plan
 
 
@@ -67,7 +83,8 @@ def diff_stats(base: list[list[float]], other: list[list[float]]) -> dict:
     return {"max_abs_diff": max(diffs), "mean_abs_diff": sum(diffs) / len(diffs)}
 
 
-def summarise(results: dict) -> dict:
+def summarise(results: dict, aborted_at: str | None = None) -> dict:
+    """An aborted or incomplete run fails every rung, whatever its finished records say."""
     def live(name: str) -> bool:
         r = results.get(name, {})
         return r.get("loaded", False) and r["mean_abs_diff"] > config.LIVE_MIN_MEAN_DIFF
@@ -77,19 +94,26 @@ def summarise(results: dict) -> dict:
         return (zero.get("loaded", False) and zero["max_abs_diff"] <= config.ZERO_MAX_DIFF
                 and live(f"live-{rung}") and all(live(f"probe-{p}.{m}") for p, m in config.RUNGS[rung]))
 
-    return {"applied_targets": [f"{p}.{m}" for p, m in config.RUNGS["all"] if live(f"probe-{p}.{m}")],
-            **{f"rung_ok:{rung}": rung_ok(rung) for rung in config.RUNGS}}
+    missing = [name for name in adapter_plan() if name not in results]
+    complete = aborted_at is None and not missing
+    return {"complete": complete, "aborted_at": aborted_at, "missing_adapters": missing,
+            "applied_targets": [f"{p}.{m}" for p, m in config.RUNGS["all"] if live(f"probe-{p}.{m}")],
+            **{f"rung_ok:{rung}": complete and rung_ok(rung) for rung in config.RUNGS}}
+
+
+def write_json(path: Path, doc: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(doc, indent=2) + "\n")
 
 
 def run(model_dir: Path, adapter_root: Path) -> dict:
     from transformers import AutoTokenizer
     from vllm import LLM, SamplingParams
     from vllm.lora.request import LoRARequest
-    from vllm.v1.engine.exceptions import EngineDeadError
 
     plan = adapter_plan()
-    for name, (targets, zero) in plan.items():
-        build_adapter(model_dir, adapter_root / name, targets, zero=zero)
+    for name, (targets, zero, zero_targets) in plan.items():
+        build_adapter(model_dir, adapter_root / name, targets, zero=zero, zero_targets=zero_targets)
     modal_vllm.adapter_volume.commit()
     tokenizer = AutoTokenizer.from_pretrained(model_dir)
     pairs = [config.pair_ids(tokenizer, pair) for pair in config.PAIRS]
@@ -102,30 +126,41 @@ def run(model_dir: Path, adapter_root: Path) -> dict:
         return [[out.prompt_logprobs[i][ids[i]].logprob for i in range(start, len(ids))]
                 for out, (ids, start) in zip(outs, pairs, strict=True)]
 
-    base, results = logprobs(), {}
-    for lora_id, (name, (targets, zero)) in enumerate(plan.items(), start=1):
-        record = {"targets": [f"{p}.{m}" for p, m in targets], "zero_init": zero}
+    base, results, abort = logprobs(), {}, {}
+    for lora_id, (name, (targets, zero, zero_targets)) in enumerate(plan.items(), start=1):
         try:
-            record.update(loaded=True, **diff_stats(base, logprobs(
-                LoRARequest(name, lora_id, str(adapter_root / name)))))
-        except EngineDeadError:
-            raise  # every later adapter would "fail" for a reason that is not its own
-        except Exception as exc:  # noqa: BLE001 -- a rejected adapter is the measurement; recorded
-            record.update(loaded=False, error=f"{type(exc).__name__}: {exc}")
-        results[name] = record
+            adapted = logprobs(LoRARequest(name, lora_id, str(adapter_root / name)))
+        except Exception as exc:  # noqa: BLE001 -- not swallowed: stops the run, recorded, summary fails
+            # A worker-side LoRA failure kills the V1 engine: no later adapter can be measured.
+            abort = {"aborted_at": name, "error": f"{type(exc).__name__}: {exc}"}
+            print(json.dumps(abort), flush=True)
+            break
+        results[name] = {"targets": [f"{p}.{m}" for p, m in targets], "zero_init": zero,
+                         "zero_targets": sorted(f"{p}.{m}" for p, m in zero_targets),
+                         "loaded": True, **diff_stats(base, adapted)}
+        print(json.dumps({name: results[name]}), flush=True)
     return {"model": {"id": config.MODEL_ID, "revision": config.MODEL_REVISION},
             "engine_kwargs": config.ENGINE_KWARGS, "lora_rank": config.LORA_RANK,
-            "adapters": results, "summary": summarise(results)}
+            "adapters": results, **abort, "summary": summarise(results, abort.get("aborted_at"))}
 
 
 @app.function(image=image, gpu=config.GPU, volumes=modal_vllm.VOLUMES, timeout=60 * 60)
 def lora_ladder() -> dict:
+    runtime = {**modal_vllm.runtime(), "peft_version": metadata.version("peft")}
     result = run(modal_vllm.download_model(), Path(modal_vllm.ADAPTER_DIR))
-    return {**result, "runtime": {**modal_vllm.runtime(), "peft_version": metadata.version("peft")}}
+    # Saved on the volume before returning, so a dropped local connection does not lose a paid run.
+    copy = f"results/lora-ladder-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.json"
+    result = {**result, "runtime": runtime, "volume_copy": copy}
+    write_json(Path(modal_vllm.ADAPTER_DIR) / copy, result)
+    modal_vllm.adapter_volume.commit()
+    return result
 
 
 @app.local_entrypoint()
 def main(out: str = "docs/decisions/data/vllm-lora-ladder.json") -> None:
     result = lora_ladder.remote()
-    Path(out).write_text(json.dumps(result, indent=2) + "\n")
+    write_json(Path(out), result)
     print(json.dumps(result["summary"], indent=2))
+    if result["summary"]["aborted_at"]:
+        raise SystemExit(f"ladder aborted at {result['summary']['aborted_at']}: {result.get('error')}; "
+                         f"partial result in {out}")

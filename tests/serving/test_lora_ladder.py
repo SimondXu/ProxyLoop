@@ -1,18 +1,42 @@
+import json
+
 import pytest
 
 from scripts.mod import lora_ladder
 from serving import config
 
+QKV, Z = ("linear_attn", "in_proj_qkv"), ("linear_attn", "in_proj_z")
+
 
 def test_plan_has_zero_and_live_per_rung_and_one_nonzero_probe_per_target():
     plan = lora_ladder.adapter_plan()
     for rung, targets in config.RUNGS.items():
-        assert plan[f"zero-{rung}"] == (targets, True)
-        assert plan[f"live-{rung}"] == (targets, False)
+        assert plan[f"zero-{rung}"] == (targets, True, frozenset())
+        assert plan[f"live-{rung}"] == (targets, False, frozenset())
     probes = {name: spec for name, spec in plan.items() if name.startswith("probe-")}
     assert len(probes) == 12 and len(plan) == 16
-    assert all(len(targets) == 1 and zero is False for targets, zero in probes.values())
+    for name, (targets, zero, zero_targets) in probes.items():
+        assert zero is False and name == f"probe-{'.'.join(targets[0])}"
+        assert set(targets) - zero_targets == {targets[0]}  # exactly one non-zero target: the probed one
     assert "probe-linear_attn.in_proj_qkv" in probes and "probe-self_attn.o_proj" in probes
+
+
+def test_every_adapter_with_in_proj_z_also_carries_in_proj_qkv():
+    # vLLM 0.29.0 expand_packed_lora kills the engine on in_proj_qkvz packed as [None, b_z].
+    plan = lora_ladder.adapter_plan()
+    for name, (targets, _, _) in plan.items():
+        assert Z not in targets or QKV in targets, name
+    targets, zero, zero_targets = plan["probe-linear_attn.in_proj_z"]
+    assert targets == (Z, QKV) and zero is False
+    assert QKV in zero_targets and Z not in zero_targets
+    assert plan["probe-linear_attn.in_proj_qkv"] == ((QKV,), False, frozenset())
+
+
+def test_missing_pack_leaders_adds_only_the_leading_member():
+    assert config.missing_pack_leaders((Z,)) == (QKV,)
+    assert config.missing_pack_leaders((QKV, Z)) == ()
+    assert config.missing_pack_leaders((QKV,)) == ()
+    assert config.missing_pack_leaders((("linear_attn", "in_proj_a"), ("self_attn", "k_proj"))) == ()
 
 
 def test_diff_stats():
@@ -58,3 +82,79 @@ def test_zero_or_live_adapter_failures_fail_their_rung(name, record):
 def test_a_rejected_probe_is_not_applied():
     summary = lora_ladder.summarise(results(**{"probe-mlp.down_proj": {"loaded": False, "error": "x"}}))
     assert not summary["rung_ok:all"] and not summary["rung_ok:attn-mlp"]
+
+
+def test_an_aborted_run_is_a_failure_and_lists_the_missing_adapters():
+    done = {name: r for name, r in results().items() if not name.startswith(("probe-linear_attn.in_proj_z",
+                                                                              "probe-linear_attn.in_proj_b",
+                                                                              "probe-linear_attn.in_proj_a",
+                                                                              "probe-linear_attn.out_proj",
+                                                                              "probe-mlp"))}
+    summary = lora_ladder.summarise(done, aborted_at="probe-linear_attn.in_proj_z")
+    assert summary["complete"] is False and summary["aborted_at"] == "probe-linear_attn.in_proj_z"
+    assert summary["missing_adapters"] == [
+        "probe-linear_attn.in_proj_z", "probe-linear_attn.in_proj_b", "probe-linear_attn.in_proj_a",
+        "probe-linear_attn.out_proj", "probe-mlp.gate_proj", "probe-mlp.up_proj", "probe-mlp.down_proj"]
+    assert not summary["rung_ok:all"] and not summary["rung_ok:attn-mlp"]
+
+
+def test_an_abort_fails_every_rung_even_with_all_records_present():
+    summary = lora_ladder.summarise(results(), aborted_at="probe-mlp.down_proj")
+    assert summary["complete"] is False and summary["missing_adapters"] == []
+    assert not summary["rung_ok:all"] and not summary["rung_ok:attn-mlp"]
+
+
+def test_a_complete_run_reports_complete():
+    summary = lora_ladder.summarise(results())
+    assert summary["complete"] is True and summary["aborted_at"] is None and summary["missing_adapters"] == []
+
+
+class Remote:
+    def __init__(self, result: dict):
+        self.result = result
+
+    def remote(self) -> dict:
+        return self.result
+
+
+def test_main_writes_into_a_missing_parent_dir(tmp_path, monkeypatch):
+    result = {"adapters": results(), "summary": lora_ladder.summarise(results())}
+    monkeypatch.setattr(lora_ladder, "lora_ladder", Remote(result))
+    out = tmp_path / "new" / "dir" / "ladder.json"
+    lora_ladder.main.info.raw_f(out=str(out))
+    assert json.loads(out.read_text()) == result
+
+
+def test_main_keeps_an_aborted_result_and_exits_non_zero(tmp_path, monkeypatch):
+    summary = lora_ladder.summarise({}, aborted_at="zero-all")
+    result = {"adapters": {}, "aborted_at": "zero-all", "error": "EngineDeadError: x", "summary": summary}
+    monkeypatch.setattr(lora_ladder, "lora_ladder", Remote(result))
+    out = tmp_path / "missing" / "ladder.json"
+    with pytest.raises(SystemExit, match="aborted at zero-all"):
+        lora_ladder.main.info.raw_f(out=str(out))
+    assert json.loads(out.read_text()) == result
+
+
+class Volume:
+    def __init__(self):
+        self.commits = 0
+
+    def commit(self) -> None:
+        self.commits += 1
+
+
+@pytest.mark.filterwarnings("ignore:The lora_ladder function is executing locally")
+def test_the_remote_function_saves_its_result_on_the_adapters_volume(tmp_path, monkeypatch):
+    partial = {"adapters": {}, "aborted_at": "zero-all", "error": "EngineDeadError: x",
+               "summary": lora_ladder.summarise({}, aborted_at="zero-all")}
+    volume = Volume()
+    monkeypatch.setattr(lora_ladder.modal_vllm, "ADAPTER_DIR", str(tmp_path / "adapters"))
+    monkeypatch.setattr(lora_ladder.modal_vllm, "adapter_volume", volume)
+    monkeypatch.setattr(lora_ladder.modal_vllm, "download_model", lambda: tmp_path / "model")
+    monkeypatch.setattr(lora_ladder.modal_vllm, "runtime", lambda: {"vllm_version": "0.29.0", "gpu_name": "H100"})
+    monkeypatch.setattr(lora_ladder.metadata, "version", lambda name: "0.21.0")
+    monkeypatch.setattr(lora_ladder, "run", lambda model_dir, adapter_root: partial)
+    returned = lora_ladder.lora_ladder.local()
+    saved = tmp_path / "adapters" / returned["volume_copy"]
+    assert json.loads(saved.read_text()) == returned and returned["aborted_at"] == "zero-all"
+    assert returned["runtime"]["peft_version"] == "0.21.0" and volume.commits == 1

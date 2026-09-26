@@ -38,6 +38,18 @@ GDN = tuple(("linear_attn", p) for p in ("in_proj_qkv", "in_proj_z", "in_proj_b"
 MLP = tuple(("mlp", p) for p in ("gate_proj", "up_proj", "down_proj"))
 RUNGS = {"all": ATTN + GDN + MLP, "attn-mlp": ATTN + MLP}  # ladder rungs 1 and 2
 
+# vLLM 0.29.0 model_executor/models/qwen3_5.py packed_modules_mapping fuses §13 targets for LoRA:
+# qkv_proj = [q, k, v], gate_up_proj = [gate, up], in_proj_ba = [in_proj_b, in_proj_a] and
+# in_proj_qkvz = [in_proj_qkv, in_proj_z]. Only in_proj_qkvz has fewer members (2) than output slices
+# (4: q, k, v, z), so only it goes through lora/layers/column_parallel_linear.py expand_packed_lora,
+# which gives a missing member all remaining slices: an adapter with in_proj_z but no in_proj_qkv
+# raises in the worker and kills the engine (ladder run, 2026-09-26). The other packs have one member
+# per slice and tolerate a missing member. Listed here: packs whose leading member must be present,
+# as (leading member, trailing members).
+PACKS_NEEDING_LEADER = {
+    "in_proj_qkvz": (("linear_attn", "in_proj_qkv"), (("linear_attn", "in_proj_z"),)),
+}
+
 
 def app_name(variant: str) -> str:
     if variant not in VARIANTS:
@@ -68,6 +80,12 @@ def target_regex(targets: tuple[tuple[str, str], ...]) -> str:
         parents.setdefault(parent, []).append(proj)
     alts = "|".join(f"{parent}\\.(?:{'|'.join(projs)})" for parent, projs in parents.items())
     return f"model\\.language_model\\.layers\\.\\d+\\.(?:{alts})"
+
+
+def missing_pack_leaders(targets: tuple[tuple[str, str], ...]) -> tuple[tuple[str, str], ...]:
+    """Leading packed members an adapter over `targets` must add (with lora_B = 0) to load in vLLM."""
+    return tuple(leader for leader, trailing in PACKS_NEEDING_LEADER.values()
+                 if leader not in targets and any(t in targets for t in trailing))
 
 
 def chat_ids(tokenizer, messages: list[dict]) -> list[int]:

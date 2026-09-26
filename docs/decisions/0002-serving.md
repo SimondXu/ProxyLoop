@@ -63,9 +63,18 @@ Facts checked while writing the configuration (sources, not measurements):
 - **LoRA ladder** (`scripts/mod/lora_ladder.py`, its own Modal app, one offline vLLM engine with the served
   engine arguments): PEFT adapters built on a meta-device model into the adapters volume. Per rung R
   (`all` = attention + GDN + MLP, `attn-mlp`): `zero-R` (`lora_B = 0`) and `live-R` (`lora_B != 0`); plus one
-  non-zero single-target probe per §13 target. A target counts as **applied** only when its probe loads and moves
-  the mean |Δ prompt_logprob| above 1e-3 nats. A rung is OK when `zero-R` loads and equals base within 1e-4,
-  `live-R` moves the mean above 1e-3, and all of R's targets are applied. A dead engine aborts the run. Rule:
+  probe per §13 target that is non-zero on that target only. The `in_proj_z` probe also carries `in_proj_qkv`
+  with `lora_B = 0` (`lora_A` initialised as usual): vLLM 0.29.0 packs both into `in_proj_qkvz` (4 output
+  slices, 2 members) and its `expand_packed_lora` cannot place `in_proj_z` when `in_proj_qkv` is missing (see
+  History). The zero-B leader adds nothing to the output, so the probe still measures `in_proj_z` alone, over
+  the same packed path the `all` rungs load (`serving/config.py` `PACKS_NEEDING_LEADER`). A target counts as
+  **applied** only when its probe loads and moves the mean |Δ prompt_logprob| above 1e-3 nats. A rung is OK
+  when `zero-R` loads and equals base within 1e-4, `live-R` moves the mean above 1e-3, all of R's targets are
+  applied, and the run completed. Each finished record is printed as one JSON line as it completes. Any engine
+  exception stops the run (a worker-side LoRA failure kills the V1 engine): the result keeps the finished
+  records with `aborted_at` and the error, its summary fails every rung and lists the missing adapters, and
+  `serve-lora-ladder` exits non-zero. The Modal function saves the result on the `proxyloop-adapters` volume
+  (`results/lora-ladder-<UTC time>.json`, named in `volume_copy`) before returning it. Rule:
   serve `all` if `rung_ok:all`, else `attn-mlp` if `rung_ok:attn-mlp`, else escalate to rung 3 (merged BF16 as a
   separate process). The probe fails unless the ladder JSON says `rung_ok:<served rung>`.
   **Rung chosen:** <!-- root-run: fill from docs/decisions/data/vllm-lora-ladder.json (summary) -->
@@ -118,6 +127,18 @@ No number below is typed by hand; each is copied from the committed raw JSON (de
   - Mac-side latency includes the network path to Modal; latency claims need a co-located client (§13).
   - The attest cache trusts (path, size, mtime_ns) for shards and tokenizer files; a volume edit that preserves
     all three would not be re-hashed. Adapter files are always hashed fresh.
+  - On vLLM 0.29.0 any served adapter that contains `in_proj_z` must also contain `in_proj_qkv`, or loading it
+    kills the serving engine (`expand_packed_lora`, History). S0-MOD-02 trains the `all` rung, which has both,
+    so it is unaffected; a future adapter over a subset of the GDN targets must keep the pair.
   - The Modal endpoint is public at the HTTP layer: `/health`, `/version` and `/tokenize` answer without the key
     (vLLM guards only `/v1/...`), and anyone can wake a GPU container with a request. Modal's
     `requires_proxy_auth` would close that; it is deferred (it changes every client, including the probe).
+
+## History
+- **2026-09-26, ladder run 1 failed** (root-run, 1 × H100, vLLM 0.29.0). The engine died at adapter 10 of 16,
+  `probe-linear_attn.in_proj_z` (then non-zero on `in_proj_z` only): `ValueError: Cannot determine how to split
+  lora_b with 4096 rows into 4 slices with output sizes [2048, 2048, 4096, 4096] starting from index 4.`
+  (`vllm/lora/layers/column_parallel_linear.py` `expand_packed_lora`: the missing `in_proj_qkv` member took all
+  4 slices), surfacing as `EngineDeadError`. The script then only returned at the end, so the 9 finished records
+  were lost. Fixes: the `in_proj_z` probe carries a zero-B `in_proj_qkv`, and the ladder streams, stops and
+  saves as described under Decision.

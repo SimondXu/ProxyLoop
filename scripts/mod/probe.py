@@ -264,6 +264,7 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("PROXYLOOP_VLLM_API_KEY is not set")
     report = {"variant": args.variant, "measured_at": time.time()}
     out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
     if args.wait_healthy:
         report["cold_start"] = wait_healthy(url, args.timeout)
         report["checks"] = {"healthy": report["cold_start"]["healthy"]}

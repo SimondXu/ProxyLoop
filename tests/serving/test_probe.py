@@ -166,7 +166,7 @@ def test_evaluation_error_is_recorded_and_the_raw_run_kept(tmp_path, monkeypatch
     monkeypatch.setenv("PROXYLOOP_VLLM_API_KEY", "k3y")
     (tmp_path / "ladder.json").write_text(json.dumps({"summary": {}}))  # no rung_ok -> still evaluates
     del report["attest"]  # evaluate() will fail on the missing attest block
-    out = tmp_path / "probe.json"
+    out = tmp_path / "not-yet" / "probe.json"  # a missing parent dir is created
     assert probe.main(["--out", str(out), "--ladder", str(tmp_path / "ladder.json")]) == 1
     written = json.loads(out.read_text())
     assert written["evaluation_error"].startswith("KeyError")

@@ -36,7 +36,9 @@ def main(argv: list[str] | None = None) -> int:
     served = json.loads(Path(args.against).read_text())["attest"]["shards"]
     result = {"model": {"id": config.MODEL_ID, "revision": config.MODEL_REVISION},
               "host": platform.platform(), **compare(local, served)}
-    Path(args.out).write_text(json.dumps(result, indent=2) + "\n")
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))
     return 0 if result["all_match"] else 1
 
