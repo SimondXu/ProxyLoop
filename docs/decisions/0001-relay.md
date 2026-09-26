@@ -1,48 +1,89 @@
 # ADR-0001: Hosted-model relay capabilities and transport
 
-- **Status:** accepted
+- **Status:** accepted (v2, after the PR #110 review and a second probe)
 - **Date:** 2026-09-26
 - **Task:** S0-ROOT-04
 
 ## Context
-Every hosted model (Slow = Claude Sonnet 5, the world's Ear/Mouth/SimUser, the Haiku 4.5 baseline, and TalkAct's `claude-opus-4-8` / `gemini-3.5-flash`) is reached through one third-party, OpenAI-compatible relay. Its host and key live only in the git-ignored `.env` and are never committed. S0-SYS-04 (LLM adapters), S0-SYS-05 (world) and S2-MOD-03 (TalkAct anchors) need to know what the relay actually supports, so we measured it instead of assuming it.
+Every hosted model (Slow = Claude Sonnet 5, the world's Ear/Mouth/SimUser, the Haiku 4.5 baseline, and TalkAct's `claude-opus-4-8` / `gemini-3.5-flash`) is reached through one third-party, OpenAI-compatible relay. Its host and key live only in the git-ignored `.env`. S0-CON-01, S0-SYS-04/05 and S2-MOD-03 need to know what the relay actually does, so we measured it.
 
 ## Evidence
-All artefacts come from `uv run --no-project scripts/spikes/relay_probe.py` (root-run, 2026-09-26, from the Mac):
-- `docs/decisions/data/relay-probe.json`: the main pass. Five models in parallel, each run sequentially: basic call, 20 streaming calls (TTFT), parallel tool calls, JSON-schema output, and the native route.
-- `docs/decisions/data/relay-probe-followup.json`: Gemini native `response_schema` and function calling; `json_object` mode; the dated Haiku id; output-heavy cost.
-- `docs/decisions/data/relay-cost-input-heavy.json`: input-heavy cost. With the output-heavy pass it gives two equations per model, solved for $/M input and $/M output.
+Everything below comes from `scripts/spikes/relay_probe.py` (root-run from the Mac, 2026-09-26). The files are in `docs/decisions/data/`:
+- **v1, first pass (kept as the record):** `relay-probe.json` (5 models); `relay-probe-followup.json` (Gemini native schema/functions, `json_object`, the dated Haiku id, an output-heavy cost pass); `relay-cost-input-heavy.json` (the input-heavy cost pass).
+- **v2, second pass:**
+  - `relay-probe-v2.json` (`--part main`): 9 models in parallel. Each model runs sequentially: basic call → parallel tools → `json_schema` → `json_object` → two plain controls (same texts, no `response_format`) → one long stream (`max_tokens` 300) → 20 TTFT streams → native route.
+  - `relay-forced-tool.json` (`--part forced`): 10 calls per model with `tool_choice` naming `classify`, checked by a stdlib schema validator.
+  - `relay-cost-input-heavy-v2.json` (`--part cost-input`): 3 calls × `max_tokens` 5 per model, sequential. For the five v1 models the tokens and deltas equal v1 exactly.
+- Each file holds the raw response ids and per-call usage. Request ids are there only where the relay returns them: Claude `req_…`, GPT UUIDs, none for Gemini.
 
-Each file holds the raw response ids, request ids (Anthropic models) and usage per call.
+| Model id (requested) | Echoed id | Forced tool: ok / schema-valid (n=10) | Parallel tools | `json_schema` prompt tok vs control | Long stream: chunks / tokens / total−TTFT | TTFT p50 (n=20) | $/M in / out |
+|---|---|---|---|---|---|---|---|
+| `gpt-5.4-mini-2026-03-17` | same | **10 / 10** | yes | **57 vs 23 (honoured)** | 176 / 179 / 0.37 s | 1.35 s | ≤ 0.762 / not measured |
+| `gpt-5.4-nano-2026-03-17` | same | 10 / 10 | yes | 57 vs 23 (honoured) | 172 / 175 / 0.36 s | 0.96 s | ≤ 0.204 / not measured |
+| `gpt-4.1-mini-2025-04-14` | same | 10 / 10 | yes | 61 vs 24 (honoured) | 172 / 172 / 0.56 s | 1.56 s | ≤ 0.304 / not measured |
+| `gpt-5.6-luna-2026-07-09` | same | 10 / 10 | yes | 57 vs 23 (honoured) | 180 / 215 / 0.88 s | 1.18 s | **≤ 95.433** (anomaly) / not measured |
+| `claude-sonnet-5` | same | 10 / 10 | yes | 26 vs 26 (dropped) | 99 / 300 / 4.59 s | 2.22 s | 3.00 / 15.00 |
+| `claude-haiku-4-5-20251001` | same | 10 / 10 | yes | 23 vs 23 (dropped) | 92 / 300 / 2.98 s | 1.92 s | 1.001 / 5.006 |
+| `claude-opus-4-8` | same | 10 / 10 | yes | 26 vs 26 (dropped) | 90 / 300 / 4.15 s | 2.23 s | 5.00 / 25.00 |
+| `gemini-3.6-flash` | **`gemini-flash`** | 0 / 0 (8 text replies, 2 × 504) | no | 29 vs 29 (dropped) | 18 / 354 / 7.51 s | 4.42 s | 1.50 / 7.50 |
+| `gemini-3.5-flash` | same (two channels) | 0 / 0 (10 text replies) | no | 29 vs 29 (dropped) | 9 / 215 / 1.90 s | 4.83 s | 1.50 / 9.00 |
 
-| Model id (requested) | Available | Echoed model | Stream + usage | Tool calls (parallel) | `response_format` json_schema / json_object | Native route | TTFT p50, Mac, n=20 | $/M in / out (solved) |
-|---|---|---|---|---|---|---|---|---|
-| `claude-sonnet-5` | yes | `claude-sonnet-5` | yes | yes (2/2) | **ignored** / ignored (fenced text) | `/v1/messages`: yes, incl. tool_use | 2.21 s | 3.00 / 15.00 |
-| `claude-haiku-4-5` | **no** (503 `model_not_found`, no channel) | — | — | — | — | no | — | — |
-| `claude-haiku-4-5-20251001` | yes | `claude-haiku-4-5-20251001` | yes | yes (2/2) | ignored | `/v1/messages`: yes, incl. tool_use | 2.14 s | 1.00 / 5.01 |
-| `gemini-3.6-flash` | yes | **`gemini-flash`** | yes | **no: tools dropped** (26 prompt tokens, 0 calls) | ignored / ignored | `generateContent`: text only; `response_schema` and function calling **ignored** | 4.24 s | 1.50 / 7.50 |
-| `claude-opus-4-8` | yes | `claude-opus-4-8` | yes | yes (2/2) | ignored | `/v1/messages`: yes, incl. tool_use | 2.21 s | 5.00 / 25.00 |
-| `gemini-3.5-flash` | yes | `gemini-3.5-flash` | yes | no (tools dropped) | ignored / ignored | `generateContent`: text only; schema and functions ignored | 4.56 s | 1.50 / 9.00 |
-
-- **Billing.** `GET /v1/dashboard/billing/usage` returns `total_usage` in US cents. The solved Claude prices equal the public list prices to the cent, so the unit is confirmed. `/dashboard/billing/subscription` reports `hard_limit_usd: 100`, and the key's `total_usage` went from 5366.46 to 5383.06 cents across the three probe passes. So **about $53.7 of the $100 key limit had already been used before S0**, this probe cost $0.17, and about $46.2 remains on the key.
-- The Gemini "cost" includes whatever thinking tokens the relay bills but does not report, so the Gemini rates are effective rates, not list prices.
+Reading the table:
+- The undated `claude-haiku-4-5` has no channel: v1 got a 503 `model_not_found`.
+- **Cost.** Claude/Gemini rates are solved from two equations per model (the v1 output-heavy pass plus the v2 input-heavy pass). GPT rates are upper bounds (the cents delta divided by prompt tokens, from the input-heavy pass only); their output rates were not measured.
+  - `total_usage` is in US cents. Sonnet and Opus solve to 3.00/15.00 and 5.00/25.00, and Haiku to 1.001/5.006.
+  - The Gemini rates are *effective* rates, since the relay may bill thinking tokens it does not report.
+- **Luna anomaly.** `gpt-5.6-luna` cost 39.8814 cents for 3 calls totalling 4,179 prompt and 12 completion tokens, with 0 reasoning tokens reported. This is likely unreported reasoning tokens; not investigated.
+- **Structured output.** The prompt-token parity of `json_schema` with its control shows the relay drops the schema for Claude and Gemini; GPT's prompt grows by 34–37 tokens because it is honoured.
+  - `json_object` has parity on every model (31 vs 31 for GPT, which honours it), so parity is no evidence there. What shows it is dropped for Claude and Gemini is their output: Markdown-fenced or prose, not raw JSON.
+  - Haiku answered both JSON prompts with an off-task "I'll complete the requested file change." It did so in the v1 follow-up too; we note it as an anomaly.
+- **Streaming is incremental on every model.** Content arrives in 9–180 chunks for 172–354 tokens.
+  - GPT delivers 172–215 tokens in 0.36–0.88 s after the first token. The largest gap on `gpt-5.4-mini` is 0.09 s.
+  - Claude spreads its 300 tokens over 2.98–4.59 s. TTFT is not like-for-like across families: Gemini runs with its default thinking on.
+- **Echoed id.** This is a string the relay reports, so it cannot detect substitution.
+  - `gemini-3.6-flash` echoes `gemini-flash`.
+  - Gemini's native `generateContent` returns no id or model at all.
+  - `gemini-3.5-flash` is served by two channels: 9 of 20 streams carry timestamp-style ids and a `billing_usage` object, and 11 carry UUID ids without one.
+  - The v2 `native_route: true` for GPT ids is the probe's Gemini-route call; it is not a capability we use.
+- **Budget.**
+  - `/dashboard/billing/subscription` reports `hard_limit_usd: 100`. `total_usage` was 5366.4646 cents before the first v1 pass and 5522.9694 after the last v2 pass. So **$53.66 was used before this probe**, the probe window cost $1.57, and **$44.77 remains**.
+  - Of the $1.57, 35.7558 cents fall between v1's end and the v2 main pass. The forced pass ran then and does not read billing.
 
 ## Decision
-1. **One transport for our code:** the OpenAI-compatible `/v1/chat/completions` route, streaming with `stream_options.include_usage`. Slow (Sonnet 5) uses OpenAI-style tool calls; parallel calls work. We add no Anthropic-native adapter to `src/`.
-2. **Never rely on `response_format`.** The relay accepts `json_schema` and `json_object` and silently ignores both. Structured output from a hosted model is a **forced tool call** (`tool_choice` naming one function) on a Claude model, validated against the schema, with failures counted. Code must not strip Markdown fences or otherwise leniently parse prose into JSON.
-3. **The world's structured roles move from Gemini to Haiku.** ARCHITECTURE §10 specified `gemini-3.6-flash` with a JSON schema for the Ear and JSON `{text, revealed}` for SimUser. Through this relay Gemini gets neither schemas nor tools, echoes a different model id (`gemini-flash`), and is about 2 s slower to first token. So the **Ear, SimUser and Mouth use `claude-haiku-4-5-20251001`**: the Ear and SimUser through forced tool calls with a closed enum or schema, and the Mouth as plain text. This amends ARCHITECTURE §10.1–§10.2. The world model id is a `SessionConfig` value, so it can be swapped later without a second path.
-4. **Model ids are exact.** Use the dated id `claude-haiku-4-5-20251001` everywhere, including the S4 Haiku baseline. The undated alias has no channel. Every call records the echoed model. `evidence-check` compares it with the requested id and treats a mismatch as a provenance failure, not a warning.
-5. **TalkAct transport (OPEN_QUESTIONS Q1).** No translation proxy and no direct provider keys are needed:
-   - `claude-opus-4-8` works on the Anthropic-native `/v1/messages` route, including tool use, so TalkAct's `anthropic` SDK runs unmodified with its base URL pointed at the relay;
-   - `gemini-3.5-flash` works on the native `generateContent` route for plain text, which is all TalkAct's Gemini paths use (`fast_agent._generate_gemini`, `simuser`).
-   - **Not yet verified:** native streaming (`generate_content_stream`) and `system_instruction` pass-through on the Gemini route. S2-MOD-03 checks both before it runs anchors, and states them in its own ADR.
-6. **Rate card.** The solved prices above are the S0 rate card for `SpendLedger` (S0-SYS-04). The ledger reconciles against `total_usage` deltas at session boundaries, since the relay's own counter is the truth for spend.
+1. **Transport.** Our code uses one route: the OpenAI-compatible `/v1/chat/completions`, streaming with `stream_options.include_usage`. There is no Anthropic- or Gemini-native adapter in `src/`.
+2. **World models = `gpt-5.4-mini-2026-03-17` for Ear, Mouth and SimUser.** The Ear and SimUser use forced tool calls; the Mouth is plain text. Reasons, all from the table:
+   - forced tool calls 10/10 with schema-valid arguments 10/10;
+   - `json_schema` is honoured (57 vs 23 prompt tokens), so tools and schemas reach the model;
+   - real streaming;
+   - TTFT p50 of 1.35 s;
+   - input at ≤ $0.762/M;
+   - it sits outside both agent families (Claude = Slow, teacher and the Haiku baseline; Qwen = Fast), which removes the family-overlap risk the review raised.
+
+   This amends ARCHITECTURE §10.1–§10.2. The S2 Ear audit is still stratified by speaker model.
+3. **Rejected world candidates:**
+   - Gemini: no tools or schemas, an echoed-id mismatch, and a native route with no ids.
+   - `claude-haiku-4-5-20251001`: it works, but it is the teacher's family and the S4 Fast baseline. It stays the S4 baseline only.
+   - `gpt-5.6-luna`: the input-cost anomaly above.
+   - `gpt-4.1-mini`: it works, but it is older.
+   - `gpt-5.4-nano`: it works and is the fastest. It is kept as a cheaper **config choice** for the Mouth only, if the S2 audit shows no quality loss. It is never a runtime fallback.
+4. **One structured-output mechanism.** All structured world and Slow output is a forced tool call (`tool_choice` naming one function), validated against the schema, with failures counted. It works on Claude and GPT (`relay-forced-tool.json`). Our code does not use `response_format`, even though GPT honours it, and does not strip fences or leniently parse prose.
+5. **Model ids are exact, dated where available.** Every call records both the requested and the echoed id. `evidence-check` treats a mismatch as a provenance failure. This is a consistency check on relay-reported strings, not proof of the serving model.
+6. **TalkAct transport (OPEN_QUESTIONS Q1) is unchanged.** `claude-opus-4-8` works on the native `/v1/messages` route with tool use, and `gemini-3.5-flash` works on native `generateContent` for plain text. Native Gemini streaming (`generate_content_stream`) and `system_instruction` pass-through remain **unverified**; S2-MOD-03 checks them before it runs anchors.
+7. **Rate card.** The solved rates are the S0 rate card for `SpendLedger`, which reconciles against `total_usage` deltas at session boundaries. For `gpt-5.4-mini` only the input bound is known.
 
 ## Consequences
-- **Contract / fingerprint impact:** none on the renderer. S0-CON-01 must give `SessionConfig` per-role world model ids, defaulting to `claude-haiku-4-5-20251001`. The `LLMClient` needs a forced-tool structured-output request (`ToolRequest` with a required tool).
-- **Data invalidated:** none (no data exists yet).
+- **S0-CON-01** (no renderer fingerprint impact):
+  - the `WorldModels` default is `gpt-5.4-mini-2026-03-17` for `ear`, `mouth` and `simuser`;
+  - `ToolRequest` needs a forced `tool_choice`;
+  - `LLMCallRecord` keeps the requested and echoed model ids.
+- **S0-SYS-04 `llm-smoke`** gates live runs on:
+  - forced-tool schema validity on the Slow model and the world model;
+  - prompt-token parity with a control (no injected prompt);
+  - the echoed id and TTFT.
+- **Data invalidated:** none.
 - **Risks:**
-  - **Budget.** At about $46 left on the key, S1's teacher runs and S3's data generation will exceed it. The user must top up the key, or supply another one, before S1 teacher-scale runs; the S0 spend summary will show the projection.
-  - Haiku as both a world model and the S4 Fast baseline could flatter the Haiku baseline (same-family rep). S4 reports this as a limitation, or swaps the world model through `SessionConfig`.
-  - Relay behaviour can change without notice. `make llm-smoke` (S0-SYS-04) re-checks tool calls, the echoed model and TTFT, and a regression there blocks live runs.
-- **Revisit** if the relay starts honouring Gemini schemas or tools, or if a direct Anthropic or Google key becomes available.
+  - **Budget.** About $44.77 is left, which is not enough for S1 teacher-scale runs; the user must top up or supply a key before then.
+  - The relay can change without notice, which is why `llm-smoke` exists.
+  - The Luna cost is unexplained.
+  - GPT's sub-second post-TTFT spread cannot rule out relay-side buffering from the client side.
+- **Revisit** if the relay starts honouring Gemini tools or schemas, if a direct provider key appears, or if the S2 audit disputes the world model.

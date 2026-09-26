@@ -1196,118 +1196,118 @@
       "model": "claude-haiku-4-5",
       "openai_basic": {
         "error_type": "InternalServerError",
-        "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455420362457738268d9d6VH7tBvyk)', 'type': 'new_api_error'}}",
+        "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455420362457738268d9d6VH7tBvyk)', 'type': 'new_api_error'}}",
         "status_code": 503
       },
       "tools": {
         "error_type": "InternalServerError",
-        "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455422429603358268d9d61DPSHbGK)', 'type': 'new_api_error'}}",
+        "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455422429603358268d9d61DPSHbGK)', 'type': 'new_api_error'}}",
         "status_code": 503
       },
       "json_schema": {
         "error_type": "InternalServerError",
-        "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455423442566068268d9d6tb0VA2FF)', 'type': 'new_api_error'}}",
+        "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455423442566068268d9d6tb0VA2FF)', 'type': 'new_api_error'}}",
         "status_code": 503
       },
       "streams": [
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455424233706778268d9d6oVKvilXp)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455424233706778268d9d6oVKvilXp)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455425143787618268d9d6pRyaZb65)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455425143787618268d9d6pRyaZb65)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455425930121258268d9d64Lo7WNef)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455425930121258268d9d64Lo7WNef)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455426684457798268d9d6Url6HOd2)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455426684457798268d9d6Url6HOd2)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455427452375028268d9d6MSjTYfUv)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455427452375028268d9d6MSjTYfUv)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455428791928398268d9d6Ejvp2tIF)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455428791928398268d9d6Ejvp2tIF)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455429577382158268d9d6rkS1tyfA)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455429577382158268d9d6rkS1tyfA)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455430343499628268d9d6Tqzrjt7V)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455430343499628268d9d6Tqzrjt7V)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455431133196148268d9d6lZTaDaPB)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455431133196148268d9d6lZTaDaPB)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455432056681798268d9d6kInb5hrp)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455432056681798268d9d6kInb5hrp)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455432840534008268d9d6ItMoB22x)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455432840534008268d9d6ItMoB22x)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455433932595128268d9d6vqL1ZpkW)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455433932595128268d9d6vqL1ZpkW)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455434721202848268d9d6POIgXkRz)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455434721202848268d9d6POIgXkRz)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455435637798398268d9d6Gu9B34dk)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455435637798398268d9d6Gu9B34dk)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455436415065838268d9d6FBg7SluW)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455436415065838268d9d6FBg7SluW)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455437188648508268d9d6TWxVczaj)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455437188648508268d9d6TWxVczaj)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455437961998898268d9d6ab6Rk8uy)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455437961998898268d9d6ab6Rk8uy)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455439262619368268d9d6QYaQ39QY)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455439262619368268d9d6QYaQ39QY)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455440036698718268d9d6IiBm1Yhj)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455440036698718268d9d6IiBm1Yhj)', 'type': 'new_api_error'}}",
           "status_code": 503
         },
         {
           "error_type": "InternalServerError",
-          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455440817162918268d9d6bmJm980F)', 'type': 'new_api_error'}}",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455440817162918268d9d6bmJm980F)', 'type': 'new_api_error'}}",
           "status_code": 503
         }
       ],
@@ -1318,7 +1318,7 @@
         "route": "anthropic /v1/messages",
         "ok": false,
         "error_type": "InternalServerError",
-        "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455443356972698268d9d6KPFdfGuE)', 'type': 'new_api_error'}}",
+        "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group <redacted> (distributor) (request id: 202609260455443356972698268d9d6KPFdfGuE)', 'type': 'new_api_error'}}",
         "status_code": 503
       }
     },
