@@ -35,9 +35,9 @@ from proxyloop.evidence.reality import (
 )
 
 Mode = Literal["offline", "claim"]
-# The outcomes of Slow's finish() (§8). Anything else (llm_unavailable, a
-# budget or timeout stop, an error, a cp hang-up) is not a claimable run.
-ENDED_OK = frozenset({"completed", "no_deal", "info_only", "escalate"})
+# Slow's finish() outcomes (§8) and the cp hang-up (§9.5 ABANDONED). Anything
+# else (llm_unavailable, a budget or timeout stop, an error) is not claimable.
+ENDED_OK = frozenset({"completed", "no_deal", "info_only", "escalate", "abandoned"})
 
 
 @dataclass(frozen=True, slots=True)

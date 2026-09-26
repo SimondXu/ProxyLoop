@@ -339,3 +339,12 @@ def test_any_response_text_gives_a_consistent_bundle(response: str) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         report = check_path(write_fast_bundle(Path(tmp) / "run", response))
     assert report.ok, report.failures
+
+
+def test_a_cp_hang_up_ending_passes_the_claim(real: Path) -> None:
+    """ABANDONED (§9.5, strikes >= 3) is a real interaction; EVAL counts it."""
+
+    events = _events(real)
+    events[-1]["payload"]["reason"] = "abandoned"
+    _write(real, events)
+    assert check_path(real, "claim").ok, check_path(real, "claim").failures
