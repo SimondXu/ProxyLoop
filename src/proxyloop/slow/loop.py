@@ -31,7 +31,7 @@ class SlowLoop:
         self._results: list[tuple[str, str]] = []  # (tool call id, result text)
         self._read: set[str] = set()
         self._reasons: set[str] = set()
-        self._wake, self._n = asyncio.Event(), 0
+        self._wake, self.steps = asyncio.Event(), 0
 
     def wake(self, reason: str) -> None:
         self._reasons.add(reason)
@@ -65,11 +65,12 @@ class SlowLoop:
         basis = {"basis_seq": bb.seq}
         wake = basis | {"wake_reasons": list(reasons)}
         started = host.emit("slow.step.started", "slow", wake, []).event_id
-        notes = [*map(prompt.note, new), prompt.status_bar(view)]
+        wakes = f"[WAKE] {', '.join(reasons)}"
+        notes = [wakes, *map(prompt.note, new), prompt.status_bar(view)]
         self._history += self._context("\n".join(notes))
-        self._n += 1
+        self.steps += 1
         request = llm.ToolRequest(
-            call_id=f"slow:{self._n}",
+            call_id=f"slow:{self.steps}",
             role="slow",
             messages=(
                 ChatMessage(role="system", content=prompt.SYSTEM),

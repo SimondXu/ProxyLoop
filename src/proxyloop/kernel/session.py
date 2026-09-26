@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator, Callable, Coroutine, Mapping, Sequenc
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from types import CoroutineType
 from typing import Any, Literal, cast
 
 from proxyloop.contract import CONTRACT_VERSION, llm
@@ -44,6 +45,7 @@ DISCLOSURE = "Hello, this is an AI assistant calling on behalf of the account ho
 PROJECTED = (500_000, 200)  # [E] micro-USD and calls per S0 episode; guard at 10x
 ChannelSpec = Literal["sim", "human"] | Channel
 ClientFactory = Callable[[llm.LLMRole, llm.ModelRef, RecordSink], llm.LLMClient]
+type Turn = CoroutineType[Any, Any, None]
 PromptKind = Literal["view", "prompt", "messages", "response"]
 P3 = Literal["pass", "fail", "not_applicable"]
 REAL = llm.AdapterKind.REAL_HTTP
@@ -105,26 +107,34 @@ class SimRepChannel(Channel):  # hears text_heard; ticks on a free floor
     def busy(self) -> bool:
         return self._turns > 0
 
-    async def send(self, text: str | None, utt_id: str, cause: str, t_ms: int) -> None:
-        if text is not None:
-            await self._run(self._rep.on_agent_utterance(utt_id, text, cause, t_ms))
+    def send(self, text: str | None, utt_id: str, cause: str, t_ms: int) -> Turn:
+        heard = (
+            self._rep.on_agent_utterance(utt_id, text, cause, t_ms) if text else None
+        )
+        return self._run(heard)
 
-    async def tick(self, t_ms: int) -> None:
-        await self._run(self._rep.tick(t_ms))
+    def tick(self, t_ms: int) -> Turn:
+        return self._run(self._rep.tick(t_ms))
 
     def floor(self, free: bool, t_ms: int) -> None:
         self._rep.floor(free, t_ms)
 
-    async def _run(self, turn: Coroutine[Any, Any, RepTurn]) -> None:
-        self._turns += 1
-        try:
-            done = await turn
-        finally:
-            self._turns -= 1
-        end: End = ("hangup" if done.strike else "closed") if done.ended else ""
-        if done.lines or end or done.strike:
-            lines = tuple((text, ev) for text, ev in done.lines)
-            self.incoming.put_nowait(Incoming(lines, strike=done.strike, end=end))
+    def _run(self, turn: Coroutine[Any, Any, RepTurn] | None) -> Turn:
+        self._turns += 1  # busy from the spawn: a tick never overlaps a turn
+
+        async def run() -> None:
+            try:
+                done = await turn if turn else None
+            finally:
+                self._turns -= 1
+            if done is None:
+                return
+            end: End = ("hangup" if done.strike else "closed") if done.ended else ""
+            if done.lines or end or done.strike:
+                lines = tuple((text, ev) for text, ev in done.lines)
+                self.incoming.put_nowait(Incoming(lines, strike=done.strike, end=end))
+
+        return run()
 
 
 class _WorldSink:
@@ -140,7 +150,8 @@ class _WorldSink:
 
 def _roles(specs: Mapping[str, ChannelSpec]) -> list[llm.LLMRole]:
     rep = specs.get("cp") == "sim"
-    used: dict[llm.LLMRole, bool] = {"slow": True, "fast_user": "user" in specs}
+    used: dict[llm.LLMRole, bool] = {"slow": "cp_agent" not in specs}
+    used |= {"fast_user": "user" in specs}
     used |= {"simuser": specs.get("user") == "sim", "fast_cp": "cp_agent" not in specs}
     used |= {"ear": rep, "mouth": rep}
     return [role for role, yes in used.items() if yes]
@@ -229,7 +240,10 @@ class Kernel:
         fast_lanes: list[Lane] = [x for x in lanes if f"fast_{x}" in self.clients]
         self.lanes = {lane: FastLane(self, lane) for lane in fast_lanes}
         keys = frozenset(task.disclosure.shareable)
-        self.slow = SlowLoop(self, self.clients["slow"], task.slow_brief, keys)
+        slow = self.clients.get("slow")  # none in rep-chat
+        self.slow = slow and SlowLoop(self, slow, task.slow_brief, keys)
+        self.closed, self._disclosed = False, asyncio.Event()  # the cp call
+        self._timer: asyncio.Task[None] | None = None  # Slow's one wait timer
 
     def _make(self, role: str, ref: llm.ModelRef, sink: RecordSink) -> llm.LLMClient:
         clock, live = self.clock.monotonic_ms, self.cfg.live
@@ -315,13 +329,15 @@ class Kernel:
         p, user, cp = e.payload, self.lanes.get("user"), self.lanes.get("cp")
         if e.type == "user.msg" and user is not None:
             user.trigger(Trigger(kind="user_msg"), e.event_id)
-        elif e.type == "utt.final" and p["speaker"] == "partner" and cp is not None:
-            cp.trigger(Trigger(kind="rep_spoke"), e.event_id)
+        elif e.type == "utt.final" and p["speaker"] == "partner" and cp:
+            cp.trigger(
+                Trigger(kind="rep_spoke"), e.event_id
+            ) if not self.closed else None
         elif e.type == "s2f.msg" and p["type"] in ("ASK_USER", "TELL_USER") and user:
             user.trigger(Trigger(kind="slow_msg", msg_id=str(p["msg_id"])), e.event_id)
-        elif e.type == "s2f.msg" and p["type"] == "GUIDE" and cp is not None:
+        elif e.type == "s2f.msg" and p["type"] == "GUIDE" and cp and not self.closed:
             cp.trigger(Trigger(kind="guidance"), e.event_id)
-        elif e.type == "f2s.msg":
+        elif e.type == "f2s.msg" and self.slow:
             self.slow.wake("relay")
 
     def finish(self, outcome: str) -> None:
@@ -334,12 +350,17 @@ class Kernel:
 
         self.spawn(drain())
 
-    def wake_slow(self, reason: str, after_s: float) -> None:
-        async def later() -> None:
-            await self.sleep(after_s)
-            self.slow.wake(reason)
+    def wake_slow(self, reason: str, after_s: float) -> None:  # one timer (M2)
+        if self._timer is not None:
+            self._timer.cancel()
+        slow, step = self.slow, self.slow.steps if self.slow else 0
 
-        self.spawn(later())
+        async def later() -> None:  # fires only if no step started since
+            await self.sleep(after_s)
+            if slow and slow.steps == step:
+                slow.wake(reason)
+
+        self._timer = self._tg.create_task(later())
 
     async def run(self) -> RunResult:
         models = {
@@ -406,7 +427,8 @@ class Kernel:
             self.spawn(user.send(None, "", opened["user"].event_id, self.now()))
         if "user" in self.lanes:
             self.spawn(self.lanes["user"].run())
-        self.spawn(self.slow.run())
+        if self.slow:
+            self.spawn(self.slow.run())
         self.spawn(watchdog(self))
         if humans := {
             k: c for k, c in self.channels.items() if isinstance(c, HumanChannel)
@@ -417,13 +439,19 @@ class Kernel:
         line = {"lane": "cp", "kind": "disclosure", "text": DISCLOSURE}
         said = self.emit("speak.verbatim", "guard", line, [opened]).event_id
         released = self.emit("speak.released", "kernel", {"lane": "cp"}, [said])
-        await self.speakers["cp"].speak([("disclosure", DISCLOSURE, released.event_id)])
+        said = [("disclosure", DISCLOSURE, released.event_id)]
+        await self.speakers["cp"].speak(said, interruptible=False)
+        self._disclosed.set()
         if "cp" in self.lanes:
             self.spawn(self.lanes["cp"].run())
 
     async def _ingress(self, key: str, channel: Channel, opened: str) -> None:
         while True:  # partner turns become user.msg / utt.final
             inc = await channel.incoming.get()
+            if key != "user" and self.closed:
+                continue  # the call is over: nothing more on its lane
+            if key == "cp_agent":
+                await self._disclosed.wait()
             if (wait := inc.due_ms - self.now()) > 0:
                 await self.sleep(wait / 1000)
             if key == "cp" and inc.lines:
@@ -440,8 +468,9 @@ class Kernel:
                 hung_up = inc.end == "hangup" and key == "cp"
                 raise SessionEnd("abandoned" if hung_up else "stopped")
             if inc.end == "closed":
+                self.closed = True
                 self.emit("chan.closed", "kernel", {"lane": "cp"}, [last])
-                self.slow.wake("call_closed")
+                self.slow.wake("call_closed") if self.slow else None
 
     def _line(self, key: str, text: str, causes: list[str]) -> str:
         if key == "user":

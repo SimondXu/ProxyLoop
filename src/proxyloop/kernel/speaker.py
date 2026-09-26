@@ -30,7 +30,9 @@ class Speaker:
         self._lock, self._barge = asyncio.Lock(), asyncio.Event()
         self.speaking = False
 
-    async def speak(self, lines: Sequence[tuple[str, str, str]]) -> None:  # one turn
+    async def speak(
+        self, lines: Sequence[tuple[str, str, str]], interruptible: bool = True
+    ):
         k, realtime = self._k, self.lane == "cp"
         async with self._lock:
             self._barge.clear()
@@ -39,7 +41,9 @@ class Speaker:
             heard: list[str] = []
             last: Event | None = None
             for utt_id, text, cause in lines:
-                said = await self._clock(text) if realtime else text
+                if realtime and k.closed:
+                    break  # the call is over
+                said = await self._clock(text, interruptible) if realtime else text
                 out = {"lane": self.lane, "utt_id": utt_id, "text_generated": text}
                 out |= {"text_heard": said, "interrupted": said != text}
                 last = k.emit("utt.delivered", "kernel", out, [cause])
@@ -60,10 +64,13 @@ class Speaker:
         async with self._lock:
             return
 
-    async def _clock(self, text: str) -> str:
+    async def _clock(self, text: str, interruptible: bool) -> str:
+        start, seconds = self._k.now(), min(MAX_LINE_S, len(text.split()) / WORDS_PER_S)
+        if not interruptible:  # the disclosure is heard whole (I11)
+            await self._k.sleep(seconds)
+            return text
         if self._barge.is_set():
             return ""
-        start, seconds = self._k.now(), min(MAX_LINE_S, len(text.split()) / WORDS_PER_S)
         timer = asyncio.ensure_future(self._k.sleep(seconds))
         barge = asyncio.ensure_future(self._barge.wait())
         await asyncio.wait((timer, barge), return_when=asyncio.FIRST_COMPLETED)

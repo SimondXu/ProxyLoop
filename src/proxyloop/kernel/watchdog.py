@@ -23,5 +23,6 @@ async def watchdog(k: Kernel) -> None:
         await k.sleep(TICK_S)
         if (t := k.now()) > 1000 * MAX_SESSION_S:
             raise SessionEnd("timeout")
-        if not speaker.speaking and not rep.busy:
+        human = "cp_agent" in k.channels  # a person types: no rep patience
+        if not (speaker.speaking or rep.busy or k.closed or human):
             k.spawn(rep.tick(t))

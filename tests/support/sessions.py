@@ -155,11 +155,12 @@ def run(
     cfg: SessionConfig | None = None,
     until: Until | None = None,
     vllm: httpx.MockTransport | None = None,
+    task: Task | None = None,
 ) -> RunResult:
     clock = ScaledClock(100)
     session = run_session(
         cfg or fake_config(),
-        patient_task(),
+        task or patient_task(),
         channels,
         runs_dir=tmp_path,
         clock=clock,
