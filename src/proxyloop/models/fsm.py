@@ -66,8 +66,14 @@ MOVES: dict[str, str] = {  # GuideMove -> what the FSM says ({} = slot values)
     "deflect_fact_request": "I'm sorry, I can't share that detail.",
     "close_call": "Thank you for your help today. Goodbye.",
 }
-_NO_SLOTS = {"identify": "I'm calling for the account holder.", "cite_competitor": ""}
-_COMPLETE = re.compile(r"\b(?:done|complete[d]?|finished|all set|accepted)\b", re.I)
+NOTED = "I've noted that; I need to check before agreeing to anything."
+# A sentence that reads as work finished; unspoken unless VERIFIED_COMPLETE (I6).
+_COMPLETE = re.compile(
+    r"\b(?:complete[ds]?|done|finished|all set|accepted|switched|changed"
+    r"|cancell?ed|locked in|confirmed|processed|applied|set up|activated"
+    r"|upgraded|downgraded|updated|renewed|signed (?:you )?up)\b",
+    re.I,
+)
 _STATUS_Q = re.compile(r"\b(?:done|finished|complete|status|progress|accepted)\b", re.I)
 _APPROVE = re.compile(r"\b(?:approve|accept|go ahead|yes,? do it|take it)\b", re.I)
 
@@ -88,7 +94,6 @@ class Seen:
     args: dict[str, str]  # the trigger template's fields (text, readback_text, n)
     status: str
     hold: str | None
-    approval: str | None
     offers: tuple[Offer, ...]
     guides: tuple[tuple[str, tuple[str, ...]], ...]  # (GuideMove, slot values)
     lines: tuple[tuple[str, str], ...]  # (partner | agent, text)
@@ -173,14 +178,12 @@ def read_view(messages: Sequence[ChatMessage]) -> Seen:
         if sep and row != OMITTED_LINES and label in profile.labels:
             lines.append(("partner" if label == profile.labels[0] else "agent", text))
     hold = re.fullmatch(r"on hold \((\w+)\)", part.get("hold", NONE))
-    approval = part.get("approval", NONE)
     return Seen(
         lane=profile.lane,
         trigger=trigger,
         args=args,
         status=part["status"],
         hold=hold[1] if hold else None,
-        approval=None if approval == NONE else approval,
         offers=_offers(part["offers"]),
         guides=_guides(part.get("guidance", NONE), profile),
         lines=tuple(lines),
@@ -214,9 +217,9 @@ def _relay(who: str, heard: str) -> list[TurnItem]:
 
 def _guide(lane: Lane, move: str, values: tuple[str, ...]) -> list[TurnItem]:
     text = MOVES[move]
-    if "{}" in text:
-        text = text.format(", ".join(values)) if values else _NO_SLOTS[move]
-    items = _say(lane, text)
+    if "{}" in text and not values:
+        return []  # a slot move without slot values: nothing to say, skipped
+    items = _say(lane, text.format(", ".join(values)))
     if move == "hold_for_decision":
         items.append(Hold(reason="decision"))
     if move == "close_call":
@@ -267,19 +270,22 @@ def _cp(v: Seen) -> list[TurnItem]:
     if cues.ACCEPT.search(rep) or cues.PRESSURE.search(rep):
         why = "pressure" if cues.PRESSURE.search(rep) else "decision"
         return [*_say("cp", CHECKING), *relay, _hold(why)]
-    if cues.MONEY.search(rep) or cues.OFFER.search(rep):
+    if cues.offer(rep):
         if confirmed or v.last("agent") == READBACK:
             noted = "Thank you, I've noted every term."
             return [*_say("cp", noted, CHECKING), *relay, _hold("offer")]
         return [*_say("cp", READBACK), *relay, _hold("offer")]
+    question = rep.rstrip().endswith("?")
+    if question and any(o.status == "open" for o in v.offers):
+        return [*_say("cp", CHECKING), *relay, _hold("decision")]
     if (guide := _unvoiced(v)) is not None:
         return [*_guide("cp", *guide), *relay]
     if v.hold is not None:
         still = "I'm still checking with my customer."
         return [*_say("cp", still), *relay, _hold(v.hold)]
-    if rep.rstrip().endswith("?"):
+    if question:
         return [*_say("cp", "Let me check that with my customer."), *relay]
-    return [*_say("cp", "Okay, thank you."), *relay]
+    return [*_say("cp", NOTED), *relay]
 
 
 def _hold(reason: str) -> Hold:
@@ -312,9 +318,13 @@ def _user(v: Seen) -> list[TurnItem]:
     if v.trigger == "session_start":
         return _say("user", "Hi, I'm your assistant; I'll keep you updated here.")
     if v.trigger == "slow_msg":
-        text = v.args.get("text", "")
-        caveat = "" if verified or not _COMPLETE.search(text) else _status(v.status)
-        return _say("user", text, caveat)
+        said = _say("user", v.args.get("text", ""))
+        kept = [
+            s
+            for s in said
+            if verified or not (isinstance(s, Speech) and _COMPLETE.search(s.text))
+        ]
+        return kept if kept == said else [*kept, *_say("user", _status(v.status))]
     if v.trigger == "approval_card":
         card = v.args.get("readback_text", "")
         mine = "Please review it in the app; I can't approve anything for you."

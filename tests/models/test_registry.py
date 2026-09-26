@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from tests.contract.samples import SONNET, session_config
+from tests.support.fakes import ScriptedLLM, fake_ref
 
 from proxyloop.contract.config import AblationId, SessionConfig
 from proxyloop.contract.llm import AdapterKind
@@ -46,6 +47,18 @@ def test_what_each_condition_runs() -> None:
         )
 
 
+def test_t_and_r_run_the_teacher_with_no_resamples() -> None:
+    """E2 (#124): in evaluation the teacher gets no retry the student lacks."""
+
+    limits = {name: condition(name).teacher_resamples for name in conditions()}
+    assert limits == {"C2": None, "C3": None, "C4": None, "T": 0, "F": None, "R": 0}
+    teacher = ScriptedLLM(fake_ref("teacher"), [])
+    for name in ("T", "R"):
+        assert condition(name).teacher_repair(teacher).max_resamples == 0
+    with pytest.raises(ValueError, match="no teacher"):
+        condition("C2").teacher_repair(teacher)
+
+
 def test_the_reality_report_labels_f_as_the_baseline_fsm() -> None:
     assert label(condition("F").fast_cp) == "baseline_fsm"
     assert {label(condition(n).fast_cp) for n in ("C2", "C3", "R")} == {"vllm"}
@@ -73,8 +86,14 @@ def test_unknown_names_fail_loudly() -> None:
 
 
 DILATION = re.compile(
-    r"dilat|time[_-]?scale|clock[_-]?(?:scale|factor|speed)|slow[_-]?motion", re.I
+    r"dilat|time[_-]?scale|clock[_-]?(?:scale|factor|speed)|slow[_-]?motion"
+    r"|speed[_-]?up|scaled[_-]?clock|scale[_-]?(?:factor|clock|time)",
+    re.I,
 )
+# src/ is held to a wider net: any "scale" word, except the unit table
+# ``slow/tools.SCALE`` (minor units and months, not time).
+SRC_SCALE = re.compile(r"scale", re.I)
+UNIT_SCALE = re.compile(r"\bSCALE\b(?:\s*=\s*\{\"usd_minor\"|\[|\s*and\b|:)|in SCALE\b")
 SCANNED = ("src", "serving", "training_jobs", "scripts", "tasks", "mk")
 CODE = {".py", ".yaml", ".yml", ".toml", ".json", ".mk", ".sh"}
 
@@ -91,6 +110,24 @@ def test_no_clock_dilation_option_exists() -> None:
         if path.is_file()
         for n, line in enumerate(path.read_text("utf-8").splitlines(), 1)
         if DILATION.search(line)
+        or (
+            path.is_relative_to(ROOT / "src")
+            and SRC_SCALE.search(UNIT_SCALE.sub("", line))
+        )
     ]
     assert hits == []
     assert not [f for f in SessionConfig.model_fields if DILATION.search(f)]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "teacher_dilated: bool = False",
+        "PL_TIME_SCALE = 10",
+        "clock = ScaledClock(100)",
+        "speedup: float = 1.0",
+        "wall_scale = 2",
+    ],
+)
+def test_the_src_net_catches_dilation_words(line: str) -> None:
+    assert DILATION.search(line) or SRC_SCALE.search(UNIT_SCALE.sub("", line))

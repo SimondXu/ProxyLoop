@@ -3,17 +3,21 @@
 Two parts, split along what each can see:
 
 - ``decision_point(view)``: the kernel-side detector over a ``FastView``. It
-  names the decision points of TRAINING §2.1 (a rep offer, a protected-fact or
-  identity request heard, a pending approval, a user correction or stop).
+  names the decision points of TRAINING §2.1 (a rep offer, an ask to accept or
+  decide, any rep question while an offer is open, a protected-fact or identity
+  request heard, a pending approval, a user correction or stop).
   ``substitutes(view, ablations)`` applies it only on a lane whose
   ``teacher_repair_*`` ablation is set.
 - ``TeacherRepair``: the teacher as a Fast under Fast-role constraints. It
   receives exactly the kernel's ``render_messages(view, profile)`` request (it
-  renders nothing, I3), parses the teacher's output with the student parser,
-  resamples invalid output at most twice, and records how many resamples each
-  call used. The teacher runs on the wall clock (I7).
+  renders nothing, I3). ``max_resamples`` has no default:
+  - evaluation (conditions T and R) passes 0: the teacher's output is delivered
+    as it streams, and parse issues are counted, exactly as for the student;
+  - teacher-in-harness data generation (TRAINING §2.1, S3) passes 2: output
+    the student parser rejects is resampled, and each call's count is kept.
+  The teacher runs on the wall clock (I7).
 
-The kernel (S3-SYS-01) routes a generation to ``TeacherRepair`` when
+The kernel (S1-SYS-02) routes a generation to ``TeacherRepair`` when
 ``substitutes`` names a decision point, and to the student otherwise.
 """
 
@@ -37,7 +41,6 @@ from proxyloop.contract.views import FastView
 from proxyloop.models import cues
 
 DecisionPoint = Literal["offer", "fact_request", "approval", "correction", "stop"]
-MAX_RESAMPLES = 2  # TRAINING §2.1: invalid teacher output is resampled up to twice
 _REPAIR: dict[Lane, AblationId] = {
     "user": AblationId.TEACHER_REPAIR_USER,
     "cp": AblationId.TEACHER_REPAIR_CP,
@@ -61,8 +64,10 @@ def decision_point(view: FastView) -> DecisionPoint | None:
         return None
     if cues.PROTECTED.search(heard) or cues.IDENTITY.search(heard):
         return "fact_request"
-    offer = (cues.ACCEPT, cues.PRESSURE, cues.MONEY, cues.OFFER)
-    return "offer" if any(p.search(heard) for p in offer) else None
+    if cues.ACCEPT.search(heard) or cues.PRESSURE.search(heard) or cues.offer(heard):
+        return "offer"
+    asked = heard.rstrip().endswith("?")
+    return "offer" if asked and any(o.status == "open" for o in view.offers) else None
 
 
 def substitutes(
@@ -84,15 +89,17 @@ def _lane(request: TextRequest) -> Lane:
 class TeacherRepair:
     """``LLMClient`` over the teacher's client; its ref is the teacher's.
 
-    The output is held until it parses (a resample must never follow spoken
-    text), then delivered whole with the record of the attempt it came from.
-    Every attempt's record reaches the teacher client's own sink. After
-    ``MAX_RESAMPLES`` the last output is delivered as it is, and its parse
-    issues are counted downstream, never repaired.
+    With ``max_resamples > 0`` the output is held until it parses (a resample
+    must never follow spoken text), then delivered whole with the record of the
+    attempt it came from. Every attempt's record reaches the teacher client's
+    own sink. After ``max_resamples`` the last output is delivered as it is,
+    and its parse issues are counted downstream, never repaired.
     """
 
-    def __init__(self, teacher: LLMClient) -> None:
-        self._teacher = teacher
+    def __init__(self, teacher: LLMClient, max_resamples: int) -> None:
+        if max_resamples < 0:
+            raise ValueError("max_resamples must be 0 (evaluation) or more")
+        self._teacher, self.max_resamples = teacher, max_resamples
         self.resamples: dict[str, int] = {}  # call_id -> resamples it used
 
     @property
@@ -103,7 +110,12 @@ class TeacherRepair:
         self, request: TextRequest
     ) -> AsyncIterator[str | LLMCallRecord]:
         lane, text, record = _lane(request), "", None
-        for n in range(MAX_RESAMPLES + 1):
+        if self.max_resamples == 0:  # evaluation: streamed, never resampled
+            self.resamples[request.call_id] = 0
+            async for item in self._teacher.stream_text(request):
+                yield item
+            return
+        for n in range(self.max_resamples + 1):
             seed = None if request.seed is None else request.seed + n
             attempt = request.model_copy(update={"seed": seed})
             text, record = "", None

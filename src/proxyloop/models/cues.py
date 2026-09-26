@@ -23,9 +23,10 @@ IDENTITY = re.compile(
     re.I,
 )
 ACCEPT = re.compile(
-    r"\b(?:accept|go ahead|proceed|sign (?:you|them|her|him) up"
-    r"|lock (?:it|that|this) in|set (?:it|that|this) up|take (?:it|the offer|this)"
-    r"|do we have a deal|agree)\b",
+    r"\b(?:accept|go ahead|proceed|process|put (?:it|that|this) through"
+    r"|sign (?:you|them|her|him) up|lock (?:it|that|this) in"
+    r"|set (?:it|that|this) up|take (?:it|the offer|this)|do we have a deal|agree"
+    r"|would you like|want me to|shall i)\b",
     re.I,
 )
 PRESSURE = re.compile(
@@ -34,7 +35,8 @@ PRESSURE = re.compile(
 OFFER = re.compile(r"\b(?:offer|discount|deal|promotion|i can do|we can do)\b", re.I)
 STOP = re.compile(
     r"\b(?:stop|cancel (?:it|that|this)|don'?t (?:do|accept|agree|go ahead)"
-    r"|never ?mind|hold off|changed? my mind|forget it|call it off)\b",
+    r"|never ?mind|hold off|changed? my mind|forget it|call it off"
+    r"|wait,? no|don'?t want (?:that|it|this))\b",
     re.I,
 )
 CORRECTION = re.compile(
@@ -59,6 +61,14 @@ _LIMIT = re.compile(
     r"(?:more than|at most|up to|under|below|maximum|max|limit(?: is)?)\s*$", re.I
 )
 _KEY = re.compile(rf"^{FACT_KEY}$")
+
+
+def offer(text: str) -> bool:
+    """Offer words, or an amount together with a term ("$65 for 12 months").
+    An amount alone ("your current bill is $120") is not an offer."""
+
+    term = _MONTHS.search(text) or _YEARS.search(text)
+    return bool(OFFER.search(text) or (MONEY.search(text) and term))
 
 
 def _key(words: str) -> str:

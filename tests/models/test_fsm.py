@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 
 import pytest
 from tests.contract.llm_conformance import assert_text_conformance
@@ -17,11 +18,19 @@ from proxyloop.contract.protocol import (
     Relay,
     Speech,
     TurnItem,
+    Wait,
     parse_turn,
 )
 from proxyloop.contract.state import CaseStatus
 from proxyloop.contract.views import FastView
-from proxyloop.models.fsm import READBACK, FsmTalker, read_view, respond
+from proxyloop.models.fsm import (
+    CHECKING,
+    NOTED,
+    READBACK,
+    FsmTalker,
+    read_view,
+    respond,
+)
 from proxyloop.models.registry import resolve
 
 FSM = resolve("fsm")
@@ -57,7 +66,6 @@ def test_reads_back_what_the_renderer_wrote(name: str) -> None:
     seen = read_view(messages)
     assert (seen.lane, seen.trigger, seen.status) == (v.lane, v.trigger.kind, v.status)
     assert seen.hold == (v.hold.reason if v.hold else None)
-    assert seen.approval == (v.pending_approval and v.pending_approval.readback_text)
     assert [o.ref for o in seen.offers] == [o.offer_ref for o in v.offers]
     assert [len(o.slots) for o in seen.offers] == [len(o.slots) for o in v.offers]
     assert [m for m, _ in seen.guides] == [g.move.value for g in v.guidance]
@@ -139,14 +147,85 @@ def test_never_claims_completion_unless_verified(status: CaseStatus) -> None:
     assert ("verified complete" in said) == (status is CaseStatus.VERIFIED_COMPLETE)
 
 
-def test_a_slow_message_claiming_done_is_qualified_until_verified() -> None:
-    msg = {"msg_id": "s1", "lane": "user", "type": "TELL_USER", "text": "All done!"}
-    v = view("user", trigger="slow_msg", slow_msg=msg)
-    said = [i.text for i in _turn(v) if isinstance(i, Speech)]
-    assert said == [
+def _voiced(text: str, status: CaseStatus) -> list[str]:
+    msg = {"msg_id": "s1", "lane": "user", "type": "TELL_USER", "text": text}
+    v = view("user", trigger="slow_msg", slow_msg=msg, status=status)
+    return [i.text for i in _turn(v) if isinstance(i, Speech)]
+
+
+IN_PROGRESS = "The case is still in progress, and nothing is complete yet."
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Your plan change is complete. Enjoy the lower price.",
+        "I've switched your plan to $50 a month.",
         "All done!",
-        "The case is still in progress, and nothing is complete yet.",
-    ]
+        "The new price is locked in.",
+        "Your cancellation has been processed.",
+    ],
+)
+def test_a_completion_claim_from_slow_is_never_voiced_unverified(text: str) -> None:
+    said = _voiced(text, CaseStatus.IN_CALL)
+    assert said[-1] == IN_PROGRESS
+    assert _say_all(text)[0] not in said  # the claim itself is never voiced
+    assert _voiced(text, CaseStatus.VERIFIED_COMPLETE) == _say_all(text)
+
+
+def _say_all(text: str) -> list[str]:
+    return [s for s in re.split(r"(?<=[.!?])\s+", text) if s]
+
+
+def test_other_slow_sentences_are_kept_without_a_status_line() -> None:
+    text = "The rep is checking for a better offer."
+    assert _voiced(text, CaseStatus.IN_CALL) == [text]
+    mixed = "The rep is checking for a better offer. Your plan is switched."
+    assert _voiced(mixed, CaseStatus.IN_CALL) == [text, IN_PROGRESS]
+
+
+@pytest.mark.parametrize("move", ["identify", "cite_competitor", "mention_tenure"])
+def test_a_slot_move_without_slot_values_is_skipped(move: str) -> None:
+    guide = {"move": move, "slots": ()}
+    assert _turn(view("cp", trigger="guidance", guidance=(guide,))) == (Wait(),)
+    later = _turn(view("cp", "Sure, go on.", guidance=(guide,)))
+    assert later[0] == Speech(text=NOTED)
+
+
+@pytest.mark.parametrize(
+    "heard",
+    [
+        "Should I process that for you?",
+        "I can put it through right away.",
+        "Would you like the new plan?",
+        "Do you want me to switch the plan?",
+        "Shall I make the change?",
+        "We can go ahead with that.",
+    ],
+)
+def test_asks_to_decide_hold_for_a_decision(heard: str) -> None:
+    items = _turn(view("cp", heard))
+    assert items[0] == Speech(text=CHECKING)
+    assert items[-1] == Hold(reason="decision")
+
+
+def test_any_rep_question_with_an_open_offer_holds_for_a_decision() -> None:
+    offer = {"offer_ref": "o1", "revision": 1}
+    items = _turn(view("cp", "Is there anything else?", offers=(offer,)))
+    assert items[-1] == Hold(reason="decision")
+    items = _turn(view("cp", "Is there anything else?"))
+    assert not [i for i in items if isinstance(i, Hold)]
+
+
+def test_the_acknowledgement_never_assents() -> None:
+    items = _turn(view("cp", "Our plans changed a lot this year."))
+    assert items[0] == Speech(text=NOTED)
+
+
+def test_an_amount_alone_is_not_an_offer() -> None:
+    items = _turn(view("cp", "Your current bill is $120."))
+    assert items[0] == Speech(text=NOTED)
+    assert not [i for i in items if isinstance(i, Hold)]
 
 
 def test_an_approval_request_in_chat_is_sent_to_the_card() -> None:

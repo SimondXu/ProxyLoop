@@ -12,10 +12,12 @@ from functools import cache
 from pathlib import Path
 
 import yaml
+from pydantic import Field
 
 from proxyloop.contract.base import Frozen
 from proxyloop.contract.config import AblationId, SessionConfig
-from proxyloop.contract.llm import ModelRef
+from proxyloop.contract.llm import LLMClient, ModelRef
+from proxyloop.models.repair import TeacherRepair
 
 CONDITIONS = Path(__file__).with_name("conditions.yaml")
 
@@ -25,6 +27,7 @@ class _Spec(Frozen):
     fast_cp: str
     teacher: str | None = None
     ablations: tuple[AblationId, ...] = ()
+    teacher_resamples: int | None = Field(default=None, ge=0)
 
 
 class _File(Frozen):
@@ -38,6 +41,14 @@ class Condition(Frozen):
     fast_cp: ModelRef
     teacher: ModelRef | None = None
     ablations: tuple[AblationId, ...] = ()
+    teacher_resamples: int | None = Field(default=None, ge=0)
+
+    def teacher_repair(self, teacher: LLMClient) -> TeacherRepair:
+        """The teacher's client under this condition's resample limit (T, R)."""
+
+        if self.teacher_resamples is None:
+            raise ValueError(f"{self.name} runs no teacher as a Fast")
+        return TeacherRepair(teacher, max_resamples=self.teacher_resamples)
 
     def apply(self, cfg: SessionConfig) -> SessionConfig:
         """``cfg`` with this condition's Fast lanes; ablations are merged."""
@@ -82,4 +93,5 @@ def condition(name: str) -> Condition:
         fast_cp=resolve(spec.fast_cp),
         teacher=teacher,
         ablations=spec.ablations,
+        teacher_resamples=spec.teacher_resamples,
     )
