@@ -1,6 +1,6 @@
 # PLAN.md: the single state file
 
-**Current:** S0 in progress (the user gave the go on 2026-09-26). **Active tasks:** S0-ROOT-01 review, S0-ROOT-02 review. **Last closed stage:** none. **Contract version:** none (S0-CON-01 creates v1).
+**Current:** S0 in progress (the user gave the go on 2026-09-26). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01. **In flight:** S0-SYS-02 (review), S0-MOD-01 (#113, provisional, GPU runs pending), S0-ROOT-07 (this PR). **Next:** S0-CON-01. **Last closed stage:** none. **Contract version:** none yet (S0-CON-01 creates v1).
 
 **Merge authority:** granted to the root by the user on 2026-09-26, from S0 on until revoked: the root squash-merges PRs that pass the fresh-context reviewer, CI and the reality rule. Stage closes, contract changes after `semantics-v1`, publishing, the split draw, the unseal and destructive steps still need the user.
 
@@ -25,7 +25,7 @@ Legend:
 - **Concurrency:** ≤ 2 implementers per lane and ≤ 4 in flight in total, with disjoint owned paths. Reviewers do not count.
 - **ROOT tasks:** the root decides, runs the L/G/U steps and merges. It never authors files or code, not even for a ROOT task: every file (scripts, docs, ADRs, README, this file) is written by an implementer whose packet grants the root-owned paths. Packets and PR bodies stay root-written.
 - **Merge floor:** `main` is branch-protected with CI required; the root configures it.
-- **Rotation:** the root moves to a fresh session at each stage close, or when its context passes ~60 %, after writing a short handoff.
+- **Rotation:** the root moves to a fresh session at each stage close, or when its context passes ~60 %, after a short handoff is written to `~/Desktop/proxyloop-review-packet-2026-09-25/plan-v3/handoffs/<date>-<stage>.md` by an implementer from a root packet. The handoff lives outside the repo; it is not a repo process file.
 - **The root owns** `PLAN.md`, the contract, `docs/decisions/`, `docs/claims.yaml`, `tasks/splits/`, the shared files (§0.2), `evidence/`, and every merge, gate and claim.
 - **"done"** requires a merged PR. For model-touching tasks it also requires a real bundle id (or real artefact) cited in the PR.
   - Infrastructure merged before a real bundle exercises it is `provisional`.

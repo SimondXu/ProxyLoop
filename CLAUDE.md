@@ -8,7 +8,7 @@
 
 **Test and CI output.** The root never runs or reads full test, lint or CI output. It spawns the global `test-log-analyzer` (model: sonnet) for `make check`, focused suites and `gh pr checks`, and uses only pass/fail plus the classified failures. Implementers still run their own focused checks.
 
-**Decisions changed.** Any ADR or change that amends `ARCHITECTURE.md`, decisions-v3, a model choice, the budget or the scope goes under a "Decisions changed" heading in the root's next message to the user. A model swap is never made on root authority alone: the user decides.
+**Decisions changed.** Any ADR or change that amends `ARCHITECTURE.md`, the frozen plan decisions (`plan-v3/decisions-v3.md`, outside the repo), a model choice, the budget or the scope goes under a "Decisions changed" heading in the root's next message to the user. A model swap is never made on root authority alone: the user decides.
 
 **Agents** (`.claude/agents/`):
 - `implementer`: one task, one worktree, owned paths only.
