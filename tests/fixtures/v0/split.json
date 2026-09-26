@@ -1,0 +1,185 @@
+{
+ "runs": [
+  {
+   "family_assignments": [
+    {
+     "family_id": "absent-evidence",
+     "split": "heldout",
+     "stratum": "evidence"
+    },
+    {
+     "family_id": "clarification-required",
+     "split": "heldout",
+     "stratum": "fact_request"
+    },
+    {
+     "family_id": "direct-success",
+     "split": "train",
+     "stratum": "success"
+    },
+    {
+     "family_id": "disclosure-restriction",
+     "split": "train",
+     "stratum": "fact_request"
+    },
+    {
+     "family_id": "fee-total-cost-trap",
+     "split": "train",
+     "stratum": "offer_hazard"
+    },
+    {
+     "family_id": "forbidden-term",
+     "split": "train",
+     "stratum": "offer_hazard"
+    },
+    {
+     "family_id": "forged-evidence",
+     "split": "train",
+     "stratum": "evidence"
+    },
+    {
+     "family_id": "multi-hazard",
+     "split": "development",
+     "stratum": "offer_hazard"
+    },
+    {
+     "family_id": "promotion-credit",
+     "split": "heldout",
+     "stratum": "success"
+    },
+    {
+     "family_id": "required-feature-loss",
+     "split": "train",
+     "stratum": "offer_hazard"
+    },
+    {
+     "family_id": "unsupported-action",
+     "split": "heldout",
+     "stratum": "offer_hazard"
+    }
+   ],
+   "salt": "negotiation-split-v2"
+  },
+  {
+   "family_assignments": [
+    {
+     "family_id": "absent-evidence",
+     "split": "train",
+     "stratum": "evidence"
+    },
+    {
+     "family_id": "clarification-required",
+     "split": "heldout",
+     "stratum": "fact_request"
+    },
+    {
+     "family_id": "direct-success",
+     "split": "heldout",
+     "stratum": "success"
+    },
+    {
+     "family_id": "disclosure-restriction",
+     "split": "train",
+     "stratum": "fact_request"
+    },
+    {
+     "family_id": "fee-total-cost-trap",
+     "split": "development",
+     "stratum": "offer_hazard"
+    },
+    {
+     "family_id": "forbidden-term",
+     "split": "train",
+     "stratum": "offer_hazard"
+    },
+    {
+     "family_id": "forged-evidence",
+     "split": "heldout",
+     "stratum": "evidence"
+    },
+    {
+     "family_id": "multi-hazard",
+     "split": "train",
+     "stratum": "offer_hazard"
+    },
+    {
+     "family_id": "promotion-credit",
+     "split": "train",
+     "stratum": "success"
+    },
+    {
+     "family_id": "required-feature-loss",
+     "split": "train",
+     "stratum": "offer_hazard"
+    },
+    {
+     "family_id": "unsupported-action",
+     "split": "heldout",
+     "stratum": "offer_hazard"
+    }
+   ],
+   "salt": "port-fixture-1"
+  },
+  {
+   "family_assignments": [
+    {
+     "family_id": "absent-evidence",
+     "split": "train",
+     "stratum": "evidence"
+    },
+    {
+     "family_id": "clarification-required",
+     "split": "heldout",
+     "stratum": "fact_request"
+    },
+    {
+     "family_id": "direct-success",
+     "split": "heldout",
+     "stratum": "success"
+    },
+    {
+     "family_id": "disclosure-restriction",
+     "split": "train",
+     "stratum": "fact_request"
+    },
+    {
+     "family_id": "fee-total-cost-trap",
+     "split": "train",
+     "stratum": "offer_hazard"
+    },
+    {
+     "family_id": "forbidden-term",
+     "split": "train",
+     "stratum": "offer_hazard"
+    },
+    {
+     "family_id": "forged-evidence",
+     "split": "heldout",
+     "stratum": "evidence"
+    },
+    {
+     "family_id": "multi-hazard",
+     "split": "heldout",
+     "stratum": "offer_hazard"
+    },
+    {
+     "family_id": "promotion-credit",
+     "split": "train",
+     "stratum": "success"
+    },
+    {
+     "family_id": "required-feature-loss",
+     "split": "development",
+     "stratum": "offer_hazard"
+    },
+    {
+     "family_id": "unsupported-action",
+     "split": "train",
+     "stratum": "offer_hazard"
+    }
+   ],
+   "salt": "port-fixture-2"
+  }
+ ],
+ "source": "negotiation_splits.generate_negotiation_split"
+}

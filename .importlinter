@@ -1,0 +1,23 @@
+[importlinter]
+root_packages =
+    proxyloop
+include_external_packages = True
+
+[importlinter:contract:env-is-not-an-agent]
+name = env never imports agent modules (ARCHITECTURE section 2)
+type = forbidden
+source_modules =
+    proxyloop.env
+forbidden_modules =
+    proxyloop.kernel
+    proxyloop.slow
+    proxyloop.guard
+    proxyloop.contract.views
+
+[importlinter:contract:src-never-imports-tests]
+name = nothing in proxyloop imports tests
+type = forbidden
+source_modules =
+    proxyloop
+forbidden_modules =
+    tests

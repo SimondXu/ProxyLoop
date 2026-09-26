@@ -1,0 +1,5121 @@
+{
+ "cases": [
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::absent-evidence@1.0::retention-gated-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-403019aa5944d5a9::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 93600
+   },
+   "offer_violations": [
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::absent-evidence@1.0::retention-gated-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-403019aa5944d5a9::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 93600
+   },
+   "offer_violations": [
+    "offer_expired",
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::absent-evidence@1.0::retention-gated-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::absent-evidence@1.0::retention-gated-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::absent-evidence@1.0::transparent-public-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-24e435a160f7891e::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::absent-evidence@1.0::transparent-public-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-24e435a160f7891e::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::absent-evidence@1.0::transparent-public-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-24e435a160f7891e::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::absent-evidence@1.0::transparent-public-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-24e435a160f7891e::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::clarification-required@1.0::retention-gated-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-65310cbe37006d55::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 93600
+   },
+   "offer_violations": [
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::clarification-required@1.0::retention-gated-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-65310cbe37006d55::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 93600
+   },
+   "offer_violations": [
+    "offer_expired",
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::clarification-required@1.0::retention-gated-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-65310cbe37006d55::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::clarification-required@1.0::retention-gated-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-65310cbe37006d55::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::clarification-required@1.0::transparent-public-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-be6c4aa58786e0bd::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::clarification-required@1.0::transparent-public-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-be6c4aa58786e0bd::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::clarification-required@1.0::transparent-public-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-be6c4aa58786e0bd::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::clarification-required@1.0::transparent-public-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-be6c4aa58786e0bd::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::direct-success@1.0::retention-gated-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-a249b89b4f77c8f2::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 93600
+   },
+   "offer_violations": [
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::direct-success@1.0::retention-gated-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-a249b89b4f77c8f2::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 93600
+   },
+   "offer_violations": [
+    "offer_expired",
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::direct-success@1.0::retention-gated-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-a249b89b4f77c8f2::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::direct-success@1.0::retention-gated-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-a249b89b4f77c8f2::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::direct-success@1.0::transparent-public-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-622ac5a6c8a63a59::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::direct-success@1.0::transparent-public-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-622ac5a6c8a63a59::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::direct-success@1.0::transparent-public-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-622ac5a6c8a63a59::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::direct-success@1.0::transparent-public-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-622ac5a6c8a63a59::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::disclosure-restriction@1.0::retention-gated-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-2829546534ffcc69::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 93600
+   },
+   "offer_violations": [
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::disclosure-restriction@1.0::retention-gated-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-2829546534ffcc69::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 93600
+   },
+   "offer_violations": [
+    "offer_expired",
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::disclosure-restriction@1.0::retention-gated-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-2829546534ffcc69::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::disclosure-restriction@1.0::retention-gated-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-2829546534ffcc69::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::disclosure-restriction@1.0::transparent-public-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-b270abaeab8092c2::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::disclosure-restriction@1.0::transparent-public-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-b270abaeab8092c2::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::disclosure-restriction@1.0::transparent-public-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-b270abaeab8092c2::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::disclosure-restriction@1.0::transparent-public-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-b270abaeab8092c2::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::fee-total-cost-trap@1.0::retention-gated-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 8600,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-6ef5305134fbd82c::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 102200
+   },
+   "offer_violations": [
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::fee-total-cost-trap@1.0::retention-gated-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 8600,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-6ef5305134fbd82c::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 102200
+   },
+   "offer_violations": [
+    "offer_expired",
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::fee-total-cost-trap@1.0::retention-gated-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 8600,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-6ef5305134fbd82c::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 95000
+   },
+   "offer_violations": [
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::fee-total-cost-trap@1.0::retention-gated-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 8600,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-6ef5305134fbd82c::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 95000
+   },
+   "offer_violations": [
+    "offer_expired",
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::fee-total-cost-trap@1.0::transparent-public-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 8600,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-747bdf11ecc1487d::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 95000
+   },
+   "offer_violations": [
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::fee-total-cost-trap@1.0::transparent-public-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 8600,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-747bdf11ecc1487d::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 95000
+   },
+   "offer_violations": [
+    "offer_expired",
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::fee-total-cost-trap@1.0::transparent-public-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 8600,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-747bdf11ecc1487d::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 95000
+   },
+   "offer_violations": [
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::fee-total-cost-trap@1.0::transparent-public-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 8600,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-747bdf11ecc1487d::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 95000
+   },
+   "offer_violations": [
+    "offer_expired",
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::forbidden-term@1.0::retention-gated-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "remove_add_on:international_roaming"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-9d9e5afef0b337ca::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 93600
+   },
+   "offer_violations": [
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded",
+    "forbidden_change_present"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::forbidden-term@1.0::retention-gated-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "remove_add_on:international_roaming"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-9d9e5afef0b337ca::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 93600
+   },
+   "offer_violations": [
+    "offer_expired",
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded",
+    "forbidden_change_present"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::forbidden-term@1.0::retention-gated-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "remove_add_on:international_roaming"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-9d9e5afef0b337ca::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "forbidden_change_present"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::forbidden-term@1.0::retention-gated-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "remove_add_on:international_roaming"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-9d9e5afef0b337ca::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired",
+    "forbidden_change_present"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::forbidden-term@1.0::transparent-public-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "remove_add_on:international_roaming"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-72e72b9f1065f2d2::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "forbidden_change_present"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::forbidden-term@1.0::transparent-public-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "remove_add_on:international_roaming"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-72e72b9f1065f2d2::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired",
+    "forbidden_change_present"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::forbidden-term@1.0::transparent-public-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "remove_add_on:international_roaming"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-72e72b9f1065f2d2::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "forbidden_change_present"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::forbidden-term@1.0::transparent-public-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "remove_add_on:international_roaming"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-72e72b9f1065f2d2::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired",
+    "forbidden_change_present"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::forged-evidence@1.0::retention-gated-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-df1a48ffce635497::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 93600
+   },
+   "offer_violations": [
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::forged-evidence@1.0::retention-gated-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-df1a48ffce635497::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 93600
+   },
+   "offer_violations": [
+    "offer_expired",
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::forged-evidence@1.0::retention-gated-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-df1a48ffce635497::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::forged-evidence@1.0::retention-gated-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-df1a48ffce635497::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::forged-evidence@1.0::transparent-public-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-44233d330a3e5fc9::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::forged-evidence@1.0::transparent-public-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-44233d330a3e5fc9::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::forged-evidence@1.0::transparent-public-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-44233d330a3e5fc9::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::forged-evidence@1.0::transparent-public-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-44233d330a3e5fc9::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::multi-hazard@1.0::retention-gated-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "remove_add_on:international_roaming"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 8600,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-38e54863c2ab78fb::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 102200
+   },
+   "offer_violations": [
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded",
+    "required_feature_missing",
+    "forbidden_change_present"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::multi-hazard@1.0::retention-gated-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "remove_add_on:international_roaming"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 8600,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-38e54863c2ab78fb::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 102200
+   },
+   "offer_violations": [
+    "offer_expired",
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded",
+    "required_feature_missing",
+    "forbidden_change_present"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::multi-hazard@1.0::retention-gated-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "remove_add_on:international_roaming"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 8600,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-38e54863c2ab78fb::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 95000
+   },
+   "offer_violations": [
+    "total_cost_target_exceeded",
+    "required_feature_missing",
+    "forbidden_change_present"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::multi-hazard@1.0::retention-gated-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "remove_add_on:international_roaming"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 8600,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-38e54863c2ab78fb::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 95000
+   },
+   "offer_violations": [
+    "offer_expired",
+    "total_cost_target_exceeded",
+    "required_feature_missing",
+    "forbidden_change_present"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::multi-hazard@1.0::transparent-public-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "remove_add_on:international_roaming"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 8600,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-d43275f3e8a41f79::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 95000
+   },
+   "offer_violations": [
+    "total_cost_target_exceeded",
+    "required_feature_missing",
+    "forbidden_change_present"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::multi-hazard@1.0::transparent-public-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "remove_add_on:international_roaming"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 8600,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-d43275f3e8a41f79::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 95000
+   },
+   "offer_violations": [
+    "offer_expired",
+    "total_cost_target_exceeded",
+    "required_feature_missing",
+    "forbidden_change_present"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::multi-hazard@1.0::transparent-public-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "remove_add_on:international_roaming"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 8600,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-d43275f3e8a41f79::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 95000
+   },
+   "offer_violations": [
+    "total_cost_target_exceeded",
+    "required_feature_missing",
+    "forbidden_change_present"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::multi-hazard@1.0::transparent-public-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "remove_add_on:international_roaming"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 8600,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-d43275f3e8a41f79::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 95000
+   },
+   "offer_violations": [
+    "offer_expired",
+    "total_cost_target_exceeded",
+    "required_feature_missing",
+    "forbidden_change_present"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::promotion-credit@1.0::retention-gated-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "predefined_promotion_credit"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-9753529b4f057003::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 88600
+   },
+   "offer_violations": [
+    "target_monthly_total_not_met"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::promotion-credit@1.0::retention-gated-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "predefined_promotion_credit"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-9753529b4f057003::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 88600
+   },
+   "offer_violations": [
+    "offer_expired",
+    "target_monthly_total_not_met"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::promotion-credit@1.0::retention-gated-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "predefined_promotion_credit"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-9753529b4f057003::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 81400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::promotion-credit@1.0::retention-gated-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "predefined_promotion_credit"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-9753529b4f057003::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 81400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::promotion-credit@1.0::transparent-public-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "predefined_promotion_credit"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-8cb312e7367bdbd3::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 81400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::promotion-credit@1.0::transparent-public-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "predefined_promotion_credit"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-8cb312e7367bdbd3::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 81400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::promotion-credit@1.0::transparent-public-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "predefined_promotion_credit"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-8cb312e7367bdbd3::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 81400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::promotion-credit@1.0::transparent-public-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "predefined_promotion_credit"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-8cb312e7367bdbd3::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 81400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::required-feature-loss@1.0::retention-gated-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-8a759ef9fd4168b1::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 93600
+   },
+   "offer_violations": [
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded",
+    "required_feature_missing"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::required-feature-loss@1.0::retention-gated-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-8a759ef9fd4168b1::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 93600
+   },
+   "offer_violations": [
+    "offer_expired",
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded",
+    "required_feature_missing"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::required-feature-loss@1.0::retention-gated-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-8a759ef9fd4168b1::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "required_feature_missing"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::required-feature-loss@1.0::retention-gated-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-8a759ef9fd4168b1::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired",
+    "required_feature_missing"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::required-feature-loss@1.0::transparent-public-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-d9fc7e5fd5ee65c8::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "required_feature_missing"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::required-feature-loss@1.0::transparent-public-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-d9fc7e5fd5ee65c8::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired",
+    "required_feature_missing"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::required-feature-loss@1.0::transparent-public-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-d9fc7e5fd5ee65c8::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "required_feature_missing"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::required-feature-loss@1.0::transparent-public-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-d9fc7e5fd5ee65c8::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired",
+    "required_feature_missing"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::unsupported-action@1.0::retention-gated-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "account_cancellation"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-85cc7f827ef9891e::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 93600
+   },
+   "offer_violations": [
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded",
+    "unsupported_applied_change"
+   ],
+   "unsupported_applied_changes": [
+    "account_cancellation"
+   ]
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::unsupported-action@1.0::retention-gated-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "account_cancellation"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7800,
+    "offer_id": "ng-85cc7f827ef9891e::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 93600
+   },
+   "offer_violations": [
+    "offer_expired",
+    "target_monthly_total_not_met",
+    "total_cost_target_exceeded",
+    "unsupported_applied_change"
+   ],
+   "unsupported_applied_changes": [
+    "account_cancellation"
+   ]
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::unsupported-action@1.0::retention-gated-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "account_cancellation"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-85cc7f827ef9891e::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "unsupported_applied_change"
+   ],
+   "unsupported_applied_changes": [
+    "account_cancellation"
+   ]
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::unsupported-action@1.0::retention-gated-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "account_cancellation"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-85cc7f827ef9891e::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired",
+    "unsupported_applied_change"
+   ],
+   "unsupported_applied_changes": [
+    "account_cancellation"
+   ]
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::unsupported-action@1.0::transparent-public-v2@1.0/opening/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "account_cancellation"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-39eb0cc9932f7ae2::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "unsupported_applied_change"
+   ],
+   "unsupported_applied_changes": [
+    "account_cancellation"
+   ]
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::unsupported-action@1.0::transparent-public-v2@1.0/opening/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "account_cancellation"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-39eb0cc9932f7ae2::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired",
+    "unsupported_applied_change"
+   ],
+   "unsupported_applied_changes": [
+    "account_cancellation"
+   ]
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::unsupported-action@1.0::transparent-public-v2@1.0/final/start",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "account_cancellation"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-39eb0cc9932f7ae2::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "unsupported_applied_change"
+   ],
+   "unsupported_applied_changes": [
+    "account_cancellation"
+   ]
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "negotiation-v1::unsupported-action@1.0::transparent-public-v2@1.0/final/expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "account_cancellation"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-39eb0cc9932f7ae2::offer-1",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired",
+    "unsupported_applied_change"
+   ],
+   "unsupported_applied_changes": [
+    "account_cancellation"
+   ]
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "absent-evidence@1.0::retention-gated-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7350,
+    "offer_id": "ep-4c26356d33ab4021::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 88200
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "absent-evidence@1.0::transparent-public-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ep-9fb98f091da96260::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "add-on-removal@1.0::retention-gated-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "remove_add_on:premium_data"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7350,
+    "offer_id": "ep-e45e3672fe25414d::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 88200
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "add-on-removal@1.0::transparent-public-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "remove_add_on:premium_data"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ep-8695a8c949535c3c::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "direct-success@1.0::retention-gated-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7350,
+    "offer_id": "ep-b819990d956d7b6d::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 88200
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "direct-success@1.0::transparent-public-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ep-56f335fe35fb20fa::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "expired-approval@1.0::retention-gated-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7350,
+    "offer_id": "ep-43efcbccc235150e::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 88200
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "expired-approval@1.0::transparent-public-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ep-001234f0118363ec::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "fee-total-cost-trap@1.0::retention-gated-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 30000,
+    "monthly_price_minor": 7350,
+    "offer_id": "ep-f64e8e72b57a99c4::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 118200
+   },
+   "offer_violations": [
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "fee-total-cost-trap@1.0::transparent-public-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 30000,
+    "monthly_price_minor": 7200,
+    "offer_id": "ep-8c7d5e81611bd2a1::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 116400
+   },
+   "offer_violations": [
+    "total_cost_target_exceeded"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "forbidden-term@1.0::retention-gated-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "device_financing_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7350,
+    "offer_id": "ep-d385a04c75834f0c::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 88200
+   },
+   "offer_violations": [
+    "forbidden_change_present",
+    "unsupported_applied_change"
+   ],
+   "unsupported_applied_changes": [
+    "device_financing_change"
+   ]
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "forbidden-term@1.0::transparent-public-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "device_financing_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ep-7535ae2bcead0629::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "forbidden_change_present",
+    "unsupported_applied_change"
+   ],
+   "unsupported_applied_changes": [
+    "device_financing_change"
+   ]
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "forged-evidence@1.0::retention-gated-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7350,
+    "offer_id": "ep-ff989a1e57a95c37::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 88200
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "forged-evidence@1.0::transparent-public-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ep-8d24e9267dd5de71::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "multi-hazard@1.0::retention-gated-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "device_financing_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 30000,
+    "monthly_price_minor": 7350,
+    "offer_id": "ep-fe63bd19d580746f::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 118200
+   },
+   "offer_violations": [
+    "total_cost_target_exceeded",
+    "required_feature_missing",
+    "forbidden_change_present",
+    "unsupported_applied_change"
+   ],
+   "unsupported_applied_changes": [
+    "device_financing_change"
+   ]
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "multi-hazard@1.0::transparent-public-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "device_financing_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 30000,
+    "monthly_price_minor": 7200,
+    "offer_id": "ep-fca4ed5bd9da2666::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 116400
+   },
+   "offer_violations": [
+    "total_cost_target_exceeded",
+    "required_feature_missing",
+    "forbidden_change_present",
+    "unsupported_applied_change"
+   ],
+   "unsupported_applied_changes": [
+    "device_financing_change"
+   ]
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "plan-change@1.0::retention-gated-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7350,
+    "offer_id": "ep-ee34d5907e532039::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 88200
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "plan-change@1.0::transparent-public-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ep-77d7555247a4a77f::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "promotion-credit@1.0::retention-gated-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "predefined_promotion_credit"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7350,
+    "offer_id": "ep-b86a1873395a3f2c::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 83200
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "promotion-credit@1.0::transparent-public-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "predefined_promotion_credit"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ep-c221b67f11279c58::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 81400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "required-feature-loss@1.0::retention-gated-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7350,
+    "offer_id": "ep-dde49fa3f82a67a5::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 88200
+   },
+   "offer_violations": [
+    "required_feature_missing"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "required-feature-loss@1.0::transparent-public-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ep-97fdea87a6a79fbc::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "required_feature_missing"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "revised-offer@1.0::retention-gated-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "revised_plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7350,
+    "offer_id": "ep-c0d8f1bc7549a51e::offer",
+    "revision": 2,
+    "term_months": 0,
+    "total_cost_12_months_minor": 88200
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "revised-offer@1.0::transparent-public-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "revised_plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ep-5f4613f89d3e6a16::offer",
+    "revision": 2,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "unsupported-action@1.0::retention-gated-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "account_cancellation"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7350,
+    "offer_id": "ep-9503f8c215cdb18f::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 88200
+   },
+   "offer_violations": [
+    "unsupported_applied_change"
+   ],
+   "unsupported_applied_changes": [
+    "account_cancellation"
+   ]
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "device_financing_change"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "unsupported-action@1.0::transparent-public-v1@1.0/offer-0",
+   "offer": {
+    "applied_changes": [
+     "account_cancellation"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ep-a7a742613b36a62c::offer",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "unsupported_applied_change"
+   ],
+   "unsupported_applied_changes": [
+    "account_cancellation"
+   ]
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "synthetic/currency-mismatch",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "EUR",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "currency_mismatch"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "EUR",
+    "target_monthly_minor": 7500
+   },
+   "name": "synthetic/target-currency-mismatch",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "currency_mismatch"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": null,
+    "target_monthly_minor": null
+   },
+   "name": "synthetic/no-target-total-below-current",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 7201,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": null,
+    "target_monthly_minor": null
+   },
+   "name": "synthetic/no-target-total-exceeds-current",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 12,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86412
+   },
+   "offer_violations": [
+    "total_cost_exceeds_current"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 7200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "synthetic/price-not-reduced",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "recurring_price_not_reduced"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "synthetic/fee-total-mismatch",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86399
+   },
+   "offer_violations": [
+    "fee_total_mismatch"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "synthetic/known-promotion-credit",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "predefined_promotion_credit"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 81400
+   },
+   "offer_violations": [],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "synthetic/unknown-credit-token",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "loyalty_credit"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 81400
+   },
+   "offer_violations": [
+    "fee_total_mismatch",
+    "unsupported_applied_change"
+   ],
+   "unsupported_applied_changes": [
+    "loyalty_credit"
+   ]
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "synthetic/remove-add-on",
+   "offer": {
+    "applied_changes": [
+     "remove_add_on:x",
+     "remove_add_on:"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "unsupported_applied_change"
+   ],
+   "unsupported_applied_changes": [
+    "remove_add_on:"
+   ]
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "synthetic/required-feature-missing",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "required_feature_missing"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "synthetic/forbidden-change-present",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     "remove_add_on:international_roaming"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "forbidden_change_present"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T13:00:01+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "name": "synthetic/expired",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "offer_violations": [
+    "offer_expired"
+   ],
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "error": "monthly_price_minor must be a non-negative integer",
+   "name": "synthetic/error-negative-price",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": -1,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "error": "fees_minor must be a non-negative integer",
+   "name": "synthetic/error-bool-fees",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": true,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "error": "currency must be an uppercase ISO currency code",
+   "name": "synthetic/error-lowercase-currency",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "usd",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "error": "features cannot contain duplicates",
+   "name": "synthetic/error-duplicate-feature",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "mobile_hotspot"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "error": "applied_changes must contain non-empty text",
+   "name": "synthetic/error-blank-change",
+   "offer": {
+    "applied_changes": [
+     "plan_change",
+     " "
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "unsupported_applied_changes": [
+    " "
+   ]
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "error": "expires_at must be timezone-aware UTC",
+   "name": "synthetic/error-non-utc-expiry",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T15:00:00+02:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "error": "evaluated_at must be timezone-aware UTC",
+   "name": "synthetic/error-naive-evaluated-at",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": -1
+   },
+   "error": "target_monthly_minor must be a non-negative integer",
+   "name": "synthetic/error-negative-target",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "remove_add_on:international_roaming"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "US",
+    "target_monthly_minor": 7500
+   },
+   "error": "target_currency must be an uppercase ISO currency code",
+   "name": "synthetic/error-bad-target-currency",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "unsupported_applied_changes": []
+  },
+  {
+   "context": {
+    "currency": "USD",
+    "current_monthly_minor": 9200,
+    "evaluated_at": "2026-08-23T12:00:00+00:00",
+    "forbidden_changes": [
+     "x",
+     "x"
+    ],
+    "required_features": [
+     "mobile_hotspot"
+    ],
+    "target_currency": "USD",
+    "target_monthly_minor": 7500
+   },
+   "error": "forbidden_changes cannot contain duplicates",
+   "name": "synthetic/error-duplicate-forbidden",
+   "offer": {
+    "applied_changes": [
+     "plan_change"
+    ],
+    "currency": "USD",
+    "expires_at": "2026-08-23T13:00:00+00:00",
+    "features": [
+     "mobile_hotspot",
+     "unlimited_talk_text"
+    ],
+    "fees_minor": 0,
+    "monthly_price_minor": 7200,
+    "offer_id": "ng-403019aa5944d5a9::offer-2",
+    "revision": 1,
+    "term_months": 0,
+    "total_cost_12_months_minor": 86400
+   },
+   "unsupported_applied_changes": []
+  }
+ ],
+ "source": "negotiation_catalog.offer_violations (offer_compliance_violations + unsupported_applied_changes)",
+ "unsupported_applied_changes": [
+  {
+   "changes": [],
+   "unsupported": []
+  },
+  {
+   "changes": [
+    "plan_change",
+    "revised_plan_change",
+    "predefined_promotion_credit"
+   ],
+   "unsupported": []
+  },
+  {
+   "changes": [
+    "account_cancellation",
+    "plan_change",
+    "account_cancellation"
+   ],
+   "unsupported": [
+    "account_cancellation"
+   ]
+  },
+  {
+   "changes": [
+    "remove_add_on:",
+    "remove_add_on:x",
+    "b",
+    "a",
+    "b"
+   ],
+   "unsupported": [
+    "remove_add_on:",
+    "b",
+    "a"
+   ]
+  },
+  {
+   "changes": [
+    "Plan_Change",
+    "plan_change "
+   ],
+   "unsupported": [
+    "Plan_Change",
+    "plan_change "
+   ]
+  }
+ ]
+}
