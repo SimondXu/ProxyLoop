@@ -91,7 +91,7 @@ Legend:
 
 ### 0.5a Delegated decision authority (user grant 2026-09-26)
 - The main root decides on the user's behalf every decision this plan reserves for the user, except those listed below, and records each under "Decisions changed" in its next message and in the affected task block or PR body. See `CLAUDE.md` for the exact scope.
-- It still asks the user for: spend above $10 per paid run/batch (a batch = all paid runs for one task or decision within 24 h), beyond an agreed stage budget, or above $25 cumulative per stage without a budget (thresholds: the root's reading, pending the user's confirmation); serious problems (data loss, security or secrets, irreversible actions, any model swap, contract changes after `semantics-v1`, the split draw, the unseal, pre-registration, publishing); the rules themselves (§0.5a and its thresholds, settings and hooks, granting L/G or merge rights, raising permission modes, `NORTH_STAR.md`, evaluation or metric semantics after data, the S3 go/reframe/stop, the S4 n*); and U steps (in-person sessions, human probes, audit labels, the stage-close correction). The user closes every stage.
+- It still asks the user for: spend above $10 per paid run/batch (a batch = all paid runs for one task or decision within 24 h), beyond an agreed stage budget, or above $25 cumulative per stage without a budget (the user confirmed these thresholds and the batch definition on 2026-09-26); serious problems (data loss, security or secrets, irreversible actions, any model swap, contract changes after `semantics-v1`, the split draw, the unseal, pre-registration, publishing); the rules themselves (§0.5a and its thresholds, settings and hooks, granting L/G or merge rights, raising permission modes, `NORTH_STAR.md`, evaluation or metric semantics after data, the S3 go/reframe/stop, the S4 n*); and U steps (in-person sessions, human probes, audit labels, the stage-close correction). The user closes every stage.
 
 ### 0.6 Tripwires (stop and decide)
 - Under §0.5a the main root may adjust only the **numeric caps** (PR counts, code-size limits) and records each change under "Decisions changed". The mechanism tripwires — contract discipline, red signals, no new reality, fallback bans — are never waived by a session.
@@ -107,6 +107,7 @@ Legend:
   - `serving/` + `training_jobs/` over 900 lines (700 → 900, user decision 2026-09-26; reformat of serving/), counted in non-blank lines like `src/` (root decision under §0.5a, 2026-09-26).
   - A module over 600 lines is a warning.
 - **No new reality:** after merge point 1 (S0-ROOT-05), two consecutive merged SYS/MOD PRs without a new real bundle or real artefact cited mean the root runs the smoke itself before merging anything else.
+  - Only PRs that touch session-path code (the SYS agent paths and MOD) count; product-lane PRs (P-WEB, P-API, P-OBS, P-TOOLS) do not (user decision 2026-09-26).
 - **Contract discipline:**
   - a contract diff without an ADR is rejected;
   - more than one renderer-fingerprint change after `semantics-v1` means stop (data invalidation);
@@ -191,6 +192,7 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
   - the `refuse_fact` key is not required, and the `provide_fact` value is not checked against the heard text;
   - the reverse reveal check (a fact said but not listed) is missing;
   - the `tests/env/bus_sink` prompts store is a stand-in until S0-SYS-06.
+- Docs (S0-ROOT-11): `NORTH_STAR.md` (the Goal, the S1 résumé line) and `ARCHITECTURE.md` still name Sonnet as Slow; the user's decision of 2026-09-26 makes Slow `gemini-3.8-flash` (NORTH_STAR is the user's to change).
 - #119 (MOD training):
   - `metrics.jsonl` may repeat steps after a resume;
   - `per_target` is compared only for > 0, not against the committed dump;
@@ -456,21 +458,22 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** `make test`; `python -m proxyloop.cli rep-chat …` (root).
 - **Escalate if:** a behaviour needs a contract change.
 
-### S0-ROOT-05 MERGE POINT 1: the first real interaction — ROOT — S — flags L+G+U — doing (the first three live smokes failed; fixes in S0-SYS-07 and S0-SYS-08, see the S0-late handoff)
-- **Objective:** run the SYS kernel against the MOD-served Qwen3.5-9B:
+### S0-ROOT-05 MERGE POINT 1: the first real interaction — ROOT — S — flags L+U — doing (the first three live smokes failed; fixes in S0-SYS-07 and S0-SYS-08, see the S0-late handoff)
+- **Objective:** run the SYS kernel with Fast = `gpt-6-luna` and Slow = `gemini-3.8-flash`, both via TeamRouter (user decision 2026-09-26: during development the whole flow runs on this combination; the gate needs no GPU). The model root researches fine-tuned Qwen as Fast in parallel; once it merges, the system supports both, and the user chooses Luna or fine-tuned Qwen as Fast by config.
   - `make smoke-live FAMILY=cp-direct-discount` ×3 (sim user, sim rep);
   - 1 session in which the user types as principal (an unscripted opening);
-  - the dead-endpoint mutation: `fast_cp` pointed at a closed port.
+  - the dead-endpoint mutation: `fast_cp` pointed at a closed port in place of the Fast endpoint in use.
 
   Commit the bundles to `evidence/s0/`.
+- **Claim scope:** these bundles are hosted-Fast evidence labelled with Luna's `ModelRef` (P3 `not_applicable`); they support no claim about Qwen (claim scoping: S1-SYS-14).
 - **Owned paths:** `evidence/s0/**`, `PLAN.md`.
-- **Deps:** S0-SYS-06, S0-MOD-01.
+- **Deps:** S0-SYS-06; for the re-run, S0-SYS-07 and S0-SYS-08.
 - **Acceptance:**
-  - `make evidence-check RUN=… --claim` passes on ≥ 3 bundles;
+  - `make evidence-check RUN=… --offline` passes on ≥ 3 bundles (the smokes run with `CLAIM=0`, S0-SYS-08, until S1-SYS-14 scopes claims by Fast model);
   - each bundle has ≥ 1 complete "relayed and used" chain (ARCHITECTURE §4.3);
   - ≥ 1 FastC sentence was released while a Slow step was in flight;
   - the dead-endpoint run exits non-zero with `session.ended{llm_unavailable}` and no later `utt.delivered`;
-  - TTFS p50 from the Mac is recorded;
+  - TTFS p50 from the Mac is recorded, labelled relay-measured;
   - the user's opening appears verbatim in `user.msg`.
 - **Re-run:** after S0-SYS-07 and S0-SYS-08 merge. Those two are not merge-at-gate: they unblock the gate.
 - **After:** S0-SYS-03…06 become `done`.
@@ -483,8 +486,10 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
   - (g) `guide_fast` rejects free text and extra fields loudly; clearer denial messages;
   - (i) stale rep replies wait for the floor instead of barging in.
   - The S0 runaway guard (root decision under §0.5a, 2026-09-26; spend-related): a Slow step cap of 40 per session; a projection of 300k tokens and 150 calls; factor 3 (was 10×, S0-SYS-04); `MAX_SESSION_S` 480; a per-session absolute cap of $3 enforced by the ledger. A breach aborts the session loudly with the reason; it is not a fallback.
+  - The ledger rate card in `llm/spend.py` gains TeamRouter rows from S0-ROOT-12's measured prices; the $3 cap depends on them (root decision under §0.5a, 2026-09-26).
+  - When it splits `kernel/session.py`, it does not edit or move `SimUserChannel` or `SimRepChannel` (S0-SYS-08 holds `SimUserChannel`).
 - **Owned paths:** `src/proxyloop/{slow,kernel,core}/**`, `src/proxyloop/llm/spend.py`, `tests/{slow,kernel,core}/**`, `tests/llm/test_parity_spend.py`, and (root-owned, granted) `docs/decisions/0009-bounded-slow-context.md` (new, one page; the main root reviews it). A module over 600 lines may be split into a new module inside these paths.
-- **Deps:** S0-SYS-06.
+- **Deps:** S0-SYS-06; S0-ROOT-12 (prices).
 - **Acceptance:**
   - a unit test per item ((a) test-first);
   - the fake-model replay of the failed smoke's identity deadlock no longer loops;
@@ -496,21 +501,24 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Objective:** fix the failed smokes' world causes (handoff §3; each item a root decision under §0.5a, 2026-09-26):
   - (b) the Ear's classify schema takes a list of facts per utterance; residual parallel tool calls stay counted invalid under ADR-0005's world policy;
   - (c) rep identity patience: a non-`provide_fact` act in IDENTIFY counts a strike → `abandoned` after 3;
-  - (d) SimUser may stay silent and answers only questions (§10.2);
+  - (d) SimUser may stay silent and answers only questions (§10.2): SimUser returns `SimReply | None`, and on None `SimUserChannel` enqueues nothing (the world `llm.call` records stay);
   - (h) a whole-classification Ear timeout (ADR-0005 D6) replaces the per-attempt ×3; a per-role world `reasoning_effort` setting passed from the CLI/config. Its value stays the current one until the user decides after S0-ROOT-12's probe.
-- **Owned paths:** `src/proxyloop/env/**`, `src/proxyloop/cli.py`, `mk/sys.mk`, `tests/env/**`.
+  - Model selection by config, so the S0-ROOT-05 gate can run Luna + Gemini: the CLI chooses the Fast and Slow `ModelRef`s by config (e.g. `--fast-model` / `--slow-model` naming registry or `ModelRef` ids), through the same `run_session`, with no second execution path (root decision under §0.5a, 2026-09-26).
+  - A `CLAIM=0` switch on `make smoke-live` (`mk/sys.mk`), so gate smokes on a hosted Fast run without `--claim` until S1-SYS-14 scopes claims by Fast model; the root runs `make evidence-check --offline` on those bundles (root decision under §0.5a, 2026-09-26).
+- **Owned paths:** `src/proxyloop/env/**`, `src/proxyloop/cli.py`, `mk/sys.mk`, `tests/env/**`, and (narrow grant) the `SimUserChannel` class in `src/proxyloop/kernel/session.py`.
 - **Deps:** S0-SYS-06.
 - **Acceptance:**
   - a unit test per item;
   - the whole-call timeout aborts loudly (AGENTS rule 6);
   - the live smoke as for S0-SYS-07.
 - **Verify:** `make test`; `make smoke-live FAMILY=cp-direct-discount` (root or L-CORE, L).
-- **Escalate if:** a contract change is needed.
+- **Escalate if:** a contract change is needed, e.g. a silent SimUser turn that needs its own event type.
 
 ### S0-MOD-03 `make pull-through` — MOD — M — flags L+G (root runs) — todo
 - **Objective:** `training/pull_through.py` and the `make pull-through MODE=full|verify` target, exactly as TRAINING §9 describes. The S0 label source is the base-9B turns from `evidence/s0/` (§9 E1). A trained-adapter LoRA slot in `serving/` (root decision 2026-09-26).
 - **Owned paths:** `src/proxyloop/training/pull_through.py`, `mk/mod.mk`, `tests/training/test_pull_through.py`, `serving/**`.
-- **Deps:** S0-ROOT-05, S0-MOD-01, S0-MOD-02.
+- **Deps:** one Qwen@vllm-Fast train bundle, S0-MOD-01, S0-MOD-02 (root decision under §0.5a, 2026-09-26).
+- **Run order** (root, one GPU lease): one sim↔sim smoke on `cp-direct-discount` with Fast = Qwen3.5-9B@vllm (Slow and world as at the gate; session success not required; manifest split = train; the current fingerprint), committed to `evidence/s0/`; then `make pull-through MODE=full` and `make -f mk/mod.mk pull-through-liveness`; then serve-down. Reason: pull-through selects base-Qwen turns and checks re-rendered prompt shas, so Luna bundles yield no rows. TRAINING §9 E1's label semantics are unchanged (no GPT outputs in training data).
 - **Acceptance:** `docs/results/pull-through.json` contains:
   - fingerprint = current;
   - the adapter shard hashes;
@@ -553,17 +561,20 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Acceptance:** `make check` green; no measured number typed (AGENTS rule 13); each decision appears once.
 
 ### S0-ROOT-12 Model role probe (Slow gemini-3.8-flash, Fast gpt-6-luna, world reasoning_effort) — ROOT — S — flags L — todo
-- **Objective:** validate the user's model decision with a cheap probe before the switch. The decision (user decision 2026-09-26): Slow → `gemini-3.8-flash` via TeamRouter; the integration Fast → `gpt-6-luna` via TeamRouter; Qwen3.5-9B stays the research Fast. The probe measures:
-  - Slow: forced multi-call `act` schema validity, and reasoning length and latency at explicit `reasoning_effort` values;
-  - Fast: streaming TTFT through `render_messages`, and the parse-issue rate on our grammar;
-  - the world model's `reasoning_effort` (none/minimal/low/default × 20);
-  - TeamRouter prices (the usage-delta method of ADR-0001), so the ledger can price both models.
+- **Objective:** validate the user's model decision with a cheap probe before the switch. The decision (user decision 2026-09-26): Slow → `gemini-3.8-flash` via TeamRouter; the integration Fast → `gpt-6-luna` via TeamRouter; Qwen3.5-9B stays the research Fast. The design (the model root's; root decision under §0.5a, 2026-09-26):
+  - an offline replay of a recorded run directory (the failed ROOT-05 run's `prompts.jsonl`) through production code only: `make_client` with a TeamRouter `ModelRef`, `render_messages` + `parse_turn`, Slow's ACT tool, the Ear's classify tool and `check_act` (no second HTTP path);
+  - keys only from the `PL_TEAMROUTER_*` env vars, never `.env`;
+  - the parts run separately; each writes its own JSON with exact token totals (so the root can read TeamRouter balance deltas, the usage-delta method of ADR-0001, between parts) and saves partial results on a crash:
+    - `--part slow`: 24 stratified Slow steps at `reasoning_effort` ∈ {low, default}: per-call ACT schema validity, calls per response, reasoning tokens p50/p95, latency p50/p95;
+    - `--part fast`: 20 views (10 per lane), streaming, CLI sampling: TTFT and total latency labelled relay-measured, the ParseIssue rate by reason, parameter rejections;
+    - `--part ear`: 20 Ear requests × {none, minimal, low, default}: valid rate, reasoning tokens, latency, intent agreement with default.
 
-  The script reuses the production adapters in `llm/` (no second HTTP path). The model root's implementer writes the script and the ADR data; the main root runs it (flag L; estimate < $5; the main root's run, outside lane envelopes).
-- **Owned paths:** `scripts/mod/probe_roles.py`; (root-owned, granted) the summary JSON under `docs/decisions/data/` and an ADR with the next free number after 0009.
+  The model root's implementer writes the script; the main root runs it (flag L; estimate < $5; outside lane envelopes) and commits the summary JSON under `docs/decisions/data/`. A separate implementer step then writes the ADR (the next free number after 0009): the model decision, the concerns (ADR-0005's schema-valid rate; EVAL §9.7 model-family separation, since Slow and world are both Gemini; the teacher stays `claude-sonnet-5`) and the probe results, citing JSON keys.
+- **Known limit:** it runs before S0-SYS-08's list schema and `parallel_tool_calls` change, and on the unbounded Slow context, so its input sizes are an upper bound.
+- **Owned paths:** `scripts/mod/probe_roles.py`, `tests/serving/test_probe_roles.py`.
 - **Deps:** S0-SYS-04 (the adapters).
-- **Acceptance:** the ADR records the model decision, the concerns (ADR-0005's schema-valid rate; EVAL §9.7 model-family separation, since Slow and world are both Gemini; the teacher stays `claude-sonnet-5`) and the probe results, citing JSON keys. The world `reasoning_effort` value and any model swap stay the user's decision.
-- **Verify:** the probe command (root, L); `make check`.
+- **Acceptance:** tests on fake data pass; `make check` green; the root's run commits the summary JSON. The world `reasoning_effort` value and any model swap stay the user's decision.
+- **Verify:** `uv run pytest tests/serving/test_probe_roles.py -q`; `make check`; `python scripts/mod/probe_roles.py --part slow|fast|ear` (root, L).
 - **Escalate if:** the spend projection exceeds the estimate, or a model cannot do its role's call shape at all (the user decides).
 
 ---
@@ -641,8 +652,8 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
   - GUIDE slot and lever checks;
   - the status bar;
   - denials returned as text;
-  - the transcript index of `ask_readback`/`ask_final_offer` is tracked, and `record_offer` sets `expires_ms`; the fold ignores statuses and the terms hash in `offer.recorded` (root decision under §0.5a, 2026-09-26).
-- **Owned paths:** `src/proxyloop/slow/**`, `src/proxyloop/guard/declass.py`, `tests/slow/**`.
+  - the transcript index of `ask_readback`/`ask_final_offer` is tracked, and `record_offer` sets `expires_ms`; confirm, or implement if missing, that the fold ignores statuses and the terms hash in `offer.recorded` (root decision under §0.5a, 2026-09-26; it runs after S1-SYS-01 merges, so the fold paths do not overlap in time).
+- **Owned paths:** `src/proxyloop/slow/**`, `src/proxyloop/guard/declass.py`, `src/proxyloop/core/fold.py`, `tests/slow/**`, `tests/core/**`.
 - **Deps:** S1-SYS-01.
 - **Acceptance:**
   - a tool-schema snapshot;
@@ -694,7 +705,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Owned paths:** `apps/web/**` (except `apps/web/src/audit/**` until S2), `tests/web/**`.
 - **Deps:** none to code; merged at the gate (§0.1).
 - **Acceptance:**
-  - with keys and GPU unset, Playwright loads an `evidence/s0` bundle and asserts a Qwen3.5-9B sentence and a Slow tool event;
+  - with keys and GPU unset, Playwright loads an `evidence/s0` bundle and asserts a Fast sentence (with its model label) and a Slow tool event;
   - the web never imports prompt text (lint);
   - web TypeScript stays within the 1,500-line cap through S1 (§0.6).
 - **Verify:** `make web-test`.
@@ -751,16 +762,14 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Acceptance:** `make check` builds the web; a CI run fails on a planted shellcheck error.
 - **Verify:** `make check`; the CI link.
 
-### S1-SYS-14 Condition selection, claim gate and TeamRouter prices — SYS (L-CORE) — M — todo
-- **Objective** (root decisions under §0.5a, 2026-09-26):
-  - CLI `--condition <name>` builds the lanes from the registry: the factory builds `FsmTalker` for baseline refs and wraps Sonnet-as-Fast in `TeacherRepair` for T;
-  - the `evidence/reality.py` claim gate: S0/S1 claim bundles require `fast_*` = Qwen3.5-9B@vllm with P3 = pass; hosted-Fast bundles stay in `runs/`;
-  - the ledger rate card gains TeamRouter rows from S0-ROOT-12's measured prices.
+### S1-SYS-14 Condition selection and claim scoping — SYS (L-CORE) — M — todo
+- **Objective:**
+  - CLI `--condition <name>` builds the lanes from the registry: the factory builds `FsmTalker` for baseline refs and wraps Sonnet-as-Fast in `TeacherRepair` for T (root decision under §0.5a, 2026-09-26; per-role model selection by config is S0-SYS-08's);
+  - claim scoping in `evidence/reality.py` (root decision under §0.5a, 2026-09-26, following the user's S0-ROOT-05 decision): a claim is scoped to its Fast model. Claims about Qwen (base or fine-tuned) require Qwen@vllm bundles with P3 = pass. Luna bundles pass `--claim` as hosted-Fast evidence labelled with their `ModelRef`; P3 `not_applicable` is accepted only for a hosted Fast and is shown as such. Labelled conditions pass as their own `ModelRef`.
 - **Owned paths:** `src/proxyloop/{llm,evidence}/**` (except `evidence/audit/**`), `src/proxyloop/cli.py`, `tests/{llm,evidence}/**` (except `tests/evidence/audit/**`).
-- **Deps:** S0-ROOT-12 (prices), S1-MOD-01. Merged at the gate (§0.1).
-- **Acceptance:** tests: `--condition` builds the named lanes for F and T; the claim gate rejects a hosted-Fast bundle and accepts a Qwen@vllm bundle with P3 = pass; the ledger prices a TeamRouter call from the rate card.
+- **Deps:** S1-MOD-01. Merged at the gate (§0.1).
+- **Acceptance:** tests: `--condition` builds the named lanes for F and T; a Qwen claim rejects a hosted-Fast bundle and a Qwen bundle without P3 = pass; a Luna bundle passes `--claim` labelled with its `ModelRef` and P3 `not_applicable`; P3 `not_applicable` on a vLLM Fast fails.
 - **Verify:** `make test`.
-- **Escalate if:** the claim gate would reject the bundles of a labelled evaluation condition that an acceptance needs (T, F, R, C4, C5).
 
 ### S1-MOD-01 Model registry, per-lane swap, 4B serving, hosted/teacher Fast, FSM, teacher-repair — MOD — L — flags L+G for the smoke — todo
 - **Objective:**
@@ -783,7 +792,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Verify:** `make test`; `make smoke-live FAMILY=cp-direct-discount FAST=<cond>` (root).
 - **Escalate if:** the hosted-Fast path needs different prompt text (I3: it must not).
 
-### S1-MOD-02 Metrics v1, report and statistics — MOD — M — todo
+### S1-MOD-02 Metrics v1, report and statistics — MOD — M — doing (dispatched early by the model root; merged at the gate, §0.1)
 - **Objective:** the EVAL §7 metrics marked S1, plus `stats.py` (Wilson, cluster bootstrap), `report.py` (`pl.report/1`) and `matrix.py` (interleaved blocks, integrity gate).
 - **Owned paths:** `src/proxyloop/eval/**`, `tests/eval/**`, `mk/mod.mk`.
 - **Deps:** S0-ROOT-05.
@@ -1006,14 +1015,14 @@ S0  SYS:                 └─ SYS-01 port ─┬─ SYS-02 delete ────
     MOD:  ROOT-01 ─ MOD-01 serving (G) ─────────────────────── │ ──────────────────────────────── ┼─► ★ ROOT-05 MERGE POINT 1
                     MOD-02 training (G; dataset part after CON-01) ─────────────────────────────┘      │
                                                                                      MOD-03 pull-through ◄┘ ─► ROOT-06 close (U)
-    fixes: SYS-06 ─ SYS-07 slow/kernel ∥ SYS-08 world ─► ROOT-05 re-run;   ROOT-12 model probe (L) ─► S1-SYS-14
+    fixes: SYS-06 ─ SYS-07 slow/kernel ∥ SYS-08 world ─► ROOT-05 re-run;   ROOT-12 model probe (L) ─► SYS-07 prices
 S1  SYS: SYS-01 guard ─┬─ SYS-02 timing+concurrency ─ SYS-05 demo┐
                        ├─ SYS-03 slow v2 ─────────────────────────┤      SYS-11 otel (offline; supersedes SYS-06)
                        └─ SYS-04 world ───────────────────────────┤
     MOD: MOD-01 models/FSM/repair ─┬─ MOD-03 headroom probe (L+G) ─┴─ ROOT-02 pull-through ─ ROOT-04 close (U)
          MOD-02 metrics v1 ────────┘   MOD-04 Luna vs Qwen benchmark (after SYS-14)
     P-*: SYS-07/08 web ∥ SYS-09/10 api ∥ SYS-11/12 obs ∥ SYS-13 CI (coded now, merged at the gate); SYS-08 + SYS-10 ─► SYS-05
-    CON: CON-01 `Approval.expires_ms` ─► SYS-01;   SYS: SYS-14 conditions + claim gate ─► MOD-04
+    CON: CON-01 `Approval.expires_ms` ─► SYS-01;   SYS: SYS-14 conditions + claim scoping ─► MOD-04
 S2  SYS: SYS-01 fam 5–6 ─ ROOT-01 corpus ─┐   SYS-02/03 audit ───┐
     MOD: MOD-01 metric repairs ────────────┼──── MOD-02 audit stats ┴─ ROOT-03 audit (U) ─ ROOT-04 close
          MOD-03 TalkAct anchors (parallel, non-blocking)   ROOT-02 human probes (U) ┘
