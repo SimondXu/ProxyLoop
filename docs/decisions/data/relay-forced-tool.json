@@ -1,0 +1,4371 @@
+{
+  "schema": "pl.relay_forced_tool/1",
+  "task": "S0-ROOT-04",
+  "started_utc": "2026-09-26T05:35:29Z",
+  "finished_utc": "2026-09-26T05:38:01Z",
+  "models": [
+    "claude-sonnet-5",
+    "claude-haiku-4-5-20251001",
+    "gemini-3.6-flash",
+    "claude-opus-4-8",
+    "gemini-3.5-flash",
+    "gpt-4.1-mini-2025-04-14",
+    "gpt-5.4-mini-2026-03-17",
+    "gpt-5.4-nano-2026-03-17",
+    "gpt-5.6-luna-2026-07-09"
+  ],
+  "calls_per_model": 10,
+  "tool": {
+    "type": "function",
+    "function": {
+      "name": "classify",
+      "description": "Label one rep utterance.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "act",
+          "amount_usd"
+        ],
+        "properties": {
+          "act": {
+            "type": "string",
+            "enum": [
+              "offer",
+              "accept",
+              "reject",
+              "question",
+              "hold",
+              "other"
+            ]
+          },
+          "amount_usd": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "tool_choice": {
+    "type": "function",
+    "function": {
+      "name": "classify"
+    }
+  },
+  "utterances": [
+    "Yes, that works. I accept: the $65 per month rate is approved and applied from today.",
+    "I can offer you $62.50 a month if you stay with us for twelve more months.",
+    "Can you confirm the last four digits of the account holder's phone number?",
+    "I'm sorry, but we can't remove the equipment fee on this plan.",
+    "Please hold for a moment while I check with my supervisor.",
+    "The best I can do is a $10 monthly credit for six months.",
+    "Would you be willing to switch to paperless billing?",
+    "No, the promotional rate cannot be extended a second time.",
+    "Let me pull up your account; it will just take a second.",
+    "Thanks for your patience, I have noted your request on the account."
+  ],
+  "latency_note": "wall clock from the Mac, sequential per model, 9 models in parallel",
+  "summary": {
+    "claude-sonnet-5": {
+      "n": 10,
+      "errors": 0,
+      "forced_ok_rate": 1.0,
+      "schema_valid_rate": 1.0,
+      "latency_p50_s": 2.7402871039230376
+    },
+    "claude-haiku-4-5-20251001": {
+      "n": 10,
+      "errors": 0,
+      "forced_ok_rate": 1.0,
+      "schema_valid_rate": 1.0,
+      "latency_p50_s": 2.652708875015378
+    },
+    "gemini-3.6-flash": {
+      "n": 10,
+      "errors": 2,
+      "forced_ok_rate": 0.0,
+      "schema_valid_rate": 0.0,
+      "latency_p50_s": 3.918638207949698
+    },
+    "claude-opus-4-8": {
+      "n": 10,
+      "errors": 0,
+      "forced_ok_rate": 1.0,
+      "schema_valid_rate": 1.0,
+      "latency_p50_s": 2.5488380836322904
+    },
+    "gemini-3.5-flash": {
+      "n": 10,
+      "errors": 0,
+      "forced_ok_rate": 0.0,
+      "schema_valid_rate": 0.0,
+      "latency_p50_s": 3.6355938541237265
+    },
+    "gpt-4.1-mini-2025-04-14": {
+      "n": 10,
+      "errors": 0,
+      "forced_ok_rate": 1.0,
+      "schema_valid_rate": 1.0,
+      "latency_p50_s": 1.2985735211987048
+    },
+    "gpt-5.4-mini-2026-03-17": {
+      "n": 10,
+      "errors": 0,
+      "forced_ok_rate": 1.0,
+      "schema_valid_rate": 1.0,
+      "latency_p50_s": 1.8527508960105479
+    },
+    "gpt-5.4-nano-2026-03-17": {
+      "n": 10,
+      "errors": 0,
+      "forced_ok_rate": 1.0,
+      "schema_valid_rate": 1.0,
+      "latency_p50_s": 1.406111833639443
+    },
+    "gpt-5.6-luna-2026-07-09": {
+      "n": 10,
+      "errors": 0,
+      "forced_ok_rate": 1.0,
+      "schema_valid_rate": 1.0,
+      "latency_p50_s": 2.2837597294710577
+    }
+  },
+  "results": {
+    "claude-sonnet-5": {
+      "model": "claude-sonnet-5",
+      "calls": [
+        {
+          "utterance_idx": 0,
+          "response_id": "msg_011CfKGUp1ZkLc7wVJvyHy3u",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 641,
+            "total_tokens": 651,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 641,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 641,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 3.5469907503575087,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "accept",
+            "amount_usd": 65
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 1,
+          "response_id": "msg_011CfKGUSczOJ6fSXsbWizKk",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 637,
+            "total_tokens": 648,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 637,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 11,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 637,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.812082542106509,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": 62.5
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 2,
+          "response_id": "msg_011CfKGUvxTEF0mYzVlzQSx3",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 636,
+            "total_tokens": 647,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 636,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 11,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 636,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.844197291880846,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "question",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 3,
+          "response_id": "msg_011CfKGVlMLyp4qlBaRrz2xv",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 635,
+            "total_tokens": 646,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 635,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 11,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 635,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.7567554167471826,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "reject",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 4,
+          "response_id": "msg_011CfKGV2C3YNUVH3mL808AF",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 631,
+            "total_tokens": 641,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 631,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 631,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.61505616735667,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 5,
+          "response_id": "msg_011CfKGV1ynyxPthIfIM2VwP",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 638,
+            "total_tokens": 648,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 638,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 638,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.6913412087596953,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": 60
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 6,
+          "response_id": "msg_011CfKGVpY0RfeusPztbBxIj",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 632,
+            "total_tokens": 643,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 632,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 11,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 632,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.7238187910988927,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "question",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 7,
+          "response_id": "msg_011CfKGVBXzortnb2WE1R8dV",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 634,
+            "total_tokens": 645,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 634,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 11,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 634,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.6203581667505205,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "reject",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 8,
+          "response_id": "msg_011CfKGWX8Ku8AHXYqjHjdrI",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 627,
+            "total_tokens": 637,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 627,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 627,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.8198781246319413,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 9,
+          "response_id": "msg_011CfKGWDzo7vgGSJ7UULP7Z",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 634,
+            "total_tokens": 644,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 634,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 634,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.5491777919232845,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        }
+      ]
+    },
+    "claude-haiku-4-5-20251001": {
+      "model": "claude-haiku-4-5-20251001",
+      "calls": [
+        {
+          "utterance_idx": 0,
+          "response_id": "msg_011CfKGUP0LPAKbpNgvSpbXd",
+          "echoed_model": "claude-haiku-4-5-20251001",
+          "usage": {
+            "completion_tokens": 39,
+            "prompt_tokens": 727,
+            "total_tokens": 766,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 727,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 39,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 727,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 4.0430820835754275,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "accept",
+            "amount_usd": 65
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 1,
+          "response_id": "msg_011CfKGU1ubBcTMFJag0VW22",
+          "echoed_model": "claude-haiku-4-5-20251001",
+          "usage": {
+            "completion_tokens": 37,
+            "prompt_tokens": 726,
+            "total_tokens": 763,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 726,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 37,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 726,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.8399248337373137,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": 62.5
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 2,
+          "response_id": "msg_011CfKGUBwFw0mlEDjBmNfYC",
+          "echoed_model": "claude-haiku-4-5-20251001",
+          "usage": {
+            "completion_tokens": 40,
+            "prompt_tokens": 724,
+            "total_tokens": 764,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 724,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 40,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 724,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.621147375088185,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "question",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 3,
+          "response_id": "msg_011CfKGVvnw5KukSRfYgeaLW",
+          "echoed_model": "claude-haiku-4-5-20251001",
+          "usage": {
+            "completion_tokens": 37,
+            "prompt_tokens": 725,
+            "total_tokens": 762,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 725,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 37,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 725,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.684270374942571,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "reject",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 4,
+          "response_id": "msg_011CfKGVKbqrcbV8gxCIZB2C",
+          "echoed_model": "claude-haiku-4-5-20251001",
+          "usage": {
+            "completion_tokens": 39,
+            "prompt_tokens": 719,
+            "total_tokens": 758,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 719,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 39,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 719,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 3.3640817501582205,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 5,
+          "response_id": "msg_011CfKGVUNNkEmVAgE5dmGed",
+          "echoed_model": "claude-haiku-4-5-20251001",
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 724,
+            "total_tokens": 755,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 724,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 31,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 724,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.602953374851495,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": 60
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 6,
+          "response_id": "msg_011CfKGVLMFdyF4zNCXb6JNL",
+          "echoed_model": "claude-haiku-4-5-20251001",
+          "usage": {
+            "completion_tokens": 35,
+            "prompt_tokens": 720,
+            "total_tokens": 755,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 720,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 35,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 720,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.555229749996215,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "question",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 7,
+          "response_id": "msg_011CfKGVc1vYYQUpRfaWrYXi",
+          "echoed_model": "claude-haiku-4-5-20251001",
+          "usage": {
+            "completion_tokens": 37,
+            "prompt_tokens": 721,
+            "total_tokens": 758,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 721,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 37,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 721,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.6982817500829697,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "reject",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 8,
+          "response_id": "msg_011CfKGWvXSwg0amiLJ4i6qv",
+          "echoed_model": "claude-haiku-4-5-20251001",
+          "usage": {
+            "completion_tokens": 36,
+            "prompt_tokens": 718,
+            "total_tokens": 754,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 718,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 36,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 718,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.444223292171955,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 9,
+          "response_id": "msg_011CfKGWLRN6W68sWkQWr0Sd",
+          "echoed_model": "claude-haiku-4-5-20251001",
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 722,
+            "total_tokens": 753,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 722,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 31,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 722,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.6080110827460885,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "accept",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        }
+      ]
+    },
+    "gemini-3.6-flash": {
+      "model": "gemini-3.6-flash",
+      "calls": [
+        {
+          "utterance_idx": 0,
+          "response_id": "chatcmpl-e8addc6b-9581-45e2-a49f-9a9b252034f9",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 76,
+            "prompt_tokens": 42,
+            "total_tokens": 118,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "latency_s": 4.4820600831881166,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        },
+        {
+          "utterance_idx": 1,
+          "response_id": "chatcmpl-dfb5ca39-a081-49da-9079-60b2ea53f264",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 75,
+            "prompt_tokens": 43,
+            "total_tokens": 118,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "latency_s": 3.9730305410921574,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        },
+        {
+          "utterance_idx": 2,
+          "response_id": "chatcmpl-55610332-4a2c-4a54-b02a-cea6996e4a51",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 59,
+            "prompt_tokens": 36,
+            "total_tokens": 95,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "latency_s": 3.3724829172715545,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        },
+        {
+          "utterance_idx": 3,
+          "error_type": "InternalServerError",
+          "error": "Error code: 504 - {'type': 'https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-504/', 'title': 'Error 504: Gateway time-out', 'status': 504, 'detail': 'The origin web server did not respond to Cloudflare within the allowed time. This typically means the origin is overloaded or a backend process is taking too long.', 'instance': 'a40fe81a3a85f2f8",
+          "status_code": 504
+        },
+        {
+          "utterance_idx": 4,
+          "response_id": "chatcmpl-db1a284e-7c35-4cfa-a4c6-304f3c53e096",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 141,
+            "prompt_tokens": 31,
+            "total_tokens": 172,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "latency_s": 3.4463751250877976,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        },
+        {
+          "utterance_idx": 5,
+          "error_type": "InternalServerError",
+          "error": "Error code: 504 - {'type': 'https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-504/', 'title': 'Error 504: Gateway time-out', 'status': 504, 'detail': 'The origin web server did not respond to Cloudflare within the allowed time. This typically means the origin is overloaded or a backend process is taking too long.', 'instance': 'a40fe9a72c67f2f8",
+          "status_code": 504
+        },
+        {
+          "utterance_idx": 6,
+          "response_id": "chatcmpl-ba4f5db0-df17-4133-96b0-bd578d7292ae",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 114,
+            "prompt_tokens": 29,
+            "total_tokens": 143,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "latency_s": 3.400075958110392,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        },
+        {
+          "utterance_idx": 7,
+          "response_id": "chatcmpl-2ef1ac39-78a1-40e5-b79f-4e5e81dcb7c2",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 73,
+            "prompt_tokens": 30,
+            "total_tokens": 103,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "latency_s": 3.8642458748072386,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        },
+        {
+          "utterance_idx": 8,
+          "response_id": "chatcmpl-10fbeb68-f92f-4152-ab26-b90f06d29082",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 153,
+            "prompt_tokens": 34,
+            "total_tokens": 187,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "latency_s": 4.475046875420958,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        },
+        {
+          "utterance_idx": 9,
+          "response_id": "chatcmpl-3f07d2cb-9acf-4509-9526-543c67ee4b0d",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 179,
+            "prompt_tokens": 33,
+            "total_tokens": 212,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "latency_s": 4.961007333826274,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        }
+      ]
+    },
+    "claude-opus-4-8": {
+      "model": "claude-opus-4-8",
+      "calls": [
+        {
+          "utterance_idx": 0,
+          "response_id": "msg_011CfKGUxIgcGH79ebETOHMP",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 577,
+            "total_tokens": 587,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 577,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 577,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 4.157511541154236,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "accept",
+            "amount_usd": 65
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 1,
+          "response_id": "msg_011CfKGUHMtngzvsU8074tsA",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 573,
+            "total_tokens": 584,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 573,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 11,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 573,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.6233306671492755,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": 62.5
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 2,
+          "response_id": "msg_011CfKGUIUg7GTb5zVAfasiW",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 572,
+            "total_tokens": 583,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 572,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 11,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 572,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 3.9517943328246474,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "question",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 3,
+          "response_id": "msg_011CfKGVVXYtGBad95yPu0pU",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 571,
+            "total_tokens": 582,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 571,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 11,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 571,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.545283625368029,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "reject",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 4,
+          "response_id": "msg_011CfKGV94Dpf8eLEwWuXwqs",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 567,
+            "total_tokens": 577,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 567,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 567,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.5190278328955173,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 5,
+          "response_id": "msg_011CfKGV1AJDPNLopcFO6Uhx",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 574,
+            "total_tokens": 584,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 574,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 574,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.472254792228341,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": 60
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 6,
+          "response_id": "msg_011CfKGVjlWBH2MNl0p147sG",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 568,
+            "total_tokens": 579,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 568,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 11,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 568,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.552392541896552,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 7,
+          "response_id": "msg_011CfKGVvssBozBxZG45OJAr",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 570,
+            "total_tokens": 581,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 570,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 11,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 570,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.3406290421262383,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "reject",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 8,
+          "response_id": "msg_011CfKGWw3BrCwJN1sjKbEKC",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 563,
+            "total_tokens": 573,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 563,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 563,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.477427083067596,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 9,
+          "response_id": "msg_011CfKGWcCwHHllUAF7MsrvP",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 570,
+            "total_tokens": 580,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 570,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 570,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.7488970421254635,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        }
+      ]
+    },
+    "gemini-3.5-flash": {
+      "model": "gemini-3.5-flash",
+      "calls": [
+        {
+          "utterance_idx": 0,
+          "response_id": "chatcmpl-202609260535301271363658268d9d6ueucuVpu",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 226,
+            "prompt_tokens": 42,
+            "total_tokens": 268,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 42,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 42,
+                "completion_tokens": 226,
+                "total_tokens": 268,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 5.596098207868636,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        },
+        {
+          "utterance_idx": 1,
+          "response_id": "chatcmpl-202609260535349563975928268d9d6o8HHFiFG",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 98,
+            "prompt_tokens": 43,
+            "total_tokens": 141,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 43,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 43,
+                "completion_tokens": 98,
+                "total_tokens": 141,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 3.9492624578997493,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        },
+        {
+          "utterance_idx": 2,
+          "response_id": "chatcmpl-5fdec161-df09-47d3-b4ae-e46da051cd1f",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 75,
+            "prompt_tokens": 36,
+            "total_tokens": 111,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "latency_s": 2.704258208628744,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        },
+        {
+          "utterance_idx": 3,
+          "response_id": "chatcmpl-202609260535416093966108268d9d644G2PeA4",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 74,
+            "prompt_tokens": 36,
+            "total_tokens": 110,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 36,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 36,
+                "completion_tokens": 74,
+                "total_tokens": 110,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 59.643959540873766,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        },
+        {
+          "utterance_idx": 4,
+          "response_id": "chatcmpl-202609260536412544298688268d9d6i18AysPr",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 143,
+            "prompt_tokens": 31,
+            "total_tokens": 174,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 31,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 31,
+                "completion_tokens": 143,
+                "total_tokens": 174,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 3.296687333844602,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        },
+        {
+          "utterance_idx": 5,
+          "response_id": "chatcmpl-070deb14-816f-4dfd-bca9-dd214738b72f",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 72,
+            "prompt_tokens": 36,
+            "total_tokens": 108,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "latency_s": 3.1534062922000885,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        },
+        {
+          "utterance_idx": 6,
+          "response_id": "chatcmpl-202609260536477024361708268d9d64cfj8QB1",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 162,
+            "prompt_tokens": 29,
+            "total_tokens": 191,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 29,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 29,
+                "completion_tokens": 162,
+                "total_tokens": 191,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 4.324359541758895,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        },
+        {
+          "utterance_idx": 7,
+          "response_id": "chatcmpl-202609260536520319230578268d9d6cuzOZ03Z",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 84,
+            "prompt_tokens": 30,
+            "total_tokens": 114,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 30,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 30,
+                "completion_tokens": 84,
+                "total_tokens": 114,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 3.208739750087261,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        },
+        {
+          "utterance_idx": 8,
+          "response_id": "chatcmpl-202609260536552391657948268d9d6t7JVW9Rl",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 111,
+            "prompt_tokens": 34,
+            "total_tokens": 145,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 34,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 34,
+                "completion_tokens": 111,
+                "total_tokens": 145,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 3.3219252503477037,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        },
+        {
+          "utterance_idx": 9,
+          "response_id": "chatcmpl-d7b7b350-fc82-427d-bb5f-7ccf2ed0ce4f",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 143,
+            "prompt_tokens": 33,
+            "total_tokens": 176,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "latency_s": 52.656180957797915,
+          "n_tool_calls": 0,
+          "tool_names": [],
+          "forced_ok": false,
+          "args_json": false,
+          "schema_valid": false
+        }
+      ]
+    },
+    "gpt-4.1-mini-2025-04-14": {
+      "model": "gpt-4.1-mini-2025-04-14",
+      "calls": [
+        {
+          "utterance_idx": 0,
+          "response_id": "chatcmpl-ESFMIUKLU9H7rD0XRDNXeNFeyWUkI",
+          "echoed_model": "gpt-4.1-mini-2025-04-14",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 110,
+            "total_tokens": 121,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 12,
+              "engine_ttft_ms": 42,
+              "engine_ttlt_ms": 184,
+              "pre_inference_ms": 102,
+              "service_tbt_ms": 12,
+              "service_ttft_ms": 342,
+              "service_ttlt_ms": 478,
+              "user_visible_ttft_ms": 241
+            }
+          },
+          "latency_s": 1.7755384580232203,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "accept",
+            "amount_usd": 65
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 1,
+          "response_id": "chatcmpl-ESFMJq54T1FmBQ9dkbTvnUQ1d1Q2o",
+          "echoed_model": "gpt-4.1-mini-2025-04-14",
+          "usage": {
+            "completion_tokens": 13,
+            "prompt_tokens": 109,
+            "total_tokens": 122,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 9,
+              "engine_ttft_ms": 22,
+              "engine_ttlt_ms": 143,
+              "pre_inference_ms": 132,
+              "service_tbt_ms": 9,
+              "service_ttft_ms": 516,
+              "service_ttlt_ms": 633,
+              "user_visible_ttft_ms": 383
+            }
+          },
+          "latency_s": 1.220245209056884,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": 62.5
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 2,
+          "response_id": "chatcmpl-ESFMKtiBQ0cvwffU6BVyq7mQx2EJN",
+          "echoed_model": "gpt-4.1-mini-2025-04-14",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 104,
+            "total_tokens": 115,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 7,
+              "engine_ttft_ms": 25,
+              "engine_ttlt_ms": 110,
+              "pre_inference_ms": 95,
+              "service_tbt_ms": 8,
+              "service_ttft_ms": 504,
+              "service_ttlt_ms": 588,
+              "user_visible_ttft_ms": 409
+            }
+          },
+          "latency_s": 1.3150320411659777,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "question",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 3,
+          "response_id": "chatcmpl-ESFMLytnLWnVHIGegMKLfgZPYa6OQ",
+          "echoed_model": "gpt-4.1-mini-2025-04-14",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 103,
+            "total_tokens": 114,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 6,
+              "engine_ttft_ms": 55,
+              "engine_ttlt_ms": 124,
+              "pre_inference_ms": 102,
+              "service_tbt_ms": 10,
+              "service_ttft_ms": 527,
+              "service_ttlt_ms": 632,
+              "user_visible_ttft_ms": 425
+            }
+          },
+          "latency_s": 1.2891790000721812,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "reject",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 4,
+          "response_id": "chatcmpl-ESFMNw26FOASx8DgOaUC5gxsaESTA",
+          "echoed_model": "gpt-4.1-mini-2025-04-14",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 101,
+            "total_tokens": 112,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 6,
+              "engine_ttft_ms": 21,
+              "engine_ttlt_ms": 91,
+              "pre_inference_ms": 87,
+              "service_tbt_ms": 6,
+              "service_ttft_ms": 472,
+              "service_ttlt_ms": 536,
+              "user_visible_ttft_ms": 385
+            }
+          },
+          "latency_s": 1.2812606659717858,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 5,
+          "response_id": "chatcmpl-ESFMODsdtrwGtYFqtPOWWziIY9Ycr",
+          "echoed_model": "gpt-4.1-mini-2025-04-14",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 104,
+            "total_tokens": 115,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 7,
+              "engine_ttft_ms": 23,
+              "engine_ttlt_ms": 104,
+              "pre_inference_ms": 108,
+              "service_tbt_ms": 8,
+              "service_ttft_ms": 522,
+              "service_ttlt_ms": 610,
+              "user_visible_ttft_ms": 414
+            }
+          },
+          "latency_s": 1.3079680423252285,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": 10
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 6,
+          "response_id": "chatcmpl-ESFMP3p5zX3nuSlEWnAQnlJPrOfca",
+          "echoed_model": "gpt-4.1-mini-2025-04-14",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 100,
+            "total_tokens": 111,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 6,
+              "engine_ttft_ms": 27,
+              "engine_ttlt_ms": 101,
+              "pre_inference_ms": 84,
+              "service_tbt_ms": 6,
+              "service_ttft_ms": 473,
+              "service_ttlt_ms": 543,
+              "user_visible_ttft_ms": 389
+            }
+          },
+          "latency_s": 1.0730736670084298,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "question",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 7,
+          "response_id": "chatcmpl-ESFMQe9ArmzcxWxaU5WvsrFYkhWb9",
+          "echoed_model": "gpt-4.1-mini-2025-04-14",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 101,
+            "total_tokens": 112,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 7,
+              "engine_ttft_ms": 31,
+              "engine_ttlt_ms": 110,
+              "pre_inference_ms": 90,
+              "service_tbt_ms": 7,
+              "service_ttft_ms": 489,
+              "service_ttlt_ms": 561,
+              "user_visible_ttft_ms": 399
+            }
+          },
+          "latency_s": 1.1676274589262903,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "reject",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 8,
+          "response_id": "chatcmpl-ESFMSJsKPRcNkv3IMm1ZN9IVpmzqH",
+          "echoed_model": "gpt-4.1-mini-2025-04-14",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 103,
+            "total_tokens": 114,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 6,
+              "engine_ttft_ms": 21,
+              "engine_ttlt_ms": 90,
+              "pre_inference_ms": 108,
+              "service_tbt_ms": 5,
+              "service_ttft_ms": 507,
+              "service_ttlt_ms": 560,
+              "user_visible_ttft_ms": 399
+            }
+          },
+          "latency_s": 3.5777440411038697,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 9,
+          "response_id": "chatcmpl-ESFMV7TtO98eKcBSh8x1US3j7nZkc",
+          "echoed_model": "gpt-4.1-mini-2025-04-14",
+          "usage": {
+            "completion_tokens": 11,
+            "prompt_tokens": 103,
+            "total_tokens": 114,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 6,
+              "engine_ttft_ms": 36,
+              "engine_ttlt_ms": 114,
+              "pre_inference_ms": 145,
+              "service_tbt_ms": 9,
+              "service_ttft_ms": 447,
+              "service_ttlt_ms": 548,
+              "user_visible_ttft_ms": 302
+            }
+          },
+          "latency_s": 3.8850421248935163,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "other",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        }
+      ]
+    },
+    "gpt-5.4-mini-2026-03-17": {
+      "model": "gpt-5.4-mini-2026-03-17",
+      "calls": [
+        {
+          "utterance_idx": 0,
+          "response_id": "chatcmpl-ESFMIZhf8zgFUsRXy0KcjWOT6iU0J",
+          "echoed_model": "gpt-5.4-mini-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 182,
+            "total_tokens": 205,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 3,
+              "engine_ttft_ms": 44,
+              "engine_ttlt_ms": 124,
+              "pre_inference_ms": 105,
+              "service_tbt_ms": 2,
+              "service_ttft_ms": 666,
+              "service_ttlt_ms": 708,
+              "user_visible_ttft_ms": 561
+            }
+          },
+          "latency_s": 2.555476375389844,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "accept",
+            "amount_usd": 65
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 1,
+          "response_id": "chatcmpl-ESFMKlJgkzNTjL5NsUE7vEvVHHtGv",
+          "echoed_model": "gpt-5.4-mini-2026-03-17",
+          "usage": {
+            "completion_tokens": 25,
+            "prompt_tokens": 181,
+            "total_tokens": 206,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 4,
+              "engine_ttft_ms": 47,
+              "engine_ttlt_ms": 152,
+              "pre_inference_ms": 95,
+              "service_tbt_ms": 4,
+              "service_ttft_ms": 663,
+              "service_ttlt_ms": 764,
+              "user_visible_ttft_ms": 569
+            }
+          },
+          "latency_s": 1.8471147501841187,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": 62.5
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 2,
+          "response_id": "chatcmpl-ESFMMNlaS4wlIXCFtsmFgZE2pOwwm",
+          "echoed_model": "gpt-5.4-mini-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 176,
+            "total_tokens": 199,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 4,
+              "engine_ttft_ms": 42,
+              "engine_ttlt_ms": 131,
+              "pre_inference_ms": 353,
+              "service_tbt_ms": 4,
+              "service_ttft_ms": 936,
+              "service_ttlt_ms": 1020,
+              "user_visible_ttft_ms": 582
+            }
+          },
+          "latency_s": 2.1366046662442386,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "question",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 3,
+          "response_id": "chatcmpl-ESFMOGzOlhX1eoPJEidSHrj2ie47W",
+          "echoed_model": "gpt-5.4-mini-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 175,
+            "total_tokens": 198,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 4,
+              "engine_ttft_ms": 39,
+              "engine_ttlt_ms": 128,
+              "pre_inference_ms": 121,
+              "service_tbt_ms": 3,
+              "service_ttft_ms": 650,
+              "service_ttlt_ms": 718,
+              "user_visible_ttft_ms": 529
+            }
+          },
+          "latency_s": 1.6320646251551807,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "reject",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 4,
+          "response_id": "chatcmpl-ESFMQrN5vyoCH2Bq2a7MosulxLWQF",
+          "echoed_model": "gpt-5.4-mini-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 173,
+            "total_tokens": 196,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 3,
+              "engine_ttft_ms": 32,
+              "engine_ttlt_ms": 103,
+              "pre_inference_ms": 154,
+              "service_tbt_ms": 3,
+              "service_ttft_ms": 696,
+              "service_ttlt_ms": 761,
+              "user_visible_ttft_ms": 542
+            }
+          },
+          "latency_s": 1.858387041836977,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 5,
+          "response_id": "chatcmpl-ESFMRUJStGPfiDwzznDl79Ccs7yJF",
+          "echoed_model": "gpt-5.4-mini-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 176,
+            "total_tokens": 199,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 4,
+              "engine_ttft_ms": 52,
+              "engine_ttlt_ms": 158,
+              "pre_inference_ms": 79,
+              "service_tbt_ms": 5,
+              "service_ttft_ms": 627,
+              "service_ttlt_ms": 732,
+              "user_visible_ttft_ms": 548
+            }
+          },
+          "latency_s": 1.669968708883971,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": 60
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 6,
+          "response_id": "chatcmpl-ESFMT9JzYUAy87FR52wDx6zH9lc2S",
+          "echoed_model": "gpt-5.4-mini-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 172,
+            "total_tokens": 195,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 3,
+              "engine_ttft_ms": 48,
+              "engine_ttlt_ms": 121,
+              "pre_inference_ms": 101,
+              "service_tbt_ms": 3,
+              "service_ttft_ms": 655,
+              "service_ttlt_ms": 725,
+              "user_visible_ttft_ms": 554
+            }
+          },
+          "latency_s": 1.9999631252139807,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "question",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 7,
+          "response_id": "chatcmpl-ESFMVG46Knhh4Vn9SIv0jZ0wddjyK",
+          "echoed_model": "gpt-5.4-mini-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 173,
+            "total_tokens": 196,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 4,
+              "engine_ttft_ms": 38,
+              "engine_ttlt_ms": 143,
+              "pre_inference_ms": 222,
+              "service_tbt_ms": 10,
+              "service_ttft_ms": 1147,
+              "service_ttlt_ms": 1376,
+              "user_visible_ttft_ms": 925
+            }
+          },
+          "latency_s": 2.299574625212699,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "reject",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 8,
+          "response_id": "chatcmpl-ESFMXVKxtfAZu0QrC5k9A9Bu4hPAi",
+          "echoed_model": "gpt-5.4-mini-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 175,
+            "total_tokens": 198,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 4,
+              "engine_ttft_ms": 46,
+              "engine_ttlt_ms": 139,
+              "pre_inference_ms": 137,
+              "service_tbt_ms": 4,
+              "service_ttft_ms": 671,
+              "service_ttlt_ms": 759,
+              "user_visible_ttft_ms": 534
+            }
+          },
+          "latency_s": 1.686887125018984,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 9,
+          "response_id": "chatcmpl-ESFMZMlqbTJEHjI2wC2yrPMFJwk1c",
+          "echoed_model": "gpt-5.4-mini-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 175,
+            "total_tokens": 198,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 4,
+              "engine_ttft_ms": 44,
+              "engine_ttlt_ms": 139,
+              "pre_inference_ms": 96,
+              "service_tbt_ms": 4,
+              "service_ttft_ms": 608,
+              "service_ttlt_ms": 697,
+              "user_visible_ttft_ms": 512
+            }
+          },
+          "latency_s": 1.7790981670841575,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "other",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        }
+      ]
+    },
+    "gpt-5.4-nano-2026-03-17": {
+      "model": "gpt-5.4-nano-2026-03-17",
+      "calls": [
+        {
+          "utterance_idx": 0,
+          "response_id": "chatcmpl-ESFMIbCkAV22NWyQfX23rVi57ThBW",
+          "echoed_model": "gpt-5.4-nano-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 182,
+            "total_tokens": 205,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 8,
+              "engine_ttft_ms": 39,
+              "engine_ttlt_ms": 235,
+              "pre_inference_ms": 108,
+              "service_tbt_ms": 8,
+              "service_ttft_ms": 424,
+              "service_ttlt_ms": 613,
+              "user_visible_ttft_ms": 316
+            }
+          },
+          "latency_s": 2.061378916259855,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "accept",
+            "amount_usd": 65
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 1,
+          "response_id": "chatcmpl-ESFMJtV7CrGHJ3IiQZabj9h9ovXQ3",
+          "echoed_model": "gpt-5.4-nano-2026-03-17",
+          "usage": {
+            "completion_tokens": 25,
+            "prompt_tokens": 181,
+            "total_tokens": 206,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 7,
+              "engine_ttft_ms": 49,
+              "engine_ttlt_ms": 232,
+              "pre_inference_ms": 98,
+              "service_tbt_ms": 7,
+              "service_ttft_ms": 420,
+              "service_ttlt_ms": 599,
+              "user_visible_ttft_ms": 323
+            }
+          },
+          "latency_s": 1.6788162500597537,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": 62.5
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 2,
+          "response_id": "chatcmpl-ESFMLWZHlu0p1uuOxlGOpSTaBfW1r",
+          "echoed_model": "gpt-5.4-nano-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 176,
+            "total_tokens": 199,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 7,
+              "engine_ttft_ms": 38,
+              "engine_ttlt_ms": 212,
+              "pre_inference_ms": 87,
+              "service_tbt_ms": 7,
+              "service_ttft_ms": 394,
+              "service_ttlt_ms": 561,
+              "user_visible_ttft_ms": 307
+            }
+          },
+          "latency_s": 1.2926598750054836,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "question",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 3,
+          "response_id": "chatcmpl-ESFMMBbo1f43M43OmpitjyxdIyK3S",
+          "echoed_model": "gpt-5.4-nano-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 175,
+            "total_tokens": 198,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 6,
+              "engine_ttft_ms": 30,
+              "engine_ttlt_ms": 181,
+              "pre_inference_ms": 89,
+              "service_tbt_ms": 6,
+              "service_ttft_ms": 389,
+              "service_ttlt_ms": 535,
+              "user_visible_ttft_ms": 301
+            }
+          },
+          "latency_s": 1.339447374921292,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "reject",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 4,
+          "response_id": "chatcmpl-ESFMOt9vC0b0GAnhPyC4By7mHMCRF",
+          "echoed_model": "gpt-5.4-nano-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 173,
+            "total_tokens": 196,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 8,
+              "engine_ttft_ms": 30,
+              "engine_ttlt_ms": 220,
+              "pre_inference_ms": 95,
+              "service_tbt_ms": 8,
+              "service_ttft_ms": 389,
+              "service_ttlt_ms": 572,
+              "user_visible_ttft_ms": 294
+            }
+          },
+          "latency_s": 1.2920674588531256,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 5,
+          "response_id": "chatcmpl-ESFMPY4nNBnRg87avXTLs9bq8LbOh",
+          "echoed_model": "gpt-5.4-nano-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 176,
+            "total_tokens": 199,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 6,
+              "engine_ttft_ms": 43,
+              "engine_ttlt_ms": 191,
+              "pre_inference_ms": 106,
+              "service_tbt_ms": 5,
+              "service_ttft_ms": 435,
+              "service_ttlt_ms": 560,
+              "user_visible_ttft_ms": 330
+            }
+          },
+          "latency_s": 1.4700889997184277,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": 10
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 6,
+          "response_id": "chatcmpl-ESFMQ5MVf6hAJvqzvrSwOblEhgdM8",
+          "echoed_model": "gpt-5.4-nano-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 172,
+            "total_tokens": 195,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 6,
+              "engine_ttft_ms": 32,
+              "engine_ttlt_ms": 185,
+              "pre_inference_ms": 87,
+              "service_tbt_ms": 6,
+              "service_ttft_ms": 388,
+              "service_ttlt_ms": 537,
+              "user_visible_ttft_ms": 301
+            }
+          },
+          "latency_s": 1.417764584068209,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "question",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 7,
+          "response_id": "chatcmpl-ESFMSB6WbwuIhAHShOJexKPMPRIJf",
+          "echoed_model": "gpt-5.4-nano-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 173,
+            "total_tokens": 196,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 6,
+              "engine_ttft_ms": 31,
+              "engine_ttlt_ms": 166,
+              "pre_inference_ms": 90,
+              "service_tbt_ms": 6,
+              "service_ttft_ms": 384,
+              "service_ttlt_ms": 514,
+              "user_visible_ttft_ms": 293
+            }
+          },
+          "latency_s": 1.3299833750352263,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "reject",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 8,
+          "response_id": "chatcmpl-ESFMThzKX2kbrO88j4jBcg9gDoQQ4",
+          "echoed_model": "gpt-5.4-nano-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 175,
+            "total_tokens": 198,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 7,
+              "engine_ttft_ms": 43,
+              "engine_ttlt_ms": 209,
+              "pre_inference_ms": 102,
+              "service_tbt_ms": 7,
+              "service_ttft_ms": 408,
+              "service_ttlt_ms": 568,
+              "user_visible_ttft_ms": 306
+            }
+          },
+          "latency_s": 1.5694055003114045,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 9,
+          "response_id": "chatcmpl-ESFMVpLkPrlCaC5i4ebnb0F5biyAf",
+          "echoed_model": "gpt-5.4-nano-2026-03-17",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 175,
+            "total_tokens": 198,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 6,
+              "engine_ttft_ms": 35,
+              "engine_ttlt_ms": 175,
+              "pre_inference_ms": 95,
+              "service_tbt_ms": 6,
+              "service_ttft_ms": 399,
+              "service_ttlt_ms": 534,
+              "user_visible_ttft_ms": 304
+            }
+          },
+          "latency_s": 1.394459083210677,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        }
+      ]
+    },
+    "gpt-5.6-luna-2026-07-09": {
+      "model": "gpt-5.6-luna-2026-07-09",
+      "calls": [
+        {
+          "utterance_idx": 0,
+          "response_id": "chatcmpl-ESFMIhPhayhLpfwjlcr8OD7XSRJ8H",
+          "echoed_model": "gpt-5.6-luna-2026-07-09",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 182,
+            "total_tokens": 205,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 8,
+              "engine_ttft_ms": 81,
+              "engine_ttlt_ms": 269,
+              "pre_inference_ms": 101,
+              "service_tbt_ms": 8,
+              "service_ttft_ms": 250,
+              "service_ttlt_ms": 432,
+              "user_visible_ttft_ms": 149
+            }
+          },
+          "latency_s": 2.0572067918255925,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "accept",
+            "amount_usd": 65
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 1,
+          "response_id": "chatcmpl-ESFMKO0mPiIRaoyWzYaoxpRxfJdyW",
+          "echoed_model": "gpt-5.6-luna-2026-07-09",
+          "usage": {
+            "completion_tokens": 25,
+            "prompt_tokens": 181,
+            "total_tokens": 206,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 7,
+              "engine_ttft_ms": 86,
+              "engine_ttlt_ms": 271,
+              "pre_inference_ms": 100,
+              "service_tbt_ms": 7,
+              "service_ttft_ms": 252,
+              "service_ttlt_ms": 433,
+              "user_visible_ttft_ms": 152
+            }
+          },
+          "latency_s": 1.6847462910227478,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": 62.5
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 2,
+          "response_id": "chatcmpl-ESFMMJBGPa81dPJ5htu5PkuOk6eDi",
+          "echoed_model": "gpt-5.6-luna-2026-07-09",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 176,
+            "total_tokens": 199,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 7,
+              "engine_ttft_ms": 80,
+              "engine_ttlt_ms": 256,
+              "pre_inference_ms": 95,
+              "service_tbt_ms": 8,
+              "service_ttft_ms": 271,
+              "service_ttlt_ms": 444,
+              "user_visible_ttft_ms": 175
+            }
+          },
+          "latency_s": 2.2032501669600606,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "question",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 3,
+          "response_id": "chatcmpl-ESFMaaqzUDQSYWvAl7PrVoYj582Q5",
+          "echoed_model": "gpt-5.6-luna-2026-07-09",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 175,
+            "total_tokens": 198,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 7,
+              "engine_ttft_ms": 62,
+              "engine_ttlt_ms": 236,
+              "pre_inference_ms": 78,
+              "service_tbt_ms": 7,
+              "service_ttft_ms": 241,
+              "service_ttlt_ms": 409,
+              "user_visible_ttft_ms": 163
+            }
+          },
+          "latency_s": 13.601741124875844,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "reject",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 4,
+          "response_id": "chatcmpl-ESFMbgMUrz0YsWLPJTBoIOSQdLO82",
+          "echoed_model": "gpt-5.6-luna-2026-07-09",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 173,
+            "total_tokens": 196,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 7,
+              "engine_ttft_ms": 69,
+              "engine_ttlt_ms": 244,
+              "pre_inference_ms": 94,
+              "service_tbt_ms": 7,
+              "service_ttft_ms": 827,
+              "service_ttlt_ms": 998,
+              "user_visible_ttft_ms": 733
+            }
+          },
+          "latency_s": 1.6982245831750333,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 5,
+          "response_id": "chatcmpl-ESFMcDLUYENqWs47gRXmy0CfchjGD",
+          "echoed_model": "gpt-5.6-luna-2026-07-09",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 176,
+            "total_tokens": 199,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 8,
+              "engine_ttft_ms": 67,
+              "engine_ttlt_ms": 247,
+              "pre_inference_ms": 101,
+              "service_tbt_ms": 8,
+              "service_ttft_ms": 513,
+              "service_ttlt_ms": 688,
+              "user_visible_ttft_ms": 413
+            }
+          },
+          "latency_s": 1.4101682091131806,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": 60
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 6,
+          "response_id": "chatcmpl-ESFMjxBPXyQGHZ8gpVgntriOAxSbW",
+          "echoed_model": "gpt-5.6-luna-2026-07-09",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 172,
+            "total_tokens": 195,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 7,
+              "engine_ttft_ms": 97,
+              "engine_ttlt_ms": 274,
+              "pre_inference_ms": 102,
+              "service_tbt_ms": 8,
+              "service_ttft_ms": 268,
+              "service_ttlt_ms": 440,
+              "user_visible_ttft_ms": 166
+            }
+          },
+          "latency_s": 6.469316749833524,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "question",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 7,
+          "response_id": "chatcmpl-ESFMnsF9RH1G4EShcAueEMnCXuzos",
+          "echoed_model": "gpt-5.6-luna-2026-07-09",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 173,
+            "total_tokens": 196,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 7,
+              "engine_ttft_ms": 92,
+              "engine_ttlt_ms": 256,
+              "pre_inference_ms": 71,
+              "service_tbt_ms": 6,
+              "service_ttft_ms": 268,
+              "service_ttlt_ms": 417,
+              "user_visible_ttft_ms": 198
+            }
+          },
+          "latency_s": 4.064668499864638,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "reject",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 8,
+          "response_id": "chatcmpl-ESFMqEC19KQYEM3PilI9EohmDLphI",
+          "echoed_model": "gpt-5.6-luna-2026-07-09",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 175,
+            "total_tokens": 198,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 8,
+              "engine_ttft_ms": 89,
+              "engine_ttlt_ms": 269,
+              "pre_inference_ms": 94,
+              "service_tbt_ms": 8,
+              "service_ttft_ms": 839,
+              "service_ttlt_ms": 1014,
+              "user_visible_ttft_ms": 745
+            }
+          },
+          "latency_s": 3.43930754205212,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 9,
+          "response_id": "chatcmpl-ESFMtMuMljHQSU0ZTg32sFNsZZJZr",
+          "echoed_model": "gpt-5.6-luna-2026-07-09",
+          "usage": {
+            "completion_tokens": 23,
+            "prompt_tokens": 175,
+            "total_tokens": 198,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 6,
+              "engine_ttft_ms": 78,
+              "engine_ttlt_ms": 233,
+              "pre_inference_ms": 76,
+              "service_tbt_ms": 7,
+              "service_ttft_ms": 241,
+              "service_ttlt_ms": 391,
+              "user_visible_ttft_ms": 164
+            }
+          },
+          "latency_s": 2.3642692919820547,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "other",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        }
+      ]
+    }
+  }
+}
