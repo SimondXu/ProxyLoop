@@ -15,6 +15,7 @@ from tests.support.manual_clock import ManualClock
 
 from proxyloop.contract.events import Event
 from proxyloop.contract.llm import LLMUnavailable, TextRequest
+from proxyloop.contract.state import Blackboard
 from proxyloop.core.bus import Bus
 from proxyloop.core.fold import fold
 from proxyloop.core.log import EventLog
@@ -273,3 +274,52 @@ def test_an_epoch_never_goes_back(tmp_path: Path) -> None:
                 [first.event_id],
             )
     assert bus.bb.epoch == 5 and len(bus.events) == 2
+
+
+def test_after_a_lane_error_nothing_queued_is_delivered(tmp_path: Path) -> None:
+    """Probe bus2 #3: a non-isolated error drops the queued nested event."""
+    bus = _bus(tmp_path)
+    seen: list[tuple[int, str]] = []
+
+    def lane(event: Event) -> None:
+        if event.type == "user.msg" and event.payload["text"] == "a":
+            bus.emit("user.msg", "kernel", "agent", {"text": "nested"})
+            raise RuntimeError("lane crashed")
+
+    bus.subscribe(lane)
+    bus.subscribe(lambda e: seen.append((e.seq, e.type)), isolated=True)
+    with pytest.raises(RuntimeError, match="lane crashed"):
+        bus.emit("user.msg", "kernel", "agent", {"text": "a"})
+    assert [e.seq for e in bus.events] == [0, 1]  # appended, then delivery failed
+    bus.emit("session.ended", "kernel", "ops", {"reason": "error"})
+    assert seen == [(2, "session.ended")]
+
+
+def test_a_line_queued_before_llm_unavailable_is_never_spoken(tmp_path: Path) -> None:
+    """Probe bus2 #3b: not even on the next emit (§14, I8)."""
+    bus = _bus(tmp_path)
+    dead, spoken = _dead(), list[object]()
+
+    def fast(event: Event) -> None:
+        if event.type == "user.msg" and event.payload["text"] == "a":
+            bus.emit("user.msg", "kernel", "agent", {"text": "queued-before-death"})
+            raise dead
+
+    bus.subscribe(fast)
+    bus.subscribe(lambda e: spoken.append(e.payload.get("text", e.type)))
+    with pytest.raises(LLMUnavailable):
+        bus.emit("user.msg", "kernel", "agent", {"text": "a"})
+    bus.emit("session.ended", "kernel", "ops", {"reason": "llm_unavailable"})
+    assert spoken == ["session.ended"]
+
+
+def test_the_blackboard_is_read_only_and_nothing_follows_the_end(
+    tmp_path: Path,
+) -> None:
+    bus = _bus(tmp_path)
+    bus.emit("session.ended", "kernel", "ops", {"reason": "info_only"})
+    with pytest.raises(AttributeError):
+        bus.bb = Blackboard()  # type: ignore[misc]
+    with pytest.raises(ValueError, match="the session has ended"):
+        bus.emit("user.msg", "kernel", "agent", {"text": "late"})
+    assert len(bus.events) == 1

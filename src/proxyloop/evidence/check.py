@@ -1,13 +1,12 @@
 """``evidence_check(bundle, mode)`` (ARCHITECTURE §14).
 
-``offline`` checks what the bundle proves about itself, whatever adapters it
-ran with: the log (one run, dense ``seq``, monotone ``t_ms``, causes), every
-sha against ``prompts.jsonl``, the chain of every delivered line, and that
-manifest, cfg and calls agree; the log ends with ``session.ended``. ``claim``
-adds, for the claimed roles (default: every role in the manifest):
-``real_http`` only and at least one successful call each, request ids, usage,
-echoed served model, attestation, fingerprints, contract version, P3, and a
-``session.ended`` reason in ``ENDED_OK``. Neither mode touches the network.
+``offline``, whatever adapters ran: the log (one run, dense ``seq``, monotone
+``t_ms``, causes, a replayed fold, envelope epochs, one closing
+``session.ended``), every sha against ``prompts.jsonl``, the chain of every
+delivered line, and manifest/cfg/call agreement. ``claim`` adds, per claimed
+role (default: all): ``real_http`` only, a successful call, request ids,
+usage, echoed model; attestation, fingerprints, contract version, P3, and an
+ending in ``ENDED_OK``. Neither mode touches the network.
 
 Passing ``claim`` proves internal consistency and chain completeness, not
 authenticity: a bundle can be forged consistently. Authenticity comes from
@@ -27,6 +26,8 @@ from proxyloop.contract.base import sha256_text
 from proxyloop.contract.bundle import Bundle, Manifest, PromptRecord, read_bundle
 from proxyloop.contract.events import Event, check_causes
 from proxyloop.contract.llm import LLMCallRecord, LLMRole
+from proxyloop.contract.state import Blackboard
+from proxyloop.core.fold import apply
 from proxyloop.evidence.chain import chain_failures
 from proxyloop.evidence.reality import (
     claim_failures,
@@ -73,7 +74,21 @@ def _log_failures(m: Manifest, events: Sequence[Event]) -> list[str]:
         check_causes(events)
     except ValueError as err:
         out.append(f"causes: {err}")
-    return out
+    return out + _fold_failures(events)
+
+
+def _fold_failures(events: Sequence[Event]) -> list[str]:
+    """Replay the fold: it must accept every event, and each envelope epoch
+    must be the folded epoch just before that event."""
+    bb = Blackboard()
+    for e in events:
+        if e.epoch != bb.epoch:
+            return [f"{e.event_id}: epoch {e.epoch}, but the fold is at {bb.epoch}"]
+        try:
+            bb = apply(bb, e)
+        except ValueError as err:
+            return [f"fold rejects {e.event_id}: {err}"]
+    return []
 
 
 def _sha_failures(
@@ -133,7 +148,6 @@ def check_path(
     path: Path, mode: Mode = "offline", roles: Collection[LLMRole] | None = None
 ) -> Report:
     """Read and check ``runs/<run_id>/``; an unreadable bundle fails the check."""
-
     try:
         bundle = read_bundle(path)
     except (OSError, ValueError) as err:

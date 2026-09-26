@@ -1,10 +1,9 @@
 """The blackboard is a pure fold of the log (I2; ARCHITECTURE §5).
 
-Every registered type has a reducer or is a world/ops type (``WORLD_OPS``;
-no view reads the world). ``RECORD_ONLY`` types change nothing yet: their
-semantics belong to later tasks (Guard/authority: S1-SYS-01/02; channel,
-Slow-tool and relay consumption: S0-SYS-06) or the registry fixes no payload
-keys for them. ``_with`` re-validates, unlike ``model_copy(update=...)``.
+Each registered type has a reducer or is world/ops (``WORLD_OPS``, unread by
+views). ``RECORD_ONLY`` types change nothing yet: later tasks own them
+(Guard/authority: S1-SYS-01/02; channels, Slow tools, relay consumption:
+S0-SYS-06) or their payload keys are unfixed. ``_with`` re-validates.
 """
 
 from __future__ import annotations
@@ -69,7 +68,6 @@ def _utt_final(bb: Blackboard, e: Event) -> Blackboard:
 
 def _utt_delivered(bb: Blackboard, e: Event) -> Blackboard:
     """The transcript holds what the listener heard (§5), if anything."""
-
     p = e.payload
     if not p["text_heard"]:
         return bb

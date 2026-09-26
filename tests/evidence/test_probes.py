@@ -46,14 +46,22 @@ def _write(run: Path, events: list[Json]) -> None:
 
 
 def _renumber(events: list[Json]) -> list[Json]:
+    """Dense seqs; causes follow their event (a duplicated id: the first)."""
+    new: dict[str, str] = {}
     for seq, e in enumerate(events):
+        new.setdefault(e["event_id"], f"{RUN_ID}:{seq}")
         e.update(seq=seq, event_id=f"{RUN_ID}:{seq}")
+    for e in events:
+        e["cause_ids"] = [new.get(c, c) for c in e["cause_ids"]]
     return events
 
 
-def _event(type_: str, actor: str, payload: Json, causes: list[str]) -> Json:
+def _event(
+    type_: str, actor: str, payload: Json, causes: list[str], id_: str = ""
+) -> Json:
     stream = "ops" if type_ == "session.ended" else "agent"
     return {
+        "event_id": id_ or f"tmp-{type_}",
         "schema": "pl.event/2",
         "run_id": RUN_ID,
         "t_ms": 5,
@@ -67,22 +75,15 @@ def _event(type_: str, actor: str, payload: Json, causes: list[str]) -> Json:
     }
 
 
-def _verbatim_tail(first_seq: int, cause: str, reason: str) -> list[Json]:
+def _verbatim_tail(cause: str, reason: str) -> list[Json]:
     """A Guard disclosure line, released and delivered, then the end."""
-
-    ids = [f"{RUN_ID}:{first_seq + i}" for i in range(2)]
     heard = {"text_generated": TEXT, "text_heard": TEXT, "interrupted": False}
+    verbatim = {"lane": "cp", "kind": "disclosure", "text": TEXT}
+    delivered = {"lane": "cp", "utt_id": "v"} | heard
     return [
-        _event(
-            "speak.verbatim",
-            "guard",
-            {"lane": "cp", "kind": "disclosure", "text": TEXT},
-            [cause],
-        ),
-        _event("speak.released", "kernel", {}, [ids[0]]),
-        _event(
-            "utt.delivered", "kernel", {"lane": "cp", "utt_id": "v"} | heard, [ids[1]]
-        ),
+        _event("speak.verbatim", "guard", verbatim, [cause]),
+        _event("speak.released", "kernel", {}, ["tmp-speak.verbatim"]),
+        _event("utt.delivered", "kernel", delivered, ["tmp-speak.released"]),
         _event("session.ended", "kernel", {"reason": reason}, []),
     ]
 
@@ -123,7 +124,7 @@ def slow_text_in_a_cp_turn(run: Path) -> None:
 
 def no_fast_call_at_all(run: Path) -> None:
     kept = [e for e in _events(run) if e["type"] in ("session.started", "utt.final")]
-    _write(run, _renumber(kept + _verbatim_tail(2, kept[1]["event_id"], "info_only")))
+    _write(run, _renumber(kept + _verbatim_tail(kept[1]["event_id"], "info_only")))
 
 
 def cut_before_session_ended(run: Path) -> None:
@@ -221,8 +222,85 @@ def ended_llm_unavailable(run: Path) -> None:
     _write(run, events)
 
 
+def _copy(e: Json) -> Json:
+    return json.loads(json.dumps(e))
+
+
+def two_turns_cite_one_call(run: Path) -> None:
+    """Probe A: the turn, its sentences and deliveries, replayed off one call."""
+    events = _events(run)
+    kinds = ("fast.turn", "fast.sentence", "utt.delivered")
+    copies = [_copy(e) for e in events if e["type"] in kinds]
+    copied = {e["event_id"] for e in copies}
+    for e in copies:
+        e["event_id"] += "x"
+        e["cause_ids"] = [c + "x" if c in copied else c for c in e["cause_ids"]]
+        if e["type"] != "fast.turn":
+            e["payload"]["utt_id"] += "-dup"
+    _write(run, _renumber([*events[:-1], *copies, events[-1]]))
+
+
+def one_speech_item_sent_twice(run: Path) -> None:
+    """Probe A2: a second fast.sentence for the same Speech item, delivered."""
+    events = _events(run)
+    sentence = _copy(next(e for e in events if e["type"] == "fast.sentence"))
+    delivered = _copy(next(e for e in events if e["type"] == "utt.delivered"))
+    sentence["event_id"], delivered["cause_ids"] = "tmp-s", ["tmp-s"]
+    sentence["payload"]["utt_id"] = delivered["payload"]["utt_id"] = "agent-dup"
+    _write(run, _renumber([*events[:-1], sentence, delivered, events[-1]]))
+
+
+def _before_end(run: Path, *added: Json) -> None:
+    events = _events(run)
+    _write(run, _renumber([*events[:-1], *added, events[-1]]))
+
+
+def epoch_goes_back(run: Path) -> None:
+    """Probe E: epoch 5, then 1."""
+    rep, bump = f"{RUN_ID}:1", {"reason": "slow_revoke"}
+    back = _event("authority.epoch", "guard", bump | {"new": 1}, [rep], "b")
+    ahead = _event("authority.epoch", "guard", bump | {"new": 5}, [rep], "a")
+    _before_end(run, ahead, back | {"epoch": 5})
+
+
+def epoch_without_a_bump(run: Path) -> None:
+    """Probe E2: an envelope epoch no authority.epoch set."""
+    events = _events(run)
+    next(e for e in events if e["type"] == "utt.delivered")["epoch"] = 9
+    _write(run, events)
+
+
+def summary_scope_bogus(run: Path) -> None:
+    """Probe E3: an event the fold rejects."""
+    bogus = {"scope": "bogus", "text": "x"}
+    _before_end(run, _event("summary.updated", "guard", bogus, [f"{RUN_ID}:1"]))
+
+
+def _retry(run: Path, first_succeeded: bool) -> None:
+    """Attempt 0 of call-1 is cited by the turn next to attempt 1."""
+    events = _events(run)
+    call = _calls(events)[0]
+    first = _copy(call)
+    first["event_id"] = "tmp-attempt-0"
+    first["payload"].update(attempt=0, request_id="req-0")
+    call["payload"]["attempt"] = 1
+    if not first_succeeded:
+        failed = {"error": "connection reset", "response_sha": None, "usage": None}
+        none = ("request_id", "served_model_echo", "finish_reason", "t_first_token")
+        first["payload"].update(failed | dict.fromkeys(none))
+    next(e for e in events if e["type"] == "fast.turn")["cause_ids"].append(
+        "tmp-attempt-0"
+    )
+    i = events.index(call)
+    _write(run, _renumber([*events[:i], first, *events[i:]]))
+
+
+def two_successful_attempts(run: Path) -> None:
+    _retry(run, first_succeeded=True)
+
+
 PROBES: list[tuple[Callable[[Path], None], Mode, str]] = [
-    (errored_call_backs_a_line, "offline", "failed (boom); no line may come from it"),
+    (errored_call_backs_a_line, "offline", "one successful attempt of its call"),
     (errored_call_backs_a_line, "offline", "failed yet records a response or usage"),
     (slow_text_in_a_cp_turn, "offline", "is a slow call, not fast_cp"),
     (
@@ -260,7 +338,7 @@ PROBES: list[tuple[Callable[[Path], None], Mode, str]] = [
         "offline",
         "utt_id, lane or gen_id differ along the chain",
     ),
-    (sentence_delivered_twice, "offline", "run-test:5 is already delivered"),
+    (sentence_delivered_twice, "offline", "no undelivered Speech item of the turn"),
     (gen_id_differs, "offline", "utt_id, lane or gen_id differ along the chain"),
     (
         other_split_and_contract,
@@ -274,6 +352,12 @@ PROBES: list[tuple[Callable[[Path], None], Mode, str]] = [
     ),
     (other_split_and_contract, "claim", "contract v0 is not the current one"),
     (ended_llm_unavailable, "claim", "session ended with 'llm_unavailable'"),
+    (two_turns_cite_one_call, "offline", "call call-1 already backs a turn"),
+    (one_speech_item_sent_twice, "offline", "no undelivered Speech item of the turn"),
+    (epoch_goes_back, "offline", "fold rejects run-test:10: epoch 1 does not follow 5"),
+    (epoch_without_a_bump, "offline", "run-test:6: epoch 9, but the fold is at 0"),
+    (summary_scope_bogus, "offline", "fold rejects run-test:9: summary scope 'bogus'"),
+    (two_successful_attempts, "offline", "one successful attempt of its call"),
 ]
 
 
@@ -323,7 +407,7 @@ def test_a_dead_endpoint_bundle_fails_the_claim_but_reads_offline(real: Path) ->
         finish_reason=None,
         t_first_token=None,
     )
-    tail = _verbatim_tail(4, events[1]["event_id"], "llm_unavailable")
+    tail = _verbatim_tail(events[1]["event_id"], "llm_unavailable")
     _write(real, _renumber(events + tail))
     assert check_path(real).ok, check_path(real).failures
     failures = check_path(real, "claim").failures
@@ -348,3 +432,11 @@ def test_a_cp_hang_up_ending_passes_the_claim(real: Path) -> None:
     events[-1]["payload"]["reason"] = "abandoned"
     _write(real, events)
     assert check_path(real, "claim").ok, check_path(real, "claim").failures
+
+
+def test_a_retried_call_is_backed_by_its_one_successful_attempt(real: Path) -> None:
+    """S0-SYS-04: one record per HTTP attempt; attempt 0 failed, 1 succeeded."""
+    _retry(real, first_succeeded=False)
+    assert [e["payload"]["attempt"] for e in _calls(_events(real))] == [0, 1]
+    report = check_path(real, "claim")
+    assert report.ok, report.failures

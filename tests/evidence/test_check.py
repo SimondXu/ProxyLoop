@@ -184,16 +184,19 @@ def test_a_guard_verbatim_line_has_a_chain(recorded: Path) -> None:
     rep = next(e.event_id for e in bundle.events if e.type == "utt.final")
     verbatim = {"lane": "cp", "kind": "disclosure", "text": text}
     bundle = _append(bundle, "speak.verbatim", "guard", verbatim, rep)
-    bundle = _append(bundle, "speak.released", "kernel", {}, _last_id(bundle))
+    said = _last_id(bundle)
+    bundle = _append(bundle, "speak.released", "kernel", {}, said)
     released = _last_id(bundle)
     heard = {"lane": "cp", "utt_id": "v1", "text_generated": text, "text_heard": text}
     delivered = heard | {"interrupted": False}
     ok = _append(bundle, "utt.delivered", "kernel", delivered, released)
     assert evidence_check(ok).ok, evidence_check(ok).failures
     twice = _append(ok, "utt.delivered", "kernel", delivered, released)
-    assert (
-        evidence_check(twice).failures[-1].endswith(f"{released} is already delivered")
-    )
+    assert evidence_check(twice).failures[-1].endswith(f"{said} is already delivered")
+    # Probe C: the same verbatim line released twice is still delivered once.
+    again = _append(ok, "speak.released", "kernel", {}, said)
+    again = _append(again, "utt.delivered", "kernel", delivered, _last_id(again))
+    assert evidence_check(again).failures[-1].endswith(f"{said} is already delivered")
     orphan = _append(bundle, "utt.delivered", "kernel", delivered, rep)
     assert (
         evidence_check(orphan)

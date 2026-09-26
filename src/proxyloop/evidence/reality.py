@@ -32,7 +32,6 @@ def role_refs(cfg: SessionConfig) -> dict[str, ModelRef]:
 
 def label(ref: ModelRef) -> str:
     """vllm | hosted | baseline_fsm | recorded_replay | test_fake."""
-
     if ref.kind is AdapterKind.REAL_HTTP:
         return "vllm" if ref.endpoint == "vllm" else "hosted"
     return "baseline_fsm" if ref.kind is AdapterKind.BASELINE else ref.kind.value
