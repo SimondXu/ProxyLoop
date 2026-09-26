@@ -1,8 +1,9 @@
 # ADR-0003: Pinned BF16 LoRA training configuration and the SFT smoke
 
-- **Status:** proposed. The module dump (`train-modules`, CPU, no weights) was run while writing this ADR and is
-  committed. `train-smoke` (G) and adapter liveness in the S0-MOD-01 server are root runs and still pending: every
-  value they produce is named below by its key, never typed here (AGENTS rule 13).
+- **Status:** proposed. The module dump (`train-modules`, CPU, no weights) is committed. The root-run `train-smoke`
+  passed on 2026-09-26 (run id `20260926-smoke-3`; `docs/decisions/data/peft-train-smoke.json`). Adapter liveness
+  in the served process is deferred to S0-MOD-03. Every value is named below by its key, never typed here
+  (AGENTS rule 13).
 - **Date:** 2026-09-26
 - **Task:** S0-MOD-02
 
@@ -112,7 +113,7 @@ All `make` targets are `make -f mk/mod.mk <target>`.
 |---|---|---|---|
 | `named_modules()` of the pinned model (meta device) | `named_modules` | `data/peft-modules.json` | `train-modules` |
 | LoRA module paths per target; trainable and total parameters | `per_target`, `lora_modules`, `trainable_params`, `all_params`, `target_regex` | `data/peft-modules.json` | `train-modules` |
-| Same on the real model in the job | `lora.per_target`, `lora.lora_modules`, `lora.trainable_params` | `data/peft-train-smoke.json` | `train-smoke` (root, G) |
+| Same on the real model in the job | `lora.per_target`, `lora.lora_modules`, `lora.trainable_params`, `lora.all_params` | `data/peft-train-smoke.json` | `train-smoke` (root, G) |
 | Fused kernels active | `fused_kernels` (wrapper → implementation module) | `data/peft-train-smoke.json` | `train-smoke` |
 | P5 on the real first batch | `p5.ok`, `p5.rows[*]` | `data/peft-train-smoke.json` | `train-smoke` |
 | Throughput (non-pad tokens / train runtime minus volume commits) | `tokens_per_s`, `tokens`, `train.train_runtime`; null with `null_reason` after a resume | `data/peft-train-smoke.json` | `train-smoke` |
@@ -121,15 +122,23 @@ All `make` targets are `make -f mk/mod.mk <target>`.
 | Loss, per step and final | `train.train_loss`; per step `train/<run_id>/metrics.jsonl` on the volume | `data/peft-train-smoke.json` | `train-smoke` |
 | Adapter files; resume | `adapter_sha256`, `resumed_from` | `data/peft-train-smoke.json` | `train-smoke` |
 | Runtime provenance; run config | `runtime.*`; `config_hash`, `git_sha`; `rows` = `synthetic-smoke`, `claim` = false | `data/peft-train-smoke.json` | `train-smoke` |
-| Adapter liveness in the served process (mean \|Δ prompt_logprob\| > 1e-3) | pending: needs a serving slot for a trained adapter (Risks) | – | root run |
+| Adapter liveness in the served process (mean \|Δ prompt_logprob\| > 1e-3) | deferred to S0-MOD-03: needs a serving slot for a trained adapter (Risks) | – | root run |
 
-The root compares `tokens_per_s` with TRAINING §8's 3–5k tok/s estimate.
+`runtime.*` holds the provider, `gpu_name`, `driver_version`, `torch_cuda`, `modal_image_id`, the `image_spec`
+(base image, torch index, pins) and the installed `versions` (including triton), recorded before training.
+
+**Artefacts on the volume** (from `training_jobs/sft.py` and `serving/modal_vllm.py`): Modal Volume
+`proxyloop-adapters`, mounted at `/adapters`, directory `train/20260926-smoke-3/`. It holds `adapter/` (the PEFT
+adapter hashed in `adapter_sha256`), `merged/` (the merged BF16 copy with the tokenizer), `checkpoints/`,
+`config.json`, `perf.json`, `metrics.jsonl` and `result.json`.
 
 **S0-MOD-02 acceptance** (PLAN.md):
-- exact module paths and trainable parameters: **met by the CPU dump** (`data/peft-modules.json`); the job repeats
-  them on the loaded model (`lora.*`) — pending `train-smoke`;
-- tok/s, peak memory and the P5 result from the real run: **pending** `train-smoke`;
-- the adapter loads in S0-MOD-01's server with liveness > 1e-3 nats: **pending**, blocked on a serving slot;
+- exact module paths and trainable parameters: **met** by the CPU dump (`data/peft-modules.json`) and on the loaded
+  model in the real run (`data/peft-train-smoke.json` `lora.per_target`, `lora.trainable_params`);
+- tok/s, peak memory and the P5 result from the real run: **met by run** `20260926-smoke-3`
+  (`tokens_per_s`, `peak_mem_gib`, `p5.ok`; fused kernels in `fused_kernels`);
+- the adapter loads in S0-MOD-01's server with liveness > 1e-3 nats: **deferred to S0-MOD-03** (needs a serving
+  slot for a trained adapter);
 - train targets = serve-accepted targets: **met** (`tests/training/test_sft.py`, against
   `data/vllm-lora-ladder.json`).
 
@@ -148,6 +157,10 @@ The root compares `tokens_per_s` with TRAINING §8's 3–5k tok/s estimate.
   Nothing in the image set `CC`/`CXX`, so setuptools took the compiler from the `add_python` interpreter's
   sysconfig (`clang++`), which is not installed, and the version probe returned 0.0.0. Fix: `CC=gcc`, `CXX=g++`
   in the image environment before step 3.
+- **2026-09-26 06:28–06:51 EDT, train-smoke attempt 3 passed** (run id `20260926-smoke-3`, 1 × H100; code at the
+  `git_sha` in the result). The image built, the preflight passed, and training completed the smoke's steps. Every
+  wrapper resolved to `fla.*` or `causal_conv1d.*` (`fused_kernels`), triton is `runtime.versions.triton`, P5 passed
+  (`p5.ok`), and the run was not resumed (`resumed_from`). Result: `docs/decisions/data/peft-train-smoke.json`.
 
 ## Consequences
 - **Contract / fingerprint impact:** none. Rows go through `render_prompt`; `result.fingerprints` records the
@@ -161,9 +174,12 @@ The root compares `tokens_per_s` with TRAINING §8's 3–5k tok/s estimate.
     TRAINING §9 step 4 needs anyway).
   - The kernel check reads a closure variable of transformers 5.17.0; a transformers bump must re-check it (the
     check fails loudly if the variable is missing).
-  - The whole stack on torch 2.13.0 + cu129 (with a source-built causal-conv1d) is not yet validated on Modal.
-    That peft 0.21 and trl 1.14 work on torch 2.13 is inferred, not tested. The CPU module dump under torch
-    2.13.0 (`train-modules`) gives the same modules and targets as under 2.10.0.
+  - The measured `tokens_per_s` is well below TRAINING §8's 3–5k tok/s estimate. The smoke is not a throughput
+    benchmark: tiny batches, long masked prompts, gradient checkpointing and a volume commit every 10 steps. S3 cost
+    planning must re-measure on a realistic batch before relying on §8.
+  - The torch 2.13.0 + cu129 stack (with a source-built causal-conv1d) has one validated run, the synthetic smoke
+    above: peft 0.21 and trl 1.14 on torch 2.13 are exercised by that smoke only, not by a real-data run. The CPU
+    module dump under torch 2.13.0 (`train-modules`) gives the same modules and targets as under 2.10.0.
   - The fused-kernel imports need a GPU and triton: on a CPU-only machine the check correctly reports the torch
     fallback, so only the root run can show them active.
   - `batch_rebalance` balances cost within a step but does not itself cap tokens; the pre-flight budget check does.
