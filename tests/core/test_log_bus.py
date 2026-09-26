@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
+from tests.guard.build import card, confirm, offer
 from tests.support.fakes import ScriptedLLM, fake_ref
 from tests.support.manual_clock import ManualClock
 
@@ -101,13 +102,25 @@ def test_the_stored_event_is_not_the_callers_object(tmp_path: Path) -> None:
 
 def test_a_decision_must_cite_the_post_it_decides(tmp_path: Path) -> None:
     bus = _bus(tmp_path)
+    o1 = confirm(offer())  # a pending card "apr-1", so the decision joins
+    first = bus.emit("user.msg", "kernel", "agent", {"text": "go"}).event_id
+    recorded = o1.model_dump(mode="json", include={"offer_ref", "revision", "slots"})
+    offered = bus.emit(
+        "offer.recorded",
+        "guard",
+        "agent",
+        recorded | {"terms_hash": o1.terms_hash},
+        [first],
+    )
+    pending = card(o1).model_dump(mode="json")
+    bus.emit("approval.requested", "guard", "agent", pending, [offered.event_id])
     post = bus.emit(
         "approval.post",
         "ui",
         "agent",
         {
             "subject": "approval",
-            "subject_id": "a1",
+            "subject_id": "apr-1",
             "decision": "denied",
             "subject_hash": "h",
             "authority_epoch": 0,
@@ -118,10 +131,10 @@ def test_a_decision_must_cite_the_post_it_decides(tmp_path: Path) -> None:
             "approval.decided",
             "kernel",
             "agent",
-            {"approval_id": "a1", "decision": "granted", "by": "ui"},
+            {"approval_id": "apr-1", "decision": "granted", "by": "ui"},
             [post.event_id],
         )
-    assert len(_lines(tmp_path)) == 1
+    assert len(_lines(tmp_path)) == 4
 
 
 def test_an_isolated_failing_subscriber_is_logged_not_raised(
