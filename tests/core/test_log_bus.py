@@ -109,11 +109,20 @@ def test_a_decision_must_cite_the_post_it_decides(tmp_path: Path) -> None:
         "offer.recorded",
         "guard",
         "agent",
-        recorded | {"terms_hash": o1.terms_hash},
+        recorded | {"terms_hash": None},
         [first],
     )
+    statuses = {s.field: "confirmed" for s in o1.slots}
+    readback = {"offer_ref": "o1", "revision": 1, "slot_statuses": statuses}
+    read = bus.emit(
+        "readback.updated",
+        "guard",
+        "agent",
+        readback | {"terms_hash": o1.terms_hash},
+        [offered.event_id],
+    )
     pending = card(o1).model_dump(mode="json")
-    bus.emit("approval.requested", "guard", "agent", pending, [offered.event_id])
+    bus.emit("approval.requested", "guard", "agent", pending, [read.event_id])
     post = bus.emit(
         "approval.post",
         "ui",
@@ -134,7 +143,7 @@ def test_a_decision_must_cite_the_post_it_decides(tmp_path: Path) -> None:
             {"approval_id": "apr-1", "decision": "granted", "by": "ui"},
             [post.event_id],
         )
-    assert len(_lines(tmp_path)) == 4
+    assert len(_lines(tmp_path)) == 5
 
 
 def test_an_isolated_failing_subscriber_is_logged_not_raised(

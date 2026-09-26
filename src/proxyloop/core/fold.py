@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from types import MappingProxyType
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import BaseModel
 
@@ -42,6 +42,7 @@ from proxyloop.contract.state import (
     Line,
     Mandate,
     PublicFact,
+    ReadbackSlot,
 )
 
 Reducer = Callable[[Blackboard, Event], Blackboard]
@@ -152,7 +153,15 @@ def _summary(bb: Blackboard, e: Event) -> Blackboard:
 
 
 def _offer(bb: Blackboard, e: Event) -> Blackboard:
-    offer = {k: e.payload[k] for k in ("offer_ref", "revision", "slots", "terms_hash")}
+    """A new revision: its slots start ``unknown`` and its terms unbound; only
+    ``readback.updated`` (Guard) sets statuses and ``terms_hash``."""
+    p = e.payload
+    slots = [
+        ReadbackSlot.model_validate(s).model_copy(update={"status": "unknown"})
+        for s in cast(list[object], p["slots"])
+    ]
+    offer = {"offer_ref": p["offer_ref"], "revision": p["revision"], "slots": slots}
+    offer |= {"expires_ms": p.get("expires_ms"), "terms_hash": None}
     offers = {**bb.public.offers, str(offer["offer_ref"]): offer}
     return _with(bb, public=_with(bb.public, offers=offers))
 

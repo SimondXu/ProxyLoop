@@ -195,3 +195,21 @@ def test_evidence_and_only_an_ok_completion_verifies() -> None:
         log.emit("status.changed", verified)
     log.emit("completion.decided", {"verdict": "ok", "reasons": []})
     assert log.emit("status.changed", verified).public.status == "VERIFIED_NO_DEAL"
+
+
+def test_offer_recorded_cannot_set_statuses_or_terms() -> None:
+    """Statuses and terms_hash come only from readback.updated (Guard)."""
+    log = Log()
+    log.emit("user.msg", {"text": "go"})
+    claimed = offer().model_dump(mode="json", include={"offer_ref", "revision"})
+    claimed["slots"] = [
+        s.model_dump(mode="json") | {"status": "confirmed"} for s in offer().slots
+    ]
+    o = log.emit(
+        "offer.recorded", claimed | {"terms_hash": "slow-says", "expires_ms": 90_000}
+    ).public.offers["o1"]
+    assert {s.status for s in o.slots} == {"unknown"} and o.terms_hash is None
+    assert o.expires_ms == 90_000  # the rep's TTL, from record_offer
+    assert request_approval(log.bb, "o1", CASE) == Denial("readback_not_confirmed")
+    no_ttl = log.emit("offer.recorded", claimed | {"revision": 2, "terms_hash": None})
+    assert no_ttl.public.offers["o1"].expires_ms is None
