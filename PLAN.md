@@ -76,7 +76,7 @@ Legend:
   - `src/` Python over 3,700 lines at S0 close, over 5,800 at S1 close, or over 7,000 at S3 close;
     - ARCHITECTURE §16 now totals ≈ 4,450 for S0 after contract v1 (ADR-0004); the user decides at S0 close whether to raise this tripwire.
   - web TypeScript over 1,500 lines through S1;
-  - `serving/` + `training_jobs/` over 700 lines.
+  - `serving/` + `training_jobs/` over 900 lines (700 → 900, user decision 2026-09-26; reformat of serving/).
   - A module over 600 lines is a warning.
 - **No new reality:** after merge point 1 (S0-ROOT-05), two consecutive merged SYS/MOD PRs without a new real bundle or real artefact cited mean the root runs the smoke itself before merging anything else.
 - **Contract discipline:**

@@ -568,4 +568,4 @@ vllm serve Qwen/Qwen3.5-9B@<rev> --served-model-name Qwen3.5-9B --dtype bfloat16
 | models + training + eval (MOD) | 300 | 450 | 750 |
 | **Total** | **≈ 4,450** | **≈ 2,150** | **≈ 6,600** |
 
-Tripwires (PLAN §0.6): `src/` over 3,700 at S0 close or over 5,800 at S1 close means stop and ask. The web app is capped at 1,500 TypeScript lines through S1, and `serving/` + `training_jobs/` at 700 lines.
+Tripwires (PLAN §0.6): `src/` over 3,700 at S0 close or over 5,800 at S1 close means stop and ask. The web app is capped at 1,500 TypeScript lines through S1, and `serving/` + `training_jobs/` at 900 lines (700 → 900, user decision 2026-09-26; reformat of serving/).
