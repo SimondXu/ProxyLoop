@@ -1,0 +1,22 @@
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  task-id:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require "<TASK-ID>: <title>"
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if printf '%s\n' "$TITLE" | grep -Eq '^S[0-9]-(CON|SYS|MOD|ROOT)-[0-9]{2}: '; then
+            echo "ok: $TITLE"
+          else
+            echo "::error::PR title must start with a PLAN.md task id, e.g. 'S0-SYS-03: event log', got: $TITLE"
+            exit 1
+          fi

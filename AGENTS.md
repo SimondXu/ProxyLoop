@@ -1,125 +1,65 @@
-# ProxyLoop Agent Instructions
+# ProxyLoop agent instructions
 
-This file is the repository-level operating contract for coding agents and their delegated subagents. It is tool-agnostic: Codex reads it directly, and Claude Code reads it through the `@AGENTS.md` import in `CLAUDE.md`. Product requirements remain authoritative in the linked specification. This file contains durable operating rules; volatile phase state lives in `harness/status.toml`.
+These are the repository rules for every coding agent. Product intent and invariants: `NORTH_STAR.md`. Current state, tasks and ownership: `PLAN.md` (the single state file, root-edited only). Design: `ARCHITECTURE.md`, `EVAL.md`, `TRAINING.md`, `DOCS.md`, `docs/decisions/` (ADRs). Nothing else is a process document.
 
-The **root orchestrator** is the top-level session that owns decisions and integration, whichever tool runs it: the Codex root session (Codex configuration and historical evidence under `harness/` call it `Sol`) or the Claude Code main conversation. Tool-specific model, effort, sandbox, and concurrency settings live in `.codex/config.toml` plus `.codex/agents/` and in `.claude/agents/` plus `CLAUDE.md`; this file defines roles and rules only.
+## Orientation (in this order; stop reading when you have enough)
+1. `NORTH_STAR.md`, all of it.
+2. Your task block in `PLAN.md`, plus §0 (operating rules).
+3. The ≤ 5 files named in your packet, then only the code and tests they point to.
+4. `docs/decisions/` only if your task touches a decision recorded there.
 
-## Orientation and Context
+## Repo map
+| Path | Lane | What |
+|---|---|---|
+| `src/proxyloop/contract/` | CON (root-owned) | events, public/private state, views, F↔S messages, Fast renderer + grammar, LLM interface, `SessionConfig`, bundle |
+| `src/proxyloop/{core,kernel,slow,guard,llm,env,evidence,obs,serve}/`, `cli.py`, `apps/web/`, `tasks/families/` | SYS | kernel, Slow, Guard, world, evidence, web |
+| `src/proxyloop/{models,training,eval}/`, `serving/`, `training_jobs/` | MOD | model conditions, SFT pipeline, metrics and reports, Modal vLLM |
+| `tests/support/` | SYS | the **only** place for fakes, recorded replays and manual clocks |
+| `evidence/<stage>/` | root | committed real-run bundles that back claims |
+| `docs/results/` | MOD (generated) | report JSON; never hand-edited |
+| `mk/sys.mk`, `mk/mod.mk` | lanes | lane make targets (the root owns `Makefile`) |
 
-On first orientation, after resume or compaction, or after material repository drift:
+## Commands
+- Everyday: `make check` (lint, typecheck, tests, parity P1/P2/P4, the counterfactual view test, import contracts, pilot-lock, docs-check, web build).
+- Focused: `make lint`, `make typecheck`, `make test`, `uv run pytest <path> -q`, `make web-test`.
+- Offline evidence: `make evidence-check RUN=<dir> --offline`; `make replay` (no keys, no GPU).
+- **Root-only** (live keys / GPU / user): `make smoke-live`, `make demo`, `make llm-smoke`, `make serve-up|serve-down`, `make pull-through`, `make data`, `make relabel`, `make train`, `make curve`, `make eval-*`, `make publish-*`.
 
-1. Read `harness/status.toml`.
-2. If a product phase is active, read its single contract under `harness/build/` and only the phase-specific evidence it names.
-3. Read `GOALS.md` for product-outcome questions, `CONTEXT.md` for domain-language or contract-semantics questions, and `PLANS.md` for roadmap or phase-gate questions. Do not load all three by default when the task does not need them.
-4. Read the relevant source files and tests.
-5. Read historical contracts, reviews, or build-log entries only when a current claim, regression, or audit requires them.
+## Rules (a PR that breaks one is rejected)
+1. **Stay in your owned paths.** They are listed in your task block. Need another file? Stop and say so.
+2. **Never touch the contract.** Changes to `src/proxyloop/contract/**`, `tests/contract/**` or `tests/golden/**` go through the root: an ADR, a CON task, then `make pull-through`. If you need one, return a proposal.
+3. **One execution path.** Everything calls `run_session(cfg, task)`. Never add a second runner, loop or "quick script" that drives models.
+4. **One renderer.** Only `proxyloop.contract.protocol` builds Fast prompts. Never write prompt text in `training/`, `eval/`, `serve/` or the web. The web never re-renders prompts: it reads `prompts.jsonl`.
+5. **Fakes only in `tests/`.** Adapter kinds are `real_http | recorded_replay | test_fake | baseline`. `real_http` is the only kind allowed in live mode. `baseline` (the FSM) appears only as a labelled evaluation condition. Nothing under `src/` imports `tests/`.
+6. **No fallbacks.** A dead model endpoint must abort the session loudly (`LLMUnavailable`). Never catch it and continue, never switch models, never return canned text.
+7. **Events are truth.** Emit events through the bus, with correct `cause_ids`. Never mutate the blackboard directly. The web, metrics and datasets read events only.
+8. **Public/private separation.** `view_cp` and anything rendered for the counterparty lane must never read `PrivateState`. Public numbers must be source-bound (`guard.declass`).
+9. **Relay-only Slow.** Slow never receives transcripts outside the `raw_transcript` ablation.
+10. **Authority.** Models may restrict authority (revoke) but never grant it. Approvals come only from the authenticated UI endpoint or the deterministic sim approver. Never write code in which an LLM output sets approval, mandate or completion.
+11. **Never read held-out data.** Do not open test-family bundles, test seeds or `unseal.json`, and do not edit test-family YAML after the split draw. Treat anything under `evidence/s4/test/` as sealed until the report exists.
+12. **Anti-absorption.** Do not make base Qwen look better without a semantic reason: no lenient parser special cases, no retries on bad model output, no Fast-specific templates or kernel help. Parse errors are counted, not hidden.
+13. **Numbers are generated.** Never type a result number into README or docs. Use a report and a `gen` block.
+14. **No process files.** No logs, status files, per-phase task contracts or TODO files. The PR description is the log.
+15. **Secrets.** Never read, print, copy or commit `.env`, keys or relay URLs. Never copy `.env` into a worktree.
 
-Do not treat a roadmap item as permission to implement it. Only a user-approved phase or bounded repository change is active.
+## Git flow (worktrees)
+- The root creates your worktree: `git worktree add ../pl-wt/<TASK-ID> -b task/<task-id> origin/main`.
+- Work only inside it, and commit on your task branch with messages that start `<TASK-ID>: `.
+- Never push, merge, rebase `main`, force anything, or touch another worktree.
+- If `main` moved and you conflict, stop and report; the root rebases.
+- Finish by returning to the root: changed files, commands run with their exact results, the reality statement, assumptions, and open risks. The root pushes, opens the PR (title `<TASK-ID>: <title>`), runs the fresh-context reviewer, and squash-merges.
 
-## Authority and Safety
+## Definition of done (your part)
+- Your task's acceptance criteria are met, **as tests you ran** (paste the output tails).
+- Model-touching criteria are marked "needs root run" with the exact command. You cannot close them with fakes, and the task stays `provisional` until the root's real bundle passes `make evidence-check --claim`.
+- `make check` is green in your worktree.
 
-- Keep at most one product implementation phase active.
-- Use the smallest change that satisfies the approved acceptance criteria; do not begin the next phase automatically.
-- Preserve user work and unrelated changes.
-- Once the user approves a bounded ProxyLoop phase or repository change, the root orchestrator may create a branch, commit, push, open and review the pull request, squash merge it, and clean up its fully merged short-lived branch without separate approval for each routine Git step.
-- A new explicit user decision is required to expand scope, activate another phase, deploy, publish a release, contact real external parties, use credentials, perform destructive operations, force-push, rewrite shared history, or delete unmerged work.
-- Never add real Provider credentials, consumer PII, production secrets, or unreviewed generated model artifacts.
-- Models may propose actions or completion candidates; deterministic policy and evidence checks own authorization and completion.
+## Tripwires (stop and tell the root)
+- Your diff grows beyond the task size (S ≤ 300, M ≤ 700, L ≤ 1,200 changed lines excluding tests), or a module passes 600 lines.
+- You need a contract change, a new dependency outside your lane group, or a file outside your owned paths.
+- A test can only pass with a model stubbed in a place the reality rule forbids.
+- You are about to add a fallback, a second path, a retry on model output, or a process document.
+- Anything suggests reading test-family data.
 
-## Root-Orchestrator-Retained Decisions
-
-The root orchestrator owns shared architecture and interfaces, authorization and completion policy, canonical contract and evaluator semantics, security boundaries, conflicting evidence, scope changes, phase gates, final diff review, and every completion or integration claim.
-
-The root orchestrator must inspect the primary evidence for those decisions. Subagent output is navigation, implementation, or independent review evidence; it does not replace the root orchestrator's judgment.
-
-## Adaptive Delegation
-
-The root orchestrator may proactively use subagents when doing so materially improves quality, latency, or context isolation. The user does not need to request delegation separately.
-
-Delegate when at least one of these is true:
-
-- the work contains two or more independent evidence or implementation lanes;
-- exploration, logs, test output, artifact inventories, or large-file analysis would pollute the root context;
-- a bounded mechanical slice has exact ownership and a verification command;
-- a specialized model, tool surface, or independent reviewer provides distinct value;
-- parallel execution shortens a real critical path without overlapping writes.
-
-The root orchestrator should work directly when the answer is in one to three tightly related files, the task is small or highly coupled, boundaries are still ambiguous, delegation would duplicate the same reads, or the task concerns a root-orchestrator-retained decision.
-
-Start with the smallest useful team and expand only after finding an evidence gap or an additional independent lane. The tool's configured concurrency ceiling (`max_concurrent_threads_per_session` in Codex, the cap stated in `CLAUDE.md` for Claude Code) is a safety ceiling, not a target or a per-task agent budget:
-
-- normal discovery: zero to two explorers;
-- broad independent inventory: burst up to the configured ceiling after the root orchestrator defines non-overlapping questions;
-- implementation: allow multiple writers for independent requirements when file or module ownership is non-overlapping, shared interfaces are frozen, and the root orchestrator defines shared-file ownership plus the integration order; otherwise keep one writer until those boundaries are clear;
-- review: one independent reviewer after the diff and acceptance criteria are stable.
-
-Use these project roles; each is defined once per tool (`.codex/agents/<role>.toml`, `.claude/agents/<role>.md`) with the same name and contract:
-
-- `explorer`: read-only repository mapping that returns an evidence card, on a fast model at medium effort;
-- `fast-worker`: mechanical generation, formatting, fixtures, or exact repetitive edits that require no behavior or interface judgment, on a fast model at medium effort;
-- `implementer`: a well-specified implementation slice after interfaces and acceptance criteria are frozen, on the strongest available model at the tool's highest routine effort;
-- `reviewer`: read-only defect-first review and adversarial checks, on a strong model at high effort, never the same session that wrote the diff;
-- `architect`: the strongest available model at elevated effort, for an architecture or interface proposal, a cross-cutting design trade-off, or a problem the root orchestrator or an `implementer` has already failed to resolve once. It proposes; the root orchestrator still owns the decision. Codex has no separate configuration for this role and uses Luna max or the root session directly.
-
-Prefer fresh bounded subagent contexts (Codex: `fork_turns="none"` when supported; Claude Code subagents always start fresh). Every task packet must contain the objective, scope and non-goals, known paths, exact questions or owned files, expected output, verification, and escalation triggers. Reuse an existing subagent for clarification before repeating the same discovery.
-
-Explorers return an evidence card rather than a transcript: direct answer, precise path and symbol or line support, checks run or unrun, conflicts and unknowns, and a short `Root must read` list. Escalate instead of resolving ambiguity involving architecture, authorization, canonical contracts or evaluators, security, scope, or a phase gate.
-
-## Skill Routing
-
-Skills are on-demand procedures, while custom agents are delegated roles with separate context, model, tools, or permissions. Do not substitute one mechanism for the other.
-
-- Use a Skill when the user names it or the task clearly matches its description; explicit mention is not required for a clear match.
-- At task start and whenever the work changes phase or shape, scan the available Skill descriptions again so a newly relevant Skill is not missed.
-- Choose the most specific workflow Skill that covers the current stage. Add a complementary domain Skill only when it contributes a distinct procedure or body of knowledge. There is no hard Skill-count limit, but do not stack overlapping workflows for ceremony.
-- If two Skills overlap, prefer the narrower repository-compatible one. If neither fits cleanly, follow repository-native commands directly and state the mismatch.
-- Use progressive disclosure: read the selected `SKILL.md` completely, then load only the references or assets it routes to for the current variant.
-- Do not suppress a useful Skill merely to save tokens. Control cost through precise triggering, non-overlap, and on-demand references.
-
-Repository-specific routing:
-
-- `karpathy-guidelines`: implementation and refactoring discipline.
-- `diagnosing-bugs`: reported failures, regressions, or performance diagnosis.
-- `codebase-design`: interface placement, module depth, and architecture seams.
-- `domain-modeling`: deliberate changes to the ubiquitous language in `CONTEXT.md`.
-- `vercel-react-best-practices`: React and Next.js implementation or performance review.
-- `design-taste-frontend` (Codex) / `frontend-design` (Claude Code): landing pages, portfolios, or an explicitly approved visual redesign; not ordinary ProxyLoop product-flow changes.
-- `write-dev-spec`: architecture, ADR, runbook, or developer-spec work. The installed `update-docs` Skill targets the Next.js documentation repository and is not a default ProxyLoop docs workflow.
-
-The installed `fix` Skill assumes Yarn and is not repository-compatible. Use `make format`, `make lint`, `make typecheck`, `make test`, and `make preflight` from this repository. Project reviewer instructions already contain the required defect-first workflow for the phase gate; a tool's built-in review command may be used as an additional mid-development pass but does not replace the recorded independent review. Tool-specific skill names and built-in commands are mapped in `CLAUDE.md` for Claude Code.
-
-## Development and Verification Loop
-
-For an approved phase or bounded change:
-
-1. Preflight: inspect status, scope, dependencies, dirty files, and the smallest relevant checks.
-2. Red: add or identify the smallest failing check when practical.
-3. Green: implement the minimum compatible change.
-4. Refactor only to remove demonstrated complexity or duplication.
-5. Run focused checks while the behavior is changing.
-6. When the diff is stable, obtain independent review for material code, contract, authorization, security, workflow, or external-channel changes.
-7. Batch accepted findings, rerun affected checks, and request re-review only for material semantic changes or unresolved findings.
-8. Run Browser or manual verification only after the affected behavior is stable.
-9. Run `make preflight` once as the final local repository gate; rerun it only after a material change to covered behavior or artifacts. It skips DB/Temporal tests; service changes also need the serial real-dependency gates in `docs/development.md`.
-10. Record concise pre-merge evidence in one bounded-change log under `harness/log/`, then integrate and stop at the gate.
-
-Never report a check as passed if it was not run. Separate passed checks from blocked, skipped, manual, Browser, cloud, GPU, voice, and external-channel work.
-
-## Git Workflow
-
-- Treat `main` as the last integrated validated state; do not implement or commit directly on it.
-- Use one short-lived branch per phase, feature, fix, docs change, or experiment, following `CONTRIBUTING.md`.
-- Keep one bounded concern per pull request.
-- The root orchestrator reviews the complete final diff, verification, independent-review evidence, and CI before merge.
-- Prefer squash merge. Delete a fully merged short-lived branch only after confirming the worktree is clean, the branch was pushed, and no unique unpushed work would be lost.
-
-## Harness Boundaries
-
-- `harness/status.toml`: single current-state source.
-- `harness/build/`: executable phase contracts.
-- `harness/context/`: small phase-specific evidence and decision inputs.
-- `harness/code_review/`: durable material review artifacts.
-- `harness/log/`: one concise execution log per bounded change.
-- `harness/build-log.md`: historical evidence through the Harness v2 migration; do not scan or append it by default.
-
-The Codex development Harness is not the product evaluation Harness. Simulator scenarios, model evaluations, reward logic, benchmarks, and training artifacts belong under `ml/`, `runtime/`, `data/`, or `tests/` as defined by the architecture.
+## Escalation
+Stop and return a short note (what, why, options, your recommendation) when a question involves the contract, authority or approval semantics, metrics or evaluation semantics, security, scope, or held-out data. The root decides. The `architect` agent is root-only.
