@@ -162,7 +162,7 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
 
 Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 is the first build PR**, and every SYS/MOD build task depends on it except the two MOD spikes that do not touch the contract.
 
-### S0-ROOT-01 Worktree inventory and `v0-legacy` tag — ROOT — S — flags U (only if unique work) — review
+### S0-ROOT-01 Worktree inventory and `v0-legacy` tag — ROOT — S — flags U (only if unique work) — done
 - **Objective:**
   - Inventory every `git worktree` (22 entries at planning time [O `git worktree list | wc -l`]): branch, HEAD, merged into `main`?, count of unique unpushed commits.
   - Tag `v0-legacy` at `514fe31` and push the tag.
@@ -177,7 +177,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** the commands above, pasted in the PR.
 - **Escalate if:** any worktree has unique unpushed commits (the user decides), or the tag exists at another commit.
 
-### S0-ROOT-02 Harness diet and agent kit — ROOT — S — review
+### S0-ROOT-02 Harness diet and agent kit — ROOT — S — done
 - **Objective:**
   - Install `agent-kit/AGENTS.md` → `AGENTS.md`, `agent-kit/CLAUDE.md` → `CLAUDE.md`, and `agent-kit/{implementer,reviewer}.md` → `.claude/agents/`.
   - Keep `.claude/agents/architect.md`, with its orientation lines changed to PLAN/NORTH_STAR.
@@ -193,7 +193,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** the commands above, and the CI link.
 - **Escalate if:** a kept rule conflicts with `NORTH_STAR.md`.
 
-### S0-ROOT-03 v0 retrospective and README skeleton — ROOT — S — todo
+### S0-ROOT-03 v0 retrospective and README skeleton — ROOT — S — done
 - **Objective:**
   - `docs/v0-retrospective.md` (≤ 150 lines): what was built; the honest numbers (0.542→0.983 act agreement on the trained path; **0/240 lines delivered** on the product path); the unsupported résumé numbers (58→67, 6→2, "4-bit QLoRA") disowned explicitly; root causes; five lessons; an asset index of `v0-legacy:<path>` links.
   - A README skeleton with the DOCS §2 sections, `<!-- gen:… -->` markers and "Status: under construction".
@@ -206,7 +206,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
   - `python scripts/lint_readme.py` finds no digits outside `gen` markers in the results sections.
 - **Escalate if:** a number cannot be traced to an artefact at the tag. Drop it; never paraphrase it.
 
-### S0-ROOT-04 Relay capability probe (ADR-0001) — ROOT — S — flags L — todo
+### S0-ROOT-04 Relay capability probe (ADR-0001) — ROOT — S — flags L — done
 - **Objective:** through the relay (key from `.env`, never printed), for `claude-sonnet-5`, `claude-haiku-4-5`, `gemini-3.6-flash`, `claude-opus-4-8` and `gemini-3.5-flash`, measure:
   - availability;
   - streaming with usage;
@@ -220,7 +220,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Acceptance:** raw request ids and usage per model; a yes/no per capability; a TalkAct transport decision.
 - **Escalate if:** Sonnet tool calling or streaming is broken (blocks S0-SYS-04/06); the TalkAct models are missing (E4; does not block S0).
 
-### S0-SYS-01 New workspace and ported pure functions with v0 fixtures — SYS — M — todo
+### S0-SYS-01 New workspace and ported pure functions with v0 fixtures — SYS — M — done
 - **Objective:**
   - Create the root `pyproject.toml` (uv, package `proxyloop` under `src/`, with ruff, pyright, pytest and import-linter config) **beside** the old code.
   - Port, with tests:

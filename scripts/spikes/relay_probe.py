@@ -476,6 +476,23 @@ def forced_model(
     return {"model": model, "calls": calls}
 
 
+SKIPPED = {"skipped": "not applicable to this endpoint"}
+
+
+def reasoning_summary(calls: list[dict[str, Any]]) -> dict[str, Any]:
+    """Median reasoning tokens over the calls whose usage reports them."""
+    details = [(x.get("usage") or {}).get("completion_tokens_details") for x in calls]
+    vals = [
+        d["reasoning_tokens"]
+        for d in details
+        if d and d.get("reasoning_tokens") is not None
+    ]
+    return {
+        "reasoning_tokens_p50": statistics.median(vals) if vals else None,
+        "reasoning_tokens_n": len(vals),
+    }
+
+
 def summarise_forced(r: dict[str, Any]) -> dict[str, Any]:
     calls = r["calls"]
     n = len(calls)
@@ -490,6 +507,7 @@ def summarise_forced(r: dict[str, Any]) -> dict[str, Any]:
         if n
         else None,
         "latency_p50_s": statistics.median(lat) if lat else None,
+        **reasoning_summary(calls),
     }
 
 
@@ -574,7 +592,14 @@ def balance(root_v1: str, key: str, scrub: Scrub) -> dict[str, Any]:
 
 
 def probe_model(
-    root_v1: str, root: str, key: str, model: str, scrub: Scrub, ttft_n: int = TTFT_N
+    root_v1: str,
+    root: str,
+    key: str,
+    model: str,
+    scrub: Scrub,
+    ttft_n: int = TTFT_N,
+    stream_max_tokens: int = 48,
+    native_route: bool = True,
 ) -> dict[str, Any]:
     c = oai_client(root_v1, key)
     res: dict[str, Any] = {"model": model}
@@ -597,7 +622,7 @@ def probe_model(
     streams = []
     for _ in range(ttft_n):
         try:
-            streams.append(oai_stream(c, model))
+            streams.append(oai_stream(c, model, max_tokens=stream_max_tokens))
         except Exception as e:
             streams.append(err(e, scrub))
     res["streams"] = streams
@@ -605,6 +630,9 @@ def probe_model(
     res["ttft_p50_s"] = statistics.median(ttfts) if ttfts else None
     res["ttft_n_ok"] = len(ttfts)
     res["stream_usage_ok"] = sum(bool(s.get("usage")) for s in streams)
+    if not native_route:
+        res["native"] = dict(SKIPPED)
+        return res
     native = anthropic_native if model.startswith("claude") else gemini_native
     try:
         res["native"] = {
@@ -659,12 +687,15 @@ def summarise(r: dict[str, Any]) -> dict[str, Any]:
         "long_stream_chunks": r["long_stream"].get("content_chunks")
         if ok(r.get("long_stream"))
         else None,
-        "native_route": bool(r["native"].get("ok")),
+        "native_route": None
+        if "skipped" in r["native"]
+        else bool(r["native"].get("ok")),
         "native_tool_use": r["native"].get("tool_use_n", 0) >= 2
         if r["model"].startswith("claude")
         else None,
         "ttft_p50_s": r["ttft_p50_s"],
         "ttft_n_ok": r["ttft_n_ok"],
+        "streams_reasoning": reasoning_summary(r["streams"]),
     }
 
 
@@ -908,13 +939,20 @@ def main_part(
     models: list[str],
     ttft_n: int,
     relay: str = RELAY_NOTE,
+    stream_max_tokens: int = 48,
+    relay_extras: bool = True,
 ) -> dict[str, Any]:
+    """`relay_extras`: the billing balance and native routes of the original relay."""
     started = utc()
-    bal0 = balance(root_v1, key, scrub)
+    bal0 = balance(root_v1, key, scrub) if relay_extras else dict(SKIPPED)
     results = run_parallel(
-        models, lambda m: probe_model(root_v1, root, key, m, scrub, ttft_n), scrub
+        models,
+        lambda m: probe_model(
+            root_v1, root, key, m, scrub, ttft_n, stream_max_tokens, relay_extras
+        ),
+        scrub,
     )
-    bal1 = balance(root_v1, key, scrub)
+    bal1 = balance(root_v1, key, scrub) if relay_extras else dict(SKIPPED)
     return {
         "schema": "pl.relay_probe/2",
         "task": "S0-ROOT-04",
@@ -927,6 +965,7 @@ def main_part(
         },
         "models": models,
         "ttft_calls_per_model": ttft_n,
+        "ttft_stream_max_tokens": stream_max_tokens,
         "ttft_note": (
             "wall clock from the Mac, sequential per model, "
             f"{len(models)} models in parallel"
@@ -1014,6 +1053,12 @@ def main() -> None:
         help="TTFT streams per model (--part main)",
     )
     ap.add_argument(
+        "--stream-max-tokens",
+        type=int,
+        default=48,
+        help="max_tokens of each TTFT stream (--part main)",
+    )
+    ap.add_argument(
         "--forced-n",
         type=int,
         default=10,
@@ -1081,7 +1126,17 @@ def main() -> None:
             for m, r in report["results"].items()
         }
     else:
-        report = main_part(root_v1, root, key, scrub, models, args.ttft_n, relay)
+        report = main_part(
+            root_v1,
+            root,
+            key,
+            scrub,
+            models,
+            args.ttft_n,
+            relay,
+            args.stream_max_tokens,
+            relay_extras=args.env_format == "keyvalue",
+        )
     report["task"] = args.task
     write(args.out, report, scrub)
     print(scrub(json.dumps(report["summary"], indent=2, default=str)))
