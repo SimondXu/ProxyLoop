@@ -1,13 +1,15 @@
 """Capture v0 behaviour once as JSON fixtures for the ported pure functions.
 
-Run against the v0 workspace, which is the only environment where the v0
-packages are importable:
+It runs only against a checkout of tag ``v0-legacy`` (``V0_REF``): after
+S0-SYS-02 the v0 packages no longer exist on ``main``. From this repo, with
+the v0 tree extracted to ``$V0`` (e.g. ``git archive v0-legacy runtime | tar
+-x -C $V0``):
 
-    uv sync --project runtime --all-packages
-    uv run --project runtime python scripts/sys/capture_v0_fixtures.py
+    uv sync --project $V0/runtime --all-packages
+    uv run --project $V0/runtime python scripts/sys/capture_v0_fixtures.py
 
 It writes ``tests/fixtures/v0/*.json``. The tests under ``tests/port`` read
-only these files, never the v0 packages, so they survive the v0 deletion.
+only these files, never the v0 packages. The script stays as provenance.
 """
 
 # pyright: basic, reportMissingImports=false
@@ -34,6 +36,7 @@ from proxyloop_provider_simulator.scenarios import BENCHMARK_SCENARIOS, PublicOf
 from proxyloop_telecom_domain import OfferComplianceContext, unsupported_applied_changes
 
 OUT = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "v0"
+V0_REF = "v0-legacy@514fe317a23b2aa4b97a69f61daa568f5d791ca6"
 SPLIT_SALTS = ("negotiation-split-v2", "port-fixture-1", "port-fixture-2")
 PLUS_2H = timezone(timedelta(hours=2))
 BASE_SCENARIO = NEGOTIATION_SCENARIOS[0]
@@ -114,6 +117,7 @@ UNSUPPORTED_CHANGES = (
 
 def _write(name: str, body: dict[str, Any]) -> None:
     path = OUT / name
+    body = {"v0_ref": V0_REF, **body}
     path.write_text(json.dumps(body, indent=1, sort_keys=True) + "\n", "utf-8")
     print(f"wrote {path.relative_to(OUT.parents[2])}")
 

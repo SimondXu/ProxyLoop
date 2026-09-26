@@ -2381,5 +2381,6 @@
    "v0_mode": "absent"
   }
  ],
- "source": "NegotiationEnvironment._issue_confirmation (ledger side)"
+ "source": "NegotiationEnvironment._issue_confirmation (ledger side)",
+ "v0_ref": "v0-legacy@514fe317a23b2aa4b97a69f61daa568f5d791ca6"
 }

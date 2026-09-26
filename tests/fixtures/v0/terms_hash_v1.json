@@ -1334,5 +1334,6 @@
   "benchmark-v1": 26,
   "negotiation-v1": 22
  },
- "source": "negotiation_catalog.offer_terms_hash (material_terms_hash)"
+ "source": "negotiation_catalog.offer_terms_hash (material_terms_hash)",
+ "v0_ref": "v0-legacy@514fe317a23b2aa4b97a69f61daa568f5d791ca6"
 }
