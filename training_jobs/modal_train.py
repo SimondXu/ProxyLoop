@@ -13,14 +13,14 @@ from serving import config, modal_vllm
 from training_jobs import sft
 
 REPO = Path(__file__).resolve().parents[1]
-CONV1D_BUILD = {"CAUSAL_CONV1D_FORCE_BUILD": "TRUE", "TORCH_CUDA_ARCH_LIST": "9.0"}
 GIT_SHA = ["git", "describe", "--always", "--dirty", "--abbrev=40", "--exclude=*"]
 app = modal.App("proxyloop-train")
 image = (
     modal.Image.from_registry(sft.BASE_IMAGE, add_python="3.12")
     .uv_pip_install(sft.TORCH, index_url=sft.TORCH_INDEX)
     .uv_pip_install(*sft.REST)
-    .env({**CONV1D_BUILD, "HF_HOME": modal_vllm.HF_DIR})
+    .env({"CC": "gcc", "CXX": "g++", "CAUSAL_CONV1D_FORCE_BUILD": "TRUE"})  # ADR-0003
+    .env({"TORCH_CUDA_ARCH_LIST": "9.0", "HF_HOME": modal_vllm.HF_DIR})
     .uv_pip_install(sft.CONV1D, extra_options="--no-build-isolation")
     .add_local_dir(REPO / "src/proxyloop", "/root/proxyloop", ignore=["**/*.pyc"])
     .add_local_python_source("serving")

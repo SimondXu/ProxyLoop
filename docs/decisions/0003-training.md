@@ -44,7 +44,10 @@ Facts checked in the pinned sources (not measurements):
      `flash-linear-attention==0.5.2`, `fla-core==0.5.2`, `pydantic==2.13.5`, and the build tools
      `setuptools==84.0.0`, `wheel==0.48.0`, `ninja==1.13.2`, `packaging==26.3`;
   3. `causal-conv1d==1.7.0` built from source with `--no-build-isolation`, `CAUSAL_CONV1D_FORCE_BUILD=TRUE` and
-     `TORCH_CUDA_ARCH_LIST=9.0` (nvcc 12.9 from the base image, at image build time only).
+     `TORCH_CUDA_ARCH_LIST=9.0` (nvcc 12.9 from the base image, at image build time only), with `CC=gcc` and
+     `CXX=g++`. The `add_python` interpreter's sysconfig names `clang++`, which the image does not have; gcc and
+     g++ come with the image through `cuda-nvcc-12-9` → `build-essential` (Ubuntu 24.04: gcc 13, inside the range
+     torch 2.13 accepts for CUDA 12.9, gcc ≥ 6 and < 15).
 
   None of these enter `pyproject.toml` or `uv.lock`. One H100
   (`serving.config.GPU`); model and tokenizer from the pinned revision on the shared HF volume.
@@ -139,6 +142,12 @@ The root compares `tokens_per_s` with TRAINING §8's 3–5k tok/s estimate.
   measured. The fix is the torch 2.13.0 / triton 3.7.1 stack above (root decision: one kernel toolchain and no
   runtime JIT compiler, and it is the fix fla recommends first; the other option was tilelang plus an nvcc at
   runtime). The preflight now catches this class of failure before the model is downloaded or loaded.
+- **2026-09-26 06:21–06:24 EDT, train-smoke attempt 2 failed in the image build** (run id `20260926-smoke-2`; no
+  GPU ran). Step 3, the causal-conv1d source build, raised from torch's `cpp_extension._check_cuda_version`:
+  `The current installed version of clang++ (0.0.0) is less than the minimum required version by CUDA 12.9 (7.0)`.
+  Nothing in the image set `CC`/`CXX`, so setuptools took the compiler from the `add_python` interpreter's
+  sysconfig (`clang++`), which is not installed, and the version probe returned 0.0.0. Fix: `CC=gcc`, `CXX=g++`
+  in the image environment before step 3.
 
 ## Consequences
 - **Contract / fingerprint impact:** none. Rows go through `render_prompt`; `result.fingerprints` records the
