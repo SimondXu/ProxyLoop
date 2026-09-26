@@ -1,6 +1,6 @@
 # ProxyLoop agent instructions
 
-These are the repository rules for every coding agent. Product intent and invariants: `NORTH_STAR.md`. Current state, tasks and ownership: `PLAN.md` (the single state file, root-edited only). Design: `ARCHITECTURE.md`, `EVAL.md`, `TRAINING.md`, `DOCS.md`, `docs/decisions/` (ADRs). Nothing else is a process document.
+These are the repository rules for every coding agent. Product intent and invariants: `NORTH_STAR.md`. Current state, tasks and ownership: `PLAN.md` (the single state file, root-owned). Design: `ARCHITECTURE.md`, `EVAL.md`, `TRAINING.md`, `DOCS.md`, `docs/decisions/` (ADRs). Nothing else is a process document.
 
 ## Orientation (in this order; stop reading when you have enough)
 1. `NORTH_STAR.md`, all of it.
@@ -41,6 +41,7 @@ These are the repository rules for every coding agent. Product intent and invari
 13. **Numbers are generated.** Never type a result number into README or docs. Use a report and a `gen` block.
 14. **No process files.** No logs, status files, per-phase task contracts or TODO files. The PR description is the log.
 15. **Secrets.** Never read, print, copy or commit `.env`, keys or relay URLs. Never copy `.env` into a worktree.
+16. **Preserve data.** No `rm -r`/`rm -rf`, `find -delete` or `git clean` on `data/`, `external/` or the repo root, anywhere. Delete only tracked files, with `git rm`. Untracked or ignored files that must go are moved to `~/Desktop/proxyloop-v0-archive/` and reported to the user. `external/pine-ai-tasks/` is user data: never delete, clean or overwrite it. **Mechanically enforced** in Claude Code (`.claude/settings.json` deny rules and the `.claude/hooks/block_destructive.py` PreToolUse hook): recursive deletes (`rm -r`, `find -delete`/`-exec rm`, `shutil.rmtree` in `python -c`) of `data/`, `external/`, a repo root or the archive; `git clean` with `-d`/`-x`/`-X`/`-f`; reading `.env` with the Read tool or `cat`. **Advisory:** everything else in this rule and rule 15, including what the hook cannot see (paths in variables, other tools, other `.env` readers).
 
 ## Git flow (worktrees)
 - The root creates your worktree: `git worktree add ../pl-wt/<TASK-ID> -b task/<task-id> origin/main`.
@@ -53,6 +54,11 @@ These are the repository rules for every coding agent. Product intent and invari
 - Your task's acceptance criteria are met, **as tests you ran** (paste the output tails).
 - Model-touching criteria are marked "needs root run" with the exact command. You cannot close them with fakes, and the task stays `provisional` until the root's real bundle passes `make evidence-check --claim`.
 - `make check` is green in your worktree.
+
+## Proportionality
+- **Test-first only for high-risk code:** Guard and authority, concurrency and fences, renderer and parser, the contract, metrics. Elsewhere, a thin slice plus a few high-value tests.
+- **Spikes** answer exactly the ADR question in their task block: no extra models, passes or variants without root approval. Commit a compact summary JSON plus a small raw sample (≤ ~1 MB of raw artefacts per spike); bulk raw data goes to the git-ignored `runs/`.
+- **ADRs** fit on one page.
 
 ## Tripwires (stop and tell the root)
 - Your diff grows beyond the task size (S ≤ 300, M ≤ 700, L ≤ 1,200 changed lines excluding tests), or a module passes 600 lines.

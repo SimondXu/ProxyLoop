@@ -4,10 +4,10 @@
 
 **Merge authority:** granted to the root by the user on 2026-09-26, from S0 on until revoked: the root squash-merges PRs that pass the fresh-context reviewer, CI and the reality rule. Stage closes, contract changes after `semantics-v1`, publishing, the split draw, the unseal and destructive steps still need the user.
 
-Only the root edits this file. The PR description is the log. Design lives in `NORTH_STAR.md`, `ARCHITECTURE.md`, `EVAL.md`, `TRAINING.md`, `DOCS.md` and `docs/decisions/` (ADRs).
+Changes to this file are root decisions, written by an implementer whose packet grants it (§0.1). The PR description is the log. Design lives in `NORTH_STAR.md`, `ARCHITECTURE.md`, `EVAL.md`, `TRAINING.md`, `DOCS.md` and `docs/decisions/` (ADRs).
 
 Legend:
-- lanes: **CON** (contract), **SYS** (system), **MOD** (model), **ROOT** (root-run);
+- lanes: **CON** (contract), **SYS** (system), **MOD** (model), **ROOT** (the root decides, runs L/G/U and merges; an implementer writes the files, §0.1);
 - flags: **L** live keys, **G** GPU, **U** needs the user;
 - sizes: S ≤ 300 changed lines, M ≤ 700, L ≤ 1,200 (excluding tests and goldens) [E];
 - status: `todo | doing | review | provisional | done | blocked`.
@@ -20,9 +20,12 @@ Legend:
 - **One task = one PR = one implementer, in its own git worktree.**
   - The root creates the worktree with `git worktree add ../pl-wt/<ID> -b task/<id-lowercase> origin/main`.
   - The implementer works only there and commits on the task branch. It never pushes, merges, rebases `main` or touches another worktree.
-  - The root verifies (`make check` + the task's verification), pushes, opens the PR titled `<ID>: <title>` (CI checks the title), spawns a fresh-context reviewer, reconciles the findings, squash-merges, then removes the worktree and branch.
+  - The root verifies (`make check` + the task's verification, read through `test-log-analyzer`, `CLAUDE.md`), pushes, opens the PR titled `<ID>: <title>` (CI checks the title), spawns a fresh-context reviewer, reconciles the findings, squash-merges, then removes the worktree and branch.
 - **The packet** is `.claude/task-packet-template.md` filled with: the task block from this file verbatim, plus `NORTH_STAR.md`, plus ≤ 5 named files, the verification commands and the escalation triggers.
 - **Concurrency:** ≤ 2 implementers per lane and ≤ 4 in flight in total, with disjoint owned paths. Reviewers do not count.
+- **ROOT tasks:** the root decides, runs the L/G/U steps and merges. It never authors files or code, not even for a ROOT task: every file (scripts, docs, ADRs, README, this file) is written by an implementer whose packet grants the root-owned paths. Packets and PR bodies stay root-written.
+- **Merge floor:** `main` is branch-protected with CI required; the root configures it.
+- **Rotation:** the root moves to a fresh session at each stage close, or when its context passes ~60 %, after writing a short handoff.
 - **The root owns** `PLAN.md`, the contract, `docs/decisions/`, `docs/claims.yaml`, `tasks/splits/`, the shared files (§0.2), `evidence/`, and every merge, gate and claim.
 - **"done"** requires a merged PR. For model-touching tasks it also requires a real bundle id (or real artefact) cited in the PR.
   - Infrastructure merged before a real bundle exercises it is `provisional`.
@@ -52,12 +55,14 @@ Legend:
 ### 0.4 Reviewer (fresh-context Claude subagent, `.claude/agents/reviewer.md`): mandatory fields in the review
 1. The `make check` output tail (run by the reviewer) and the task's verification output as it was actually run.
 2. **"Could this pass with every model stubbed? Could it pass with the model endpoint dead? Why not?"**
-3. At least one defect, **or** the adversarial cases tried (listed).
+3. At least one defect, **or** the adversarial cases tried (listed). Every finding is tagged **blocker**, **major** or **nit**.
 4. NORTH_STAR invariants touched, and whether they hold.
 5. Owned paths: is the diff inside the task's paths? Is the contract untouched, or is there an ADR?
 6. "Does this add a second path for eval, data, serving or rendering? A fallback? Anything on the TTFS path? A process doc?"
 7. **Anti-absorption:** "Does this make base Qwen look better without changing semantics (parser leniency, retries, templates, Fast-specific kernel help)?"
 8. The reality statement: `real_http` vs `recorded_replay` vs `test_fake` vs `baseline`, and where each is used.
+
+**Fixes and rounds.** Only blocker and major findings must be fixed before merge. Nits go to the follow-up list (§0.9) and never trigger another round. An S task gets at most one review round unless a blocker is found; wording-only fixes never trigger re-review.
 
 ### 0.5 Root-run tasks and the reality rule
 - **L, G and U work is executed by the root** (or CI), never by an implementer. Implementers get recorded bundles from `evidence/` through `tests/support/recorded.py`, and fakes from `tests/support/fakes.py`.
@@ -78,6 +83,7 @@ Legend:
   - more than one renderer-fingerprint change after `semantics-v1` means stop (data invalidation);
   - any import from `src/` into `tests/support`, or any fallback model path, is rejected.
 - **Red signals:** `evidence-check` red on `main`, or `make pull-through` red, stops merges into the affected lane.
+- **Model choice:** a model swap is the user's decision, never the root's alone.
 - **Intentionally removed:** there is no "metric must rise every N PRs" tripwire.
 
 ### 0.7 Stage close
@@ -95,6 +101,9 @@ After S0, after S1, after S3, and before S4's data generation (a projection), th
 - the projection for the next stage.
 
 The source is `docs/results/spend.json`, generated from `spend.charged` events and Modal usage.
+
+### 0.9 Follow-up list (review nits; never a merge blocker)
+- none yet
 
 ---
 
