@@ -318,13 +318,10 @@ def _user(v: Seen) -> list[TurnItem]:
     if v.trigger == "session_start":
         return _say("user", "Hi, I'm your assistant; I'll keep you updated here.")
     if v.trigger == "slow_msg":
-        said = _say("user", v.args.get("text", ""))
-        kept = [
-            s
-            for s in said
-            if verified or not (isinstance(s, Speech) and _COMPLETE.search(s.text))
-        ]
-        return kept if kept == said else [*kept, *_say("user", _status(v.status))]
+        text = v.args.get("text", "")
+        if not verified and _COMPLETE.search(text):  # the whole message implies it
+            return _say("user", _status(v.status))
+        return _say("user", text)
     if v.trigger == "approval_card":
         card = v.args.get("readback_text", "")
         mine = "Please review it in the app; I can't approve anything for you."

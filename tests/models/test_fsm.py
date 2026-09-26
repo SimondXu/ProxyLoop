@@ -164,12 +164,11 @@ IN_PROGRESS = "The case is still in progress, and nothing is complete yet."
         "All done!",
         "The new price is locked in.",
         "Your cancellation has been processed.",
+        "The rep is checking for a better offer. Your plan is switched.",
     ],
 )
 def test_a_completion_claim_from_slow_is_never_voiced_unverified(text: str) -> None:
-    said = _voiced(text, CaseStatus.IN_CALL)
-    assert said[-1] == IN_PROGRESS
-    assert _say_all(text)[0] not in said  # the claim itself is never voiced
+    assert _voiced(text, CaseStatus.IN_CALL) == [IN_PROGRESS]  # status line only
     assert _voiced(text, CaseStatus.VERIFIED_COMPLETE) == _say_all(text)
 
 
@@ -180,8 +179,8 @@ def _say_all(text: str) -> list[str]:
 def test_other_slow_sentences_are_kept_without_a_status_line() -> None:
     text = "The rep is checking for a better offer."
     assert _voiced(text, CaseStatus.IN_CALL) == [text]
-    mixed = "The rep is checking for a better offer. Your plan is switched."
-    assert _voiced(mixed, CaseStatus.IN_CALL) == [text, IN_PROGRESS]
+    two = "Would a 12-month term at $65.00 a month work? Let me know."
+    assert _voiced(two, CaseStatus.IN_CALL) == _say_all(two)
 
 
 @pytest.mark.parametrize("move", ["identify", "cite_competitor", "mention_tenure"])
