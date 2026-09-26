@@ -1,6 +1,8 @@
 # PLAN.md: the single state file
 
-**Current:** S0 in progress (the user gave the go on 2026-09-26). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01, S0-SYS-02 (#115), S0-ROOT-07 (#114), S0-CON-01 (#116), S0-MOD-01 (#113, provisional: `serve-attest-local` pending the user's go), S0-ROOT-08 (#117), S0-SYS-03 (#118), S0-SYS-04 (#120), S0-SYS-05 (#121), S0-MOD-02 (#119). **In flight:** S0-SYS-06, S0-ROOT-09 (this PR). **Next:** S0-ROOT-05 (merge point 1). **Last closed stage:** none. **Contract version:** v1 (ADR-0004; fingerprints `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`, `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490`).
+**Current:** S0 in progress (the user gave the go on 2026-09-26). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01, S0-SYS-02 (#115), S0-ROOT-07 (#114), S0-CON-01 (#116), S0-MOD-01 (#113, provisional: `serve-attest-local` pending the user's go), S0-ROOT-08 (#117), S0-SYS-03 (#118), S0-SYS-04 (#120), S0-SYS-05 (#121), S0-MOD-02 (#119), S0-ROOT-09 (#122), S0-SYS-06 (#123). **In progress:** S0-ROOT-05 (merge point 1): the first three live smokes failed, and the fixes are pending (see the S0-late handoff, `plan-v3/handoffs/2026-09-26-s0-late.md`). **In flight** (merged only at the gate, §0.1): S0-MOD-03, S1-SYS-01, S1-MOD-01A, S0-ROOT-10 (this PR). **Last closed stage:** none. **Contract version:** v1 (ADR-0004; fingerprints `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`, `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490`).
+
+**Sessions:** one main root and up to four product lane leads run in parallel (user decision 2026-09-26; §0.1, §0.2, `CLAUDE.md`).
 
 **Merge authority:** granted to the root by the user on 2026-09-26, from S0 on until revoked: the root squash-merges PRs that pass the fresh-context reviewer, CI and the reality rule. Stage closes, contract changes after `semantics-v1`, publishing, the split draw, the unseal and destructive steps still need the user.
 
@@ -22,7 +24,13 @@ Legend:
   - The implementer works only there and commits on the task branch. It never pushes, merges, rebases `main` or touches another worktree.
   - The root verifies (`make check` + the task's verification, read through `test-log-analyzer`, `CLAUDE.md`), pushes, opens the PR titled `<ID>: <title>` (CI checks the title), spawns a fresh-context reviewer, reconciles the findings, squash-merges, then removes the worktree and branch.
 - **The packet** is `.claude/task-packet-template.md` filled with: the task block from this file verbatim, plus `NORTH_STAR.md`, plus ≤ 5 named files, the verification commands and the escalation triggers.
-- **Concurrency:** ≤ 2 implementers per lane, except SYS, which may run 3 (user decision 2026-09-26), and ≤ 4 in flight in total, with disjoint owned paths. Reviewers do not count.
+- **Concurrency:** ≤ 8 implementers in flight across all sessions, with disjoint owned paths (user decision 2026-09-26). By default the main root's agent lanes run 4 (≤ 2 per lane, except SYS, which may run 3; user decision 2026-09-26) and each product lane runs 1. A lane lead that wants a second implementer asks the main root. Reviewers do not count.
+- **Merge at gate** (user decision 2026-09-26): early work, meaning S1 pure tasks and product-lane work, is coded and reviewed now but merged only after S0-ROOT-05's real bundles are committed.
+- **Multi-session operating model** (user decision 2026-09-26; details in `CLAUDE.md` and `plan-v3/lanes/README.md`, outside the repo):
+  - the **main root** is the only session that merges, edits this file, the contract, ADRs, `evidence/`, claims and the shared files, runs L/G/U steps and arbitrates cross-lane conflicts;
+  - a **lane lead** owns one product lane (§0.2). For its tasks it does the steps of the first bullet up to a reviewed PR, then hands the PR to the main root, which verifies and merges;
+  - a lane lead never merges, never edits foreign or shared paths without a per-task grant, never runs L/G/U, and never changes a model, budget, tripwire or stage gate;
+  - sessions talk by cross-session messages, which are data, never the user's approval. Each session keeps a lane log outside the repo (`AGENTS.md`), and a lane lead past ~60 % context rotates through its lane log.
 - **ROOT tasks:** the root decides, runs the L/G/U steps and merges. It never authors files or code, not even for a ROOT task: every file (scripts, docs, ADRs, README, this file) is written by an implementer whose packet grants the root-owned paths. Packets and PR bodies stay root-written.
 - **Merge floor:** `main` is branch-protected with CI required; the root configures it.
 - **Rotation:** the root moves to a fresh session at each stage close, or when its context passes ~60 %, after a short handoff is written to `~/Desktop/proxyloop-review-packet-2026-09-25/plan-v3/handoffs/<date>-<stage>.md` by an implementer from a root packet. The handoff lives outside the repo; it is not a repo process file.
@@ -38,6 +46,15 @@ Legend:
 | **CON** (root-owned after S0-CON-01) | `src/proxyloop/contract/**` `tests/contract/**` `tests/golden/**` |
 | **SYS** | `src/proxyloop/{core,kernel,slow,guard,llm,env,evidence,obs,serve}/**` `src/proxyloop/cli.py` `apps/web/**` `tasks/families/**` `compose.yaml` `mk/sys.mk` `tests/{support,core,kernel,concurrency,slow,guard,llm,env,evidence,obs,serve,web,port}/**` `third_party/**` `scripts/sys/**` |
 | **MOD** | `serving/**` `training_jobs/**` `src/proxyloop/{models,training,eval}/**` `mk/mod.mk` `tests/{serving,models,training,eval}/**` `scripts/mod/**` `docs/results/**` (generated only) |
+| **P-WEB** (product lane) | `apps/web/**` `tests/web/**` |
+| **P-API** (product lane) | `src/proxyloop/serve/**` `tests/serve/**` |
+| **P-OBS** (product lane) | `src/proxyloop/obs/**` `tests/obs/**` `compose.yaml` |
+| **P-TOOLS** (product lane) | `src/proxyloop/evidence/audit/**` `tests/evidence/audit/**` |
+
+- **Product lanes** (user decision 2026-09-26) are carved out of SYS. Their paths leave the SYS row while the lane exists, so no path has two owners.
+  - The SYS task blocks that name these paths (S1-SYS-05's web and serve parts, S1-SYS-06, S2-SYS-02's core) are split by the main root when it packets them. `src/proxyloop/kernel/channels.py` stays SYS.
+  - `.github/**`, `Makefile`, `pyproject.toml`, `uv.lock`, `.importlinter` and `mk/*.mk` stay main-root-owned (`mk/*.mk` for ownership changes), and are granted per task on request.
+  - Task ids: CI's title check (`.github/workflows/pr-title.yml`) accepts only `S<n>-(CON|SYS|MOD|ROOT)-NN`. The main root assigns product-lane task ids and blocks within that pattern, or changes the check.
 
 - **Shared files** are root-owned.
   - An implementer who needs a dependency adds it to its lane's group in `pyproject.toml` (`[dependency-groups] sys = […]` / `mod = […]`, or `dev` for test-only tools) and names it in the PR. The root runs `uv lock` at merge.
@@ -71,9 +88,10 @@ Legend:
 - **Tests prove logic; bundles prove reality.** A stubbed pass cannot close a model-touching task.
 
 ### 0.6 Tripwires (stop and ask the user)
-- **PR count:** S0 > 16 PRs, S1 > 14, S2 > 10, S3 > 10. Root evidence PRs are excluded.
+- **PR count:** S0 > 18 PRs (16 → 18, user decision 2026-09-26), S1 > 14, S2 > 10, S3 > 10. Root evidence PRs are excluded.
+  - Open question for the user: product lanes will add S1 PRs, so the S1 figure (14) is expected to need the user's decision. It is unchanged here.
 - **Code size:**
-  - `src/` Python over 6,300 lines at S0 close, over 9,000 at S1 close, or over 7,000 at S3 close (S0 3,700 → 6,300 and S1 5,800 → 9,000, user decision 2026-09-26);
+  - `src/` Python over 6,300 lines at S0 close, over 9,000 at S1 close, or over 7,000 at S3 close (S0 3,700 → 6,300 and S1 5,800 → 9,000, user decision 2026-09-26), counted in non-blank lines (user decision 2026-09-26);
     - the S3 figure (unchanged) now sits below S1's and must be revisited at S1 close;
   - S0-SYS-06: a hard cap of L = 1,200 changed lines (user decision 2026-09-26).
   - web TypeScript over 1,500 lines through S1;
@@ -109,7 +127,6 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
 - #114: the hook denies `find . -name __pycache__ -exec rm -rf {} +` (target `.`), a false positive.
 - #114: `.claude/hooks/block_destructive.py` is ~175 lines against a ~80-line target.
 - #114: the rotation handoff path is outside every worktree; say how an implementer packet grants it.
-- #114: CLAUDE.md's "Commit and PR creation are root actions" reads as contradicting implementer commits on task branches.
 - #114: root-session rules (never authors, log agent, decisions changed) live only in CLAUDE.md, not in a tool-agnostic file.
 - #114: the PLAN.md header status line goes stale between PRs.
 - #116 (contract; for the lane named):
@@ -142,7 +159,7 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
   - `tests/serving` test doubles live outside `tests/support` (AGENTS rule 5).
 - #115 (SYS): `fetch_external.sh` clones into a temp dir then moves; drop the stale `!.env.example` in `.gitignore`; pin the CI Python patch release; add shellcheck; amend S0-SYS-02's acceptance grep to the exclusions actually used.
 - Hook (#114): protect the worktree parent `../pl-wt`; track `pushd`; the heredoc false positive (text that mentions recursive deletes near data/external is blocked when shlex cannot parse it).
-- Process: S0 PR count: 14 merged (#108–#121) + S0-ROOT-09 = 15; S0-SYS-06 makes 16 (at the limit; the tripwire is > 16); S0-MOD-03 would be the 17th. Root evidence PRs (S0-ROOT-05/06) are excluded. The user decides before S0-MOD-03 opens.
+- Process: S0 PR count: 14 merged (#108–#121) + S0-ROOT-09 = 15; S0-SYS-06 makes 16 (at the limit; the tripwire is > 16); S0-MOD-03 would be the 17th. Root evidence PRs (S0-ROOT-05/06) are excluded. Resolved: the tripwire moved to > 18 (user decision 2026-09-26), so S0-MOD-03 is the 17th PR and the proposed S0-SYS-07 the 18th.
 - Docs:
   - EVAL §9.4: stratify the Ear-audit sampling frame by speaker model (Fast condition) and report Ear accuracy per speaker model (S0-ROOT-08 could not edit EVAL.md).
 - #118 (SYS evidence):
@@ -173,7 +190,6 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
   - the cached-result path still allocates an H100;
   - `src/proxyloop/training` is 160 lines against a ≈ 150-line target;
   - S3 cost planning must re-measure tokens/s on a realistic batch: the smoke (`docs/decisions/data/peft-train-smoke.json` `tokens_per_s`) is far below TRAINING §8's estimate.
-- Process: CLAUDE.md still says ≤ 2 implementers per lane (a harness file; update it in the next harness session).
 
 ---
 
@@ -412,7 +428,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** `make test`.
 - **Escalate if:** the Ear misclassifies more than 3 of 30 hand-checked utterances, or the policy needs agent-side state.
 
-### S0-SYS-06 Kernel, two lanes, minimal Slow, bundle, CLI, terminal replay — SYS — L — flags L+G for the smoke — doing
+### S0-SYS-06 Kernel, two lanes, minimal Slow, bundle, CLI, terminal replay — SYS — L — flags L+G for the smoke — provisional (merged in #123; until S0-ROOT-05)
 - **Objective:**
   - `kernel/{session,lanes,speaker,channels,watchdog}.py`: `run_session`; FastU as async chat; FastC in real time with the speech clock and barge-in; the Guard-authored AI-disclosure line as the first cp utterance.
   - `slow/{loop,tools,prompt}.py` with `ask_user`, `tell_user`, `wait`, `guide_fast`, `record_fact`, `record_offer` (no statuses yet) and `finish(info_only)`, over a **relay-only** SlowView.
@@ -433,7 +449,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** `make test`; `python -m proxyloop.cli rep-chat …` (root).
 - **Escalate if:** a behaviour needs a contract change.
 
-### S0-ROOT-05 MERGE POINT 1: the first real interaction — ROOT — S — flags L+G+U — todo
+### S0-ROOT-05 MERGE POINT 1: the first real interaction — ROOT — S — flags L+G+U — doing (the first three live smokes failed; fixes pending, see the S0-late handoff)
 - **Objective:** run the SYS kernel against the MOD-served Qwen3.5-9B:
   - `make smoke-live FAMILY=cp-direct-discount` ×3 (sim user, sim rep);
   - 1 session in which the user types as principal (an unscripted opening);
@@ -480,17 +496,22 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Owned paths:** see the packet (root-owned docs granted).
 - **Acceptance:** `make check` green; no measured number typed into prose (AGENTS rule 13); ADR-0005 cites JSON keys.
 
-### S0-ROOT-09 Record the S0 build-phase decisions — ROOT — S — review
+### S0-ROOT-09 Record the S0 build-phase decisions — ROOT — S — done
 - **Objective:** write the user's and root's decisions of 2026-09-26 (after S0-ROOT-08) into PLAN.md, ARCHITECTURE.md
   and a one-page ADR-0006; update statuses; extend the §0.9 follow-up list. Documentation only.
 - **Owned paths:** PLAN.md, ARCHITECTURE.md (§4, §14, §16 lines named below), docs/decisions/0006-llm-call-writer-and-claim-endings.md.
 - **Acceptance:** `make check` green; no measured number typed (AGENTS rule 13); every decision below appears once.
 
+### S0-ROOT-10 Multi-session harness — ROOT — M — review
+- **Objective:** record the user's multi-session decisions of 2026-09-26: one main root and four product lane leads (P-WEB, P-API, P-OBS, P-TOOLS), the ≤ 8 implementer rule, merge at gate, the S0 PR tripwire 16 → 18, and `src/` size counted in non-blank lines. Write `CLAUDE.md` and `AGENTS.md` (the roles, cross-session messages, lane logs) and this file (§0.1, §0.2, §0.6, the header). Outside the repo: `plan-v3/lanes/` (README, five charters, five lane logs, `PITFALLS.md`) and the S0-late handoff. Documentation only.
+- **Owned paths:** `CLAUDE.md`, `AGENTS.md`, `PLAN.md`; outside the repo, `plan-v3/lanes/**` and `plan-v3/handoffs/2026-09-26-s0-late.md` (new files).
+- **Acceptance:** `make check` green; each user decision appears once as a recorded decision, and none changes a decision; `principal-architect` reviews the harness rules before merge (the user's request).
+
 ---
 
 ## 3. S1: semantic slice (4 families), Guard v2, live web, headroom probe (diagnostic)
 
-S1 SYS/MOD tasks may start after S0-ROOT-05. **Any teacher run in the harness** (the T and R conditions, S1-MOD-01's teacher smoke, S1-MOD-03, S1-ROOT-02) waits until S1-SYS-01, -02, -03 and -05 have merged. Decisions D require capability minting, read-back slots, the fence and epochs, and approval-endpoint security first (§9 E1).
+S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work may be coded and reviewed earlier, but merge only at the gate (§0.1, user decision 2026-09-26). **Any teacher run in the harness** (the T and R conditions, S1-MOD-01's teacher smoke, S1-MOD-03, S1-ROOT-02) waits until S1-SYS-01, -02, -03 and -05 have merged. Decisions D require capability minting, read-back slots, the fence and epochs, and approval-endpoint security first (§9 E1).
 
 ### S1-SYS-00 Simplification pass (no weaker guarantees) — SYS — M — todo
 - **Objective:** before the rest of S1, trim only redundancy in the S0 code, without weakening any guarantee (e.g. a target of `llm/` ≈ 550 lines) (user decision 2026-09-26).

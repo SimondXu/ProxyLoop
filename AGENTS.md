@@ -44,11 +44,16 @@ These are the repository rules for every coding agent. Product intent and invari
 16. **Preserve data.** No `rm -r`/`rm -rf`, `find -delete` or `git clean` on `data/`, `external/` or the repo root, anywhere. Delete only tracked files, with `git rm`. Untracked or ignored files that must go are moved to `~/Desktop/proxyloop-v0-archive/` and reported to the user. `external/pine-ai-tasks/` is user data: never delete, clean or overwrite it. **Mechanically enforced** in Claude Code (`.claude/settings.json` deny rules and the `.claude/hooks/block_destructive.py` PreToolUse hook): recursive deletes (`rm -r`, `find -delete`/`-exec rm`, `shutil.rmtree` in `python -c`) of `data/`, `external/`, a repo root, the archive, or the project dir or archive's ancestors; `git clean` with `-d`/`-x`/`-X`/`-f`; reading `.env` with the Read tool or `cat`. **Advisory:** everything else in this rule and rule 15, including what the hook cannot see (paths in variables, other tools, other `.env` readers).
 
 ## Git flow (worktrees)
-- The root creates your worktree: `git worktree add ../pl-wt/<TASK-ID> -b task/<task-id> origin/main`.
+- The session that dispatches you (the main root, or a lane lead for its own lane) creates your worktree: `git worktree add ../pl-wt/<TASK-ID> -b task/<task-id> origin/main`.
 - Work only inside it, and commit on your task branch with messages that start `<TASK-ID>: `.
 - Never push, merge, rebase `main`, force anything, or touch another worktree.
 - If `main` moved and you conflict, stop and report; the root rebases.
-- Finish by returning to the root: changed files, commands run with their exact results, the reality statement, assumptions, and open risks. The root pushes, opens the PR (title `<TASK-ID>: <title>`), runs the fresh-context reviewer, and squash-merges.
+- Finish by returning to the session that dispatched you: changed files, commands run with their exact results, the reality statement, assumptions, and open risks. That session pushes, opens the PR (title `<TASK-ID>: <title>`) and runs the fresh-context reviewer. Only the main root squash-merges.
+
+## Sessions: main root and lane leads
+- **Main root:** the only session that merges into `main`, edits `PLAN.md`, the contract, ADRs, `evidence/`, claims and the shared files, runs L/G/U steps and arbitrates between lanes (`PLAN.md` §0.1–0.2).
+- **Lane lead:** a session that owns exactly one product lane's paths (`PLAN.md` §0.2). It packets and dispatches its lane's implementers, pushes the task branch, opens the PR, runs a fresh reviewer, reconciles the findings, and hands the PR to the main root in one paragraph: the task, the PR link, the verdict, the checks and the decisions it needs. It never merges, never edits another lane's paths or a shared file without a per-task grant from the main root, never runs an L/G/U step, and never changes a model, a budget, a tripwire or a stage gate.
+- **Lane logs:** after every task a session appends one entry to its lane log (`log-<lane>.md`) and one line per new pitfall to `PITFALLS.md` (append-only). Both live outside the repo, in `~/Desktop/proxyloop-review-packet-2026-09-25/plan-v3/lanes/`, like the rotation handoffs. They are written under the same authoring rule as any other file. Rule 14 still governs the repo: no logs in it.
 
 ## Definition of done (your part)
 - Your task's acceptance criteria are met, **as tests you ran** (paste the output tails).
@@ -68,4 +73,4 @@ These are the repository rules for every coding agent. Product intent and invari
 - Anything suggests reading test-family data.
 
 ## Escalation
-Stop and return a short note (what, why, options, your recommendation) when a question involves the contract, authority or approval semantics, metrics or evaluation semantics, security, scope, or held-out data. The root decides. The `architect` agent is root-only.
+Stop and return a short note (what, why, options, your recommendation) when a question involves the contract, authority or approval semantics, metrics or evaluation semantics, security, scope, or held-out data. The main root decides (a lane lead forwards the note). The `architect` agent is for the main root only.
