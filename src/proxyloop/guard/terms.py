@@ -80,9 +80,12 @@ def terms_hash(terms: Terms) -> str:
 
 def offer_terms(offer: OfferPublic) -> Terms | None:
     """``pl.terms/2`` of an offer's read-back slots (USD), or ``None`` while
-    the price, the term or the expiry is missing or malformed."""
+    the price, the term or the expiry is missing or malformed, or a field
+    repeats."""
 
     by = {s.field: s.value for s in offer.slots}
+    if len(by) != len(offer.slots):  # a repeated field has no single value
+        return None
     coded = [(*f.split(":", 1), v) for f, v in by.items() if ":" in f]
     try:
         fees = tuple(Fee(code, int(v)) for kind, code, v in coded if kind == "fee")

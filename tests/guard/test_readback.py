@@ -92,7 +92,8 @@ def test_required_fields() -> None:
 
 def test_lexicons_are_one_data_table() -> None:
     kinds = {"recurring", "one_time", "fee", "credit", "negation", "fees_none"}
-    kinds |= {"changes_none", "expiry", "no_expiry", "closing"}
+    kinds |= {"changes_none", "change", "generic_fee", "expiry", "no_expiry"}
+    kinds |= {"closing"}
     assert set(LEXICON) == kinds
     assert all(isinstance(cue, str) for cues in LEXICON.values() for cue in cues)
 
@@ -173,3 +174,58 @@ def test_a_second_fee_does_not_contradict_the_first() -> None:
     assert not _confirmed(
         o, READBACK, "There is also a $10 setup fee.", "The fee is $30."
     )
+
+
+# Regressions from the #126 review probes (probe_rb.py, probe_dup.py): M6.
+BASE = READBACK
+
+
+def test_a_fee_named_otherwise_is_not_generic() -> None:
+    assert said("with a $20 early termination fee", "fee:activation") == set()
+    other = BASE.replace("activation fee", "early termination fee")
+    assert not _confirmed(offer(), other)
+    assert said("the one-time fee is $20", "fee:activation") == {"2000"}  # generic
+
+
+def test_fees_none_with_a_paid_amount_is_a_contradiction() -> None:
+    clause = "there are no additional fees beyond the $20 setup charge"
+    assert said(clause, "fees_none") == {"true", "false"}
+    line = f"It is $68 a month on a 24-month term, {clause}, no other changes, "
+    assert not _confirmed(offer(fee=None), line + "and it does not expire.")
+
+
+def test_a_later_change_contradicts_changes_none() -> None:
+    later = "Also we will switch you to the premium sports package."
+    assert not _confirmed(offer(), BASE, later)
+    assert said("we will also change your plan to premium", "changes_none") == {"false"}
+    assert said("we cannot change your plan", "changes_none") == set()
+
+
+def test_a_dated_expiry_must_name_the_slot_day() -> None:
+    dated = offer(expires="2026-10-01T00:00:00Z")
+    on_day = BASE.replace("the offer does not expire", "the offer expires on October 1")
+    assert _confirmed(dated, on_day)
+    assert not _confirmed(dated, on_day.replace("October 1", "October 2"))
+    vague = BASE.replace("does not expire", "expires at the end of December")
+    assert not _confirmed(dated, vague)
+    assert not _confirmed(dated, on_day, "Actually, it expires next year.")
+    assert said("the offer doesn't expire until Friday", "expires") == {"date?"}
+    until = BASE.replace("does not expire", "doesn't expire until Friday")
+    assert not _confirmed(offer(), until)  # a "none" slot is not confirmed
+    assert not _confirmed(offer(), BASE, "No deadline today, but it expires Friday.")
+
+
+def test_repeated_fields_are_unconfirmable() -> None:
+    o = offer()
+    twice = (*o.slots, slot("monthly_price", "9900", "usd_minor", "recurring"))
+    o = o.model_copy(update={"slots": twice})
+    assert not _confirmed(o, BASE.replace("$68", "$99"))
+    assert offer_terms(o) is None
+
+
+def test_negations_and_money_forms() -> None:
+    assert said("we cannot change your plan", "applied_change:plan_change") == {"false"}
+    assert said("we don't charge the $20 activation fee", "fee:activation") == {"none"}
+    assert said("never a $20 activation fee", "fee:activation") == {"none"}
+    assert said("$1,068.50 a month", "monthly_price") == {"106850"}
+    assert said("it's 68 dollars and 50 cents a month", "monthly_price") == {"6850"}

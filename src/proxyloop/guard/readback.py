@@ -29,11 +29,17 @@ LEXICON: dict[str, tuple[str, ...]] = {
     "fee": ("fee", "fees", "charge"),  # one-time unless a recurring cue is present
     "credit": ("credit", "credits", "rebate"),
     "negation": ("no", "not", "without", "waived", "waive", "waiving", "isn't",
-                 "doesn't", "won't"),
+                 "doesn't", "won't", "cannot", "can't", "don't", "never"),
     "fees_none": ("no fees", "no fee", "no activation fee", "no one-time fee",
                   "no additional fees", "no extra fees", "no upfront cost", "fee-free"),
     "changes_none": ("no other changes", "nothing else changes", "no changes",
                      "everything else stays the same", "nothing else"),
+    "change": ("switch", "switching", "change your", "changing your", "upgrade",
+               "upgrading", "downgrade", "move you", "moving you", "adding",
+               "remove", "removing", "replace", "replacing"),
+    "generic_fee": ("a", "an", "the", "one-time", "one", "time", "upfront",
+                    "additional", "extra", "any", "no", "this", "that", "total",
+                    "flat", "small", "monthly", "is", "of"),  # not a fee's code
     "expiry": ("expire", "expires", "valid until", "good until", "valid for",
                "good for", "available until"),
     "no_expiry": ("no expiry", "no expiration", "does not expire", "doesn't expire",
@@ -53,12 +59,26 @@ ROLE_OF = {  # the role a slot of each field kind must carry
     "feature": "feature",
     "expires": "expiry",
 }
-DATED = "dated"  # any non-"none" expiry: a spoken date is not normalised
+UNDATED = "date?"  # a spoken expiry that names no calendar day: matches no slot
 
-_SPLIT = re.compile(r"[;!?]|\.(?!\d)|,(?!\d{3})|\b(?:and|but|plus|with)\b", re.I)
-_MONEY = re.compile(
-    r"\$\s?(\d+(?:\.\d+)?)|(\d+\.\d\d)\b|(\d+(?:\.\d+)?)\s*dollars?\b", re.I
+_SPLIT = re.compile(
+    r"[;!?]|\.(?!\d)|,(?!\d{3})|\b(?:and(?!\s+\d{1,2}\s*cents?)|but|plus|with)\b",
+    re.I,
 )
+_MONEY = re.compile(
+    r"(?P<d>\d+)\s*dollars?\s+(?:and\s+)?(?P<c>\d{1,2})\s*cents?\b"
+    r"|\$\s?(?P<a>\d+(?:\.\d+)?)|(?P<b>\d+\.\d\d)\b|(?P<e>\d+(?:\.\d+)?)\s*dollars?\b",
+    re.I,
+)
+_MONTH = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov",
+          "dec")  # fmt: skip
+_M = rf"(?P<{{}}>{'|'.join(_MONTH)})[a-z]*\.?"
+_DATE = re.compile(
+    rf"(?P<iso>\d{{4}}-\d{{2}}-\d{{2}})|{_M.format('m1')}\s+(?P<d1>\d{{1,2}})(?:st|nd|rd|th)?\b"
+    rf"|\b(?P<d2>\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?{_M.format('m2')}"
+)
+_UNTIL = re.compile(r"expir\w*\s+(?:until|till|before)\b")
+_QUALIFIED = re.compile(r"((?:[a-z'-]+\s+){0,2})(?:fees?|charges?|credits?|rebates?)\b")
 _MONTHS = re.compile(r"(\d+)\s*-?\s*months?\b", re.I)
 _WORD = re.compile(r"[a-z'-]+")
 
@@ -98,10 +118,34 @@ def _amounts(clause: str, months: bool) -> set[str]:
     """Values in the clause, in minor units or months; a negated one is "none"."""
     found: set[str] = set()
     for m in (_MONTHS if months else _MONEY).finditer(clause):
-        number = Decimal(next(g for g in m.groups() if g))
-        value = str(int(number if months else number * 100))
+        if months:
+            value = m.group(1)
+        elif m.group("d"):
+            value = str(int(m.group("d")) * 100 + int(m.group("c")))
+        else:
+            value = str(
+                int(Decimal(m.group("a") or m.group("b") or m.group("e")) * 100)
+            )
         found.add("none" if _negated(clause, m.start(), m.end()) else value)
     return found
+
+
+def _date(clause: str) -> str:
+    """The calendar day a clause names ("MM-DD"), else ``UNDATED``."""
+    days = set[str]()
+    for m in _DATE.finditer(clause):
+        if m.group("iso"):
+            days.add(m.group("iso")[5:])
+        else:
+            month = _MONTH.index(m.group("m1") or m.group("m2")) + 1
+            days.add(f"{month:02d}-{int(m.group('d1') or m.group('d2')):02d}")
+    return days.pop() if len(days) == 1 else UNDATED
+
+
+def _qualifiers(clause: str) -> set[str]:
+    """Words naming a fee or credit ("early termination fee"), generic ones out."""
+    near = {w for m in _QUALIFIED.finditer(clause) for w in m.group(1).split()}
+    return near - set(LEXICON["generic_fee"])
 
 
 def _words(field: str) -> list[str]:
@@ -113,45 +157,50 @@ def _names(clause: str, field: str) -> bool:
     return all(re.search(rf"\b{re.escape(w)}", clause) for w in _words(field))
 
 
+def _flags(none_said: bool, contradicted: bool) -> set[str]:
+    return {v for v, on in (("true", none_said), ("false", contradicted)) if on}
+
+
 def said(clause: str, field: str, others: Mapping[str, str] | None = None) -> set[str]:
     """The values one rep clause states for ``field``; empty if it is silent.
     ``others``: the offer's other slots of this kind (field: value). A fee or
     credit clause that names no code ("the fee is $30") speaks to this one
     unless its value is one of the others'."""
-    c, others = clause.lower(), others or {}
+    c = re.sub(r"(?<=\d),(?=\d{3}\b)", "", clause.lower())  # $1,068.50
     kind, _, code = field.partition(":")
-    words = _words(field)
-    generic = bool(code) and kind in ("fee", "credit") and not _names(c, field)
-    if generic and any(_names(c, f) for f in others):
-        return set()
+    words, others = _words(field), others or {}
+    negated = bool(set(_WORD.findall(c)) & set(LEXICON["negation"]))
+    money = kind in ("fee", "credit")  # generic: it names no fee or credit at all
+    generic = money and not _names(c, field) and not _qualifiers(c)
     if code and not generic and not _names(c, field):
         return set()
     if field == "fees_none":
-        if has_cue(c, "fees_none"):
-            return {"true"}
         paid = "one_time" in _roles(c) and _amounts(c, False) - {"none"}
-        return {"false"} if paid else set()
+        return _flags(has_cue(c, "fees_none"), bool(paid))
     if field == "changes_none":
-        return {"true"} if has_cue(c, "changes_none") else set()
+        changed = has_cue(c, "change") and not negated
+        return _flags(has_cue(c, "changes_none"), changed)
     if field == "expires":
-        if has_cue(c, "no_expiry"):
+        if has_cue(c, "no_expiry") and not _UNTIL.search(c):
             return {"none"}
-        return {DATED} if has_cue(c, "expiry") else set()
+        return {_date(c)} if has_cue(c, "expiry") or has_cue(c, "no_expiry") else set()
     if kind in ("applied_change", "feature"):
-        negated = set(_WORD.findall(c)) & set(LEXICON["negation"])
         return {"false" if negated else "true"} if words else set()
     if field == "term_months":
         return _amounts(c, True)
     if ROLE_OF.get(kind) not in _roles(c):
         return set()
     stated = _amounts(c, False)
-    if not stated and set(_WORD.findall(c)) & set(LEXICON["negation"]):
+    if not stated and negated:
         stated = {"none"}  # "no activation fee"
     return set() if generic and stated <= set(others.values()) else stated
 
 
 def _key(slot: ReadbackSlot) -> str:
-    return DATED if slot.field == "expires" and slot.value != "none" else slot.value
+    if slot.field != "expires" or slot.value == "none":
+        return slot.value
+    day = _DATE.search(slot.value)
+    return day.group("iso")[5:] if day and day.group("iso") else UNDATED + "slot"
 
 
 def slot_status(
@@ -223,9 +272,12 @@ def missing_required(offer: OfferPublic) -> tuple[str, ...]:
 
 
 def readback_status(offer: OfferPublic) -> Literal["confirmed", "unconfirmed"]:
-    """Confirmed iff the required fields exist and every slot is confirmed."""
+    """Confirmed iff the required fields exist, none repeats, and every slot is
+    confirmed."""
     done = all(s.status == "confirmed" for s in offer.slots)
-    return "confirmed" if done and not missing_required(offer) else "unconfirmed"
+    unique = len({s.field for s in offer.slots}) == len(offer.slots)
+    ok = done and unique and not missing_required(offer)
+    return "confirmed" if ok else "unconfirmed"
 
 
 def _spoken(slot: ReadbackSlot) -> str:

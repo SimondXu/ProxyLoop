@@ -131,7 +131,7 @@ def test_a_decision_must_cite_the_post_it_decides(tmp_path: Path) -> None:
             "subject": "approval",
             "subject_id": "apr-1",
             "decision": "denied",
-            "subject_hash": "h",
+            "subject_hash": o1.terms_hash,
             "authority_epoch": 0,
         },
     )

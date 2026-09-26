@@ -67,6 +67,7 @@ REASONS: Mapping[str, tuple[str, ...]] = {
         "subject_hash_mismatch",
         "stale_epoch",
         "card_expired",
+        "card_superseded",
     ),
     "decide_mandate": (
         "already_decided",
@@ -106,7 +107,7 @@ def request_approval(
     if isinstance(got, Denial):
         return got
     offer, epoch = got[0], bb.epoch
-    card = bb.private.pending_approval
+    card = current_card(bb)  # a superseded, stale or expired card does not block
     if card is not None and card.authority_epoch == epoch and card.expires_ms > bb.t_ms:
         return Denial("approval_pending")
     stem = f"apr-{offer.offer_ref}-r{offer.revision}-e{epoch}-"
@@ -126,28 +127,37 @@ def request_approval(
         terms_hash=str(offer.terms_hash),
         readback_text=readback_text(offer),
         authority_epoch=epoch,
-        expires_ms=bb.t_ms + CARD_TTL_MS
-        if offer.expires_ms is None
-        else offer.expires_ms,
+        expires_ms=min(
+            t for t in (offer.expires_ms, bb.t_ms + CARD_TTL_MS) if t is not None
+        ),
         binding=binding,
     )
     return (("approval.requested", new.model_dump(mode="json")),)
 
 
+def current_card(bb: Blackboard) -> ApprovalCard | None:
+    """The pending card, unless a newer revision or terms superseded its offer."""
+    card = bb.private.pending_approval
+    offer = None if card is None else bb.public.offers.get(card.offer_ref)
+    if card is None or offer is None:
+        return None
+    same = (offer.revision, offer.terms_hash) == (card.revision, card.terms_hash)
+    return card if same else None
+
+
 def _grant(bb: Blackboard, offer: OfferPublic, terms: Terms) -> tuple[str | None, str]:
-    """The covering mandate's hash or the approval id, else why neither."""
+    """The covering mandate's hash or the approval id, else why neither. A
+    user's denial of these terms in this epoch wins over both (I6)."""
+    approvals = bb.private.approvals.values()
+    mine = [a for a in approvals if a.terms_hash == offer.terms_hash]
+    now = [a for a in mine if a.authority_epoch == bb.epoch]
+    if any(a.decision == "denied" for a in now):
+        return None, "approval_denied"
     m, why = bb.private.mandate, mandate_gap(bb, terms)
     if m is not None and why is None:
         return m.mandate_hash, ""
-    mine = [
-        a for a in bb.private.approvals.values() if a.terms_hash == offer.terms_hash
-    ]
-    now = [a for a in mine if a.authority_epoch == bb.epoch]
-    granted = [a.approval_id for a in now if a.decision == "granted"]
-    if granted:
-        return granted[0], ""
-    if now:
-        return None, "approval_denied"
+    if now:  # all granted
+        return now[0].approval_id, ""
     return None, "approval_stale_epoch" if mine else why or "not_authorized"
 
 
@@ -224,6 +234,8 @@ def decide(bb: Blackboard, post: ApprovalPost, by: Approver) -> Effect | Denial:
     card = bb.private.pending_approval
     if card is None or card.approval_id != post.subject_id:
         return Denial("no_pending_card")
+    if current_card(bb) is None:
+        return Denial("card_superseded")
     if post.subject_hash != card.terms_hash:
         return Denial("subject_hash_mismatch")
     if not post.authority_epoch == card.authority_epoch == bb.epoch:

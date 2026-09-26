@@ -18,7 +18,7 @@ from proxyloop.contract.bundle import EVENTS
 from proxyloop.contract.events import EVENT_TYPES, ApprovalPost, Event, Stream
 from proxyloop.contract.messages import GuideMove
 from proxyloop.contract.protocol import render_messages
-from proxyloop.contract.state import Blackboard, CaseStatus
+from proxyloop.contract.state import Blackboard
 from proxyloop.contract.views import Trigger, view_cp
 from proxyloop.core.bus import Bus
 from proxyloop.core.fold import RECORD_ONLY, REDUCERS, WORLD_OPS, apply, fold
@@ -33,6 +33,7 @@ from proxyloop.guard.authorize import (
 from proxyloop.guard.capability import revalidate
 from proxyloop.guard.mandate import proposal
 from proxyloop.guard.readback import readback_update
+from proxyloop.guard.status import TRANSITIONS, status_change
 
 RUN = "r1"
 _STARTED = EVENT_TYPES["session.started"].payload_keys
@@ -133,13 +134,8 @@ def _steps() -> st.SearchStrategy[Step]:
                 {"new": n, "reason": "slow_revoke"},  # an increment: see _emit_all
             )
         ),
-        st.sampled_from([s for s in CaseStatus if not s.startswith("VERIFIED")]).map(
-            lambda s: (
-                "status.changed",
-                "guard",
-                "agent",
-                {"previous": "INTAKE", "status": s.value},
-            )
+        st.sampled_from(sorted({t for _, t in TRANSITIONS} | {"hang_up"})).map(
+            lambda t: ("status.changed", "guard", "agent", {"trigger": t})
         ),
         st.tuples(st.sampled_from(["private", "public"]), _KEY, _TEXT).map(
             lambda a: (
@@ -300,6 +296,14 @@ def _emit_all(path: Path, steps: list[tuple[Step, int]]) -> Bus:
         causes = [bus.events[-1].event_id] if spec.cause_required else []
         if type_ == "authority.epoch":  # epochs only increase (§9.4)
             payload = payload | {"new": bus.bb.epoch + cast(int, payload["new"])}
+        if type_ == "status.changed":  # a legal move, or none (§9.5)
+            change = status_change(bus.bb, str(payload["trigger"]))
+            if change is None or change["status"] in (
+                "VERIFIED_COMPLETE",
+                "VERIFIED_NO_DEAL",
+            ):
+                continue
+            payload = change
         bus.emit(type_, actor, cast(Stream, stream), payload, causes)
     return bus
 

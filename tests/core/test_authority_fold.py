@@ -185,6 +185,7 @@ def test_joins_on_cards_lines_and_readbacks() -> None:
 def test_evidence_and_only_an_ok_completion_verifies() -> None:
     log = Log()
     log.emit("user.msg", {"text": "go"})
+    log.emit("status.changed", {"previous": "INTAKE", "status": "IN_CALL"})
     evidence = {"evidence_id": "e1", "kind": "ledger", "confirmation_id": "NW-1"}
     assert log.emit("evidence.recorded", evidence).evidence[0].confirmation_id == "NW-1"
     verified = {"previous": "IN_CALL", "status": "VERIFIED_NO_DEAL"}

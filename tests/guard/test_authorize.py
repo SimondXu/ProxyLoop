@@ -25,6 +25,7 @@ from proxyloop.contract.state import (
     OfferPublic,
 )
 from proxyloop.guard.authorize import (
+    CARD_TTL_MS,
     REASONS,
     Denial,
     accept_offer,
@@ -202,6 +203,12 @@ CASES: list[tuple[str, str, Rule, Blackboard]] = [
         board(O1, pending=card(O1, expires_ms=1_000)),
     ),
     (
+        "decide_approval",
+        "card_superseded",
+        _decide(_post("approval", "apr-1", O1.terms_hash)),
+        board(confirm(offer(monthly="6500")), pending=_CARD),
+    ),
+    (
         "decide_mandate",
         "already_decided",
         _decide(_post("mandate", "m1", "mh1")),
@@ -328,3 +335,29 @@ def test_restrictions_pass_while_a_fence_is_raised() -> None:
         ),
     )
     assert share_fact(board(), "tenure_years", frozenset({"tenure_years"})) is None
+
+
+def test_a_card_expires_with_its_offer_or_its_ttl_whichever_is_first() -> None:
+    far = O1.model_copy(update={"expires_ms": 10**9})
+    soon = O1.model_copy(update={"expires_ms": 5_000})
+    for o, until in (
+        (far, 1_000 + CARD_TTL_MS),
+        (soon, 5_000),
+        (O1, 1_000 + CARD_TTL_MS),
+    ):
+        effects = request_approval(board(o), "o1", CASE)
+        assert not isinstance(effects, Denial)
+        assert ApprovalCard.model_validate(effects[0][1]).expires_ms == until
+
+
+def test_a_denial_is_checked_before_the_mandate() -> None:
+    """A user's denial of these terms overrides a covering mandate in its epoch."""
+    denied = board(O1, mandate=mandate(), approvals=(approval(O1, "denied"),))
+    assert accept_offer(denied, "o1", CASE) == Denial("approval_denied")
+    later = denied.model_copy(
+        update={
+            "epoch": 1,
+            "private": denied.private.model_copy(update={"mandate": mandate(epoch=1)}),
+        }
+    )
+    assert not isinstance(accept_offer(later, "o1", CASE), Denial)  # a new epoch

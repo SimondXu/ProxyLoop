@@ -21,6 +21,7 @@ from proxyloop.contract.events import (
     EVENT_TYPES,
     ActionAuthorized,
     ApprovalDecided,
+    ApprovalPost,
     EpochBump,
     Event,
     MandateDecided,
@@ -44,6 +45,7 @@ from proxyloop.contract.state import (
     PublicFact,
     ReadbackSlot,
 )
+from proxyloop.guard.status import TERMINAL, TRANSITIONS
 
 Reducer = Callable[[Blackboard, Event], Blackboard]
 
@@ -53,7 +55,7 @@ WORLD_OPS: frozenset[str] = frozenset(
 RECORD_ONLY: frozenset[str] = frozenset(
     """llm.call fast.request fast.turn fast.sentence fast.cancelled
     slow.step.started slow.step.completed slow.tool declass.denied
-    chan.opened chan.closed chan.barge_in approval.post action.denied
+    chan.opened chan.closed chan.barge_in action.denied
     screen.redacted""".split()  # noqa: SIM905
 )
 
@@ -189,11 +191,28 @@ def _epoch(bb: Blackboard, e: Event) -> Blackboard:
     return _with(bb, epoch=bump.new)  # every other grant is now stale
 
 
+_EDGES = {(was, to) for (was, _), to in TRANSITIONS.items()}
+_VERIFIED = {CaseStatus.VERIFIED_COMPLETE: 1, CaseStatus.VERIFIED_NO_DEAL: 0}
+
+
 def _status(bb: Blackboard, e: Event) -> Blackboard:
-    status = StatusChanged.model_validate(e.payload).status
-    verified = status in (CaseStatus.VERIFIED_COMPLETE, CaseStatus.VERIFIED_NO_DEAL)
-    if verified and (bb.completion is None or bb.completion.verdict != "ok"):
-        raise ValueError(f"{status} needs a completion.decided(ok) first")
+    """The §9.5 machine. A ``VERIFIED_*`` status needs a ``completion.decided(ok)``
+    of its kind: exactly one released accept for COMPLETE, none for NO_DEAL."""
+    change = StatusChanged.model_validate(e.payload)
+    was, status = change.previous, change.status
+    if was != bb.public.status:
+        raise ValueError(
+            f"status.changed from {was}, but the case is {bb.public.status}"
+        )
+    hang_up = status is CaseStatus.ABANDONED and was not in TERMINAL
+    if (was, status) not in _EDGES and not hang_up:
+        raise ValueError(f"{was} -> {status} is not a status transition")
+    if status in _VERIFIED:
+        caps = bb.capabilities.values()
+        released = sum(c.intent == "accept_offer" and c.consumed for c in caps)
+        ok = bb.completion is not None and bb.completion.verdict == "ok"
+        if not ok or released != _VERIFIED[status]:
+            raise ValueError(f"{status} needs a completion.decided(ok) of its kind")
     return _with(bb, public=_with(bb.public, status=status))
 
 
@@ -202,18 +221,39 @@ def _private(bb: Blackboard, **changes: object) -> Blackboard:
 
 
 def _mandate_proposed(bb: Blackboard, e: Event) -> Blackboard:
-    return _private(bb, mandate=Mandate.model_validate(e.payload))
+    m = Mandate.model_validate(e.payload)
+    if m.epoch != bb.epoch:
+        raise ValueError(f"mandate {m.mandate_id}: epoch {m.epoch}, not {bb.epoch}")
+    return _private(bb, mandate=m)
 
 
 def _mandate_decided(bb: Blackboard, e: Event) -> Blackboard:
     d, m = MandateDecided.model_validate(e.payload), bb.private.mandate
-    if m is None or (m.mandate_id, m.mandate_hash, m.status) != (
+    if m is None or (m.mandate_id, m.mandate_hash, m.status, m.epoch) != (
         d.mandate_id,
         d.mandate_hash,
         "proposed",
+        bb.epoch,
     ):
         raise ValueError(f"mandate.decided {d.mandate_id}: no such proposed mandate")
     return _private(bb, mandate=_with(m, status=d.decision, decided_by=d.by))
+
+
+def _post(bb: Blackboard, e: Event) -> Blackboard:
+    """An ``approval.post`` binds to the pending card or proposed mandate (id,
+    hash, epoch). The log makes its decision cite exactly this post (id,
+    decision, actor), so the decision is bound to the card's terms too."""
+    p, card, m = ApprovalPost.model_validate(e.payload), None, bb.private.mandate
+    subject: tuple[object, ...] | None = None
+    if p.subject == "approval" and (card := bb.private.pending_approval):
+        subject = (card.approval_id, card.terms_hash, card.authority_epoch)
+    elif p.subject == "mandate" and m is not None and m.status == "proposed":
+        subject = (m.mandate_id, m.mandate_hash, m.epoch)
+    if subject != (p.subject_id, p.subject_hash, bb.epoch) or p.authority_epoch != (
+        bb.epoch
+    ):
+        raise ValueError(f"approval.post {p.subject_id}: not the pending {p.subject}")
+    return bb
 
 
 def _approval_requested(bb: Blackboard, e: Event) -> Blackboard:
@@ -224,6 +264,8 @@ def _approval_requested(bb: Blackboard, e: Event) -> Blackboard:
         card.terms_hash,
     ):
         raise ValueError(f"card {card.approval_id}: not the recorded offer")
+    if card.authority_epoch != bb.epoch:
+        raise ValueError(f"card {card.approval_id}: not minted in epoch {bb.epoch}")
     return _private(bb, pending_approval=card)
 
 
@@ -231,6 +273,13 @@ def _approval_decided(bb: Blackboard, e: Event) -> Blackboard:
     d, card = ApprovalDecided.model_validate(e.payload), bb.private.pending_approval
     if card is None or card.approval_id != d.approval_id:
         raise ValueError(f"approval.decided {d.approval_id}: no such pending card")
+    offer = bb.public.offers.get(card.offer_ref)
+    current = offer is not None and (offer.revision, offer.terms_hash) == (
+        card.revision,
+        card.terms_hash,
+    )
+    if not current or card.authority_epoch != bb.epoch or card.expires_ms <= e.t_ms:
+        raise ValueError(f"card {d.approval_id} is superseded, stale or expired")
     approval = Approval(
         approval_id=d.approval_id,
         decision=d.decision,
@@ -291,9 +340,17 @@ def _verbatim(bb: Blackboard, e: Event) -> Blackboard:
 
 
 def _released(bb: Blackboard, e: Event) -> Blackboard:
+    """The time-free part of ``guard.revalidate``: a replayed log never
+    releases under a fence, at a stale epoch, or for changed or closed terms."""
     if "cap_id" not in e.payload:  # a line that needs no authority
         return bb
     cap = bb.capabilities[_live_cap(bb, e)]
+    auth = next(a for a in bb.authorizations if a.cap_id == cap.cap_id)
+    offer = bb.public.offers.get(auth.offer_ref or "")
+    if cap.epoch != bb.epoch or bb.fences or offer is None or offer.status != "open":
+        raise ValueError(f"release of {cap.cap_id}: stale epoch, fence or closed offer")
+    if offer.terms_hash != cap.terms_hash:
+        raise ValueError(f"release of {cap.cap_id}: the terms changed")
     return _with(
         bb, capabilities={**bb.capabilities, cap.cap_id: _with(cap, consumed=True)}
     )
@@ -357,6 +414,7 @@ REDUCERS: MappingProxyType[str, Reducer] = MappingProxyType(
         "authority.epoch": _epoch,
         "status.changed": _status,
         "completion.decided": _completion,
+        "approval.post": _post,
         "mandate.proposed": _mandate_proposed,
         "mandate.decided": _mandate_decided,
         "approval.requested": _approval_requested,
