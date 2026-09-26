@@ -13,8 +13,12 @@ MOD_PY := uv run --no-project --with modal==1.5.5 --with httpx==0.28.1 \
 	--with transformers==5.17.0 --with jinja2==3.1.6 python
 MOD_BASELINE := $(if $(MOD_SUFFIX),--baseline $(MOD_DATA)/vllm-probe.json,)
 MOD_SERVE_DOWN := $(MOD_MODAL) app stop --yes proxyloop-vllm$(MOD_SUFFIX)
-# serve-up stops the app itself when the deploy or the health wait fails.
-MOD_SERVE_UP := { PL_SERVE_VARIANT=$(SERVE_VARIANT) $(MOD_MODAL) deploy -m serving.modal_vllm && \
+# Run order (ADR-0002): serve-lora-ladder -> serve-probe -> serve-attest-local -> prefix-align probe.
+MOD_LADDER_GUARD := test -f $(MOD_DATA)/vllm-lora-ladder.json || \
+	{ echo "missing $(MOD_DATA)/vllm-lora-ladder.json: run serve-lora-ladder first" >&2; exit 1; }
+# serve-up refuses to deploy without the ladder, and stops the app itself when the deploy or the
+# health wait fails.
+MOD_SERVE_UP := $(MOD_LADDER_GUARD); { PL_SERVE_VARIANT=$(SERVE_VARIANT) $(MOD_MODAL) deploy -m serving.modal_vllm && \
 	$(MOD_PY) -m scripts.mod.probe --wait-healthy --variant $(SERVE_VARIANT) \
 	--out $(MOD_DATA)/vllm-coldstart$(MOD_SUFFIX).json; } || { $(MOD_SERVE_DOWN); exit 1; }
 
@@ -31,7 +35,7 @@ serve-down:
 
 # serve-down runs from a trap, so an interrupted or failed probe never leaves a GPU running.
 serve-probe:
-	trap '$(MOD_SERVE_DOWN)' EXIT HUP INT TERM; $(MOD_SERVE_UP) && \
+	$(MOD_LADDER_GUARD); trap '$(MOD_SERVE_DOWN)' EXIT HUP INT TERM; $(MOD_SERVE_UP) && \
 	$(MOD_PY) -m scripts.mod.probe --variant $(SERVE_VARIANT) $(MOD_BASELINE) \
 		--out $(MOD_DATA)/vllm-probe$(MOD_SUFFIX).json
 

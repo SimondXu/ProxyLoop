@@ -195,15 +195,19 @@ def derived(lat: dict, baseline: dict | None) -> dict:
     return out
 
 
+def keyless_status(client: httpx.Client) -> dict:
+    """Status of protected paths requested WITHOUT the key; both must be 401."""
+    return {p: client.get(p).status_code for p in ("/v1/models", "/pl/attest")}
+
+
 def measure(url: str, key: str, args: argparse.Namespace) -> dict:
+    """Every request of the run; the raw report. Nothing here interprets the results."""
     from transformers import AutoTokenizer
 
-    ladder = json.loads(Path(args.ladder).read_text())  # read first: a missing file fails before any request
-    baseline = json.loads(Path(args.baseline).read_text()) if args.baseline else None
     tokenizer = AutoTokenizer.from_pretrained(config.MODEL_ID, revision=config.MODEL_REVISION)
     headers, report = {"Authorization": f"Bearer {key}"}, {}
-    report["keyless_status"] = {p: httpx.get(f"{url}{p}", timeout=60).status_code
-                                for p in ("/v1/models", "/pl/attest")}
+    with httpx.Client(base_url=url, timeout=60) as keyless:
+        report["keyless_status"] = keyless_status(keyless)
     with httpx.Client(base_url=url, headers=headers, timeout=300) as client:
         for field, path in (("version", "/version"), ("models", "/v1/models"), ("attest", "/pl/attest")):
             report[field] = client.get(path).raise_for_status().json()
@@ -220,6 +224,11 @@ def measure(url: str, key: str, args: argparse.Namespace) -> dict:
                for k in range(len(models) * (2 + 2 * args.requests))]
     report["latency_prompt_tokens"] = len(prompts[0])
     report["latency"] = asyncio.run(latency(url, headers, prompts, models, args.requests, args.max_tokens))
+    return report
+
+
+def evaluate(report: dict, ladder: dict, baseline: dict | None) -> None:
+    """Adds the derived rows and the checks to a raw report."""
     report["derived"] = derived(report["latency"], baseline)
     rung = report["attest"]["runtime"]["lora_rung"]
     blocks = report["latency"].values()
@@ -232,7 +241,10 @@ def measure(url: str, key: str, args: argparse.Namespace) -> dict:
         "keyless_401": all(s == 401 for s in report["keyless_status"].values()),
         f"ladder_rung_ok:{rung}": ladder["summary"].get(f"rung_ok:{rung}") is True,
     }
-    return report
+
+
+def passed(checks: dict) -> bool:
+    return all(v is True or (k == "failed_requests" and v == 0) for k, v in checks.items())
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -251,15 +263,23 @@ def main(argv: list[str] | None = None) -> int:
     if not args.wait_healthy and not key:
         raise SystemExit("PROXYLOOP_VLLM_API_KEY is not set")
     report = {"variant": args.variant, "measured_at": time.time()}
+    out = Path(args.out)
     if args.wait_healthy:
         report["cold_start"] = wait_healthy(url, args.timeout)
-        checks = {"healthy": report["cold_start"]["healthy"]}
+        report["checks"] = {"healthy": report["cold_start"]["healthy"]}
     else:
+        # Read before any request, so a missing file costs no GPU time.
+        ladder = json.loads(Path(args.ladder).read_text())
+        baseline = json.loads(Path(args.baseline).read_text()) if args.baseline else None
         report.update(measure(url, key, args))
-        checks = report["checks"]
-    Path(args.out).write_text(json.dumps(report, indent=1) + "\n")
-    print(json.dumps(checks, indent=1))
-    return 0 if all(v is True or (k == "failed_requests" and v == 0) for k, v in checks.items()) else 1
+        out.write_text(json.dumps(report, indent=1) + "\n")  # the paid-for raw run is never lost
+        try:
+            evaluate(report, ladder, baseline)
+        except Exception as exc:  # noqa: BLE001 -- recorded in the JSON and fails the run
+            report.update(evaluation_error=f"{type(exc).__name__}: {exc}", checks={"evaluated": False})
+    out.write_text(json.dumps(report, indent=1) + "\n")
+    print(json.dumps(report["checks"], indent=1))
+    return 0 if passed(report["checks"]) else 1
 
 
 if __name__ == "__main__":

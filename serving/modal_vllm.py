@@ -71,12 +71,8 @@ def _start_vllm(started_at: float) -> subprocess.Popen:
     return subprocess.Popen(args, env=env, cwd="/root")
 
 
-@app.function(image=base_image.add_local_python_source("serving"), gpu=config.GPU, volumes=VOLUMES,
-              secrets=[modal.Secret.from_name(config.SECRET_NAME)], timeout=60 * 60,
-              scaledown_window=5 * 60, max_containers=1)
-@modal.concurrent(max_inputs=64)
-@modal.web_server(port=config.PORT, startup_timeout=30 * 60)
-def serve() -> None:
+def _serve() -> None:
+    """Start vLLM and tie the container's life to it; any failure exits non-zero at once."""
     try:
         proc = _start_vllm(time.time())
     except BaseException:  # noqa: BLE001 -- not swallowed: logged, then the container exits
@@ -84,3 +80,12 @@ def serve() -> None:
         sys.stderr.flush()
         os._exit(1)
     threading.Thread(target=_exit_with, args=(proc,), daemon=True).start()
+
+
+@app.function(image=base_image.add_local_python_source("serving"), gpu=config.GPU, volumes=VOLUMES,
+              secrets=[modal.Secret.from_name(config.SECRET_NAME)], timeout=60 * 60,
+              scaledown_window=5 * 60, max_containers=1)
+@modal.concurrent(max_inputs=64)
+@modal.web_server(port=config.PORT, startup_timeout=30 * 60)
+def serve() -> None:
+    _serve()

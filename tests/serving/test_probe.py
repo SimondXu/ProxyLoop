@@ -1,5 +1,6 @@
 import json
 
+import httpx
 import pytest
 
 from scripts.mod import probe
@@ -121,3 +122,53 @@ def test_latency_prompt_shares_a_prefix_and_differs_at_the_end():
     assert a[0] == b[0] and a[1]["content"] != b[1]["content"]
     prefix = a[1]["content"].split("Request ")[0]
     assert b[1]["content"].startswith(prefix)
+
+
+def keyless_client(statuses: dict[str, int]) -> httpx.Client:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "authorization" not in request.headers
+        return httpx.Response(statuses[request.url.path], json={})
+
+    return httpx.Client(base_url="http://vllm.test", transport=httpx.MockTransport(handler))
+
+
+def raw_report(keyless: dict[str, int]) -> dict:
+    ok = {"complete": True, "max_abs_diff": 0.0, "mean_abs_diff": 0.0}
+    summary = {"failed": 0, "ttfs_complete": True, "ttft_p50_s": 0.3, "ttfs_p50_s": 0.5}
+    lat = {f"{m}@{b}": {"summary": summary}
+           for m in (config.SERVED_NAME, config.ZERO_LORA_NAME) for b in ("warmup", "c1", "c4")}
+    return {"keyless_status": keyless, "attest": {"runtime": {"lora_rung": "all"}},
+            "tokenize": {"all_equal": True}, "latency": lat,
+            "liveness": {"zero": ok, "live": {**ok, "mean_abs_diff": 0.01}}}
+
+
+LADDER = {"summary": {"rung_ok:all": True}}
+
+
+@pytest.mark.parametrize(("statuses", "expected"), [
+    ({"/v1/models": 401, "/pl/attest": 401}, True),
+    ({"/v1/models": 200, "/pl/attest": 401}, False),
+    ({"/v1/models": 401, "/pl/attest": 200}, False),
+])
+def test_keyless_401_is_composed_from_both_protected_paths(statuses, expected):
+    with keyless_client(statuses) as client:
+        report = raw_report(probe.keyless_status(client))
+    probe.evaluate(report, LADDER, None)
+    assert report["keyless_status"] == statuses
+    assert report["checks"]["keyless_401"] is expected
+    assert probe.passed(report["checks"]) is expected
+
+
+def test_evaluation_error_is_recorded_and_the_raw_run_kept(tmp_path, monkeypatch):
+    report = raw_report({"/v1/models": 401, "/pl/attest": 401})
+    monkeypatch.setattr(probe, "base_url", lambda variant: "http://vllm.test")
+    monkeypatch.setattr(probe, "measure", lambda url, key, args: report)
+    monkeypatch.setenv("PROXYLOOP_VLLM_API_KEY", "k3y")
+    (tmp_path / "ladder.json").write_text(json.dumps({"summary": {}}))  # no rung_ok -> still evaluates
+    del report["attest"]  # evaluate() will fail on the missing attest block
+    out = tmp_path / "probe.json"
+    assert probe.main(["--out", str(out), "--ladder", str(tmp_path / "ladder.json")]) == 1
+    written = json.loads(out.read_text())
+    assert written["evaluation_error"].startswith("KeyError")
+    assert written["checks"] == {"evaluated": False}
+    assert written["latency"] == json.loads(json.dumps(report["latency"]))

@@ -82,6 +82,9 @@ Facts checked while writing the configuration (sources, not measurements):
   Each latency request has its own prompt index, so only the shared prefix is cacheable.
 
 ## Evidence
+**Run order:** `serve-lora-ladder` → `serve-probe` → `serve-attest-local` → `serve-probe SERVE_VARIANT=prefix-align`
+(`serve-up` refuses to deploy until `data/vllm-lora-ladder.json` exists).
+
 No number below is typed by hand; each is copied from the committed raw JSON (derived rows from the probe's
 `derived` block) after the root's run. All `make` targets are `make -f mk/mod.mk <target>`.
 
