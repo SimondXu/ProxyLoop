@@ -1,0 +1,71 @@
+{
+  "schema": "pl.relay_cost_input_heavy/1",
+  "task": "S0-ROOT-04",
+  "results": {
+    "claude-sonnet-5": {
+      "calls": 3,
+      "response_ids": [
+        "msg_011CfKDyd37HrbyYhCWMN51Y",
+        "msg_011CfKDyMMTiZyKxcIUoTgft",
+        "msg_011CfKDy069Upcw6o86DMs6G"
+      ],
+      "prompt_tokens": 6399,
+      "completion_tokens": 3,
+      "usage_before": 5375.6292,
+      "usage_after": 5377.5534,
+      "usage_delta": 1.9242
+    },
+    "claude-haiku-4-5-20251001": {
+      "calls": 3,
+      "response_ids": [
+        "msg_011CfKDzxk5IguAyVTnOY4A6",
+        "msg_011CfKDzGGtwGefkHY7fqnrX",
+        "msg_011CfKE0NN115fE5u1K92zUQ"
+      ],
+      "prompt_tokens": 4998,
+      "completion_tokens": 15,
+      "usage_before": 5377.5534,
+      "usage_after": 5378.061000000001,
+      "usage_delta": 0.5076
+    },
+    "gemini-3.6-flash": {
+      "calls": 3,
+      "response_ids": [
+        "chatcmpl-9b81d089-05fe-447f-b28e-a1e3499dfaa6",
+        "chatcmpl-562df822-9a54-4e20-bafd-3f94cf1c56e6",
+        "chatcmpl-f38111c5-e139-425d-bf7a-63193f340cf3"
+      ],
+      "prompt_tokens": 5955,
+      "completion_tokens": 6,
+      "usage_before": 5378.061000000001,
+      "usage_after": 5378.9586,
+      "usage_delta": 0.8976
+    },
+    "claude-opus-4-8": {
+      "calls": 3,
+      "response_ids": [
+        "msg_011CfKE2MU9WSmSaplIILwr5",
+        "msg_011CfKE25Uj17AQRhKc9cuvR",
+        "msg_011CfKE2GMRcbycrUOI3mXY3"
+      ],
+      "prompt_tokens": 6399,
+      "completion_tokens": 3,
+      "usage_before": 5378.9586,
+      "usage_after": 5382.165599999999,
+      "usage_delta": 3.207
+    },
+    "gemini-3.5-flash": {
+      "calls": 3,
+      "response_ids": [
+        "chatcmpl-202609260503506358261678268d9d6NBOjtvE1",
+        "chatcmpl-202609260503536560068608268d9d60AD2hxEk",
+        "chatcmpl-202609260503572031746988268d9d6pWCwxjiJ"
+      ],
+      "prompt_tokens": 5955,
+      "completion_tokens": 6,
+      "usage_before": 5382.165599999999,
+      "usage_after": 5383.0644,
+      "usage_delta": 0.8988
+    }
+  }
+}

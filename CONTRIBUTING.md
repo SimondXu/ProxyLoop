@@ -1,98 +1,24 @@
 # Contributing to ProxyLoop
 
-ProxyLoop uses short-lived branches and reviewable pull requests to keep `main` stable and the phase history easy to understand. The repository is currently a portfolio project, but the same workflow applies to human, Codex, and Claude Code contributions.
+The rules for every contributor, human or agent, are in `AGENTS.md`; product intent and invariants are
+in `NORTH_STAR.md`; tasks, lanes and owned paths are in `PLAN.md`. This file is only the short version.
 
-## Main Branch Policy
+## One task, one branch, one pull request
+- Every change is a `PLAN.md` task with an id such as `S0-SYS-03`.
+- Work on the branch `task/<task-id>` (lowercase), in its own worktree created from `origin/main`:
+  `git worktree add ../pl-wt/<TASK-ID> -b task/<task-id> origin/main`.
+- Commit messages start with `<TASK-ID>: `.
+- The pull request title is `<TASK-ID>: <title>`; CI rejects any other title.
+- One task is one pull request. Keep it inside the task's owned paths and size (S, M or L in `PLAN.md`).
+- `main` is the last integrated state: never commit on it, force-push or rewrite its history.
+- Pull requests are squash-merged by the root after CI, the fresh-context review and the reality rule pass.
 
-- Treat `main` as the last integrated, validated state.
-- Do not implement, commit, force-push, or rewrite history directly on `main`.
-- Start work from an up-to-date `main` and merge through a pull request.
-- Prefer squash merge so one bounded change produces one clear commit on `main`.
-- Delete the short-lived source branch after confirmed merge only when the worktree is clean, the branch was pushed, and no unique unpushed work would be lost; this validated cleanup is part of routine integration.
-- Never merge secrets, real consumer PII, provider credentials, generated model weights, local datasets, recordings, or machine-specific state.
+## Before you open a pull request
+- Run `make check` (lint, type check, tests, import contracts, docs check) and make it green.
+- Paste the real output tails in the pull request; never claim a check you did not run.
+- Fill in `.github/pull_request_template.md`. The pull request description is the log.
 
-GitHub branch protection should eventually require a pull request and passing CI for `main`. A mandatory approval count can be added when the repository has another regular reviewer; it is optional for a solo portfolio repository.
-
-For a bounded phase or repository change already approved by the user, the root orchestrator owns the routine Git workflow through squash merge and validated merged-branch cleanup. The user is not the default pull-request reviewer and does not need to separately approve branch creation, commit, push, PR creation, merge, or safe cleanup of that merged short-lived branch. A new user decision is required when scope expands or when work would deploy, publish a release, contact real external parties, use credentials, rewrite history, delete unmerged work, or perform another destructive operation.
-
-## Branch Naming
-
-Use a lowercase Conventional Commit-style prefix and a short kebab-case description:
-
-```text
-feat/phase-00b-contracts
-feat/phase-01-provider-simulator
-fix/contract-schema-drift
-docs/update-architecture
-chore/development-harness
-experiment/qwen-lfm-smoke-benchmark
-```
-
-Use one branch for one phase, feature, fix, documentation change, or experiment. Do not mix unrelated work or begin the next roadmap phase in the same branch.
-
-## Development Workflow
-
-1. Update local `main` without rewriting local work.
-2. Create a descriptive branch from `main`.
-3. Read `harness/status.toml`, the active phase contract when one exists, and only the goal, domain, plan, source, and test documents relevant to the bounded change.
-4. Make the smallest change that satisfies the approved scope.
-5. Run focused checks while developing.
-6. Run the repository preflight once the bounded diff is stable and before commit:
-
-   ```bash
-   make preflight
-   ```
-
-7. The root orchestrator reviews the complete diff and confirms that generated, sensitive, local, or unrelated files are absent.
-8. Commit with a Conventional Commit message.
-9. Push the branch and open a pull request using the repository template.
-10. Obtain independent review when the change is material, resolve accepted findings, and rerun affected checks.
-11. The root orchestrator reviews the final diff, independent evidence, and CI, then makes the final approve or request-changes decision.
-12. The root orchestrator squash merges only when required checks and phase acceptance criteria pass.
-13. After confirming merge and recoverability, delete the merged short-lived branch and return to the updated `main`.
-
-## Commit Messages
-
-Use:
-
-```text
-<type>(<optional-scope>): <imperative summary>
-```
-
-Common types:
-
-- `feat`: product or platform capability;
-- `fix`: defect correction;
-- `test`: test-only change;
-- `docs`: documentation-only change;
-- `refactor`: behavior-preserving code change;
-- `chore`: repository, tooling, or harness maintenance;
-- `experiment`: isolated research or benchmark work.
-
-Examples:
-
-```text
-chore(harness): add phase-gated Codex workflow
-feat(contracts): add versioned approval models
-fix(simulator): reject stale provider offers
-```
-
-## Pull Request Scope
-
-Every pull request should explain:
-
-- the problem and bounded outcome;
-- files or systems intentionally changed;
-- explicit non-goals;
-- verification actually run and its result;
-- manual, blocked, skipped, or unrun checks;
-- security, privacy, data, migration, and rollback risks;
-- whether documentation, generated artifacts, or phase evidence changed.
-
-Material contract, security, authorization, completion, workflow, or external-channel changes require an independent review. The implementing subagent must not review its own work. The independent reviewer reports findings and a recommendation; the root orchestrator owns the final PR decision and merge.
-
-## Versioned and Local Content
-
-Version project source, tests, small redacted fixtures, schemas, documentation, `.codex/` and `.claude/` project configuration, and curated harness evidence.
-
-Keep local or generated content out of Git: `.env*`, dependency directories, virtual environments, caches, coverage output, local databases, provider credentials, PII, raw datasets, model weights, checkpoints, experiment stores, recordings, and large artifacts. Add a specific `.gitignore` rule when a new tool creates repeatable local output; do not hide an entire source or configuration directory to silence an unclear change.
+## Never commit
+- `.env`, keys, relay URLs or any other secret; never copy `.env` into a worktree.
+- Consumer PII, model weights, adapters, local datasets or recordings.
+- Third-party code: fetch the pinned sources with `scripts/sys/fetch_external.sh` (see `third_party/README.md`).

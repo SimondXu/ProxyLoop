@@ -1,0 +1,19 @@
+# Limitations ledger (root-owned; rendered into the README "Limitations" section). Updated at each stage gate.
+- id: simulator-realism
+  text: The counterparty and the user are simulated (an LLM Ear and Mouth around a deterministic policy, and an LLM user plus a deterministic approver); human probes are few. Model ids and family relationships are recorded in ADR-0001.
+- id: world-model-family
+  text: The world models' family relative to the agent, teacher and baseline models can bias the Ear, which is a scoring instrument; the S2 Ear audit is stratified by speaker model.
+- id: heldout-mixture
+  text: The held-out test is a mixture of a few never-piloted families; claims are family-mixture claims, not per-family ones.
+- id: relay-dependency
+  text: All hosted models go through one third-party relay whose behaviour can change without notice (ADR-0001).
+- id: text-not-voice
+  text: The counterparty lane is text with speech timing, not audio; voice is a later milestone.
+- id: sim-approver
+  text: In evaluation the deterministic sim approver decides from hidden constraints and ignores FastU's explanation.
+- id: semantic-laundering
+  text: Unauthorised speech by Fast (including paraphrased commitments) is measured, not blocked.
+- id: capability-scope
+  text: The cp-lane capability is a release token for authority-bearing lines, not complete mediation of everything Fast says.
+- id: deviations
+  text: Every deviation from the pre-registration is logged in docs/prereg.md.

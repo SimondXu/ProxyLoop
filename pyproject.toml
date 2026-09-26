@@ -1,0 +1,49 @@
+[project]
+name = "proxyloop"
+version = "0.0.0"
+description = "ProxyLoop v3: one traceable Fast/Slow agent execution path."
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.8.4,<0.9"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+  "hypothesis==6.168.1",
+  "import-linter==2.15",
+  "pyright==1.1.414",
+  "pytest==9.1.1",
+  "ruff==0.16.9",
+]
+sys = []
+mod = []
+
+[tool.uv]
+default-groups = ["dev"]
+
+# Every tool covers src, tests and scripts. scripts/spikes is root-run with
+# dependencies outside this environment: ruff checks it, pyright skips it.
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+src = ["src", "tests", "scripts"]
+include = [
+  "src/**/*.py",
+  "tests/**/*.py",
+  "scripts/**/*.py",
+]
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]
+
+[tool.pyright]
+include = ["src", "tests", "scripts"]
+exclude = ["scripts/spikes"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+
+[tool.pytest.ini_options]
+addopts = "-ra --import-mode=importlib"
+testpaths = ["tests"]

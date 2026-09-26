@@ -1,0 +1,4 @@
+# Claim ledger (root-owned; DOCS §4). Each claim renders from a committed report through pointers.
+# A claim is `provisional` until the user closes its stage; `final` needs a closed stage in PLAN.md.
+# No claims exist yet.
+[]

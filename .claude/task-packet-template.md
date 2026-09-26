@@ -20,6 +20,7 @@ TASK BLOCK (verbatim from PLAN.md)
 OWNED PATHS (edit only these; anything else → stop and report)
   <list>
   Shared-file exception: <none | "one dependency line in [dependency-groups] <sys|mod>">
+  Root-owned paths granted (ROOT tasks only, PLAN.md §0.1): <none | list>
 
 FROZEN INTERFACES YOU CALL BUT MUST NOT CHANGE
   <list of contract symbols / other modules>

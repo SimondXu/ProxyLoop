@@ -3,11 +3,30 @@
     "allow": [
       "Bash(make:*)",
       "Bash(uv run:*)",
-      "Bash(uv sync:*)",
-      "Bash(pnpm install:*)",
-      "Bash(pnpm --filter:*)",
-      "Bash(docker compose config:*)",
-      "Bash(python3 scripts/validate_layout.py)"
+      "Bash(uv sync:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf data*)",
+      "Bash(rm -rf ./data*)",
+      "Bash(rm -rf external*)",
+      "Bash(rm -rf ./external*)",
+      "Bash(git clean *)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Bash(cat .env*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block_destructive.py\""
+          }
+        ]
+      }
     ]
   }
 }

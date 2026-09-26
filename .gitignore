@@ -8,8 +8,6 @@ __pycache__/
 *.egg-info/
 .coverage
 htmlcov/
-# make unit-test report read by the make preflight gated-skip check
-.gate/
 
 # Node.js
 node_modules/
@@ -18,16 +16,19 @@ dist/
 coverage/
 *.tsbuildinfo
 
-# Runtime and local infrastructure
+# Secrets and local environment
 .env
 .env.*
 !.env.example
 *.log
-data/local/
+
+# Third-party clones (scripts/sys/fetch_external.sh), runs, and local ML data
+external/
+runs/
+data/sft/
+adapters/
 artifacts/
 mlruns/
-postgres-data/
-temporal-data/
 
 # Large or sensitive ML artifacts
 *.safetensors
@@ -42,23 +43,3 @@ recordings/
 .DS_Store
 .idea/
 .vscode/
-
-# Phase 03C teacher: accepted training JSONL stays local; raw pilot samples, reports, and ledgers are committed.
-# The full Stage 1c run's raw samples (~15 MB) stay local too; pilot-dir raw samples remain committed.
-data/experiments/phase-03c/teacher*/*-accepted.jsonl
-data/experiments/phase-03c/teacher-full*/*-samples.jsonl
-# Phase 03C cloud bundle: prompts and teacher text stay local; bundle-manifest.json and schema.json are committed.
-data/experiments/phase-03c/cloud-bundle/*.jsonl
-
-# Phase 03C Stage 2 local training: adapters, weights, and the chat JSONL (teacher text) stay local; manifests and configs are committed.
-data/experiments/phase-03c/training/**/adapters/
-data/experiments/phase-03c/training/**/*.safetensors
-data/experiments/phase-03c/training/**/*.jsonl
-# The returned upload set is ~230 MB, mostly the adapter; unpack it, commit
-# the manifests and reports, never the archive.
-data/experiments/phase-03c/training/**/*.tar.gz
-!data/experiments/phase-03c/training/*/train.log
-!data/experiments/phase-03c/training/*/eval-heldout.log
-!data/experiments/phase-03c/training/*/eval-dev.log
-# PR-9b local parity: resumable per-row run files stay local; parity-report.json is committed.
-data/experiments/phase-03c/local-parity/**/*.jsonl
