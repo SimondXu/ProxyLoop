@@ -26,6 +26,8 @@ if TYPE_CHECKING:
 Effect = tuple[str, Mapping[str, object]]
 SCALE = {"usd_minor": 100, "months": 1}  # minor units and months, as spoken
 _INVALID = (ValidationError, ValueError, KeyError, TypeError, ArithmeticError)
+_GUIDE = frozenset({"tool", "move", "slots"})
+_EMPTY: tuple[object, ...] = (None, "", [])
 
 
 @dataclass(frozen=True)
@@ -99,11 +101,7 @@ class SlowTools:
             then = lambda: host.wake_slow("timer", seconds)  # noqa: E731
             return Result(True, f"waking in {seconds} s", then=then)
         if name == "guide_fast":
-            guide = Guide(move=a["move"], slots=tuple(a.get("slots") or ()))
-            if public_guide(bb, guide):
-                return self._s2f(lane="cp", type="GUIDE", guide=guide)
-            denied = {"intent": "guide_fast", "reason": "guide_slot_not_public"}
-            return _no("a slot is not public", ("action.denied", denied))
+            return self._guide(bb, a)
         if name == "record_fact":
             return self.fact(bb, str(a["key"]), str(a["value"]), a.get("utt_ref"))
         if name == "record_offer":
@@ -119,6 +117,37 @@ class SlowTools:
         }
         then = lambda: host.finish("info_only")  # noqa: E731
         return Result(True, "case closed", (("status.changed", status),), then)
+
+    def _guide(self, bb: st.Blackboard, a: Mapping[str, Any]) -> Result:  # I4
+        extra = sorted(k for k, v in a.items() if k not in _GUIDE and v not in _EMPTY)
+        if extra:  # e.g. free text: refused whole, never dropped (ROOT-05 g)
+            denied = {"intent": "guide_fast", "reason": "guide_extra_fields"}
+            text = (
+                f"guide_fast takes only move and slots, not {', '.join(extra)}: the "
+                "phone voice never gets free text; use ask_user/tell_user for the user"
+            )
+            return _no(text, ("action.denied", denied))
+        guide = Guide(move=a["move"], slots=tuple(a.get("slots") or ()))
+        if public_guide(bb, guide):
+            return self._s2f(lane="cp", type="GUIDE", guide=guide)
+        hidden = [
+            s
+            for s in guide.slots
+            if not public_guide(bb, Guide(move=guide.move, slots=(s,)))
+        ]
+        facts = [f"fact:{k}" for k in sorted(bb.public.facts)]
+        offers = [
+            f"offer:{o.offer_ref}.{s.field}"
+            for o in bb.public.offers.values()
+            for s in o.slots
+        ]
+        text = (
+            f"not public: {', '.join(hidden)}; public slots: "
+            f"{', '.join(facts + offers) or 'none'}. A shareable fact becomes public "
+            "with record_fact(<canonical key>, value, utt_ref of the user's message)"
+        )
+        denied = {"intent": "guide_fast", "reason": "guide_slot_not_public"}
+        return _no(text, ("action.denied", denied))
 
     def _s2f(self, **fields: Any) -> Result:
         self._n += 1

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 from proxyloop.contract.messages import FastToSlow, Guide, GuideMove
-from proxyloop.contract.state import Blackboard, ChannelState, Line
+from proxyloop.contract.state import Blackboard, ChannelState, Line, PublicFact
 from proxyloop.guard.declass import declassify
 from proxyloop.slow.tools import SlowTools, public_guide, record_offer
 
@@ -140,3 +140,37 @@ def test_a_value_not_in_the_cited_user_message_stays_private() -> None:
         ((_, fact),) = tools.fact(bb, key, value, ref).effects
         assert (fact["scope"], fact["source"]) == ("private", "user"), (key, ref)
     assert tools.shareable == {}
+
+
+def _guide(bb: Blackboard, **call: object) -> tuple[bool, str, list[object]]:
+    tools = SlowTools(cast("Kernel", SimpleNamespace(bb=bb)), KEYS)
+    run = tools._run  # pyright: ignore[reportPrivateUsage]
+    result = run("guide_fast", {"tool": "guide_fast"} | call)
+    return result.ok, result.text, [p for _, p in result.effects]
+
+
+def test_guide_fast_refuses_free_text_loudly() -> None:  # ROOT-05 (g)
+    bb, _ = _told()
+    ok, text, denied = _guide(
+        bb, move="identify", text="Give them the name Dana Reyes", key=""
+    )
+    assert not ok and "text" in text and "ask_user" in text
+    assert denied == [{"intent": "guide_fast", "reason": "guide_extra_fields"}]
+    ok, _, _ = _guide(bb, move="ask_discount", slots=[], text="", value=None)
+    assert ok  # an empty field carries nothing
+
+
+def test_a_guide_denial_names_the_slot_and_what_is_public() -> None:  # ROOT-05 (g)
+    bb, _ = _told()
+    last4 = PublicFact(
+        key="account.last4", value="4821", source="shareable", source_ref="u-7"
+    )
+    public = bb.public.model_copy(update={"facts": {"account.last4": last4}})
+    bb = bb.model_copy(update={"public": public})
+    slots = ["fact:account.last4", "fact:account.holder_name"]
+    ok, text, denied = _guide(bb, move="identify", slots=slots)
+    assert not ok
+    missing, _, public_part = text.partition(";")
+    assert "fact:account.holder_name" in missing and "last4" not in missing
+    assert "fact:account.last4" in public_part and "record_fact" in public_part
+    assert denied == [{"intent": "guide_fast", "reason": "guide_slot_not_public"}]
