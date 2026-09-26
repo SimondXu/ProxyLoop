@@ -1,7 +1,8 @@
 """The rep's Mouth: voices a ``PublicIntent`` (ARCHITECTURE §10.1).
 
 The model rephrases the intent's template line. Number fidelity: every number
-of the intent's values, as digits, and no other number. At most 2
+of the intent's values, as digits (identifiers such as a confirmation number
+verbatim), and no other number. At most 2
 regenerations, then the template itself, flagged ``fidelity_fallback``
 (``rep.mouth.fidelity_ok = false``).
 """
@@ -34,6 +35,7 @@ LINES: dict[IntentKind, str] = {
     "hang_up": "I cannot hear you, so I am ending the call. Goodbye.",
     "clarify": "Sorry, how can I help with your account?",
 }
+IDENTIFIERS = frozenset({"confirmation"})  # voiced verbatim, never as a number
 SYSTEM = """You are {persona} You are on a phone call with someone calling for \
 your customer. Rephrase the given line as one short, natural spoken line (at most \
 two sentences) with the same meaning and every value. Write every number in \
@@ -53,9 +55,13 @@ def template(intent: PublicIntent, company: str) -> str:
 
 
 def fidelity_ok(text: str, intent: PublicIntent) -> bool:
+    """Every value's number (identifiers verbatim, as text) and no other number."""
+
     required: set[Decimal] = set()
     allowed: set[Decimal] = set()  # digits inside key names ("account.last4")
     for key, value in intent.say:
+        if key in IDENTIFIERS and value not in text:
+            return False
         required |= world.numbers(value)
         allowed |= world.numbers(key)
     for key in intent.ask:
@@ -65,16 +71,16 @@ def fidelity_ok(text: str, intent: PublicIntent) -> bool:
 
 class Mouth:
     def __init__(
-        self, client: LLMClient, sink: world.WorldSink, spec: CounterpartySpec
+        self, client: LLMClient, writer: world.World, spec: CounterpartySpec
     ) -> None:
-        self._client, self._sink, self._company = client, sink, spec.company
+        self._client, self._world, self._company = client, writer, spec.company
         self._system = SYSTEM.format(persona=spec.persona.strip())
         self.timeout_s = world.TIMEOUT_S
 
     async def say(
         self, intent: PublicIntent, heard: str, cause: str
     ) -> tuple[str, str]:
-        """Voice ``intent``; emit its ``llm.call``s and ``rep.mouth``."""
+        """Voice ``intent``; its calls, then ``rep.mouth``."""
 
         line = template(intent, self._company)
         prompt = f"The caller said: {heard or '(nothing yet)'}\nLine: {line}"
@@ -82,21 +88,17 @@ class Mouth:
             ChatMessage(role="system", content=self._system),
             ChatMessage(role="user", content=prompt),
         )
-        evs: list[str] = []
+        call_ids = [f"mouth:{cause}:{n}" for n in range(world.MAX_REGENERATIONS + 1)]
 
         async def attempt(n: int) -> str:
             request = TextRequest(
-                call_id=f"mouth:{cause}:{n}",
+                call_id=call_ids[n],
                 role="mouth",
                 messages=messages,
                 max_tokens=world.MAX_TOKENS,
                 temperature=0.7,
             )
-            text, ev = await world.text_call(
-                self._client, self._sink, "world.mouth", request, cause
-            )
-            evs.append(ev)
-            return text.strip()
+            return (await self._world.text(self._client, request, cause)).strip()
 
         def check(text: str) -> str:
             if not text or not fidelity_ok(text, intent):
@@ -112,4 +114,5 @@ class Mouth:
         )
         payload = {"intent": intent.model_dump(mode="json"), "text": text}
         payload |= {"fidelity_ok": ok, "attempts": attempts}
-        return text, self._sink.emit("rep.mouth", "world.mouth", payload, [cause, *evs])
+        causes = [cause, *self._world.calls(call_ids[:attempts])]
+        return text, self._world.emit("rep.mouth", "world.mouth", payload, causes)

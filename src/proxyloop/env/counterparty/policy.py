@@ -4,15 +4,16 @@ GREET -> IDENTIFY -> DISCOVER -> OFFER(k) -> FINAL -> CONFIRM -> CONFIRMED |
 TRANSFER | ENDED. The rep knows only the acts it heard, its offers and the
 clock (no agent state). Each distinct lever unlocks the next ladder rung;
 hidden terms are said only on a read-back; offers expire after their TTL;
-silence over ``silence_s`` or a hold over ``hold_s`` is a strike, the last
-strike hangs up.
+silence over ``silence_s`` while the floor is free (``floor``), or a hold over
+``hold_s``, is a strike, and the last strike hangs up.
 
 World rule (for S1-SYS-04 to confirm): accepting an open offer by name commits
 at once (``rep.commit_heard``) and the ledger binds all its terms, hidden ones
 included, as a real rep's system would; that is the trap the agent must avoid
-by asking for a read-back first. An ambiguous accept (no offer named, or a
+by asking for a read-back first. An accept is by name only if the heard text
+says the offer's ref or its monthly price. An ambiguous accept (neither, or a
 price that is not the offer's) makes the rep read every term back and ask for
-confirmation before committing.
+confirmation; a plain "yes" then commits.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from proxyloop.contract.base import Frozen, sha256_text
 from proxyloop.env.counterparty.ear import EarAct, Lever
 from proxyloop.env.ledger import Ledger
 from proxyloop.env.tasks.schema import CounterpartySpec, OfferSpec
+from proxyloop.env.world import numbers
 
 State = Literal[
     "GREET",
@@ -119,7 +121,7 @@ class Policy:
         self._levers: set[str] = set()
         self._pending: str | None = None
         self._hold_since: int | None = None
-        self._last_ms = t0_ms
+        self._free_since: int | None = t0_ms  # None: someone has the floor
 
     @property
     def done(self) -> bool:
@@ -130,20 +132,22 @@ class Policy:
 
         return {ref: dict(o.spec.terms) for ref, o in self.offers.items()}
 
-    def spoke(self, t_ms: int) -> None:
-        """The rep finished a line: the caller's silence counts from here."""
+    def floor(self, free: bool, t_ms: int) -> None:
+        """Either party took the floor, or released it: silence counts only
+        while it is free."""
 
-        self._last_ms = max(self._last_ms, t_ms)
+        self._free_since = t_ms if free else None
 
-    def step(self, act: EarAct, utt_id: str, t_ms: int) -> list[Decision]:
-        """The reaction to one heard utterance, after any expiries."""
+    def step(self, act: EarAct, utt_id: str, heard: str, t_ms: int) -> list[Decision]:
+        """The reaction to one heard utterance, after any expiries. The rep
+        answers, so it takes the floor."""
 
         if self.done:
             return []
         out = self._expire(t_ms)
-        self._last_ms, self._hold_since = t_ms, None
+        self._free_since, self._hold_since = None, None
         before = self.state
-        intent, commit = self._react(act, utt_id, t_ms)
+        intent, commit = self._react(act, utt_id, heard, t_ms)
         return [*out, Decision(before, self.state, intent, self._rung(), commit)]
 
     def tick(self, t_ms: int) -> list[Decision]:
@@ -154,19 +158,19 @@ class Policy:
         out = self._expire(t_ms)
         p, hold = self.spec.patience, self._hold_since
         since, limit = (
-            (self._last_ms, p.silence_s) if hold is None else (hold, p.hold_s)
+            (self._free_since, p.silence_s) if hold is None else (hold, p.hold_s)
         )
-        if t_ms - since < 1000 * limit:
+        if since is None or t_ms - since < 1000 * limit:
             return out
-        self.strikes += 1
-        self._last_ms, self._hold_since = t_ms, None if hold is None else t_ms
+        self.strikes += 1  # the rep speaks up: it takes the floor
+        self._free_since, self._hold_since = None, None if hold is None else t_ms
         before = self.state
         self.state = "ENDED" if self.strikes >= p.strikes else self.state
         intent = PublicIntent(kind="hang_up" if self.done else "check_in")
         return [*out, Decision(before, self.state, intent, self._rung(), strike=True)]
 
     def _react(
-        self, act: EarAct, utt_id: str, t_ms: int
+        self, act: EarAct, utt_id: str, heard: str, t_ms: int
     ) -> tuple[PublicIntent, Commit | None]:
         a = act.act
         if a == "ask_supervisor":
@@ -194,7 +198,7 @@ class Policy:
         if a in LEVERS:
             return self._lever(a, t_ms), None
         if a == "accept":
-            return self._accept(act, utt_id)
+            return self._accept(act, utt_id, heard)
         if a == "ask_readback":
             offer = self.offers.get(act.offer_ref or self._latest() or "")
             if offer is None or offer.status != "open":
@@ -222,9 +226,15 @@ class Policy:
             kind=kind, offer_ref=spec.offer_ref, say=tuple(spec.terms.items())
         )
 
-    def _accept(self, act: EarAct, utt_id: str) -> tuple[PublicIntent, Commit | None]:
-        ref = act.offer_ref or (self._pending if self.state == "CONFIRM" else None)
-        offer = self.offers.get(ref or self._latest() or "")
+    def _accept(
+        self, act: EarAct, utt_id: str, heard: str
+    ) -> tuple[PublicIntent, Commit | None]:
+        offer = self.offers.get(act.offer_ref or "")
+        named = offer is not None and self._named(offer.spec, heard)
+        if not named and self.state == "CONFIRM" and self._pending is not None:
+            offer, named = self.offers[self._pending], True  # "yes" to the read-back
+        elif not named:
+            offer = offer or self.offers.get(self._latest() or "")
         if offer is None:
             return PublicIntent(kind="clarify"), None
         if offer.status != "open":
@@ -233,7 +243,7 @@ class Policy:
             ), None
         price = Decimal(offer.spec.terms.get("monthly_price", "NaN"))
         said = act.price_usd
-        if ref is None or (said is not None and Decimal(str(said)) != price):
+        if not named or (said is not None and Decimal(str(said)) != price):
             self.state, self._pending = "CONFIRM", offer.spec.offer_ref
             return self._terms("confirm_accept", offer.spec), None
         spec = offer.spec
@@ -266,6 +276,12 @@ class Policy:
                 intent = PublicIntent(kind="offer_expired", offer_ref=ref)
                 out.append(Decision(self.state, self.state, intent, self._rung()))
         return out
+
+    @staticmethod
+    def _named(spec: OfferSpec, heard: str) -> bool:
+        price = spec.terms.get("monthly_price")
+        said_price = price is not None and Decimal(price) in numbers(heard)
+        return said_price or spec.offer_ref.casefold() in heard.casefold()
 
     def _missing(self) -> tuple[str, ...]:
         return tuple(k for k in self.spec.identity if k not in self._verified)

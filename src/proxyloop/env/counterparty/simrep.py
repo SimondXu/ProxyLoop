@@ -8,6 +8,7 @@ kernel emits the returned lines as ``utt.final`` and a strike as ``chan.strike``
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import asdict, dataclass
 
 from proxyloop.contract.llm import LLMClient
@@ -26,30 +27,41 @@ class RepTurn:
 
 
 class SimRep:
+    """Calls are serialised; ``tick`` does nothing while a rep turn is in flight."""
+
     def __init__(
-        self, task: Task, ear: LLMClient, mouth: LLMClient, sink: world.WorldSink
+        self, task: Task, ear: LLMClient, mouth: LLMClient, writer: world.World
     ) -> None:
         cp = task.counterparty
         self.policy = Policy(cp, {k: task.profile.facts[k] for k in cp.identity})
-        self.ear = Ear(ear, sink, cp.company, cp.identity)
-        self.mouth = Mouth(mouth, sink, cp)
-        self._sink = sink
+        self.ear = Ear(ear, writer, cp.company, cp.identity)
+        self.mouth = Mouth(mouth, writer, cp)
+        self._world = writer
+        self._turn = asyncio.Lock()
 
     async def on_agent_utterance(
         self, utt_id: str, text_heard: str, event_id: str, t_ms: int
     ) -> RepTurn:
         """React to one agent utterance as heard (its ``utt.delivered``)."""
 
-        if self.policy.done:
-            return RepTurn((), False, True)
-        act, ear_ev = await self.ear.classify(
-            utt_id, text_heard, event_id, self.policy.made()
-        )
-        decisions = self.policy.step(act, utt_id, t_ms)
-        return await self._run(decisions, text_heard, (utt_id, ear_ev))
+        async with self._turn:
+            if self.policy.done:
+                return RepTurn((), False, True)
+            made = self.policy.made()
+            act, ear_ev = await self.ear.classify(utt_id, text_heard, event_id, made)
+            decisions = self.policy.step(act, utt_id, text_heard, t_ms)
+            return await self._run(decisions, text_heard, (utt_id, ear_ev))
 
     async def tick(self, t_ms: int) -> RepTurn:
-        return await self._run(self.policy.tick(t_ms), "", None)
+        if self._turn.locked():  # a rep turn is in flight: the floor is not free
+            return RepTurn((), False, self.policy.done)
+        async with self._turn:
+            return await self._run(self.policy.tick(t_ms), "", None)
+
+    def floor(self, free: bool, t_ms: int) -> None:
+        """Either party took or released the floor (the kernel's speech clock)."""
+
+        self.policy.floor(free, t_ms)
 
     async def _run(
         self, decisions: list[Decision], heard: str, ear: tuple[str, str] | None
@@ -60,9 +72,9 @@ class SimRep:
             payload["intent"] = d.intent.model_dump(mode="json")
             reacted = ear is not None and d.intent.kind != "offer_expired"
             causes = [ear[1]] if ear is not None and reacted else []
-            ev = self._sink.emit("rep.policy", "world.policy", payload, causes)
+            ev = self._world.emit("rep.policy", "world.policy", payload, causes)
             if d.commit is not None and ear is not None:
-                heard_ev = self._sink.emit(
+                heard_ev = self._world.emit(
                     "rep.commit_heard",
                     "world.policy",
                     {"utt_id": ear[0], "offer_ref": d.commit.offer_ref},
@@ -74,7 +86,7 @@ class SimRep:
                         "confirmation_id": d.commit.confirmation_id,
                         "binding": binding,
                     }
-                    self._sink.emit("ledger.write", "world.ledger", write, [heard_ev])
+                    self._world.emit("ledger.write", "world.ledger", write, [heard_ev])
             if d.intent.kind != "offer_expired":
                 lines.append(await self.mouth.say(d.intent, heard, ev))
         strike = any(d.strike for d in decisions)

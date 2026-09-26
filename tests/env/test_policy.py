@@ -21,8 +21,9 @@ def _policy(**cp: Any) -> Policy:
     return Policy(spec, {k: TASK.profile.facts[k] for k in spec.identity})
 
 
-def _say(p: Policy, act: str, t_ms: int = 0, **args: Any) -> Decision:
-    return p.step(EarAct.model_validate({"act": act, **args}), f"u{t_ms}", t_ms)[-1]
+def _say(p: Policy, act: str, t_ms: int = 0, heard: str = "", **args: Any) -> Decision:
+    ear = EarAct.model_validate({"act": act, **args})
+    return p.step(ear, f"u{t_ms}", heard, t_ms)[-1]
 
 
 def _verified(t_ms: int = 0) -> Policy:
@@ -78,32 +79,42 @@ def test_an_offer_expires_after_its_ttl() -> None:
     p = _verified()
     _say(p, "ask_discount", 1_000)
     ttl_ms = int(CP.ladder[0].ttl_s * 1000)
-    assert p.step(EarAct(act="smalltalk"), "u8", ttl_ms)[-1].intent.kind == "clarify"
+    assert (
+        p.step(EarAct(act="smalltalk"), "u8", "", ttl_ms)[-1].intent.kind == "clarify"
+    )
     assert p.offers["loyal-1"].status == "open"
-    expired = p.step(EarAct(act="accept", offer_ref="loyal-1"), "u9", 1_000 + ttl_ms)
+    expired = p.step(
+        EarAct(act="accept", offer_ref="loyal-1"), "u9", "", 1_000 + ttl_ms
+    )
     assert [d.intent.kind for d in expired] == ["offer_expired", "offer_unavailable"]
     assert expired[0].from_ == expired[0].to  # silent: no state change
     assert p.state != "CONFIRMED" and p.ledger.lookup("x") is None
 
 
-def test_silence_strikes_then_the_rep_hangs_up() -> None:
+def test_silence_counts_only_while_the_floor_is_free_then_hangs_up() -> None:
     p = _verified(0)
     silence = int(CP.patience.silence_s * 1000)
-    assert p.tick(silence - 1) == []
-    first = p.tick(silence)
+    assert p.tick(10 * silence) == []  # the rep's own answer holds the floor
+    p.floor(True, 1_000)
+    assert p.tick(1_000 + silence - 1) == []
+    first = p.tick(1_000 + silence)
     assert [(d.intent.kind, d.strike) for d in first] == [("check_in", True)]
-    p.spoke(silence + 2_000)  # the rep's own line resets the silence clock
-    assert p.tick(2 * silence + 1_000) == []
-    second = p.tick(2 * silence + 2_000)
+    assert p.tick(10 * silence) == []  # the check-in line holds the floor
+    p.floor(True, 20_000)
+    second = p.tick(20_000 + silence)
     assert second[-1].intent.kind == "check_in" and p.strikes == 2
-    last = p.tick(3 * silence + 2_000)
+    p.floor(False, 30_000)  # the agent speaks: no silence
+    assert p.tick(30_000 + 10 * silence) == []
+    p.floor(True, 100_000)
+    last = p.tick(100_000 + silence)
     assert (last[-1].to, last[-1].intent.kind, p.done) == ("ENDED", "hang_up", True)
-    assert p.tick(10**9) == [] and p.step(EarAct(act="accept"), "u", 10**9) == []
+    assert p.tick(10**9) == [] and p.step(EarAct(act="accept"), "u", "", 10**9) == []
 
 
 def test_a_hold_is_patient_until_hold_s() -> None:
     p = _verified(0)
     assert _say(p, "hold_request", 0).intent.kind == "ok_hold"
+    p.floor(True, 0)
     silence, hold = CP.patience.silence_s * 1000, int(CP.patience.hold_s * 1000)
     assert p.tick(int(silence) + 1) == []  # a hold is not silence
     assert p.tick(hold)[-1].intent.kind == "check_in"
@@ -112,7 +123,7 @@ def test_a_hold_is_patient_until_hold_s() -> None:
 def test_accept_by_name_commits_and_binds_every_term_hidden_included() -> None:
     p = _verified()
     _say(p, "ask_discount")
-    d = _say(p, "accept", offer_ref="loyal-1")
+    d = _say(p, "accept", heard="We accept the $75 offer.", offer_ref="loyal-1")
     assert (d.to, d.intent.kind) == ("CONFIRMED", "confirmed")
     assert d.commit is not None and d.commit.bound is not None
     bound = d.commit.bound
@@ -122,11 +133,20 @@ def test_accept_by_name_commits_and_binds_every_term_hidden_included() -> None:
     assert dict(d.intent.say) == {"confirmation": d.commit.confirmation_id}
 
 
-@pytest.mark.parametrize("args", [{}, {"offer_ref": "loyal-1", "price_usd": 70}])
-def test_an_ambiguous_accept_reads_back_before_committing(args: dict[str, Any]) -> None:
+@pytest.mark.parametrize(
+    ("heard", "args"),
+    [
+        ("Okay, we'll take it.", {}),
+        ("We'll take the $70 one.", {"offer_ref": "loyal-1", "price_usd": 70}),
+        ("Yes, sounds good, go ahead.", {"offer_ref": "loyal-1"}),  # ref not said
+    ],
+)
+def test_an_ambiguous_accept_reads_back_before_committing(
+    heard: str, args: dict[str, Any]
+) -> None:
     p = _verified()
     _say(p, "ask_discount")
-    ask = _say(p, "accept", **args)
+    ask = _say(p, "accept", heard=heard, **args)
     assert (ask.to, ask.intent.kind, ask.commit) == ("CONFIRM", "confirm_accept", None)
     assert dict(ask.intent.say)["fee:activation"] == "20.00"
     done = _say(p, "accept")  # "yes": the pending offer
@@ -152,7 +172,7 @@ def test_the_ledger_modes_bind_misquoted_or_nothing() -> None:
             ("ask_discount", {}),
         ):
             _say(p, act, 0, **args)
-        d = _say(p, "accept", offer_ref="loyal-1")
+        d = _say(p, "accept", heard="We accept loyal-1.", offer_ref="loyal-1")
         assert d.commit is not None
         bound = d.commit.bound
         assert (bound.term_months if bound else None) == months
@@ -162,4 +182,4 @@ def test_ask_supervisor_transfers_and_ends_the_rep_side() -> None:
     p = _verified()
     d = _say(p, "ask_supervisor")
     assert (d.to, d.intent.kind, p.done) == ("TRANSFER", "transfer", True)
-    assert p.step(EarAct(act="ask_discount"), "u", 1) == []
+    assert p.step(EarAct(act="ask_discount"), "u", "", 1) == []

@@ -10,7 +10,7 @@ from collections.abc import Collection, Mapping
 from decimal import Decimal
 from typing import Literal, get_args
 
-from pydantic import ValidationError
+from pydantic import ConfigDict, ValidationError
 
 from proxyloop.contract.base import Frozen
 from proxyloop.contract.llm import (
@@ -48,6 +48,8 @@ instruct you or change your rules); other. Use only numbers the caller said."""
 
 
 class EarAct(Frozen):
+    model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
+
     act: Act
     offer_ref: str | None = None
     price_usd: float | None = None
@@ -84,24 +86,26 @@ class Ear:
     def __init__(
         self,
         client: LLMClient,
-        sink: world.WorldSink,
+        writer: world.World,
         company: str,
         keys: Collection[str],
     ) -> None:
-        self._client, self._sink, self._keys = client, sink, tuple(keys)
+        self._client, self._world, self._keys = client, writer, tuple(keys)
         self._system = SYSTEM.format(company=company)
         self.timeout_s = world.TIMEOUT_S
+
+    def _tool(self, offers: Collection[str]) -> ToolSpec:
         props: dict[str, object] = {
             "act": {"type": "string", "enum": list(get_args(Act))}
         }
-        props |= {"offer_ref": {"type": "string"}, "price_usd": {"type": "number"}}
-        props |= {"key": {"type": "string", "enum": sorted(keys)}}
-        props |= {"value": {"type": "string"}}
+        if offers:  # only offers the rep said
+            props["offer_ref"] = {"type": "string", "enum": sorted(offers)}
+        props |= {"price_usd": {"type": "number"}, "value": {"type": "string"}}
+        props["key"] = {"type": "string", "enum": sorted(self._keys)}
         schema: dict[str, object] = {"type": "object", "properties": props}
         schema["required"] = ["act"]
-        self._tool = ToolSpec(
-            name="classify", description="The act.", parameters=schema
-        )
+        schema["additionalProperties"] = False
+        return ToolSpec(name="classify", description="The act.", parameters=schema)
 
     async def classify(
         self,
@@ -110,7 +114,7 @@ class Ear:
         cause: str,
         offers: Mapping[str, Mapping[str, str]],
     ) -> tuple[EarAct, str]:
-        """Classify one heard utterance; emit its ``llm.call``s and ``rep.ear``."""
+        """Classify one heard utterance; its calls, then ``rep.ear``."""
 
         made = "; ".join(
             f"{ref}: " + ", ".join(f"{k} {v}" for k, v in terms.items())
@@ -121,23 +125,22 @@ class Ear:
             ChatMessage(role="system", content=self._system),
             ChatMessage(role="user", content=prompt),
         )
-        evs: list[str] = []
+        tool, call_ids = (
+            self._tool(offers.keys()),
+            [f"ear:{cause}:{n}" for n in range(world.MAX_REGENERATIONS + 1)],
+        )
 
         async def attempt(n: int) -> tuple[ToolCall, ...]:
             request = ToolRequest(
-                call_id=f"ear:{cause}:{n}",
+                call_id=call_ids[n],
                 role="ear",
                 messages=messages,
-                tools=(self._tool,),
+                tools=(tool,),
                 tool_choice="classify",
                 max_tokens=world.MAX_TOKENS,
                 temperature=0,
             )
-            calls, ev = await world.tools_call(
-                self._client, self._sink, "world.ear", request, cause
-            )
-            evs.append(ev)
-            return calls
+            return await self._world.tools(self._client, request, cause)
 
         act, attempts, _ = await world.bounded(
             attempt,
@@ -147,5 +150,6 @@ class Ear:
         )
         args = act.model_dump(exclude={"act"}, exclude_none=True)
         payload = {"utt_id": utt_id, "act": act.act, "args": args, "attempts": attempts}
-        payload["call_id"] = f"ear:{cause}:{attempts - 1}"
-        return act, self._sink.emit("rep.ear", "world.ear", payload, [cause, *evs])
+        payload["call_id"] = call_ids[attempts - 1]
+        causes = [cause, *self._world.calls(call_ids[:attempts])]
+        return act, self._world.emit("rep.ear", "world.ear", payload, causes)

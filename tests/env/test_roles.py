@@ -9,7 +9,6 @@ from typing import Any
 
 import pytest
 from tests.env.bus_sink import BusSink
-from tests.support.fakes import ScriptedLLM, fake_ref
 
 from proxyloop.contract.events import Event, check_causes
 from proxyloop.contract.llm import LLMCallRecord, LLMUnavailable
@@ -32,7 +31,7 @@ def _tool(name: str, **args: Any) -> str:
 
 
 def _ear(sink: BusSink, *responses: str) -> Ear:
-    return Ear(ScriptedLLM(fake_ref(), responses), sink, CP.company, CP.identity)
+    return Ear(sink.llm(*responses), sink.world, CP.company, CP.identity)
 
 
 def _world_ok(sink: BusSink) -> list[Event]:
@@ -43,6 +42,8 @@ def _world_ok(sink: BusSink) -> list[Event]:
     check_causes(events)
     world_events = [e for e in events if e.stream == "world"]
     assert all(e.actor.startswith("world.") for e in world_events)
+    calls = [json.dumps(e.payload, sort_keys=True) for e in sink.of("llm.call")]
+    assert len(set(calls)) == len(calls)  # each record logged once
     for e in sink.of("llm.call"):
         record = LLMCallRecord.model_validate(e.payload)
         assert sink.prompts[record.prompt_sha][0] == "messages"
@@ -77,6 +78,7 @@ def test_the_ear_classifies_and_cites_the_heard_line_and_its_call(
         (_tool("classify", act="cite_competitor", price_usd=55), "number not said"),
         (_tool("classify", act="accept", offer_ref="loyal-9"), "never offered"),
         (_tool("reply", text="x", revealed={}), "wrong tool"),
+        (_tool("classify", act="cite_competitor", price_usd="60"), "strict: a string"),
     ],
 )
 def test_an_invalid_ear_output_is_regenerated_and_counted(
@@ -107,7 +109,7 @@ def test_three_invalid_ear_outputs_end_the_episode(tmp_path: Path) -> None:
 
 
 def _mouth(sink: BusSink, *lines: str) -> Mouth:
-    return Mouth(ScriptedLLM(fake_ref(), lines), sink, CP)
+    return Mouth(sink.llm(*lines), sink.world, CP)
 
 
 OFFER = PublicIntent(
@@ -167,9 +169,7 @@ def test_simrep_commits_heard_and_binds_the_ledger(tmp_path: Path) -> None:
         "I can offer $75.00 a month for 12 months.",
         *["All done, thank you."] * 3,  # no confirmation number: the fallback
     ]
-    rep = SimRep(
-        TASK, ScriptedLLM(fake_ref(), ear), ScriptedLLM(fake_ref(), mouth), sink
-    )
+    rep = SimRep(TASK, sink.llm(*ear), sink.llm(*mouth), sink.world)
     said = [
         "Hi, I am an AI assistant calling for Dana.",
         "The account holder is Dana Reyes.",
@@ -213,8 +213,7 @@ def test_simrep_commits_heard_and_binds_the_ledger(tmp_path: Path) -> None:
 def test_a_dead_ear_aborts_with_its_failed_call_logged(tmp_path: Path) -> None:
     sink = BusSink(tmp_path)
     heard = sink.heard("hello")
-    dead = ScriptedLLM(fake_ref(), [], dead=True)
-    rep = SimRep(TASK, dead, ScriptedLLM(fake_ref(), []), sink)
+    rep = SimRep(TASK, sink.llm(dead=True), sink.llm(), sink.world)
     with pytest.raises(LLMUnavailable):
         asyncio.run(rep.on_agent_utterance("u1", "hello", heard.event_id, 0))
     (call,) = sink.of("llm.call")
@@ -226,8 +225,8 @@ def test_a_silence_strike_is_an_uncaused_policy_event_and_a_check_in(
     tmp_path: Path,
 ) -> None:
     sink = BusSink(tmp_path)
-    mouth = ScriptedLLM(fake_ref(), ["Hello, are you still there?"])
-    rep = SimRep(TASK, ScriptedLLM(fake_ref(), []), mouth, sink)
+    mouth = sink.llm("Hello, are you still there?")
+    rep = SimRep(TASK, sink.llm(), mouth, sink.world)
     assert asyncio.run(rep.tick(1_000)) == RepTurn((), False, False)
     turn = asyncio.run(rep.tick(int(CP.patience.silence_s * 1000)))
     assert turn.strike and turn.lines[0][0] == "Hello, are you still there?"
@@ -243,7 +242,7 @@ def test_a_silence_strike_is_an_uncaused_policy_event_and_a_check_in(
 
 
 def _user(sink: BusSink, *responses: str) -> SimUser:
-    return SimUser(TASK, ScriptedLLM(fake_ref(), responses), sink, seed=7)
+    return SimUser(TASK, sink.llm(*responses), sink.world, seed=7)
 
 
 def test_the_simuser_opens_and_reveals_verbatim(tmp_path: Path) -> None:
@@ -274,6 +273,8 @@ def test_the_simuser_opens_and_reveals_verbatim(tmp_path: Path) -> None:
         {"text": "My last four are 4 8 2 1.", "revealed": {"account.last4": "4821"}},
         {"text": "My PIN is 1234.", "revealed": {"account.pin": "1234"}},
         {"text": "", "revealed": {}},
+        {"text": "It's 4822.", "revealed": {"account.last4": "4822"}},  # not the fact
+        {"text": "It's 4821.", "revealed": {"account.last4": 4821}},  # strict
     ],
 )
 def test_a_simuser_reveal_not_in_the_text_is_regenerated(
@@ -300,3 +301,65 @@ def test_the_reply_delay_is_seeded(tmp_path: Path) -> None:
             asyncio.run(_user(sink, reply).on_agent_message("hi", cause)).delay_s
         )
     assert delays[0] == delays[1]
+
+
+def test_the_ear_tool_names_only_offers_said_and_forbids_extra_fields(
+    tmp_path: Path,
+) -> None:
+    sink = BusSink(tmp_path)
+    heard = sink.heard("Yes, the 75 one.")
+    ear = _ear(sink, _tool("classify", act="accept", offer_ref="loyal-1"))
+    asyncio.run(ear.classify("u1", "Yes, the 75 one.", heard.event_id, OFFERS))
+    (messages,) = [c for k, c in sink.prompts.values() if k == "messages"]
+    params = json.loads(messages)["tools"][0]["parameters"]
+    assert params["additionalProperties"] is False
+    assert params["properties"]["offer_ref"]["enum"] == ["loyal-1"]
+
+
+@pytest.mark.parametrize("role", ["ear", "mouth"])
+def test_a_timed_out_world_call_is_cancelled_and_its_record_logged(
+    tmp_path: Path, role: str
+) -> None:
+    sink = BusSink(tmp_path)
+    heard = sink.heard("hello")
+    client = sink.llm("never sent", hang_s=5)
+    with pytest.raises(world.WorldError, match="no answer within"):
+        if role == "ear":
+            ear = Ear(client, sink.world, CP.company, CP.identity)
+            ear.timeout_s = 0.05
+            asyncio.run(ear.classify("u1", "hello", heard.event_id, {}))
+        else:
+            mouth = Mouth(client, sink.world, CP)
+            mouth.timeout_s = 0.05
+            asyncio.run(mouth.say(OFFER, "hello", heard.event_id))
+    (call,) = sink.of("llm.call")
+    assert call.payload["error"] == "cancelled" and call.cause_ids == (heard.event_id,)
+    assert call.actor == f"world.{role}"
+    _world_ok(sink)
+
+
+def test_simrep_ticks_nothing_while_a_turn_is_in_flight(tmp_path: Path) -> None:
+    sink = BusSink(tmp_path)
+    ear = sink.llm(_tool("classify", act="smalltalk"))
+    mouth = sink.llm(
+        "Hi, thanks for calling. Can I get your name and last 4?", hang_s=0.05
+    )
+    rep = SimRep(TASK, ear, mouth, sink.world)
+    heard = sink.heard("Hi there.")
+    late = 10**6
+
+    async def race() -> tuple[RepTurn, RepTurn]:
+        turn = asyncio.create_task(
+            rep.on_agent_utterance("u1", "Hi there.", heard.event_id, 0)
+        )
+        await asyncio.sleep(0.01)  # the Mouth is speaking
+        busy = await rep.tick(late)
+        return await turn, busy
+
+    turn, busy = asyncio.run(race())
+    assert busy == RepTurn((), False, False) and len(turn.lines) == 1
+    assert asyncio.run(rep.tick(late)).lines == ()  # the rep's line holds the floor
+    rep.floor(True, late)
+    silence = int(CP.patience.silence_s * 1000)
+    assert asyncio.run(rep.tick(late + silence - 1)) == RepTurn((), False, False)
+    assert rep.policy.strikes == 0

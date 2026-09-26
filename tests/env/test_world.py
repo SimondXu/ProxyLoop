@@ -97,3 +97,10 @@ def test_mouth_fidelity_needs_every_value_and_no_other_number() -> None:
     ask = PublicIntent(kind="greet", ask=("account.last4",))
     assert fidelity_ok("Could I get the last 4 digits?", ask)
     assert fidelity_ok(template(offer, "Northwind"), offer)
+
+
+def test_an_identifier_must_be_voiced_verbatim() -> None:
+    done = PublicIntent(kind="confirmed", say=(("confirmation", "048213"),))
+    assert fidelity_ok("Your confirmation number is 048213.", done)
+    assert not fidelity_ok("Your confirmation number is 48213.", done)
+    assert fidelity_ok(template(done, "Northwind"), done)

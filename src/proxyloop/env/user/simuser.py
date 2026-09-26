@@ -14,7 +14,7 @@ import random
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from pydantic import Field, ValidationError
+from pydantic import ConfigDict, Field, ValidationError
 
 from proxyloop.contract.base import Frozen
 from proxyloop.contract.llm import (
@@ -27,6 +27,7 @@ from proxyloop.contract.llm import (
 from proxyloop.env import world
 from proxyloop.env.tasks.schema import Task
 
+TEMPERATURE = 0.7  # pinned: persona variety; the reveal check guards the facts
 SYSTEM = """You are {persona}
 You asked an assistant to do this for you: {goal}
 Private facts about you (key: value):
@@ -38,6 +39,8 @@ key. Never invent facts."""
 
 
 class SimOut(Frozen):
+    model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
+
     text: str = Field(min_length=1)
     revealed: dict[str, str]
 
@@ -59,18 +62,18 @@ def check_reply(calls: tuple[ToolCall, ...], facts: Mapping[str, str]) -> SimOut
         raise world.Invalid(f"schema: {err.errors()[0]['msg']}") from err
     if unknown := sorted(out.revealed.keys() - facts.keys()):
         raise world.Invalid(f"revealed unknown keys {unknown}")
-    if absent := sorted(
-        k for k, v in out.revealed.items() if not v or v not in out.text
-    ):
+    if wrong := sorted(k for k, v in out.revealed.items() if v != facts[k]):
+        raise world.Invalid(f"revealed values that are not the profile's: {wrong}")
+    if absent := sorted(k for k, v in out.revealed.items() if v not in out.text):
         raise world.Invalid(f"revealed values not in the text: {absent}")
     return out
 
 
 class SimUser:
     def __init__(
-        self, task: Task, client: LLMClient, sink: world.WorldSink, seed: int
+        self, task: Task, client: LLMClient, writer: world.World, seed: int
     ) -> None:
-        self._client, self._sink = client, sink
+        self._client, self._world = client, writer
         self._facts, self._delay = task.profile.facts, task.user.reply_delay_s.range
         facts = "\n".join(f"{k}: {v}" for k, v in sorted(self._facts.items()))
         goal, persona = task.user_goal.strip(), task.profile.persona.strip()
@@ -100,22 +103,19 @@ class SimUser:
             ChatMessage(role="system", content=self._system),
             ChatMessage(role="user", content=f"Chat so far:\n{chat}"),
         )
-        evs: list[str] = []
+        call_ids = [f"simuser:{cause}:{n}" for n in range(world.MAX_REGENERATIONS + 1)]
 
         async def attempt(n: int) -> tuple[ToolCall, ...]:
             request = ToolRequest(
-                call_id=f"simuser:{cause}:{n}",
+                call_id=call_ids[n],
                 role="simuser",
                 messages=messages,
                 tools=(self._tool,),
                 tool_choice="reply",
                 max_tokens=world.MAX_TOKENS,
+                temperature=TEMPERATURE,
             )
-            calls, ev = await world.tools_call(
-                self._client, self._sink, "world.simuser", request, cause
-            )
-            evs.append(ev)
-            return calls
+            return await self._world.tools(self._client, request, cause)
 
         out, attempts, _ = await world.bounded(
             attempt,
@@ -127,5 +127,6 @@ class SimUser:
         delay = round(self._rng.uniform(*self._delay), 3)
         payload = {"text": out.text, "revealed": out.revealed, "delay_s": delay}
         payload["attempts"] = attempts
-        ev = self._sink.emit("user.sim", "world.simuser", payload, [cause, *evs])
+        causes = [cause, *self._world.calls(call_ids[:attempts])]
+        ev = self._world.emit("user.sim", "world.simuser", payload, causes)
         return SimReply(out.text, out.revealed, delay, ev)
