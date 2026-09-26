@@ -44,9 +44,9 @@ Decisions beyond the ARCHITECTURE text:
    |---|---|
    | `approval.post` | `ui`, `sim_approver` |
    | `approval.decided`, `mandate.decided` | `kernel` |
-   | `user.msg`, `utt.final`, `utt.delivered`, `chan.opened` | `kernel` |
+   | `user.msg`, `utt.final`, `utt.delivered`, `chan.opened`, `speak.released` (the Speaker, after `guard.revalidate`) | `kernel` |
    | `authority.fence`, `authority.epoch` | `kernel`, `guard` |
-   | `mandate.proposed`, `approval.requested`, `action.authorized`, `speak.verbatim`, `speak.released`, `screen.redacted`, `evidence.recorded`, `offer.recorded`, `readback.updated`, `summary.updated`, `completion.decided`, `status.changed` | `guard` |
+   | `mandate.proposed`, `approval.requested`, `action.authorized`, `speak.verbatim`, `screen.redacted`, `evidence.recorded`, `offer.recorded`, `readback.updated`, `summary.updated`, `completion.decided`, `status.changed` | `guard` |
 
    - Slow's tool effects reach the log as `guard` events.
    - The restrict-only types (`action.denied`, `speak.revoked`, `declass.denied`) and `fact.recorded` (information) accept any actor: models may restrict authority, never grant it.

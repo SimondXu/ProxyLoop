@@ -203,7 +203,7 @@ mandate.proposed    guard
 approval.requested  guard
 action.authorized   guard
 speak.verbatim      guard
-speak.released      guard
+speak.released      kernel
 screen.redacted     guard
 evidence.recorded   guard
 offer.recorded      guard
