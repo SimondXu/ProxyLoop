@@ -1,0 +1,459 @@
+"""The one Fast renderer and the Fast grammar (ARCHITECTURE §6, §12; I3).
+
+Every Fast prompt (teacher, training, evaluation, serving) comes from
+``render_messages`` / ``render_prompt``. The parser is tolerant on input
+(TalkAct's inline ``@slow:`` and scaffolding echoes) and canonical on output;
+``parse_turn(format_turn(t)) == t`` and streaming parse == batch parse (P4).
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import re
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import Annotated, Any, Literal, Protocol
+
+from pydantic import Field
+
+from proxyloop.contract.base import (
+    FACT_KEY,
+    HOLD_REASONS,
+    Frozen,
+    HoldReason,
+    Lane,
+    canonical_json,
+    sha256_text,
+)
+from proxyloop.contract.llm import ChatMessage
+from proxyloop.contract.messages import Guide
+from proxyloop.contract.profiles import Profile, SectionKind, pl_cp_v1, pl_user_v1
+from proxyloop.contract.state import OfferPublic, ReadbackSlot
+from proxyloop.contract.views import FastView
+
+CONTEXT_BUDGET_CHARS = 12_000  # system + user text; P2 records the worst token count
+EMPTY_THINK = "<think>\n\n</think>\n\n"  # the enable_thinking=False generation tail
+NONE = "(none)"
+OMITTED_LINES = "(earlier conversation omitted)"
+OMITTED_ACTIONS = "- (earlier actions omitted)"
+
+PROFILES: Mapping[str, Profile] = MappingProxyType(
+    {p.name: p for p in (pl_user_v1.PROFILE, pl_cp_v1.PROFILE)}
+)
+_BLOCKS: frozenset[SectionKind] = frozenset(
+    {"actions", "offers", "guidance", "transcript"}
+)
+
+
+class GuideSlotError(ValueError):
+    """A guide slot does not resolve in public state (rejected at render time)."""
+
+
+class ContextBudgetError(ValueError):
+    """The prompt exceeds the budget with no transcript and no action log: a bug."""
+
+
+class ChatTokenizer(Protocol):
+    """Duck-typed HF tokenizer: the contract never imports transformers."""
+
+    def apply_chat_template(
+        self, conversation: list[dict[str, str]], /, **kwargs: Any
+    ) -> Any: ...
+
+
+def _value(slot: ReadbackSlot) -> str:
+    if slot.unit == "usd_minor" and slot.value.isdigit():
+        minor = int(slot.value)
+        return f"${minor // 100}.{minor % 100:02d}"
+    if slot.unit == "months":
+        return f"{slot.value} months"
+    return slot.value
+
+
+def _offer(offer: OfferPublic) -> str:
+    slots = "; ".join(f"{s.field} {_value(s)} [{s.status}]" for s in offer.slots)
+    return f"- {offer.offer_ref} (revision {offer.revision}, {offer.status}): " + (
+        slots or NONE
+    )
+
+
+def _resolve(slot: str, view: FastView) -> str:
+    kind, _, rest = slot.partition(":")
+    if kind == "fact":
+        for fact in view.public_facts:
+            if fact.key == rest:
+                return fact.value
+    else:
+        ref, _, field = rest.partition(".")
+        offer = next((o for o in view.offers if o.offer_ref == ref), None)
+        if offer is not None and not field:
+            return f"offer {ref}"
+        for s in offer.slots if offer is not None else ():
+            if s.field == field:
+                return _value(s)
+    raise GuideSlotError(f"guide slot {slot!r} does not resolve in public state")
+
+
+def _guide(guide: Guide, view: FastView, profile: Profile) -> str:
+    text = profile.moves[guide.move]
+    if guide.slots:
+        resolved = "; ".join(f"{s} = {_resolve(s, view)}" for s in guide.slots)
+        text = f"{text} ({resolved})"
+    return f"- {text}"
+
+
+def _trigger(view: FastView, profile: Profile) -> str:
+    trigger, template = view.trigger, profile.triggers[view.trigger.kind]
+    if view.slow_msg is not None:
+        return template.format(kind=view.slow_msg.type.lower(), text=view.slow_msg.text)
+    if trigger.kind == "approval_card" and view.pending_approval is not None:
+        return template.format(readback_text=view.pending_approval.readback_text)
+    if trigger.kind == "hold_wait":
+        return template.format(n=trigger.wait_s)
+    return template
+
+
+def _block(
+    kind: SectionKind, view: FastView, profile: Profile, n_lines: int, n_actions: int
+) -> str:
+    if kind == "actions":
+        rows = [f"- {a}" for a in view.action_log[len(view.action_log) - n_actions :]]
+        if n_actions < len(view.action_log):
+            rows.insert(0, OMITTED_ACTIONS)
+    elif kind == "offers":
+        rows = [_offer(o) for o in view.offers]
+    elif kind == "guidance":
+        rows = [_guide(g, view, profile) for g in view.guidance]
+    else:
+        labels = {"partner": profile.labels[0], "agent": profile.labels[1]}
+        kept = view.transcript[len(view.transcript) - n_lines :]
+        rows = [f"{labels[line.speaker]}: {line.text}" for line in kept]
+        if n_lines < len(view.transcript):
+            rows.insert(0, OMITTED_LINES)
+    return "\n".join(rows) or NONE
+
+
+def _inline(kind: SectionKind, view: FastView, profile: Profile) -> str:
+    if kind == "trigger":
+        return _trigger(view, profile)
+    if kind == "status":
+        return view.status.value
+    if kind == "hold":
+        return f"on hold ({view.hold.reason})" if view.hold is not None else NONE
+    card = view.pending_approval
+    text = {
+        "brief": view.brief,
+        "private_summary": view.private_summary,
+        "public_summary": view.public_summary,
+        "approval": card.readback_text if card is not None else None,
+    }[kind]
+    return text or NONE
+
+
+def _content(view: FastView, profile: Profile, n_lines: int, n_actions: int) -> str:
+    parts = [
+        f"{header}:\n{_block(kind, view, profile, n_lines, n_actions)}"
+        if kind in _BLOCKS
+        else f"{header}: {_inline(kind, view, profile)}"
+        for header, kind in profile.sections
+    ]
+    return "\n\n".join([*parts, profile.closing])
+
+
+def render_messages(view: FastView, profile: str) -> tuple[ChatMessage, ChatMessage]:
+    """System + user messages under the shared context budget (C17).
+
+    Over budget, the oldest transcript lines go first, then the oldest actions;
+    summaries, offers, guidance and the trigger are never dropped.
+    """
+
+    spec = PROFILES[profile]
+    if spec.lane != view.lane:
+        raise ValueError(f"profile {profile} renders the {spec.lane} lane")
+    room = CONTEXT_BUDGET_CHARS - len(spec.system)
+    n_lines, n_actions = len(view.transcript), len(view.action_log)
+    content = _content(view, spec, n_lines, n_actions)
+    while len(content) > room and n_lines > 0:
+        n_lines -= 1
+        content = _content(view, spec, n_lines, n_actions)
+    while len(content) > room and n_actions > 0:
+        n_actions -= 1
+        content = _content(view, spec, n_lines, n_actions)
+    if len(content) > room:
+        raise ContextBudgetError(f"{len(content)} chars > {room} after trimming")
+    return (
+        ChatMessage(role="system", content=spec.system),
+        ChatMessage(role="user", content=content),
+    )
+
+
+def render_prompt(view: FastView, profile: str, tok: ChatTokenizer) -> str:
+    """The pre-rendered completion prompt, thinking off (P2/P3)."""
+
+    messages = [
+        {"role": m.role, "content": m.content} for m in render_messages(view, profile)
+    ]
+    text = tok.apply_chat_template(
+        messages, tokenize=False, add_generation_prompt=True, enable_thinking=False
+    )
+    if not isinstance(text, str) or not text.endswith(EMPTY_THINK):
+        raise ValueError(f"the chat template did not end with {EMPTY_THINK!r}")
+    return text
+
+
+def fingerprint(profile: str) -> str:
+    """sha256 of the profile text plus its committed P2 golden ids (§12)."""
+
+    spec = PROFILES[profile]
+    if not spec.p2_ids_sha256:
+        raise ValueError(f"profile {profile} has no recorded P2 ids")
+    body = dataclasses.asdict(spec)
+    body["budget"] = CONTEXT_BUDGET_CHARS
+    body["empty_think"] = EMPTY_THINK
+    return sha256_text(canonical_json(body))
+
+
+class Speech(Frozen):
+    kind: Literal["speech"] = "speech"
+    text: str  # one sentence
+
+
+RelayType = Literal["note", "fact", "correction", "request", "revoke"]
+
+
+class Relay(Frozen):
+    kind: Literal["relay"] = "relay"
+    type: RelayType
+    text: str = ""  # note, request, revoke
+    facts: tuple[tuple[str, str], ...] = ()  # fact, correction
+
+
+class Hold(Frozen):
+    kind: Literal["hold"] = "hold"
+    reason: HoldReason
+
+
+class Wait(Frozen):
+    kind: Literal["wait"] = "wait"
+
+
+class EndCall(Frozen):
+    kind: Literal["end_call"] = "end_call"
+
+
+IssueReason = (
+    Literal["wrong_lane", "unknown_directive", "bad_hold_reason", "duplicate_pause"]
+    | Literal["malformed_fact", "malformed_relay", "empty_turn", "duplicate_end_call"]
+    | Literal["stray_directive", "inline_directive", "scaffold_echo"]
+)
+
+
+class ParseIssue(Frozen):
+    """Counted, never hidden (``directive_error``)."""
+
+    kind: Literal["issue"] = "issue"
+    reason: IssueReason
+    text: str = ""
+
+
+TurnItem = Annotated[
+    Speech | Relay | Hold | Wait | EndCall | ParseIssue, Field(discriminator="kind")
+]
+
+# TalkAct's tolerances (fast_agent.py:168-191), and no others: inline and
+# case-insensitive @slow:, FIRST:/THEN: stripping, a trailing @end_call strip,
+# a case-insensitive @end_call line. Everything else is case-sensitive.
+_SLOW = re.compile(r"@slow:\s*", re.IGNORECASE)
+_LEAD = re.compile(r"^(?:FIRST|THEN)\s*:\s*", re.IGNORECASE)
+_TRAIL_END = re.compile(r"@end_call\s*$", re.IGNORECASE)
+_TRAIL_SCAFFOLD = re.compile(r"\b(?:THEN|FIRST)\s*:\s*$", re.IGNORECASE)
+_INLINE = re.compile(r"@(?:hold|wait)\b|(?i:@end_call)")
+_BREAK = re.compile(r"(?<=[.!?])\s+")
+_KEY = re.compile(rf"^{FACT_KEY}$")
+_HEADS = ("fact", "correction", "request", "revoke")
+
+
+def _clean(spoken: str) -> tuple[str, bool]:
+    """TalkAct's scaffold strips; also says whether a trailing @end_call went."""
+
+    text = _LEAD.sub("", spoken.strip()).strip()
+    cut = _TRAIL_END.sub("", text).strip()
+    return _TRAIL_SCAFFOLD.sub("", cut).strip(), cut != text
+
+
+def _speakable(text: str) -> bool:
+    """A canonical sentence: it re-parses to itself."""
+
+    return bool(text) and not (
+        text.startswith("@")
+        or "\n" in text
+        or text != text.strip()
+        or _SLOW.search(text)
+        or _LEAD.match(text)
+        or _TRAIL_END.search(text)
+        or _TRAIL_SCAFFOLD.search(text)
+    )
+
+
+def _sentence(text: str) -> list[TurnItem]:
+    if not _speakable(text):
+        reason = "stray_directive" if text.startswith("@") else "scaffold_echo"
+        return [ParseIssue(reason=reason, text=text)]
+    if _INLINE.search(text):  # TalkAct speaks it; we count it
+        return [Speech(text=text), ParseIssue(reason="inline_directive", text=text)]
+    return [Speech(text=text)]
+
+
+def _pairs(text: str) -> tuple[tuple[str, str], ...] | None:
+    pairs: list[tuple[str, str]] = []
+    for piece in text.split(";"):
+        key, sep, value = piece.partition("=")
+        key, value = key.strip(), value.strip()
+        if not sep or not _KEY.match(key) or not value:
+            return None
+        pairs.append((key, value))
+    return tuple(pairs)
+
+
+class StreamParser:
+    """Feed model text as it streams; sentences come out as soon as they close."""
+
+    def __init__(self, lane: Lane) -> None:
+        self._lane = lane
+        self._buf = ""
+        self._emitted = 0  # sentences of the current line already returned
+        self._paused = False  # one @hold / @wait per turn
+        self._ended = False
+        self._any = False
+        self._closed = False
+
+    def feed(self, chunk: str) -> list[TurnItem]:
+        if self._closed:
+            raise ValueError("the parser is closed")
+        *lines, self._buf = (self._buf + chunk).split("\n")
+        items: list[TurnItem] = []
+        for line in lines:
+            items += self._line(line, final=True)
+        items += self._line(self._buf, final=False)
+        return self._seen(items)
+
+    def close(self) -> list[TurnItem]:
+        items = self._seen(self._line(self._buf, final=True))
+        self._buf, self._closed = "", True
+        if not self._any:
+            items.append(ParseIssue(reason="empty_turn"))
+        return items
+
+    def _seen(self, items: list[TurnItem]) -> list[TurnItem]:
+        self._any = self._any or any(not isinstance(i, ParseIssue) for i in items)
+        return items
+
+    def _line(self, raw: str, final: bool) -> list[TurnItem]:
+        text = raw.strip()
+        if text.startswith("@") and not _SLOW.match(text):
+            return self._directive(text) if final else []
+        parts = _SLOW.split(text)
+        spoken, cut = _clean(parts[0])
+        sentences = [] if spoken.startswith("@") else _BREAK.split(spoken)
+        if not final:  # the last sentence may still grow
+            ready = [s for s in sentences[self._emitted : -1] if s]
+            self._emitted += len(ready)
+            return [item for s in ready for item in _sentence(s)]
+        items = [i for s in sentences[self._emitted :] if s for i in _sentence(s)]
+        if spoken.startswith("@"):  # neither speech nor a directive
+            items.append(ParseIssue(reason="stray_directive", text=spoken))
+        elif cut:
+            items.append(ParseIssue(reason="inline_directive", text="@end_call"))
+        self._emitted = 0
+        for segment in parts[1:]:
+            items += self._relay(segment.strip())
+        return items
+
+    def _directive(self, text: str) -> list[TurnItem]:
+        if text.lower().startswith("@end_call"):
+            if self._ended:
+                return [ParseIssue(reason="duplicate_end_call", text=text)]
+            self._ended = True
+            return [EndCall()]
+        words = text.split()
+        if words[0] == "@hold":
+            if self._lane != "cp":
+                return [ParseIssue(reason="wrong_lane", text=text)]
+            reason = words[1] if len(words) == 2 else ""
+            for known in HOLD_REASONS:
+                if reason == known:
+                    return self._pause(Hold(reason=known), text)
+            return [ParseIssue(reason="bad_hold_reason", text=text)]
+        if text == "@wait":
+            return self._pause(Wait(), text)
+        return [ParseIssue(reason="unknown_directive", text=text)]
+
+    def _pause(self, item: Hold | Wait, text: str) -> list[TurnItem]:
+        if self._paused:
+            return [ParseIssue(reason="duplicate_pause", text=text)]
+        self._paused = True
+        return [item]
+
+    def _relay(self, segment: str) -> list[TurnItem]:
+        if not segment:
+            return [ParseIssue(reason="malformed_relay")]
+        head, _, rest = segment.partition(" ")
+        rest = rest.strip()
+        note: list[TurnItem] = [Relay(type="note", text=segment)]
+        if head in ("correction", "request", "revoke") and self._lane != "user":
+            return [ParseIssue(reason="wrong_lane", text=segment)]
+        if head == "fact" or head == "correction":
+            pairs = _pairs(rest)
+            if pairs is None or (head == "correction" and len(pairs) != 1):
+                return [*note, ParseIssue(reason="malformed_fact", text=segment)]
+            return [Relay(type=head, facts=pairs)]
+        if (head == "request" or head == "revoke") and rest:
+            return [Relay(type=head, text=rest)]
+        wrong_case = head.lower() in _HEADS  # e.g. REVOKE, or a head with no text
+        unknown_typed = head.isalpha() and head.islower() and _pairs(rest) is not None
+        if wrong_case or unknown_typed:
+            return [*note, ParseIssue(reason="malformed_relay", text=segment)]
+        return note
+
+
+def parse_turn(text: str, lane: Lane) -> tuple[TurnItem, ...]:
+    parser = StreamParser(lane)
+    return (*parser.feed(text), *parser.close())
+
+
+def _relay_text(relay: Relay) -> str:
+    if relay.type == "note":
+        return relay.text
+    if relay.type in ("fact", "correction"):
+        return f"{relay.type} " + "; ".join(f"{k}={v}" for k, v in relay.facts)
+    return f"{relay.type} {relay.text}"
+
+
+def format_turn(items: tuple[TurnItem, ...]) -> str:
+    """Canonical text, in item order: one line per directive; consecutive
+    sentences share a line after a closing ``.!?``."""
+
+    lines: list[str] = []
+    joinable = False
+    for item in items:
+        if isinstance(item, Speech):
+            if not _speakable(item.text):
+                raise ValueError(f"not a canonical sentence: {item.text!r}")
+            if joinable and lines[-1][-1] in ".!?":
+                lines[-1] += " " + item.text
+            else:
+                lines.append(item.text)
+            joinable = True
+            continue
+        joinable = False
+        if isinstance(item, Relay):
+            lines.append(f"@slow: {_relay_text(item)}")
+        elif isinstance(item, Hold):
+            lines.append(f"@hold {item.reason}")
+        elif isinstance(item, Wait):
+            lines.append("@wait")
+        elif isinstance(item, EndCall):
+            lines.append("@end_call")
+        else:
+            raise ValueError("a parse issue has no canonical text")
+    return "\n".join(lines)

@@ -3,7 +3,9 @@ name = "proxyloop"
 version = "0.0.0"
 description = "ProxyLoop v3: one traceable Fast/Slow agent execution path."
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+  "pydantic==2.13.5",
+]
 
 [build-system]
 requires = ["uv_build>=0.8.4,<0.9"]
@@ -13,16 +15,17 @@ build-backend = "uv_build"
 dev = [
   "hypothesis==6.168.1",
   "import-linter==2.15",
+  "jinja2==3.1.6",
   "pyright==1.1.414",
   "pytest==9.1.1",
   "ruff==0.16.9",
+  "transformers==5.17.0",
 ]
 sys = []
 mod = [
   "httpx==0.28.1",
   "modal==1.5.5",
   "starlette==1.7.0",
-  "transformers==5.17.0",
 ]
 
 [tool.uv]

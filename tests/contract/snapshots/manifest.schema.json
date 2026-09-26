@@ -1,0 +1,386 @@
+{
+ "$defs": {
+  "AblationId": {
+   "description": "The S3 paired ablations (EVAL \u00a74.2). A3 is a lane swap of ``fast_*``;\nA5 is ``slow_view=raw_transcript``.",
+   "enum": [
+    "suppress_relay_user",
+    "suppress_relay_cp",
+    "mute_fastu_explanations",
+    "teacher_repair_cp",
+    "teacher_repair_user",
+    "approval_without_fastu_readback"
+   ],
+   "title": "AblationId",
+   "type": "string"
+  },
+  "AdapterKind": {
+   "enum": [
+    "real_http",
+    "recorded_replay",
+    "test_fake",
+    "baseline"
+   ],
+   "title": "AdapterKind",
+   "type": "string"
+  },
+  "ModelRef": {
+   "additionalProperties": false,
+   "description": "One model, by exact id (never an alias).",
+   "properties": {
+    "endpoint": {
+     "anyOf": [
+      {
+       "enum": [
+        "relay",
+        "teamrouter",
+        "vllm"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Endpoint"
+    },
+    "kind": {
+     "$ref": "#/$defs/AdapterKind"
+    },
+    "model_id": {
+     "minLength": 1,
+     "title": "Model Id",
+     "type": "string"
+    },
+    "reasoning_effort": {
+     "anyOf": [
+      {
+       "enum": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Reasoning Effort"
+    }
+   },
+   "required": [
+    "kind",
+    "endpoint",
+    "model_id"
+   ],
+   "title": "ModelRef",
+   "type": "object"
+  },
+  "RoleModel": {
+   "additionalProperties": false,
+   "properties": {
+    "adapter_shards": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "title": "Adapter Shards",
+     "type": "object"
+    },
+    "ref": {
+     "$ref": "#/$defs/ModelRef"
+    },
+    "served_model": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Served Model"
+    }
+   },
+   "required": [
+    "ref"
+   ],
+   "title": "RoleModel",
+   "type": "object"
+  },
+  "Sampling": {
+   "additionalProperties": false,
+   "properties": {
+    "max_tokens": {
+     "exclusiveMinimum": 0,
+     "title": "Max Tokens",
+     "type": "integer"
+    },
+    "temperature": {
+     "minimum": 0,
+     "title": "Temperature",
+     "type": "number"
+    },
+    "top_p": {
+     "exclusiveMinimum": 0,
+     "maximum": 1,
+     "title": "Top P",
+     "type": "number"
+    }
+   },
+   "required": [
+    "temperature",
+    "top_p",
+    "max_tokens"
+   ],
+   "title": "Sampling",
+   "type": "object"
+  },
+  "SessionConfig": {
+   "additionalProperties": false,
+   "properties": {
+    "ablations": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/AblationId"
+     },
+     "title": "Ablations",
+     "type": "array"
+    },
+    "fast_cp": {
+     "$ref": "#/$defs/ModelRef"
+    },
+    "fast_sampling": {
+     "$ref": "#/$defs/Sampling"
+    },
+    "fast_user": {
+     "$ref": "#/$defs/ModelRef"
+    },
+    "live": {
+     "title": "Live",
+     "type": "boolean"
+    },
+    "seed": {
+     "title": "Seed",
+     "type": "integer"
+    },
+    "slow": {
+     "$ref": "#/$defs/ModelRef"
+    },
+    "slow_view": {
+     "$ref": "#/$defs/SlowViewMode",
+     "default": "relay_only"
+    },
+    "teacher": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/ModelRef"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "world": {
+     "$ref": "#/$defs/WorldModels"
+    }
+   },
+   "required": [
+    "fast_user",
+    "fast_cp",
+    "slow",
+    "world",
+    "fast_sampling",
+    "seed",
+    "live"
+   ],
+   "title": "SessionConfig",
+   "type": "object"
+  },
+  "SlowViewMode": {
+   "enum": [
+    "relay_only",
+    "raw_transcript"
+   ],
+   "title": "SlowViewMode",
+   "type": "string"
+  },
+  "Spend": {
+   "additionalProperties": false,
+   "properties": {
+    "by_role": {
+     "additionalProperties": {
+      "type": "integer"
+     },
+     "title": "By Role",
+     "type": "object"
+    },
+    "micro_usd": {
+     "default": 0,
+     "title": "Micro Usd",
+     "type": "integer"
+    }
+   },
+   "title": "Spend",
+   "type": "object"
+  },
+  "WorldModels": {
+   "additionalProperties": false,
+   "description": "The world's models. No default: a required ``SessionConfig`` value.",
+   "properties": {
+    "ear": {
+     "$ref": "#/$defs/ModelRef"
+    },
+    "mouth": {
+     "$ref": "#/$defs/ModelRef"
+    },
+    "simuser": {
+     "$ref": "#/$defs/ModelRef"
+    }
+   },
+   "required": [
+    "ear",
+    "mouth",
+    "simuser"
+   ],
+   "title": "WorldModels",
+   "type": "object"
+  }
+ },
+ "additionalProperties": false,
+ "properties": {
+  "attestation": {
+   "anyOf": [
+    {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "type": "object"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Attestation"
+  },
+  "cfg": {
+   "$ref": "#/$defs/SessionConfig"
+  },
+  "cfg_hash": {
+   "title": "Cfg Hash",
+   "type": "string"
+  },
+  "contract_version": {
+   "title": "Contract Version",
+   "type": "string"
+  },
+  "fingerprints": {
+   "additionalProperties": {
+    "type": "string"
+   },
+   "title": "Fingerprints",
+   "type": "object"
+  },
+  "git_sha": {
+   "title": "Git Sha",
+   "type": "string"
+  },
+  "instance_hash": {
+   "title": "Instance Hash",
+   "type": "string"
+  },
+  "models": {
+   "additionalProperties": {
+    "$ref": "#/$defs/RoleModel"
+   },
+   "propertyNames": {
+    "enum": [
+     "fast_user",
+     "fast_cp",
+     "slow",
+     "ear",
+     "mouth",
+     "simuser",
+     "teacher"
+    ]
+   },
+   "title": "Models",
+   "type": "object"
+  },
+  "p3": {
+   "enum": [
+    "pass",
+    "fail",
+    "not_applicable"
+   ],
+   "title": "P3",
+   "type": "string"
+  },
+  "reality": {
+   "additionalProperties": {
+    "$ref": "#/$defs/AdapterKind"
+   },
+   "propertyNames": {
+    "enum": [
+     "fast_user",
+     "fast_cp",
+     "slow",
+     "ear",
+     "mouth",
+     "simuser",
+     "teacher"
+    ]
+   },
+   "title": "Reality",
+   "type": "object"
+  },
+  "run_id": {
+   "title": "Run Id",
+   "type": "string"
+  },
+  "schema": {
+   "const": "pl.bundle/1",
+   "default": "pl.bundle/1",
+   "title": "Schema",
+   "type": "string"
+  },
+  "spend": {
+   "$ref": "#/$defs/Spend"
+  },
+  "split": {
+   "enum": [
+    "train",
+    "dev",
+    "test"
+   ],
+   "title": "Split",
+   "type": "string"
+  },
+  "task_ref": {
+   "title": "Task Ref",
+   "type": "string"
+  }
+ },
+ "required": [
+  "run_id",
+  "git_sha",
+  "contract_version",
+  "cfg",
+  "cfg_hash",
+  "task_ref",
+  "instance_hash",
+  "split",
+  "fingerprints",
+  "models",
+  "p3",
+  "reality",
+  "spend"
+ ],
+ "title": "Manifest",
+ "type": "object"
+}

@@ -1,0 +1,1593 @@
+{
+ "profile": "pl_user_v1",
+ "view": {
+  "lane": "user",
+  "brief": "Help Dana Reyes lower her Contoso Mobile bill. Keep her informed.",
+  "private_summary": "Dana wants a lower bill: at most $71.50 a month, at most $27.50 in one-time fees, no contract extension. Account PIN 4921 is on file.",
+  "public_summary": "The rep offered $65.00 a month for 12 months, with a $30.00 activation fee.",
+  "action_log": [
+   "opened the call",
+   "recorded an offer",
+   "asked for a read-back"
+  ],
+  "offers": [
+   {
+    "offer_ref": "o1",
+    "revision": 1,
+    "slots": [
+     {
+      "field": "monthly_price",
+      "value": "6500",
+      "unit": "usd_minor",
+      "role": "recurring",
+      "source_utt": null,
+      "span": null,
+      "status": "heard"
+     },
+     {
+      "field": "term_months",
+      "value": "12",
+      "unit": "months",
+      "role": "recurring",
+      "source_utt": null,
+      "span": null,
+      "status": "heard"
+     },
+     {
+      "field": "fee:activation",
+      "value": "3000",
+      "unit": "usd_minor",
+      "role": "one_time",
+      "source_utt": null,
+      "span": null,
+      "status": "heard"
+     },
+     {
+      "field": "changes_none",
+      "value": "true",
+      "unit": "bool",
+      "role": "change",
+      "source_utt": null,
+      "span": null,
+      "status": "unknown"
+     },
+     {
+      "field": "expires",
+      "value": "2026-10-15",
+      "unit": "iso",
+      "role": "expiry",
+      "source_utt": null,
+      "span": null,
+      "status": "unknown"
+     }
+    ],
+    "status": "open",
+    "expires_ms": null,
+    "terms_hash": "c0ffee"
+   }
+  ],
+  "public_facts": [],
+  "pending_approval": null,
+  "guidance": [],
+  "hold": null,
+  "status": "IN_CALL",
+  "transcript": [
+   {
+    "utt_id": "u0",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u1",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u2",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u3",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u4",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u5",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u6",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u7",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u8",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u9",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u10",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u11",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u12",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u13",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u14",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u15",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u16",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u17",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u18",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u19",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u20",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u21",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u22",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u23",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u24",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u25",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u26",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u27",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u28",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u29",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u30",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u31",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u32",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u33",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u34",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u35",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u36",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u37",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u38",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u39",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u40",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u41",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u42",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u43",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u44",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u45",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u46",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u47",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u48",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u49",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u50",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u51",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u52",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u53",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u54",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u55",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u56",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u57",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u58",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u59",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u60",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u61",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u62",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u63",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u64",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u65",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u66",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u67",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u68",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u69",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u70",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u71",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u72",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u73",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u74",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u75",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u76",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u77",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u78",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u79",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u80",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u81",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u82",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u83",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u84",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u85",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u86",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u87",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u88",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u89",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u90",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u91",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u92",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u93",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u94",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u95",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u96",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u97",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u98",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u99",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u100",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u101",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u102",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u103",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u104",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u105",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u106",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u107",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u108",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u109",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u110",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u111",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u112",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u113",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u114",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u115",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u116",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u117",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u118",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u119",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u120",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u121",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u122",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u123",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u124",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u125",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u126",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u127",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u128",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u129",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u130",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u131",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u132",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u133",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u134",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u135",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u136",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u137",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u138",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u139",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u140",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u141",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u142",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u143",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u144",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u145",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u146",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u147",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u148",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u149",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u150",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u151",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u152",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u153",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u154",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u155",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u156",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u157",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u158",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u159",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u160",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u161",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u162",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u163",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u164",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u165",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u166",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u167",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u168",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u169",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u170",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u171",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u172",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u173",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u174",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u175",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u176",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u177",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u178",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u179",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u180",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u181",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u182",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u183",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u184",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u185",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u186",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u187",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u188",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u189",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u190",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u191",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u192",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u193",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u194",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u195",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u196",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u197",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u198",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u199",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u200",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u201",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u202",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u203",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u204",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u205",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u206",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u207",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u208",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u209",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u210",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u211",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u212",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u213",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u214",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u215",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u216",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u217",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u218",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u219",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u220",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u221",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u222",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u223",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u224",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u225",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u226",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u227",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u228",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u229",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u230",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u231",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u232",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u233",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u234",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u235",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u236",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u237",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u238",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u239",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u240",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u241",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u242",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u243",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u244",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u245",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u246",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u247",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u248",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u249",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u250",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u251",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u252",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u253",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u254",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u255",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u256",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u257",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u258",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u259",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u260",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u261",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u262",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u263",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u264",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u265",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u266",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u267",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u268",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u269",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u270",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u271",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u272",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u273",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u274",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u275",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u276",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u277",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u278",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u279",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u280",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u281",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u282",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u283",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u284",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u285",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u286",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u287",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u288",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u289",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u290",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u291",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u292",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u293",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u294",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u295",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u296",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u297",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u298",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "u299",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   }
+  ],
+  "trigger": {
+   "kind": "user_msg",
+   "msg_id": null,
+   "wait_s": null
+  },
+  "slow_msg": null
+ },
+ "messages": [
+  {
+   "role": "system",
+   "content": "You are the chat voice of a personal assistant app. You are chatting with the user, your principal, in the app. Behind you, a CASE AGENT does the actual work: it plans the task, and another voice talks to the company on the phone. You two cooperate:\n\n- You see the case agent's summaries, recent actions, the offers on the table and the case status below. Answer the user's questions from that context. Never invent facts that are not in the context or conversation.\n- When the user gives task-relevant information (their details, preferences, limits, choices, answers to the case agent's questions), you MUST relay it with a line `@slow: <the information>`.\n- When the user asks for something the context does not answer, or requests an action, relay it: `@slow: <request>`, and tell the user you're on it. The case agent's reply will arrive later.\n- When the case agent sends a message for the user (shown as a trigger), convey it naturally.\n- CRITICAL: never claim the task is done, accepted or completed unless CASE STATUS is VERIFIED_COMPLETE. Until then, be honest that it is still in progress.\n\nExtensions:\n- Typed relays: `@slow: fact <key>=<value>` (several: `; `) for facts the user gives; `@slow: correction <key>=<value>` when the user corrects an earlier fact; `@slow: request <text>` for a request; `@slow: revoke <text>` when the user says stop, cancels, or changes their mind about anything pending.\n- Never approve, accept or agree to anything yourself. Approvals happen only on the approval card the app shows the user.\n- Output `@wait` instead of a message when there is deliberately nothing to say.\n\nOutput format (strict):\n1. FIRST: the chat message, as plain conversational text. Short (usually 1-2 sentences), natural. No markdown, no lists.\n2. THEN (optional): one or more `@slow: ...` lines.\n3. THEN (optional): `@wait`.\nMessage first, directives after."
+  },
+  {
+   "role": "user",
+   "content": "TASK CONTEXT: Help Dana Reyes lower her Contoso Mobile bill. Keep her informed.\n\nCASE AGENT SUMMARY: Dana wants a lower bill: at most $71.50 a month, at most $27.50 in one-time fees, no contract extension. Account PIN 4921 is on file.\n\nSHARED CALL SUMMARY: The rep offered $65.00 a month for 12 months, with a $30.00 activation fee.\n\nCASE AGENT RECENT ACTIONS:\n- opened the call\n- recorded an offer\n- asked for a read-back\n\nOFFERS ON THE TABLE:\n- o1 (revision 1, open): monthly_price $65.00 [heard]; term_months 12 months [heard]; fee:activation $30.00 [heard]; changes_none true [unknown]; expires 2026-10-15 [unknown]\n\nPENDING APPROVAL: (none)\n\nCASE STATUS: IN_CALL\n\nCONVERSATION SO FAR:\n(earlier conversation omitted)\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\nASSISTANT: We keep talking about the plan, the price and the fees.\nUSER: We keep talking about the plan, the price and the fees.\n\nTRIGGER: The user just sent a message (last USER line). Respond.\n\nRespond now per the output format."
+  }
+ ]
+}
