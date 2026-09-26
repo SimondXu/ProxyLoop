@@ -67,5 +67,5 @@ PROFILE = Profile(
         "Explain it briefly and ask them to review it.",
         "session_start": "The session just started. Greet the user briefly.",
     },
-    p2_ids_sha256="46cd434dfa34add7ea2a0d2459e4739af63b43daf51fb30457e3ee64e2d0e5e4",
+    p2_ids_sha256="16c1df912a2e63a59a42a3e83830d4f850c1dc11dd0ded6283581879bca71a1e",
 )

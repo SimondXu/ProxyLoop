@@ -61,9 +61,6 @@ class ChatTokenizer(Protocol):
     ) -> Any: ...
 
 
-# ---------------------------------------------------------------- rendering
-
-
 def _value(slot: ReadbackSlot) -> str:
     if slot.unit == "usd_minor" and slot.value.isdigit():
         minor = int(slot.value)
@@ -216,9 +213,6 @@ def fingerprint(profile: str) -> str:
     return sha256_text(canonical_json(body))
 
 
-# ---------------------------------------------------------------- grammar
-
-
 class Speech(Frozen):
     kind: Literal["speech"] = "speech"
     text: str  # one sentence
@@ -247,14 +241,10 @@ class EndCall(Frozen):
     kind: Literal["end_call"] = "end_call"
 
 
-IssueReason = Literal[
-    "wrong_lane",
-    "unknown_directive",
-    "bad_hold_reason",
-    "duplicate_pause",
-    "malformed_fact",
-    "empty_turn",
-]
+IssueReason = (
+    Literal["wrong_lane", "unknown_directive", "bad_hold_reason", "duplicate_pause"]
+    | Literal["malformed_fact", "empty_turn"]
+)
 
 
 class ParseIssue(Frozen):

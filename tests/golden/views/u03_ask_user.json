@@ -97,7 +97,7 @@
    "msg_id": "s1",
    "lane": "user",
    "type": "ASK_USER",
-   "text": "Would a 12-month term at $65.00 a month work for you?",
+   "text": "Would a 12-month term at $65.00 a month work?",
    "guide": null,
    "approval_id": null
   }
@@ -109,7 +109,7 @@
   },
   {
    "role": "user",
-   "content": "TASK CONTEXT: Help Dana Reyes lower her Contoso Mobile bill. Keep her informed.\n\nCASE AGENT SUMMARY: Dana wants a lower bill: at most $71.50 a month, at most $27.50 in one-time fees, no contract extension. Account PIN 4921 is on file.\n\nSHARED CALL SUMMARY: The rep offered $65.00 a month for 12 months, with a $30.00 activation fee.\n\nCASE AGENT RECENT ACTIONS:\n- opened the call\n- recorded an offer\n- asked for a read-back\n\nOFFERS ON THE TABLE:\n- o1 (revision 1, open): monthly_price $65.00 [heard]; term_months 12 months [heard]; fee:activation $30.00 [heard]; changes_none true [unknown]; expires 2026-10-15 [unknown]\n\nPENDING APPROVAL: (none)\n\nCASE STATUS: IN_CALL\n\nCONVERSATION SO FAR:\nUSER: Hi, my phone bill is too high.\nASSISTANT: I can help with that. Let me get started.\nUSER: Did they offer anything yet?\n\nTRIGGER: The case agent sent a message for the user (ask_user): \"Would a 12-month term at $65.00 a month work for you?\". Convey it naturally.\n\nRespond now per the output format."
+   "content": "TASK CONTEXT: Help Dana Reyes lower her Contoso Mobile bill. Keep her informed.\n\nCASE AGENT SUMMARY: Dana wants a lower bill: at most $71.50 a month, at most $27.50 in one-time fees, no contract extension. Account PIN 4921 is on file.\n\nSHARED CALL SUMMARY: The rep offered $65.00 a month for 12 months, with a $30.00 activation fee.\n\nCASE AGENT RECENT ACTIONS:\n- opened the call\n- recorded an offer\n- asked for a read-back\n\nOFFERS ON THE TABLE:\n- o1 (revision 1, open): monthly_price $65.00 [heard]; term_months 12 months [heard]; fee:activation $30.00 [heard]; changes_none true [unknown]; expires 2026-10-15 [unknown]\n\nPENDING APPROVAL: (none)\n\nCASE STATUS: IN_CALL\n\nCONVERSATION SO FAR:\nUSER: Hi, my phone bill is too high.\nASSISTANT: I can help with that. Let me get started.\nUSER: Did they offer anything yet?\n\nTRIGGER: The case agent sent a message for the user (ask_user): \"Would a 12-month term at $65.00 a month work?\". Convey it naturally.\n\nRespond now per the output format."
   }
  ]
 }

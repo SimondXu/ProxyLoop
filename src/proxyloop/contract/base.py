@@ -21,8 +21,6 @@ FACT_KEY = r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*"
 
 
 class Frozen(BaseModel):
-    """An immutable, closed contract record."""
-
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 

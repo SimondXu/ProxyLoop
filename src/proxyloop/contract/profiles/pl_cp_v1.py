@@ -68,5 +68,5 @@ PROFILE = Profile(
         "deflect_fact_request": "Say you cannot share that detail.",
         "close_call": "Thank them and end the call (@end_call).",
     },
-    p2_ids_sha256="c469c689c141d7f19abd5f408734c0a1814f58d6d216e4fd6db5940e58dffb75",
+    p2_ids_sha256="15f49168e1c1a83b605108a1f3e3fdceee839beed771957ba15d82aeeba63bea",
 )

@@ -8,7 +8,7 @@ data, not state, so the views take it as an argument (ADR-0004).
 
 from __future__ import annotations
 
-from typing import Literal, Self
+from typing import Literal, Self, get_args
 
 from pydantic import Field, model_validator
 
@@ -30,26 +30,10 @@ from proxyloop.contract.state import (
     PublicFact,
 )
 
-TriggerKind = Literal[
-    "user_msg",
-    "slow_msg",
-    "approval_card",
-    "session_start",
-    "rep_spoke",
-    "hold_wait",
-    "guidance",
-    "call_connected",
-]
-TRIGGER_LANE: dict[TriggerKind, Lane] = {
-    "user_msg": "user",
-    "slow_msg": "user",
-    "approval_card": "user",
-    "session_start": "user",
-    "rep_spoke": "cp",
-    "hold_wait": "cp",
-    "guidance": "cp",
-    "call_connected": "cp",
-}
+UserTrigger = Literal["user_msg", "slow_msg", "approval_card", "session_start"]
+CpTrigger = Literal["rep_spoke", "hold_wait", "guidance", "call_connected"]
+TriggerKind = UserTrigger | CpTrigger
+USER_TRIGGERS: frozenset[str] = frozenset(get_args(UserTrigger))
 
 
 class Trigger(Frozen):
@@ -86,10 +70,8 @@ class FastView(Frozen):
 
     @model_validator(mode="after")
     def _lane_fields(self) -> Self:
-        if TRIGGER_LANE[self.trigger.kind] != self.lane:
-            raise ValueError(
-                f"trigger {self.trigger.kind} is not a {self.lane} trigger"
-            )
+        if (self.trigger.kind in USER_TRIGGERS) != (self.lane == "user"):
+            raise ValueError(f"{self.trigger.kind} is not a {self.lane} trigger")
         if self.lane == "cp":
             private = (self.private_summary, self.pending_approval, self.slow_msg)
             if any(value is not None for value in private):

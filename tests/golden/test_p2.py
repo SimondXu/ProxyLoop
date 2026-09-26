@@ -10,14 +10,6 @@ import json
 from typing import Any
 
 import pytest
-
-from proxyloop.contract.base import canonical_json, sha256_text
-from proxyloop.contract.protocol import (
-    EMPTY_THINK,
-    PROFILES,
-    render_messages,
-    render_prompt,
-)
 from tests.golden.cases import CASES, GOLDEN, Case
 from tests.golden.tokenizer import (
     REPO,
@@ -25,6 +17,14 @@ from tests.golden.tokenizer import (
     encode,
     load_tokenizer,
     template_ids,
+)
+
+from proxyloop.contract.base import canonical_json, sha256_text
+from proxyloop.contract.protocol import (
+    EMPTY_THINK,
+    PROFILES,
+    render_messages,
+    render_prompt,
 )
 
 P2: dict[str, Any] = json.loads((GOLDEN / "p2_ids.json").read_text("utf-8"))

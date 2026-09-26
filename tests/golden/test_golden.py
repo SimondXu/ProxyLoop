@@ -7,11 +7,11 @@ import re
 from typing import Any
 
 import pytest
+from tests.golden.cases import CASES, GOLDEN, Case
 
 from proxyloop.contract.protocol import OMITTED_ACTIONS, OMITTED_LINES, render_messages
 from proxyloop.contract.state import Mandate, PrivateState
 from proxyloop.contract.views import FastView
-from tests.golden.cases import CASES, GOLDEN, Case
 
 
 def _golden(case: Case) -> dict[str, Any]:

@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import json
 
+from tests.golden.cases import CASES, GOLDEN
+from tests.golden.tokenizer import REPO, REVISION, encode, load_tokenizer
+
 from proxyloop.contract.base import canonical_json, sha256_text
 from proxyloop.contract.protocol import (
     EMPTY_THINK,
@@ -15,8 +18,6 @@ from proxyloop.contract.protocol import (
     render_messages,
     render_prompt,
 )
-from tests.golden.cases import CASES, GOLDEN
-from tests.golden.tokenizer import REPO, REVISION, encode, load_tokenizer
 
 
 def p2_digest(ids: dict[str, list[int]]) -> str:

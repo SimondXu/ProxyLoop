@@ -73,7 +73,7 @@ What v2 missed: Slow could still launder a private bound through the shared dige
 |---|---|---|---|
 | `contract.events` | CON | `Event` (`pl.event/2`, §4), `EVENT_TYPES` registry, `event_id = f"{run_id}:{seq}"` | nothing (types) |
 | `contract.state` | CON | `Blackboard`, `PublicState`, `PrivateState`, `OfferPublic`, `ReadbackSlot`, `Mandate`, `ApprovalCard`, `Capability`, `CaseStatus` | nothing (types) |
-| `contract.views` | CON | `view_user(bb, trigger)`, `view_cp(bb, trigger)`, `view_slow(bb, mode)` → `FastView`/`SlowView`. Pure allow-list builders. Invariant: `view_cp` depends only on `bb.public`, `bb.channels["cp"]` and the trigger | field selection, windowing |
+| `contract.views` | CON | `view_user(bb, trigger, brief)`, `view_cp(bb, trigger, brief)`, `view_slow(bb, mode, brief)` → `FastView`/`SlowView`. Pure allow-list builders; `brief` is the task's brief for that view (task data, not state). Invariant: `view_cp` depends only on `bb.public`, `bb.channels["cp"]`, the trigger and the public brief | field selection, windowing |
 | `contract.messages` | CON | `FastToSlow`, `SlowToFast`, `Guide(move, slots)`, `GuideMove`, `SlotRef` | nothing |
 | `contract.protocol` | CON | `render_messages(view, profile)`, `render_prompt(view, profile, tok)`, `StreamParser.feed/close`, `format_turn`, `fingerprint(profile)`, `CONTEXT_BUDGET_CHARS`. Invariants: `parse(format(t)) == t`; streaming parse == batch parse | prompt text, grammar, trimming |
 | `contract.llm` | CON | `LLMClient` protocol (`stream_text`, `chat_tools`), `ModelRef`, `TextRequest`, `ToolRequest`, `LLMCallRecord`, `AdapterKind`, `LLMUnavailable` | nothing |
@@ -160,7 +160,7 @@ proxyloop/
 | bridge | `f2s.msg{FastToSlow}` [`fast.turn`]; `s2f.msg{SlowToFast}` [`slow.tool`]; `s2f.voiced{msg_id, gen_id}` [`fast.turn`] |
 | slow | `slow.step.started{basis_seq, wake_reasons}`; `slow.step.completed{basis_seq}`; `slow.tool{name, args, result_text, ok}` [`llm.call`, consumed `f2s.msg` ids] |
 | state | `summary.updated{scope: public\|private, text}` [`slow.tool`]; `declass.denied{violations}` [`slow.tool`]; `fact.recorded`; `offer.recorded{offer_ref, revision, slots, terms_hash}`; `readback.updated{offer_ref, slot_statuses}` [`utt.final`] |
-| authority | `authority.fence{op: raised\|cleared, fence_id, utt_id}`; `authority.epoch{new, reason}`; `mandate.proposed/decided`; `approval.requested{ApprovalCard}`; `approval.decided{approval_id, decision, by: ui\|sim_approver}` [`approval.post`]; `action.authorized{intent, capability}`; `action.denied{intent, reason}`; `speak.verbatim{lane, kind: disclosure\|readback_request\|accept\|decline, text, cap_id?}`; `speak.released`/`speak.revoked{reason}`; `screen.redacted`; `evidence.recorded`; `status.changed`; `completion.decided{verdict, reasons}` |
+| authority | `authority.fence{op: raised\|cleared, fence_id, utt_id}`; `authority.epoch{new, reason}`; `mandate.proposed/decided`; `approval.requested{ApprovalCard}`; `approval.post{approval_id, decision, terms_hash, authority_epoch}` (ingress); `approval.decided{approval_id, decision, by: ui\|sim_approver}` [`approval.post`]; `action.authorized{intent, capability}`; `action.denied{intent, reason}`; `speak.verbatim{lane, kind: disclosure\|readback_request\|accept\|decline, text, cap_id?}`; `speak.released`/`speak.revoked{reason}`; `screen.redacted`; `evidence.recorded`; `status.changed`; `completion.decided{verdict, reasons}` |
 | world | `rep.ear{utt_id, act, args, call_id}`; `rep.policy{from, to, intent, rung}`; `rep.mouth{intent, text, fidelity_ok, attempts}`; `rep.commit_heard{utt_id, offer_ref}`; `ledger.write{confirmation_id, binding}`; `user.sim{text, revealed{key: value}, delay_s}` |
 
 ### 4.3 The provenance chain (what `evidence-check` walks)
@@ -557,7 +557,7 @@ vllm serve Qwen/Qwen3.5-9B@<rev> --served-model-name Qwen3.5-9B --dtype bfloat16
 
 | Area | S0 | S1 adds | S0–S1 total |
 |---|---|---|---|
-| contract (types, views, protocol, profiles) | 950 | 0 | 950 |
+| contract (types, views, protocol, profiles) | 1,700 | 0 | 1,700 |
 | core + kernel (log, fold, lanes, speaker, fence, channels) | 700 | 350 | 1,050 |
 | slow | 300 | 200 | 500 |
 | guard (ported terms/policy + readback, authorize, capability, declass, verify) | 200 | 550 | 750 |
@@ -565,6 +565,6 @@ vllm serve Qwen/Qwen3.5-9B@<rev> --served-model-name Qwen3.5-9B --dtype bfloat16
 | env (1 family → 4; SimRep, SimUser, approver) | 450 | 250 | 700 |
 | evidence + obs + serve + cli | 300 | 300 | 600 |
 | models + training + eval (MOD) | 300 | 450 | 750 |
-| **Total** | **≈ 3,500** | **≈ 2,150** | **≈ 5,650** |
+| **Total** | **≈ 4,250** | **≈ 2,150** | **≈ 6,400** |
 
 Tripwires (PLAN §0.6): `src/` over 3,700 at S0 close or over 5,800 at S1 close means stop and ask. The web app is capped at 1,500 TypeScript lines through S1, and `serving/` + `training_jobs/` at 700 lines.

@@ -29,3 +29,28 @@ source_modules =
     proxyloop.guard
 forbidden_modules =
     proxyloop.env
+
+[importlinter:contract:contract-is-self-contained]
+name = contract imports only the stdlib and pydantic (ARCHITECTURE section 2)
+type = forbidden
+source_modules =
+    proxyloop.contract
+forbidden_modules =
+    proxyloop.core
+    proxyloop.kernel
+    proxyloop.slow
+    proxyloop.guard
+    proxyloop.llm
+    proxyloop.env
+    proxyloop.evidence
+    proxyloop.obs
+    proxyloop.serve
+    proxyloop.models
+    proxyloop.training
+    proxyloop.eval
+    proxyloop.cli
+    tests
+    transformers
+    jinja2
+    hypothesis
+    pytest

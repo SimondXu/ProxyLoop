@@ -16,8 +16,6 @@ from proxyloop.contract.messages import OFFER_REF, FastToSlow, Guide, SlowToFast
 
 
 class CaseStatus(StrEnum):
-    """The status machine of ARCHITECTURE §9.5."""
-
     INTAKE = "INTAKE"
     MANDATED = "MANDATED"
     IN_CALL = "IN_CALL"
@@ -52,8 +50,6 @@ class ReadbackSlot(Frozen):
 
 
 class ReadbackBinding(Frozen):
-    """What an approval binds besides the terms (§9.2, C3)."""
-
     offer_ref: str
     revision: int
     account_ref: str
@@ -174,8 +170,6 @@ class HoldState(Frozen):
 
 
 class Line(Frozen):
-    """One transcript line: a user message or a heard cp utterance."""
-
     utt_id: str
     speaker: Literal["partner", "agent"]
     text: str

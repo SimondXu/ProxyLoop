@@ -213,14 +213,16 @@ CASES = (
     _user("u02_user_msg", _bb(), Trigger(kind="user_msg")),
     _user(
         "u03_ask_user",
-        _bb(
-            **_ask("ASK_USER", "Would a 12-month term at $65.00 a month work for you?")
+        _bb().model_copy(
+            update=_ask("ASK_USER", "Would a 12-month term at $65.00 a month work?")
         ),
         Trigger(kind="slow_msg", msg_id="s1"),
     ),
     _user(
         "u04_tell_user",
-        _bb(**_ask("TELL_USER", "The rep is checking for a better offer.")),
+        _bb().model_copy(
+            update=_ask("TELL_USER", "The rep is checking for a better offer.")
+        ),
         Trigger(kind="slow_msg", msg_id="s1"),
     ),
     _user(
