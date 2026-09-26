@@ -7,7 +7,7 @@ from collections import Counter
 from pathlib import Path
 from typing import cast
 
-from tests.kernel.test_session import FINISH, SCRIPTS
+from tests.kernel.test_session import FINISH, SCRIPTS, UNTIL
 from tests.support.sessions import Person, act, ear, only_bundle, run
 
 from proxyloop.contract.events import Event
@@ -124,3 +124,54 @@ def test_rep_chat_speaks_after_the_disclosure(tmp_path: Path) -> None:  # nit
     agent = [e for e in _of(events, "utt.final") if e.payload["speaker"] == "agent"]
     assert agent and agent[0].seq > disclosed.seq
     assert Counter(e.type for e in events)["session.ended"] == 1
+
+
+class QuitAfterClose(Person):
+    """Rep-chat: says one line, then types /quit after each rep turn."""
+
+    async def send(self, text: str | None, utt_id: str, cause: str, t_ms: int) -> None:
+        if text:
+            self.heard.append(text)
+            self.incoming.put_nowait(Incoming((), end="quit"))
+
+
+def test_rep_chat_ends_promptly_when_the_rep_closes(tmp_path: Path) -> None:  # R2 M1
+    person = QuitAfterClose([])
+    person.incoming.put_nowait(Incoming((("Hi, calling about my bill.", None),)))
+    scripts = SCRIPTS | {"ear": [ear("ask_supervisor")]}
+    result = run(tmp_path, scripts, channels={"cp": "sim", "cp_agent": person})
+    assert result.reason == "stopped"  # no Slow judged it: never a claim reason
+    events = only_bundle(tmp_path).events
+    assert len(_of(events, "chan.closed")) == 1
+    assert events[-1].t_ms < 60_000  # prompt, not the 900 s timeout
+    assert person.heard  # the person read the rep's closing line
+
+
+def test_nothing_runs_on_the_cp_lane_after_it_closes(tmp_path: Path) -> None:  # N5
+    scripts = SCRIPTS | {"ear": [ear("ask_supervisor")], "slow": [WAIT]}
+    run(tmp_path, scripts, until={"slow": ("call_closed", FINISH)})
+    events = only_bundle(tmp_path).events
+    (closed,) = _of(events, "chan.closed")
+    late = [
+        e
+        for e in events
+        if e.seq > closed.seq
+        and e.type in ("llm.call", "fast.request", "fast.turn", "fast.sentence")
+        and "cp" in (e.payload.get("lane"), str(e.payload.get("role"))[5:])
+    ]
+    assert not late
+
+
+def test_only_the_cp_lane_can_close(tmp_path: Path) -> None:  # N6
+    class User(Channel):
+        def __init__(self) -> None:
+            super().__init__()
+            self.incoming.put_nowait(
+                Incoming((("hi", None),), due_ms=100, end="closed")
+            )
+
+    scripts = SCRIPTS | {"slow": [WAIT]}
+    run(tmp_path, scripts, channels={"user": User(), "cp": "sim"}, until=UNTIL)
+    events = only_bundle(tmp_path).events
+    assert not _of(events, "chan.closed")
+    assert [e for e in _of(events, "utt.delivered") if e.payload["lane"] == "cp"]

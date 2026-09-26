@@ -101,6 +101,8 @@ class FastLane:
 
     async def generate(self, trigger: Trigger, cause: str) -> None:
         k, lane = self._k, self.lane
+        if lane == "cp" and k.closed:
+            return  # the call is over
         self._n += 1
         gen_id = f"{lane}-g{self._n}"
         gen: dict[str, object] = {"lane": lane, "gen_id": gen_id}

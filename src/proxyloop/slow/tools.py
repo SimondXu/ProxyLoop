@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
 
 Effect = tuple[str, Mapping[str, object]]
+SCALE = {"usd_minor": 100, "months": 1}  # minor units and months, as spoken
 _INVALID = (ValidationError, ValueError, KeyError, TypeError, ArithmeticError)
 
 
@@ -172,6 +173,7 @@ def record_offer(
         f"{s.field}={s.value} is not in rep line {s.source_utt}"
         for s in slots
         if (line := said.get(str(s.source_utt))) is None
+        or (s.unit in SCALE and not s.value.isdigit())  # plain integers only
         or not _value(s) <= spoken(line, s.unit)
     ]
     if unbound:
@@ -187,8 +189,8 @@ def record_offer(
 
 
 def _value(s: st.ReadbackSlot) -> set[Decimal]:  # in the unit as spoken
-    if s.unit in ("usd_minor", "months"):
-        return {Decimal(s.value) / (100 if s.unit == "usd_minor" else 1)}
+    if s.unit in SCALE:
+        return {Decimal(s.value) / SCALE[s.unit]}
     return numbers(s.value)
 
 

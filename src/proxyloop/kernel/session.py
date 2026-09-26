@@ -448,7 +448,7 @@ class Kernel:
     async def _ingress(self, key: str, channel: Channel, opened: str) -> None:
         while True:  # partner turns become user.msg / utt.final
             inc = await channel.incoming.get()
-            if key != "user" and self.closed:
+            if key != "user" and self.closed and inc.end != "quit":
                 continue  # the call is over: nothing more on its lane
             if key == "cp_agent":
                 await self._disclosed.wait()
@@ -457,6 +457,8 @@ class Kernel:
             if key == "cp" and inc.lines:
                 await self.speakers["cp"].barge_in()
             last, first = opened, [c for _, c in inc.lines if c][:1]
+            closing = inc.end == "closed" and key == "cp" and not self.closed
+            self.closed |= closing  # before its lines: they trigger no FastC
             if inc.strike:
                 last = self.emit(
                     "chan.strike", "kernel", {"lane": "cp"}, first
@@ -467,10 +469,12 @@ class Kernel:
             if inc.end in ("quit", "hangup"):
                 hung_up = inc.end == "hangup" and key == "cp"
                 raise SessionEnd("abandoned" if hung_up else "stopped")
-            if inc.end == "closed":
-                self.closed = True
+            if closing:
                 self.emit("chan.closed", "kernel", {"lane": "cp"}, [last])
-                self.slow.wake("call_closed") if self.slow else None
+                if self.slow is None:  # rep-chat: nothing left to judge the case
+                    await asyncio.sleep(0)  # the person still reads the last line
+                    raise SessionEnd("stopped")
+                self.slow.wake("call_closed")
 
     def _line(self, key: str, text: str, causes: list[str]) -> str:
         if key == "user":

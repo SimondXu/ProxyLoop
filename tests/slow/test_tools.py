@@ -83,3 +83,11 @@ def test_a_shareable_fact_needs_a_typed_user_relay() -> None:  # review M1
     bb = BB.model_copy(update={"f2s_pending": (typed,)})
     ((_, fact),) = tools.fact(bb, "tenure_years", "6", None).effects
     assert (fact["scope"], fact["source_ref"]) == ("public", "e1")
+
+
+def test_money_and_term_values_are_plain_integers() -> None:  # R2 N3
+    for value, unit in (("7.5E+3", "usd_minor"), ("12.0", "months"), ("-12", "months")):
+        result = record_offer(
+            BB, "loyal-1", [_slot("monthly_price", value, unit, "recurring")]
+        )
+        assert not result.ok, value
