@@ -1,6 +1,6 @@
 # PLAN.md: the single state file
 
-**Current:** S0 in progress (the user gave the go on 2026-09-26). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01, S0-SYS-02 (#115), S0-ROOT-07 (#114), S0-CON-01 (#116), S0-MOD-01 (#113, provisional: `serve-attest-local` pending the user's go). **In flight:** S0-ROOT-08 (this PR), S0-SYS-03. **Next:** S0-MOD-02, S0-SYS-04. **Last closed stage:** none. **Contract version:** v1 (ADR-0004; fingerprints `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`, `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490`).
+**Current:** S0 in progress (the user gave the go on 2026-09-26). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01, S0-SYS-02 (#115), S0-ROOT-07 (#114), S0-CON-01 (#116), S0-MOD-01 (#113, provisional: `serve-attest-local` pending the user's go), S0-ROOT-08 (#117), S0-SYS-03 (#118), S0-SYS-04 (#120), S0-SYS-05 (#121), S0-MOD-02 (#119). **In flight:** S0-SYS-06, S0-ROOT-09 (this PR). **Next:** S0-ROOT-05 (merge point 1). **Last closed stage:** none. **Contract version:** v1 (ADR-0004; fingerprints `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`, `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490`).
 
 **Merge authority:** granted to the root by the user on 2026-09-26, from S0 on until revoked: the root squash-merges PRs that pass the fresh-context reviewer, CI and the reality rule. Stage closes, contract changes after `semantics-v1`, publishing, the split draw, the unseal and destructive steps still need the user.
 
@@ -22,7 +22,7 @@ Legend:
   - The implementer works only there and commits on the task branch. It never pushes, merges, rebases `main` or touches another worktree.
   - The root verifies (`make check` + the task's verification, read through `test-log-analyzer`, `CLAUDE.md`), pushes, opens the PR titled `<ID>: <title>` (CI checks the title), spawns a fresh-context reviewer, reconciles the findings, squash-merges, then removes the worktree and branch.
 - **The packet** is `.claude/task-packet-template.md` filled with: the task block from this file verbatim, plus `NORTH_STAR.md`, plus ≤ 5 named files, the verification commands and the escalation triggers.
-- **Concurrency:** ≤ 2 implementers per lane and ≤ 4 in flight in total, with disjoint owned paths. Reviewers do not count.
+- **Concurrency:** ≤ 2 implementers per lane, except SYS, which may run 3 (user decision 2026-09-26), and ≤ 4 in flight in total, with disjoint owned paths. Reviewers do not count.
 - **ROOT tasks:** the root decides, runs the L/G/U steps and merges. It never authors files or code, not even for a ROOT task: every file (scripts, docs, ADRs, README, this file) is written by an implementer whose packet grants the root-owned paths. Packets and PR bodies stay root-written.
 - **Merge floor:** `main` is branch-protected with CI required; the root configures it.
 - **Rotation:** the root moves to a fresh session at each stage close, or when its context passes ~60 %, after a short handoff is written to `~/Desktop/proxyloop-review-packet-2026-09-25/plan-v3/handoffs/<date>-<stage>.md` by an implementer from a root packet. The handoff lives outside the repo; it is not a repo process file.
@@ -73,8 +73,9 @@ Legend:
 ### 0.6 Tripwires (stop and ask the user)
 - **PR count:** S0 > 16 PRs, S1 > 14, S2 > 10, S3 > 10. Root evidence PRs are excluded.
 - **Code size:**
-  - `src/` Python over 3,700 lines at S0 close, over 5,800 at S1 close, or over 7,000 at S3 close;
-    - ARCHITECTURE §16 now totals ≈ 4,450 for S0 after contract v1 (ADR-0004); the user decides at S0 close whether to raise this tripwire.
+  - `src/` Python over 6,300 lines at S0 close, over 9,000 at S1 close, or over 7,000 at S3 close (S0 3,700 → 6,300 and S1 5,800 → 9,000, user decision 2026-09-26);
+    - the S3 figure (unchanged) now sits below S1's and must be revisited at S1 close;
+  - S0-SYS-06: a hard cap of L = 1,200 changed lines (user decision 2026-09-26).
   - web TypeScript over 1,500 lines through S1;
   - `serving/` + `training_jobs/` over 900 lines (700 → 900, user decision 2026-09-26; reformat of serving/).
   - A module over 600 lines is a warning.
@@ -144,6 +145,35 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
 - Process: the S0 PR count is at 10 of the 16 tripwire with ~7 tasks left; ROOT evidence PRs are excluded.
 - Docs:
   - EVAL §9.4: stratify the Ear-audit sampling frame by speaker model (Fast condition) and report Ear accuracy per speaker model (S0-ROOT-08 could not edit EVAL.md).
+- #118 (SYS evidence):
+  - a scripted bundle relabelled `real_http` still passes `--claim` (authenticity is provenance, ADR-0006);
+  - extra files in a bundle are ignored;
+  - a verbatim revoked and then released still passes;
+  - every line interrupted with an empty `text_heard` passes;
+  - envelope epoch jumps are allowed (the rule is monotone, not +1);
+  - `ScriptedLLM` accepts a `real_http` ref: make claim fixtures explicit.
+- #120 (SYS llm):
+  - S0-SYS-06 / P3 at session start needs the P2 ids inside `src/`;
+  - Claude may reject `top_p` together with `temperature` (the S4 Haiku baseline);
+  - the black-hole 5 s bound is untested;
+  - move the `tests/llm/wire.py` transport doubles into `tests/support`.
+- #121 (SYS world):
+  - `WorldError` lacks attempts and `call_ids` for `session.ended`;
+  - `RepTurn` lacks the strike's `rep.policy` id;
+  - an expired pending offer leaves the policy in CONFIRM;
+  - the loader finds families via `parents[4]`;
+  - Ear regenerations at temperature 0 repeat the same output;
+  - Mouth fidelity is set-based (swapped values pass);
+  - the `refuse_fact` key is not required, and the `provide_fact` value is not checked against the heard text;
+  - the reverse reveal check (a fact said but not listed) is missing;
+  - the `tests/env/bus_sink` prompts store is a stand-in until S0-SYS-06.
+- #119 (MOD training):
+  - `metrics.jsonl` may repeat steps after a resume;
+  - `per_target` is compared only for > 0, not against the committed dump;
+  - the cached-result path still allocates an H100;
+  - `src/proxyloop/training` is 160 lines against a ≈ 150-line target;
+  - S3 cost planning must re-measure tokens/s on a realistic batch: the smoke (`docs/decisions/data/peft-train-smoke.json` `tokens_per_s`) is far below TRAINING §8's estimate.
+- Process: CLAUDE.md still says ≤ 2 implementers per lane (a harness file; update it in the next harness session).
 
 ---
 
@@ -312,7 +342,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** `make serve-up && python -m serving.probe --out docs/decisions/data/vllm-probe.json && make serve-down` (root).
 - **Escalate if:** Qwen3.5-9B does not load with `--language-model-only`; TTFS p50 from the Mac exceeds 1.5 s on H100; no LoRA path works and merged serving also fails.
 
-### S0-MOD-02 Pinned training configuration and SFT skeleton (ADR-0003) — MOD — M — flags G — todo
+### S0-MOD-02 Pinned training configuration and SFT skeleton (ADR-0003) — MOD — M — flags G — provisional (merged in #119; `make train-smoke` passed: `docs/decisions/data/peft-train-smoke.json` `p5.ok`; adapter liveness moved to S0-MOD-03)
 - **Objective:**
   - `training_jobs/{modal_train,sft}.py` (PEFT + TRL, BF16) with pinned transformers, peft, trl, flash-linear-attention and causal-conv1d versions.
   - A `named_modules()` dump; a language-model-anchored target regex; the vision tower frozen; a **fused GDN kernel check** that fails on the torch fallback.
@@ -323,12 +353,12 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Deps:** S0-CON-01 for the dataset part. The module dump may start earlier.
 - **Acceptance:**
   - the ADR lists exact module paths, trainable parameters, tok/s, peak memory and the P5 result from the real run;
-  - the adapter loads in S0-MOD-01's server with liveness > 1e-3 nats;
+  - adapter liveness in S0-MOD-01's server: moved to S0-MOD-03;
   - the train targets equal the serve-accepted targets.
 - **Verify:** `make train-smoke` (root, G); `uv run pytest tests/training -q`.
 - **Escalate if:** the fused kernels are unavailable; PEFT cannot target the GDN modules; the vision tower cannot be isolated.
 
-### S0-SYS-03 Event log, bus, fold, evidence-check with provenance and mutation tests — SYS — M — review
+### S0-SYS-03 Event log, bus, fold, evidence-check with provenance and mutation tests — SYS — M — provisional (merged in #118; until S0-ROOT-05)
 - **Objective:**
   - `core/{log,bus,fold,clock}.py`: a single-writer JSONL log with dense `seq`; a bus whose subscribers are isolated (a subscriber exception never propagates); reducers for every S0 event type.
   - `evidence/{check,chain,reality}.py` (ARCHITECTURE §14), with `--claim` and `--offline` modes.
@@ -345,7 +375,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** `make test`; `uv run pytest tests/evidence -q`.
 - **Escalate if:** a chain rule needs information that the contract events lack.
 
-### S0-SYS-04 LLM adapters, P3 parity, spend ledger — SYS — M — flags L+G for the smoke — todo
+### S0-SYS-04 LLM adapters, P3 parity, spend ledger — SYS — M — flags L+G for the smoke — provisional (merged in #120; until S0-ROOT-05; `make llm-smoke` passed: `docs/decisions/data/llm-smoke.json` `checks`, `p3.passed`)
 - **Objective:** `llm/{factory,vllm,relay,spend,parity}.py`:
   - vLLM `/v1/completions` streaming with the pre-rendered prompt;
   - relay chat streaming (hosted Fast gets the same `render_messages`) and relay tool calls (Slow);
@@ -364,7 +394,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** `make test`; `make llm-smoke` (root).
 - **Escalate if:** P3 fails, or more than 5 % of relay tool calls are malformed.
 
-### S0-SYS-05 World minimum: schema, one family (information-only), SimRep, async SimUser, rep chat CLI — SYS — M — flags L for the smoke — todo
+### S0-SYS-05 World minimum: schema, one family (information-only), SimRep, async SimUser — SYS — L (re-sized from M, root decision 2026-09-26) — flags L for the smoke — provisional (merged in #121; until S0-ROOT-05)
 - **Objective:**
   - `env/tasks/{schema,loader}.py` (EVAL §2);
   - `tasks/families/cp-direct-discount.yaml` with `mode: info_only`;
@@ -372,15 +402,14 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
   - `env/user/simuser.py`: JSON `revealed`, reply delay, no patience;
   - the world model (Ear, Mouth, SimUser) is `gemini-3.8-flash` via TeamRouter (`ModelRef.endpoint = "teamrouter"`), superseding ADR-0001's world choice (ADR-0005);
   - World structured-call policy: ADR-0005 (≤ 2 regenerations, counted; then episode error; wall-clock timeout).
-  - `python -m proxyloop.cli rep-chat --family cp-direct-discount`.
+  - The `rep-chat` CLI moved to S0-SYS-06, which owns `cli.py` (root decision 2026-09-26).
 - **Owned paths:** `src/proxyloop/env/**` (it may extend the ledger), `tasks/families/cp-direct-discount.yaml`, `tests/env/**`.
 - **Deps:** S0-CON-01, S0-SYS-04.
 - **Acceptance:**
-  - the root negotiates by hand in the CLI to a final offer, and `rep.ear`/`rep.mouth` carry relay request ids;
   - Mouth fidelity ≥ 95 % over 50 real calls;
   - SimUser reveal check: ≥ 95 % of `revealed` values appear verbatim across 30 real calls, with the rest regenerated and counted;
   - an import-linter rule forbids `env` → agent modules.
-- **Verify:** `make test`; `python -m proxyloop.cli rep-chat …` (root).
+- **Verify:** `make test`.
 - **Escalate if:** the Ear misclassifies more than 3 of 30 hand-checked utterances, or the policy needs agent-side state.
 
 ### S0-SYS-06 Kernel, two lanes, minimal Slow, bundle, CLI, terminal replay — SYS — L — flags L+G for the smoke — todo
@@ -389,7 +418,8 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
   - `slow/{loop,tools,prompt}.py` with `ask_user`, `tell_user`, `wait`, `guide_fast`, `record_fact`, `record_offer` (no statuses yet) and `finish(info_only)`, over a **relay-only** SlowView.
   - `guard/declass.py` (numbers source-bound).
   - The bundle writer.
-  - `python -m proxyloop.cli session --family … --user sim|human --rep sim|human`, `python -m proxyloop.cli replay RUN=`, and `make smoke-live FAMILY=`.
+  - `python -m proxyloop.cli session --family … --user sim|human --rep sim|human`, `python -m proxyloop.cli replay RUN=`, `python -m proxyloop.cli rep-chat --family cp-direct-discount` (from S0-SYS-05), and `make smoke-live FAMILY=`.
+- **Size:** hard cap L = 1,200 changed lines (§0.6).
 - **Owned paths:** `src/proxyloop/{kernel,slow}/**`, `src/proxyloop/guard/declass.py`, `src/proxyloop/cli.py`, `tests/{kernel,slow}/**`, `mk/sys.mk` (`smoke-live`, `replay-cli`).
 - **Interfaces:** implements `run_session(cfg, task, channels=None)`.
 - **Deps:** S0-SYS-03, S0-SYS-04, S0-SYS-05.
@@ -398,8 +428,9 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
   - no user or cp utterance text appears in Slow's rendered context unless relayed (relay-only test);
   - the disclosure line is the first cp agent utterance;
   - a `public_summary` containing a private bound is denied with `declass.denied`;
-  - with `live=True`, any non-`real_http` adapter raises at startup.
-- **Verify:** `make test`.
+  - with `live=True`, any non-`real_http` adapter raises at startup;
+  - `rep-chat` (root, L): the root negotiates by hand to a final offer, and `rep.ear`/`rep.mouth` cite `llm.call` events with request ids.
+- **Verify:** `make test`; `python -m proxyloop.cli rep-chat …` (root).
 - **Escalate if:** a behaviour needs a contract change.
 
 ### S0-ROOT-05 MERGE POINT 1: the first real interaction — ROOT — S — flags L+G+U — todo
@@ -421,8 +452,8 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **After:** S0-SYS-03…06 become `done`.
 
 ### S0-MOD-03 `make pull-through` — MOD — M — flags L+G (root runs) — todo
-- **Objective:** `training/pull_through.py` and the `make pull-through MODE=full|verify` target, exactly as TRAINING §9 describes. The S0 label source is the base-9B turns from `evidence/s0/` (§9 E1).
-- **Owned paths:** `src/proxyloop/training/pull_through.py`, `mk/mod.mk`, `tests/training/test_pull_through.py`.
+- **Objective:** `training/pull_through.py` and the `make pull-through MODE=full|verify` target, exactly as TRAINING §9 describes. The S0 label source is the base-9B turns from `evidence/s0/` (§9 E1). A trained-adapter LoRA slot in `serving/` (root decision 2026-09-26).
+- **Owned paths:** `src/proxyloop/training/pull_through.py`, `mk/mod.mk`, `tests/training/test_pull_through.py`, `serving/**`.
 - **Deps:** S0-ROOT-05, S0-MOD-01, S0-MOD-02.
 - **Acceptance:** `docs/results/pull-through.json` contains:
   - fingerprint = current;
@@ -431,6 +462,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
   - P5 = pass;
   - a product-path bundle with both lanes on the adapter that passes `evidence-check --claim`, with every Fast `served_model_echo` = the adapter name;
   - `claim: "none"`.
+- **Acceptance moved from S0-MOD-02:** the S0-MOD-02 smoke adapter loads in S0-MOD-01's server through the LoRA slot with liveness > 1e-3 nats.
 - **Verify:** `make pull-through MODE=full` (root).
 - **Escalate if:** liveness ≤ 1e-3 (the adapter is not live in serving), or P5 fails.
 
@@ -441,18 +473,29 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - Spend summary #1.
 - PLAN.md is updated: contract v1 and fingerprints.
 
-### S0-ROOT-08 Docs sync and world-model probe (ADR-0005) — ROOT — S — flags L (root runs the probe) — review
+### S0-ROOT-08 Docs sync and world-model probe (ADR-0005) — ROOT — S — flags L (root runs the probe) — done
 - **Objective:** bring PLAN/ARCHITECTURE/EVAL/DOCS/retrospective in line with contract v1, S0-MOD-01 and the
   user's world-model decision; record review follow-ups; add a TeamRouter env mode to the relay probe; after the
   root's probe run, write ADR-0005 (world model = `gemini-3.8-flash` via TeamRouter) citing the committed probe JSON.
 - **Owned paths:** see the packet (root-owned docs granted).
 - **Acceptance:** `make check` green; no measured number typed into prose (AGENTS rule 13); ADR-0005 cites JSON keys.
 
+### S0-ROOT-09 Record the S0 build-phase decisions — ROOT — S — review
+- **Objective:** write the user's and root's decisions of 2026-09-26 (after S0-ROOT-08) into PLAN.md, ARCHITECTURE.md
+  and a one-page ADR-0006; update statuses; extend the §0.9 follow-up list. Documentation only.
+- **Owned paths:** PLAN.md, ARCHITECTURE.md (§4, §14, §16 lines named below), docs/decisions/0006-llm-call-writer-and-claim-endings.md.
+- **Acceptance:** `make check` green; no measured number typed (AGENTS rule 13); every decision below appears once.
+
 ---
 
 ## 3. S1: semantic slice (4 families), Guard v2, live web, headroom probe (diagnostic)
 
 S1 SYS/MOD tasks may start after S0-ROOT-05. **Any teacher run in the harness** (the T and R conditions, S1-MOD-01's teacher smoke, S1-MOD-03, S1-ROOT-02) waits until S1-SYS-01, -02, -03 and -05 have merged. Decisions D require capability minting, read-back slots, the fence and epochs, and approval-endpoint security first (§9 E1).
+
+### S1-SYS-00 Simplification pass (no weaker guarantees) — SYS — M — todo
+- **Objective:** before the rest of S1, trim only redundancy in the S0 code, without weakening any guarantee (the user's example: `llm/` ≈ 550 lines) (user decision 2026-09-26).
+- **Owned paths:** `src/proxyloop/{core,evidence,llm,env,kernel,slow}/**` (code only; no contract).
+- **Acceptance:** `make check` green; every existing test unchanged or strictly stronger; net `src/` lines reduced.
 
 ### S1-ROOT-01 Pilot lock — ROOT — S — todo
 - **Objective:** `tasks/splits/pilot_lock.json`, listing families 1–4 as train-only, plus a `check-pilot-lock` step in CI that fails if any split file assigns a locked family to dev or test.

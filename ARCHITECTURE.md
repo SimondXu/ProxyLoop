@@ -172,6 +172,7 @@ llm.call(request_id, response_sha) ─► fast.turn(items) ─► fast.sentence 
 ```
 - An agent `utt.delivered` without a chain to an `llm.call` with `adapter_kind=real_http` or a Guard `speak.verbatim` fails the check.
 - `prompts.jsonl` stores the text of every prompt and response keyed by sha. The check recomputes both shas.
+- Every `llm.call` is written only by the adapter's `on_record` sink, for every lane (Fast, Slow, world), cancellations included; callers cite its `call_id` and never log a returned record (ADR-0006).
 
 ---
 
@@ -536,7 +537,8 @@ vllm serve Qwen/Qwen3.5-9B@<rev> --served-model-name Qwen3.5-9B --dtype bfloat16
   - the fingerprints equal the current contract;
   - P3 passed;
   - `seq` is dense and `t_ms` monotone;
-  - no `recorded_replay`, `test_fake` or `baseline` kind appears in a role the claim names.
+  - no `recorded_replay`, `test_fake` or `baseline` kind appears in a role the claim names;
+  - `session.ended{reason}` is `completed`, `no_deal`, `info_only`, `escalate` or `abandoned` (errors, timeouts, budget stops and `llm_unavailable` fail a claim). A pass proves internal consistency, not authenticity, which rests on root-run provenance (ADR-0006).
 
   It writes a **reality report** classifying each role as vLLM, hosted, baseline FSM, deterministic world or human.
 - **Mutation tests (`tests/evidence/`, S0-SYS-03):** mutating one byte of a recorded response changes a parsed item and the delivered text, and the check fails when the bundle's `prompts.jsonl` disagrees. **Dead endpoint (live, root, S0-ROOT-05):** with the Fast URL pointing at a closed port, the session aborts with `session.ended{reason: llm_unavailable}`, exits non-zero, and delivers nothing after the failure.
@@ -568,4 +570,4 @@ vllm serve Qwen/Qwen3.5-9B@<rev> --served-model-name Qwen3.5-9B --dtype bfloat16
 | models + training + eval (MOD) | 300 | 450 | 750 |
 | **Total** | **≈ 4,450** | **≈ 2,150** | **≈ 6,600** |
 
-Tripwires (PLAN §0.6): `src/` over 3,700 at S0 close or over 5,800 at S1 close means stop and ask. The web app is capped at 1,500 TypeScript lines through S1, and `serving/` + `training_jobs/` at 900 lines (700 → 900, user decision 2026-09-26; reformat of serving/).
+Tripwires (PLAN §0.6): `src/` over 6,300 at S0 close or over 9,000 at S1 close means stop and ask. The per-area table above predates the detailed design. The web app is capped at 1,500 TypeScript lines through S1, and `serving/` + `training_jobs/` at 900 lines (700 → 900, user decision 2026-09-26; reformat of serving/).
