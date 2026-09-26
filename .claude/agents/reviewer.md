@@ -29,13 +29,13 @@ The task ID; the PR number or branch; the task block from `PLAN.md` verbatim; an
 ## Output (all fields are mandatory, in this order)
 1. **`make check`:** the command and its output tail; plus the task verification commands and their results as actually run.
 2. **Could this pass with every model stubbed? Could it pass with the model endpoint dead? Why not?** Answer concretely, citing the test or bundle that would fail.
-3. **Defects:** at least one, with file:line, severity (blocker/major/minor) and a suggested fix. If you found none, list **the adversarial cases you tried** and why each failed to break the change.
+3. **Defects:** at least one, with file:line, severity (**blocker**, **major** or **nit**) and a suggested fix. Only blocker and major must be fixed before merge; nits go to the `PLAN.md` follow-up list and never trigger another round (§0.4). If you found none, list **the adversarial cases you tried** and why each failed to break the change.
 4. **Invariants touched** (I1–I11): for each, holds / violated / untested.
 5. **Owned paths and contract:** is the diff inside the owned paths (yes/no, with offending paths)? Is the contract untouched, or covered by an ADR?
 6. **Second path / fallback / TTFS / process doc:** "Does this add a second path for eval, data, serving or rendering? A fallback? Anything on the TTFS path? A process document?"
 7. **Anti-absorption:** "Does this make base Qwen look better without changing semantics (parser leniency, retries, templates, Fast-specific kernel help)?"
 8. **Reality statement check:** where `real_http`, `recorded_replay`, `test_fake` and `baseline` are used; whether anything from `tests/support` is reachable from `src/`; whether model-touching criteria are honestly marked `needs root run` rather than claimed.
 9. **Acceptance matrix:** each criterion → met / not met / needs root run, with your evidence.
-10. **Recommendation:** approve, approve-after-fixes (list them), or block (the reason). The root decides; you do not.
+10. **Recommendation:** approve, approve-after-fixes (list the blocker and major fixes), or block (the reason). The root decides; you do not.
 
 Be terse and specific. Do not restate the diff. Do not praise.
