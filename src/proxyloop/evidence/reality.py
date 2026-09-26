@@ -10,13 +10,16 @@ requested (``requested_model == model_ref.model_id`` is a contract rule).
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Collection, Sequence
 
+from proxyloop.contract import CONTRACT_VERSION
 from proxyloop.contract.bundle import Manifest
 from proxyloop.contract.config import SessionConfig
 from proxyloop.contract.llm import AdapterKind, LLMCallRecord, LLMRole, ModelRef
 from proxyloop.contract.protocol import fingerprint
 
+_REAL = AdapterKind.REAL_HTTP
 _NOT_LIVE = (AdapterKind.TEST_FAKE, AdapterKind.RECORDED_REPLAY)
 
 
@@ -58,6 +61,11 @@ def consistency_failures(m: Manifest, calls: Sequence[LLMCallRecord]) -> list[st
             out.append(f"call {c.call_id}: role {c.role} is not in the manifest")
         elif c.model_ref != refs.get(c.role):
             out.append(f"call {c.call_id}: model_ref is not the cfg's {c.role} model")
+        if c.error is not None and (c.response_sha is not None or c.usage is not None):
+            out.append(f"call {c.call_id} failed yet records a response or usage")
+    ids = Counter(c.request_id for c in calls if c.request_id)
+    if dups := sorted(i for i, n in ids.items() if n > 1):
+        out.append(f"request_ids shared by several calls: {dups}")
     return out
 
 
@@ -72,8 +80,8 @@ def _call_failures(m: Manifest, c: LLMCallRecord) -> list[str]:
     out: list[str] = []
     if not c.request_id:
         out.append(f"{where} has no request_id")
-    if c.usage is None or c.usage.completion_tokens <= 0:
-        out.append(f"{where} reports no completion tokens")
+    if c.usage is None or min(c.usage.prompt_tokens, c.usage.completion_tokens) <= 0:
+        out.append(f"{where} reports zero usage")
     if c.served_model_echo != expected:
         out.append(f"{where} served {c.served_model_echo!r}, configured {expected!r}")
     return out
@@ -85,13 +93,17 @@ def claim_failures(
     roles: Collection[LLMRole],
     profiles: Collection[str],
 ) -> list[str]:
-    out = [
-        f"claimed role {role} ran {m.reality.get(role)}"
-        for role in sorted(roles)
-        if m.reality.get(role) is not AdapterKind.REAL_HTTP
-    ]
+    out: list[str] = []
+    ran = {c.role for c in calls if c.error is None and c.adapter_kind is _REAL}
+    for role in sorted(roles):
+        if m.reality.get(role) is not _REAL:
+            out.append(f"claimed role {role} ran {m.reality.get(role)}")
+        if role not in ran:
+            out.append(f"claimed role {role} has no successful real_http call")
     for c in calls:
         out += _call_failures(m, c) if c.role in roles else []
+    if m.contract_version != CONTRACT_VERSION:
+        out.append(f"contract {m.contract_version} is not the current one")
     shards = {
         f: sha for model in m.models.values() for f, sha in model.adapter_shards.items()
     }

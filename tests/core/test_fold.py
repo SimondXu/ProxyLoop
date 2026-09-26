@@ -16,7 +16,6 @@ from proxyloop.contract.events import EVENT_TYPES, Event, Stream
 from proxyloop.contract.state import Blackboard, CaseStatus
 from proxyloop.core.bus import Bus
 from proxyloop.core.fold import RECORD_ONLY, REDUCERS, WORLD_OPS, apply, fold
-from proxyloop.core.log import EventLog
 
 RUN = "r1"
 _STARTED = EVENT_TYPES["session.started"].payload_keys
@@ -113,7 +112,7 @@ def _steps() -> st.SearchStrategy[Step]:
                 "authority.epoch",
                 "guard",
                 "agent",
-                {"new": n, "reason": "slow_revoke"},
+                {"new": n, "reason": "slow_revoke"},  # an increment: see _emit_all
             )
         ),
         st.sampled_from(list(CaseStatus)).map(
@@ -145,12 +144,14 @@ def _steps() -> st.SearchStrategy[Step]:
 
 def _emit_all(path: Path, steps: list[tuple[Step, int]]) -> Bus:
     clock = ManualClock()
-    bus = Bus(EventLog(path, RUN), clock)
+    bus = Bus(path, RUN, clock)
     bus.emit("session.started", "kernel", "ops", {k: "" for k in _STARTED})
     for (type_, actor, stream, payload), advance in steps:
         clock.advance(advance)
         spec = EVENT_TYPES[type_]
-        causes = [f"{RUN}:{bus.log.next_seq - 1}"] if spec.cause_required else []
+        causes = [bus.events[-1].event_id] if spec.cause_required else []
+        if type_ == "authority.epoch":  # epochs only increase (§9.4)
+            payload = payload | {"new": bus.bb.epoch + cast(int, payload["new"])}
         bus.emit(type_, actor, cast(Stream, stream), payload, causes)
     return bus
 
@@ -161,8 +162,8 @@ def _emit_all(path: Path, steps: list[tuple[Step, int]]) -> Bus:
 def test_fold_is_deterministic(steps: list[tuple[Step, int]], cut: int) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         bus = _emit_all(Path(tmp) / EVENTS, steps)
-        bus.log.close()
-        events = bus.log.events
+        bus.close()
+        events = bus.events
         lines = (Path(tmp) / EVENTS).read_text("utf-8").splitlines()
     from_disk = tuple(Event.model_validate_json(line) for line in lines)
     whole = fold(events)

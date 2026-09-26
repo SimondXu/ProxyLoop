@@ -7,7 +7,7 @@ one role, in call order: how implementers use ``evidence/`` bundles offline.
 around one Fast response: the rep speaks, the cp view is rendered by the
 contract renderer, the client streams the response through the contract's
 ``StreamParser``, and each spoken sentence is delivered. It goes through the
-real ``Bus``/``EventLog``. There is no kernel yet (S0-SYS-06); this is test
+real ``Bus``. There is no kernel yet (S0-SYS-06); this is test
 scaffolding, not a runner.
 """
 
@@ -51,7 +51,6 @@ from proxyloop.contract.protocol import (
 from proxyloop.contract.state import Spend
 from proxyloop.contract.views import Trigger, view_cp
 from proxyloop.core.bus import Bus
-from proxyloop.core.log import EventLog
 
 RUN_ID = "run-test"
 REP_LINE = "I can offer you 20 dollars off per month for 12 months."
@@ -163,7 +162,7 @@ async def _run_chain(bus: Bus, client: LLMClient, prompts: list[PromptRecord]) -
             "interrupted": False,
         }
         bus.emit("utt.delivered", "kernel", "agent", utt | heard, [said.event_id])
-    bus.emit("session.ended", "kernel", "ops", {"reason": "done"})
+    bus.emit("session.ended", "kernel", "ops", {"reason": "info_only"})
 
 
 def write_fast_bundle(
@@ -174,9 +173,8 @@ def write_fast_bundle(
     run_dir.mkdir(parents=True, exist_ok=True)
     cfg = session_config(fast_cp=ref.model_dump(), live=live)
     models: dict[LLMRole, RoleModel] = {"fast_cp": RoleModel(ref=ref)}
-    log = EventLog(run_dir / EVENTS, RUN_ID)
     clock = ManualClock()
-    bus = Bus(log, clock)
+    bus = Bus(run_dir / EVENTS, RUN_ID, clock)
     started = {
         "cfg_hash": config_hash(cfg),
         "task_ref": "cp-direct-discount@1",
@@ -192,7 +190,7 @@ def write_fast_bundle(
     bus.emit("session.started", "kernel", "ops", started)
     prompts: list[PromptRecord] = []
     asyncio.run(_run_chain(bus, ScriptedLLM(ref, [response], clock), prompts))
-    log.close()
+    bus.close()
     lines = {p.sha: p.model_dump_json() for p in prompts}
     (run_dir / PROMPTS).write_text("".join(f"{v}\n" for v in lines.values()), "utf-8")
     manifest = Manifest(

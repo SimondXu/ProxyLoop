@@ -1,9 +1,7 @@
 """``events.jsonl``: append-only, single writer, dense ``seq`` (I2).
 
-``append`` re-validates every event through its JSON form: ``Event.payload``
-is a mutable dict, and ``model_copy``/``model_construct`` skip validation, so
-the stored event is the parsed line that went to disk, never the caller's
-object.
+``append`` stores the re-validated line that went to disk, never the caller's
+object (``model_copy``/``model_construct`` skip validation).
 """
 
 from __future__ import annotations
@@ -25,7 +23,9 @@ class EventLog:
 
     @property
     def events(self) -> tuple[Event, ...]:
-        return tuple(self._events)
+        """Copies: changing a returned payload cannot change the log."""
+
+        return tuple(e.model_copy(deep=True) for e in self._events)
 
     @property
     def next_seq(self) -> int:

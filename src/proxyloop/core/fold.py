@@ -126,7 +126,10 @@ def _fence(bb: Blackboard, e: Event) -> Blackboard:
 
 
 def _epoch(bb: Blackboard, e: Event) -> Blackboard:
-    return _with(bb, epoch=EpochBump.model_validate(e.payload).new)
+    new = EpochBump.model_validate(e.payload).new
+    if new <= bb.epoch:  # epochs only move forward (§9.4)
+        raise ValueError(f"epoch {new} does not follow {bb.epoch}")
+    return _with(bb, epoch=new)
 
 
 def _status(bb: Blackboard, e: Event) -> Blackboard:

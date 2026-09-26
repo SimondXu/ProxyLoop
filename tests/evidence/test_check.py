@@ -66,7 +66,7 @@ def test_a_recorded_bundle_passes_offline_and_fails_a_claim(recorded: Path) -> N
     assert offline.reality == {"fast_cp": "recorded_replay"}
     claim = check_path(recorded, "claim")
     assert "claimed role fast_cp ran recorded_replay" in claim.failures
-    assert any("no real_http call" in f for f in claim.failures)
+    assert any("own call is not real_http" in f for f in claim.failures)
 
 
 def test_a_well_formed_real_bundle_passes_the_claim(real: Path) -> None:
@@ -116,9 +116,10 @@ def test_rejects_test_fake_in_a_claimed_role(tmp_path: Path) -> None:
     assert check_path(run).ok
     report = check_path(run, "claim", roles={"fast_cp"})
     assert "claimed role fast_cp ran test_fake" in report.failures
+    assert "claimed role fast_cp has no successful real_http call" in report.failures
     assert check_path(run, "claim", roles=()).failures == (
-        "utt.delivered run-test:6: its turn comes from no real_http call",
-        "utt.delivered run-test:8: its turn comes from no real_http call",
+        "utt.delivered run-test:6: its turn's own call is not real_http",
+        "utt.delivered run-test:8: its turn's own call is not real_http",
     )
 
 
@@ -152,12 +153,15 @@ def test_rejects_another_run_in_the_log(real: Path) -> None:
 def _append(
     bundle: Bundle, type_: str, actor: str, payload: Mapping[str, object], cause: str
 ) -> Bundle:
-    seq = len(bundle.events)
+    """Add an event just before the closing ``session.ended``."""
+
+    *body, end = bundle.events
+    seq = len(body)
     event = Event(
         run_id=RUN_ID,
         seq=seq,
         event_id=f"{RUN_ID}:{seq}",
-        t_ms=bundle.events[-1].t_ms,
+        t_ms=end.t_ms,
         wall=datetime(2026, 9, 26, tzinfo=UTC),
         type=type_,
         actor=actor,
@@ -166,38 +170,40 @@ def _append(
         epoch=0,
         payload=dict(payload),
     )
-    return Bundle(bundle.manifest, (*bundle.events, event), bundle.prompts)
+    moved = end.model_copy(update={"seq": seq + 1, "event_id": f"{RUN_ID}:{seq + 1}"})
+    return Bundle(bundle.manifest, (*body, event, moved), bundle.prompts)
+
+
+def _last_id(bundle: Bundle) -> str:
+    return bundle.events[-2].event_id  # the event before session.ended
 
 
 def test_a_guard_verbatim_line_has_a_chain(recorded: Path) -> None:
     text = "I am an AI assistant calling for my customer."
     bundle = read_bundle(recorded)
     rep = next(e.event_id for e in bundle.events if e.type == "utt.final")
-    bundle = _append(
-        bundle,
-        "speak.verbatim",
-        "guard",
-        {"lane": "cp", "kind": "disclosure", "text": text},
-        rep,
-    )
-    bundle = _append(bundle, "speak.released", "kernel", {}, bundle.events[-1].event_id)
+    verbatim = {"lane": "cp", "kind": "disclosure", "text": text}
+    bundle = _append(bundle, "speak.verbatim", "guard", verbatim, rep)
+    bundle = _append(bundle, "speak.released", "kernel", {}, _last_id(bundle))
+    released = _last_id(bundle)
     heard = {"lane": "cp", "utt_id": "v1", "text_generated": text, "text_heard": text}
-    ok = _append(
-        bundle,
-        "utt.delivered",
-        "kernel",
-        heard | {"interrupted": False},
-        bundle.events[-1].event_id,
+    delivered = heard | {"interrupted": False}
+    ok = _append(bundle, "utt.delivered", "kernel", delivered, released)
+    assert evidence_check(ok).ok, evidence_check(ok).failures
+    twice = _append(ok, "utt.delivered", "kernel", delivered, released)
+    assert (
+        evidence_check(twice).failures[-1].endswith(f"{released} is already delivered")
     )
-    assert evidence_check(ok).ok
-    orphan = _append(
-        bundle, "utt.delivered", "kernel", heard | {"interrupted": False}, rep
-    )
+    orphan = _append(bundle, "utt.delivered", "kernel", delivered, rep)
     assert (
         evidence_check(orphan)
         .failures[-1]
         .endswith("no chain to a fast.sentence or a released speak.verbatim")
     )
+    other_lane = _append(
+        bundle, "utt.delivered", "kernel", delivered | {"lane": "user"}, released
+    )
+    assert evidence_check(other_lane).failures[-1].endswith("is for the other lane")
     wrong = heard | {"text_heard": "I am a human.", "interrupted": True}
-    cut = _append(bundle, "utt.delivered", "kernel", wrong, bundle.events[-1].event_id)
+    cut = _append(bundle, "utt.delivered", "kernel", wrong, released)
     assert "neither the generated text" in evidence_check(cut).failures[-1]

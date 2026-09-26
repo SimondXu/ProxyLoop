@@ -3,10 +3,16 @@
 ``offline`` checks what the bundle proves about itself, whatever adapters it
 ran with: the log (one run, dense ``seq``, monotone ``t_ms``, causes), every
 sha against ``prompts.jsonl``, the chain of every delivered line, and that
-manifest, cfg and calls agree. ``claim`` adds the claim rules for the claimed
-roles (default: every role in the manifest): ``real_http`` only, request ids,
-usage, echoed served model, attestation, fingerprints and P3. Neither mode
-touches the network.
+manifest, cfg and calls agree; the log ends with ``session.ended``. ``claim``
+adds, for the claimed roles (default: every role in the manifest):
+``real_http`` only and at least one successful call each, request ids, usage,
+echoed served model, attestation, fingerprints, contract version, P3, and a
+``session.ended`` reason in ``ENDED_OK``. Neither mode touches the network.
+
+Passing ``claim`` proves internal consistency and chain completeness, not
+authenticity: a bundle can be forged consistently. Authenticity comes from
+root-run provenance, a bundle produced by ``run_session`` under the root
+with live keys.
 """
 
 from __future__ import annotations
@@ -29,6 +35,9 @@ from proxyloop.evidence.reality import (
 )
 
 Mode = Literal["offline", "claim"]
+# The outcomes of Slow's finish() (§8). Anything else (llm_unavailable, a
+# budget or timeout stop, an error, a cp hang-up) is not a claimable run.
+ENDED_OK = frozenset({"completed", "no_deal", "info_only", "escalate"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,8 +55,14 @@ def _log_failures(m: Manifest, events: Sequence[Event]) -> list[str]:
     out: list[str] = []
     if not events or events[0].type != "session.started":
         out.append("the log does not open with session.started")
-    elif events[0].payload["cfg_hash"] != m.cfg_hash:
-        out.append("session.started cfg_hash is not the manifest's")
+    else:
+        started = events[0].payload
+        for key in ("cfg_hash", "split", "contract_version"):
+            if started[key] != getattr(m, key):
+                out.append(f"session.started {key} is not the manifest's")
+    ends = [i for i, e in enumerate(events) if e.type == "session.ended"]
+    if ends != [len(events) - 1]:
+        out.append("the log does not end with its one session.ended")
     if runs := {e.run_id for e in events} - {m.run_id}:
         out.append(f"events of runs {sorted(runs)} in bundle {m.run_id}")
     if gaps := [(i, e.seq) for i, e in enumerate(events) if e.seq != i]:
@@ -103,6 +118,14 @@ def evidence_check(
             str(e.payload["profile"]) for e in events if e.type == "fast.request"
         }
         failures += claim_failures(m, calls, claimed, profiles)
+        last = events[-1] if events else None
+        reason = (
+            last.payload["reason"] if last and last.type == "session.ended" else None
+        )
+        if reason not in ENDED_OK:
+            failures.append(
+                f"session ended with {reason!r}, not one of {sorted(ENDED_OK)}"
+            )
     return Report(mode, tuple(failures), reality_report(m))
 
 

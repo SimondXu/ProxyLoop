@@ -12,13 +12,11 @@ from typing import Protocol
 
 
 class Clock(Protocol):
-    def monotonic_ms(self) -> int:
-        """Milliseconds since the clock started; never decreases."""
-        ...
+    """``monotonic_ms``: ms since start, never decreasing; ``wall``: tz-aware."""
 
-    def wall(self) -> datetime:
-        """The timezone-aware wall time."""
-        ...
+    def monotonic_ms(self) -> int: ...
+
+    def wall(self) -> datetime: ...
 
 
 class WallClock:
