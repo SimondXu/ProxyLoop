@@ -54,7 +54,10 @@ ARMS: dict[str, tuple[Effort, ...]] = {"slow": ("low", None), "fast": (None,)}
 ARMS["ear"] = ("none", "minimal", "low", None)
 N = {"slow": 24, "fast": 20, "ear": 20}
 REJECTED = {400, 422}
-RULE = "evenly spaced in log order, index floor((2i+1)N/2n); fast: n/2 per lane"
+RULE = (
+    "evenly spaced in log order, index floor((2i+1)N/2n); fast: n/2 per lane;"
+    " arms run in listed order on even items, reversed on odd ones"
+)
 FAST_ROLE: dict[Lane, llm.LLMRole] = {"user": "fast_user", "cp": "fast_cp"}
 SAMPLING = live_config(MODELS["fast"], WORLD_EFFORT, 0).fast_sampling  # the CLI's
 
@@ -275,30 +278,47 @@ def rate(num: int, den: int) -> float | None:
     return num / den if den else None
 
 
-def tokens(usages: list[llm.Usage]) -> Json:
-    out = {"prompt": sum(u.prompt_tokens for u in usages)}
-    out["completion"] = sum(u.completion_tokens for u in usages)
-    return out | {"reasoning": sum(u.reasoning_tokens or 0 for u in usages)}
+def tokens(usages: list[llm.Usage | None]) -> Json:
+    """Exact totals over the records that report usage; ``records_without_usage``
+    counts the others. Unknown is never 0: every total is null when no record
+    reports usage, and ``reasoning`` is null when any usage lacks it."""
+    known = [u for u in usages if u]
+    unknown = sum(u.reasoning_tokens is None for u in known)
+    none = bool(usages) and not known
+    out: Json = {"prompt": None if none else sum(u.prompt_tokens for u in known)}
+    out["completion"] = None if none else sum(u.completion_tokens for u in known)
+    reasoning = sum(u.reasoning_tokens or 0 for u in known)
+    out |= {"reasoning": None if none or unknown else reasoning}
+    out["reasoning_unknown"] = unknown
+    return out | {"records_without_usage": len(usages) - len(known)}
 
 
 def arm_metrics(part: str, mine: list[Json], default: dict[str, str]) -> Json:
-    """One arm's metrics; ``default``: the default arm's valid Ear act per source."""
+    """One arm's metrics. Rates are over every call (n): a rejected or failed call
+    counts as not valid and not parsed; ``*_answered`` rates are over answered
+    calls only. ``default``: the default arm's valid Ear act per source."""
     ok = [r for r in mine if not r["error"]]
-    lat = [r["latency_ms"] for r in ok]
+    n, lat = len(mine), [r["latency_ms"] for r in ok]
     think = [r["usage"]["reasoning_tokens"] for r in ok if r["usage"]]
     think = [x for x in think if x is not None]
-    arm: Json = {"n": len(mine), "n_ok": len(ok), "n_error": len(mine) - len(ok)}
+    arm: Json = {"n": n, "n_ok": len(ok), "n_error": n - len(ok)}
     arm |= {"n_rejected": sum(bool(r.get("rejected")) for r in mine)}
+    arm["finish_reasons"] = dict(Counter(str(r["finish_reason"]) for r in mine))
+    echoes = {r["served_model_echo"] for r in mine if r["served_model_echo"]}
+    arm["served_model_echo"] = sorted(echoes)
     arm |= {"latency_ms_p50": pct(lat, 0.5), "latency_ms_p95": pct(lat, 0.95)}
     arm |= {"reasoning_tokens_p50": pct(think, 0.5), "reasoning_n": len(think)}
     arm |= {"reasoning_tokens_p95": pct(think, 0.95)}
     if part != "fast":
-        arm["valid_rate"] = rate(sum(bool(r["valid"]) for r in ok), len(ok))
+        n_valid = sum(bool(r["valid"]) for r in ok)
+        arm |= {"valid_rate": rate(n_valid, n)}
+        arm["valid_rate_answered"] = rate(n_valid, len(ok))
     if part == "slow":
         per_response = Counter(r["n_calls"] for r in ok)
         arm["calls_per_response"] = dict(sorted(per_response.items()))
         n_calls = sum(r["n_calls"] for r in ok)
-        arm["tool_call_valid_rate"] = rate(sum(r["n_valid_calls"] for r in ok), n_calls)
+        valid_calls = sum(r["n_valid_calls"] for r in ok)
+        arm["tool_call_valid_rate_answered"] = rate(valid_calls, n_calls)
     if part == "ear":  # over requests both this arm and the default answered validly
         both = [r for r in ok if r["valid"] and r["source"] in default]
         agree = sum(r["act"] == default[r["source"]] for r in both)
@@ -306,13 +326,14 @@ def arm_metrics(part: str, mine: list[Json], default: dict[str, str]) -> Json:
         arm["agreement_n"] = len(both)
     if part == "fast":
         ttft = [r["ttft_ms"] for r in ok if r["ttft_ms"] is not None]
-        arm["latency"] = {"relay_measured": True, "ttft_ms_p50": pct(ttft, 0.5)}
+        arm["latency"] = {"relay_measured": True, "ttft_includes_reasoning": True}
+        arm["latency"] |= {"ttft_ms_p50": pct(ttft, 0.5), "ttft_n": len(ttft)}
         arm["latency"] |= {"ttft_ms_p95": pct(ttft, 0.95)}
-        arm["latency"] |= {
-            "total_ms_p50": pct(lat, 0.5),
-            "total_ms_p95": pct(lat, 0.95),
-        }
-        arm["parse_issue_rate"] = rate(sum(bool(r["issues"]) for r in ok), len(ok))
+        arm["latency"] |= {"total_ms_p50": pct(lat, 0.5)}
+        arm["latency"] |= {"total_ms_p95": pct(lat, 0.95)}
+        with_issue = sum(bool(r["issues"]) for r in ok)
+        arm["parse_issue_rate"] = rate(with_issue + n - len(ok), n)  # unparsed: issue
+        arm["parse_issue_rate_answered"] = rate(with_issue, len(ok))
         arm["issues_by_reason"] = dict(Counter(i for r in ok for i in r["issues"]))
         arm["rejections"] = [r["error"] for r in mine if r.get("rejected")]
     return arm
@@ -326,8 +347,7 @@ def summarise(part: str, rows: list[Json], records: dict[str, list[Any]]) -> Jso
         name = label(effort)
         arm = arm_metrics(part, [r for r in rows if r["arm"] == name], default)
         recs: list[llm.LLMCallRecord] = records[name]  # every attempt, errors too
-        arm["tokens"] = tokens([r.usage for r in recs if r.usage])
-        arm["tokens"]["records"] = len(recs)
+        arm["tokens"] = tokens([r.usage for r in recs]) | {"records": len(recs)}
         arms[name] = {"model_id": MODELS[part], "reasoning_effort": effort} | arm
     return arms
 
@@ -347,12 +367,12 @@ def header(bundle: Bundle, part: str, items: list[Item]) -> Json:
 
 def plan(bundle: Bundle, part: str, items: list[Item]) -> Json:
     """The paid run's shape and a token projection from the recorded usage."""
-    used = [x.usage for x in items if x.usage]
-    per_arm = tokens(used) | {"requests_without_usage": len(items) - len(used)}
+    per_arm = tokens([x.usage for x in items])
     arms, bound = len(ARMS[part]), sum(x.request.max_tokens for x in items)
     out = header(bundle, part, items) | {"calls": len(items) * arms}
     out |= {"projected_tokens_per_arm": per_arm, "completion_bound_total": bound * arms}
-    out["projected_tokens_total"] = {k: v * arms for k, v in per_arm.items()}
+    total = {k: None if v is None else v * arms for k, v in per_arm.items()}
+    out["projected_tokens_total"] = total
     note = "recorded usage under source_models (their tokenizers and reasoning); "
     return out | {
         "note": note + "the bound is calls x max_tokens; TeamRouter is unpriced"
@@ -397,7 +417,8 @@ async def run(
 
     try:
         for i, item in enumerate(items):
-            for name, client in clients.items():
+            order = list(clients.items())  # alternated: no arm always goes second
+            for name, client in order[:: -1 if i % 2 else 1]:
                 row = await one(part, client, item, f"probe-{part}:{i}:{name}")
                 rows.append(row | {"arm": name})
                 if row.get("fatal"):
@@ -405,6 +426,9 @@ async def run(
                     print(f"aborted: {aborted}", file=sys.stderr)
                     return 1
                 flush(False)
+    except BaseException as exc:  # recorded, saved, then raised as it was
+        aborted = repr(exc)[:500]
+        raise
     finally:
         flush(aborted is None and len(rows) == len(items) * len(clients))
         for c in clients.values():

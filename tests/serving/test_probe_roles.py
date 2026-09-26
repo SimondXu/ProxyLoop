@@ -21,6 +21,7 @@ from tests.support.mod_probe import (
 )
 
 from proxyloop.contract.bundle import read_bundle
+from proxyloop.contract.llm import Usage
 from proxyloop.slow import prompt as slow_prompt
 from scripts.mod import probe_roles as pr
 
@@ -114,8 +115,12 @@ def test_slow_part_measures_validity_per_arm(tmp_path: Path, monkeypatch: Any):
         "prompt": 400,
         "completion": 80,
         "reasoning": 28,
+        "reasoning_unknown": 0,
+        "records_without_usage": 0,
         "records": 4,
     }
+    assert low["finish_reasons"] == {"tool_calls": 4}
+    assert low["served_model_echo"] == ["gemini-3.8-flash"]
     assert low["reasoning_tokens_p50"] == 7 and default["reasoning_effort"] is None
     body = fake.requests[0]
     assert body["tool_choice"] == {"type": "function", "function": {"name": "act"}}
@@ -187,3 +192,79 @@ def test_a_dead_endpoint_aborts_after_saving_finished_calls(
     assert code == 1 and out["complete"] is False and "HTTP 503" in out["aborted"]
     assert len(out["calls"]) == 3 and out["calls"][-1]["fatal"] is True
     assert len(fake.requests) == 3  # nothing after the failure, no retry
+
+
+def test_unknown_usage_is_never_counted_as_zero(tmp_path: Path, monkeypatch: Any):
+    """M1: a response without usage, or without reasoning tokens, is not a 0."""
+    set_env(monkeypatch)
+    fake = FakeTeamRouter(tools=lambda b: [("act", ACT_OK)])
+    fake.usage_mode = lambda b: "none" if b.get("reasoning_effort") else "no_reasoning"
+    _, out = run_part(tmp_path, "slow", fake)
+    low, default = out["arms"]["low"]["tokens"], out["arms"]["default"]["tokens"]
+    assert low["records_without_usage"] == 4
+    assert low["prompt"] is None and low["reasoning"] is None
+    assert (default["reasoning"], default["reasoning_unknown"]) == (None, 4)
+    assert default["prompt"] == 400 and out["arms"]["default"]["reasoning_n"] == 0
+
+
+def test_plan_keeps_unknown_recorded_reasoning_unknown(tmp_path: Path, capsys: Any):
+    """M1 in --plan: vLLM-recorded Fast usage has no reasoning tokens."""
+    usage = Usage(prompt_tokens=1000, completion_tokens=50)
+    run = write_probe_bundle(tmp_path / "run", usage=usage)
+    assert pr.main(["--run", str(run), "--part", "fast", "--plan"]) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["projected_tokens_per_arm"]["reasoning"] is None
+    assert plan["projected_tokens_total"]["reasoning"] is None
+    assert plan["projected_tokens_per_arm"]["reasoning_unknown"] == 8
+    run = write_probe_bundle(tmp_path / "bare", usage=None)
+    assert pr.main(["--run", str(run), "--part", "fast", "--plan"]) == 0
+    per_arm = json.loads(capsys.readouterr().out)["projected_tokens_per_arm"]
+    assert per_arm["records_without_usage"] == 8 and per_arm["prompt"] is None
+
+
+def test_rejected_calls_stay_in_the_denominators(tmp_path: Path, monkeypatch: Any):
+    """M2 (I10): 3 of 4 calls rejected; rates are over n, answered-only is named."""
+    set_env(monkeypatch)
+    fake = FakeTeamRouter(text="Sure, one moment.")
+    fake.status = lambda b: 400 if len(fake.requests) <= 3 else 200
+    _, out = run_part(tmp_path, "fast", fake)
+    arm = out["arms"]["default"]
+    assert (arm["n"], arm["n_ok"], arm["n_rejected"]) == (4, 1, 3)
+    assert arm["parse_issue_rate"] == 0.75 and arm["parse_issue_rate_answered"] == 0.0
+    assert arm["finish_reasons"] == {"None": 3, "stop": 1}
+
+    fake = FakeTeamRouter(tools=lambda b: [("act", ACT_OK)])
+    fake.status = lambda b: 400 if len(fake.requests) <= 6 else 200
+    _, out = run_part(tmp_path, "slow", fake)
+    low = out["arms"]["low"]  # items 0-2 rejected on both arms, item 3 answered
+    assert (low["n"], low["valid_rate"], low["valid_rate_answered"]) == (4, 0.25, 1.0)
+    assert low["tool_call_valid_rate_answered"] == 1.0
+
+
+def test_arm_order_alternates_across_items(tmp_path: Path, monkeypatch: Any):
+    """M3: no arm always runs second (implicit prefix caching)."""
+    set_env(monkeypatch)
+    fake = FakeTeamRouter(tools=lambda b: [("act", ACT_OK)])
+    _, out = run_part(tmp_path, "slow", fake)
+    efforts = [b.get("reasoning_effort", "default") for b in fake.requests]
+    assert efforts == ["low", "default", "default", "low"] * 2
+    assert "reversed on odd" in out["selection_rule"]
+
+
+def test_an_unexpected_exception_is_recorded_saved_and_raised(
+    tmp_path: Path, monkeypatch: Any
+):
+    """N2: a crash that is not LLMUnavailable still leaves the finished calls."""
+    set_env(monkeypatch)
+
+    def boom(body: Json) -> list[tuple[str, str]]:
+        if len(fake.requests) == 2:
+            raise RuntimeError("boom")
+        return [("act", ACT_OK)]
+
+    fake = FakeTeamRouter(tools=boom)
+    with pytest.raises(RuntimeError, match="boom"):
+        run_part(tmp_path, "slow", fake)
+    out = json.loads((tmp_path / "slow.json").read_text("utf-8"))
+    assert out["complete"] is False and "boom" in out["aborted"]
+    assert len(out["calls"]) == 1

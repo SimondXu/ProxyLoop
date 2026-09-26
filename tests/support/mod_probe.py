@@ -77,7 +77,8 @@ def set_env(monkeypatch: Any) -> None:
 
 
 class _Log:
-    def __init__(self) -> None:
+    def __init__(self, usage: Usage | None) -> None:
+        self.usage = usage
         self.events: list[Event] = []
         self.prompts: dict[str, PromptRecord] = {}
 
@@ -124,7 +125,7 @@ class _Log:
             request_id="rec",
             prompt_sha=prompt_sha,
             response_sha=None,
-            usage=RECORDED_USAGE,
+            usage=self.usage,
             t_start=0,
             t_first_token=None,
             t_end=1,
@@ -138,10 +139,13 @@ class _Log:
 LANE_CASES = [next(c for c in CASES if c.profile == p) for p in PROFILES]
 
 
-def write_probe_bundle(run_dir: Path, n: int = 4) -> Path:
-    """``n`` Slow steps, ``n`` Ear requests and ``n`` Fast requests per lane."""
+def write_probe_bundle(
+    run_dir: Path, n: int = 4, usage: Usage | None = RECORDED_USAGE
+) -> Path:
+    """``n`` Slow steps, ``n`` Ear requests and ``n`` Fast requests per lane,
+    every recorded call with ``usage``."""
 
-    log = _Log()
+    log = _Log(usage)
     for i in range(n):
         started = log.emit(
             "slow.step.started", "slow", {"basis_seq": 0, "wake_reasons": []}
@@ -236,11 +240,16 @@ class FakeTeamRouter:
     tools: ToolAnswer = lambda body: []
     text: str = "Sure, one moment."
     status: Callable[[Json], int] = lambda body: 200
+    # "full", "no_reasoning" (no completion_tokens_details) or "none" (no usage)
+    usage_mode: Callable[[Json], str] = lambda body: "full"
     requests: list[Json] = field(default_factory=list[Json])
 
-    def usage(self, body: Json) -> Json:
+    def usage(self, body: Json) -> Json | None:
+        mode = self.usage_mode(body)
+        if mode == "none":
+            return None
         reasoning = 0 if body.get("reasoning_effort") == "none" else 7
-        details = {"reasoning_tokens": reasoning}
+        details = {"reasoning_tokens": reasoning} if mode == "full" else {}
         return {
             "prompt_tokens": 100,
             "completion_tokens": 20,
