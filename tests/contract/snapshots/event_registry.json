@@ -1,0 +1,555 @@
+{
+ "action.authorized": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "intent",
+   "capability"
+  ]
+ },
+ "action.denied": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "intent",
+   "reason"
+  ]
+ },
+ "approval.decided": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "approval_id",
+   "decision",
+   "by"
+  ]
+ },
+ "approval.post": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": false,
+  "payload_keys": [
+   "subject",
+   "subject_id",
+   "decision",
+   "subject_hash",
+   "authority_epoch"
+  ]
+ },
+ "approval.requested": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "approval_id",
+   "offer_ref",
+   "revision",
+   "terms_hash",
+   "readback_text",
+   "authority_epoch",
+   "expires_ms",
+   "binding"
+  ]
+ },
+ "attest.recorded": {
+  "streams": [
+   "ops"
+  ],
+  "cause_required": false,
+  "payload_keys": []
+ },
+ "authority.epoch": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "new",
+   "reason"
+  ]
+ },
+ "authority.fence": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "op",
+   "fence_id",
+   "utt_id"
+  ]
+ },
+ "chan.barge_in": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": []
+ },
+ "chan.closed": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": []
+ },
+ "chan.hold": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": []
+ },
+ "chan.opened": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": []
+ },
+ "chan.strike": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": false,
+  "payload_keys": []
+ },
+ "completion.decided": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "verdict",
+   "reasons"
+  ]
+ },
+ "declass.denied": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "violations"
+  ]
+ },
+ "evidence.recorded": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": []
+ },
+ "f2s.msg": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "msg_id",
+   "lane",
+   "gen_id",
+   "utt_ref",
+   "type",
+   "facts",
+   "correction",
+   "text"
+  ]
+ },
+ "fact.recorded": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": []
+ },
+ "fast.cancelled": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "gen_id",
+   "reason"
+  ]
+ },
+ "fast.request": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": false,
+  "payload_keys": [
+   "lane",
+   "gen_id",
+   "trigger",
+   "view_sha",
+   "prompt_sha",
+   "profile",
+   "model_ref",
+   "basis_seq"
+  ]
+ },
+ "fast.sentence": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "lane",
+   "gen_id",
+   "utt_id",
+   "text"
+  ]
+ },
+ "fast.turn": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "lane",
+   "gen_id",
+   "call_id",
+   "items",
+   "ttft_ms",
+   "ttfs_ms"
+  ]
+ },
+ "ledger.write": {
+  "streams": [
+   "world"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "confirmation_id",
+   "binding"
+  ]
+ },
+ "llm.call": {
+  "streams": [
+   "agent",
+   "world"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "call_id",
+   "role",
+   "model_ref",
+   "adapter_kind",
+   "requested_model",
+   "served_model_echo",
+   "request_id",
+   "prompt_sha",
+   "response_sha",
+   "usage",
+   "t_start",
+   "t_first_token",
+   "t_end",
+   "finish_reason",
+   "attempt",
+   "error"
+  ]
+ },
+ "mandate.decided": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "mandate_id",
+   "mandate_hash",
+   "decision",
+   "by"
+  ]
+ },
+ "mandate.proposed": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "mandate_id",
+   "mandate_hash",
+   "status",
+   "epoch",
+   "max_monthly_price_minor",
+   "max_term_months",
+   "max_one_time_fees_minor",
+   "required_features",
+   "forbidden_changes",
+   "expires_ms",
+   "decided_by"
+  ]
+ },
+ "offer.recorded": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "offer_ref",
+   "revision",
+   "slots",
+   "terms_hash"
+  ]
+ },
+ "parity.checked": {
+  "streams": [
+   "ops"
+  ],
+  "cause_required": false,
+  "payload_keys": []
+ },
+ "readback.updated": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "offer_ref",
+   "slot_statuses"
+  ]
+ },
+ "rep.commit_heard": {
+  "streams": [
+   "world"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "utt_id",
+   "offer_ref"
+  ]
+ },
+ "rep.ear": {
+  "streams": [
+   "world"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "utt_id",
+   "act",
+   "args",
+   "call_id"
+  ]
+ },
+ "rep.mouth": {
+  "streams": [
+   "world"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "intent",
+   "text",
+   "fidelity_ok",
+   "attempts"
+  ]
+ },
+ "rep.policy": {
+  "streams": [
+   "world"
+  ],
+  "cause_required": false,
+  "payload_keys": [
+   "from",
+   "to",
+   "intent",
+   "rung"
+  ]
+ },
+ "s2f.msg": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "msg_id",
+   "lane",
+   "type",
+   "text",
+   "guide",
+   "approval_id"
+  ]
+ },
+ "s2f.voiced": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "msg_id",
+   "gen_id"
+  ]
+ },
+ "screen.redacted": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": []
+ },
+ "session.ended": {
+  "streams": [
+   "ops"
+  ],
+  "cause_required": false,
+  "payload_keys": [
+   "reason"
+  ]
+ },
+ "session.started": {
+  "streams": [
+   "ops"
+  ],
+  "cause_required": false,
+  "payload_keys": [
+   "cfg_hash",
+   "task_ref",
+   "instance_hash",
+   "split",
+   "models",
+   "renderer_fp",
+   "contract_version",
+   "git_sha",
+   "attest",
+   "parity"
+  ]
+ },
+ "slow.step.completed": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "basis_seq"
+  ]
+ },
+ "slow.step.started": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": false,
+  "payload_keys": [
+   "basis_seq",
+   "wake_reasons"
+  ]
+ },
+ "slow.tool": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "name",
+   "args",
+   "result_text",
+   "ok"
+  ]
+ },
+ "speak.released": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": []
+ },
+ "speak.revoked": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "reason"
+  ]
+ },
+ "speak.verbatim": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "lane",
+   "kind",
+   "text"
+  ]
+ },
+ "spend.charged": {
+  "streams": [
+   "ops"
+  ],
+  "cause_required": true,
+  "payload_keys": []
+ },
+ "status.changed": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "previous",
+   "status"
+  ]
+ },
+ "summary.updated": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "scope",
+   "text"
+  ]
+ },
+ "user.msg": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": false,
+  "payload_keys": [
+   "text"
+  ]
+ },
+ "user.sim": {
+  "streams": [
+   "world"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "text",
+   "revealed",
+   "delay_s"
+  ]
+ },
+ "utt.delivered": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": true,
+  "payload_keys": [
+   "lane",
+   "utt_id",
+   "text_generated",
+   "text_heard",
+   "interrupted"
+  ]
+ },
+ "utt.final": {
+  "streams": [
+   "agent"
+  ],
+  "cause_required": false,
+  "payload_keys": [
+   "lane",
+   "speaker",
+   "utt_id",
+   "text"
+  ]
+ }
+}

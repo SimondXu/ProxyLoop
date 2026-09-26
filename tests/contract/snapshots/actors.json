@@ -1,0 +1,84 @@
+{
+ "actors": [
+  "fast.cp",
+  "fast.user",
+  "guard",
+  "kernel",
+  "sim_approver",
+  "slow",
+  "ui",
+  "world.ear",
+  "world.ledger",
+  "world.mouth",
+  "world.policy",
+  "world.simuser"
+ ],
+ "emitters": {
+  "action.authorized": [
+   "guard"
+  ],
+  "approval.decided": [
+   "kernel"
+  ],
+  "approval.post": [
+   "sim_approver",
+   "ui"
+  ],
+  "approval.requested": [
+   "guard"
+  ],
+  "authority.epoch": [
+   "guard",
+   "kernel"
+  ],
+  "authority.fence": [
+   "guard",
+   "kernel"
+  ],
+  "chan.opened": [
+   "kernel"
+  ],
+  "completion.decided": [
+   "guard"
+  ],
+  "evidence.recorded": [
+   "guard"
+  ],
+  "mandate.decided": [
+   "kernel"
+  ],
+  "mandate.proposed": [
+   "guard"
+  ],
+  "offer.recorded": [
+   "guard"
+  ],
+  "readback.updated": [
+   "guard"
+  ],
+  "screen.redacted": [
+   "guard"
+  ],
+  "speak.released": [
+   "kernel"
+  ],
+  "speak.verbatim": [
+   "guard"
+  ],
+  "status.changed": [
+   "guard"
+  ],
+  "summary.updated": [
+   "guard"
+  ],
+  "user.msg": [
+   "kernel"
+  ],
+  "utt.delivered": [
+   "kernel"
+  ],
+  "utt.final": [
+   "kernel"
+  ]
+ }
+}
