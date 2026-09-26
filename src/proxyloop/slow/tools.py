@@ -1,8 +1,6 @@
-"""Slow's S0 tools (ARCHITECTURE §8). Each ``act`` call is one ``slow.tool``
-for its summaries plus one per listed call, each citing the step's ``llm.call``
-and the relays it read; effects are ``guard`` events citing their ``slow.tool``.
-Invalid model output is refused and counted, never repaired (AGENTS rule 12).
-"""
+"""Slow's S0 tools (§8): one ``slow.tool`` per summary set and per call, citing
+the step's ``llm.call`` and the relays it read; effects are ``guard`` events.
+Invalid model output is refused and counted, never repaired (AGENTS rule 12)."""
 
 from __future__ import annotations
 
@@ -49,7 +47,6 @@ class SlowTools:
 
     def act(self, call: ToolCall, causes: Sequence[str]) -> str:
         """Run one ``act`` call; the result text Slow reads next."""
-
         try:
             raw: Any = json.loads(call.arguments)
             if call.name != "act" or not isinstance(raw, dict):
@@ -132,7 +129,6 @@ class SlowTools:
 
     def _fact(self, bb: st.Blackboard, key: str, value: str, ref: object) -> Result:
         """Public iff the rep said it in ``ref``, or shareable and user-relayed."""
-
         said = {
             x.utt_id: x.text for x in bb.channels["cp"].lines if x.speaker == "partner"
         }
@@ -156,7 +152,6 @@ class SlowTools:
 
 def public_guide(bb: st.Blackboard, guide: Guide) -> bool:
     """Every slot resolves in public state; the renderer is the judge."""
-
     public = bb.public.model_copy(update={"guidance_cp": (guide,)})
     view = view_cp(
         bb.model_copy(update={"public": public}), Trigger(kind="guidance"), ""
@@ -172,7 +167,6 @@ def record_offer(
     bb: st.Blackboard, ref: str, raw: Sequence[Mapping[str, Any]]
 ) -> Result:
     """An offer as the rep said it: every money or term value is one the rep said."""
-
     slots = [st.ReadbackSlot(source_utt=s.get("utt_ref"), **_slot(s)) for s in raw]
     heard, scale = rep_numbers(bb), {"usd_minor": 100, "months": 1}
     unbound = [

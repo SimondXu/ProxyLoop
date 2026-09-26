@@ -1,10 +1,6 @@
-"""``python -m proxyloop.cli``: ``session``, ``rep-chat`` and the terminal ``replay``.
-
-``session`` and ``rep-chat`` both call ``run_session`` (I1); rep-chat is a
-session in which the person at the terminal speaks for the agent on the call
-(``cp_agent``) against the simulated rep. ``replay`` only reads a bundle. Live
-runs read ``PL_{VLLM,RELAY,TEAMROUTER}_{BASE_URL,API_KEY}`` from the shell.
-"""
+"""``python -m proxyloop.cli session|rep-chat|replay``: the first two call
+``run_session`` (I1); rep-chat's agent on the call is the person at the terminal.
+Live runs read ``PL_{VLLM,RELAY,TEAMROUTER}_{BASE_URL,API_KEY}``."""
 
 from __future__ import annotations
 

@@ -1,8 +1,5 @@
-"""Watchdog (ARCHITECTURE §11): each tick lets the rep's clock run (silence
-and hold strikes, offer expiry) while the floor is free; the user lane has no
-patience (I7). Past the run budget the session ends with ``timeout``, which no
-claim accepts.
-"""
+"""Watchdog (§11): the rep's clock ticks on a free floor; the user lane has no
+patience (I7). Past the run budget the session ends with ``timeout``."""
 
 from __future__ import annotations
 

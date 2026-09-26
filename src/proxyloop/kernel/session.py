@@ -1,13 +1,7 @@
-"""``run_session(cfg, task, channels=None)``: the only execution path (I1).
-
-One TaskGroup per session (Fast lanes, Speakers, SlowLoop, partners, watchdog)
-over one ``Bus``. Every ``llm.call`` comes from an adapter's ``on_record`` sink:
-``Kernel._record`` (agent) or ``World.record`` (world). ``LLMUnavailable``
-ends the session with ``llm_unavailable``, delivers nothing after it and is
-re-raised (I8). The bundle is written however the session ends. The only
-module that wires agent code to ``env``. Not yet: P3 and the attestation at
-start (they need the P2 goldens in ``src``), fence and epochs (S1-SYS-02).
-"""
+"""``run_session(cfg, task, channels=None)``, the only execution path (I1): one
+TaskGroup over one ``Bus``; ``llm.call`` only from the adapters' record sinks;
+``LLMUnavailable`` ends the session (``llm_unavailable``) and is re-raised (I8).
+The one module that wires agent code to ``env``. Fence, epochs: S1-SYS-02."""
 
 from __future__ import annotations
 
@@ -15,14 +9,7 @@ import asyncio
 import secrets
 import subprocess
 from collections import Counter
-from collections.abc import (
-    AsyncIterator,
-    Awaitable,
-    Callable,
-    Coroutine,
-    Mapping,
-    Sequence,
-)
+from collections.abc import AsyncIterator, Callable, Coroutine, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -134,7 +121,7 @@ class SimRepChannel(Channel):
     def floor(self, free: bool, t_ms: int) -> None:
         self._rep.floor(free, t_ms)
 
-    async def _run(self, turn: Awaitable[RepTurn]) -> None:
+    async def _run(self, turn: Coroutine[Any, Any, RepTurn]) -> None:
         self._turns += 1
         try:
             done = await turn
@@ -169,7 +156,6 @@ def _outcome(
     group: BaseExceptionGroup[BaseException],
 ) -> tuple[str, BaseException | None]:
     """The ``session.ended`` reason, and the error to re-raise (None: normal)."""
-
     leaves = group.exceptions  # tasks raise plain exceptions: the group is flat
     for kind, reason in _ERRORS.items():
         if found := [e for e in leaves if isinstance(e, kind)]:
@@ -259,7 +245,6 @@ class Kernel:
         ear, mouth = self.clients["ear"], self.clients["mouth"]
         return SimRepChannel(SimRep(self.task, ear, mouth, self.world))
 
-    # The single writer, the prompt store and the llm.call sinks.
     @property
     def bb(self) -> Blackboard:
         return self.bus.bb
@@ -323,7 +308,6 @@ class Kernel:
     def _die(self) -> None:
         self._dead = True
 
-    # Wakes: events are truth (I2).
     def _on_event(self, e: Event) -> None:
         p, user, cp = e.payload, self.lanes.get("user"), self.lanes.get("cp")
         if e.type == "user.msg" and user is not None:
@@ -354,7 +338,6 @@ class Kernel:
 
         self.spawn(later())
 
-    # The session.
     async def run(self) -> RunResult:
         models = {
             r: {"ref": c.ref.model_dump(mode="json")} for r, c in self.clients.items()
@@ -411,7 +394,6 @@ class Kernel:
 
     async def _disclose(self, opened: str) -> None:
         """The Guard's disclosure line is the first cp agent utterance (I11)."""
-
         line = {"lane": "cp", "kind": "disclosure", "text": DISCLOSURE}
         said = self.emit("speak.verbatim", "guard", line, [opened]).event_id
         released = self.emit("speak.released", "kernel", {"lane": "cp"}, [said])
@@ -421,7 +403,6 @@ class Kernel:
 
     async def _ingress(self, key: str, channel: Channel, opened: str) -> None:
         """Partner turns become ``user.msg``/``utt.final``; ends end the call."""
-
         while True:
             inc = await channel.incoming.get()
             if (wait := inc.due_ms - self.now()) > 0:
@@ -495,12 +476,8 @@ async def run_session(
     clients: ClientFactory | None = None,
     tokenizer: ChatTokenizer | None = None,
 ) -> RunResult:
-    """One session into ``runs_dir/<run_id>/``. ``channels`` maps ``user``/``cp``
-    (and, for rep-chat, ``cp_agent``: a person speaking for the agent) to
-    ``"sim"``, ``"human"`` or a ``Channel`` (default: both simulated). The
-    keyword arguments are test seams; ``clients`` builds each role's client
-    around the kernel's record sink (default: ``llm.factory.make_client``)."""
-
+    """``channels``: ``user``/``cp`` (and for rep-chat ``cp_agent``, a person for
+    the agent) -> ``"sim"``/``"human"``/a ``Channel``. Keywords are test seams."""
     sims: dict[str, ChannelSpec] = {"user": "sim", "cp": "sim"}
     specs, clock = sims if channels is None else channels, clock or WallClock()
     k = Kernel(

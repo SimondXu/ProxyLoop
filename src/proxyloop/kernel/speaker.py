@@ -1,9 +1,6 @@
-"""Speakers (ARCHITECTURE §11): chat is delivered at once; the cp lane holds
-the floor and runs the speech clock, ``min(12 s, words / 2.8)`` a line. A
-partner who speaks meanwhile barges in: the line is cut to the words said so
-far and the rest of the turn is dropped. The partner then hears the turn as
-heard, never as generated.
-"""
+"""Speakers (§11): chat is delivered at once; the cp lane holds the floor and
+runs the speech clock, ``min(12 s, words / 2.8)`` a line. A partner who speaks
+meanwhile barges in: the line is cut to the words said and the turn dropped."""
 
 from __future__ import annotations
 
@@ -24,7 +21,6 @@ Sleep = Callable[[float], Awaitable[None]]
 
 def heard_prefix(text: str, seconds: float) -> str:
     """The words said in ``seconds`` at the speech rate: a prefix of ``text``."""
-
     words = list(re.finditer(r"\S+", text))
     n = min(len(words), int(seconds * WORDS_PER_S))
     return text[: words[n - 1].end()] if n else ""
@@ -38,7 +34,6 @@ class Speaker:
 
     async def speak(self, lines: Sequence[tuple[str, str, str]]) -> None:
         """Deliver ``(utt_id, text, cause event id)`` lines as one turn."""
-
         k, realtime = self._k, self.lane == "cp"
         async with self._lock:
             self._barge.clear()
@@ -65,7 +60,6 @@ class Speaker:
 
     async def barge_in(self) -> None:
         """The partner speaks: cut the current line, then wait for the floor."""
-
         self._barge.set()
         async with self._lock:
             return

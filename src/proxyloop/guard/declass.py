@@ -1,12 +1,6 @@
-"""Declassification: what may enter public state (ARCHITECTURE §5; I4).
-
-Text written into public state (a ``public_summary``, a public fact, an offer
-slot) passes only if every number in it is source-bound (said by the rep in a
-cp ``utt.final``, or the value of an allow-listed shareable fact), it carries
-no protected value and no mandate bound that is not already public, and it is
-at most 400 characters. Semantic leakage without numbers is measured, not
-blocked (EVAL §7).
-"""
+"""Declassification (§5; I4): public text passes only if every number is
+source-bound (a rep ``utt.final`` or a shareable fact's value), it holds no
+protected value or non-public mandate bound, and it fits 400 characters."""
 
 from __future__ import annotations
 
@@ -22,7 +16,6 @@ _NUMBER = re.compile(r"\d+(?:\.\d+)?")
 
 def numbers(text: str) -> set[Decimal]:
     """The numbers written as digits (``1,068.50`` is 1068.50), as values."""
-
     text = re.sub(r"(?<=\d),(?=\d{3})", "", text)
     return {Decimal(m) for m in _NUMBER.findall(text)}
 
@@ -48,7 +41,6 @@ def declassify(
 ) -> tuple[str, ...]:
     """The violations; empty when ``text`` may enter public state.
     ``shareable``: the recorded values of allow-listed shareable facts."""
-
     out: list[str] = []
     if len(text) > MAX_PUBLIC_TEXT:
         out.append(f"longer than {MAX_PUBLIC_TEXT} characters")

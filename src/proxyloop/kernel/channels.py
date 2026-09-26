@@ -1,11 +1,6 @@
-"""Channels: the partner on each lane (ARCHITECTURE §2, §10).
-
-A channel hears the agent (``send``: the turn as heard; ``None`` when the lane
-opens) and puts the partner's turns on ``incoming``; the kernel writes them as
-``user.msg``/``utt.final``. ``tick`` runs only while the floor is free and no
-partner turn is in flight (``busy``). The simulated partners are wired in
-``kernel.session``, the one module that imports ``env``.
-"""
+"""Channels (§2, §10): the partner on each lane hears the agent (``send``, as
+heard; ``None`` on open) and queues its turns on ``incoming``. ``tick`` runs only
+on a free floor with no partner turn in flight (``busy``)."""
 
 from __future__ import annotations
 
@@ -70,7 +65,6 @@ class HumanChannel(Channel):
 
 def read_stdin(humans: Mapping[str, HumanChannel]) -> None:
     """Route terminal lines to the people (``u:``/``r:`` when there are two)."""
-
     loop = asyncio.get_running_loop()
 
     def route(raw: str) -> None:

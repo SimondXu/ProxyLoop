@@ -1,7 +1,6 @@
-"""SlowLoop: one step in flight; wakes during a step coalesce into the next.
-A step reads the relay-only ``SlowView`` (I5): unread relays become notes on the
-last tool result, with the status bar. The fold keeps ``f2s_pending`` whole, so
-the loop tracks what it has read (its ``slow.tool`` events cite them)."""
+"""SlowLoop: one step in flight, wakes coalesced. A step reads the relay-only
+``SlowView`` (I5); unread relays become notes on the last tool result, and the
+step's ``slow.tool`` events cite them (the fold keeps ``f2s_pending`` whole)."""
 
 from __future__ import annotations
 
