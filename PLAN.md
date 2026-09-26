@@ -142,7 +142,7 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
   - `tests/serving` test doubles live outside `tests/support` (AGENTS rule 5).
 - #115 (SYS): `fetch_external.sh` clones into a temp dir then moves; drop the stale `!.env.example` in `.gitignore`; pin the CI Python patch release; add shellcheck; amend S0-SYS-02's acceptance grep to the exclusions actually used.
 - Hook (#114): protect the worktree parent `../pl-wt`; track `pushd`; the heredoc false positive (text that mentions recursive deletes near data/external is blocked when shlex cannot parse it).
-- Process: S0 PR count: 14 merged (#108–#121) + S0-ROOT-09 = 15; S0-SYS-06 makes 16 (the tripwire); S0-MOD-03 would be the 17th. Root evidence PRs (S0-ROOT-05/06) are excluded. The user decides before S0-MOD-03 opens.
+- Process: S0 PR count: 14 merged (#108–#121) + S0-ROOT-09 = 15; S0-SYS-06 makes 16 (at the limit; the tripwire is > 16); S0-MOD-03 would be the 17th. Root evidence PRs (S0-ROOT-05/06) are excluded. The user decides before S0-MOD-03 opens.
 - Docs:
   - EVAL §9.4: stratify the Ear-audit sampling frame by speaker model (Fast condition) and report Ear accuracy per speaker model (S0-ROOT-08 could not edit EVAL.md).
 - #118 (SYS evidence):
@@ -493,7 +493,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 S1 SYS/MOD tasks may start after S0-ROOT-05. **Any teacher run in the harness** (the T and R conditions, S1-MOD-01's teacher smoke, S1-MOD-03, S1-ROOT-02) waits until S1-SYS-01, -02, -03 and -05 have merged. Decisions D require capability minting, read-back slots, the fence and epochs, and approval-endpoint security first (§9 E1).
 
 ### S1-SYS-00 Simplification pass (no weaker guarantees) — SYS — M — todo
-- **Objective:** before the rest of S1, trim only redundancy in the S0 code, without weakening any guarantee (the user's example: `llm/` ≈ 550 lines) (user decision 2026-09-26).
+- **Objective:** before the rest of S1, trim only redundancy in the S0 code, without weakening any guarantee (e.g. a target of `llm/` ≈ 550 lines) (user decision 2026-09-26).
 - **Owned paths:** `src/proxyloop/{core,evidence,llm,env,kernel,slow}/**` (code only; no contract).
 - **Acceptance:** `make check` green; every existing test unchanged or strictly stronger; net `src/` lines reduced.
 

@@ -12,13 +12,13 @@ S0-SYS-04 (#120) gives every adapter an `on_record` sink, S0-SYS-05 (#121) makes
 
 ## Decision
 1. **One writer for `llm.call`.** Every `llm.call` event is written only by the adapter's `on_record` sink (S0-SYS-04 `make_client(..., on_record=...)`). This holds for every lane: Fast, Slow and the world.
-   - Callers cite a call by its `call_id` (in `fast.turn`, `slow.tool`, `rep.ear`, `rep.mouth`, …). They never log a returned record.
+   - Callers cite a call by its `call_id`: in the payload (`fast.turn`, `rep.ear`) or through `cause_ids` to its `llm.call` events (`rep.mouth`, `user.sim`, …). They never log a returned record.
    - A cancelled call also produces its record through the sink.
 2. **Claim endings.** `evidence-check --claim` accepts exactly these `session.ended` reasons: `completed`, `no_deal`, `info_only`, `escalate` and `abandoned` (the counterparty hung up). Every other ending fails a claim, including errors, timeouts, budget stops and `llm_unavailable`.
 3. **What `--claim` proves.** Passing `--claim` proves that a bundle is internally consistent, not that it is authentic. Authenticity rests on root-run provenance: the root ran the command and committed the bundle.
 
 ## Evidence
-This ADR records design rules, not measurements. The review findings behind Decision 3 are in PLAN §0.9 under #118. The sink is in `src/proxyloop/llm/factory.py` and `src/proxyloop/llm/http.py`.
+This ADR records design rules, not measurements. The review findings behind Decision 3 are in PLAN §0.9 under #118. The sink is in `src/proxyloop/llm/factory.py` and `src/proxyloop/llm/http.py`; the world's sink is `World.record` (`src/proxyloop/env/world.py`).
 
 ## Consequences
 - **Contract / fingerprint impact:** none. The fingerprints `pl_user_v1` and `pl_cp_v1` are unchanged.
