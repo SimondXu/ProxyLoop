@@ -1,0 +1,44 @@
+{
+ "actors": [
+  "fast.cp",
+  "fast.user",
+  "guard",
+  "kernel",
+  "sim_approver",
+  "slow",
+  "ui",
+  "world.ear",
+  "world.ledger",
+  "world.mouth",
+  "world.policy",
+  "world.simuser"
+ ],
+ "emitters": {
+  "action.authorized": [
+   "guard"
+  ],
+  "approval.decided": [
+   "kernel"
+  ],
+  "approval.post": [
+   "sim_approver",
+   "ui"
+  ],
+  "authority.epoch": [
+   "guard",
+   "kernel"
+  ],
+  "completion.decided": [
+   "guard"
+  ],
+  "mandate.decided": [
+   "kernel"
+  ],
+  "mandate.proposed": [
+   "guard"
+  ],
+  "status.changed": [
+   "guard"
+  ]
+ }
+}

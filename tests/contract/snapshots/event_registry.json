@@ -36,9 +36,10 @@
   ],
   "cause_required": false,
   "payload_keys": [
-   "approval_id",
+   "subject",
+   "subject_id",
    "decision",
-   "terms_hash",
+   "subject_hash",
    "authority_epoch"
   ]
  },

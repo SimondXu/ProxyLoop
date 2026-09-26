@@ -7,6 +7,7 @@ validated through it; the others may carry extra keys. Additions need an ADR.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
@@ -102,9 +103,10 @@ Approver = Literal["ui", "sim_approver"]
 
 
 class ApprovalPost(Frozen):
-    approval_id: str
+    subject: Literal["approval", "mandate"]  # the endpoint decides both
+    subject_id: str  # approval_id or mandate_id
     decision: Decision
-    terms_hash: str
+    subject_hash: str  # the card's terms_hash, or the mandate_hash
     authority_epoch: int
 
 
@@ -172,6 +174,25 @@ def _registry() -> dict[str, EventSpec]:
 
 EVENT_TYPES: MappingProxyType[str, EventSpec] = MappingProxyType(_registry())
 
+_WORLD = {f"world.{r}" for r in ("ear", "policy", "mouth", "simuser", "ledger")}
+_AGENT = {"fast.user", "fast.cp", "slow", "guard", "kernel", "ui", "sim_approver"}
+ACTORS = frozenset(_AGENT | _WORLD)
+# Allowed emitters (§4, §9); no model role (fast.*, slow, world.*) is among them.
+_EMITTER_TABLE: str = """
+approval.post       ui sim_approver
+approval.decided    kernel
+mandate.decided     kernel
+mandate.proposed    guard
+authority.epoch     kernel guard
+action.authorized   guard
+completion.decided  guard
+status.changed      guard
+"""
+EMITTERS: MappingProxyType[str, frozenset[str]] = MappingProxyType(
+    {r.split()[0]: frozenset(r.split()[1:]) for r in _EMITTER_TABLE.strip().split("\n")}
+)
+_CITES = {"approval.decided": "approval.post", "mandate.decided": "approval.post"}
+
 
 def event_id(run_id: str, seq: int) -> str:
     return f"{run_id}:{seq}"
@@ -191,7 +212,7 @@ class Event(Frozen):
     t_ms: int = Field(ge=0)
     wall: datetime
     type: str
-    actor: str
+    actor: str  # one of ACTORS
     stream: Stream
     cause_ids: tuple[str, ...] = ()
     epoch: int = Field(ge=0)
@@ -214,9 +235,21 @@ class Event(Frozen):
             run, _, seq = cause.rpartition(":")
             if run != self.run_id or not seq.isdigit() or int(seq) >= self.seq:
                 raise ValueError(f"cause {cause!r} is not an earlier event of this run")
+        if self.actor not in EMITTERS.get(self.type, ACTORS):
+            raise ValueError(f"actor {self.actor!r} may not emit {self.type}")
         model = _MODELS.get(self.type)
         if model is not None:  # typed payload
             model.model_validate(self.payload)
         elif missing := [k for k in spec.payload_keys if k not in self.payload]:
             raise ValueError(f"{self.type} payload lacks {missing}")
         return self
+
+
+def check_causes(events: Sequence[Event]) -> None:
+    """Log-level rule: a decision cites the ``approval.post`` it decides."""
+
+    types = {e.event_id: e.type for e in events}
+    for e in events:
+        cited = _CITES.get(e.type)
+        if cited and not any(types.get(c) == cited for c in e.cause_ids):
+            raise ValueError(f"{e.event_id} ({e.type}) must cite an {cited}")

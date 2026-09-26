@@ -37,7 +37,19 @@ Decisions beyond the ARCHITECTURE text:
    - `ToolRequest.tool_choice` names the one tool the model must call.
    - There is no `response_format` or JSON mode.
    - `request_content` and `tool_response_content` define what `prompt_sha` and `response_sha` hash.
-7. **`SessionConfig`.** It has `teacher: ModelRef | None`, set iff a `teacher_repair_*` ablation is (part of `cfg_hash`). With `live=True`, no role may be `test_fake` or `recorded_replay`, and `baseline` (the FSM) is allowed only on `fast_user`/`fast_cp`.
+7. **Actors (review M3, root decision).** `Event.actor` is one of `fast.user`, `fast.cp`, `slow`, `guard`, `kernel`, `ui`, `sim_approver`, `world.ear`, `world.policy`, `world.mouth`, `world.simuser`, `world.ledger` (`events.ACTORS`). The allowed emitters (`events.EMITTERS`) are:
+
+   | Event | Allowed actors |
+   |---|---|
+   | `approval.post` | `ui`, `sim_approver` |
+   | `approval.decided`, `mandate.decided` | `kernel` |
+   | `authority.epoch` | `kernel`, `guard` |
+   | `mandate.proposed`, `action.authorized`, `completion.decided`, `status.changed` | `guard` |
+
+   Other types accept any actor. No `fast.*`, `slow` or `world.*` actor may emit an authority type.
+
+   `approval.decided` and `mandate.decided` must cite their `approval.post` in `cause_ids`. `events.check_causes` checks this over the log, and `read_bundle` runs it. Mandate decisions arrive through the same endpoint, so `approval.post` is `{subject: approval|mandate, subject_id, decision, subject_hash, authority_epoch}`, where `subject_hash` is the card's `terms_hash` or the `mandate_hash`. This is the only payload change of that commit.
+8. **`SessionConfig`.** It has `teacher: ModelRef | None`, set iff a `teacher_repair_*` ablation is (part of `cfg_hash`). With `live=True`, no role may be `test_fake` or `recorded_replay`, and `baseline` (the FSM) is allowed only on `fast_user`/`fast_cp`.
 
 Grammar (§6.2):
 - The parser keeps exactly TalkAct's tolerances (`fast_agent.py:168-191`) and no others:
@@ -72,7 +84,7 @@ Grammar (§6.2):
   - the counterfactual over 500 blackboards, perturbing every Blackboard field except `public` and `channels["cp"]`, with a non-vacuity check on `view_user`;
   - the `view_cp` AST rule (only `bb.public` and `bb.channels` with the literal key `"cp"`);
   - the render-bounds test;
-  - the registry and manifest snapshots.
+  - the registry, actor-table and manifest snapshots.
 - **Run:** `uv run pytest tests/contract tests/golden -q`.
 
 ## Consequences
@@ -80,13 +92,13 @@ Grammar (§6.2):
 - **ARCHITECTURE diff:**
   - §2: the view signatures take `brief`;
   - §2: the `contract.config` row states the `teacher` and live-mode rules;
-  - §4.2: lists `approval.post{approval_id, decision, terms_hash, authority_epoch}`, the payloads of `authority.epoch` (with its reasons), `mandate.proposed`, `mandate.decided` and `status.changed`, the `llm.call` fields `requested_model`, `finish_reason` and `attempt`, and that these payloads are typed;
+  - §4.1: the actor vocabulary and the fixed emitters;
+  - §4.2: lists `approval.post{subject, subject_id, decision, subject_hash, authority_epoch}`, the payloads of `authority.epoch` (with its reasons), `mandate.proposed`, `mandate.decided` and `status.changed`, the `llm.call` fields `requested_model`, `finish_reason` and `attempt`, and that these payloads are typed;
   - §16: the contract row goes 950 → 1,850 lines, so the S0 total becomes ≈ 4,400 and the S0–S1 total ≈ 6,550.
 - **Data invalidated:** none.
 - **Migration:** SYS and MOD import only from `proxyloop.contract`. `.importlinter` forbids the contract from importing the rest of `proxyloop`, the tests and the tokenizer libraries. Adapters run `tests/contract/llm_conformance.py`.
 - **Risks:**
   - **S0 size tripwire.** The §16 S0 total (≈ 4,400) now exceeds PLAN §0.6's 3,700-line S0 tripwire. The tripwire was left unchanged, so the root must decide.
-  - **Per-type actor sets are not yet enforced (review M3).** ARCHITECTURE defines no actor vocabulary, so the root must decide it first.
   - **`reasoning_effort` on TeamRouter.** The values accepted for `gemini-3.8-flash` are unprobed.
   - **P2 needs the Hugging Face tokenizer.** It comes from the network or the cache; the files are not vendored.
   - **Known P7 divergences from TalkAct (S4):**

@@ -16,7 +16,7 @@ from pydantic import ConfigDict, Field, model_validator
 
 from proxyloop.contract.base import Frozen
 from proxyloop.contract.config import SessionConfig, config_hash
-from proxyloop.contract.events import Event
+from proxyloop.contract.events import Event, check_causes
 from proxyloop.contract.llm import AdapterKind, LLMRole, ModelRef
 from proxyloop.contract.state import Spend
 
@@ -80,6 +80,7 @@ def _jsonl(path: Path) -> list[str]:
 def read_bundle(path: Path) -> Bundle:
     manifest = Manifest.model_validate(json.loads((path / MANIFEST).read_text("utf-8")))
     events = tuple(Event.model_validate_json(line) for line in _jsonl(path / EVENTS))
+    check_causes(events)
     records = [
         PromptRecord.model_validate_json(line) for line in _jsonl(path / PROMPTS)
     ]
