@@ -159,8 +159,14 @@ def lora_ladder() -> dict:
 @app.local_entrypoint()
 def main(out: str = "docs/decisions/data/vllm-lora-ladder.json") -> None:
     result = lora_ladder.remote()
-    write_json(Path(out), result)
     print(json.dumps(result["summary"], indent=2))
-    if result["summary"]["aborted_at"]:
-        raise SystemExit(f"ladder aborted at {result['summary']['aborted_at']}: {result.get('error')}; "
-                         f"partial result in {out}")
+    if not result["summary"]["aborted_at"]:
+        write_json(Path(out), result)
+        return
+    # An aborted run must not satisfy the serve-up order guard (file exists): never write --out, and
+    # remove a stale --out from an earlier run (that one file only).
+    Path(out).unlink(missing_ok=True)
+    partial = Path(out).with_suffix(".aborted.json")
+    write_json(partial, result)
+    raise SystemExit(f"ladder aborted at {result['summary']['aborted_at']}: {result.get('error')}; "
+                     f"partial result in {partial}")

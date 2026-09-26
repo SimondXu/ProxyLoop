@@ -117,22 +117,37 @@ class Remote:
         return self.result
 
 
-def test_main_writes_into_a_missing_parent_dir(tmp_path, monkeypatch):
+def test_a_complete_run_writes_out_into_a_missing_parent_dir(tmp_path, monkeypatch):
     result = {"adapters": results(), "summary": lora_ladder.summarise(results())}
     monkeypatch.setattr(lora_ladder, "lora_ladder", Remote(result))
     out = tmp_path / "new" / "dir" / "ladder.json"
     lora_ladder.main.info.raw_f(out=str(out))
     assert json.loads(out.read_text()) == result
+    assert not out.with_suffix(".aborted.json").exists()
 
 
-def test_main_keeps_an_aborted_result_and_exits_non_zero(tmp_path, monkeypatch):
+def test_main_keeps_an_aborted_result_beside_out_and_exits_non_zero(tmp_path, monkeypatch):
     summary = lora_ladder.summarise({}, aborted_at="zero-all")
     result = {"adapters": {}, "aborted_at": "zero-all", "error": "EngineDeadError: x", "summary": summary}
     monkeypatch.setattr(lora_ladder, "lora_ladder", Remote(result))
     out = tmp_path / "missing" / "ladder.json"
     with pytest.raises(SystemExit, match="aborted at zero-all"):
         lora_ladder.main.info.raw_f(out=str(out))
-    assert json.loads(out.read_text()) == result
+    assert not out.exists()  # the serve-up order guard only checks that --out exists
+    assert json.loads((tmp_path / "missing" / "ladder.aborted.json").read_text()) == result
+
+
+def test_an_aborted_run_removes_a_stale_out_and_nothing_else(tmp_path, monkeypatch):
+    summary = lora_ladder.summarise({}, aborted_at="zero-all")
+    result = {"adapters": {}, "aborted_at": "zero-all", "error": "EngineDeadError: x", "summary": summary}
+    out, neighbour = tmp_path / "ladder.json", tmp_path / "vllm-probe.json"
+    out.write_text("{}")
+    neighbour.write_text("{}")
+    monkeypatch.setattr(lora_ladder, "lora_ladder", Remote(result))
+    with pytest.raises(SystemExit):
+        lora_ladder.main.info.raw_f(out=str(out))
+    assert not out.exists() and neighbour.read_text() == "{}"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["ladder.aborted.json", "vllm-probe.json"]
 
 
 class Volume:

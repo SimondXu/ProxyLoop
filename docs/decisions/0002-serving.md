@@ -73,7 +73,8 @@ Facts checked while writing the configuration (sources, not measurements):
   applied, and the run completed. Each finished record is printed as one JSON line as it completes. Any engine
   exception stops the run (a worker-side LoRA failure kills the V1 engine): the result keeps the finished
   records with `aborted_at` and the error, its summary fails every rung and lists the missing adapters, and
-  `serve-lora-ladder` exits non-zero. The Modal function saves the result on the `proxyloop-adapters` volume
+  `serve-lora-ladder` writes it to `data/vllm-lora-ladder.aborted.json`, never to `data/vllm-lora-ladder.json`
+  (it deletes a stale copy of that one file), so the `serve-up` order guard stays closed, then exits non-zero. The Modal function saves the result on the `proxyloop-adapters` volume
   (`results/lora-ladder-<UTC time>.json`, named in `volume_copy`) before returning it. Rule:
   serve `all` if `rung_ok:all`, else `attn-mlp` if `rung_ok:attn-mlp`, else escalate to rung 3 (merged BF16 as a
   separate process). The probe fails unless the ladder JSON says `rung_ok:<served rung>`.
