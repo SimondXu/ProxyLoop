@@ -113,5 +113,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    os.environ.setdefault("CLAUDE_PROJECT_DIR", str(Path(__file__).resolve().parents[2]))
+    os.environ.setdefault(
+        "CLAUDE_PROJECT_DIR", str(Path(__file__).resolve().parents[2])
+    )
     main()

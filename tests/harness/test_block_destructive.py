@@ -32,7 +32,11 @@ def run_hook(stdin: str, scratch: Path) -> subprocess.CompletedProcess[str]:
 
 
 def decision(command: str, scratch: Path) -> str:
-    payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(REPO)}
+    payload = {
+        "tool_name": "Bash",
+        "tool_input": {"command": command},
+        "cwd": str(REPO),
+    }
     result = run_hook(json.dumps(payload), scratch)
     assert result.returncode == 0, result.stderr
     if not result.stdout.strip():
