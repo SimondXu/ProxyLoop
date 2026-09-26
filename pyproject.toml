@@ -1,0 +1,48 @@
+[project]
+name = "proxyloop"
+version = "0.0.0"
+description = "ProxyLoop v3: one traceable Fast/Slow agent execution path."
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.8.4,<0.9"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+  "hypothesis==6.168.1",
+  "import-linter==2.15",
+  "pyright==1.1.414",
+  "pytest==9.1.1",
+  "ruff==0.16.9",
+]
+sys = []
+mod = []
+
+[tool.uv]
+default-groups = ["dev"]
+
+# The v0 tree (runtime/, ml/, tests/{contract,integration}, scripts/*.py) stays
+# in place until S0-SYS-02; every tool below covers only the new tree.
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+src = ["src", "tests/port", "scripts/sys"]
+include = [
+  "src/proxyloop/**/*.py",
+  "tests/port/**/*.py",
+  "scripts/sys/**/*.py",
+]
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]
+
+[tool.pyright]
+include = ["src/proxyloop", "tests/port", "scripts/sys"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+
+[tool.pytest.ini_options]
+addopts = "-ra --import-mode=importlib"
+testpaths = ["tests/port"]
