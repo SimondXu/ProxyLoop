@@ -1,0 +1,1147 @@
+{
+  "schema": "pl.relay_cost_input_heavy/2",
+  "task": "S0-ROOT-04",
+  "started_utc": "2026-09-26T05:41:18Z",
+  "finished_utc": "2026-09-26T05:44:07Z",
+  "models": [
+    "claude-sonnet-5",
+    "claude-haiku-4-5-20251001",
+    "gemini-3.6-flash",
+    "claude-opus-4-8",
+    "gemini-3.5-flash",
+    "gpt-4.1-mini-2025-04-14",
+    "gpt-5.4-mini-2026-03-17",
+    "gpt-5.4-nano-2026-03-17",
+    "gpt-5.6-luna-2026-07-09"
+  ],
+  "params": {
+    "repeats": 3,
+    "max_tokens": 5,
+    "sleep_s": 8,
+    "prompt_unit": "The customer's bill rose from $55 to $80 after the promo ended; the rep may offer a loyalty credit. ",
+    "prompt_repeat": 60,
+    "prompt_suffix": "\nReply with one word: ok",
+    "prompt_chars": 6024
+  },
+  "note": "total_usage is reported in the OpenAI dashboard unit (cents); delta covers input+output together",
+  "results": {
+    "claude-sonnet-5": {
+      "calls": 3,
+      "calls_ok": 3,
+      "response_ids": [
+        "msg_011CfKGwOxCIpPHQuUv7SUt2",
+        "msg_011CfKGwGogwULSg4XnFYfru",
+        "msg_011CfKGwTj70rDGDJrtdVo7S"
+      ],
+      "echoed_models": [
+        "claude-sonnet-5",
+        "claude-sonnet-5",
+        "claude-sonnet-5"
+      ],
+      "prompt_tokens": 6399,
+      "completion_tokens": 3,
+      "usage_before": 5475.122,
+      "usage_after": 5477.0462,
+      "usage_delta": 1.9242,
+      "started_utc": "2026-09-26T05:41:18Z",
+      "finished_utc": "2026-09-26T05:41:33Z",
+      "per_call": [
+        {
+          "response_id": "msg_011CfKGwOxCIpPHQuUv7SUt2",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 1,
+            "prompt_tokens": 2133,
+            "total_tokens": 2134,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 2133,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 1,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 2133,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          }
+        },
+        {
+          "response_id": "msg_011CfKGwGogwULSg4XnFYfru",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 1,
+            "prompt_tokens": 2133,
+            "total_tokens": 2134,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 2133,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 1,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 2133,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          }
+        },
+        {
+          "response_id": "msg_011CfKGwTj70rDGDJrtdVo7S",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 1,
+            "prompt_tokens": 2133,
+            "total_tokens": 2134,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 2133,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 1,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 2133,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          }
+        }
+      ],
+      "note": "total_usage is reported in the OpenAI dashboard unit (cents); delta covers input+output together"
+    },
+    "claude-haiku-4-5-20251001": {
+      "calls": 3,
+      "calls_ok": 3,
+      "response_ids": [
+        "msg_011CfKGxpAfxRhMlhZu3jxcZ",
+        "msg_011CfKGxsd1hV1htBlYmaVUF",
+        "msg_011CfKGx1UA00j2PnTLlK4YP"
+      ],
+      "echoed_models": [
+        "claude-haiku-4-5-20251001",
+        "claude-haiku-4-5-20251001",
+        "claude-haiku-4-5-20251001"
+      ],
+      "prompt_tokens": 4998,
+      "completion_tokens": 15,
+      "usage_before": 5477.0462,
+      "usage_after": 5477.5538,
+      "usage_delta": 0.5076,
+      "started_utc": "2026-09-26T05:41:33Z",
+      "finished_utc": "2026-09-26T05:41:48Z",
+      "per_call": [
+        {
+          "response_id": "msg_011CfKGxpAfxRhMlhZu3jxcZ",
+          "echoed_model": "claude-haiku-4-5-20251001",
+          "usage": {
+            "completion_tokens": 5,
+            "prompt_tokens": 1666,
+            "total_tokens": 1671,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 1666,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 5,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 1666,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          }
+        },
+        {
+          "response_id": "msg_011CfKGxsd1hV1htBlYmaVUF",
+          "echoed_model": "claude-haiku-4-5-20251001",
+          "usage": {
+            "completion_tokens": 5,
+            "prompt_tokens": 1666,
+            "total_tokens": 1671,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 1666,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 5,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 1666,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          }
+        },
+        {
+          "response_id": "msg_011CfKGx1UA00j2PnTLlK4YP",
+          "echoed_model": "claude-haiku-4-5-20251001",
+          "usage": {
+            "completion_tokens": 5,
+            "prompt_tokens": 1666,
+            "total_tokens": 1671,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 1666,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 5,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 1666,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          }
+        }
+      ],
+      "note": "total_usage is reported in the OpenAI dashboard unit (cents); delta covers input+output together"
+    },
+    "gemini-3.6-flash": {
+      "calls": 3,
+      "calls_ok": 3,
+      "response_ids": [
+        "chatcmpl-4b511322-963d-464a-af0e-9406d4593eda",
+        "chatcmpl-3c81ce6f-8976-4f58-91eb-f8004d90458a",
+        "chatcmpl-ca8dd17c-0e3a-4cb8-a7bd-5974b8806cee"
+      ],
+      "echoed_models": [
+        "gemini-flash",
+        "gemini-flash",
+        "gemini-flash"
+      ],
+      "prompt_tokens": 5955,
+      "completion_tokens": 6,
+      "usage_before": 5477.5538,
+      "usage_after": 5478.4514,
+      "usage_delta": 0.8976,
+      "started_utc": "2026-09-26T05:41:48Z",
+      "finished_utc": "2026-09-26T05:42:09Z",
+      "per_call": [
+        {
+          "response_id": "chatcmpl-4b511322-963d-464a-af0e-9406d4593eda",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 2,
+            "prompt_tokens": 1985,
+            "total_tokens": 1987,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          }
+        },
+        {
+          "response_id": "chatcmpl-3c81ce6f-8976-4f58-91eb-f8004d90458a",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 2,
+            "prompt_tokens": 1985,
+            "total_tokens": 1987,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          }
+        },
+        {
+          "response_id": "chatcmpl-ca8dd17c-0e3a-4cb8-a7bd-5974b8806cee",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 2,
+            "prompt_tokens": 1985,
+            "total_tokens": 1987,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          }
+        }
+      ],
+      "note": "total_usage is reported in the OpenAI dashboard unit (cents); delta covers input+output together"
+    },
+    "claude-opus-4-8": {
+      "calls": 3,
+      "calls_ok": 3,
+      "response_ids": [
+        "msg_011CfKH0EqxWDVSThyy0AM8y",
+        "msg_011CfKH0YaDQ5PvpsJFRbsTc",
+        "msg_011CfKH0PoG4f7kSMpPECvFa"
+      ],
+      "echoed_models": [
+        "claude-opus-4-8",
+        "claude-opus-4-8",
+        "claude-opus-4-8"
+      ],
+      "prompt_tokens": 6399,
+      "completion_tokens": 3,
+      "usage_before": 5478.4514,
+      "usage_after": 5481.6584,
+      "usage_delta": 3.207,
+      "started_utc": "2026-09-26T05:42:09Z",
+      "finished_utc": "2026-09-26T05:42:24Z",
+      "per_call": [
+        {
+          "response_id": "msg_011CfKH0EqxWDVSThyy0AM8y",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 1,
+            "prompt_tokens": 2133,
+            "total_tokens": 2134,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 2133,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 1,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 2133,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          }
+        },
+        {
+          "response_id": "msg_011CfKH0YaDQ5PvpsJFRbsTc",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 1,
+            "prompt_tokens": 2133,
+            "total_tokens": 2134,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 2133,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 1,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 2133,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          }
+        },
+        {
+          "response_id": "msg_011CfKH0PoG4f7kSMpPECvFa",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 1,
+            "prompt_tokens": 2133,
+            "total_tokens": 2134,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 2133,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 1,
+                "cache_creation": {},
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 2133,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          }
+        }
+      ],
+      "note": "total_usage is reported in the OpenAI dashboard unit (cents); delta covers input+output together"
+    },
+    "gemini-3.5-flash": {
+      "calls": 3,
+      "calls_ok": 3,
+      "response_ids": [
+        "chatcmpl-7647c87a-83d1-42a9-903a-b342d2ac7076",
+        "chatcmpl-3271dd91-4293-4358-8b1d-024c1d3765b7",
+        "chatcmpl-2f73c23c-3888-4601-b526-8bb58f5f172f"
+      ],
+      "echoed_models": [
+        "gemini-3.5-flash",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash"
+      ],
+      "prompt_tokens": 5955,
+      "completion_tokens": 6,
+      "usage_before": 5481.6584,
+      "usage_after": 5482.5572,
+      "usage_delta": 0.8988,
+      "started_utc": "2026-09-26T05:42:24Z",
+      "finished_utc": "2026-09-26T05:42:42Z",
+      "per_call": [
+        {
+          "response_id": "chatcmpl-7647c87a-83d1-42a9-903a-b342d2ac7076",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 2,
+            "prompt_tokens": 1985,
+            "total_tokens": 1987,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          }
+        },
+        {
+          "response_id": "chatcmpl-3271dd91-4293-4358-8b1d-024c1d3765b7",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 2,
+            "prompt_tokens": 1985,
+            "total_tokens": 1987,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          }
+        },
+        {
+          "response_id": "chatcmpl-2f73c23c-3888-4601-b526-8bb58f5f172f",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 2,
+            "prompt_tokens": 1985,
+            "total_tokens": 1987,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          }
+        }
+      ],
+      "note": "total_usage is reported in the OpenAI dashboard unit (cents); delta covers input+output together"
+    },
+    "gpt-4.1-mini-2025-04-14": {
+      "calls": 3,
+      "calls_ok": 3,
+      "response_ids": [
+        "chatcmpl-ESFTH6tSKrjn32CSm6fizJrDU1qeU",
+        "chatcmpl-ESFTIkmKj5mr3CHlolq125OYJumIf",
+        "chatcmpl-ESFTJRsrar0pjjHYyRXNMAyQUEP1Y"
+      ],
+      "echoed_models": [
+        "gpt-4.1-mini-2025-04-14",
+        "gpt-4.1-mini-2025-04-14",
+        "gpt-4.1-mini-2025-04-14"
+      ],
+      "prompt_tokens": 4182,
+      "completion_tokens": 3,
+      "usage_before": 5482.5572,
+      "usage_after": 5482.6842,
+      "usage_delta": 0.127,
+      "started_utc": "2026-09-26T05:42:42Z",
+      "finished_utc": "2026-09-26T05:42:55Z",
+      "per_call": [
+        {
+          "response_id": "chatcmpl-ESFTH6tSKrjn32CSm6fizJrDU1qeU",
+          "echoed_model": "gpt-4.1-mini-2025-04-14",
+          "usage": {
+            "completion_tokens": 1,
+            "prompt_tokens": 1394,
+            "total_tokens": 1395,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 3,
+              "engine_ttft_ms": 32,
+              "engine_ttlt_ms": 38,
+              "pre_inference_ms": 94,
+              "service_tbt_ms": 2,
+              "service_ttft_ms": 643,
+              "service_ttlt_ms": 645,
+              "user_visible_ttft_ms": 548
+            }
+          }
+        },
+        {
+          "response_id": "chatcmpl-ESFTIkmKj5mr3CHlolq125OYJumIf",
+          "echoed_model": "gpt-4.1-mini-2025-04-14",
+          "usage": {
+            "completion_tokens": 1,
+            "prompt_tokens": 1394,
+            "total_tokens": 1395,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 1280
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 4,
+              "engine_ttft_ms": 22,
+              "engine_ttlt_ms": 29,
+              "pre_inference_ms": 171,
+              "service_tbt_ms": 2,
+              "service_ttft_ms": 724,
+              "service_ttlt_ms": 726,
+              "user_visible_ttft_ms": 552
+            }
+          }
+        },
+        {
+          "response_id": "chatcmpl-ESFTJRsrar0pjjHYyRXNMAyQUEP1Y",
+          "echoed_model": "gpt-4.1-mini-2025-04-14",
+          "usage": {
+            "completion_tokens": 1,
+            "prompt_tokens": 1394,
+            "total_tokens": 1395,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 3,
+              "engine_ttft_ms": 70,
+              "engine_ttlt_ms": 76,
+              "pre_inference_ms": 99,
+              "service_tbt_ms": 2,
+              "service_ttft_ms": 690,
+              "service_ttlt_ms": 692,
+              "user_visible_ttft_ms": 591
+            }
+          }
+        }
+      ],
+      "note": "total_usage is reported in the OpenAI dashboard unit (cents); delta covers input+output together"
+    },
+    "gpt-5.4-mini-2026-03-17": {
+      "calls": 3,
+      "calls_ok": 3,
+      "response_ids": [
+        "chatcmpl-ESFTUoVTq3AEIMJWarB1A7wMi4zrT",
+        "chatcmpl-ESFTVDwWaVi1gIVS5q3b3a6Tbzfj7",
+        "chatcmpl-ESFTWBfi9TXe82qabFvQZ15pNhpVk"
+      ],
+      "echoed_models": [
+        "gpt-5.4-mini-2026-03-17",
+        "gpt-5.4-mini-2026-03-17",
+        "gpt-5.4-mini-2026-03-17"
+      ],
+      "prompt_tokens": 4179,
+      "completion_tokens": 12,
+      "usage_before": 5482.6842,
+      "usage_after": 5483.0028,
+      "usage_delta": 0.3186,
+      "started_utc": "2026-09-26T05:42:55Z",
+      "finished_utc": "2026-09-26T05:43:07Z",
+      "per_call": [
+        {
+          "response_id": "chatcmpl-ESFTUoVTq3AEIMJWarB1A7wMi4zrT",
+          "echoed_model": "gpt-5.4-mini-2026-03-17",
+          "usage": {
+            "completion_tokens": 4,
+            "prompt_tokens": 1393,
+            "total_tokens": 1397,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 3,
+              "engine_ttft_ms": 58,
+              "engine_ttlt_ms": 75,
+              "pre_inference_ms": 92,
+              "service_tbt_ms": 2,
+              "service_ttft_ms": 483,
+              "service_ttlt_ms": 492,
+              "user_visible_ttft_ms": 391
+            }
+          }
+        },
+        {
+          "response_id": "chatcmpl-ESFTVDwWaVi1gIVS5q3b3a6Tbzfj7",
+          "echoed_model": "gpt-5.4-mini-2026-03-17",
+          "usage": {
+            "completion_tokens": 4,
+            "prompt_tokens": 1393,
+            "total_tokens": 1397,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 1280
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 4,
+              "engine_ttft_ms": 43,
+              "engine_ttlt_ms": 64,
+              "pre_inference_ms": 84,
+              "service_tbt_ms": 5,
+              "service_ttft_ms": 448,
+              "service_ttlt_ms": 469,
+              "user_visible_ttft_ms": 364
+            }
+          }
+        },
+        {
+          "response_id": "chatcmpl-ESFTWBfi9TXe82qabFvQZ15pNhpVk",
+          "echoed_model": "gpt-5.4-mini-2026-03-17",
+          "usage": {
+            "completion_tokens": 4,
+            "prompt_tokens": 1393,
+            "total_tokens": 1397,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 1280
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 3,
+              "engine_ttft_ms": 59,
+              "engine_ttlt_ms": 76,
+              "pre_inference_ms": 82,
+              "service_tbt_ms": 5,
+              "service_ttft_ms": 460,
+              "service_ttlt_ms": 482,
+              "user_visible_ttft_ms": 378
+            }
+          }
+        }
+      ],
+      "note": "total_usage is reported in the OpenAI dashboard unit (cents); delta covers input+output together"
+    },
+    "gpt-5.4-nano-2026-03-17": {
+      "calls": 3,
+      "calls_ok": 3,
+      "response_ids": [
+        "chatcmpl-ESFTg2PptER3Us5j9VU97iuK3nMnw",
+        "chatcmpl-ESFThYnVIpa8eBJhnJ404ZBlBhv19",
+        "chatcmpl-ESFTihXAP7ud218LgaRaJeP1BBBjp"
+      ],
+      "echoed_models": [
+        "gpt-5.4-nano-2026-03-17",
+        "gpt-5.4-nano-2026-03-17",
+        "gpt-5.4-nano-2026-03-17"
+      ],
+      "prompt_tokens": 4179,
+      "completion_tokens": 12,
+      "usage_before": 5483.0028,
+      "usage_after": 5483.088,
+      "usage_delta": 0.0852,
+      "started_utc": "2026-09-26T05:43:07Z",
+      "finished_utc": "2026-09-26T05:43:19Z",
+      "per_call": [
+        {
+          "response_id": "chatcmpl-ESFTg2PptER3Us5j9VU97iuK3nMnw",
+          "echoed_model": "gpt-5.4-nano-2026-03-17",
+          "usage": {
+            "completion_tokens": 4,
+            "prompt_tokens": 1393,
+            "total_tokens": 1397,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 6,
+              "engine_ttft_ms": 43,
+              "engine_ttlt_ms": 75,
+              "pre_inference_ms": 84,
+              "service_tbt_ms": 7,
+              "service_ttft_ms": 206,
+              "service_ttlt_ms": 233,
+              "user_visible_ttft_ms": 122
+            }
+          }
+        },
+        {
+          "response_id": "chatcmpl-ESFThYnVIpa8eBJhnJ404ZBlBhv19",
+          "echoed_model": "gpt-5.4-nano-2026-03-17",
+          "usage": {
+            "completion_tokens": 4,
+            "prompt_tokens": 1393,
+            "total_tokens": 1397,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 1280
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 6,
+              "engine_ttft_ms": 34,
+              "engine_ttlt_ms": 65,
+              "pre_inference_ms": 93,
+              "service_tbt_ms": 2,
+              "service_ttft_ms": 254,
+              "service_ttlt_ms": 261,
+              "user_visible_ttft_ms": 161
+            }
+          }
+        },
+        {
+          "response_id": "chatcmpl-ESFTihXAP7ud218LgaRaJeP1BBBjp",
+          "echoed_model": "gpt-5.4-nano-2026-03-17",
+          "usage": {
+            "completion_tokens": 4,
+            "prompt_tokens": 1393,
+            "total_tokens": 1397,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 1280
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 8,
+              "engine_ttft_ms": 41,
+              "engine_ttlt_ms": 80,
+              "pre_inference_ms": 106,
+              "service_tbt_ms": 8,
+              "service_ttft_ms": 259,
+              "service_ttlt_ms": 293,
+              "user_visible_ttft_ms": 153
+            }
+          }
+        }
+      ],
+      "note": "total_usage is reported in the OpenAI dashboard unit (cents); delta covers input+output together"
+    },
+    "gpt-5.6-luna-2026-07-09": {
+      "calls": 3,
+      "calls_ok": 3,
+      "response_ids": [
+        "chatcmpl-ESFTs0amOs0Vhw3ypJ9mxvxyeiTQW",
+        "chatcmpl-ESFTugKnXF7C5ZxHQLa6SFNma565M",
+        "chatcmpl-ESFUUrk8jYeynFws99kaOtXFvRhws"
+      ],
+      "echoed_models": [
+        "gpt-5.6-luna-2026-07-09",
+        "gpt-5.6-luna-2026-07-09",
+        "gpt-5.6-luna-2026-07-09"
+      ],
+      "prompt_tokens": 4179,
+      "completion_tokens": 12,
+      "usage_before": 5483.088,
+      "usage_after": 5522.9694,
+      "usage_delta": 39.8814,
+      "started_utc": "2026-09-26T05:43:19Z",
+      "finished_utc": "2026-09-26T05:44:07Z",
+      "per_call": [
+        {
+          "response_id": "chatcmpl-ESFTs0amOs0Vhw3ypJ9mxvxyeiTQW",
+          "echoed_model": "gpt-5.6-luna-2026-07-09",
+          "usage": {
+            "completion_tokens": 4,
+            "prompt_tokens": 1393,
+            "total_tokens": 1397,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 1390,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 9,
+              "engine_ttft_ms": 70,
+              "engine_ttlt_ms": 117,
+              "pre_inference_ms": 49,
+              "service_tbt_ms": 11,
+              "service_ttft_ms": 441,
+              "service_ttlt_ms": 483,
+              "user_visible_ttft_ms": 392
+            }
+          }
+        },
+        {
+          "response_id": "chatcmpl-ESFTugKnXF7C5ZxHQLa6SFNma565M",
+          "echoed_model": "gpt-5.6-luna-2026-07-09",
+          "usage": {
+            "completion_tokens": 4,
+            "prompt_tokens": 1393,
+            "total_tokens": 1397,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 1390,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 9,
+              "engine_ttft_ms": 91,
+              "engine_ttlt_ms": 138,
+              "pre_inference_ms": 86,
+              "service_tbt_ms": 11,
+              "service_ttft_ms": 512,
+              "service_ttlt_ms": 555,
+              "user_visible_ttft_ms": 427
+            }
+          }
+        },
+        {
+          "response_id": "chatcmpl-ESFUUrk8jYeynFws99kaOtXFvRhws",
+          "echoed_model": "gpt-5.6-luna-2026-07-09",
+          "usage": {
+            "completion_tokens": 4,
+            "prompt_tokens": 1393,
+            "total_tokens": 1397,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 1390,
+              "cached_tokens": 0
+            },
+            "latency_checkpoint": {
+              "engine_tbt_ms": 12,
+              "engine_ttft_ms": 82,
+              "engine_ttlt_ms": 144,
+              "pre_inference_ms": 86,
+              "service_tbt_ms": 14,
+              "service_ttft_ms": 296,
+              "service_ttlt_ms": 352,
+              "user_visible_ttft_ms": 210
+            }
+          }
+        }
+      ],
+      "note": "total_usage is reported in the OpenAI dashboard unit (cents); delta covers input+output together"
+    }
+  },
+  "summary": {
+    "claude-sonnet-5": {
+      "calls_ok": 3,
+      "prompt_tokens": 6399,
+      "completion_tokens": 3,
+      "usage_delta": 1.9242
+    },
+    "claude-haiku-4-5-20251001": {
+      "calls_ok": 3,
+      "prompt_tokens": 4998,
+      "completion_tokens": 15,
+      "usage_delta": 0.5076
+    },
+    "gemini-3.6-flash": {
+      "calls_ok": 3,
+      "prompt_tokens": 5955,
+      "completion_tokens": 6,
+      "usage_delta": 0.8976
+    },
+    "claude-opus-4-8": {
+      "calls_ok": 3,
+      "prompt_tokens": 6399,
+      "completion_tokens": 3,
+      "usage_delta": 3.207
+    },
+    "gemini-3.5-flash": {
+      "calls_ok": 3,
+      "prompt_tokens": 5955,
+      "completion_tokens": 6,
+      "usage_delta": 0.8988
+    },
+    "gpt-4.1-mini-2025-04-14": {
+      "calls_ok": 3,
+      "prompt_tokens": 4182,
+      "completion_tokens": 3,
+      "usage_delta": 0.127
+    },
+    "gpt-5.4-mini-2026-03-17": {
+      "calls_ok": 3,
+      "prompt_tokens": 4179,
+      "completion_tokens": 12,
+      "usage_delta": 0.3186
+    },
+    "gpt-5.4-nano-2026-03-17": {
+      "calls_ok": 3,
+      "prompt_tokens": 4179,
+      "completion_tokens": 12,
+      "usage_delta": 0.0852
+    },
+    "gpt-5.6-luna-2026-07-09": {
+      "calls_ok": 3,
+      "prompt_tokens": 4179,
+      "completion_tokens": 12,
+      "usage_delta": 39.8814
+    }
+  }
+}
