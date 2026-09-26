@@ -11,8 +11,10 @@ that separates an applied module from one vLLM loads but silently ignores. An ad
 trailing packed member without its leader (config.PACKS_NEEDING_LEADER: in_proj_z without in_proj_qkv)
 kills the vLLM 0.29.0 engine, so that leader is added with lora_B = 0. zero-R and live-R are the two
 served slots. Each finished record is printed as one JSON line. Any engine exception stops the run: the
-result keeps the records so far with aborted_at and the error, and its summary is a failure. The result
-is also saved on the adapters volume (results/lora-ladder-<UTC time>.json) before it is returned.
+result keeps the records so far with aborted_at and the error, and its summary is a failure. Once the
+remote function has computed the result it saves it on the adapters volume
+(results/lora-ladder-<UTC time>.json) before returning it; if the local process disconnects mid-run the
+app stops, and only the JSON lines already streamed survive.
 """
 
 import json
@@ -47,22 +49,39 @@ def build_adapter(model_dir: Path, out_dir: Path, targets, *, zero: bool, zero_t
     peft_model = get_peft_model(model, LoraConfig(
         r=config.LORA_RANK, lora_alpha=config.LORA_ALPHA, lora_dropout=0.0, bias="none",
         target_modules=config.target_regex(targets)))
+    layers = [(name, m) for name, m in peft_model.named_modules() if isinstance(m, LoraLayer)]
+    counts = zero_layer_counts([name for name, _ in layers], zero_targets)
+    if unmatched := sorted(t for t, n in counts.items() if n == 0):
+        raise ValueError(f"zero_targets matched no LoRA layer: {unmatched}")
     generator = torch.Generator().manual_seed(seed)
     with torch.no_grad():
-        for name, layer in peft_model.named_modules():
-            if not isinstance(layer, LoraLayer):
-                continue
+        for name, layer in layers:
             for a, b in zip(layer.lora_A.values(), layer.lora_B.values(), strict=True):
                 a.to_empty(device="cpu")
                 b.to_empty(device="cpu")
                 torch.nn.init.kaiming_uniform_(a.weight, a=math.sqrt(5), generator=generator)
-                if zero or tuple(name.split(".")[-2:]) in zero_targets:
+                if zero or layer_target(name) in zero_targets:
                     b.weight.zero_()
                 else:
                     b.weight.normal_(std=1e-2, generator=generator)
     peft_model.peft_config["default"].base_model_name_or_path = config.MODEL_ID
     peft_model.peft_config["default"].revision = config.MODEL_REVISION
     peft_model.save_pretrained(out_dir)
+
+
+def layer_target(module_name: str) -> tuple[str, str]:
+    """(parent, proj) of a PEFT module name ending in <parent>.<proj>."""
+    parent, proj = module_name.split(".")[-2:]
+    return parent, proj
+
+
+def zero_layer_counts(layer_names: list[str], zero_targets) -> dict[tuple[str, str], int]:
+    """How many LoRA layers each zero target matches."""
+    counts = dict.fromkeys(zero_targets, 0)
+    for name in layer_names:
+        if (target := layer_target(name)) in counts:
+            counts[target] += 1
+    return counts
 
 
 def adapter_plan() -> dict[str, tuple[tuple, bool, frozenset]]:
@@ -148,7 +167,8 @@ def run(model_dir: Path, adapter_root: Path) -> dict:
 def lora_ladder() -> dict:
     runtime = {**modal_vllm.runtime(), "peft_version": metadata.version("peft")}
     result = run(modal_vllm.download_model(), Path(modal_vllm.ADAPTER_DIR))
-    # Saved on the volume before returning, so a dropped local connection does not lose a paid run.
+    # Once computed, the result is on the volume even if returning it to the caller fails. A local
+    # disconnect during run() stops the app: then only the JSON lines already streamed survive.
     copy = f"results/lora-ladder-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.json"
     result = {**result, "runtime": runtime, "volume_copy": copy}
     write_json(Path(modal_vllm.ADAPTER_DIR) / copy, result)
@@ -164,9 +184,12 @@ def main(out: str = "docs/decisions/data/vllm-lora-ladder.json") -> None:
         write_json(Path(out), result)
         return
     # An aborted run must not satisfy the serve-up order guard (file exists): never write --out, and
-    # remove a stale --out from an earlier run (that one file only).
-    Path(out).unlink(missing_ok=True)
-    partial = Path(out).with_suffix(".aborted.json")
+    # move a stale --out from an earlier run aside (that one file only; it is paid data, never deleted).
+    stale = Path(out)
+    if stale.exists():
+        stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        stale.rename(stale.with_name(f"{stale.stem}.superseded-{stamp}.json"))
+    partial = stale.with_suffix(".aborted.json")
     write_json(partial, result)
     raise SystemExit(f"ladder aborted at {result['summary']['aborted_at']}: {result.get('error')}; "
                      f"partial result in {partial}")

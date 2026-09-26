@@ -1,4 +1,5 @@
 import json
+import re
 
 import pytest
 
@@ -137,17 +138,29 @@ def test_main_keeps_an_aborted_result_beside_out_and_exits_non_zero(tmp_path, mo
     assert json.loads((tmp_path / "missing" / "ladder.aborted.json").read_text()) == result
 
 
-def test_an_aborted_run_removes_a_stale_out_and_nothing_else(tmp_path, monkeypatch):
+def test_an_aborted_run_moves_a_stale_out_aside_and_touches_nothing_else(tmp_path, monkeypatch):
     summary = lora_ladder.summarise({}, aborted_at="zero-all")
     result = {"adapters": {}, "aborted_at": "zero-all", "error": "EngineDeadError: x", "summary": summary}
     out, neighbour = tmp_path / "ladder.json", tmp_path / "vllm-probe.json"
-    out.write_text("{}")
+    out.write_text('{"earlier": "paid run"}')
     neighbour.write_text("{}")
     monkeypatch.setattr(lora_ladder, "lora_ladder", Remote(result))
     with pytest.raises(SystemExit):
         lora_ladder.main.info.raw_f(out=str(out))
     assert not out.exists() and neighbour.read_text() == "{}"
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["ladder.aborted.json", "vllm-probe.json"]
+    superseded = [p for p in tmp_path.iterdir() if p.name.startswith("ladder.superseded-")]
+    assert len(superseded) == 1 and re.fullmatch(r"ladder\.superseded-\d{8}T\d{6}Z\.json", superseded[0].name)
+    assert superseded[0].read_text() == '{"earlier": "paid run"}'
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(
+        ["ladder.aborted.json", superseded[0].name, "vllm-probe.json"])
+
+
+def test_zero_layer_counts_matches_parent_and_projection_exactly():
+    names = [f"base_model.model.model.language_model.layers.{i}.linear_attn.{proj}"
+             for i in (0, 1) for proj in ("in_proj_qkv", "in_proj_z")]
+    counts = lora_ladder.zero_layer_counts(names, frozenset({QKV, ("self_attn", "q_proj")}))
+    assert counts == {QKV: 2, ("self_attn", "q_proj"): 0}
+    assert lora_ladder.zero_layer_counts(names, frozenset()) == {}
 
 
 class Volume:
