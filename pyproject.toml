@@ -24,6 +24,7 @@ dev = [
 sys = [
   "httpx==0.28.1",
   "pyyaml==6.0.3",
+  "transformers==5.17.0",
 ]
 mod = [
   "httpx==0.28.1",
