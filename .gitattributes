@@ -1,5 +1,0 @@
-# Captured run logs are evidence and are committed byte-exact. They carry the
-# terminal control sequences and carriage returns tqdm and vLLM emit while
-# redrawing progress bars, which git's whitespace check reads as trailing
-# whitespace before the newline. Do not normalise them; exempt them instead.
-data/experiments/**/*.log -whitespace

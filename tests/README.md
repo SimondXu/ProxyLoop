@@ -1,3 +1,0 @@
-# Tests
-
-Tests are separated by contract, package behavior, integration, and end-to-end scope. `tests/integration` covers the simulator/verifier, agent core, case runtime, API, PostgreSQL store, Temporal workflow, and the `local_mailbox` channel; the PostgreSQL-backed and live-Temporal tests inside those suites are gated on `PROXYLOOP_TEST_DATABASE_URL` / `PROXYLOOP_TEST_TEMPORAL_ADDRESS` and skip without them (39 today; run `make postgres-check`, `make phase05a-check`, `make phase06b1-check` with the Compose profiles), while the fixture-only channel and API tests run in `make test`. Web tests live in `apps/web` (vitest). Browser end-to-end, hosted model, and production end-to-end tests remain deferred.
