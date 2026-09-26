@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from proxyloop.contract import base
 from proxyloop.contract import state as st
+from proxyloop.contract.base import Lane
 from proxyloop.contract.llm import ToolCall
 from proxyloop.contract.messages import Guide, SlowToFast
 from proxyloop.contract.protocol import GuideSlotError, render_messages
@@ -127,20 +128,18 @@ class SlowTools:
         )
 
     def fact(self, bb: st.Blackboard, key: str, value: str, ref: object) -> Result:
-        """Public iff the rep said it in ``ref``, or shareable and user-relayed."""
-        said = {
-            x.utt_id: x.text for x in bb.channels["cp"].lines if x.speaker == "partner"
-        }
-        line, digits = said.get(str(ref), ""), numbers(value)
-        in_line = (
-            digits <= numbers(line) if digits else value.casefold() in line.casefold()
-        )
+        """Public iff the rep said it in ``ref``, or shareable and either relayed
+        typed by the user lane or said by the user in the cited message ``ref``."""
+        line = _partner(bb, "cp").get(str(ref), "")
         relays = [r for r in bb.f2s_pending if r.lane == "user"]
         hits = [r.msg_id for r in relays if (key, value) in r.facts]  # typed only
+        told = _partner(bb, "user").get(str(ref), "")  # the user's own message
+        hits += [str(ref)] if told and _said(value, told) else []
         shareable = key in self._shareable_keys and hits
-        source = "cp_utt" if line and in_line else "shareable" if shareable else "user"
+        in_line = bool(line) and _said(value, line)
+        source = "cp_utt" if in_line else "shareable" if shareable else "user"
         ref = str(ref) if source == "cp_utt" else hits[0] if shareable else ref
-        ref = None if ref is None else str(ref)  # the rep line or the user relay
+        ref = None if ref is None else str(ref)  # rep line, user relay or message
         fact = {"key": key, "value": value, "source_ref": ref}
         where = "private" if source == "user" else "public"
         if source == "user":
@@ -150,6 +149,16 @@ class SlowTools:
             self.shareable |= {key: value} if source == "shareable" else {}
         recorded = fact | {"source": source, "scope": where}
         return Result(True, f"recorded {where}", (("fact.recorded", recorded),))
+
+
+def _partner(bb: st.Blackboard, lane: Lane) -> dict[str, str]:  # utt id -> text
+    lines = bb.channels.get(lane, st.ChannelState()).lines
+    return {x.utt_id: x.text for x in lines if x.speaker == "partner"}
+
+
+def _said(value: str, line: str) -> bool:  # its digits, else its text verbatim
+    digits = numbers(value)
+    return digits <= numbers(line) if digits else value.casefold() in line.casefold()
 
 
 def public_guide(bb: st.Blackboard, guide: Guide) -> bool:  # the renderer judges

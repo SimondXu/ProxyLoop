@@ -91,3 +91,52 @@ def test_money_and_term_values_are_plain_integers() -> None:  # R2 N3
             BB, "loyal-1", [_slot("monthly_price", value, unit, "recurring")]
         )
         assert not result.ok, value
+
+
+USER = Line(
+    utt_id="u-7", speaker="partner", text="It's Dana Reyes, and my last four are 4821."
+)
+SAID = Line(utt_id="u-8", speaker="agent", text="Thanks, is 4822 your last four?")
+KEYS = frozenset({"account.holder_name", "account.last4"})
+
+
+def _told() -> tuple[Blackboard, SlowTools]:
+    user = ChannelState(lines=(USER, SAID))
+    bb = BB.model_copy(update={"channels": {"user": user, "cp": BB.channels["cp"]}})
+    return bb, SlowTools(cast("Kernel", SimpleNamespace(bb=bb)), KEYS)
+
+
+def test_a_shareable_value_the_user_said_in_the_cited_message_is_public() -> None:
+    bb, tools = _told()  # ROOT-05 (a): the relay named it account_last_4
+    for key, value in (
+        ("account.last4", "4821"),
+        ("account.holder_name", "dana reyes"),
+    ):
+        ((type_, fact),) = tools.fact(bb, key, value, "u-7").effects
+        assert type_ == "fact.recorded"
+        assert (fact["scope"], fact["source"], fact["source_ref"]) == (
+            "public",
+            "shareable",
+            "u-7",
+        )
+    assert tools.shareable == {
+        "account.last4": "4821",
+        "account.holder_name": "dana reyes",
+    }
+    assert not declassify("last four 4821", bb, tools.shareable)
+
+
+def test_a_value_not_in_the_cited_user_message_stays_private() -> None:
+    bb, tools = _told()
+    cases = [
+        ("account.last4", "4822", "u-7"),  # not what the user said
+        ("account.last4", "4822", "u-8"),  # the agent's line, not the user's
+        ("account.last4", "4821", "cp-3"),  # a rep line without it
+        ("account.last4", "4821", None),  # nothing cited
+        ("account.last4", "4821", "u-99"),  # no such message
+        ("plan.current_price_usd", "4821", "u-7"),  # said, but not shareable
+    ]
+    for key, value, ref in cases:
+        ((_, fact),) = tools.fact(bb, key, value, ref).effects
+        assert (fact["scope"], fact["source"]) == ("private", "user"), (key, ref)
+    assert tools.shareable == {}
