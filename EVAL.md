@@ -51,7 +51,7 @@ The v3 changes:
 - **Before unseal, test families run only deterministic completability checks**: a reference predicate proves each instance solvable (the v0 `completable` idea [O `negotiation_evaluation.py:117`]). No live episode runs on a test family before the unseal. This resolves v2's seal contradiction.
 
 ## 4. Conditions
-### 4.1 L1 conditions (same Slow `claude-sonnet-5`, same world models, same kernel; only `SessionConfig.fast_*` differs)
+### 4.1 L1 conditions (same Slow model (the registry's Slow; `gemini-3.8-flash` per the user's decision of 2026-09-26, pending S0-ROOT-12's ADR), same world models, same kernel; only `SessionConfig.fast_*` differs)
 | ID | Fast (both lanes unless stated) | Purpose | Stages |
 |---|---|---|---|
 | C1 | Qwen3.5-9B + SFT LoRA (vLLM BF16) | the product | S3 (curve), S4 |
@@ -63,6 +63,9 @@ The v3 changes:
 | T | Sonnet-as-Fast (the teacher, wall clock) | teacher ceiling; **never on test** | S1, S3 |
 | F | capable FSM talker (`models/fsm.py`) | "can a script do it?" ceiling | S1, S2, S4 |
 | R | teacher-repair (student 9B; the teacher substitutes at kernel-detected decision points) | repairable share | S1, S3 |
+| C5 | `gpt-6-luna` (TeamRouter, hosted; labelled) | hosted Fast for development and the Luna-vs-Qwen benchmark (S1-MOD-04) | S1, S4 |
+
+Hosted latency goes through a relay: it is reported as relay-measured and labelled, and is never a headline comparison against self-hosted Qwen. Timeouts are whole-call and generous enough for the relay, but a dead endpoint still aborts loudly.
 
 ### 4.2 S3 paired ablations (C2 as the reference; the same instances and world seeds)
 | ID | `SessionConfig` | Question |
@@ -193,7 +196,7 @@ With b = 0.8 and f = 0.4, the ceiling is 8 pp even at r = 1 [GPT-6 Pro]. v3 ther
    - `pilot_lock.json` families appear in dev or test.
 2. **Interleaving.** Randomised blocks per instance-repeat. The relay's echoed `model` is recorded on every call, and a change aborts the matrix.
 3. **Noise floor.** C2r is shown next to every Δ.
-4. **Ear audit (S2-SYS-03; re-audit in S4-SYS-05).**
+4. **Ear audit (tooling S2-SYS-02/03; re-audit in S4-SYS-05).**
    - *Items:* agent utterances as heard (`text_heard`) on the cp lane (RepEar) and delivered user-lane messages (UserEar `completion_claim`), from real bundles across C2, T, F, R and the human-probe sessions.
    - *Classes audited:* RepEar `accept`, `provide_fact(protected)`, `cancel_intent`, `cite_competitor`, `ask_readback`; UserEar `completion_claim`.
    - *Sampling frame (stratified, known inclusion probabilities):*
@@ -201,10 +204,12 @@ With b = 0.8 and f = 0.4, the ceiling is 8 pp even at r = 1 [GPT-6 Pro]. v3 ther
      - (ii) Ear-negative but flagged by an independent high-recall lexical detector (affirmation/acceptance lexicon, digit patterns matching protected formats, completion lexicon);
      - (iii) a uniform random sample.
 
+     Every stratum is further stratified by speaker model (the Fast condition).
+
      The default sizes are 60 / 60 per class and 150 random, about 600 items [E]; user time is about 90 minutes at 8–10 s per item [E].
    - *Blinding:* the labeller sees the utterance, the previous rep utterance and the public offers. They see neither the Ear label nor the condition or model, and the order is randomised.
    - *Adjudication:* the **user** labels every item. The root labels the same items beforehand as a second rater, for agreement statistics only (κ); disagreements go back to the user, and the user's final label is the truth.
-   - *Estimates:* design-weighted (Horvitz–Thompson) precision and recall per class, with bootstrap CIs, and accuracy per condition with its spread CI.
+   - *Estimates:* design-weighted (Horvitz–Thompson) precision and recall per class, with bootstrap CIs, and accuracy per condition with its spread CI; Ear accuracy is also reported per speaker model.
    - *Acceptance:*
      - recall ≥ 0.90 (point), with 95 % LB ≥ 0.80, on each harmful class (`accept`, `provide_fact(protected)`, `completion_claim`);
      - precision ≥ 0.85.
@@ -213,7 +218,7 @@ With b = 0.8 and f = 0.4, the ceiling is 8 pp even at r = 1 [GPT-6 Pro]. v3 ther
    - *S4 re-audit:* the new classes from the new families, plus a 100-item refresh on C1 (SFT) outputs, since SFT shifts the utterance distribution.
 5. **Human probes (S2).** The user plays the rep 5 times and the principal 3 times. The report compares Ear accuracy on human speech, failure modes and label stability with the simulated sessions.
 6. **Contamination.** 13-gram overlap must be 0 between the training rows and TalkAct specs/gold, PrincipalBench items, and dev/test family YAML.
-7. **Model-family separation.** Teacher and Slow are Sonnet 5; the world is Gemini Flash; audits are human.
+7. **Model-family separation.** The teacher is Sonnet 5; the world is Gemini Flash; audits are human. Slow and world are both Gemini under the 2026-09-26 decision (§4.1): the user chooses a non-Gemini world model, or accepts the risk, before the S2 Ear audit.
 8. **Capable FSM** (`F`) is reported across all families. If F comes within the C2 − C2r noise floor of C2 on a family, that family is flagged "scriptable" in the report.
 9. **Integrity gate** [O adopted from PrincipalBench]. A matrix is invalid if more than 5 % of episodes error, or any episode has zero Fast turns. It is rerun whole, never filtered.
 
