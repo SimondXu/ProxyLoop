@@ -6,8 +6,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
-from tests.kernel.test_session import SCRIPTS, UNTIL
-from tests.support.sessions import only_bundle, run
+from tests.kernel.test_session import FINISH, SCRIPTS, UNTIL
+from tests.support.sessions import act, only_bundle, run
 
 from proxyloop.contract.events import Event
 
@@ -27,3 +27,26 @@ def test_ttfs_is_set_when_the_only_sentence_is_released_at_close(
         items = cast(list[dict[str, object]], turn.payload["items"])
         assert [i["kind"] for i in items] == ["relay", "speech"]
         assert turn.payload["ttfs_ms"] is not None, turn.payload
+
+
+def test_an_unchanged_hold_is_relayed_once(tmp_path: Path) -> None:  # (e)
+    waits = [act("Waiting.", {"tool": "wait", "seconds": 15})] * 4
+    scripts = SCRIPTS | {
+        "fast_cp": ["Let me check that with the account holder.\n@hold decision"],
+        "slow": [*waits, FINISH],
+    }
+    run(tmp_path, scripts)
+    events = only_bundle(tmp_path).events
+    held = [
+        t
+        for t in _of(events, "fast.turn")
+        if any(
+            i["kind"] == "hold"
+            for i in cast(list[dict[str, object]], t.payload["items"])
+        )
+    ]
+    assert len(held) >= 3  # not vacuous: FastC held on every turn
+    relays = [e for e in _of(events, "f2s.msg") if e.payload["type"] == "HOLD"]
+    assert [e.payload["text"] for e in relays] == ["decision"]
+    counts = cast(dict[str, int], events[-1].payload["counts"])
+    assert counts["hold_repeat"] == len(held) - 1

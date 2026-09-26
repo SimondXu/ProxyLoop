@@ -165,6 +165,9 @@ class FastLane:
                 fields = {"type": _F2S[item.type] or own, "text": item.text}
                 fields |= {"facts": item.facts, "correction": item.type == "correction"}
             elif isinstance(item, fp.Hold):
+                if (hold := k.bb.public.cp_hold) and hold.reason == item.reason:
+                    k.counts["hold_repeat"] += 1  # unchanged: Slow has it (ROOT-05)
+                    continue
                 fields = {"type": "HOLD", "text": item.reason}
             else:
                 continue
