@@ -1,0 +1,3764 @@
+{
+  "schema": "pl.relay_probe/1",
+  "task": "S0-ROOT-04",
+  "started_utc": "2026-09-26T04:55:40Z",
+  "finished_utc": "2026-09-26T04:57:41Z",
+  "relay": "OpenAI-compatible third-party relay (host redacted; see the git-ignored .env)",
+  "sdk_versions": {
+    "openai": "2.45.0",
+    "anthropic": "0.116.0"
+  },
+  "ttft_calls_per_model": 20,
+  "ttft_note": "wall clock from the Mac, sequential per model, 5 models in parallel",
+  "balance_before": {
+    "/dashboard/billing/subscription": {
+      "status": 200,
+      "body": {
+        "object": "billing_subscription",
+        "has_payment_method": true,
+        "soft_limit_usd": 100,
+        "hard_limit_usd": 100,
+        "system_hard_limit_usd": 100,
+        "access_until": 0
+      }
+    },
+    "/dashboard/billing/usage": {
+      "status": 200,
+      "body": {
+        "object": "list",
+        "total_usage": 5366.464599999999
+      }
+    }
+  },
+  "balance_after": {
+    "/dashboard/billing/subscription": {
+      "status": 200,
+      "body": {
+        "object": "billing_subscription",
+        "has_payment_method": true,
+        "soft_limit_usd": 100,
+        "hard_limit_usd": 100,
+        "system_hard_limit_usd": 100,
+        "access_until": 0
+      }
+    },
+    "/dashboard/billing/usage": {
+      "status": 200,
+      "body": {
+        "object": "list",
+        "total_usage": 5370.352
+      }
+    }
+  },
+  "summary": {
+    "claude-sonnet-5": {
+      "available": true,
+      "echoed_model": "claude-sonnet-5",
+      "streaming": true,
+      "streaming_usage": true,
+      "tool_calls": true,
+      "parallel_tool_calls": true,
+      "json_schema": false,
+      "native_route": true,
+      "native_tool_use": true,
+      "ttft_p50_s": 2.205126937944442,
+      "ttft_n_ok": 20
+    },
+    "claude-haiku-4-5": {
+      "available": false,
+      "echoed_model": null,
+      "streaming": false,
+      "streaming_usage": false,
+      "tool_calls": false,
+      "parallel_tool_calls": false,
+      "json_schema": false,
+      "native_route": false,
+      "native_tool_use": false,
+      "ttft_p50_s": null,
+      "ttft_n_ok": 0
+    },
+    "gemini-3.6-flash": {
+      "available": true,
+      "echoed_model": "gemini-flash",
+      "streaming": true,
+      "streaming_usage": true,
+      "tool_calls": false,
+      "parallel_tool_calls": false,
+      "json_schema": false,
+      "native_route": true,
+      "native_tool_use": null,
+      "ttft_p50_s": 4.241772749228403,
+      "ttft_n_ok": 20
+    },
+    "claude-opus-4-8": {
+      "available": true,
+      "echoed_model": "claude-opus-4-8",
+      "streaming": true,
+      "streaming_usage": true,
+      "tool_calls": true,
+      "parallel_tool_calls": true,
+      "json_schema": false,
+      "native_route": true,
+      "native_tool_use": true,
+      "ttft_p50_s": 2.212293583434075,
+      "ttft_n_ok": 20
+    },
+    "gemini-3.5-flash": {
+      "available": true,
+      "echoed_model": "gemini-3.5-flash",
+      "streaming": true,
+      "streaming_usage": true,
+      "tool_calls": false,
+      "parallel_tool_calls": false,
+      "json_schema": false,
+      "native_route": true,
+      "native_tool_use": null,
+      "ttft_p50_s": 4.557193208253011,
+      "ttft_n_ok": 20
+    }
+  },
+  "results": {
+    "claude-sonnet-5": {
+      "model": "claude-sonnet-5",
+      "openai_basic": {
+        "ok": true,
+        "response_id": "msg_011CfKDQX6hj8H44KaNwv7kH",
+        "request_id": "req_Un498FQXPFsMVF80ige2vSy7",
+        "echoed_model": "claude-sonnet-5",
+        "text": "pong",
+        "usage": {
+          "completion_tokens": 3,
+          "prompt_tokens": 13,
+          "total_tokens": 16,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": null,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 13,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 3,
+              "cache_creation": {},
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 13,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        }
+      },
+      "tools": {
+        "response_id": "msg_011CfKDRSffMoi9WbhJsaMAh",
+        "echoed_model": "claude-sonnet-5",
+        "n_tool_calls": 2,
+        "calls": [
+          {
+            "name": "get_weather",
+            "args": {
+              "city": "Paris"
+            },
+            "valid_json": true
+          },
+          {
+            "name": "get_local_time",
+            "args": {
+              "city": "Paris"
+            },
+            "valid_json": true
+          }
+        ],
+        "tool_calls_ok": true,
+        "parallel_ok": true,
+        "usage": {
+          "completion_tokens": 10,
+          "prompt_tokens": 510,
+          "total_tokens": 520,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": null,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 510,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 10,
+              "cache_creation": {},
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 510,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        }
+      },
+      "json_schema": {
+        "response_id": "msg_011CfKDR549CP8cNFyuFGjhn",
+        "echoed_model": "claude-sonnet-5",
+        "json_schema_ok": false,
+        "raw": "The rep offered $65/month and the customer has not yet accepted."
+      },
+      "streams": [
+        {
+          "ttft_s": 2.180799165740609,
+          "total_s": 2.2097280831076205,
+          "response_id": "msg_011CfKDROHr55klBL1ulBV2S",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.355690584052354,
+          "total_s": 2.3569643339142203,
+          "response_id": "msg_011CfKDR5HOfWT7I4zAH187m",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.131233500316739,
+          "total_s": 2.1559127499349415,
+          "response_id": "msg_011CfKDRAXbozzC8Fo9kkkrG",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.3491364577785134,
+          "total_s": 2.3866697917692363,
+          "response_id": "msg_011CfKDRwLkj5UqDfFiSoKT5",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.431566582992673,
+          "total_s": 2.432741791009903,
+          "response_id": "msg_011CfKDSDRwnuhosJj8POAIs",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.180088208988309,
+          "total_s": 2.213671667035669,
+          "response_id": "msg_011CfKDSuhrpXuvs1K340vOG",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.1286894576624036,
+          "total_s": 2.161890916991979,
+          "response_id": "msg_011CfKDSW9qqR0uBsPuAqVgy",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.1098024579696357,
+          "total_s": 2.1413475000299513,
+          "response_id": "msg_011CfKDSHaH5o5g1xI2IFk0i",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.0726171657443047,
+          "total_s": 2.125509874895215,
+          "response_id": "msg_011CfKDSVBsxxGZ1WzcPJoOL",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.125939792022109,
+          "total_s": 2.159272000193596,
+          "response_id": "msg_011CfKDSYKcRvliLviXl9Tiv",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.3031691247597337,
+          "total_s": 2.30415774974972,
+          "response_id": "msg_011CfKDTTIvhuiBBsLkj6jX9",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.1413544579409063,
+          "total_s": 2.178484041709453,
+          "response_id": "msg_011CfKDTBKP8NGPbZ0EnyK05",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.1340388329699636,
+          "total_s": 2.1708668749779463,
+          "response_id": "msg_011CfKDTPFbhVGhjzZxbjFOn",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.193102833814919,
+          "total_s": 2.1941843340173364,
+          "response_id": "msg_011CfKDTEabrsvT6ZIuUjxPa",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.367417166940868,
+          "total_s": 2.3685338753275573,
+          "response_id": "msg_011CfKDTLySmzd6LfWG5GKcW",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.337770333979279,
+          "total_s": 2.3434353340417147,
+          "response_id": "msg_011CfKDUtz4pk08CQwSJZwhV",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.248358542099595,
+          "total_s": 2.372406667098403,
+          "response_id": "msg_011CfKDUrb38rxuoti4694Yc",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.3324485421180725,
+          "total_s": 2.3335287920199335,
+          "response_id": "msg_011CfKDUzyHeUvGALq128Bfd",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.2353594172745943,
+          "total_s": 2.2654767083004117,
+          "response_id": "msg_011CfKDUpYObQ3FO0ffPrd7Q",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.217151042073965,
+          "total_s": 2.218104084022343,
+          "response_id": "msg_011CfKDU2V02IPXuj1jzgp0C",
+          "echoed_model": "claude-sonnet-5",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        }
+      ],
+      "ttft_p50_s": 2.205126937944442,
+      "ttft_n_ok": 20,
+      "stream_usage_ok": true,
+      "native": {
+        "route": "anthropic /v1/messages",
+        "ok": true,
+        "message_id": "msg_011CfKDUuxd9knUfhE4FHc2n",
+        "request_id": "req_7T9Gmb1jBWQ8aliRCh3kVm4F",
+        "echoed_model": "claude-sonnet-5",
+        "text": "pong",
+        "usage": {
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "inference_geo": "not_available",
+          "input_tokens": 13,
+          "output_tokens": 3,
+          "output_tokens_details": {
+            "thinking_tokens": 0
+          },
+          "server_tool_use": null,
+          "service_tier": "standard"
+        },
+        "tool_use_n": 2,
+        "tool_use_names": [
+          "get_weather",
+          "get_local_time"
+        ],
+        "tool_message_id": "msg_011CfKDVBAqf23k72kx6FsLw"
+      }
+    },
+    "claude-haiku-4-5": {
+      "model": "claude-haiku-4-5",
+      "openai_basic": {
+        "error_type": "InternalServerError",
+        "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455420362457738268d9d6VH7tBvyk)', 'type': 'new_api_error'}}",
+        "status_code": 503
+      },
+      "tools": {
+        "error_type": "InternalServerError",
+        "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455422429603358268d9d61DPSHbGK)', 'type': 'new_api_error'}}",
+        "status_code": 503
+      },
+      "json_schema": {
+        "error_type": "InternalServerError",
+        "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455423442566068268d9d6tb0VA2FF)', 'type': 'new_api_error'}}",
+        "status_code": 503
+      },
+      "streams": [
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455424233706778268d9d6oVKvilXp)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455425143787618268d9d6pRyaZb65)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455425930121258268d9d64Lo7WNef)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455426684457798268d9d6Url6HOd2)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455427452375028268d9d6MSjTYfUv)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455428791928398268d9d6Ejvp2tIF)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455429577382158268d9d6rkS1tyfA)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455430343499628268d9d6Tqzrjt7V)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455431133196148268d9d6lZTaDaPB)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455432056681798268d9d6kInb5hrp)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455432840534008268d9d6ItMoB22x)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455433932595128268d9d6vqL1ZpkW)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455434721202848268d9d6POIgXkRz)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455435637798398268d9d6Gu9B34dk)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455436415065838268d9d6FBg7SluW)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455437188648508268d9d6TWxVczaj)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455437961998898268d9d6ab6Rk8uy)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455439262619368268d9d6QYaQ39QY)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455440036698718268d9d6IiBm1Yhj)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        },
+        {
+          "error_type": "InternalServerError",
+          "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455440817162918268d9d6bmJm980F)', 'type': 'new_api_error'}}",
+          "status_code": 503
+        }
+      ],
+      "ttft_p50_s": null,
+      "ttft_n_ok": 0,
+      "stream_usage_ok": false,
+      "native": {
+        "route": "anthropic /v1/messages",
+        "ok": false,
+        "error_type": "InternalServerError",
+        "error": "Error code: 503 - {'error': {'code': 'model_not_found', 'message': 'No available channel for model claude-haiku-4-5 under group az1元正价 (distributor) (request id: 202609260455443356972698268d9d6KPFdfGuE)', 'type': 'new_api_error'}}",
+        "status_code": 503
+      }
+    },
+    "gemini-3.6-flash": {
+      "model": "gemini-3.6-flash",
+      "openai_basic": {
+        "ok": true,
+        "response_id": "chatcmpl-9615adbb-0bc9-4c79-8e95-a5687c0355cc",
+        "request_id": null,
+        "echoed_model": "gemini-flash",
+        "text": "pong",
+        "usage": {
+          "completion_tokens": 2,
+          "prompt_tokens": 13,
+          "total_tokens": 15,
+          "completion_tokens_details": null,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cache_write_tokens": 0,
+            "cached_tokens": 0
+          }
+        }
+      },
+      "tools": {
+        "response_id": "chatcmpl-010eccd1-1522-4875-8e8d-1943970abefc",
+        "echoed_model": "gemini-flash",
+        "n_tool_calls": 0,
+        "calls": [],
+        "tool_calls_ok": false,
+        "parallel_ok": false,
+        "usage": {
+          "completion_tokens": 158,
+          "prompt_tokens": 26,
+          "total_tokens": 184,
+          "completion_tokens_details": null,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cache_write_tokens": 0,
+            "cached_tokens": 0
+          }
+        }
+      },
+      "json_schema": {
+        "response_id": "chatcmpl-275b5557-2dbd-4ab6-a4cd-056297e64884",
+        "echoed_model": "gemini-flash",
+        "json_schema_ok": false,
+        "raw": "**Call Outcome:** Unresolved / Offer Extended\n\n* **Offered Rate:** $65/month\n* **Status:** Offer Pending (Customer did not accept)\n* **Next Steps:** Follow up r"
+      },
+      "streams": [
+        {
+          "ttft_s": 6.132358999922872,
+          "total_s": 6.133117416873574,
+          "response_id": "chatcmpl-5721c645-4cfa-4a6c-93d7-887676772167",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 4.550681207794696,
+          "total_s": 4.551251582801342,
+          "response_id": "chatcmpl-3bbf3464-e7f4-43e8-bbb7-c5b61032d729",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 3.5330812078900635,
+          "total_s": 3.5340309157036245,
+          "response_id": "chatcmpl-384eb4f2-c5dc-4f5e-8cf0-6d5d7bd50689",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 4.331671333871782,
+          "total_s": 4.332686374895275,
+          "response_id": "chatcmpl-e8025bdf-01a2-4e6f-92f4-d1708be1448d",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 3.7461664169095457,
+          "total_s": 3.747054166626185,
+          "response_id": "chatcmpl-b441d29b-3067-4d8f-8dad-a258bd748f37",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 5.76799645787105,
+          "total_s": 5.768673457670957,
+          "response_id": "chatcmpl-def5fde2-5748-4aa9-bd9a-009e7f95be1f",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 7.7814034996554255,
+          "total_s": 7.785714749712497,
+          "response_id": "chatcmpl-6f601118-40b0-4346-9b45-dbc9db57b64e",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 3.23636129219085,
+          "total_s": 3.2457044580951333,
+          "response_id": "chatcmpl-dd893445-78ff-4888-812b-faae86204b7f",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 4.160563333891332,
+          "total_s": 4.161251708865166,
+          "response_id": "chatcmpl-f01e326b-2253-4ac0-ac74-f61804ff8e7e",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 11.474531624931842,
+          "total_s": 12.7052914169617,
+          "response_id": "chatcmpl-29de257e-6fab-478e-8da1-bbe3c5396380",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 292,
+            "prompt_tokens": 20,
+            "total_tokens": 312,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "\n\n```python?code_reference&code_event_index=1\nresult = \", \".join(str(i) for i in"
+        },
+        {
+          "ttft_s": 3.7966140839271247,
+          "total_s": 3.797645208891481,
+          "response_id": "chatcmpl-4f265d28-184c-4643-807e-a85a5616bb92",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 3.3692213748581707,
+          "total_s": 3.3697804999537766,
+          "response_id": "chatcmpl-66a4c210-6c21-49c1-bd40-8ec73eb0f1b6",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 3.649327374994755,
+          "total_s": 3.6498701251111925,
+          "response_id": "chatcmpl-ff9cccea-f866-4f4e-b012-3d8ddcd5aaa8",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 4.066079041454941,
+          "total_s": 4.0667664161883295,
+          "response_id": "chatcmpl-21296f70-11c3-4821-bf12-30a50b925b8a",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 3.7979962499812245,
+          "total_s": 3.7986631668172777,
+          "response_id": "chatcmpl-3a317595-f104-4ef8-bdbb-0d2112d7ee3f",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 4.48982825037092,
+          "total_s": 4.490444042254239,
+          "response_id": "chatcmpl-2ee405b9-65eb-457b-b52d-fb72a660b22f",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 4.1876652906648815,
+          "total_s": 4.189869957976043,
+          "response_id": "chatcmpl-fbcb6486-5845-4778-9250-c331c7b539c0",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 7.046347124967724,
+          "total_s": 7.047487874981016,
+          "response_id": "chatcmpl-5595be86-98d1-475e-8e05-bf99639a06ba",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 101,
+            "prompt_tokens": 20,
+            "total_tokens": 121,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "\n\n```python?code_reference&code_event_index=1\nprint(\", \".join(str(i) for i in ra"
+        },
+        {
+          "ttft_s": 4.7170268329791725,
+          "total_s": 5.359693500213325,
+          "response_id": "chatcmpl-943feda8-5860-43ed-8b5c-edad4ce6a5af",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 106,
+            "prompt_tokens": 20,
+            "total_tokens": 126,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "\n\n```python?code_reference&code_event_index=1\nres = \", \".join(str(i) for i in ra"
+        },
+        {
+          "ttft_s": 4.2958802077919245,
+          "total_s": 4.2965347077697515,
+          "response_id": "chatcmpl-2ff60f05-40ed-45b2-a4fc-592c02c7f0fe",
+          "echoed_model": "gemini-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        }
+      ],
+      "ttft_p50_s": 4.241772749228403,
+      "ttft_n_ok": 20,
+      "stream_usage_ok": true,
+      "native": {
+        "route": "gemini generateContent",
+        "ok": true,
+        "response_id": null,
+        "echoed_model": null,
+        "text": "pong",
+        "usage": {
+          "prompt": 13,
+          "candidates": 2
+        }
+      }
+    },
+    "claude-opus-4-8": {
+      "model": "claude-opus-4-8",
+      "openai_basic": {
+        "ok": true,
+        "response_id": "msg_011CfKDQp3Bpsbf7nNakGm9K",
+        "request_id": "req_YJMB5SuD6Nikqf3koyLIUN61",
+        "echoed_model": "claude-opus-4-8",
+        "text": "pong",
+        "usage": {
+          "completion_tokens": 3,
+          "prompt_tokens": 13,
+          "total_tokens": 16,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": null,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 13,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 3,
+              "cache_creation": {},
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 13,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        }
+      },
+      "tools": {
+        "response_id": "msg_011CfKDQEuIKinZF5rZTfgj7",
+        "echoed_model": "claude-opus-4-8",
+        "n_tool_calls": 2,
+        "calls": [
+          {
+            "name": "get_weather",
+            "args": {
+              "city": "Paris"
+            },
+            "valid_json": true
+          },
+          {
+            "name": "get_local_time",
+            "args": {
+              "city": "Paris"
+            },
+            "valid_json": true
+          }
+        ],
+        "tool_calls_ok": true,
+        "parallel_ok": true,
+        "usage": {
+          "completion_tokens": 10,
+          "prompt_tokens": 446,
+          "total_tokens": 456,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": null,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 446,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 10,
+              "cache_creation": {},
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 446,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        }
+      },
+      "json_schema": {
+        "response_id": "msg_011CfKDRNEgZfvFPwg1MPEFC",
+        "echoed_model": "claude-opus-4-8",
+        "json_schema_ok": false,
+        "raw": "The rep offered $65/month and the customer has not yet accepted."
+      },
+      "streams": [
+        {
+          "ttft_s": 2.9869670001789927,
+          "total_s": 3.0346823749132454,
+          "response_id": "msg_011CfKDRjETilJgdMKORXGDc",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.120634791906923,
+          "total_s": 2.1716632922179997,
+          "response_id": "msg_011CfKDRVlyI4jiII2aHnzR7",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.270153250079602,
+          "total_s": 2.2713731667026877,
+          "response_id": "msg_011CfKDRNc0XnH2rCYo5xiB3",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.2134067500010133,
+          "total_s": 2.261805416084826,
+          "response_id": "msg_011CfKDRds7tvcdTpx0FBykt",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.238455958198756,
+          "total_s": 2.3034288748167455,
+          "response_id": "msg_011CfKDSj5MQZNGMToZIiTSN",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.1487786252982914,
+          "total_s": 2.1862070420756936,
+          "response_id": "msg_011CfKDSPrnJXdMUX4ratlaC",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.153387874830514,
+          "total_s": 2.180515999905765,
+          "response_id": "msg_011CfKDStFVgQKEbQzaaH9hb",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.206274750176817,
+          "total_s": 2.2315711663104594,
+          "response_id": "msg_011CfKDS2iKmLm5pjORjro1p",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.1668324996717274,
+          "total_s": 2.2031041248701513,
+          "response_id": "msg_011CfKDSGLQK8EYjbv1nGmxY",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.2744337911717594,
+          "total_s": 2.311011499725282,
+          "response_id": "msg_011CfKDTk4ricq3YCc5ueTRH",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.3432554588653147,
+          "total_s": 2.3917950419709086,
+          "response_id": "msg_011CfKDTNbxTR5ScTUURFGFE",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.3063536253757775,
+          "total_s": 2.3075290410779417,
+          "response_id": "msg_011CfKDTpqKYBivFpau5rN9Y",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.1509046661667526,
+          "total_s": 2.159773708321154,
+          "response_id": "msg_011CfKDThSMPGstNn2AUynIr",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.2433459162712097,
+          "total_s": 2.48115862486884,
+          "response_id": "msg_011CfKDT0qJc4VDhHSNiBxy8",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.211180416867137,
+          "total_s": 2.2371427081525326,
+          "response_id": "msg_011CfKDT2dGPqBIZIt09OT3b",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.2227050829678774,
+          "total_s": 2.223861458245665,
+          "response_id": "msg_011CfKDUCVvC96UJkhWYSdG9",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.2066453746519983,
+          "total_s": 2.2431597500108182,
+          "response_id": "msg_011CfKDUETdGjBBubtskM5sF",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.275783333927393,
+          "total_s": 2.2768570417538285,
+          "response_id": "msg_011CfKDUegnTapnsOGS3qD5h",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.1466052918694913,
+          "total_s": 2.147996542043984,
+          "response_id": "msg_011CfKDUS84AmvQ9Sbv76axh",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.1480692089535296,
+          "total_s": 2.2431728336960077,
+          "response_id": "msg_011CfKDUz0xJpGyiP58dTSMM",
+          "echoed_model": "claude-opus-4-8",
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 18,
+            "total_tokens": 28,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "usage_semantic": "openai",
+            "usage_source": "anthropic",
+            "billing_usage": {
+              "source": "claude_messages",
+              "semantic": "anthropic",
+              "claude_usage": {
+                "input_tokens": 18,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 10,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 18,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        }
+      ],
+      "ttft_p50_s": 2.212293583434075,
+      "ttft_n_ok": 20,
+      "stream_usage_ok": true,
+      "native": {
+        "route": "anthropic /v1/messages",
+        "ok": true,
+        "message_id": "msg_011CfKDVvPK1cknKMSrWfRSB",
+        "request_id": "req_BMzSxLtaeQeTZCV0WFOysO3z",
+        "echoed_model": "claude-opus-4-8",
+        "text": "pong",
+        "usage": {
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "inference_geo": "not_available",
+          "input_tokens": 13,
+          "output_tokens": 3,
+          "output_tokens_details": {
+            "thinking_tokens": 0
+          },
+          "server_tool_use": null,
+          "service_tier": "standard"
+        },
+        "tool_use_n": 2,
+        "tool_use_names": [
+          "get_weather",
+          "get_local_time"
+        ],
+        "tool_message_id": "msg_011CfKDV2V1xJ3TbQJVkniHC"
+      }
+    },
+    "gemini-3.5-flash": {
+      "model": "gemini-3.5-flash",
+      "openai_basic": {
+        "ok": true,
+        "response_id": "chatcmpl-2f5bde50-8345-436b-866d-11e32bd3ad8d",
+        "request_id": null,
+        "echoed_model": "gemini-3.5-flash",
+        "text": "pong",
+        "usage": {
+          "completion_tokens": 2,
+          "prompt_tokens": 13,
+          "total_tokens": 15,
+          "completion_tokens_details": null,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cache_write_tokens": 0,
+            "cached_tokens": 0
+          }
+        }
+      },
+      "tools": {
+        "response_id": "chatcmpl-202609260455449546110288268d9d6VxqFcIDM",
+        "echoed_model": "gemini-3.5-flash",
+        "n_tool_calls": 0,
+        "calls": [],
+        "tool_calls_ok": false,
+        "parallel_ok": false,
+        "usage": {
+          "completion_tokens": 170,
+          "prompt_tokens": 26,
+          "total_tokens": 196,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": null,
+            "cached_tokens": 0,
+            "text_tokens": 26,
+            "image_tokens": 0
+          },
+          "billing_usage": {
+            "source": "oai_chat",
+            "semantic": "openai",
+            "openai_usage": {
+              "prompt_tokens": 26,
+              "completion_tokens": 170,
+              "total_tokens": 196,
+              "prompt_tokens_details": {
+                "cached_tokens": 0,
+                "text_tokens": 0,
+                "audio_tokens": 0,
+                "image_tokens": 0
+              },
+              "completion_tokens_details": {
+                "text_tokens": 0,
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "input_tokens": 0,
+              "output_tokens": 0,
+              "input_tokens_details": null,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        }
+      },
+      "json_schema": {
+        "response_id": "chatcmpl-202609260455488878418898268d9d6A9bmhLVR",
+        "echoed_model": "gemini-3.5-flash",
+        "json_schema_ok": false,
+        "raw": "**Status Report: Offer Extended**\n\n* **Offered Rate:** $65 / month\n* **Current Status:** Pending (Offer extended; customer has not accepted yet)\n* **Action Item"
+      },
+      "streams": [
+        {
+          "ttft_s": 4.197874417062849,
+          "total_s": 4.764304333832115,
+          "response_id": "chatcmpl-202609260455539378811958268d9d6VO6VWDzH",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 20,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 17,
+                "total_tokens": 37,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 8.281535542104393,
+          "total_s": 8.86648783320561,
+          "response_id": "chatcmpl-202609260455587478688368268d9d62RwSRPjL",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 106,
+            "prompt_tokens": 20,
+            "total_tokens": 126,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 20,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 106,
+                "total_tokens": 126,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "\n\n```python?code_reference&code_event_index=1\nresult = \", \".join(str(i) for i in"
+        },
+        {
+          "ttft_s": 4.724606040865183,
+          "total_s": 4.733279291074723,
+          "response_id": "chatcmpl-202609260456075979079898268d9d6OekkkP1k",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 20,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 17,
+                "total_tokens": 37,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 3.5947814593091607,
+          "total_s": 3.5959613751620054,
+          "response_id": "chatcmpl-202609260456123268178178268d9d6Kujo1aui",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 20,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 17,
+                "total_tokens": 37,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 6.393475042190403,
+          "total_s": 6.3950808751396835,
+          "response_id": "chatcmpl-47c1ae39-9321-4379-87a0-27bdd825d111",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 5.345233249943703,
+          "total_s": 5.348094000015408,
+          "response_id": "chatcmpl-202609260456223264271148268d9d69MviILW9",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 20,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 17,
+                "total_tokens": 37,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 3.474427041132003,
+          "total_s": 4.1273743328638375,
+          "response_id": "chatcmpl-202609260456276691769218268d9d6IDlax1fA",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 20,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 17,
+                "total_tokens": 37,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 4.051910583861172,
+          "total_s": 4.053359834011644,
+          "response_id": "chatcmpl-eda75414-e375-4352-b6c2-d56de152e146",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 4.523821458686143,
+          "total_s": 4.53750920901075,
+          "response_id": "chatcmpl-202609260456358412757788268d9d69EHcPP9G",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 20,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 17,
+                "total_tokens": 37,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.6706842076964676,
+          "total_s": 3.3267666660249233,
+          "response_id": "chatcmpl-202609260456403853928058268d9d64FQwtaak",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 20,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 17,
+                "total_tokens": 37,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 4.590564957819879,
+          "total_s": 5.246950542088598,
+          "response_id": "chatcmpl-202609260456437184372808268d9d6gAfqzGLA",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 98,
+            "prompt_tokens": 20,
+            "total_tokens": 118,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 20,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 98,
+                "total_tokens": 118,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "\n\n```python?code_reference&code_event_index=1\nprint(\", \".join(map(str, range(1, "
+        },
+        {
+          "ttft_s": 3.688904833048582,
+          "total_s": 3.7144424999132752,
+          "response_id": "chatcmpl-202609260456489762308438268d9d6fo4riV0w",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 20,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 17,
+                "total_tokens": 37,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 3.129528165794909,
+          "total_s": 3.129970499780029,
+          "response_id": "chatcmpl-5545e040-38af-415b-8e6d-d9922bf87622",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.6408350421115756,
+          "total_s": 3.344342791941017,
+          "response_id": "chatcmpl-202609260456558091915588268d9d6GSCr98YK",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 20,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 17,
+                "total_tokens": 37,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 5.598685374949127,
+          "total_s": 6.143365582916886,
+          "response_id": "chatcmpl-202609260456591477967668268d9d6kFEbVfHi",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 101,
+            "prompt_tokens": 20,
+            "total_tokens": 121,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 20,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "oai_chat",
+              "semantic": "openai",
+              "openai_usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 101,
+                "total_tokens": 121,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0
+                },
+                "completion_tokens_details": {
+                  "text_tokens": 0,
+                  "audio_tokens": 0,
+                  "image_tokens": 0,
+                  "reasoning_tokens": 0
+                },
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": null,
+                "claude_cache_creation_5_m_tokens": 0,
+                "claude_cache_creation_1_h_tokens": 0
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "text": "\n\n```python?code_reference&code_event_index=1\nprint(\", \".join(str(i) for i in ra"
+        },
+        {
+          "ttft_s": 4.517564041074365,
+          "total_s": 4.519100749865174,
+          "response_id": "chatcmpl-92377a9d-4dd0-4686-a703-7c4b1b39b355",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 7.823097083717585,
+          "total_s": 7.824462541844696,
+          "response_id": "chatcmpl-3f510545-5a0b-4a39-a988-0dc5a29d77bc",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 6.213453250005841,
+          "total_s": 6.2144900830462575,
+          "response_id": "chatcmpl-1ecb7631-023f-45a2-baf6-3cb3656b777c",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 5.765653166919947,
+          "total_s": 6.296499624848366,
+          "response_id": "chatcmpl-aae1bdcc-f6a9-4c08-bf71-3fbc26335bc5",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 101,
+            "prompt_tokens": 20,
+            "total_tokens": 121,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "\n\n```python?code_reference&code_event_index=1\nprint(\", \".join(str(i) for i in ra"
+        },
+        {
+          "ttft_s": 7.762116292025894,
+          "total_s": 7.763573000207543,
+          "response_id": "chatcmpl-ed47f700-8037-403c-8796-c819a391b62f",
+          "echoed_model": "gemini-3.5-flash",
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 20,
+            "total_tokens": 37,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": {
+              "audio_tokens": null,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0
+            }
+          },
+          "text": "1, 2, 3, 4, 5"
+        }
+      ],
+      "ttft_p50_s": 4.557193208253011,
+      "ttft_n_ok": 20,
+      "stream_usage_ok": true,
+      "native": {
+        "route": "gemini generateContent",
+        "ok": true,
+        "response_id": null,
+        "echoed_model": null,
+        "text": "pong",
+        "usage": {
+          "prompt": 13,
+          "candidates": 2
+        }
+      }
+    }
+  }
+}
