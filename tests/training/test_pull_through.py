@@ -5,8 +5,10 @@ vLLM and live-session steps are root-run (make pull-through)."""
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import shutil
+import subprocess
 from functools import cache
 from pathlib import Path
 from typing import Any, cast
@@ -19,9 +21,18 @@ from tests.kernel.test_session import SCRIPTS, UNTIL
 from tests.llm.wire import set_env
 from tests.support.sessions import fake_config, run
 
-from proxyloop.contract.bundle import MANIFEST, Bundle, read_bundle
+from proxyloop.contract.base import sha256_text
+from proxyloop.contract.bundle import (
+    EVENTS,
+    MANIFEST,
+    PROMPTS,
+    Bundle,
+    PromptRecord,
+    read_bundle,
+)
 from proxyloop.contract.config import SessionConfig
-from proxyloop.contract.protocol import fingerprint
+from proxyloop.contract.protocol import fingerprint, render_prompt
+from proxyloop.contract.views import FastView
 from proxyloop.training import pull_through as pt
 from serving import config
 from training_jobs import sft
@@ -48,8 +59,31 @@ def evidence(tmp_path_factory: pytest.TempPathFactory) -> Path:
     set_env(mp, "vllm")
     for name, roles in (("cp", ("fast_cp",)), ("both", ("fast_user", "fast_cp"))):
         run(root / name, SCRIPTS, cfg=on_vllm(*roles), until=UNTIL, vllm=vllm())
+        (run_dir,) = (root / name).iterdir()
+        served_as_pinned(run_dir)
     mp.undo()
     return root
+
+
+def served_as_pinned(run_dir: Path) -> None:
+    """The kernel under test renders with a fake tokenizer (the P3 double); rewrite
+    each Fast prompt as a real vLLM run serves it: the pinned tokenizer's render."""
+    b = read_bundle(run_dir)
+    prompts, events = dict(b.prompts), list(b.events)
+    for i, e in enumerate(events):
+        if e.type == "fast.request":
+            view = FastView.model_validate_json(
+                prompts[str(e.payload["view_sha"])].content
+            )
+            text = render_prompt(view, str(e.payload["profile"]), tok())
+            sha = sha256_text(text)
+            prompts[sha] = PromptRecord(sha=sha, kind="prompt", content=text)
+            events[i] = e.model_copy(
+                update={"payload": e.payload | {"prompt_sha": sha}}
+            )
+    (run_dir / EVENTS).write_text("".join(e.model_dump_json() + "\n" for e in events))
+    lines = (r.model_dump_json() + "\n" for r in prompts.values())
+    (run_dir / PROMPTS).write_text("".join(lines))
 
 
 def bundle(evidence: Path, name: str) -> Bundle:
@@ -76,7 +110,12 @@ def test_selection_takes_only_base_turns_served_over_real_http(evidence: Path):
 def test_rows_render_through_the_contract_and_pass_p5(evidence: Path):
     turns, funnel = pt.select(pt.load_bundles(evidence), FPS)
     doc = pt.rows_doc(turns, funnel, FPS, tok())
-    assert doc["p5"] == {"ok": True, "rows": len(turns), "failed": []}
+    assert doc["p5"] == {
+        "ok": True,
+        "rows": len(turns),
+        "failed": [],
+        "dropped_prompt_mismatch": 0,
+    }
     assert doc["fingerprint"] == {p: fingerprint(p) for p in ("pl_cp_v1", "pl_user_v1")}
     assert (
         doc["adapter_name"] == f"Qwen3.5-9B-pl-pt-{doc['fp8']}" and len(doc["fp8"]) == 8
@@ -89,13 +128,23 @@ def test_rows_render_through_the_contract_and_pass_p5(evidence: Path):
 
 
 def test_p5_fails_loudly_on_nothing_to_train():
-    assert pt.p5_rows([], tok())["ok"] is False
+    assert pt.p5_rows([], tok())[1]["ok"] is False
+
+
+def test_a_label_whose_view_does_not_render_the_served_prompt_is_dropped(
+    evidence: Path,
+):
+    turns, _ = pt.select(pt.load_bundles(evidence), FPS)
+    drifted = [dataclasses.replace(turns[0], prompt_sha="0" * 64), *turns[1:]]
+    kept, p5 = pt.p5_rows(drifted, tok())
+    assert kept == turns[1:] and p5["dropped_prompt_mismatch"] == 1 and p5["ok"]
 
 
 def test_at_most_60_turns_newest_bundle_first(evidence: Path):
     one = bundle(evidence, "both")
     turns, funnel = pt.select([one] * 61, FPS)
-    assert len(turns) == pt.MAX_TURNS == 60 and funnel["turns"] > 60
+    assert len(turns) == pt.MAX_TURNS == 60 == funnel["selected"]
+    assert funnel["dropped_over_cap"] == funnel["turns"] - 60 > 0
 
 
 def test_stale_fingerprint_non_train_and_test_paths_are_never_labels(
@@ -107,13 +156,35 @@ def test_stale_fingerprint_non_train_and_test_paths_are_never_labels(
     manifest = json.loads((stale / MANIFEST).read_text("utf-8"))
     manifest["fingerprints"]["pl_cp_v1"] = "0" * 64
     (stale / MANIFEST).write_text(json.dumps(manifest), "utf-8")
+    dev = tmp_path / "s0" / "dev"
+    shutil.copytree(src, dev)
+    manifest = json.loads((dev / MANIFEST).read_text("utf-8"))
+    (dev / MANIFEST).write_text(json.dumps(manifest | {"split": "dev"}), "utf-8")
     sealed = tmp_path / "s4" / "test" / "run"
     sealed.mkdir(parents=True)
     (sealed / MANIFEST).write_text("sealed: never parsed", "utf-8")
     bundles = pt.load_bundles(tmp_path)  # would raise if it opened the sealed one
-    assert len(bundles) == 1
+    assert len(bundles) == 2
     turns, funnel = pt.select(bundles, FPS)
-    assert not turns and funnel["bundle_not_train_or_stale_fingerprint"] == 1
+    assert not turns and funnel["selected"] == 0
+    assert funnel["bundle_stale_fingerprint"] == funnel["bundle_not_train"] == 1
+
+
+def test_an_evidence_root_inside_a_sealed_test_dir_is_refused(
+    evidence: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    (src,) = (evidence / "cp").iterdir()
+    sealed = tmp_path / "evidence" / "s4" / "test"
+    shutil.copytree(src, sealed / "families" / "run")  # a real, parseable bundle
+    monkeypatch.setattr(pt, "load_tokenizer", tok)
+    for root in (sealed, sealed / "families"):  # PT_EVIDENCE=.../test/...
+        with pytest.raises(SystemExit, match="sealed test dir"):
+            pt.main(["select", "--dir", str(tmp_path / "out"), "--evidence", str(root)])
+    link = tmp_path / "innocent"
+    link.symlink_to(sealed / "families")
+    with pytest.raises(SystemExit, match="sealed test dir"):
+        pt.load_bundles(link)  # resolved, so a symlink does not unseal it
+    assert not (tmp_path / "out").exists()
 
 
 def with_calls(b: Bundle, **update: object) -> Bundle:
@@ -154,6 +225,10 @@ def test_echo_check_needs_both_lanes_on_the_adapter(evidence: Path):
     other = pt.echo_failures(both, "Qwen3.5-9B-pl-pt-00000000")
     assert any("echoed 'Qwen3.5-9B'" in f for f in other)
     assert any(f.startswith("fast_cp ran") for f in other)
+    failed = with_calls(both, error="cancelled", served_model_echo="Qwen3.5-9B-other")
+    out = pt.echo_failures(failed, config.SERVED_NAME)  # errored calls' echoes count
+    assert any("echoed 'Qwen3.5-9B-other'" in f for f in out)
+    assert {"no served fast_user call", "no served fast_cp call"} <= set(out)
 
 
 def test_adapter_shas_compare_file_for_file(evidence: Path):
@@ -299,3 +374,59 @@ def test_a_dead_adapter_never_reaches_the_session_or_the_result(
         doc["claim"] == "none" and not doc["passed"] and not doc["checks"]["liveness"]
     )
     assert not pt.RESULT.exists()
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "name", "card", "failed"),
+    [
+        (0, "Qwen3.5-9B", {}, None),
+        (1, "Qwen3.5-9B", {}, "evidence_check_claim"),
+        (0, "Qwen3.5-9B-pl-pt-00000000", {}, "echoes_and_shards"),
+        (0, "Qwen3.5-9B", {"adapter_model.safetensors": "d" * 64}, "echoes_and_shards"),
+    ],
+    ids=["pass", "cli_exit", "echo_mismatch", "shard_mismatch"],
+)
+def test_check_passes_only_on_a_claimed_bundle_with_the_adapter_echoed_and_attested(
+    evidence: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    exit_code: int,
+    name: str,
+    card: dict[str, str],
+    failed: str | None,
+):
+    """The both-lanes bundle echoes Qwen3.5-9B and attests no Qwen3.5-9B adapter, so a
+    card for that name with no files is the passing case."""
+    write_run(tmp_path, FPS)
+    rows = json.loads((tmp_path / "rows.json").read_text("utf-8"))
+    pt.write(tmp_path / "rows.json", rows | {"adapter_name": name})
+    train = json.loads((tmp_path / "train.json").read_text("utf-8"))
+    pt.write(tmp_path / "train.json", train | {"adapter_sha256": card})
+    monkeypatch.setattr(pt, "RESULT", tmp_path / "result.json")
+    live = {"ok": True, "complete": True, "mean_abs_diff": 0.5}
+
+    def probe(slot: str) -> dict[str, Any]:
+        return {"attested": card, "liveness": live}
+
+    (src,) = (evidence / "both").iterdir()
+
+    def session(
+        cli: list[str], check: bool = False
+    ) -> subprocess.CompletedProcess[str]:
+        assert cli[cli.index("--fast-model") + 1] == name and "--claim" in cli
+        runs = Path(cli[cli.index("--runs") + 1])
+        shutil.copytree(src, runs / src.name)
+        return subprocess.CompletedProcess(cli, exit_code)
+
+    monkeypatch.setattr(pt, "probe_slot", probe)
+    monkeypatch.setattr(pt.subprocess, "run", session)
+    code = pt.check("full", tmp_path, "cp-direct-discount")
+    doc = json.loads((tmp_path / "pull-through.json").read_text("utf-8"))
+    assert doc["claim"] == "none" and doc["bundle"].endswith(src.name)
+    assert doc["run_id"] == read_bundle(src).manifest.run_id
+    if failed is None:
+        assert code == 0 and doc["passed"] and not doc["failures"]
+        assert json.loads(pt.RESULT.read_text("utf-8")) == doc
+    else:
+        assert code == 1 and not doc["passed"] and not doc["checks"][failed]
+        assert not pt.RESULT.exists()

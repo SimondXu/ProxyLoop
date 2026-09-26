@@ -83,11 +83,11 @@ def _start_vllm(started_at: float) -> "subprocess.Popen[bytes]":
         )
     from serving.attest import attest_files
 
-    model_dir, slots = download_model(), config.lora_slots(RUNG, ADAPTER_DIR, TRAINED)
-    for path in config.trained_slot(TRAINED, ADAPTER_DIR).values():
+    for path in config.trained_slot(TRAINED, ADAPTER_DIR).values():  # before downloads
         config.check_trained(
             json.loads(Path(path, "adapter_config.json").read_text()), RUNG
         )
+    model_dir, slots = download_model(), config.lora_slots(RUNG, ADAPTER_DIR, TRAINED)
     doc = attest_files(
         model_dir,
         {n: Path(p) for n, p in slots.items()},

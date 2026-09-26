@@ -65,6 +65,8 @@ train-smoke:
 # product-path session with both lanes on it (evidence-check --claim), and
 # docs/results/pull-through.json (written only when every check passes; each run's raw
 # JSON stays in PT_DIR). MODE=verify: the serving steps again, with that file's adapter.
+# PT_DIR=<an earlier run's dir> with a train.json skips select and training (no paid
+# retrain after a transient serving or session failure).
 # pull-through-liveness: the liveness step alone for ADAPTER, a path in the adapter volume
 # (the S0-MOD-02 smoke adapter by default). The app stops from a trap. Export in the shell
 # only, as for smoke-live: PL_VLLM_*, PL_RELAY_*, PL_TEAMROUTER_* (BASE_URL, API_KEY).
@@ -76,7 +78,7 @@ ADAPTER ?= train/20260926-smoke-3/adapter
 ADAPTER_NAME ?= Qwen3.5-9B-pl-smoke
 PT_PY := uv run python -m proxyloop.training.pull_through
 PT_SERVE_DOWN := $(MOD_MODAL) app stop --yes proxyloop-vllm
-PT_SERVE_UP := PL_SERVE_VARIANT=pinned $(MOD_MODAL) deploy -m serving.modal_vllm && \
+PT_SERVE_UP := PL_SERVE_VARIANT=pinned PL_LORA_RUNG=all $(MOD_MODAL) deploy -m serving.modal_vllm && \
 	$(MOD_PY) -m scripts.mod.probe --wait-healthy --variant pinned --out $(PT_DIR)/coldstart.json
 PT_TRAIN := $(MOD_MODAL) run --detach -m training_jobs.modal_train::pull_through \
 	--rows $(PT_DIR)/rows.json --out $(PT_DIR)/train.json
@@ -86,7 +88,7 @@ PT_TRAIN := $(MOD_MODAL) run --detach -m training_jobs.modal_train::pull_through
 pull-through:
 	@case "$(MODE)" in full|verify) ;; *) echo "MODE=full|verify is required" >&2; exit 1;; esac
 	$(MOD_LADDER_GUARD)
-	$(if $(filter full,$(MODE)),$(PT_PY) select --dir $(PT_DIR) --evidence $(PT_EVIDENCE) && $(PT_TRAIN))
+	$(if $(filter full,$(MODE)),test -f $(PT_DIR)/train.json || { $(PT_PY) select --dir $(PT_DIR) --evidence $(PT_EVIDENCE) && $(PT_TRAIN); })
 	trap '$(PT_SERVE_DOWN)' EXIT HUP INT TERM; \
 	PL_TRAINED_ADAPTER="$$($(PT_PY) slot --mode $(MODE) --dir $(PT_DIR))" && export PL_TRAINED_ADAPTER && \
 	$(PT_SERVE_UP) && $(PT_PY) check --mode $(MODE) --dir $(PT_DIR) --family $(PT_FAMILY)

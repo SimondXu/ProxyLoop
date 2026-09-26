@@ -38,7 +38,7 @@ from proxyloop.contract.protocol import PROFILES, ParseIssue, fingerprint, parse
 from proxyloop.contract.views import FastView
 from proxyloop.training.dataset import build_row, tokenize_row
 from proxyloop.training.masking import verify_trained_span
-from serving import config, liveness
+from serving import config, liveness  # top-level MOD package: run from the repo root
 
 Json = dict[str, Any]
 MAX_TURNS = 60
@@ -65,6 +65,7 @@ class Turn:
     profile: str
     view: str  # the stored FastView JSON
     raw: str  # the model's response text, as streamed
+    prompt_sha: str  # the prompt vLLM was sent (fast.request)
 
 
 def fast_calls(bundle: Bundle) -> list[LLMCallRecord]:
@@ -103,14 +104,18 @@ def base_turns(bundle: Bundle) -> tuple[list[Turn], Counter[str]]:
             skipped["empty_or_parse_issue"] += 1
             continue
         view = bundle.prompts[str(req["view_sha"])].content
-        turns.append(Turn(e.event_id, str(req["profile"]), view, raw))
+        sha = str(req["prompt_sha"])
+        turns.append(Turn(e.event_id, str(req["profile"]), view, raw, sha))
     return turns, skipped
 
 
 def load_bundles(root: Path) -> list[Bundle]:
-    """Bundles under ``root``; never opens a path with a ``test`` part (I9, rule 11)."""
-    dirs = sorted(m.parent for m in root.rglob("manifest.json"))
-    return [read_bundle(d) for d in dirs if "test" not in d.relative_to(root).parts]
+    """Bundles under ``root``; never opens a resolved path with a ``test`` part, the
+    root's own included (I9, AGENTS rule 11)."""
+    if "test" in root.resolve().parts:
+        raise SystemExit(f"{root} is inside a sealed test dir: never a label source")
+    dirs = sorted(m.parent.resolve() for m in root.rglob("manifest.json"))
+    return [read_bundle(d) for d in dirs if "test" not in d.parts]
 
 
 def select(bundles: Sequence[Bundle], fps: dict[str, str]) -> tuple[list[Turn], Json]:
@@ -118,31 +123,42 @@ def select(bundles: Sequence[Bundle], fps: dict[str, str]) -> tuple[list[Turn], 
     funnel, chosen = Counter[str](), list[Turn]()
     newest = sorted(bundles, key=lambda b: (b.events[0].wall, b.manifest.run_id))
     for b in reversed(newest):
-        if b.manifest.split != "train" or b.manifest.fingerprints != fps:
-            funnel["bundle_not_train_or_stale_fingerprint"] += 1
-            continue
-        turns, skipped = base_turns(b)
-        funnel.update(skipped)
-        chosen += turns
-    return chosen[:MAX_TURNS], {"bundles": len(bundles), "turns": len(chosen), **funnel}
+        if b.manifest.split != "train":
+            funnel["bundle_not_train"] += 1
+        elif b.manifest.fingerprints != fps:
+            funnel["bundle_stale_fingerprint"] += 1
+        else:
+            turns, skipped = base_turns(b)
+            funnel.update(skipped)
+            chosen += turns
+    kept = chosen[:MAX_TURNS]
+    counts = {"bundles": len(bundles), "turns": len(chosen), "selected": len(kept)}
+    return kept, counts | {"dropped_over_cap": len(chosen) - len(kept), **funnel}
 
 
-def p5_rows(turns: Sequence[Turn], tok: Any) -> Json:
-    """P5 on every selected row, tokenised as training does; not ok aborts the run."""
-    failed: list[Json] = []
+def p5_rows(turns: Sequence[Turn], tok: Any) -> tuple[list[Turn], Json]:
+    """Rows as training builds them. A turn whose re-rendered prompt is not the one
+    served is dropped (counted); P5 on every kept row, and not ok aborts the run."""
+    kept, failed, drift = list[Turn](), list[Json](), 0
     for t in turns:
         row = build_row(FastView.model_validate_json(t.view), t.profile, t.raw, tok)
+        if sha256_text(row.prompt) != t.prompt_sha:
+            drift += 1
+            continue
+        kept.append(t)
         data = tokenize_row(row, tok)
         ids, labels = data["input_ids"], data["labels"]
         if not (report := verify_trained_span(ids, labels, tok, row.completion))["ok"]:
             failed.append({"turn": t.event_id} | report)
-    return {"ok": bool(turns) and not failed, "rows": len(turns), "failed": failed}
+    p5 = {"ok": bool(kept) and not failed, "rows": len(kept), "failed": failed}
+    return kept, p5 | {"dropped_prompt_mismatch": drift}
 
 
 def rows_doc(
     turns: Sequence[Turn], funnel: Json, fps: dict[str, str], tok: Any
 ) -> Json:
     """The rows JSON ``training_jobs.modal_train::pull_through`` trains on."""
+    turns, p5 = p5_rows(turns, tok)
     rows = [[t.profile, t.view, t.raw] for t in turns]
     return {
         "fingerprint": fps,
@@ -152,7 +168,7 @@ def rows_doc(
         "dataset_hash": sha256_text(canonical_json(rows)),
         "turns": [t.event_id for t in turns],
         "funnel": funnel,
-        "p5": p5_rows(turns, tok),
+        "p5": p5,
         "rows": rows,
     }
 
@@ -162,13 +178,10 @@ def echo_failures(bundle: Bundle, name: str) -> list[str]:
     cfg = bundle.manifest.cfg
     refs = {"fast_user": cfg.fast_user, "fast_cp": cfg.fast_cp}
     out = [f"{r} ran {ref.model_id}" for r, ref in refs.items() if ref.model_id != name]
-    served = [c for c in fast_calls(bundle) if c.error is None]
-    out += [
-        f"{c.call_id} echoed {c.served_model_echo!r}"
-        for c in served
-        if c.served_model_echo != name
-    ]
-    roles = {c.role for c in served}
+    calls = fast_calls(bundle)  # every echo counts, a cancelled call's too
+    echoes = [(c.call_id, c.served_model_echo) for c in calls]
+    out += [f"{i} echoed {m!r}" for i, m in echoes if m is not None and m != name]
+    roles = {c.role for c in calls if c.error is None}
     return out + [f"no served {r} call" for r in FAST_ROLES if r not in roles]
 
 
@@ -261,7 +274,8 @@ def check(mode: str, run_dir: Path, family: str) -> int:
         failures += shard_failures(shards, bundle_shards(bundle, name), "bundle")
         checks["bundle_fingerprint"] = bundle.manifest.fingerprints == fps
         checks["evidence_check_claim"] = code == 0
-        doc |= {"run_id": bundle.manifest.run_id, "cli_exit": code}
+        doc |= {"run_id": bundle.manifest.run_id, "bundle": str(bundle_dir)}
+        doc["cli_exit"] = code
     checks["echoes_and_shards"] = not failures and "evidence_check_claim" in checks
     doc |= {"checks": checks, "failures": failures, "passed": all(checks.values())}
     write(run_dir / "pull-through.json", doc)  # a paid run is never lost
