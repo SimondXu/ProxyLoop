@@ -13,6 +13,7 @@ forbidden_modules =
     proxyloop.slow
     proxyloop.guard
     proxyloop.contract.views
+    proxyloop.llm
 
 [importlinter:contract:src-never-imports-tests]
 name = nothing in proxyloop imports tests

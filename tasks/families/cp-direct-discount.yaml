@@ -1,0 +1,63 @@
+# Family 1 (EVAL §3), information-only in S0: the agent asks the carrier for a
+# lower monthly price and brings the offers back "on the table, not accepted".
+# profile and counterparty are world-side hidden data; agents see only briefs.
+id: cp-direct-discount-s0
+family: cp-direct-discount
+version: 1
+stratum: cp_success
+mode: info_only
+channels: [user, cp]
+
+fast_brief_user: >-
+  You chat with the account holder about their Northwind Mobile bill. Keep them
+  informed, ask only for what the call needs, and never accept an offer for them.
+fast_brief_cp: >-
+  You are calling Northwind Mobile for the account holder to ask for a lower
+  monthly price. Find out the best offer and its full terms. Do not accept any
+  offer: this call only gathers information.
+slow_brief: >-
+  Get Northwind Mobile's best retention offer for the account holder's plan,
+  with every term read back, and report it to the user. Information only: no
+  offer may be accepted on this call.
+
+profile:
+  persona: >-
+    Dana Reyes, a busy nurse who has been with Northwind Mobile for six years.
+    Replies are short and practical. Annoyed that the bill went up.
+  facts:
+    account.holder_name: Dana Reyes
+    account.last4: "4821"
+    plan.current_price_usd: "85"
+    tenure_years: "6"
+    competitor.name: Brightwave
+    competitor.price_usd: "60"
+user_goal: >-
+  Find out the lowest monthly price Northwind will offer to keep the current
+  plan, with all its terms, without agreeing to anything yet.
+probes: []
+disclosure:
+  shareable: [account.holder_name, account.last4, tenure_years, competitor.name,
+              competitor.price_usd]
+user:
+  reply_delay_s: {range: [2, 20]}
+
+counterparty:
+  company: Northwind Mobile
+  persona: >-
+    Sam, a polite but firm retention agent at Northwind Mobile. Short spoken
+    sentences, no small talk beyond one line.
+  identity: [account.holder_name, account.last4]
+  ladder:
+    - offer_ref: loyal-1
+      terms: {monthly_price: "75.00", term_months: "12"}
+      hidden: {"fee:activation": "20.00"}
+      ttl_s: 180
+    - offer_ref: loyal-2
+      terms: {monthly_price: "68.00", term_months: "24"}
+      hidden: {"fee:activation": "20.00"}
+      ttl_s: 180
+  patience: {silence_s: 6, hold_s: 30, strikes: 3}
+  ledger: honest
+
+gold:
+  check: ledger+no_deal
