@@ -4,16 +4,16 @@
 
 **Sessions** (user decision 2026-09-26). Two top-level sessions run in parallel. The **main root** (business) owns the whole product: it supervises up to five **lane-lead** sub-sessions — **L-CORE** (the agent business line: kernel, Slow, world, Guard, LLM adapters, evidence, CLI) and the product lanes P-WEB, P-API, P-OBS, P-TOOLS — and each lane lead runs its own subagents. The **model root** (ML) has no sub-sessions: it runs its own implementer/reviewer subagents for the MOD lane (serving, training, eval, the model registry, model probes and fine-tuning experiments). Paths are in PLAN §0.2. Every session opens with its cwd in the main checkout, and implementers work in `../pl-wt/<ID>` worktrees. The protocol, the charters, the lane logs and `PITFALLS.md` live in `~/Desktop/proxyloop-review-packet-2026-09-25/plan-v3/lanes/`.
 
-**Main root.** It is the only session that merges into `main`. It owns `PLAN.md`, the contract, the ADRs, `evidence/`, `docs/claims.yaml` and the shared files: `pyproject.toml`, `uv.lock`, `Makefile`, `.github/**`, `.importlinter`, the existing `tests/support/**` files, and any change of `mk/*.mk` ownership. It grants a lane a shared or foreign path per task. It runs every L/G/U step and arbitrates cross-lane conflicts. It never delegates the final diff review, a completion claim or a stage gate. It closes nothing: the user closes stages.
+**Main root.** It is the only session that merges into `main`. It owns `PLAN.md`, the contract, the ADRs, `evidence/`, `docs/claims.yaml` and the shared files: `pyproject.toml`, `uv.lock`, `Makefile`, `.github/**`, `.importlinter`, the existing `tests/support/**` files, and any change of `mk/*.mk` ownership. It grants a lane a shared or foreign path per task. It runs every U step and every L/G step outside the envelopes in "Root-run flags", and arbitrates cross-lane conflicts. It never delegates the final diff review, a completion claim or a stage gate. It closes nothing: the user closes stages.
 
-**Lane lead.** It owns exactly one product lane's paths. For its own tasks it:
+**Lane lead.** It owns exactly one lane's paths (L-CORE or one product lane, PLAN §0.2). For its own tasks it:
 - writes the packets and may create the worktrees;
 - dispatches `implementer`s;
 - pushes the task branch and opens the PR titled `<ID>: <title>`;
 - runs a fresh `reviewer` and reconciles the findings;
 - hands the PR to the main root in one paragraph: the task, the PR link, the review verdict, the checks, and the decisions it needs.
 
-It never merges. It never edits another lane's paths or a shared file; it asks the main root for a per-task grant. It never runs an L/G/U step, and it never changes a model, a budget, a tripwire or a stage gate.
+It never merges. It never edits another lane's paths or a shared file; it asks the main root for a per-task grant. It never runs a U step, and runs L/G only if it is L-CORE and inside its spend envelope (see "Root-run flags"); it never changes a model, a budget, a tripwire or a stage gate.
 
 **Model root.** A top-level session (charter `plan-v3/lanes/charter-model.md`) the user talks to directly, dedicated to models and ML experiments (fine-tuning, serving, evaluation, the model registry, probes). It has no sub-sessions; it writes packets and runs its own `implementer`/`reviewer` subagents in MOD-lane worktrees, pushes its task branches and opens PRs, then hands each PR to the main root, which alone merges and owns `PLAN.md`, the contract and the shared files (it requests grants like a lane lead). It runs its own L/G experiments within the rules under "Root-run flags". It has no delegated user authority: model swaps and spend beyond those limits go to the user; cross-lane questions go to the main root.
 

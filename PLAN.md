@@ -2,7 +2,7 @@
 
 **Current:** S0 in progress (the user gave the go on 2026-09-26). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01, S0-SYS-02 (#115), S0-ROOT-07 (#114), S0-CON-01 (#116), S0-MOD-01 (#113, provisional: `serve-attest-local` pending the user's go), S0-ROOT-08 (#117), S0-SYS-03 (#118), S0-SYS-04 (#120), S0-SYS-05 (#121), S0-MOD-02 (#119), S0-ROOT-09 (#122), S0-SYS-06 (#123). **In progress:** S0-ROOT-05 (merge point 1): the first three live smokes failed, and the fixes are pending (see the S0-late handoff, `plan-v3/handoffs/2026-09-26-s0-late.md`). **In flight** (merged only at the gate, §0.1): S0-MOD-03, S1-SYS-01, S1-MOD-01A, S0-ROOT-10 (this PR). **Last closed stage:** none. **Contract version:** v1 (ADR-0004; fingerprints `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`, `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490`).
 
-**Sessions:** one main root and up to four product lane leads run in parallel (user decision 2026-09-26; §0.1, §0.2, `CLAUDE.md`).
+**Sessions:** a main root (business) with up to five lane-lead sub-sessions (L-CORE and the four product lanes P-WEB, P-API, P-OBS, P-TOOLS), plus a top-level model root (ML) for the MOD lane, run in parallel (user decision 2026-09-26; §0.1, §0.2, `CLAUDE.md`).
 
 **Merge authority:** granted to the root by the user on 2026-09-26, from S0 on until revoked: the root squash-merges PRs that pass the fresh-context reviewer, CI and the reality rule. Stage closes, contract changes after `semantics-v1`, publishing, the split draw, the unseal and destructive steps still need the user.
 
@@ -510,7 +510,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Acceptance:** `make check` green; no measured number typed (AGENTS rule 13); every decision below appears once.
 
 ### S0-ROOT-10 Multi-session harness — ROOT — M — review
-- **Objective:** record the user's multi-session decisions of 2026-09-26: one main root and four product lane leads (P-WEB, P-API, P-OBS, P-TOOLS), the ≤ 8 implementer rule, merge at gate, the S0 PR tripwire 16 → 18, and `src/` size counted in non-blank lines. Write `CLAUDE.md` and `AGENTS.md` (the roles, cross-session messages, lane logs) and this file (§0.1, §0.2, §0.6, the header). Outside the repo: `plan-v3/lanes/` (README, five charters, five lane logs, `PITFALLS.md`) and the S0-late handoff. Documentation only.
+- **Objective:** record the user's multi-session decisions of 2026-09-26: a main root (business) with up to five lane-lead sub-sessions (L-CORE and the four product lanes P-WEB, P-API, P-OBS, P-TOOLS), plus a top-level model root (ML) for the MOD lane, the ≤ 8 implementer rule, merge at gate, the S0 PR tripwire 16 → 18, and `src/` size counted in non-blank lines. Write `CLAUDE.md` and `AGENTS.md` (the roles, cross-session messages, lane logs) and this file (§0.1, §0.2, §0.6, the header). Outside the repo: `plan-v3/lanes/` (README, five charters, five lane logs, `PITFALLS.md`) and the S0-late handoff. Documentation only.
 - **Owned paths:** `CLAUDE.md`, `AGENTS.md`, `PLAN.md`; outside the repo, `plan-v3/lanes/**` and `plan-v3/handoffs/2026-09-26-s0-late.md` (new files).
 - **Acceptance:** `make check` green; each user decision appears once as a recorded decision, and none changes a decision; `principal-architect` reviews the harness rules before merge (the user's request).
 
