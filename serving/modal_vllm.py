@@ -3,7 +3,9 @@ Root-run: `make -f mk/mod.mk serve-*`.
 
 PL_SERVE_VARIANT (pinned | prefix-align) and PL_LORA_RUNG (all | attn-mlp: the ladder
 rung whose zero and live adapters fill the two LoRA slots) are read at deploy time and
-baked into the image env, so the container runs exactly the deployed configuration. The
+baked into the image env, so the container runs exactly the deployed configuration.
+PL_TRAINED_ADAPTER ("<name>=<path under the adapter volume>", optional) adds a third
+slot for one trained adapter (pull-through), checked before vLLM starts. The
 container exits as soon as vLLM exits or anything before it fails, so a dead server
 never holds the GPU.
 """
@@ -25,14 +27,17 @@ from serving import config
 
 VARIANT = os.environ.get("PL_SERVE_VARIANT", "pinned")
 RUNG = os.environ.get("PL_LORA_RUNG", "all")
+TRAINED = os.environ.get("PL_TRAINED_ADAPTER", "")
 HF_DIR, ADAPTER_DIR, ATTEST_FILE = "/hf", "/adapters", "/tmp/pl-attest.json"
-config.lora_slots(RUNG, ADAPTER_DIR)  # validates RUNG at deploy time
+config.lora_slots(RUNG, ADAPTER_DIR, TRAINED)  # validates both at deploy time
 hf_volume = modal.Volume.from_name("proxyloop-hf-cache", create_if_missing=True)
 adapter_volume = modal.Volume.from_name("proxyloop-adapters", create_if_missing=True)
 VOLUMES: dict[str | PurePosixPath, modal.Volume | modal.CloudBucketMount] = {
     HF_DIR: hf_volume,
     ADAPTER_DIR: adapter_volume,
 }
+ENV = {"HF_HOME": HF_DIR, "PL_SERVE_VARIANT": VARIANT, "PL_LORA_RUNG": RUNG}
+ENV["PL_TRAINED_ADAPTER"] = TRAINED
 # modal leaves **kwargs untyped on from_registry and its decorators.
 base_image = modal.Image.from_registry(  # pyright: ignore[reportUnknownMemberType]
     config.VLLM_IMAGE,  # ships python3 only, with ENTRYPOINT ["vllm", "serve"]
@@ -40,7 +45,7 @@ base_image = modal.Image.from_registry(  # pyright: ignore[reportUnknownMemberTy
         "RUN ln -s /usr/bin/python3 /usr/local/bin/python",
         "ENTRYPOINT []",
     ],
-).env({"HF_HOME": HF_DIR, "PL_SERVE_VARIANT": VARIANT, "PL_LORA_RUNG": RUNG})
+).env(ENV)
 app = modal.App(config.app_name(VARIANT))
 
 
@@ -78,7 +83,11 @@ def _start_vllm(started_at: float) -> "subprocess.Popen[bytes]":
         )
     from serving.attest import attest_files
 
-    model_dir, slots = download_model(), config.lora_slots(RUNG, ADAPTER_DIR)
+    model_dir, slots = download_model(), config.lora_slots(RUNG, ADAPTER_DIR, TRAINED)
+    for path in config.trained_slot(TRAINED, ADAPTER_DIR).values():
+        config.check_trained(
+            json.loads(Path(path, "adapter_config.json").read_text()), RUNG
+        )
     doc = attest_files(
         model_dir,
         {n: Path(p) for n, p in slots.items()},
