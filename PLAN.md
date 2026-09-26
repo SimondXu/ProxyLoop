@@ -328,7 +328,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** `make train-smoke` (root, G); `uv run pytest tests/training -q`.
 - **Escalate if:** the fused kernels are unavailable; PEFT cannot target the GDN modules; the vision tower cannot be isolated.
 
-### S0-SYS-03 Event log, bus, fold, evidence-check with provenance and mutation tests — SYS — M — todo
+### S0-SYS-03 Event log, bus, fold, evidence-check with provenance and mutation tests — SYS — M — review
 - **Objective:**
   - `core/{log,bus,fold,clock}.py`: a single-writer JSONL log with dense `seq`; a bus whose subscribers are isolated (a subscriber exception never propagates); reducers for every S0 event type.
   - `evidence/{check,chain,reality}.py` (ARCHITECTURE §14), with `--claim` and `--offline` modes.
@@ -371,6 +371,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
   - `env/counterparty/{policy,ear,mouth}.py`: ladder, identity, hidden terms until read-back, TTL, cp patience, and `rep.commit_heard` + ledger write if the agent's speech accepts;
   - `env/user/simuser.py`: JSON `revealed`, reply delay, no patience;
   - the world model (Ear, Mouth, SimUser) is `gemini-3.8-flash` via TeamRouter (`ModelRef.endpoint = "teamrouter"`), superseding ADR-0001's world choice (ADR-0005);
+  - World structured-call policy: ADR-0005 (≤ 2 regenerations, counted; then episode error; wall-clock timeout).
   - `python -m proxyloop.cli rep-chat --family cp-direct-discount`.
 - **Owned paths:** `src/proxyloop/env/**` (it may extend the ledger), `tasks/families/cp-direct-discount.yaml`, `tests/env/**`.
 - **Deps:** S0-CON-01, S0-SYS-04.

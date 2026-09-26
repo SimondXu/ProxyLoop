@@ -22,10 +22,10 @@ from everything it writes.
 The same probe against TeamRouter (S0-ROOT-08, ADR-0005; `.env.local` is dotenv style):
 
     ... --env .env.local --env-format dotenv --task S0-ROOT-08 \\
-        --models gemini-3.8-flash --ttft-n 10 \\
+        --models gemini-3.8-flash --ttft-n 10 --stream-max-tokens 512 \\
         --out docs/decisions/data/teamrouter-probe-main.json
     ... --env .env.local --env-format dotenv --task S0-ROOT-08 --part forced \\
-        --models gemini-3.8-flash \\
+        --models gemini-3.8-flash --forced-n 10 --forced-max-tokens 512 \\
         --out docs/decisions/data/teamrouter-probe-forced.json
 """
 
@@ -1087,6 +1087,10 @@ def main() -> None:
         if args.models is not None
         else list(MODELS)
     )
+    if args.env_format == "dotenv" and args.part in ("followup", "cost-input"):
+        ap.error(
+            f"--part {args.part} uses relay-only routes; not with --env-format dotenv"
+        )
     if not models:
         ap.error("--models is empty")
     env_path = pathlib.Path(args.env)
