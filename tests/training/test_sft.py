@@ -169,3 +169,18 @@ def test_perf_is_whole_run_or_null_never_a_resumed_segment():
     for key in ("train", "tokens", "tokens_per_s", "peak_mem_gib"):
         assert part[key] is None
     assert "checkpoint-30" in part["null_reason"] and part["segment"] == metrics
+
+
+def test_gdn_backward_rule_mirrors_fla_640():
+    sft.gdn_bwd_rule(True, True, True, False)  # Hopper, triton >= 3.7.1
+    sft.gdn_bwd_rule(True, True, False, True)  # Hopper, old triton, tilelang usable
+    sft.gdn_bwd_rule(False, True, False, False)  # not Hopper
+    sft.gdn_bwd_rule(True, False, False, False)  # triton < 3.4.0
+    with pytest.raises(RuntimeError, match="#640"):  # the 2026-09-26 H100 run
+        sft.gdn_bwd_rule(True, True, False, False)
+
+
+def test_torch_pin_is_the_cu129_build_with_a_source_built_conv1d():
+    assert sft.TORCH == "torch==2.13.0" and sft.TORCH_INDEX.endswith("/whl/cu129")
+    assert sft.PINS[0] == sft.TORCH and sft.PINS[-1] == sft.CONV1D
+    assert sft.CONV1D == "causal-conv1d==1.7.0" and "devel" in sft.BASE_IMAGE

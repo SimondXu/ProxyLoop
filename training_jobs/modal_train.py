@@ -13,12 +13,15 @@ from serving import config, modal_vllm
 from training_jobs import sft
 
 REPO = Path(__file__).resolve().parents[1]
+CONV1D_BUILD = {"CAUSAL_CONV1D_FORCE_BUILD": "TRUE", "TORCH_CUDA_ARCH_LIST": "9.0"}
 GIT_SHA = ["git", "describe", "--always", "--dirty", "--abbrev=40", "--exclude=*"]
 app = modal.App("proxyloop-train")
 image = (
-    modal.Image.debian_slim(python_version="3.12")
-    .uv_pip_install(*sft.PINS)
-    .env({"HF_HOME": modal_vllm.HF_DIR})
+    modal.Image.from_registry(sft.BASE_IMAGE, add_python="3.12")
+    .uv_pip_install(sft.TORCH, index_url=sft.TORCH_INDEX)
+    .uv_pip_install(*sft.REST)
+    .env({**CONV1D_BUILD, "HF_HOME": modal_vllm.HF_DIR})
+    .uv_pip_install(sft.CONV1D, extra_options="--no-build-isolation")
     .add_local_dir(REPO / "src/proxyloop", "/root/proxyloop", ignore=["**/*.pyc"])
     .add_local_python_source("serving")
 )
@@ -28,7 +31,7 @@ image = (
 def train_smoke(run_id: str, views: list[tuple[str, str]], git_sha: str) -> dict:
     run_dir = Path(modal_vllm.ADAPTER_DIR) / "train" / run_id
     commit = modal_vllm.adapter_volume.commit
-    return sft.train(modal_vllm.download_model(), run_dir, views, git_sha, commit)
+    return sft.train(modal_vllm.download_model, run_dir, views, git_sha, commit)
 
 
 @app.local_entrypoint()

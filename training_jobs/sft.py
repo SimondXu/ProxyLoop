@@ -18,49 +18,37 @@ from typing import Any
 
 from serving import config
 
-PINS = (
-    "torch==2.10.0",
-    "transformers==5.17.0",
-    f"peft=={config.PEFT_VERSION}",
-    f"accelerate=={config.ACCELERATE_VERSION}",
-    "trl==1.14.0",
-    "datasets==5.0.1",
-    "huggingface_hub==1.33.0",
-    "flash-linear-attention==0.5.2",
-    "fla-core==0.5.2",
-    "pydantic==2.13.5",
-    # Prebuilt for torch 2.10 / CUDA 12 / cp312, so the image needs no nvcc.
-    "causal-conv1d @ https://github.com/Dao-AILab/causal-conv1d/releases/download/"
-    "v1.7.0/causal_conv1d-1.7.0+cu12torch2.10cxx11abiTRUE-cp312-cp312-linux_x86_64.whl",
-)
-DISTS = (*(re.split(r"==| @ ", p)[0] for p in PINS), "triton")
+# torch 2.13 brings triton 3.7.1 (fla #640); causal-conv1d is built from source.
+BASE_IMAGE = "nvidia/cuda:12.9.1-devel-ubuntu24.04"
+TORCH, TORCH_INDEX = "torch==2.13.0", "https://download.pytorch.org/whl/cu129"
+REST = ("transformers==5.17.0", "trl==1.14.0", "datasets==5.0.1", "pydantic==2.13.5")
+REST += ("huggingface_hub==1.33.0", "flash-linear-attention==0.5.2", "fla-core==0.5.2")
+REST += (f"peft=={config.PEFT_VERSION}", f"accelerate=={config.ACCELERATE_VERSION}")
+REST += ("setuptools==84.0.0", "wheel==0.48.0", "ninja==1.13.2", "packaging==26.3")
+CONV1D = "causal-conv1d==1.7.0"
+PINS = (TORCH, *REST, CONV1D)
+DISTS = (*(p.split("==")[0] for p in PINS), "triton")
 TARGETS = config.RUNGS["all"]  # the served rung (ADR-0002): train = serve
 TARGET_REGEX = config.target_regex(TARGETS)
 LORA: dict[str, Any] = {"r": config.LORA_RANK, "lora_alpha": config.LORA_ALPHA}
 LORA["lora_dropout"] = 0.05  # TRAINING §8
 LORA_PARAM = re.compile(rf"base_model\.model\.({TARGET_REGEX})\.lora_[AB]\.\w+\.weight")
 # Wrappers in transformers 5.17.0 modeling_qwen3_5 -> the package of the fused kernel.
-FUSED = {
-    "causal_conv1d_fn": "causal_conv1d",
-    "causal_conv1d_update": "causal_conv1d",
+FUSED = {"causal_conv1d_fn": "causal_conv1d", "causal_conv1d_update": "causal_conv1d"}
+FUSED |= {
     "torch_chunk_gated_delta_rule": "fla",
     "torch_recurrent_gated_delta_rule": "fla",
 }
-RECIPE: dict[str, Any] = {  # SFTConfig kwargs over the defaults (TRAINING §8)
-    "learning_rate": 1e-4,
-    "lr_scheduler_type": "cosine",
-    "warmup_steps": 0.03,
-    "bf16": True,
-    "num_train_epochs": 2,
-    "per_device_train_batch_size": 8,
-    "gradient_accumulation_steps": 8,
-    "train_sampling_strategy": "batch_rebalance",
-    "gradient_checkpointing": True,
-    "max_length": None,  # never truncate: tokenize_row raises instead
+# SFTConfig kwargs over the defaults (TRAINING §8, ADR-0003): no packing, no truncation.
+RECIPE: dict[str, Any] = {"learning_rate": 1e-4, "lr_scheduler_type": "cosine"}
+RECIPE |= {"warmup_steps": 0.03, "bf16": True, "num_train_epochs": 2, "seed": 20260926}
+RECIPE |= {"per_device_train_batch_size": 8, "gradient_accumulation_steps": 8}
+RECIPE |= {"train_sampling_strategy": "batch_rebalance", "gradient_checkpointing": True}
+RECIPE |= {
+    "max_length": None,
     "save_steps": 100,
     "save_total_limit": 2,
     "logging_steps": 1,
-    "seed": 20260926,
 }
 SMOKE: dict[str, Any] = {**RECIPE, "max_steps": 50, "save_steps": 10}
 SMOKE.update(per_device_train_batch_size=4, gradient_accumulation_steps=2)
@@ -84,8 +72,7 @@ def smoke_rows(views: list[tuple[str, str]], n: int = 64) -> list[tuple[str, ...
 
 
 def fused_kernels(impl: Mapping[str, str] | None = None) -> dict[str, str]:
-    """{wrapper: implementation module} from each wrapper's import-time `implementation`
-    closure (silently the torch reference on failure); raises unless all are fused."""
+    """{wrapper: its import-time `implementation` module}; raises unless all fused."""
     if impl is None:
         from transformers.models.qwen3_5 import modeling_qwen3_5 as qwen
 
@@ -95,6 +82,40 @@ def fused_kernels(impl: Mapping[str, str] | None = None) -> dict[str, str]:
     if bad or set(impl) != set(FUSED):
         raise RuntimeError(f"GDN/conv on the torch fallback, not fused kernels: {bad}")
     return dict(impl)
+
+
+def gdn_bwd_rule(hopper: bool, t340: bool, t371: bool, tilelang: bool) -> None:
+    """fla 0.5.2 chunk_bwd_dqkwg's own refusal (#640), checked before any model load."""
+    if hopper and t340 and not t371 and not tilelang:
+        raise RuntimeError("fla #640: Hopper, triton in [3.4.0, 3.7.1), no tilelang")
+
+
+def preflight() -> tuple[dict[str, str], dict[str, Any]]:
+    """(fused kernels, runtime) after fla's rule and a tiny GDN + conv fwd/bwd."""
+    import torch
+    from fla import utils
+    from fla.ops.common.backends.tilelang import TileLangBackend
+    from transformers.models.qwen3_5 import modeling_qwen3_5 as qwen
+
+    kernels, cuda = fused_kernels(), {"device": "cuda", "dtype": torch.bfloat16}
+    flags = (utils.IS_NVIDIA_HOPPER, utils.TRITON_ABOVE_3_4_0, utils.TRITON_ABOVE_3_7_1)
+    gdn_bwd_rule(*flags, TileLangBackend.can_use())
+    q, k, v = (torch.randn(1, 64, 2, 128, **cuda, requires_grad=True) for _ in "qkv")
+    x = torch.randn(1, 128, 64, **cuda, requires_grad=True)  # [batch, dim, time]
+    g, beta = -torch.rand(1, 64, 2, device="cuda"), torch.rand(1, 64, 2, **cuda)
+    gdn, conv = qwen.torch_chunk_gated_delta_rule, qwen.causal_conv1d_fn
+    o = gdn(q, k, v, g=g, beta=beta, use_qk_l2norm_in_kernel=True)[0]
+    y = conv(x, torch.randn(128, 4, **cuda), None, activation="silu")
+    (o.float().sum() + y.float().sum()).backward()
+    if not all(t.grad is not None and t.grad.isfinite().all() for t in (q, k, v, x)):
+        raise RuntimeError("preflight backward: missing or non-finite gradients")
+    smi = ["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"]
+    gpu, driver = subprocess.check_output(smi, text=True).strip().split(", ")
+    rt = {"provider": "modal", "gpu_name": gpu, "driver_version": driver}
+    img = os.environ.get("MODAL_IMAGE_ID")
+    rt |= {"torch_cuda": torch.version.cuda, "modal_image_id": img}
+    rt |= {"image_spec": {"base": BASE_IMAGE, "torch_index": TORCH_INDEX, "pins": PINS}}
+    return kernels, rt | {"versions": {d: metadata.version(d) for d in DISTS}}
 
 
 def target_report(names: list[str]) -> dict[str, Any]:
@@ -164,20 +185,8 @@ def peft_model(path: str, *, meta: bool) -> tuple[Any, dict[str, Any]]:
     return model, report | ({"named_modules": modules} if meta else {})
 
 
-def runtime() -> dict[str, Any]:
-    import torch
-
-    smi = ["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"]
-    gpu, driver = subprocess.check_output(smi, text=True).strip().split(", ")
-    rt = {"provider": "modal", "gpu_name": gpu, "driver_version": driver}
-    img = os.environ.get("MODAL_IMAGE_ID")
-    rt |= {"torch_cuda": torch.version.cuda, "modal_image_id": img}
-    rt |= {"image_spec": {"base": "debian_slim python 3.12", "pins": PINS}}
-    return rt | {"versions": {d: metadata.version(d) for d in DISTS}}
-
-
 def train(
-    model_dir: Path, run_dir: Path, views: list, git_sha: str, commit: Callable
+    download: Callable, run_dir: Path, views: list, git_sha: str, commit: Callable
 ) -> dict[str, Any]:
     """The S0 smoke: resumable, P5 on the real batch, adapter + merged BF16 copy."""
     config_hash = claim_run_dir(run_dir, views, git_sha)
@@ -191,8 +200,8 @@ def train(
     from proxyloop.contract.views import FastView
     from proxyloop.training import dataset, masking
 
-    kernels, rt = fused_kernels(), runtime()  # a kernel fallback aborts before loading
-    tok = AutoTokenizer.from_pretrained(model_dir)
+    kernels, rt = preflight()  # before any model download or load
+    tok = AutoTokenizer.from_pretrained(model_dir := download())
     parsed = [(p, FastView.model_validate_json(v), t) for p, v, t in smoke_rows(views)]
     rows = [dataset.build_row(v, p, t, tok) for p, v, t in parsed]
     pairs = [(r, dataset.tokenize_row(r, tok)) for r in rows]
@@ -246,34 +255,22 @@ def train(
     tok.save_pretrained(run_dir / "merged")
     files = sorted(f for f in (run_dir / "adapter").iterdir() if f.is_file())
     shas = {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in files}
-    result = {
-        "run_id": run_dir.name,
-        "config_hash": config_hash,
-        "git_sha": git_sha,
-        "rows": "synthetic-smoke",
-        "claim": False,
-        "model": {"id": config.MODEL_ID, "revision": config.MODEL_REVISION},
-        "lora": {**LORA, **lora, "target_regex": TARGET_REGEX},
-        "sft_config": args.to_dict(),
-        "fused_kernels": kernels,
-        "p5": {"ok": True, "rows": p5},
-        "fingerprints": sorted({r.fingerprint for r in rows}),
-        "resumed_from": resume and resume.name,
-        "max_microbatch_padded_tokens": worst,
-        **json.loads(perf_file.read_text()),
-        "adapter_sha256": shas,
-        "runtime": rt,
-    }
+    result = {"run_id": run_dir.name, "config_hash": config_hash, "git_sha": git_sha}
+    result |= {"rows": "synthetic-smoke", "claim": False, "runtime": rt}
+    result |= {"model": {"id": config.MODEL_ID, "revision": config.MODEL_REVISION}}
+    result |= {"lora": {**LORA, **lora, "target_regex": TARGET_REGEX}}
+    result |= {"sft_config": args.to_dict(), "fused_kernels": kernels}
+    result |= {"p5": {"ok": True, "rows": p5}, "resumed_from": resume and resume.name}
+    result |= {"fingerprints": sorted({r.fingerprint for r in rows})}
+    result |= {"max_microbatch_padded_tokens": worst, "adapter_sha256": shas}
+    result |= json.loads(perf_file.read_text())
     write_json(done, result)
     commit()
     return result
 
 
 if __name__ == "__main__":
-    doc = {
-        "model": {"id": config.MODEL_ID, "revision": config.MODEL_REVISION},
-        "versions": {d: metadata.version(d) for d in ("torch", "transformers", "peft")},
-        "target_regex": TARGET_REGEX,
-        **peft_model(config.MODEL_ID, meta=True)[1],
-    }
-    write_json(Path(sys.argv[1]), doc)
+    doc = {"model": {"id": config.MODEL_ID, "revision": config.MODEL_REVISION}}
+    versions = {d: metadata.version(d) for d in ("torch", "transformers", "peft")}
+    doc |= {"versions": versions, "target_regex": TARGET_REGEX}
+    write_json(Path(sys.argv[1]), doc | peft_model(config.MODEL_ID, meta=True)[1])

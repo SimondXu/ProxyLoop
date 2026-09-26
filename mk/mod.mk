@@ -48,7 +48,7 @@ serve-attest-local:
 # meta-device named_modules() dump plus real PEFT over the train targets. train-smoke is
 # root-run (G): the 50-step smoke on one H100; --detach keeps a paid run going if the
 # local process disconnects (rerun with --run-id <id> to resume from its checkpoints).
-MOD_TRAIN_CPU := uv run --no-project --with torch==2.10.0 --with transformers==5.17.0 \
+MOD_TRAIN_CPU := uv run --no-project --with torch==2.13.0 --with transformers==5.17.0 \
 	--with peft==0.21.0 --with accelerate==1.15.0 python
 
 .PHONY: train-modules train-smoke

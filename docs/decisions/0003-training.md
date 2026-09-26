@@ -27,15 +27,26 @@ Facts checked in the pinned sources (not measurements):
 - transformers 5.17.0 ships `train_sampling_strategy="batch_rebalance"` (`trainer_pt_utils.BatchRebalanceSampler`):
   per optimizer step it sorts the step's rows by length and splits them into `gradient_accumulation_steps`
   micro-batches of balanced padded cost, so long rows land in smaller micro-batches.
-- causal-conv1d 1.7.0 publishes a prebuilt `cu12torch2.10cxx11abiTRUE-cp312` wheel; torch 2.10.0 on PyPI is a
-  CUDA 12.8 build. No newer torch has a prebuilt causal-conv1d 1.7.0 CUDA 12 wheel.
+- fla 0.5.2 `fla/ops/common/chunk_o.py` `chunk_bwd_dqkwg` raises for a gated backward on Hopper when triton is
+  in [3.4.0, 3.7.1) (fla issue #640), unless its TileLang backend is usable (tilelang importable **and** an nvcc on
+  the machine). fla's main branch still has the same check; there is no newer fla release.
+- torch 2.10.0 pins triton 3.6.0. torch 2.13.0 from `https://download.pytorch.org/whl/cu129` pins
+  triton 3.7.1. causal-conv1d 1.7.0 publishes prebuilt CUDA 12 wheels only up to torch 2.10, so with torch 2.13 it
+  is built from its sdist. Its `setup.py` passes its own `-gencode` list (sm_75 to sm_120, including sm_90), so
+  `TORCH_CUDA_ARCH_LIST` does not narrow the build.
 
 ## Decision
-- **Image** (`training_jobs/sft.py` `PINS`, built by `training_jobs/modal_train.py`): Modal `debian_slim`
-  Python 3.12 with exactly `torch==2.10.0`, `transformers==5.17.0`, `peft==0.21.0` and `accelerate==1.15.0` (the
-  S0-MOD-01 pins, imported from `serving/config.py`), `trl==1.14.0`, `datasets==5.0.1`, `huggingface_hub==1.33.0`,
-  `flash-linear-attention==0.5.2`, `fla-core==0.5.2`, `pydantic==2.13.5`, and causal-conv1d 1.7.0 from its
-  prebuilt wheel URL (no nvcc build). None of these enter `pyproject.toml` or `uv.lock`. One H100
+- **Image** (`training_jobs/sft.py` `BASE_IMAGE`, `TORCH`, `REST`, `CONV1D`; built by `training_jobs/modal_train.py`):
+  `nvidia/cuda:12.9.1-devel-ubuntu24.04` with Modal `add_python="3.12"`, in three steps:
+  1. `torch==2.13.0` from the cu129 index (it brings `triton==3.7.1`);
+  2. `transformers==5.17.0`, `peft==0.21.0` and `accelerate==1.15.0` (the S0-MOD-01 pins, imported from
+     `serving/config.py`), `trl==1.14.0`, `datasets==5.0.1`, `huggingface_hub==1.33.0`,
+     `flash-linear-attention==0.5.2`, `fla-core==0.5.2`, `pydantic==2.13.5`, and the build tools
+     `setuptools==84.0.0`, `wheel==0.48.0`, `ninja==1.13.2`, `packaging==26.3`;
+  3. `causal-conv1d==1.7.0` built from source with `--no-build-isolation`, `CAUSAL_CONV1D_FORCE_BUILD=TRUE` and
+     `TORCH_CUDA_ARCH_LIST=9.0` (nvcc 12.9 from the base image, at image build time only).
+
+  None of these enter `pyproject.toml` or `uv.lock`. One H100
   (`serving.config.GPU`); model and tokenizer from the pinned revision on the shared HF volume.
 - **Model and targets:** `AutoModelForImageTextToText` in BF16, so module names are exactly the ones vLLM loads
   (`base_model.model.model.language_model.layers.N.<parent>.<proj>`, ADR-0002 Migration). PEFT `target_modules`
@@ -45,9 +56,15 @@ Facts checked in the pinned sources (not measurements):
 - **Vision tower frozen and untargeted:** PEFT freezes every base parameter, and the job aborts unless every
   trainable parameter is a `lora_A`/`lora_B` weight of a served target on a language-model layer and every target
   is present (`sft.target_report`). The HF model has no `mtp.*` modules.
-- **Fused GDN kernel check** (`sft.fused_kernels`, before the model is loaded): read the `implementation` closure
-  variable of the four wrappers above; each must come from `causal_conv1d.*` or `fla.*`. A torch reference
-  implementation raises and aborts the run: there is no fallback path.
+- **Fused GDN kernel check and preflight** (`sft.preflight`, before any model download or load):
+  1. read the `implementation` closure variable of the four wrappers above; each must come from
+     `causal_conv1d.*` or `fla.*`, and a torch reference implementation raises;
+  2. apply fla's own backward rule with fla's own flags (`IS_NVIDIA_HOPPER`, `TRITON_ABOVE_3_4_0`,
+     `TRITON_ABOVE_3_7_1`) and `TileLangBackend.can_use()` (`sft.gdn_bwd_rule`);
+  3. run a tiny bf16 `torch_chunk_gated_delta_rule` and `causal_conv1d_fn` forward and backward on the GPU, and
+     require finite gradients.
+
+  Any failure aborts the run in seconds: there is no fallback path. The runtime block is recorded here too.
 - **Rows** (`proxyloop.training.dataset`): the prompt is `contract.protocol.render_prompt` only; the completion is
   `format_turn(parse_turn(raw, lane)) + "<|im_end|>"`, and a turn with any parse issue is rejected. Prompt and
   completion are tokenised separately (what vLLM sees); prompt labels are `-100`. No truncation: `max_length=None`
@@ -113,6 +130,16 @@ The root compares `tokens_per_s` with TRAINING §8's 3–5k tok/s estimate.
 - train targets = serve-accepted targets: **met** (`tests/training/test_sft.py`, against
   `data/vllm-lora-ladder.json`).
 
+## History
+- **2026-09-26 06:02–06:04 EDT, train-smoke run 1 failed** (root-run, 1 × H100). The image then pinned torch
+  2.10.0 (triton 3.6.0) on `debian_slim`. The image built, the fused-kernel check passed and the forward pass ran.
+  The first backward raised inside fla: `RuntimeError: Triton >= 3.4.0 and < 3.7.1 on Hopper GPUs produces
+  incorrect results for gated chunk_bwd_dqkwg (see #640). Please upgrade Triton to >= 3.7.1 or install tilelang`
+  (`fla/ops/common/chunk_o.py:705`, from `chunk_gated_delta_rule_bwd`). No result JSON was written and nothing was
+  measured. The fix is the torch 2.13.0 / triton 3.7.1 stack above (root decision: one kernel toolchain and no
+  runtime JIT compiler, and it is the fix fla recommends first; the other option was tilelang plus an nvcc at
+  runtime). The preflight now catches this class of failure before the model is downloaded or loaded.
+
 ## Consequences
 - **Contract / fingerprint impact:** none. Rows go through `render_prompt`; `result.fingerprints` records the
   profile fingerprints the smoke trained under.
@@ -125,6 +152,9 @@ The root compares `tokens_per_s` with TRAINING §8's 3–5k tok/s estimate.
     TRAINING §9 step 4 needs anyway).
   - The kernel check reads a closure variable of transformers 5.17.0; a transformers bump must re-check it (the
     check fails loudly if the variable is missing).
+  - The whole stack on torch 2.13.0 + cu129 (with a source-built causal-conv1d) is not yet validated on Modal.
+    That peft 0.21 and trl 1.14 work on torch 2.13 is inferred, not tested. The CPU module dump under torch
+    2.13.0 (`train-modules`) gives the same modules and targets as under 2.10.0.
   - The fused-kernel imports need a GPU and triton: on a CPU-only machine the check correctly reports the torch
     fallback, so only the root run can show them active.
   - `batch_rebalance` balances cost within a step but does not itself cap tokens; the pre-flight budget check does.
