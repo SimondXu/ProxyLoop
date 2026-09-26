@@ -7,10 +7,13 @@ Three pricing bases, so no call is ever silently priced at zero:
 - ``unpriced``: no measured rate (TeamRouter's world model, ADR-0005; GPT
   output rates, ADR-0001) or no usage reported. Counted, never summed.
 
-Two runaway guards raise ``RunawaySpend``, with the charge that crossed the line:
-the priced total passes ``RUNAWAY_FACTOR`` times the projected episode cost, or
-the unpriced calls pass ``RUNAWAY_FACTOR`` times the projected calls per episode
-(no rate is invented for them).
+Three runaway guards raise ``RunawaySpend``, with the charge that crossed the line
+(the S0 guard, root decision under PLAN §0.5a, 2026-09-26):
+- the priced total passes the absolute session cap (``SESSION_CAP_MICRO_USD``);
+- the hosted tokens (every call but ``gpu_time``) pass ``RUNAWAY_FACTOR`` times
+  the projected tokens per episode;
+- the unpriced calls pass ``RUNAWAY_FACTOR`` times the projected calls per
+  episode (no rate is invented for them).
 """
 
 from __future__ import annotations
@@ -25,7 +28,8 @@ from proxyloop.contract.base import Frozen
 from proxyloop.contract.llm import Endpoint, LLMCallRecord, LLMRole
 from proxyloop.contract.state import Spend
 
-RUNAWAY_FACTOR = 10
+RUNAWAY_FACTOR = 3  # was 10 (S0-SYS-04)
+SESSION_CAP_MICRO_USD = 2_000_000  # $2 per session, whatever the projection
 
 
 @dataclass(frozen=True)
@@ -63,17 +67,19 @@ class RunawaySpend(RuntimeError):
 class SpendLedger:
     def __init__(
         self,
-        projected_episode_micro_usd: int,
+        projected_tokens: int,
         projected_calls: int,
+        cap_micro_usd: int = SESSION_CAP_MICRO_USD,
         rates: Mapping[str, Rate] = RELAY_RATES,
     ) -> None:
-        if projected_episode_micro_usd <= 0 or projected_calls <= 0:
-            raise ValueError("the episode projections must be positive")
-        self.limit_micro_usd = RUNAWAY_FACTOR * projected_episode_micro_usd
+        if min(projected_tokens, projected_calls, cap_micro_usd) <= 0:
+            raise ValueError("the episode projections and the cap must be positive")
+        self.limit_micro_usd = cap_micro_usd
+        self.limit_tokens = RUNAWAY_FACTOR * projected_tokens
         self.limit_unpriced_calls = RUNAWAY_FACTOR * projected_calls
         self._rates = rates
         self._by_role: dict[str, int] = {}
-        self.unpriced_calls = 0
+        self.unpriced_calls = self.tokens = 0
 
     def price(self, record: LLMCallRecord) -> Charge:
         ref, usage = record.model_ref, record.usage
@@ -103,6 +109,8 @@ class SpendLedger:
         charge = self.price(record)
         if charge.basis == "unpriced":
             self.unpriced_calls += 1
+        if charge.basis != "gpu_time" and (usage := record.usage) is not None:
+            self.tokens += usage.prompt_tokens + usage.completion_tokens
         if charge.micro_usd:
             role = charge.role
             self._by_role[role] = self._by_role.get(role, 0) + charge.micro_usd
@@ -110,6 +118,9 @@ class SpendLedger:
         if total > self.limit_micro_usd:
             limit = self.limit_micro_usd
             raise RunawaySpend(f"runaway spend: {total} > {limit} micro-USD", charge)
+        if self.tokens > self.limit_tokens:
+            limit = self.limit_tokens
+            raise RunawaySpend(f"runaway tokens: {self.tokens} > {limit}", charge)
         if unpriced > self.limit_unpriced_calls:
             limit = self.limit_unpriced_calls
             raise RunawaySpend(f"runaway calls: {unpriced} > {limit} unpriced", charge)

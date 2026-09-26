@@ -33,7 +33,7 @@ from proxyloop.evidence.reality import role_refs
 from proxyloop.kernel.channels import Channel, End, HumanChannel, Incoming, read_stdin
 from proxyloop.kernel.lanes import PROFILE, FastLane, load_tokenizer, p3
 from proxyloop.kernel.speaker import Sleep, Speaker
-from proxyloop.kernel.watchdog import SessionEnd, watchdog
+from proxyloop.kernel.watchdog import Abort, SessionEnd, watchdog
 from proxyloop.llm.factory import LiveModeError, make_client
 from proxyloop.llm.http import HTTPAdapter, RecordSink
 from proxyloop.llm.spend import RunawaySpend, SpendLedger
@@ -42,7 +42,7 @@ from proxyloop.slow.loop import SlowLoop
 
 # Guard-authored and fixed (I11, C14): the first thing the rep hears.
 DISCLOSURE = "Hello, this is an AI assistant calling on behalf of the account holder."
-PROJECTED = (500_000, 200)  # [E] micro-USD and calls per S0 episode; guard at 10x
+PROJECTED = (300_000, 150)  # tokens and calls per S0 episode (ROOT-05); guard at 3x
 ChannelSpec = Literal["sim", "human"] | Channel
 ClientFactory = Callable[[llm.LLMRole, llm.ModelRef, RecordSink], llm.LLMClient]
 type Turn = CoroutineType[Any, Any, None]
@@ -164,6 +164,8 @@ def _outcome(
     for kind, reason in _ERRORS.items():
         if found := [e for e in leaves if isinstance(e, kind)]:
             return reason, found[0]
+    if aborted := [e for e in leaves if isinstance(e, Abort)]:
+        return aborted[0].reason, aborted[0]
     if others := [e for e in leaves if not isinstance(e, SessionEnd)]:
         return "error", others[0]
     return cast(SessionEnd, leaves[0]).reason, None
