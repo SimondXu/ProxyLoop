@@ -1,12 +1,14 @@
 """Check a document's `v0-legacy:<path>` references (S0-ROOT-03).
 
 1. Every `v0-legacy:<path>` names a file or directory that exists at the tag.
-2. Every block that contains a number also cites at least one `v0-legacy:<path>` that is a FILE at the tag.
-   A block is a paragraph, a list item, a table row or a heading; fenced code is split the same way.
-   Code spans, link text and headings are checked like prose. A number is any token that starts with a
-   digit (or a dot and a digit) not preceded by a letter or digit: 58, 0.983, .95, 1,200, 24GB, 10k, 1e5.
-   Exempt: ISO dates, a prefix of the tag's commit sha, task ids (S0-ROOT-03), v0 phase ids (03C, 03A1)
-   and section signs (§2). Letter-prefixed ids (S0, I10, v3, A1) are not numbers.
+2. Every block that contains a number also cites at least one `v0-legacy:<path>`
+   that is a FILE at the tag. A block is a paragraph, a list item, a table row or
+   a heading; fenced code is split the same way. Code spans, link text and headings
+   are checked like prose. A number is any token that starts with a digit (or a dot
+   and a digit) not preceded by a letter or digit: 58, 0.983, .95, 1,200, 24GB, 10k,
+   1e5. Exempt: ISO dates, a prefix of the tag's commit sha, task ids (S0-ROOT-03),
+   v0 phase ids (03C, 03A1) and section signs (§2). Letter-prefixed ids (S0, I10,
+   v3, A1) are not numbers.
 
     python scripts/check_legacy_links.py docs/v0-retrospective.md
 """
@@ -50,7 +52,8 @@ def object_type(path: str) -> str:
 
 def blocks(text: str) -> list[tuple[int, str]]:
     out: list[tuple[int, str]] = []
-    start, buf = 0, []
+    start = 0
+    buf: list[str] = []
 
     def flush() -> None:
         if buf:
@@ -99,7 +102,8 @@ def main(argv: list[str]) -> int:
         found = uncited_numbers(block, tag_sha, types)
         if found:
             errors.append(
-                f"line {line_no}: number(s) {found[:5]} without a v0-legacy: file citation: {block.strip()[:100]!r}"
+                f"line {line_no}: number(s) {found[:5]} without a v0-legacy: "
+                f"file citation: {block.strip()[:100]!r}"
             )
     for e in errors:
         print(e)
