@@ -1,13 +1,14 @@
 """Models and Fast conditions by name (EVAL §4.1; data in ``conditions.yaml``).
 
-``resolve(name)`` gives a model's ``ModelRef`` (per-lane choices use it);
-``condition(name).apply(cfg)`` sets a condition's Fast lanes, teacher and
-ablations on a ``SessionConfig`` and re-validates it (I1: a condition is a
-config value, never a second runner).
+``resolve(name)`` gives a model's ``ModelRef``; ``lanes(fast_user, fast_cp)``
+is a per-lane choice by model name. ``condition(name).apply(cfg)`` sets a
+condition's Fast lanes, teacher and ablations on a ``SessionConfig`` and
+re-validates it (I1: a condition is a config value, never a second runner).
 """
 
 from __future__ import annotations
 
+import os
 from functools import cache
 from pathlib import Path
 
@@ -16,10 +17,11 @@ from pydantic import Field
 
 from proxyloop.contract.base import Frozen
 from proxyloop.contract.config import AblationId, SessionConfig
-from proxyloop.contract.llm import LLMClient, ModelRef
+from proxyloop.contract.llm import AdapterKind, LLMClient, ModelRef
 from proxyloop.models.repair import TeacherRepair
 
 CONDITIONS = Path(__file__).with_name("conditions.yaml")
+TRAINED = "qwen3.5-9b-sft"  # C1: the base 9B plus the served trained LoRA slot
 
 
 class _Spec(Frozen):
@@ -68,14 +70,31 @@ def _load() -> _File:
 
 
 def models() -> tuple[str, ...]:
-    return tuple(_load().models)
+    return (*_load().models, TRAINED)
 
 
 def conditions() -> tuple[str, ...]:
     return tuple(_load().conditions)
 
 
+def trained(spec: str | None = None) -> ModelRef:
+    """C1's Fast: the trained slot named by serving's ``PL_TRAINED_ADAPTER``
+    ("<name>=<path>", the one the server was deployed with; ``spec`` overrides
+    the environment). Unset means no C1, never base Qwen (AGENTS rule 6)."""
+
+    from serving import config  # top-level MOD package: run from the repo root
+
+    spec = os.environ.get(config.TRAINED_ENV, "") if spec is None else spec
+    slot = config.trained_slot(spec, "")  # checks the TRAINED_PREFIX name
+    if not slot:
+        raise LookupError(f"{TRAINED} needs {config.TRAINED_ENV}=<name>=<path>")
+    (name,) = slot
+    return ModelRef(kind=AdapterKind.REAL_HTTP, endpoint="vllm", model_id=name)
+
+
 def resolve(name: str) -> ModelRef:
+    if name == TRAINED:
+        return trained()
     found = _load().models.get(name)
     if found is None:
         raise KeyError(f"unknown model {name!r}; known: {', '.join(models())}")
@@ -94,4 +113,15 @@ def condition(name: str) -> Condition:
         teacher=teacher,
         ablations=spec.ablations,
         teacher_resamples=spec.teacher_resamples,
+    )
+
+
+def lanes(fast_user: str, fast_cp: str) -> Condition:
+    """A per-lane Fast choice by model name (e.g. EVAL A3's lane swap). It names
+    no teacher, so it runs no ``TeacherRepair``: T and R are named conditions."""
+
+    return Condition(
+        name=f"{fast_user}/{fast_cp}",
+        fast_user=resolve(fast_user),
+        fast_cp=resolve(fast_cp),
     )

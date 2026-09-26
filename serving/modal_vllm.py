@@ -1,9 +1,10 @@
-"""Modal app: the pinned vLLM server for Qwen3.5-9B (ADR-0002).
+"""Modal app: the pinned vLLM server for Qwen3.5-9B (ADR-0002), or the base 4B (C3).
 Root-run: `make -f mk/mod.mk serve-*`.
 
-PL_SERVE_VARIANT (pinned | prefix-align) and PL_LORA_RUNG (all | attn-mlp: the ladder
-rung whose zero and live adapters fill the two LoRA slots) are read at deploy time and
-baked into the image env, so the container runs exactly the deployed configuration.
+PL_SERVE_MODEL (9b | 4b: no LoRA slots), PL_SERVE_VARIANT (pinned | prefix-align) and
+PL_LORA_RUNG (all | attn-mlp: the ladder rung whose zero and live adapters fill the two
+LoRA slots) are read at deploy time and baked into the image env, so the container runs
+exactly the deployed configuration.
 PL_TRAINED_ADAPTER ("<name>=<path under the adapter volume>", optional) adds a third
 slot for one trained adapter (pull-through), checked before vLLM starts. The
 container exits as soon as vLLM exits or anything before it fails, so a dead server
@@ -25,11 +26,13 @@ import modal
 
 from serving import config
 
+MODEL = os.environ.get(config.MODEL_ENV, "9b")
 VARIANT = os.environ.get("PL_SERVE_VARIANT", "pinned")
 RUNG = os.environ.get("PL_LORA_RUNG", "all")
-TRAINED = os.environ.get("PL_TRAINED_ADAPTER", "")
+TRAINED = os.environ.get(config.TRAINED_ENV, "")
+MODEL_ID, MODEL_REVISION, _ = config.MODELS[MODEL]
 HF_DIR, ADAPTER_DIR, ATTEST_FILE = "/hf", "/adapters", "/tmp/pl-attest.json"
-config.lora_slots(RUNG, ADAPTER_DIR, TRAINED)  # validates both at deploy time
+SLOTS = config.lora_slots(RUNG, ADAPTER_DIR, TRAINED, MODEL)  # checked at deploy time
 hf_volume = modal.Volume.from_name("proxyloop-hf-cache", create_if_missing=True)
 adapter_volume = modal.Volume.from_name("proxyloop-adapters", create_if_missing=True)
 VOLUMES: dict[str | PurePosixPath, modal.Volume | modal.CloudBucketMount] = {
@@ -37,7 +40,7 @@ VOLUMES: dict[str | PurePosixPath, modal.Volume | modal.CloudBucketMount] = {
     ADAPTER_DIR: adapter_volume,
 }
 ENV = {"HF_HOME": HF_DIR, "PL_SERVE_VARIANT": VARIANT, "PL_LORA_RUNG": RUNG}
-ENV["PL_TRAINED_ADAPTER"] = TRAINED
+ENV[config.TRAINED_ENV], ENV[config.MODEL_ENV] = TRAINED, MODEL
 # modal leaves **kwargs untyped on from_registry and its decorators.
 base_image = modal.Image.from_registry(  # pyright: ignore[reportUnknownMemberType]
     config.VLLM_IMAGE,  # ships python3 only, with ENTRYPOINT ["vllm", "serve"]
@@ -46,7 +49,7 @@ base_image = modal.Image.from_registry(  # pyright: ignore[reportUnknownMemberTy
         "ENTRYPOINT []",
     ],
 ).env(ENV)
-app = modal.App(config.app_name(VARIANT))
+app = modal.App(config.app_name(VARIANT, MODEL))
 
 
 def download_model() -> Path:
@@ -55,7 +58,7 @@ def download_model() -> Path:
         snapshot_download,  # pyright: ignore[reportUnknownVariableType]
     )
 
-    path = Path(snapshot_download(config.MODEL_ID, revision=config.MODEL_REVISION))
+    path = Path(snapshot_download(MODEL_ID, revision=MODEL_REVISION))
     hf_volume.commit()
     return path
 
@@ -87,14 +90,15 @@ def _start_vllm(started_at: float) -> "subprocess.Popen[bytes]":
         config.check_trained(
             json.loads(Path(path, "adapter_config.json").read_text()), RUNG
         )
-    model_dir, slots = download_model(), config.lora_slots(RUNG, ADAPTER_DIR, TRAINED)
+    model_dir, slots = download_model(), SLOTS
     doc = attest_files(
         model_dir,
         {n: Path(p) for n, p in slots.items()},
         Path(HF_DIR) / "pl-attest-cache.json",
     )
     hf_volume.commit()
-    args = config.serve_args(str(model_dir), VARIANT, slots)
+    args = config.serve_args(str(model_dir), VARIANT, slots, MODEL)
+    doc["model"] = {"id": MODEL_ID, "revision": MODEL_REVISION}  # not always the 9B
     doc["runtime"] = {
         **runtime(),
         "variant": VARIANT,

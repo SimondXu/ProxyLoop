@@ -1,9 +1,10 @@
 """The one pinned serving configuration for Qwen3.5-9B on vLLM (ADR-0002,
-ARCHITECTURE §13).
+ARCHITECTURE §13), and the base Qwen3.5-4B (C3, EVAL §4.1) on the same app.
 
 Pure data and helpers, imported on the Mac and in the Modal containers.
 """
 
+import os
 import re
 from pathlib import PurePosixPath
 from typing import Any
@@ -40,7 +41,15 @@ LIVE_MIN_MEAN_DIFF = 1e-3  # non-zero adapter: mean |difference| above this (nat
 ZERO_LORA_NAME, LIVE_LORA_NAME = "Qwen3.5-9B-zero", "Qwen3.5-9B-live"
 # A third slot for one trained adapter (pull-through: Qwen3.5-9B-pl-pt-<fp8>, TRAINING
 # §9), chosen at deploy time: PL_TRAINED_ADAPTER="<name>=<path under the volume>".
-TRAINED_PREFIX = f"{SERVED_NAME}-pl-"
+TRAINED_PREFIX, TRAINED_ENV = f"{SERVED_NAME}-pl-", "PL_TRAINED_ADAPTER"
+# PL_SERVE_MODEL (deploy time; unset: 9b) -> (HF id, revision, served name). The 4B (C3;
+# HF API "sha", 2026-09-26, not gated) has the 9B's architecture (the same HF config
+# "architectures") and byte-identical tokenizer files (HF tree); it gets no LoRA slots.
+MODEL_ENV, REVISION_4B = "PL_SERVE_MODEL", "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a"
+MODELS = {
+    "9b": (MODEL_ID, MODEL_REVISION, SERVED_NAME),
+    "4b": ("Qwen/Qwen3.5-4B", REVISION_4B, "Qwen3.5-4B"),
+}
 
 # Prefix caching is OFF in the pinned configuration; the other variant is measure-only.
 VARIANTS = {
@@ -82,15 +91,23 @@ PACKS_NEEDING_LEADER = {
 }
 
 
-def app_name(variant: str) -> str:
-    if variant not in VARIANTS:
-        raise ValueError(f"unknown variant {variant!r}; known: {sorted(VARIANTS)}")
-    return APP_NAME if variant == "pinned" else f"{APP_NAME}-{variant}"
+def app_name(variant: str, model: str | None = None) -> str:
+    model = model or os.environ.get(MODEL_ENV) or "9b"  # as deployed: the probe's case
+    if variant not in VARIANTS or model not in MODELS:
+        raise ValueError(f"unknown {variant!r} or {model!r}: {[*VARIANTS, *MODELS]}")
+    base = APP_NAME if model == "9b" else f"{APP_NAME}-{model}"
+    return base if variant == "pinned" else f"{base}-{variant}"
 
 
-def lora_slots(rung: str, adapter_root: str, trained: str = "") -> dict[str, str]:
+def lora_slots(
+    rung: str, adapter_root: str, trained: str = "", model: str = "9b"
+) -> dict[str, str]:
     if rung not in RUNGS:
         raise ValueError(f"unknown rung {rung!r}; known: {sorted(RUNGS)}")
+    if model != "9b":  # every adapter here is a 9B adapter
+        if trained:
+            raise ValueError(f"a trained slot is a 9B adapter, not {model}'s")
+        return {}
     return {
         ZERO_LORA_NAME: f"{adapter_root}/zero-{rung}",
         LIVE_LORA_NAME: f"{adapter_root}/live-{rung}",
@@ -137,16 +154,18 @@ def check_trained(adapter_config: dict[str, Any], rung: str) -> None:
         )
 
 
-def serve_args(model_path: str, variant: str, slots: dict[str, str]) -> list[str]:
+def serve_args(
+    model_path: str, variant: str, slots: dict[str, str], model: str = "9b"
+) -> list[str]:
     """argv for `vllm serve`. No API key in argv: vLLM reads VLLM_API_KEY from the
-    environment."""
-    app_name(variant)
+    environment. LoRA stays enabled without slots, so the 4B runs the 9B's engine."""
+    app_name(variant, model)
     return [
         "vllm",
         "serve",
         model_path,
         "--served-model-name",
-        SERVED_NAME,
+        MODELS[model][2],
         "--dtype",
         "bfloat16",
         "--language-model-only",
@@ -162,7 +181,7 @@ def serve_args(model_path: str, variant: str, slots: dict[str, str]) -> list[str
         *VARIANTS[variant],
         "--middleware",
         "serving.attest.AttestMiddleware",
-        "--lora-modules",
+        *(["--lora-modules"] if slots else []),
         *(f"{name}={path}" for name, path in slots.items()),
     ]
 

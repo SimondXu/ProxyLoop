@@ -137,3 +137,43 @@ def test_five_fixed_pairs():
     assert all(
         msgs[-1]["role"] == "user" and completion for msgs, completion in config.PAIRS
     )
+
+
+def test_the_4b_runs_the_9b_engine_flags_without_lora_slots():
+    """C3: base Qwen3.5-4B on the same app definition; only the model changes."""
+    assert config.lora_slots("all", "/adapters", model="4b") == {}
+    args = config.serve_args("/hf/4b", "pinned", {}, "4b")
+    nine = config.serve_args(MODEL, "pinned", SLOTS)
+    assert flag_value(args, "--served-model-name") == "Qwen3.5-4B"
+    assert {"--language-model-only", "--enable-lora"} <= set(args)
+    same = nine[3 : nine.index("--lora-modules")]  # everything but the slots
+    assert args == ["vllm", "serve", "/hf/4b"] + [
+        "Qwen3.5-4B" if a == "Qwen3.5-9B" else a for a in same
+    ]
+
+
+def test_a_trained_slot_is_never_served_on_the_4b():
+    with pytest.raises(ValueError, match="9B adapter"):
+        config.lora_slots("all", "/adapters", "Qwen3.5-9B-pl-x=a/b", "4b")
+
+
+def test_app_names_by_model_and_variant(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv(config.MODEL_ENV, raising=False)
+    assert config.app_name("pinned") == config.app_name("pinned", "9b")
+    assert config.app_name("pinned", "4b") == "proxyloop-vllm-4b"
+    assert config.app_name("prefix-align", "4b") == "proxyloop-vllm-4b-prefix-align"
+    monkeypatch.setenv(config.MODEL_ENV, "4b")  # as `make serve-up MODEL=4b` sets it
+    assert config.app_name("pinned") == "proxyloop-vllm-4b"
+    with pytest.raises(ValueError):
+        config.app_name("pinned", "8b")
+
+
+def test_model_pins():
+    assert config.MODELS["9b"] == (
+        config.MODEL_ID,
+        config.MODEL_REVISION,
+        config.SERVED_NAME,
+    )
+    hf_id, revision, served = config.MODELS["4b"]
+    assert (hf_id, served) == ("Qwen/Qwen3.5-4B", "Qwen3.5-4B")
+    assert re.fullmatch(r"[0-9a-f]{40}", revision)
