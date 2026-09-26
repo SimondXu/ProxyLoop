@@ -1,0 +1,897 @@
+{
+  "schema": "pl.relay_probe/2",
+  "task": "S0-ROOT-08",
+  "started_utc": "2026-09-26T09:30:39Z",
+  "finished_utc": "2026-09-26T09:31:47Z",
+  "relay": "OpenAI-compatible endpoint (host redacted; see the git-ignored .env.local)",
+  "sdk_versions": {
+    "openai": "2.45.0",
+    "anthropic": "0.116.0"
+  },
+  "models": [
+    "gemini-3.8-flash"
+  ],
+  "ttft_calls_per_model": 10,
+  "ttft_stream_max_tokens": 512,
+  "ttft_note": "wall clock from the Mac, sequential per model, 1 models in parallel",
+  "balance_before": {
+    "skipped": "not applicable to this endpoint"
+  },
+  "balance_after": {
+    "skipped": "not applicable to this endpoint"
+  },
+  "summary": {
+    "gemini-3.8-flash": {
+      "available": true,
+      "echoed_model": "gemini-3.8-flash",
+      "streaming": {
+        "ok": 10,
+        "n": 10
+      },
+      "streaming_usage": {
+        "ok": 10,
+        "n": 10
+      },
+      "tool_calls": true,
+      "parallel_tool_calls": true,
+      "json_schema": true,
+      "json_object": false,
+      "json_prompt_tokens": {
+        "json_schema": 20,
+        "json_control_schema_text": 20,
+        "json_object": 28,
+        "json_control_object_text": 28
+      },
+      "long_stream_chunks": 7,
+      "native_route": null,
+      "native_tool_use": null,
+      "ttft_p50_s": 2.834706061752513,
+      "ttft_n_ok": 10,
+      "streams_reasoning": {
+        "reasoning_tokens_p50": 116.5,
+        "reasoning_tokens_n": 10
+      }
+    }
+  },
+  "results": {
+    "gemini-3.8-flash": {
+      "model": "gemini-3.8-flash",
+      "openai_basic": {
+        "ok": true,
+        "response_id": "chatcmpl-202609260930414193870148268d9d65FxtIseX",
+        "request_id": "d75fa3bd-5d43-44a8-95ab-e55607029350",
+        "echoed_model": "gemini-3.8-flash",
+        "text": "pong",
+        "usage": {
+          "completion_tokens": 71,
+          "prompt_tokens": 6,
+          "total_tokens": 77,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 70,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": null,
+            "cached_tokens": 0,
+            "text_tokens": 6,
+            "image_tokens": 0
+          },
+          "billing_usage": {
+            "source": "gemini_chat",
+            "semantic": "gemini",
+            "gemini_usage_metadata": {
+              "promptTokenCount": 6,
+              "toolUsePromptTokenCount": 0,
+              "candidatesTokenCount": 1,
+              "totalTokenCount": 77,
+              "thoughtsTokenCount": 70,
+              "cachedContentTokenCount": 0,
+              "promptTokensDetails": [],
+              "toolUsePromptTokensDetails": [],
+              "candidatesTokensDetails": []
+            }
+          },
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        }
+      },
+      "tools": {
+        "response_id": "chatcmpl-202609260930444330171308268d9d6UPis2LJV",
+        "echoed_model": "gemini-3.8-flash",
+        "n_tool_calls": 2,
+        "calls": [
+          {
+            "name": "get_weather",
+            "args": {
+              "city": "Paris"
+            },
+            "valid_json": true
+          },
+          {
+            "name": "get_local_time",
+            "args": {
+              "city": "Paris"
+            },
+            "valid_json": true
+          }
+        ],
+        "tool_calls_ok": true,
+        "parallel_ok": true,
+        "usage": {
+          "completion_tokens": 108,
+          "prompt_tokens": 109,
+          "total_tokens": 217,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 74,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": null,
+            "cached_tokens": 0,
+            "text_tokens": 109,
+            "image_tokens": 0
+          },
+          "billing_usage": {
+            "source": "gemini_chat",
+            "semantic": "gemini",
+            "gemini_usage_metadata": {
+              "promptTokenCount": 109,
+              "toolUsePromptTokenCount": 0,
+              "candidatesTokenCount": 34,
+              "totalTokenCount": 217,
+              "thoughtsTokenCount": 74,
+              "cachedContentTokenCount": 0,
+              "promptTokensDetails": [],
+              "toolUsePromptTokensDetails": [],
+              "candidatesTokensDetails": []
+            }
+          },
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        }
+      },
+      "json_schema": {
+        "response_id": "chatcmpl-202609260930469036753728268d9d6wEk2HQtd",
+        "echoed_model": "gemini-3.8-flash",
+        "json_schema_ok": true,
+        "raw": "{\"offer_usd\": 65, \"accepted\": false}",
+        "usage": {
+          "completion_tokens": 191,
+          "prompt_tokens": 20,
+          "total_tokens": 211,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 177,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": null,
+            "cached_tokens": 0,
+            "text_tokens": 20,
+            "image_tokens": 0
+          },
+          "billing_usage": {
+            "source": "gemini_chat",
+            "semantic": "gemini",
+            "gemini_usage_metadata": {
+              "promptTokenCount": 20,
+              "toolUsePromptTokenCount": 0,
+              "candidatesTokenCount": 14,
+              "totalTokenCount": 211,
+              "thoughtsTokenCount": 177,
+              "cachedContentTokenCount": 0,
+              "promptTokensDetails": [],
+              "toolUsePromptTokensDetails": [],
+              "candidatesTokensDetails": []
+            }
+          },
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        }
+      },
+      "json_object": {
+        "response_id": "chatcmpl-202609260930498072989828268d9d66U20pGZy",
+        "echoed_model": "gemini-3.8-flash",
+        "json_object_ok": false,
+        "raw": "```json\n{\n  \"offer_usd\": 65,\n  \"accepted\": false\n}\n```",
+        "usage": {
+          "completion_tokens": 178,
+          "prompt_tokens": 28,
+          "total_tokens": 206,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 153,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": null,
+            "cached_tokens": 0,
+            "text_tokens": 28,
+            "image_tokens": 0
+          },
+          "billing_usage": {
+            "source": "gemini_chat",
+            "semantic": "gemini",
+            "gemini_usage_metadata": {
+              "promptTokenCount": 28,
+              "toolUsePromptTokenCount": 0,
+              "candidatesTokenCount": 25,
+              "totalTokenCount": 206,
+              "thoughtsTokenCount": 153,
+              "cachedContentTokenCount": 0,
+              "promptTokensDetails": [],
+              "toolUsePromptTokensDetails": [],
+              "candidatesTokensDetails": []
+            }
+          },
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        }
+      },
+      "json_control_schema_text": {
+        "response_id": "chatcmpl-202609260930519808263598268d9d6YHtV8Hf6",
+        "echoed_model": "gemini-3.8-flash",
+        "prompt_tokens": 20,
+        "usage": {
+          "completion_tokens": 517,
+          "prompt_tokens": 20,
+          "total_tokens": 537,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 322,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": null,
+            "cached_tokens": 0,
+            "text_tokens": 20,
+            "image_tokens": 0
+          },
+          "billing_usage": {
+            "source": "gemini_chat",
+            "semantic": "gemini",
+            "gemini_usage_metadata": {
+              "promptTokenCount": 20,
+              "toolUsePromptTokenCount": 0,
+              "candidatesTokenCount": 195,
+              "totalTokenCount": 537,
+              "thoughtsTokenCount": 322,
+              "cachedContentTokenCount": 0,
+              "promptTokensDetails": [],
+              "toolUsePromptTokensDetails": [],
+              "candidatesTokensDetails": []
+            }
+          },
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        }
+      },
+      "json_control_object_text": {
+        "response_id": "chatcmpl-202609260930559101205418268d9d6LJaGKAyY",
+        "echoed_model": "gemini-3.8-flash",
+        "prompt_tokens": 28,
+        "usage": {
+          "completion_tokens": 168,
+          "prompt_tokens": 28,
+          "total_tokens": 196,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 148,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": null,
+            "cached_tokens": 0,
+            "text_tokens": 28,
+            "image_tokens": 0
+          },
+          "billing_usage": {
+            "source": "gemini_chat",
+            "semantic": "gemini",
+            "gemini_usage_metadata": {
+              "promptTokenCount": 28,
+              "toolUsePromptTokenCount": 0,
+              "candidatesTokenCount": 20,
+              "totalTokenCount": 196,
+              "thoughtsTokenCount": 148,
+              "cachedContentTokenCount": 0,
+              "promptTokensDetails": [],
+              "toolUsePromptTokensDetails": [],
+              "candidatesTokensDetails": []
+            }
+          },
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        }
+      },
+      "long_stream": {
+        "ttft_s": 6.432322500273585,
+        "total_s": 6.802875500172377,
+        "response_id": "chatcmpl-202609260931001391566858268d9d6TZGrO7Bi",
+        "echoed_model": "gemini-3.8-flash",
+        "usage": {
+          "completion_tokens": 774,
+          "prompt_tokens": 34,
+          "total_tokens": 808,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 607,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": null,
+            "cached_tokens": 0,
+            "text_tokens": 34,
+            "image_tokens": 0
+          },
+          "billing_usage": {
+            "source": "gemini_chat",
+            "semantic": "gemini",
+            "gemini_usage_metadata": {
+              "promptTokenCount": 34,
+              "toolUsePromptTokenCount": 0,
+              "candidatesTokenCount": 167,
+              "totalTokenCount": 808,
+              "thoughtsTokenCount": 607,
+              "cachedContentTokenCount": 0,
+              "promptTokensDetails": [],
+              "toolUsePromptTokensDetails": [],
+              "candidatesTokensDetails": []
+            }
+          },
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "content_chunks": 7,
+        "text": "A phone bill often increases because promotional rates are temporary discounts d",
+        "gaps_s": [
+          0.0002,
+          0.0442,
+          0.047,
+          0.0951,
+          0.0651,
+          0.0385
+        ]
+      },
+      "streams": [
+        {
+          "ttft_s": 7.7972877086140215,
+          "total_s": 7.891724749933928,
+          "response_id": "chatcmpl-202609260931075990789478268d9d6Hal2mNdC",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 142,
+            "prompt_tokens": 12,
+            "total_tokens": 154,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 129,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 12,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 12,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 13,
+                "totalTokenCount": 154,
+                "thoughtsTokenCount": 129,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "content_chunks": 1,
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.7394439578056335,
+          "total_s": 2.7650072500109673,
+          "response_id": "chatcmpl-202609260931152887557558268d9d6SSujKbwb",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 152,
+            "prompt_tokens": 12,
+            "total_tokens": 164,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 139,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 12,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 12,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 13,
+                "totalTokenCount": 164,
+                "thoughtsTokenCount": 139,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "content_chunks": 1,
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 5.573203499894589,
+          "total_s": 5.647250334266573,
+          "response_id": "chatcmpl-202609260931180952328758268d9d6n0uRyJzc",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 147,
+            "prompt_tokens": 12,
+            "total_tokens": 159,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 134,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 12,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 12,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 13,
+                "totalTokenCount": 159,
+                "thoughtsTokenCount": 134,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "content_chunks": 1,
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.560857415664941,
+          "total_s": 2.7743837079033256,
+          "response_id": "chatcmpl-202609260931238197287998268d9d6IIX3k0dQ",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 145,
+            "prompt_tokens": 12,
+            "total_tokens": 157,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 132,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 12,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 12,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 13,
+                "totalTokenCount": 157,
+                "thoughtsTokenCount": 132,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "content_chunks": 1,
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.6907316660508513,
+          "total_s": 2.777057291008532,
+          "response_id": "chatcmpl-202609260931265240472928268d9d6oWGpqf5u",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 117,
+            "prompt_tokens": 12,
+            "total_tokens": 129,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 104,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 12,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 12,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 13,
+                "totalTokenCount": 129,
+                "thoughtsTokenCount": 104,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "content_chunks": 1,
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.9299681656993926,
+          "total_s": 3.0263648750260472,
+          "response_id": "chatcmpl-202609260931293545291028268d9d63hGu3fvD",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 164,
+            "prompt_tokens": 12,
+            "total_tokens": 176,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 151,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 12,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 12,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 13,
+                "totalTokenCount": 176,
+                "thoughtsTokenCount": 151,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "content_chunks": 2,
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.1985047911293805,
+          "total_s": 2.2842322504147887,
+          "response_id": "chatcmpl-202609260931323332616198268d9d61mdGuKer",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 102,
+            "prompt_tokens": 12,
+            "total_tokens": 114,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 89,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 12,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 12,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 13,
+                "totalTokenCount": 114,
+                "thoughtsTokenCount": 89,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "content_chunks": 1,
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 2.449059334117919,
+          "total_s": 2.5340402922593057,
+          "response_id": "chatcmpl-202609260931346200155898268d9d6rGPCpGq6",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 103,
+            "prompt_tokens": 12,
+            "total_tokens": 115,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 90,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 12,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 12,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 13,
+                "totalTokenCount": 115,
+                "thoughtsTokenCount": 90,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "content_chunks": 1,
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 5.747960458043963,
+          "total_s": 5.961159375030547,
+          "response_id": "chatcmpl-202609260931371073341408268d9d64q6zrDpo",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 104,
+            "prompt_tokens": 12,
+            "total_tokens": 116,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 91,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 12,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 12,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 13,
+                "totalTokenCount": 116,
+                "thoughtsTokenCount": 91,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "content_chunks": 1,
+          "text": "1, 2, 3, 4, 5"
+        },
+        {
+          "ttft_s": 5.214892541989684,
+          "total_s": 5.376825791783631,
+          "response_id": "chatcmpl-202609260931430692077778268d9d6Mt9RvqmP",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 104,
+            "prompt_tokens": 12,
+            "total_tokens": 116,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 91,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 12,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 12,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 13,
+                "totalTokenCount": 116,
+                "thoughtsTokenCount": 91,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "content_chunks": 1,
+          "text": "1, 2, 3, 4, 5"
+        }
+      ],
+      "ttft_p50_s": 2.834706061752513,
+      "ttft_n_ok": 10,
+      "stream_usage_ok": 10,
+      "native": {
+        "skipped": "not applicable to this endpoint"
+      }
+    }
+  }
+}

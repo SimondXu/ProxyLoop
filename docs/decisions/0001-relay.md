@@ -2,6 +2,7 @@
 
 - **Status:** accepted (v2, after the PR #110 review and a second probe)
 - **Superseded in part (2026-09-26, user decision):** Decision 2 (world = `gpt-5.4-mini`) is overruled. The world models (Ear, Mouth, SimUser) stay on Gemini as the plan specified, as **Gemini Flash 3.8** called through a separate key the user supplies, not this relay. A later ADR records that route once it is probed. The rest of this ADR stands.
+- **Superseded in part by ADR-0005 (world model).**
 - **Date:** 2026-09-26
 - **Task:** S0-ROOT-04
 

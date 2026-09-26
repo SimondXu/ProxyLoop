@@ -18,6 +18,15 @@ from everything it writes.
     ... --part forced --models claude-sonnet-5,gemini-3.6-flash \\
         --out docs/decisions/data/relay-forced.json
     ... --part cost-input --out docs/decisions/data/relay-cost-input-heavy.json
+
+The same probe against TeamRouter (S0-ROOT-08, ADR-0005; `.env.local` is dotenv style):
+
+    ... --env .env.local --env-format dotenv --task S0-ROOT-08 \\
+        --models gemini-3.8-flash --ttft-n 10 --stream-max-tokens 512 \\
+        --out docs/decisions/data/teamrouter-probe-main.json
+    ... --env .env.local --env-format dotenv --task S0-ROOT-08 --part forced \\
+        --models gemini-3.8-flash --forced-n 10 --forced-max-tokens 512 \\
+        --out docs/decisions/data/teamrouter-probe-forced.json
 """
 
 from __future__ import annotations
@@ -143,13 +152,48 @@ COST_NOTE = (
 GROUP_RE = re.compile(r"under group [^()]*\(")
 
 
-def load_env(path: pathlib.Path) -> tuple[str, str]:
+# (base variable, key variable) per env-file format.
+ENV_VARS = {
+    "keyvalue": ("base_url", "备用key2"),
+    "dotenv": ("TEAMOROUTER_BASE_URL", "TEAMOROUTER_API_KEY"),
+}
+
+
+def read_env(path: pathlib.Path, fmt: str) -> dict[str, str]:
     kv = {}
     for line in path.read_text().splitlines():
-        if ":" in line:
-            k, v = line.split(":", 1)
-            kv[k.strip()] = v.strip()
-    return kv["base_url"].rstrip("/"), kv["备用key2"]
+        if fmt == "keyvalue":
+            if ":" in line:
+                k, v = line.split(":", 1)
+                kv[k.strip()] = v.strip()
+            continue
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.removeprefix("export ").split("=", 1)
+        v = v.strip()
+        if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+            v = v[1:-1]
+        kv[k.strip()] = v
+    return kv
+
+
+def load_env(
+    path: pathlib.Path,
+    fmt: str = "keyvalue",
+    base_var: str | None = None,
+    key_var: str | None = None,
+) -> tuple[str, str]:
+    """Return (OpenAI-compatible `/v1` root, key).
+
+    keyvalue: `base_url` already ends in `/v1`; dotenv: the API is at BASE_URL + `/v1`.
+    """
+    default_base, default_key = ENV_VARS[fmt]
+    kv = read_env(path, fmt)
+    base = kv[base_var or default_base].rstrip("/")
+    if fmt == "dotenv":
+        base += "/v1"
+    return base, kv[key_var or default_key]
 
 
 class Scrub:
@@ -376,11 +420,13 @@ def validate_act(obj: Any) -> list[str]:
     return errs
 
 
-def oai_forced(c: openai.OpenAI, model: str, utterance: str) -> dict[str, Any]:
+def oai_forced(
+    c: openai.OpenAI, model: str, utterance: str, max_tokens: int = 128
+) -> dict[str, Any]:
     t0 = time.perf_counter()
     r = c.chat.completions.create(
         model=model,
-        max_tokens=128,
+        max_tokens=max_tokens,
         tools=[CLASSIFY],
         tool_choice=FORCED_CHOICE,
         messages=[
@@ -417,7 +463,7 @@ def oai_forced(c: openai.OpenAI, model: str, utterance: str) -> dict[str, Any]:
 
 
 def forced_model(
-    root_v1: str, key: str, model: str, n: int, scrub: Scrub
+    root_v1: str, key: str, model: str, n: int, scrub: Scrub, max_tokens: int = 128
 ) -> dict[str, Any]:
     c = oai_client(root_v1, key)
     calls = []
@@ -425,11 +471,31 @@ def forced_model(
         u = FORCED_UTTERANCES[i % len(FORCED_UTTERANCES)]
         try:
             calls.append(
-                {"utterance_idx": i % len(FORCED_UTTERANCES), **oai_forced(c, model, u)}
+                {
+                    "utterance_idx": i % len(FORCED_UTTERANCES),
+                    **oai_forced(c, model, u, max_tokens),
+                }
             )
         except Exception as e:
             calls.append({"utterance_idx": i % len(FORCED_UTTERANCES), **err(e, scrub)})
     return {"model": model, "calls": calls}
+
+
+SKIPPED = {"skipped": "not applicable to this endpoint"}
+
+
+def reasoning_summary(calls: list[dict[str, Any]]) -> dict[str, Any]:
+    """Median reasoning tokens over the calls whose usage reports them."""
+    details = [(x.get("usage") or {}).get("completion_tokens_details") for x in calls]
+    vals = [
+        d["reasoning_tokens"]
+        for d in details
+        if d and d.get("reasoning_tokens") is not None
+    ]
+    return {
+        "reasoning_tokens_p50": statistics.median(vals) if vals else None,
+        "reasoning_tokens_n": len(vals),
+    }
 
 
 def summarise_forced(r: dict[str, Any]) -> dict[str, Any]:
@@ -446,6 +512,7 @@ def summarise_forced(r: dict[str, Any]) -> dict[str, Any]:
         if n
         else None,
         "latency_p50_s": statistics.median(lat) if lat else None,
+        **reasoning_summary(calls),
     }
 
 
@@ -530,7 +597,14 @@ def balance(root_v1: str, key: str, scrub: Scrub) -> dict[str, Any]:
 
 
 def probe_model(
-    root_v1: str, root: str, key: str, model: str, scrub: Scrub, ttft_n: int = TTFT_N
+    root_v1: str,
+    root: str,
+    key: str,
+    model: str,
+    scrub: Scrub,
+    ttft_n: int = TTFT_N,
+    stream_max_tokens: int = 48,
+    native_route: bool = True,
 ) -> dict[str, Any]:
     c = oai_client(root_v1, key)
     res: dict[str, Any] = {"model": model}
@@ -553,7 +627,7 @@ def probe_model(
     streams = []
     for _ in range(ttft_n):
         try:
-            streams.append(oai_stream(c, model))
+            streams.append(oai_stream(c, model, max_tokens=stream_max_tokens))
         except Exception as e:
             streams.append(err(e, scrub))
     res["streams"] = streams
@@ -561,6 +635,9 @@ def probe_model(
     res["ttft_p50_s"] = statistics.median(ttfts) if ttfts else None
     res["ttft_n_ok"] = len(ttfts)
     res["stream_usage_ok"] = sum(bool(s.get("usage")) for s in streams)
+    if not native_route:
+        res["native"] = dict(SKIPPED)
+        return res
     native = anthropic_native if model.startswith("claude") else gemini_native
     try:
         res["native"] = {
@@ -615,12 +692,15 @@ def summarise(r: dict[str, Any]) -> dict[str, Any]:
         "long_stream_chunks": r["long_stream"].get("content_chunks")
         if ok(r.get("long_stream"))
         else None,
-        "native_route": bool(r["native"].get("ok")),
+        "native_route": None
+        if "skipped" in r["native"]
+        else bool(r["native"].get("ok")),
         "native_tool_use": r["native"].get("tool_use_n", 0) >= 2
         if r["model"].startswith("claude")
         else None,
         "ttft_p50_s": r["ttft_p50_s"],
         "ttft_n_ok": r["ttft_n_ok"],
+        "streams_reasoning": reasoning_summary(r["streams"]),
     }
 
 
@@ -851,30 +931,46 @@ def summary_of(results: dict[str, Any], fn: Any) -> dict[str, Any]:
     return {m: {"crashed": True} if "crash" in r else fn(r) for m, r in results.items()}
 
 
+RELAY_NOTE = (
+    "OpenAI-compatible third-party relay (host redacted; see the git-ignored .env)"
+)
+
+
 def main_part(
-    root_v1: str, root: str, key: str, scrub: Scrub, models: list[str], ttft_n: int
+    root_v1: str,
+    root: str,
+    key: str,
+    scrub: Scrub,
+    models: list[str],
+    ttft_n: int,
+    relay: str = RELAY_NOTE,
+    stream_max_tokens: int = 48,
+    relay_extras: bool = True,
 ) -> dict[str, Any]:
+    """`relay_extras`: the billing balance and native routes of the original relay."""
     started = utc()
-    bal0 = balance(root_v1, key, scrub)
+    bal0 = balance(root_v1, key, scrub) if relay_extras else dict(SKIPPED)
     results = run_parallel(
-        models, lambda m: probe_model(root_v1, root, key, m, scrub, ttft_n), scrub
+        models,
+        lambda m: probe_model(
+            root_v1, root, key, m, scrub, ttft_n, stream_max_tokens, relay_extras
+        ),
+        scrub,
     )
-    bal1 = balance(root_v1, key, scrub)
+    bal1 = balance(root_v1, key, scrub) if relay_extras else dict(SKIPPED)
     return {
         "schema": "pl.relay_probe/2",
         "task": "S0-ROOT-04",
         "started_utc": started,
         "finished_utc": utc(),
-        "relay": (
-            "OpenAI-compatible third-party relay "
-            "(host redacted; see the git-ignored .env)"
-        ),
+        "relay": relay,
         "sdk_versions": {
             "openai": openai.__version__,
             "anthropic": anthropic.__version__,
         },
         "models": models,
         "ttft_calls_per_model": ttft_n,
+        "ttft_stream_max_tokens": stream_max_tokens,
         "ttft_note": (
             "wall clock from the Mac, sequential per model, "
             f"{len(models)} models in parallel"
@@ -887,11 +983,16 @@ def main_part(
 
 
 def forced_part(
-    root_v1: str, key: str, scrub: Scrub, models: list[str], n: int
+    root_v1: str,
+    key: str,
+    scrub: Scrub,
+    models: list[str],
+    n: int,
+    max_tokens: int = 128,
 ) -> dict[str, Any]:
     started = utc()
     results = run_parallel(
-        models, lambda m: forced_model(root_v1, key, m, n, scrub), scrub
+        models, lambda m: forced_model(root_v1, key, m, n, scrub, max_tokens), scrub
     )
     return {
         "schema": "pl.relay_forced_tool/1",
@@ -900,6 +1001,7 @@ def forced_part(
         "finished_utc": utc(),
         "models": models,
         "calls_per_model": n,
+        "forced_max_tokens": max_tokens,
         "tool": CLASSIFY,
         "tool_choice": FORCED_CHOICE,
         "utterances": FORCED_UTTERANCES,
@@ -923,6 +1025,30 @@ def write(path: str, report: dict[str, Any], scrub: Scrub) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--env", default=".env")
+    ap.add_argument(
+        "--env-format",
+        choices=sorted(ENV_VARS),
+        default="keyvalue",
+        help=(
+            "keyvalue: `name: value` lines, base_url ends in /v1 (the relay .env); "
+            "dotenv: `NAME=value` lines, the API is at BASE_URL + /v1 (TeamRouter)"
+        ),
+    )
+    ap.add_argument(
+        "--base-var",
+        help="env variable holding the base URL (default: base_url | "
+        "TEAMOROUTER_BASE_URL by format)",
+    )
+    ap.add_argument(
+        "--key-var",
+        help="env variable holding the key (default: 备用key2 | "
+        "TEAMOROUTER_API_KEY by format)",
+    )
+    ap.add_argument(
+        "--task",
+        default="S0-ROOT-04",
+        help="task id written into the report (--part main|forced|cost-input)",
+    )
     ap.add_argument("--out", required=True)
     ap.add_argument(
         "--part", choices=["main", "followup", "forced", "cost-input"], default="main"
@@ -938,10 +1064,22 @@ def main() -> None:
         help="TTFT streams per model (--part main)",
     )
     ap.add_argument(
+        "--stream-max-tokens",
+        type=int,
+        default=48,
+        help="max_tokens of each TTFT stream (--part main)",
+    )
+    ap.add_argument(
         "--forced-n",
         type=int,
         default=10,
         help="forced tool calls per model (--part forced)",
+    )
+    ap.add_argument(
+        "--forced-max-tokens",
+        type=int,
+        default=128,
+        help="max_tokens of each forced tool call (--part forced)",
     )
     args = ap.parse_args()
     models = (
@@ -949,10 +1087,21 @@ def main() -> None:
         if args.models is not None
         else list(MODELS)
     )
+    if args.env_format == "dotenv" and args.part in ("followup", "cost-input"):
+        ap.error(
+            f"--part {args.part} uses relay-only routes; not with --env-format dotenv"
+        )
     if not models:
         ap.error("--models is empty")
-    root_v1, key = load_env(pathlib.Path(args.env))
+    env_path = pathlib.Path(args.env)
+    root_v1, key = load_env(env_path, args.env_format, args.base_var, args.key_var)
     root = root_v1.removesuffix("/v1")
+    relay = (
+        RELAY_NOTE
+        if args.env_format == "keyvalue"
+        else f"OpenAI-compatible endpoint (host redacted; see the git-ignored "
+        f"{env_path.name})"
+    )
     host = httpx.URL(root).host
     scrub = Scrub(key, root_v1, root, host)
     if args.part == "followup":
@@ -980,7 +1129,9 @@ def main() -> None:
         )
         return
     if args.part == "forced":
-        report = forced_part(root_v1, key, scrub, models, args.forced_n)
+        report = forced_part(
+            root_v1, key, scrub, models, args.forced_n, args.forced_max_tokens
+        )
     elif args.part == "cost-input":
         report = cost_input(root_v1, key, models, scrub)
         report["summary"] = {
@@ -998,7 +1149,18 @@ def main() -> None:
             for m, r in report["results"].items()
         }
     else:
-        report = main_part(root_v1, root, key, scrub, models, args.ttft_n)
+        report = main_part(
+            root_v1,
+            root,
+            key,
+            scrub,
+            models,
+            args.ttft_n,
+            relay,
+            args.stream_max_tokens,
+            relay_extras=args.env_format == "keyvalue",
+        )
+    report["task"] = args.task
     write(args.out, report, scrub)
     print(scrub(json.dumps(report["summary"], indent=2, default=str)))
 

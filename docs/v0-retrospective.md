@@ -80,3 +80,4 @@ The v3 résumé lines are fixed in `NORTH_STAR.md`, and every number they carry 
 | Salted split (ported) | `v0-legacy:runtime/packages/provider_simulator/src/proxyloop_provider_simulator/negotiation_splits.py` |
 | Confirmation ledger modes (ported) | `v0-legacy:runtime/packages/provider_simulator/src/proxyloop_provider_simulator/negotiation.py` |
 | Worktree inventory at the reset | `docs/v0-worktrees.md` |
+| Git-ignored v0 artefacts (not in the `v0-legacy` tag) | `~/Desktop/proxyloop-v0-archive/` (`main-tree-ignored/`, `from-agent-*/`) |

@@ -1,6 +1,6 @@
 # PLAN.md: the single state file
 
-**Current:** S0 in progress (the user gave the go on 2026-09-26). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01. **In flight:** S0-SYS-02 (review), S0-MOD-01 (#113, provisional, GPU runs pending), S0-ROOT-07 (this PR). **Next:** S0-CON-01. **Last closed stage:** none. **Contract version:** none yet (S0-CON-01 creates v1).
+**Current:** S0 in progress (the user gave the go on 2026-09-26). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01, S0-SYS-02 (#115), S0-ROOT-07 (#114), S0-CON-01 (#116), S0-MOD-01 (#113, provisional: `serve-attest-local` pending the user's go). **In flight:** S0-ROOT-08 (this PR), S0-SYS-03. **Next:** S0-MOD-02, S0-SYS-04. **Last closed stage:** none. **Contract version:** v1 (ADR-0004; fingerprints `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`, `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490`).
 
 **Merge authority:** granted to the root by the user on 2026-09-26, from S0 on until revoked: the root squash-merges PRs that pass the fresh-context reviewer, CI and the reality rule. Stage closes, contract changes after `semantics-v1`, publishing, the split draw, the unseal and destructive steps still need the user.
 
@@ -74,8 +74,9 @@ Legend:
 - **PR count:** S0 > 16 PRs, S1 > 14, S2 > 10, S3 > 10. Root evidence PRs are excluded.
 - **Code size:**
   - `src/` Python over 3,700 lines at S0 close, over 5,800 at S1 close, or over 7,000 at S3 close;
+    - ARCHITECTURE §16 now totals ≈ 4,450 for S0 after contract v1 (ADR-0004); the user decides at S0 close whether to raise this tripwire.
   - web TypeScript over 1,500 lines through S1;
-  - `serving/` + `training_jobs/` over 700 lines.
+  - `serving/` + `training_jobs/` over 900 lines (700 → 900, user decision 2026-09-26; reformat of serving/).
   - A module over 600 lines is a warning.
 - **No new reality:** after merge point 1 (S0-ROOT-05), two consecutive merged SYS/MOD PRs without a new real bundle or real artefact cited mean the root runs the smoke itself before merging anything else.
 - **Contract discipline:**
@@ -110,6 +111,39 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
 - #114: CLAUDE.md's "Commit and PR creation are root actions" reads as contradicting implementer commits on task branches.
 - #114: root-session rules (never authors, log agent, decisions changed) live only in CLAUDE.md, not in a tool-agnostic file.
 - #114: the PLAN.md header status line goes stale between PRs.
+- #116 (contract; for the lane named):
+  - N1 `fingerprint()` hashes profile text, not the rendering code; paths no golden covers can change unseen.
+  - N3 ARCH §5 view table gives `FastView[user]` "case facts"; `view_user` has none: align the doc.
+  - N4 `RoleModel.served_model` duplicates `ModelRef.model_id`; state which one evidence-check compares (SYS-03).
+  - N5 `Manifest` does not check that reality, models and cfg agree (SYS-03 evidence/reality).
+  - N7 snapshot tests rewrite under `PL_UPDATE_SNAPSHOTS`; CI must never set it.
+  - N8 `Manifest.split` has no value for demo/smoke runs.
+  - N9 no hook for the C2f 3-shot block (S4-CON-01).
+  - N11 the allow-list test is vacuous for `c01_empty`.
+  - Unbounded ints (`OfferPublic.revision`, `Trigger.wait_s`) can still exceed the render budget.
+  - Parser: mid-sentence `@Hold`/`@Wait` are case-sensitive while `@end_call` is not.
+  - SYS: `guard/terms._utc_text` emits microseconds (27 chars) > `MAX_SLOT_VALUE` 24; format expiry without them.
+  - SYS-03: `check_causes` does not require increasing unique seq or a single `run_id`; `read_bundle` does not check `event.run_id == manifest.run_id`.
+  - SYS-03: `Event.payload` is a mutable dict; `model_copy`/`model_construct` skip validation, so the bus must validate at append.
+  - SYS: `fact.recorded` is untyped and open; the reducer enforces I4 source binding.
+  - Guard: a decision is accepted without a prior `approval.requested` / `mandate.proposed`; Guard must join.
+- #113 (MOD):
+  - `lora_ladder` `main()` gates on `aborted_at`, not `summary["complete"]`.
+  - No test drives `run()`'s loop (a fake `vllm` module in `sys.modules` would).
+  - Exceptions outside the per-adapter try are neither saved to the volume nor move a stale `--out`.
+  - `diff_stats` `max()` ignores NaN after the first element; a NaN zero-R could pass.
+  - Run attn-mlp probes before GDN probes, so a GDN engine kill still measures attn-mlp.
+  - `lora_ladder.py` whole-file pyright exclude → a file pragma like `scripts/sys/capture_v0_fixtures.py`.
+  - The pyproject comment "Every tool covers src, tests and scripts" is stale; ruff `src` lacks `serving`.
+  - `mk/mod.mk` `--with` pins duplicate the pyproject groups (drift risk).
+  - ADR-0002 hand-types "8.6 GB", "adapter 10 of 16", "9 finished records".
+  - `default-groups` now installs the mod group (21 packages, httpx pinned) for every lane.
+  - `tests/serving` test doubles live outside `tests/support` (AGENTS rule 5).
+- #115 (SYS): `fetch_external.sh` clones into a temp dir then moves; drop the stale `!.env.example` in `.gitignore`; pin the CI Python patch release; add shellcheck; amend S0-SYS-02's acceptance grep to the exclusions actually used.
+- Hook (#114): protect the worktree parent `../pl-wt`; track `pushd`; the heredoc false positive (text that mentions recursive deletes near data/external is blocked when shlex cannot parse it).
+- Process: the S0 PR count is at 10 of the 16 tripwire with ~7 tasks left; ROOT evidence PRs are excluded.
+- Docs:
+  - EVAL §9.4: stratify the Ear-audit sampling frame by speaker model (Fast condition) and report Ear accuracy per speaker model (S0-ROOT-08 could not edit EVAL.md).
 
 ---
 
@@ -130,7 +164,7 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
 
 Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 is the first build PR**, and every SYS/MOD build task depends on it except the two MOD spikes that do not touch the contract.
 
-### S0-ROOT-01 Worktree inventory and `v0-legacy` tag — ROOT — S — flags U (only if unique work) — review
+### S0-ROOT-01 Worktree inventory and `v0-legacy` tag — ROOT — S — flags U (only if unique work) — done
 - **Objective:**
   - Inventory every `git worktree` (22 entries at planning time [O `git worktree list | wc -l`]): branch, HEAD, merged into `main`?, count of unique unpushed commits.
   - Tag `v0-legacy` at `514fe31` and push the tag.
@@ -145,7 +179,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** the commands above, pasted in the PR.
 - **Escalate if:** any worktree has unique unpushed commits (the user decides), or the tag exists at another commit.
 
-### S0-ROOT-02 Harness diet and agent kit — ROOT — S — review
+### S0-ROOT-02 Harness diet and agent kit — ROOT — S — done
 - **Objective:**
   - Install `agent-kit/AGENTS.md` → `AGENTS.md`, `agent-kit/CLAUDE.md` → `CLAUDE.md`, and `agent-kit/{implementer,reviewer}.md` → `.claude/agents/`.
   - Keep `.claude/agents/architect.md`, with its orientation lines changed to PLAN/NORTH_STAR.
@@ -161,7 +195,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** the commands above, and the CI link.
 - **Escalate if:** a kept rule conflicts with `NORTH_STAR.md`.
 
-### S0-ROOT-03 v0 retrospective and README skeleton — ROOT — S — todo
+### S0-ROOT-03 v0 retrospective and README skeleton — ROOT — S — done
 - **Objective:**
   - `docs/v0-retrospective.md` (≤ 150 lines): what was built; the honest numbers (0.542→0.983 act agreement on the trained path; **0/240 lines delivered** on the product path); the unsupported résumé numbers (58→67, 6→2, "4-bit QLoRA") disowned explicitly; root causes; five lessons; an asset index of `v0-legacy:<path>` links.
   - A README skeleton with the DOCS §2 sections, `<!-- gen:… -->` markers and "Status: under construction".
@@ -174,7 +208,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
   - `python scripts/lint_readme.py` finds no digits outside `gen` markers in the results sections.
 - **Escalate if:** a number cannot be traced to an artefact at the tag. Drop it; never paraphrase it.
 
-### S0-ROOT-04 Relay capability probe (ADR-0001) — ROOT — S — flags L — todo
+### S0-ROOT-04 Relay capability probe (ADR-0001) — ROOT — S — flags L — done
 - **Objective:** through the relay (key from `.env`, never printed), for `claude-sonnet-5`, `claude-haiku-4-5`, `gemini-3.6-flash`, `claude-opus-4-8` and `gemini-3.5-flash`, measure:
   - availability;
   - streaming with usage;
@@ -188,7 +222,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Acceptance:** raw request ids and usage per model; a yes/no per capability; a TalkAct transport decision.
 - **Escalate if:** Sonnet tool calling or streaming is broken (blocks S0-SYS-04/06); the TalkAct models are missing (E4; does not block S0).
 
-### S0-SYS-01 New workspace and ported pure functions with v0 fixtures — SYS — M — todo
+### S0-SYS-01 New workspace and ported pure functions with v0 fixtures — SYS — M — done
 - **Objective:**
   - Create the root `pyproject.toml` (uv, package `proxyloop` under `src/`, with ruff, pyright, pytest and import-linter config) **beside** the old code.
   - Port, with tests:
@@ -208,7 +242,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** `uv run pytest tests/port -q`; `uv run lint-imports`.
 - **Escalate if:** the v0 hashes cannot be reproduced.
 
-### S0-SYS-02 Deletion, new Makefile/CI, `external/` handling — SYS — L — todo
+### S0-SYS-02 Deletion, new Makefile/CI, `external/` handling — SYS — L — done
 - **Objective:**
   - Physically delete `runtime/`, `ml/`, old `tests/` and `scripts/`, `data/`, `harness/`, `contracts/`, `infra/`, `voice/`, old `apps/`, `compose.yaml`, `PLANS.md`, `PROMPTS.md`, `GOALS.md`, `CONTEXT.md`, `package.json` and the pnpm files. Everything stays at `v0-legacy`.
   - A new `Makefile` (`check lint typecheck test docs-check`, `include mk/*.mk`), plus empty `mk/sys.mk` and `mk/mod.mk`.
@@ -228,7 +262,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
   - `tests/port` stays green.
 - **Escalate if:** a deletion hits anything outside this list.
 
-### S0-CON-01 Freeze the shared contract (contract v1) — CON — L — todo — **first build PR**
+### S0-CON-01 Freeze the shared contract (contract v1) — CON — L — done — **first build PR**
 - **Objective:** implement `src/proxyloop/contract/` exactly as ARCHITECTURE §4–§7, §12 and §14 specify:
   - `events.py`: `pl.event/2` and the event registry;
   - `state.py`: `Blackboard`, `PublicState`, `PrivateState`, `OfferPublic`, `ReadbackSlot`, `ReadbackBinding`, `Mandate`, `ApprovalCard`, `Approval`, `Capability`, `CaseStatus`, `Fence`;
@@ -255,7 +289,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** `uv run pytest tests/contract tests/golden -q`; `uv run pyright src/proxyloop/contract`.
 - **Escalate if:** a TalkAct-compatibility conflict; the think bytes differ between chat-template paths; any need for a field not in ARCHITECTURE §5–§7 (the root decides).
 
-### S0-MOD-01 Pinned CUDA serving configuration for Qwen3.5-9B (ADR-0002) — MOD — M — flags G (root runs) — todo
+### S0-MOD-01 Pinned CUDA serving configuration for Qwen3.5-9B (ADR-0002) — MOD — M — flags G (root runs) — provisional (merged in #113; the root's `serve-attest-local` run awaits the user's go)
 - **Objective:**
   - `serving/modal_vllm.py`: pinned image digest, vLLM version and HF revision; ARCHITECTURE §13 flags (`--language-model-only`, LoRA enabled, prefix caching **off**).
   - `serving/attest.py`: per-shard sha256 at container start → `GET /pl/attest`.
@@ -294,7 +328,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** `make train-smoke` (root, G); `uv run pytest tests/training -q`.
 - **Escalate if:** the fused kernels are unavailable; PEFT cannot target the GDN modules; the vision tower cannot be isolated.
 
-### S0-SYS-03 Event log, bus, fold, evidence-check with provenance and mutation tests — SYS — M — todo
+### S0-SYS-03 Event log, bus, fold, evidence-check with provenance and mutation tests — SYS — M — review
 - **Objective:**
   - `core/{log,bus,fold,clock}.py`: a single-writer JSONL log with dense `seq`; a bus whose subscribers are isolated (a subscriber exception never propagates); reducers for every S0 event type.
   - `evidence/{check,chain,reality}.py` (ARCHITECTURE §14), with `--claim` and `--offline` modes.
@@ -336,6 +370,8 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
   - `tasks/families/cp-direct-discount.yaml` with `mode: info_only`;
   - `env/counterparty/{policy,ear,mouth}.py`: ladder, identity, hidden terms until read-back, TTL, cp patience, and `rep.commit_heard` + ledger write if the agent's speech accepts;
   - `env/user/simuser.py`: JSON `revealed`, reply delay, no patience;
+  - the world model (Ear, Mouth, SimUser) is `gemini-3.8-flash` via TeamRouter (`ModelRef.endpoint = "teamrouter"`), superseding ADR-0001's world choice (ADR-0005);
+  - World structured-call policy: ADR-0005 (≤ 2 regenerations, counted; then episode error; wall-clock timeout).
   - `python -m proxyloop.cli rep-chat --family cp-direct-discount`.
 - **Owned paths:** `src/proxyloop/env/**` (it may extend the ledger), `tasks/families/cp-direct-discount.yaml`, `tests/env/**`.
 - **Deps:** S0-CON-01, S0-SYS-04.
@@ -404,6 +440,13 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - The docs gate S0 is met (DOCS §7).
 - Spend summary #1.
 - PLAN.md is updated: contract v1 and fingerprints.
+
+### S0-ROOT-08 Docs sync and world-model probe (ADR-0005) — ROOT — S — flags L (root runs the probe) — review
+- **Objective:** bring PLAN/ARCHITECTURE/EVAL/DOCS/retrospective in line with contract v1, S0-MOD-01 and the
+  user's world-model decision; record review follow-ups; add a TeamRouter env mode to the relay probe; after the
+  root's probe run, write ADR-0005 (world model = `gemini-3.8-flash` via TeamRouter) citing the committed probe JSON.
+- **Owned paths:** see the packet (root-owned docs granted).
+- **Acceptance:** `make check` green; no measured number typed into prose (AGENTS rule 13); ADR-0005 cites JSON keys.
 
 ---
 
