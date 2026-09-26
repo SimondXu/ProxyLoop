@@ -35,6 +35,9 @@
    "guard",
    "kernel"
   ],
+  "chan.opened": [
+   "kernel"
+  ],
   "completion.decided": [
    "guard"
   ],
@@ -64,6 +67,18 @@
   ],
   "status.changed": [
    "guard"
+  ],
+  "summary.updated": [
+   "guard"
+  ],
+  "user.msg": [
+   "kernel"
+  ],
+  "utt.delivered": [
+   "kernel"
+  ],
+  "utt.final": [
+   "kernel"
   ]
  }
 }

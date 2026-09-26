@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.contract.samples import call_record
 
 from proxyloop.contract.events import (
     ACTORS,
@@ -82,7 +83,7 @@ def test_envelope_rejects(update: dict[str, Any], message: str) -> None:
 def test_exogenous_ingress_needs_no_cause() -> None:
     event = _event(
         type="user.msg",
-        actor="ui",
+        actor="kernel",
         cause_ids=[],
         payload={"text": "stop"},
         seq=0,
@@ -215,7 +216,7 @@ def test_no_model_role_emits_a_restricted_type(kind: str, actor: str) -> None:
     allowed = min(EMITTERS[kind])
     Event.model_validate(_event(type=kind, actor=allowed, payload=_payload(kind)))
     assert actor not in EMITTERS[kind]
-    with pytest.raises(ValueError, match="may not emit"):
+    with pytest.raises(ValueError, match=r"may not emit|world actors"):
         Event.model_validate(_event(type=kind, actor=actor, payload=_payload(kind)))
 
 
@@ -302,3 +303,83 @@ def test_a_cause_must_exist_earlier_in_the_log() -> None:
     orphan = Event.model_validate(_event(seq=5, event_id="r1:5", cause_ids=["r1:3"]))
     with pytest.raises(ValueError, match="cites unknown events"):
         check_causes([orphan])
+
+
+@pytest.mark.parametrize(
+    ("kind", "actor", "stream"),
+    [
+        ("rep.ear", "kernel", "world"),  # a world event from a non-world actor
+        ("fact.recorded", "world.ear", "agent"),  # a world actor on the agent stream
+        ("llm.call", "slow", "world"),
+        ("llm.call", "world.ear", "agent"),
+    ],
+)
+def test_the_stream_follows_the_actor(kind: str, actor: str, stream: str) -> None:
+    event = _event(type=kind, actor=actor, stream=stream, payload=_payload(kind))
+    with pytest.raises(ValueError, match="world actors"):
+        Event.model_validate(event)
+
+
+@pytest.mark.parametrize(
+    ("actor", "stream"), [("fast.cp", "agent"), ("world.ear", "world")]
+)
+def test_llm_call_is_valid_on_both_streams(actor: str, stream: str) -> None:
+    payload = call_record().model_dump(mode="json")
+    Event.model_validate(
+        _event(type="llm.call", actor=actor, stream=stream, payload=payload)
+    )
+
+
+def _posts_and_decisions(hashes: list[str]) -> list[Event]:
+    """One mandate post per hash (same mandate id), each decided by its own event."""
+
+    log: list[Event] = []
+    for i, digest in enumerate(hashes):
+        post, decision = 2 * i + 1, 2 * i + 2
+        body = {
+            "subject": "mandate",
+            "subject_id": "m1",
+            "decision": "granted",
+            "subject_hash": digest,
+            "authority_epoch": 1,
+        }
+        decided = {
+            "mandate_id": "m1",
+            "mandate_hash": digest,
+            "decision": "granted",
+            "by": "ui",
+        }
+        log.append(
+            Event.model_validate(
+                _event(
+                    type="approval.post",
+                    actor="ui",
+                    seq=post,
+                    event_id=f"r1:{post}",
+                    cause_ids=[],
+                    payload=body,
+                )
+            )
+        )
+        log.append(
+            Event.model_validate(
+                _event(
+                    type="mandate.decided",
+                    actor="kernel",
+                    seq=decision,
+                    event_id=f"r1:{decision}",
+                    cause_ids=[f"r1:{post}"],
+                    payload=decided,
+                )
+            )
+        )
+    return log  # fmt: skip
+
+
+def test_the_same_subject_and_hash_is_decided_once_across_posts() -> None:
+    with pytest.raises(ValueError, match="already decided"):
+        check_causes(_posts_and_decisions(["h1", "h1"]))
+
+
+def test_a_tightened_mandate_with_a_new_hash_is_decidable() -> None:
+    check_causes(_posts_and_decisions(["h1", "h2"]))

@@ -72,7 +72,7 @@ def test_read_bundle_round_trip(tmp_path: Path) -> None:
         t_ms=0,
         wall=datetime(2026, 9, 26, tzinfo=UTC),
         type="user.msg",
-        actor="ui",
+        actor="kernel",
         stream="agent",
         epoch=0,
         payload={"text": "hi"},

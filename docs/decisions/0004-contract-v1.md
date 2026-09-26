@@ -38,23 +38,25 @@ Decisions beyond the ARCHITECTURE text:
    - There is no `response_format` or JSON mode.
    - `request_content` and `tool_response_content` define what `prompt_sha` and `response_sha` hash.
    - Model or world text over a contract bound (for example `FastToSlow.text` over 240 characters) is rejected and counted at the write boundary, never truncated.
-7. **Actors (review M3, root decisions).** `Event.actor` is one of `fast.user`, `fast.cp`, `slow`, `guard`, `kernel`, `ui`, `sim_approver`, `world.ear`, `world.policy`, `world.mouth`, `world.simuser`, `world.ledger` (`events.ACTORS`). The allowed emitters (`events.EMITTERS`) cover the §4.2 authority group and the state types that feed it:
+7. **Actors (review M3, root decisions).** `Event.actor` is one of `fast.user`, `fast.cp`, `slow`, `guard`, `kernel`, `ui`, `sim_approver`, `world.ear`, `world.policy`, `world.mouth`, `world.simuser`, `world.ledger` (`events.ACTORS`). The allowed emitters (`events.EMITTERS`) cover the §4.2 authority group and the ingress and state types that feed it:
 
    | Event | Allowed actors |
    |---|---|
    | `approval.post` | `ui`, `sim_approver` |
    | `approval.decided`, `mandate.decided` | `kernel` |
+   | `user.msg`, `utt.final`, `utt.delivered`, `chan.opened` | `kernel` |
    | `authority.fence`, `authority.epoch` | `kernel`, `guard` |
-   | `mandate.proposed`, `approval.requested`, `action.authorized`, `speak.verbatim`, `speak.released`, `screen.redacted`, `evidence.recorded`, `offer.recorded`, `readback.updated`, `completion.decided`, `status.changed` | `guard` |
+   | `mandate.proposed`, `approval.requested`, `action.authorized`, `speak.verbatim`, `speak.released`, `screen.redacted`, `evidence.recorded`, `offer.recorded`, `readback.updated`, `summary.updated`, `completion.decided`, `status.changed` | `guard` |
 
    - Slow's tool effects reach the log as `guard` events.
    - The restrict-only types (`action.denied`, `speak.revoked`, `declass.denied`) and `fact.recorded` (information) accept any actor: models may restrict authority, never grant it.
    - No `fast.*`, `slow` or `world.*` actor may emit a restricted type.
+   - The stream follows the actor: `world`-stream events come only from `world.*` actors, and `world.*` actors emit only `world`-stream events (`llm.call` is valid on both streams, each for its own actors).
 
    `events.check_causes` checks the log; `read_bundle` runs it:
    - every cause is an earlier event of the log;
    - each `approval.decided`/`mandate.decided` cites exactly one `approval.post`, matching its subject, subject id, decision and `by` (which must equal the post's actor), and, for a mandate, `subject_hash == mandate_hash`;
-   - each post is decided at most once.
+   - each (subject, subject id, subject hash) is decided at most once, even through a second post; a tightened mandate has a new hash and stays decidable.
 
    Mandate decisions arrive through the same endpoint, so `approval.post` is `{subject: approval|mandate, subject_id, decision, subject_hash, authority_epoch}`, where `subject_hash` is the card's `terms_hash` or the `mandate_hash`. `mandate.proposed` requires `status == "proposed"` and no `decided_by`.
 8. **`SessionConfig`.** It has `teacher: ModelRef | None`, set iff a `teacher_repair_*` ablation is (part of `cfg_hash`). With `live=True`, no role may be `test_fake` or `recorded_replay`, and `baseline` (the FSM) is allowed only on `fast_user`/`fast_cp`.

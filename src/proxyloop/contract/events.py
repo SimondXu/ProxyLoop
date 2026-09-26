@@ -185,13 +185,17 @@ EVENT_TYPES: MappingProxyType[str, EventSpec] = MappingProxyType(_registry())
 _WORLD = {f"world.{r}" for r in ("ear", "policy", "mouth", "simuser", "ledger")}
 _AGENT = {"fast.user", "fast.cp", "slow", "guard", "kernel", "ui", "sim_approver"}
 ACTORS = frozenset(_AGENT | _WORLD)
-# Allowed emitters for the §4.2 authority group and the state types that feed
-# it; no model role (fast.*, slow, world.*) is among them. Slow's tool effects
-# are guard events. Restrict-only types (action.denied, speak.revoked,
-# declass.denied) and information (fact.recorded) accept any actor.
+# Allowed emitters: the §4.2 authority group and the ingress and state types
+# that feed it (Slow's tool effects are guard events). No model role is among
+# them; restrict-only types and fact.recorded accept any actor.
 _EMITTER_TABLE: str = """
 approval.post       ui sim_approver
 approval.decided    kernel
+user.msg            kernel
+utt.final           kernel
+utt.delivered       kernel
+chan.opened         kernel
+summary.updated     guard
 mandate.decided     kernel
 authority.fence     kernel guard
 authority.epoch     kernel guard
@@ -247,6 +251,8 @@ class Event(Frozen):
             raise ValueError(f"unregistered event type {self.type!r}")
         if self.stream not in spec.streams:
             raise ValueError(f"{self.type} is not a {self.stream} event")
+        if (self.stream == "world") != self.actor.startswith("world."):
+            raise ValueError("world events come from world actors, and only them")
         if spec.cause_required and not self.cause_ids:
             raise ValueError(f"{self.type} is derived and needs cause_ids")
         for cause in self.cause_ids:
@@ -279,10 +285,10 @@ def _decides(decision: Event, post: Event) -> bool:
 
 def check_causes(events: Sequence[Event]) -> None:
     """Log rules: every cause is an earlier event; a decision cites the one
-    ``approval.post`` it decides, and each post is decided once."""
+    ``approval.post`` it decides; a (subject, id, hash) is decided once."""
 
     seen: dict[str, Event] = {}
-    decided: set[str] = set()
+    decided: set[tuple[object, ...]] = set()
     for e in events:
         if unknown := [c for c in e.cause_ids if c not in seen]:
             raise ValueError(f"{e.event_id} cites unknown events {unknown}")
@@ -290,7 +296,9 @@ def check_causes(events: Sequence[Event]) -> None:
             posts = [seen[c] for c in e.cause_ids if seen[c].type == "approval.post"]
             if len(posts) != 1 or not _decides(e, posts[0]):
                 raise ValueError(f"{e.event_id} must cite the approval.post it decides")
-            if posts[0].event_id in decided:
-                raise ValueError(f"{posts[0].event_id} is already decided")
-            decided.add(posts[0].event_id)
+            post = posts[0].payload
+            what = (post["subject"], post["subject_id"], post["subject_hash"])
+            if what in decided:
+                raise ValueError(f"{what} is already decided")
+            decided.add(what)
         seen[e.event_id] = e
