@@ -21,7 +21,9 @@ dev = [
   "ruff==0.16.9",
   "transformers==5.17.0",
 ]
-sys = []
+sys = [
+  "httpx==0.28.1",
+]
 mod = [
   "httpx==0.28.1",
   "modal==1.5.5",
