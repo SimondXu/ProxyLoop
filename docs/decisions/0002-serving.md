@@ -1,8 +1,9 @@
 # ADR-0002: Pinned CUDA serving configuration for Qwen3.5-9B
 
 - **Status:** proposed. The root ran `serve-lora-ladder` and `serve-probe` (pinned) on 2026-09-26; their raw
-  JSON is committed and every measured value is read from it (Evidence). `serve-attest-local` and the
-  `prefix-align` probe are deferred by root decision (Modal budget).
+  JSON is committed and every measured value is read from it (Evidence). `serve-attest-local` is deferred
+  (root decision, pending the user's go for the 8.6 GB local download); the `prefix-align` probe is deferred
+  (root decision, Modal budget).
 - **Date:** 2026-09-26
 - **Task:** S0-MOD-01
 
@@ -119,8 +120,8 @@ All `make` targets are `make -f mk/mod.mk <target>`. `<m>` is `Qwen3.5-9B` (base
 | Live-LoRA liveness: mean \|Δ prompt_logprob\| (> 1e-3) | `liveness.live.mean_abs_diff`; `checks["live_lora_above_1e-3"]` | `data/vllm-probe.json` | `serve-probe` |
 | Keyless `/v1/models` and `/pl/attest` → 401 | `keyless_status`; `checks.keyless_401` | `data/vllm-probe.json` | `serve-probe` |
 | LoRA overhead: TTFT/TTFS p50, zero-LoRA minus base | `derived.lora_overhead["<c>.ttft_p50_s"]`, `derived.lora_overhead["<c>.ttfs_p50_s"]` | `data/vllm-probe.json` | `serve-probe` |
-| `/pl/attest` = local recomputation, 2 shards | deferred (root decision) | `data/vllm-attest-local.json` | `serve-attest-local` |
-| Prefix caching (align) minus pinned, TTFT/TTFS p50, measure-only | deferred (root decision); will be `derived.minus_baseline` | `data/vllm-probe-prefix-align.json` | `serve-probe SERVE_VARIANT=prefix-align` |
+| `/pl/attest` = local recomputation, 2 shards | deferred (root decision, pending the user's go for the 8.6 GB local download) | `data/vllm-attest-local.json` | `serve-attest-local` |
+| Prefix caching (align) minus pinned, TTFT/TTFS p50, measure-only | deferred (root decision, Modal budget); will be `derived.minus_baseline` | `data/vllm-probe-prefix-align.json` | `serve-probe SERVE_VARIANT=prefix-align` |
 
 **S0-MOD-01 acceptance** (PLAN.md), against the runs above:
 - raw JSON with the vLLM version, GPU name, `/v1/models`, and per-request ids and timings: **met by run**
@@ -131,10 +132,10 @@ All `make` targets are `make -f mk/mod.mk <target>`. `<m>` is `Qwen3.5-9B` (base
   the live slot moves them (`checks["live_lora_above_1e-3"]`);
 - the ADR picks a rung of the LoRA ladder with evidence: **met by run** (`all`, see Rung chosen);
 - `/tokenize` ids equal HF ids on 5 prompts: **met by run** (`checks.tokenize_all_equal`);
-- `/pl/attest` shard hashes match a local recomputation for 2 shards: **deferred** (`serve-attest-local`, root
-  decision);
+- `/pl/attest` shard hashes match a local recomputation for 2 shards: **deferred** (`serve-attest-local`; root
+  decision, pending the user's go for the 8.6 GB local download);
 - prefix caching with `--mamba-cache-mode align` on vs off, measured only: **deferred** (`serve-probe
-  SERVE_VARIANT=prefix-align`, root decision).
+  SERVE_VARIANT=prefix-align`; root decision, Modal budget).
 
 ## Consequences
 - **Contract / fingerprint impact:** none. `/tokenize` parity here uses fixed probe prompts; P3 on the

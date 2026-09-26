@@ -7,13 +7,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from scripts.mod.attest_local import compare
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
 from starlette.routing import Route
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from scripts.mod.attest_local import compare
 from serving import attest, config
 
 Layout = tuple[Path, dict[str, Path], Path]

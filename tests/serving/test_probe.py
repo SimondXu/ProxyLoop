@@ -5,8 +5,8 @@ from typing import Any
 
 import httpx
 import pytest
-from scripts.mod import probe
 
+from scripts.mod import probe
 from serving import config
 
 MODEL = "Qwen3.5-9B"

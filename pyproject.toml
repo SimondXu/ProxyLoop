@@ -41,13 +41,17 @@ include = [
   "src/**/*.py",
   "tests/**/*.py",
   "scripts/**/*.py",
+  "serving/**/*.py",
 ]
 
 [tool.ruff.lint]
 select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["serving", "scripts"]
+
 [tool.pyright]
-include = ["src", "tests", "scripts"]
+include = ["src", "tests", "scripts", "serving"]
 exclude = [
   "scripts/spikes",
   # Runs only in its Modal image: imports torch, peft and vllm, never installed here.
