@@ -8,17 +8,21 @@ import asyncio
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
+import httpx
 from tests.support.fakes import RepeatingLLM
 from tests.support.manual_clock import ScaledClock
 
 from proxyloop.contract.bundle import Bundle, read_bundle
 from proxyloop.contract.config import Sampling, SessionConfig, WorldModels
 from proxyloop.contract.llm import AdapterKind, LLMClient, LLMRole, ModelRef
+from proxyloop.contract.protocol import EMPTY_THINK
 from proxyloop.env.tasks.loader import load_task
 from proxyloop.env.tasks.schema import Task
 from proxyloop.kernel.channels import Channel, Incoming
 from proxyloop.kernel.session import ChannelSpec, ClientFactory, RunResult, run_session
+from proxyloop.llm.factory import make_client
 from proxyloop.llm.http import RecordSink
 
 Scripts = Mapping[str, Sequence[str]]
@@ -86,15 +90,40 @@ def act(private: str, *calls: Mapping[str, object], public: str | None = None) -
 
 
 def clients(
-    scripts: Scripts, clock: ScaledClock, dead: Sequence[str], until: Until
+    scripts: Scripts,
+    clock: ScaledClock,
+    dead: Sequence[str],
+    until: Until,
+    vllm: httpx.MockTransport | None = None,
 ) -> ClientFactory:
-    """Each role answers from its script (the last answer repeats)."""
+    """Each role answers from its script (the last answer repeats); a vLLM ref
+    gets the real adapter over the ``vllm`` transport double."""
 
     def make(role: LLMRole, ref: ModelRef, sink: RecordSink) -> LLMClient:
+        if ref.endpoint == "vllm":
+            now = clock.monotonic_ms
+            return make_client(
+                ref, live=False, clock=now, on_record=sink, transport=vllm
+            )
         script, stop = scripts.get(role, ["unused"]), until.get(role)
         return RepeatingLLM(ref, script, clock, role in dead, sink, stop)
 
     return make
+
+
+class FakeTokenizer:
+    """A chat template whose ids are a function of the text (P3 doubles)."""
+
+    @staticmethod
+    def ids(text: str) -> list[int]:
+        return [len(text), *map(ord, text[-40:])]
+
+    def apply_chat_template(
+        self, conversation: list[dict[str, str]], /, **kwargs: Any
+    ) -> Any:
+        text = "".join(f"<{m['role']}>{m['content']}" for m in conversation)
+        text += EMPTY_THINK
+        return {"input_ids": self.ids(text)} if kwargs.get("tokenize") else text
 
 
 class Person(Channel):
@@ -125,6 +154,7 @@ def run(
     dead: Sequence[str] = (),
     cfg: SessionConfig | None = None,
     until: Until | None = None,
+    vllm: httpx.MockTransport | None = None,
 ) -> RunResult:
     clock = ScaledClock(100)
     session = run_session(
@@ -134,7 +164,8 @@ def run(
         runs_dir=tmp_path,
         clock=clock,
         sleep=clock.sleep,
-        clients=clients(scripts, clock, dead, until or {}),
+        clients=clients(scripts, clock, dead, until or {}, vllm),
+        tokenizer=FakeTokenizer() if vllm else None,
     )
     return asyncio.run(asyncio.wait_for(session, timeout=30))
 

@@ -1,6 +1,5 @@
-"""Channels (§2, §10): the partner on each lane hears the agent (``send``, as
-heard; ``None`` on open) and queues its turns on ``incoming``. ``tick`` runs only
-on a free floor with no partner turn in flight (``busy``)."""
+"""Channels (§2, §10): a lane's partner hears the agent (``send``, as heard) and
+queues its turns (``incoming``); ``tick`` runs only on a free, idle floor."""
 
 from __future__ import annotations
 
@@ -15,18 +14,14 @@ End = Literal["", "hangup", "closed", "quit"]
 
 
 @dataclass(frozen=True, slots=True)
-class Incoming:
-    """One partner turn: lines with the world event behind each, if any."""
-
+class Incoming:  # One partner turn: lines with the world event behind each, if any
     lines: tuple[tuple[str, str | None], ...]
     due_ms: int = 0  # not before (the SimUser's reply delay)
     strike: bool = False
     end: End = ""
 
 
-class Channel:
-    """The base: a partner that never speaks first and has no clock."""
-
+class Channel:  # The base: a partner that never speaks first and has no clock
     def __init__(self) -> None:
         self.incoming: asyncio.Queue[Incoming] = asyncio.Queue()
 
@@ -44,9 +39,7 @@ class Channel:
         return None
 
 
-class HumanChannel(Channel):
-    """A person at the terminal; ``label`` names the voice they read."""
-
+class HumanChannel(Channel):  # a person at the terminal
     def __init__(self, label: str) -> None:
         super().__init__()
         self.label = label
@@ -63,8 +56,7 @@ class HumanChannel(Channel):
             self.incoming.put_nowait(Incoming(((text, None),)))
 
 
-def read_stdin(humans: Mapping[str, HumanChannel]) -> None:
-    """Route terminal lines to the people (``u:``/``r:`` when there are two)."""
+def read_stdin(humans: Mapping[str, HumanChannel]) -> None:  # u:/r: when two
     loop = asyncio.get_running_loop()
 
     def route(raw: str) -> None:

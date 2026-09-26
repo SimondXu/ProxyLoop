@@ -187,3 +187,24 @@ def test_the_terminal_replay_reads_the_bundle(
     assert main(["replay", f"RUN={result.path}"]) == 0
     out = capsys.readouterr().out
     assert DISCLOSURE in out and "evidence-check offline: ok" in out
+
+
+def test_guide_fast_changes_fastcs_rendered_view(tmp_path: Path) -> None:
+    guide = act("Steer the call.", {"tool": "guide_fast", "move": "ask_discount"})
+    scripts = SCRIPTS | {
+        "slow": [guide, act("Waiting.", {"tool": "wait", "seconds": 5})]
+    }
+    result = run(tmp_path, scripts, until=UNTIL)
+    assert check_path(result.path, "offline").ok
+    bundle = only_bundle(tmp_path)
+    move = "Ask whether they can lower the monthly price."
+    requests = [
+        e for e in _of(bundle.events, "fast.request") if e.payload["lane"] == "cp"
+    ]
+    seen = [
+        move in bundle.prompts[str(e.payload["prompt_sha"])].content for e in requests
+    ]
+    assert any(seen), "FastC never rendered Slow's guidance"
+    guided = [e for e in _of(bundle.events, "s2f.msg") if e.payload["type"] == "GUIDE"]
+    voiced = {e.payload["msg_id"] for e in _of(bundle.events, "s2f.voiced")}
+    assert guided and guided[0].payload["msg_id"] in voiced

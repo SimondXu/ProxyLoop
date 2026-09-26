@@ -11,9 +11,7 @@ if TYPE_CHECKING:
 TICK_S, MAX_SESSION_S = 1.0, 900.0  # [E] a stop for one S0 call, not a target
 
 
-class SessionEnd(Exception):
-    """Ends the session normally with ``reason`` (``session.ended``)."""
-
+class SessionEnd(Exception):  # a normal end with ``reason``
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason

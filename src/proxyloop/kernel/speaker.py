@@ -1,6 +1,5 @@
-"""Speakers (§11): chat is delivered at once; the cp lane holds the floor and
-runs the speech clock, ``min(12 s, words / 2.8)`` a line. A partner who speaks
-meanwhile barges in: the line is cut to the words said and the turn dropped."""
+"""Speakers (§11): chat at once; cp holds the floor with the speech clock
+``min(12 s, words / 2.8)``, and a partner barging in cuts the line and the turn."""
 
 from __future__ import annotations
 
@@ -19,8 +18,7 @@ WORDS_PER_S, MAX_LINE_S = 2.8, 12.0
 Sleep = Callable[[float], Awaitable[None]]
 
 
-def heard_prefix(text: str, seconds: float) -> str:
-    """The words said in ``seconds`` at the speech rate: a prefix of ``text``."""
+def heard_prefix(text: str, seconds: float) -> str:  # a prefix of text
     words = list(re.finditer(r"\S+", text))
     n = min(len(words), int(seconds * WORDS_PER_S))
     return text[: words[n - 1].end()] if n else ""
@@ -32,8 +30,7 @@ class Speaker:
         self._lock, self._barge = asyncio.Lock(), asyncio.Event()
         self.speaking = False
 
-    async def speak(self, lines: Sequence[tuple[str, str, str]]) -> None:
-        """Deliver ``(utt_id, text, cause event id)`` lines as one turn."""
+    async def speak(self, lines: Sequence[tuple[str, str, str]]) -> None:  # one turn
         k, realtime = self._k, self.lane == "cp"
         async with self._lock:
             self._barge.clear()
@@ -58,8 +55,7 @@ class Speaker:
             utt_id = str(last.payload["utt_id"])
             k.spawn(self._channel.send(text, utt_id, last.event_id, k.now()))
 
-    async def barge_in(self) -> None:
-        """The partner speaks: cut the current line, then wait for the floor."""
+    async def barge_in(self) -> None:  # cut the line; wait for the floor
         self._barge.set()
         async with self._lock:
             return

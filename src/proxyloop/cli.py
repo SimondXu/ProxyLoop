@@ -1,6 +1,5 @@
-"""``python -m proxyloop.cli session|rep-chat|replay``: the first two call
-``run_session`` (I1); rep-chat's agent on the call is the person at the terminal.
-Live runs read ``PL_{VLLM,RELAY,TEAMROUTER}_{BASE_URL,API_KEY}``."""
+"""``python -m proxyloop.cli session|rep-chat|replay`` (sessions via ``run_session``,
+I1). Live runs read ``PL_{VLLM,RELAY,TEAMROUTER}_{BASE_URL,API_KEY}``."""
 
 from __future__ import annotations
 
@@ -21,8 +20,8 @@ from proxyloop.kernel.session import ChannelSpec, run_session
 REAL = AdapterKind.REAL_HTTP
 SONNET = ModelRef(kind=REAL, endpoint="relay", model_id="claude-sonnet-5")
 WORLD = "gemini-3.8-flash"  # ADR-0005
-# What a person follows in a replay: the payload field shown per event type.
-SHOWN = {
+WORLD_EFFORT = "low"  # provisional: ADR-0005; S1 probe decides
+SHOWN = {  # what a person follows in a replay: the payload field per event type
     **{"user.msg": "text", "utt.final": "text", "utt.delivered": "text_heard"},
     **{"f2s.msg": "facts", "s2f.msg": "text", "slow.tool": "result_text"},
     **{"declass.denied": "violations", "session.ended": "reason"},
@@ -82,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
         p = sub.add_parser(name)
         p.add_argument("--family", required=True)
         efforts = get_args(ReasoningEffort)
-        p.add_argument("--world-effort", required=True, choices=efforts)
+        p.add_argument("--world-effort", default=WORLD_EFFORT, choices=efforts)
         p.add_argument("--fast-model", default="Qwen3.5-9B")
         p.add_argument("--seed", type=int, default=0)
         p.add_argument("--runs", default="runs")

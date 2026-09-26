@@ -1,7 +1,5 @@
-"""``run_session(cfg, task, channels=None)``, the only execution path (I1): one
-TaskGroup over one ``Bus``; ``llm.call`` only from the adapters' record sinks;
-``LLMUnavailable`` ends the session (``llm_unavailable``) and is re-raised (I8).
-The one module that wires agent code to ``env``. Fence, epochs: S1-SYS-02."""
+"""``run_session``, the only execution path (I1); ``llm.call`` only from the record
+sinks; ``LLMUnavailable`` ends it (I8). The one module wiring agent code to ``env``."""
 
 from __future__ import annotations
 
@@ -32,12 +30,13 @@ from proxyloop.env.user.simuser import SimUser
 from proxyloop.env.world import World, WorldError
 from proxyloop.evidence.reality import role_refs
 from proxyloop.kernel.channels import Channel, End, HumanChannel, Incoming, read_stdin
-from proxyloop.kernel.lanes import PROFILE, FastLane, load_tokenizer
+from proxyloop.kernel.lanes import PROFILE, FastLane, load_tokenizer, p3
 from proxyloop.kernel.speaker import Sleep, Speaker
 from proxyloop.kernel.watchdog import SessionEnd, watchdog
 from proxyloop.llm.factory import LiveModeError, make_client
 from proxyloop.llm.http import HTTPAdapter, RecordSink
 from proxyloop.llm.spend import RunawaySpend, SpendLedger
+from proxyloop.llm.vllm import VLLMClient
 from proxyloop.slow.loop import SlowLoop
 
 # Guard-authored and fixed (I11, C14): the first thing the rep hears.
@@ -46,6 +45,7 @@ PROJECTED = (500_000, 200)  # [E] micro-USD and calls per S0 episode; guard at 1
 ChannelSpec = Literal["sim", "human"] | Channel
 ClientFactory = Callable[[llm.LLMRole, llm.ModelRef, RecordSink], llm.LLMClient]
 PromptKind = Literal["view", "prompt", "messages", "response"]
+P3 = Literal["pass", "fail", "not_applicable"]
 REAL = llm.AdapterKind.REAL_HTTP
 _ACTOR = {"fast_user": "fast.user", "fast_cp": "fast.cp", "slow": "slow"}
 _ERRORS: dict[type[Exception], str] = {
@@ -62,9 +62,7 @@ class RunResult:
     reason: str  # the session.ended reason
 
 
-class _Loud:
-    """The session dies the moment one of its endpoints does."""
-
+class _Loud:  # The session dies the moment one of its endpoints does
     def __init__(self, client: llm.LLMClient, die: Callable[[], None]) -> None:
         self.inner, self._die, self.ref = client, die, client.ref
 
@@ -86,9 +84,7 @@ class _Loud:
             raise
 
 
-class SimUserChannel(Channel):
-    """The SimUser answers each agent message ``delay_s`` after it (§10.2)."""
-
+class SimUserChannel(Channel):  # replies delay_s after each message
     def __init__(self, user: SimUser) -> None:
         super().__init__()
         self._user, self._lock = user, asyncio.Lock()
@@ -100,9 +96,7 @@ class SimUserChannel(Channel):
         self.incoming.put_nowait(Incoming(((reply.text, reply.event_id),), due))
 
 
-class SimRepChannel(Channel):
-    """SimRep hears ``text_heard``; its clock ticks only on a free floor."""
-
+class SimRepChannel(Channel):  # hears text_heard; ticks on a free floor
     def __init__(self, rep: SimRep) -> None:
         super().__init__()
         self._rep, self._turns = rep, 0
@@ -154,8 +148,7 @@ def _roles(specs: Mapping[str, ChannelSpec]) -> list[llm.LLMRole]:
 
 def _outcome(
     group: BaseExceptionGroup[BaseException],
-) -> tuple[str, BaseException | None]:
-    """The ``session.ended`` reason, and the error to re-raise (None: normal)."""
+) -> tuple[str, BaseException | None]:  # the reason, and an error to re-raise
     leaves = group.exceptions  # tasks raise plain exceptions: the group is flat
     for kind, reason in _ERRORS.items():
         if found := [e for e in leaves if isinstance(e, kind)]:
@@ -163,6 +156,14 @@ def _outcome(
     if others := [e for e in leaves if not isinstance(e, SessionEnd)]:
         return "error", others[0]
     return cast(SessionEnd, leaves[0]).reason, None
+
+
+def _files(attest: dict[str, Any] | None) -> dict[str, str] | None:
+    if attest is None:  # /pl/attest as file -> sha256: shards, tokenizer, adapters
+        return None
+    slots = {f"adapters/{s}": f for s, f in attest.get("adapters", {}).items()}
+    groups = {"shards": attest["shards"], "tokenizer": attest["tokenizer"]} | slots
+    return {f"{g}/{n}": v for g, files in groups.items() for n, v in files.items()}
 
 
 def _git_sha() -> str:
@@ -196,6 +197,8 @@ class Kernel:
         self._causes: dict[str, str] = {}  # call_id -> the event it answers
         self._calls: dict[str, str] = {}  # call_id -> its last llm.call event
         self._dead, self._utt, self._tg = False, 0, asyncio.TaskGroup()
+        self.p3: P3 = "not_applicable"
+        self.attest: dict[str, Any] | None = None
         refs, make, roles = role_refs(cfg), clients or self._make, _roles(specs)
         if cfg.live and (bad := [r for r in roles if refs[r].kind is not REAL]):
             raise LiveModeError(f"live mode refuses {bad}: not real_http")
@@ -351,10 +354,16 @@ class Kernel:
             "contract_version": CONTRACT_VERSION,
             "git_sha": _git_sha(),
         }
-        more = {"models": models, "attest": None, "parity": "not_applicable"}
-        root = self.emit(
-            "session.started", "kernel", started | more, (), "ops"
-        ).event_id
+        dead: Exception | None = None
+        try:
+            self.p3, self.attest = await self._p3()
+        except Exception as err:  # vLLM cannot answer P3: the endpoint is dead
+            self.p3, self.attest, dead = "fail", None, err
+        head = started | {"models": models, "attest": self.attest, "parity": self.p3}
+        root = self.emit("session.started", "kernel", head, (), "ops").event_id
+        if self.p3 == "fail":  # refuse to start (§12)
+            self._close("p3_failed" if dead is None else "llm_unavailable", started)
+            raise dead or RuntimeError("P3: vLLM /tokenize != the pinned tokenizer")
         reason, error = "error", None
         try:
             async with self._tg:
@@ -368,6 +377,18 @@ class Kernel:
         if error is not None:
             raise error
         return RunResult(self.run_id, self.path, reason)
+
+    async def _p3(self) -> tuple[P3, Any]:  # and /pl/attest (§12, §13)
+        passed: list[bool] = []
+        attest: dict[str, Any] | None = None
+        for lane, fast in self.lanes.items():
+            if isinstance(vllm := fast.client.inner, VLLMClient) and self.tok:
+                kind = "session_start" if lane == "user" else "call_connected"
+                passed.append(await p3(vllm, fast.view(Trigger(kind=kind)), self.tok))
+                attest = attest or await vllm.attest()
+        return (
+            "pass" if all(passed) else "fail"
+        ) if passed else "not_applicable", attest
 
     def _open(self, root: str) -> None:
         lanes = self.speakers
@@ -392,8 +413,7 @@ class Kernel:
         }:
             read_stdin(humans)
 
-    async def _disclose(self, opened: str) -> None:
-        """The Guard's disclosure line is the first cp agent utterance (I11)."""
+    async def _disclose(self, opened: str) -> None:  # first cp agent line (I11)
         line = {"lane": "cp", "kind": "disclosure", "text": DISCLOSURE}
         said = self.emit("speak.verbatim", "guard", line, [opened]).event_id
         released = self.emit("speak.released", "kernel", {"lane": "cp"}, [said])
@@ -402,8 +422,7 @@ class Kernel:
             self.spawn(self.lanes["cp"].run())
 
     async def _ingress(self, key: str, channel: Channel, opened: str) -> None:
-        """Partner turns become ``user.msg``/``utt.final``; ends end the call."""
-        while True:
+        while True:  # partner turns become user.msg / utt.final
             inc = await channel.incoming.get()
             if (wait := inc.due_ms - self.now()) > 0:
                 await self.sleep(wait / 1000)
@@ -452,7 +471,8 @@ class Kernel:
             cfg=self.cfg,
             fingerprints=started.pop("renderer_fp"),
             models={r: b.RoleModel(ref=c.ref) for r, c in self.clients.items()},
-            p3="not_applicable",
+            p3=self.p3,
+            attestation=_files(self.attest),
             reality={r: c.ref.kind for r, c in self.clients.items()},
             spend=self.ledger.spend,
             **started,

@@ -17,7 +17,8 @@ llm-smoke:
 # the server roots without /v1 and the keys:
 #   PL_VLLM_BASE_URL PL_VLLM_API_KEY PL_RELAY_BASE_URL PL_RELAY_API_KEY
 #   PL_TEAMROUTER_BASE_URL PL_TEAMROUTER_API_KEY
-# WORLD_EFFORT (the world models' reasoning_effort) has no default: it is a model setting.
+# WORLD_EFFORT: provisional: ADR-0005; S1 probe decides.
+WORLD_EFFORT ?= low
 .PHONY: smoke-live replay-cli
 smoke-live:
 	uv run python -m proxyloop.cli session --family $(FAMILY) --user sim --rep sim \

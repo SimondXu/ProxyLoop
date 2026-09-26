@@ -631,6 +631,7 @@ mod = [
 sys = [
     { name = "httpx" },
     { name = "pyyaml" },
+    { name = "transformers" },
 ]
 
 [package.metadata]
@@ -654,6 +655,7 @@ mod = [
 sys = [
     { name = "httpx", specifier = "==0.28.1" },
     { name = "pyyaml", specifier = "==6.0.3" },
+    { name = "transformers", specifier = "==5.17.0" },
 ]
 
 [[package]]

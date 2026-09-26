@@ -1,6 +1,5 @@
-"""Declassification (§5; I4): public text passes only if every number is
-source-bound (a rep ``utt.final`` or a shareable fact's value), it holds no
-protected value or non-public mandate bound, and it fits 400 characters."""
+"""Declassification (§5; I4): every public number is source-bound (a rep line or a
+shareable value), no protected or non-public mandate value, at most 400 chars."""
 
 from __future__ import annotations
 
@@ -14,8 +13,7 @@ from proxyloop.contract.state import Blackboard, ChannelState
 _NUMBER = re.compile(r"\d+(?:\.\d+)?")
 
 
-def numbers(text: str) -> set[Decimal]:
-    """The numbers written as digits (``1,068.50`` is 1068.50), as values."""
+def numbers(text: str) -> set[Decimal]:  # 1,068.50 is 1068.50
     text = re.sub(r"(?<=\d),(?=\d{3})", "", text)
     return {Decimal(m) for m in _NUMBER.findall(text)}
 
@@ -38,9 +36,7 @@ def _bounds(bb: Blackboard) -> set[Decimal]:
 
 def declassify(
     text: str, bb: Blackboard, shareable: Mapping[str, str]
-) -> tuple[str, ...]:
-    """The violations; empty when ``text`` may enter public state.
-    ``shareable``: the recorded values of allow-listed shareable facts."""
+) -> tuple[str, ...]:  # none: may go public; shareable: recorded values
     out: list[str] = []
     if len(text) > MAX_PUBLIC_TEXT:
         out.append(f"longer than {MAX_PUBLIC_TEXT} characters")

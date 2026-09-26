@@ -68,8 +68,7 @@ ACT = ToolSpec(
 )
 
 
-def note(relay: FastToSlow) -> str:
-    """One relay as Slow reads it: ``[USER CHAT] <relay> (utt u12)``."""
+def note(relay: FastToSlow) -> str:  # [USER CHAT] <relay> (utt u12)
     where = "USER CHAT" if relay.lane == "user" else "REP CALL"
     facts = "; ".join(f"{k}={v}" for k, v in relay.facts)
     body = " ".join(p for p in (relay.type.lower(), facts, relay.text) if p)

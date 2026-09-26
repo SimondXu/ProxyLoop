@@ -1,12 +1,12 @@
-"""FastLane (§6, §11; I3): one generation at a time per lane, coalescing triggers.
-``fast.request -> llm.call (sink) -> fast.turn -> fast.sentence``, prompts only
-from the contract renderer, relays as ``f2s.msg`` with ``msg_id == event_id``."""
+"""FastLane (§6, §11; I3): one generation at a time, triggers coalesced; prompts
+only from the contract renderer; relays are ``f2s.msg`` with ``msg_id == event_id``."""
 
 from __future__ import annotations
 
 import asyncio
 import importlib
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import ValidationError
 
@@ -14,7 +14,9 @@ from proxyloop.contract import protocol as fp
 from proxyloop.contract.base import Lane, canonical_json, sha256_text
 from proxyloop.contract.llm import LLMCallRecord, TextRequest, request_content
 from proxyloop.contract.messages import FastToSlow
-from proxyloop.contract.views import Trigger, view_cp, view_user
+from proxyloop.contract.views import FastView, Trigger, view_cp, view_user
+from proxyloop.llm.parity import GoldenPrompt, check_parity
+from proxyloop.llm.vllm import VLLMClient
 
 if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
@@ -28,19 +30,34 @@ _F2S = {  # "": the lane's own update type
 TOKENIZER = ("Qwen/Qwen3.5-9B", "c202236235762e1c871ad0ccb60c8ee5ba337b9a")  # ADR-0002
 
 
-def load_tokenizer() -> fp.ChatTokenizer:
-    """The pinned HF tokenizer vLLM serves, for ``fp.render_prompt``."""
+def load_tokenizer() -> fp.ChatTokenizer:  # the pinned one vLLM serves
     transformers: Any = importlib.import_module("transformers")
     auto = transformers.AutoTokenizer
     tok: fp.ChatTokenizer = auto.from_pretrained(TOKENIZER[0], revision=TOKENIZER[1])
     return tok
 
 
+async def p3(client: VLLMClient, view: FastView, tok: fp.ChatTokenizer) -> bool:
+    """P3 (§12): vLLM ids of the messages and the prompt == the pinned ones."""
+    profile = PROFILE[view.lane]
+    chat = tuple(
+        m.model_dump(include={"role", "content"})
+        for m in fp.render_messages(view, profile)
+    )
+    out: Any = tok.apply_chat_template(
+        list(chat), tokenize=True, add_generation_prompt=True, enable_thinking=False
+    )
+    ids = cast(list[int], out["input_ids"] if isinstance(out, Mapping) else out)
+    prompt = fp.render_prompt(view, profile, tok)
+    golden = GoldenPrompt(profile, chat, prompt, tuple(ids))
+    return (await check_parity(client, [golden])).passed
+
+
 class FastLane:
     def __init__(self, k: Kernel, lane: Lane) -> None:
         self._k, self._actor = k, f"fast.{lane}"
         self.lane: Lane = lane
-        self._client = k.clients["fast_user" if lane == "user" else "fast_cp"]
+        self.client = k.clients["fast_user" if lane == "user" else "fast_cp"]
         self._pending: list[tuple[Trigger, str]] = []
         self._wake = asyncio.Event()
         self._n = 0
@@ -61,15 +78,19 @@ class FastLane:
                 self._pending.remove(chosen)
                 await self.generate(*chosen)
 
+    def view(self, trigger: Trigger) -> FastView:
+        k, user = self._k, self.lane == "user"
+        brief = k.task.fast_brief_user if user else k.task.fast_brief_cp
+        return (view_user if user else view_cp)(k.bb, trigger, brief)
+
     def _request(self, trigger: Trigger) -> tuple[TextRequest, str]:
         k, s, lane = self._k, self._k.cfg.fast_sampling, self.lane
-        brief = k.task.fast_brief_user if lane == "user" else k.task.fast_brief_cp
-        view = (view_user if lane == "user" else view_cp)(k.bb, trigger, brief)
+        view = self.view(trigger)
         seed = int(sha256_text(f"{k.cfg.seed}:{lane}:{self._n}")[:8], 16)
         args: dict[str, Any] = dict(call_id=f"fast_{lane}:{self._n}", seed=seed)
         args |= dict(role=f"fast_{lane}", max_tokens=s.max_tokens)
         args |= dict(temperature=s.temperature, top_p=s.top_p)
-        if self._client.ref.endpoint != "vllm":
+        if self.client.ref.endpoint != "vllm":
             args["messages"] = fp.render_messages(view, PROFILE[lane])
         elif k.tok is None:
             raise RuntimeError("a vLLM Fast lane needs the pinned tokenizer")
@@ -83,17 +104,18 @@ class FastLane:
         self._n += 1
         gen_id = f"{lane}-g{self._n}"
         gen: dict[str, object] = {"lane": lane, "gen_id": gen_id}
+        guides = [m.msg_id for m in k.bb.s2f_pending.get(lane, ()) if m.guide]
         request, view_sha = self._request(trigger)
         kind = "prompt" if request.prompt is not None else "messages"
         asked = gen | {"trigger": trigger.kind, "view_sha": view_sha}
         asked |= {"prompt_sha": k.store(kind, request_content(request))}
         asked |= {"profile": PROFILE[lane], "basis_seq": k.bb.seq}
-        asked |= {"model_ref": self._client.ref.model_dump(mode="json")}
+        asked |= {"model_ref": self.client.ref.model_dump(mode="json")}
         ask = k.emit("fast.request", self._actor, asked, [cause])
         k.expect(request.call_id, ask.event_id)
         parser, items, text = fp.StreamParser(lane), list[fp.TurnItem](), ""
         start, ttfs, record = k.now(), None, None
-        async for delta in self._client.stream_text(request):
+        async for delta in self.client.stream_text(request):
             if isinstance(delta, LLMCallRecord):
                 record = delta  # the sink already wrote it
                 continue
@@ -110,10 +132,13 @@ class FastLane:
         turned["items"] = [i.model_dump(mode="json") for i in items]
         causes = [ask.event_id, k.call_event(request.call_id)]
         turn = k.emit("fast.turn", self._actor, turned, causes).event_id
-        if trigger.msg_id is not None:
-            voiced = {"msg_id": trigger.msg_id, "gen_id": gen_id}
+        for msg_id in [*guides, *([trigger.msg_id] if trigger.msg_id else [])]:
+            voiced = {"msg_id": msg_id, "gen_id": gen_id}
             k.emit("s2f.voiced", self._actor, voiced, [turn])
         self._relay(items, turn, gen_id)
+        held = next((i.reason for i in items if isinstance(i, fp.Hold)), None)
+        if lane == "cp" and held != ((hold := k.bb.public.cp_hold) and hold.reason):
+            k.emit("chan.hold", self._actor, {"lane": "cp", "reason": held}, [turn])
         lines: list[tuple[str, str, str]] = []
         for n, item in enumerate(i for i in items if isinstance(i, fp.Speech)):
             utt = {"utt_id": f"{gen_id}-u{n}", "text": item.text}

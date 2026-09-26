@@ -13,15 +13,18 @@ from types import MappingProxyType
 
 from pydantic import BaseModel
 
-from proxyloop.contract.base import Lane
+from proxyloop.contract.base import MAX_GUIDES, Lane
 from proxyloop.contract.events import EVENT_TYPES, EpochBump, Event, StatusChanged
 from proxyloop.contract.messages import FastToSlow, SlowToFast
 from proxyloop.contract.state import (
     Blackboard,
     ChannelState,
     CompletionDecision,
+    Fact,
     Fence,
+    HoldState,
     Line,
+    PublicFact,
 )
 
 Reducer = Callable[[Blackboard, Event], Blackboard]
@@ -31,8 +34,8 @@ WORLD_OPS: frozenset[str] = frozenset(
 )
 RECORD_ONLY: frozenset[str] = frozenset(
     """llm.call fast.request fast.turn fast.sentence fast.cancelled
-    slow.step.started slow.step.completed slow.tool declass.denied fact.recorded
-    readback.updated chan.opened chan.closed chan.hold chan.strike chan.barge_in
+    slow.step.started slow.step.completed slow.tool declass.denied
+    readback.updated chan.opened chan.closed chan.barge_in
     approval.post mandate.proposed mandate.decided approval.requested
     approval.decided action.authorized action.denied speak.verbatim speak.released
     speak.revoked screen.redacted evidence.recorded""".split()  # noqa: SIM905
@@ -84,7 +87,35 @@ def _f2s(bb: Blackboard, e: Event) -> Blackboard:
 def _s2f(bb: Blackboard, e: Event) -> Blackboard:
     msg = SlowToFast.model_validate(e.payload)
     pending = {**bb.s2f_pending, msg.lane: (*bb.s2f_pending.get(msg.lane, ()), msg)}
-    return _with(bb, s2f_pending=pending)
+    guides = (*bb.public.guidance_cp, *([msg.guide] if msg.guide else []))
+    public = _with(bb.public, guidance_cp=guides[-MAX_GUIDES:])  # the last 3
+    return _with(bb, s2f_pending=pending, public=public)
+
+
+def _fact(bb: Blackboard, e: Event) -> Blackboard:
+    p = e.payload
+    fact = {"key": p["key"], "value": p["value"], "source_ref": p["source_ref"]}
+    if p["scope"] == "private":
+        facts = {**bb.private.case_facts, str(p["key"]): Fact.model_validate(fact)}
+        return _with(bb, private=_with(bb.private, case_facts=facts))
+    said = [x.utt_id for x in bb.channels["cp"].lines if x.speaker == "partner"]
+    if p["source"] == "cp_utt" and p["source_ref"] not in said:
+        raise ValueError(f"public fact {p['key']}: {p['source_ref']} is no rep line")
+    public = PublicFact.model_validate(fact | {"source": p["source"]})
+    facts = {**bb.public.facts, public.key: public}
+    return _with(bb, public=_with(bb.public, facts=facts))
+
+
+def _hold(bb: Blackboard, e: Event) -> Blackboard:
+    reason = e.payload["reason"]
+    hold = None if reason is None else {"reason": reason, "since_ms": e.t_ms}
+    held = None if hold is None else HoldState.model_validate(hold)
+    return _with(bb, public=_with(bb.public, cp_hold=held))
+
+
+def _strike(bb: Blackboard, e: Event) -> Blackboard:
+    cp = bb.channels.get("cp", ChannelState())
+    return _with(bb, channels={**bb.channels, "cp": _with(cp, strikes=cp.strikes + 1)})
 
 
 def _s2f_voiced(bb: Blackboard, e: Event) -> Blackboard:
@@ -152,6 +183,9 @@ REDUCERS: MappingProxyType[str, Reducer] = MappingProxyType(
         "f2s.msg": _f2s,
         "s2f.msg": _s2f,
         "s2f.voiced": _s2f_voiced,
+        "fact.recorded": _fact,
+        "chan.hold": _hold,
+        "chan.strike": _strike,
         "summary.updated": _summary,
         "offer.recorded": _offer,
         "authority.fence": _fence,
