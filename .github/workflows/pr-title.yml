@@ -10,7 +10,7 @@ jobs:
   task-id:
     runs-on: ubuntu-latest
     steps:
-      - name: Require "<TASK-ID>: <title>"
+      - name: 'Require a task id title (<TASK-ID>: <title>)'
         env:
           TITLE: ${{ github.event.pull_request.title }}
         run: |
