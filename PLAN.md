@@ -2,6 +2,8 @@
 
 **Current:** S0 in progress (the user gave the go on 2026-09-26). **Active tasks:** S0-ROOT-01 review, S0-ROOT-02 review. **Last closed stage:** none. **Contract version:** none (S0-CON-01 creates v1).
 
+**Merge authority:** granted to the root by the user on 2026-09-26, from S0 on until revoked: the root squash-merges PRs that pass the fresh-context reviewer, CI and the reality rule. Stage closes, contract changes after `semantics-v1`, publishing, the split draw, the unseal and destructive steps still need the user.
+
 Only the root edits this file. The PR description is the log. Design lives in `NORTH_STAR.md`, `ARCHITECTURE.md`, `EVAL.md`, `TRAINING.md`, `DOCS.md` and `docs/decisions/` (ADRs).
 
 Legend:
