@@ -1,14 +1,28 @@
+from typing import Any
+
 from serving import config, liveness
 
 IDS = [11, 22, 33, 44]
 
 
-def body(model: str = "Qwen3.5-9B-zero") -> dict:
-    return {"id": "cmpl-1", "model": model, "choices": [{"prompt_logprobs": [
-        None,
-        {"22": {"logprob": -1.0, "rank": 1}},
-        {"33": {"logprob": -2.5, "rank": 3}, "7": {"logprob": -0.1, "rank": 1}},
-        {"44": {"logprob": -0.25, "rank": 1}}]}]}
+def body(model: str = "Qwen3.5-9B-zero") -> dict[str, Any]:
+    return {
+        "id": "cmpl-1",
+        "model": model,
+        "choices": [
+            {
+                "prompt_logprobs": [
+                    None,
+                    {"22": {"logprob": -1.0, "rank": 1}},
+                    {
+                        "33": {"logprob": -2.5, "rank": 3},
+                        "7": {"logprob": -0.1, "rank": 1},
+                    },
+                    {"44": {"logprob": -0.25, "rank": 1}},
+                ]
+            }
+        ],
+    }
 
 
 def test_prompt_logprobs_reads_the_actual_token_at_each_completion_position():
@@ -17,14 +31,23 @@ def test_prompt_logprobs_reads_the_actual_token_at_each_completion_position():
 
 def test_read_response_requires_the_echoed_model():
     ok = liveness.read_response("Qwen3.5-9B-zero", 200, body(), IDS, 2)
-    assert ok == {"status": 200, "server_id": "cmpl-1", "echoed_model": "Qwen3.5-9B-zero",
-                  "logprobs": [-2.5, -0.25]}
+    assert ok == {
+        "status": 200,
+        "server_id": "cmpl-1",
+        "echoed_model": "Qwen3.5-9B-zero",
+        "logprobs": [-2.5, -0.25],
+    }
     wrong = liveness.read_response("Qwen3.5-9B-zero", 200, body("Qwen3.5-9B"), IDS, 2)
     assert "echoed model" in wrong["error"] and "logprobs" not in wrong
-    assert liveness.read_response("x", 404, None, IDS, 2) == {"status": 404, "error": "HTTP 404"}
+    assert liveness.read_response("x", 404, None, IDS, 2) == {
+        "status": 404,
+        "error": "HTTP 404",
+    }
 
 
-def result(complete: bool, max_diff, mean_diff) -> dict:
+def result(
+    complete: bool, max_diff: float | None, mean_diff: float | None
+) -> dict[str, Any]:
     return {"complete": complete, "max_abs_diff": max_diff, "mean_abs_diff": mean_diff}
 
 

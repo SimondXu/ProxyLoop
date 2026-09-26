@@ -18,10 +18,15 @@ dev = [
   "ruff==0.16.9",
 ]
 sys = []
-mod = []
+mod = [
+  "httpx==0.28.1",
+  "modal==1.5.5",
+  "starlette==1.7.0",
+  "transformers==5.17.0",
+]
 
 [tool.uv]
-default-groups = ["dev"]
+default-groups = ["dev", "mod"]
 
 # Every tool covers src, tests and scripts. scripts/spikes is root-run with
 # dependencies outside this environment: ruff checks it, pyright skips it.
@@ -40,7 +45,11 @@ select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]
 
 [tool.pyright]
 include = ["src", "tests", "scripts"]
-exclude = ["scripts/spikes"]
+exclude = [
+  "scripts/spikes",
+  # Runs only in its Modal image: imports torch, peft and vllm, never installed here.
+  "scripts/mod/lora_ladder.py",
+]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 

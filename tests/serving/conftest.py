@@ -1,4 +1,5 @@
-# Until the root pyproject gives pytest a pythonpath, make the top-level `serving` package importable.
+# Until the root pyproject gives pytest a pythonpath, make the top-level `serving`
+# package importable.
 import sys
 from pathlib import Path
 
