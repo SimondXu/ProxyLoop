@@ -43,14 +43,14 @@ Rows appear only as stages close (S2 instrument audit, S3 ablations and learning
 
 ## What is real vs simulated
 
-Generated from the evidence-check reality reports. Fast is Qwen3.5-9B on vLLM with attested shards; Slow is Claude Sonnet via the relay; the counterparty is a Claude Haiku Ear and Mouth around a deterministic policy (ADR-0001); the user is a Claude Haiku simulator plus a deterministic approver, or a human; the FSM appears only as a baseline.
+Generated from the evidence-check reality reports. Fast is self-hosted on vLLM with attested shards; Slow is Claude Sonnet via the relay; the counterparty is an LLM Ear and Mouth around a deterministic policy; the simulated user is an LLM plus a deterministic approver, or a human; the FSM appears only as a baseline. The world-model ids and their family relationship to the agent, teacher and baseline models are recorded in the relay ADR under `docs/decisions/`.
 
 <!-- gen:table=reality#roles -->
 <!-- /gen -->
 
 ## Authority model
 
-What is guarded, what is measured and what is verified, and what is **not** claimed (ARCHITECTURE §9). The claim is "guarded transactions, measured unauthorised speech, evidence-verified status", never "deterministic code owns every commitment".
+What is guarded, what is measured and what is verified, and what is **not** claimed (ARCHITECTURE §9). The claim is exactly NORTH_STAR I6: guarded transactions, measured unauthorised speech and evidence-verified status. Nothing broader is claimed.
 
 ## The ML cycle
 

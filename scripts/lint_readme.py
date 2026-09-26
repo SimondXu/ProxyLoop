@@ -1,8 +1,11 @@
-"""Fail if a README results section contains a digit outside a `gen` block (DOCS §4, S0-ROOT-03).
+"""Lint the README's generated sections (DOCS §2 and §4, S0-ROOT-03).
 
-Results sections are the level-2 section headed "Results" and all its subsections. Content between
-`<!-- gen:… -->` and `<!-- /gen -->` is generated and exempt, as are the marker lines themselves and
-stage ids such as S2.
+1. `gen` markers are whole lines: a start is exactly `<!-- gen:<kind>[=<target>] -->` and an end is exactly
+   `<!-- /gen -->`. Marker-like text anywhere else (malformed, indented, or sharing a line with other
+   content) is an error, as are a nested start, an end without a start, a heading inside an open block and
+   an unterminated block.
+2. In every section DOCS §2 marks `[gen]` ("Results", "What is real vs simulated", "Limitations") and in its
+   subsections, a digit outside a gen block is an error. Stage ids such as S2 or S5+ are exempt.
 
     python scripts/lint_readme.py [README.md]
 """
@@ -13,25 +16,55 @@ import re
 import sys
 from pathlib import Path
 
-STAGE_ID = re.compile(r"\bS\d\+?\b")
+START = re.compile(r"^<!-- gen:[a-z_]+(=[^ ]+)? -->$")
+END = re.compile(r"^<!-- /gen -->$")
+MARKER_LIKE = re.compile(r"<!--\s*/?\s*gen\b", re.IGNORECASE)
+HEADING = re.compile(r"^\s{0,3}#{1,6}\s")
+TOP_LEVEL = re.compile(r"^#{1,2}\s")
+GEN_SECTION = re.compile(
+    r"^#{2}\s+(\d+\.\s*)?(Results|What is real vs simulated|Limitations)\b",
+    re.IGNORECASE,
+)
+STAGE_ID = re.compile(r"\bS\d\+?\b(?!\.\d)")
+SECTION_NUMBER = re.compile(r"^#{2}\s+\d+\.")
 
 
 def violations(text: str) -> list[str]:
     out: list[str] = []
-    in_results = in_gen = False
+    in_section = False
+    open_at = 0
     for n, line in enumerate(text.splitlines(), 1):
-        if line.startswith("## "):
-            in_results = line[3:].strip().lower().startswith("results")
-        if line.strip().startswith("<!-- gen:"):
-            in_gen = True
+        if START.match(line):
+            if open_at:
+                out.append(
+                    f"README line {n}: gen block opened while the block from line {open_at} is open"
+                )
+            open_at = n
             continue
-        if line.strip() == "<!-- /gen -->":
-            in_gen = False
+        if END.match(line):
+            if not open_at:
+                out.append(f"README line {n}: gen end without a start")
+            open_at = 0
             continue
-        if in_results and not in_gen and re.search(r"\d", STAGE_ID.sub("", line)):
-            out.append(f"README line {n}: digit outside a gen block in a results section: {line.strip()[:100]!r}")
-    if in_gen:
-        out.append("README: unterminated gen block")
+        if MARKER_LIKE.search(line):
+            out.append(
+                f"README line {n}: malformed or inline gen marker: {line.strip()[:100]!r}"
+            )
+            continue
+        if HEADING.match(line):
+            if open_at:
+                out.append(
+                    f"README line {n}: heading inside the gen block opened at line {open_at}"
+                )
+            if TOP_LEVEL.match(line):
+                in_section = bool(GEN_SECTION.match(line))
+        prose = STAGE_ID.sub("", SECTION_NUMBER.sub("##", line))
+        if in_section and not open_at and re.search(r"\d", prose):
+            out.append(
+                f"README line {n}: digit outside a gen block in a generated section: {line.strip()[:100]!r}"
+            )
+    if open_at:
+        out.append(f"README line {open_at}: unterminated gen block")
     return out
 
 

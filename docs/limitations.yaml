@@ -1,6 +1,8 @@
 # Limitations ledger (root-owned; rendered into the README "Limitations" section). Updated at each stage gate.
 - id: simulator-realism
-  text: The counterparty and the user are simulated (a Claude Haiku Ear/Mouth around a deterministic policy, and a Claude Haiku user); human probes are few.
+  text: The counterparty and the user are simulated (an LLM Ear and Mouth around a deterministic policy, and an LLM user plus a deterministic approver); human probes are few. Model ids and family relationships are recorded in ADR-0001.
+- id: world-model-family
+  text: The world models' family relative to the agent, teacher and baseline models can bias the Ear, which is a scoring instrument; the S2 Ear audit is stratified by speaker model.
 - id: heldout-mixture
   text: The held-out test is a mixture of a few never-piloted families; claims are family-mixture claims, not per-family ones.
 - id: relay-dependency
