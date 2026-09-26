@@ -197,7 +197,7 @@ With b = 0.8 and f = 0.4, the ceiling is 8 pp even at r = 1 [GPT-6 Pro]. v3 ther
 2. **Interleaving.** Randomised blocks per instance-repeat. The relay's echoed `model` is recorded on every call, and a change aborts the matrix.
 3. **Noise floor.** C2r is shown next to every Δ.
 4. **Ear audit (tooling S2-SYS-02/03; re-audit in S4-SYS-05).**
-   - *Items:* agent utterances as heard (`text_heard`) on the cp lane (RepEar) and delivered user-lane messages (UserEar `completion_claim`), from real bundles across C2, T, F, R and the human-probe sessions.
+   - *Items:* agent utterances as heard (`text_heard`) on the cp lane (RepEar) and delivered user-lane messages (UserEar `completion_claim`), from real bundles across C2, C5, T, F, R and the human-probe sessions.
    - *Classes audited:* RepEar `accept`, `provide_fact(protected)`, `cancel_intent`, `cite_competitor`, `ask_readback`; UserEar `completion_claim`.
    - *Sampling frame (stratified, known inclusion probabilities):*
      - (i) Ear-positive, per class;
@@ -215,7 +215,7 @@ With b = 0.8 and f = 0.4, the ceiling is 8 pp even at r = 1 [GPT-6 Pro]. v3 ther
      - precision ≥ 0.85.
 
      One Ear revision is allowed before the freeze. A condition-correlated spread whose CI excludes 0 is flagged in every report that uses the Ear.
-   - *S4 re-audit:* the new classes from the new families, plus a 100-item refresh on C1 (SFT) outputs, since SFT shifts the utterance distribution.
+   - *S4 re-audit:* the new classes from the new families, plus a 100-item refresh on C1 (SFT) outputs, since SFT shifts the utterance distribution, and C5 items stratified as above.
 5. **Human probes (S2).** The user plays the rep 5 times and the principal 3 times. The report compares Ear accuracy on human speech, failure modes and label stability with the simulated sessions.
 6. **Contamination.** 13-gram overlap must be 0 between the training rows and TalkAct specs/gold, PrincipalBench items, and dev/test family YAML.
 7. **Model-family separation.** The teacher is Sonnet 5; the world is Gemini Flash; audits are human. Slow and world are both Gemini under the 2026-09-26 decision (§4.1): the user chooses a non-Gemini world model, or accepts the risk, before the S2 Ear audit.
@@ -226,5 +226,5 @@ With b = 0.8 and f = 0.4, the ceiling is 8 pp even at r = 1 [GPT-6 Pro]. v3 ther
 | | `docs/prereg.md` (scientific) | `docs/results/artefacts.lock.json` (engineering) |
 |---|---|---|
 | When | after S3's go, **before any S4 data generation**; the user approves the PR | after S4 dev selection, **before the unseal** |
-| Contains | hypothesis; primary estimand; τ formula with the S3 inputs filled in; instance counts and power; conditions by name; the Haiku margin m; safety wording; metric definitions by commit; analysis script hash; the family allocation by salt hash; the deviation policy | adapter shard hashes; dataset manifest hash; `SessionConfig` hashes for C1–C4; world version; contract version; serving image digest; eval code hash |
+| Contains | hypothesis; primary estimand; τ formula with the S3 inputs filled in; instance counts and power; conditions by name; the Haiku margin m; safety wording; metric definitions by commit; analysis script hash; the family allocation by salt hash; the deviation policy | adapter shard hashes; dataset manifest hash; `SessionConfig` hashes for C1–C5; world version; contract version; serving image digest; eval code hash |
 | Changes | deviations only, signed by the user, logged in the file | none; the unseal refuses to run if any runtime hash differs |
