@@ -41,7 +41,7 @@ These are the repository rules for every coding agent. Product intent and invari
 13. **Numbers are generated.** Never type a result number into README or docs. Use a report and a `gen` block.
 14. **No process files.** No logs, status files, per-phase task contracts or TODO files. The PR description is the log.
 15. **Secrets.** Never read, print, copy or commit `.env`, keys or relay URLs. Never copy `.env` into a worktree.
-16. **Preserve data.** No `rm -r`/`rm -rf`, `find -delete` or `git clean` on `data/`, `external/` or the repo root, anywhere. Delete only tracked files, with `git rm`. Untracked or ignored files that must go are moved to `~/Desktop/proxyloop-v0-archive/` and reported to the user. `external/pine-ai-tasks/` is user data: never delete, clean or overwrite it. **Mechanically enforced** in Claude Code (`.claude/settings.json` deny rules and the `.claude/hooks/block_destructive.py` PreToolUse hook): recursive deletes (`rm -r`, `find -delete`/`-exec rm`, `shutil.rmtree` in `python -c`) of `data/`, `external/`, a repo root or the archive; `git clean` with `-d`/`-x`/`-X`/`-f`; reading `.env` with the Read tool or `cat`. **Advisory:** everything else in this rule and rule 15, including what the hook cannot see (paths in variables, other tools, other `.env` readers).
+16. **Preserve data.** No `rm -r`/`rm -rf`, `find -delete` or `git clean` on `data/`, `external/` or the repo root, anywhere. Delete only tracked files, with `git rm`. Untracked or ignored files that must go are moved to `~/Desktop/proxyloop-v0-archive/` and reported to the user. `external/pine-ai-tasks/` is user data: never delete, clean or overwrite it. **Mechanically enforced** in Claude Code (`.claude/settings.json` deny rules and the `.claude/hooks/block_destructive.py` PreToolUse hook): recursive deletes (`rm -r`, `find -delete`/`-exec rm`, `shutil.rmtree` in `python -c`) of `data/`, `external/`, a repo root, the archive, or the project dir or archive's ancestors; `git clean` with `-d`/`-x`/`-X`/`-f`; reading `.env` with the Read tool or `cat`. **Advisory:** everything else in this rule and rule 15, including what the hook cannot see (paths in variables, other tools, other `.env` readers).
 
 ## Git flow (worktrees)
 - The root creates your worktree: `git worktree add ../pl-wt/<TASK-ID> -b task/<task-id> origin/main`.
@@ -57,7 +57,7 @@ These are the repository rules for every coding agent. Product intent and invari
 
 ## Proportionality
 - **Test-first only for high-risk code:** Guard and authority, concurrency and fences, renderer and parser, the contract, metrics. Elsewhere, a thin slice plus a few high-value tests.
-- **Spikes** answer exactly the ADR question in their task block: no extra models, passes or variants without root approval. Commit a compact summary JSON plus a small raw sample (≤ ~1 MB of raw artefacts per spike); bulk raw data goes to the git-ignored `runs/`.
+- **Spikes** answer exactly the ADR question in their task block: no extra models, passes or variants without root approval. Commit a compact summary JSON plus a small raw sample (≤ ~1 MB of raw artefacts per spike); bulk raw data goes to `runs/` (git-ignored once S0-SYS-02 lands).
 - **ADRs** fit on one page.
 
 ## Tripwires (stop and tell the root)

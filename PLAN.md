@@ -103,7 +103,13 @@ After S0, after S1, after S3, and before S4's data generation (a projection), th
 The source is `docs/results/spend.json`, generated from `spend.charged` events and Modal usage.
 
 ### 0.9 Follow-up list (review nits; never a merge blocker)
-- none yet
+- #114: AGENTS rule 16's advisory list should name `xargs`, `eval`, backticks and paths held in variables explicitly.
+- #114: the hook denies `find . -name __pycache__ -exec rm -rf {} +` (target `.`), a false positive.
+- #114: `.claude/hooks/block_destructive.py` is ~175 lines against a ~80-line target.
+- #114: the rotation handoff path is outside every worktree; say how an implementer packet grants it.
+- #114: CLAUDE.md's "Commit and PR creation are root actions" reads as contradicting implementer commits on task branches.
+- #114: root-session rules (never authors, log agent, decisions changed) live only in CLAUDE.md, not in a tool-agnostic file.
+- #114: the PLAN.md header status line goes stale between PRs.
 
 ---
 
