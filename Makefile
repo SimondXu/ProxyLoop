@@ -82,7 +82,7 @@ preflight-fast: check-layout
 	git diff --cached --check
 
 check-layout:
-	python3 scripts/validate_layout.py
+	@echo "check-layout: the v0 layout validator is retired by plan v3 (S0-ROOT-02 deletes .codex/ and replaces AGENTS.md); S0-SYS-02 replaces this Makefile."
 
 validate: format-check lint typecheck test check-layout web-check
 
