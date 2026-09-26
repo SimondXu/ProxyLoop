@@ -370,7 +370,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
   - `tasks/families/cp-direct-discount.yaml` with `mode: info_only`;
   - `env/counterparty/{policy,ear,mouth}.py`: ladder, identity, hidden terms until read-back, TTL, cp patience, and `rep.commit_heard` + ledger write if the agent's speech accepts;
   - `env/user/simuser.py`: JSON `revealed`, reply delay, no patience;
-  - the world model (Ear, Mouth, SimUser) is `gemini-3.8-flash` via TeamRouter (`ModelRef.endpoint = "teamrouter"`), superseding ADR-0001's world choice (ADR-0005, to be added by S0-ROOT-08);
+  - the world model (Ear, Mouth, SimUser) is `gemini-3.8-flash` via TeamRouter (`ModelRef.endpoint = "teamrouter"`), superseding ADR-0001's world choice (ADR-0005);
   - `python -m proxyloop.cli rep-chat --family cp-direct-discount`.
 - **Owned paths:** `src/proxyloop/env/**` (it may extend the ledger), `tasks/families/cp-direct-discount.yaml`, `tests/env/**`.
 - **Deps:** S0-CON-01, S0-SYS-04.

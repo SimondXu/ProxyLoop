@@ -1,0 +1,663 @@
+{
+  "schema": "pl.relay_forced_tool/1",
+  "task": "S0-ROOT-08",
+  "started_utc": "2026-09-26T09:29:50Z",
+  "finished_utc": "2026-09-26T09:30:38Z",
+  "models": [
+    "gemini-3.8-flash"
+  ],
+  "calls_per_model": 10,
+  "forced_max_tokens": 512,
+  "tool": {
+    "type": "function",
+    "function": {
+      "name": "classify",
+      "description": "Label one rep utterance.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "act",
+          "amount_usd"
+        ],
+        "properties": {
+          "act": {
+            "type": "string",
+            "enum": [
+              "offer",
+              "accept",
+              "reject",
+              "question",
+              "hold",
+              "other"
+            ]
+          },
+          "amount_usd": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "tool_choice": {
+    "type": "function",
+    "function": {
+      "name": "classify"
+    }
+  },
+  "utterances": [
+    "Yes, that works. I accept: the $65 per month rate is approved and applied from today.",
+    "I can offer you $62.50 a month if you stay with us for twelve more months.",
+    "Can you confirm the last four digits of the account holder's phone number?",
+    "I'm sorry, but we can't remove the equipment fee on this plan.",
+    "Please hold for a moment while I check with my supervisor.",
+    "The best I can do is a $10 monthly credit for six months.",
+    "Would you be willing to switch to paperless billing?",
+    "No, the promotional rate cannot be extended a second time.",
+    "Let me pull up your account; it will just take a second.",
+    "Thanks for your patience, I have noted your request on the account."
+  ],
+  "latency_note": "wall clock from the Mac, sequential per model, 1 models in parallel",
+  "summary": {
+    "gemini-3.8-flash": {
+      "n": 10,
+      "errors": 0,
+      "forced_ok_rate": 1.0,
+      "schema_valid_rate": 0.9,
+      "latency_p50_s": 3.6762566247489303,
+      "reasoning_tokens_p50": 126.0,
+      "reasoning_tokens_n": 10
+    }
+  },
+  "results": {
+    "gemini-3.8-flash": {
+      "model": "gemini-3.8-flash",
+      "calls": [
+        {
+          "utterance_idx": 0,
+          "response_id": "chatcmpl-202609260929521782952288268d9d672YHgdW5",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 133,
+            "prompt_tokens": 110,
+            "total_tokens": 243,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 112,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 110,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 110,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 21,
+                "totalTokenCount": 243,
+                "thoughtsTokenCount": 112,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 6.002877083607018,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "accept",
+            "amount_usd": 65
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 1,
+          "response_id": "chatcmpl-202609260929568884523668268d9d6ATh8HmGR",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 153,
+            "prompt_tokens": 110,
+            "total_tokens": 263,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 130,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 110,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 110,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 23,
+                "totalTokenCount": 263,
+                "thoughtsTokenCount": 130,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 3.942020083311945,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": 62.5
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 2,
+          "response_id": "chatcmpl-202609260930005927346368268d9d6U74esm4r",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 133,
+            "prompt_tokens": 104,
+            "total_tokens": 237,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 113,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 104,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 104,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 20,
+                "totalTokenCount": 237,
+                "thoughtsTokenCount": 113,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.239457458257675,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "question",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 3,
+          "response_id": "chatcmpl-202609260930028249326418268d9d6f28pgdyH",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 153,
+            "prompt_tokens": 110,
+            "total_tokens": 263,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 139,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 110,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 110,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 14,
+                "totalTokenCount": 263,
+                "thoughtsTokenCount": 139,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 3.2956098751164973,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": false,
+          "args": {
+            "act": "reject"
+          },
+          "schema_errors": [
+            "missing:amount_usd"
+          ]
+        },
+        {
+          "utterance_idx": 4,
+          "response_id": "chatcmpl-202609260930061380871208268d9d6fg3m1q8y",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 115,
+            "prompt_tokens": 100,
+            "total_tokens": 215,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 95,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 100,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 100,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 20,
+                "totalTokenCount": 215,
+                "thoughtsTokenCount": 95,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 3.4104931661859155,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 5,
+          "response_id": "chatcmpl-202609260930095306129158268d9d6PGWQ2J6u",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 353,
+            "prompt_tokens": 104,
+            "total_tokens": 457,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 332,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 104,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 104,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 21,
+                "totalTokenCount": 457,
+                "thoughtsTokenCount": 332,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 7.110366166103631,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": 60
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 6,
+          "response_id": "chatcmpl-202609260930166429523228268d9d6IAci04m9",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 2133,
+            "prompt_tokens": 103,
+            "total_tokens": 2236,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 2113,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 103,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 103,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 20,
+                "totalTokenCount": 2236,
+                "thoughtsTokenCount": 2113,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 10.597891458310187,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "offer",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 7,
+          "response_id": "chatcmpl-202609260930274938144368268d9d6kXkHDF3N",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 133,
+            "prompt_tokens": 104,
+            "total_tokens": 237,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 113,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 104,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 104,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 20,
+                "totalTokenCount": 237,
+                "thoughtsTokenCount": 113,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 6.667686041910201,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "reject",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 8,
+          "response_id": "chatcmpl-202609260930339090009438268d9d6LgAnKmCa",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 142,
+            "prompt_tokens": 106,
+            "total_tokens": 248,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 122,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 106,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 106,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 20,
+                "totalTokenCount": 248,
+                "thoughtsTokenCount": 122,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.1331124999560416,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "hold",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        },
+        {
+          "utterance_idx": 9,
+          "response_id": "chatcmpl-202609260930360413756178268d9d6pFqVs4Tq",
+          "echoed_model": "gemini-3.8-flash",
+          "usage": {
+            "completion_tokens": 180,
+            "prompt_tokens": 102,
+            "total_tokens": 282,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 160,
+              "rejected_prediction_tokens": null,
+              "text_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": null,
+              "cached_tokens": 0,
+              "text_tokens": 102,
+              "image_tokens": 0
+            },
+            "billing_usage": {
+              "source": "gemini_chat",
+              "semantic": "gemini",
+              "gemini_usage_metadata": {
+                "promptTokenCount": 102,
+                "toolUsePromptTokenCount": 0,
+                "candidatesTokenCount": 20,
+                "totalTokenCount": 282,
+                "thoughtsTokenCount": 160,
+                "cachedContentTokenCount": 0,
+                "promptTokensDetails": [],
+                "toolUsePromptTokensDetails": [],
+                "candidatesTokensDetails": []
+              }
+            },
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "input_tokens_details": null,
+            "claude_cache_creation_5_m_tokens": 0,
+            "claude_cache_creation_1_h_tokens": 0
+          },
+          "latency_s": 2.3785190423950553,
+          "n_tool_calls": 1,
+          "tool_names": [
+            "classify"
+          ],
+          "forced_ok": true,
+          "args_json": true,
+          "schema_valid": true,
+          "args": {
+            "act": "other",
+            "amount_usd": null
+          },
+          "schema_errors": []
+        }
+      ]
+    }
+  }
+}
