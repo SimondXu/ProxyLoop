@@ -1,0 +1,2918 @@
+{
+ "variant": "pinned",
+ "measured_at": 1790412430.274847,
+ "keyless_status": {
+  "/v1/models": 401,
+  "/pl/attest": 401
+ },
+ "version": {
+  "version": "0.29.0"
+ },
+ "models": {
+  "object": "list",
+  "data": [
+   {
+    "id": "Qwen3.5-9B",
+    "object": "model",
+    "created": 1790412433,
+    "owned_by": "vllm",
+    "root": "/__modal/volumes/vo-Pw3vxIo5ea6NDXPGQHun5s/hub/models--Qwen--Qwen3.5-9B/snapshots/c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+    "parent": null,
+    "max_model_len": 16384,
+    "permission": [
+     {
+      "id": "modelperm-a3c3012726e5f000",
+      "object": "model_permission",
+      "created": 1790412433,
+      "allow_create_engine": false,
+      "allow_sampling": true,
+      "allow_logprobs": true,
+      "allow_search_indices": false,
+      "allow_view": true,
+      "allow_fine_tuning": false,
+      "organization": "*",
+      "group": null,
+      "is_blocking": false
+     }
+    ]
+   },
+   {
+    "id": "Qwen3.5-9B-zero",
+    "object": "model",
+    "created": 1790412433,
+    "owned_by": "vllm",
+    "root": "/adapters/zero-all",
+    "parent": "Qwen3.5-9B",
+    "max_model_len": null,
+    "permission": [
+     {
+      "id": "modelperm-8a2f9ba5fcaa3157",
+      "object": "model_permission",
+      "created": 1790412433,
+      "allow_create_engine": false,
+      "allow_sampling": true,
+      "allow_logprobs": true,
+      "allow_search_indices": false,
+      "allow_view": true,
+      "allow_fine_tuning": false,
+      "organization": "*",
+      "group": null,
+      "is_blocking": false
+     }
+    ]
+   },
+   {
+    "id": "Qwen3.5-9B-live",
+    "object": "model",
+    "created": 1790412433,
+    "owned_by": "vllm",
+    "root": "/adapters/live-all",
+    "parent": "Qwen3.5-9B",
+    "max_model_len": null,
+    "permission": [
+     {
+      "id": "modelperm-a82f539259f4ca41",
+      "object": "model_permission",
+      "created": 1790412433,
+      "allow_create_engine": false,
+      "allow_sampling": true,
+      "allow_logprobs": true,
+      "allow_search_indices": false,
+      "allow_view": true,
+      "allow_fine_tuning": false,
+      "organization": "*",
+      "group": null,
+      "is_blocking": false
+     }
+    ]
+   }
+  ]
+ },
+ "attest": {
+  "schema": "pl.attest/1",
+  "model": {
+   "id": "Qwen/Qwen3.5-9B",
+   "revision": "c202236235762e1c871ad0ccb60c8ee5ba337b9a"
+  },
+  "shards": {
+   "model.safetensors-00001-of-00004.safetensors": "db6f444b43d318c92f360a13a25561a6a65b10c0631b8ed305a426dbaa6c380e",
+   "model.safetensors-00002-of-00004.safetensors": "31c7d7e2dd5d207840b31cc59083c8f4c4718959149e0358c0364052bb9a0330",
+   "model.safetensors-00003-of-00004.safetensors": "7ec36ba3a4176a44c3c0876ad80c56a2f70c84bf008d82e9501df642f17dadec",
+   "model.safetensors-00004-of-00004.safetensors": "b62b0c4cd7e44edee103ee8f4fe225f246d5e768e07bfd5f25b63a8aa1fdd0c6"
+  },
+  "tokenizer": {
+   "tokenizer.json": "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42",
+   "tokenizer_config.json": "316230d6a809701f4db5ea8f8fc862bc3a6f3229c937c174e674ff3ca0a64ac8",
+   "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003",
+   "merges.txt": "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d",
+   "chat_template.jinja": "a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715"
+  },
+  "adapters": {
+   "Qwen3.5-9B-live": {
+    "README.md": "a98bfc21ff1056e0e1f90122a2b4d0f78c26941fcf2aee5dc07b550da7a8da64",
+    "adapter_config.json": "208173f2aa8414531f81a9aa037b33d41ff533149a17a74df1106e80e79c1202",
+    "adapter_model.safetensors": "94cec07be0dd1c0a3551da8ce24b20f6e89a00c4c8ccc255ee588ed0d7b288f6"
+   },
+   "Qwen3.5-9B-zero": {
+    "README.md": "a98bfc21ff1056e0e1f90122a2b4d0f78c26941fcf2aee5dc07b550da7a8da64",
+    "adapter_config.json": "208173f2aa8414531f81a9aa037b33d41ff533149a17a74df1106e80e79c1202",
+    "adapter_model.safetensors": "050590958706e05d17d473f2f2f87df1fc9a07b3a30ac04714ba314bef47452d"
+   }
+  },
+  "digest_source": {
+   "shards/model.safetensors-00001-of-00004.safetensors": "fresh",
+   "shards/model.safetensors-00002-of-00004.safetensors": "fresh",
+   "shards/model.safetensors-00003-of-00004.safetensors": "fresh",
+   "shards/model.safetensors-00004-of-00004.safetensors": "fresh",
+   "tokenizer/tokenizer.json": "fresh",
+   "tokenizer/tokenizer_config.json": "fresh",
+   "tokenizer/vocab.json": "fresh",
+   "tokenizer/merges.txt": "fresh",
+   "tokenizer/chat_template.jinja": "fresh",
+   "adapters/Qwen3.5-9B-live/README.md": "fresh",
+   "adapters/Qwen3.5-9B-live/adapter_config.json": "fresh",
+   "adapters/Qwen3.5-9B-live/adapter_model.safetensors": "fresh",
+   "adapters/Qwen3.5-9B-zero/README.md": "fresh",
+   "adapters/Qwen3.5-9B-zero/adapter_config.json": "fresh",
+   "adapters/Qwen3.5-9B-zero/adapter_model.safetensors": "fresh"
+  },
+  "hash_seconds": 27.895,
+  "runtime": {
+   "vllm_version": "0.29.0",
+   "gpu_name": "NVIDIA H100 80GB HBM3",
+   "variant": "pinned",
+   "lora_rung": "all",
+   "serve_args": [
+    "vllm",
+    "serve",
+    "/__modal/volumes/vo-Pw3vxIo5ea6NDXPGQHun5s/hub/models--Qwen--Qwen3.5-9B/snapshots/c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+    "--served-model-name",
+    "Qwen3.5-9B",
+    "--dtype",
+    "bfloat16",
+    "--language-model-only",
+    "--enable-lora",
+    "--max-lora-rank",
+    "32",
+    "--max-loras",
+    "4",
+    "--max-model-len",
+    "16384",
+    "--port",
+    "8000",
+    "--no-enable-prefix-caching",
+    "--middleware",
+    "serving.attest.AttestMiddleware",
+    "--lora-modules",
+    "Qwen3.5-9B-zero=/adapters/zero-all",
+    "Qwen3.5-9B-live=/adapters/live-all"
+   ],
+   "container_started_at": 1790412169.7890024
+  }
+ },
+ "gpu_name": "NVIDIA H100 80GB HBM3",
+ "tokenize": {
+  "prompts": [
+   {
+    "prompt_index": 0,
+    "status": 200,
+    "hf_ids": [
+     248045,
+     846,
+     198,
+     44240,
+     23066,
+     310,
+     279,
+     19260,
+     13,
+     248046,
+     198,
+     248045,
+     74455,
+     198,
+     248068,
+     271,
+     248069,
+     271
+    ],
+    "vllm_ids": [
+     248045,
+     846,
+     198,
+     44240,
+     23066,
+     310,
+     279,
+     19260,
+     13,
+     248046,
+     198,
+     248045,
+     74455,
+     198,
+     248068,
+     271,
+     248069,
+     271
+    ],
+    "equal": true
+   },
+   {
+    "prompt_index": 1,
+    "status": 200,
+    "hf_ids": [
+     248045,
+     8678,
+     198,
+     2523,
+     513,
+     264,
+     10631,
+     17313,
+     13,
+     248046,
+     198,
+     248045,
+     846,
+     198,
+     3710,
+     369,
+     220,
+     16,
+     22,
+     23985,
+     220,
+     17,
+     18,
+     30,
+     248046,
+     198,
+     248045,
+     74455,
+     198,
+     248068,
+     271,
+     248069,
+     271
+    ],
+    "vllm_ids": [
+     248045,
+     8678,
+     198,
+     2523,
+     513,
+     264,
+     10631,
+     17313,
+     13,
+     248046,
+     198,
+     248045,
+     846,
+     198,
+     3710,
+     369,
+     220,
+     16,
+     22,
+     23985,
+     220,
+     17,
+     18,
+     30,
+     248046,
+     198,
+     248045,
+     74455,
+     198,
+     248068,
+     271,
+     248069,
+     271
+    ],
+    "equal": true
+   },
+   {
+    "prompt_index": 2,
+    "status": 200,
+    "hf_ids": [
+     248045,
+     8678,
+     198,
+     2523,
+     1438,
+     440,
+     264,
+     32419,
+     3296,
+     13,
+     248046,
+     198,
+     248045,
+     846,
+     198,
+     12675,
+     11,
+     353,
+     599,
+     264,
+     3296,
+     883,
+     821,
+     3896,
+     13,
+     248046,
+     198,
+     248045,
+     74455,
+     198,
+     38493,
+     1892,
+     353,
+     628,
+     1438,
+     440,
+     421,
+     13,
+     248046,
+     198,
+     248045,
+     846,
+     198,
+     8589,
+     220,
+     20,
+     20,
+     15,
+     16,
+     12,
+     17,
+     17,
+     18,
+     19,
+     25,
+     1092,
+     369,
+     4016,
+     383,
+     279,
+     220,
+     18,
+     6295,
+     30,
+     248046,
+     198,
+     248045,
+     74455,
+     198,
+     248068,
+     271,
+     248069,
+     271
+    ],
+    "vllm_ids": [
+     248045,
+     8678,
+     198,
+     2523,
+     1438,
+     440,
+     264,
+     32419,
+     3296,
+     13,
+     248046,
+     198,
+     248045,
+     846,
+     198,
+     12675,
+     11,
+     353,
+     599,
+     264,
+     3296,
+     883,
+     821,
+     3896,
+     13,
+     248046,
+     198,
+     248045,
+     74455,
+     198,
+     38493,
+     1892,
+     353,
+     628,
+     1438,
+     440,
+     421,
+     13,
+     248046,
+     198,
+     248045,
+     846,
+     198,
+     8589,
+     220,
+     20,
+     20,
+     15,
+     16,
+     12,
+     17,
+     17,
+     18,
+     19,
+     25,
+     1092,
+     369,
+     4016,
+     383,
+     279,
+     220,
+     18,
+     6295,
+     30,
+     248046,
+     198,
+     248045,
+     74455,
+     198,
+     248068,
+     271,
+     248069,
+     271
+    ],
+    "equal": true
+   },
+   {
+    "prompt_index": 3,
+    "status": 200,
+    "hf_ids": [
+     248045,
+     846,
+     198,
+     34,
+     2492,
+     933,
+     24329,
+     243,
+     220,
+     109266,
+     1892,
+     4338,
+     7440,
+     279,
+     220,
+     18,
+     25,
+     19,
+     20,
+     8569,
+     9167,
+     13,
+     248046,
+     198,
+     248045,
+     74455,
+     198,
+     248068,
+     271,
+     248069,
+     271
+    ],
+    "vllm_ids": [
+     248045,
+     846,
+     198,
+     34,
+     2492,
+     933,
+     24329,
+     243,
+     220,
+     109266,
+     1892,
+     4338,
+     7440,
+     279,
+     220,
+     18,
+     25,
+     19,
+     20,
+     8569,
+     9167,
+     13,
+     248046,
+     198,
+     248045,
+     74455,
+     198,
+     248068,
+     271,
+     248069,
+     271
+    ],
+    "equal": true
+   },
+   {
+    "prompt_index": 4,
+    "status": 200,
+    "hf_ids": [
+     248045,
+     846,
+     198,
+     19860,
+     264,
+     2716,
+     9559,
+     13,
+     248046,
+     198,
+     248045,
+     74455,
+     198,
+     31248,
+     13,
+     248046,
+     198,
+     248045,
+     846,
+     198,
+     6820,
+     2466,
+     279,
+     8057,
+     310,
+     3222,
+     13,
+     248046,
+     198,
+     248045,
+     74455,
+     198,
+     248068,
+     271,
+     248069,
+     271
+    ],
+    "vllm_ids": [
+     248045,
+     846,
+     198,
+     19860,
+     264,
+     2716,
+     9559,
+     13,
+     248046,
+     198,
+     248045,
+     74455,
+     198,
+     31248,
+     13,
+     248046,
+     198,
+     248045,
+     846,
+     198,
+     6820,
+     2466,
+     279,
+     8057,
+     310,
+     3222,
+     13,
+     248046,
+     198,
+     248045,
+     74455,
+     198,
+     248068,
+     271,
+     248069,
+     271
+    ],
+    "equal": true
+   }
+  ],
+  "all_equal": true
+ },
+ "liveness": {
+  "zero": {
+   "lora": "Qwen3.5-9B-zero",
+   "pairs": [
+    {
+     "base": {
+      "status": 200,
+      "server_id": "cmpl-b9d672898b8a2a2e",
+      "echoed_model": "Qwen3.5-9B",
+      "logprobs": [
+       -0.003663615556433797,
+       -6.965219497680664,
+       -5.687152862548828,
+       -0.003009079024195671,
+       -0.4806100130081177,
+       -3.373546838760376,
+       -0.38991275429725647,
+       -0.02793273515999317,
+       -0.0036398605443537235,
+       -0.38992229104042053,
+       -6.301755428314209,
+       -0.0018380667315796018,
+       -0.08485450595617294
+      ]
+     },
+     "lora": {
+      "status": 200,
+      "server_id": "cmpl-b2bec2368ac1878f",
+      "echoed_model": "Qwen3.5-9B-zero",
+      "logprobs": [
+       -0.003663615556433797,
+       -6.965219497680664,
+       -5.687152862548828,
+       -0.003009079024195671,
+       -0.4806100130081177,
+       -3.373546838760376,
+       -0.38991275429725647,
+       -0.02793273515999317,
+       -0.0036398605443537235,
+       -0.38992229104042053,
+       -6.301755428314209,
+       -0.0018380667315796018,
+       -0.08485450595617294
+      ]
+     },
+     "abs_diff": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "base": {
+      "status": 200,
+      "server_id": "cmpl-835f57a19d03c734",
+      "echoed_model": "Qwen3.5-9B",
+      "logprobs": [
+       -3.6626837253570557,
+       -0.0247071273624897,
+       -0.1409255564212799,
+       -0.0002898749662563205,
+       -0.0004854215949308127,
+       -0.0004190520558040589,
+       -2.892692804336548,
+       -2.3319883346557617,
+       -0.006290990859270096,
+       -0.0018908970523625612,
+       -0.00020132421923335642,
+       -0.09403438866138458,
+       -0.29409921169281006
+      ]
+     },
+     "lora": {
+      "status": 200,
+      "server_id": "cmpl-acfeda1034b36a86",
+      "echoed_model": "Qwen3.5-9B-zero",
+      "logprobs": [
+       -3.6626837253570557,
+       -0.0247071273624897,
+       -0.1409255564212799,
+       -0.0002898749662563205,
+       -0.0004854215949308127,
+       -0.0004190520558040589,
+       -2.892692804336548,
+       -2.3319883346557617,
+       -0.006290990859270096,
+       -0.0018908970523625612,
+       -0.00020132421923335642,
+       -0.09403438866138458,
+       -0.29409921169281006
+      ]
+     },
+     "abs_diff": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "base": {
+      "status": 200,
+      "server_id": "cmpl-80b8b8e82d1ddd6d",
+      "echoed_model": "Qwen3.5-9B",
+      "logprobs": [
+       -11.416309356689453,
+       -0.5376340746879578,
+       -1.1503663063049316,
+       -2.9348011016845703,
+       -3.487847089767456,
+       -0.07337429374456406,
+       -0.287087619304657,
+       -0.022738322615623474,
+       -0.009946780279278755,
+       -0.0016105312388390303,
+       -0.0006642519147135317,
+       -0.22157877683639526,
+       -3.751890182495117,
+       -0.2273232489824295,
+       -0.4231240153312683,
+       -2.4219467639923096
+      ]
+     },
+     "lora": {
+      "status": 200,
+      "server_id": "cmpl-8eccd9139bb2813c",
+      "echoed_model": "Qwen3.5-9B-zero",
+      "logprobs": [
+       -11.416309356689453,
+       -0.5376340746879578,
+       -1.1503663063049316,
+       -2.9348011016845703,
+       -3.487847089767456,
+       -0.07337429374456406,
+       -0.287087619304657,
+       -0.022738322615623474,
+       -0.009946780279278755,
+       -0.0016105312388390303,
+       -0.0006642519147135317,
+       -0.22157877683639526,
+       -3.751890182495117,
+       -0.2273232489824295,
+       -0.4231240153312683,
+       -2.4219467639923096
+      ]
+     },
+     "abs_diff": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "base": {
+      "status": 200,
+      "server_id": "cmpl-8a17746e20923675",
+      "echoed_model": "Qwen3.5-9B",
+      "logprobs": [
+       -4.622317790985107,
+       -5.934109687805176,
+       -3.2211599349975586,
+       -0.5378599166870117,
+       -0.0013937769690528512,
+       -6.437280717364047e-06,
+       -0.0005052005290053785,
+       -2.622600959512056e-06,
+       -0.33082324266433716,
+       -0.029823893681168556,
+       -0.09807398170232773,
+       -4.473567962646484,
+       -0.815761923789978,
+       -9.206089973449707
+      ]
+     },
+     "lora": {
+      "status": 200,
+      "server_id": "cmpl-bf7deccb5583f7cc",
+      "echoed_model": "Qwen3.5-9B-zero",
+      "logprobs": [
+       -4.622317790985107,
+       -5.934109687805176,
+       -3.2211599349975586,
+       -0.5378599166870117,
+       -0.0013937769690528512,
+       -6.437280717364047e-06,
+       -0.0005052005290053785,
+       -2.622600959512056e-06,
+       -0.33082324266433716,
+       -0.029823893681168556,
+       -0.09807398170232773,
+       -4.473567962646484,
+       -0.815761923789978,
+       -9.206089973449707
+      ]
+     },
+     "abs_diff": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "base": {
+      "status": 200,
+      "server_id": "cmpl-b5f658209cac5a13",
+      "echoed_model": "Qwen3.5-9B",
+      "logprobs": [
+       -0.760466456413269,
+       -0.00878339633345604,
+       -0.0163151565939188,
+       -0.11519841849803925,
+       -0.5504476428031921,
+       -0.026740193367004395,
+       -0.010706954635679722,
+       -0.5304747819900513,
+       -0.0073216683231294155,
+       -1.730189561843872,
+       -5.1444010734558105,
+       -0.08762861788272858
+      ]
+     },
+     "lora": {
+      "status": 200,
+      "server_id": "cmpl-a625f678f9f1edde",
+      "echoed_model": "Qwen3.5-9B-zero",
+      "logprobs": [
+       -0.760466456413269,
+       -0.00878339633345604,
+       -0.0163151565939188,
+       -0.11519841849803925,
+       -0.5504476428031921,
+       -0.026740193367004395,
+       -0.010706954635679722,
+       -0.5304747819900513,
+       -0.0073216683231294155,
+       -1.730189561843872,
+       -5.1444010734558105,
+       -0.08762861788272858
+      ]
+     },
+     "abs_diff": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    }
+   ],
+   "complete": true,
+   "max_abs_diff": 0.0,
+   "mean_abs_diff": 0.0
+  },
+  "live": {
+   "lora": "Qwen3.5-9B-live",
+   "pairs": [
+    {
+     "base": {
+      "status": 200,
+      "server_id": "cmpl-96f838c8f7e838a1",
+      "echoed_model": "Qwen3.5-9B",
+      "logprobs": [
+       -0.003663615556433797,
+       -6.965219497680664,
+       -5.687152862548828,
+       -0.003009079024195671,
+       -0.4806100130081177,
+       -3.373546838760376,
+       -0.38991275429725647,
+       -0.02793273515999317,
+       -0.0036398605443537235,
+       -0.38992229104042053,
+       -6.301755428314209,
+       -0.0018380667315796018,
+       -0.08485450595617294
+      ]
+     },
+     "lora": {
+      "status": 200,
+      "server_id": "cmpl-99ec64176ade9e8b",
+      "echoed_model": "Qwen3.5-9B-live",
+      "logprobs": [
+       -0.0050894226878881454,
+       -5.617176055908203,
+       -6.031117916107178,
+       -0.0039780777879059315,
+       -0.4276182949542999,
+       -2.243683099746704,
+       -0.3517020642757416,
+       -0.04379916563630104,
+       -0.004618572071194649,
+       -0.5802051424980164,
+       -5.35727071762085,
+       -0.0024021598510444164,
+       -0.12149831652641296
+      ]
+     },
+     "abs_diff": [
+      0.0014258071314543486,
+      1.348043441772461,
+      0.3439650535583496,
+      0.0009689987637102604,
+      0.05299171805381775,
+      1.1298637390136719,
+      0.03821069002151489,
+      0.01586643047630787,
+      0.0009787115268409252,
+      0.19028285145759583,
+      0.9444847106933594,
+      0.0005640931194648147,
+      0.03664381057024002
+     ]
+    },
+    {
+     "base": {
+      "status": 200,
+      "server_id": "cmpl-a803d472c894bd20",
+      "echoed_model": "Qwen3.5-9B",
+      "logprobs": [
+       -3.6626837253570557,
+       -0.0247071273624897,
+       -0.1409255564212799,
+       -0.0002898749662563205,
+       -0.0004854215949308127,
+       -0.0004190520558040589,
+       -2.892692804336548,
+       -2.3319883346557617,
+       -0.006290990859270096,
+       -0.0018908970523625612,
+       -0.00020132421923335642,
+       -0.09403438866138458,
+       -0.29409921169281006
+      ]
+     },
+     "lora": {
+      "status": 200,
+      "server_id": "cmpl-9ae1f959251a95a1",
+      "echoed_model": "Qwen3.5-9B-live",
+      "logprobs": [
+       -6.627660274505615,
+       -0.021360931918025017,
+       -0.20054593682289124,
+       -0.00028272447525523603,
+       -0.00029452278977259994,
+       -0.0003033416287507862,
+       -2.6698780059814453,
+       -2.1566295623779297,
+       -0.005041624419391155,
+       -0.0009118927991949022,
+       -0.00012766500003635883,
+       -0.01703616790473461,
+       -0.358576238155365
+      ]
+     },
+     "abs_diff": [
+      2.9649765491485596,
+      0.0033461954444646835,
+      0.05962038040161133,
+      7.150491001084447e-06,
+      0.00019089880515821278,
+      0.00011571042705327272,
+      0.22281479835510254,
+      0.17535877227783203,
+      0.0012493664398789406,
+      0.000979004253167659,
+      7.365921919699758e-05,
+      0.07699822075664997,
+      0.06447702646255493
+     ]
+    },
+    {
+     "base": {
+      "status": 200,
+      "server_id": "cmpl-8b550988f8280cb8",
+      "echoed_model": "Qwen3.5-9B",
+      "logprobs": [
+       -11.416309356689453,
+       -0.5376340746879578,
+       -1.1503663063049316,
+       -2.9348011016845703,
+       -3.487847089767456,
+       -0.07337429374456406,
+       -0.287087619304657,
+       -0.022738322615623474,
+       -0.009946780279278755,
+       -0.0016105312388390303,
+       -0.0006642519147135317,
+       -0.22157877683639526,
+       -3.751890182495117,
+       -0.2273232489824295,
+       -0.4231240153312683,
+       -2.4219467639923096
+      ]
+     },
+     "lora": {
+      "status": 200,
+      "server_id": "cmpl-8eb6eb5abae3ed1e",
+      "echoed_model": "Qwen3.5-9B-live",
+      "logprobs": [
+       -10.214356422424316,
+       -0.2696474492549896,
+       -0.5402870178222656,
+       -4.661542892456055,
+       -2.1563966274261475,
+       -0.10072851181030273,
+       -0.33273938298225403,
+       -0.021542483940720558,
+       -0.007779538165777922,
+       -0.0008996253600344062,
+       -0.00028701478731818497,
+       -0.2234877645969391,
+       -3.7780542373657227,
+       -0.4572354853153229,
+       -0.2983034551143646,
+       -2.4174728393554688
+      ]
+     },
+     "abs_diff": [
+      1.2019529342651367,
+      0.26798662543296814,
+      0.610079288482666,
+      1.7267417907714844,
+      1.3314504623413086,
+      0.027354218065738678,
+      0.045651763677597046,
+      0.001195838674902916,
+      0.0021672421135008335,
+      0.0007109058788046241,
+      0.00037723712739534676,
+      0.0019089877605438232,
+      0.02616405487060547,
+      0.22991223633289337,
+      0.12482056021690369,
+      0.00447392463684082
+     ]
+    },
+    {
+     "base": {
+      "status": 200,
+      "server_id": "cmpl-865678caa54c0e42",
+      "echoed_model": "Qwen3.5-9B",
+      "logprobs": [
+       -4.622317790985107,
+       -5.934109687805176,
+       -3.2211599349975586,
+       -0.5378599166870117,
+       -0.0013937769690528512,
+       -6.437280717364047e-06,
+       -0.0005052005290053785,
+       -2.622600959512056e-06,
+       -0.33082324266433716,
+       -0.029823893681168556,
+       -0.09807398170232773,
+       -4.473567962646484,
+       -0.815761923789978,
+       -9.206089973449707
+      ]
+     },
+     "lora": {
+      "status": 200,
+      "server_id": "cmpl-a5a497c79524b6dd",
+      "echoed_model": "Qwen3.5-9B-live",
+      "logprobs": [
+       -4.418932914733887,
+       -5.577700614929199,
+       -3.2226409912109375,
+       -0.1933049112558365,
+       -0.001379253575578332,
+       -7.986990567587782e-06,
+       -0.0009829933987930417,
+       -4.529942543740617e-06,
+       -0.28961071372032166,
+       -0.013738124631345272,
+       -0.06286492943763733,
+       -4.206274032592773,
+       -0.8262737393379211,
+       -9.808029174804688
+      ]
+     },
+     "abs_diff": [
+      0.2033848762512207,
+      0.35640907287597656,
+      0.0014810562133789062,
+      0.34455500543117523,
+      1.4523393474519253e-05,
+      1.549709850223735e-06,
+      0.0004777928697876632,
+      1.9073415842285613e-06,
+      0.0412125289440155,
+      0.016085769049823284,
+      0.0352090522646904,
+      0.26729393005371094,
+      0.010511815547943115,
+      0.6019392013549805
+     ]
+    },
+    {
+     "base": {
+      "status": 200,
+      "server_id": "cmpl-82c2ad8c0cf943cc",
+      "echoed_model": "Qwen3.5-9B",
+      "logprobs": [
+       -0.760466456413269,
+       -0.00878339633345604,
+       -0.0163151565939188,
+       -0.11519841849803925,
+       -0.5504476428031921,
+       -0.026740193367004395,
+       -0.010706954635679722,
+       -0.5304747819900513,
+       -0.0073216683231294155,
+       -1.730189561843872,
+       -5.1444010734558105,
+       -0.08762861788272858
+      ]
+     },
+     "lora": {
+      "status": 200,
+      "server_id": "cmpl-97cd4ac017cfe339",
+      "echoed_model": "Qwen3.5-9B-live",
+      "logprobs": [
+       -1.3307979106903076,
+       -0.006075130309909582,
+       -0.02385859005153179,
+       -0.18337157368659973,
+       -0.4541865587234497,
+       -0.014185074716806412,
+       -0.007765462156385183,
+       -0.31535792350769043,
+       -0.01080731675028801,
+       -1.4736535549163818,
+       -4.658359050750732,
+       -0.05905644968152046
+      ]
+     },
+     "abs_diff": [
+      0.5703314542770386,
+      0.0027082660235464573,
+      0.007543433457612991,
+      0.06817315518856049,
+      0.09626108407974243,
+      0.012555118650197983,
+      0.0029414924792945385,
+      0.21511685848236084,
+      0.003485648427158594,
+      0.25653600692749023,
+      0.4860420227050781,
+      0.028572168201208115
+     ]
+    }
+   ],
+   "complete": true,
+   "max_abs_diff": 2.9649765491485596,
+   "mean_abs_diff": 0.2486219213160472
+  }
+ },
+ "latency_prompt_tokens": 1502,
+ "latency": {
+  "Qwen3.5-9B@warmup": {
+   "summary": {
+    "n": 2,
+    "failed": 0,
+    "ttft_n": 2,
+    "ttft_p50_s": 0.39978729211725295,
+    "ttft_p95_s": 0.4650930921314284,
+    "ttfs_n": 2,
+    "ttfs_p50_s": 0.6114985838066787,
+    "ttfs_p95_s": 0.7105265212012455,
+    "ttfs_complete": true
+   },
+   "requests": [
+    {
+     "client_request_id": "pl-probe-7abe20453cb34235",
+     "model": "Qwen3.5-9B",
+     "phase": "warmup",
+     "prompt_index": 0,
+     "server_id": "cmpl-pl-probe-7abe20453cb34235",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.4723492921330035,
+     "ttfs_s": 0.7215296253561974,
+     "total_s": 0.8197214170359075,
+     "finished": true,
+     "prompt_tokens": 1502,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-917751b7cd7749f4",
+     "model": "Qwen3.5-9B",
+     "phase": "warmup",
+     "prompt_index": 1,
+     "server_id": "cmpl-pl-probe-917751b7cd7749f4",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.3272252921015024,
+     "ttfs_s": 0.50146754225716,
+     "total_s": 0.6755511248484254,
+     "finished": true,
+     "prompt_tokens": 1502,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    }
+   ]
+  },
+  "Qwen3.5-9B@c1": {
+   "summary": {
+    "n": 20,
+    "failed": 0,
+    "ttft_n": 20,
+    "ttft_p50_s": 0.32767502102069557,
+    "ttft_p95_s": 0.39117144800256937,
+    "ttfs_n": 20,
+    "ttfs_p50_s": 0.4988846876658499,
+    "ttfs_p95_s": 0.5951357979094609,
+    "ttfs_complete": true
+   },
+   "requests": [
+    {
+     "client_request_id": "pl-probe-5996297fee9b4877",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 2,
+     "server_id": "cmpl-pl-probe-5996297fee9b4877",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.32067300006747246,
+     "ttfs_s": 0.4950195411220193,
+     "total_s": 0.6703670001588762,
+     "finished": true,
+     "prompt_tokens": 1502,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-4bebcf1d8a3f4582",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 3,
+     "server_id": "cmpl-pl-probe-4bebcf1d8a3f4582",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.3285240000113845,
+     "ttfs_s": 0.5055576669983566,
+     "total_s": 0.6791070839390159,
+     "finished": true,
+     "prompt_tokens": 1502,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-7c87a84546f74049",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 4,
+     "server_id": "cmpl-pl-probe-7c87a84546f74049",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.32491533318534493,
+     "ttfs_s": 0.5007478753104806,
+     "total_s": 0.6753832921385765,
+     "finished": true,
+     "prompt_tokens": 1502,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-8cab3592e98f4f32",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 5,
+     "server_id": "cmpl-pl-probe-8cab3592e98f4f32",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.34559445874765515,
+     "ttfs_s": 0.4963432499207556,
+     "total_s": 0.668187458999455,
+     "finished": true,
+     "prompt_tokens": 1502,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-2ec42348830c444e",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 6,
+     "server_id": "cmpl-pl-probe-2ec42348830c444e",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.31881666695699096,
+     "ttfs_s": 0.48714999994263053,
+     "total_s": 0.7250133752822876,
+     "finished": true,
+     "prompt_tokens": 1502,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-38c38e54b368496c",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 7,
+     "server_id": "cmpl-pl-probe-38c38e54b368496c",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.32682604203000665,
+     "ttfs_s": 0.5255100419744849,
+     "total_s": 0.6741578332148492,
+     "finished": true,
+     "prompt_tokens": 1502,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-2de29e38987e4dc3",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 8,
+     "server_id": "cmpl-pl-probe-2de29e38987e4dc3",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.373371290974319,
+     "ttfs_s": 0.49690208304673433,
+     "total_s": 0.667448999825865,
+     "finished": true,
+     "prompt_tokens": 1502,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-16cda3633794497c",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 9,
+     "server_id": "cmpl-pl-probe-16cda3633794497c",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.3189440001733601,
+     "ttfs_s": 0.4948805831372738,
+     "total_s": 0.6695674173533916,
+     "finished": true,
+     "prompt_tokens": 1502,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-4504537795cd41b6",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 10,
+     "server_id": "cmpl-pl-probe-4504537795cd41b6",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.4064052919857204,
+     "ttfs_s": 0.6120649166405201,
+     "total_s": 0.7508533746004105,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-5c4eb02b70ce46c1",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 11,
+     "server_id": "cmpl-pl-probe-5c4eb02b70ce46c1",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.3853355832397938,
+     "ttfs_s": 0.49369416711851954,
+     "total_s": 0.6618564170785248,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-a47ce820bcb74cda",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 12,
+     "server_id": "cmpl-pl-probe-a47ce820bcb74cda",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.33055495796725154,
+     "ttfs_s": 0.5023090001195669,
+     "total_s": 0.6731525831855834,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-dfa357a4823c4196",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 13,
+     "server_id": "cmpl-pl-probe-dfa357a4823c4196",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.31788887502625585,
+     "ttfs_s": 0.4867712091654539,
+     "total_s": 0.660815916955471,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-ce202fa4b4d74ff2",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 14,
+     "server_id": "cmpl-pl-probe-ce202fa4b4d74ff2",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.31974762538447976,
+     "ttfs_s": 0.4932437092065811,
+     "total_s": 0.6661696252413094,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-d77ac3cec8f34b19",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 15,
+     "server_id": "cmpl-pl-probe-d77ac3cec8f34b19",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.3438074169680476,
+     "ttfs_s": 0.4853529171086848,
+     "total_s": 0.6587587920948863,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-aedfda7552c64458",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 16,
+     "server_id": "cmpl-pl-probe-aedfda7552c64458",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.3254297082312405,
+     "ttfs_s": 0.5015319581143558,
+     "total_s": 0.7318325410597026,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-e9827098ec144db6",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 17,
+     "server_id": "cmpl-pl-probe-e9827098ec144db6",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.3250866667367518,
+     "ttfs_s": 0.5255658747628331,
+     "total_s": 0.6773648750968277,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-e051720b61c74051",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 18,
+     "server_id": "cmpl-pl-probe-e051720b61c74051",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.3712247502990067,
+     "ttfs_s": 0.49702150002121925,
+     "total_s": 0.6671072910539806,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-1514ac2be2764d81",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 19,
+     "server_id": "cmpl-pl-probe-1514ac2be2764d81",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.33243962470442057,
+     "ttfs_s": 0.507483041845262,
+     "total_s": 0.7538489587605,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-4a4174bbf1f44618",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 20,
+     "server_id": "cmpl-pl-probe-4a4174bbf1f44618",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.31634862488135695,
+     "ttfs_s": 0.5251738340593874,
+     "total_s": 0.6581141669303179,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-ded93421f1a94a35",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 21,
+     "server_id": "cmpl-pl-probe-ded93421f1a94a35",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.39036966674029827,
+     "ttfs_s": 0.5942447916604578,
+     "total_s": 0.7613959168083966,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 57,
+     "text": "The provided notes document a consistent pattern where the customer inquired about specific invoices ranging from 1000 to 1066 alongside their respective monthly service charges. Each entry follows an identical format, indicating a repetitive series of requests across 67 distinct invoice numbers.",
+     "error": null
+    }
+   ]
+  },
+  "Qwen3.5-9B@c4": {
+   "summary": {
+    "n": 20,
+    "failed": 0,
+    "ttft_n": 20,
+    "ttft_p50_s": 0.3901616248767823,
+    "ttft_p95_s": 0.5745292122242972,
+    "ttfs_n": 20,
+    "ttfs_p50_s": 0.6712755830958486,
+    "ttfs_p95_s": 0.8353838491952047,
+    "ttfs_complete": true
+   },
+   "requests": [
+    {
+     "client_request_id": "pl-probe-83edaf1f5bfe4254",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 22,
+     "server_id": "cmpl-pl-probe-83edaf1f5bfe4254",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.3327221251092851,
+     "ttfs_s": 0.6841937499120831,
+     "total_s": 0.7708610412664711,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-cd7ab2dac6de4fe4",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 23,
+     "server_id": "cmpl-pl-probe-cd7ab2dac6de4fe4",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.47029320802539587,
+     "ttfs_s": 0.7289100829511881,
+     "total_s": 0.8996630413457751,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-4f034c6ee83f40ad",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 24,
+     "server_id": "cmpl-pl-probe-4f034c6ee83f40ad",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.5821261252276599,
+     "ttfs_s": 0.8360428330488503,
+     "total_s": 0.9238581671379507,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-805ff057b8094814",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 25,
+     "server_id": "cmpl-pl-probe-805ff057b8094814",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.5741293746978045,
+     "ttfs_s": 0.8353491658344865,
+     "total_s": 0.9227534579113126,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-933a32d06f084044",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 26,
+     "server_id": "cmpl-pl-probe-933a32d06f084044",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.31681170780211687,
+     "ttfs_s": 0.6638020412065089,
+     "total_s": 0.8396188328042626,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 57,
+     "text": "The provided notes document a consistent pattern where the customer inquired about specific invoices ranging from 1000 to 1066 alongside their respective monthly service charges. Each entry follows an identical format, indicating a repetitive series of requests across 67 distinct invoice numbers.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-9a82bf4791fa4a7c",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 27,
+     "server_id": "cmpl-pl-probe-9a82bf4791fa4a7c",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.32158200023695827,
+     "ttfs_s": 0.6625562920235097,
+     "total_s": 0.8332115421071649,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 63,
+     "text": "The provided notes document a consistent pattern where the customer inquired about specific invoices ranging from 1000 to 1066 alongside their respective monthly service charges. Each entry from Note 0 to Note 66 follows this identical format, covering a total of 67 distinct invoice numbers.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-3f490f8f70ed4ff4",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 28,
+     "server_id": "cmpl-pl-probe-3f490f8f70ed4ff4",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.40846787532791495,
+     "ttfs_s": 0.6692987498827279,
+     "total_s": 0.8000800833106041,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-c0c434bb058646a8",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 29,
+     "server_id": "cmpl-pl-probe-c0c434bb058646a8",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.41222458332777023,
+     "ttfs_s": 0.6712620411999524,
+     "total_s": 0.79975516628474,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-05277ea6e4484225",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 30,
+     "server_id": "cmpl-pl-probe-05277ea6e4484225",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.31583812506869435,
+     "ttfs_s": 0.6596194161102176,
+     "total_s": 0.7449228749610484,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-767de519bacd4855",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 31,
+     "server_id": "cmpl-pl-probe-767de519bacd4855",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.4285673340782523,
+     "ttfs_s": 0.6839771252125502,
+     "total_s": 0.7714339168742299,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-155edc7e6bb94e6b",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 32,
+     "server_id": "cmpl-pl-probe-155edc7e6bb94e6b",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.3113507921807468,
+     "ttfs_s": 0.5662499172613025,
+     "total_s": 0.7361249593086541,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-101bd224ee164562",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 33,
+     "server_id": "cmpl-pl-probe-101bd224ee164562",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.4236106248572469,
+     "ttfs_s": 0.6847258331254125,
+     "total_s": 0.7708934997208416,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-59c2dd8f348445fc",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 34,
+     "server_id": "cmpl-pl-probe-59c2dd8f348445fc",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.3144247499294579,
+     "ttfs_s": 0.6597505421377718,
+     "total_s": 0.7465376672334969,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-bfdc2874c1cb4ff7",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 35,
+     "server_id": "cmpl-pl-probe-bfdc2874c1cb4ff7",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.32354708295315504,
+     "ttfs_s": 0.6706170826219022,
+     "total_s": 0.843391124624759,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 57,
+     "text": "The provided notes document a consistent pattern where the customer inquired about specific invoices ranging from 1000 to 1066 alongside their respective monthly service charges. Each entry follows an identical format, indicating a repetitive series of requests across 67 distinct invoice numbers.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-9d10eb0928684c31",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 36,
+     "server_id": "cmpl-pl-probe-9d10eb0928684c31",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.39325491711497307,
+     "ttfs_s": 0.6458174167200923,
+     "total_s": 0.8008314170874655,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-735d7d9263314829",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 37,
+     "server_id": "cmpl-pl-probe-735d7d9263314829",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.38706833263859153,
+     "ttfs_s": 0.6777484999038279,
+     "total_s": 0.7935633328743279,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-7feb239187954cb4",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 38,
+     "server_id": "cmpl-pl-probe-7feb239187954cb4",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.3188156667165458,
+     "ttfs_s": 0.5760417496785522,
+     "total_s": 0.7506458340212703,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-22f4775b48e0496c",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 39,
+     "server_id": "cmpl-pl-probe-22f4775b48e0496c",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.32046495797112584,
+     "ttfs_s": 0.6712891249917448,
+     "total_s": 0.8434220417402685,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 53,
+     "text": "The provided notes document a consistent pattern where the customer inquired about specific monthly service charges for every invoice numbered from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-af04da8b21b742cf",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 40,
+     "server_id": "cmpl-pl-probe-af04da8b21b742cf",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.43424862483516335,
+     "ttfs_s": 0.6920154578983784,
+     "total_s": 0.7774907080456614,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-5ce21aec72cb4f6b",
+     "model": "Qwen3.5-9B",
+     "phase": "measured",
+     "prompt_index": 41,
+     "server_id": "cmpl-pl-probe-5ce21aec72cb4f6b",
+     "echoed_models": [
+      "Qwen3.5-9B"
+     ],
+     "status": 200,
+     "ttft_s": 0.5158687080256641,
+     "ttfs_s": 0.6911588329821825,
+     "total_s": 0.7783780419267714,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    }
+   ]
+  },
+  "Qwen3.5-9B-zero@warmup": {
+   "summary": {
+    "n": 2,
+    "failed": 0,
+    "ttft_n": 2,
+    "ttft_p50_s": 0.3242014169227332,
+    "ttft_p95_s": 0.3262042544549331,
+    "ttfs_n": 2,
+    "ttfs_p50_s": 0.5854948335327208,
+    "ttfs_p95_s": 0.5880124337039888,
+    "ttfs_complete": true
+   },
+   "requests": [
+    {
+     "client_request_id": "pl-probe-6557a978b3bd4cb4",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "warmup",
+     "prompt_index": 42,
+     "server_id": "cmpl-pl-probe-6557a978b3bd4cb4",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3264267919585109,
+     "ttfs_s": 0.5882921670563519,
+     "total_s": 0.76556745916605,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-ad8041aaf3f64cd1",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "warmup",
+     "prompt_index": 43,
+     "server_id": "cmpl-pl-probe-ad8041aaf3f64cd1",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3219760418869555,
+     "ttfs_s": 0.5826975000090897,
+     "total_s": 0.7556778746657073,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    }
+   ]
+  },
+  "Qwen3.5-9B-zero@c1": {
+   "summary": {
+    "n": 20,
+    "failed": 0,
+    "ttft_n": 20,
+    "ttft_p50_s": 0.3224851668346673,
+    "ttft_p95_s": 0.3316282273735851,
+    "ttfs_n": 20,
+    "ttfs_p50_s": 0.5860710209235549,
+    "ttfs_p95_s": 0.5931920416653156,
+    "ttfs_complete": true
+   },
+   "requests": [
+    {
+     "client_request_id": "pl-probe-0e956fa731d540ad",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 44,
+     "server_id": "cmpl-pl-probe-0e956fa731d540ad",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.31812087493017316,
+     "ttfs_s": 0.5817439998500049,
+     "total_s": 0.7811331669799984,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-11b1db1d8442472f",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 45,
+     "server_id": "cmpl-pl-probe-11b1db1d8442472f",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3295682081952691,
+     "ttfs_s": 0.5915592908859253,
+     "total_s": 0.7647990831173956,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-c9fca28eeb6c4729",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 46,
+     "server_id": "cmpl-pl-probe-c9fca28eeb6c4729",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3181202500127256,
+     "ttfs_s": 0.5782479583285749,
+     "total_s": 0.8081102501600981,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-fbbbdedd952a4409",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 47,
+     "server_id": "cmpl-pl-probe-fbbbdedd952a4409",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3200895837508142,
+     "ttfs_s": 0.5817521247081459,
+     "total_s": 0.7664466248825192,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-c0c382219e084ad3",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 48,
+     "server_id": "cmpl-pl-probe-c0c382219e084ad3",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.32246416667476296,
+     "ttfs_s": 0.583682999946177,
+     "total_s": 0.8062599576078355,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-950932aa57ac4caf",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 49,
+     "server_id": "cmpl-pl-probe-950932aa57ac4caf",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.32365458412095904,
+     "ttfs_s": 0.5876708747819066,
+     "total_s": 0.7652658340521157,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-74e239cc6936412c",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 50,
+     "server_id": "cmpl-pl-probe-74e239cc6936412c",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.32397766690701246,
+     "ttfs_s": 0.58746258309111,
+     "total_s": 0.8075266247615218,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-40c15093aa4c4b3c",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 51,
+     "server_id": "cmpl-pl-probe-40c15093aa4c4b3c",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3242096249014139,
+     "ttfs_s": 0.5829105000011623,
+     "total_s": 0.760155790951103,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-c9aae3b74abf4610",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 52,
+     "server_id": "cmpl-pl-probe-c9aae3b74abf4610",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.32754020765423775,
+     "ttfs_s": 0.5927380416542292,
+     "total_s": 0.8124845828860998,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-7f60be270f0d4907",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 53,
+     "server_id": "cmpl-pl-probe-7f60be270f0d4907",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3219457077793777,
+     "ttfs_s": 0.5897772908210754,
+     "total_s": 0.7603158326819539,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-bbaef75d570a4298",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 54,
+     "server_id": "cmpl-pl-probe-bbaef75d570a4298",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.32431304128840566,
+     "ttfs_s": 0.5889087081886828,
+     "total_s": 0.8146199584007263,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-f757ad6af8f74122",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 55,
+     "server_id": "cmpl-pl-probe-f757ad6af8f74122",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3217251659370959,
+     "ttfs_s": 0.5797286662273109,
+     "total_s": 0.751627208199352,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-e1d4b22d4b694d03",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 56,
+     "server_id": "cmpl-pl-probe-e1d4b22d4b694d03",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3200433747842908,
+     "ttfs_s": 0.5852509168908,
+     "total_s": 0.8212632075883448,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-a38766c7d42b4eb2",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 57,
+     "server_id": "cmpl-pl-probe-a38766c7d42b4eb2",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3314172080717981,
+     "ttfs_s": 0.5904298326931894,
+     "total_s": 0.7652344168163836,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-3846f4a1df0f4975",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 58,
+     "server_id": "cmpl-pl-probe-3846f4a1df0f4975",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3225061669945717,
+     "ttfs_s": 0.5816050842404366,
+     "total_s": 0.806354708969593,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-f20aba5243974be3",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 59,
+     "server_id": "cmpl-pl-probe-f20aba5243974be3",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3169775828719139,
+     "ttfs_s": 0.5743252076208591,
+     "total_s": 0.74686558265239,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-3776a9536a0846b7",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 60,
+     "server_id": "cmpl-pl-probe-3776a9536a0846b7",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.33414054196327925,
+     "ttfs_s": 0.5954728340730071,
+     "total_s": 0.8251984170638025,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-027ec08319504aa7",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 61,
+     "server_id": "cmpl-pl-probe-027ec08319504aa7",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3179963752627373,
+     "ttfs_s": 0.584234416950494,
+     "total_s": 0.7614083751104772,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-11313b75ab4c4009",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 62,
+     "server_id": "cmpl-pl-probe-11313b75ab4c4009",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3201935407705605,
+     "ttfs_s": 0.5868911249563098,
+     "total_s": 0.8120588329620659,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-41855e7e7c9a4f93",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 63,
+     "server_id": "cmpl-pl-probe-41855e7e7c9a4f93",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.331496000289917,
+     "ttfs_s": 0.5930719999596477,
+     "total_s": 0.7718363753519952,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    }
+   ]
+  },
+  "Qwen3.5-9B-zero@c4": {
+   "summary": {
+    "n": 20,
+    "failed": 0,
+    "ttft_n": 20,
+    "ttft_p50_s": 0.4340646038763225,
+    "ttft_p95_s": 0.5226066832896322,
+    "ttfs_n": 20,
+    "ttfs_p50_s": 0.7587404584046453,
+    "ttfs_p95_s": 0.8448375941021368,
+    "ttfs_complete": true
+   },
+   "requests": [
+    {
+     "client_request_id": "pl-probe-67b21a33cccc4cea",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 64,
+     "server_id": "cmpl-pl-probe-67b21a33cccc4cea",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3251423751935363,
+     "ttfs_s": 0.7990329582244158,
+     "total_s": 0.9283627499826252,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-64b676e3e4934de8",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 65,
+     "server_id": "cmpl-pl-probe-64b676e3e4934de8",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.49090454215183854,
+     "ttfs_s": 0.7989689582027495,
+     "total_s": 0.9197101672179997,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-168ae70c91364c12",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 66,
+     "server_id": "cmpl-pl-probe-168ae70c91364c12",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.5197268333286047,
+     "ttfs_s": 0.7988720410503447,
+     "total_s": 0.9502998753450811,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-100a623990b0403f",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 67,
+     "server_id": "cmpl-pl-probe-100a623990b0403f",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.5226024999283254,
+     "ttfs_s": 0.7987862918525934,
+     "total_s": 0.9592664167284966,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-60a8a5cb54ae4e3c",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 68,
+     "server_id": "cmpl-pl-probe-60a8a5cb54ae4e3c",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.31017700023949146,
+     "ttfs_s": 0.8317930423654616,
+     "total_s": 1.0031042923219502,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 58,
+     "text": "The provided notes document a consistent pattern where the customer inquired about specific invoices ranging from 1000 to 1066 alongside their monthly service charges. Request 68 asks for a summary of these repetitive inquiries, which collectively cover 67 distinct invoice numbers.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-c3d6a3a0b48642f0",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 69,
+     "server_id": "cmpl-pl-probe-c3d6a3a0b48642f0",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.47830037493258715,
+     "ttfs_s": 0.7375275837257504,
+     "total_s": 0.9204732496291399,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests regarding billing details across that specific range.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-d9fa55d236554145",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 70,
+     "server_id": "cmpl-pl-probe-d9fa55d236554145",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.4542989581823349,
+     "ttfs_s": 0.7153634172864258,
+     "total_s": 0.8989225830882788,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests regarding billing details across that specific range.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-761065ca65f64665",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 71,
+     "server_id": "cmpl-pl-probe-761065ca65f64665",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.44683483289554715,
+     "ttfs_s": 0.7063170000910759,
+     "total_s": 0.8896882920525968,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-604bc184af3046a5",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 72,
+     "server_id": "cmpl-pl-probe-604bc184af3046a5",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3241877919062972,
+     "ttfs_s": 0.7628868748433888,
+     "total_s": 0.8495565829798579,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests regarding billing details across that specific range.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-03c045c1ff584c76",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 73,
+     "server_id": "cmpl-pl-probe-03c045c1ff584c76",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.5226861671544611,
+     "ttfs_s": 0.8444825420156121,
+     "total_s": 1.104791291989386,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 62,
+     "text": "The provided notes document a consistent pattern where the customer inquired about specific invoices ranging from 1000 to 1066 alongside their monthly service charges. Each entry from Note 0 to Note 66 follows this identical format, covering a total of 67 distinct invoice numbers.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-6d1068bfcd7d4d2e",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 74,
+     "server_id": "cmpl-pl-probe-6d1068bfcd7d4d2e",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.522437000181526,
+     "ttfs_s": 0.8444534172303975,
+     "total_s": 1.107251042034477,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 63,
+     "text": "The provided notes document a consistent pattern where the customer inquired about specific invoices ranging from 1000 to 1066 alongside their respective monthly service charges. Each entry from Note 0 to Note 66 follows this identical format, covering a total of 67 distinct invoice numbers.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-eb79d3adf7cf45b7",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 75,
+     "server_id": "cmpl-pl-probe-eb79d3adf7cf45b7",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.4492049999535084,
+     "ttfs_s": 0.6802539583295584,
+     "total_s": 0.853771333117038,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests regarding billing details across that specific range.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-0345bd33e3f449d0",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 76,
+     "server_id": "cmpl-pl-probe-0345bd33e3f449d0",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3114409577101469,
+     "ttfs_s": 0.7419257499277592,
+     "total_s": 0.9144671247340739,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-05720deb7866415a",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 77,
+     "server_id": "cmpl-pl-probe-05720deb7866415a",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3321607089601457,
+     "ttfs_s": 0.8041191669180989,
+     "total_s": 1.0658927918411791,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 63,
+     "text": "The provided notes document a consistent pattern where the customer inquired about specific invoices ranging from 1000 to 1066 alongside their respective monthly service charges. Each entry from Note 0 to Note 66 follows this identical format, covering a total of 67 distinct invoice numbers.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-cf2800ab5b6d4c58",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 78,
+     "server_id": "cmpl-pl-probe-cf2800ab5b6d4c58",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.32049458287656307,
+     "ttfs_s": 0.7131239157170057,
+     "total_s": 0.7997306659817696,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests regarding billing details across that specific range.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-d16745a7e6ac4b3e",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 79,
+     "server_id": "cmpl-pl-probe-d16745a7e6ac4b3e",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.4633859577588737,
+     "ttfs_s": 0.711573583073914,
+     "total_s": 0.8860495421104133,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests regarding billing details across that specific range.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-3f45424a3df94683",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 80,
+     "server_id": "cmpl-pl-probe-3f45424a3df94683",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.3323156670667231,
+     "ttfs_s": 0.7545940419659019,
+     "total_s": 0.9276205417700112,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-513dbc0555934819",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 81,
+     "server_id": "cmpl-pl-probe-513dbc0555934819",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.32587195886299014,
+     "ttfs_s": 0.8515835837461054,
+     "total_s": 1.0240590837784111,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 54,
+     "text": "The provided notes document a consistent pattern where the customer inquired about specific monthly service charges for every invoice numbered from 1000 to 1066. This sequence represents a total of 67 distinct requests covering a continuous range of billing documents.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-b4ff940090894688",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 82,
+     "server_id": "cmpl-pl-probe-b4ff940090894688",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.333447250071913,
+     "ttfs_s": 0.6886832090094686,
+     "total_s": 0.8604828752577305,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests regarding billing details across that specific range.",
+     "error": null
+    },
+    {
+     "client_request_id": "pl-probe-1f1cde59ce074e89",
+     "model": "Qwen3.5-9B-zero",
+     "phase": "measured",
+     "prompt_index": 83,
+     "server_id": "cmpl-pl-probe-1f1cde59ce074e89",
+     "echoed_models": [
+      "Qwen3.5-9B-zero"
+     ],
+     "status": 200,
+     "ttft_s": 0.42129437485709786,
+     "ttfs_s": 0.6822311668656766,
+     "total_s": 0.856624333653599,
+     "finished": true,
+     "prompt_tokens": 1503,
+     "completion_tokens": 45,
+     "text": "The customer has inquired about the monthly service charge for every invoice from 1000 to 1066. This represents a total of 67 distinct requests regarding billing details across that specific range.",
+     "error": null
+    }
+   ]
+  }
+ },
+ "derived": {
+  "lora_overhead": {
+   "c1.ttft_p50_s": -0.005189854186028242,
+   "c1.ttfs_p50_s": 0.08718633325770497,
+   "c4.ttft_p50_s": 0.04390297899954021,
+   "c4.ttfs_p50_s": 0.08746487530879676
+  }
+ },
+ "checks": {
+  "tokenize_all_equal": true,
+  "zero_lora_within_1e-4": true,
+  "live_lora_above_1e-3": true,
+  "failed_requests": 0,
+  "ttfs_complete": true,
+  "keyless_401": true,
+  "ladder_rung_ok:all": true
+ }
+}

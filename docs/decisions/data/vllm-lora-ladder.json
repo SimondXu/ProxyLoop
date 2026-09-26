@@ -1,0 +1,243 @@
+{
+  "model": {
+    "id": "Qwen/Qwen3.5-9B",
+    "revision": "c202236235762e1c871ad0ccb60c8ee5ba337b9a"
+  },
+  "engine_kwargs": {
+    "served_model_name": "Qwen3.5-9B",
+    "dtype": "bfloat16",
+    "language_model_only": true,
+    "enable_lora": true,
+    "max_lora_rank": 32,
+    "max_loras": 4,
+    "max_model_len": 16384,
+    "enable_prefix_caching": false
+  },
+  "lora_rank": 32,
+  "adapters": {
+    "zero-all": {
+      "targets": [
+        "self_attn.q_proj",
+        "self_attn.k_proj",
+        "self_attn.v_proj",
+        "self_attn.o_proj",
+        "linear_attn.in_proj_qkv",
+        "linear_attn.in_proj_z",
+        "linear_attn.in_proj_b",
+        "linear_attn.in_proj_a",
+        "linear_attn.out_proj",
+        "mlp.gate_proj",
+        "mlp.up_proj",
+        "mlp.down_proj"
+      ],
+      "zero_init": true,
+      "zero_targets": [],
+      "loaded": true,
+      "max_abs_diff": 0.0,
+      "mean_abs_diff": 0.0
+    },
+    "live-all": {
+      "targets": [
+        "self_attn.q_proj",
+        "self_attn.k_proj",
+        "self_attn.v_proj",
+        "self_attn.o_proj",
+        "linear_attn.in_proj_qkv",
+        "linear_attn.in_proj_z",
+        "linear_attn.in_proj_b",
+        "linear_attn.in_proj_a",
+        "linear_attn.out_proj",
+        "mlp.gate_proj",
+        "mlp.up_proj",
+        "mlp.down_proj"
+      ],
+      "zero_init": false,
+      "zero_targets": [],
+      "loaded": true,
+      "max_abs_diff": 3.0899884700775146,
+      "mean_abs_diff": 0.2634721881950668
+    },
+    "zero-attn-mlp": {
+      "targets": [
+        "self_attn.q_proj",
+        "self_attn.k_proj",
+        "self_attn.v_proj",
+        "self_attn.o_proj",
+        "mlp.gate_proj",
+        "mlp.up_proj",
+        "mlp.down_proj"
+      ],
+      "zero_init": true,
+      "zero_targets": [],
+      "loaded": true,
+      "max_abs_diff": 0.0,
+      "mean_abs_diff": 0.0
+    },
+    "live-attn-mlp": {
+      "targets": [
+        "self_attn.q_proj",
+        "self_attn.k_proj",
+        "self_attn.v_proj",
+        "self_attn.o_proj",
+        "mlp.gate_proj",
+        "mlp.up_proj",
+        "mlp.down_proj"
+      ],
+      "zero_init": false,
+      "zero_targets": [],
+      "loaded": true,
+      "max_abs_diff": 1.469916582107544,
+      "mean_abs_diff": 0.1519698225721313
+    },
+    "probe-self_attn.q_proj": {
+      "targets": [
+        "self_attn.q_proj"
+      ],
+      "zero_init": false,
+      "zero_targets": [],
+      "loaded": true,
+      "max_abs_diff": 0.4871065616607666,
+      "mean_abs_diff": 0.03934951086192902
+    },
+    "probe-self_attn.k_proj": {
+      "targets": [
+        "self_attn.k_proj"
+      ],
+      "zero_init": false,
+      "zero_targets": [],
+      "loaded": true,
+      "max_abs_diff": 0.17647647857666016,
+      "mean_abs_diff": 0.025301785126045803
+    },
+    "probe-self_attn.v_proj": {
+      "targets": [
+        "self_attn.v_proj"
+      ],
+      "zero_init": false,
+      "zero_targets": [],
+      "loaded": true,
+      "max_abs_diff": 0.5415744781494141,
+      "mean_abs_diff": 0.06417276562649477
+    },
+    "probe-self_attn.o_proj": {
+      "targets": [
+        "self_attn.o_proj"
+      ],
+      "zero_init": false,
+      "zero_targets": [],
+      "loaded": true,
+      "max_abs_diff": 0.2761678695678711,
+      "mean_abs_diff": 0.038083266811704965
+    },
+    "probe-linear_attn.in_proj_qkv": {
+      "targets": [
+        "linear_attn.in_proj_qkv"
+      ],
+      "zero_init": false,
+      "zero_targets": [],
+      "loaded": true,
+      "max_abs_diff": 0.7270545959472656,
+      "mean_abs_diff": 0.07319536042127966
+    },
+    "probe-linear_attn.in_proj_z": {
+      "targets": [
+        "linear_attn.in_proj_z",
+        "linear_attn.in_proj_qkv"
+      ],
+      "zero_init": false,
+      "zero_targets": [
+        "linear_attn.in_proj_qkv"
+      ],
+      "loaded": true,
+      "max_abs_diff": 0.9788286685943604,
+      "mean_abs_diff": 0.07317383208294025
+    },
+    "probe-linear_attn.in_proj_b": {
+      "targets": [
+        "linear_attn.in_proj_b"
+      ],
+      "zero_init": false,
+      "zero_targets": [],
+      "loaded": true,
+      "max_abs_diff": 0.24244904518127441,
+      "mean_abs_diff": 0.023744756717502803
+    },
+    "probe-linear_attn.in_proj_a": {
+      "targets": [
+        "linear_attn.in_proj_a"
+      ],
+      "zero_init": false,
+      "zero_targets": [],
+      "loaded": true,
+      "max_abs_diff": 0.13498783111572266,
+      "mean_abs_diff": 0.01721889957005541
+    },
+    "probe-linear_attn.out_proj": {
+      "targets": [
+        "linear_attn.out_proj"
+      ],
+      "zero_init": false,
+      "zero_targets": [],
+      "loaded": true,
+      "max_abs_diff": 0.6059355735778809,
+      "mean_abs_diff": 0.0876646661774684
+    },
+    "probe-mlp.gate_proj": {
+      "targets": [
+        "mlp.gate_proj"
+      ],
+      "zero_init": false,
+      "zero_targets": [],
+      "loaded": true,
+      "max_abs_diff": 0.523895263671875,
+      "mean_abs_diff": 0.07290191448996264
+    },
+    "probe-mlp.up_proj": {
+      "targets": [
+        "mlp.up_proj"
+      ],
+      "zero_init": false,
+      "zero_targets": [],
+      "loaded": true,
+      "max_abs_diff": 0.5639314651489258,
+      "mean_abs_diff": 0.08496260606239048
+    },
+    "probe-mlp.down_proj": {
+      "targets": [
+        "mlp.down_proj"
+      ],
+      "zero_init": false,
+      "zero_targets": [],
+      "loaded": true,
+      "max_abs_diff": 0.5093350410461426,
+      "mean_abs_diff": 0.07112511010789081
+    }
+  },
+  "summary": {
+    "complete": true,
+    "aborted_at": null,
+    "missing_adapters": [],
+    "applied_targets": [
+      "self_attn.q_proj",
+      "self_attn.k_proj",
+      "self_attn.v_proj",
+      "self_attn.o_proj",
+      "linear_attn.in_proj_qkv",
+      "linear_attn.in_proj_z",
+      "linear_attn.in_proj_b",
+      "linear_attn.in_proj_a",
+      "linear_attn.out_proj",
+      "mlp.gate_proj",
+      "mlp.up_proj",
+      "mlp.down_proj"
+    ],
+    "rung_ok:all": true,
+    "rung_ok:attn-mlp": true
+  },
+  "runtime": {
+    "vllm_version": "0.29.0",
+    "gpu_name": "NVIDIA H100 80GB HBM3",
+    "peft_version": "0.21.0"
+  },
+  "volume_copy": "results/lora-ladder-20260926T083432Z.json"
+}
