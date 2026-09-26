@@ -9,7 +9,7 @@ lint:
 	uv run ruff format --check src tests scripts
 
 typecheck:
-	uv run pyright src
+	uv run pyright
 
 test:
 	uv run pytest -q
