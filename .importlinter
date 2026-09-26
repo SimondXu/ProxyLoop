@@ -21,3 +21,11 @@ source_modules =
     proxyloop
 forbidden_modules =
     tests
+
+[importlinter:contract:agent-is-not-env]
+name = guard never imports env (ARCHITECTURE section 2)
+type = forbidden
+source_modules =
+    proxyloop.guard
+forbidden_modules =
+    proxyloop.env

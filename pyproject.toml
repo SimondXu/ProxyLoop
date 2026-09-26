@@ -44,5 +44,5 @@ pythonVersion = "3.12"
 typeCheckingMode = "strict"
 
 [tool.pytest.ini_options]
-addopts = "-ra"
+addopts = "-ra --import-mode=importlib"
 testpaths = ["tests/port"]
