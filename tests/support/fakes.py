@@ -136,3 +136,46 @@ class ScriptedLLM:
             tool_calls=calls,
             record=self._record(request, content, start),
         )
+
+
+class RepeatingLLM(ScriptedLLM):
+    """A ``ScriptedLLM`` for whole sessions, where the number of calls depends
+    on timing: its last response repeats, it can switch on what a request
+    holds (``until``), and request ids are unique per model."""
+
+    def __init__(
+        self,
+        ref: ModelRef,
+        responses: Sequence[str],
+        clock: ManualClock | None = None,
+        dead: bool = False,
+        on_record: Callable[[LLMCallRecord], None] | None = None,
+        until: tuple[str, str] | None = None,
+    ) -> None:
+        super().__init__(ref, responses, clock, dead)
+        self._sink, self._until = on_record, until
+
+    def _record(
+        self,
+        request: TextRequest | ToolRequest,
+        response: str | None,
+        start: int,
+        error: str = "connection refused",
+    ) -> LLMCallRecord:
+        record = super()._record(request, response, start, error)
+        if record.request_id:
+            unique = f"{self._ref.model_id}-{self.calls}"
+            record = record.model_copy(update={"request_id": unique})
+        if self._sink is not None:
+            self._sink(record)
+        return record
+
+    async def _next(self, request: TextRequest | ToolRequest) -> tuple[str, int]:
+        """``until=(marker, response)``: answer ``response`` from the first
+        request whose content holds ``marker`` on."""
+
+        if self._until and self._until[0] in request_content(request):
+            self._responses[self.calls :] = [self._until[1]]
+        if self.calls >= len(self._responses) and self._responses:
+            self._responses.append(self._responses[-1])
+        return await super()._next(request)

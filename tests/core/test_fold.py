@@ -7,13 +7,18 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from tests.support.manual_clock import ManualClock
 
+from proxyloop.contract.base import HOLD_REASONS
 from proxyloop.contract.bundle import EVENTS
 from proxyloop.contract.events import EVENT_TYPES, Event, Stream
+from proxyloop.contract.messages import GuideMove
+from proxyloop.contract.protocol import render_messages
 from proxyloop.contract.state import Blackboard, CaseStatus
+from proxyloop.contract.views import Trigger, view_cp
 from proxyloop.core.bus import Bus
 from proxyloop.core.fold import RECORD_ONLY, REDUCERS, WORLD_OPS, apply, fold
 
@@ -33,6 +38,7 @@ def test_every_registry_type_has_a_reducer_or_is_world_or_ops() -> None:
 Step = tuple[str, str, str, dict[str, object]]
 _TEXT = st.text(alphabet="abc $1.", min_size=1, max_size=12)
 _LANE = st.sampled_from(["user", "cp"])
+_KEY = st.sampled_from(["account.last4", "tenure_years", "competitor.name"])
 
 
 def _steps() -> st.SearchStrategy[Step]:
@@ -123,6 +129,37 @@ def _steps() -> st.SearchStrategy[Step]:
                 {"previous": "INTAKE", "status": s.value},
             )
         ),
+        st.tuples(st.sampled_from(["private", "public"]), _KEY, _TEXT).map(
+            lambda a: (
+                "fact.recorded",
+                "guard",
+                "agent",
+                {
+                    "key": a[1],
+                    "value": a[2],
+                    "source": "shareable" if a[0] == "public" else "user",
+                    "source_ref": "r",
+                    "scope": a[0],
+                },
+            )
+        ),
+        st.sampled_from(list(GuideMove)).map(
+            lambda m: (
+                "s2f.msg",
+                "slow",
+                "agent",
+                {
+                    "msg_id": f"g-{m}",
+                    "lane": "cp",
+                    "type": "GUIDE",
+                    "guide": {"move": m},
+                },
+            )
+        ),
+        st.sampled_from([None, *HOLD_REASONS]).map(
+            lambda r: ("chan.hold", "fast.cp", "agent", {"lane": "cp", "reason": r})
+        ),
+        st.just(("chan.strike", "kernel", "agent", {"lane": "cp"})),
         st.just(
             (
                 "fast.cancelled",
@@ -257,3 +294,77 @@ def test_record_only_and_world_events_change_only_seq_and_time() -> None:
         bb, _event(1, "fast.cancelled", {"gen_id": "g", "reason": "r"}, "fast.cp")
     )
     assert cancelled == Blackboard.model_validate(dict(bb) | {"seq": 1, "t_ms": 1})
+
+
+def test_guides_facts_holds_and_strikes_reach_the_state() -> None:
+    rep = {"lane": "cp", "speaker": "partner", "utt_id": "cp-1", "text": "It is 75."}
+    guides = [
+        {"msg_id": f"s{n}", "lane": "cp", "type": "GUIDE", "guide": {"move": m}}
+        for n, m in enumerate(["open_call", "identify", "ask_discount", "ask_readback"])
+    ]
+    fact = {"key": "offer.price", "value": "75", "source": "cp_utt"}
+    fact |= {"source_ref": "cp-1", "scope": "public"}
+    pin = {"key": "account.pin", "value": "1234", "source": "user"}
+    pin |= {"source_ref": None, "scope": "private"}
+    events = [
+        _event(0, "utt.final", rep),
+        *(_event(1 + n, "s2f.msg", g, "slow") for n, g in enumerate(guides)),
+        _event(5, "fact.recorded", fact, "guard"),
+        _event(6, "fact.recorded", pin, "guard"),
+        _event(7, "chan.hold", {"lane": "cp", "reason": "offer"}, "fast.cp"),
+        _event(8, "chan.strike", {"lane": "cp"}),
+    ]
+    bb = fold(events)
+    assert [g.move for g in bb.public.guidance_cp] == [
+        "identify",
+        "ask_discount",
+        "ask_readback",
+    ]  # the last 3
+    assert bb.public.facts["offer.price"].source == "cp_utt"
+    assert "account.pin" in bb.private.case_facts
+    assert "account.pin" not in bb.public.facts
+    assert bb.public.cp_hold is not None and bb.public.cp_hold.since_ms == 7
+    assert bb.channels["cp"].strikes == 1
+    released = apply(
+        bb, _event(9, "chan.hold", {"lane": "cp", "reason": None}, "fast.cp")
+    )
+    assert released.public.cp_hold is None
+
+
+def test_a_public_fact_must_be_source_bound() -> None:
+    unsaid = {"key": "offer.price", "value": "60", "source": "cp_utt"}
+    unsaid |= {"source_ref": "cp-9", "scope": "public"}  # no such rep line
+    with pytest.raises(ValueError, match="no rep line"):
+        fold(
+            [
+                _event(0, "user.msg", {"text": "x"}),
+                _event(1, "fact.recorded", unsaid, "guard"),
+            ]
+        )
+    private = unsaid | {"source": "user"}  # a user fact is never public
+    with pytest.raises(ValueError):
+        fold(
+            [
+                _event(0, "user.msg", {"text": "x"}),
+                _event(1, "fact.recorded", private, "guard"),
+            ]
+        )
+
+
+def test_a_guide_changes_fastcs_rendered_view() -> None:
+    guide = {
+        "msg_id": "s1",
+        "lane": "cp",
+        "type": "GUIDE",
+        "guide": {"move": "ask_discount"},
+    }
+    before = fold([_event(0, "user.msg", {"text": "x"})])
+    after = apply(before, _event(1, "s2f.msg", guide, "slow"))
+    rendered = [
+        render_messages(view_cp(bb, Trigger(kind="guidance"), "b"), "pl_cp_v1")[
+            1
+        ].content
+        for bb in (before, after)
+    ]
+    assert "Ask whether they can lower the monthly price." in rendered[1]
+    assert "Ask whether they can lower" not in rendered[0]
