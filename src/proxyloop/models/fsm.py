@@ -54,7 +54,8 @@ READBACK = (
 CHECKING = "I need to check with my customer before agreeing to anything."
 MOVES: dict[str, str] = {  # GuideMove -> what the FSM says ({} = slot values)
     "open_call": "I'm calling on behalf of my customer about their account.",
-    "identify": "The account details are {}.",
+    # a fixed tail after the value: a split or cut fragment never matches it
+    "identify": "The account details are {}, for verification.",
     "ask_discount": "Is there any way you could lower the monthly price?",
     "cite_competitor": "My customer has a competing quote of {}.",
     "mention_tenure": "My customer has been with you for {}.",
@@ -243,14 +244,38 @@ def _guide(lane: Lane, move: str, values: tuple[str, ...]) -> list[TurnItem]:
 
 
 def _unvoiced(v: Seen) -> tuple[str, tuple[str, ...]] | None:
-    """The newest guide whose words the agent has not said yet."""
+    """The newest guide, if the agent has not said its words yet. Older guides
+    are history, not guidance (ADR-0013 A): never read."""
 
     said = {t for s, t in v.lines if s == "agent"}
-    for move, values in reversed(v.guides):
+    for move, values in v.guides[-1:]:
         texts = [i.text for i in _guide("cp", move, values) if isinstance(i, Speech)]
         if texts and not any(t in said for t in texts):
             return move, values
     return None
+
+
+def _identity(v: Seen) -> tuple[str, ...]:
+    """The identity values the FSM may say: the newest guide if it is
+    ``identify``, else its own newest identify line in the transcript, parsed
+    back through the template and kept only if ``_guide`` re-says it exactly.
+    The template's fixed tail means a fragment of a split line ("... Dana J.")
+    never matches: no partial identity, the FSM deflects. Partner lines and
+    older guides are never a source."""
+
+    if v.guides and v.guides[-1][0] == "identify" and v.guides[-1][1]:
+        return v.guides[-1][1]
+    head, tail = MOVES["identify"].split("{}")
+    for speaker, text in reversed(v.lines):
+        if speaker != "agent" or not (text.startswith(head) and text.endswith(tail)):
+            continue
+        values = tuple(text[len(head) : len(text) - len(tail)].split(", "))
+        said = [
+            i.text for i in _guide("cp", "identify", values) if isinstance(i, Speech)
+        ]
+        if said == [text]:
+            return values
+    return ()
 
 
 def _cp(v: Seen) -> list[TurnItem]:
@@ -269,7 +294,7 @@ def _cp(v: Seen) -> list[TurnItem]:
         )
     rep = v.last("partner")
     relay = _relay("rep", rep)
-    identify = next((vals for m, vals in v.guides if m == "identify" and vals), ())
+    identify = _identity(v)
     confirmed = any(
         o.status == "open" and o.slots and all(s[2] == "confirmed" for s in o.slots)
         for o in v.offers
