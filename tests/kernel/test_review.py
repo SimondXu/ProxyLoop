@@ -101,10 +101,12 @@ class Late(Person):
 
 
 def test_rep_chat_suspends_patience_and_builds_no_slow(tmp_path: Path) -> None:  # nits
-    person = Late(["Hi, I am calling about my bill.", "/quit"])
+    person = Late(["Hi, this is Dana Reyes calling about my bill.", "/quit"])
     task = load_task("cp-direct-discount")  # default patience: 3 x 6 s
+    name = {"key": "account.holder_name", "value": "Dana Reyes"}  # no identity strike
+    scripts = SCRIPTS | {"ear": [ear("other"), ear("provide_fact", facts=[name])]}
     result = run(
-        tmp_path, SCRIPTS, channels={"cp": "sim", "cp_agent": person}, task=task
+        tmp_path, scripts, channels={"cp": "sim", "cp_agent": person}, task=task
     )
     assert result.reason == "stopped"  # not abandoned: the rep never struck out
     bundle = only_bundle(tmp_path)
