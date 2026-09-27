@@ -1,7 +1,7 @@
 {
  "$defs": {
   "AblationId": {
-   "description": "The S3 paired ablations (EVAL \u00a74.2). A3 is a lane swap of ``fast_*``;\nA5 is ``slow_view=raw_transcript``.",
+   "description": "The S3 paired ablations (EVAL \u00a74.2). A3 is a lane swap of ``fast_*``;\nA5 is ``slow_view=relay_only``.",
    "enum": [
     "suppress_relay_user",
     "suppress_relay_cp",
@@ -173,7 +173,7 @@
     },
     "slow_view": {
      "$ref": "#/$defs/SlowViewMode",
-     "default": "relay_only"
+     "default": "transcript"
     },
     "teacher": {
      "anyOf": [
@@ -204,8 +204,8 @@
   },
   "SlowViewMode": {
    "enum": [
-    "relay_only",
-    "raw_transcript"
+    "transcript",
+    "relay_only"
    ],
    "title": "SlowViewMode",
    "type": "string"

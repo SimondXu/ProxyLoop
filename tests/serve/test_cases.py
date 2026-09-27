@@ -5,6 +5,7 @@ endpoint's single use and ``guard.decide`` pre-check on a real Blackboard."""
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -347,3 +348,17 @@ def test_a_case_is_unknown_until_its_session_started_exists(live: Live) -> None:
     held = ApiCase(live.root, "case-4").start(split="test")  # held out: never
     live.cases["case-4"] = held
     assert get(live.http, "/live/case-4", follow=False).status_code == 404
+
+
+def test_a_failed_message_or_rep_line_is_503_and_logged(
+    live: Live, caplog: pytest.LogCaptureFixture
+) -> None:
+    user, rep = login(live.http, "user", CASE), login(live.http, "rep", CASE)
+    live.case.unavailable = True
+    with caplog.at_level(logging.ERROR, logger="proxyloop.serve.cases"):
+        for url, hdrs in [("messages", headers(user)), ("rep", headers(rep))]:
+            got = post(live.http, f"/api/cases/{CASE}/{url}", {"text": "hi"}, hdrs)
+            assert (got.status_code, got.json()) == (503, {"error": "unavailable"})
+    logged = [r for r in caplog.records if r.name == "proxyloop.serve.cases"]
+    assert [r.exc_info is not None for r in logged] == [True, True]
+    assert live.case.messages == live.case.utterances == []

@@ -15,25 +15,62 @@ import asyncio
 import contextlib
 import heapq
 import json
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import (
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
 from pathlib import Path
 
+import pytest
 from tests.support.fakes import RepeatingLLM
 from tests.support.manual_clock import ManualClock
 from tests.support.sessions import Gated, act, fake_config, patient_task
 
 from proxyloop.contract.config import SessionConfig
 from proxyloop.contract.events import ApprovalPost, Approver, Event
-from proxyloop.contract.llm import LLMClient, LLMRole, ModelRef, ToolCall
+from proxyloop.contract.llm import (
+    LLMCallRecord,
+    LLMClient,
+    LLMRole,
+    ModelRef,
+    TextRequest,
+    ToolCall,
+    ToolRequest,
+    ToolResponse,
+)
 from proxyloop.contract.state import ApprovalCard, Blackboard
 from proxyloop.env.tasks.schema import Task
 from proxyloop.guard.mandate import proposal
+from proxyloop.kernel import wake
 from proxyloop.kernel.channels import Channel, Incoming
 from proxyloop.kernel.session import ChannelSpec, Kernel
 from proxyloop.llm.http import RecordSink
+from proxyloop.slow.loop import SlowLoop
 from proxyloop.slow.tools import SlowTools
 
+
+@pytest.fixture(autouse=True, scope="module")
+def enumerated_wakes() -> Iterator[None]:
+    """Every reason anything passes to ``SlowLoop.wake`` is in ``wake.REASONS``
+    (review D5: Authority's dynamic ``_wake(e.type)`` included). Re-exported by
+    the conftests of tests/kernel, tests/slow and tests/concurrency."""
+    woken = SlowLoop.wake
+
+    def checked(self: SlowLoop, reason: str) -> None:
+        assert reason in wake.REASONS, f"wake reason {reason!r} is not enumerated"
+        woken(self, reason)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(SlowLoop, "wake", checked)
+        yield
+
+
 NOTED = act("Noted.")  # Slow's own step: a private summary, no tool
+ACCEPT = act("take it", {"tool": "accept_offer", "offer_ref": "o1"})  # its own
 SCRIPTS: Mapping[str, Sequence[str]] = {
     "fast_user": ["Okay."],
     "fast_cp": ["Okay."],
@@ -105,14 +142,21 @@ class Sim:
         user: ChannelSpec | None = None,
         gates: Mapping[str, Callable[[], Awaitable[None]]] | None = None,
         cfg: SessionConfig | None = None,
+        until: Mapping[str, tuple[str, str]] | None = None,
+        rep: Channel | None = None,
     ) -> None:
-        self.vt, self.rep = VirtualTime(), Channel()
+        """``until``: role -> (marker, response), as ``RepeatingLLM``'s;
+        ``rep``: the cp channel (a silent one the test speaks for by default)."""
+        self.vt, self.rep = VirtualTime(), Channel() if rep is None else rep
         self.user = Channel() if user is None else user
         lines = {**SCRIPTS, **(scripts or {})}
+        self.llms: dict[str, RepeatingLLM] = {}  # a test may kill one mid-session
 
         def make(role: LLMRole, ref: ModelRef, sink: RecordSink) -> LLMClient:
             said = lines.get(role, ["unused"])
-            client = RepeatingLLM(ref, said, self.vt, False, sink)
+            mark = (until or {}).get(role)
+            client = RepeatingLLM(ref, said, self.vt, False, sink, mark)
+            self.llms[role] = client
             gate = (gates or {}).get(role)
             return client if gate is None else Gated(client, gate)
 
@@ -235,6 +279,33 @@ class Sim:
         post |= {"decision": "granted", "subject_hash": m["mandate_hash"]}
         post |= {"authority_epoch": m["epoch"]}
         self.k.post_approval(ApprovalPost.model_validate(post))
+
+
+class SlowGate:
+    """Slow's step calls wait here: ``let(n)`` lets ``n`` more through, and
+    ``let(None)`` opens it (review probe 1)."""
+
+    def __init__(self, sim: Sim) -> None:
+        loud = sim.k.clients["slow"]
+        self.inner, self.ref = loud.inner, loud.inner.ref
+        loud.inner = self
+        self._tickets: int | None = None
+        self._moved = asyncio.Event()
+
+    def let(self, n: int | None) -> None:
+        self._tickets = n
+        self._moved.set()
+
+    def stream_text(self, request: TextRequest) -> AsyncIterator[str | LLMCallRecord]:
+        return self.inner.stream_text(request)
+
+    async def chat_tools(self, request: ToolRequest) -> ToolResponse:
+        while self._tickets == 0:
+            self._moved.clear()
+            await self._moved.wait()
+        if self._tickets is not None:
+            self._tickets -= 1
+        return await self.inner.chat_tools(request)
 
 
 async def granted(sim: Sim, ref: str = "o1", dollars: int = 68) -> ApprovalCard:

@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
 
 _NO_TOOL = {"name": "act", "args": None, "result_text": "no tool call", "ok": False}
-MAX_STEPS = 40  # per session: the S0 runaway guard (PLAN §0.5a, 2026-09-26)
+MAX_STEPS = 120  # per session: the runaway guard (S1-SYS-29; was 40, PLAN §0.5a)
 WINDOW = 6  # [E] answered turns kept in the context (ADR-0009)
 CALL_S = 180.0  # provisional until S0-ROOT-12: one whole Slow call, relay included
 Turn = tuple[ChatMessage, tuple[ChatMessage, ...]]  # Slow's answer, what answered it

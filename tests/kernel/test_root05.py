@@ -3,6 +3,7 @@ HOLD relay dedupe (e) and stale rep replies (i)."""
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import cast
@@ -50,7 +51,8 @@ def test_ttfs_is_set_when_the_only_sentence_is_released_at_close(
 
 
 def test_an_unchanged_hold_is_relayed_once(tmp_path: Path) -> None:  # (e)
-    waits = [act("Waiting.", {"tool": "wait", "seconds": 15})] * 4
+    # S1-SYS-29: rep turns and strikes wake Slow too, so its script runs longer
+    waits = [act("Waiting.", {"tool": "wait", "seconds": 15})] * 8
     scripts = SCRIPTS | {
         "fast_cp": ["Let me check that with the account holder.\n@hold decision"],
         "slow": [*waits, FINISH],
@@ -133,9 +135,22 @@ def test_a_stale_rep_reply_waits_for_the_floor(tmp_path: Path) -> None:  # (i)
 
 
 def test_a_current_rep_line_still_barges_in(tmp_path: Path) -> None:  # (i)
-    rep = Rep(turns=1, thinking=False)
-    run(tmp_path, GUIDED, channels={"user": "sim", "cp": rep})
-    events = only_bundle(tmp_path).events
+    """On virtual time: the rep's line is due 2 s into FastC's 11 s line.
+    (On the wall-scaled clock an event-loop stall of about 0.1 s real, 10 s
+    scaled, let the whole line be heard before the rep's line landed: CI.)"""
+    from tests.concurrency.harness import Sim
+
+    async def session() -> tuple[Event, ...]:
+        sim = Sim(tmp_path, GUIDED, user="sim", rep=Rep(turns=1, thinking=False))
+        await sim.start()
+        for _ in range(60):  # a minute of virtual time: the rep hangs up first
+            if sim.events[-1].type == "session.ended":
+                break
+            await sim.vt.run_for(1_000)
+        return await sim.stop()
+
+    events = asyncio.run(asyncio.wait_for(session(), timeout=30))
+    assert events[-1].payload["reason"] == "abandoned"  # the rep hung up
     (cut,) = _of(events, "chan.barge_in")
     (heard,) = [e for e in _of(events, "utt.delivered") if e.payload["interrupted"]]
     assert heard.payload["text_heard"] != LONG and cut.seq > heard.seq

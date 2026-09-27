@@ -190,8 +190,8 @@ def test_slow_context_is_bounded_and_keeps_every_call_with_its_result(
 def test_the_step_cap_ends_the_session_loudly(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:  # the S0 runaway guard
-    assert (loop.MAX_STEPS, watchdog.MAX_SESSION_S) == (40, 480.0)
-    assert session.PROJECTED == (300_000, 150)
+    assert (loop.MAX_STEPS, watchdog.MAX_SESSION_S) == (120, 480.0)  # S1-SYS-29
+    assert session.PROJECTED == (900_000, 400)
     monkeypatch.setattr(loop, "MAX_STEPS", 2)
     scripts = SCRIPTS | {"slow": [act("Waiting.", {"tool": "wait", "seconds": 1})]}
     with pytest.raises(Abort, match="2 steps"):

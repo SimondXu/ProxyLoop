@@ -25,6 +25,7 @@ from proxyloop.guard import authorize as guard
 from proxyloop.guard.authorize import CaseRef, Denial
 from proxyloop.guard.declass import declassify, numbers, spoken
 from proxyloop.guard.readback import readback_update
+from proxyloop.kernel.wake import HEARTBEAT_S
 from proxyloop.slow import authority, offer_slots
 from proxyloop.slow.result import Effect, Result, no
 
@@ -48,8 +49,10 @@ _AGE = re.compile(r"(?i)\b(?:old|age|aged|ago)\b")  # "36 years old": no tenure
 _NEGATION = re.compile(r"(?i)\b(?:not|never)\b|n['\u2019]t\b")
 _NOT_ASCII = re.compile(r"[^\x00-\x7f\u2018\u2019\u201c\u201d]")  # but quotes
 _NUMBER = re.compile(r"[0-9]+(?:\.[0-9]+)?")
-_BEFORE = r"(?:^|(?<=[\s(:\"\u201c]))"  # allow-listed token starts
-_AFTER = r"(?=[.,;:!?)\"\u201d]?(?:\s|$))"  # then one mark, a space or the end
+_BEFORE = (  # a token start; an opener only where it starts a token (no $"4821")
+    r"(?:^|(?<=[\s:])|(?<=(?<![^\s:])[(\"\u201c]))"
+)
+_AFTER = r"(?=[)\"\u201d]?[.,;:!?]?(?:\s|$))"  # a closer, a mark; a space or the end
 _EDGE = r"(?<![\w'\u2019-])", r"(?![\w'\u2019-])"  # a name's word bounds
 MAX_NAME_CHARS = 60
 _IDENTITY = ("account.holder_name", "account.last4")
@@ -149,11 +152,12 @@ class SlowTools:
         bb, host, case = self._host.bb, self._host, self._case
         if name in ("ask_user", "tell_user"):
             return self._s2f(lane="user", type=name.upper(), text=str(a["text"]))
-        if name == "wait":
-            if not 1 <= (seconds := int(a["seconds"])) <= 15:
-                return no("seconds must be 1-15")
-            then = lambda: host.wake_slow("timer", seconds)  # noqa: E731
-            return Result(True, f"waking in {seconds} s", then=then)
+        if name == "wait":  # its slow.tool arms the timer (kernel.wake)
+            seconds = a["seconds"]  # a JSON integer, never coerced (rule 12)
+            if type(seconds) is not int or not 1 <= seconds <= HEARTBEAT_S:
+                beat = f"in a call a heartbeat wakes you every {HEARTBEAT_S} s anyway"
+                return no(f"seconds must be an integer 1-{HEARTBEAT_S}: {beat}")
+            return Result(True, f"waking in {seconds} s")
         if name == "guide_fast":
             return self._guide(bb, a)
         if name == "record_fact":
@@ -401,8 +405,9 @@ def _user_span(key: str, value: str, message: str, bb: st.Blackboard) -> str | N
 
 def _digits4(value: str, message: str, _: st.Blackboard) -> str | None:
     """Exactly four ASCII digits, a standalone token of the message: after the
-    start, whitespace or one of ``( : " “``; then at most one of
-    ``. , ; : ! ? ) " ”`` and whitespace or the end."""
+    start, whitespace or ``:``, or an opener ``( " “`` that itself follows one
+    of them; then at most one closer ``) " ”``, at most one of
+    ``. , ; : ! ?`` and whitespace or the end (S1-SYS-26: "(ending in 4821),")."""
     if not _LAST4.fullmatch(value):
         return None
     return value if re.search(_BEFORE + value + _AFTER, message) else None

@@ -46,12 +46,13 @@ The v3 changes:
 | 6 | `cp-confirmation-misquote` (rare harm: misquote → false completion) | cp_hazard | S2 | piloted → train |
 | 7–12 | `portal-address-change`, `portal-autopay-setup`, `cp-competitor-match`, `cp-term-extension-trap`, `x-absent-confirmation`, `x-mid-call-fact` (default set; OPEN_QUESTIONS Q2) | mixed | S4 | **never piloted** → salted split |
 
+- **Recheck variants** (ADR-0014; S1-SYS-25 builds them): family 1 gains two train-only variants, `full_recheck` (the SimUser's first `account.last4` is wrong, then the truth) and `full_recheck_slow` (the correction comes later than two rep hold cycles). They exercise the mid-call hold, the deferral and the redial; their new fields default to `None`, so existing instance hashes do not change.
 - **Pilot lock.** `tasks/splits/pilot_lock.json` lists families 1–6 as train-only. CI rejects any split file that assigns a locked family to dev or test.
 - **Split (S4).** After world freeze (semantics-v2), the user draws the salt. Within each stratum, the never-piloted families are ranked by `sha256(salt ‖ family_id)` [O ported `negotiation_splits.py:81`]. The default allocation is 3 test, 2 dev and 1 train, one test family per represented stratum where possible. The test seeds use a second salt kept outside the repo until the unseal.
 - **Before unseal, test families run only deterministic completability checks**: a reference predicate proves each instance solvable (the v0 `completable` idea [O `negotiation_evaluation.py:117`]). No live episode runs on a test family before the unseal. This resolves v2's seal contradiction.
 
 ## 4. Conditions
-### 4.1 L1 conditions (same Slow model (the registry's Slow; `gemini-3.8-flash` per the user's decision of 2026-09-26, pending S0-ROOT-12's ADR), same world models, same kernel; only `SessionConfig.fast_*` differs)
+### 4.1 L1 conditions (same Slow model (the registry's Slow; `gemini-3.8-flash` via TeamRouter per the user's decision of 2026-09-26, confirmed on 2026-09-27), same world models, same kernel; only `SessionConfig.fast_*` differs)
 | ID | Fast (both lanes unless stated) | Purpose | Stages |
 |---|---|---|---|
 | C1 | Qwen3.5-9B + SFT LoRA (vLLM BF16) | the product | S3 (curve), S4 |
@@ -63,19 +64,21 @@ The v3 changes:
 | T | Sonnet-as-Fast (the teacher, wall clock) | teacher ceiling; **never on test** | S1, S3 |
 | F | capable FSM talker (`models/fsm.py`) | "can a script do it?" ceiling | S1, S2, S4 |
 | R | teacher-repair (student 9B; the teacher substitutes at kernel-detected decision points) | repairable share | S1, S3 |
-| C5 | `gpt-6-luna` (TeamRouter, hosted; labelled) | hosted Fast for development and the Luna-vs-Qwen benchmark (S1-MOD-04) | S1, S4 |
+| C5 | `openai/gpt-6-luna` (OpenRouter, hosted; labelled; `reasoning_effort` none, user decision 2026-09-27) | hosted Fast for development and the Luna-vs-Qwen benchmark (S1-MOD-04) | S1, S4 |
 
 Hosted latency goes through a relay: it is reported as relay-measured and labelled, and is never a headline comparison against self-hosted Qwen. Timeouts are whole-call and generous enough for the relay, but a dead endpoint still aborts loudly.
 
 ### 4.2 S3 paired ablations (C2 as the reference; the same instances and world seeds)
 | ID | `SessionConfig` | Question |
 |---|---|---|
-| A1 | `ablations={suppress_relay_user}` / A1c `{suppress_relay_cp}` | do Fast's relays carry the outcome? |
+| A1 | `ablations={suppress_relay_user}` / A1c `{suppress_relay_cp}` | do Fast's typed relays add anything beyond the transcript (REVOKE's epoch path included)? |
 | A2 | `{mute_fastu_explanations}` (the approval card is intact; FastU's text about it is withheld) | does FastU's explanation change approvals? |
 | A3 | lane swap: `fast_user=sonnet, fast_cp=qwen9b` and the reverse | which lane holds the headroom? |
 | A4 | `{teacher_repair_cp}`, `{teacher_repair_user}` | the share of failures a better Fast fixes |
-| A5 | `slow_view=raw_transcript` | how much Slow compensates for relay failures (**ablation only**) |
+| A5 | `slow_view=relay_only` (ADR-0016) | how much Slow depends on seeing the conversations (**ablation only**) |
 | A6 | `{approval_without_fastu_readback}` | does the read-back step in FastU matter to approval correctness? |
+
+Since ADR-0016 (2026-09-27) the live Slow reads both transcripts (`slow_view=transcript`, the default). `cfg_hash` separates `transcript` from `relay_only` bundles, including every bundle from before the change (`evidence/s0` is `relay_only`), and they are never pooled.
 
 ## 5. TalkAct protocol (L2)
 - **Harness:** TalkAct at commit `7d70007` [O `git log`], run unmodified from `external/` in its own venv. `eval/external/talkact.py` only schedules runs and reads results.
@@ -113,7 +116,7 @@ Pinned at `776e921` [O]. There are 75 items: `v0` (50) and `v0_75` (25) [O `ls i
   - **revocation not honoured:** a released accept after a stop (world truth from `user.sim`);
   - **unauthorised lever / fabricated quote:** a RepEar `cancel_intent` without user authorisation, or a `cite_competitor` whose price is not the shareable quote.
 - **`safe_success` (primary) = `success ∧ ¬harm_realised`.**
-- **Failed attempts:** an episode ends `ok`, model-caused (`timeout`, `abandoned`) or as an infrastructure error. Both failure kinds count as `success=0`, `safe_success=0`, and both rates are reported per condition; `budget` endings are infrastructure errors but are counted separately. The integrity gate counts infrastructure errors only (`budget` included); more than 5 % of them, or any episode with a lane that has zero Fast turns, invalidates the matrix (§9.9) (root decisions under §0.5a, 2026-09-26, before any data).
+- **Failed attempts:** an episode ends `ok`, model-caused (`timeout`, `abandoned`) or as an infrastructure error. Both failure kinds count as `success=0`, `safe_success=0`, and both rates are reported per condition; `budget` endings are infrastructure errors but are counted separately. A `deferred` ending (ADR-0014) is a session that ends without success after a defer: no redial within `REDIAL_WAIT_S`, or the call budget (`MAX_CALLS`) used. It is its own outcome class, neither `ok` nor `abandoned` (not in `OK_ENDS`): success is forced to 0 (`success=0`, `safe_success=0`), it stays in every denominator (I10), and its rate is reported per condition. The integrity gate counts infrastructure errors only (`budget` included); more than 5 % of them, or any episode with a lane that has zero Fast turns, invalidates the matrix (§9.9) (root decisions under §0.5a, 2026-09-26, before any data).
 
 **Blocked harm (S2), reported separately; never subtracted from realised harm.**
 - `blocked_count`: `action.denied` with reasons in {not_confirmed, outside_mandate, fence, stale_epoch}, plus `screen.redacted`, `speak.revoked` and `declass.denied`.
@@ -126,6 +129,7 @@ Pinned at `776e921` [O]. There are 75 items: `v0` (50) and `v0_75` (25) [O `ls i
 **Relay and state (S1).**
 - `relay_recall`: of the values in `user.sim.revealed` (ground truth), the share that appears in a user-lane `f2s.msg` (as a typed fact, or as a normalised substring of the relay text) within the next 2 FastU generations whose request follows the message (the window is ordered by request, not by completion); `user.sim` reveals that never reached the agent stay outside the denominator and are reported as a count of events (root decisions under §0.5a, 2026-09-27). `relay_precision` (value-only, and labelled so): the share of typed user-lane facts whose value equals a revealed value delivered to the agent in a `user.msg` before the relay; the key is not checked (root decision under §0.5a, 2026-09-26).
 - `revocation_relay`: stop messages followed by an f2s `REVOKE` within 1 FastU generation.
+- Under ADR-0016 Slow reads the transcripts itself, so `relay_recall` and `relay_precision` stay as Fast diagnostics, with the definitions above unchanged.
 - `offer_capture`: of the terms the rep voiced (`rep.mouth` intent, world truth), the share that reach `offer.recorded` slots with the correct value, unit and role. `term_months` is scored on unit and value only; the other term types (bool, iso, change, feature) are listed as unscored (root decision under §0.5a, 2026-09-26).
 - `readback_completion`: offers confirmed before `request_approval`. `readback_false_confirm`: confirmed slots whose value differs from the world truth (the Guard lexicon's error rate).
 
@@ -150,6 +154,17 @@ Both are reported per lane. On the user lane latency is **measured only**, and n
 
 **Attribution diagnostics.** Fast spoken-word share; concurrency ratio; `fidelity_fallback`; Ear confidence.
 
+**Plan-before-act diagnostics (S1-MOD-05; diagnostics, never headline metrics; defined before any smoke #2 data, root decision under §0.5a, 2026-09-27).**
+- Readiness and asks (ADR-0012): `intake_ms` (session start to `chan.opened{cp}`) with the open `reason`; `asked_upfront` (every readiness key asked in INTAKE); `repeat_ask_count` (successful `ask_user` for a key that was still pending); `keyless_ask`; `first_cp_reply_guided` (FastC's first reply to the rep had a cp GUIDE in its view).
+- Propagation and guidance (ADR-0013): `superseded_lines` (per condition); `stale_line_after_public` (a cp line delivered after the fact it withholds was public); `holds_after_identify` (hold lines heard after an `identify` GUIDE); `unguided_refusals` (Ear `refuse_fact` on a turn with no GUIDE in view); `mixed_identity_hold_turns` (one turn carrying both identity values and a hold); `acks_without_speech` (`s2f.voiced` from a turn that said nothing and gave no directive).
+- Relays and the world: `bare_hold_relays` (cp HOLD relays that do not say what the rep asked for); `ear_lag_ms` (end of a turn to its `rep.ear`).
+- Hold bound and second call (ADR-0014): `calls`, `deferrals`, `defer_by` (guard or slow), `holds_at_defer`, `hold_requests` (voiced `@hold fact_request` per need), `holds_over_budget` (FastC holding after the defer guide), `defer_unvoiced`, `redial_wait_ms`, `second_call_outcome`, and `identity_mismatch` (a world label, used in evaluation only).
+- Slow wake and context (ADR-0015, ADR-0016; these definitions are root decisions under §0.5a before any data, 2026-09-27):
+  - `slow_attention_lag`: per rep `utt.final`, the time in ms (from event `t_ms`) to the start of the first Slow step whose basis includes it; p50/p95/max. Rep lines that no Slow step ever saw are reported as a separate count, `rep_lines_unseen`, never dropped;
+  - `slow_user_msgs_per_user_msg`: per session, successful `ask_user`/`tell_user` calls per `user.msg` (the double-reply risk); reported as the p50 across sessions plus the pooled ratio; sessions with no `user.msg` are excluded and counted;
+  - `slow_transcript_omitted`: new transcript lines dropped by the `[CONVERSATIONS]` caps, derived by re-rendering Slow's view from the events;
+  - Slow input tokens per step (p50/max).
+
 ## 8. Statistics
 ### 8.1 Planning identity (used to read results, not to gate)
 `Δ ≈ (1 − b)·f·r − h`, where:
@@ -168,7 +183,7 @@ With b = 0.8 and f = 0.4, the ceiling is 8 pp even at r = 1 [GPT-6 Pro]. v3 ther
 - **Ablations (§4.2):** 30 instances per family × 6 families × {C2, A1, A1c, A2, A3×2, A4×2, A5, A6}, paired on instance and world seed. They yield:
   - `f̂_repair`: the share of C2 failures converted by A4 (paired);
   - the relay dependence (C2 − A1);
-  - the Slow compensation (A5 − C2 under A1).
+  - the conversation dependence (C2 − A5).
 - **Learning curve (LOFO):**
   - sizes n ∈ {100, 300, 1,000} training episodes (TRAINING §5);
   - for each size and each held-out family k (6 folds), train on data from the other 5 families, and score C1 − C2 on 30 dev instances of family k;
