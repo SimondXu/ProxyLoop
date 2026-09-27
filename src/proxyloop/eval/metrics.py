@@ -31,7 +31,7 @@ from proxyloop.contract.views import FastView
 from proxyloop.env.tasks.loader import instance_hash, load_task
 from proxyloop.env.tasks.schema import Task
 from proxyloop.guard.declass import numbers
-from proxyloop.slow.tools import SCALE
+from proxyloop.slow import tools
 
 WINDOW = 2  # relay_recall: the FastU generations after a reveal (EVAL §7)
 # session.ended reason -> outcome; an unknown reason is an infra_error that the
@@ -123,8 +123,10 @@ def _decimal(value: str) -> Decimal | None:
 
 
 def _amount(value: str, unit: str) -> Decimal | None:
-    number = _decimal(value) if unit in SCALE else None
-    return None if number is None else number / SCALE[unit]
+    if unit not in tools.SCALE:
+        return None
+    number = _decimal(value)
+    return None if number is None else number / tools.SCALE[unit]
 
 
 def _user_relays(log: Log) -> list[tuple[Event, FastToSlow]]:
