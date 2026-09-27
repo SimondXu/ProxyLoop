@@ -1,0 +1,488 @@
+"""Slow's S1 tools over a real bus and fold (the test plays the kernel and world
+sides): Guard decides every rule, denials come back as text, models restrict but
+never grant, and the approval chain holds end to end (ARCHITECTURE §8, §9)."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
+
+import pytest
+from tests.support.manual_clock import ManualClock
+
+from proxyloop.contract.config import SlowViewMode
+from proxyloop.contract.events import Event, Stream
+from proxyloop.contract.llm import ToolCall
+from proxyloop.contract.state import Blackboard, CaseStatus
+from proxyloop.contract.views import view_slow
+from proxyloop.core.bus import Bus
+from proxyloop.eval.metrics import Log, approval_b
+from proxyloop.slow.prompt import ACT, status_bar
+from proxyloop.slow.tools import SlowTools, case_ref
+
+if TYPE_CHECKING:
+    from proxyloop.kernel.session import Kernel
+
+KEYS = frozenset({"account.holder_name", "account.last4", "competitor.price_usd"})
+TERMS = (
+    "It is $69 a month on a 24-month term, no fees, no other changes, "
+    "and the offer does not expire."
+)
+SLOTS = [
+    {"field": "monthly_price", "value": "6900", "unit": "usd_minor",
+     "role": "recurring", "utt_ref": "cp-1"},
+    {"field": "term_months", "value": "24", "unit": "months", "role": "recurring",
+     "utt_ref": "cp-1"},
+    {"field": "fees_none", "value": "true", "unit": "bool", "role": "one_time",
+     "utt_ref": "cp-1"},
+    {"field": "changes_none", "value": "true", "unit": "bool", "role": "change",
+     "utt_ref": "cp-1"},
+    {"field": "expires", "value": "none", "unit": "iso", "role": "expiry",
+     "utt_ref": "cp-1"},
+]  # fmt: skip
+BOUND = {  # the world's ledger binding, in dollars
+    "monthly_price": "69.00",
+    "fees_none": "true",
+    "changes_none": "true",
+    "expires": "none",
+}
+
+
+class Host:
+    """The kernel's seams Slow's tools use, over a real bus (not a model fake)."""
+
+    def __init__(self, tmp_path: Path) -> None:
+        self.clock = ManualClock()
+        self.bus = Bus(tmp_path / "events.jsonl", "r1", self.clock)
+        self.ended: list[str] = []
+        self.delivered: Event | None = None  # the accept line as heard
+        self.tools = SlowTools(cast("Kernel", self), KEYS, case_ref("case-1"))
+        self.root = self.emit("user.msg", "kernel", {"text": "Lower my bill."})
+
+    @property
+    def bb(self) -> Blackboard:
+        return self.bus.bb
+
+    def emit(
+        self,
+        type_: str,
+        actor: str,
+        payload: Any,
+        causes: Any = (),
+        stream: Stream = "agent",
+    ) -> Event:
+        self.clock.advance(100)
+        return self.bus.emit(type_, actor, stream, payload, causes)
+
+    def finish(self, outcome: str) -> None:
+        self.ended.append(outcome)
+
+    def now(self) -> int:
+        return self.clock.monotonic_ms()
+
+    def relay(self, cause: Event, text: str) -> None:
+        """FastC's typed relay of a rep line, as SlowLoop hands it to Slow."""
+        msg_id = f"r1:{len(self.bus.events)}"  # the kernel's: its own event id
+        msg = {"msg_id": msg_id, "lane": "cp", "gen_id": "g"}
+        msg |= {"utt_ref": cause.payload["utt_id"], "type": "CP_UPDATE", "text": text}
+        self.emit("f2s.msg", "fast.cp", msg, [cause.event_id])
+        self.tools.received.add(msg_id)
+
+    def act(self, *calls: dict[str, Any]) -> list[str]:
+        body = {"private_summary": "digest", "calls": list(calls)}
+        call = ToolCall(call_id="c", name="act", arguments=json.dumps(body))
+        return self.tools.act(call, [self.root.event_id]).splitlines()[1:]
+
+    def rep(self, utt_id: str, text: str) -> Event:
+        said = {"lane": "cp", "speaker": "partner", "utt_id": utt_id, "text": text}
+        return self.emit("utt.final", "kernel", said)
+
+    def of(self, type_: str) -> list[Event]:
+        return [e for e in self.bus.events if e.type == type_]
+
+    def call(self) -> None:  # chan.opened(cp): INTAKE -> IN_CALL
+        moved = {"previous": "INTAKE", "status": "IN_CALL"}
+        self.emit("status.changed", "guard", moved, [self.root.event_id])
+
+
+def _confirmed(tmp_path: Path) -> Host:
+    """An offer the rep stated, read back after Slow asked for this revision."""
+    h = Host(tmp_path)
+    h.call()
+    h.rep("cp-1", TERMS)
+    ask = {"tool": "guide_fast", "move": "ask_readback", "slots": ["offer:save-2"]}
+    record = {"tool": "record_offer", "offer_ref": "save-2", "offer_slots": SLOTS}
+    out = h.act(record, ask)
+    assert out[-1].endswith("read-back asked for save-2 r1"), out
+    h.rep("cp-2", TERMS)
+    h.tools.readback()
+    offer = h.bb.public.offers["save-2"]
+    assert {s.status for s in offer.slots} == {"confirmed"} and offer.terms_hash
+    return h
+
+
+def _granted(h: Host) -> None:
+    """The sim approver's post and the kernel's decision (S1-SYS-02/05 wire it)."""
+    (text,) = h.act({"tool": "request_approval", "offer_ref": "save-2"})
+    assert text.startswith("request_approval: card apr-save-2-r1-e"), text
+    assert h.bb.public.status is CaseStatus.AWAITING_APPROVAL
+    card = h.bb.private.pending_approval
+    assert card is not None
+    (notice,) = [e for e in h.of("s2f.msg") if e.payload["type"] == "APPROVAL_NOTICE"]
+    assert notice.payload["approval_id"] == card.approval_id
+    post = {"subject": "approval", "subject_id": card.approval_id}
+    post |= {"decision": "granted", "subject_hash": card.terms_hash}
+    epoch = {"authority_epoch": card.authority_epoch}
+    posted = h.emit("approval.post", "sim_approver", post | epoch)
+    decided = {"approval_id": card.approval_id, "decision": "granted"}
+    ev = h.emit(
+        "approval.decided",
+        "kernel",
+        decided | {"by": "sim_approver"},
+        [posted.event_id],
+    )
+    back = {"previous": "AWAITING_APPROVAL", "status": "IN_CALL"}
+    h.emit("status.changed", "guard", back, [ev.event_id])
+
+
+def _heard(h: Host, ledger: dict[str, Any], committed: bool = True) -> None:
+    """The Speaker releases the accept, the rep hears it and its system writes
+    the ledger, and FastC relays the confirmation id (the kernel and world
+    sides); ``committed``: the kernel has moved the case to COMMITTED."""
+    (line,) = [e for e in h.of("speak.verbatim") if e.payload["kind"] == "accept"]
+    cap_id = line.payload["cap_id"]
+    released = h.emit(
+        "speak.released", "kernel", {"lane": "cp", "cap_id": cap_id}, [line.event_id]
+    )
+    heard = {"lane": "cp", "utt_id": "a-1", "text_generated": line.payload["text"]}
+    heard |= {"text_heard": line.payload["text"], "interrupted": False}
+    h.delivered = h.emit("utt.delivered", "kernel", heard, [released.event_id])
+    if committed:
+        _committed(h)
+    done = h.rep(
+        "cp-3", "Done, the offer is accepted. Your confirmation number is 482913."
+    )
+    binding = {"offer_ref": "save-2", "revision": 1, "term_months": 24} | ledger
+    write = {"confirmation_id": "482913", "binding": binding}
+    h.emit("ledger.write", "world.ledger", write, [done.event_id], "world")
+    h.relay(done, "accepted, confirmation number 482913")
+
+
+def _committed(h: Host) -> None:
+    assert h.delivered is not None
+    moved = {"previous": "COMMIT_AUTHORIZED", "status": "COMMITTED"}
+    h.emit("status.changed", "guard", moved, [h.delivered.event_id])
+
+
+CHECK = {"tool": "check_account", "confirmation_id": "482913"}
+DONE = {"tool": "finish", "outcome": "completed", "summary": "done"}
+
+
+def _accepted(tmp_path: Path) -> Host:
+    h = _confirmed(tmp_path)
+    _granted(h)
+    h.act({"tool": "accept_offer", "offer_ref": "save-2"})
+    return h
+
+
+def test_the_approval_chain_reaches_verified_complete(tmp_path: Path) -> None:
+    h = _confirmed(tmp_path)
+    (denied,) = h.act({"tool": "accept_offer", "offer_ref": "save-2"})
+    assert "denied: not_authorized" in denied and "request_approval" in denied
+    _granted(h)
+    (accepted,) = h.act({"tool": "accept_offer", "offer_ref": "save-2"})
+    assert "accept line queued (cap-1)" in accepted
+    assert h.bb.public.status is CaseStatus.COMMIT_AUTHORIZED
+    (authorized,) = h.of("action.authorized")
+    (decided,) = h.of("approval.decided")
+    assert decided.event_id in authorized.cause_ids  # the grant it used
+    _heard(h, {"terms": BOUND})
+    (early,) = h.act({"tool": "finish", "outcome": "completed", "summary": "done"})
+    assert "needs EVIDENCE_PENDING; the case is COMMITTED" in early and not h.ended
+    account, done = h.act(CHECK, DONE)
+    assert "482913 binds the accepted terms" in account
+    (evidence,) = h.of("evidence.recorded")
+    (write,) = h.of("ledger.write")
+    assert write.event_id in evidence.cause_ids
+    assert done == "finish: verified complete" and h.ended == ["completed"]
+    assert h.bb.public.status is CaseStatus.VERIFIED_COMPLETE
+    chain = [
+        "approval.requested", "approval.decided", "action.authorized",
+        "speak.released", "utt.delivered", "ledger.write", "evidence.recorded",
+        "completion.decided",
+    ]  # fmt: skip
+    firsts = [h.of(t)[0].seq for t in chain]
+    assert firsts == sorted(firsts)
+    held, _ = approval_b(Log(h.bus.events))
+    assert held == {"held": True, "accepts": 1, "via_approval": 1, "via_mandate": 0}
+    (again,) = h.act(CHECK)
+    assert again == "check_account: 482913 is already recorded"
+
+
+def test_a_ledger_binding_other_terms_never_verifies(tmp_path: Path) -> None:
+    h = _accepted(tmp_path)
+    _heard(h, {"terms": BOUND, "term_months": 36})  # misquote: +12 months
+    account, done = h.act(CHECK, DONE)
+    assert "does not bind" in account
+    assert "not verified: no_bound_evidence" in done and not h.ended
+    assert h.bb.public.status is CaseStatus.NEEDS_REPLAN
+    (escalated,) = h.act({"tool": "finish", "outcome": "escalate", "summary": "x"})
+    assert escalated == "finish: case closed" and h.ended == ["escalate"]
+
+
+def test_evidence_read_before_the_commit_still_moves_the_case(
+    tmp_path: Path,
+) -> None:  # review M1: no livelock when check_account runs before COMMITTED
+    h = _accepted(tmp_path)
+    _heard(h, {"terms": BOUND}, committed=False)
+    (first,) = h.act(CHECK)
+    assert "binds the accepted terms" in first
+    assert h.bb.public.status is CaseStatus.COMMIT_AUTHORIZED
+    _committed(h)
+    again, done = h.act(CHECK, DONE)
+    assert again == "check_account: 482913 is already recorded"
+    assert len(h.of("evidence.recorded")) == 1
+    assert done == "finish: verified complete" and h.ended == ["completed"]
+    assert h.bb.public.status is CaseStatus.VERIFIED_COMPLETE
+
+
+@pytest.mark.parametrize("price", ["69.009", "sixty-nine", "NaN", "Infinity"])
+def test_ledger_money_must_be_exact_and_readable(tmp_path: Path, price: str) -> None:
+    """Review M2: $69.009 is not $69.00 (no truncation); N2: a malformed world
+    value fails closed as evidence that binds nothing, not as a Slow error."""
+    h = _accepted(tmp_path)
+    _heard(h, {"terms": BOUND | {"monthly_price": price}})
+    account, done = h.act(CHECK, DONE)
+    assert account == "check_account: 482913: evidence unreadable, it binds nothing"
+    (evidence,) = h.of("evidence.recorded")
+    assert evidence.payload["terms_hash"] is None
+    assert "not verified: no_bound_evidence" in done and not h.ended
+
+
+def test_a_confirmation_counts_only_if_it_was_relayed_to_slow(
+    tmp_path: Path,
+) -> None:  # I5: Slow looks up only an id it was told
+    h = _accepted(tmp_path)
+    _heard(h, {"terms": BOUND})
+    h.tools.received.clear()  # the relay exists, but Slow never received it
+    (unseen,) = h.act(CHECK)
+    assert "no such confirmation relayed" in unseen
+    guess = CHECK | {"confirmation_id": "4829"}  # a part of the id is no id
+    h.tools.received.update(str(e.payload["msg_id"]) for e in h.of("f2s.msg"))
+    (partial,) = h.act(guess)
+    assert "no such confirmation relayed" in partial
+    assert not h.of("evidence.recorded")
+    h.relay(h.of("utt.final")[-1], "their number is 777777")
+    (absent,) = h.act(CHECK | {"confirmation_id": "777777"})
+    assert "the account shows no confirmation 777777" in absent
+    assert not h.of("evidence.recorded")
+
+
+def test_a_mandate_restriction_is_never_dropped(tmp_path: Path) -> None:
+    h = Host(tmp_path)  # review N1: a malformed restriction is refused, loudly
+    for bad in ("roaming", {"x": 1}, [3]):
+        (text,) = h.act(
+            {"tool": "propose_mandate", "envelope": {"required_features": bad}}
+        )
+        assert text.startswith("propose_mandate: invalid arguments"), text
+    assert h.bb.private.mandate is None
+
+
+def test_a_read_back_confirms_only_the_revision_it_was_asked_for(
+    tmp_path: Path,
+) -> None:
+    h = Host(tmp_path)
+    h.call()
+    h.rep("cp-1", TERMS)
+    h.act({"tool": "record_offer", "offer_ref": "save-2", "offer_slots": SLOTS})
+    h.rep("cp-2", TERMS)  # repeated, but nobody asked for a read-back
+    h.tools.readback()
+    assert {s.status for s in h.bb.public.offers["save-2"].slots} == {"heard"}
+    (denied,) = h.act({"tool": "request_approval", "offer_ref": "save-2"})
+    assert "denied: readback_not_confirmed" in denied and "ask_readback" in denied
+    ask = {"tool": "guide_fast", "move": "ask_readback", "slots": ["offer:save-2"]}
+    h.act(ask)
+    h.rep("cp-3", TERMS)
+    h.tools.readback()
+    assert {s.status for s in h.bb.public.offers["save-2"].slots} == {"confirmed"}
+    h.act({"tool": "record_offer", "offer_ref": "save-2", "offer_slots": SLOTS})
+    h.tools.readback()  # r2: the r1 request confirms nothing
+    assert {s.status for s in h.bb.public.offers["save-2"].slots} == {"heard"}
+    (updated,) = {e.payload["offer_ref"] for e in h.of("readback.updated")}
+    assert updated == "save-2"
+
+
+def test_models_restrict_authority_but_never_grant_it(tmp_path: Path) -> None:
+    h = _confirmed(tmp_path)
+    envelope = {"max_monthly_price_minor": 7000, "max_term_months": 24}
+    proposed, accept = h.act(
+        {"tool": "propose_mandate", "envelope": envelope},
+        {"tool": "accept_offer", "offer_ref": "save-2"},
+    )
+    assert "grants nothing until the user decides it" in proposed
+    assert "denied: not_authorized" in accept
+    m = h.bb.private.mandate
+    assert m is not None and m.status == "proposed" and m.decided_by is None
+    (looser,) = h.act(
+        {"tool": "tighten_mandate", "changes": {"max_monthly_price_minor": 9000}}
+    )
+    assert "only restricts" in looser and h.bb.epoch == 0
+    (tighter,) = h.act(
+        {"tool": "tighten_mandate", "changes": {"max_monthly_price_minor": 6500}}
+    )
+    m = h.bb.private.mandate
+    assert "re-grant" in tighter and h.bb.epoch == 1
+    assert m is not None and (m.status, m.epoch, m.max_monthly_price_minor) == (
+        "proposed",
+        1,
+        6500,
+    )
+    _granted(h)  # a card at epoch 1, granted
+    (revoked,) = h.act({"tool": "revoke", "reason": "the user said stop"})
+    assert "epoch 2" in revoked and h.bb.epoch == 2
+    (stale,) = h.act({"tool": "accept_offer", "offer_ref": "save-2"})
+    assert "denied: approval_stale_epoch" in stale
+    reasons = [e.payload["reason"] for e in h.of("action.denied")]
+    assert reasons == ["not_authorized", "loosen", "approval_stale_epoch"]
+
+
+def test_a_granted_mandate_authorises_an_accept_that_cites_it(
+    tmp_path: Path,
+) -> None:
+    h = _confirmed(tmp_path)
+    envelope = {"max_monthly_price_minor": 7000, "max_term_months": 24}
+    h.act({"tool": "propose_mandate", "envelope": envelope})
+    m = h.bb.private.mandate
+    assert m is not None
+    post = {"subject": "mandate", "subject_id": m.mandate_id, "decision": "granted"}
+    post |= {"subject_hash": m.mandate_hash, "authority_epoch": 0}
+    posted = h.emit("approval.post", "ui", post)
+    decision = {"mandate_id": m.mandate_id, "mandate_hash": m.mandate_hash}
+    decision |= {"decision": "granted", "by": "ui"}
+    decided = h.emit("mandate.decided", "kernel", decision, [posted.event_id])
+    bump = {"new": 1, "reason": "mandate_decided"}
+    h.emit("authority.epoch", "kernel", bump, [decided.event_id])
+    (accepted,) = h.act({"tool": "accept_offer", "offer_ref": "save-2"})
+    assert "accept line queued" in accepted
+    (authorized,) = h.of("action.authorized")
+    assert decided.event_id in authorized.cause_ids
+
+
+def test_levers_need_the_users_facts(tmp_path: Path) -> None:
+    h = Host(tmp_path)
+    h.call()
+    h.rep("cp-1", "Orbit Mobile charges 62 dollars, you say?")
+    slot = "fact:competitor.price_usd"
+    cite = {"tool": "guide_fast", "move": "cite_competitor", "slots": [slot]}
+    record = {"tool": "record_fact", "key": "competitor.price_usd", "value": "62"}
+    unrecorded, _, rep_said, cancel = h.act(
+        cite,
+        record | {"utt_ref": "cp-1"},  # public, but the rep's word, not the user's
+        cite,
+        {"tool": "guide_fast", "move": "cancel_lever"},
+    )
+    assert h.bb.public.facts["competitor.price_usd"].source == "cp_utt"
+    assert "no fabricated quotes" in unrecorded and "no fabricated quotes" in rep_said
+    assert "authorization.cancel_lever=granted" in cancel
+    reasons = [e.payload["reason"] for e in h.of("action.denied")]
+    assert reasons == [
+        "competitor_quote_not_shareable",
+        "competitor_quote_not_shareable",
+        "cancel_lever_not_authorized",
+    ]
+    assert not [e for e in h.of("s2f.msg") if e.payload["type"] == "GUIDE"]
+
+
+def test_a_shared_fact_follows_the_record_fact_rule(tmp_path: Path) -> None:
+    h = Host(tmp_path)
+    said = h.emit("user.msg", "kernel", {"text": "I'm Marcus Bell, 5190."})
+    record = {"tool": "record_fact", "key": "account.last4", "utt_ref": "nope"}
+    out = h.act(
+        record | {"value": "5190"},  # no message cited: private
+        {"tool": "share_fact", "key": "account.holder_name"},
+        {"tool": "share_fact", "key": "tenure_years"},
+        {"tool": "share_fact", "key": "account.last4"},
+    )
+    assert "account.holder_name is not recorded" in out[1]
+    assert "denied: not_shareable" in out[2]
+    assert "account.last4 stays private" in out[3]
+    bar = status_bar(view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b"), KEYS, 0)
+    assert "account.last4 recorded private: re-record citing the user's message" in bar
+    assert "account.holder_name not given yet" in bar  # #140
+    h.act(record | {"value": "5190", "utt_ref": said.event_id})
+    assert h.bb.public.facts["account.last4"].source_ref == said.event_id
+
+
+def test_no_deal_needs_the_final_offer_asked_and_a_closing_reply(
+    tmp_path: Path,
+) -> None:
+    h = Host(tmp_path)
+    h.call()
+    finish = {"tool": "finish", "outcome": "no_deal", "summary": "no deal"}
+    (early,) = h.act(finish)
+    assert "final_offer_not_asked" in early and not h.ended
+    h.act({"tool": "guide_fast", "move": "ask_final_offer"})
+    h.rep("cp-1", "I am afraid I cannot do better than what I offered.")
+    (done,) = h.act(finish)
+    assert done == "finish: verified no deal" and h.ended == ["no_deal"]
+    assert h.bb.public.status is CaseStatus.VERIFIED_NO_DEAL
+
+
+def test_record_offer_sets_the_stated_expiry_on_the_session_clock(
+    tmp_path: Path,
+) -> None:
+    h = Host(tmp_path)
+    h.rep("cp-1", "It is $69 a month, valid until 2026-09-26T00:10:00Z.")
+    slot = {"field": "expires", "value": "2026-09-26T00:10:00Z", "unit": "iso"}
+    slot |= {"role": "expiry", "utt_ref": "cp-1"}
+    (text,) = h.act({"tool": "record_offer", "offer_ref": "o1", "offer_slots": [slot]})
+    offer = h.bb.public.offers["o1"]  # ten minutes from the session's start
+    assert offer.expires_ms == 600_000 and "expires at t=600000 ms" in text
+    bar = status_bar(view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b"), KEYS, 300_000)
+    assert "expires in 300 s" in bar and "missing monthly_price" in bar
+
+
+def test_the_status_bar_shows_authority_state(tmp_path: Path) -> None:
+    h = _confirmed(tmp_path)
+    h.act({"tool": "request_approval", "offer_ref": "save-2"})
+    raised = {"op": "raised", "fence_id": "f1", "utt_id": h.root.event_id}
+    h.emit("authority.fence", "kernel", raised, [h.root.event_id])
+    bar = status_bar(view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b"), KEYS, 0)
+    assert "case AWAITING_APPROVAL" in bar and "fences raised: 1" in bar
+    assert "apr-save-2-r1-e0-0 for save-2 r1 pending, expires in 1" in bar
+    assert "save-2 r1 (open, read-back confirmed)" in bar and "mandate: none" in bar
+
+
+def test_finish_moves_only_along_the_status_machine(tmp_path: Path) -> None:
+    h = Host(tmp_path)
+    h.call()
+    escalate, completed, bogus = h.act(
+        {"tool": "finish", "outcome": "escalate", "summary": "x"},
+        {"tool": "finish", "outcome": "completed", "summary": "x"},
+        {"tool": "finish", "outcome": "won", "summary": "x"},
+    )
+    assert "not possible while the case is IN_CALL" in escalate
+    assert "needs EVIDENCE_PENDING" in completed and "unknown outcome" in bogus
+    assert not h.ended and not h.tools.finished
+    (closed,) = h.act({"tool": "finish", "outcome": "info_only", "summary": "x"})
+    assert closed == "finish: case closed" and h.ended == ["info_only"]
+
+
+SNAPSHOT = Path(__file__).parent / "snapshots" / "act_tool.json"
+
+
+def test_the_act_tool_schema_matches_its_snapshot() -> None:
+    """A deliberate schema change updates the snapshot in the same PR."""
+    got = json.dumps(ACT.model_dump(mode="json"), indent=1, sort_keys=True) + "\n"
+    assert got == SNAPSHOT.read_text("utf-8")
+
+
+@pytest.mark.parametrize(
+    "tool",
+    ["share_fact", "propose_mandate", "tighten_mandate", "revoke",
+     "request_approval", "accept_offer", "decline_offer", "check_account"],
+)  # fmt: skip
+def test_every_authority_tool_is_in_the_schema(tool: str) -> None:
+    calls = cast(dict[str, Any], ACT.parameters["properties"])["calls"]
+    assert tool in calls["items"]["properties"]["tool"]["enum"]

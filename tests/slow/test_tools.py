@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
@@ -21,7 +22,7 @@ from proxyloop.contract.state import (
 from proxyloop.contract.views import Trigger, view_cp, view_slow
 from proxyloop.guard.declass import declassify
 from proxyloop.slow.prompt import status_bar
-from proxyloop.slow.tools import SlowTools, public_guide, record_offer
+from proxyloop.slow.tools import SlowTools, case_ref, public_guide, record_offer
 
 if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
@@ -30,6 +31,8 @@ REP = Line(
     utt_id="cp-3", speaker="partner", text="I can do 75.00 a month for 12 months."
 )
 BB = Blackboard(channels={"user": ChannelState(), "cp": ChannelState(lines=(REP,))})
+NOW = datetime(2026, 9, 26, tzinfo=UTC)
+CASE = case_ref("case-1")
 
 
 def _slot(field: str, value: str, unit: str, role: str) -> dict[str, object]:
@@ -45,7 +48,11 @@ def _slot(field: str, value: str, unit: str, role: str) -> dict[str, object]:
 def test_an_offer_the_rep_said_is_recorded() -> None:
     price = _slot("monthly_price", "7500", "usd_minor", "recurring")
     result = record_offer(
-        BB, "loyal-1", [price, _slot("term_months", "12", "months", "recurring")]
+        BB,
+        "loyal-1",
+        [price, _slot("term_months", "12", "months", "recurring")],
+        0,
+        NOW,
     )
     assert result.ok
     ((type_, payload),) = result.effects
@@ -54,7 +61,11 @@ def test_an_offer_the_rep_said_is_recorded() -> None:
 
 def test_an_offer_value_the_rep_never_said_is_denied() -> None:
     result = record_offer(
-        BB, "loyal-1", [_slot("monthly_price", "7000", "usd_minor", "recurring")]
+        BB,
+        "loyal-1",
+        [_slot("monthly_price", "7000", "usd_minor", "recurring")],
+        0,
+        NOW,
     )
     assert not result.ok
     assert [t for t, _ in result.effects] == ["declass.denied"]
@@ -73,7 +84,7 @@ def test_every_offer_slot_is_bound_to_a_cited_rep_line() -> None:  # review B1
         _slot("monthly_price", "1200", "usd_minor", "recurring"),  # "12 months"
     ]
     for slot in cases:
-        result = record_offer(BB, "loyal-1", [slot])
+        result = record_offer(BB, "loyal-1", [slot], 0, NOW)
         assert not result.ok, slot
         assert [t for t, _ in result.effects] == ["declass.denied"]
 
@@ -85,7 +96,7 @@ def test_a_relay_alone_never_makes_a_fact_public() -> None:  # review M1, #133
     )  # fmt: skip
     bb = BB.model_copy(update={"f2s_pending": (note,)})
     tools = SlowTools(
-        cast("Kernel", SimpleNamespace(bb=bb)), frozenset({"tenure_years"})
+        cast("Kernel", SimpleNamespace(bb=bb)), frozenset({"tenure_years"}), CASE
     )
     ((_, fact),) = tools.fact(bb, "tenure_years", "85", None).effects
     assert fact["scope"] == "private"
@@ -126,7 +137,7 @@ def test_a_cited_relay_counts_only_through_the_user_message_it_points_to() -> No
 def test_money_and_term_values_are_plain_integers() -> None:  # R2 N3
     for value, unit in (("7.5E+3", "usd_minor"), ("12.0", "months"), ("-12", "months")):
         result = record_offer(
-            BB, "loyal-1", [_slot("monthly_price", value, unit, "recurring")]
+            BB, "loyal-1", [_slot("monthly_price", value, unit, "recurring")], 0, NOW
         )
         assert not result.ok, value
 
@@ -141,7 +152,7 @@ KEYS = frozenset({"account.holder_name", "account.last4"})
 def _told() -> tuple[Blackboard, SlowTools]:
     user = ChannelState(lines=(USER, SAID))
     bb = BB.model_copy(update={"channels": {"user": user, "cp": BB.channels["cp"]}})
-    return bb, SlowTools(cast("Kernel", SimpleNamespace(bb=bb)), KEYS)
+    return bb, SlowTools(cast("Kernel", SimpleNamespace(bb=bb)), KEYS, CASE)
 
 
 def test_a_shareable_value_the_user_said_in_the_cited_message_is_public() -> None:
@@ -183,7 +194,7 @@ def test_a_value_not_in_the_cited_user_message_stays_private() -> None:
 
 
 def _guide(bb: Blackboard, **call: object) -> tuple[bool, str, list[object]]:
-    tools = SlowTools(cast("Kernel", SimpleNamespace(bb=bb)), KEYS)
+    tools = SlowTools(cast("Kernel", SimpleNamespace(bb=bb)), KEYS, CASE)
     run = tools._run  # pyright: ignore[reportPrivateUsage]
     result = run("guide_fast", {"tool": "guide_fast"} | call)
     return result.ok, result.text, [p for _, p in result.effects]
@@ -308,7 +319,7 @@ def _message(text: str, **private: object) -> tuple[Blackboard, SlowTools]:
             "private": BB.private.model_copy(update=private),
         }
     )
-    return bb, SlowTools(cast("Kernel", SimpleNamespace(bb=bb)), ALL)
+    return bb, SlowTools(cast("Kernel", SimpleNamespace(bb=bb)), ALL, CASE)
 
 
 @pytest.mark.parametrize(("text", "key", "value", "published"), PROBES)
@@ -425,18 +436,20 @@ def test_a_deflect_is_sent_and_says_how_to_hold_for_a_fact_instead() -> None:
 
 def test_the_status_bar_tells_slow_how_to_give_or_get_identity_facts() -> None:
     bb, _ = _told()
-    bar = status_bar(view_slow(bb, SlowViewMode.RELAY_ONLY, "b"), KEYS)
+    bar = status_bar(view_slow(bb, SlowViewMode.RELAY_ONLY, "b"), KEYS, 0)
     assert "account.holder_name, account.last4 not given yet" in bar
     assert "ask_user" in bar and "hold_for_decision" in bar and "identify" not in bar
-    half = status_bar(view_slow(_public(bb, L4), SlowViewMode.RELAY_ONLY, "b"), KEYS)
+    half = status_bar(view_slow(_public(bb, L4), SlowViewMode.RELAY_ONLY, "b"), KEYS, 0)
     assert "guide_fast(identify, slots=[fact:account.last4])" in half
     assert "account.holder_name not given yet" in half
     both = _public(bb, H, L4)
-    bar = status_bar(view_slow(both, SlowViewMode.RELAY_ONLY, "b"), KEYS)
+    bar = status_bar(view_slow(both, SlowViewMode.RELAY_ONLY, "b"), KEYS, 0)
     assert IDENTIFY in bar and "not given yet" not in bar
     guide = Guide(move=GuideMove.IDENTIFY, slots=(f"fact:{H}", f"fact:{L4}"))
     assert public_guide(both, guide) and not public_guide(_public(bb, L4), guide)
-    other = status_bar(view_slow(bb, SlowViewMode.RELAY_ONLY, "b"), frozenset({PRICE}))
+    other = status_bar(
+        view_slow(bb, SlowViewMode.RELAY_ONLY, "b"), frozenset({PRICE}), 0
+    )
     assert "identity" not in other  # no identity key, no hint
 
 

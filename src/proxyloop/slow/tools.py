@@ -1,13 +1,14 @@
-"""Slow's S0 tools (§8): ``slow.tool`` events citing the step's call and relays, then
-``guard`` effects. Bad model output is refused and counted, never repaired (rule 12)."""
+"""Slow's tools (§8): ``slow.tool`` events citing the step's call and relays, then
+``guard`` effects. Bad model output is refused and counted, never repaired (rule 12).
+The S1 authority, evidence and close tools are in ``slow.authority``."""
 
 from __future__ import annotations
 
 import json
 import re
 import unicodedata
-from collections.abc import Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Collection, Mapping, Sequence
+from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
 
@@ -17,15 +18,19 @@ from proxyloop.contract import base
 from proxyloop.contract import state as st
 from proxyloop.contract.base import Lane
 from proxyloop.contract.llm import ToolCall
-from proxyloop.contract.messages import Guide, SlowToFast
+from proxyloop.contract.messages import Guide, GuideMove, SlowToFast
 from proxyloop.contract.protocol import GuideSlotError, render_messages
 from proxyloop.contract.views import Trigger, view_cp
+from proxyloop.guard import authorize as guard
+from proxyloop.guard.authorize import CaseRef, Denial
 from proxyloop.guard.declass import declassify, numbers, spoken
+from proxyloop.guard.readback import readback_update
+from proxyloop.slow import authority
+from proxyloop.slow.result import Effect, Result, no
 
 if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
 
-Effect = tuple[str, Mapping[str, object]]
 SCALE = {"usd_minor": 100, "months": 1}  # minor units and months, as spoken
 _INVALID = (ValidationError, ValueError, KeyError, TypeError, ArithmeticError)
 _GUIDE = frozenset({"tool", "move", "slots"})
@@ -43,25 +48,26 @@ NUMBER_WORDS = frozenset(
 _EMPTY: tuple[object, ...] = (None, "", [])
 
 
-@dataclass(frozen=True)
-class Result:
-    ok: bool
-    text: str
-    effects: tuple[Effect, ...] = ()
-    then: Callable[[], None] | None = None
-
-
-def _no(text: str, *effects: Effect) -> Result:
-    return Result(False, text, effects)
+def case_ref(case_id: str) -> CaseRef:
+    """The read-back binding refs of a sim case: the task's own (no run id)."""
+    return CaseRef(case_id, f"{case_id}/account", f"{case_id}/principal")
 
 
 class SlowTools:
-    def __init__(self, host: Kernel, shareable_keys: frozenset[str]) -> None:
-        self._host, self._shareable_keys = host, shareable_keys
+    def __init__(
+        self, host: Kernel, shareable_keys: frozenset[str], case: CaseRef
+    ) -> None:
+        self._host, self._shareable_keys, self._case = host, shareable_keys, case
         self.shareable: dict[str, str] = {}  # recorded shareable values (declass)
-        self.finished, self._n = False, 0
+        self.finished, self._n, self._mandates = False, 0, 0
+        # the cp transcript length when a read-back was first asked for an
+        # offer revision, and when the final offer was first asked (§9.2, §9.3)
+        self.asked: dict[tuple[str, int], int] = {}
+        self.asked_final: int | None = None
+        self.received: set[str] = set()  # the relay ids SlowLoop handed to Slow
 
     def act(self, call: ToolCall, causes: Sequence[str]) -> str:  # the text Slow reads
+        self.readback()
         try:
             raw: Any = json.loads(call.arguments)
             if call.name != "act" or not isinstance(raw, dict):
@@ -70,14 +76,14 @@ class SlowTools:
             summaries = {k: args.get(k) for k in ("private_summary", "public_summary")}
             head = self._summaries(summaries)
         except ValueError as err:  # JSON and schema errors: the whole act
-            return self._apply("act", {"raw": call.arguments}, _no(str(err)), causes)
+            return self._apply("act", {"raw": call.arguments}, no(str(err)), causes)
         out = [self._apply("act", summaries, head, causes)]
         for c in cast(list[Any], args.get("calls") or []):
             a = cast(dict[str, Any], c if isinstance(c, dict) else {})
             try:
                 result = self._run(str(a.get("tool")), a)
             except _INVALID as err:
-                result = _no(f"invalid arguments: {err}")
+                result = no(f"invalid arguments: {err}")
             out.append(self._apply(str(a.get("tool")), a, result, causes))
         return "\n".join(out)
 
@@ -85,10 +91,29 @@ class SlowTools:
         done = {"name": name, "args": args, "result_text": r.text, "ok": r.ok}
         tool = self._host.emit("slow.tool", "slow", done, causes).event_id
         for type_, payload in r.effects:
-            self._host.emit(type_, "guard", payload, [tool])
+            self._host.emit(type_, "guard", payload, [tool, *r.causes])
         if r.then is not None:
             r.then()
         return f"{name}: {r.text}"
+
+    def readback(self) -> None:
+        """Guard's slot statuses and terms hash of each open offer, from the cp
+        transcript and the tracked read-back request (``readback.updated``,
+        citing the last rep line and the offer's record)."""
+        bb, events = self._host.bb, self._host.bus.events
+        lines = bb.channels["cp"].lines
+        rep = [x.utt_id for x in lines if x.speaker == "partner"]
+        heard = authority.last(events, "utt.final", "utt_id", rep[-1]) if rep else None
+        for ref, o in sorted(bb.public.offers.items()):
+            if o.status != "open":
+                continue
+            update = readback_update(o, lines, self.asked.get((ref, o.revision)))
+            now = {s.field: s.status for s in o.slots}
+            if (update["slot_statuses"], update["terms_hash"]) == (now, o.terms_hash):
+                continue
+            made = authority.last(events, "offer.recorded", "offer_ref", ref)
+            causes = [c for c in (made, heard) if c is not None]
+            self._host.emit("readback.updated", "guard", update, causes)
 
     def _summaries(self, s: Mapping[str, object]) -> Result:
         private, public = s["private_summary"], s["public_summary"]
@@ -105,12 +130,12 @@ class SlowTools:
         return Result(True, "summaries updated", (mine, shared))
 
     def _run(self, name: str, a: Mapping[str, Any]) -> Result:
-        bb, host = self._host.bb, self._host
+        bb, host, case = self._host.bb, self._host, self._case
         if name in ("ask_user", "tell_user"):
             return self._s2f(lane="user", type=name.upper(), text=str(a["text"]))
         if name == "wait":
             if not 1 <= (seconds := int(a["seconds"])) <= 15:
-                return _no("seconds must be 1-15")
+                return no("seconds must be 1-15")
             then = lambda: host.wake_slow("timer", seconds)  # noqa: E731
             return Result(True, f"waking in {seconds} s", then=then)
         if name == "guide_fast":
@@ -118,18 +143,55 @@ class SlowTools:
         if name == "record_fact":
             return self.fact(bb, str(a["key"]), str(a["value"]), a.get("utt_ref"))
         if name == "record_offer":
-            return record_offer(bb, str(a["offer_ref"]), a["offer_slots"])
+            t_ms, wall = host.now(), host.clock.wall()  # one instant
+            return record_offer(bb, str(a["offer_ref"]), a["offer_slots"], t_ms, wall)
+        if name == "share_fact":
+            return self._share(bb, str(a["key"]))
+        if name == "request_approval":
+            self._n += 1
+            ref = str(a["offer_ref"])
+            return authority.request_approval(bb, ref, case, f"s2f-{self._n}")
+        if name == "accept_offer":
+            return authority.accept_offer(
+                bb, str(a["offer_ref"]), case, host.bus.events
+            )
+        if name == "decline_offer":
+            return authority.decline_offer(bb, str(a["offer_ref"]))
+        if name in ("propose_mandate", "tighten_mandate"):
+            self._mandates += 1
+            mid = f"mandate-{self._mandates}"
+            if name == "propose_mandate":
+                return authority.propose_mandate(bb, a["envelope"], mid)
+            return authority.tighten_mandate(bb, a["changes"], mid)
+        if name == "revoke":
+            return authority.revoke(bb)
+        if name == "check_account":
+            told = [r for r in bb.f2s_pending if r.msg_id in self.received]
+            conf = str(a["confirmation_id"])
+            return authority.check_account(bb, conf, told, host.bus.events)
         if name != "finish":
-            return _no(f"unknown tool {name!r}")
-        if a.get("outcome") != "info_only":
-            return _no("only finish(info_only) exists in this stage")
+            return no(f"unknown tool {name!r}")
+        outcome = str(a.get("outcome"))
+        r = authority.finish(bb, outcome, self.asked_final)
+        if not r.ok:
+            return r
         self.finished = True
-        status = {
-            "previous": bb.public.status,
-            "status": st.CaseStatus.CLOSED_NO_ACTION,
-        }
-        then = lambda: host.finish("info_only")  # noqa: E731
-        return Result(True, "case closed", (("status.changed", status),), then)
+        return Result(True, r.text, r.effects, lambda: host.finish(outcome))
+
+    def _share(self, bb: st.Blackboard, key: str) -> Result:
+        """``share_fact(key)``: Guard's rule, then the one publication path of
+        ``record_fact`` for the recorded private value (never wider, I4)."""
+        got = guard.share_fact(bb, key, self._shareable_keys)
+        if isinstance(got, Denial):
+            return authority.denied("share_fact", got)
+        mine = bb.private.case_facts.get(key)
+        if mine is None:
+            return no(f"{key} is not recorded: record_fact it from the user's message")
+        r = self.fact(bb, key, mine.value, mine.source_ref)
+        if r.effects[0][1]["scope"] != "public":
+            why = r.text.removeprefix("recorded private").lstrip(":, ")
+            return no(f"{key} stays private" + (f": {why}" if why else ""))
+        return r
 
     def _guide(self, bb: st.Blackboard, a: Mapping[str, Any]) -> Result:  # I4
         extra = sorted(k for k, v in a.items() if k not in _GUIDE and v not in _EMPTY)
@@ -139,13 +201,23 @@ class SlowTools:
                 f"guide_fast takes only move and slots, not {', '.join(extra)}: the "
                 "phone voice never gets free text; use ask_user/tell_user for the user"
             )
-            return _no(text, ("action.denied", denied))
+            return no(text, ("action.denied", denied))
         guide = Guide(move=a["move"], slots=tuple(a.get("slots") or ()))
+        if lever := lever_denial(bb, guide):
+            reason, text = lever
+            return no(
+                text, ("action.denied", {"intent": "guide_fast", "reason": reason})
+            )
         if public_guide(bb, guide):
             sent = self._s2f(lane="cp", type="GUIDE", guide=guide)
+            if guide.move == GuideMove.ASK_READBACK:
+                return self._asked(bb, guide, sent)
+            if guide.move == GuideMove.ASK_FINAL_OFFER and self.asked_final is None:
+                self.asked_final = len(bb.channels["cp"].lines)
             if guide.move != "deflect_fact_request":
                 return sent
-            hint = identity_hint(bb.public.facts, self._shareable_keys)
+            private = bb.private.case_facts
+            hint = identity_hint(bb.public.facts, self._shareable_keys, private)
             text = f"{sent.text}; the rep hears a refusal to share. {hint}".strip()
             return Result(True, text, sent.effects)  # sent as asked: Slow decides
         hidden = [
@@ -165,7 +237,25 @@ class SlowTools:
             "with record_fact(<canonical key>, value, utt_ref of the user's message)"
         )
         denied = {"intent": "guide_fast", "reason": "guide_slot_not_public"}
-        return _no(text, ("action.denied", denied))
+        return no(text, ("action.denied", denied))
+
+    def _asked(self, bb: st.Blackboard, guide: Guide, sent: Result) -> Result:
+        """Track the read-back request of each cited offer's current revision:
+        only rep lines from here on can confirm its slots (§9.2)."""
+        refs = {s[6:].partition(".")[0] for s in guide.slots if s.startswith("offer:")}
+        at, tracked = len(bb.channels["cp"].lines), list[str]()
+        for ref in sorted(refs):
+            if (o := bb.public.offers.get(ref)) is not None:
+                self.asked.setdefault((ref, o.revision), at)
+                tracked.append(f"{ref} r{o.revision}")
+        if tracked:
+            return Result(
+                True,
+                f"{sent.text}; read-back asked for {', '.join(tracked)}",
+                sent.effects,
+            )
+        text = f"{sent.text}; no recorded offer cited: cite offer:<ref> to confirm one"
+        return Result(True, text, sent.effects)
 
     def _s2f(self, **fields: Any) -> Result:
         self._n += 1
@@ -217,19 +307,28 @@ class SlowTools:
         return Result(True, text, tuple(effects))
 
 
-def identity_hint(public: Collection[str], keys: frozenset[str]) -> str:
+def identity_hint(
+    public: Collection[str], keys: frozenset[str], private: Collection[str] = ()
+) -> str:
     """S0-SYS-07 (run aeab91): the identity flow, as text for Slow only. The keys
-    that can go public from the user are either public (identify with them) or
-    not given yet (ask the user and hold). Slow decides; nothing is sent."""
+    that can go public from the user are public (identify with them), recorded
+    private (re-record them from the user's own words), or not given yet (ask
+    the user and hold). Slow decides; nothing is sent."""
     ids = sorted(k for k in keys if k.endswith(_PUBLISHABLE))
     ready = [k for k in ids if k in public]
-    missing = [k for k in ids if k not in public]
+    kept = [k for k in ids if k not in public and k in private]
+    missing = [k for k in ids if k not in public and k not in private]
     parts: list[str] = []
     if ready:
         slots = ", ".join(f"fact:{k}" for k in ready)
         parts.append(
             f"{', '.join(ready)} public: when the rep asks, "
             f"guide_fast(identify, slots=[{slots}])"
+        )
+    if kept:  # #140: given, but not in words that can go public
+        parts.append(
+            f"{', '.join(kept)} recorded private: re-record citing the user's "
+            "message that contains exactly the value"
         )
     if missing:
         parts.append(
@@ -238,6 +337,32 @@ def identity_hint(public: Collection[str], keys: frozenset[str]) -> str:
             "only for a fact that must not be given"
         )
     return f"identity: {'; '.join(parts)}" if parts else ""
+
+
+def lever_denial(bb: st.Blackboard, guide: Guide) -> tuple[str, str] | None:
+    """The lever checks (§7, I11, C14): a competitor is cited only with a quote
+    the user shared, and the cancellation lever only with the user's public
+    authorisation. ``(reason, text)`` of a denial, else None."""
+    facts = bb.public.facts
+    if guide.move == GuideMove.CITE_COMPETITOR:
+        keys = [s[5:] for s in guide.slots if s.startswith("fact:")]
+        quotes = [
+            k for k in keys if k == "competitor_quote" or k.startswith("competitor.")
+        ]
+        if not any((f := facts.get(k)) and f.source == "shareable" for k in quotes):
+            return "competitor_quote_not_shareable", (
+                "cite_competitor needs a fact:competitor_quote (or fact:competitor.*) "
+                "slot the user shared (source shareable); none is public, so the "
+                "lever is denied: no fabricated quotes. Use another move"
+            )
+    lever = facts.get("authorization.cancel_lever")
+    granted = lever and lever.value == "granted" and lever.source == "shareable"
+    if guide.move == GuideMove.CANCEL_LEVER and not granted:
+        return "cancel_lever_not_authorized", (
+            "cancel_lever needs the public fact authorization.cancel_lever=granted "
+            "from the user; it is not, so the lever is denied"
+        )
+    return None
 
 
 def _partner(bb: st.Blackboard, lane: Lane) -> dict[str, str]:  # utt id -> text
@@ -330,7 +455,11 @@ def public_guide(bb: st.Blackboard, guide: Guide) -> bool:  # the renderer judge
 
 
 def record_offer(
-    bb: st.Blackboard, ref: str, raw: Sequence[Mapping[str, Any]]
+    bb: st.Blackboard,
+    ref: str,
+    raw: Sequence[Mapping[str, Any]],
+    t_ms: int,
+    wall: datetime,
 ) -> Result:  # every money or term value is one the rep said
     slots = [st.ReadbackSlot(source_utt=s.get("utt_ref"), **_slot(s)) for s in raw]
     said = {x.utt_id: x.text for x in bb.channels["cp"].lines if x.speaker == "partner"}
@@ -342,15 +471,34 @@ def record_offer(
         or not _value(s) <= spoken(line, s.unit)
     ]
     if unbound:
-        return _no("; ".join(unbound), ("declass.denied", {"violations": unbound}))
+        return no("; ".join(unbound), ("declass.denied", {"violations": unbound}))
     prev = bb.public.offers.get(ref)
     if prev is None and len(bb.public.offers) >= base.MAX_OFFERS:
-        return _no("too many offers")
+        return no("too many offers")
     revision = prev.revision + 1 if prev else 1
     offer = st.OfferPublic(offer_ref=ref, revision=revision, slots=tuple(slots))
     recorded = offer.model_dump(mode="json", include={"offer_ref", "revision", "slots"})
-    recorded["terms_hash"] = None  # pl.terms/2 needs confirmed slots (S1)
-    return Result(True, f"recorded {ref} r{revision}", (("offer.recorded", recorded),))
+    expires = _expires_ms(slots, t_ms, wall)  # the same instant on both clocks
+    recorded |= {"terms_hash": None, "expires_ms": expires}  # Guard binds terms
+    text = f"recorded {ref} r{revision}" + (
+        f", expires at t={expires} ms" if expires else ""
+    )
+    return Result(True, text, (("offer.recorded", recorded),))
+
+
+def _expires_ms(
+    slots: Sequence[st.ReadbackSlot], t_ms: int, now: datetime
+) -> int | None:
+    """The rep's stated expiry on the session clock; ``None`` for "no expiry",
+    none stated, or no timezone-aware ISO time (terms need one, §9.1)."""
+    found = [s.value for s in slots if s.field == "expires"]
+    try:
+        at = datetime.fromisoformat(found[0].replace("Z", "+00:00")) if found else None
+    except ValueError:
+        return None
+    if at is None or at.utcoffset() is None:
+        return None
+    return max(0, t_ms + int((at - now).total_seconds() * 1000))
 
 
 def _value(s: st.ReadbackSlot) -> set[Decimal]:  # in the unit as spoken
