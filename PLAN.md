@@ -652,6 +652,16 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Owned paths:** `PLAN.md`, `EVAL.md`, `AGENTS.md` (the two `make evidence-check` lines), `Makefile` (the one target), `docs/decisions/0005-world-model.md` (one line).
 - **Acceptance:** `make evidence-check RUN=evidence/s0/<run>` is ok on all four `evidence/s0` bundles; `make check` green; no measured number typed (AGENTS rule 13); each decision appears once.
 
+### S0-ROOT-15 The main root starts lane sessions through the Claude CLI — ROOT — S — done (#158)
+- **Objective** (user decision 2026-09-27): `CLAUDE.md` "Starting sessions": besides the user, only the main root starts sessions, with `plan-v3/lanes/launch.sh <role>` (outside the repo), which opens an independent Terminal window running the Claude CLI in permission mode auto (never a bypass mode); one live session per role, each with a unique name; every launch is logged in the main root's log; a main-root rotation is hand-off → launch the successor → stop. `AGENTS.md`'s "pasted charter" wording follows.
+- **Owned paths:** `CLAUDE.md`, `AGENTS.md` (the charter line); outside the repo, `plan-v3/lanes/launch.sh` and its README.
+- **Acceptance:** `make docs-check` and `make lint` green; `launch.sh` verified in dry-run only. The first real launch is still pending, including whether ListAgents/SendMessage reach CLI-launched sessions (a user fallback is documented).
+
+### S0-ROOT-16 Stage-close size review instead of total-line caps — ROOT — S — done (#159)
+- **Objective** (user decision 2026-09-27): replace the absolute total-line caps (`src/` per stage, web TypeScript, `serving/` + `training_jobs/`) with a stage-close size review (§0.7, item 5); keep the per-PR size caps and the module-over-600-lines warning; code is never reformatted to fit a cap.
+- **Owned paths:** `PLAN.md` (§0.6, §0.7, the S1-SYS-00 and S1-SYS-07 lines), `ARCHITECTURE.md` (§16).
+- **Acceptance:** `make docs-check` and `make lint` green; no total-line gate remains in PLAN, AGENTS or ARCHITECTURE.
+
 ---
 
 ## 3. S1: semantic slice (4 families), Guard v2, live web, headroom probe (diagnostic)
@@ -690,6 +700,23 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Deps:** S1-SYS-16.
 - **Acceptance:** defaulted fields, so committed bundles still read; no renderer fingerprint change (goldens unchanged); `make pull-through MODE=verify` passes (root, §0.3).
 - **Verify:** `uv run pytest tests/contract tests/golden -q`; `make pull-through MODE=verify` (root).
+- **Escalate if:** a fingerprint changes.
+
+### S1-CON-04 OpenRouter endpoint and the `hold_for_fact` move (`pl_cp_v2`, ADR-0011) — CON (the root) — S — done (#154)
+- **Objective** (user decision 2026-09-27: the development Fast moves to OpenRouter `openai/gpt-6-luna`, and a hold-for-fact GUIDE move is added; a root CON task before `semantics-v1`):
+  - `Endpoint` gains `"openrouter"`; `GuideMove.HOLD_FOR_FACT` is appended; a new cp profile `pl_cp_v2` = `pl_cp_v1` + the move's text; rendering a move that a profile has no text for raises `GuideMoveError`;
+  - `pl_cp_v1` is frozen (fingerprint unchanged), so the `evidence/s0` bundles still verify;
+  - the live switch lands in the same PR: the kernel's cp profile and Slow's `public_guide` render `pl_cp_v2`, and the FSM maps `hold_for_fact` to `Hold(fact_request)`.
+- **Owned paths:** `src/proxyloop/contract/**`, `tests/contract/**`, `tests/golden/**`, `docs/decisions/0011-contract-openrouter-and-hold-for-fact.md`; granted for this task only (root decision under §0.5a, 2026-09-27): `tests/slow/snapshots/act_tool.json` (regenerated), the cp `PROFILE` constant in `kernel/lanes.py`, the profile line in `slow/tools.py`, the tests pinned to `pl_cp_v1` on the live cp path, `models/fsm.py` (the move and the profile detection) and `tests/models/test_repair.py` (the expected c08, c09).
+- **Acceptance:** `pl_user_v1` and `pl_cp_v1` unchanged, `pl_cp_v2` recorded (header); `make check` green; `make evidence-check` ok on the four `evidence/s0` bundles. Root-run pending: the cp lane's pull-through runs `MODE=full` after this fingerprint change (with #125, §0.3).
+- **Review nits** (root decisions under §0.5a, 2026-09-27): (1) the Slow prompt and identity hint move to `hold_for_fact`, (2) `GuideMoveError` must not be swallowed as an invalid tool call, (3) one shared cp profile constant → S1-SYS-20 (done in #157); (4) an FSM test for c09's `Hold(fact_request)` → the model root (#155).
+
+### S1-CON-05 Record the sampling actually sent — CON (the root) — S — todo
+- **Objective** (root decision under §0.5a, 2026-09-27, #155 review D6, option (a)): an additive, optional field records the sampling actually sent per call (or "provider default"); `ChatClient` drops the parameters the provider does not support, for a cited OpenRouter model list (OpenRouter's `/api/v1/models` `supported_parameters` for `openai/gpt-6-luna`, fetched 2026-09-27, lists no temperature/top_p). No silent change: the manifest must never record sampling that had no effect.
+- **Owned paths:** `src/proxyloop/contract/**`, `tests/contract/**`, `tests/golden/**`, the ADR (next free number); the adapter lines in `src/proxyloop/llm/**` and `tests/llm/**`, granted per task.
+- **Deps:** S1-SYS-20. It lands before any C5 smoke is used as evidence.
+- **Acceptance:** renderer fingerprints unchanged (goldens unchanged); the manifest schema snapshot changes (additive); an adapter test shows that an unsupported parameter is not sent and that the record says what was sent.
+- **Verify:** `uv run pytest tests/contract tests/golden tests/llm -q`.
 - **Escalate if:** a fingerprint changes.
 
 ### S1-SYS-01 Guard v2 (pure) — SYS — L — done (#126; size exception, §0.6)
@@ -806,6 +833,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
   - The sim approver's wiring (root decision under §0.5a, 2026-09-27; `env/user/approver.py`, #143): on `approval.requested` the kernel calls `approver.decide(card, offer)`, and on `mandate.proposed` `approver.decide_mandate(mandate)`; `delay_s` later it emits `approval.post` (actor `sim_approver`) into the approvals queue, where the kernel re-decides it and emits `approval.decided{by: sim_approver}`. The stop's ordering against the grant (N6) is S1-SYS-02's acceptance.
   - The four kernel asks from #134 (S1-SYS-09, routed to L-CORE by the main root, 2026-09-26): `kernel/web.py` composes a web session through a serve `Case` protocol; the approvals ingress; `_git_sha()` cached; the tokenizer loaded once, through the `tokenizer=` keyword in `session.py` (no `lanes.py` grant).
   - Live runs are written to `runs/live/<case_id>/<run_id>` (the S1-SYS-09 listing reads one extra level for `runs/live` only; root decision under §0.5a, 2026-09-26).
+  - The human-demo value of `INTAKE_S` (120 s; S1-ROOT-05) is revisited here (root decision under §0.5a, 2026-09-27).
 - **Owned paths:** `src/proxyloop/kernel/{channels,session,web}.py`, `tests/kernel/**`, `mk/sys.mk`.
 - **Deps:** S1-SYS-02, S1-SYS-08, S1-SYS-10.
 - **Acceptance:** a root live session (L+G): the root clicks approve, and the bundle has `approval.decided{by: ui}` and passes the claim check. Human rep mode is not used in any live session before S1-SYS-10 merges (root decision under §0.5a, 2026-09-26).
@@ -934,6 +962,30 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Objective** (root decision under §0.5a, 2026-09-27): a drift test of the web↔API wiring: the real `create_app` serves the built web same-origin, behind a stub `Case` in `tests/support/web_wiring.py`, and a Playwright `wiring` project drives it. It uses synthetic events in a temp dir only; `evidence/s0` is read-only.
 - **Owned paths:** `apps/web/**`, `tests/web/**`, `tests/support/web_wiring.py`.
 
+### S1-SYS-19 Bind fee/change completeness in the terms hash — SYS (L-CORE) — S — done (#151)
+- **Objective** (root decision under §0.5a, 2026-09-27; an unsafe-direction gap found in #149, which had to close before S1 close): `terms_hash` becomes `pl.terms/3` = `pl.terms/2` + `fees_none` and `changes_none`, so a ledger with an unrecorded fee or change no longer hashes like the accepted terms. `terms_hash_v2` is kept byte for byte for older fixtures. Terms exist only when completeness is stated and consistent, and boolean slots hold exactly `true` or `false`; a ledger that leaves completeness unstated binds nothing (fail closed). `guard/terms.py` is SYS, not contract, so there is no ADR.
+- **Owned paths** (granted, root decision under §0.5a, 2026-09-27): `src/proxyloop/guard/**`, `tests/guard/**`, `src/proxyloop/slow/authority.py`, `tests/slow/test_authority.py`.
+- **Acceptance:** tests: the v3 hash states completeness; v2 is unchanged; unstated or contradictory completeness gives no terms; a ledger with an unrecorded fee or change never verifies; `make check` green.
+- **Deferred:** the ARCHITECTURE §9.1–§9.3 edits listed in #151's PR body (S1-ROOT-05).
+
+### S1-SYS-20 OpenRouter wiring and the identity hold — SYS (L-CORE) — M — flags L for the smoke (root) — provisional (#157; until smoke #1)
+- **Objective** (root decisions under §0.5a, 2026-09-27, after the user's OpenRouter decision and S1-CON-04):
+  - OpenRouter wiring: the relay client's endpoints gain `openrouter`; `EndpointEnv` reads `PL_OPENROUTER_BASE_URL` (the server root, without `/v1`) and `PL_OPENROUTER_API_KEY`; the CLI and `make smoke-live` take `FAST_ENDPOINT=openrouter`;
+  - the ledger rate for OpenRouter `openai/gpt-6-luna` (read by the root from OpenRouter's model list on 2026-09-27; a rate setting, not a result), so the per-session USD cap binds on priced Luna calls; an unknown OpenRouter model is unpriced, never zero;
+  - S1-CON-04's nits (1)–(3), and the queued tenure anchor: first-person tenure only at a sentence start;
+  - **world semantics change** (labelled): in IDENTIFY the rep's hold clock resets only on a newly verified key (or on leaving IDENTIFY), so repeated holds take timer strikes instead of stalling IDENTIFY.
+- **Owned paths** (granted, root decisions under §0.5a, 2026-09-27): `src/proxyloop/llm/{relay,http,factory,spend}.py`, `tests/llm/**`, `src/proxyloop/slow/{tools,prompt}.py`, `tests/slow/**`, `src/proxyloop/env/counterparty/{ear,policy}.py` (the Ear prompt; the IDENTIFY hold bound), `tests/env/**`, `src/proxyloop/cli.py`, `mk/sys.mk`.
+- **Acceptance:** tests (the hold bound test-first); `make check` green. Root run (smoke #1): `make smoke-live FAMILY=cp-direct-discount CLAIM=0 FAST_ENDPOINT=openrouter FAST=openai/gpt-6-luna SLOW=gemini-3.8-flash SLOW_ENDPOINT=teamrouter`: the rep reaches DISCOVER, the Ear hears FastC's hold line as `hold_request`, and `spend.charged` for `fast_*` is token-priced. `make smoke-live` needs `SLOW` and `SLOW_ENDPOINT` set explicitly (the CLI's default Slow is the relay).
+- **Not here:** the sampling label (#155 D6) → S1-CON-05.
+
+### S1-SYS-23 Partner-turn fence during a queued accept — SYS (L-CORE) — S — todo
+- **Objective** (root decision under §0.5a, 2026-09-27, option (C) for #156's accept-vs-rep-turn question; #156 itself takes option (A), the ordering fix only): a partner (rep) `utt.final` between an accept's queueing and its release raises a short fence, as a `user.msg` does (ARCHITECTURE §9.4). The accept waits until a Slow step that saw the rep's turn completes, then Guard revalidates; it is revoked only if Slow changed the board. Restrict-only.
+- **Owned paths:** `src/proxyloop/kernel/{fence,speaker}.py`, `tests/concurrency/**`, `tests/kernel/**`.
+- **Deps:** S1-SYS-02 (#156). It merges before the approval-flow smokes.
+- **Acceptance:** test-first manual-clock cases: a rep turn during a queued accept holds the release until a Slow step that saw it completes; an unchanged board releases after Guard revalidation; a changed board revokes; no path grants authority.
+- **Verify:** `uv run pytest tests/concurrency tests/kernel -q`.
+- **Escalate if:** it needs a new event type (a contract change).
+
 ### S1-MOD-01 Model registry, per-lane swap, 4B serving, hosted/teacher Fast, FSM, teacher-repair — MOD — L — flags L+G for the smoke — review (part A merged in #124; part B #132 in review; C5 via OpenRouter #155 in review)
 - **Objective:**
   - `models/registry.py` and `conditions.yaml` (C2, C3, C4, C5, T, F, R); C5 is Fast = `openai/gpt-6-luna` via OpenRouter (endpoint `openrouter`, ADR-0011), hosted and labelled (EVAL §4.1); sampling is set by the provider (OpenRouter supports no temperature/top_p for this model); `reasoning_effort` `low` is provisional pending the user (user decision 2026-09-27: the development Fast moves to OpenRouter);
@@ -1001,6 +1053,14 @@ In the browser, the user as principal:
 - (b) in a second session, performs an **improvised** correction or stop while an approval is pending, and the bundle shows `authority.fence`, REVOKE or an epoch bump, then `speak.revoked` or no accept released.
 
 The user also watches a replay of one probe episode per condition.
+
+### S1-ROOT-05 ADR-0012/0013: plan-before-act, and the ARCHITECTURE/EVAL edits — ROOT — S — todo
+- **Objective:** readiness gate, open-asks ledger, superseded cp speech, mid-call hold bound and call-back (user decisions 2026-09-27, below). Details follow from the architect's design (the main root's hand-off, outside the repo).
+- **User decisions (plan-before-act, 2026-09-27), as recorded in the main root's log:**
+  - Q1: "readiness = option A generalized: a framework-wide constraint — before starting a task the agent must confirm it has the required facts from the user; S1's required set for cp calls = identity floor (account.holder_name, account.last4), expressed as a per-task-kind requirement rule so other kinds can add sets later."
+  - Q2: "mid-call missing/wrong fact: go back to the user and hold the rep; at most 2 holds; if the fact is still not obtained, FastC tells the rep sorry, the principal has not provided enough information yet, and that it will call back once it has it → end the call; after the user supplies the fact, retry with a second call."
+  - Q3 was left to the root: `INTAKE_S` = 120 s, a kernel constant (root decision under §0.5a, 2026-09-27); the human-demo value is revisited at S1-SYS-05.
+  - Q4 is moot after S0-ROOT-16 (#159).
 
 ### S1-ROOT-07 PLAN sync after the S1 merges — ROOT — S — doing
 - **Objective:** bring this file's header, statuses and task blocks in line with what `main` holds at `3a974d9` and with the decisions recorded in the main root's log; unblock #155.
