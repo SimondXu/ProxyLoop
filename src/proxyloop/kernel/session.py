@@ -48,6 +48,7 @@ from proxyloop.kernel.channels import (
 from proxyloop.kernel.fence import Authority
 from proxyloop.kernel.lanes import PROFILE, FastLane, load_tokenizer, p3
 from proxyloop.kernel.speaker import Sleep, Speaker
+from proxyloop.kernel.wake import Wakes
 from proxyloop.kernel.watchdog import Abort, SessionEnd, watchdog
 from proxyloop.llm.factory import LiveModeError, make_client
 from proxyloop.llm.http import HTTPAdapter, RecordSink
@@ -58,7 +59,8 @@ from proxyloop.slow.loop import SlowLoop
 
 # Guard-authored and fixed (I11, C14): the first thing the rep hears.
 DISCLOSURE = "Hello, this is an AI assistant calling on behalf of the account holder."
-PROJECTED = (300_000, 150)  # tokens and calls per S0 episode (ROOT-05); guard at 3x
+PROJECTED = (600_000, 300)  # tokens, calls per episode (guard at 3x): provisional until
+# the root re-derives it from smoke #2 bundles and TeamRouter prices (S1-SYS-29)
 ChannelSpec = Literal["sim", "human"] | Channel
 ClientFactory = Callable[[llm.LLMRole, llm.ModelRef, RecordSink], llm.LLMClient]
 type Turn = CoroutineType[Any, Any, None]
@@ -253,7 +255,7 @@ class Kernel:
         slow = self.clients.get("slow")  # none in rep-chat
         self.slow = slow and SlowLoop(self, slow, task.slow_brief, keys)
         self.closed, self._disclosed = False, asyncio.Event()  # the cp call
-        self._timer: asyncio.Task[None] | None = None  # Slow's one wait timer
+        self.bus.subscribe(Wakes(self).on_event)  # Slow's wakes and its one timer
 
     def _make(self, role: str, ref: llm.ModelRef, sink: RecordSink) -> llm.LLMClient:
         clock, live = self.clock.monotonic_ms, self.cfg.live
@@ -360,8 +362,6 @@ class Kernel:
         elif e.type == "s2f.msg" and p["type"] == "APPROVAL_NOTICE" and user:
             notice = (str(p["msg_id"]),)  # acknowledged by the turn that voices it
             user.trigger(Trigger(kind="approval_card"), e.event_id, notice)
-        elif e.type == "f2s.msg" and self.slow:
-            self.slow.wake("relay")
 
     def finish(self, outcome: str) -> None:
         async def drain() -> None:  # up to 30 s for FastU to voice Slow's messages
@@ -372,18 +372,6 @@ class Kernel:
             raise SessionEnd(outcome)
 
         self.spawn(drain())
-
-    def wake_slow(self, reason: str, after_s: float) -> None:  # one timer (M2)
-        if self._timer is not None:
-            self._timer.cancel()
-        slow, step = self.slow, self.slow.steps if self.slow else 0
-
-        async def later() -> None:  # fires only if no step started since
-            await self.sleep(after_s)
-            if slow and slow.steps == step:
-                slow.wake(reason)
-
-        self._timer = self._tg.create_task(later())
 
     async def run(self) -> RunResult:
         models = {
@@ -499,7 +487,6 @@ class Kernel:
                 if self.slow is None:  # rep-chat: nothing left to judge the case
                     await asyncio.sleep(0)  # the person still reads the last line
                     raise SessionEnd("stopped")
-                self.slow.wake("call_closed")
 
     def _turn(self, key: str, inc: Incoming, opened: str) -> tuple[str, bool]:
         last, first = opened, [c for _, c in inc.lines if c][:1]
