@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
 from tests.concurrency.harness import Sim, settle
 from tests.concurrency.test_cases import arun
 from tests.support.sessions import fake, fake_config, reply
@@ -52,6 +54,7 @@ def test_n6_the_stop_is_delivered_before_the_cards_grant(tmp_path: Path) -> None
         (post,) = sim.of("approval.post")
         (decided,) = sim.of("approval.decided")
         assert post.actor == "sim_approver" and decided.payload["by"] == "sim_approver"
+        assert post.cause_ids == (asked.event_id,)  # the card it decides (D4)
         assert post.payload["decision"] == "granted"  # decided before the stop
         assert said.t_ms - asked.t_ms > 3_000  # the stop landed after the 3 s delay
         assert said.seq < post.seq  # N6: yet the grant waited for it
@@ -99,3 +102,13 @@ def test_r_a_decision_point_goes_to_the_teacher_as_a_fast_call(
         assert report.ok, report.failures
 
     arun(case())
+
+
+def test_a_teacher_client_exists_only_under_a_repair_ablation(tmp_path: Path) -> None:
+    """The kernel builds the teacher when ``cfg.teacher`` is set, which the
+    contract allows only with a ``teacher_repair_*`` ablation (D5)."""
+    cfg = fake_config().model_dump() | {"teacher": fake("teacher")}
+    with pytest.raises(ValidationError, match="teacher is set iff a teacher_repair"):
+        SessionConfig.model_validate(cfg)
+    assert "teacher" not in Sim(tmp_path).k.clients
+    assert "teacher" in Sim(tmp_path, cfg=_repair()).k.clients

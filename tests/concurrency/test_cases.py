@@ -228,6 +228,7 @@ def test_5_duplicate_approvals_decide_once(tmp_path: Path) -> None:
         (decided,) = sim.of("approval.decided")
         (posted,) = sim.of("approval.post")
         assert _cites(decided, posted) and decided.payload["by"] == "ui"
+        assert posted.cause_ids == ()  # a UI post is exogenous
         denied = sim.of("action.denied", intent="approval.post")
         assert [d.payload["reason"] for d in denied] == ["already_decided"] * 2
         asked = sim.of("approval.requested")[0]

@@ -128,7 +128,10 @@ class Authority:
             k.emit("action.denied", "kernel", denied, [asked])
             self._wake("approval_denied")
             return
-        posted = k.emit("approval.post", by, post.model_dump(mode="json")).event_id
+        sim = by == "sim_approver" and post.subject_id in self._asked
+        cause = [self._asked[post.subject_id]] if sim else []  # UI posts: exogenous
+        body = post.model_dump(mode="json")
+        posted = k.emit("approval.post", by, body, cause).event_id
         kind, payload = got
         decided = k.emit(kind, "kernel", payload, [posted]).event_id
         if kind == "approval.decided":
