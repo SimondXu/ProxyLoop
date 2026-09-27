@@ -109,7 +109,7 @@ def test_a_hang_up_without_a_line_changes_no_status(tmp_path: Path) -> None:
     woken = [set(cast(list[str], e.payload["wake_reasons"])) for e in steps]
     assert not [w for w in woken if w & {"call_closed", "strike"}]
     ended = events[-1]
-    assert ended.type == "session.ended" and ended.t_ms < 20_000 + 5_000
+    assert ended.type == "session.ended" and ended.t_ms < 20_000 + 1_000
 
 
 def test_a_user_quit_stops_without_abandoning(tmp_path: Path) -> None:

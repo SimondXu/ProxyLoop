@@ -107,10 +107,7 @@ def step(ledger: Ledger, e: Event) -> Ledger:
         mine = [  # still this ask's, and still waiting for it (M1: not answered)
             (k, b)
             for k, b in before
-            if k in n
-            and n[k].asked_seq == seq
-            and n[k].state == "pending"
-            and n[k].voiced_seq is None
+            if k in n and n[k].asked_seq == seq and n[k].state == "pending"
         ]
         heard = ledger.turn is not None and ledger.turn == (e.cause_ids[0], True)
         if heard:
