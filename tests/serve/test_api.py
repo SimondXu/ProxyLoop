@@ -6,44 +6,21 @@ import json
 import shutil
 import time
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
-import httpx
 import pytest
-from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
+from tests.serve.client import client as _client
+from tests.serve.client import frames as _frames
+from tests.serve.client import get as _get
 from tests.serve.conftest import URL, Bundles
 
 from proxyloop.contract.bundle import EVENTS, MANIFEST, PROMPTS
 from proxyloop.serve import api
-from proxyloop.serve.api import create_app
 
 
 def _lines(path: Path) -> list[bytes]:
     return path.read_bytes().splitlines()
-
-
-def _client(*roots: Path) -> TestClient:
-    return TestClient(create_app(roots))
-
-
-def _get(client: TestClient, url: str) -> httpx.Response:
-    # TestClient's HTTP side is typed against httpx2, absent here: pyright
-    # sees Unknown. At run time it is httpx's Response.
-    response: httpx.Response = cast(Any, client).get(url)
-    return response
-
-
-def _frames(client: TestClient, path: str) -> tuple[list[str], int]:
-    """All frames until the server closes, and the close code."""
-    frames: list[str] = []
-    with (
-        client.websocket_connect(path) as ws,
-        pytest.raises(WebSocketDisconnect) as closed,
-    ):
-        while True:
-            frames.append(ws.receive_text())
-    return frames, closed.value.code
 
 
 def _copy(src: Path, root: Path, lines: list[bytes] | None = None) -> Path:
@@ -231,12 +208,37 @@ def test_malformed_or_outside_ids_never_reach_a_file(
     assert _get(ok, f"{base}/..%2F..%2Fmanifest.json").status_code == 404
 
 
-def test_main_binds_localhost_only(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_binds_localhost_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     calls: list[dict[str, Any]] = []
 
     def run(app: object, **kw: Any) -> None:
         calls.append(kw)
 
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(api.uvicorn, "run", run)
     assert api.main(["--port", "8123"]) == 0
     assert calls == [{"host": "127.0.0.1", "port": 8123}]
+
+
+def test_the_default_roots_are_runs_and_each_evidence_stage(tmp_path: Path) -> None:
+    assert api.default_roots(tmp_path) == [tmp_path / "runs"]
+    for stage in ("s1", "s0"):
+        (tmp_path / "evidence" / stage).mkdir(parents=True)
+    (tmp_path / "evidence" / "README.md").write_text("not a stage")
+    assert api.default_roots(tmp_path) == [
+        tmp_path / "runs",
+        tmp_path / "evidence" / "s0",
+        tmp_path / "evidence" / "s1",
+    ]
+
+
+def test_real_uvicorn_can_serve_websockets() -> None:
+    # Without a WebSocket library uvicorn refuses every upgrade (auto is None).
+    from uvicorn.protocols.websockets.auto import AutoWebSocketsProtocol
+    from uvicorn.protocols.websockets.websockets_sansio_impl import (
+        WebSocketsSansIOProtocol,
+    )
+
+    assert AutoWebSocketsProtocol is WebSocketsSansIOProtocol

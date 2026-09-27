@@ -4,10 +4,13 @@ Every body is a bundle file's bytes with one transformation: each http(s) URL
 becomes ``<redacted-url>`` (AGENTS rule 15), so a body without a URL is
 byte-equal to its file. ``serve`` only reads: it never writes, folds or renders
 a prompt (import-linter: "serve is read-only"). A run is found only through the
-roots' listing, never by joining user input onto a path.
+roots' listing, never by joining user input onto a path. Held-out data
+(``evidence/s4/test``, AGENTS rule 11) is refused at every step: roots, run
+directories and files.
 
-``python -m proxyloop.serve.api [--port N]`` serves ``runs/`` and ``evidence/``
-(relative to the cwd) on 127.0.0.1 only.
+``python -m proxyloop.serve.api [--port N]`` serves ``runs/`` and each stage
+directory ``evidence/<stage>/`` (relative to the cwd, listed at startup) on
+127.0.0.1 only.
 """
 
 from __future__ import annotations
@@ -41,6 +44,14 @@ JSON, NDJSON = "application/json", "application/x-ndjson"
 RunId = Annotated[str, Param(pattern=RUN_ID)]
 Sha = Annotated[str, Param(pattern=SHA)]
 Close = tuple[int, str]  # a WebSocket close code and reason
+SEALED = ("evidence", "s4", "test")  # held-out bundles, sealed until the report
+
+
+def sealed(path: Path) -> bool:
+    """True if the resolved path runs through ``evidence/s4/test`` (compared
+    case-insensitively). It only resolves the path: it never opens a file."""
+    parts, n = [part.lower() for part in path.resolve().parts], len(SEALED)
+    return any(tuple(parts[i : i + n]) == SEALED for i in range(len(parts) - n + 1))
 
 
 def redact(data: bytes) -> bytes:
@@ -55,8 +66,11 @@ class Run:
     path: Path
 
     def file(self, name: str) -> Path | None:
-        """The bundle file, if it exists and resolves inside the run's root."""
+        """The bundle file, if it exists, resolves inside the run's root and is
+        not sealed."""
         path = self.path / name
+        if sealed(self.path) or sealed(path):
+            return None
         inside = path.resolve().is_relative_to(self.root.resolve())
         return path if inside and path.is_file() else None
 
@@ -68,15 +82,24 @@ def list_runs(roots: Sequence[Path]) -> dict[str, Run]:
     """
     runs: dict[str, Run] = {}
     for root in roots:
-        if not root.is_dir():
+        if sealed(root) or not root.is_dir():
             continue
         for child in root.iterdir():
             run = Run(child.name, root, child)
             if child.name in runs or not re.fullmatch(RUN_ID, child.name):
                 continue
+            if sealed(child):  # before anything inside it is touched
+                continue
             if run.file(EVENTS) is not None:
                 runs[child.name] = run
     return runs
+
+
+def default_roots(base: Path) -> list[Path]:
+    """``base/runs`` and each directory ``base/evidence/<stage>``."""
+    evidence = base / "evidence"
+    stages = [p for p in evidence.iterdir() if p.is_dir()] if evidence.is_dir() else []
+    return [base / "runs", *sorted(stages)]
 
 
 def create_app(roots: Sequence[Path]) -> FastAPI:
@@ -190,7 +213,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m proxyloop.serve.api")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args(argv)
-    app = create_app([Path("runs"), Path("evidence")])
+    app = create_app(default_roots(Path()))
     uvicorn.run(app, host=HOST, port=args.port)
     return 0
 
