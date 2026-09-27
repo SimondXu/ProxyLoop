@@ -5,8 +5,11 @@ over Slow's keyed asks. Per key:
   ``s2f.voiced`` of its ``s2f.msg``). An echo relay citing an older message is
   no reply: no new user message exists, and relays are not read here;
 - ``answered`` once a ``fact.recorded`` for the key exists (either scope).
-Asking a replied or answered key again makes it pending again. Keyless asks
-are counted, not tracked; ``holds`` counts the cp holds (``chan.hold``).
+Asking a replied or answered key again makes it pending again. An ask whose
+``s2f.voiced`` cites a turn with no speech (the fold reads the ``fast.turn``
+item kinds) was never heard: its keys return to their state before the ask
+and are ``unvoiced`` until asked again (review D1). Keyless asks are counted,
+not tracked; ``holds`` counts the cp holds (``chan.hold``).
 
 It holds key names, states, seqs, times and counts only, never text, so it
 adds no transcript path to Slow (I5). The kernel holds it, as ``Authority``."""
@@ -35,17 +38,22 @@ class Need:
     answered_seq: int | None = None  # the fact.recorded
 
 
+_Ask = tuple[int, tuple[tuple[str, Need | None], ...]]  # seq, (key, need before)
+
+
 @dataclass(frozen=True, slots=True)
 class Ledger:
     needs: Mapping[str, Need] = field(default_factory=dict[str, Need])
     keyless: int = 0
     holds: int = 0
-    asking: Mapping[str, tuple[str, ...]] = field(  # ask event id -> keys
-        default_factory=dict[str, tuple[str, ...]]
+    unvoiced: frozenset[str] = frozenset()  # asked, but the ask was not heard
+    asking: Mapping[str, _Ask] = field(  # ask event id -> the ask
+        default_factory=dict[str, _Ask]
     )
-    voicing: Mapping[str, tuple[str, ...]] = field(  # s2f msg id -> keys
-        default_factory=dict[str, tuple[str, ...]]
+    voicing: Mapping[str, _Ask] = field(  # s2f msg id -> the ask
+        default_factory=dict[str, _Ask]
     )
+    turn: tuple[str, bool] | None = None  # the last fast.turn: id, it spoke
 
     def state(self, key: str) -> State | None:
         need = self.needs.get(key)
@@ -71,8 +79,10 @@ def step(ledger: Ledger, e: Event) -> Ledger:
         keys = tuple(dict.fromkeys(cast(Sequence[str], args.get("keys") or ())))
         if not keys:
             return dataclasses.replace(ledger, keyless=ledger.keyless + 1)
-        asking = {**ledger.asking, e.event_id: keys}
-        ledger = dataclasses.replace(ledger, asking=asking)
+        before = tuple((k, n.get(k)) for k in keys)
+        asking = {**ledger.asking, e.event_id: (e.seq, before)}
+        unvoiced = ledger.unvoiced - set(keys)
+        ledger = dataclasses.replace(ledger, asking=asking, unvoiced=unvoiced)
         asks = {k: (n[k].asks if k in n else 0) + 1 for k in keys}
         for k in keys:  # a new ask: pending again, its voicing still to come
             ledger = _set(
@@ -82,15 +92,30 @@ def step(ledger: Ledger, e: Event) -> Ledger:
         return ledger
     if e.type == "s2f.msg" and e.cause_ids and e.cause_ids[0] in ledger.asking:
         asking = dict(ledger.asking)
-        keys = asking.pop(e.cause_ids[0])
-        voicing = {**ledger.voicing, str(p["msg_id"]): keys}
+        ask = asking.pop(e.cause_ids[0])
+        voicing = {**ledger.voicing, str(p["msg_id"]): ask}
         return dataclasses.replace(ledger, asking=asking, voicing=voicing)
+    if e.type == "fast.turn":
+        items = cast(Sequence[Mapping[str, object]], p["items"])
+        spoke = any(i.get("kind") == "speech" for i in items)
+        return dataclasses.replace(ledger, turn=(e.event_id, spoke))
     if e.type == "s2f.voiced" and p["msg_id"] in ledger.voicing:
         voicing = dict(ledger.voicing)
-        keys = voicing.pop(str(p["msg_id"]))
+        seq, before = voicing.pop(str(p["msg_id"]))
         ledger = dataclasses.replace(ledger, voicing=voicing)
-        asked = [k for k in keys if n[k].state == "pending" and n[k].voiced_seq is None]
-        return _set(ledger, asked, voiced_seq=e.seq)
+        mine = [(k, b) for k, b in before if k in n and n[k].asked_seq == seq]
+        heard = ledger.turn is not None and ledger.turn == (e.cause_ids[0], True)
+        if heard:
+            asked = [k for k, _ in mine if n[k].voiced_seq is None]
+            return _set(ledger, asked, voiced_seq=e.seq)
+        needs = dict(n)  # never heard: as before the ask (fail closed)
+        for k, b in mine:
+            if b is None:
+                del needs[k]
+            else:
+                needs[k] = b
+        unvoiced = ledger.unvoiced | {k for k, _ in mine}
+        return dataclasses.replace(ledger, needs=needs, unvoiced=unvoiced)
     if e.type == "user.msg":
         heard = [k for k, x in n.items() if x.state == "pending" and x.voiced_seq]
         return _set(ledger, heard, state="replied", replied_seq=e.seq)

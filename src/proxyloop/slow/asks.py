@@ -69,12 +69,13 @@ def start_call(k: Kernel) -> Result:
 
 
 def _key(key: str, ledger: needs.Ledger, now_ms: int) -> str:
-    need = ledger.needs.get(key)
+    need, unheard = ledger.needs.get(key), key in ledger.unvoiced  # review D1
     if need is None:
-        return f"{key} not asked"
-    if need.asked_ms is None:
-        return f"{key} {need.state}"
-    return f"{key} {need.state} (asked {(now_ms - need.asked_ms) // 1000} s ago)"
+        return f"{key} {'asked, not voiced' if unheard else 'not asked'}"
+    said = f"{key} {need.state}"
+    if need.asked_ms is not None:
+        said += f" (asked {(now_ms - need.asked_ms) // 1000} s ago)"
+    return f"{said}; asked again, not voiced" if unheard else said
 
 
 def _missing(key: str, ledger: needs.Ledger, now_ms: int) -> str:
@@ -99,6 +100,8 @@ def readiness_line(i: Intake, now_ms: int) -> str:
 
 
 def asks_line(i: Intake, now_ms: int) -> str:
-    keyed = [_key(k, i.ledger, now_ms) for k in sorted(i.ledger.needs)]
+    n = i.ledger.needs  # D7: only keys Slow asked for
+    asked = {k for k, x in n.items() if x.asks} | i.ledger.unvoiced
+    keyed = [_key(k, i.ledger, now_ms) for k in sorted(asked)]
     keyless = [f"{i.ledger.keyless} without keys"] if i.ledger.keyless else []
     return f"asks: {'; '.join(keyed + keyless) or 'none'}"

@@ -53,8 +53,13 @@ class Log:
             self.add("s2f.msg", "guard", ask, tool)
         return msg
 
-    def voiced(self, msg: str) -> None:
-        self.add("s2f.voiced", "fast.user", {"msg_id": msg, "gen_id": "u-g1"}, "r1:0")
+    def voiced(self, msg: str, *items: dict[str, str]) -> None:
+        """FastU's turn (a sentence by default) and its acknowledgement."""
+        said = items or ({"kind": "speech", "text": "Could you tell me?"},)
+        turn = {"lane": "user", "gen_id": "u-g1", "call_id": "c", "ttft_ms": 1}
+        turn |= {"ttfs_ms": 1, "items": list(said)}
+        cause = self.add("fast.turn", "fast.user", turn, "r1:0")
+        self.add("s2f.voiced", "fast.user", {"msg_id": msg, "gen_id": "u-g1"}, cause)
 
     def user(self, text: str = "It is 4821") -> str:
         return self.add("user.msg", "kernel", {"text": text})
@@ -193,3 +198,20 @@ def test_the_ledger_holds_no_text() -> None:
         for f in dataclasses.fields(Need):
             value = getattr(need, f.name)
             assert value is None or isinstance(value, int) or f.name in ("key", "state")
+
+
+def test_a_voicing_by_a_turn_without_speech_is_void() -> None:
+    """Review D1: the fold reads the acknowledging turn's item kinds only."""
+    log = Log()
+    log.voiced(log.ask(L4))
+    log.user()
+    empty = {"kind": "issue", "reason": "empty_turn", "text": ""}
+    log.voiced(log.ask(L4), empty)  # a re-ask, "voiced" by an empty turn
+    ledger = log.ledger
+    assert ledger.state(L4) == "replied" and ledger.needs[L4].asks == 1  # as before
+    assert ledger.unvoiced == frozenset({L4})
+    log.user("later")
+    assert log.ledger.state(L4) == "replied"
+    assert ask_denial(log.ledger, [L4]) is None
+    log.ask(L4)
+    assert log.ledger.unvoiced == frozenset()

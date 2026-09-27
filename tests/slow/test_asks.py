@@ -70,26 +70,24 @@ def test_r3b_a_public_summary_may_cite_a_fact_the_same_act_records(
     tmp_path: Path,
 ) -> None:
     """Runs 279efc (seq 214->219) and 723c8f (167->172): the summary was
-    declassified before the act's record_fact ran, and refused."""
+    declassified before the act's record_fact ran, and refused. The number is
+    the user's only (no rep line holds it), so only the new order passes."""
     h = Host(tmp_path)
     h.call()
-    h.rep("cp-1", "I see the account ending 4821, on the 75 dollar plan.")
+    said = h.emit("user.msg", "kernel", {"text": "My last 4 are 4821."})
+    summary = "Calling for the account ending 4821."
     body = {
-        "private_summary": "Rep confirmed the account.",
-        "public_summary": "Account ending 4821 is on the 75 dollar plan.",
+        "private_summary": "The user gave the last 4.",
+        "public_summary": summary,
         "calls": [
-            {"tool": "record_fact", "key": L4, "value": "4821", "utt_ref": "cp-1"},
-            {"tool": "record_fact", "key": "plan.price_usd", "value": "75",
-             "utt_ref": "cp-1"},
+            {"tool": "record_fact", "key": L4, "value": "4821",
+             "utt_ref": said.event_id},
         ],
     }  # fmt: skip
     call = ToolCall(call_id="c", name="act", arguments=json.dumps(body))
-    head, *_ = h.tools.act(call, [h.root.event_id], basis=h.bb.seq).splitlines()
-    assert head == "act: summaries updated", head
-    assert h.bb.public.summary == body["public_summary"]
-    assert not h.of("declass.denied")
-    names = [e.payload["name"] for e in h.of("slow.tool")]
-    assert names == ["record_fact", "record_fact", "act"]  # the act after its calls
+    out = h.tools.act(call, [h.root.event_id], basis=h.bb.seq).splitlines()
+    assert out == ["act: summaries updated", "record_fact: recorded public"], out
+    assert h.bb.public.summary == summary and not h.of("declass.denied")
 
 
 def test_every_refusal_class_carries_its_code(tmp_path: Path) -> None:
@@ -163,6 +161,13 @@ def test_the_readiness_line_before_and_after_the_call_opens() -> None:
 
 def test_the_asks_line_lists_keys_states_and_ages_only() -> None:
     assert asks_line(Intake((), None, None, Ledger()), 0) == "asks: none"
+    told = Ledger(needs={H: Need(key=H, state="answered", answered_seq=3)})
+    assert asks_line(Intake((), None, None, told), 0) == "asks: none"  # D7: unasked
+    unheard = Ledger(needs=LEDGER.needs, unvoiced=frozenset({H, "tenure_years"}))
+    assert asks_line(Intake((), None, None, unheard), 12_000) == (
+        "asks: account.holder_name replied (asked 2 s ago); asked again, not "
+        "voiced; account.last4 pending (asked 2 s ago); tenure_years asked, not voiced"
+    )
     assert asks_line(Intake((), None, None, LEDGER), 12_000) == (
         "asks: account.holder_name replied (asked 2 s ago); account.last4 pending "
         "(asked 2 s ago); 1 without keys"

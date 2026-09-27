@@ -198,6 +198,7 @@ class FastLane:
         if guides and not _acts(items):  # R3a: an empty turn voices no GUIDE
             if again := [g for g in guides if g not in self._retried]:
                 self._retried |= set(again)  # re-triggered once per message
+                k.counts["guide_retrigger"] += 1  # in session.ended's counts
                 self.trigger(Trigger(kind="guidance"), turn)
             guides = []
         for msg_id in [*guides, *slow_msg, *ask.acks]:

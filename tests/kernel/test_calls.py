@@ -28,6 +28,7 @@ from proxyloop.kernel.calls import DISCLOSURE, INTAKE_S
 from proxyloop.kernel.channels import Channel
 from proxyloop.kernel.session import ChannelSpec, Kernel
 from proxyloop.llm.http import RecordSink
+from proxyloop.slow import asks
 
 H, L4 = "account.holder_name", "account.last4"
 IDENTITY = "I'm Dana Reyes, and the last 4 are 4821."
@@ -295,6 +296,7 @@ def test_r3a_an_empty_turn_voices_no_guide_and_retriggers_once(
         first = sim.of("s2f.msg", type="GUIDE")[0].payload["msg_id"]
         tried = sim.of("fast.request", lane="cp", trigger="guidance")
         assert len(tried) == 2 and not sim.of("s2f.voiced", msg_id=first)
+        assert sim.k.counts["guide_retrigger"] == 1  # D6: counted
         turns = sim.of("fast.turn", lane="cp")
         items = [cast(list[dict[str, str]], t.payload["items"]) for t in turns]
         assert [i[0]["kind"] for i in items] == ["issue", "issue"]  # empty turns
@@ -306,6 +308,7 @@ def test_r3a_an_empty_turn_voices_no_guide_and_retriggers_once(
             (ack,) = sim.of("s2f.voiced", msg_id=msg_id)
             assert ack.cause_ids == (voiced,)
         assert len(sim.of("fast.request", lane="cp", trigger="guidance")) == 3
+        assert sim.k.counts["guide_retrigger"] == 1
         await sim.stop()
 
     arun(case())
@@ -332,3 +335,31 @@ def test_intake_time_never_becomes_a_rep_strike(tmp_path: Path) -> None:
     strikes = [e for e in events if e.type == "chan.strike"]
     assert strikes, result  # not vacuous: the rep's clock runs in the call
     assert min(e.t_ms for e in strikes) >= said.t_ms + 10_000
+
+
+def test_an_ask_voiced_by_a_turn_without_speech_is_not_voiced(tmp_path: Path) -> None:
+    """Review D1: FastU acknowledged the ask with an empty turn, so the user
+    never heard it; an unrelated message is no reply and start_call stays
+    refused. The keys are as before the ask, so it may be asked again (A1)."""
+
+    async def case() -> None:
+        sim = Intake(tmp_path, {"fast_user": [""]})  # FastU never speaks
+        await sim.start()
+        ask = {"tool": "ask_user", "text": "Name and last 4?", "keys": [H, L4]}
+        (sent,) = sim.act(ask)
+        assert sent.startswith("ask_user: sent"), sent
+        await sim.vt.run_for(1_000)
+        (msg,) = sim.of("s2f.msg", type="ASK_USER")
+        assert sim.of("s2f.voiced", msg_id=msg.payload["msg_id"])  # acked in lanes
+        sim.user_says("What's going on?")
+        await sim.vt.run_for(100)
+        assert sim.k.calls.needs.states() == {}
+        (refused,) = sim.act({"tool": "start_call"})
+        assert "not asked yet" in refused and not sim.cp_opened()
+        intake = asks.intake(sim.k)
+        assert "account.last4 asked, not voiced" in asks.asks_line(intake, 0)
+        (again,) = sim.act(ask)
+        assert again.startswith("ask_user: sent"), again
+        await sim.stop()
+
+    arun(case())

@@ -51,6 +51,7 @@ from proxyloop.contract.llm import (
 )
 from proxyloop.core.clock import Clock, WallClock
 from proxyloop.env.tasks.loader import load_task, resolve, task_ref_of
+from proxyloop.guard.readiness import IDENTITY
 from proxyloop.kernel.channels import HumanWebChannel
 from proxyloop.kernel.speaker import Sleep
 from proxyloop.kernel.web import Starter, WebCase
@@ -216,7 +217,6 @@ _SLOTS = {  # field -> unit (only for the cents conversion; Guard derives role/u
     "expires": "iso",
 }
 _RELAY = re.compile(r"\[(USER CHAT|REP CALL)\] (.*) \(utt (\S+)\)")
-_IDENTITY = ("account.holder_name", "account.last4")
 _ASK = "The company needs the account holder name and the last 4 digits."
 _FACT = re.compile(r"([a-z][a-z0-9_.]*)=([^;]+?)(?=;|$)")
 
@@ -246,11 +246,12 @@ class SlowScript:
     def __call__(self, request: Request) -> str:
         notes, calls = _last(request), list[dict[str, object]]()
         status = notes[notes.find("[STATUS]") :]
-        slots = [f"fact:{k}" for k in _IDENTITY]
-        public = all(re.search(rf'{k}="[^"]*" \[public\]', status) for k in _IDENTITY)
+        slots = [f"fact:{k}" for k in IDENTITY]
+        shown = [rf'{re.escape(k)}="[^"]*" \[public\]' for k in IDENTITY]
+        public = all(re.search(x, status) for x in shown)
         if "readiness: call not open; missing:" in status and not self.asked_identity:
             self.asked_identity = True  # readiness first: before the call opens
-            calls.append({"tool": "ask_user", "text": _ASK, "keys": list(_IDENTITY)})
+            calls.append({"tool": "ask_user", "text": _ASK, "keys": list(IDENTITY)})
         # o1 is recorded from the offer, then once more, whole, from a read-back
         offer = re.search(r"o1 r\d+ \(([^)]*)\)", status)
         new = offer is None
@@ -259,7 +260,7 @@ class SlowScript:
             body = _said_in(note)
             facts = dict(_FACT.findall(body))
             if lane == "USER CHAT" and "account.last4" in facts:
-                for key in _IDENTITY:
+                for key in IDENTITY:
                     fact = {"key": key, "value": facts[key], "utt_ref": utt}
                     calls.append({"tool": "record_fact", **fact})
                 calls.append({"tool": "guide_fast", "move": "identify", "slots": slots})
@@ -267,7 +268,7 @@ class SlowScript:
                 calls.append({"tool": "guide_fast", "move": "identify", "slots": slots})
             elif lane == "REP CALL" and "identity" in body and not self.asked_identity:
                 self.asked_identity = True
-                keys = list(_IDENTITY)
+                keys = list(IDENTITY)
                 calls.append({"tool": "ask_user", "text": _ASK, "keys": keys})
                 calls.append({"tool": "guide_fast", "move": "hold_for_fact"})
             elif (

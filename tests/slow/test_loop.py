@@ -144,8 +144,7 @@ def test_slow_holds_for_a_missing_identity_fact_then_is_told_to_identify(
     assert "guide_fast(hold_for_fact)" in system and "hold_for_decision" not in system
     assert 'guide_fast(identify, slots=["fact:<key>"' in system
     assert "readiness: nothing missing" in third  # the call may open
-    answered = "account.holder_name answered; account.last4 answered"
-    assert f"asks: {answered}; 1 without keys" in third  # the hold's ask: keyless
+    assert "asks: 1 without keys" in third  # D7: keys never asked are not listed
     k.bus.close()
 
 
