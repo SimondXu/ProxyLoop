@@ -158,6 +158,7 @@ def privates(draw: st.DrawFn) -> PrivateState:
                 by="ui",
                 terms_hash=f"t{n}",
                 authority_epoch=n % 5,
+                expires_ms=draw(st.none() | st.integers(0, 10**9)),
             )
         }
         if draw(st.booleans())
@@ -270,10 +271,11 @@ def test_private_value_counterfactual(
 ) -> None:
     """Perturbing any field besides public state and the cp channel (private
     state, the user channel, pending messages, fences, epoch, capabilities,
-    ...) leaves the cp render byte-identical."""
+    ...) leaves the cp render byte-identical. pl_cp_v2 renders every GuideMove;
+    it is pl_cp_v1 plus one move text (test_protocol.py)."""
 
     def render(b: Blackboard) -> tuple[ChatMessage, ChatMessage]:
-        return render_messages(view_cp(b, trigger, "Call the company."), "pl_cp_v1")
+        return render_messages(view_cp(b, trigger, "Call the company."), "pl_cp_v2")
 
     assert _changed(render, bb, other) == set()
 

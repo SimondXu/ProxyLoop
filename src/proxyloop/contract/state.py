@@ -133,11 +133,17 @@ class ApprovalCard(Frozen):
 
 
 class Approval(Frozen):
+    """A decided card; private (ADR-0007). The fold copies ``expires_ms`` from
+    the card at ``approval.decided``. ``None`` only on a record written before
+    the field existed. Expiry filters grants only: a grant with ``None`` mints
+    no capability (never unbounded); a denial never expires."""
+
     approval_id: str
     decision: Literal["granted", "denied"]
     by: Literal["ui", "sim_approver"]
     terms_hash: str
     authority_epoch: int
+    expires_ms: int | None = None
 
 
 Intent = Literal["accept_offer", "submit_transaction"]

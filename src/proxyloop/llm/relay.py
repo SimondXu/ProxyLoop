@@ -1,9 +1,12 @@
-"""Hosted models over OpenAI-compatible ``/v1/chat/completions`` (ADR-0001, ADR-0005).
+"""Hosted models over OpenAI-compatible ``/v1/chat/completions`` (ADR-0001, ADR-0005,
+ADR-0011).
 
-One class for both chat endpoints, ``relay`` (Slow, teacher, hosted Fast) and
-``teamrouter`` (the world). Text streams; a tool call is one non-streamed
-response. Structured output is a forced tool call: ``response_format`` is never
-sent. Tool names and arguments pass through unrepaired; the caller validates.
+One class for every chat endpoint: ``relay`` (Slow, teacher, hosted Fast),
+``teamrouter`` (the world) and ``openrouter`` (hosted Fast in development; its
+server root is ``https://openrouter.ai/api``). Text streams; a tool call is one
+non-streamed response. Structured output is a forced tool call:
+``response_format`` is never sent. Tool names and arguments pass through
+unrepaired; the caller validates.
 """
 
 from __future__ import annotations
@@ -66,7 +69,7 @@ def _tools(body: Json) -> str:
 
 
 class ChatClient(HTTPAdapter):
-    ENDPOINTS = ("relay", "teamrouter")
+    ENDPOINTS = ("relay", "teamrouter", "openrouter")
 
     def _body(self, messages: tuple[ChatMessage, ...], max_tokens: int) -> Json:
         body: Json = {

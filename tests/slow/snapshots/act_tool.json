@@ -1,0 +1,210 @@
+{
+ "description": "Your summaries and actions for this turn.",
+ "name": "act",
+ "parameters": {
+  "properties": {
+   "calls": {
+    "items": {
+     "properties": {
+      "changes": {
+       "properties": {
+        "forbidden_changes": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "max_monthly_price_minor": {
+         "minimum": 0,
+         "type": "integer"
+        },
+        "max_one_time_fees_minor": {
+         "minimum": 0,
+         "type": "integer"
+        },
+        "max_term_months": {
+         "minimum": 0,
+         "type": "integer"
+        },
+        "required_features": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        }
+       },
+       "type": "object"
+      },
+      "confirmation_id": {
+       "type": "string"
+      },
+      "envelope": {
+       "properties": {
+        "forbidden_changes": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "max_monthly_price_minor": {
+         "minimum": 0,
+         "type": "integer"
+        },
+        "max_one_time_fees_minor": {
+         "minimum": 0,
+         "type": "integer"
+        },
+        "max_term_months": {
+         "minimum": 0,
+         "type": "integer"
+        },
+        "required_features": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        }
+       },
+       "type": "object"
+      },
+      "key": {
+       "type": "string"
+      },
+      "move": {
+       "enum": [
+        "open_call",
+        "identify",
+        "ask_discount",
+        "cite_competitor",
+        "mention_tenure",
+        "cancel_lever",
+        "ask_readback",
+        "hold_for_decision",
+        "decline_offer",
+        "ask_final_offer",
+        "deflect_fact_request",
+        "close_call",
+        "hold_for_fact"
+       ]
+      },
+      "offer_ref": {
+       "type": "string"
+      },
+      "offer_slots": {
+       "items": {
+        "properties": {
+         "field": {
+          "type": "string"
+         },
+         "role": {
+          "enum": [
+           "recurring",
+           "one_time",
+           "credit",
+           "change",
+           "feature",
+           "expiry"
+          ]
+         },
+         "unit": {
+          "enum": [
+           "usd_minor",
+           "months",
+           "bool",
+           "iso"
+          ]
+         },
+         "utt_ref": {
+          "type": "string"
+         },
+         "value": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "field",
+         "value",
+         "unit",
+         "role"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "outcome": {
+       "enum": [
+        "info_only",
+        "completed",
+        "no_deal",
+        "escalate"
+       ]
+      },
+      "reason": {
+       "type": "string"
+      },
+      "seconds": {
+       "maximum": 15,
+       "minimum": 1,
+       "type": "integer"
+      },
+      "slots": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "summary": {
+       "type": "string"
+      },
+      "text": {
+       "type": "string"
+      },
+      "tool": {
+       "enum": [
+        "ask_user",
+        "tell_user",
+        "wait",
+        "guide_fast",
+        "record_fact",
+        "record_offer",
+        "share_fact",
+        "propose_mandate",
+        "tighten_mandate",
+        "revoke",
+        "request_approval",
+        "accept_offer",
+        "decline_offer",
+        "check_account",
+        "finish"
+       ]
+      },
+      "utt_ref": {
+       "type": "string"
+      },
+      "value": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "tool"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "private_summary": {
+    "maxLength": 1200,
+    "type": "string"
+   },
+   "public_summary": {
+    "maxLength": 400,
+    "type": "string"
+   }
+  },
+  "required": [
+   "private_summary",
+   "calls"
+  ],
+  "type": "object"
+ }
+}

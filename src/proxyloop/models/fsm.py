@@ -65,6 +65,7 @@ MOVES: dict[str, str] = {  # GuideMove -> what the FSM says ({} = slot values)
     "ask_final_offer": "Is this your best and final offer?",
     "deflect_fact_request": "I'm sorry, I can't share that detail.",
     "close_call": "Thank you for your help today. Goodbye.",
+    "hold_for_fact": "I'm getting that detail from my customer; please hold a moment.",
 }
 NOTED = "I've noted that; I need to check before agreeing to anything."
 # A sentence that reads as work finished; unspoken unless VERIFIED_COMPLETE (I6).
@@ -148,10 +149,12 @@ def _offers(block: str) -> tuple[Offer, ...]:
     return tuple(out)
 
 
-def _guides(block: str, profile: Profile) -> tuple[tuple[str, tuple[str, ...]], ...]:
+def _guides(
+    block: str, moves: Sequence[tuple[str, str]]
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
     out: list[tuple[str, tuple[str, ...]]] = []
     for row in _rows(block):
-        for move, text in profile.moves.items():
+        for move, text in moves:
             if row.startswith(f"- {text}"):
                 rest = row[len(text) + 2 :].strip()
                 inner = rest[1:-1] if rest.startswith("(") else ""
@@ -167,9 +170,19 @@ def read_view(messages: Sequence[ChatMessage]) -> Seen:
     if len(messages) != 2 or messages[0].role != "system":
         raise ValueError("the FSM takes render_messages output: system + user")
     system, user = messages[0].content, messages[1].content
-    profile = next((p for p in PROFILES.values() if p.system == system), None)
-    if profile is None:
+    # Profiles may share a system text (pl_cp_v1, pl_cp_v2; ADR-0011): they must
+    # agree on the layout, and guides parse against all their move texts.
+    matches = [p for p in PROFILES.values() if p.system == system]
+    if not matches:
         raise ValueError("the system message is not a contract Fast profile")
+    layouts = {
+        (p.lane, p.sections, p.labels, tuple(p.triggers.items()), p.closing)
+        for p in matches
+    }
+    if len(layouts) != 1:
+        raise ValueError("profiles sharing this system text disagree on the layout")
+    profile = matches[0]
+    moves = tuple(dict.fromkeys(pair for p in matches for pair in p.moves.items()))
     part = _sections(user, profile)
     trigger, args = _trigger(part["trigger"], profile)
     lines: list[tuple[str, str]] = []
@@ -185,7 +198,7 @@ def read_view(messages: Sequence[ChatMessage]) -> Seen:
         status=part["status"],
         hold=hold[1] if hold else None,
         offers=_offers(part["offers"]),
-        guides=_guides(part.get("guidance", NONE), profile),
+        guides=_guides(part.get("guidance", NONE), moves),
         lines=tuple(lines),
     )
 
@@ -222,6 +235,8 @@ def _guide(lane: Lane, move: str, values: tuple[str, ...]) -> list[TurnItem]:
     items = _say(lane, text.format(", ".join(values)))
     if move == "hold_for_decision":
         items.append(Hold(reason="decision"))
+    if move == "hold_for_fact":
+        items.append(Hold(reason="fact_request"))
     if move == "close_call":
         items.append(EndCall())
     return items

@@ -10,7 +10,7 @@ from tests.contract.samples import SONNET, session_config
 from tests.support.fakes import ScriptedLLM, fake_ref
 
 from proxyloop.contract.config import AblationId, SessionConfig
-from proxyloop.contract.llm import AdapterKind
+from proxyloop.contract.llm import AdapterKind, ModelRef
 from proxyloop.evidence.reality import label
 from proxyloop.models.registry import (
     TRAINED,
@@ -25,8 +25,10 @@ from serving import config
 
 ROOT = Path(__file__).resolve().parents[2]
 REPAIR = (AblationId.TEACHER_REPAIR_CP, AblationId.TEACHER_REPAIR_USER)
-ALL = ["C1", "C2", "C3", "C4", "C5", "T", "F", "R"]
 SLOT = f"{config.TRAINED_PREFIX}pt-0123abcd"  # the name pull-through deploys
+
+
+NAMES = ["C1", "C2", "C3", "C4", "C5", "T", "F", "R"]
 
 
 @pytest.fixture
@@ -37,11 +39,11 @@ def deployed(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_the_eight_conditions() -> None:
-    assert set(conditions()) == set(ALL)
+    assert set(conditions()) == set(NAMES)
 
 
 @pytest.mark.usefixtures("deployed")
-@pytest.mark.parametrize("name", ALL)
+@pytest.mark.parametrize("name", NAMES)
 def test_every_condition_makes_a_valid_live_config(name: str) -> None:
     base = session_config()
     cfg = condition(name).apply(base)
@@ -58,7 +60,7 @@ def test_what_each_condition_runs() -> None:
         "C2": "Qwen3.5-9B",
         "C3": "Qwen3.5-4B",
         "C4": "claude-haiku-4-5-20251001",
-        "C5": "gpt-6-luna",
+        "C5": "openai/gpt-6-luna",
         "T": "claude-sonnet-5",
         "F": "proxyloop-fsm-v1",
         "R": "Qwen3.5-9B",
@@ -76,7 +78,7 @@ def test_t_and_r_run_the_teacher_with_no_resamples() -> None:
     """E2 (#124): in evaluation the teacher gets no retry the student lacks."""
 
     limits = {name: condition(name).teacher_resamples for name in conditions()}
-    assert limits == {n: 0 if n in ("T", "R") else None for n in ALL}
+    assert limits == {n: 0 if n in ("T", "R") else None for n in NAMES}
     teacher = ScriptedLLM(fake_ref("teacher"), [])
     for name in ("T", "R"):
         assert condition(name).teacher_repair(teacher).max_resamples == 0
@@ -91,11 +93,16 @@ def test_the_reality_report_labels_f_as_the_baseline_fsm() -> None:
     assert {label(condition(n).fast_cp) for n in ("C4", "C5", "T")} == {"hosted"}
 
 
-def test_c5_is_luna_through_teamrouter() -> None:
-    luna = condition("C5")
-    assert luna.fast_user == luna.fast_cp == resolve("gpt-6-luna")
-    assert luna.fast_cp.endpoint == "teamrouter"
-    assert luna.fast_cp.kind is AdapterKind.REAL_HTTP
+def test_c5_is_luna_on_openrouter_at_the_provisional_effort() -> None:
+    luna = ModelRef(
+        kind=AdapterKind.REAL_HTTP,
+        endpoint="openrouter",
+        model_id="openai/gpt-6-luna",
+        reasoning_effort="low",  # provisional until the user confirms
+    )
+    c5 = condition("C5")
+    assert resolve("gpt-6-luna") == c5.fast_user == c5.fast_cp == luna
+    assert (label(c5.fast_user), label(c5.fast_cp)) == ("hosted", "hosted")
 
 
 def test_c1_resolves_the_deployed_trained_slot(deployed: None) -> None:

@@ -24,6 +24,7 @@ class GuideMove(StrEnum):
     ASK_FINAL_OFFER = "ask_final_offer"
     DEFLECT_FACT_REQUEST = "deflect_fact_request"
     CLOSE_CALL = "close_call"
+    HOLD_FOR_FACT = "hold_for_fact"  # appended; rendered from pl_cp_v2 on (ADR-0011)
 
 
 OFFER_REF = r"[A-Za-z0-9_-]{1,24}"

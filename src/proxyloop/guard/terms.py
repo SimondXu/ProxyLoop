@@ -1,10 +1,13 @@
 """Offer terms and their hashes (ARCHITECTURE §9.1).
 
-``terms_hash`` hashes ``pl.terms/2``: every field of ``Terms``, with list fields
-sorted so the hash is order-insensitive. ``terms_hash_v1`` reproduces the v0
-six-field ``material_terms_hash`` byte for byte (v0
+``terms_hash`` hashes ``pl.terms/3``: every field of ``Terms``, with list fields
+sorted so the hash is order-insensitive, plus explicit fee and change
+completeness (``fees_none``, ``changes_none``). ``terms_hash_v1`` reproduces the
+v0 six-field ``material_terms_hash`` byte for byte (v0
 ``proxyloop_contracts/material_terms.py:18-46``); v0 left ``applied_changes``,
-fees, credits and the offer id/revision unbound, which ``pl.terms/2`` fixes.
+fees, credits and the offer id/revision unbound, which ``pl.terms/2`` fixed.
+``terms_hash_v2`` keeps the ``pl.terms/2`` hash, which left completeness
+unbound: a ledger with an unrecorded fee or change hashed as the accepted terms.
 """
 
 from __future__ import annotations
@@ -14,6 +17,11 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+
+from proxyloop.contract.state import OfferPublic
+
+NO_EXPIRY = datetime(9999, 12, 31, 23, 59, 59, tzinfo=UTC)  # "it does not expire"
+_BOOLEAN = frozenset({"applied_change", "feature", "fees_none", "changes_none"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,11 +34,12 @@ class Fee:
 
 @dataclass(frozen=True, slots=True)
 class Terms:
-    """``pl.terms/2``: the material terms of one offer revision.
+    """The material terms of one offer revision (``pl.terms/2`` fields).
 
     ``credits`` use the same ``{code, amount_minor}`` shape as ``fees``. List
     fields are multisets: the hash sorts them and keeps duplicates.
-    ``expires_at`` must be timezone-aware and is normalised to UTC.
+    ``expires_at`` must be timezone-aware and is normalised to UTC;
+    ``NO_EXPIRY`` stands for the rep's explicit "no expiry".
     ``total_cost_12m_minor`` is stored as quoted; stored vs derived is deferred
     to S0-CON-01, which owns the terms types.
     """
@@ -54,23 +63,99 @@ class Terms:
 
 
 def terms_hash(terms: Terms) -> str:
-    """sha256 of the canonical JSON of ``terms`` (sorted keys and lists)."""
+    """``pl.terms/3``: sha256 of the canonical JSON of ``terms`` (sorted keys
+    and lists) and its explicit completeness. ``offer_terms`` yields terms only
+    when that completeness was stated, so the fee and change lists are all of
+    them: ``fees_none`` iff there is no fee, ``changes_none`` iff no change."""
 
-    return _sha256_json(
-        {
-            "monthly_price_minor": terms.monthly_price_minor,
-            "currency": terms.currency,
-            "term_months": terms.term_months,
-            "features": sorted(terms.features),
-            "fees": _fee_lines(terms.fees),
-            "credits": _fee_lines(terms.credits),
-            "applied_changes": sorted(terms.applied_changes),
-            "total_cost_12m_minor": terms.total_cost_12m_minor,
-            "offer_id": terms.offer_id,
-            "offer_revision": terms.offer_revision,
-            "expires_at": _utc_text(terms.expires_at),
-        }
-    )
+    complete = {
+        "fees_none": not terms.fees,
+        "changes_none": not terms.applied_changes,
+    }
+    return _sha256_json(_v2_fields(terms) | complete)
+
+
+def terms_hash_v2(terms: Terms) -> str:
+    """The ``pl.terms/2`` hash, byte for byte: completeness unbound."""
+
+    return _sha256_json(_v2_fields(terms))
+
+
+def _v2_fields(terms: Terms) -> dict[str, object]:
+    return {
+        "monthly_price_minor": terms.monthly_price_minor,
+        "currency": terms.currency,
+        "term_months": terms.term_months,
+        "features": sorted(terms.features),
+        "fees": _fee_lines(terms.fees),
+        "credits": _fee_lines(terms.credits),
+        "applied_changes": sorted(terms.applied_changes),
+        "total_cost_12m_minor": terms.total_cost_12m_minor,
+        "offer_id": terms.offer_id,
+        "offer_revision": terms.offer_revision,
+        "expires_at": _utc_text(terms.expires_at),
+    }
+
+
+def offer_terms(offer: OfferPublic) -> Terms | None:
+    """``pl.terms/3`` of an offer's read-back slots (USD), or ``None`` while
+    the price, the term or the expiry is missing or malformed, a field repeats,
+    or fee or change completeness is unstated or contradictory (§9.2: at least
+    one ``fee:*`` or ``fees_none``, at least one applied ``applied_change:*``
+    or ``changes_none``; a ``*_none`` slot is ``true`` iff its list is empty),
+    or a boolean field (``applied_change:*``, ``feature:*``, ``*_none``) holds
+    anything but ``true``/``false`` (unreadable, never silently dropped).
+    Whether a slot is confirmed is ``readback_status``'s rule, not this one."""
+
+    by = {s.field: s.value for s in offer.slots}
+    if len(by) != len(offer.slots):  # a repeated field has no single value
+        return None
+    coded = [(*f.split(":", 1), v) for f, v in by.items() if ":" in f]
+    flags = [v for f, v in by.items() if f.partition(":")[0] in _BOOLEAN]
+    if any(v not in ("true", "false") for v in flags):
+        return None
+    try:
+        fees = tuple(Fee(code, int(v)) for kind, code, v in coded if kind == "fee")
+        credits = tuple(Fee(c, int(v)) for kind, c, v in coded if kind == "credit")
+        monthly, expires = int(by["monthly_price"]), by["expires"]
+        changes = tuple(c for k, c, v in coded if k == "applied_change" and v == "true")
+        if not (
+            _stated(by.get("fees_none"), fees)
+            and _stated(by.get("changes_none"), changes)
+        ):
+            return None
+        return Terms(
+            monthly_price_minor=monthly,
+            currency="USD",
+            term_months=int(by["term_months"]),
+            features=tuple(c for k, c, v in coded if k == "feature" and v == "true"),
+            fees=fees,
+            credits=credits,
+            applied_changes=changes,
+            total_cost_12m_minor=monthly * 12
+            + sum(f.amount_minor for f in fees)
+            - sum(c.amount_minor for c in credits),
+            offer_id=offer.offer_ref,
+            offer_revision=offer.revision,
+            expires_at=NO_EXPIRY
+            if expires == "none"
+            else datetime.fromisoformat(expires),
+        )
+    except (KeyError, ValueError):
+        return None
+
+
+def _stated(none: str | None, listed: Sequence[object]) -> bool:
+    """Completeness is stated: a ``*_none`` slot that is ``true`` iff nothing
+    is listed, or, without one, at least one listed line."""
+    if none is None:
+        return bool(listed)
+    return none in ("true", "false") and (none == "true") == (not listed)
+
+
+def offer_terms_hash(offer: OfferPublic) -> str | None:
+    terms = offer_terms(offer)
+    return None if terms is None else terms_hash(terms)
 
 
 def terms_hash_v1(
@@ -94,7 +179,7 @@ def terms_hash_v1(
         ("currency", currency),
         ("term_months", str(term_months)),
         ("features", ",".join(sorted(features))),
-        ("offer_expires_at", _utc_text(offer_expires_at)),
+        ("offer_expires_at", _v0_utc_text(offer_expires_at)),
     )
     # v0 sorted by (name, value) after pydantic had stripped the values.
     canonical = sorted((name, _v1_text(value)) for name, value in terms)
@@ -124,8 +209,25 @@ def _sha256_json(value: object) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _utc_text(value: datetime) -> str:
+def _v0_utc_text(value: datetime) -> str:  # v0's form, microseconds included
     return value.isoformat().replace("+00:00", "Z")
 
 
-__all__ = ["Fee", "Terms", "terms_hash", "terms_hash_v1"]
+def _utc_text(value: datetime) -> str:
+    """UTC with whole seconds: 20 characters, within ``MAX_SLOT_VALUE``."""
+    return _v0_utc_text(value.astimezone(UTC).replace(microsecond=0))
+
+
+expiry_text = _utc_text  # an ``expires`` read-back slot's value
+
+__all__ = [
+    "NO_EXPIRY",
+    "Fee",
+    "Terms",
+    "expiry_text",
+    "offer_terms",
+    "offer_terms_hash",
+    "terms_hash",
+    "terms_hash_v1",
+    "terms_hash_v2",
+]

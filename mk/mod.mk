@@ -105,3 +105,35 @@ pull-through-liveness:
 	trap '$(PT_SERVE_DOWN)' EXIT HUP INT TERM; \
 	export PL_TRAINED_ADAPTER="$(ADAPTER_NAME)=$(ADAPTER)" && $(PT_SERVE_UP) && \
 	$(PT_PY) liveness --name $(ADAPTER_NAME) --out $(PT_DIR)/liveness.json
+
+# S1-MOD-02: the EVAL §7 metrics of a bundle, or of a folder of bundles, as JSON. Offline:
+# no keys, no GPU (`make metrics RUN=evidence/s0/<run_id>`).
+.PHONY: metrics
+
+metrics:
+	uv run python -m proxyloop.eval.metrics $(RUN)
+
+# S1-MOD-04: the Fast benchmark (src/proxyloop/eval/specs/fast_benchmark.yaml). benchmark-fast
+# is root-run (L+G): C5 is hosted (TeamRouter), C2 and C1 need `make serve-up`; C1 fails loudly
+# without PL_TRAINED_ADAPTER. BENCH_ARGS go to `proxyloop.cli session` (the Slow/world options).
+# A runs dir holds one matrix: resume only with the identical BENCH_CONDITIONS. C1 runs later
+# as its own matrix in a fresh dir (BENCH_CONDITIONS=C1 BENCH_RUNS=runs/fast-benchmark-c1
+# BENCH_REPORT_RUNS="runs/fast-benchmark runs/fast-benchmark-c1"); comparisons across the
+# two are marked "not interleaved". The report is gated (integrity, pairing, one shared
+# config): refused, nothing written, unless `--descriptive` is passed by hand.
+# benchmark-report is offline, no keys and no GPU (`make benchmark-report RUNS="<dir>..."`).
+BENCH_RUNS ?= runs/fast-benchmark
+BENCH_REPORT_RUNS ?= $(BENCH_RUNS)
+BENCH_CONDITIONS ?= C5,C2
+BENCH_OUT ?= docs/results/fast-benchmark.json
+BENCH := uv run python -m proxyloop.eval.benchmark
+BENCH_REPORT = $(BENCH) report --git-sha $$(git rev-parse HEAD) --out $(BENCH_OUT)
+
+.PHONY: benchmark-fast benchmark-report
+
+benchmark-fast:
+	$(BENCH) run --runs $(BENCH_RUNS) --conditions $(BENCH_CONDITIONS) $(BENCH_ARGS)
+	$(BENCH_REPORT) $(foreach r,$(BENCH_REPORT_RUNS),--runs $(r))
+
+benchmark-report:
+	$(BENCH_REPORT) $(foreach r,$(RUNS),--runs $(r))

@@ -8,11 +8,15 @@
 # server was deployed with, resolved by registry.trained() from serving's config.
 models:
   qwen3.5-9b: {kind: real_http, endpoint: vllm, model_id: Qwen3.5-9B}  # ADR-0002
-  qwen3.5-4b: {kind: real_http, endpoint: vllm, model_id: Qwen3.5-4B}  # serving MODEL=4b
+  qwen3.5-4b: {kind: real_http, endpoint: vllm, model_id: Qwen3.5-4B}  # serving SERVE_MODEL=4b
   claude-haiku-4-5: {kind: real_http, endpoint: relay, model_id: claude-haiku-4-5-20251001}  # ADR-0001
   claude-sonnet-5: {kind: real_http, endpoint: relay, model_id: claude-sonnet-5}  # ADR-0001
-  gpt-6-luna: {kind: real_http, endpoint: teamrouter, model_id: gpt-6-luna}  # hosted, labelled
   fsm: {kind: baseline, endpoint: null, model_id: proxyloop-fsm-v1}  # models/fsm.py
+  # C5 (user, 2026-09-27). reasoning_effort is provisional (the user's setting).
+  # Sampling is set by the provider: OpenRouter lists no temperature/top_p for
+  # this model, so the shared Fast sampling is not honoured. The served echo is
+  # to be confirmed by the root's C5 smoke bundle.
+  gpt-6-luna: {kind: real_http, endpoint: openrouter, model_id: openai/gpt-6-luna, reasoning_effort: low}
 
 conditions:
   C1: {fast_user: qwen3.5-9b-sft, fast_cp: qwen3.5-9b-sft}
