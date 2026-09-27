@@ -1,0 +1,6 @@
+@layer components {
+  .pl-banner { margin: var(--s2) 0; padding: var(--s2) var(--s3); border-radius: var(--r-sm); font-size: var(--fs-small); border: 1px solid; }
+  .pl-banner-danger { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+  .pl-banner-guard { background: var(--guard-soft); border-color: var(--guard-soft); color: var(--guard); }
+  .pl-banner-attn { background: var(--attn-soft); border-color: var(--attn-ring); color: var(--attn); }
+}

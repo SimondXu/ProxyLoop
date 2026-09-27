@@ -1,0 +1,8 @@
+@layer components {
+  .pl-band {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--s1) var(--s5); padding: 6px var(--s5);
+    margin: 0 calc(-1 * var(--s5)); font-size: var(--fs-meta); color: var(--ink-2); background: var(--hatch); border-bottom: 1px solid var(--line);
+  }
+  .pl-band p { margin: 0; }
+  .pl-band-sim { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--ink); }
+}

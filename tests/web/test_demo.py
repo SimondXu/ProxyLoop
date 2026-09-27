@@ -11,8 +11,9 @@ What the kernel on main does, asserted as it is:
   then stopped here (``stopped``), never shown as completed;
 - stop: the fence rises on the user's message, FastU's revoke moves the epoch,
   the card goes stale, a post of it is refused by the kernel (``action.denied``
-  ``stale_epoch``) and no accept is ever minted; the case stays
-  AWAITING_APPROVAL.
+  ``stale_epoch``) and no accept is ever minted; the epoch bump moves the
+  case AWAITING_APPROVAL → NEEDS_REPLAN, and Slow's next step back to IN_CALL
+  (S1-SYS-38); it never reaches COMMIT_AUTHORIZED.
 """
 
 from __future__ import annotations

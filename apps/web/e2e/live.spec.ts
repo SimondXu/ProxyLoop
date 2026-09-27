@@ -268,7 +268,7 @@ test("conversation view: two panes with the right speakers, heard text only, the
   const ws = await connected;
   ws.send(ev("session.started", "kernel", started(SIM), { stream: "ops" }));
   // Every frame names the simulated rep: the page header and each pane.
-  await expect(page.locator(".sticky").getByLabel("Simulated parties")).toHaveText(SIM_REP);
+  await expect(page.getByRole("note", { name: "Simulated parties" })).toHaveText(SIM_REP);
   for (const pane of ["Chat", "Call"]) await expect(page.getByRole("region", { name: pane }).getByLabel("Simulated parties")).toHaveText(SIM_REP);
   await expect(page.getByRole("heading", { name: "Call · Agent / Rep (simulated) / Call" })).toBeVisible();
   await expect(page.getByLabel("Status line")).toHaveText("Status: starting (no status yet)");
