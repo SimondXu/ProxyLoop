@@ -420,8 +420,24 @@ Source = Literal["cp_utt", "shareable"]
 FORMATS = [
     ("I've been with you for 6 years", TENURE, "6", "6"),
     ("I've been with you 6 years", TENURE, "6", "6"),
-    ("been a customer for 12 Years now.", TENURE, "12", "12"),
-    ("We have been with you for 1 year", TENURE, "1", "1"),
+    ("I have been a customer for 12 years", TENURE, "12", "12"),
+    ("I've been a customer for 12 Years now.", TENURE, "12", "12"),
+    ("I've been with you for 1 year", TENURE, "1", "1"),
+    ("I've been with you for 06 years", TENURE, "06", "06"),  # as written
+    # round 4: first person only, and never with a negation
+    ("been a customer for 12 Years now.", TENURE, "12", None),
+    ("We have been with you for 1 year", TENURE, "1", None),
+    ("my wife has been a customer for 20 years", TENURE, "20", None),
+    ("I have never been a customer for 3 years", TENURE, "3", None),
+    ("I haven't been with you for 6 years", TENURE, "6", None),
+    ("I haven\u2019t been with you for 6 years", TENURE, "6", None),
+    ("we've been with you for 6 years", TENURE, "6", None),
+    ("been with you for 6 years", TENURE, "6", None),
+    ("I've been with you for 6 years? not really", TENURE, "6", None),
+    ("I've been with you for 6 years, isn't that enough", TENURE, "6", None),
+    ("AI've been with you for 6 years", TENURE, "6", None),
+    ("I ve been with you for 6 years", TENURE, "6", None),
+    ("I`ve been with you for 6 years", TENURE, "6", None),
     # #153 round 3: tenure outside its context, or next to an age word
     ("I'm 36 years old", TENURE, "36", None),
     ("I am 36 years of age", TENURE, "36", None),

@@ -38,11 +38,12 @@ _LAST4 = re.compile(r"[0-9]{4}")  # ASCII only: no NFKC, no separators
 _WORD = r"[A-Za-z]+(?:['\u2019-][A-Za-z]+)*"  # O'Brien, Lee-Smith
 _NAME = re.compile(rf"{_WORD}(?: {_WORD}){{0,3}}")  # 1-4 words, single spaces
 _YEARS = re.compile(r"[0-9]{1,2}")
-_TENURE = re.compile(  # #153 round 3: only in context, one ASCII space each
-    r"(?<![\w'\u2019-])[Bb]een (?:[Ww]ith [Yy]ou|[Aa] [Cc]ustomer) (?:[Ff]or )?"
-    r"([0-9]{1,2}) [Yy]ears?(?![\w'\u2019-])"
+_TENURE = re.compile(  # #153 rounds 3-4: first person, in context, one space
+    r"(?<![\w'\u2019`-])I(?:'ve|\u2019ve| have) been (?:with you|a customer) "
+    r"(?:for )?([0-9]{1,2}) [Yy]ears?(?![\w'\u2019-])"
 )
 _AGE = re.compile(r"(?i)\b(?:old|age|aged|ago)\b")  # "36 years old": no tenure
+_NEGATION = re.compile(r"(?i)\b(?:not|never)\b|n['\u2019]t\b")
 _NOT_ASCII = re.compile(r"[^\x00-\x7f\u2018\u2019\u201c\u201d]")  # but quotes
 _NUMBER = re.compile(r"[0-9]+(?:\.[0-9]+)?")
 _BEFORE = r"(?:^|(?<=[\s(:\"\u201c]))"  # allow-listed token starts
@@ -313,7 +314,7 @@ class SlowTools:
                 f": only {', '.join(can) or 'no key'} can go public from the user, "
                 "by citing the utt of the user message that contains exactly the "
                 "value (a last4 as 4 digits, a holder name as the user wrote it, "
-                'tenure as "been with you for N years"); other keys stay private'
+                "tenure as 'I've been with you for N years'); other keys stay private"
             )
         return Result(True, text, tuple(effects))
 
@@ -415,9 +416,12 @@ def _name(value: str, message: str, _: st.Blackboard) -> str | None:
 
 
 def _years(value: str, message: str, _: st.Blackboard) -> str | None:
-    """1-2 ASCII digits in an allow-listed tenure context ("been with you for
-    6 years", "been a customer 12 years"), in a message with no age word."""
+    """1-2 ASCII digits in an allow-listed first-person tenure context ("I've
+    been with you for 6 years", "I have been a customer 12 years"), in a
+    message with no age word and no negation."""
     if not _YEARS.fullmatch(value) or _AGE.search(message):
+        return None
+    if _NEGATION.search(message):  # "I haven't been with you for 6 years"
         return None
     if _NOT_ASCII.search(message):  # no confusable hides an age word
         return None
