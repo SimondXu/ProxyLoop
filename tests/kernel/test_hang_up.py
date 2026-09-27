@@ -17,13 +17,12 @@ WAIT = act("Waiting.", {"tool": "wait", "seconds": 15})
 
 
 class Rep(Channel):
-    """Says one line, then hangs up with a last line."""
+    """Says one line, then hangs up with a last line (or none: a CLI /hangup)."""
 
-    def __init__(self) -> None:
+    def __init__(self, last: tuple[tuple[str, None], ...]) -> None:
         super().__init__()
         self.incoming.put_nowait(Incoming((("Hello?", None),), due_ms=100))
-        bye = Incoming((("Goodbye.", None),), due_ms=20_000, end="hangup")
-        self.incoming.put_nowait(bye)
+        self.incoming.put_nowait(Incoming(last, due_ms=20_000, end="hangup"))
 
 
 class Quitter(Channel):
@@ -47,7 +46,9 @@ def test_a_rep_hang_up_abandons_the_case_before_the_session_ends(
     tmp_path: Path,
 ) -> None:
     scripts = SCRIPTS | {"slow": [WAIT]}
-    result = run(tmp_path, scripts, channels={"user": "sim", "cp": Rep()})
+    result = run(
+        tmp_path, scripts, channels={"user": "sim", "cp": Rep((("Goodbye.", None),))}
+    )
     assert result.reason == "abandoned"
     events = only_bundle(tmp_path).events
     (moved,) = _abandoned(events)
@@ -61,6 +62,21 @@ def test_a_rep_hang_up_abandons_the_case_before_the_session_ends(
     (ended,) = [e for e in events if e.type == "session.ended"]
     assert bye.seq < moved.seq < ended.seq
     assert check_path(result.path, "offline").ok
+
+
+def test_a_hang_up_without_a_line_changes_no_status(tmp_path: Path) -> None:
+    """No event of its own to cause a move (I2): main's behaviour stays."""
+    scripts = SCRIPTS | {"slow": [WAIT]}
+    result = run(tmp_path, scripts, channels={"user": "sim", "cp": Rep(())})
+    assert result.reason == "abandoned"
+    assert check_path(result.path, "offline").ok
+    events = only_bundle(tmp_path).events
+    moved = [e for e in events if e.type == "status.changed"]
+    assert [e.payload["status"] for e in moved] == [CaseStatus.IN_CALL.value]
+    assert not [e for e in events if e.type == "chan.closed"]
+    steps = [e for e in events if e.type == "slow.step.started"]
+    assert not [e for e in steps if e.t_ms >= 20_000]  # none after the hang-up
+    assert events[-1].type == "session.ended"
 
 
 def test_a_user_quit_stops_without_abandoning(tmp_path: Path) -> None:

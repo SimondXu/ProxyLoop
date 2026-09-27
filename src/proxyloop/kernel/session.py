@@ -441,8 +441,8 @@ class Kernel:
             channel.floor(True, self.now())
             if inc.end in ("quit", "hangup"):
                 hung_up = inc.end == "hangup" and key == "cp"
-                if hung_up:  # §9.5: the case is ABANDONED before the session ends
-                    self.authority.move("hang_up", last)
+                if hung_up and last != opened:  # §9.5 ABANDONED, caused by the
+                    self.authority.move("hang_up", last)  # turn's own event (I2)
                 raise SessionEnd("abandoned" if hung_up else "stopped")
             if closing:
                 self.emit("chan.closed", "kernel", {"lane": "cp"}, [last])
