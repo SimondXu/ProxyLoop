@@ -56,6 +56,7 @@ PRIVATE = PrivateState(
 USER_BRIEF = "Help Dana Reyes lower her Contoso Mobile bill. Keep her informed."
 CP_BRIEF = "You are calling Contoso Mobile to ask for a lower monthly price."
 V2 = "pl_cp_v2"
+V3 = "pl_cp_v3"
 
 
 def _slot(field: str, value: str, unit: str, role: str, status: str) -> ReadbackSlot:
@@ -276,5 +277,13 @@ CASES = (
         _bb(public=_public(guidance_cp=(GUIDES[0], HOLD_FOR_FACT))),
         Trigger(kind="guidance"),
         profile=V2,
+    ),
+    # pl_cp_v3 (ADR-0017): v2's rendering plus a grammar flag; the same two views
+    _cp("c10_v3_empty", Blackboard(), Trigger(kind="call_connected"), profile=V3),
+    _cp(
+        "c11_v3_hold_for_fact",
+        _bb(public=_public(guidance_cp=(GUIDES[0], HOLD_FOR_FACT))),
+        Trigger(kind="guidance"),
+        profile=V3,
     ),
 )

@@ -33,4 +33,6 @@ class Profile:
     triggers: Mapping[str, str]  # TriggerKind -> template
     moves: Mapping[str, str] = field(default_factory=dict[str, str])  # GuideMove
     closing: str = "Respond now per the output format."
+    # Grammar (ADR-0017): after a Hold/Wait, later non-directive lines are issues.
+    pause_ends_speech: bool = False
     p2_ids_sha256: str = ""  # sha256 of this profile's committed P2 golden ids

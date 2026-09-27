@@ -45,7 +45,12 @@ def test_stored_view_rerenders_identically(case: Case) -> None:
 
 def test_golden_set_covers_the_acceptance_cases() -> None:
     by_profile = {c.profile for c in CASES}
-    assert len(CASES) >= 12 and by_profile == {"pl_user_v1", "pl_cp_v1", "pl_cp_v2"}
+    assert len(CASES) >= 12 and by_profile == {
+        "pl_user_v1",
+        "pl_cp_v1",
+        "pl_cp_v2",
+        "pl_cp_v3",
+    }
     user_text = {c.name: _golden(c)["messages"][1]["content"] for c in CASES}
     assert "PENDING APPROVAL: (none)" in user_text["u01_empty"]
     assert "CASE AGENT GUIDANCE:\n(none)" in user_text["c01_empty"]
