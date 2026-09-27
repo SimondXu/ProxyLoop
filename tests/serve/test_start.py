@@ -7,18 +7,28 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable, Iterator, Sequence
+import sys
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from tests.serve.client import OMIT, ORIGIN, client, get, headers, login, post
+from tests.serve.client import (
+    OMIT,
+    ORIGIN,
+    client,
+    frames,
+    get,
+    headers,
+    login,
+    post,
+)
 from tests.support.api_cases import ApiCase, FakeStarter
 
 from proxyloop.serve.api import create_app
-from proxyloop.serve.cases import ModelOption
+from proxyloop.serve.cases import LaneKey, ModelOption
 
 CASE = "case-1"  # a case of the existing lookup: the user's and rep's tokens
 OP = ("pl_op_session", "pl_op_csrf")
@@ -62,20 +72,26 @@ BODY: dict[str, object] = {"task_ref": TASKS[0], "models": {"slow": "teamrouter:
 
 
 class Env:  # not a dataclass: pyright sees such a TestClient field as Unknown
-    def __init__(self, http: TestClient, starter: FakeStarter, other: ApiCase) -> None:
-        self.http, self.starter, self.other = http, starter, other
+    def __init__(
+        self, http: TestClient, starter: FakeStarter, other: ApiCase, root: Path
+    ) -> None:
+        self.http, self.starter, self.other, self.root = http, starter, other, root
+
+
+def _env(root: Path, starter: FakeStarter, **kw: float) -> Env:
+    other = ApiCase(root, CASE).start()
+    cases = {CASE: other}
+    app = create_app([root], [ORIGIN], cases=cases.get, start=starter, **kw)
+    return Env(TestClient(app, base_url="http://127.0.0.1"), starter, other, root)
 
 
 @pytest.fixture
 def env(tmp_path: Path) -> Iterator[Env]:
     root = tmp_path / "runs"
     root.mkdir()
-    starter = FakeStarter(root, OPTIONS, TASKS)
-    other = ApiCase(root, CASE).start()
-    cases = {CASE: other}
-    app = create_app([root], [ORIGIN], cases=cases.get, start=starter)
-    yield Env(TestClient(app, base_url="http://127.0.0.1"), starter, other)
-    for case in [other, *starter.cases]:
+    made = _env(root, FakeStarter(root, OPTIONS, TASKS))
+    yield made
+    for case in [made.other, *made.starter.cases]:
         case.close()
 
 
@@ -371,3 +387,164 @@ def test_a_broken_starter_fails_models_loudly(
         got = get(env.http, "/api/models")
     assert (got.status_code, got.json()["error"]) == (500, "options")
     assert [r.levelno for r in caplog.records if r.name == LOGGER] == [logging.ERROR]
+
+
+# Hardening (S1-SYS-36): a bounded start, pruning ended cases, rule 11.
+
+
+def test_a_hung_start_is_cancelled_503_and_frees_the_lock(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    root = tmp_path / "runs"
+    root.mkdir()
+    starter = FakeStarter(root, OPTIONS, TASKS)
+    starter.hang = True
+    env = _env(root, starter, start_timeout_s=0.05)
+    hdrs = headers(operator(env.http))
+    with caplog.at_level(logging.ERROR, logger=LOGGER):
+        got = start(env, hdrs)
+    assert (got.status_code, got.json()) == (503, {"error": "unavailable"})
+    assert starter.cancelled == 1 and starter.inside == 0 and starter.cases == []
+    assert [r.levelno for r in caplog.records if r.name == LOGGER] == [logging.ERROR]
+    assert len(starter.calls) == 1  # no retry
+    starter.hang = False
+    got = start(env, hdrs)  # the lock was released
+    assert (got.status_code, got.json()) == (201, {"case_id": "live-1"})
+    env.other.close()
+    starter.cases[0].close()
+
+
+class _Swallows(FakeStarter):
+    """A starter that ignores its cancellation and returns a case anyway."""
+
+    async def start_case(
+        self, task_ref: str, models: Mapping[LaneKey, str], rep: str = "sim"
+    ) -> ApiCase:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled += 1
+        return self._start(task_ref, models)
+
+
+def test_a_start_returning_after_its_timeout_is_not_registered(tmp_path: Path) -> None:
+    root = tmp_path / "runs"
+    root.mkdir()
+    env = _env(root, _Swallows(root, OPTIONS, TASKS), start_timeout_s=0.05)
+    got = start(env, headers(operator(env.http)))
+    assert (got.status_code, got.json()) == (503, {"error": "unavailable"})
+    (late,) = env.starter.cases
+    assert env.starter.cancelled == 1
+    assert get(env.http, f"/live/{late.run_id}", follow=False).status_code == 404
+    env.other.close()
+    late.close()
+
+
+_OPENED: list[str] | None = None  # the paths opened while a test records them
+_HOOKED: list[object] = []
+
+
+def _audit(event: str, args: tuple[object, ...]) -> None:
+    if _OPENED is not None and event == "open":
+        _OPENED.append(str(args[0]))
+
+
+def test_a_task_not_offered_is_refused_before_the_starter(env: Env) -> None:
+    global _OPENED
+    if _audit not in _HOOKED:  # an audit hook cannot be removed: add it once
+        sys.addaudithook(_audit)
+        _HOOKED.append(_audit)
+    held_out = "x-held-out@1"
+    assert held_out not in env.starter.task_options()
+    hdrs = headers(operator(env.http))
+    _OPENED = []
+    try:
+        got = start(env, hdrs, BODY | {"task_ref": held_out})
+        opened = list(_OPENED)
+    finally:
+        _OPENED = None
+    assert (got.status_code, got.json()) == (
+        400,
+        {"error": "start", "reason": "unknown_task"},
+    )
+    assert env.starter.calls == []  # start_case was never called
+    assert not [path for path in opened if "held-out" in path]
+
+
+def _case_routes(
+    env: Env, case_id: str, user: dict[str, str], rep: dict[str, str]
+) -> dict[str, int]:
+    """Every case route's status for ``case_id``, with valid cookies."""
+    text = {"text": "hi"}
+    approval = {"decision": "granted", "terms_hash": "0" * 64, "authority_epoch": 0}
+    rep_ws = headers(rep)
+    del rep_ws["x-csrf-token"]  # a browser WebSocket sends cookies and Origin only
+    return {
+        "GET /live": get(env.http, f"/live/{case_id}", follow=False).status_code,
+        "GET /rep": get(env.http, f"/rep/{case_id}", follow=False).status_code,
+        "POST messages": post(
+            env.http, f"/api/cases/{case_id}/messages", text, headers(user)
+        ).status_code,
+        "POST rep": post(
+            env.http, f"/api/cases/{case_id}/rep", text, headers(rep)
+        ).status_code,
+        "POST approval": post(
+            env.http, f"/api/cases/{case_id}/approvals/a1", approval, headers(user)
+        ).status_code,
+        "/ws/rep": frames(env.http, f"/ws/rep/{case_id}", rep_ws)[1],
+    }
+
+
+GONE = {
+    "GET /live": 404,
+    "GET /rep": 404,
+    "POST messages": 404,
+    "POST rep": 404,
+    "POST approval": 404,
+    "/ws/rep": 4404,
+}
+
+
+def test_an_ended_case_is_pruned_and_its_run_stays_replayable(env: Env) -> None:
+    assert start(env, headers(operator(env.http))).status_code == 201
+    (case,) = env.starter.cases
+    user, rep = login(env.http, "user", "live-1"), login(env.http, "rep", "live-1")
+    case.end()
+    assert _case_routes(env, "live-1", user, rep) == GONE
+    assert case.messages == case.utterances == case.posts == []  # never called
+    got, code = frames(env.http, "/ws/live/live-1")  # reads the file, not the map
+    assert code == 1000 and len(got) == 2
+    replay = get(env.http, "/api/replay/live-1/events")
+    assert replay.status_code == 200 and b"session.ended" in replay.content
+
+
+def test_a_start_drops_the_ended_cases(env: Env, tmp_path: Path) -> None:
+    hdrs = headers(operator(env.http))
+    assert start(env, hdrs).json() == {"case_id": "live-1"}
+    env.starter.cases[0].end()
+    assert start(env, hdrs).json() == {"case_id": "live-2"}  # sweeps live-1 out
+    # live-1 is forgotten: a starter naming it again is no longer "twice".
+    env.starter.returns = ApiCase(tmp_path / "elsewhere", "live-1").start()
+    assert start(env, hdrs).json() == {"case_id": "live-1"}
+    env.starter.returns.close()
+
+
+def test_a_started_test_split_case_is_404_on_every_case_route(env: Env) -> None:
+    env.starter.split = "test"
+    got = start(env, headers(operator(env.http)))
+    assert (got.status_code, got.json()) == (201, {"case_id": "live-1"})
+    for page in ("live", "rep"):
+        assert get(env.http, f"/{page}/live-1", follow=False).status_code == 404
+    # With cookies from while it was servable: a split rewritten to test.
+    env.starter.split = "train"
+    assert start(env, headers(operator(env.http))).status_code == 201
+    user, rep = login(env.http, "user", "live-2"), login(env.http, "rep", "live-2")
+    events = env.root / "live" / "live-2" / "live-2" / "events.jsonl"
+    first, rest = events.read_bytes().split(b"\n", 1)
+    assert b'"split":"train"' in first
+    events.write_bytes(
+        first.replace(b'"split":"train"', b'"split":"test"') + b"\n" + rest
+    )
+    assert _case_routes(env, "live-2", user, rep) == GONE
+    case = env.starter.cases[1]
+    assert case.messages == case.utterances == case.posts == []
