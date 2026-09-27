@@ -59,8 +59,8 @@ from proxyloop.slow.loop import SlowLoop
 
 # Guard-authored and fixed (I11, C14): the first thing the rep hears.
 DISCLOSURE = "Hello, this is an AI assistant calling on behalf of the account holder."
-PROJECTED = (600_000, 300)  # tokens, calls per episode (guard at 3x): provisional until
-# the root re-derives it from smoke #2 bundles and TeamRouter prices (S1-SYS-29)
+PROJECTED = (900_000, 400)  # tokens, calls per episode (guard at 3x): provisional until
+# the root re-derives both from smoke #2 bundles and TeamRouter prices (S1-SYS-29)
 ChannelSpec = Literal["sim", "human"] | Channel
 ClientFactory = Callable[[llm.LLMRole, llm.ModelRef, RecordSink], llm.LLMClient]
 type Turn = CoroutineType[Any, Any, None]

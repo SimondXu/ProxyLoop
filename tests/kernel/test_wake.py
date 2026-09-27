@@ -6,6 +6,7 @@ reasons. A real ``Kernel`` on virtual time; Slow answers from a script."""
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import re
 from collections.abc import Callable, Coroutine, Sequence
@@ -34,8 +35,9 @@ from proxyloop.core.bus import Bus
 from proxyloop.kernel import session, wake, watchdog
 from proxyloop.kernel.channels import Channel, Incoming
 from proxyloop.kernel.session import ChannelSpec, Kernel
+from proxyloop.kernel.watchdog import Abort
 from proxyloop.llm.http import RecordSink
-from proxyloop.slow import loop
+from proxyloop.slow import loop, prompt
 
 NOTED = act("Noted.")
 STEP = {  # Slow's step kinds; only a successful wait or finish may move the schedule
@@ -84,7 +86,8 @@ class Steps(RepeatingLLM):
 
 
 class Call(Sim):
-    """A session: Slow answers ``kinds`` (see ``Steps``), FastC says ``fast_cp``."""
+    """A session: Slow answers ``kinds`` (see ``Steps``); FastC says ``fast_cp``,
+    each generation taking ``fast_ms``."""
 
     def __init__(
         self,
@@ -92,6 +95,7 @@ class Call(Sim):
         kinds: Sequence[str] = ("normal",),
         step_ms: int = 0,
         fast_cp: str = "Okay.",
+        fast_ms: int = 0,
     ) -> None:
         self.vt, self.rep, self.user = VirtualTime(), Channel(), Channel()
         self._run, self._rep = None, 0
@@ -101,8 +105,11 @@ class Call(Sim):
         def make(role: LLMRole, ref: ModelRef, sink: RecordSink) -> LLMClient:
             if role == "slow":
                 return Steps(ref, vt, sink, kinds, step_ms)
-            said = [fast_cp] if role == "fast_cp" else SCRIPTS.get(role, ["unused"])
-            return RepeatingLLM(ref, list(said), vt, False, sink)
+            if role == "fast_cp":
+                return Steps(ref, vt, sink, [fast_cp], fast_ms)
+            return RepeatingLLM(
+                ref, list(SCRIPTS.get(role, ["unused"])), vt, False, sink
+            )
 
         specs: dict[str, ChannelSpec] = {"user": self.user, "cp": self.rep}
         cfg, task = fake_config(), patient_task()
@@ -139,6 +146,7 @@ class Host:
 
     def __init__(self) -> None:
         self.slow, self.woken, self.timers = self, list[str](), 0
+        self.lanes: dict[str, object] = {}  # no FastC: a rep turn wakes at once
 
     def wake(self, reason: str) -> None:
         self.woken.append(reason)
@@ -204,6 +212,13 @@ def test_every_wake_reason_in_the_source_is_enumerated() -> None:  # S5b: signal
     authority = {"approval.decided", "mandate.decided", "speak.revoked"}  # e.type
     assert authority <= wake.REASONS
     assert all(re.fullmatch(r"[a-z_.]+", r) for r in wake.REASONS)  # no text
+
+
+def test_the_wait_bounds_in_slow_s_prompt_are_the_heartbeat() -> None:  # D4
+    assert f"wait(seconds 1-{wake.HEARTBEAT_S})" in prompt.SYSTEM
+    calls = cast(dict[str, Any], prompt.ACT.parameters["properties"])["calls"]
+    seconds = calls["items"]["properties"]["seconds"]
+    assert (seconds["minimum"], seconds["maximum"]) == (1, wake.HEARTBEAT_S)
 
 
 # L3: one step at a time, wakes merged.
@@ -319,19 +334,30 @@ def test_a_refused_guide_then_silence_gets_a_heartbeat_step(tmp_path: Path) -> N
     assert reasons(nxt) == ["heartbeat"]
 
 
-def seen_within_one_step(sim: Call) -> None:
-    """L1: each rep turn is seen by the next step, which starts at once, or as
-    soon as the step running when the rep spoke ends."""
-    steps = sim.steps()
+def seen_after_fastc(sim: Call, fast_ms: int = 0) -> None:
+    """L1 with the W1 rate limit: each rep turn wakes Slow once the FastC
+    generation that saw it ends; the next step starts then, or as soon as the
+    step running then ends. The lag is at most that generation plus the rest of
+    a running step (and the 1 ms each fake call takes)."""
+    steps, events = sim.steps(), sim.events
+    ends = {
+        str(e.payload["gen_id"]): e
+        for e in events
+        if e.type in ("fast.turn", "fast.cancelled")
+    }
+    asked = [e for e in sim.of("fast.request", lane="cp")]
     for u in sim.of("utt.final", speaker="partner"):
-        nxt = next(s for s, _ in steps if s.seq > u.seq)
+        saw = next(r for r in asked if int(str(r.payload["basis_seq"])) >= u.seq)
+        end = ends[str(saw.payload["gen_id"])]
+        nxt = next(s for s, _ in steps if s.seq > end.seq)
         assert int(str(nxt.payload["basis_seq"])) >= u.seq
         running = [
-            d for s, d in steps if s.seq < u.seq and (d is None or d.seq > u.seq)
+            d for s, d in steps if s.seq < end.seq and (d is None or d.seq > end.seq)
         ]
-        due = u.t_ms if not running else cast(Event, running[0]).t_ms
-        # the same instant, but for the 1 ms each fake call (here FastC's) takes
-        assert 0 <= nxt.t_ms - due <= 2, (u.seq, u.t_ms, nxt.t_ms, due)
+        due = end.t_ms if not running else cast(Event, running[0]).t_ms
+        assert 0 <= nxt.t_ms - due <= 2, (u.seq, end.t_ms, nxt.t_ms, due)
+        if not running:
+            assert end.t_ms - saw.t_ms <= fast_ms + 2
 
 
 def test_slow_sees_every_rep_turn_while_fastc_keeps_holding(tmp_path: Path) -> None:
@@ -348,17 +374,94 @@ def test_slow_sees_every_rep_turn_while_fastc_keeps_holding(tmp_path: Path) -> N
     play(case)
     assert len(sim.of("f2s.msg", type="HOLD")) == 1  # FastC's repeats are deduped
     assert len(sim.of("utt.final", speaker="partner")) == 12
-    seen_within_one_step(sim)
+    seen_after_fastc(sim)
     one_at_a_time(sim)
 
 
+RELAYING = "Noted.\n@slow: fact monthly_price=75.00"
+
+
+@pytest.mark.parametrize("fast_cp", ["Okay.", RELAYING], ids=["quiet", "relays"])
+def test_one_slow_step_per_rep_turn_after_fastc_answers(
+    tmp_path: Path, fast_cp: str
+) -> None:  # the W1 rate limit (main root, round 2)
+    sim = Call(tmp_path, step_ms=4_500, fast_cp=fast_cp, fast_ms=2_000)
+
+    async def case() -> None:
+        await sim.start()
+        for n in range(10):
+            sim.rep_says(f"Let me look at the account, one moment {n}.")
+            await sim.vt.run_for(7_000)
+        await sim.stop()
+
+    play(case)
+    turns, steps = sim.of("utt.final", speaker="partner"), sim.steps()
+    assert len(turns) == len(steps) == 10  # one step per rep turn, not two
+    relays = sim.of("f2s.msg", lane="cp")
+    want = ["relay", "rep_turn"] if fast_cp == RELAYING else ["rep_turn"]
+    assert [reasons(s) for s, _ in steps] == [want] * 10
+    assert len(relays) == (10 if fast_cp == RELAYING else 0)
+    for u, (s, _) in zip(turns, steps, strict=True):
+        assert 2_000 <= s.t_ms - u.t_ms <= 2_000 + 2  # the lag: one generation
+    seen_after_fastc(sim, 2_000)
+    one_at_a_time(sim)
+
+
+def test_a_rep_turn_waits_for_the_fastc_generation_that_saw_it(
+    tmp_path: Path,
+) -> None:  # the rate limit, from the log alone
+    host = Host()
+    host.lanes = {"cp": object()}
+    bus = Bus(tmp_path / "events.jsonl", "r", ManualClock())
+    bus.subscribe(wake.Wakes(cast(Kernel, host)).on_event)
+    root = bus.emit("user.msg", "kernel", "agent", {"text": "Hi"}).event_id
+
+    def emit(type_: str, **payload: object) -> Event:
+        return bus.emit(type_, "kernel", "agent", payload, [root])
+
+    def rep() -> Event:
+        said = {"speaker": "partner", "utt_id": f"cp-{bus.bb.seq}", "lane": "cp"}
+        return emit("utt.final", **said, text="Hi")
+
+    ref = {"kind": "test_fake", "endpoint": None, "model_id": "f"}
+
+    def asked(gen: str, basis: int) -> None:
+        emit("fast.request", lane="cp", gen_id=gen, trigger="rep_spoke",
+             view_sha="v", prompt_sha="p", profile="pl_cp_v2", basis_seq=basis,
+             model_ref=ref)  # fmt: skip
+
+    emit("chan.opened", lane="cp")
+    before = bus.bb.seq
+    first = rep()
+    asked("cp-g1", before)  # a generation that began before the line
+    bus.emit("fast.cancelled", "fast.cp", "agent", {"gen_id": "cp-g1",
+             "reason": "epoch"}, [root])  # fmt: skip
+    assert host.woken == []
+    asked("cp-g2", first.seq)
+    second = rep()  # it waits for a later generation
+    assert host.woken == []
+    bus.emit("fast.cancelled", "fast.cp", "agent", {"gen_id": "cp-g2",
+             "reason": "epoch"}, [root])  # fmt: skip
+    assert host.woken == ["rep_turn"]
+    asked("cp-g3", second.seq)
+    rep()  # pending at the close: the close wakes Slow, once
+    emit("chan.closed", lane="cp")
+    bus.emit("fast.cancelled", "fast.cp", "agent", {"gen_id": "cp-g3",
+             "reason": "epoch"}, [root])  # fmt: skip
+    assert host.woken == ["rep_turn", "rep_turn", "call_closed"]
+    bus.close()
+
+
+@pytest.mark.parametrize(
+    ("step_ms", "ended"), [(10_000, "stopped"), (4_500, "slow_step_cap")], ids=str
+)
 def test_a_rep_turn_every_2_s_for_720_s_stays_bounded(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, step_ms: int, ended: str
 ) -> None:
     monkeypatch.setattr(watchdog, "MAX_SESSION_S", 800.0)  # two calls (S1-SYS-24)
     # the fake FastC's 360 calls are unpriced here; live FastC is vLLM (gpu_time)
     monkeypatch.setattr(session, "PROJECTED", (600_000, 1_000))
-    sim = Call(tmp_path, step_ms=10_000)
+    sim = Call(tmp_path, step_ms=step_ms)
 
     async def case() -> None:
         await sim.start()
@@ -366,14 +469,18 @@ def test_a_rep_turn_every_2_s_for_720_s_stays_bounded(
             sim.rep_says("Hello?")
             await sim.vt.run_for(2_000)
         await sim.vt.run_for(11_000)
-        await sim.stop()
+        with contextlib.suppress(Abort):
+            await sim.stop()
 
     play(case)
-    assert [e.payload["reason"] for e in sim.of("session.ended")] == ["stopped"]
+    assert [e.payload["reason"] for e in sim.of("session.ended")] == [ended]
     steps = sim.steps()
-    assert 70 <= len(steps) <= loop.MAX_STEPS == 80
     one_at_a_time(sim)
-    seen_within_one_step(sim)
+    if ended == "stopped":  # about one step per step_ms, every rep turn seen
+        assert 70 <= len(steps) < loop.MAX_STEPS == 120
+        seen_after_fastc(sim)
+    else:  # review D2: Slow is never idle, so 4.5 s steps reach the cap by ~540 s
+        assert len(steps) == loop.MAX_STEPS and steps[-1][0].t_ms < 600_000
 
 
 # L4 (rule 12): the schedule is a function of external events and the clock.

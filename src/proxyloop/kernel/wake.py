@@ -4,12 +4,17 @@ takes one step at a time; wakes that arrive during a step merge into the next.
 
 Every wake source, by its fixed reason (never text):
 - here: ``relay`` (``f2s.msg``); while the cp call is open (``chan.opened{cp}``
-  to ``chan.closed{cp}``) ``rep_turn`` (a partner ``utt.final``) and ``strike``
-  (``chan.strike``); ``call_closed`` (``chan.closed{cp}``); ``timer`` and
-  ``heartbeat`` (below);
+  to ``chan.closed{cp}``) ``rep_turn`` (a partner ``utt.final``, below) and
+  ``strike`` (``chan.strike``); ``call_closed`` (``chan.closed{cp}``); ``timer``
+  and ``heartbeat`` (below);
 - in ``kernel.fence.Authority``: ``fence`` (a ``user.msg`` fence is bound),
   ``replan`` (NEEDS_REPLAN), ``approval.decided``, ``mandate.decided``,
   ``speak.revoked`` and ``approval_denied`` (``action.denied{approval.post}``).
+
+A rep turn waits for FastC: it wakes Slow when the first cp generation whose
+``fast.request`` ``basis_seq`` is at or after the line's seq ends (``fast.turn``
+or ``fast.cancelled``), so a relay from that turn lands in the same step. With
+no FastC, or at the close, it wakes at once.
 
 The timer, from the log and constants alone (rule 12, S5b): at each
 ``slow.step.completed`` whose step made no successful ``finish``, it is due at
@@ -40,6 +45,8 @@ class Wakes:
         self._k, self._call, self._armed = k, False, 0
         self._wait: int | None = None  # the running step's successful wait (s)
         self._done = False  # the running step finished the case
+        self._lines: list[int] = []  # rep lines no cp generation has seen yet
+        self._gens: set[str] = set()  # cp generations that saw one, not ended
 
     def on_event(self, e: Event) -> None:
         p, cp = e.payload, e.payload.get("lane") == "cp"
@@ -48,9 +55,22 @@ class Wakes:
         elif e.type == "chan.opened" and cp:
             self._call = True
         elif e.type == "chan.closed" and cp:
-            self._call = False
+            if self._lines or self._gens:  # FastC will not answer them now
+                self._wake("rep_turn")
+            self._call, self._lines, self._gens = False, [], set()
             self._wake("call_closed")
         elif e.type == "utt.final" and p["speaker"] == "partner" and self._call:
+            if "cp" in self._k.lanes:  # FastC answers it first
+                self._lines.append(e.seq)
+            else:
+                self._wake("rep_turn")
+        elif e.type == "fast.request" and cp and self._lines:
+            basis = cast(int, p["basis_seq"])
+            if self._lines[0] <= basis:
+                self._gens.add(str(p["gen_id"]))
+                self._lines = [seq for seq in self._lines if seq > basis]
+        elif e.type in ("fast.turn", "fast.cancelled") and p["gen_id"] in self._gens:
+            self._gens.discard(str(p["gen_id"]))
             self._wake("rep_turn")
         elif e.type == "chan.strike" and self._call:
             self._wake("strike")
