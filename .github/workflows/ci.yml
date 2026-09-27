@@ -19,6 +19,57 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.8.4"
+          # The pinned CI Python patch release (sets UV_PYTHON).
+          python-version: "3.12.11"
           enable-cache: true
       - run: uv sync --frozen
       - run: make check
+
+  # scripts/**/*.sh through the pinned ShellCheck of `make shellcheck`; fails on any finding.
+  shellcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.4"
+          python-version: "3.12.11"
+          enable-cache: true
+      - run: make shellcheck
+
+  # The web suite (`make web-test`): lint, typecheck, vitest, the build, the Playwright e2e
+  # and the web<->API wiring project, whose server runs Python. No secrets, no live calls.
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.4"
+          python-version: "3.12.11"
+          enable-cache: true
+      - run: uv sync --frozen
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.15.1"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      # Install first so npx uses the lockfile's Playwright, not a downloaded latest.
+      - run: npm ci
+        working-directory: apps/web
+      - id: playwright
+        working-directory: apps/web
+        run: >-
+          echo "version=$(node -p
+          "require('./package-lock.json').packages['node_modules/@playwright/test'].version")"
+          >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      # --with-deps installs the system libraries; the browser download is skipped on a hit.
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - run: make web-test

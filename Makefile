@@ -38,4 +38,13 @@ evidence-check:
 	print("".join(f"  - {f}\n" for f in r.failures), end=""); sys.exit(0 if r.ok else 1)' \
 		"$(RUN)" "$(MODE)"
 
+# shellcheck (S1-SYS-13): a pinned ShellCheck (the shellcheck-py wheel, run by uvx; no
+# system package) over every scripts/**/*.sh, found with find so new scripts are covered.
+# Non-zero exit on any finding. No keys, no GPU. Run in CI; not part of `check`.
+SHELLCHECK = uvx --from shellcheck-py==0.11.0.1 shellcheck
+.PHONY: shellcheck
+shellcheck:
+	$(SHELLCHECK) --version
+	find scripts -type f -name '*.sh' -exec $(SHELLCHECK) {} +
+
 -include mk/*.mk
