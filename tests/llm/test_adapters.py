@@ -46,6 +46,7 @@ from proxyloop.llm.factory import LiveModeError, make_client
 from proxyloop.llm.http import LLMConfigError
 from proxyloop.llm.relay import ChatClient
 from proxyloop.llm.vllm import VLLMClient
+from proxyloop.models.fsm import FsmTalker
 
 PROMPT = (
     "<|im_start|>system\nS<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
@@ -421,8 +422,20 @@ def test_live_mode_rejects_non_real_http(kind: AdapterKind) -> None:
     ref = ModelRef(kind=kind, endpoint=endpoint, model_id="Qwen3.5-9B")
     with pytest.raises(LiveModeError):
         make_client(ref, live=True, clock=counter_clock(), on_record=print)
-    with pytest.raises(ValueError, match="only real_http"):
+
+
+@pytest.mark.parametrize("kind", [AdapterKind.RECORDED_REPLAY, AdapterKind.TEST_FAKE])
+def test_src_never_builds_a_fake(kind: AdapterKind) -> None:
+    ref = ModelRef(kind=kind, endpoint="vllm", model_id="Qwen3.5-9B")
+    with pytest.raises(ValueError, match="only real_http and baseline"):
         make_client(ref, live=False, clock=counter_clock(), on_record=print)
+
+
+def test_a_baseline_ref_builds_the_fsm_talker_outside_live_mode() -> None:  # F
+    ref = ModelRef(kind=AdapterKind.BASELINE, endpoint=None, model_id="fsm-v1")
+    fsm = make_client(ref, live=False, clock=counter_clock(), on_record=print)
+    assert isinstance(fsm, FsmTalker)
+    assert fsm.ref == ref
 
 
 def test_factory_picks_the_adapter_by_endpoint(monkeypatch: Any) -> None:

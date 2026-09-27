@@ -6,7 +6,9 @@
 delivered line, and manifest/cfg/call agreement. ``claim`` adds, per claimed
 role (default: all): ``real_http`` only, a successful call, request ids,
 usage, echoed model; attestation, fingerprints, contract version, P3, and an
-ending in ``ENDED_OK``. Neither mode touches the network.
+ending in ``ENDED_OK``; its ``scope`` names the Fast model the claim is evidence
+of, and ``about="qwen"`` asks for a Qwen claim (``reality``). Neither mode
+touches the network.
 
 Passing ``claim`` proves internal consistency and chain completeness, not
 authenticity: a bundle can be forged consistently. Authenticity comes from
@@ -30,7 +32,9 @@ from proxyloop.contract.state import Blackboard
 from proxyloop.core.fold import apply
 from proxyloop.evidence.chain import chain_failures
 from proxyloop.evidence.reality import (
+    About,
     claim_failures,
+    claim_scope,
     consistency_failures,
     reality_report,
 )
@@ -46,6 +50,7 @@ class Report:
     mode: Mode
     failures: tuple[str, ...]
     reality: Mapping[str, str]  # role -> vllm | hosted | baseline_fsm | ...
+    scope: str | None = None  # claim mode: what the claim is evidence of
 
     @property
     def ok(self) -> bool:
@@ -118,7 +123,10 @@ def _sha_failures(
 
 
 def evidence_check(
-    bundle: Bundle, mode: Mode = "offline", roles: Collection[LLMRole] | None = None
+    bundle: Bundle,
+    mode: Mode = "offline",
+    roles: Collection[LLMRole] | None = None,
+    about: About | None = None,
 ) -> Report:
     m, events = bundle.manifest, bundle.events
     calls = [
@@ -127,12 +135,12 @@ def evidence_check(
     failures = _log_failures(m, events) + _sha_failures(events, bundle.prompts)
     failures += consistency_failures(m, calls)
     failures += chain_failures(events, bundle.prompts, real_only=mode == "claim")
+    claimed = set(m.reality) if roles is None else set(roles)
     if mode == "claim":
-        claimed = set(m.reality) if roles is None else set(roles)
         profiles = {
             str(e.payload["profile"]) for e in events if e.type == "fast.request"
         }
-        failures += claim_failures(m, calls, claimed, profiles)
+        failures += claim_failures(m, calls, claimed, profiles, about)
         last = events[-1] if events else None
         reason = (
             last.payload["reason"] if last and last.type == "session.ended" else None
@@ -141,15 +149,19 @@ def evidence_check(
             failures.append(
                 f"session ended with {reason!r}, not one of {sorted(ENDED_OK)}"
             )
-    return Report(mode, tuple(failures), reality_report(m))
+    scope = claim_scope(m, claimed) if mode == "claim" else None
+    return Report(mode, tuple(failures), reality_report(m), scope)
 
 
 def check_path(
-    path: Path, mode: Mode = "offline", roles: Collection[LLMRole] | None = None
+    path: Path,
+    mode: Mode = "offline",
+    roles: Collection[LLMRole] | None = None,
+    about: About | None = None,
 ) -> Report:
     """Read and check ``runs/<run_id>/``; an unreadable bundle fails the check."""
     try:
         bundle = read_bundle(path)
     except (OSError, ValueError) as err:
         return Report(mode, (f"unreadable bundle: {err}",), {})
-    return evidence_check(bundle, mode, roles)
+    return evidence_check(bundle, mode, roles, about)

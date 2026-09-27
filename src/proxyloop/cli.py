@@ -3,7 +3,7 @@ I1). Live runs read ``PL_<ENDPOINT>_{BASE_URL,API_KEY}`` for each endpoint in us
 (``VLLM``, ``RELAY``, ``TEAMROUTER``, ``OPENROUTER``). The Fast
 and Slow models are chosen by ``ModelRef`` id and endpoint (only ``SessionConfig``
 values change); a hosted Fast runs through the chat adapter, with P3
-``not_applicable``."""
+``not_applicable``. ``--condition`` names an EVAL §4.1 Fast condition instead."""
 
 from __future__ import annotations
 
@@ -15,7 +15,12 @@ from pathlib import Path
 from typing import get_args
 
 from proxyloop.contract.bundle import read_bundle
-from proxyloop.contract.config import Sampling, SessionConfig, WorldModels
+from proxyloop.contract.config import (
+    AblationId,
+    Sampling,
+    SessionConfig,
+    WorldModels,
+)
 from proxyloop.contract.llm import (
     AdapterKind,
     Endpoint,
@@ -54,15 +59,39 @@ def _ref(endpoint: Endpoint, model_id: str, effort: ReasoningEffort | None) -> M
     )
 
 
-def live_config(args: argparse.Namespace) -> SessionConfig:
-    """The session's models from the options; a vLLM Fast and a relay Slow keep
-    the provider's effort, a hosted Fast and a TeamRouter Slow pin it."""
+QWEN9 = _ref("vllm", "Qwen3.5-9B", None)
+SONNET = _ref("relay", "claude-sonnet-5", None)  # the teacher
+FSM = ModelRef(kind=AdapterKind.BASELINE, endpoint=None, model_id="proxyloop-fsm-v1")
+REPAIR = (AblationId.TEACHER_REPAIR_CP, AblationId.TEACHER_REPAIR_USER)
+# EVAL §4.1 by ModelRef id, both lanes: (Fast, the teacher repairing it). No
+# cli -> models.registry import (§0.2); tests/llm/test_conditions.py holds each
+# to the registry's. C1's Fast is the deployed slot: --fast-model <slot>.
+CONDITIONS: dict[str, tuple[ModelRef, ModelRef | None]] = {
+    "C2": (QWEN9, None),
+    "C3": (_ref("vllm", "Qwen3.5-4B", None), None),
+    "C4": (_ref("relay", "claude-haiku-4-5-20251001", None), None),
+    "C5": (_ref("openrouter", "openai/gpt-6-luna", "none"), None),
+    "T": (SONNET, None),  # the teacher as Fast, with no repair
+    "F": (FSM, None),  # the FSM talker (llm.factory): a non-live run (AGENTS 5)
+    "R": (QWEN9, SONNET),  # the kernel wraps the teacher in TeacherRepair
+}
 
+
+def _fast(args: argparse.Namespace) -> ModelRef:
     fast_effort = args.fast_effort
     if args.fast_endpoint != "vllm" and fast_effort is None:
         openrouter = args.fast_endpoint == "openrouter"
         fast_effort = OPENROUTER_FAST_EFFORT if openrouter else HOSTED_FAST_EFFORT
-    fast = _ref(args.fast_endpoint, args.fast_model, fast_effort)
+    return _ref(args.fast_endpoint, args.fast_model, fast_effort)
+
+
+def live_config(args: argparse.Namespace) -> SessionConfig:
+    """The session's models from the options; a vLLM Fast and a relay Slow keep
+    the provider's effort, a hosted Fast and a TeamRouter Slow pin it. A
+    ``--condition`` sets both Fast lanes and, for R, the teacher's repair; F
+    runs with ``live=False``, since live mode accepts ``real_http`` alone."""
+
+    fast, teacher = CONDITIONS.get(args.condition) or (_fast(args), None)
     slow_effort = args.slow_effort  # the relay's Slow keeps the provider's default
     if args.slow_endpoint == "teamrouter" and slow_effort is None:
         slow_effort = TEAMROUTER_SLOW_EFFORT
@@ -79,7 +108,9 @@ def live_config(args: argparse.Namespace) -> SessionConfig:
         world=WorldModels(**world),
         fast_sampling=Sampling(temperature=0.3, top_p=0.9, max_tokens=160),  # §6.3
         seed=args.seed,
-        live=True,
+        ablations=REPAIR if teacher else (),
+        teacher=teacher,
+        live=fast.kind is REAL,
     )
 
 
@@ -136,6 +167,8 @@ def session(args: argparse.Namespace, channels: dict[str, ChannelSpec]) -> int:
     print(f"{result.path}: {result.reason}; {report.mode} check:", end=" ")
     print("ok" if report.ok else "\n  " + "\n  ".join(report.failures))
     print(f"reality: {report.reality}")
+    if report.scope is not None:
+        print(f"claim scope: {report.scope}")
     return 0 if report.ok and result.reason in ENDED_OK else 1
 
 
@@ -151,6 +184,7 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--world-effort", default=WORLD_EFFORT, choices=efforts)
         for role in WORLD_ROLES:  # per role; unset: --world-effort
             p.add_argument(f"--{role}-effort", choices=efforts)
+        p.add_argument("--condition", choices=CONDITIONS, help="EVAL §4.1 Fast")
         p.add_argument("--fast-model", default=FAST, help="a ModelRef model_id")
         p.add_argument("--fast-endpoint", default=FAST_ENDPOINT, choices=endpoints)
         p.add_argument("--fast-effort", choices=efforts, help="hosted Fast only")
@@ -177,6 +211,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command != "replay" and args.fast_endpoint == "vllm" and args.fast_effort:
         parser.error("--fast-effort is for a hosted Fast; a vLLM Fast keeps its own")
+    if args.command != "replay" and args.condition:
+        fast = (args.fast_model, args.fast_endpoint) != (FAST, FAST_ENDPOINT)
+        if fast or args.fast_effort:
+            parser.error("--condition sets the Fast: no --fast-model/endpoint/effort")
     if args.command != "replay" and args.fast_cp_base_url and args.claim:
         parser.error("--fast-cp-base-url is not in the bundle: never with --claim")
     if args.command != "replay" and args.instance < 0:
