@@ -48,7 +48,11 @@ def _slot(field: str, value: str, unit: str, role: str) -> dict[str, object]:
 def test_an_offer_the_rep_said_is_recorded() -> None:
     price = _slot("monthly_price", "7500", "usd_minor", "recurring")
     result = record_offer(
-        BB, "loyal-1", [price, _slot("term_months", "12", "months", "recurring")], NOW
+        BB,
+        "loyal-1",
+        [price, _slot("term_months", "12", "months", "recurring")],
+        0,
+        NOW,
     )
     assert result.ok
     ((type_, payload),) = result.effects
@@ -57,7 +61,11 @@ def test_an_offer_the_rep_said_is_recorded() -> None:
 
 def test_an_offer_value_the_rep_never_said_is_denied() -> None:
     result = record_offer(
-        BB, "loyal-1", [_slot("monthly_price", "7000", "usd_minor", "recurring")], NOW
+        BB,
+        "loyal-1",
+        [_slot("monthly_price", "7000", "usd_minor", "recurring")],
+        0,
+        NOW,
     )
     assert not result.ok
     assert [t for t, _ in result.effects] == ["declass.denied"]
@@ -76,7 +84,7 @@ def test_every_offer_slot_is_bound_to_a_cited_rep_line() -> None:  # review B1
         _slot("monthly_price", "1200", "usd_minor", "recurring"),  # "12 months"
     ]
     for slot in cases:
-        result = record_offer(BB, "loyal-1", [slot], NOW)
+        result = record_offer(BB, "loyal-1", [slot], 0, NOW)
         assert not result.ok, slot
         assert [t for t, _ in result.effects] == ["declass.denied"]
 
@@ -129,7 +137,7 @@ def test_a_cited_relay_counts_only_through_the_user_message_it_points_to() -> No
 def test_money_and_term_values_are_plain_integers() -> None:  # R2 N3
     for value, unit in (("7.5E+3", "usd_minor"), ("12.0", "months"), ("-12", "months")):
         result = record_offer(
-            BB, "loyal-1", [_slot("monthly_price", value, unit, "recurring")], NOW
+            BB, "loyal-1", [_slot("monthly_price", value, unit, "recurring")], 0, NOW
         )
         assert not result.ok, value
 

@@ -35,6 +35,9 @@
        },
        "type": "object"
       },
+      "confirmation_id": {
+       "type": "string"
+      },
       "envelope": {
        "properties": {
         "forbidden_changes": {

@@ -53,7 +53,8 @@ revoke(reason): withdraw every grant at once, e.g. when the user says stop.
 voice shows the card. accept_offer(offer_ref): accept a confirmed offer that a \
 granted mandate covers or the user approved; the phone voice says a fixed line. \
 decline_offer(offer_ref, reason): decline it.
-- check_account(): after the representative confirms an accept, look up the account.
+- check_account(confirmation_id): after the representative confirms an accept, \
+look up the confirmation id they said, exactly as a [REP CALL] relay gave it.
 - finish(outcome, summary): end the case. "completed" once the account binds the \
 accepted terms; "no_deal" after guide_fast(ask_final_offer) and the \
 representative's final answer, with every offer declined; "info_only" when the task \
@@ -99,6 +100,7 @@ _ENVELOPE: Schema = {
 }
 _CALL = {
     **dict(text=S, key=S, value=S, utt_ref=S, offer_ref=S, summary=S, reason=S),
+    **dict(confirmation_id=S),
     **dict(envelope=_ENVELOPE, changes=_ENVELOPE),
     **dict(tool=_enum(*TOOLS), move=_enum(*GuideMove)),
     **dict(slots={"type": "array", "items": S}),

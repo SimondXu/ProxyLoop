@@ -62,7 +62,7 @@ EVERY_TOOL = act(
     {"tool": "request_approval", "offer_ref": "o1"},
     {"tool": "accept_offer", "offer_ref": "o1"},
     {"tool": "decline_offer", "offer_ref": "o1", "reason": "too high"},
-    {"tool": "check_account"},
+    {"tool": "check_account", "confirmation_id": "123456"},
     {"tool": "revoke", "reason": "the user said stop"},
     {"tool": "finish", "outcome": "no_deal", "summary": "none"},
     {"tool": "wait", "seconds": 5},

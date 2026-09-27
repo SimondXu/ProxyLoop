@@ -43,7 +43,6 @@ class SlowLoop:
         self._dropped = 0  # answered turns that left the context
         self._said: ChatMessage | None = None  # the last answer, not yet answered
         self._results: list[tuple[str, str]] = []  # (tool call id, result text)
-        self._read: set[str] = set()
         self._reasons: set[str] = set()
         self._wake, self.steps = asyncio.Event(), 0
 
@@ -94,8 +93,8 @@ class SlowLoop:
         self.tools.readback()  # the status bar shows Guard's current statuses
         host, bb = self._host, self._host.bb
         view = view_slow(bb, SlowViewMode.RELAY_ONLY, self._brief)
-        new = [r for r in view.relays if r.msg_id not in self._read]
-        self._read |= {r.msg_id for r in new}
+        new = [r for r in view.relays if r.msg_id not in self.tools.received]
+        self.tools.received |= {r.msg_id for r in new}
         basis = {"basis_seq": bb.seq}
         wake = basis | {"wake_reasons": list(reasons)}
         started = host.emit("slow.step.started", "slow", wake, []).event_id

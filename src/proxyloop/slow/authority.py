@@ -6,12 +6,13 @@ from the UI or the sim approver, and an accept needs a decided grant."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
 from typing import Any, cast
 
 from proxyloop.contract.events import Event
-from proxyloop.contract.messages import SlowToFast
+from proxyloop.contract.messages import FastToSlow, SlowToFast
 from proxyloop.contract.state import Blackboard, Capability, OfferPublic, ReadbackSlot
 from proxyloop.guard import authorize as guard
 from proxyloop.guard.authorize import CaseRef, Denial
@@ -172,9 +173,14 @@ def _envelope(
                 raise ValueError(f"{k} must be a whole number >= 0")
             numbers[k] = v
     lists: dict[str, tuple[str, ...]] = {}
-    for k in LISTS:
-        if isinstance(v := raw.get(k), list) and v:
-            lists[k] = tuple(sorted({str(x) for x in cast(list[object], v)}))
+    for k in LISTS:  # a restriction is never dropped: malformed is refused
+        if (v := raw.get(k)) is None:
+            continue
+        items = cast(list[object], v) if isinstance(v, list) else None
+        if items is None or not all(isinstance(x, str) and x for x in items):
+            raise ValueError(f"{k} must be a list of names")
+        if items:
+            lists[k] = tuple(sorted({str(x) for x in items}))
     return numbers, lists
 
 
@@ -186,62 +192,89 @@ def revoke(bb: Blackboard) -> Result:
     return Result(True, text, (("authority.epoch", bump),))
 
 
-def check_account(bb: Blackboard, events: Sequence[Event]) -> Result:
-    """The account's confirmations (the ledger the rep's system wrote), each
-    recorded once as evidence with the hash of the terms it binds, taken as
-    the accepted offer's revision; ``verify_completion`` compares it."""
-    writes = [e for e in events if e.type == "ledger.write"]
-    if not writes:
-        return no("the account shows no confirmation")
-    released = [
-        c for c in bb.capabilities.values() if c.intent == "accept_offer" and c.consumed
-    ]
-    offers = bb.public.offers.values()
-    cap = released[0] if len(released) == 1 else None
-    offer = next((o for o in offers if cap and o.terms_hash == cap.terms_hash), None)
-    known = {e.evidence_id for e in bb.evidence}
-    effects: list[Effect] = []
-    said: list[str] = []
-    cited: list[str] = []
-    for w in writes:
-        conf = str(w.payload["confirmation_id"])
-        if f"ledger:{conf}" in known:
-            continue
-        bound = None if offer is None else _ledger_hash(w.payload["binding"], offer)
-        same = cap is not None and bound == cap.terms_hash
-        ev = {"evidence_id": f"ledger:{conf}", "kind": "ledger"}
-        effects.append(
-            ("evidence.recorded", ev | {"confirmation_id": conf, "terms_hash": bound})
+def check_account(
+    bb: Blackboard, conf: str, relays: Sequence[FastToSlow], events: Sequence[Event]
+) -> Result:
+    """``Ledger.lookup(conf)`` for a confirmation id the rep said and FastC
+    relayed to Slow (I5: Slow looks up only an id it was told). Its binding is
+    recorded once as evidence, hashed as the accepted offer's revision; while
+    the case is COMMITTED, that evidence moves it to EVIDENCE_PENDING, whenever
+    it was recorded. ``verify_completion`` compares the hashes."""
+    said = re.compile(rf"(?<![0-9A-Za-z]){re.escape(conf)}(?![0-9A-Za-z])")
+    heard = [
+        r for r in relays
+        if r.lane == "cp" and conf and any(
+            said.search(t) for t in (r.text, *(v for _, v in r.facts))
         )
-        said.append(f"{conf} {'binds' if same else 'does not bind'} the accepted terms")
-        cited.append(w.event_id)
-    if not effects:
-        return Result(True, "no new confirmation on the account")
+    ]  # fmt: skip
+    if not heard:
+        return no(f"no such confirmation relayed: {conf!r}; cite the id the rep said")
+    writes = [
+        e for e in events
+        if e.type == "ledger.write" and e.payload.get("confirmation_id") == conf
+    ]  # fmt: skip
+    if not writes:
+        return no(f"the account shows no confirmation {conf}")
+    effects: list[Effect] = []
+    if f"ledger:{conf}" in {e.evidence_id for e in bb.evidence}:
+        text = f"{conf} is already recorded"
+    else:
+        evidence, text = _evidence(bb, conf, writes[-1].payload["binding"])
+        effects.append(("evidence.recorded", evidence))
+    # COMMITTED -> EVIDENCE_PENDING, whenever the evidence was recorded (M1);
+    # evidence that binds nothing then fails verification: NEEDS_REPLAN
     effects += moved(bb, "evidence_recorded")
-    text = "account: " + "; ".join(said)
-    return Result(True, text, tuple(effects), causes=tuple(cited))
+    causes = [writes[-1].event_id, *(r.msg_id for r in heard)]
+    return Result(True, text, tuple(effects), causes=tuple(causes))
+
+
+def _evidence(
+    bb: Blackboard, conf: str, binding: object
+) -> tuple[dict[str, object], str]:
+    """The ledger evidence of ``conf``: its terms hashed as the one released
+    accept's offer revision (``None`` without one, or if unreadable)."""
+    caps = bb.capabilities.values()
+    released = [c for c in caps if c.intent == "accept_offer" and c.consumed]
+    cap = released[0] if len(released) == 1 else None
+    offers = bb.public.offers.values()
+    offer = next((o for o in offers if cap and o.terms_hash == cap.terms_hash), None)
+    bound = None if offer is None else _ledger_hash(binding, offer)
+    evidence: dict[str, object] = {"evidence_id": f"ledger:{conf}", "kind": "ledger"}
+    evidence |= {"confirmation_id": conf, "terms_hash": bound or None}
+    if bound == "":
+        return evidence, f"{conf}: evidence unreadable, it binds nothing"
+    same = cap is not None and bound == cap.terms_hash
+    return evidence, f"{conf} {'binds' if same else 'does not bind'} the accepted terms"
 
 
 def _ledger_hash(binding: object, offer: OfferPublic) -> str | None:
     """The ``pl.terms/2`` hash of the ledger's bound terms (the rep says money
-    in dollars), as a revision of ``offer``."""
+    in dollars, exact to the cent), as a revision of ``offer``; ``""`` if the
+    world's value is unreadable (fail closed: it binds nothing)."""
     b: Mapping[str, Any] = {}
     if isinstance(binding, Mapping):
         b = cast(Mapping[str, Any], binding)
-    terms = cast(dict[str, object], dict(b.get("terms") or {}))
-    terms["term_months"] = b.get("term_months")
-    slots: list[ReadbackSlot] = []
-    for field, value in sorted(terms.items()):
-        kind = field.partition(":")[0]
-        unit = _UNITS.get(kind, "bool")
-        text = (
-            str(int(Decimal(str(value)) * 100)) if unit == "usd_minor" else str(value)
-        )
-        slot = {"field": field, "value": text, "unit": unit}
-        slots.append(
-            ReadbackSlot.model_validate(slot | {"role": ROLE_OF.get(kind, "feature")})
-        )
+    try:
+        terms = cast(dict[str, object], dict(b.get("terms") or {}))
+        terms["term_months"] = b.get("term_months")
+        slots: list[ReadbackSlot] = []
+        for field, value in sorted(terms.items()):
+            kind = field.partition(":")[0]
+            unit = _UNITS.get(kind, "bool")
+            text = _minor(str(value)) if unit == "usd_minor" else str(value)
+            slot = {"field": field, "value": text, "unit": unit}
+            role = ROLE_OF.get(kind, "feature")
+            slots.append(ReadbackSlot.model_validate(slot | {"role": role}))
+    except (ValueError, TypeError, ArithmeticError):  # pydantic's too
+        return ""
     return offer_terms_hash(offer.model_copy(update={"slots": tuple(slots)}))
+
+
+def _minor(dollars: str) -> str:
+    cents = Decimal(dollars) * 100
+    if not cents.is_finite() or cents != cents.to_integral_value():
+        raise ValueError(f"{dollars} is not a whole number of cents")
+    return str(int(cents))
 
 
 def finish(bb: Blackboard, outcome: str, asked_final_at: int | None) -> Result:

@@ -56,6 +56,7 @@ class Host:
         self.clock = ManualClock()
         self.bus = Bus(tmp_path / "events.jsonl", "r1", self.clock)
         self.ended: list[str] = []
+        self.delivered: Event | None = None  # the accept line as heard
         self.tools = SlowTools(cast("Kernel", self), KEYS, case_ref("case-1"))
         self.root = self.emit("user.msg", "kernel", {"text": "Lower my bill."})
 
@@ -76,6 +77,17 @@ class Host:
 
     def finish(self, outcome: str) -> None:
         self.ended.append(outcome)
+
+    def now(self) -> int:
+        return self.clock.monotonic_ms()
+
+    def relay(self, cause: Event, text: str) -> None:
+        """FastC's typed relay of a rep line, as SlowLoop hands it to Slow."""
+        msg_id = f"r1:{len(self.bus.events)}"  # the kernel's: its own event id
+        msg = {"msg_id": msg_id, "lane": "cp", "gen_id": "g"}
+        msg |= {"utt_ref": cause.payload["utt_id"], "type": "CP_UPDATE", "text": text}
+        self.emit("f2s.msg", "fast.cp", msg, [cause.event_id])
+        self.tools.received.add(msg_id)
 
     def act(self, *calls: dict[str, Any]) -> list[str]:
         body = {"private_summary": "digest", "calls": list(calls)}
@@ -134,9 +146,10 @@ def _granted(h: Host) -> None:
     h.emit("status.changed", "guard", back, [ev.event_id])
 
 
-def _heard(h: Host, ledger: dict[str, Any]) -> None:
+def _heard(h: Host, ledger: dict[str, Any], committed: bool = True) -> None:
     """The Speaker releases the accept, the rep hears it and its system writes
-    the ledger (the kernel and world sides)."""
+    the ledger, and FastC relays the confirmation id (the kernel and world
+    sides); ``committed``: the kernel has moved the case to COMMITTED."""
     (line,) = [e for e in h.of("speak.verbatim") if e.payload["kind"] == "accept"]
     cap_id = line.payload["cap_id"]
     released = h.emit(
@@ -144,15 +157,33 @@ def _heard(h: Host, ledger: dict[str, Any]) -> None:
     )
     heard = {"lane": "cp", "utt_id": "a-1", "text_generated": line.payload["text"]}
     heard |= {"text_heard": line.payload["text"], "interrupted": False}
-    got = h.emit("utt.delivered", "kernel", heard, [released.event_id])
-    moved = {"previous": "COMMIT_AUTHORIZED", "status": "COMMITTED"}
-    h.emit("status.changed", "guard", moved, [got.event_id])
+    h.delivered = h.emit("utt.delivered", "kernel", heard, [released.event_id])
+    if committed:
+        _committed(h)
     done = h.rep(
         "cp-3", "Done, the offer is accepted. Your confirmation number is 482913."
     )
     binding = {"offer_ref": "save-2", "revision": 1, "term_months": 24} | ledger
     write = {"confirmation_id": "482913", "binding": binding}
     h.emit("ledger.write", "world.ledger", write, [done.event_id], "world")
+    h.relay(done, "accepted, confirmation number 482913")
+
+
+def _committed(h: Host) -> None:
+    assert h.delivered is not None
+    moved = {"previous": "COMMIT_AUTHORIZED", "status": "COMMITTED"}
+    h.emit("status.changed", "guard", moved, [h.delivered.event_id])
+
+
+CHECK = {"tool": "check_account", "confirmation_id": "482913"}
+DONE = {"tool": "finish", "outcome": "completed", "summary": "done"}
+
+
+def _accepted(tmp_path: Path) -> Host:
+    h = _confirmed(tmp_path)
+    _granted(h)
+    h.act({"tool": "accept_offer", "offer_ref": "save-2"})
+    return h
 
 
 def test_the_approval_chain_reaches_verified_complete(tmp_path: Path) -> None:
@@ -169,10 +200,7 @@ def test_the_approval_chain_reaches_verified_complete(tmp_path: Path) -> None:
     _heard(h, {"terms": BOUND})
     (early,) = h.act({"tool": "finish", "outcome": "completed", "summary": "done"})
     assert "needs EVIDENCE_PENDING; the case is COMMITTED" in early and not h.ended
-    account, done = h.act(
-        {"tool": "check_account"},
-        {"tool": "finish", "outcome": "completed", "summary": "done"},
-    )
+    account, done = h.act(CHECK, DONE)
     assert "482913 binds the accepted terms" in account
     (evidence,) = h.of("evidence.recorded")
     (write,) = h.of("ledger.write")
@@ -188,24 +216,77 @@ def test_the_approval_chain_reaches_verified_complete(tmp_path: Path) -> None:
     assert firsts == sorted(firsts)
     held, _ = approval_b(Log(h.bus.events))
     assert held == {"held": True, "accepts": 1, "via_approval": 1, "via_mandate": 0}
-    (again,) = h.act({"tool": "check_account"})
-    assert again == "check_account: no new confirmation on the account"
+    (again,) = h.act(CHECK)
+    assert again == "check_account: 482913 is already recorded"
 
 
 def test_a_ledger_binding_other_terms_never_verifies(tmp_path: Path) -> None:
-    h = _confirmed(tmp_path)
-    _granted(h)
-    h.act({"tool": "accept_offer", "offer_ref": "save-2"})
+    h = _accepted(tmp_path)
     _heard(h, {"terms": BOUND, "term_months": 36})  # misquote: +12 months
-    account, done = h.act(
-        {"tool": "check_account"},
-        {"tool": "finish", "outcome": "completed", "summary": "done"},
-    )
+    account, done = h.act(CHECK, DONE)
     assert "does not bind" in account
     assert "not verified: no_bound_evidence" in done and not h.ended
     assert h.bb.public.status is CaseStatus.NEEDS_REPLAN
     (escalated,) = h.act({"tool": "finish", "outcome": "escalate", "summary": "x"})
     assert escalated == "finish: case closed" and h.ended == ["escalate"]
+
+
+def test_evidence_read_before_the_commit_still_moves_the_case(
+    tmp_path: Path,
+) -> None:  # review M1: no livelock when check_account runs before COMMITTED
+    h = _accepted(tmp_path)
+    _heard(h, {"terms": BOUND}, committed=False)
+    (first,) = h.act(CHECK)
+    assert "binds the accepted terms" in first
+    assert h.bb.public.status is CaseStatus.COMMIT_AUTHORIZED
+    _committed(h)
+    again, done = h.act(CHECK, DONE)
+    assert again == "check_account: 482913 is already recorded"
+    assert len(h.of("evidence.recorded")) == 1
+    assert done == "finish: verified complete" and h.ended == ["completed"]
+    assert h.bb.public.status is CaseStatus.VERIFIED_COMPLETE
+
+
+@pytest.mark.parametrize("price", ["69.009", "sixty-nine", "NaN", "Infinity"])
+def test_ledger_money_must_be_exact_and_readable(tmp_path: Path, price: str) -> None:
+    """Review M2: $69.009 is not $69.00 (no truncation); N2: a malformed world
+    value fails closed as evidence that binds nothing, not as a Slow error."""
+    h = _accepted(tmp_path)
+    _heard(h, {"terms": BOUND | {"monthly_price": price}})
+    account, done = h.act(CHECK, DONE)
+    assert account == "check_account: 482913: evidence unreadable, it binds nothing"
+    (evidence,) = h.of("evidence.recorded")
+    assert evidence.payload["terms_hash"] is None
+    assert "not verified: no_bound_evidence" in done and not h.ended
+
+
+def test_a_confirmation_counts_only_if_it_was_relayed_to_slow(
+    tmp_path: Path,
+) -> None:  # I5: Slow looks up only an id it was told
+    h = _accepted(tmp_path)
+    _heard(h, {"terms": BOUND})
+    h.tools.received.clear()  # the relay exists, but Slow never received it
+    (unseen,) = h.act(CHECK)
+    assert "no such confirmation relayed" in unseen
+    guess = CHECK | {"confirmation_id": "4829"}  # a part of the id is no id
+    h.tools.received.update(str(e.payload["msg_id"]) for e in h.of("f2s.msg"))
+    (partial,) = h.act(guess)
+    assert "no such confirmation relayed" in partial
+    assert not h.of("evidence.recorded")
+    h.relay(h.of("utt.final")[-1], "their number is 777777")
+    (absent,) = h.act(CHECK | {"confirmation_id": "777777"})
+    assert "the account shows no confirmation 777777" in absent
+    assert not h.of("evidence.recorded")
+
+
+def test_a_mandate_restriction_is_never_dropped(tmp_path: Path) -> None:
+    h = Host(tmp_path)  # review N1: a malformed restriction is refused, loudly
+    for bad in ("roaming", {"x": 1}, [3]):
+        (text,) = h.act(
+            {"tool": "propose_mandate", "envelope": {"required_features": bad}}
+        )
+        assert text.startswith("propose_mandate: invalid arguments"), text
+    assert h.bb.private.mandate is None
 
 
 def test_a_read_back_confirms_only_the_revision_it_was_asked_for(

@@ -64,6 +64,7 @@ class SlowTools:
         # offer revision, and when the final offer was first asked (§9.2, §9.3)
         self.asked: dict[tuple[str, int], int] = {}
         self.asked_final: int | None = None
+        self.received: set[str] = set()  # the relay ids SlowLoop handed to Slow
 
     def act(self, call: ToolCall, causes: Sequence[str]) -> str:  # the text Slow reads
         self.readback()
@@ -142,8 +143,8 @@ class SlowTools:
         if name == "record_fact":
             return self.fact(bb, str(a["key"]), str(a["value"]), a.get("utt_ref"))
         if name == "record_offer":
-            now = host.clock.wall()
-            return record_offer(bb, str(a["offer_ref"]), a["offer_slots"], now)
+            t_ms, wall = host.now(), host.clock.wall()  # one instant
+            return record_offer(bb, str(a["offer_ref"]), a["offer_slots"], t_ms, wall)
         if name == "share_fact":
             return self._share(bb, str(a["key"]))
         if name == "request_approval":
@@ -165,7 +166,9 @@ class SlowTools:
         if name == "revoke":
             return authority.revoke(bb)
         if name == "check_account":
-            return authority.check_account(bb, host.bus.events)
+            told = [r for r in bb.f2s_pending if r.msg_id in self.received]
+            conf = str(a["confirmation_id"])
+            return authority.check_account(bb, conf, told, host.bus.events)
         if name != "finish":
             return no(f"unknown tool {name!r}")
         outcome = str(a.get("outcome"))
@@ -452,7 +455,11 @@ def public_guide(bb: st.Blackboard, guide: Guide) -> bool:  # the renderer judge
 
 
 def record_offer(
-    bb: st.Blackboard, ref: str, raw: Sequence[Mapping[str, Any]], now: datetime
+    bb: st.Blackboard,
+    ref: str,
+    raw: Sequence[Mapping[str, Any]],
+    t_ms: int,
+    wall: datetime,
 ) -> Result:  # every money or term value is one the rep said
     slots = [st.ReadbackSlot(source_utt=s.get("utt_ref"), **_slot(s)) for s in raw]
     said = {x.utt_id: x.text for x in bb.channels["cp"].lines if x.speaker == "partner"}
@@ -471,7 +478,7 @@ def record_offer(
     revision = prev.revision + 1 if prev else 1
     offer = st.OfferPublic(offer_ref=ref, revision=revision, slots=tuple(slots))
     recorded = offer.model_dump(mode="json", include={"offer_ref", "revision", "slots"})
-    expires = _expires_ms(slots, bb.t_ms, now)
+    expires = _expires_ms(slots, t_ms, wall)  # the same instant on both clocks
     recorded |= {"terms_hash": None, "expires_ms": expires}  # Guard binds terms
     text = f"recorded {ref} r{revision}" + (
         f", expires at t={expires} ms" if expires else ""
