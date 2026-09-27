@@ -1,6 +1,8 @@
 """The status machine (ARCHITECTURE §9.5): ``status.changed`` is emitted only
 for a legal transition. Only verifier outcomes (``completion_ok``,
-``no_deal_verified``) reach a ``VERIFIED_*`` status."""
+``no_deal_verified``) reach a ``VERIFIED_*`` status. A pending card that an
+epoch bump stales (``approval_stale``) or that expires (``approval_expired``)
+replans the case (S1-SYS-38): restrict-only, it never moves toward a commit."""
 
 from __future__ import annotations
 
@@ -13,6 +15,8 @@ INTAKE             call_opened         IN_CALL
 MANDATED           call_opened         IN_CALL
 IN_CALL            approval_requested  AWAITING_APPROVAL
 AWAITING_APPROVAL  approval_decided    IN_CALL
+AWAITING_APPROVAL  approval_stale      NEEDS_REPLAN
+AWAITING_APPROVAL  approval_expired    NEEDS_REPLAN
 IN_CALL            accept_authorized   COMMIT_AUTHORIZED
 COMMIT_AUTHORIZED  accept_heard        COMMITTED
 COMMIT_AUTHORIZED  accept_revoked      NEEDS_REPLAN
