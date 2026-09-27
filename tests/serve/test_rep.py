@@ -115,18 +115,20 @@ def _events() -> list[tuple[str, dict[str, Any], dict[str, Any] | None]]:
     return [*rows, ("session.ended", {"reason": "stopped"}, None)]
 
 
-def _line(seq: int, kind: str, payload: dict[str, Any]) -> bytes:
+def _line(
+    seq: int, kind: str, payload: dict[str, Any], run: str = RUN, t: int = -1
+) -> bytes:
     event = Event.model_validate(
         {
-            "run_id": RUN,
+            "run_id": run,
             "seq": seq,
-            "event_id": f"{RUN}:{seq}",
-            "t_ms": 10 * seq,
+            "event_id": f"{run}:{seq}",
+            "t_ms": 10 * seq if t < 0 else t,
             "wall": "2026-09-26T00:00:00Z",
             "type": kind,
             "actor": _actor(kind),
             "stream": _stream(kind),
-            "cause_ids": [f"{RUN}:{seq - 1}"] if seq else [],
+            "cause_ids": [f"{run}:{seq - 1}"] if seq else [],
             "epoch": 0,
             "payload": payload,
         }
@@ -148,10 +150,10 @@ def rep(tmp_path: Path) -> Iterator[Rep]:
     (root / RUN / EVENTS).write_bytes(
         b"".join(_line(seq, kind, p) for seq, (kind, p, _) in enumerate(rows))
     )
-    expected = [
-        {"seq": seq, "t_ms": 10 * seq, "type": kind, "payload": frame}
-        for seq, (kind, _, frame) in enumerate(rows)
-        if frame is not None
+    allowed = [(seq, kind, f) for seq, (kind, _, f) in enumerate(rows) if f]
+    expected = [  # renumbered 0, 1, 2, ...; t_ms the event's own
+        {"seq": n, "t_ms": 10 * seq, "type": kind, "payload": frame}
+        for n, (seq, kind, frame) in enumerate(allowed)
     ]
     cases = {RUN: StoredCase(RUN)}
     yield Rep(client(root, cases=cases.get), expected)
@@ -171,12 +173,34 @@ def test_the_rep_gets_exactly_the_allow_listed_frames(rep: Rep) -> None:
     assert all(S not in f for f in got)
 
 
-def test_from_seq_is_the_original_seq(rep: Rep) -> None:
-    start = rep.expected[1]["seq"]  # the cp utt.delivered
-    path = f"/ws/rep/{RUN}?from_seq={start}"
-    got, code = frames(rep.http, path, _rep_headers(rep.http))
-    assert code == 1000
-    assert [json.loads(f) for f in got] == rep.expected[1:]
+def test_from_seq_is_the_rep_seq(rep: Rep) -> None:
+    for start in (1, 3, len(rep.expected)):
+        path = f"/ws/rep/{RUN}?from_seq={start}"
+        got, code = frames(rep.http, path, _rep_headers(rep.http))
+        assert code == 1000
+        assert [json.loads(f) for f in got] == rep.expected[start:]
+
+
+def test_the_hidden_event_count_does_not_show(tmp_path: Path) -> None:
+    root = tmp_path / "runs"
+    shown = [row for row in SPEECH if row[2] is not None]
+    hidden = ("summary.updated", {"scope": "private", "text": S})
+    for run, gap in (("rep-a", 0), ("rep-b", 25)):
+        started = dict.fromkeys(EVENT_TYPES["session.started"].payload_keys, S)
+        rows = [("session.started", started | {"split": "train"}, 0)]
+        for n, (kind, payload, _) in enumerate(shown, 1):
+            rows += [(*hidden, 1000 * n - gap + i) for i in range(gap)]
+            rows.append((kind, payload, 1000 * n))  # the same t_ms in both
+        rows.append(("session.ended", {"reason": "stopped"}, 1000 * len(shown) + 1))
+        (root / run).mkdir(parents=True)
+        (root / run / EVENTS).write_bytes(
+            b"".join(_line(i, k, p, run, t) for i, (k, p, t) in enumerate(rows))
+        )
+    cases = {run: StoredCase(run) for run in ("rep-a", "rep-b")}
+    http = client(root, cases=cases.get)
+    a = frames(http, "/ws/rep/rep-a", _rep_headers(http, "rep-a"))
+    b = frames(http, "/ws/rep/rep-b", _rep_headers(http, "rep-b"))
+    assert a == b and len(a[0]) == len(shown) and a[1] == 1000
 
 
 def test_the_rep_stream_needs_the_rep_cookie(rep: Rep) -> None:

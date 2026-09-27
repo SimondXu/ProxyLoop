@@ -3,13 +3,15 @@
 The rep's browser is the counterparty's side of the call, so it gets what
 ``FastView[cp]``'s public scope allows and nothing else (ARCHITECTURE §5,
 views): the cp-lane speech as heard and the cp channel's state. Each frame is
-rebuilt from ``REP_FIELDS`` (``{"seq", "t_ms", "type", "payload"}``, seq the
-original), never the stored line: no ``text_generated``, summary, relay,
-offer, approval, mandate, model or world event ever leaves. A field that is
-missing or of another type drops the frame. It tails ``events.jsonl`` like
-/ws/live (same close codes, ``from_seq``), plus 4403: the rep's signed cookie
-pair is required (the Origin is checked by ``serve.api``), and a user cookie
-never opens it.
+rebuilt from ``REP_FIELDS`` as ``{"seq", "t_ms", "type", "payload"}``, never
+the stored line: no ``text_generated``, summary, relay, offer, approval,
+mandate, model or world event ever leaves. A field that is missing or of
+another type drops the frame. ``seq`` is the stream's own (0, 1, 2, ... over
+the allowed frames), so the count of hidden events never shows; ``from_seq``
+skips that many allowed frames (the log is re-filtered from its start). It
+tails ``events.jsonl`` like /ws/live (same close codes), plus 4403: the rep's
+signed cookie pair is required (the Origin is checked by ``serve.api``), and a
+user cookie never opens it.
 
 Threat model: on this single-machine 127.0.0.1 server the user/rep split
 guards only against cross-site requests and bugs in the web code, not against
@@ -37,6 +39,7 @@ from proxyloop.serve.stream import follow
 _CHANNEL = ("opened", "closed", "hold", "strike", "barge_in")
 # The allow-list: FastView[cp]'s public scope, as the rep heard it. Only
 # events whose payload lane is "cp"; utt.final only from the partner (the rep).
+# Frames are renumbered: the original seq, which counts hidden events, never leaves.
 REP_FIELDS: Mapping[str, Mapping[str, type]] = MappingProxyType(
     {
         "utt.final": {"lane": str, "speaker": str, "utt_id": str, "text": str},
@@ -51,18 +54,27 @@ REP_FIELDS: Mapping[str, Mapping[str, type]] = MappingProxyType(
 )
 
 
-def rep_frame(event: Event, line: bytes) -> str | None:
-    """The rebuilt frame for the rep, or None: not the rep's to see."""
-    fields, p = REP_FIELDS.get(event.type), event.payload
-    if fields is None or p.get("lane") != "cp":
-        return None
-    if event.type == "utt.final" and p.get("speaker") != "partner":
-        return None
-    kept = {name: p.get(name) for name in fields}
-    if any(type(kept[name]) is not kind for name, kind in fields.items()):
-        return None
-    frame = {"seq": event.seq, "t_ms": event.t_ms, "type": event.type}
-    return redact(json.dumps(frame | {"payload": kept}).encode()).decode()
+class RepFrames:
+    """One stream's frames: allowed events numbered 0, 1, 2, ...; the first
+    ``skip`` of them are not sent."""
+
+    def __init__(self, skip: int) -> None:
+        self.skip, self.seq = skip, 0
+
+    def __call__(self, event: Event, line: bytes) -> str | None:
+        fields, p = REP_FIELDS.get(event.type), event.payload
+        if fields is None or p.get("lane") != "cp":
+            return None
+        if event.type == "utt.final" and p.get("speaker") != "partner":
+            return None
+        kept = {name: p.get(name) for name in fields}
+        if any(type(kept[name]) is not kind for name, kind in fields.items()):
+            return None
+        seq, self.seq = self.seq, self.seq + 1
+        if seq < self.skip:
+            return None
+        frame = {"seq": seq, "t_ms": event.t_ms, "type": event.type}
+        return redact(json.dumps(frame | {"payload": kept}).encode()).decode()
 
 
 def add_rep_route(
@@ -81,4 +93,4 @@ def add_rep_route(
             await ws.close(4404, "unknown case")
         else:
             case, path = found
-            await follow(ws, path, case.run_id, from_seq, rep_frame)
+            await follow(ws, path, case.run_id, 0, RepFrames(from_seq))
