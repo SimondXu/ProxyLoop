@@ -3,17 +3,14 @@ HOLD relay dedupe (e) and stale rep replies (i)."""
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from typing import cast
 
-from tests.kernel.test_review import Rep
 from tests.kernel.test_session import FINISH, SCRIPTS, UNTIL
 from tests.support.sessions import act, only_bundle, run
 
 from proxyloop.contract.events import Event
 from proxyloop.kernel.channels import Channel, End, Incoming
-from proxyloop.kernel.session import Turn
 
 
 def _of(events: tuple[Event, ...], type_: str, lane: str = "cp") -> list[Event]:
@@ -66,54 +63,58 @@ GUIDED = SCRIPTS | {
 }
 
 
-class Thinker(Channel):
-    """A rep who answers each line it heard 1 s later, busy from the spawn (as
-    ``SimRepChannel``), and hangs up after ``turns`` answers."""
+class Rep(Channel):
+    """A rep whose line lands 2 s into the agent's next speech. A ``thinking``
+    rep has an unanswered line (``busy``, as a ``SimRepChannel`` turn in flight):
+    its reply is stale. It hangs up after ``turns`` lines."""
 
-    def __init__(self, turns: int) -> None:
+    def __init__(self, turns: int, thinking: bool) -> None:
         super().__init__()
-        self.thinking, self.turns = 0, turns
+        self.turns, self.thinking, self.unanswered = turns, thinking, 0
 
     @property
     def busy(self) -> bool:
-        return self.thinking > 0
+        return self.thinking and self.unanswered > 0
 
-    def send(self, text: str | None, utt_id: str, cause: str, t_ms: int) -> Turn:
-        self.thinking += 1
+    async def send(self, text: str | None, utt_id: str, cause: str, t_ms: int) -> None:
+        self.unanswered += bool(text)
 
-        async def answer() -> None:
-            await asyncio.sleep(0.01)  # 1 s at the sessions' 100x clock
-            self.thinking -= 1
-            self.turns -= 1
-            end: End = "hangup" if self.turns <= 0 else ""
-            self.incoming.put_nowait(
-                Incoming((("Sorry, say that again?", None),), end=end)
-            )
-
-        return answer()
+    def floor(self, free: bool, t_ms: int) -> None:
+        if free or self.turns <= 0 or not self.unanswered:  # the next speech
+            return
+        self.turns, self.unanswered = self.turns - 1, 0
+        end: End = "hangup" if self.turns <= 0 else ""
+        line = (("Sorry, say that again?", None),)
+        self.incoming.put_nowait(Incoming(line, due_ms=t_ms + 2_000, end=end))
 
 
-def test_a_stale_rep_reply_waits_for_the_floor(tmp_path: Path) -> None:  # (i)
-    run(tmp_path, GUIDED, channels={"user": "sim", "cp": Thinker(turns=3)})
-    events = only_bundle(tmp_path).events
+def _overlaps(events: tuple[Event, ...]) -> tuple[list[Event], list[Event]]:
+    """FastC's lines, and the rep lines that landed while one was spoken."""
     fast = [
         e for e in _of(events, "utt.delivered") if e.payload["utt_id"] != "disclosure"
     ]
-    assert len(fast) >= 2  # FastC spoke while the rep was still answering a line
-    assert not _of(events, "chan.barge_in")
+    rep = [e for e in _of(events, "utt.final") if e.payload["speaker"] == "partner"]
+    starts = {  # when each of FastC's lines took the floor
+        e.payload["utt_id"]: e.t_ms for e in _of(events, "fast.sentence")
+    }
+    during = [
+        r for r in rep for f in fast if starts[f.payload["utt_id"]] < r.t_ms < f.t_ms
+    ]
+    return fast, during
+
+
+def test_a_stale_rep_reply_waits_for_the_floor(tmp_path: Path) -> None:  # (i)
+    rep = Rep(turns=3, thinking=True)
+    run(tmp_path, GUIDED, channels={"user": "sim", "cp": rep})
+    events = only_bundle(tmp_path).events
+    fast, during = _overlaps(events)
+    assert len(fast) >= 3 and rep.turns == 0  # each reply was due mid-speech
+    assert not _of(events, "chan.barge_in") and not during
     assert not [e for e in fast if e.payload["interrupted"]]
-    for said in fast:  # every rep line lands after the agent's line it overlapped
-        start = said.t_ms - 1000 * len(LONG.split()) / 2.8
-        during = [
-            e
-            for e in _of(events, "utt.final")
-            if e.payload["speaker"] == "partner" and start < e.t_ms < said.t_ms - 100
-        ]
-        assert not during, (said.t_ms, [e.t_ms for e in during])
 
 
 def test_a_current_rep_line_still_barges_in(tmp_path: Path) -> None:  # (i)
-    rep = Rep([(9_000, "Hold on, let me stop you there.")], hangup_ms=40_000)
+    rep = Rep(turns=1, thinking=False)
     run(tmp_path, GUIDED, channels={"user": "sim", "cp": rep})
     events = only_bundle(tmp_path).events
     (cut,) = _of(events, "chan.barge_in")
