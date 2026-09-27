@@ -67,3 +67,6 @@ forbidden_modules =
     proxyloop.core.log
     proxyloop.core.fold
     proxyloop.kernel
+    proxyloop.llm
+    proxyloop.slow
+    proxyloop.env

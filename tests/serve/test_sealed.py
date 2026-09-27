@@ -14,7 +14,7 @@ from tests.serve.client import client, frames, get
 from tests.serve.conftest import Bundles
 
 from proxyloop.contract.bundle import PROMPTS
-from proxyloop.serve.api import default_roots, sealed
+from proxyloop.serve.bundles import default_roots, sealed
 
 _touched: list[str] = []  # paths opened or listed inside the sealed dir
 _watch: list[str] = []  # the sealed dir and its alias while a test runs

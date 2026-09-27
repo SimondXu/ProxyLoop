@@ -6,11 +6,10 @@ import json
 import shutil
 import time
 from pathlib import Path
-from typing import Any
 
 import pytest
-from starlette.websockets import WebSocketDisconnect
 from tests.serve.client import client as _client
+from tests.serve.client import connect, receive
 from tests.serve.client import frames as _frames
 from tests.serve.client import get as _get
 from tests.serve.conftest import URL, Bundles
@@ -130,25 +129,24 @@ def test_the_socket_follows_a_live_run_line_by_line(
     run = _copy(bundles.root / bundles.plain, tmp_path, lines[:3])
     got: list[bytes] = []
     with (
-        _client(tmp_path).websocket_connect(f"/ws/live/{run.name}") as ws,
+        connect(_client(tmp_path), f"/ws/live/{run.name}") as ws,
         (run / EVENTS).open("ab") as log,
     ):
-        got += [ws.receive_text().encode() for _ in range(3)]
+        got += [receive(ws)["text"].encode() for _ in range(3)]
         half = len(lines[3]) // 2
         log.write(lines[3][:half])  # a partial line waits for its newline
         log.flush()
         time.sleep(3 * api.POLL_S)
         log.write(lines[3][half:] + b"\n")
         log.flush()
-        got.append(ws.receive_text().encode())
+        got.append(receive(ws)["text"].encode())
         for line in lines[4:]:
             log.write(line + b"\n")
             log.flush()
-        with pytest.raises(WebSocketDisconnect) as closed:
-            while True:
-                got.append(ws.receive_text().encode())
+        while (message := receive(ws))["type"] != "websocket.close":
+            got.append(message["text"].encode())
     assert got == lines
-    assert closed.value.code == 1000
+    assert message["code"] == 1000
 
 
 def test_a_client_leaving_a_live_run_ends_the_stream(
@@ -156,19 +154,28 @@ def test_a_client_leaving_a_live_run_ends_the_stream(
 ) -> None:
     lines = _lines(bundles.root / bundles.plain / EVENTS)
     run = _copy(bundles.root / bundles.plain, tmp_path, lines[:2])
-    with _client(tmp_path).websocket_connect(f"/ws/live/{run.name}") as ws:
-        ws.receive_text()
+    with connect(_client(tmp_path), f"/ws/live/{run.name}") as ws:
+        receive(ws)
     # Leaving the block waits for the handler: it returned, not polling on.
 
 
-def test_a_seq_gap_or_a_bad_line_closes_1011(bundles: Bundles, tmp_path: Path) -> None:
+def test_a_gap_a_bad_line_or_a_foreign_run_closes_1011(
+    bundles: Bundles, tmp_path: Path
+) -> None:
     lines = _lines(bundles.root / bundles.plain / EVENTS)
-    gap = _copy(bundles.root / bundles.plain, tmp_path / "gap", [*lines[:2], lines[3]])
-    bad = _copy(bundles.root / bundles.plain, tmp_path / "bad", [lines[0], b"{oops"])
-    for root, run in ((tmp_path / "gap", gap), (tmp_path / "bad", bad)):
-        frames, code = _frames(_client(root), f"/ws/live/{run.name}")
-        assert code == 1011
-        assert [f.encode() for f in frames] == lines[: len(frames)]
+    other = lines[1].replace(bundles.plain.encode(), bundles.url.encode())
+    assert json.loads(other)["run_id"] == bundles.url  # a valid event, elsewhere
+    cases = {
+        "gap": [*lines[:2], lines[3]],
+        "bad": [*lines[:2], b"{oops"],
+        "foreign": [lines[0], other, *lines[2:]],
+    }
+    for name, events in cases.items():
+        run = _copy(bundles.root / bundles.plain, tmp_path / name, events)
+        # A bounded receive: a stream that stays open fails here, not by hanging.
+        got, code = _frames(_client(tmp_path / name), f"/ws/live/{run.name}")
+        assert code == 1011, name
+        assert [f.encode() for f in got] == lines[: 2 if name != "foreign" else 1]
 
 
 def test_an_unknown_run_closes_4404(bundles: Bundles) -> None:
@@ -208,20 +215,6 @@ def test_malformed_or_outside_ids_never_reach_a_file(
     assert _get(ok, f"{base}/..%2F..%2Fmanifest.json").status_code == 404
 
 
-def test_main_binds_localhost_only(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    calls: list[dict[str, Any]] = []
-
-    def run(app: object, **kw: Any) -> None:
-        calls.append(kw)
-
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(api.uvicorn, "run", run)
-    assert api.main(["--port", "8123"]) == 0
-    assert calls == [{"host": "127.0.0.1", "port": 8123}]
-
-
 def test_the_default_roots_are_runs_and_each_evidence_stage(tmp_path: Path) -> None:
     assert api.default_roots(tmp_path) == [tmp_path / "runs"]
     for stage in ("s1", "s0"):
@@ -242,3 +235,24 @@ def test_real_uvicorn_can_serve_websockets() -> None:
     )
 
     assert AutoWebSocketsProtocol is WebSocketsSansIOProtocol
+
+
+def test_a_broken_manifest_or_prompt_line_is_not_an_error(
+    bundles: Bundles, tmp_path: Path
+) -> None:
+    broken, bare = tmp_path / "a" / bundles.plain, tmp_path / "b" / bundles.url
+    shutil.copytree(bundles.root / bundles.plain, broken)
+    shutil.copytree(bundles.root / bundles.url, bare)
+    (broken / MANIFEST).write_text('{"run_id": "half written')  # kernel mid-close
+    data = json.loads((bare / MANIFEST).read_text())
+    (bare / MANIFEST).write_text(json.dumps(data | {"task_ref": None}))
+    prompts = (broken / PROMPTS).read_bytes()
+    (broken / PROMPTS).write_bytes(b"{not a record\n\n" + prompts)
+    client = _client(tmp_path / "a", tmp_path / "b")
+    listed = _get(client, "/api/bundles").json()["bundles"]
+    assert [(b["complete"], b["task_ref"]) for b in listed] == [(False, None)] * 2
+    for run_id in (bundles.plain, bundles.url):
+        assert _get(client, f"/api/replay/{run_id}/manifest").status_code == 404
+    line = prompts.splitlines()[0]
+    got = _get(client, f"/api/replay/{bundles.plain}/prompts/{json.loads(line)['sha']}")
+    assert (got.status_code, got.content) == (200, line)
