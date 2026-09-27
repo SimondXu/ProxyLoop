@@ -76,11 +76,21 @@ _WORDS = (
 )
 _ASCII_DIGITS = frozenset("0123456789")
 _ITEM = r"(?:\d+|" + "|".join(_WORDS) + ")"
+_DASH = "[-" + "".join(map(chr, range(0x2010, 0x2016))) + "]"  # and U+2010..2015
 # a casefolded run of digit groups and single-digit words joined by a space, a
 # dash or a comma; a word glued to another word ("forty-four", "fourteen") is not
 _SPOKEN_RUN = re.compile(
-    rf"(?<![^\W_])(?<![^\W_]-){_ITEM}(?:(?:,\s*|[ -]){_ITEM})*(?![^\W_])(?!-[^\W_])"
+    rf"(?<![^\W_])(?<![^\W_]{_DASH}){_ITEM}(?:(?:,\s*|[ -]){_ITEM})*"
+    r"(?![^\W_])(?!-[^\W_])"
 )
+_BIG = (
+    *("ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen"),
+    *("seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty"),
+    *("sixty", "seventy", "eighty", "ninety", "hundred", "thousand", "million"),
+)
+# a run right after a tens, teen, hundred, thousand or million word is part of a
+# bigger number
+_AFTER_BIG = re.compile(rf"(?<![^\W_])(?:{'|'.join(_BIG)})(?:\s|{_DASH})+\Z")
 
 
 def _in_a_row(want: list[str], seq: list[str]) -> bool:
@@ -91,8 +101,8 @@ def _in_a_row(want: list[str], seq: list[str]) -> bool:
 def _whole_groups(digits: str, groups: list[str]) -> bool:
     for i in range(len(groups)):
         joined = ""
-        for group in groups[i:]:
-            joined += group
+        for j in range(i, len(groups)):
+            joined += groups[j]
             if joined == digits:
                 return True
             if len(joined) >= len(digits):
@@ -105,16 +115,19 @@ def said(value: str, heard: str) -> bool:
     ``heard`` ("4 8 2 1", "48-21" and "4821 12" say 4821; "555 482 1999" and
     "14821" do not); a run with a spoken single-digit word holds single digits
     only, each a group ("four, eight, two, one" and "4 eight 2 one" say 4821;
-    "fourteen twenty-one" and "four eight 21" do not); any other value is whole
-    tokens in a row (casefold)."""
+    "fourteen twenty-one", "four eight 21" and "forty four eight two one" do
+    not); any other value is whole tokens in a row (casefold)."""
 
     digits = world.norm(value)
     if digits.isdigit():
         for run in _DIGIT_RUN.findall(heard):
             if _whole_groups(digits, re.split(r"[ -]", run)):
                 return True
-        for run in _SPOKEN_RUN.findall(heard.casefold()):
-            items = re.findall(r"\d+|[a-z]+", run)
+        folded = heard.casefold()
+        for match in _SPOKEN_RUN.finditer(folded):
+            if _AFTER_BIG.search(folded, 0, match.start()):
+                continue  # "forty four eight two one" is 44821
+            items = re.findall(r"\d+|[a-z]+", match.group())
             if all(t.isdigit() for t in items):
                 continue  # digits alone keep the rule above ("48, 21" is not 4821)
             if any(t not in _WORDS and t not in _ASCII_DIGITS for t in items):
