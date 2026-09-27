@@ -28,6 +28,7 @@ from serving import config
 
 MODEL = os.environ.get(config.MODEL_ENV, "9b")
 VARIANT = os.environ.get("PL_SERVE_VARIANT", "pinned")
+APP = config.app_name(VARIANT, MODEL)  # an unknown model or variant fails here
 RUNG = os.environ.get("PL_LORA_RUNG", "all")
 TRAINED = os.environ.get(config.TRAINED_ENV, "")
 MODEL_ID, MODEL_REVISION, _ = config.MODELS[MODEL]
@@ -49,7 +50,7 @@ base_image = modal.Image.from_registry(  # pyright: ignore[reportUnknownMemberTy
         "ENTRYPOINT []",
     ],
 ).env(ENV)
-app = modal.App(config.app_name(VARIANT, MODEL))
+app = modal.App(APP)
 
 
 def download_model() -> Path:

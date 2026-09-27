@@ -4,7 +4,6 @@ ARCHITECTURE §13), and the base Qwen3.5-4B (C3, EVAL §4.1) on the same app.
 Pure data and helpers, imported on the Mac and in the Modal containers.
 """
 
-import os
 import re
 from pathlib import PurePosixPath
 from typing import Any
@@ -43,8 +42,9 @@ ZERO_LORA_NAME, LIVE_LORA_NAME = "Qwen3.5-9B-zero", "Qwen3.5-9B-live"
 # §9), chosen at deploy time: PL_TRAINED_ADAPTER="<name>=<path under the volume>".
 TRAINED_PREFIX, TRAINED_ENV = f"{SERVED_NAME}-pl-", "PL_TRAINED_ADAPTER"
 # PL_SERVE_MODEL (deploy time; unset: 9b) -> (HF id, revision, served name). The 4B (C3;
-# HF API "sha", 2026-09-26, not gated) has the 9B's architecture (the same HF config
-# "architectures") and byte-identical tokenizer files (HF tree); it gets no LoRA slots.
+# HF API "sha", 2026-09-26, not gated) shares the 9B's architecture class but ties word
+# embeddings; its tokenizer files are byte-identical (HF tree). No LoRA slots: whether
+# --enable-lora without --lora-modules starts on it is unverified until the first G run.
 MODEL_ENV, REVISION_4B = "PL_SERVE_MODEL", "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a"
 MODELS = {
     "9b": (MODEL_ID, MODEL_REVISION, SERVED_NAME),
@@ -91,10 +91,11 @@ PACKS_NEEDING_LEADER = {
 }
 
 
-def app_name(variant: str, model: str | None = None) -> str:
-    model = model or os.environ.get(MODEL_ENV) or "9b"  # as deployed: the probe's case
-    if variant not in VARIANTS or model not in MODELS:
-        raise ValueError(f"unknown {variant!r} or {model!r}: {[*VARIANTS, *MODELS]}")
+def app_name(variant: str, model: str = "9b") -> str:
+    if variant not in VARIANTS:
+        raise ValueError(f"unknown variant {variant!r}; known: {sorted(VARIANTS)}")
+    if model not in MODELS:
+        raise ValueError(f"unknown model {model!r}; known: {sorted(MODELS)}")
     base = APP_NAME if model == "9b" else f"{APP_NAME}-{model}"
     return base if variant == "pinned" else f"{base}-{variant}"
 
