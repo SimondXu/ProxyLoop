@@ -71,7 +71,7 @@ export function StartPage() {
       <div className="pl-start-hero">
         <span className="pl-start-kicker">New case</span>
         <h1>What should ProxyLoop handle?</h1>
-        <p>Pick a task. ProxyLoop chats with you first, calls the company, and asks before anything binding happens.</p>
+        <p>Pick a task. ProxyLoop chats with you first, calls the (simulated) company, and asks before anything binding happens.</p>
       </div>
       {!hasCookie() && (
         <Banner tone="attn" role="note">
@@ -147,7 +147,7 @@ export function StartPage() {
               })}
             </details>
             <Button variant="primary" type="submit" className="pl-start-go" disabled={busy || !task}>
-              Start the case →
+              Start the case <span aria-hidden="true">→</span>
             </Button>
             {error && (
               <Banner tone="danger" role="alert">

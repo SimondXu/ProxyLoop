@@ -320,7 +320,7 @@ async function openStart(page: Page) {
 
 async function start(page: Page, task: string, rep: "sim" | "human" = "sim") {
   await openStart(page);
-  await page.getByRole("radiogroup", { name: "Task" }).getByRole("radio", { name: new RegExp(`${task}$`) }).check();
+  await page.getByRole("radiogroup", { name: "Task" }).getByRole("radio").and(page.locator(`[value="${task}"]`)).check();
   await page.getByRole("radio", { name: REP[rep] }).check();
   const [res] = await Promise.all([
     page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/api/cases"),

@@ -17,7 +17,7 @@
     transition: border-color var(--d-state) var(--ease), box-shadow var(--d-state) var(--ease);
   }
   .pl-task:hover .pl-task-card { border-color: var(--line-strong); box-shadow: var(--e2); }
-  .pl-task input:checked + .pl-task-card { border-color: var(--agent); box-shadow: var(--focus), var(--e2); }
+  .pl-task input:checked + .pl-task-card { border-color: var(--agent); box-shadow: var(--e2); }
   .pl-task input:focus-visible + .pl-task-card { outline: 3px solid var(--agent); outline-offset: 2px; }
   .pl-task-name { font: 560 var(--fs-card) / 1.25 var(--font-display); font-variation-settings: "SOFT" 40; letter-spacing: -0.01em; }
   .pl-task code { font-size: var(--fs-meta); color: var(--ink-3); overflow-wrap: anywhere; }
