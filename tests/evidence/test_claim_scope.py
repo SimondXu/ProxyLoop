@@ -9,14 +9,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from tests.contract.samples import QWEN, SONNET
 from tests.support.recorded import write_fast_bundle
 
-from proxyloop.contract.bundle import MANIFEST, Manifest
+from proxyloop import cli
+from proxyloop.contract.bundle import EVENTS, MANIFEST, Manifest
 from proxyloop.contract.config import SessionConfig, config_hash
 from proxyloop.contract.llm import AdapterKind, ModelRef
 from proxyloop.evidence.check import check_path
-from proxyloop.evidence.reality import TRAINED_MARK
+from proxyloop.evidence.reality import QWEN_PREFIX, TRAINED_MARK
+from proxyloop.kernel.session import RunResult
+from proxyloop.models import registry
 from serving import config
 
 RESPONSE = "Thanks, that helps. Could you read the full offer back to me?\n@hold offer"
@@ -26,6 +30,7 @@ LUNA = ModelRef(
     model_id="openai/gpt-6-luna",
     reasoning_effort="none",
 )
+LUNA_ID = "openrouter:openai/gpt-6-luna"
 C1 = ModelRef(kind=AdapterKind.REAL_HTTP, endpoint="vllm", model_id="Qwen3.5-9B-pl-x1")
 SHARD = "adapters/Qwen3.5-9B-pl-x1/adapter_model.safetensors"
 
@@ -35,6 +40,18 @@ def _edit(run: Path, **update: object) -> None:
     (run / MANIFEST).write_text(
         Manifest.model_validate(body).model_dump_json(), "utf-8"
     )
+
+
+def _recfg(run: Path, **update: object) -> None:
+    """A new cfg, with its hash in the manifest and in session.started."""
+    cfg = json.loads((run / MANIFEST).read_text("utf-8"))["cfg"] | update
+    cfg_hash = config_hash(SessionConfig.model_validate(cfg))
+    _edit(run, cfg=cfg, cfg_hash=cfg_hash)
+    first, *rest = (run / EVENTS).read_text("utf-8").splitlines()
+    started = json.loads(first)
+    started["payload"]["cfg_hash"] = cfg_hash
+    lines = [json.dumps(started), *rest]
+    (run / EVENTS).write_text("".join(f"{line}\n" for line in lines), "utf-8")
 
 
 def _bundle(tmp_path: Path, ref: ModelRef, **update: object) -> Path:
@@ -56,7 +73,32 @@ def test_a_luna_bundle_passes_the_claim_as_hosted_fast_evidence(
 
 def test_a_qwen_claim_rejects_a_hosted_fast_bundle(tmp_path: Path) -> None:
     report = check_path(_bundle(tmp_path, LUNA), "claim", about="qwen")
-    assert "a Qwen claim needs Qwen@vllm: fast_cp ran hosted" in report.failures
+    want = f"a Qwen claim needs Qwen@vllm: fast_cp ran hosted {LUNA_ID}"
+    assert want in report.failures
+
+
+def test_a_qwen_claim_rejects_another_model_on_vllm(tmp_path: Path) -> None:
+    llama = ModelRef(kind=AdapterKind.REAL_HTTP, endpoint="vllm", model_id="Llama-4-8B")
+    report = check_path(_bundle(tmp_path, llama, p3="pass"), "claim", about="qwen")
+    want = "a Qwen claim needs Qwen@vllm: fast_cp ran vllm vllm:Llama-4-8B"
+    assert want in report.failures
+    assert report.scope == "vllm, not a Qwen claim: fast_cp=vllm:Llama-4-8B; P3 pass"
+
+
+def test_a_qwen_claim_scopes_a_mixed_lane_bundle_to_its_claimed_lanes(
+    tmp_path: Path,
+) -> None:  # EVAL A3: a hosted fast_user, a vLLM fast_cp
+    run = _bundle(tmp_path, QWEN, p3="pass")
+    _recfg(run, fast_user=LUNA.model_dump())
+    body = json.loads((run / MANIFEST).read_text("utf-8"))
+    models = body["models"] | {"fast_user": {"ref": LUNA.model_dump()}}
+    _edit(run, models=models, reality=body["reality"] | {"fast_user": "real_http"})
+    both = check_path(run, "claim", about="qwen")
+    want = f"a Qwen claim needs Qwen@vllm: fast_user ran hosted {LUNA_ID}"
+    assert want in both.failures
+    cp = check_path(run, "claim", roles={"fast_cp"}, about="qwen")
+    assert cp.ok, cp.failures
+    assert cp.scope == "Qwen@vllm: fast_cp=vllm:Qwen3.5-9B; P3 pass"
 
 
 def test_a_qwen_bundle_with_p3_pass_supports_a_qwen_claim(tmp_path: Path) -> None:
@@ -102,16 +144,26 @@ def test_a_c1_bundle_whose_shards_differ_from_the_attestation_fails(
     assert not any("no adapter_shards" in f for f in failures)
 
 
-def test_the_trained_mark_is_servings_slot_prefix() -> None:
+def test_a_trained_slot_is_found_by_its_served_name_too(tmp_path: Path) -> None:
+    models = {"fast_cp": {"ref": QWEN.model_dump(), "served_model": C1.model_id}}
+    run = _bundle(tmp_path, QWEN, p3="pass", models=models)
+    want = "fast_cp runs the trained slot Qwen3.5-9B-pl-x1 with no adapter_shards"
+    assert any(f.startswith(want) for f in check_path(run, "claim").failures)
+
+
+def test_the_marks_are_servings_names() -> None:
     assert config.TRAINED_PREFIX.endswith(TRAINED_MARK)
     assert TRAINED_MARK not in QWEN.model_id
+    served = [name for _, _, name in config.MODELS.values()]
+    assert all(n.startswith(QWEN_PREFIX) for n in [*served, config.TRAINED_PREFIX])
+    names = [n for n in registry.models() if n != registry.TRAINED]
+    vllm = [r for r in map(registry.resolve, names) if r.endpoint == "vllm"]
+    assert vllm and all(r.model_id.startswith(QWEN_PREFIX) for r in vllm)
 
 
 def test_a_qwen_claim_rejects_a_teacher_repaired_bundle(tmp_path: Path) -> None:
     run = _bundle(tmp_path, QWEN, p3="pass")
-    cfg = json.loads((run / MANIFEST).read_text("utf-8"))["cfg"]
-    cfg |= {"teacher": SONNET.model_dump(), "ablations": ["teacher_repair_cp"]}
-    _edit(run, cfg=cfg, cfg_hash=config_hash(SessionConfig.model_validate(cfg)))
+    _recfg(run, teacher=SONNET.model_dump(), ablations=["teacher_repair_cp"])
     report = check_path(run, "claim", roles={"fast_cp"}, about="qwen")
     assert (
         "a Qwen claim excludes teacher repair (R): the teacher spoke" in report.failures
@@ -126,3 +178,26 @@ def test_an_f_bundle_fails_the_claim(tmp_path: Path) -> None:
     report = check_path(run, "claim")
     assert "claimed role fast_cp ran baseline" in report.failures
     assert report.reality == {"fast_cp": "baseline_fsm"}
+
+
+def test_a_live_bundle_cannot_contain_baseline(tmp_path: Path) -> None:
+    fsm = ModelRef(kind=AdapterKind.BASELINE, endpoint=None, model_id="fsm-v1")
+    run = write_fast_bundle(tmp_path / "f", RESPONSE, ref=fsm, live=True)
+    assert "a live bundle contains baseline" in check_path(run).failures
+
+
+def test_session_claim_prints_the_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    run = _bundle(tmp_path, LUNA)
+
+    async def ran(*_: object, **__: object) -> RunResult:
+        return RunResult("run-test", run, "info_only")
+
+    monkeypatch.setattr(cli, "run_session", ran)
+    argv = ["session", "--family", "cp-direct-discount", "--condition", "C5"]
+    cli.main([*argv, "--claim"])
+    out = capsys.readouterr().out
+    assert "claim check: ok" in out
+    want = "claim scope: hosted-Fast evidence, not a Qwen claim: fast_cp=openrouter:"
+    assert want in out
