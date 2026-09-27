@@ -22,7 +22,8 @@ seam: serve never imports the kernel. Without a starter every route here is
   ``unavailable``, logged and never retried (I8, AGENTS rule 6). A start that
   has not returned after ``timeout_s`` (``create_app(start_timeout_s=...)``)
   is cancelled inside the lock, logged, 503 ``unavailable``, never retried,
-  and registers nothing, even if the kernel returns a case anyway.
+  and registers nothing, even if the kernel returns a case anyway; a start
+  that ignores its cancel holds the lock at most ``CANCEL_GRACE_S`` longer.
 
 A started case is kept in serve's own map, which ``create_app`` puts in front
 of its ``cases`` lookup: ``GET /live``, ``/rep``, the case POSTs and
@@ -74,7 +75,9 @@ OPTION_ID = r"^[!-~]{1,128}$"  # printable ASCII without spaces: an opaque optio
 REASONS = frozenset(
     ("unknown_task", "unknown_model", "wrong_lane", "not_live", "busy", "unavailable")
 )  # the frozen StartRefused reasons: only these reach the browser
+CANCEL_GRACE_S = 5.0  # the most a timed-out start gets to end after its cancel
 _log = logging.getLogger(__name__)
+_orphans: set[asyncio.Task[Case]] = set()  # abandoned starts, until they end
 
 
 class StartBody(BaseModel):
@@ -114,23 +117,55 @@ def broken(options: Sequence[object], tasks: object) -> str | None:
     return None
 
 
-def _timed_out(body: StartBody, timeout_s: float) -> Refused:
-    # The first start that picks the vLLM option loads the tokenizer inside
-    # start_case, which can take longer than the default 60 s: the 503 is then
-    # honest (the start was cancelled), and the bound is create_app's
-    # start_timeout_s.
-    _log.error(
-        "start_case for task %s took over %s s: cancelled", body.task_ref, timeout_s
-    )
-    return Refused(503, "unavailable")
+def _late(task: asyncio.Task[Case]) -> None:
+    """How a timed-out or abandoned start ended: logged, never registered. Only
+    an error's type is logged (AGENTS rule 15)."""
+    _orphans.discard(task)
+    if task.cancelled():
+        _log.info("an abandoned start_case ended cancelled")
+    elif (error := task.exception()) is not None:
+        _log.error("an abandoned start_case failed: %s", type(error).__name__)
+    else:
+        run_id = task.result().run_id
+        _log.error("an abandoned start_case returned run %r: not registered", run_id)
+
+
+def _abandon(task: asyncio.Task[Case]) -> None:
+    """Cancel ``task`` and keep it referenced until it ends (``_late``)."""
+    task.cancel()
+    _orphans.add(task)
+    task.add_done_callback(_late)
 
 
 async def _begin(kernel: Starter, body: StartBody, timeout_s: float) -> Case:
-    """``start_case`` bounded by ``timeout_s``; any failure is a ``Refused``."""
-    bound = asyncio.timeout(timeout_s)  # cancels start_case when it expires
+    """``start_case`` bounded by ``timeout_s``; any failure is a ``Refused``.
+
+    It runs as its own task, so that a start which swallows its cancellation,
+    hangs or cleans up slowly still frees the lock: on timeout it is
+    cancelled, given at most ``min(CANCEL_GRACE_S, timeout_s)`` more, and then
+    abandoned (503 either way, never registered; the kernel answers "busy"
+    while its own cleanup runs)."""
+    task = asyncio.create_task(kernel.start_case(body.task_ref, body.models, body.rep))
     try:
-        async with bound:
-            case = await kernel.start_case(body.task_ref, body.models, body.rep)
+        done, _ = await asyncio.wait({task}, timeout=timeout_s)
+    except asyncio.CancelledError:  # the client left: so does the start
+        _abandon(task)
+        raise
+    if task not in done:
+        # The kernel loads the vLLM tokenizer synchronously on the event loop,
+        # so this bound cannot interrupt that load and the server stalls
+        # during it: a cold first vLLM start that takes longer than the bound
+        # gets this 503 once the load finishes, and the next click succeeds
+        # (the tokenizer is cached). Loading it off the loop or preloading it
+        # is L-CORE's follow-up.
+        _abandon(task)
+        await asyncio.wait({task}, timeout=min(CANCEL_GRACE_S, timeout_s))
+        _log.error(
+            "start_case for task %s took over %s s: cancelled", body.task_ref, timeout_s
+        )
+        raise Refused(503, "unavailable")
+    try:
+        return task.result()
     except StartRefused as refused:
         if refused.reason not in REASONS:
             why = redact(refused.reason.encode()).decode()
@@ -139,13 +174,8 @@ async def _begin(kernel: Starter, body: StartBody, timeout_s: float) -> Case:
         status = 409 if refused.reason == "busy" else 400
         raise Refused(status, "start", refused.reason) from refused
     except Exception as err:  # loud: logged, 503, no retry
-        if bound.expired():  # the TimeoutError of the cancelled start
-            raise _timed_out(body, timeout_s) from err
         _log.exception("start_case failed for task %s", body.task_ref)
         raise Refused(503, "unavailable") from err
-    if bound.expired():  # it swallowed the cancellation: never registered
-        raise _timed_out(body, timeout_s)
-    return case
 
 
 def add_start_routes(

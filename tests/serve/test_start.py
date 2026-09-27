@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
+import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -28,6 +29,7 @@ from tests.serve.client import (
 from tests.support.api_cases import ApiCase, FakeStarter
 
 from proxyloop.serve.api import create_app
+from proxyloop.serve.bundles import Run
 from proxyloop.serve.cases import LaneKey, ModelOption
 
 CASE = "case-1"  # a case of the existing lookup: the user's and rep's tokens
@@ -442,6 +444,41 @@ def test_a_start_returning_after_its_timeout_is_not_registered(tmp_path: Path) -
     late.close()
 
 
+class _Stubborn(FakeStarter):
+    """A first start that swallows its cancellation, then hangs anyway."""
+
+    async def start_case(
+        self, task_ref: str, models: Mapping[LaneKey, str], rep: str = "sim"
+    ) -> ApiCase:
+        if self.hang:
+            self.hang = False
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                self.cancelled += 1
+            await asyncio.Event().wait()  # until the loop shuts down
+        return await super().start_case(task_ref, models, rep)
+
+
+def test_a_start_ignoring_its_cancel_still_frees_the_lock(tmp_path: Path) -> None:
+    root = tmp_path / "runs"
+    root.mkdir()
+    starter = _Stubborn(root, OPTIONS, TASKS)
+    starter.hang = True
+    env = _env(root, starter, timeout_s=0.05)
+    hdrs = headers(operator(env.http))
+    began = time.monotonic()
+    got = start(env, hdrs)
+    elapsed = time.monotonic() - began
+    assert (got.status_code, got.json()) == (503, {"error": "unavailable"})
+    assert starter.cancelled == 1 and elapsed < 1.0  # timeout + grace = 0.1 s
+    got = start(env, hdrs)  # the next start reaches the starter
+    assert (got.status_code, got.json()) == (201, {"case_id": "live-1"})
+    assert len(starter.calls) == 1  # the stubborn start never got that far
+    env.other.close()
+    starter.cases[0].close()
+
+
 class _Opens:
     paths: list[str] | None = None  # the paths opened while a test records them
 
@@ -554,3 +591,26 @@ def test_a_started_test_split_case_is_404_on_every_case_route(env: Env) -> None:
     assert _case_routes(env, "live-2", user, rep) == GONE
     case = env.starter.cases[1]
     assert case.messages == case.utterances == case.posts == []
+
+
+def test_a_test_split_run_is_never_tail_read(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    read: list[str] = []
+    ended = Run.ended
+
+    def recorded(run: Run) -> bool:
+        read.append(run.run_id)
+        return ended(run)
+
+    monkeypatch.setattr(Run, "ended", recorded)
+    env.starter.split = "test"
+    hdrs = headers(operator(env.http))
+    assert start(env, hdrs).json() == {"case_id": "live-1"}
+    for page in ("live", "rep"):
+        assert get(env.http, f"/{page}/live-1", follow=False).status_code == 404
+    env.starter.split = "train"
+    assert start(env, hdrs).json() == {"case_id": "live-2"}  # sweeps live-1
+    login(env.http, "user", "live-2")
+    assert "live-2" in read  # the guard is what keeps live-1 out
+    assert "live-1" not in read
