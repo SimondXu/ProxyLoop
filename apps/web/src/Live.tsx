@@ -1,9 +1,12 @@
-// The live shell (?live=<run_id>): the replay's lanes, cards and drawer, fed by
-// /ws/live instead of a loaded file, plus the user chat input, the authority
-// strip and the approval cards. It shows only what events say. Models are chosen
-// on the start page (?start); here RunSummary shows the ones session.started names.
-import { useMemo, useRef, useState, type FormEvent } from "react";
+// The live shell (?live=<run_id>), fed by /ws/live: by default the conversation
+// view (Conversation.tsx) with the chat input in the chat pane; with
+// ?view=engineer the replay's lanes, cards and drawer. Both keep the status line,
+// the authority strip and the approval cards in the sticky header. It shows only
+// what events say. Models are chosen on the start page (?start); here RunSummary
+// shows the ones session.started names.
+import { useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { Drawer, Lanes, RunSummary, useDrill } from "./App";
+import { Panes, Story, useView } from "./ConversationView";
 import { approvalCards, type CardStatus, type CardView, type Posting } from "./approval";
 import { authorityStrip, type Strip } from "./authority";
 import { parseEvent, unechoed, type Framed, type Sent, type Stream } from "./liveState";
@@ -11,6 +14,7 @@ import { postApproval, postMessage, type Decision, type PostResult } from "./liv
 import { indexEvents } from "./replay";
 import { useEventStream } from "./useEventStream";
 
+const CHAT_LABEL = "Message to the assistant";
 // serve reads prompts.jsonl, which the kernel writes when it closes the run (kernel/session.py).
 const PROMPTS_LATER = "Prompts come from prompts.jsonl, which the kernel writes as the run closes (after session.ended).";
 
@@ -45,29 +49,46 @@ export function Live({ runId }: { runId: string }) {
     return r;
   };
   const echoes = events.filter((e) => e.type === "user.msg").map((e) => ({ seq: e.seq, text: String(e.payload.text) }));
+  const { engineer, link } = useView();
+  const composer = <Composer label={CHAT_LABEL} post={send} pending={unechoed(sent, echoes).map((s) => s.text)} />;
 
   return (
     <main>
-      <header className="bar">
-        <h1>ProxyLoop live · {runId}</h1>
-        <Connection stream={stream} reconnect={reconnect} count />
-        <label>
-          <input type="checkbox" checked={god} onChange={(e) => setGod(e.target.checked)} /> God-view
-        </label>
-      </header>
-      <p className="meta">{ended ? "Run ended: the prompt drill-down reads prompts.jsonl." : PROMPTS_LATER}</p>
+      <div className="sticky">
+        <header className="bar">
+          <h1>ProxyLoop live · {runId}</h1>
+          <Connection stream={stream} reconnect={reconnect} count />
+          {link}
+          {engineer && (
+            <label>
+              <input type="checkbox" checked={god} onChange={(e) => setGod(e.target.checked)} /> God-view
+            </label>
+          )}
+        </header>
+        <Story events={events} />
+        {cards.length > 0 && (
+          <section className="approvals" aria-label="Approvals">
+            {cards.map((v) => (
+              <Approval key={v.card.approval_id} view={v} decide={decide} fenced={strip.fences.length > 0} />
+            ))}
+          </section>
+        )}
+        <details className="authority">
+          <summary>Authority details (raw case status, fence, epoch)</summary>
+          <AuthorityStrip a={strip} />
+        </details>
+      </div>
       <RunSummary events={events} />
-      <AuthorityStrip a={strip} />
-      {cards.length > 0 && (
-        <section className="approvals" aria-label="Approvals">
-          {cards.map((v) => (
-            <Approval key={v.card.approval_id} view={v} decide={decide} fenced={strip.fences.length > 0} />
-          ))}
-        </section>
+      {engineer ? (
+        <>
+          <p className="meta">{ended ? "Run ended: the prompt drill-down reads prompts.jsonl." : PROMPTS_LATER}</p>
+          {composer}
+          <Lanes shown={events} index={index} god={god} open={open} />
+          {drill && <Drawer drill={drill} close={close} />}
+        </>
+      ) : (
+        <Panes events={events} composer={composer} />
       )}
-      <Composer label="Message to the agent" post={send} pending={unechoed(sent, echoes).map((s) => s.text)} />
-      <Lanes shown={events} index={index} god={god} open={open} />
-      {drill && <Drawer drill={drill} close={close} />}
     </main>
   );
 }
@@ -195,9 +216,11 @@ export function Composer({
       else setError(`${r.status ? `${r.status} ` : ""}${r.error}`);
     });
   };
+  const id = useId();
   return (
     <form className="bar composer" aria-label={label} onSubmit={submit}>
-      <input aria-label={label} placeholder={label} value={text} onChange={(e) => setText(e.target.value)} />
+      <label htmlFor={id}>{label}</label>
+      <input id={id} value={text} onChange={(e) => setText(e.target.value)} />
       <button type="submit" disabled={busy}>
         Send
       </button>

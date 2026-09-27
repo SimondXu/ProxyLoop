@@ -19,6 +19,7 @@ const IDENTITY = "My name is Marcus Bell and my account ends in 5190.";
 const ASK = "The company needs the account holder name and the last 4 digits."; // the scripted Slow's ask_user
 const STOP = "actually, stop";
 const FLOW = { timeout: 90_000 }; // wall-clock speech, holds and two read-backs
+const SIM_REP = "Simulated rep; no real company was called";
 
 async function log(page: Page, id: string): Promise<Ev[]> {
   const res = await page.request.get(`/api/replay/${id}/events`);
@@ -54,6 +55,10 @@ function sockets(page: Page): string[] {
   return seen;
 }
 
+const shot = async (page: Page, name: string) => {
+  if (process.env.PL_SHOTS) await page.screenshot({ path: `${process.env.PL_SHOTS}/${name}.png`, fullPage: true });
+};
+
 const isPost = (path: RegExp) => (r: Response) => r.request().method() === "POST" && path.test(new URL(r.url()).pathname);
 
 /** The start page: every option is a stub labelled test_fake; Start → 201. */
@@ -81,8 +86,14 @@ async function onlyFakes(page: Page, roles: string[]) {
   for (const t of shown) expect(t).toMatch(/^\w+: test_fake \w+-fake$/);
 }
 
+/** The authority strip sits behind a disclosure in the sticky header: open it (idempotent). */
+async function authority(page: Page) {
+  await page.locator("details.authority").evaluate((d: HTMLDetailsElement) => (d.open = true));
+  return page.getByRole("region", { name: "Authority" });
+}
+
 async function say(page: Page, text: string) {
-  await page.getByRole("textbox", { name: "Message to the agent" }).fill(text);
+  await page.getByRole("textbox", { name: "Message to the assistant" }).fill(text);
   const [res] = await Promise.all([page.waitForResponse(isPost(/\/messages$/)), page.getByRole("button", { name: "Send" }).click()]);
   expect(res.status()).toBe(200);
 }
@@ -91,8 +102,13 @@ async function say(page: Page, text: string) {
 async function toCard(page: Page) {
   const id = await start(page, "sim");
   await onlyFakes(page, ["fast_user", "fast_cp", "slow", "ear", "mouth"]);
+  // The world's rep is labelled on every frame: the header and both panes (the user is the person here).
+  for (const frame of [page.locator(".sticky"), page.getByRole("region", { name: "Chat" }), page.getByRole("region", { name: "Call" })]) {
+    await expect(frame.getByLabel("Simulated parties")).toHaveText(SIM_REP);
+  }
   await say(page, TASK_SAID);
-  const chat = page.getByRole("region", { name: "User chat" });
+  const chat = page.getByRole("list", { name: "Chat transcript" });
+  await expect(chat).toContainText(`You: ${TASK_SAID}`);
   await expect(chat).toContainText(ASK, FLOW);
   await say(page, IDENTITY);
   const card = page.getByRole("article", { name: /^Approval / });
@@ -114,7 +130,8 @@ async function toCard(page: Page) {
   expect(Math.max(...facts.map((e) => e.seq))).toBeLessThan((offered[0] as Ev).seq); // identity before the offer
   const requested = one(events, "approval.requested");
   await expect(card.getByLabel("Readback")).toHaveText(String(requested.payload.readback_text));
-  await expect(page.getByRole("region", { name: "Authority" }).getByLabel("Case status")).toHaveText("status AWAITING_APPROVAL");
+  await expect((await authority(page)).getByLabel("Case status")).toHaveText("status AWAITING_APPROVAL");
+  await expect(page.getByLabel("Status line")).toHaveText("Status: waiting for your approval");
   return { id, card, requested };
 }
 
@@ -140,18 +157,29 @@ test.describe("approve", () => {
     const [heard] = causedBy(events, "utt.delivered", released as Ev);
     expect(heard?.payload.text_heard).toBe(accept.payload.text);
     expect(of(events, "rep.commit_heard")).toHaveLength(1);
-    const strip = page.getByRole("region", { name: "Authority" });
+    const strip = await authority(page);
     await expect(strip.getByLabel("Case status")).toHaveText("status COMMITTED");
-    await expect(page.getByRole("region", { name: "Rep" })).toContainText(String(accept.payload.text));
+    await expect(page.getByLabel("Status line")).toHaveText("Status: accepted on the call, not yet verified");
+    await expect(page.getByText("Verified complete", { exact: true })).toHaveCount(0);
+    const call = page.getByRole("list", { name: "Call transcript" });
+    await expect(call).toContainText(`Agent: ${String(accept.payload.text)}`);
+    await expect(call.getByRole("listitem").filter({ hasText: "AI disclosure (fixed text)" })).toHaveCount(1);
+    await shot(page, "demo-live-conversation");
 
     // c) the replay UI, from /api/bundles: the same run and the same chain.
     const listed = (await (await page.request.get("/api/bundles")).json()) as { bundles: { run_id: string }[] };
     expect(listed.bundles.map((b) => b.run_id)).toContain(id);
+    // The replay opens in the conversation view; the engineer view (in place) has the lanes.
     await page.goto("/");
     await page.getByRole("combobox", { name: "Run" }).selectOption(id);
     await expect(page.getByRole("region", { name: "Run" })).toContainText(id);
     const timeline = page.getByRole("slider", { name: "Timeline" });
     await timeline.fill((await timeline.getAttribute("max")) ?? "0");
+    await expect(page.getByRole("list", { name: "Call transcript" })).toContainText(`Agent: ${String(accept.payload.text)}`);
+    await expect(page.getByRole("region", { name: "Guard" })).toHaveCount(0);
+    await shot(page, "demo-replay-conversation");
+    await page.getByRole("link", { name: "Engineer view" }).click();
+    await expect(page).toHaveURL("/?view=engineer");
     const guard = page.getByRole("region", { name: "Guard" });
     for (const e of [posted, decided, released as Ev]) {
       await expect(guard.getByRole("article", { name: `${e.type} #${e.seq}` })).toBeVisible();
@@ -169,7 +197,7 @@ test.describe("stop", () => {
     page,
   }) => {
     const { id, card, requested } = await toCard(page);
-    const strip = page.getByRole("region", { name: "Authority" });
+    const strip = await authority(page);
     await say(page, STOP);
     await expect(strip.getByLabel("Fence")).toHaveText(/^fence raised \(fence-\d+\)$/);
     await expect(card.getByLabel("Fence note")).toHaveText("fence raised: the accept waits until it clears");
@@ -227,6 +255,8 @@ test.describe("human rep", () => {
     await started.getByRole("link", { name: "open the live page" }).click();
     await expect(page).toHaveURL(`/?live=${id}`);
     await onlyFakes(page, ["fast_user", "fast_cp", "slow"]);
+    await expect(page.getByRole("heading", { name: "Call · Agent / Rep / Call" })).toBeVisible(); // a person, not the world
+    await expect(page.getByLabel("Simulated parties")).toHaveCount(0);
 
     // The user's own words and the case agent's private summary never reach the rep.
     const secret = "My limit is 65 dollars a month, keep that between us.";

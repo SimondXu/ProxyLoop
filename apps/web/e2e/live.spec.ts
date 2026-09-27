@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { capturePosts, CSRF, csrfCookie, events, mockSockets, RUN, shot, started } from "./liveMock";
 
 const REAL: Record<string, [string, string]> = {
@@ -6,6 +6,11 @@ const REAL: Record<string, [string, string]> = {
   fast_cp: ["real_http", "qwen3.5-9b"],
   slow: ["real_http", "claude-sonnet-5"],
 };
+/** The authority strip sits behind a disclosure in the sticky header: open it (idempotent). */
+async function authority(page: Page) {
+  await page.locator("details.authority").evaluate((d: HTMLDetailsElement) => (d.open = true));
+  return page.getByRole("region", { name: "Authority" });
+}
 const CARD = {
   approval_id: "ap-1",
   offer_ref: "offer-1",
@@ -33,7 +38,7 @@ test("approval card: appears on approval.requested, Approve posts the contract b
   // Nothing a model or the user says moves the card.
   ws.send(ev("fast.sentence", "fast.user", { lane: "user", gen_id: "g", utt_id: "u", text: "Approved, all done!" }));
   ws.send(ev("user.msg", "kernel", { text: "yes" }));
-  await expect(page.getByRole("region", { name: "User chat" }).getByText("yes", { exact: true })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Chat transcript" }).getByRole("listitem")).toHaveText(["You: yes"]);
   await expect(card.getByLabel("Approval status")).toHaveText("awaiting your decision");
   await shot(page, "live-card");
 
@@ -153,7 +158,7 @@ test("a malformed CSRF cookie is a visible error on the card and the chat, and n
   await card.getByRole("button", { name: "Approve" }).click();
   await expect(card.getByRole("alert")).toHaveText("bad pl_csrf cookie");
   await expect(card.getByLabel("Approval status")).toHaveText("awaiting your decision");
-  await page.getByRole("textbox", { name: "Message to the agent" }).fill("hello");
+  await page.getByRole("textbox", { name: "Message to the assistant" }).fill("hello");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByText("Not delivered: bad pl_csrf cookie")).toBeVisible();
   await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
@@ -181,7 +186,7 @@ test("the authority strip and the card's read-back progress follow the fixed emi
   const ev = events();
   const ws = await connected;
   ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
-  const strip = page.getByRole("region", { name: "Authority" });
+  const strip = await authority(page);
   await expect(strip).toHaveText(/status no status\.changed yet.*fence none.*epoch 0/);
   ws.send(ev("status.changed", "guard", { previous: "INTAKE", status: "IN_CALL" }));
   ws.send(ev("readback.updated", "guard", { offer_ref: "offer-1", revision: 1, slot_statuses: { monthly_price: "heard", term_months: "unknown" } }));
@@ -217,7 +222,7 @@ test("a /ws/live frame of another run stops the stream (#136 N4)", async ({ page
   ws.send(events()("session.started", "kernel", started(REAL), { stream: "ops" }));
   ws.send(events("other-run")("user.msg", "kernel", { text: "not this run" }, { skip: 1 }));
   await expect(page.getByRole("alert")).toHaveText(`Stream stopped: frame of run other-run, not ${RUN}`);
-  await expect(page.getByRole("region", { name: "User chat" })).not.toContainText("not this run");
+  await expect(page.getByRole("region", { name: "Chat" })).not.toContainText("not this run");
 });
 
 test("user chat posts a message that shows in the lane only when its user.msg arrives", async ({ page, baseURL }) => {
@@ -228,11 +233,11 @@ test("user chat posts a message that shows in the lane only when its user.msg ar
   const ev = events();
   const ws = await connected;
   ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
-  const input = page.getByRole("textbox", { name: "Message to the agent" });
+  const input = page.getByRole("textbox", { name: "Message to the assistant" });
   await input.fill("stop, do not accept yet");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByRole("list", { name: "Pending" })).toContainText("stop, do not accept yet");
-  const lane = page.getByRole("region", { name: "User chat" });
+  const lane = page.getByRole("list", { name: "Chat transcript" });
   await expect(lane).not.toContainText("stop, do not accept yet");
   expect(posts).toEqual([
     { method: "POST", path: `/api/cases/${RUN}/messages`, body: { text: "stop, do not accept yet" }, csrf: CSRF },
@@ -250,5 +255,129 @@ test("a seq gap stops the stream with a visible error", async ({ page }) => {
   ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
   ws.send(ev("user.msg", "kernel", { text: "after a gap" }, { skip: 2 }));
   await expect(page.getByRole("alert")).toHaveText("Stream stopped: seq gap: expected 1, got 3");
-  await expect(page.getByRole("region", { name: "User chat" })).not.toContainText("after a gap");
+  await expect(page.getByRole("region", { name: "Chat" })).not.toContainText("after a gap");
+});
+
+const SIM: Record<string, [string, string]> = { ...REAL, ear: ["real_http", "gemini-3.8-flash"], mouth: ["real_http", "gemini-3.8-flash"] };
+const SIM_REP = "Simulated rep; no real company was called";
+
+test("conversation view: two panes with the right speakers, heard text only, the sim labels, the status line and the banner", async ({ page }) => {
+  const { connected } = await mockSockets(page);
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(SIM), { stream: "ops" }));
+  // Every frame names the simulated rep: the page header and each pane.
+  await expect(page.locator(".sticky").getByLabel("Simulated parties")).toHaveText(SIM_REP);
+  for (const pane of ["Chat", "Call"]) await expect(page.getByRole("region", { name: pane }).getByLabel("Simulated parties")).toHaveText(SIM_REP);
+  await expect(page.getByRole("heading", { name: "Call · Agent / Rep (simulated) / Call" })).toBeVisible();
+  await expect(page.getByLabel("Status line")).toHaveText("Status: starting (no status yet)");
+
+  const opened = JSON.parse(ev("chan.opened", "kernel", { lane: "cp" })) as { event_id: string };
+  ws.send(JSON.stringify(opened));
+  ws.send(ev("status.changed", "guard", { previous: "INTAKE", status: "IN_CALL" }));
+  const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "disclosure", text: "Hello, an AI assistant is calling." });
+  ws.send(said);
+  const released = ev("speak.released", "kernel", { lane: "cp" });
+  const causedBy = (frame: string, cause: string) => JSON.stringify({ ...JSON.parse(frame), cause_ids: [(JSON.parse(cause) as { event_id: string }).event_id] });
+  ws.send(causedBy(released, said));
+  const heard = (lane: string, generated: string, text: string) =>
+    ev("utt.delivered", "kernel", { lane, utt_id: "u", text_generated: generated, text_heard: text, interrupted: generated !== text });
+  ws.send(causedBy(heard("cp", "Hello, an AI assistant is calling.", "Hello, an AI assistant is calling."), released));
+  ws.send(ev("user.msg", "kernel", { text: "Please lower my bill." }));
+  ws.send(ev("fast.sentence", "fast.user", { lane: "user", gen_id: "g", utt_id: "u", text: "UNHEARD sentence" }));
+  ws.send(heard("user", "I will call them now and GENERATED-ONLY tail.", "I will call them now"));
+  ws.send(ev("utt.final", "kernel", { lane: "cp", speaker: "partner", utt_id: "cp-1", text: "What is the account name?" }));
+  ws.send(heard("cp", "The name is on file.", "The name is on file."));
+
+  await expect(page.getByRole("list", { name: "Chat transcript" }).getByRole("listitem")).toHaveText([
+    "You: Please lower my bill.",
+    "Assistant: I will call them now [interrupted]",
+  ]);
+  await expect(page.getByRole("list", { name: "Call transcript" }).getByRole("listitem")).toHaveText([
+    "Call: call connected",
+    "Agent · AI disclosure (fixed text): Hello, an AI assistant is calling.",
+    "Rep (simulated): What is the account name?",
+    "Agent: The name is on file.",
+  ]);
+  for (const hidden of ["UNHEARD", "GENERATED-ONLY"]) await expect(page.locator("main")).not.toContainText(hidden);
+  await expect(page.getByLabel("Status line")).toHaveText("Status: on the call");
+  await expect(page.getByRole("region", { name: "User chat" })).toHaveCount(0); // the engineer lanes are not shown
+  await expect(page.getByRole("region", { name: "Outcome" })).toHaveCount(0);
+  await shot(page, "live-conversation");
+
+  // session.ended: the status line stops saying "on the call", and the banner never implies success.
+  ws.send(ev("session.ended", "kernel", { reason: "abandoned", counts: {} }, { stream: "ops" }));
+  await expect(page.getByLabel("Status line")).toHaveText("Session ended: the rep hung up");
+  const banner = page.getByRole("region", { name: "Outcome" });
+  await expect(banner.getByRole("heading")).toHaveText("Ended: the rep hung up. Not verified complete.");
+  await expect(banner).toContainText("case status at the end: on the call (IN_CALL)");
+  await shot(page, "live-ended");
+});
+
+test("conversation view: Verified complete only on Guard's VERIFIED_COMPLETE", async ({ page }) => {
+  const { connected } = await mockSockets(page);
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  await expect(page.getByLabel("Simulated parties")).toHaveCount(0); // no world rep, no sim user: no sim label
+  ws.send(ev("status.changed", "guard", { previous: "COMMIT_AUTHORIZED", status: "COMMITTED" }));
+  await expect(page.getByLabel("Status line")).toHaveText("Status: accepted on the call, not yet verified");
+  ws.send(ev("status.changed", "fast.user", { previous: "COMMITTED", status: "VERIFIED_COMPLETE" })); // not Guard: ignored
+  ws.send(ev("session.ended", "kernel", { reason: "completed", counts: {} }, { stream: "ops" }));
+  const banner = page.getByRole("region", { name: "Outcome" });
+  await expect(banner.getByRole("heading")).toHaveText("Ended: the agent reported it complete. Not verified complete.");
+  await expect(page.getByText("Verified complete", { exact: true })).toHaveCount(0);
+});
+
+test("conversation view: each pane follows the newest line until the reader scrolls up, then offers Jump to latest", async ({ page }) => {
+  const { connected } = await mockSockets(page);
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  const chat = page.getByRole("list", { name: "Chat transcript" });
+  const pane = page.getByRole("region", { name: "Chat" });
+  const gap = () => chat.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  for (let i = 1; i <= 60; i++) ws.send(ev("user.msg", "kernel", { text: `message ${i}` }));
+  await expect(chat.getByRole("listitem").last()).toHaveText("You: message 60");
+  await expect(chat.getByRole("listitem").last()).toBeInViewport();
+  expect(await gap()).toBeLessThanOrEqual(8);
+  await expect(pane.getByRole("button", { name: "Jump to latest" })).toHaveCount(0);
+
+  await chat.evaluate((el) => el.scrollTo(0, 0));
+  await expect(pane.getByRole("button", { name: "Jump to latest" })).toBeVisible();
+  ws.send(ev("user.msg", "kernel", { text: "message 61" }));
+  await expect(chat.getByRole("listitem").last()).toHaveText("You: message 61");
+  await expect(chat.getByRole("listitem").first()).toBeInViewport(); // the reader's place is kept
+  await pane.getByRole("button", { name: "Jump to latest" }).click();
+  await expect(chat.getByRole("listitem").last()).toBeInViewport();
+  await expect(pane.getByRole("button", { name: "Jump to latest" })).toHaveCount(0);
+  ws.send(ev("user.msg", "kernel", { text: "message 62" }));
+  await expect(chat.getByRole("listitem").last()).toHaveText("You: message 62");
+  await expect(chat.getByRole("listitem").last()).toBeInViewport();
+});
+
+test("?view=engineer shows the six lanes and the God-view; the view links switch in place on one socket", async ({ page }) => {
+  const { urls, connected } = await mockSockets(page);
+  await page.goto(`/?live=${RUN}&view=engineer`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  ws.send(ev("user.msg", "kernel", { text: "hello lanes" }));
+  for (const lane of ["User chat", "Rep", "Fast-U", "Fast-C", "Slow", "Guard"]) await expect(page.getByRole("region", { name: lane })).toBeVisible();
+  await expect(page.getByRole("region", { name: "User chat" }).getByRole("article", { name: /^user\.msg #/ })).toContainText("hello lanes");
+  await expect(page.getByRole("checkbox", { name: "God-view" })).toBeVisible();
+  await expect(page.getByLabel("Status line")).toBeVisible();
+  await shot(page, "live-engineer");
+
+  await page.getByRole("link", { name: "Conversation view" }).click();
+  await expect(page).toHaveURL(`/?live=${RUN}`);
+  await expect(page.getByRole("list", { name: "Chat transcript" })).toContainText("You: hello lanes");
+  await expect(page.getByRole("region", { name: "Fast-U" })).toHaveCount(0);
+  await page.getByRole("link", { name: "Engineer view" }).click();
+  await expect(page).toHaveURL(`/?live=${RUN}&view=engineer`);
+  await expect(page.getByRole("region", { name: "Fast-U" })).toBeVisible();
+  expect(urls).toHaveLength(1);
 });

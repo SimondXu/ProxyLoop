@@ -5,8 +5,9 @@ import { expect, test } from "@playwright/test";
 // PL_EXPECT_KIND (e.g. real_http): the Fast sentence's label must carry that kind.
 const KINDS = process.env.PL_EXPECT_KIND ?? "real_http|recorded_replay|test_fake|baseline";
 
+// The engineer view (?view=engineer): the lanes, the model labels and the prompt drawer, unchanged.
 test("replays a bundle: a Fast sentence with its model label, a Slow tool, a prompt", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?view=engineer");
   const run = page.getByRole("region", { name: "Run" });
   await expect(run.getByRole("list", { name: "Models" }).getByRole("listitem").first()).toBeVisible();
   const timeline = page.getByRole("slider", { name: "Timeline" });
@@ -28,6 +29,40 @@ test("replays a bundle: a Fast sentence with its model label, a Slow tool, a pro
   await expect(drawer.getByLabel("Prompt content")).not.toBeEmpty();
 
   if (process.env.PL_SCREENSHOT) await page.screenshot({ path: process.env.PL_SCREENSHOT, fullPage: true });
+});
+
+type Ev = { type: string; actor: string; payload: Record<string, unknown> };
+
+test("opens in the conversation view: the heard lines at the end, the status line, and the banner iff the run ended", async ({ page }) => {
+  await page.goto("/");
+  const run = page.getByRole("region", { name: "Run" });
+  await expect(run.getByRole("list", { name: "Models" }).getByRole("listitem").first()).toBeVisible();
+  const id = await page.getByRole("combobox", { name: "Run" }).inputValue();
+  const events = (await (await page.request.get(`/api/replay/${id}/events`)).text())
+    .split("\n")
+    .filter((l) => l.trim() !== "")
+    .map((l) => JSON.parse(l) as Ev);
+  await expect(page.getByRole("region", { name: "Fast-U" })).toHaveCount(0);
+  await expect(page.getByLabel("Status line")).toHaveText(/^Status: /);
+  const timeline = page.getByRole("slider", { name: "Timeline" });
+  await timeline.fill((await timeline.getAttribute("max")) ?? "0");
+
+  const heard = (lane: string) =>
+    events.filter((e) => e.type === "utt.delivered" && e.actor === "kernel" && e.payload.lane === lane).map((e) => String(e.payload.text_heard));
+  const said = events.filter((e) => e.type === "user.msg" && e.actor === "kernel").map((e) => String(e.payload.text));
+  const chat = page.getByRole("list", { name: "Chat transcript" }).getByRole("listitem");
+  const call = page.getByRole("list", { name: "Call transcript" }).getByRole("listitem");
+  await expect(chat).toHaveCount(said.length + heard("user").length);
+  for (const text of [...said, ...heard("user")]) await expect(chat.filter({ hasText: text }).first()).toBeVisible();
+  for (const text of heard("cp")) await expect(call.filter({ hasText: text }).first()).toBeAttached();
+  const ended = events.find((e) => e.type === "session.ended" && e.actor === "kernel");
+  if (ended) {
+    await expect(page.getByLabel("Status line")).toHaveText(/^Session ended: /);
+    await expect(page.getByRole("region", { name: "Outcome" })).toContainText(`Reason: ${String(ended.payload.reason)}`);
+  } else {
+    await expect(page.getByRole("region", { name: "Outcome" })).toHaveCount(0);
+  }
+  if (process.env.PL_SHOTS) await page.screenshot({ path: `${process.env.PL_SHOTS}/replay-conversation.png`, fullPage: true });
 });
 
 // The decoys tests/web/wiring_server.py builds under its tmp root (AGENTS rule 11).
