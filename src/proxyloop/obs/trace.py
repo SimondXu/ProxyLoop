@@ -47,7 +47,7 @@ TOOL_NAMES = frozenset(
     {"act", "ask_user", "tell_user", "wait", "guide_fast", "record_fact",
      "record_offer", "share_fact", "request_approval", "accept_offer",
      "decline_offer", "propose_mandate", "tighten_mandate", "revoke",
-     "check_account", "finish"}
+     "check_account", "start_call", "finish"}
 )  # fmt: skip
 # Defence in depth: an allow-listed string is an identifier or it is dropped.
 _TOKEN = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
