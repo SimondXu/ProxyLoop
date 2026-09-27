@@ -40,6 +40,8 @@ PRIVATE = [  # (message, value): not a standalone token of the user's words
     ("costs $“4821”, ok", "4821"),
     ("costs $(4821), ok", "4821"),
     ("costs $(4821) ok", "4821"),
+    ('costs $"4821" ok', "4821"),  # public on main (#162 review)
+    ("x(4821)", "4821"),  # public on main (#162 review)
     ("ending in 4821)).", "4821"),  # one closer at most
     ("ending in 4821),.", "4821"),  # one mark at most
     ("ending in 4821.)", "4821"),  # the closer comes before the mark
