@@ -10,6 +10,12 @@ missing or of another type drops the frame. It tails ``events.jsonl`` like
 /ws/live (same close codes, ``from_seq``), plus 4403: the rep's signed cookie
 pair is required (the Origin is checked by ``serve.api``), and a user cookie
 never opens it.
+
+Threat model: on this single-machine 127.0.0.1 server the user/rep split
+guards only against cross-site requests and bugs in the web code, not against
+a hostile local rep. ``GET /live`` needs no authentication, and ``/ws/live``
+and ``/api/replay`` need no cookie, so no claim may say the rep is isolated.
+Real rep isolation (a separate host, or authentication) comes later.
 """
 
 from __future__ import annotations

@@ -9,9 +9,10 @@ known case; else 403 ``{"error": "origin" | "csrf"}`` or 404:
   (case, approval id), then ``guard.decide`` as a pre-check on the kernel's
   current blackboard. A Denial is 409 ``already_decided`` or ``stale`` (with
   the reason) and calls nothing: no event. Success hands the post to the
-  kernel once (``Case.post_approval``, which emits ``approval.post``); the
-  kernel re-runs ``guard.decide`` and emits ``approval.decided`` itself. The
-  endpoint never decides, mints or emits a decision (I6).
+  kernel once (``Case.post_approval``) and returns 200: "posted", not
+  "decided" (the kernel decides; see ``Case.post_approval``). If the handover
+  raises, 503 ``unavailable``, and that approval id stays 503 (fail closed).
+  The endpoint never decides, mints or emits a decision (I6).
 - ``POST /api/cases/{case}/messages`` (user) and ``/rep`` (the human rep):
   text into the case's user-lane and cp-lane ingress.
 
@@ -19,14 +20,21 @@ A Denial does not use up the single-use slot: only a post handed to the kernel
 does. ``guard.decide`` is a pure function of the board, so a later POST is
 judged afresh, and a malformed or early POST cannot burn a valid card. Mandate
 posts have no route here.
+
+Threat model: on this single-machine 127.0.0.1 server the user/rep split
+guards only against cross-site requests and bugs in the web code, not against
+a hostile local rep. ``GET /live`` needs no authentication, and ``/ws/live``
+and ``/api/replay`` need no cookie, so no claim may say the rep is isolated.
+Real rep isolation (a separate host, or authentication) comes later.
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Annotated, Protocol
+from typing import Annotated, Literal, Protocol
 
 from fastapi import FastAPI, Request
 from fastapi import Path as Param
@@ -43,6 +51,7 @@ from proxyloop.serve.csrf import HEADER, Csrf, Role
 TEXT_MAX = 4_000  # characters in one chat message or rep line
 PAGES: dict[Role, str] = {"user": "live", "rep": "rep"}
 Id = Annotated[str, Param(pattern=RUN_ID)]
+_log = logging.getLogger(__name__)
 
 
 class Case(Protocol):
@@ -62,8 +71,20 @@ class Case(Protocol):
         ...
 
     def post_approval(self, post: ApprovalPost) -> None:
-        """Queue ``post`` for the kernel, which emits ``approval.post`` (actor
-        ``ui``), re-runs ``guard.decide`` and emits ``approval.decided``."""
+        """Only enqueue ``post``; serve's 200 means "posted", not "decided".
+        On its own loop the kernel re-runs ``guard.decide(bb, post, "ui")`` on
+        the board at that point:
+
+        - success: emit ``approval.post`` (actor ``ui``), then
+          ``approval.decided`` (actor ``kernel``) citing that post;
+        - Denial: the fold refuses a stale ``approval.post``, so instead emit
+          the restrict-only ``action.denied{intent: "approval.post", reason:
+          <decide's reason>}`` (actor ``kernel``) citing a legal cause (e.g.
+          the refused card's ``approval.requested``), and wake Slow.
+
+        Either way the user's click leaves an event. (Should the contract
+        refuse such an ``action.denied``, that is an L-CORE fold change.)
+        Raising here makes serve answer 503 ``unavailable``."""
         ...
 
     def user_message(self, text: str) -> None:
@@ -126,7 +147,8 @@ async def open_case(
 def add_case_routes(
     app: FastAPI, roots: Sequence[Path], cases: Cases | None, csrf: Csrf
 ) -> None:
-    posted: set[tuple[str, str]] = set()  # (case_id, approval_id) handed over
+    # (case_id, approval_id) -> handed over, or the handover raised
+    slots: dict[tuple[str, str], Literal["posted", "failed"]] = {}
     app.add_exception_handler(Refused, _refused)
 
     async def known(case_id: str) -> Case:
@@ -168,7 +190,9 @@ def add_case_routes(
         body = await parse(request, ApprovalBody)
         # No await from here on: concurrent POSTs cannot interleave.
         key = (case_id, approval_id)
-        if key in posted:  # handed over; the board may not show it yet
+        if slots.get(key) == "failed":
+            raise Refused(503, "unavailable")
+        if key in slots:  # handed over; the board may not show it yet
             raise Refused(409, "already_decided")
         post = ApprovalPost(
             subject="approval",
@@ -181,8 +205,13 @@ def add_case_routes(
         if isinstance(got, Denial):
             error = "already_decided" if got.reason == "already_decided" else "stale"
             raise Refused(409, error, got.reason)
-        posted.add(key)
-        case.post_approval(post)
+        slots[key] = "posted"
+        try:
+            case.post_approval(post)
+        except Exception as err:  # loud: logged, 503, and the id stays refused
+            slots[key] = "failed"
+            _log.exception("post_approval failed for %s/%s", case_id, approval_id)
+            raise Refused(503, "unavailable") from err
         return JSONResponse({"status": "posted"})
 
     @app.post("/api/cases/{case_id}/messages")

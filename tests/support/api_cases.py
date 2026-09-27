@@ -36,12 +36,15 @@ class ApiCase:
         self.messages: list[str] = []
         self.utterances: list[str] = []
         self._last: str | None = None
+        self.unavailable = False  # post_approval raises, as a dead kernel would
 
     # The Case protocol.
     def blackboard(self) -> Blackboard:
         return self.bus.bb
 
     def post_approval(self, post: ApprovalPost) -> None:
+        if self.unavailable:
+            raise RuntimeError("the case's kernel is gone")
         self.posts.append(post)
         self.emit("approval.post", post.model_dump(mode="json"), "ui", causes=())
 

@@ -237,6 +237,33 @@ def test_concurrent_posts_make_exactly_one_post(live: Live) -> None:
     assert len(live.case.posts) == 1 and live.case.posted() == 1
 
 
+def test_a_failed_handover_is_503_and_stays_503(live: Live) -> None:
+    card, hdrs = live.case.card(), headers(login(live.http, "user", CASE))
+    live.case.unavailable = True
+    for _ in range(2):  # the retry too: unavailable, not already_decided
+        got = approve(live, card, hdrs)
+        assert (got.status_code, got.json()) == (503, {"error": "unavailable"})
+    live.case.unavailable = False  # fail closed even once the case is back
+    assert approve(live, card, hdrs).status_code == 503
+    assert live.case.posts == [] and live.case.posted() == 0
+
+
+def test_a_decided_card_is_refused_by_guard_on_a_fresh_app(live: Live) -> None:
+    card = live.case.card()
+    sub = {"subject": "approval", "subject_id": card.approval_id}
+    sub |= {"decision": "granted", "subject_hash": card.terms_hash}
+    sub |= {"authority_epoch": 0}
+    sent = live.case.emit("approval.post", sub, "ui", causes=())
+    decided = {"approval_id": card.approval_id, "decision": "granted", "by": "ui"}
+    live.case.emit("approval.decided", decided, "kernel", causes=[sent.event_id])
+    fresh = client(live.root, cases=live.cases.get)  # an empty single-use set
+    url = f"/api/cases/{CASE}/approvals/{card.approval_id}"
+    got = post(fresh, url, body(card), headers(login(fresh, "user", CASE)))
+    assert got.status_code == 409
+    assert got.json() == {"error": "already_decided", "reason": "already_decided"}
+    assert live.case.posts == []  # post_approval never called
+
+
 BAD_BODY: dict[str, dict[str, object]] = {
     "extra field": {"approved": True},
     "short hash": {"terms_hash": "abc"},
