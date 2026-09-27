@@ -1,7 +1,7 @@
 {
   "schema": "pl.bundle/1",
-  "run_id": "20260926T234834Z-529d8d",
-  "git_sha": "dbba6323fda633183559170828d7e6bfc3a75955",
+  "run_id": "20260927T085615Z-aef83b",
+  "git_sha": "e07cd0124d129839f02f7865206d1996897a1b0c",
   "contract_version": "v1",
   "cfg": {
     "fast_user": {
@@ -49,17 +49,17 @@
     },
     "seed": 7,
     "ablations": [],
-    "slow_view": "relay_only",
+    "slow_view": "transcript",
     "teacher": null,
     "live": false
   },
-  "cfg_hash": "3431540110a8cc79b6557b1be2f728fd5194c3e1338bf0105420c2d8977eeb8f",
+  "cfg_hash": "b9282387eabb431fa8ca68bf604768ee74a523f8fbdbdc8258582d5922b3b368",
   "task_ref": "cp-direct-discount@1",
   "instance_hash": "96e159511f5696cc322928a8ec2f19d961b6b7977dafc18cc2838cede70acce5",
   "split": "train",
   "fingerprints": {
     "pl_user_v1": "796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb",
-    "pl_cp_v1": "76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490"
+    "pl_cp_v2": "ccc12390de8519ce8273c37267e9f46dc932e7a2d0a20bf5f7204fd3da9d0ab2"
   },
   "models": {
     "slow": {
