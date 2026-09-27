@@ -260,7 +260,11 @@ def _unconfirmed(x: Inputs) -> Value:
         if not any(o is last for _, o in asked.get(ref, [])):
             unasked.append(safe(ref))
             continue
-        left = [safe(f) for f, s in _statuses(x, last).items() if s != "confirmed"]
+        left = [  # "fee:<suffix>" → "fee": the suffix is Slow's choice
+            safe(f.partition(":")[0])
+            for f, s in _statuses(x, last).items()
+            if s != "confirmed"
+        ]
         out[f"{safe(ref)}@{last.payload['revision']}"] = left
     count = sum(map(len, out.values()))
     passed = None if unasked else not count

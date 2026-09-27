@@ -75,9 +75,10 @@ def h5_bundle(root: Path) -> Path:
     _tool(log, "guide_fast", False, start, args={"move": "cite_competitor"})  # 17
     _tool(log, "share_fact", False, start, args={"key": "tenure_years"})  # 18
     _tool(log, "share_fact", False, start, args={"key": "account.last4"})  # 19
-    o1 = _offer(log, "o1", ("monthly_price", "expires"), start)  # 20
+    o1 = _offer(log, "o1", ("monthly_price", "expires", "fee:PRIV9"), start)  # 20
     _readback(log, o1, "offer:o1.monthly_price")  # 21: ask 1
     statuses: P = {"monthly_price": "confirmed", "expires": "heard"}
+    statuses["fee:PRIV9"] = "heard"  # listed as "fee"
     update: P = {"offer_ref": "o1", "revision": 1, "slot_statuses": statuses}
     log.add("readback.updated", "guard", "agent", update, (o1,))  # 22
     _readback(log, o1, "offer:o1.expires")  # 23: ask 2
@@ -134,9 +135,10 @@ def test_every_h5_detector_equals_the_hand_count(tmp_path: Path) -> None:
             "by": {"cite_competitor": 1, "tenure_years": 1},
         },
         "slow.finish_before_offer": {"count": 0, "seq": 35},
-        # o1's expires is still "heard"; o2 was never read back
+        # o1's expires and fee (shown without Slow's suffix) are still
+        # "heard"; o2 was never read back
         "offer.required_unconfirmed_after_readback": {
-            "count": 1, "offers": {"o1@1": ["expires"]}, "unasked": ["o2"],
+            "count": 2, "offers": {"o1@1": ["expires", "fee"]}, "unasked": ["o2"],
             "unasked_n": 1, "h5_pass": None,  # o2 may be info_only: unknown
         },
         # 21, 23 and 24 all went out while expires was unconfirmed

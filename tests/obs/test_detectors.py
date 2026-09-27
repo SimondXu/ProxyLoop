@@ -163,7 +163,10 @@ def test_eval_never_imports_obs() -> None:
         assert "proxyloop.obs" not in path.read_text("utf-8"), path
 
 
-def test_hold_repeats_is_none_without_the_key(tmp_path: Path) -> None:
-    log = Log("rC")
-    log.add("session.ended", "kernel", "ops", {"reason": "done", "counts": {}})
-    assert _values(write(tmp_path / "rC", log, manifest("rC")))["hold_repeats"] is None
+def test_hold_repeats_missing_key_is_zero_missing_counts_none(tmp_path: Path) -> None:
+    ends: list[tuple[str, dict[str, object]]] = [("rC", {"counts": {}}), ("rN", {})]
+    for run_id, end in ends:
+        log = Log(run_id)
+        log.add("session.ended", "kernel", "ops", {"reason": "done"} | end)
+        values = _values(write(tmp_path / run_id, log, manifest(run_id)))
+        assert values["hold_repeats"] == (0 if end else None), run_id
