@@ -125,7 +125,7 @@ def test_a_long_line_keeps_its_head_and_tail() -> None:
 @pytest.mark.parametrize(
     ("lane", "said"),
     [
-        ("user", "请帮我把月费降到五十美元以下，" * 25),  # 375 CJK: 6 chars each
+        ("user", "请帮我把月费降到五十美元以下\uff0c" * 25),  # 375 CJK: 6 chars each
         ("cp", "\U0001f600" * 480),  # 480 emoji: 12 chars each (a surrogate pair)
         ("cp", "é" * 1_000),
     ],
