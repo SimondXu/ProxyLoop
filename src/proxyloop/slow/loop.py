@@ -150,7 +150,8 @@ class SlowLoop:
             role="assistant", content=resp.text, tool_calls=resp.tool_calls
         )
         self._results = [
-            (c.call_id, self.tools.act(c, causes)) for c in resp.tool_calls
+            (c.call_id, self.tools.act(c, causes, basis=basis["basis_seq"]))
+            for c in resp.tool_calls
         ]
         filtered = resp.record.finish_reason == "content_filter"  # S1-SYS-28
         if filtered:  # counted, never retried; any tool calls ran as usual

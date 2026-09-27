@@ -68,7 +68,7 @@ def test_a_closing_confirmation_completes_the_case(tmp_path: Path) -> None:
         step = next(
             e
             for e in sim.of("slow.step.started")
-            if "call_closed" in e.payload["wake_reasons"]
+            if "call_closed" in str(e.payload["wake_reasons"])
         )
         assert int(str(step.payload["basis_seq"])) > said.seq
         (evidence,) = sim.of("evidence.recorded")

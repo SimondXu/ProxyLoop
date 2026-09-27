@@ -5,6 +5,7 @@ ledger lacks is refused. ``relay_only`` ignores ``utt_ref`` (relays only)."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from tests.slow.test_authority import (
 )
 
 from proxyloop.contract.events import Event
+from proxyloop.contract.llm import ToolCall
 from proxyloop.contract.state import CaseStatus
 
 SAID = "Done, the offer is accepted. Your confirmation number is 482913."
@@ -111,4 +113,19 @@ def test_relay_only_ignores_the_cited_line(tmp_path: Path) -> None:
     (account,) = h.act(check())
     assert "no such confirmation relayed: '482913'" in account
     assert not h.of("evidence.recorded")
+    h.bus.close()
+
+
+def test_a_line_after_the_steps_view_is_refused(tmp_path: Path) -> None:
+    """Review N2: Slow may cite only a line its step was shown (the line's
+    seq at or before the step's basis)."""
+    h = accepted(tmp_path)
+    done = _confirmed_by_the_rep(h)
+    body = json.dumps({"private_summary": "d", "calls": [check()]})
+    call = ToolCall(call_id="c", name="act", arguments=body)
+    early = h.tools.act(call, [h.root.event_id], basis=done.seq - 1)
+    assert "rep line cp-3 came after your view" in early
+    assert not h.of("evidence.recorded")
+    seen = h.tools.act(call, [h.root.event_id], basis=done.seq)
+    assert "482913 binds the accepted terms" in seen
     h.bus.close()

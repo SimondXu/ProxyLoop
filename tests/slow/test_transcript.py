@@ -134,7 +134,9 @@ def test_a_long_line_keeps_its_head_and_tail() -> None:
 def test_a_long_non_ascii_line_is_shown_cut_never_omitted(lane: str, said: str) -> None:
     """Review M1: the cap bounds the escaped row, so a line of any script is
     shown (head and tail), never dropped as too long."""
-    one = {"user": (), "cp": (), lane: (user("x-1", said),)}
+    one = (
+        lanes([user("x-1", said)]) if lane == "user" else lanes(cp=[user("x-1", said)])
+    )
     text, cursor = render(one, Cursor())
     (row,) = rows(text)
     assert row[2] == "x-1" and len(row[4]) <= ROW_CHARS

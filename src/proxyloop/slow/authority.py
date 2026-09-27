@@ -205,10 +205,12 @@ def check_account(
     relays: Sequence[FastToSlow],
     events: Sequence[Event],
     cited: str | None = None,
+    seen: int | None = None,
 ) -> Result:
     """``Ledger.lookup(conf)`` for a confirmation id the rep said: in the rep
     line ``cited`` (``transcript`` mode, ADR-0016), else in a cp relay FastC
-    sent Slow (I5: Slow looks up only an id it was told). Its binding is
+    sent Slow (I5: Slow looks up only an id it was told; a cited line must be
+    at or before ``seen``, the step's basis, when given). Its binding is
     recorded once as evidence, hashed as the accepted offer's revision; while
     the case is COMMITTED, that evidence moves it to EVIDENCE_PENDING, whenever
     it was recorded. ``verify_completion`` compares the hashes."""
@@ -220,7 +222,11 @@ def check_account(
             return no(f"{cited!r} is no rep line: cite the REP line that said {conf}")
         if not conf or not said.search(line.text):
             return no(f"rep line {cited} does not say {conf!r}: cite it as said")
-        heard = [e for e in (last(events, "utt.final", "utt_id", cited),) if e]
+        said_at = [e for e in events if e.type == "utt.final" and e.payload.get(
+            "utt_id") == cited]  # fmt: skip
+        if seen is not None and said_at[-1].seq > seen:
+            return no(f"rep line {cited} came after your view: cite a line shown")
+        heard = [said_at[-1].event_id]
     else:
         told = [
             r for r in relays
