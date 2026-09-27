@@ -626,6 +626,7 @@ dev = [
 mod = [
     { name = "httpx" },
     { name = "modal" },
+    { name = "pyyaml" },
     { name = "starlette" },
 ]
 sys = [
@@ -650,6 +651,7 @@ dev = [
 mod = [
     { name = "httpx", specifier = "==0.28.1" },
     { name = "modal", specifier = "==1.5.5" },
+    { name = "pyyaml", specifier = "==6.0.3" },
     { name = "starlette", specifier = "==1.7.0" },
 ]
 sys = [
