@@ -44,9 +44,29 @@ LEXICON: dict[str, tuple[str, ...]] = {
                "good for", "available until"),
     "no_expiry": ("no expiry", "no expiration", "does not expire", "doesn't expire",
                   "never expires", "no deadline"),
-    "closing": ("best and final", "final offer", "cannot do better",
-                "can't do better", "no better", "nothing more", "transfer",
-                "goodbye", "ending the call"),
+    "closing": (  # regex sources: the rep's final position, or the call's end
+        r"best and final", r"final offer",  # names the offer as the last one
+        # refuses to improve on the offer ("I cannot do any better")
+        r"(?:cannot|can't|can not|unable to|not able to) (?:do|go|offer) "
+        r"(?:any(?:thing)? )?(?:better|lower)",
+        # states the offer is the best there is ("that is our best offer")
+        r"is (?:already |really |still )?(?:our|my|the) (?:absolute |very )?best "
+        r"(?:available )?(?:offer|rate|price|deal)",
+        r"no better", r"nothing more",  # nothing beyond the offer
+        r"transfer",  # hands the call on: this rep's position ends
+        r"goodbye", r"ending the call", r"have a (?:great|good|nice) day",  # farewell
+    ),
+    # before a closing cue in its clause: a condition, a hedge, a check still to
+    # make or someone else's (or an earlier) words, not the rep's position now
+    "unsure": ("if", "whether", "see", "check", "think", "sure", "said", "told",
+               "maybe", "might", "may", "earlier", "confirm", "verify", "believe",
+               "guess", "perhaps", "probably", "whichever"),
+    # after a closing cue in the utterance: a condition, time limit or concession
+    # means the position is not final ("I can't do better unless ...")
+    "unless": ("unless", "until", "without", "yet", "except", "before", "but",
+               "however", "if", "might", "may", "maybe", "check", "though",
+               "although", "supervisor", "manager", "escalate", "approval"),
+    "wh": ("what", "which"),  # right before a cue: "what's the best offer"
 }  # fmt: skip
 ROLE_OF = {  # the role a slot of each field kind must carry
     "monthly_price": "recurring",
@@ -84,13 +104,53 @@ _WORD = re.compile(r"[a-z'-]+")
 
 
 _CUES = {
-    kind: re.compile("|".join(rf"(?<![a-z]){re.escape(c)}(?![a-z])" for c in cues))
+    kind: re.compile(
+        "|".join(
+            rf"(?<![a-z])(?:{c if kind == 'closing' else re.escape(c)})(?![a-z])"
+            for c in cues
+        )
+    )
     for kind, cues in LEXICON.items()
 }
+_SENTENCE = re.compile(r"(?<=[!?])|(?<=\.)(?!\d)")
+_IS = re.compile(r"\b(that|this|it|here|what)'s\b")  # "that's" is "that is"
+_FLOOR = re.compile(r"\s*than\s+\$?\d")  # "can't go lower than 50": a floor
+
+
+def _tokens(text: str) -> set[str]:
+    """Words, with hyphenated ones split too ("double-check" is "check")."""
+    return {p for w in _WORD.findall(text) for p in (w, *w.split("-"))}
 
 
 def has_cue(text: str, kind: str) -> bool:
+    if kind == "closing":
+        return _closing(text)
     return _CUES[kind].search(text.lower()) is not None
+
+
+def _closing(text: str) -> bool:
+    """A closing cue in a sentence that asks nothing (a question states no
+    position), with no negation or ``unsure`` word in its clause before it,
+    no ``wh`` word right before it, no ``unless`` word after it in the rest
+    of the utterance (questions aside), and no ``than <number>`` right after it."""
+    t = _IS.sub(r"\1 is", text.lower().replace("\u2019", "'"))
+    said = [x for x in _SENTENCE.split(t) if not x.rstrip().endswith("?")]
+    for i, sentence in enumerate(said):
+        for m in _CUES["closing"].finditer(sentence):
+            start = max((b.end() for b in _SPLIT.finditer(sentence, 0, m.start())),
+                        default=0)  # fmt: skip
+            words = _WORD.findall(sentence[start : m.start()])
+            before, after = _tokens(sentence[start : m.start()]), sentence[m.end() :]
+            off = set(LEXICON["negation"]) | set(LEXICON["unsure"])
+            if (
+                not (words and words[-1] in LEXICON["wh"])
+                and not any(w in off or w.endswith("n't") for w in before)
+                and not _tokens(" ".join([after, *said[i + 1 :]]))
+                & set(LEXICON["unless"])
+                and not _FLOOR.match(after)
+            ):
+                return True
+    return False
 
 
 def _clauses(text: str) -> list[tuple[int, int, str]]:
