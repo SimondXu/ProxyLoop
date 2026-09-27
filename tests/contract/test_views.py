@@ -11,7 +11,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from proxyloop.contract import views
-from proxyloop.contract.config import SlowViewMode
+from proxyloop.contract.config import SessionConfig, SlowViewMode
 from proxyloop.contract.llm import ChatMessage
 from proxyloop.contract.messages import FastToSlow, Guide, GuideMove, SlowToFast
 from proxyloop.contract.protocol import render_messages
@@ -356,25 +356,40 @@ def _bb_with_relays() -> Blackboard:
     relay = FastToSlow(
         msg_id="f1", lane="user", gen_id="g1", utt_ref="u1", type="NOTE", text="hi"
     )
-    lines = (Line(utt_id="u1", speaker="partner", text="my PIN is 4921"),)
+    user = (Line(utt_id="u1", speaker="partner", text="my PIN is 4921"),)
+    cp = (
+        Line(utt_id="c1", speaker="partner", text="the rep offers $55"),
+        Line(utt_id="c2", speaker="agent", text="I heard $55"),
+    )
     return Blackboard(
         f2s_pending=(relay,),
-        channels={"user": ChannelState(lines=lines), "cp": ChannelState(lines=lines)},
+        channels={"user": ChannelState(lines=user), "cp": ChannelState(lines=cp)},
     )
 
 
-def test_slow_view_is_relay_only_by_default() -> None:
+def test_slow_view_holds_both_transcripts_by_default() -> None:
+    """I5: Slow reads both lanes as heard; ``transcript`` is the default mode."""
+
+    assert SessionConfig.model_fields["slow_view"].default is SlowViewMode.TRANSCRIPT
+    bb = _bb_with_relays()
+    view = view_slow(bb, SlowViewMode.TRANSCRIPT, "brief")
+    assert view.relays == bb.f2s_pending
+    assert view.transcripts == {
+        "user": bb.channels["user"].lines,
+        "cp": bb.channels["cp"].lines,
+    }
+    assert "4921" in view.model_dump_json()
+
+
+def test_relay_only_ablation_holds_no_transcripts() -> None:
+    """A5 (``relay_only``): relays only; a planted transcript value is absent."""
+
     bb = _bb_with_relays()
     view = view_slow(bb, SlowViewMode.RELAY_ONLY, "brief")
     assert view.relays == bb.f2s_pending
     assert view.transcripts == {}
     assert "4921" not in view.model_dump_json()
-
-
-def test_raw_transcript_ablation_adds_both_transcripts() -> None:
-    bb = _bb_with_relays()
-    view = view_slow(bb, SlowViewMode.RAW_TRANSCRIPT, "brief")
-    assert set(view.transcripts) == {"user", "cp"}
+    assert set(SlowViewMode) == {SlowViewMode.TRANSCRIPT, SlowViewMode.RELAY_ONLY}
 
 
 def test_cp_view_rejects_private_fields() -> None:
