@@ -117,7 +117,7 @@ def test_rows_render_through_the_contract_and_pass_p5(evidence: Path):
         "failed": [],
         "dropped_prompt_mismatch": 0,
     }
-    assert doc["fingerprint"] == {p: fingerprint(p) for p in ("pl_cp_v2", "pl_user_v1")}
+    assert doc["fingerprint"] == {p: fingerprint(p) for p in ("pl_cp_v3", "pl_user_v1")}
     assert (
         doc["adapter_name"] == f"Qwen3.5-9B-pl-pt-{doc['fp8']}" and len(doc["fp8"]) == 8
     )
@@ -172,8 +172,8 @@ def test_stale_fingerprint_non_train_and_test_paths_are_never_labels(
 
 
 def test_current_means_the_profiles_the_product_path_renders_with(evidence: Path):
-    """PROFILES keeps the frozen pl_cp_v1; the kernel renders cp with pl_cp_v2 (I3)."""
-    live = {"pl_user_v1", "pl_cp_v2"}
+    """PROFILES keeps the frozen pl_cp_v1; the kernel renders cp with pl_cp_v3 (I3)."""
+    live = {"pl_user_v1", "pl_cp_v3"}
     assert "pl_cp_v1" in PROFILES and set(lanes.PROFILE.values()) == live
     assert pt.current_fingerprints() == {p: fingerprint(p) for p in sorted(live)}
     b = bundle(evidence, "cp")

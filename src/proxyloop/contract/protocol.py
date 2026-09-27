@@ -32,6 +32,7 @@ from proxyloop.contract.profiles import (
     SectionKind,
     pl_cp_v1,
     pl_cp_v2,
+    pl_cp_v3,
     pl_user_v1,
 )
 from proxyloop.contract.state import OfferPublic, ReadbackSlot
@@ -44,7 +45,15 @@ OMITTED_LINES = "(earlier conversation omitted)"
 OMITTED_ACTIONS = "- (earlier actions omitted)"
 
 PROFILES: Mapping[str, Profile] = MappingProxyType(
-    {p.name: p for p in (pl_user_v1.PROFILE, pl_cp_v1.PROFILE, pl_cp_v2.PROFILE)}
+    {
+        p.name: p
+        for p in (
+            pl_user_v1.PROFILE,
+            pl_cp_v1.PROFILE,
+            pl_cp_v2.PROFILE,
+            pl_cp_v3.PROFILE,
+        )
+    }
 )
 _BLOCKS: frozenset[SectionKind] = frozenset(
     {"actions", "offers", "guidance", "transcript"}
@@ -220,6 +229,8 @@ def fingerprint(profile: str) -> str:
     if not spec.p2_ids_sha256:
         raise ValueError(f"profile {profile} has no recorded P2 ids")
     body = dataclasses.asdict(spec)
+    if not spec.pause_ends_speech:  # a grammar flag is hashed only when set, so
+        del body["pause_ends_speech"]  # the profiles before it keep their prints
     body["budget"] = CONTEXT_BUDGET_CHARS
     body["empty_think"] = EMPTY_THINK
     return sha256_text(canonical_json(body))
@@ -257,6 +268,7 @@ IssueReason = (
     Literal["wrong_lane", "unknown_directive", "bad_hold_reason", "duplicate_pause"]
     | Literal["malformed_fact", "malformed_relay", "empty_turn", "duplicate_end_call"]
     | Literal["stray_directive", "inline_directive", "scaffold_echo"]
+    | Literal["speech_after_pause"]  # pause_ends_speech profiles (ADR-0017)
 )
 
 
@@ -328,10 +340,20 @@ def _pairs(text: str) -> tuple[tuple[str, str], ...] | None:
 
 
 class StreamParser:
-    """Feed model text as it streams; sentences come out as soon as they close."""
+    """Feed model text as it streams; sentences come out as soon as they close.
 
-    def __init__(self, lane: Lane) -> None:
+    ``profile`` names the grammar: a ``pause_ends_speech`` profile (ADR-0017)
+    turns every non-directive line after an emitted ``Hold``/``Wait`` into one
+    ``speech_after_pause`` issue. Without a profile, or with one that has no
+    grammar flag, the grammar is the base one.
+    """
+
+    def __init__(self, lane: Lane, profile: str | None = None) -> None:
+        spec = PROFILES[profile] if profile is not None else None
+        if spec is not None and spec.lane != lane:
+            raise ValueError(f"profile {profile} parses the {spec.lane} lane")
         self._lane = lane
+        self._pause_ends_speech = spec is not None and spec.pause_ends_speech
         self._buf = ""
         self._emitted = 0  # sentences of the current line already returned
         self._paused = False  # one @hold / @wait per turn
@@ -364,6 +386,9 @@ class StreamParser:
         text = raw.strip()
         if text.startswith("@") and not _SLOW.match(text):
             return self._directive(text) if final else []
+        if self._paused and self._pause_ends_speech and not text.startswith("@"):
+            late = final and text  # the whole line, once it is complete
+            return [ParseIssue(reason="speech_after_pause", text=text)] if late else []
         parts = _SLOW.split(text)
         spoken, cut = _clean(parts[0])
         sentences = [] if spoken.startswith("@") else _BREAK.split(spoken)
@@ -428,8 +453,10 @@ class StreamParser:
         return note
 
 
-def parse_turn(text: str, lane: Lane) -> tuple[TurnItem, ...]:
-    parser = StreamParser(lane)
+def parse_turn(
+    text: str, lane: Lane, profile: str | None = None
+) -> tuple[TurnItem, ...]:
+    parser = StreamParser(lane, profile)
     return (*parser.feed(text), *parser.close())
 
 

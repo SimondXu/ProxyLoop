@@ -31,4 +31,4 @@ def _dispatched() -> set[str]:
 def test_the_tool_names_match_slow() -> None:
     dispatched = _dispatched()
     assert dispatched == set(TOOLS)  # the parse found every tool Slow offers
-    assert dispatched | {"act"} == trace._TOOLS  # pyright: ignore[reportPrivateUsage]
+    assert dispatched | {"act"} == trace.TOOL_NAMES
