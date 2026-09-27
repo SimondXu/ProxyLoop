@@ -44,17 +44,38 @@ def test_file_symlink_bypass(sealed_priced: Path) -> None:
     assert rows == [("rZ", "sealed", None)]
 
 
-def test_hard_link_bypass(sealed_priced: Path, tmp_path: Path) -> None:
-    z = sealed_priced / "runs" / "rZ"
+def test_hard_link_bypass(tmp_path: Path) -> None:
+    """attack2.py: the sealed rH hard-linked into runs/rZ, then read from every
+    root the reviewer tried; rH's 777 must never be read or priced."""
+    five = Usage(prompt_tokens=5, completion_tokens=5)
+    repo = tmp_path / "repo"
+    ev = repo / "evidence"
+    h, w = Log("rH"), Log("rW")
+    h.call("slow", SONNET, five, "tokens", 777)
+    w.call("slow", SONNET, five, "tokens", 5)
+    for log in (h, w):
+        log.end("done")
+    write(ev / "s4" / "test" / "rH", h, manifest("rH"))
+    write(ev / "s1" / "rW", w, manifest("rW"))
+    z = repo / "runs" / "rZ"
     z.mkdir(parents=True)
     for name in ("manifest.json", "events.jsonl", "prompts.jsonl"):
-        os.link(sealed_priced / "evidence" / "s4" / "test" / "rH" / name, z / name)
-    rows = index([z.parent])
-    assert [(r.run_id, r.status, r.error) for r in rows] == [
-        ("rZ", "sealed", "hard-linked file")
-    ]
-    report = spend.report(rows, None, None, {"gpu_usage": None})
-    assert "777" not in json.dumps(report)
+        os.link(ev / "s4" / "test" / "rH" / name, z / name)
+    (repo / "lnk").symlink_to(ev / "S4")
+
+    def seen(*roots: Path) -> list[tuple[str, str, int | None]]:
+        rows = index(list(roots))
+        assert "777" not in json.dumps(spend.report(rows, None, None, {}))
+        return [(r.run_id, r.status, r.priced_micro_usd) for r in rows]
+
+    sealed = ("rZ", "sealed", None)
+    assert seen(repo / "runs") == [sealed]
+    assert index([repo / "runs"])[0].error == "hard-linked file"
+    assert seen(tmp_path) == seen(repo) == [("rW", "ok", 5), sealed]
+    assert seen(ev / "s4") == []
+    assert seen(repo / "lnk") == []  # a directory symlink to S4
+    with pytest.raises(ValueError, match="rule 11"):
+        index([ev / "s4" / "x" / ".." / "TEST"])
 
 
 def test_crashed_run_is_not_complete(tmp_path: Path) -> None:
