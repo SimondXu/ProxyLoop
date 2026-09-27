@@ -584,3 +584,12 @@ def test_identity_strikes_apply_in_rep_chat(tmp_path: Path) -> None:
     assert len([e for e in events if e.type == "chan.strike"]) == 3
     last = [e for e in events if e.type == "rep.policy"][-1]
     assert (last.payload["from"], last.payload["to"]) == ("IDENTIFY", "ENDED")
+
+
+def test_a_read_back_says_an_absence_as_words() -> None:
+    say = (("monthly_price", "62.00"), ("fees_none", "true"))
+    say += (("changes_none", "true"), ("expires", "none"))
+    intent = PublicIntent(kind="readback", offer_ref="promo-2", say=say)
+    assert template(intent, "Lumen").endswith(
+        "monthly price: 62.00; no fees; no other changes; no expiry."
+    )

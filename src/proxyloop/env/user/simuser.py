@@ -9,13 +9,24 @@ message: ``{silent: true, revealed: {}}`` sends nothing (no ``user.sim``; its
 per reply from the task's range; the kernel delivers the reply ``delay_s``
 after the agent's message, on the wall clock. There is no patience and no
 strike.
+
+A ``full`` task's principal also has an approval button, ``approver`` (see
+``approver.py``). The task's ``stop`` fires once, in the reply to the first
+agent message at which its trigger holds: the k-th agent message
+(``after_turn_k``), one that says an offer's monthly price (``after_offer``),
+or any message after the approver saw a card (``after_card``). That reply is
+generated from ``text_hint``, cannot be silent, must reveal every changed fact
+of a mind change, and its ``user.sim`` carries ``stop: stop|mind_change`` (the
+world truth for EVAL §7). From then on the approver denies everything after a
+stop, and uses the changed facts after a mind change.
 """
 
 from __future__ import annotations
 
 import random
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Self
 
 from pydantic import ConfigDict, Field, ValidationError, model_validator
@@ -29,7 +40,8 @@ from proxyloop.contract.llm import (
     ToolSpec,
 )
 from proxyloop.env import world
-from proxyloop.env.tasks.schema import Task
+from proxyloop.env.tasks.schema import Stop, Task
+from proxyloop.env.user.approver import Approver
 
 TEMPERATURE = 0.7  # pinned: persona variety; the reveal check guards the facts
 SYSTEM = """You are {persona}
@@ -69,7 +81,10 @@ class SimReply:
 
 
 def check_reply(
-    calls: tuple[ToolCall, ...], facts: Mapping[str, str], opening: bool = False
+    calls: tuple[ToolCall, ...],
+    facts: Mapping[str, str],
+    opening: bool = False,
+    stop: Collection[str] | None = None,  # a stop: the changed facts to reveal
 ) -> SimOut:
     if len(calls) != 1 or calls[0].name != "reply":
         raise world.Invalid("expected exactly one reply call")
@@ -79,6 +94,10 @@ def check_reply(
         raise world.Invalid(f"schema: {err.errors()[0]['msg']}") from err
     if out.silent and opening:
         raise world.Invalid("the opening request cannot be silent")
+    if out.silent and stop is not None:
+        raise world.Invalid("the stop cannot be silent")
+    if missing := sorted(set(stop or ()) - out.revealed.keys()):
+        raise world.Invalid(f"the mind change does not reveal {missing}")
     if unknown := sorted(out.revealed.keys() - facts.keys()):
         raise world.Invalid(f"revealed unknown keys {unknown}")
     if wrong := sorted(k for k, v in out.revealed.items() if v != facts[k]):
@@ -94,10 +113,15 @@ class SimUser:
         self, task: Task, client: LLMClient, writer: world.World, seed: int
     ) -> None:
         self._client, self._world = client, writer
-        self._facts, self._delay = task.profile.facts, task.user.reply_delay_s.range
-        facts = "\n".join(f"{k}: {v}" for k, v in sorted(self._facts.items()))
-        goal, persona = task.user_goal.strip(), task.profile.persona.strip()
-        self._system = SYSTEM.format(persona=persona, goal=goal, facts=facts)
+        self.approver = Approver(task, seed) if task.principal is not None else None
+        self._facts = self.approver.facts if self.approver else dict(task.profile.facts)
+        self._delay = task.user.reply_delay_s.range
+        self._goal, self._persona = task.user_goal.strip(), task.profile.persona.strip()
+        self._stop, self._fired, self._turns = task.stop, False, 0
+        ladder = [o.all_terms for o in task.counterparty.ladder]
+        self._prices = {
+            Decimal(t["monthly_price"]) for t in ladder if "monthly_price" in t
+        }
         revealed: dict[str, object] = {"type": "object", "additionalProperties": False}
         revealed["properties"] = {k: {"type": "string"} for k in sorted(self._facts)}
         silent = {"type": "boolean", "description": "true: send nothing this time"}
@@ -120,11 +144,25 @@ class SimUser:
 
         if text is not None:
             self._chat.append(f"Assistant: {text}")
+            self._turns += 1
+        stop = self._stop if text is not None and self._due(text) else None
+        now = ""
+        if stop is not None:
+            self._fired = True
+            if self.approver is not None:
+                self.approver.stop(stop.change)
+            now = f"\n\nNow, in this reply: {stop.text_hint.strip()}"
+            if stop.change:
+                said = "; ".join(f"{k}: {v}" for k, v in sorted(stop.change.items()))
+                now += f" Say your changed facts exactly: {said}."
         chat = "\n".join(self._chat) or "(empty: write your opening request)"
+        facts = "\n".join(f"{k}: {v}" for k, v in sorted(self._facts.items()))
+        system = SYSTEM.format(persona=self._persona, goal=self._goal, facts=facts)
         messages = (
-            ChatMessage(role="system", content=self._system),
-            ChatMessage(role="user", content=f"Chat so far:\n{chat}"),
+            ChatMessage(role="system", content=system),
+            ChatMessage(role="user", content=f"Chat so far:\n{chat}{now}"),
         )
+        reveal = None if stop is None else tuple(stop.change or ())
         call_ids = [f"simuser:{cause}:{n}" for n in range(world.MAX_REGENERATIONS + 1)]
 
         async def attempt(n: int) -> tuple[ToolCall, ...]:
@@ -141,7 +179,7 @@ class SimUser:
 
         out, attempts, _ = await world.bounded(
             attempt,
-            lambda calls: check_reply(calls, self._facts, opening=text is None),
+            lambda calls: check_reply(calls, self._facts, text is None, reveal),
             what="simuser",
             timeout_s=self.timeout_s,
         )
@@ -151,6 +189,18 @@ class SimUser:
         delay = round(self._rng.uniform(*self._delay), 3)
         payload = {"text": out.text, "revealed": out.revealed, "delay_s": delay}
         payload["attempts"] = attempts
+        if stop is not None:
+            payload["stop"] = "stop" if stop.change is None else "mind_change"
         causes = [cause, *self._world.calls(call_ids[:attempts])]
         ev = self._world.emit("user.sim", "world.simuser", payload, causes)
         return SimReply(out.text, out.revealed, delay, ev)
+
+    def _due(self, text: str) -> bool:
+        stop: Stop | None = self._stop
+        if stop is None or self._fired:
+            return False
+        if stop.trigger == "after_turn_k":
+            return self._turns >= (stop.k or 0)
+        if stop.trigger == "after_offer":
+            return bool(world.numbers(text) & self._prices)
+        return self.approver is not None and self.approver.cards_seen > 0
