@@ -31,8 +31,9 @@ from proxyloop.contract.bundle import (
     read_bundle,
 )
 from proxyloop.contract.config import SessionConfig
-from proxyloop.contract.protocol import fingerprint, render_prompt
+from proxyloop.contract.protocol import PROFILES, fingerprint, render_prompt
 from proxyloop.contract.views import FastView
+from proxyloop.kernel import lanes
 from proxyloop.training import pull_through as pt
 from serving import config
 from training_jobs import sft
@@ -116,7 +117,7 @@ def test_rows_render_through_the_contract_and_pass_p5(evidence: Path):
         "failed": [],
         "dropped_prompt_mismatch": 0,
     }
-    assert doc["fingerprint"] == {p: fingerprint(p) for p in ("pl_cp_v1", "pl_user_v1")}
+    assert doc["fingerprint"] == {p: fingerprint(p) for p in ("pl_cp_v2", "pl_user_v1")}
     assert (
         doc["adapter_name"] == f"Qwen3.5-9B-pl-pt-{doc['fp8']}" and len(doc["fp8"]) == 8
     )
@@ -154,7 +155,7 @@ def test_stale_fingerprint_non_train_and_test_paths_are_never_labels(
     stale = tmp_path / "s0" / "stale"
     shutil.copytree(src, stale)
     manifest = json.loads((stale / MANIFEST).read_text("utf-8"))
-    manifest["fingerprints"]["pl_cp_v1"] = "0" * 64
+    manifest["fingerprints"][lanes.PROFILE["cp"]] = "0" * 64  # a recorded profile
     (stale / MANIFEST).write_text(json.dumps(manifest), "utf-8")
     dev = tmp_path / "s0" / "dev"
     shutil.copytree(src, dev)
@@ -168,6 +169,57 @@ def test_stale_fingerprint_non_train_and_test_paths_are_never_labels(
     turns, funnel = pt.select(bundles, FPS)
     assert not turns and funnel["selected"] == 0
     assert funnel["bundle_stale_fingerprint"] == funnel["bundle_not_train"] == 1
+
+
+def test_current_means_the_profiles_the_product_path_renders_with(evidence: Path):
+    """PROFILES keeps the frozen pl_cp_v1; the kernel renders cp with pl_cp_v2 (I3)."""
+    live = {"pl_user_v1", "pl_cp_v2"}
+    assert "pl_cp_v1" in PROFILES and set(lanes.PROFILE.values()) == live
+    assert pt.current_fingerprints() == {p: fingerprint(p) for p in sorted(live)}
+    b = bundle(evidence, "cp")
+    assert b.manifest.fingerprints == pt.current_fingerprints()
+    turns, funnel = pt.select([b], pt.current_fingerprints())
+    assert turns and "bundle_stale_fingerprint" not in funnel
+
+
+def test_a_bundle_rendered_with_the_frozen_cp_profile_is_stale(
+    evidence: Path, tmp_path: Path
+):
+    """pl_cp_v1's fingerprint is unchanged, but the served adapter never sees its
+    prompts: no subset match."""
+    (src,) = (evidence / "cp").iterdir()
+    old = tmp_path / "old"
+    shutil.copytree(src, old)
+    manifest = json.loads((old / MANIFEST).read_text("utf-8"))
+    manifest["fingerprints"] = {p: fingerprint(p) for p in ("pl_cp_v1", "pl_user_v1")}
+    (old / MANIFEST).write_text(json.dumps(manifest), "utf-8")
+    turns, funnel = pt.select(pt.load_bundles(tmp_path), pt.current_fingerprints())
+    assert not turns and funnel["bundle_stale_fingerprint"] == 1
+
+
+def test_a_card_on_every_contract_profile_is_not_current(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    every = {p: fingerprint(p) for p in sorted(PROFILES)}
+    assert every != pt.current_fingerprints()
+    write_run(tmp_path, every)
+    monkeypatch.setattr(pt, "RESULT", tmp_path / "result.json")
+    live = {"ok": True, "complete": True, "mean_abs_diff": 0.5}
+
+    def probe(name: str) -> dict[str, Any]:
+        return {"attested": {"adapter_config.json": "a" * 64}, "liveness": live}
+
+    def no_session(*args: object, **kwargs: object) -> None:
+        raise AssertionError("the product session ran on a stale card")
+
+    monkeypatch.setattr(pt, "probe_slot", probe)
+    monkeypatch.setattr(pt.subprocess, "run", no_session)
+    assert pt.check("full", tmp_path, "cp-direct-discount") == 1
+    doc = json.loads((tmp_path / "pull-through.json").read_text("utf-8"))
+    assert not doc["checks"]["fingerprint_current"] and not pt.RESULT.exists()
+    pt.write(pt.RESULT, pt.adapter_card("full", tmp_path) | {"claim": "none"})
+    with pytest.raises(SystemExit, match="MODE=full"):
+        pt.adapter_card("verify", tmp_path)
 
 
 def test_an_evidence_root_inside_a_sealed_test_dir_is_refused(
