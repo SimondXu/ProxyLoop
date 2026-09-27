@@ -119,7 +119,8 @@ test("approval card: double-clicking Approve sends exactly one POST", async ({ p
   const ws = await connected;
   ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
   ws.send(ev("approval.requested", "guard", CARD));
-  ws.send(ev("approval.requested", "guard", { ...CARD, approval_id: "ap-2", offer_ref: "offer-2" }));
+  const B = { ...CARD, approval_id: "ap-2", offer_ref: "offer-2", terms_hash: "b2b2b2b2b2b2b2b2" };
+  ws.send(ev("approval.requested", "guard", B));
   const approve = (id: string) => page.getByRole("article", { name: `Approval ${id}` }).getByRole("button", { name: "Approve" });
   // Two clicks in one task, before React re-renders and disables the button.
   await approve("ap-1").evaluate((b: HTMLButtonElement) => {
@@ -131,6 +132,12 @@ test("approval card: double-clicking Approve sends exactly one POST", async ({ p
   await expect(approve("ap-2")).toBeDisabled();
   await page.waitForTimeout(300);
   expect(posts.map((p) => p.path).sort()).toEqual([`/api/cases/${RUN}/approvals/ap-1`, `/api/cases/${RUN}/approvals/ap-2`]);
+  // I6 (#136 N5): each card posts its own terms hash and epoch.
+  const body = (id: string) => posts.find((p) => p.path.endsWith(`/${id}`))?.body;
+  expect([body("ap-1"), body("ap-2")]).toEqual([
+    { decision: "granted", terms_hash: CARD.terms_hash, authority_epoch: 2 },
+    { decision: "granted", terms_hash: B.terms_hash, authority_epoch: 2 },
+  ]);
 });
 
 test("a malformed CSRF cookie is a visible error on the card and the chat, and nothing is posted", async ({ page, baseURL }) => {
@@ -153,35 +160,64 @@ test("a malformed CSRF cookie is a visible error on the card and the chat, and n
   expect(posts).toEqual([]);
 });
 
-test("model dropdowns list only real_http models", async ({ page }) => {
+test("the live page shows the session's models read-only, with their kind: they are chosen on the start page", async ({ page }) => {
   const { connected } = await mockSockets(page);
   await page.goto(`/?live=${RUN}`);
   const ev = events();
   (await connected).send(
-    ev(
-      "session.started",
-      "kernel",
-      started({
-        fast_user: ["real_http", "qwen3.5-9b"],
-        fast_cp: ["test_fake", "fast_cp-fake"],
-        slow: ["real_http", "claude-sonnet-5"],
-        ear: ["recorded_replay", "ear-recorded"],
-        mouth: ["baseline", "fsm-baseline"],
-      }),
-      { stream: "ops" },
-    ),
+    ev("session.started", "kernel", started({ fast_user: ["real_http", "qwen3.5-9b"], fast_cp: ["test_fake", "fast_cp-fake"] }), {
+      stream: "ops",
+    }),
   );
-  const pickers = page.getByRole("region", { name: "Models per lane" });
-  const select = (lane: string) => pickers.getByRole("combobox", { name: `${lane} model` });
-  // Fast lanes offer only the fast roles' real_http ids; Slow only slow's; world roles never.
-  await expect(select("Fast-U").locator("option")).toHaveText(["qwen3.5-9b"]);
-  await expect(select("Fast-U")).toBeEnabled();
-  await expect(select("Slow").locator("option")).toHaveText(["claude-sonnet-5"]);
-  await expect(select("Slow")).toHaveValue("claude-sonnet-5");
-  // A test_fake Fast-C never shows a model it is not running: a disabled placeholder.
-  await expect(select("Fast-C").locator("option")).toHaveText(["fast_cp-fake (test_fake): not selectable"]);
-  await expect(select("Fast-C")).toBeDisabled();
-  await expect(pickers).not.toContainText(/recorded|baseline|ear-|fsm-/);
+  const models = page.getByRole("list", { name: "Models" });
+  await expect(models.getByRole("listitem")).toHaveText(["fast_user: real_http qwen3.5-9b", "fast_cp: test_fake fast_cp-fake"]);
+  await expect(page.getByRole("combobox")).toHaveCount(0);
+});
+
+test("the authority strip and the card's read-back progress follow the fixed emitters' events", async ({ page, baseURL }) => {
+  await csrfCookie(page, baseURL);
+  const { connected } = await mockSockets(page);
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  const strip = page.getByRole("region", { name: "Authority" });
+  await expect(strip).toHaveText(/status no status\.changed yet.*fence none.*epoch 0/);
+  ws.send(ev("status.changed", "guard", { previous: "INTAKE", status: "IN_CALL" }));
+  ws.send(ev("readback.updated", "guard", { offer_ref: "offer-1", revision: 1, slot_statuses: { monthly_price: "heard", term_months: "unknown" } }));
+  ws.send(ev("approval.requested", "guard", CARD));
+  ws.send(ev("readback.updated", "guard", { offer_ref: "offer-1", revision: 1, slot_statuses: { monthly_price: "confirmed", term_months: "heard" } }));
+  ws.send(ev("status.changed", "fast.user", { previous: "IN_CALL", status: "VERIFIED_COMPLETE" })); // not Guard: ignored
+  ws.send(ev("authority.fence", "kernel", { op: "raised", fence_id: "fence-1", utt_id: `${RUN}:0` }));
+  ws.send(ev("speak.revoked", "kernel", { lane: "cp", reason: "fence" }));
+  ws.send(ev("action.denied", "kernel", { intent: "accept_offer", reason: "fence_raised" }));
+  ws.send(ev("authority.epoch", "kernel", { new: 2, reason: "f2s_revoke" }));
+  await expect(strip.getByLabel("Case status")).toHaveText("status IN_CALL");
+  await expect(strip.getByLabel("Fence")).toHaveText("fence raised (fence-1)");
+  await expect(strip.getByLabel("Epoch")).toHaveText("epoch 2");
+  await expect(strip.getByLabel("Last revoked")).toHaveText("last speak.revoked fence (kernel)");
+  await expect(strip.getByLabel("Last denied")).toHaveText("last action.denied accept_offer: fence_raised (kernel)");
+  const card = page.getByRole("article", { name: "Approval ap-1" });
+  await expect(card.getByRole("list", { name: "Read-back progress" }).getByRole("listitem")).toHaveText([
+    "monthly_price: confirmed",
+    "term_months: heard",
+  ]);
+  await expect(card.getByLabel("Approval status")).toHaveText("awaiting your decision"); // epoch 2 = the card's
+  await expect(card.getByLabel("Fence note")).toHaveText("fence raised: the accept waits until it clears");
+  await shot(page, "live-strip-mock");
+  ws.send(ev("authority.fence", "kernel", { op: "cleared", fence_id: "fence-1", utt_id: `${RUN}:0` }));
+  await expect(strip.getByLabel("Fence")).toHaveText("fence cleared (fence-1)");
+  await expect(card.getByLabel("Fence note")).toHaveCount(0);
+});
+
+test("a /ws/live frame of another run stops the stream (#136 N4)", async ({ page }) => {
+  const { connected } = await mockSockets(page);
+  await page.goto(`/?live=${RUN}`);
+  const ws = await connected;
+  ws.send(events()("session.started", "kernel", started(REAL), { stream: "ops" }));
+  ws.send(events("other-run")("user.msg", "kernel", { text: "not this run" }, { skip: 1 }));
+  await expect(page.getByRole("alert")).toHaveText(`Stream stopped: frame of run other-run, not ${RUN}`);
+  await expect(page.getByRole("region", { name: "User chat" })).not.toContainText("not this run");
 });
 
 test("user chat posts a message that shows in the lane only when its user.msg arrives", async ({ page, baseURL }) => {
