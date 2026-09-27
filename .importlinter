@@ -55,3 +55,26 @@ forbidden_modules =
     jinja2
     hypothesis
     pytest
+
+[importlinter:contract:fsm-is-not-world]
+name = the FSM talker imports no world module (S1-MOD-01)
+type = forbidden
+source_modules =
+    proxyloop.models.fsm
+forbidden_modules =
+    proxyloop.env
+
+[importlinter:contract:serve-is-read-only]
+name = serve is read-only (ARCHITECTURE section 2)
+type = forbidden
+source_modules =
+    proxyloop.serve
+forbidden_modules =
+    proxyloop.contract.protocol
+    proxyloop.core.bus
+    proxyloop.core.log
+    proxyloop.core.fold
+    proxyloop.kernel
+    proxyloop.llm
+    proxyloop.slow
+    proxyloop.env
