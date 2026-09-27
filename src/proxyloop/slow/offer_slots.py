@@ -40,6 +40,12 @@ TABLE = "; ".join(
 )
 
 
+CITE = (  # run 84f731: Slow cited the line after the offer
+    "Each slot's utt_ref must cite the utt of the rep line that says it; "
+    "money is usd_minor in cents (75.00 → 7500), a term is months"
+)
+
+
 def refused(problems: list[str]) -> str:
     return (
         f"record_offer refused, nothing recorded: {'; '.join(problems)}. "

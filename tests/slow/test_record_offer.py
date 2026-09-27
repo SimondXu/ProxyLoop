@@ -115,3 +115,25 @@ def test_the_fence_hint_names_either_lane() -> None:
     accept; the hint must not say it is only a user message."""
     hint = HINTS["fence_raised"]
     assert "user message" in hint and "rep turn" in hint and "wait" in hint
+
+
+@pytest.mark.parametrize(
+    "said", ["a monthly price of 75.00", "$75 a month", "75 dollars a month"]
+)
+def test_money_binds_to_the_rep_line_that_says_it(said: str) -> None:
+    """Run 84f731 (seq 363): Slow cited cp-8, the line after the offer, so the
+    refusal was right; it now says how to cite and express money. Citing the
+    line that says it binds 7500 cents to "$75" in any spoken form (I4)."""
+    offer = Line(utt_id="cp-7", speaker="partner", text=f"I can offer {said}.")
+    after = Line(utt_id="cp-8", speaker="partner", text="That is the best I can do.")
+    cp = ChannelState(lines=(offer, after))
+    bb = Blackboard(channels={"user": ChannelState(), "cp": cp})
+    price = _slot("monthly_price", "7500", "usd_minor", "recurring")
+    wrong = record_offer(bb, "o1", [price | {"utt_ref": "cp-8"}], 0, NOW)
+    assert not wrong.ok and "monthly_price=7500 is not in rep line cp-8" in wrong.text
+    assert "cite the utt of the rep line that says it" in wrong.text
+    assert "usd_minor in cents (75.00 → 7500)" in wrong.text
+    ((_, denied),) = wrong.effects  # counted as declass, the violation unchanged
+    assert denied["violations"] == ["monthly_price=7500 is not in rep line cp-8"]
+    right = record_offer(bb, "o1", [price | {"utt_ref": "cp-7"}], 0, NOW)
+    assert right.ok, right.text

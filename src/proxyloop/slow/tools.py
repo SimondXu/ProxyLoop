@@ -529,7 +529,8 @@ def record_offer(
         or not _value(s) <= spoken(line, s.unit)
     ]
     if unbound:
-        return no("; ".join(unbound), ("declass.denied", {"violations": unbound}))
+        text = f"{'; '.join(unbound)}. {offer_slots.CITE}"
+        return no(text, ("declass.denied", {"violations": unbound}))
     if bad := [p for s in slots if (p := offer_slots.value(s))]:
         return no(offer_slots.refused(bad))
     prev = bb.public.offers.get(ref)
