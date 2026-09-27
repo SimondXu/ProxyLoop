@@ -92,6 +92,15 @@ NEVER = (
     "That probably is our best offer.",
     "I will give you whichever is the best price.",
     "Let me double-check that this is our best offer.",
+    # a condition or concession in a later sentence of the utterance (round 4)
+    "That is our best offer. However, I can waive the activation fee.",
+    "That is the best offer I can provide. Let me check with my supervisor.",
+    "I cannot do any better on the price. I can, however, add a 10 dollar credit.",
+    "That is our best offer, though I could ask my supervisor for an exception.",
+    "That is our best offer, although I can escalate this to a retention specialist.",
+    "I can't do any better on my own, let me talk to my manager.",
+    "That is our best offer, and I'd need manager approval for anything more.",
+    "That is our best offer, pending supervisor approval.",
 )
 
 

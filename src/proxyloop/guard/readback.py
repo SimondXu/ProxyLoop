@@ -61,10 +61,11 @@ LEXICON: dict[str, tuple[str, ...]] = {
     "unsure": ("if", "whether", "see", "check", "think", "sure", "said", "told",
                "maybe", "might", "may", "earlier", "confirm", "verify", "believe",
                "guess", "perhaps", "probably", "whichever"),
-    # after a closing cue in its sentence: a condition, time limit or concession
+    # after a closing cue in the utterance: a condition, time limit or concession
     # means the position is not final ("I can't do better unless ...")
     "unless": ("unless", "until", "without", "yet", "except", "before", "but",
-               "however", "if", "might", "may", "maybe", "check"),
+               "however", "if", "might", "may", "maybe", "check", "though",
+               "although", "supervisor", "manager", "escalate", "approval"),
     "wh": ("what", "which"),  # right before a cue: "what's the best offer"
 }  # fmt: skip
 ROLE_OF = {  # the role a slot of each field kind must carry
@@ -130,12 +131,11 @@ def has_cue(text: str, kind: str) -> bool:
 def _closing(text: str) -> bool:
     """A closing cue in a sentence that asks nothing (a question states no
     position), with no negation or ``unsure`` word in its clause before it,
-    no ``wh`` word right before it, no ``unless`` word in its sentence after
-    it, and no ``than <number>`` right after it."""
+    no ``wh`` word right before it, no ``unless`` word after it in the rest
+    of the utterance (questions aside), and no ``than <number>`` right after it."""
     t = _IS.sub(r"\1 is", text.lower().replace("\u2019", "'"))
-    for sentence in _SENTENCE.split(t):
-        if sentence.rstrip().endswith("?"):
-            continue
+    said = [x for x in _SENTENCE.split(t) if not x.rstrip().endswith("?")]
+    for i, sentence in enumerate(said):
         for m in _CUES["closing"].finditer(sentence):
             start = max((b.end() for b in _SPLIT.finditer(sentence, 0, m.start())),
                         default=0)  # fmt: skip
@@ -145,7 +145,8 @@ def _closing(text: str) -> bool:
             if (
                 not (words and words[-1] in LEXICON["wh"])
                 and not any(w in off or w.endswith("n't") for w in before)
-                and not _tokens(after) & set(LEXICON["unless"])
+                and not _tokens(" ".join([after, *said[i + 1 :]]))
+                & set(LEXICON["unless"])
                 and not _FLOOR.match(after)
             ):
                 return True
