@@ -243,7 +243,8 @@ class SlowScript:
         status = notes[notes.find("[STATUS]") :]
         # o1 is recorded from the offer, then once more, whole, from a read-back
         offer = re.search(r"o1 r\d+ \(([^)]*)\)", status)
-        new, partial = offer is None, offer is not None and "missing" in offer[1]
+        new = offer is None
+        partial = offer is not None and "required slots not recorded" in status
         for lane, note, utt in _RELAY.findall(notes):
             body = _said_in(note)
             facts = dict(_FACT.findall(body))
