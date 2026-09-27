@@ -34,16 +34,16 @@ test("approval card: appears on approval.requested, Approve posts the contract b
 
   const card = page.getByRole("article", { name: "Approval ap-1" });
   await expect(card.getByLabel("Readback")).toHaveText(CARD.readback_text);
-  await expect(card.getByLabel("Approval status")).toHaveText("awaiting your decision");
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
   // Nothing a model or the user says moves the card.
   ws.send(ev("fast.sentence", "fast.user", { lane: "user", gen_id: "g", utt_id: "u", text: "Approved, all done!" }));
   ws.send(ev("user.msg", "kernel", { text: "yes" }));
   await expect(page.getByRole("list", { name: "Chat transcript" }).getByRole("listitem")).toHaveText(["You: yes"]);
-  await expect(card.getByLabel("Approval status")).toHaveText("awaiting your decision");
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
   await shot(page, "live-card");
 
   await card.getByRole("button", { name: "Approve" }).click();
-  await expect(card.getByLabel("Approval status")).toHaveText("sent: waiting for the kernel's decision");
+  await expect(card.getByLabel("Approval status")).toHaveText("Sent. Waiting for Guard to record it");
   expect(posts).toEqual([
     {
       method: "POST",
@@ -57,7 +57,7 @@ test("approval card: appears on approval.requested, Approve posts the contract b
   const post = { subject: "approval", subject_id: "ap-1", decision: "granted", subject_hash: CARD.terms_hash, authority_epoch: 2 };
   ws.send(ev("approval.post", "ui", post));
   ws.send(ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" }));
-  await expect(card.getByLabel("Approval status")).toHaveText("decided: granted by ui");
+  await expect(card.getByLabel("Approval status")).toHaveText(/^You approved · \d{1,2}:\d{2}\s[AP]M$/);
   expect(urls).toEqual([expect.stringMatching(new RegExp(`/ws/live/${RUN}\\?from_seq=0$`))]);
 });
 
@@ -73,13 +73,13 @@ test("approval card: a kernel action.denied citing the card after a 200 shows re
   ws.send(requested);
   const card = page.getByRole("article", { name: "Approval ap-1" });
   await card.getByRole("button", { name: "Approve" }).click();
-  await expect(card.getByLabel("Approval status")).toHaveText("sent: waiting for the kernel's decision");
+  await expect(card.getByLabel("Approval status")).toHaveText("Sent. Waiting for Guard to record it");
   expect(posts).toHaveLength(1);
   const denied = JSON.parse(ev("action.denied", "kernel", { intent: "approval.post", reason: "fence_raised" }));
   ws.send(JSON.stringify({ ...denied, cause_ids: [JSON.parse(requested).event_id] }));
-  await expect(card.getByLabel("Approval status")).toHaveText("refused: fence_raised");
+  await expect(card.getByLabel("Approval status")).toHaveText("Not accepted by the system: your new message came first");
   await expect(card.getByRole("button", { name: "Approve" })).toBeDisabled();
-  await expect(card.getByRole("button", { name: "Deny" })).toBeDisabled();
+  await expect(card.getByRole("button", { name: "Decline" })).toBeDisabled();
 });
 
 test("a socket refused or unreachable before it opens (1006) says so, with no reconnect", async ({ page }) => {
@@ -107,10 +107,10 @@ test("approval card: a 409 stale is shown, closes the card and is never retried"
   ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
   ws.send(ev("approval.requested", "guard", CARD));
   const card = page.getByRole("article", { name: "Approval ap-1" });
-  await card.getByRole("button", { name: "Deny" }).click();
+  await card.getByRole("button", { name: "Decline" }).click();
   await expect(card.getByRole("alert")).toHaveText("409 stale");
-  await expect(card.getByLabel("Approval status")).toHaveText(/^stale/);
-  await expect(card.getByRole("button", { name: "Deny" })).toBeDisabled();
+  await expect(card.getByLabel("Approval status")).toHaveText(/^No longer valid/);
+  await expect(card.getByRole("button", { name: "Decline" })).toBeDisabled();
   await page.waitForTimeout(300);
   expect(posts.map((p) => p.body)).toEqual([{ decision: "denied", terms_hash: CARD.terms_hash, authority_epoch: 2 }]);
 });
@@ -157,7 +157,7 @@ test("a malformed CSRF cookie is a visible error on the card and the chat, and n
   const card = page.getByRole("article", { name: "Approval ap-1" });
   await card.getByRole("button", { name: "Approve" }).click();
   await expect(card.getByRole("alert")).toHaveText("bad pl_csrf cookie");
-  await expect(card.getByLabel("Approval status")).toHaveText("awaiting your decision");
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
   await page.getByRole("textbox", { name: "Message to the assistant" }).fill("hello");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByText("Not delivered: bad pl_csrf cookie")).toBeVisible();
@@ -204,11 +204,11 @@ test("the authority strip and the card's read-back progress follow the fixed emi
   await expect(strip.getByLabel("Last denied")).toHaveText("last action.denied accept_offer: fence_raised (kernel)");
   const card = page.getByRole("article", { name: "Approval ap-1" });
   await expect(card.getByRole("list", { name: "Read-back progress" }).getByRole("listitem")).toHaveText([
-    "monthly_price: confirmed",
-    "term_months: heard",
+    "Monthly price Read back",
+    "Contract length Heard, not read back",
   ]);
-  await expect(card.getByLabel("Approval status")).toHaveText("awaiting your decision"); // epoch 2 = the card's
-  await expect(card.getByLabel("Fence note")).toHaveText("fence raised: the accept waits until it clears");
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision"); // epoch 2 = the card's
+  await expect(card.getByLabel("Fence note")).toHaveText("Paused: reading your new message before anything is accepted.");
   await shot(page, "live-strip-mock");
   ws.send(ev("authority.fence", "kernel", { op: "cleared", fence_id: "fence-1", utt_id: `${RUN}:0` }));
   await expect(strip.getByLabel("Fence")).toHaveText("fence cleared (fence-1)");
@@ -382,4 +382,109 @@ test("?view=engineer shows the six lanes and the God-view; the view links switch
   await expect(page).toHaveURL(`/?live=${RUN}&view=engineer`);
   await expect(page.getByRole("region", { name: "Fast-U" })).toBeVisible();
   expect(urls).toHaveLength(1);
+});
+
+const MANDATE = {
+  mandate_id: "m-1",
+  mandate_hash: "a".repeat(64),
+  status: "proposed",
+  epoch: 1,
+  max_monthly_price_minor: 6500,
+  max_term_months: 24,
+  max_one_time_fees_minor: 0,
+  required_features: [],
+  forbidden_changes: [],
+  expires_ms: null,
+  decided_by: null,
+};
+
+test("limits card: confirmed only by a click, one POST through the mandate route, decided only by the kernel; the grant stales an open approval card", async ({
+  page,
+  baseURL,
+}) => {
+  await csrfCookie(page, baseURL);
+  const { connected } = await mockSockets(page);
+  const posts = await capturePosts(page, 200, { status: "posted" });
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  ws.send(ev("authority.epoch", "kernel", { new: 1, reason: "slow_revoke" }));
+  ws.send(ev("mandate.proposed", "guard", MANDATE));
+  ws.send(ev("approval.requested", "guard", { ...CARD, authority_epoch: 1, binding: { ...CARD.binding, authority_epoch: 1 } }));
+  const limits = page.getByRole("article", { name: "Limits m-1" });
+  const status = limits.getByLabel("Limits status");
+  await expect(status).toHaveText("Waiting for your confirmation");
+  await expect(limits.getByRole("definition")).toHaveText(["up to $65.00", "up to 24 months", "up to $0.00"]);
+  // The limits and the approval card sit in the chat column, not in the sticky header.
+  await expect(page.getByRole("region", { name: "Chat" }).getByRole("article")).toHaveCount(2);
+  // A model's text or a mandate.decided from another actor moves nothing.
+  ws.send(ev("fast.sentence", "fast.user", { lane: "user", gen_id: "g", utt_id: "u", text: "Your limits are confirmed!" }));
+  ws.send(ev("mandate.decided", "slow", { mandate_id: "m-1", mandate_hash: MANDATE.mandate_hash, decision: "granted", by: "ui" }));
+  await expect(status).toHaveText("Waiting for your confirmation");
+  await shot(page, "live-limits-card");
+
+  const confirm = limits.getByRole("button", { name: "Confirm limits" });
+  await confirm.evaluate((b: HTMLButtonElement) => {
+    b.click();
+    b.click();
+  });
+  await expect(status).toHaveText("Sent. Waiting for Guard to record it");
+  await page.waitForTimeout(300);
+  expect(posts).toEqual([
+    {
+      method: "POST",
+      path: `/api/cases/${RUN}/mandates/m-1`,
+      body: { decision: "granted", mandate_hash: MANDATE.mandate_hash, authority_epoch: 1 },
+      csrf: CSRF,
+    },
+  ]);
+  ws.send(ev("approval.post", "ui", { subject: "mandate", subject_id: "m-1", decision: "granted", subject_hash: MANDATE.mandate_hash, authority_epoch: 1 }));
+  ws.send(ev("mandate.decided", "kernel", { mandate_id: "m-1", mandate_hash: MANDATE.mandate_hash, decision: "granted", by: "ui" }));
+  ws.send(ev("authority.epoch", "kernel", { new: 2, reason: "mandate_decided" }));
+  await expect(status).toHaveText(/^Confirmed by you/);
+  await expect(limits.getByRole("button")).toHaveCount(0);
+  // The grant bumped the epoch: the open approval card is stale, not an error.
+  const card = page.getByRole("article", { name: "Approval ap-1" });
+  await expect(card.getByLabel("Approval status")).toHaveText("No longer valid: your instructions changed");
+  await expect(card.getByRole("alert")).toHaveCount(0);
+  expect(posts).toHaveLength(1);
+});
+
+test("limits card: a 409 stale is shown in words and never retried", async ({ page, baseURL }) => {
+  await csrfCookie(page, baseURL);
+  const { connected } = await mockSockets(page);
+  const posts = await capturePosts(page, 409, { error: "stale", reason: "stale_epoch" });
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  ws.send(ev("authority.epoch", "kernel", { new: 1, reason: "slow_revoke" }));
+  ws.send(ev("mandate.proposed", "guard", MANDATE));
+  const limits = page.getByRole("article", { name: "Limits m-1" });
+  await limits.getByRole("button", { name: "Not these" }).click();
+  await expect(limits.getByRole("alert")).toHaveText("409 stale: stale_epoch");
+  await expect(limits.getByLabel("Limits status")).toHaveText("No longer valid: your instructions changed");
+  await page.waitForTimeout(300);
+  expect(posts.map((p) => p.body)).toEqual([{ decision: "denied", mandate_hash: MANDATE.mandate_hash, authority_epoch: 1 }]);
+});
+
+test("approval card: a fence pauses a granted accept, and a fence revoke says the yes was never said", async ({ page }) => {
+  const { connected } = await mockSockets(page);
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  ws.send(ev("approval.requested", "guard", CARD));
+  ws.send(ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" }));
+  const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "Yes, we accept.", cap_id: "cap-1" });
+  ws.send(said);
+  ws.send(ev("authority.fence", "kernel", { op: "raised", fence_id: "fence-1", utt_id: `${RUN}:9` }));
+  const card = page.getByRole("article", { name: "Approval ap-1" });
+  await expect(card.getByLabel("Approval status")).toHaveText(/^You approved · \d{1,2}:\d{2}\s[AP]M$/);
+  await expect(card.getByLabel("Fence note")).toHaveText("Paused: reading your new message before anything is accepted.");
+  const revoked = JSON.parse(ev("speak.revoked", "kernel", { lane: "cp", reason: "fence", cap_id: "cap-1" }));
+  ws.send(JSON.stringify({ ...revoked, cause_ids: [JSON.parse(said).event_id] }));
+  await expect(card.getByRole("note")).toHaveText("Stopped. The yes was never said to the rep.");
+  await expect(card.getByLabel("Fence note")).toHaveCount(0);
 });

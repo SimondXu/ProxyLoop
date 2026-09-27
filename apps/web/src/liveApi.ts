@@ -45,6 +45,7 @@ export const paths = {
   // that stream (from_seq is a rep seq); the rep page never opens /ws/live.
   repSocket: (caseId: string, fromSeq: number) => `/ws/rep/${enc(caseId)}?from_seq=${fromSeq}`,
   approval: (caseId: string, approvalId: string) => `${cases(caseId)}/approvals/${enc(approvalId)}`,
+  mandate: (caseId: string, mandateId: string) => `${cases(caseId)}/mandates/${enc(mandateId)}`,
   messages: (caseId: string) => `${cases(caseId)}/messages`,
   rep: (caseId: string) => `${cases(caseId)}/rep`,
 };
@@ -68,6 +69,13 @@ export const approvalBody = (card: { terms_hash: string; authority_epoch: number
   decision,
   terms_hash: card.terms_hash,
   authority_epoch: card.authority_epoch,
+});
+
+/** The mandate POST body (S1-SYS-41): exactly mandate.proposed's hash and epoch. */
+export const mandateBody = (m: { mandate_hash: string; epoch: number }, decision: Decision) => ({
+  decision,
+  mandate_hash: m.mandate_hash,
+  authority_epoch: m.epoch,
 });
 
 export function csrfToken(cookie: string, role: Role): string | null {
@@ -128,6 +136,10 @@ export const postApproval = (
   card: { approval_id: string; terms_hash: string; authority_epoch: number },
   decision: Decision,
 ) => post("live", caseId, paths.approval(caseId, card.approval_id), approvalBody(card, decision));
+
+/** 200 = posted, never decided: only the kernel's mandate.decided decides (I6). */
+export const postMandate = (caseId: string, m: { mandate_id: string; mandate_hash: string; epoch: number }, decision: Decision) =>
+  post("live", caseId, paths.mandate(caseId, m.mandate_id), mandateBody(m, decision));
 
 /** User chat → a user.msg ingress. */
 export const postMessage = (caseId: string, text: string) => post("live", caseId, paths.messages(caseId), { text });
