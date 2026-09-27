@@ -110,13 +110,19 @@ class Board:
         return [json.loads(self.k.prompts[s].content)["messages"] for s in shas]
 
     def plain(self) -> str:
-        """Every request, the run id normalised and the system prompt named."""
-        out: list[list[dict[str, Any]]] = []
-        for messages in self.requests():
-            system = messages[0]
-            assert (system["role"], system["content"]) == ("system", prompt.SYSTEM)
-            out.append([system | {"content": "<SYSTEM>"}, *messages[1:]])
-        text = json.dumps(out, indent=1, ensure_ascii=True) + "\n"
+        """Every whole request Slow was sent (review N4: messages, tools,
+        tool choice, token cap), the run id normalised, the system prompt and
+        the ``act`` tool named (each equal to ``prompt``'s own)."""
+        out: list[dict[str, Any]] = []
+        for request in self.client.sent:
+            system, *rest = request.messages
+            assert (system.role, system.content) == ("system", prompt.SYSTEM)
+            assert request.tools == (prompt.ACT,)
+            whole = request.model_dump(mode="json", exclude={"messages", "tools"})
+            system_ = system.model_dump(mode="json") | {"content": "<SYSTEM>"}
+            messages = [system_, *(m.model_dump(mode="json") for m in rest)]
+            out.append(whole | {"tools": ["<ACT>"], "messages": messages})
+        text = json.dumps(out, indent=1, ensure_ascii=True, sort_keys=True) + "\n"
         return text.replace(self.k.run_id, "RUN")
 
 
