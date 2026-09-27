@@ -577,6 +577,14 @@ def test_the_simuser_channel_enqueues_nothing_on_silence(tmp_path: Path) -> None
         ("the last four, 821", (LAST4, "4821"), False),
         ("four eight 21", (LAST4, "4821"), False),
         ("12 four eight two one", (LAST4, "4821"), False),
+        # a run never follows a tens, teen or scale word (spaced or any dash)
+        ("forty four eight two one", (LAST4, "4821"), False),  # 44821
+        ("twenty four eight two one", (LAST4, "4821"), False),
+        ("forty\u2013four eight two one", (LAST4, "4821"), False),
+        ("forty\u2014four eight two one", (LAST4, "4821"), False),
+        ("forty\u2010four eight two one", (LAST4, "4821"), False),
+        ("one hundred four eight two one", (LAST4, "4821"), False),
+        ("Often four eight two one.", (LAST4, "4821"), True),  # "ten" inside a word
         ("dana REYES here.", (NAME, "Dana Reyes"), True),
         ("Is that Dan? A Reyes account?", (NAME, "Dana Reyes"), False),
         ("Danar Reyes", (NAME, "Dana Reyes"), False),
