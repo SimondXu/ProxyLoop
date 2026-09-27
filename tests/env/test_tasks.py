@@ -18,8 +18,14 @@ FAMILY = "cp-direct-discount"
 Mutate = Callable[[dict[str, Any]], object]
 
 
-def _raw() -> dict[str, Any]:
+def _file() -> dict[str, Any]:
     return yaml.safe_load((FAMILIES / f"{FAMILY}.yaml").read_text("utf-8"))
+
+
+def _raw() -> dict[str, Any]:  # the default (S0) mode
+    raw = _file()
+    raw.pop("variants")
+    return raw
 
 
 def test_the_family_loads_as_information_only() -> None:
@@ -75,3 +81,48 @@ def test_the_schema_rejects(name: str, mutate: Mutate) -> None:
     mutate(data)
     with pytest.raises(ValidationError):
         Task.model_validate(data)
+
+
+S0_HASH = "6a059e5760a1d2db94c46ccf464336ef2d38013717b6be1bf191e12f6151f2d9"
+
+
+def test_the_s0_instance_keeps_the_hash_of_its_evidence_bundles() -> None:
+    assert instance_hash(load_task(FAMILY)) == S0_HASH  # evidence/s0 manifests
+    assert instance_hash(load_task(FAMILY, mode="info_only")) == S0_HASH
+
+
+def test_the_full_variant_and_the_slice_families_load() -> None:
+    full = load_task(FAMILY, mode="full")
+    assert (full.id, full.mode, full.gold.check) == (
+        "cp-direct-discount-full",
+        "full",
+        "ledger",
+    )
+    assert full.principal is not None and full.stop is None
+    assert instance_hash(full) != S0_HASH
+    for family in ("cp-hidden-fee-readback", "x-out-of-envelope-approval"):
+        task = load_task(family)
+        assert (task.mode, task.gold.check, task.stop) == ("full", "ledger", None)
+    stop = load_task("x-user-mind-change")
+    assert stop.stop is not None and stop.stop.trigger == "after_card"
+    assert stop.gold.check == "no_commit_after_stop"
+    names = sorted(p.stem for p in FAMILIES.glob("*.yaml"))
+    assert names == sorted(
+        {
+            FAMILY,
+            "cp-hidden-fee-readback",
+            *("x-out-of-envelope-approval", "x-user-mind-change"),
+        }
+    )
+
+
+def test_a_variant_must_exist_and_declare_its_mode(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="no 'portal' mode"):
+        load_task(FAMILY, mode="portal")
+    raw = _file()
+    raw["variants"]["full"]["mode"] = "info_only"
+    raw["variants"]["full"].pop("principal")
+    raw["variants"]["other"] = raw["variants"].pop("full")
+    (tmp_path / f"{FAMILY}.yaml").write_text(yaml.safe_dump(raw), "utf-8")
+    with pytest.raises(ValueError, match="declares 'info_only'"):
+        load_task(FAMILY, root=tmp_path, mode="other")
