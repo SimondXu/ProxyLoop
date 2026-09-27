@@ -170,7 +170,8 @@ test("c) stale: an epoch bumped in the board before the post is a 409 stale, sho
   const reason = conflict(got, "stale");
   expect(reason, "a stale refusal from guard.decide says why").toBeDefined();
   await expect(card.getByRole("alert")).toHaveText(`409 stale: ${String(reason)}`);
-  await expect(card.getByLabel("Approval status")).toHaveText("stale: the authority epoch moved past this card");
+  // #150 nit 4: the status line names the 409's own reason (here the epoch did move: stale_epoch).
+  await expect(card.getByLabel("Approval status")).toHaveText(`stale: ${String(reason)}`);
   await expect(card.getByRole("button", { name: "Approve" })).toBeDisabled();
   const after = await log(page, id);
   expect([count(after, "authority.epoch"), count(after, "approval.post"), count(after, "action.denied")]).toEqual([1, 0, 0]);
@@ -290,4 +291,133 @@ test("h) rep: /rep 303s to ?rep, opens /ws/rep only, sees only public cp speech,
   expect(api().filter((p) => ["/api/replay/", "/api/bundles", "/ws/live"].some((f) => p.startsWith(f)))).toEqual([]);
   const after = await log(page, id);
   expect([count(after, "user.msg"), count(after, "utt.final"), count(after, "approval.post")]).toEqual([1, 1, 0]);
+});
+
+// S1-SYS-31: the start page over the real start routes and tests/support/web_wiring.py's
+// WiringStarter, whose task picks the outcome.
+type Option = { id: string; lane: string; label: string; endpoint: string; model_id: string; default: boolean };
+const LANES = [
+  ["fast_user", "Fast-U"],
+  ["fast_cp", "Fast-C"],
+  ["slow", "Slow"],
+] as const;
+const shot = async (page: Page, name: string) => {
+  if (process.env.PL_SHOTS) await page.screenshot({ path: `${process.env.PL_SHOTS}/${name}.png`, fullPage: true });
+};
+
+async function openStart(page: Page) {
+  await page.goto("/start");
+  await expect(page).toHaveURL("/?start");
+  await expect(page.getByRole("button", { name: "Start" })).toBeEnabled();
+}
+
+async function start(page: Page, task: string, rep: "sim" | "human" = "sim") {
+  await openStart(page);
+  await page.getByRole("combobox", { name: "Task" }).selectOption(task);
+  await page.getByRole("radio", { name: rep }).check();
+  const [res] = await Promise.all([
+    page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/api/cases"),
+    page.getByRole("button", { name: "Start" }).click(),
+  ]);
+  return { status: res.status(), body: (await res.json()) as Record<string, unknown> };
+}
+
+test("j) start: /start sets the operator's cookies and 303s; each lane lists only its own options, its default preselected", async ({
+  page,
+}) => {
+  expect(await entry(page, "/start")).toEqual({ status: 303, location: "/?start", cookies: ["pl_op_csrf", "pl_op_session"] });
+  const offered = (await (await page.request.get("/api/models")).json()) as { options: Option[]; tasks: string[] };
+  await openStart(page);
+  await expect(page.getByRole("note")).toHaveCount(0); // the cookie is there: no "open /start" link
+  await expect(page.getByRole("combobox", { name: "Task" }).locator("option")).toHaveText(offered.tasks);
+  await expect(page.getByRole("radio", { name: "sim" })).toBeChecked();
+  for (const [lane, title] of LANES) {
+    const own = offered.options.filter((o) => o.lane === lane);
+    const select = page.getByRole("combobox", { name: `${title} model` });
+    await expect(select.locator("option")).toHaveText(own.map((o) => `${o.label} · ${o.model_id} · ${o.endpoint}`));
+    await expect(select).toHaveValue(own.find((o) => o.default)?.id ?? "no default");
+  }
+  await shot(page, "start-page");
+});
+
+test("k) start: Start → 201 → /live/{case} → /?live=, and the socket streams the new case", async ({ page }) => {
+  const seen = sockets(page);
+  await openStart(page);
+  const created = page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/api/cases");
+  await page.getByRole("button", { name: "Start" }).click();
+  expect((await created).status()).toBe(201); // its body is gone with the navigation: the id comes from the URL
+  await expect(page).toHaveURL(/\/\?live=started-\d+$/);
+  const id = new URL(page.url()).searchParams.get("live") ?? "";
+  await expect(page.getByRole("article", { name: /^Approval / }).getByLabel("Approval status")).toHaveText("awaiting your decision");
+  const n = (await log(page, id)).length;
+  await expect.poll(() => seqs(seen.find((s) => s.path.startsWith(`/ws/live/${id}`)))).toEqual(range(n));
+});
+
+test("l) start: busy 409, unknown_model 400 and a dead kernel's 503 are shown, and nothing retries", async ({ page }) => {
+  const posts: string[] = [];
+  page.on("request", (r) => r.method() === "POST" && posts.push(new URL(r.url()).pathname));
+  const alert = page.getByRole("alert");
+  expect(await start(page, "wire-busy")).toEqual({ status: 409, body: { error: "start", reason: "busy" } });
+  await expect(alert).toHaveText("Not started: 409 start: busy (a session is already running: wait for it to end)");
+  expect(await start(page, "wire-unknown-model")).toEqual({ status: 400, body: { error: "start", reason: "unknown_model" } });
+  await expect(alert).toHaveText("Not started: 400 start: unknown_model (the kernel does not know a chosen model)");
+  expect(await start(page, "wire-dead-kernel")).toEqual({ status: 503, body: { error: "unavailable" } });
+  await expect(alert).toHaveText(/^Not started: 503 unavailable \(/);
+  await page.waitForTimeout(500);
+  expect(posts).toEqual(["/api/cases", "/api/cases", "/api/cases"]);
+  await expect(page).toHaveURL("/?start");
+});
+
+test("m) start: a missing or wrong X-CSRF-Token, or the user's token, is 403 csrf and starts nothing", async ({ page }) => {
+  await page.goto("/live/wire-csrf"); // the user's pair, which is not the operator's
+  await openStart(page);
+  const body = { task_ref: "wire-start", models: {} };
+  const csrf = { status: 403, body: { error: "csrf" } };
+  const before = (await (await page.request.get("/api/bundles")).json()) as { bundles: unknown[] };
+  expect(await postFrom(page, "/api/cases", body, null)).toEqual(csrf);
+  expect(await postFrom(page, "/api/cases", body, "0".repeat(64))).toEqual(csrf);
+  expect(await postFrom(page, "/api/cases", body, await cookie(page, "pl_csrf"))).toEqual(csrf);
+  const after = (await (await page.request.get("/api/bundles")).json()) as { bundles: unknown[] };
+  expect(after.bundles).toHaveLength(before.bundles.length);
+});
+
+test("n) start: rep human shows the /rep link for a new tab, and the live link", async ({ page }) => {
+  const got = await start(page, "wire-start-human", "human");
+  expect(got.status).toBe(201);
+  const id = String(got.body.case_id);
+  const started = page.getByLabel("Started");
+  await expect(started.getByRole("link", { name: "Open the rep page" })).toHaveAttribute("href", `/rep/${id}`);
+  await expect(started.getByRole("link", { name: "Open the rep page" })).toHaveAttribute("target", "_blank");
+  await expect(page.getByRole("button", { name: "Start" })).toBeDisabled();
+  const [rep] = await Promise.all([page.context().waitForEvent("page"), started.getByRole("link", { name: "Open the rep page" }).click()]);
+  await expect(rep).toHaveURL(`/?rep=${id}`);
+  await expect(rep.getByRole("list", { name: "Call transcript" }).getByRole("listitem").first()).toHaveText("Call: call connected");
+  await shot(rep, "rep-page-wiring");
+  await started.getByRole("link", { name: "open the live page" }).click();
+  await expect(page).toHaveURL(`/?live=${id}`);
+});
+
+test("o) live: the authority strip and the card's read-back progress, from the stub's real-Bus events", async ({ page }) => {
+  const id = "wire-authority";
+  const card = await openLive(page, id);
+  const events = await log(page, id);
+  const strip = page.getByRole("region", { name: "Authority" });
+  const status = events.filter((e) => e.type === "status.changed").at(-1)?.payload.status;
+  await expect(strip.getByLabel("Case status")).toHaveText(`status ${String(status)}`);
+  const fence = one(events, "authority.fence").payload;
+  expect(fence.op).toBe("raised");
+  await expect(strip.getByLabel("Fence")).toHaveText(`fence raised (${String(fence.fence_id)})`);
+  await expect(strip.getByLabel("Epoch")).toHaveText("epoch 0");
+  const revoked = one(events, "speak.revoked");
+  await expect(strip.getByLabel("Last revoked")).toHaveText(`last speak.revoked ${String(revoked.payload.reason)} (${revoked.actor})`);
+  const denied = one(events, "action.denied");
+  await expect(strip.getByLabel("Last denied")).toHaveText(
+    `last action.denied ${String(denied.payload.intent)}: ${String(denied.payload.reason)} (${denied.actor})`,
+  );
+  const latest = events.filter((e) => e.type === "readback.updated").at(-1)?.payload.slot_statuses as Record<string, string>;
+  await expect(card.getByRole("list", { name: "Read-back progress" }).getByRole("listitem")).toHaveText(
+    Object.entries(latest).map(([field, s]) => `${field}: ${s}`),
+  );
+  expect(Object.values(latest)).toContain("heard");
+  await shot(page, "live-strip");
 });

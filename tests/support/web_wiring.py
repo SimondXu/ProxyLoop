@@ -21,11 +21,25 @@ It stands in for the kernel's ingress (S1-SYS-05) as ``Case`` documents it:
 - ``refuse``: the revoke lands after serve's pre-check, before the re-decide:
   200, then ``action.denied`` with decide's reason.
 - ``raise``: the handover raises, as a dead kernel would: serve answers 503.
+- ``authority``: as ``ok``, and the seed goes on (S1-SYS-31) with what the
+  authority strip and the card's read-back progress show: Guard's
+  ``status.changed`` INTAKE → IN_CALL → AWAITING_APPROVAL, a later Guard
+  ``readback.updated`` (the rep restated the price: ``heard``), the user's
+  "actually, stop", the kernel's fence on it, a ``speak.revoked`` and an
+  ``action.denied``. Each through the real Bus, from its fixed emitter.
+
+``WiringStarter`` implements ``proxyloop.serve.cases.Starter`` (S1-SYS-31):
+stub options for the three lanes (labelled "stub", with contract endpoints,
+as serve requires), ``TASKS``, and a new ``WiringCase`` per start. The task
+picks a failure: ``REFUSING`` maps a task to the ``StartRefused`` reason it
+gets, ``wire-dead-kernel`` raises (serve: 503), and ``broken_options`` makes
+``model_options`` break serve's promise (two defaults on a lane: serve 500).
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -34,8 +48,9 @@ from tests.support.api_cases import ApiCase
 from proxyloop.contract.events import ApprovalPost
 from proxyloop.contract.state import Blackboard
 from proxyloop.guard.authorize import Denial, decide
+from proxyloop.serve.cases import LaneKey, ModelOption, StartRefused
 
-Mode = Literal["ok", "stale", "refuse", "raise"]
+Mode = Literal["ok", "stale", "refuse", "raise", "authority"]
 DECIDE_AFTER_S = 2.0  # long enough for the page to show "sent" first, even loaded
 ROLES = ("fast_user", "fast_cp", "slow")
 STARTED: dict[str, object] = {
@@ -58,6 +73,22 @@ STARTED: dict[str, object] = {
 HEARD = "Hi, this is an AI assistant calling for Dana Reyes about her plan."
 PRIVATE = "Private: Dana accepts at most 70 dollars a month."
 USER_SAID = "Please get me a lower price."
+STOP = "actually, stop"
+OPTIONS = tuple(
+    ModelOption(
+        id=f"stub:{lane}:{n}",
+        lane=lane,
+        label=f"stub {lane} {n}",
+        endpoint="vllm" if lane != "slow" else "teamrouter",
+        model_id=f"{lane}-stub-{n}",
+        default=n == 2,  # not the first: the page must preselect the default
+    )
+    for lane in ("fast_user", "fast_cp", "slow")
+    for n in (1, 2)
+)
+REFUSING: dict[str, str] = {"wire-unknown-model": "unknown_model", "wire-busy": "busy"}
+DEAD = "wire-dead-kernel"
+TASKS = ("wire-start", "wire-start-human", *REFUSING, DEAD)
 
 
 class WiringCase:
@@ -78,6 +109,8 @@ class WiringCase:
         run.emit("user.msg", {"text": USER_SAID}, "kernel", causes=())
         run.card()
         self.requested = run.bus.events[-1].event_id  # its approval.requested
+        if mode == "authority":
+            self._authority()
 
     # The Case protocol.
     def blackboard(self) -> Blackboard:
@@ -97,6 +130,25 @@ class WiringCase:
         self._utts += 1
         said = {"lane": "cp", "speaker": "partner", "utt_id": f"rep-{self._utts}"}
         self._run.emit("utt.final", said | {"text": text}, "kernel", causes=())
+
+    def _authority(self) -> None:
+        run = self._run
+        run.emit("status.changed", {"previous": "INTAKE", "status": "IN_CALL"})
+        waiting = {"previous": "IN_CALL", "status": "AWAITING_APPROVAL"}
+        run.emit("status.changed", waiting)
+        card = run.bus.bb.private.pending_approval
+        assert card is not None
+        offer = run.bus.bb.public.offers[card.offer_ref]
+        statuses = {s.field: s.status for s in offer.slots} | {"monthly_price": "heard"}
+        again = {"offer_ref": card.offer_ref, "revision": card.revision}
+        again |= {"slot_statuses": statuses, "terms_hash": offer.terms_hash}
+        run.emit("readback.updated", again)
+        stop = run.emit("user.msg", {"text": STOP}, "kernel", causes=())
+        fence = {"op": "raised", "fence_id": "fence-1", "utt_id": stop.event_id}
+        run.emit("authority.fence", fence, "kernel")
+        run.emit("speak.revoked", {"lane": "cp", "reason": "fence"}, "kernel")
+        denied = {"intent": "accept_offer", "reason": "fence_raised"}
+        run.emit("action.denied", denied, "kernel")
 
     # The kernel's side.
     def _revoke(self) -> None:
@@ -121,3 +173,47 @@ class WiringCase:
 
     def close(self) -> None:
         self._run.close()
+
+
+class WiringStarter:
+    """Implements ``proxyloop.serve.cases.Starter`` over ``root``: each start
+    seeds a new ``WiringCase`` (mode ``ok``) named ``started-<n>``."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.cases: list[WiringCase] = []
+        self.calls: list[tuple[str, dict[LaneKey, str], str]] = []
+        self.broken_options = False
+
+    def model_options(self) -> Sequence[ModelOption]:
+        if self.broken_options:  # two defaults on a lane, bypassing validation
+            return (
+                *OPTIONS,
+                OPTIONS[0].model_copy(update={"id": "stub:again", "default": True}),
+            )
+        return OPTIONS
+
+    def task_options(self) -> Sequence[str]:
+        return TASKS
+
+    async def start_case(
+        self,
+        task_ref: str,
+        models: Mapping[LaneKey, str],
+        rep: Literal["sim", "human"] = "sim",
+    ) -> WiringCase:
+        self.calls.append((task_ref, dict(models), rep))
+        if task_ref == DEAD:
+            raise RuntimeError("the kernel is gone")
+        if task_ref in REFUSING:
+            raise StartRefused(REFUSING[task_ref])
+        if task_ref not in TASKS:
+            raise StartRefused("unknown_task")
+        lanes = {o.id: o.lane for o in OPTIONS}
+        if any(lanes.get(option) != lane for lane, option in models.items()):
+            raise StartRefused(
+                "unknown_model" if set(models.values()) - set(lanes) else "wrong_lane"
+            )
+        case = WiringCase(self.root, f"started-{len(self.cases) + 1}")
+        self.cases.append(case)
+        return case
