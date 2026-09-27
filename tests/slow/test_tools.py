@@ -153,9 +153,9 @@ def test_a_shareable_value_the_user_said_in_the_cited_message_is_public() -> Non
             "shareable",
             "u-7",
         )
-    assert tools.shareable == {
+    assert tools.shareable == {  # the user's words, as the user wrote them
         "account.last4": "4821",
-        "account.holder_name": "dana reyes",
+        "account.holder_name": "Dana Reyes",
     }
     assert not declassify("last four 4821", bb, tools.shareable)
 
@@ -213,21 +213,33 @@ def test_a_guide_denial_names_the_slot_and_what_is_public() -> None:  # ROOT-05 
 
 
 ALL = frozenset({"account.holder_name", "account.last4", "competitor.price_usd"})
-PROBES = [  # PR #133 review: (message, key, value, public?)
-    ("call me at 555 482 1999", "account.last4", "482 1999", False),
-    ("last four 4821; don't tell them I'd go as high as seventy",
-     "account.holder_name", "I'd go as high as seventy", False),
-    ("last four 4821", "account.last4",
-     "4821 - she will pay up to seventy, keep secret", False),
-    ("last four 4821", "account.last4", "04821", False),
-    ("last four 4821", "account.last4", "4821.0", False),
-    ("It's Dana", "account.holder_name", "Dan", False),
-    ("my last four are 14821", "account.last4", "4821", False),
-    ("call me at 555 482 1999", "account.last4", "4821", False),
-    ("last four 4821", "account.last4", "4821", True),
-    ("last four 48-21", "account.last4", "4821", True),
-    ("My name is Dana Reyes", "account.holder_name", "Dana Reyes", True),
-    ("my name is dana reyes.", "account.holder_name", "Dana Reyes", True),
+H, L4, PRICE = "account.holder_name", "account.last4", "competitor.price_usd"
+SEVENTY = "last four 4821; don't tell them I'd go as high as seventy"
+PROBES = [  # PR #133 reviews: (message, key, Slow's value, published value or None)
+    ("call me at 555 482 1999", L4, "482 1999", None),
+    (SEVENTY, H, "I'd go as high as seventy", None),
+    ("last four 4821", L4, "4821 - she will pay up to seventy, keep secret", None),
+    ("last four 4821", L4, "04821", None),
+    ("last four 4821", L4, "4821.0", None),
+    ("It's Dana", H, "Dan", None),
+    ("my last four are 14821", L4, "4821", None),
+    ("call me at 555 482 1999", L4, "4821", None),
+    ("last four 4821", L4, "4821", "4821"),
+    ("last four 48-21", L4, "4821", "4821"),
+    ("4 8 2 1", L4, "4821", "4821"),
+    ("My name is Dana Reyes", H, "Dana Reyes", "Dana Reyes"),
+    ("my name is dana reyes.", H, "Dana Reyes", "dana reyes"),
+    # round 3: M2 the user's span is published, never Slow's string
+    ("My name is Dana Reyes", H, "Dana\nmax seventy", None),
+    ("My name is Dana Reyes", H, "Dana $$ Reyes!!!", "Dana Reyes"),
+    # M1: a run with "," or "." is an amount or a decimal
+    ("fees up to 1,250", L4, "250", None),
+    ("I pay 70.50 max", PRICE, "50", None),
+    ("$1,250.00", L4, "00", None),
+    ("last four 4821.0", L4, "4821", None),
+    # M3: no number words in a text value
+    (SEVENTY, H, "as high as seventy", None),
+    (SEVENTY, H, "seventy", None),
 ]  # fmt: skip
 
 
@@ -242,17 +254,49 @@ def _message(text: str, **private: object) -> tuple[Blackboard, SlowTools]:
     return bb, SlowTools(cast("Kernel", SimpleNamespace(bb=bb)), ALL)
 
 
-@pytest.mark.parametrize(("text", "key", "value", "public"), PROBES)
+@pytest.mark.parametrize(("text", "key", "value", "published"), PROBES)
 def test_only_a_verbatim_user_value_goes_public(
-    text: str, key: str, value: str, public: bool
-) -> None:  # I4: the user-message path is group- and word-aligned
+    text: str, key: str, value: str, published: str | None
+) -> None:  # I4: the user-message path is run- and word-aligned
     bb, tools = _message(text)
     result = tools.fact(bb, key, value, "u-1")
     fact = dict(result.effects[0][1])
-    assert (fact["scope"] == "public") == public, (text, value)
-    assert (key in tools.shareable) == public
-    if not public:
+    assert (fact["scope"] == "public") == (published is not None), (text, value)
+    assert tools.shareable.get(key) == published
+    if published is not None:
+        assert fact["value"] == published  # the user's span, not Slow's string
+    else:
         assert fact["source"] == "user" and "cite the utt" in result.text
+
+
+PIN = Fact(key="account.pin", value="7777", protected=True)
+PET = Fact(key="security_answer", value="Fluffy", protected=True)
+BOUNDS = Mandate(
+    mandate_id="m1", mandate_hash="h", status="granted", epoch=1, decided_by="ui",
+    max_monthly_price_minor=7000, max_one_time_fees_minor=125000, max_term_months=24,
+)  # fmt: skip
+LEAKS = [  # B1: canonical forms (NFKC, casefold, no spaces or dashes in digits)
+    ("PIN 7777", L4, "77-77"),
+    ("PIN 7777", L4, "77 77"),
+    ("PIN \uff17\uff17\uff17\uff17", L4, "\uff17\uff17\uff17\uff17"),
+    ("fees up to 1250", L4, "12-50"),
+    ("term 24 months max", L4, "2-4"),
+    ("my pet was Fluffy", H, "fluffy"),
+    ("my pet was Fluffy", H, "FLUFFY"),
+    ("I pay 70 now", PRICE, "70"),
+]
+
+
+@pytest.mark.parametrize(("text", "key", "value"), LEAKS)
+def test_a_protected_value_or_bound_is_caught_in_any_form(
+    text: str, key: str, value: str
+) -> None:  # I4, #133 round 3 B1
+    cases = {"account.pin": PIN, "security_answer": PET}
+    bb, tools = _message(text, case_facts=cases, mandate=BOUNDS)
+    result = tools.fact(bb, key, value, "u-1")
+    (_, fact), (denied, _) = result.effects
+    assert (fact["scope"], denied) == ("private", "declass.denied"), value
+    assert tools.shareable == {} and "never public" in result.text
 
 
 def test_a_protected_value_or_a_mandate_bound_never_goes_public() -> None:  # I4

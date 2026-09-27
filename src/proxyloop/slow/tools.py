@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -28,9 +29,16 @@ Effect = tuple[str, Mapping[str, object]]
 SCALE = {"usd_minor": 100, "months": 1}  # minor units and months, as spoken
 _INVALID = (ValidationError, ValueError, KeyError, TypeError, ArithmeticError)
 _GUIDE = frozenset({"tool", "move", "slots"})
-_DIGITS, _SEP = re.compile(r"\d+(?:[ -]\d+)*"), re.compile(r"[ -]")  # "48-21"
+_GROUPED, _SEP = re.compile(r"[0-9]+(?:[ -][0-9]+)*"), re.compile(r"[ -]")  # 48-21
+_RUN, _AMOUNT = re.compile(r"[0-9]+(?:[ ,.\-][0-9]+)*"), re.compile(r"[,.]")
 _WORD = re.compile(r"[^\W_]+")  # "I'd" is two words
 MAX_WORDS, MAX_CHARS = 6, 60  # a shareable text value the user said
+NUMBER_WORDS = frozenset(
+    """zero one two three four five six seven eight nine ten eleven twelve
+    thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty
+    forty fifty sixty seventy eighty ninety hundred thousand million billion
+    dozen half""".split()  # noqa: SIM905
+)
 _EMPTY: tuple[object, ...] = (None, "", [])
 
 
@@ -168,13 +176,16 @@ class SlowTools:
         relayed = {r.msg_id: r.utt_ref for r in bb.f2s_pending if r.lane == "user"}
         msg_id = relayed.get(str(ref)) or str(ref)  # the user's own message
         told = _partner(bb, "user").get(msg_id, "")
-        hits = [msg_id] if told and _user_said(value, told) else []
-        leaks = _leaks(value, bb) if hits else []  # never a protected value or bound
+        span = _user_span(value, told) if told else None  # what the user said
+        hits = [msg_id] if span is not None else []
+        leaks = _leaks(span, bb) if span is not None else []  # never protected
         shareable = key in self._shareable_keys and hits and not leaks
         in_line = bool(line) and _said(value, line)
         source = "cp_utt" if in_line else "shareable" if shareable else "user"
         ref = str(ref) if source == "cp_utt" else hits[0] if shareable else ref
         ref = None if ref is None else str(ref)  # the rep line or user message
+        if source == "shareable" and span is not None:
+            value = span  # the user's words, not Slow's string
         fact = {"key": key, "value": value, "source_ref": ref}
         where = "private" if source == "user" else "public"
         if source == "user":
@@ -206,26 +217,59 @@ def _said(value: str, line: str) -> bool:  # its digits, else its text verbatim
     return digits <= numbers(line) if digits else value.casefold() in line.casefold()
 
 
-def _user_said(value: str, message: str) -> bool:
-    """I4, the user-message path: a value with a digit is only digits in groups
-    and equals one whole digit run of ``message`` ("48-21" says 4821; "14821"
-    and "555 482 1999" do not); any other value is at most ``MAX_WORDS`` whole
-    words in a row (casefold) and ``MAX_CHARS`` characters."""
+def _nfkc(text: str) -> str:
+    return unicodedata.normalize("NFKC", text)
+
+
+def _user_span(value: str, message: str) -> str | None:
+    """I4, the user-message path: the span of ``message`` that ``value`` selects,
+    published instead of ``value``. A value with a digit is digits in groups
+    joined by one space or dash, equal to one whole digit run of the message,
+    and publishes that run's digits ("48-21" and "4 8 2 1" say 4821; "14821",
+    "555 482 1999", "1,250" and "4821.0" do not). Any other value is at most
+    ``MAX_WORDS`` whole words (``MAX_CHARS`` characters) and no number word, in
+    a row in the message (casefold); it publishes those words as the user wrote
+    them, joined by one space."""
+    value, message = _nfkc(value), _nfkc(message)
     if any(c.isdigit() for c in value):
-        if not _DIGITS.fullmatch(value):
-            return False
-        runs = _DIGITS.findall(message)
-        return any(_SEP.sub("", run) == _SEP.sub("", value) for run in runs)
-    want, heard = _WORD.findall(value.casefold()), _WORD.findall(message.casefold())
+        if not _GROUPED.fullmatch(value):
+            return None
+        want = _SEP.sub("", value)
+        runs = (r for r in _RUN.findall(message) if not _AMOUNT.search(r))
+        return want if any(_SEP.sub("", r) == want for r in runs) else None
+    want = _WORD.findall(value.casefold())
     if not want or len(want) > MAX_WORDS or len(value) > MAX_CHARS:
-        return False
+        return None
+    if set(want) & NUMBER_WORDS:
+        return None
+    heard = _WORD.findall(message)
     n = len(want)
-    return any(heard[i : i + n] == want for i in range(len(heard) - n + 1))
+    for i in range(len(heard) - n + 1):
+        if [w.casefold() for w in heard[i : i + n]] == want:
+            return " ".join(heard[i : i + n])
+    return None
 
 
-def _leaks(value: str, bb: st.Blackboard) -> list[str]:  # guard.declass decides
-    """A protected case-fact value or an unsaid mandate bound in ``value``."""
-    return [v for v in declassify(value, bb, {}) if not v.endswith("source-bound")]
+def _canon(text: str) -> str:  # NFKC, casefold; digits without their separators
+    text = _nfkc(text).casefold()
+    return _SEP.sub("", text) if _GROUPED.fullmatch(text) else text
+
+
+def _leaks(span: str, bb: st.Blackboard) -> list[str]:
+    """A protected case-fact value or a mandate bound in the span to publish,
+    compared in canonical forms (bounds as whole units and as minor units)."""
+    said, out = _canon(span), list[str]()
+    for key, f in sorted(bb.private.case_facts.items()):
+        if f.protected and (value := _canon(f.value)) and value in said:
+            out.append(f"the protected value of {key}")
+    m = bb.private.mandate
+    minor = () if m is None else (m.max_monthly_price_minor, m.max_one_time_fees_minor)
+    forms = {str(v) for v in minor if v is not None}
+    forms |= {str(v // 100) for v in minor if v is not None and v % 100 == 0}
+    forms |= {str(m.max_term_months)} if m and m.max_term_months else set()
+    if said in forms:
+        out.append(f"the private value {said} is a mandate bound")
+    return out
 
 
 def public_guide(bb: st.Blackboard, guide: Guide) -> bool:  # the renderer judges
