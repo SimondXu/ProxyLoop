@@ -1,0 +1,8 @@
+# Phoenix, the local trace viewer for `python -m proxyloop.obs.trace` (ADR-0008).
+# UI and OTLP/HTTP on 127.0.0.1:6006 only; traces live in the container and go
+# with `docker compose down`.
+services:
+  phoenix:
+    image: arizephoenix/phoenix:version-20.16.0-nonroot@sha256:e4a41a209b07289581a5d48167a11051c12704ac48983056fe0989b6f13b467a
+    ports:
+      - "127.0.0.1:6006:6006"

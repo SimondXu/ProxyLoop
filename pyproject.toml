@@ -35,9 +35,13 @@ mod = [
   "pyyaml==6.0.3",
   "starlette==1.7.0",
 ]
+obs = [
+  "opentelemetry-exporter-otlp-proto-http==1.45.0",
+  "opentelemetry-sdk==1.45.0",
+]
 
 [tool.uv]
-default-groups = ["dev", "mod", "sys"]
+default-groups = ["dev", "mod", "obs", "sys"]
 
 # Every tool covers src, tests and scripts. scripts/spikes is root-run with
 # dependencies outside this environment: ruff checks it, pyright skips it.
