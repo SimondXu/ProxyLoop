@@ -74,7 +74,7 @@ def test_every_offer_slot_is_bound_to_a_cited_rep_line() -> None:  # review B1
         assert [t for t, _ in result.effects] == ["declass.denied"]
 
 
-def test_a_shareable_fact_needs_a_typed_user_relay() -> None:  # review M1
+def test_a_relay_alone_never_makes_a_fact_public() -> None:  # review M1, #133
     note = FastToSlow(
         msg_id="e1", lane="user", gen_id="g", utt_ref=None, type="NOTE",
         text="I pay 85 a month now",
@@ -90,8 +90,33 @@ def test_a_shareable_fact_needs_a_typed_user_relay() -> None:  # review M1
         update={"facts": (("tenure_years", "6"),), "type": "USER_UPDATE"}
     )
     bb = BB.model_copy(update={"f2s_pending": (typed,)})
-    ((_, fact),) = tools.fact(bb, "tenure_years", "6", None).effects
-    assert (fact["scope"], fact["source_ref"]) == ("public", "e1")
+    for ref in (None, "e1"):  # FastU's typed claim is not the user's words
+        ((_, fact),) = tools.fact(bb, "tenure_years", "6", ref).effects
+        assert fact["scope"] == "private", ref
+
+
+def test_a_cited_relay_counts_only_through_the_user_message_it_points_to() -> None:
+    bb, tools = _told()  # u-7: "It's Dana Reyes, and my last four are 4821."
+    rows = [
+        ("user", "u-7", "USER_UPDATE", "9999"),  # FastU invented it
+        ("user", "u-7", "USER_UPDATE", "4821"),
+        ("cp", "cp-3", "CP_UPDATE", "4821"),  # not a user-lane relay
+    ]
+    relays = tuple(
+        FastToSlow.model_validate(
+            {"msg_id": f"e{n}", "lane": lane, "gen_id": "g", "utt_ref": utt,
+             "type": kind, "facts": (("account.last4", value),)}
+        )
+        for n, (lane, utt, kind, value) in enumerate(rows)
+    )  # fmt: skip
+    bb = bb.model_copy(update={"f2s_pending": relays})
+    ((_, fact),) = tools.fact(bb, "account.last4", "9999", "e0").effects
+    assert fact["scope"] == "private"
+    ((_, fact),) = tools.fact(bb, "account.last4", "4821", "e2").effects
+    assert fact["scope"] == "private"
+    for ref in ("e0", "e1", "u-7"):  # the relay's message says 4821
+        ((_, fact),) = tools.fact(bb, "account.last4", "4821", ref).effects
+        assert (fact["scope"], fact["source_ref"]) == ("public", "u-7"), ref
 
 
 def test_money_and_term_values_are_plain_integers() -> None:  # R2 N3

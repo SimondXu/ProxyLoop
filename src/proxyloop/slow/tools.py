@@ -161,19 +161,20 @@ class SlowTools:
         )
 
     def fact(self, bb: st.Blackboard, key: str, value: str, ref: object) -> Result:
-        """Public iff the rep said it in ``ref``, or shareable and either relayed
-        typed by the user lane or said by the user in the cited message ``ref``."""
+        """Public iff the rep said it in ``ref``, or shareable and said by the user
+        in the ``user.msg`` that ``ref`` names, directly or through the user-lane
+        relay it cites (a relay is Fast's claim, never the source; I4)."""
         line = _partner(bb, "cp").get(str(ref), "")
-        relays = [r for r in bb.f2s_pending if r.lane == "user"]
-        hits = [r.msg_id for r in relays if (key, value) in r.facts]  # typed only
-        told = _partner(bb, "user").get(str(ref), "")  # the user's own message
-        hits += [str(ref)] if told and _user_said(value, told) else []
+        relayed = {r.msg_id: r.utt_ref for r in bb.f2s_pending if r.lane == "user"}
+        msg_id = relayed.get(str(ref)) or str(ref)  # the user's own message
+        told = _partner(bb, "user").get(msg_id, "")
+        hits = [msg_id] if told and _user_said(value, told) else []
         leaks = _leaks(value, bb) if hits else []  # never a protected value or bound
         shareable = key in self._shareable_keys and hits and not leaks
         in_line = bool(line) and _said(value, line)
         source = "cp_utt" if in_line else "shareable" if shareable else "user"
         ref = str(ref) if source == "cp_utt" else hits[0] if shareable else ref
-        ref = None if ref is None else str(ref)  # rep line, user relay or message
+        ref = None if ref is None else str(ref)  # the rep line or user message
         fact = {"key": key, "value": value, "source_ref": ref}
         where = "private" if source == "user" else "public"
         if source == "user":
