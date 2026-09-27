@@ -114,7 +114,7 @@ metrics:
 	uv run python -m proxyloop.eval.metrics $(RUN)
 
 # S1-MOD-04: the Fast benchmark (src/proxyloop/eval/specs/fast_benchmark.yaml). benchmark-fast
-# is root-run (L+G): C5 is hosted (TeamRouter), C2 and C1 need `make serve-up`; C1 fails loudly
+# is root-run (L+G): C5 is hosted (OpenRouter), C2 and C1 need `make serve-up`; C1 fails loudly
 # without PL_TRAINED_ADAPTER. BENCH_ARGS go to `proxyloop.cli session` (the Slow/world options).
 # A runs dir holds one matrix: resume only with the identical BENCH_CONDITIONS. C1 runs later
 # as its own matrix in a fresh dir (BENCH_CONDITIONS=C1 BENCH_RUNS=runs/fast-benchmark-c1

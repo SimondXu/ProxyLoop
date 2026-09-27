@@ -136,7 +136,7 @@ def test_live_configs_apply_a_registry_condition_to_the_cli_config() -> None:
     assert cfg.live and cfg.fast_cp.model_id == cfg.fast_user.model_id == "Qwen3.5-9B"
     assert cfg.slow.model_id == "slow-x"  # the CLI's options, not a copy of them
     with pytest.raises(KeyError, match="unknown condition"):
-        live_configs(bench, ["C0"], [])  # e.g. C1: the registry does not have it
+        live_configs(bench, ["C0"], [])  # C0: no registry entry has this id
 
 
 @pytest.fixture(autouse=True)
