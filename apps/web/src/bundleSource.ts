@@ -1,6 +1,5 @@
-// The web's one data seam: the replay API's GETs (S1-SYS-09 shapes). In dev and
-// preview, Vite serves them from PL_BUNDLE_DIR (server/bundleApi.ts); the real
-// API is a base-URL/proxy change, never a second client.
+// The web's one data seam: the real replay API's GETs (S1-SYS-09), same-origin
+// (the API serves the built web) or through the Vite dev proxy (PL_API_URL).
 import { parseJsonl, type Ev } from "./replay";
 
 export type BundleInfo = { run_id: string; root: string; complete: boolean; task_ref: string | null };

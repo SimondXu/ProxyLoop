@@ -3,10 +3,12 @@ writes ``events.jsonl`` and folds it, so ``guard.decide`` runs on a real
 Blackboard whose card ``guard.request_approval`` minted. The calls the API
 makes are recorded; ``post_approval`` also emits ``approval.post`` (actor
 ``ui``) the way the kernel's ingress will (S1-SYS-05). Nothing here decides:
-``decided`` stands in for the kernel's own ``approval.decided``."""
+``decided`` stands in for the kernel's own ``approval.decided``.
+``FakeStarter`` starts such cases the way the kernel's starter will."""
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -19,6 +21,7 @@ from proxyloop.contract.state import ApprovalCard, Blackboard
 from proxyloop.core.bus import Bus
 from proxyloop.guard.authorize import Denial, request_approval
 from proxyloop.guard.terms import offer_terms_hash
+from proxyloop.serve.cases import LaneKey, ModelOption, StartRefused
 
 _KEYS = "cfg_hash task_ref instance_hash models renderer_fp contract_version git_sha"
 _STARTED = dict.fromkeys([*_KEYS.split(), "attest", "parity"], "x")
@@ -36,7 +39,7 @@ class ApiCase:
         self.messages: list[str] = []
         self.utterances: list[str] = []
         self._last: str | None = None
-        self.unavailable = False  # post_approval raises, as a dead kernel would
+        self.unavailable = False  # every ingress raises, as a dead kernel would
 
     # The Case protocol.
     def blackboard(self) -> Blackboard:
@@ -49,9 +52,13 @@ class ApiCase:
         self.emit("approval.post", post.model_dump(mode="json"), "ui", causes=())
 
     def user_message(self, text: str) -> None:
+        if self.unavailable:
+            raise RuntimeError("the case's kernel is gone")
         self.messages.append(text)
 
     def rep_utterance(self, text: str) -> None:
+        if self.unavailable:
+            raise RuntimeError("the case's kernel is gone")
         self.utterances.append(text)
 
     # Test setup: real events through the bus.
@@ -136,3 +143,66 @@ class StoredCase:
 
     def rep_utterance(self, text: str) -> None:
         raise AssertionError("not called by a stream")
+
+
+class FakeStarter:
+    """Implements ``proxyloop.serve.cases.Starter`` over the ``runs`` root
+    ``runs``, with the kernel's start semantics: a missing lane gets its
+    default, an unknown task, unknown model or model of another lane is
+    refused, and a case is returned only after its seq 0 exists, at
+    ``runs/live/<run_id>/<run_id>``. ``refuse`` or ``fail`` make the next
+    starts refuse or raise; ``returns`` makes them return that case (a run_id
+    twice); ``delay_s`` holds each start open (to see the lock)."""
+
+    def __init__(
+        self, runs: Path, options: Sequence[ModelOption], tasks: Sequence[str]
+    ) -> None:
+        self.runs, self.options, self.tasks = runs, options, tasks
+        self.calls: list[tuple[str, dict[LaneKey, str], str]] = []
+        self.resolved: list[dict[LaneKey, str]] = []  # defaults filled in
+        self.cases: list[ApiCase] = []
+        self.refuse: str | None = None
+        self.fail = False
+        self.returns: ApiCase | None = None
+        self.delay_s = 0.0
+        self.inside = self.most = 0  # starts in flight now, and at most
+
+    def model_options(self) -> Sequence[ModelOption]:
+        return self.options
+
+    def task_options(self) -> Sequence[str]:
+        return self.tasks
+
+    async def start_case(
+        self, task_ref: str, models: Mapping[LaneKey, str], rep: str = "sim"
+    ) -> ApiCase:
+        self.calls.append((task_ref, dict(models), rep))
+        self.inside += 1
+        self.most = max(self.most, self.inside)
+        try:
+            await asyncio.sleep(self.delay_s)
+            return self._start(task_ref, models)
+        finally:
+            self.inside -= 1
+
+    def _start(self, task_ref: str, models: Mapping[LaneKey, str]) -> ApiCase:
+        if self.fail:
+            raise RuntimeError("the kernel is gone")
+        if self.refuse is not None:
+            raise StartRefused(self.refuse)
+        if task_ref not in self.tasks:
+            raise StartRefused("unknown_task")
+        by_id = {option.id: option for option in self.options}
+        for lane, option_id in models.items():
+            if option_id not in by_id:
+                raise StartRefused("unknown_model")
+            if by_id[option_id].lane != lane:
+                raise StartRefused("wrong_lane")
+        defaults: dict[LaneKey, str] = {o.lane: o.id for o in self.options if o.default}
+        self.resolved.append(defaults | dict(models))
+        if self.returns is not None:
+            return self.returns
+        run_id = f"live-{len(self.cases) + 1}"
+        case = ApiCase(self.runs / "live" / run_id, run_id).start()
+        self.cases.append(case)
+        return case

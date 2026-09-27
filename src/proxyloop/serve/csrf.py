@@ -9,6 +9,11 @@ pair or the other role's pair never passes. Every POST echoes the CSRF cookie
 in ``X-CSRF-Token``; a WebSocket cannot send a header, so /ws/rep checks the
 signed cookie pair alone (its Origin is checked too). All cookies are
 SameSite=Strict, Path=/. The secret is made per app and never leaves it.
+
+``GET /start`` issues the operator's pair the same way for ``POST
+/api/cases``; it belongs to no case (``NO_CASE``), so its token is bound to
+the role and the session only, and never passes as a user or rep pair (nor
+theirs as the operator's): the role is in the MAC.
 """
 
 from __future__ import annotations
@@ -21,12 +26,14 @@ from typing import Literal
 
 from starlette.responses import Response
 
-Role = Literal["user", "rep"]
+Role = Literal["user", "rep", "operator"]
 COOKIES: Mapping[Role, tuple[str, str]] = {  # (session, csrf) per role
     "user": ("pl_session", "pl_csrf"),
     "rep": ("pl_rep_session", "pl_rep_csrf"),
+    "operator": ("pl_op_session", "pl_op_csrf"),
 }
 HEADER = "x-csrf-token"
+NO_CASE = ""  # the operator's case_id: never a run id (RUN_ID needs a character)
 
 
 class Csrf:
