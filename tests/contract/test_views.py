@@ -158,6 +158,7 @@ def privates(draw: st.DrawFn) -> PrivateState:
                 by="ui",
                 terms_hash=f"t{n}",
                 authority_epoch=n % 5,
+                expires_ms=draw(st.none() | st.integers(0, 10**9)),
             )
         }
         if draw(st.booleans())
