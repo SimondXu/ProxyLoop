@@ -370,5 +370,6 @@ def test_a_failed_message_or_rep_line_is_503_and_logged(
             got = post(live.http, f"/api/cases/{CASE}/{url}", {"text": "hi"}, hdrs)
             assert (got.status_code, got.json()) == (503, {"error": "unavailable"})
     logged = [r for r in caplog.records if r.name == "proxyloop.serve.cases"]
-    assert [r.exc_info is not None for r in logged] == [True, True]
+    assert [r.exc_info for r in logged] == [None, None]  # the type only (rule 15)
+    assert [r.getMessage().endswith(": RuntimeError") for r in logged] == [True] * 2
     assert live.case.messages == live.case.utterances == []

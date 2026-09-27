@@ -303,7 +303,8 @@ def test_a_raising_starter_is_503_logged_and_not_retried(
     assert (got.status_code, got.json()) == (503, {"error": "unavailable"})
     assert len(env.starter.calls) == 1
     (record,) = [r for r in caplog.records if r.name == LOGGER]
-    assert record.levelno == logging.ERROR and record.exc_info is not None
+    assert record.levelno == logging.ERROR and record.exc_info is None  # rule 15
+    assert record.getMessage().endswith(": RuntimeError")
 
 
 def test_concurrent_starts_enter_the_starter_one_at_a_time(env: Env) -> None:
@@ -614,3 +615,43 @@ def test_a_test_split_run_is_never_tail_read(
     login(env.http, "user", "live-2")
     assert "live-2" in read  # the guard is what keeps live-1 out
     assert "live-1" not in read
+
+
+SECRETS = ("upstream.example", "sk-SECRET", "https://")
+
+
+def _boom(*args: object, **kwargs: object) -> ApiCase:
+    upstream = "POST https://upstream.example/v1 key=sk-SECRET body={'raw': 1}"
+    raise RuntimeError("wrap") from OSError(upstream)
+
+
+def test_failures_log_error_types_only(
+    env: Env, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    op = headers(operator(env.http))
+    user, rep = login(env.http, "user", CASE), login(env.http, "rep", CASE)
+    card = env.other.card()
+    approval = {"decision": "granted", "terms_hash": card.terms_hash}
+    approval |= {"authority_epoch": card.authority_epoch}
+    monkeypatch.setattr(env.starter, "_start", _boom)
+    for ingress in ("post_approval", "user_message", "rep_utterance"):
+        monkeypatch.setattr(env.other, ingress, _boom)
+    with caplog.at_level(logging.DEBUG, logger="proxyloop.serve"):
+        got = [
+            start(env, op),
+            post(env.http, f"/api/cases/{CASE}/approvals/{card.approval_id}",
+                 approval, headers(user)),
+            post(env.http, f"/api/cases/{CASE}/messages", {"text": "hi"},
+                 headers(user)),
+            post(env.http, f"/api/cases/{CASE}/rep", {"text": "hi"}, headers(rep)),
+        ]  # fmt: skip
+    assert [(r.status_code, r.json()) for r in got] == [
+        (503, {"error": "unavailable"})
+    ] * 4
+    records = [r for r in caplog.records if r.name.startswith("proxyloop.serve")]
+    assert len(records) == 4
+    for record in records:
+        assert "RuntimeError" in record.getMessage()
+        assert record.exc_info is None and record.exc_text is None
+        logged = logging.Formatter().format(record) + repr(record.args)
+        assert not [secret for secret in SECRETS if secret in logged], logged

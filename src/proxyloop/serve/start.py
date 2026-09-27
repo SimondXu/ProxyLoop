@@ -117,6 +117,11 @@ def broken(options: Sequence[object], tasks: object) -> str | None:
     return None
 
 
+def _clean(text: str) -> str:
+    """A starter-supplied string, URLs redacted, before it is logged."""
+    return redact(text.encode()).decode()
+
+
 def _late(task: asyncio.Task[Case]) -> None:
     """How a timed-out or abandoned start ended: logged, never registered. Only
     an error's type is logged (AGENTS rule 15)."""
@@ -126,7 +131,7 @@ def _late(task: asyncio.Task[Case]) -> None:
     elif (error := task.exception()) is not None:
         _log.error("an abandoned start_case failed: %s", type(error).__name__)
     else:
-        run_id = task.result().run_id
+        run_id = _clean(task.result().run_id)
         _log.error("an abandoned start_case returned run %r: not registered", run_id)
 
 
@@ -168,13 +173,14 @@ async def _begin(kernel: Starter, body: StartBody, timeout_s: float) -> Case:
         return task.result()
     except StartRefused as refused:
         if refused.reason not in REASONS:
-            why = redact(refused.reason.encode()).decode()
+            why = _clean(refused.reason)
             _log.error("start refused with an unknown reason: %s", why)
             raise Refused(503, "unavailable") from None
         status = 409 if refused.reason == "busy" else 400
         raise Refused(status, "start", refused.reason) from refused
     except Exception as err:  # loud: logged, 503, no retry
-        _log.exception("start_case failed for task %s", body.task_ref)
+        why = type(err).__name__  # only: no text, traceback or cause (rule 15)
+        _log.error("start_case failed for task %s: %s", body.task_ref, why)
         raise Refused(503, "unavailable") from err
 
 
@@ -222,6 +228,7 @@ def add_start_routes(
         kernel = starter()
         options, tasks = kernel.model_options(), kernel.task_options()
         if (why := broken(options, tasks)) is not None:
+            why = _clean(why)  # it may quote an option id
             _log.error("the starter broke its promise: %s", why)
             raise Refused(500, "options", why)
         listed = [option.model_dump(mode="json") for option in options]
@@ -244,7 +251,8 @@ def add_start_routes(
             await asyncio.to_thread(sweep)
             case = await _begin(kernel, body, timeout_s)
             if case.run_id in started:
-                _log.error("the starter returned run_id %r twice", case.run_id)
+                twice = _clean(case.run_id)
+                _log.error("the starter returned run_id %r twice", twice)
                 raise Refused(503, "unavailable")
             started[case.run_id] = case
         return JSONResponse({"case_id": case.run_id}, 201)

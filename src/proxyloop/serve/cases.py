@@ -285,7 +285,8 @@ def add_case_routes(
             case.post_approval(post)
         except Exception as err:  # loud: logged, 503, and the id stays refused
             slots[key] = "failed"
-            _log.exception("post_approval failed for %s/%s", case_id, approval_id)
+            why = type(err).__name__  # only: no text, traceback or cause (rule 15)
+            _log.error("post_approval failed for %s/%s: %s", case_id, approval_id, why)
             raise Refused(503, "unavailable") from err
         return JSONResponse({"status": "posted"})
 
@@ -293,7 +294,8 @@ def add_case_routes(
         try:
             ingress(text)
         except Exception as err:  # loud: logged, 503, no retry
-            _log.exception("the ingress failed for case %s", case_id)
+            why = type(err).__name__  # only: no text, traceback or cause (rule 15)
+            _log.error("the ingress failed for case %s: %s", case_id, why)
             raise Refused(503, "unavailable") from err
         return JSONResponse({"status": "sent"})
 
