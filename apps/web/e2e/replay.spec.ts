@@ -53,9 +53,11 @@ test("opens in the conversation view: the heard lines at the end, the status lin
   ];
   expect(labels.length, "a replayable bundle runs against the sim world").toBeGreaterThan(0);
   await expect(page.getByRole("note", { name: "Simulated parties" })).toHaveText(labels.join(" · "));
-  for (const frame of [page.getByRole("region", { name: "Chat" }), page.getByRole("region", { name: "Call" })]) {
-    await expect(frame.getByLabel("Simulated parties")).toHaveText(labels.join(" · "));
-  }
+  await expect(page.getByRole("region", { name: "Call" }).getByLabel("Simulated parties")).toHaveText(labels.join(" · "));
+  // The chat column is labelled only for a simulated user.
+  const chatSim = page.getByRole("region", { name: "Chat" }).getByLabel("Simulated parties");
+  if (roles.includes("simuser")) await expect(chatSim).toHaveText("Simulated user");
+  else await expect(chatSim).toHaveCount(0);
   // A seek must not read every line out: the replay transcripts are not aria-live.
   await expect(page.getByRole("list", { name: "Chat transcript" })).not.toHaveAttribute("aria-live", /.*/);
   const timeline = page.getByRole("slider", { name: "Timeline" });
