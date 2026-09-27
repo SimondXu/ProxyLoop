@@ -87,9 +87,8 @@ class FastLane:
         brief = k.task.fast_brief_user if user else k.task.fast_brief_cp
         return (view_user if user else view_cp)(k.bb, trigger, brief)
 
-    def _request(self, trigger: Trigger) -> tuple[TextRequest, str]:
+    def _request(self, view: FastView) -> tuple[TextRequest, str]:
         k, s, lane = self._k, self._k.cfg.fast_sampling, self.lane
-        view = self.view(trigger)
         seed = int(sha256_text(f"{k.cfg.seed}:{lane}:{self._n}")[:8], 16)
         args: dict[str, Any] = dict(call_id=f"fast_{lane}:{self._n}", seed=seed)
         args |= dict(role=f"fast_{lane}", max_tokens=s.max_tokens)
@@ -111,7 +110,10 @@ class FastLane:
         gen_id = f"{lane}-g{self._n}"
         gen: dict[str, object] = {"lane": lane, "gen_id": gen_id}
         guides = [m.msg_id for m in k.bb.s2f_pending.get(lane, ()) if m.guide]
-        request, view_sha = self._request(trigger)
+        view = self.view(trigger)
+        request, view_sha = self._request(view)
+        heard = [x.utt_id for x in view.transcript if x.speaker == "partner"]
+        utt_ref = (heard or [None])[-1]  # what this prompt saw, not the board later
         kind = "prompt" if request.prompt is not None else "messages"
         asked = gen | {"trigger": trigger.kind, "view_sha": view_sha}
         asked |= {"prompt_sha": k.store(kind, request_content(request))}
@@ -143,7 +145,7 @@ class FastLane:
         for msg_id in [*guides, *([trigger.msg_id] if trigger.msg_id else [])]:
             voiced = {"msg_id": msg_id, "gen_id": gen_id}
             k.emit("s2f.voiced", self._actor, voiced, [turn])
-        self._relay(items, turn, gen_id)
+        self._relay(items, turn, gen_id, utt_ref)
         held = next((i.reason for i in items if isinstance(i, fp.Hold)), None)
         if lane == "cp" and held != ((hold := k.bb.public.cp_hold) and hold.reason):
             k.emit("chan.hold", self._actor, {"lane": "cp", "reason": held}, [turn])
@@ -155,10 +157,11 @@ class FastLane:
         if lines:
             await k.speakers[lane].speak(lines)
 
-    def _relay(self, items: list[fp.TurnItem], turn: str, gen_id: str) -> None:
+    def _relay(
+        self, items: list[fp.TurnItem], turn: str, gen_id: str, utt_ref: str | None
+    ) -> None:
         k, lane = self._k, self.lane
-        heard = [x.utt_id for x in k.bb.channels[lane].lines if x.speaker == "partner"]
-        base = {"lane": lane, "gen_id": gen_id, "utt_ref": (heard or [None])[-1]}
+        base = {"lane": lane, "gen_id": gen_id, "utt_ref": utt_ref}
         for item in items:
             if isinstance(item, fp.Relay):
                 own = "USER_UPDATE" if lane == "user" else "CP_UPDATE"
