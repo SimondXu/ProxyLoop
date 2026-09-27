@@ -171,7 +171,8 @@ class Kernel:
         tok: ChatTokenizer | None,
         run_id: str | None = None,
     ) -> None:
-        if set(cfg.ablations) - _REPAIR or cfg.slow_view is not SlowViewMode.RELAY_ONLY:
+        modes = (SlowViewMode.TRANSCRIPT, SlowViewMode.RELAY_ONLY)  # ADR-0016
+        if set(cfg.ablations) - _REPAIR or cfg.slow_view not in modes:
             raise ValueError("ablations other than R's arrive with S3-SYS-01")
         if "cp" not in specs or specs.get("cp_agent", "human") == "sim":
             raise ValueError("a session needs a cp partner; a cp_agent is a person")
