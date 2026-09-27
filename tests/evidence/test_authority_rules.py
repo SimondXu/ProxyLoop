@@ -44,13 +44,16 @@ def _log(*rows: tuple[str, str, Mapping[str, object]]) -> list[Event]:
     return out
 
 
-def _accept(verbatim: Mapping[str, object], released: Mapping[str, object]) -> list[str]:
-    heard = {"lane": "cp", "utt_id": "accept-1", "text_generated": TEXT}
+def _accept(
+    verbatim: Mapping[str, object], released: Mapping[str, object]
+) -> list[str]:
+    heard: dict[str, object] = {"lane": "cp", "utt_id": "accept-1"}
+    heard |= {"text_generated": TEXT}
     heard |= {"text_heard": TEXT, "interrupted": False}
     events = _log(
         ("user.msg", "kernel", {"text": "go"}),
-        ("speak.verbatim", "guard", {"lane": "cp", "text": TEXT} | verbatim),
-        ("speak.released", "kernel", {"lane": "cp"} | released),
+        ("speak.verbatim", "guard", {"lane": "cp", "text": TEXT, **verbatim}),
+        ("speak.released", "kernel", {"lane": "cp", **released}),
         ("utt.delivered", "kernel", heard),
     )
     return chain_failures(events, {}, real_only=False)

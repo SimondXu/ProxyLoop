@@ -1,5 +1,6 @@
 """Channels (§2, §10): a lane's partner hears the agent (``send``, as heard) and
-queues its turns (``incoming``); ``tick`` runs only on a free, idle floor."""
+queues its turns (``incoming``); ``tick`` runs only on a free, idle floor. The
+SimUser's channel also fires its unprompted stop on a trigger (#143, N6)."""
 
 from __future__ import annotations
 
@@ -10,6 +11,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
+from proxyloop.env.user.approver import Approver
+from proxyloop.env.user.simuser import SimUser
+
 End = Literal["", "hangup", "closed", "quit"]
 
 
@@ -19,6 +23,7 @@ class Incoming:  # One partner turn: lines with the world event behind each, if 
     due_ms: int = 0  # not before (the SimUser's reply delay)
     strike: bool = False
     end: End = ""
+    delivered: asyncio.Event | None = None  # set once its lines are emitted
 
 
 class Channel:  # The base: a partner that never speaks first and has no clock
@@ -37,6 +42,39 @@ class Channel:  # The base: a partner that never speaks first and has no clock
 
     def floor(self, free: bool, t_ms: int) -> None:
         return None
+
+
+class SimUserChannel(Channel):  # replies delay_s after each message
+    def __init__(self, user: SimUser) -> None:
+        super().__init__()
+        self._user, self._lock = user, asyncio.Lock()
+
+    @property
+    def approver(self) -> Approver | None:  # the principal's approval button
+        return self._user.approver
+
+    async def send(self, text: str | None, utt_id: str, cause: str, t_ms: int) -> None:
+        async with self._lock:  # one reply at a time, in message order
+            reply = await self._user.on_agent_message(text, cause)
+        if reply is None:  # the user stays silent: nothing to deliver
+            return
+        due = 0 if text is None else t_ms + round(1000 * reply.delay_s)
+        self.incoming.put_nowait(Incoming(((reply.text, reply.event_id),), due))
+
+    async def trigger(
+        self, kind: Literal["after_card", "after_offer"], cause: str, t_ms: int
+    ) -> asyncio.Event | None:
+        """``cause`` (at ``t_ms``) may be the user's stop trigger: the stop is
+        queued ``delay_s`` after it, and the returned event is set once its
+        ``user.msg`` is emitted (``None``: no stop)."""
+        async with self._lock:  # serialised with the replies
+            reply = await self._user.on_trigger(kind, cause)
+        if reply is None:
+            return None
+        done, due = asyncio.Event(), t_ms + round(1000 * reply.delay_s)
+        line = ((reply.text, reply.event_id),)
+        self.incoming.put_nowait(Incoming(line, due, delivered=done))
+        return done
 
 
 class HumanChannel(Channel):  # a person at the terminal

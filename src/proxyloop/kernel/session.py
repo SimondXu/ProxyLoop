@@ -1,5 +1,7 @@
 """``run_session``, the only execution path (I1); ``llm.call`` only from the record
-sinks; ``LLMUnavailable`` ends it (I8). The one module wiring agent code to ``env``."""
+sinks; ``LLMUnavailable`` ends it (I8). It wires agent code to ``env`` (with the
+channels and the sim approver in ``fence``). ``Kernel.bb`` is the board at the
+bus clock's now: Guard's "now" is ``bb.t_ms``, so no rule runs on a stale clock."""
 
 from __future__ import annotations
 
@@ -17,12 +19,17 @@ from typing import Any, Literal, cast
 from proxyloop.contract import CONTRACT_VERSION, llm
 from proxyloop.contract import bundle as b
 from proxyloop.contract.base import Lane, sha256_text
-from proxyloop.contract.config import SessionConfig, SlowViewMode, config_hash
-from proxyloop.contract.events import Event, Stream, event_id
+from proxyloop.contract.config import (
+    AblationId,
+    SessionConfig,
+    SlowViewMode,
+    config_hash,
+)
+from proxyloop.contract.events import ApprovalPost, Approver, Event, Stream, event_id
 from proxyloop.contract.protocol import ChatTokenizer, fingerprint
 from proxyloop.contract.state import Blackboard, CaseStatus
 from proxyloop.contract.views import Trigger
-from proxyloop.core.bus import Bus
+from proxyloop.core.bus import Bus, Subscriber
 from proxyloop.core.clock import Clock, WallClock
 from proxyloop.env.counterparty.simrep import RepTurn, SimRep
 from proxyloop.env.tasks.loader import instance_hash
@@ -30,7 +37,15 @@ from proxyloop.env.tasks.schema import Task
 from proxyloop.env.user.simuser import SimUser
 from proxyloop.env.world import World, WorldError
 from proxyloop.evidence.reality import role_refs
-from proxyloop.kernel.channels import Channel, End, HumanChannel, Incoming, read_stdin
+from proxyloop.kernel.channels import (
+    Channel,
+    End,
+    HumanChannel,
+    Incoming,
+    SimUserChannel,
+    read_stdin,
+)
+from proxyloop.kernel.fence import Authority
 from proxyloop.kernel.lanes import PROFILE, FastLane, load_tokenizer, p3
 from proxyloop.kernel.speaker import Sleep, Speaker
 from proxyloop.kernel.watchdog import Abort, SessionEnd, watchdog
@@ -38,6 +53,7 @@ from proxyloop.llm.factory import LiveModeError, make_client
 from proxyloop.llm.http import HTTPAdapter, RecordSink
 from proxyloop.llm.spend import RunawaySpend, SpendLedger
 from proxyloop.llm.vllm import VLLMClient
+from proxyloop.models.repair import TeacherRepair
 from proxyloop.slow.loop import SlowLoop
 
 # Guard-authored and fixed (I11, C14): the first thing the rep hears.
@@ -55,6 +71,7 @@ _ERRORS: dict[type[Exception], str] = {  # in priority: budget before the world
     **{WorldError: "world_error"},
 }
 _AFTER_DEATH = ("llm.call", "spend.charged", "session.ended")
+_REPAIR = {AblationId.TEACHER_REPAIR_CP, AblationId.TEACHER_REPAIR_USER}
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,20 +101,6 @@ class _Loud:  # The session dies the moment one of its endpoints does
         except llm.LLMUnavailable:
             self._die()
             raise
-
-
-class SimUserChannel(Channel):  # replies delay_s after each message
-    def __init__(self, user: SimUser) -> None:
-        super().__init__()
-        self._user, self._lock = user, asyncio.Lock()
-
-    async def send(self, text: str | None, utt_id: str, cause: str, t_ms: int) -> None:
-        async with self._lock:  # one reply at a time, in message order
-            reply = await self._user.on_agent_message(text, cause)
-        if reply is None:  # the user stays silent: nothing to deliver
-            return
-        due = 0 if text is None else t_ms + round(1000 * reply.delay_s)
-        self.incoming.put_nowait(Incoming(((reply.text, reply.event_id),), due))
 
 
 class SimRepChannel(Channel):  # hears text_heard; ticks on a free floor
@@ -201,8 +204,8 @@ class Kernel:
         clients: ClientFactory | None,
         tok: ChatTokenizer | None,
     ) -> None:
-        if cfg.ablations or cfg.slow_view is not SlowViewMode.RELAY_ONLY:
-            raise ValueError("ablations arrive with S3-SYS-01")
+        if set(cfg.ablations) - _REPAIR or cfg.slow_view is not SlowViewMode.RELAY_ONLY:
+            raise ValueError("ablations other than R's arrive with S3-SYS-01")
         if "cp" not in specs or specs.get("cp_agent", "human") == "sim":
             raise ValueError("a session needs a cp partner; a cp_agent is a person")
         self.cfg, self.task, self.clock, self.sleep = cfg, task, clock, sleep
@@ -211,14 +214,16 @@ class Kernel:
         self._causes: dict[str, str] = {}  # call_id -> the event it answers
         self._calls: dict[str, str] = {}  # call_id -> its last llm.call event
         self._dead, self._utt, self._tg = False, 0, asyncio.TaskGroup()
+        self._ended = False
         self.p3: P3 = "not_applicable"
         self.attest: dict[str, Any] | None = None
         refs, make, roles = role_refs(cfg), clients or self._make, _roles(specs)
+        roles.extend(("teacher",) if cfg.teacher is not None else ())
         if cfg.live and (bad := [r for r in roles if refs[r].kind is not REAL]):
             raise LiveModeError(f"live mode refuses {bad}: not real_http")
         self.clients: dict[llm.LLMRole, _Loud] = {}
         for role in roles:  # before anything is written: startup refusals
-            world = role in ("ear", "mouth", "simuser")
+            world = role in ("ear", "mouth", "simuser")  # the teacher answers as Fast
             client = make(
                 role, refs[role], self._world_record if world else self._record
             )
@@ -237,6 +242,9 @@ class Kernel:
         self.path.mkdir(parents=True)
         self.bus = Bus(self.path / b.EVENTS, self.run_id, clock)
         self.bus.subscribe(self._on_event)
+        self.authority = Authority(self)
+        teacher = self.clients.get("teacher")  # condition R: evaluation, 0 resamples
+        self.teacher = TeacherRepair(teacher, 0) if teacher is not None else None
         self.world = World(_WorldSink(self))
         self.channels = {key: self._channel(key, spec) for key, spec in specs.items()}
         both: tuple[Lane, ...] = ("user", "cp")
@@ -268,8 +276,9 @@ class Kernel:
         return SimRepChannel(SimRep(self.task, ear, mouth, self.world))
 
     @property
-    def bb(self) -> Blackboard:
-        return self.bus.bb
+    def bb(self) -> Blackboard:  # at the bus clock's now
+        bb = self.bus.bb
+        return bb.model_copy(update={"t_ms": max(bb.t_ms, self.now())})
 
     def now(self) -> int:
         return self.clock.monotonic_ms()
@@ -330,9 +339,18 @@ class Kernel:
     def _die(self) -> None:
         self._dead = True
 
+    def post_approval(self, post: ApprovalPost, by: Approver = "ui") -> None:
+        """The approvals ingress (§9.6): enqueued, decided in the kernel's loop."""
+        if self._ended:
+            raise RuntimeError("the session has ended")
+        self.authority.post(post, by)
+
     def _on_event(self, e: Event) -> None:
+        self.authority.on_event(e)  # first: a user.msg raises its fence at once
         p, user, cp = e.payload, self.lanes.get("user"), self.lanes.get("cp")
-        if e.type == "user.msg" and user is not None:
+        if e.type == "speak.verbatim" and p["kind"] in ("accept", "decline"):
+            self.spawn(self.speakers[cast(Lane, p["lane"])].verbatim(e))
+        elif e.type == "user.msg" and user is not None:
             user.trigger(Trigger(kind="user_msg"), e.event_id)
         elif e.type == "utt.final" and p["speaker"] == "partner" and cp:
             cp.trigger(
@@ -342,6 +360,9 @@ class Kernel:
             user.trigger(Trigger(kind="slow_msg", msg_id=str(p["msg_id"])), e.event_id)
         elif e.type == "s2f.msg" and p["type"] == "GUIDE" and cp and not self.closed:
             cp.trigger(Trigger(kind="guidance"), e.event_id)
+        elif e.type == "s2f.msg" and p["type"] == "APPROVAL_NOTICE" and user:
+            notice = (str(p["msg_id"]),)  # acknowledged by the turn that voices it
+            user.trigger(Trigger(kind="approval_card"), e.event_id, notice)
         elif e.type == "f2s.msg" and self.slow:
             self.slow.wake("relay")
 
@@ -391,6 +412,7 @@ class Kernel:
         head["runaway"] |= {"unpriced_calls": led.limit_unpriced_calls}
         head["runaway"] |= {"cap_micro_usd": led.limit_micro_usd}
         root = self.emit("session.started", "kernel", head, (), "ops").event_id
+        self.authority.root = root
         if self.p3 == "fail":  # refuse to start (§12)
             self._close("p3_failed" if dead is None else "llm_unavailable", started)
             raise dead or RuntimeError("P3: vLLM /tokenize != the pinned tokenizer")
@@ -438,6 +460,7 @@ class Kernel:
             self.spawn(self.lanes["user"].run())
         if self.slow:
             self.spawn(self.slow.run())
+        self.spawn(self.authority.run())  # the approvals queue
         self.spawn(watchdog(self))
         if humans := {
             k: c for k, c in self.channels.items() if isinstance(c, HumanChannel)
@@ -474,6 +497,8 @@ class Kernel:
                 ).event_id
             for text, cause in inc.lines:
                 last = self._line(key, text, [cause] if cause else [])
+            if inc.delivered is not None:
+                inc.delivered.set()
             channel.floor(True, self.now())
             if inc.end in ("quit", "hangup"):
                 hung_up = inc.end == "hangup" and key == "cp"
@@ -506,6 +531,7 @@ class Kernel:
         ended: dict[str, object] = {"reason": reason, "counts": dict(self.counts)}
         ended["spend"] = self.ledger.totals()  # extra keys: S1-CON-03 types them
         self.emit("session.ended", "kernel", ended, (), "ops")
+        self._ended = True
         self.bus.close()
         prompts = "".join(f"{r.model_dump_json()}\n" for r in self.prompts.values())
         (self.path / b.PROMPTS).write_text(prompts, "utf-8")
@@ -538,14 +564,19 @@ async def run_session(
     sleep: Sleep | None = None,
     clients: ClientFactory | None = None,
     tokenizer: ChatTokenizer | None = None,
+    observers: Sequence[Subscriber] = (),
 ) -> RunResult:
     """``channels``: ``user``/``cp`` (and for rep-chat ``cp_agent``, a person for
-    the agent) -> ``"sim"``/``"human"``/a ``Channel``. Keywords are test seams."""
+    the agent) -> ``"sim"``/``"human"``/a ``Channel``. ``observers`` are isolated
+    bus subscribers (an exporter): their errors are logged, never fatal (§11).
+    The other keywords are test seams."""
     sims: dict[str, ChannelSpec] = {"user": "sim", "cp": "sim"}
     specs, clock = sims if channels is None else channels, clock or WallClock()
     k = Kernel(
         cfg, task, specs, runs_dir, clock, sleep or asyncio.sleep, clients, tokenizer
     )
+    for observer in observers:
+        k.bus.subscribe(observer, isolated=True)
     try:
         return await k.run()
     finally:

@@ -1,5 +1,13 @@
 """Speakers (§11): chat at once; cp holds the floor with the speech clock
-``min(12 s, words / 2.8)``, and a partner barging in cuts the line and the turn."""
+``min(12 s, words / 2.8)``, and a partner barging in cuts the line and the turn.
+
+Guard's verbatim lines (§9.4) take the floor in turn with Fast's. There an
+accept is revalidated (``guard.revalidate`` at now plus its speech time): it is
+released with its ``cap_id`` (M7), or revoked with the reason, ``fence`` under
+a raised fence. So every accept line ends in exactly one ``speak.released`` or
+``speak.revoked``, and never waits on a fence: a held line could wedge the case
+on ``accept_in_flight``. Its status follows only from what happened: heard
+whole, cut by a barge-in (``accept_truncated``) or revoked."""
 
 from __future__ import annotations
 
@@ -10,6 +18,7 @@ from typing import TYPE_CHECKING
 
 from proxyloop.contract.base import Lane
 from proxyloop.contract.events import Event
+from proxyloop.guard.capability import revalidate
 
 if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
@@ -24,6 +33,10 @@ def heard_prefix(text: str, seconds: float) -> str:  # a prefix of text
     return text[: words[n - 1].end()] if n else ""
 
 
+def speech_s(text: str) -> float:
+    return min(MAX_LINE_S, len(text.split()) / WORDS_PER_S)
+
+
 class Speaker:
     def __init__(self, k: Kernel, lane: Lane) -> None:
         self._k, self.lane, self._channel = k, lane, k.channels[lane]
@@ -33,29 +46,65 @@ class Speaker:
 
     async def speak(
         self, lines: Sequence[tuple[str, str, str]], interruptible: bool = True
-    ):
-        k, realtime = self._k, self.lane == "cp"
+    ) -> None:
         async with self._lock:
-            self._barge.clear()
-            self.speaking, self._stale = realtime, self._channel.busy
-            self._channel.floor(False, k.now())
-            heard: list[str] = []
-            last: Event | None = None
-            for utt_id, text, cause in lines:
-                if realtime and k.closed:
-                    break  # the call is over
-                said = await self._clock(text, interruptible) if realtime else text
-                out = {"lane": self.lane, "utt_id": utt_id, "text_generated": text}
-                out |= {"text_heard": said, "interrupted": said != text}
-                last = k.emit("utt.delivered", "kernel", out, [cause])
-                heard.append(said)
-                if said != text:
-                    cut = {"lane": self.lane, "utt_id": utt_id}
-                    k.emit("chan.barge_in", "kernel", cut, [last.event_id])
-                    break
-            self.speaking = False
-            self._channel.floor(True, k.now())
-        text = " ".join(h for h in heard if h)
+            last, heard = await self._deliver(lines, interruptible)
+        self._send(last, heard)
+
+    async def verbatim(self, said: Event) -> None:
+        """Guard's accept or decline line: revalidated and released or revoked
+        on the floor; an accept's status follows from its delivery."""
+        k, p = self._k, said.payload
+        text, kind, cap = str(p["text"]), p["kind"], p.get("cap_id")
+        held = {} if cap is None else {"cap_id": cap}
+        async with self._lock:  # in turn with Fast's lines
+            end = k.now() + round(1000 * speech_s(text))
+            why = "call_closed" if k.closed else None
+            if why is None and cap is not None:
+                why = revalidate(k.bb, str(cap), end)
+            if why is not None:
+                out = {"lane": self.lane, "reason": why} | held
+                revoked = k.emit("speak.revoked", "kernel", out, [said.event_id])
+                if kind == "accept":
+                    k.authority.move("accept_revoked", revoked.event_id)
+                return
+            out = {"lane": self.lane} | held
+            released = k.emit("speak.released", "kernel", out, [said.event_id])
+            line = (f"{kind}-{said.seq}", text, released.event_id)
+            last, heard = await self._deliver([line], True)
+            if kind == "accept" and last is not None:
+                cut = bool(last.payload["interrupted"])
+                heard_as = "accept_truncated" if cut else "accept_heard"
+                k.authority.move(heard_as, last.event_id)
+        self._send(last, heard)
+
+    async def _deliver(
+        self, lines: Sequence[tuple[str, str, str]], interruptible: bool
+    ) -> tuple[Event | None, list[str]]:
+        k, realtime = self._k, self.lane == "cp"
+        self._barge.clear()
+        self.speaking, self._stale = realtime, self._channel.busy
+        self._channel.floor(False, k.now())
+        heard: list[str] = []
+        last: Event | None = None
+        for utt_id, text, cause in lines:
+            if realtime and k.closed:
+                break  # the call is over
+            said = await self._clock(text, interruptible) if realtime else text
+            out = {"lane": self.lane, "utt_id": utt_id, "text_generated": text}
+            out |= {"text_heard": said, "interrupted": said != text}
+            last = k.emit("utt.delivered", "kernel", out, [cause])
+            heard.append(said)
+            if said != text:
+                cut = {"lane": self.lane, "utt_id": utt_id}
+                k.emit("chan.barge_in", "kernel", cut, [last.event_id])
+                break
+        self.speaking = False
+        self._channel.floor(True, k.now())
+        return last, heard
+
+    def _send(self, last: Event | None, heard: list[str]) -> None:
+        k, text = self._k, " ".join(h for h in heard if h)
         if last is not None and text:
             utt_id = str(last.payload["utt_id"])
             k.spawn(self._channel.send(text, utt_id, last.event_id, k.now()))
@@ -69,7 +118,7 @@ class Speaker:
             return
 
     async def _clock(self, text: str, interruptible: bool) -> str:
-        start, seconds = self._k.now(), min(MAX_LINE_S, len(text.split()) / WORDS_PER_S)
+        start, seconds = self._k.now(), speech_s(text)
         if not interruptible:  # the disclosure is heard whole (I11)
             await self._k.sleep(seconds)
             return text

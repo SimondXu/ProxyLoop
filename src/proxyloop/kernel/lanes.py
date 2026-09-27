@@ -1,22 +1,37 @@
 """FastLane (§6, §11; I3): one generation at a time, triggers coalesced; prompts
-only from the contract renderer; relays are ``f2s.msg`` with ``msg_id == event_id``."""
+only from the contract renderer; relays are ``f2s.msg`` with ``msg_id == event_id``.
+
+Generations (§9.4): one whose authority epoch moved while it streamed is stale:
+``fast.cancelled`` before its first sentence (no turn, relay or speech), and its
+trigger runs again on the new basis (an unacknowledged APPROVAL_NOTICE once).
+The stream is not aborted. A newer partner line does not cancel a generation
+(#144 credits its relays to its own view; the next generation answers it).
+Condition R (``teacher_repair_*``): a generation at a decision point goes to the
+teacher, as a ``fast_*`` call with the teacher's model (E1), ``resamples`` noted."""
 
 from __future__ import annotations
 
 import asyncio
 import importlib
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import ValidationError
 
 from proxyloop.contract import protocol as fp
 from proxyloop.contract.base import Lane, canonical_json, sha256_text
-from proxyloop.contract.llm import LLMCallRecord, TextRequest, request_content
+from proxyloop.contract.llm import (
+    LLMCallRecord,
+    LLMClient,
+    TextRequest,
+    request_content,
+)
 from proxyloop.contract.messages import FastToSlow
 from proxyloop.contract.views import FastView, Trigger, view_cp, view_user
 from proxyloop.llm.parity import GoldenPrompt, check_parity
 from proxyloop.llm.vllm import VLLMClient
+from proxyloop.models.repair import substitutes
 
 if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
@@ -57,43 +72,58 @@ def _speaks(items: list[fp.TurnItem]) -> bool:  # a sentence has been released
     return any(isinstance(i, fp.Speech) for i in items)
 
 
+@dataclass(slots=True)
+class _Ask:  # a pending trigger
+    trigger: Trigger
+    cause: str
+    acks: tuple[str, ...] = ()  # the APPROVAL_NOTICEs it voices
+    again: bool = False  # it is re-run after a stale generation
+
+
 class FastLane:
     def __init__(self, k: Kernel, lane: Lane) -> None:
         self._k, self._actor = k, f"fast.{lane}"
         self.lane: Lane = lane
         self.client = k.clients["fast_user" if lane == "user" else "fast_cp"]
-        self._pending: list[tuple[Trigger, str]] = []
+        self._pending: list[_Ask] = []
         self._wake = asyncio.Event()
         self._n = 0
 
-    def trigger(self, trigger: Trigger, cause: str) -> None:
-        if trigger.kind != "slow_msg":  # one of each kind; each Slow message once
-            self._pending = [p for p in self._pending if p[0].kind != trigger.kind]
-        self._pending.append((trigger, cause))
+    def trigger(self, trigger: Trigger, cause: str, acks: tuple[str, ...] = ()) -> None:
+        self._add(_Ask(trigger, cause, acks))
         self._wake.set()
+
+    def _add(self, ask: _Ask, first: bool = False) -> None:
+        """One of each kind (the newest absorbs the older one's acks); each
+        Slow message once."""
+        kind = ask.trigger.kind
+        same = [a for a in self._pending if a.trigger.kind == kind != "slow_msg"]
+        ask.acks = (*(x for a in same for x in a.acks), *ask.acks)
+        self._pending = [a for a in self._pending if a not in same]
+        self._pending.insert(0, ask) if first else self._pending.append(ask)
 
     async def run(self) -> None:
         while True:
             await self._wake.wait()
             self._wake.clear()
             while self._pending:
-                urgent = [p for p in self._pending if p[0].kind in URGENT]
+                urgent = [p for p in self._pending if p.trigger.kind in URGENT]
                 chosen = (urgent or self._pending)[0]
                 self._pending.remove(chosen)
-                await self.generate(*chosen)
+                await self.generate(chosen)
 
     def view(self, trigger: Trigger) -> FastView:
         k, user = self._k, self.lane == "user"
         brief = k.task.fast_brief_user if user else k.task.fast_brief_cp
         return (view_user if user else view_cp)(k.bb, trigger, brief)
 
-    def _request(self, view: FastView) -> tuple[TextRequest, str]:
+    def _request(self, view: FastView, client: LLMClient) -> tuple[TextRequest, str]:
         k, s, lane = self._k, self._k.cfg.fast_sampling, self.lane
         seed = int(sha256_text(f"{k.cfg.seed}:{lane}:{self._n}")[:8], 16)
         args: dict[str, Any] = dict(call_id=f"fast_{lane}:{self._n}", seed=seed)
         args |= dict(role=f"fast_{lane}", max_tokens=s.max_tokens)
         args |= dict(temperature=s.temperature, top_p=s.top_p)
-        if self.client.ref.endpoint != "vllm":
+        if client.ref.endpoint != "vllm":
             args["messages"] = fp.render_messages(view, PROFILE[lane])
         elif k.tok is None:
             raise RuntimeError("a vLLM Fast lane needs the pinned tokenizer")
@@ -102,28 +132,33 @@ class FastLane:
         view_sha = k.store("view", canonical_json(view.model_dump(mode="json")))
         return TextRequest(**args), view_sha
 
-    async def generate(self, trigger: Trigger, cause: str) -> None:
-        k, lane = self._k, self.lane
+    async def generate(self, ask: _Ask) -> None:
+        k, lane, trigger, cause = self._k, self.lane, ask.trigger, ask.cause
         if lane == "cp" and k.closed:
             return  # the call is over
+        if trigger.kind == "approval_card" and k.bb.private.pending_approval is None:
+            k.counts["notice_moot"] += 1  # decided before FastU could voice it
+            return
         self._n += 1
         gen_id = f"{lane}-g{self._n}"
         gen: dict[str, object] = {"lane": lane, "gen_id": gen_id}
         guides = [m.msg_id for m in k.bb.s2f_pending.get(lane, ()) if m.guide]
-        view = self.view(trigger)
-        request, view_sha = self._request(view)
+        view, epoch = self.view(trigger), k.bb.epoch
+        repair = k.teacher is not None and substitutes(view, k.cfg.ablations)
+        client: LLMClient = k.teacher if repair and k.teacher else self.client
+        request, view_sha = self._request(view, client)
         heard = [x.utt_id for x in view.transcript if x.speaker == "partner"]
         utt_ref = (heard or [None])[-1]  # what this prompt saw, not the board later
         kind = "prompt" if request.prompt is not None else "messages"
         asked = gen | {"trigger": trigger.kind, "view_sha": view_sha}
         asked |= {"prompt_sha": k.store(kind, request_content(request))}
         asked |= {"profile": PROFILE[lane], "basis_seq": k.bb.seq}
-        asked |= {"model_ref": self.client.ref.model_dump(mode="json")}
-        ask = k.emit("fast.request", self._actor, asked, [cause])
-        k.expect(request.call_id, ask.event_id)
+        asked |= {"model_ref": client.ref.model_dump(mode="json")}
+        req = k.emit("fast.request", self._actor, asked, [cause]).event_id
+        k.expect(request.call_id, req)
         parser, items, text = fp.StreamParser(lane), list[fp.TurnItem](), ""
         start, ttfs, record = k.now(), None, None
-        async for delta in self.client.stream_text(request):
+        async for delta in client.stream_text(request):
             if isinstance(delta, LLMCallRecord):
                 record = delta  # the sink already wrote it
                 continue
@@ -136,13 +171,22 @@ class FastLane:
             ttfs = k.now() - start
         assert record is not None, "every call ends with its record"
         k.store("response", text)
+        causes = [req, k.call_event(request.call_id)]
+        if k.bb.epoch != epoch:  # stale: cancelled before its first sentence
+            cancel = {"gen_id": gen_id, "reason": "epoch"}
+            k.emit("fast.cancelled", self._actor, cancel, causes)
+            if not (ask.again and trigger.kind == "approval_card"):
+                self._add(_Ask(trigger, cause, ask.acks, again=True), first=True)
+            return
         first = record.t_first_token
         ttft = None if first is None else first - record.t_start
         turned = gen | {"call_id": record.call_id, "ttft_ms": ttft, "ttfs_ms": ttfs}
         turned["items"] = [i.model_dump(mode="json") for i in items]
-        causes = [ask.event_id, k.call_event(request.call_id)]
+        if repair and k.teacher is not None:  # E1: the teacher's resample count
+            turned["resamples"] = k.teacher.resamples.get(request.call_id, 0)
         turn = k.emit("fast.turn", self._actor, turned, causes).event_id
-        for msg_id in [*guides, *([trigger.msg_id] if trigger.msg_id else [])]:
+        slow_msg = [trigger.msg_id] if trigger.msg_id else []
+        for msg_id in [*guides, *slow_msg, *ask.acks]:
             voiced = {"msg_id": msg_id, "gen_id": gen_id}
             k.emit("s2f.voiced", self._actor, voiced, [turn])
         self._relay(items, turn, gen_id, utt_ref)

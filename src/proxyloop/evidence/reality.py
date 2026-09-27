@@ -45,7 +45,7 @@ def substituted(cfg: SessionConfig, c: LLMCallRecord) -> bool:
     )
 
 
-def _model_role(cfg: SessionConfig, c: LLMCallRecord) -> str:
+def _model_role(cfg: SessionConfig, c: LLMCallRecord) -> LLMRole:
     return "teacher" if substituted(cfg, c) else c.role
 
 
