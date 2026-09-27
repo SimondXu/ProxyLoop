@@ -2,7 +2,13 @@
 // lane, from GET /api/models only, then one POST /api/cases (start.ts, liveApi.ts).
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { csrfToken, getOptions, paths, startCase } from "./liveApi";
+import { AppShell } from "./shell/AppShell";
 import { defaults, maybeStarted, parseOffer, START_LANES, startError, type Offer } from "./start";
+import { Banner } from "./ui/Banner";
+import { Button } from "./ui/Button";
+import "./ui/Card.css"; // the form and the started note are cards
+import { EmptyState } from "./ui/EmptyState";
+import { Skeleton } from "./ui/Skeleton";
 
 /** Whether the operator's CSRF cookie is there. A malformed one is there: no "open /start" note, and the POST says why (#173 N-4). */
 const hasCookie = () => {
@@ -54,19 +60,23 @@ export function StartPage() {
   };
 
   return (
-    <main>
+    <AppShell>
       <header className="bar">
         <h1>ProxyLoop: start a live session</h1>
       </header>
       {!hasCookie() && (
-        <p role="note" className="note">
+        <Banner tone="attn" role="note">
           No operator cookie: <a href={paths.start}>open /start</a> first.
-        </p>
+        </Banner>
       )}
-      {offer === null && <p>Loading the options…</p>}
-      {typeof offer === "string" && <p role="alert">Options unavailable: {offer}</p>}
+      {offer === null && <Skeleton label="Loading the options…" />}
+      {typeof offer === "string" && (
+        <Banner tone="danger" role="alert">
+          Options unavailable: {offer}
+        </Banner>
+      )}
       {offer !== null && typeof offer !== "string" && (
-        <form className="start" aria-label="Start a session" onSubmit={submit}>
+        <form className="pl-card start" aria-label="Start a session" onSubmit={submit}>
           <label>
             Task{" "}
             <select aria-label="Task" value={task} onChange={(e) => setTask(e.target.value)}>
@@ -104,19 +114,23 @@ export function StartPage() {
               </label>
             );
           })}
-          <button type="submit" disabled={busy || !task}>
+          <Button variant="primary" type="submit" disabled={busy || !task}>
             Start
-          </button>
-          {offer.tasks.length === 0 && <p>No tasks offered.</p>}
-          {error && <p role="alert">Not started: {error}</p>}
+          </Button>
+          {offer.tasks.length === 0 && <EmptyState title="No tasks offered." />}
+          {error && (
+            <Banner tone="danger" role="alert">
+              Not started: {error}
+            </Banner>
+          )}
         </form>
       )}
       {started && (
-        <p aria-label="Started">
+        <p className="pl-card" aria-label="Started">
           Case {started} started with a human rep. <a href={paths.repSession(started)} target="_blank" rel="noopener">Open the rep page</a>{" "}
           in a new tab, then <a href={paths.liveSession(started)}>open the live page</a>.
         </p>
       )}
-    </main>
+    </AppShell>
   );
 }

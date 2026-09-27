@@ -1,0 +1,8 @@
+@layer components {
+  .pl-skeleton { display: flex; flex-direction: column; gap: var(--s2); max-width: 480px; padding: var(--s2) 0; }
+  .pl-skeleton-bar {
+    height: 14px; border-radius: var(--r-xs); background: linear-gradient(90deg, var(--sunken) 30%, var(--line) 50%, var(--sunken) 70%) 0 0 / 300% 100%;
+    animation: pl-shimmer 1.4s linear infinite;
+  }
+  .pl-skeleton-bar:last-child { width: 60%; }
+}
