@@ -34,6 +34,10 @@ REAL = (
     "I am afraid that really is the best offer I can provide.",  # cp-49
     "Understood, have a great day.",  # cp-57
 )
+OLD = (  # every cue before S1-SYS-55 stays one
+    "best and final", "final offer", "cannot do better", "can't do better",
+    "no better", "nothing more", "transfer", "goodbye", "ending the call",
+)  # fmt: skip
 SYNTHETIC = (
     "that's our best and final offer",
     "This is my final offer.",
@@ -55,10 +59,21 @@ NEVER = (
     "thank you for your time",
     "I can offer a monthly price of 75.00 with a term of 12 months.",  # f8 cp-10
     "Let me see what the best offer is.",
+    # hedges, conditions, checks and reported speech (review of PR #197)
+    "Let me check what's the best offer I can give you.",
+    "I'll check whether this is the best rate we have.",
+    "I'll see if this is the best rate available.",
+    "If this is the best deal for you, I can set it up today.",
+    "My manager said that's our best offer, but let me ask again.",
+    "I don't think that this really is our best offer.",
+    "I can't honestly say that this is our best offer.",
+    "I am not entirely sure whether this is the best deal.",
+    "Earlier I told you I can't go any lower, but actually I can do 55.",
+    "Tell me what is the best offer for you.",
 )
 
 
-@pytest.mark.parametrize("text", REAL + SYNTHETIC)
+@pytest.mark.parametrize("text", REAL + OLD + SYNTHETIC)
 def test_a_closing_line_matches(text: str) -> None:
     assert has_cue(text, "closing")
 

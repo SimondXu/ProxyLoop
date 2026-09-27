@@ -56,6 +56,11 @@ LEXICON: dict[str, tuple[str, ...]] = {
         r"transfer",  # hands the call on: this rep's position ends
         r"goodbye", r"ending the call", r"have a (?:great|good|nice) day",  # farewell
     ),
+    # before a closing cue in its clause: a condition, a hedge, a check still to
+    # make or someone else's (or an earlier) words, not the rep's position now
+    "unsure": ("if", "whether", "see", "check", "think", "sure", "said", "told",
+               "maybe", "might", "may", "earlier"),
+    "wh": ("what", "which"),  # right before a cue: "what's the best offer"
 }  # fmt: skip
 ROLE_OF = {  # the role a slot of each field kind must carry
     "monthly_price": "recurring",
@@ -113,7 +118,8 @@ def has_cue(text: str, kind: str) -> bool:
 
 def _closing(text: str) -> bool:
     """A closing cue in a sentence that asks nothing (a question states no
-    position), with no negation in the 4 words of its clause before it."""
+    position), with no negation or ``unsure`` word in its clause before it
+    and no ``wh`` word right before it."""
     t = _IS.sub(r"\1 is", text.lower().replace("\u2019", "'"))
     for sentence in _SENTENCE.split(t):
         if sentence.rstrip().endswith("?"):
@@ -121,8 +127,10 @@ def _closing(text: str) -> bool:
         for m in _CUES["closing"].finditer(sentence):
             start = max((b.end() for b in _SPLIT.finditer(sentence, 0, m.start())),
                         default=0)  # fmt: skip
-            before = _WORD.findall(sentence[start : m.start()])[-4:]
-            if not any(w in LEXICON["negation"] or w.endswith("n't") for w in before):
+            before = _WORD.findall(sentence[start : m.start()])
+            off = set(LEXICON["negation"]) | set(LEXICON["unsure"])
+            wh = bool(before) and before[-1] in LEXICON["wh"]
+            if not wh and not any(w in off or w.endswith("n't") for w in before):
                 return True
     return False
 

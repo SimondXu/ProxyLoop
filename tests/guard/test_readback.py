@@ -93,7 +93,7 @@ def test_required_fields() -> None:
 def test_lexicons_are_one_data_table() -> None:
     kinds = {"recurring", "one_time", "fee", "credit", "negation", "fees_none"}
     kinds |= {"changes_none", "change", "generic_fee", "expiry", "no_expiry"}
-    kinds |= {"closing"}
+    kinds |= {"closing", "unsure", "wh"}
     assert set(LEXICON) == kinds
     assert all(isinstance(cue, str) for cues in LEXICON.values() for cue in cues)
 
