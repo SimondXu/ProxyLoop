@@ -161,3 +161,9 @@ def test_eval_never_imports_obs() -> None:
     src = Path(__file__).parents[2] / "src" / "proxyloop" / "eval"
     for path in src.rglob("*.py"):
         assert "proxyloop.obs" not in path.read_text("utf-8"), path
+
+
+def test_hold_repeats_is_none_without_the_key(tmp_path: Path) -> None:
+    log = Log("rC")
+    log.add("session.ended", "kernel", "ops", {"reason": "done", "counts": {}})
+    assert _values(write(tmp_path / "rC", log, manifest("rC")))["hold_repeats"] is None

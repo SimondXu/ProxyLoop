@@ -43,39 +43,45 @@ def _guides(x: Inputs, move: str) -> list[Event]:
 
 @detector("identity.strikes")
 def _strikes(x: Inputs) -> Value:
-    """rep.policy IDENTIFY→ENDED (``abandoned``) and identity strikes: a
-    chan.strike whose ``kind`` is ``identity`` (S1-SYS-43), or, before that
-    key exists, whose cause chain reaches a rep.policy from IDENTIFY that a
-    heard line caused (timer strikes come from causeless rep.policy events).
-    None: no rep.policy."""
+    """rep.policy IDENTIFY→ENDED (``abandoned``: a hang-up, whether a heard
+    line or a timer caused it) and identity strikes: a chan.strike whose
+    ``kind`` is ``identity`` (S1-SYS-43), or, before that key exists, whose
+    cause chain reaches a rep.policy from IDENTIFY that a heard line caused
+    (timer strikes come from causeless rep.policy events). ``count``: the
+    strikes plus an abandonment that no counted strike already stands for
+    (an identity hang-up counts once). None: no rep.policy."""
     policy = x.of("rep.policy")
     if not policy:
         return None
     strikes = x.of("chan.strike")
     typed = any("kind" in e.payload for e in strikes)
-    seqs = [
-        e.seq
+    struck = {
+        e.seq: _policy_of(x, e)
         for e in strikes
         if (e.payload.get("kind") == "identity" if typed else _heard_identify(x, e))
-    ]
-    ends = [e.seq for e in policy if (e.payload["from"], e.payload["to"]) ==
+    }
+    ends = [e for e in policy if (e.payload["from"], e.payload["to"]) ==
             ("IDENTIFY", "ENDED")]  # fmt: skip
+    extra = bool(ends) and ends[0] not in struck.values()
     return {
-        "count": len(seqs) + len(ends),
-        "strikes": seqs,
-        "abandoned": ends[0] if ends else None,
+        "count": len(struck) + extra,
+        "strikes": list(struck),
+        "abandoned": ends[0].seq if ends else None,
         "kind_from": "payload" if typed else "causes",
-        "h5_pass": not seqs and not ends,
+        "h5_pass": not struck and not ends,
     }
 
 
-def _heard_identify(x: Inputs, e: Event) -> bool:
+def _policy_of(x: Inputs, e: Event) -> Event | None:
     for _ in range(4):  # chan.strike <- rep.mouth <- rep.policy
         if not e.cause_ids or (e := x.by_id[e.cause_ids[0]]).type == "rep.policy":
             break
-    return (
-        e.type == "rep.policy" and e.payload["from"] == "IDENTIFY" and bool(e.cause_ids)
-    )
+    return e if e.type == "rep.policy" else None
+
+
+def _heard_identify(x: Inputs, e: Event) -> bool:
+    p = _policy_of(x, e)
+    return p is not None and p.payload["from"] == "IDENTIFY" and bool(p.cause_ids)
 
 
 @detector("identity.cp_opened_ready")
@@ -171,7 +177,8 @@ def _unknown(x: Inputs) -> Value:
 def _levers(x: Inputs) -> Value:
     """Refused (``ok`` false) slow.tool calls of a lever: guide_fast with a
     lever ``args.move``, or share_fact of a competitor, tenure or cancel-lever
-    ``args.key``; ``by``: move or key. None: no slow.tool."""
+    ``args.key``; ``by``: the move, or the key's ``_LEVER_FACTS`` prefix
+    (never the model's raw key). None: no slow.tool."""
     tools = _tools(x)
     if not tools:
         return None
@@ -179,12 +186,16 @@ def _levers(x: Inputs) -> Value:
     seqs: list[int] = []
     for e in tools:
         args, name = as_dict(e.payload.get("args")), e.payload.get("name")
-        what = args.get("move") if name == "guide_fast" else args.get("key")
-        lever = what in _LEVER_MOVES if name == "guide_fast" else (
-            name == "share_fact" and str(what).startswith(_LEVER_FACTS))  # fmt: skip
+        key = str(args.get("key"))
+        if name == "guide_fast" and args.get("move") in _LEVER_MOVES:
+            lever = str(args["move"])
+        elif name == "share_fact":
+            lever = next((f for f in _LEVER_FACTS if key.startswith(f)), None)
+        else:
+            lever = None
         if lever and e.payload.get("ok") is False:
             seqs.append(e.seq)
-            by[str(safe(what))] += 1
+            by[lever] += 1
     return {"count": len(seqs), "seqs": seqs, "by": dict(sorted(by.items()))}
 
 
@@ -237,8 +248,9 @@ def _asked(x: Inputs) -> dict[str, list[tuple[Event, Event]]]:
 def _unconfirmed(x: Inputs) -> Value:
     """Per offer read back (an ask_readback cites its current revision): the
     latest revision's slots not ``confirmed`` at the log's end; ``unasked``:
-    offers never read back. The task's mode is not in the bundle, so
-    info_only offers are listed too. None: no offer.recorded."""
+    offers whose latest revision was never read back (``unasked_n``; then
+    ``h5_pass`` is None: an info_only task need not read back, and the mode
+    is not in the bundle). None: no offer.recorded."""
     offers = _revisions(x)
     if not offers:
         return None
@@ -251,7 +263,9 @@ def _unconfirmed(x: Inputs) -> Value:
         left = [safe(f) for f, s in _statuses(x, last).items() if s != "confirmed"]
         out[f"{safe(ref)}@{last.payload['revision']}"] = left
     count = sum(map(len, out.values()))
-    return {"count": count, "offers": out, "unasked": unasked, "h5_pass": not count}
+    passed = None if unasked else not count
+    return {"count": count, "offers": out, "unasked": unasked,
+            "unasked_n": len(unasked), "h5_pass": passed}  # fmt: skip
 
 
 @detector("slow.readback_asks_max_per_revision")

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import cast
 
 from proxyloop.obs import runs
-from proxyloop.obs.detectors import BANNER, scalar
+from proxyloop.obs.detectors import BANNER, as_dict, scalar
 from proxyloop.obs.trace import Refused
 from proxyloop.obs.triage import Row, Unreadable, read, row
 
@@ -91,7 +91,13 @@ def table(all_rows: Sequence[Row]) -> str:
         unknown: dict[str, int] = {}
         for r in members:
             cells: list[str] = []
-            for name, value in cast(dict[str, object], r["detectors"]).items():
+            items = list(cast(dict[str, object], r["detectors"]).items())
+            items += [  # a second scalar, shown on its own
+                (f"{k}.unasked_n", d["unasked_n"])
+                for k, v in items
+                if "unasked_n" in (d := as_dict(v))
+            ]
+            for name, value in items:
                 if name in _TEXT:
                     cells.insert(0, f"{_TEXT[name]}={_brief(value)}")
                     continue
@@ -109,7 +115,8 @@ def table(all_rows: Sequence[Row]) -> str:
             out.append(" ".join([head, *cells]))
         total = ["sum", *(f"{k}={v:g}" for k, v in sorted(sums.items())
                           if k not in _MAX)]  # fmt: skip
-        total += ["max", *(f"{k}={v:g}" for k, v in sorted(sums.items()) if k in _MAX)]
+        maxima = [f"{k}={v:g}" for k, v in sorted(sums.items()) if k in _MAX]
+        total += ["max", *maxima] if maxima else []
         total += [f"{k}:?x{v}" for k, v in sorted(unknown.items())]
         out.append("  " + " ".join(total))
     return "\n".join(out)

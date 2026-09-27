@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from tests.obs.bundles import Log, manifest, write
 from tests.obs.triage_bundle import P, s2f
 
@@ -136,7 +137,7 @@ def test_every_h5_detector_equals_the_hand_count(tmp_path: Path) -> None:
         # o1's expires is still "heard"; o2 was never read back
         "offer.required_unconfirmed_after_readback": {
             "count": 1, "offers": {"o1@1": ["expires"]}, "unasked": ["o2"],
-            "h5_pass": False,
+            "unasked_n": 1, "h5_pass": None,  # o2 may be info_only: unknown
         },
         # 21, 23 and 24 all went out while expires was unconfirmed
         "slow.readback_asks_max_per_revision": {
@@ -202,3 +203,55 @@ def test_identity_keys_mirror_slow() -> None:
     from proxyloop.slow import tools  # the test may import slow; obs may not
 
     assert grading.IDENTITY == tools._IDENTITY  # pyright: ignore[reportPrivateUsage]
+
+
+def _offer_log(run_id: str, revisions: int, asked: int) -> Log:
+    """An offer recorded ``revisions`` times; revision ``asked`` read back."""
+    log = Log(run_id)
+    for rev in range(1, revisions + 1):
+        made = _offer(log, "o1", ("monthly_price",), log.start)
+        log.events[-1] = log.events[-1].model_copy(
+            update={"payload": log.events[-1].payload | {"revision": rev}}
+        )
+        if rev == asked:
+            _readback(log, made, "offer:o1")
+    return log
+
+
+def test_an_offer_never_read_back_does_not_pass(tmp_path: Path) -> None:
+    for run_id, revisions, asked in (("rN", 1, 0), ("r2", 2, 1)):
+        log = _offer_log(run_id, revisions, asked)
+        run = write(tmp_path / run_id, log, manifest(run_id))
+        value = _values(run)["offer.required_unconfirmed_after_readback"]
+        assert value == {
+            "count": 0, "offers": {}, "unasked": ["o1"], "unasked_n": 1,
+            "h5_pass": None,
+        }, run_id  # fmt: skip
+
+
+def test_an_identity_hang_up_counts_once(tmp_path: Path) -> None:
+    log = Log("rI")
+    heard: P = {"lane": "cp", "utt_id": "u", "text_generated": "g"}
+    heard |= {"text_heard": "h", "interrupted": False}
+    line = log.add("utt.delivered", "kernel", "agent", heard, (log.start,))  # 1
+    _strike(log, _policy(log, "IDENTIFY", "IDENTIFY", "ask_identity", line))  # 2-4
+    _strike(log, _policy(log, "IDENTIFY", "ENDED", "hang_up", line))  # 5-7
+    value = _values(write(tmp_path / "rI", log, manifest("rI")))["identity.strikes"]
+    assert value == {
+        "count": 2, "strikes": [4, 7], "abandoned": 5, "kind_from": "causes",
+        "h5_pass": False,
+    }  # fmt: skip
+
+
+def test_lever_keys_are_bucketed_never_raw(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    log = Log("rL")
+    key = {"key": "competitor.price_usd:64.99"}  # a model-written key
+    _tool(log, "share_fact", False, log.start, args=key)  # 1
+    run = write(tmp_path / "rL", log, manifest("rL"))
+    value = _values(run)["slow.lever_refusals"]
+    assert value == {"count": 1, "seqs": [1], "by": {"competitor": 1}}
+    for args in ([], ["--json"]):
+        assert triage.main([str(run), *args]) == 0
+        assert "64.99" not in capsys.readouterr().out

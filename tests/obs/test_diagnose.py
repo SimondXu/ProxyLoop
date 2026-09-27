@@ -81,6 +81,8 @@ def test_groups_by_slow_fp_when_present(
         "== git_sha s1  runs=1",
         "== slow_fp fpA  runs=2",
     ]
+    totals = [x.split() for x in out if x.startswith("  sum")]
+    assert totals and all("max" not in t for t in totals)  # bare runs: no maxima
 
 
 def test_totals_label_sums_and_maxima(
@@ -93,3 +95,17 @@ def test_totals_label_sums_and_maxima(
     assert sums[0] == "sum" and "llm_calls=5" in sums
     assert "slow_max_step_gap_ms=2900" in maxima  # a max, not under "sum"
     assert not any(c.startswith("slow_max_step_gap_ms") for c in sums)
+
+
+def test_unasked_offers_show_as_their_own_cell(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    log = Log("rO")
+    slots = [{"field": "monthly_price", "value": "1", "status": "unknown"}]
+    offer: dict[str, object] = {"offer_ref": "o1", "revision": 1, "slots": slots}
+    offer["terms_hash"] = None
+    log.add("offer.recorded", "guard", "agent", offer, (log.start,))
+    write(tmp_path / "rO", log, manifest("rO"))
+    assert diagnose.main(["--root", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "offer.required_unconfirmed_after_readback.unasked_n=1" in out

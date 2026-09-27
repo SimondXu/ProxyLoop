@@ -396,11 +396,10 @@ def _rank(xs: Sequence[int], q: float) -> int | None:
 @detector("hold_repeats")
 def _holds(x: Inputs) -> Value:
     """The kernel's own count (session.ended ``counts.hold_repeat``); None: no
-    end record. A Counter omits zeros, so a missing key is 0."""
+    end record, or no such key (the kernel's Counter omits zeros, but a
+    kernel that never counted it omits it too)."""
     ends = x.of("session.ended")
-    if not ends or not isinstance(ends[-1].payload.get("counts"), dict):
-        return None
-    return as_dict(ends[-1].payload["counts"]).get("hold_repeat", 0)
+    return as_dict(ends[-1].payload.get("counts")).get("hold_repeat") if ends else None
 
 
 from proxyloop.obs import grading as grading  # noqa: E402  (registers H5)
