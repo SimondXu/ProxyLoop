@@ -116,15 +116,15 @@ async function toCard(page: Page) {
   await expect(chat).toContainText(ASK, FLOW);
   await say(page, IDENTITY);
   const card = page.getByRole("article", { name: /^Approval / });
-  await expect(card.getByLabel("Approval status")).toHaveText("awaiting your decision", FLOW);
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision", FLOW);
   // Guard's read-back of the carded revision: every slot confirmed, shown on the card.
   const slots = card.getByRole("list", { name: "Read-back progress" }).getByRole("listitem");
   await expect(slots).toHaveText([
-    "monthly_price: confirmed",
-    "term_months: confirmed",
-    "fees_none: confirmed",
-    "changes_none: confirmed",
-    "expires: confirmed",
+    "Monthly price $78.00 Read back",
+    "Contract length 24 months Read back",
+    "One-time fees None Read back",
+    "Changes to your plan None Read back",
+    "Offer valid until No expiry Read back",
   ]);
   const events = await log(page, id);
   one(events, "chan.opened", { lane: "cp" }); // the call happens, in either readiness order
@@ -133,6 +133,10 @@ async function toCard(page: Page) {
   const offered = of(events, "rep.policy").filter((e) => (e.payload.intent as { kind?: unknown }).kind === "offer");
   expect(Math.max(...facts.map((e) => e.seq))).toBeLessThan((offered[0] as Ev).seq); // identity before the offer
   const requested = one(events, "approval.requested");
+  // The carded revision's slots, in the order the card lists them.
+  const offer = of(events, "offer.recorded", { offer_ref: requested.payload.offer_ref, revision: requested.payload.revision }).at(-1);
+  const terms = (offer?.payload.slots ?? []) as { field: string }[];
+  expect(terms.map((t) => t.field)).toEqual(["monthly_price", "term_months", "fees_none", "changes_none", "expires"]);
   await expect(card.getByLabel("Readback")).toHaveText(String(requested.payload.readback_text));
   await expect((await authority(page)).getByLabel("Case status")).toHaveText("status AWAITING_APPROVAL");
   await expect(page.getByLabel("Status line")).toHaveText("Status: waiting for your approval");
@@ -148,7 +152,7 @@ test.describe("approve", () => {
     const { id, card } = await toCard(page);
     const [res] = await Promise.all([page.waitForResponse(isPost(/\/approvals\//)), card.getByRole("button", { name: "Approve" }).click()]);
     expect([res.status(), await res.json()]).toEqual([200, { status: "posted" }]);
-    await expect(card.getByLabel("Approval status")).toHaveText("decided: granted by ui", FLOW);
+    await expect(card.getByLabel("Approval status")).toHaveText(/^You approved · \d{1,2}:\d{2}\s[AP]M$/, FLOW);
 
     const events = await until(page, id, (e) => of(e, "chan.closed", { lane: "cp" }).length > 0);
     const posted = one(events, "approval.post");
@@ -203,9 +207,9 @@ test.describe("stop", () => {
     const strip = await authority(page);
     await say(page, STOP);
     await expect(strip.getByLabel("Fence")).toHaveText(/^fence raised \(fence-\d+\)$/);
-    await expect(card.getByLabel("Fence note")).toHaveText("fence raised: the accept waits until it clears");
+    await expect(card.getByLabel("Fence note")).toHaveText("Paused: reading your new message before anything is accepted.");
     // FastU relays the stop as a revoke: the kernel moves the epoch and the card is stale.
-    await expect(card.getByLabel("Approval status")).toHaveText("stale: the authority epoch moved past this card", FLOW);
+    await expect(card.getByLabel("Approval status")).toHaveText("No longer valid: your instructions changed", FLOW);
     await expect(card.getByRole("button", { name: "Approve" })).toBeDisabled();
     await expect(strip.getByLabel("Epoch")).toHaveText("epoch 1");
 

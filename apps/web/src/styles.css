@@ -28,19 +28,6 @@
   .composer { border-top: 1px solid var(--line); }
   .composer input { flex: 1; min-width: 240px; }
 
-  /* approval cards (the redesign's decision card is S1-SYS-40) */
-  .approvals { display: flex; flex-wrap: wrap; gap: var(--s3); margin: var(--s2) 0; }
-  .approval { max-width: 560px; padding: var(--s3) var(--s4); background: var(--surface); border: 1.5px solid var(--attn-ring); border-radius: var(--r-lg); box-shadow: var(--e3); }
-  .approval h2 { color: var(--attn); }
-  .approval.granted, .approval.denied { border-color: var(--guard); box-shadow: var(--e1); }
-  .approval.stale, .approval.superseded, .approval.already_decided { border-color: var(--line-strong); box-shadow: var(--e1); opacity: 0.85; }
-  .approval.refused { border-color: var(--danger); box-shadow: var(--e1); }
-  .approval pre { white-space: pre-wrap; font: inherit; background: var(--guard-soft); border-left: 3px solid var(--guard); padding: var(--s2) var(--s3); margin: var(--s1) 0; border-radius: 0 var(--r-sm) var(--r-sm) 0; }
-  .approval button { margin-right: var(--s2); }
-  .slots { list-style: none; padding: 0; margin: var(--s1) 0; font: var(--fs-meta) / var(--lh-meta) var(--font-mono); }
-  .slots .confirmed { color: var(--guard); }
-  .slots .unknown { color: var(--danger); }
-
   /* start and rep pages */
   .start { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s3); max-width: 640px; margin-top: var(--s2); }
   .rep { max-width: 720px; margin: 0 auto; }
