@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { indexEvents, laneOf, modelLabel, parseJsonl, runHeader, shasOf, summary, type Ev } from "./replay";
+import { endOf, indexEvents, laneOf, modelLabel, parseJsonl, runHeader, selectRun, shasOf, summary, type Ev, type RunState } from "./replay";
 
 const fixtures = fileURLToPath(new URL("../../../tests/web/fixtures", import.meta.url));
 const run = join(fixtures, readdirSync(fixtures)[0] ?? "");
@@ -121,5 +121,39 @@ describe("cards", () => {
       "CP_UPDATE · price=75",
     );
     expect(summary(ev("declass.denied", "guard", { violations: ["a", "b"] }))).toBe("a; b");
+  });
+});
+
+describe("timeline end (D9)", () => {
+  it("is the max t_ms, not the last event by seq", () => {
+    const at = (seq: number, t_ms: number) => ev("user.msg", "kernel", {}, { seq, t_ms });
+    expect(endOf([at(0, 5), at(1, 30), at(2, 10)])).toBe(30);
+    expect(endOf([])).toBe(0);
+  });
+});
+
+describe("run switch (D8)", () => {
+  const a = { events: [ev("user.msg", "kernel", {}, { run_id: "a" })] };
+  const b = { events: [ev("user.msg", "kernel", {}, { run_id: "b" })] };
+  const start: RunState = { runId: "", run: null, error: "" };
+
+  it("never shows the old run or its error under the new id", () => {
+    let s = selectRun(start, { type: "select", runId: "a" });
+    s = selectRun(s, { type: "loaded", runId: "a", run: a });
+    s = selectRun(s, { type: "failed", runId: "a", error: "boom" });
+    s = selectRun(s, { type: "select", runId: "b" });
+    expect(s).toEqual({ runId: "b", run: null, error: "" });
+    // Late answers for a: dropped.
+    s = selectRun(s, { type: "loaded", runId: "a", run: a });
+    s = selectRun(s, { type: "failed", runId: "a", error: "late" });
+    expect(s).toEqual({ runId: "b", run: null, error: "" });
+    s = selectRun(s, { type: "loaded", runId: "b", run: b });
+    expect(s).toEqual({ runId: "b", run: b, error: "" });
+  });
+
+  it("keeps a listing error before any run is selected", () => {
+    expect(selectRun(start, { type: "failed", runId: "", error: "GET /api/bundles: 500" }).error).toBe(
+      "GET /api/bundles: 500",
+    );
   });
 });

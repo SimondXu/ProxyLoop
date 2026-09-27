@@ -148,3 +148,21 @@ export function parseJsonl<T>(text: string): T[] {
     .filter((line) => line.trim() !== "")
     .map((line) => JSON.parse(line) as T);
 }
+
+/** The end of the timeline: the max t_ms (events are in seq order, not t_ms order). */
+export function endOf(events: Ev[]): number {
+  return events.reduce((end, e) => Math.max(end, e.t_ms), 0);
+}
+
+/** The replay page's run: its events and error belong only to the run selected. */
+export type RunState = { runId: string; run: { events: Ev[] } | null; error: string };
+export type RunAction =
+  | { type: "select"; runId: string }
+  | { type: "loaded"; runId: string; run: { events: Ev[] } }
+  | { type: "failed"; runId: string; error: string };
+
+export function selectRun(s: RunState, a: RunAction): RunState {
+  if (a.type === "select") return { runId: a.runId, run: null, error: "" };
+  if (a.runId !== s.runId) return s; // a late answer for a run no longer selected
+  return a.type === "loaded" ? { ...s, run: a.run } : { ...s, error: a.error };
+}

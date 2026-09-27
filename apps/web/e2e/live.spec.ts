@@ -78,9 +78,13 @@ test("approval card: a kernel action.denied citing the card after a 200 shows re
 });
 
 test("a socket refused or unreachable before it opens (1006) says so, with no reconnect", async ({ page }) => {
-  // Not mocked: the preview server has no /ws endpoint, so the upgrade fails before open.
+  // The e2e server is the real API, which has /ws: the refused upgrade is mocked
+  // as the browser reports one, a 1006 close before open.
   const opened: string[] = [];
-  page.on("websocket", (ws) => opened.push(ws.url()));
+  await page.routeWebSocket(/\/ws\//, (ws) => {
+    opened.push(ws.url());
+    ws.close({ code: 1006 });
+  });
   await page.goto(`/?live=${RUN}`);
   await expect(page.getByRole("alert")).toHaveText(`Stream stopped: refused or unreachable: check the API is running, then open /live/${RUN} from this origin`);
   await expect(page.getByRole("button", { name: /Reconnect/ })).toHaveCount(0);

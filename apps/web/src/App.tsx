@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { listBundles, loadPrompt, loadRun, type BundleInfo, type PromptRecord, type Run } from "./bundleSource";
-import { indexEvents, LANES, laneOf, modelLabel, runHeader, shasOf, summary, type Ev, type Index, type Lane } from "./replay";
+import { endOf, indexEvents, LANES, laneOf, modelLabel, runHeader, selectRun, shasOf, summary, type Ev, type Index, type Lane } from "./replay";
 import { usePlayback, type Speed } from "./usePlayback";
 
 export type Drill = { label: string; sha: string; record?: PromptRecord | null; note?: string };
@@ -9,40 +9,39 @@ export type Open = (label: string, sha: string) => void;
 /** The prompt drill-down; `unavailable` explains why prompts cannot be loaded yet. */
 export function useDrill(runId: string, unavailable?: string) {
   const [drill, setDrill] = useState<Drill | null>(null);
-  const open: Open = (label, sha) => {
-    if (unavailable) return setDrill({ label, sha, note: unavailable });
-    setDrill({ label, sha });
-    loadPrompt(runId, sha)
-      .then((record) => setDrill((d) => (d?.sha === sha ? { ...d, record } : d)))
-      .catch((e: unknown) => setDrill({ label: `${label}: ${String(e)}`, sha, record: null }));
-  };
+  // Stable per run, so that the memoised cards do not re-render on every frame.
+  const open: Open = useCallback(
+    (label, sha) => {
+      if (unavailable) return setDrill({ label, sha, note: unavailable });
+      setDrill({ label, sha });
+      loadPrompt(runId, sha)
+        .then((record) => setDrill((d) => (d?.sha === sha ? { ...d, record } : d)))
+        .catch((e: unknown) => setDrill({ label: `${label}: ${String(e)}`, sha, record: null }));
+    },
+    [runId, unavailable],
+  );
   return { drill, open, close: () => setDrill(null) };
 }
 
 export function App() {
   const [bundles, setBundles] = useState<BundleInfo[]>([]);
-  const [runId, setRunId] = useState("");
-  const [run, setRun] = useState<Run | null>(null);
-  const [error, setError] = useState("");
+  // A switch clears the run and the error at once; a late load for another run is dropped.
+  const [{ runId, run, error }, dispatch] = useReducer(selectRun, { runId: "", run: null, error: "" });
 
   useEffect(() => {
     listBundles()
       .then((list) => {
         setBundles(list);
-        setRunId(list[0]?.run_id ?? "");
+        dispatch({ type: "select", runId: list[0]?.run_id ?? "" });
       })
-      .catch((e: unknown) => setError(String(e)));
+      .catch((e: unknown) => dispatch({ type: "failed", runId: "", error: String(e) }));
   }, []);
 
   useEffect(() => {
     if (!runId) return;
-    let live = true;
     loadRun(runId)
-      .then((r) => live && setRun(r))
-      .catch((e: unknown) => live && setError(String(e)));
-    return () => {
-      live = false;
-    };
+      .then((r) => dispatch({ type: "loaded", runId, run: r }))
+      .catch((e: unknown) => dispatch({ type: "failed", runId, error: String(e) }));
   }, [runId]);
 
   return (
@@ -51,7 +50,7 @@ export function App() {
         <h1>ProxyLoop replay</h1>
         <label>
           Run{" "}
-          <select aria-label="Run" value={runId} onChange={(e) => setRunId(e.target.value)}>
+          <select aria-label="Run" value={runId} onChange={(e) => dispatch({ type: "select", runId: e.target.value })}>
             {bundles.map((b) => (
               <option key={b.run_id} value={b.run_id}>
                 {b.run_id} {b.task_ref ?? ""} {b.complete ? "" : "(incomplete)"}
@@ -61,7 +60,7 @@ export function App() {
         </label>
       </header>
       {error && <p role="alert">{error}</p>}
-      {!error && bundles.length === 0 && <p>No bundles under PL_BUNDLE_DIR.</p>}
+      {!error && bundles.length === 0 && <p>No bundles.</p>}
       {run && <Replay key={runId} runId={runId} run={run} />}
     </main>
   );
@@ -69,7 +68,7 @@ export function App() {
 
 function Replay({ runId, run }: { runId: string; run: Run }) {
   const index = useMemo(() => indexEvents(run.events), [run]);
-  const end = run.events.at(-1)?.t_ms ?? 0;
+  const end = useMemo(() => endOf(run.events), [run]);
   const clock = usePlayback(end);
   const [god, setGod] = useState(false);
   const { drill, open, close } = useDrill(runId);
@@ -152,7 +151,8 @@ export function RunSummary({ events }: { events: Ev[] }) {
   );
 }
 
-function Card({ e, index, open }: { e: Ev; index: Index; open: Open }) {
+// Memoised: each frame re-renders the lanes, not every card and its payload JSON.
+const Card = memo(function Card({ e, index, open }: { e: Ev; index: Index; open: Open }) {
   const label = e.type === "fast.sentence" ? modelLabel(e, index) : null;
   return (
     <li>
@@ -178,7 +178,7 @@ function Card({ e, index, open }: { e: Ev; index: Index; open: Open }) {
       </article>
     </li>
   );
-}
+});
 
 export function Drawer({ drill, close }: { drill: Drill; close: () => void }) {
   return (
