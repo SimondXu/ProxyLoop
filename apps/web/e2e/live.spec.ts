@@ -77,12 +77,12 @@ test("approval card: a kernel action.denied citing the card after a 200 shows re
   await expect(card.getByRole("button", { name: "Deny" })).toBeDisabled();
 });
 
-test("a socket refused before it opens (1006) says refused, with no reconnect", async ({ page }) => {
+test("a socket refused or unreachable before it opens (1006) says so, with no reconnect", async ({ page }) => {
   // Not mocked: the preview server has no /ws endpoint, so the upgrade fails before open.
   const opened: string[] = [];
   page.on("websocket", (ws) => opened.push(ws.url()));
   await page.goto(`/?live=${RUN}`);
-  await expect(page.getByRole("alert")).toHaveText(`Stream stopped: refused: open /live/${RUN} from this origin`);
+  await expect(page.getByRole("alert")).toHaveText(`Stream stopped: refused or unreachable: check the API is running, then open /live/${RUN} from this origin`);
   await expect(page.getByRole("button", { name: /Reconnect/ })).toHaveCount(0);
   await page.waitForTimeout(300);
   expect(opened).toHaveLength(1);

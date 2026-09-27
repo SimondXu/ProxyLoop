@@ -13,7 +13,7 @@ export const CSRF_HEADER = "X-CSRF-Token";
 
 /**
  * WebSocket close codes of /ws/live and /ws/rep. 4403: missing or foreign-role cookie,
- * or foreign Origin. 1006 before open: the server refused the upgrade (Origin).
+ * or foreign Origin. 1006 before open: the upgrade was refused (Origin) or the API is unreachable.
  */
 export const CLOSE = { ended: 1000, abnormal: 1006, forbidden: 4403, unknownRun: 4404, badStream: 1011 } as const;
 

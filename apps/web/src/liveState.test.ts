@@ -4,6 +4,7 @@ import { CLOSE, csrfToken, entry, pageMode, paths, postApproval, postRep } from 
 import type { Ev } from "./replay";
 import { parseRepFrame, type RepFrame } from "./rep";
 
+const M = "refused or unreachable: check the API is running, then open ";
 const line = (seq: number, type = "fast.sentence") => JSON.stringify({ seq, type, payload: {} });
 const feed = (frames: string[]) => frames.reduce((s: Stream, f) => acceptFrame(s, parseEvent(f)), START);
 
@@ -41,10 +42,10 @@ describe("the live event stream", () => {
     expect(closed(failed, 1000, "", at)).toBe(failed);
   });
 
-  it("reads a 1006 before the socket opened as refused (Origin), and after it opened as a disconnect (N8)", () => {
+  it("reads a 1006 before the socket opened as refused or unreachable, and after it opened as a disconnect (N8)", () => {
     const refused = closed(START, 1006, "", entry("rep", "r1"));
-    expect(refused).toMatchObject({ phase: "error", message: "refused: open /rep/r1 from this origin" });
-    expect(closed(START, 1006, "", entry("live", "r1")).message).toBe("refused: open /live/r1 from this origin");
+    expect(refused).toMatchObject({ phase: "error", message: `${M}/rep/r1 from this origin` });
+    expect(closed(START, 1006, "", entry("live", "r1")).message).toBe(`${M}/live/r1 from this origin`);
     const opened: Stream = { ...START, phase: "open" };
     expect(closed(opened, 1006, "", "/live/r1")).toMatchObject({ phase: "closed", message: "disconnected (1006)" });
   });
