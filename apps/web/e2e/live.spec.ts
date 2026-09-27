@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { clock } from "../src/terms";
 import { capturePosts, CSRF, csrfCookie, events, mockSockets, RUN, shot, started } from "./liveMock";
 
 const REAL: Record<string, [string, string]> = {
@@ -57,7 +58,7 @@ test("approval card: appears on approval.requested, Approve posts the contract b
   const post = { subject: "approval", subject_id: "ap-1", decision: "granted", subject_hash: CARD.terms_hash, authority_epoch: 2 };
   ws.send(ev("approval.post", "ui", post));
   ws.send(ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" }));
-  await expect(card.getByLabel("Approval status")).toHaveText(/^You approved/);
+  await expect(card.getByLabel("Approval status")).toHaveText(`You approved · ${clock("2026-09-26T00:00:00Z")}`);
   expect(urls).toEqual([expect.stringMatching(new RegExp(`/ws/live/${RUN}\\?from_seq=0$`))]);
 });
 
@@ -204,8 +205,8 @@ test("the authority strip and the card's read-back progress follow the fixed emi
   await expect(strip.getByLabel("Last denied")).toHaveText("last action.denied accept_offer: fence_raised (kernel)");
   const card = page.getByRole("article", { name: "Approval ap-1" });
   await expect(card.getByRole("list", { name: "Read-back progress" }).getByRole("listitem")).toHaveText([
-    /^Monthly price.*Read back$/,
-    /^Contract length.*Heard, not read back$/,
+    "Monthly price Read back",
+    "Contract length Heard, not read back",
   ]);
   await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision"); // epoch 2 = the card's
   await expect(card.getByLabel("Fence note")).toHaveText("Paused: reading your new message before anything is accepted.");
@@ -481,7 +482,7 @@ test("approval card: a fence pauses a granted accept, and a fence revoke says th
   ws.send(said);
   ws.send(ev("authority.fence", "kernel", { op: "raised", fence_id: "fence-1", utt_id: `${RUN}:9` }));
   const card = page.getByRole("article", { name: "Approval ap-1" });
-  await expect(card.getByLabel("Approval status")).toHaveText(/^You approved/);
+  await expect(card.getByLabel("Approval status")).toHaveText(`You approved · ${clock("2026-09-26T00:00:00Z")}`);
   await expect(card.getByLabel("Fence note")).toHaveText("Paused: reading your new message before anything is accepted.");
   const revoked = JSON.parse(ev("speak.revoked", "kernel", { lane: "cp", reason: "fence", cap_id: "cap-1" }));
   ws.send(JSON.stringify({ ...revoked, cause_ids: [JSON.parse(said).event_id] }));

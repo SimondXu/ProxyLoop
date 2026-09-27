@@ -71,9 +71,11 @@ describe("terms (display only, rule 13)", () => {
 });
 
 describe("approval card words", () => {
-  it("never says approved before the kernel decides", () => {
+  it("never says approved before the kernel decides (redesign §7 risk 3)", () => {
     for (const s of ["open", "pending", "sent", "stale", "superseded", "already_decided", "refused"] as const) {
-      expect(approvalStatusText(view(s), [])).not.toMatch(/approv/i);
+      for (const reason of [null, "stale_epoch", "fence_raised", "card_expired", "no_pending_card"]) {
+        expect(approvalStatusText(view(s, { reason, by: "ui" }), [])).not.toMatch(/approv/i);
+      }
     }
     expect(approvalStatusText(view("open"), [])).toBe("Waiting for your decision");
     expect(approvalStatusText(view("sent"), [])).toBe("Sent. Waiting for Guard to record it");
@@ -90,6 +92,9 @@ describe("approval card words", () => {
     expect(approvalStatusText(view("stale", { reason: "card_expired" }), [])).toBe("No longer valid: the offer expired");
     expect(approvalStatusText(view("stale", { reason: "brand_new" }), [])).toBe("No longer valid: brand_new");
     expect(approvalStatusText(view("refused", { reason: "fence_raised" }), [])).toBe("Not accepted by the system: your new message came first");
+    // Unknown reasons are shown raw, never dropped or reworded.
+    expect(approvalStatusText(view("refused", { reason: "kernel_new_reason" }), [])).toBe("Not accepted by the system: kernel_new_reason");
+    expect(approvalStatusText(view("stale", { reason: "guard_new_reason" }), [])).toBe("No longer valid: guard_new_reason");
   });
 
   it("headline and limit label come from the rows and the granted mandate, with no arithmetic", () => {

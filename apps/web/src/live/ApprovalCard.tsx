@@ -60,8 +60,8 @@ export function ApprovalCard({ view, events, mandates, fenced, caseStatus, decid
               <span className="pl-term-label">
                 {r.label}
                 {r.field === "monthly_price" && limit && <span className="pl-term-limit"> {limit}</span>}
-              </span>
-              <span className="pl-term-value">{r.value}</span>
+              </span>{" "}
+              <span className="pl-term-value">{r.value}</span>{" "}
               <Chip tone={CHIP_TONE[r.status] ?? "neutral"}>
                 {r.status === "confirmed" && <Icon name="guard" size="xs" />}
                 {READBACK_CHIP[r.status] ?? r.status}

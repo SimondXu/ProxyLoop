@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Response } from "@playwright/test";
+import { clock, termRow } from "../src/terms";
 import { PORTS } from "./ports";
 
 // The S1 browser demo end to end over the real kernel (S1-SYS-32): tests/web/demo_server.py
@@ -116,15 +117,6 @@ async function toCard(page: Page) {
   await say(page, IDENTITY);
   const card = page.getByRole("article", { name: /^Approval / });
   await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision", FLOW);
-  // Guard's read-back of the carded revision: every slot confirmed, shown on the card.
-  const slots = card.getByRole("list", { name: "Read-back progress" }).getByRole("listitem");
-  await expect(slots).toHaveText([
-    /^Monthly price.*Read back$/,
-    /^Contract length.*Read back$/,
-    /^One-time fees.*Read back$/,
-    /^Changes to your plan.*Read back$/,
-    /^Offer valid until.*Read back$/,
-  ]);
   const events = await log(page, id);
   one(events, "chan.opened", { lane: "cp" }); // the call happens, in either readiness order
   const facts = of(events, "fact.recorded", { scope: "public", source: "shareable" });
@@ -132,6 +124,12 @@ async function toCard(page: Page) {
   const offered = of(events, "rep.policy").filter((e) => (e.payload.intent as { kind?: unknown }).kind === "offer");
   expect(Math.max(...facts.map((e) => e.seq))).toBeLessThan((offered[0] as Ev).seq); // identity before the offer
   const requested = one(events, "approval.requested");
+  // Guard's read-back of the carded revision: every slot confirmed, shown on the card with the offer's values.
+  const offer = of(events, "offer.recorded", { offer_ref: requested.payload.offer_ref, revision: requested.payload.revision }).at(-1);
+  const terms = (offer?.payload.slots ?? []) as { field: string; value: string }[];
+  expect(terms.map((t) => t.field)).toEqual(["monthly_price", "term_months", "fees_none", "changes_none", "expires"]);
+  const slots = card.getByRole("list", { name: "Read-back progress" }).getByRole("listitem");
+  await expect(slots).toHaveText(terms.map((t) => [...termRow(t.field, t.value), "Read back"].filter(Boolean).join(" ")));
   await expect(card.getByLabel("Readback")).toHaveText(String(requested.payload.readback_text));
   await expect((await authority(page)).getByLabel("Case status")).toHaveText("status AWAITING_APPROVAL");
   await expect(page.getByLabel("Status line")).toHaveText("Status: waiting for your approval");
@@ -147,11 +145,12 @@ test.describe("approve", () => {
     const { id, card } = await toCard(page);
     const [res] = await Promise.all([page.waitForResponse(isPost(/\/approvals\//)), card.getByRole("button", { name: "Approve" }).click()]);
     expect([res.status(), await res.json()]).toEqual([200, { status: "posted" }]);
-    await expect(card.getByLabel("Approval status")).toHaveText(/^You approved/, FLOW);
+    await expect(card.getByLabel("Approval status")).toHaveText(/^You approved · \d{1,2}:\d{2}\s[AP]M$/, FLOW);
 
     const events = await until(page, id, (e) => of(e, "chan.closed", { lane: "cp" }).length > 0);
     const posted = one(events, "approval.post");
     const decided = one(events, "approval.decided");
+    await expect(card.getByLabel("Approval status")).toHaveText(`You approved · ${clock((decided as { wall?: string }).wall)}`);
     expect([posted.actor, decided.actor, decided.payload.by, decided.payload.decision]).toEqual(["ui", "kernel", "ui", "granted"]);
     expect(decided.cause_ids).toEqual([posted.event_id]);
     const accept = one(events, "speak.verbatim", { kind: "accept" });
