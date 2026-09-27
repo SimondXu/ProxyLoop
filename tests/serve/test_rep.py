@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -135,10 +134,9 @@ def _line(seq: int, kind: str, payload: dict[str, Any]) -> bytes:
     return event.model_dump_json(by_alias=True).encode() + b"\n"
 
 
-@dataclass
-class Rep:
-    http: TestClient
-    expected: list[dict[str, Any]]  # every frame, in order
+class Rep:  # not a dataclass: pyright sees such a TestClient field as Unknown
+    def __init__(self, http: TestClient, expected: list[dict[str, Any]]) -> None:
+        self.http, self.expected = http, expected  # expected: every frame, in order
 
 
 @pytest.fixture

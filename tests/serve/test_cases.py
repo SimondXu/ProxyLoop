@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
@@ -30,12 +29,11 @@ from proxyloop.contract.state import ApprovalCard
 CASE = "case-1"
 
 
-@dataclass
-class Live:
-    http: TestClient
-    case: ApiCase
-    cases: dict[str, ApiCase]
-    root: Path
+class Live:  # not a dataclass: pyright sees such a TestClient field as Unknown
+    def __init__(
+        self, http: TestClient, case: ApiCase, cases: dict[str, ApiCase], root: Path
+    ) -> None:
+        self.http, self.case, self.cases, self.root = http, case, cases, root
 
 
 @pytest.fixture
@@ -68,7 +66,6 @@ def approve(
 def test_login_sets_per_role_cookies(live: Live) -> None:
     for role, (session, csrf) in NAMES.items():
         got = get(live.http, f"/{PAGE[role]}/{CASE}", follow=False)
-        live.http.cookies.clear()
         sets = {
             c.split("=", 1)[0]: c.lower() for c in got.headers.get_list("set-cookie")
         }

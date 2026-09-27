@@ -11,11 +11,11 @@ from typing import Any, cast
 import anyio
 import httpx
 from fastapi.testclient import TestClient
-from proxyloop.serve.cases import Case
 from starlette.testclient import WebSocketTestSession
 from starlette.types import Message
 
 from proxyloop.serve.api import create_app
+from proxyloop.serve.cases import Case
 
 ORIGIN = "http://localhost:5173"  # the one browser origin the test apps allow
 TIMEOUT_S = 5.0
@@ -91,7 +91,7 @@ def login(http: TestClient, role: str, case_id: str) -> dict[str, str]:
     assert got.headers["location"] == f"/?{PAGE[role]}={case_id}"
     cookies = dict(got.cookies)
     assert set(cookies) == set(NAMES[role])
-    http.cookies.clear()
+    cast(Any, http).cookies.clear()
     return cookies
 
 

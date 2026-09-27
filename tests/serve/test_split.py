@@ -10,11 +10,11 @@ import shutil
 from pathlib import Path
 
 import pytest
-from proxyloop.serve.stream import Reader
 from tests.serve.client import client, frames, get
 from tests.serve.conftest import Bundles
 
 from proxyloop.contract.bundle import EVENTS, MANIFEST, PROMPTS
+from proxyloop.serve.stream import Reader
 
 TRAIN, TEST = b'"split":"train"', b'"split":"test"'  # session.started (compact)
 M_TRAIN, M_TEST = '"split": "train"', '"split": "test"'  # manifest (indented)
