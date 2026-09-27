@@ -274,6 +274,9 @@ _UNSTATED = {k: v for k, v in BOUND.items() if k not in ("fees_none", "changes_n
         _UNSTATED | {"applied_change:plan_swap": "false"},  # no change applied, no list
         BOUND | {"applied_change:plan_swap": "true"},  # no changes, yet a change
         BOUND | {"fee:activation": "20.00"},  # no fees, yet a fee
+        # review of #151: a boolean outside true/false is unreadable, not dropped
+        *(BOUND | {"applied_change:plan_swap": v} for v in ("True", "yes", "1", "")),
+        BOUND | {"feature:hotspot": "True"},
     ],
 )
 def test_a_ledger_must_state_fee_and_change_completeness(

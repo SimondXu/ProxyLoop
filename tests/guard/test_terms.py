@@ -89,6 +89,11 @@ UNAPPLIED = slot("applied_change:plan_swap", "false", "bool", "change")
         ("not a boolean", _with(
             offer(fee=None), FEES_NONE.model_copy(update={"value": "yes"}),
             drop=("fees_none",))),
+        *((f"an applied change {v!r}", _with(
+            offer(), slot("applied_change:plan_swap", v, "bool", "change")))
+          for v in ("True", "yes", "1", "")),
+        ("a feature 'True'", _with(
+            offer(), slot("feature:hotspot", "True", "bool", "feature"))),
     ],
 )  # fmt: skip
 def test_unstated_or_contradictory_completeness_has_no_terms(

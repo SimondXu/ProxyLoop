@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from proxyloop.contract.state import OfferPublic
 
 NO_EXPIRY = datetime(9999, 12, 31, 23, 59, 59, tzinfo=UTC)  # "it does not expire"
+_BOOLEAN = frozenset({"applied_change", "feature", "fees_none", "changes_none"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,13 +102,18 @@ def offer_terms(offer: OfferPublic) -> Terms | None:
     the price, the term or the expiry is missing or malformed, a field repeats,
     or fee or change completeness is unstated or contradictory (§9.2: at least
     one ``fee:*`` or ``fees_none``, at least one applied ``applied_change:*``
-    or ``changes_none``; a ``*_none`` slot is ``true`` iff its list is empty).
+    or ``changes_none``; a ``*_none`` slot is ``true`` iff its list is empty),
+    or a boolean field (``applied_change:*``, ``feature:*``, ``*_none``) holds
+    anything but ``true``/``false`` (unreadable, never silently dropped).
     Whether a slot is confirmed is ``readback_status``'s rule, not this one."""
 
     by = {s.field: s.value for s in offer.slots}
     if len(by) != len(offer.slots):  # a repeated field has no single value
         return None
     coded = [(*f.split(":", 1), v) for f, v in by.items() if ":" in f]
+    flags = [v for f, v in by.items() if f.partition(":")[0] in _BOOLEAN]
+    if any(v not in ("true", "false") for v in flags):
+        return None
     try:
         fees = tuple(Fee(code, int(v)) for kind, code, v in coded if kind == "fee")
         credits = tuple(Fee(c, int(v)) for kind, c, v in coded if kind == "credit")
