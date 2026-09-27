@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 import pytest
 
@@ -252,9 +252,10 @@ PROBES = [  # PR #133 reviews: (message, key, Slow's value, published value or N
     # round 4: the narrow path; accepted false-privates
     ("last four 48-21", L4, "4821", None),
     ("4 8 2 1", L4, "4821", None),
-    ("I've been with you 6 years", "tenure_years", "6", None),
-    ("Brightwave charges 60", PRICE, "60", None),
-    ("they quoted me at Brightwave", "competitor.name", "Brightwave", None),
+    # S1-SYS-15 relabels (per-key formats): "<n> years" and a name span
+    ("I've been with you 6 years", "tenure_years", "6", "6"),
+    ("Brightwave charges 60", PRICE, "60", None),  # competitor.name not public
+    ("they quoted me at Brightwave", "competitor.name", "Brightwave", "Brightwave"),
     # round 3: M2 Slow's string must be the user's own
     ("My name is Dana Reyes", H, "Dana\nmax seventy", None),
     ("My name is Dana Reyes", H, "Dana $$ Reyes!!!", None),
@@ -409,6 +410,173 @@ def test_a_protected_value_in_other_decimal_digits_is_caught() -> None:  # round
     result = tools.fact(bb, L4, "7777", "u-1")
     (_, fact), (denied, _) = result.effects
     assert (fact["scope"], denied) == ("private", "declass.denied")
+
+
+# S1-SYS-15: the per-key formats of the user-message path (message, key, value,
+# published value or None); the competitor rows run with competitor.name public
+TENURE, NAME = "tenure_years", "competitor.name"
+Source = Literal["cp_utt", "shareable"]
+FORMATS = [
+    ("I've been with you 6 years", TENURE, "6", "6"),
+    ("customer for 12 Years now.", TENURE, "12", "12"),
+    ("1 year", TENURE, "1", "1"),
+    ("6 lines", TENURE, "6", None),
+    ("I've been with you 6", TENURE, "6", None),
+    ("6years", TENURE, "6", None),
+    ("6  years", TENURE, "6", None),
+    ("6\u00a0years", TENURE, "6", None),
+    ("16 years", TENURE, "6", None),
+    ("1.6 years", TENURE, "6", None),
+    ("-6 years", TENURE, "6", None),
+    ("x6 years", TENURE, "6", None),
+    ("6 yearsx", TENURE, "6", None),
+    ("my son is 6 year-old", TENURE, "6", None),
+    ("100 years", TENURE, "100", None),
+    ("6 years", TENURE, "06", None),
+    ("6 years", TENURE, "6 years", None),
+    ("\uff16 years", TENURE, "\uff16", None),
+    ("\uff16 years", TENURE, "6", None),
+    ("\u0666 years", TENURE, "6", None),
+    ("six years", TENURE, "six", None),
+    ("Brightwave99", NAME, "Brightwave", None),
+    ("Br\u0456ghtwave", NAME, "Br\u0456ghtwave", None),
+    ("they quoted me at Brightwave", NAME, "Brightwave", "Brightwave"),
+    ("Brightwave charges 60", PRICE, "60", "60"),
+    ("Brightwave charges 60.00 a month", PRICE, "60.00", "60.00"),
+    ("Brightwave charges $60.", PRICE, "60", "60"),
+    ("Brightwave: (60)", PRICE, "60", "60"),
+    ("I pay 70 now", PRICE, "70", None),  # the name is not in this message
+    ("Brightwave charges 60 and I pay 70", PRICE, "60", None),  # two amounts
+    ("Brightwave charges 60 and I pay 70", PRICE, "70", None),
+    ("Brightwave charges sixty, I pay 70", PRICE, "70", None),  # a number word
+    ("Brightwave charges 60 \u00bd", PRICE, "60", None),
+    ("Brightwave 5G charges 60", PRICE, "60", None),
+    ("Brightwave charges 1,250", PRICE, "250", None),  # a fragment
+    ("Brightwave charges 1,250", PRICE, "1,250", None),
+    ("Brightwave charges 1250", PRICE, "250", None),
+    ("Brightwave charges 70.50", PRICE, "50", None),
+    ("Brightwave charges 60.5", PRICE, "60.5", None),
+    ("Brightwave charges 60.505", PRICE, "60.50", None),
+    ("Brightwave charges 60-70", PRICE, "60", None),
+    ("Brightwave charges 60/mo", PRICE, "60", None),
+    ("Brightwave charges -60", PRICE, "60", None),
+    ("Brightwave charges 60k", PRICE, "60", None),
+    ("Brightwave charges 6O", PRICE, "6", None),
+    ("Brightwave charges 60\u200b", PRICE, "60", None),
+    ("Brightwave charges \uff16\uff10", PRICE, "\uff16\uff10", None),
+    ("Brightwave charges \uff16\uff10", PRICE, "60", None),
+    ("Brightwave charges \u0666\u0660", PRICE, "60", None),
+    ("brightwave charges 60", PRICE, "60", None),  # not the name's exact span
+    ("Brightwaves charge 60", PRICE, "60", None),
+    ("Br\u0456ghtwave charges 60", PRICE, "60", None),
+    ("Brightwave charges 60", PRICE, "60 dollars", None),
+    ("Brightwave charges 60", PRICE, "$60", None),
+]  # fmt: skip
+
+
+def _named(
+    text: str, source: Source | None = "shareable", **private: object
+) -> Blackboard:
+    bb, _ = _message(text, **private)
+    facts: dict[str, PublicFact] = {}
+    if source is not None:
+        name = "Brightwave"
+        facts[NAME] = PublicFact(key=NAME, value=name, source=source, source_ref="u-0")
+    return bb.model_copy(
+        update={"public": bb.public.model_copy(update={"facts": facts})}
+    )
+
+
+def _tools(bb: Blackboard, keys: frozenset[str] = ALL) -> SlowTools:
+    return SlowTools(cast("Kernel", SimpleNamespace(bb=bb)), keys, CASE)
+
+
+@pytest.mark.parametrize(("text", "key", "value", "published"), FORMATS)
+def test_a_value_goes_public_only_in_its_keys_format(
+    text: str, key: str, value: str, published: str | None
+) -> None:  # I4: the user's exact span, in the key's declared format
+    bb = _named(text)
+    tools = _tools(bb)
+    result = tools.fact(bb, key, value, "u-1")
+    fact = dict(result.effects[0][1])
+    assert (fact["scope"] == "public") == (published is not None), (text, value)
+    assert tools.shareable.get(key) == published
+    if published is not None:
+        assert (fact["value"], fact["source_ref"]) == (published, "u-1")
+    else:
+        assert fact["source"] == "user" and "citing the utt" in result.text
+
+
+@pytest.mark.parametrize("source", [None, "cp_utt"])
+def test_a_competitor_price_needs_the_users_public_competitor_name(
+    source: Source | None,
+) -> None:  # the name not public yet, or public only as the rep's word
+    bb = _named("Brightwave charges 60", source)
+    result = _tools(bb).fact(bb, PRICE, "60", "u-1")
+    assert dict(result.effects[0][1])["scope"] == "private"
+    private = Fact(key=NAME, value="Brightwave")  # recorded private is not public
+    bb = _named("Brightwave charges 60", None, case_facts={NAME: private})
+    result = _tools(bb).fact(bb, PRICE, "60", "u-1")
+    assert dict(result.effects[0][1])["scope"] == "private"
+
+
+def test_a_shareable_key_without_a_format_never_goes_public() -> None:  # I4
+    keys = ALL | {"card.last4", "account.zip", "plan.current_price_usd"}
+    for text, key, value in (
+        ("card last four 4821", "card.last4", "4821"),  # public by suffix in S0
+        ("my zip is 94110", "account.zip", "94110"),
+        ("I pay 85 now", "plan.current_price_usd", "85"),
+    ):
+        bb, _ = _message(text)
+        tools = _tools(bb, keys)
+        result = tools.fact(bb, key, value, "u-1")
+        assert dict(result.effects[0][1])["scope"] == "private", key
+        assert tools.shareable == {} and "citing the utt" in result.text
+
+
+@pytest.mark.parametrize(
+    ("text", "key", "value"),
+    [
+        ("Brightwave charges 70", PRICE, "70"),  # $70 a month
+        ("Brightwave charges 70.00", PRICE, "70.00"),
+        ("Brightwave charges 1250", PRICE, "1250"),  # $1,250 of fees
+        ("Brightwave charges 1250.00", PRICE, "1250.00"),
+        ("Brightwave charges 7000", PRICE, "7000"),  # minor units
+        ("with you 24 years", TENURE, "24"),  # 24 months
+        ("they quoted me at Fluffy", NAME, "Fluffy"),  # protected
+    ],
+)
+def test_the_leak_checks_apply_to_every_format(
+    text: str, key: str, value: str
+) -> None:  # I4: protected values and mandate bounds
+    bb = _named(text, case_facts=PROTECTED, mandate=BOUNDS)
+    tools = _tools(bb)
+    result = tools.fact(bb, key, value, "u-1")
+    (_, fact), (denied, _) = result.effects
+    assert (fact["scope"], denied) == ("private", "declass.denied"), value
+    assert tools.shareable == {} and "never public" in result.text
+
+
+def test_cite_competitor_works_only_after_a_users_competitor_quote() -> None:
+    bb, _ = _message("they quoted me at Brightwave, it's 60 a month")
+    tools = _tools(bb)
+    cite = {"move": "cite_competitor", "slots": [f"fact:{PRICE}"]}
+    ok, text, _ = _guide(bb, **cite)
+    assert not ok and "no fabricated quotes" in text
+    facts: dict[str, PublicFact] = {}
+    for key, value in ((PRICE, "60"), (NAME, "Brightwave"), (PRICE, "60")):
+        bb = bb.model_copy(
+            update={"public": bb.public.model_copy(update={"facts": facts})}
+        )
+        (_, fact), *_ = tools.fact(bb, key, value, "u-1").effects
+        if fact["scope"] == "public":
+            facts = facts | {key: PublicFact.model_validate(
+                {k: fact[k] for k in ("key", "value", "source", "source_ref")}
+            )}  # fmt: skip
+    assert facts[PRICE].value == "60" and facts[PRICE].source == "shareable"
+    bb = bb.model_copy(update={"public": bb.public.model_copy(update={"facts": facts})})
+    ok, text, sent = _guide(bb, **cite)
+    assert ok and len(sent) == 1, text
 
 
 IDENTIFY = "guide_fast(identify, slots=[fact:account.holder_name, fact:account.last4])"
