@@ -91,6 +91,8 @@ describe("approval card state (I6: events decide, the page only posts)", () => {
   it("surfaces the 409 and 403 paths as errors, and only 409 closes the card", () => {
     const res = (status: number, error: string) => new Map<string, Posting>([["a1", { ok: false, status, error }]]);
     expect(one([card("a1")], res(409, "stale"))).toEqual({ status: "stale", by: null, error: "409 stale" });
+    const why = new Map<string, Posting>([["a1", { ok: false, status: 409, error: "stale", reason: "stale_epoch" }]]);
+    expect(one([card("a1")], why)).toEqual({ status: "stale", by: null, error: "409 stale: stale_epoch" });
     expect(one([card("a1")], res(409, "already_decided"))).toEqual({
       status: "already_decided",
       by: null,
