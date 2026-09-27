@@ -121,6 +121,9 @@ def _rows(tally: Tally, per_episode: bool = False) -> list[dict[str, Any]]:
         if per_episode:
             per = Decimal(n["priced_micro_usd"]) / n["episodes"]
             row["usd_per_episode"] = None if _unknown(n) else _usd(per, 8)
+            row["priced_lower_bound_micro_usd_per_episode"] = _whole(per)
+            row["priced_lower_bound_usd_per_episode"] = _usd(per, 8)
+            row["lower_bound"] = _unknown(n)  # the priced calls only: not the cost
         rows.append(row)
     return rows
 
@@ -136,6 +139,11 @@ def _projection(live: Tally, n: int) -> dict[str, Any]:
                 "episodes_basis": c["episodes"],
                 "micro_usd": micro,
                 "usd": None if micro is None else _usd(micro),
+                "priced_lower_bound_micro_usd": (
+                    low := _whole(c["priced_micro_usd"] * per)
+                ),
+                "priced_lower_bound_usd": _usd(low),
+                "lower_bound": _unknown(c),
                 "calls_unpriced": c["calls_unpriced"],
                 "calls_gpu_time": c["calls_gpu_time"],
                 "usage_missing": c["usage_missing"],
@@ -147,7 +155,9 @@ def _projection(live: Tally, n: int) -> dict[str, Any]:
         "episodes": n,
         "by_model": rows,
         "note": "N x total / the live episodes each key ran in; null $ where any"
-        " call of the key is unpriced, gpu_time, without usage or uncharged",
+        " call of the key is unpriced, gpu_time, without usage or uncharged."
+        " priced_lower_bound_* sums the priced calls only: with lower_bound true"
+        " it is a floor, never the full cost",
         "gpu": None,
         "gpu_note": "GPU $ are not projected; see Modal usage",
     }
@@ -220,7 +230,9 @@ def report(
             "run_ids": [r.run_id for r in live],
             "denominator": "per row: the live episodes in which that"
             " (role, endpoint, model_id) ran; null where any of its calls is"
-            " unpriced, gpu_time, without usage or without a charge",
+            " unpriced, gpu_time, without usage or without a charge."
+            " priced_lower_bound_* sums the priced calls only: with lower_bound"
+            " true it is a floor, never the full cost",
             "models": _rows(live_tally, per_episode=True),
         },
         "non_live": {

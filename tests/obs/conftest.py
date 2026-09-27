@@ -3,7 +3,8 @@
 Layout (``tmp_path``):
 - ``runs/rA``: live; slow priced twice, fast_cp on vLLM, ear unpriced,
   simuser unpriced with no usage;
-- ``runs/live/case-1/rB``: live layout; slow priced, ear unpriced, one mouth
+- ``runs/live/case-1/rB``: live layout; slow priced and once unpriced without
+  usage, ear unpriced, one mouth
   ``llm.call`` with no ``spend.charged``;
 - ``runs/rC`` and ``evidence/s1/rC``: the same run twice; slow priced, ear
   unpriced, one mouth ``spend.charged`` with no ``llm.call``;
@@ -58,6 +59,7 @@ def corpus(tmp_path: Path) -> Iterator[tuple[Path, Path]]:
 
     b = Log("rB")
     b.call("slow", SONNET, _usage(1000, 0), "tokens", 3000)
+    b.call("slow", SONNET, None, "unpriced")  # a relay call with no usage
     b.call("ear", GEMINI, _usage(100, 20), "unpriced")
     b.call("mouth", GEMINI, _usage(7, 7), None)
     b.end("abandoned")
