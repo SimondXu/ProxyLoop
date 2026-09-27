@@ -553,7 +553,7 @@ def test_the_simuser_channel_enqueues_nothing_on_silence(tmp_path: Path) -> None
             True,
         ),
         (
-            "The account holder’s name is Dana Reyes, and the last four digits "
+            "The account holder\u2019s name is Dana Reyes, and the last four digits "
             "are four eight two one.",
             (LAST4, "4821"),
             True,
@@ -572,6 +572,7 @@ def test_the_simuser_channel_enqueues_nothing_on_silence(tmp_path: Path) -> None
         ("four eight two twenty-one", (LAST4, "4821"), False),
         ("four eight two-thirty one", (LAST4, "4821"), False),
         ("someone four eight two", (LAST4, "4821"), False),
+        ("Card 48, 21.", (LAST4, "4821"), False),  # digits alone: no comma runs
         ("dana REYES here.", (NAME, "Dana Reyes"), True),
         ("Is that Dan? A Reyes account?", (NAME, "Dana Reyes"), False),
         ("Danar Reyes", (NAME, "Dana Reyes"), False),
