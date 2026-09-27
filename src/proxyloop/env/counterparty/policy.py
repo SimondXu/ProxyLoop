@@ -12,7 +12,7 @@ own counter, neither adds to the other, and either reaching
 time, so they apply in rep-chat too, where only the timer patience is
 suspended.
 
-World rule (for S1-SYS-04 to confirm): accepting an open offer by name commits
+World rule (confirmed in S1-SYS-04): accepting an open offer by name commits
 at once (``rep.commit_heard``) and the ledger binds all its terms, hidden ones
 included, as a real rep's system would; that is the trap the agent must avoid
 by asking for a read-back first. An accept is by name only if the heard text
