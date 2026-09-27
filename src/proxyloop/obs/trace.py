@@ -43,7 +43,7 @@ _ALLOWED = (
 _TOOL = ("name", "ok")
 # Slow's tool names (slow/tools.py ``_run``, plus the ``act`` wrapper); the model
 # picks the name, so any other name is exported as "unknown".
-_TOOLS = frozenset(
+TOOL_NAMES = frozenset(
     {"act", "ask_user", "tell_user", "wait", "guide_fast", "record_fact",
      "record_offer", "share_fact", "request_approval", "accept_offer",
      "decline_offer", "propose_mandate", "tighten_mandate", "revoke",
@@ -194,13 +194,13 @@ class Mapper:
         keys = _ALLOWED + (_TOOL if event.type == "slow.tool" else ())
         attrs: dict[str, Value] = {}
         for k in keys:
-            if _identifier(v := p.get(k)):
+            if identifier(v := p.get(k)):
                 attrs[f"pl.{k}"] = v
-        if event.type == "slow.tool" and p.get("name") not in _TOOLS:
+        if event.type == "slow.tool" and p.get("name") not in TOOL_NAMES:
             attrs["pl.name"] = "unknown"
         guide = p.get("guide")
         guide = cast(dict[str, object], guide) if isinstance(guide, dict) else {}
-        if _identifier(move := guide.get("move")):
+        if identifier(move := guide.get("move")):
             attrs["pl.move"] = move
         key = _CP_TEXT.get(event.type)
         public = self.prompts is not None and p.get("lane") == "cp"
@@ -295,7 +295,7 @@ def _scalar(value: object) -> TypeGuard[str | int | float | bool]:
     return isinstance(value, str | int | float | bool)
 
 
-def _identifier(value: object) -> TypeGuard[str | int | float | bool]:
+def identifier(value: object) -> TypeGuard[str | int | float | bool]:
     if isinstance(value, str):
         return _TOKEN.fullmatch(value) is not None
     return _scalar(value)
