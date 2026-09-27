@@ -524,3 +524,51 @@ def test_a_fastc_turn_whose_request_missed_the_line_binds_nothing(
         await sim.stop()
 
     arun(case())
+
+
+def test_an_old_fastc_turn_never_covers_a_line_before_the_accept(
+    tmp_path: Path,
+) -> None:
+    """Review round 4 (D-1, the mint-path twin of D2): the rep's line lands
+    with no accept in flight; a FastC generation requested before it answers
+    after it, and a Slow step completes past that turn. The line is still not
+    covered, so the mint fences it and nothing is released until the
+    generation that saw it answers and a step sees that."""
+
+    async def case() -> None:
+        fast_cp = Tickets()
+        sim = Sim(tmp_path, gates={"fast_cp": fast_cp})
+        await sim.start()
+        await granted(sim)
+        fast_cp.let(0)
+        sim.rep_says("Let me see.")  # FastC's request for it is held
+        await sim.vt.run_for(500)
+        old = sim.of("fast.request", lane="cp")[-1]
+        sim.rep_says(FIX)
+        await sim.vt.run_for(500)
+        said = _one(sim, "utt.final", text=FIX)
+        assert int(str(old.payload["basis_seq"])) < said.seq
+        assert sim.of("authority.fence") == []  # no accept in flight yet
+        fast_cp.let(1)  # only the old generation answers
+        await sim.vt.run_for(500)
+        old_turn = _one(sim, "fast.turn", gen_id=old.payload["gen_id"])
+        assert sim.k.slow is not None
+        sim.k.slow.wake("fence")
+        await sim.vt.run_for(3_000)
+        step = sim.of("slow.step.completed")[-1]
+        assert int(str(step.payload["basis_seq"])) >= old_turn.seq
+        assert sim.accept().startswith("accept_offer: accept line queued")
+        auth = _one(sim, "action.authorized")
+        fence = _fence_of(sim, said)
+        assert fence.cause_ids == (said.event_id, auth.event_id)
+        await sim.vt.run_for(15_000)
+        assert _up(sim, fence) and _ends(sim) == []  # no turn saw the line
+        fast_cp.let(None)  # the generation that saw the line answers
+        await sim.vt.run_for(20_000)
+        (released,) = _ends(sim)
+        assert released.type == "speak.released"
+        assert released.seq > _cleared(sim, fence).seq
+        await sim.stop()
+        assert check_path(sim.k.path, "offline").ok
+
+    arun(case())

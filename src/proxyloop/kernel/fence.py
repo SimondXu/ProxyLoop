@@ -135,9 +135,11 @@ class Authority:
         return self._k.slow is not None and not self._k.closed
 
     def _rep_line(self, said: Event) -> None:
+        if not self._live():  # no mint follows: nothing to cover
+            return
         utt = str(said.payload["utt_id"])
         self._lines.append((said.event_id, utt, said.seq, None))
-        if self._live() and accept_in_flight(self._k.bus.bb):
+        if accept_in_flight(self._k.bus.bb):
             self._raise([said.event_id], said.seq, "cp", utt)
 
     def _minted(self, auth: Event) -> None:
