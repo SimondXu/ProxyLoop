@@ -47,10 +47,11 @@ def verify_completion(bb: Blackboard) -> CompletionDecision:
 
 
 def verify_no_deal(bb: Blackboard, asked_final_at: int | None) -> CompletionDecision:
-    """(a) every offer declined, denied at approval, or hard-violating; (b) a
-    rep line matching the closing lexicon after ``guide(ask_final_offer)``
-    (``asked_final_at``: the cp transcript length when it went out); (c) no
-    accept released. The world's "was a deal reachable" is never read."""
+    """(a) every offer declined, denied at approval, or hard-violating; (b) the
+    rep's last line since the last ``guide(ask_final_offer)`` matches the
+    closing lexicon (``asked_final_at``: the cp transcript length when that ask
+    went out), so a concession or retraction after a closing line reopens it;
+    (c) no accept released. The world's "was a deal reachable" is never read."""
     reasons: list[str] = []
     denied = {
         a.terms_hash for a in bb.private.approvals.values() if a.decision == "denied"
@@ -64,11 +65,10 @@ def verify_no_deal(bb: Blackboard, asked_final_at: int | None) -> CompletionDeci
     lines = bb.channels["cp"].lines
     if asked_final_at is None:
         reasons.append("final_offer_not_asked")
-    elif not any(
-        x.speaker == "partner" and has_cue(x.text, "closing")
-        for x in lines[asked_final_at:]
-    ):
-        reasons.append("no_closing_reply")
+    else:
+        said = [x.text for x in lines[asked_final_at:] if x.speaker == "partner"]
+        if not (said and has_cue(said[-1], "closing")):
+            reasons.append("no_closing_reply")
     if _released(bb):
         reasons.append("accept_released")
     return _decision(reasons)
