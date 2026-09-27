@@ -622,7 +622,8 @@ SECRETS = ("upstream.example", "sk-SECRET", "https://")
 
 def _boom(*args: object, **kwargs: object) -> ApiCase:
     upstream = "POST https://upstream.example/v1 key=sk-SECRET body={'raw': 1}"
-    raise RuntimeError("wrap") from OSError(upstream)
+    told = "wrap https://upstream.example/v1 key=sk-SECRET"  # str(err) leaks it
+    raise RuntimeError(told) from OSError(upstream)
 
 
 def test_failures_log_error_types_only(

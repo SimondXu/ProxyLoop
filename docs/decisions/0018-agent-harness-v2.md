@@ -1,0 +1,37 @@
+# ADR-0018: Agent harness v2
+
+- **Status:** accepted (user decision 2026-09-27: build our own runtime harness around Slow before the browser demo, with no external agent framework; the design is the principal-architect's, adopted by the root under PLAN §0.5a, 2026-09-27)
+- **Date:** 2026-09-27
+- **Task:** S1-ROOT-12 (records); S1-SYS-45 (v2-A: V1, V2), S1-SYS-21 (F-a…F-d), S1-SYS-46 (v2-B: V3, V4, V5) and S1-SYS-43 (V6) build it; S1-SYS-47 (P-OBS) adds the detectors
+
+## Context
+- **No framework.** The agent-reliability review (plan-v3 handoff `2026-09-27-agent-reliability-harness.md`, "Verdict") rejected an agent framework or SDK for Slow and Fast: none of the defects it found was an orchestration, durability or tracing gap, and every candidate collides with I1, I2, rule 12, ADR-0006 or ADR-0009. What fails is design and integration gaps, world bugs, Slow's tool ergonomics and a minority of real model mistakes. We build a thin in-house harness on existing seams.
+- **Evidence** (the main checkout's git-ignored runs; source: the plan-v3 handoff `2026-09-27-agent-harness-v2.md`, grounded in #183 @c03e943 and main @124908d):
+  - `record_offer` recorded `term_months` with a role that cannot be confirmed in every offer run (dd5094 seq 412; d04021 394; f828f1 610; 84f731 436; ed5063 668), used the field `term`, and sent `expires` as the bool false (ed5063 722, 775); each refusal costs a step while the offer's TTL runs;
+  - a flattened act was refused as "unknown tool 'None'" (f828f1 seq 567–568), and a raw pydantic dump reached Slow (aeab91@bc084d4 seq 159);
+  - no close: in 84f731 the rep's "best and final" reply (cp-21) came, the session timed out and the user was never told; in f828f1 Slow asked for the final offer, heard repeated "no better" replies and ended at `slow_step_cap`; the only successes told the user and called `finish(info_only)`;
+  - repeated read-back asks while the rep restated the terms without an expiry (f828f1 seq 611, 656, 864, 903, 942; also 84f731, dd5094, ed5063);
+  - refused levers: `share_fact` on competitor or tenure facts (0a921a@d8c4464 seq 46–48; f828f1 303, 812–814), `mention_tenure` on a private slot (f828f1 288), an unauthorised `cancel_lever` (84f731 580).
+- **Dropped after re-reading the evidence:** a "public-safe numbers" line (the current-era public-summary refusals come from writing the summary in the act that records the fact, 279efc seq 214→219, 723c8f 167→172: ADR-0012 R3b, S1-SYS-21); stale identity guides (f828f1 seq 294, a spurious relayed `@hold fact_request`: S1-SYS-34); a lever counter ("no better" loops came from FastC disclaimers the Ear heard as discount asks, 84f731).
+
+## Decision
+- **V1 Offer slots derive role and unit (S1-SYS-45).** A slot is {`field`, `value`, `utt_ref`}; role = `ROLE_OF[kind]`, unit = `UNITS.get(kind, "bool")`; a slot carrying a role or unit key is refused ("role and unit follow from field…"). `record_offer` and its helpers move from `slow/tools.py` to `slow/offer_slots.py`. `ReadbackSlot`, `offer.recorded` and Guard are unchanged.
+- **V2 Steering error texts (S1-SYS-45).** Unknown top-level act keys → one refusal naming them and the item shape; a calls item with no tool → "calls[i] has no tool (keys: …)"; invalid arguments render `<tool>: <field>: <short reason>` (the first error only). Refused, never reinterpreted.
+- **V3 Close line and close playbook (S1-SYS-46).** Slow's head says `TASK KIND: info_only|full` from `task.mode` (task data). A pure `slow/state.py` renders a `close:` line: final offer asked; the rep's closing reply cp-K, found only through Guard's closing-cue list; `info_only`: `finish(info_only)` allowed; `full`: `finish(no_deal)` would verify, or blocked with the reasons (a dry run of `verify_no_deal`). The prompt carries the playbook for the case's own kind only.
+- **V4 Read-back ask count and stop rule (S1-SYS-46).** Asks are counted per (offer, revision) and the bar shows `read-back asked k×`; after two read-backs that leave the same slots unconfirmed, Slow stops asking and reports them as not stated (`full`: decline, then `ask_final_offer`).
+- **V5 Lever availability (S1-SYS-46).** A `levers:` line, from `lever_denial` and the public facts, lists only the unavailable levers, each with a one-clause reason.
+- **V6 `slow_fp` (S1-SYS-43).** `session.started` carries `slow_fp`, the sha256 of the mode's system prompt plus the ACT schema, as an untyped payload key (root decision); diagnose groups by it.
+- **F-a Status bar (S1-SYS-21).** One `[STATUS]` header plus labelled lines (case, offers, approvals, facts, hold, readiness, asks; S1-SYS-46 adds close and levers); exactly one `[STATUS]` line per step's notes. Also folded into S1-SYS-21: F-b `identity_hint` retires in favour of the readiness line; F-c R3b is acceptance-critical; F-d new Slow code lives outside `slow/tools.py`.
+
+**Rule-12 reading.** Slow is identical across Fast conditions; Fast and Guard are untouched; the status lines are read-only views of blackboard and Guard predicates (the #166 `approval_hint` pattern); transcript text grants nothing (V3 reads rep text only through Guard's closing-cue list, whose worst case is an earlier `info_only` or `no_deal` close, which restricts); bad Slow output is refused, never repaired.
+
+## Evidence
+None measured; this ADR records decisions. The runs above are diagnostic. Smoke #2 (S1-ROOT-06) grades the mechanics.
+
+## Consequences
+- **Contract / fingerprint impact:** none. No event type, state field or `SessionConfig` field; `slow_fp` is an untyped key; every profile fingerprint is unchanged, so no pull-through.
+- **Data invalidated:** none. Slow's requests change in both `slow_view` modes, so bundles from before and after v2 are never pooled (`slow_fp` or the git sha tells them apart); future teacher trajectories differ.
+- **Migration:** #183 (S1-SYS-34) → S1-SYS-45 → S1-SYS-21 → S1-SYS-46 ∥ S1-SYS-43 → S1-SYS-47 → the smoke #2 battery. Escalate to the root if `TASK KIND` must come through `view_slow` (a CON change), or if Guard's read-back or closing cues fail on real rep phrasing (a SYS Guard fix).
+- **Out of scope until after the demo:** native per-tool functions, lever counters, an offer-withdrawn state, FastC disclaimer / `fast_brief_cp` / `hold_for_fact` wording, Ear fidelity, deflect policing, S1-SYS-22 (unless guide → heard p50 exceeds about 6 s [E]), structured summaries, prompt optimisation, step-level probes.
+- **How H5 grades it** (pass^3 over the battery; thresholds are targets): Slow invalid-argument and unknown-tool refusals ≤ 1 across the battery [E] (v2-A); every `full` offer confirms on every required slot the rep stated (v2-A); ≤ 2 `ask_readback` per revision while slots stay missing (v2-B); after a closing reply, `finish` within 2 Slow steps, the user told the terms, and no `timeout` or `slow_step_cap` (v2-B); no lever refusals [E] (v2-B). H5 shows that the mechanics hold, not v2's causal effect.
+- **Risks and what would make us revisit this.** Prompt growth (fixed short templates; track the request size). Premature closes (a detector: `finish` before any `offer.recorded`). The closing-cue list misses phrasings such as "…the best offer I can make" (PLAN §0.9). The 600-line module tripwire (the moves are planned). Fixtures assert refusal classes, not strings; snapshot churn is expected.

@@ -30,7 +30,7 @@ Frame = Callable[[Event, bytes], str | None]  # the text to send, or None: skip
 
 
 def raw(event: Event, line: bytes) -> str:
-    """/ws/live: the stored line itself, URLs redacted."""
+    """/ws/live: the stored line itself, redacted."""
     return redact(line).decode("utf-8")
 
 

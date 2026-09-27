@@ -5,14 +5,18 @@
 Origin (``serve.api``), the role's signed CSRF pair echoed in the header, and a
 known case; else 403 ``{"error": "origin" | "csrf"}`` or 404:
 
-- ``POST /api/cases/{case}/approvals/{approval_id}`` (user): single use per
-  (case, approval id), then ``guard.decide`` as a pre-check on the kernel's
-  current blackboard. A Denial is 409 ``already_decided`` or ``stale`` (with
-  the reason) and calls nothing: no event. Success hands the post to the
-  kernel once (``Case.post_approval``) and returns 200: "posted", not
-  "decided" (the kernel decides; see ``Case.post_approval``). If the handover
-  raises, 503 ``unavailable``, and that approval id stays 503 (fail closed).
-  The endpoint never decides, mints or emits a decision (I6).
+- ``POST /api/cases/{case}/approvals/{approval_id}`` (user), body
+  ``{decision, terms_hash, authority_epoch}``, and ``POST
+  /api/cases/{case}/mandates/{mandate_id}`` (user), body ``{decision,
+  mandate_hash, authority_epoch}``: one flow for both subjects. Single use per
+  (subject, case, id), so a mandate id never shares an approval id's slot;
+  then ``guard.decide`` as a pre-check on the kernel's current blackboard. A
+  Denial is 409 ``already_decided`` or ``stale`` (with the reason) and calls
+  nothing: no event. Success hands the post to the kernel once
+  (``Case.post_approval``) and returns 200: "posted", not "decided" (the
+  kernel decides; see ``Case.post_approval``). If the handover raises, 503
+  ``unavailable``, and that id stays 503 (fail closed). The endpoint never
+  decides, mints or emits a decision (I6).
 - ``POST /api/cases/{case}/messages`` (user) and ``/rep`` (the human rep):
   text into the case's user-lane and cp-lane ingress; if the ingress raises,
   503 ``unavailable``, logged. Text that is empty after ``strip()`` is 422
@@ -21,14 +25,16 @@ known case; else 403 ``{"error": "origin" | "csrf"}`` or 404:
 
 A Denial does not use up the single-use slot: only a post handed to the kernel
 does. ``guard.decide`` is a pure function of the board, so a later POST is
-judged afresh, and a malformed or early POST cannot burn a valid card. Mandate
-posts have no route here.
+judged afresh, and a malformed or early POST cannot burn a valid card or
+proposal.
 
 Threat model: on this single-machine 127.0.0.1 server the user/rep split
 guards only against cross-site requests and bugs in the web code, not against
-a hostile local rep. ``GET /live`` needs no authentication, and ``/ws/live``
-and ``/api/replay`` need no cookie, so no claim may say the rep is isolated.
-Real rep isolation (a separate host, or authentication) comes later.
+a hostile local rep; that holds for approvals and mandates alike, since both
+rest on the same user cookie pair. ``GET /live`` needs no authentication, and
+``/ws/live`` and ``/api/replay`` need no cookie, so no claim may say the rep
+is isolated. Real rep isolation (a separate host, or authentication) comes
+later.
 """
 
 from __future__ import annotations
@@ -85,6 +91,10 @@ class Case(Protocol):
           the restrict-only ``action.denied{intent: "approval.post", reason:
           <decide's reason>}`` (actor ``kernel``) citing a legal cause (e.g.
           the refused card's ``approval.requested``), and wake Slow.
+
+        For subject "mandate": ``approval.post`` (ui), then ``mandate.decided``,
+        then ``authority.epoch{reason: "mandate_decided"}``; ``action.denied``
+        as above on a Denial.
 
         Either way the user's click leaves an event. (Should the contract
         refuse such an ``action.denied``, that is an L-CORE fold change.)
@@ -162,9 +172,18 @@ class _Body(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
 
+SHA256 = r"^[0-9a-f]{64}$"  # guard's terms_hash and mandate_hash (sha256 hex)
+
+
 class ApprovalBody(_Body):
     decision: Decision
-    terms_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    terms_hash: str = Field(pattern=SHA256)
+    authority_epoch: int = Field(ge=0)
+
+
+class MandateBody(_Body):
+    decision: Decision
+    mandate_hash: str = Field(pattern=SHA256)
     authority_epoch: int = Field(ge=0)
 
 
@@ -222,8 +241,8 @@ async def open_case(
 def add_case_routes(
     app: FastAPI, roots: Sequence[Path], cases: Cases | None, csrf: Csrf
 ) -> None:
-    # (case_id, approval_id) -> handed over, or the handover raised
-    slots: dict[tuple[str, str], Literal["posted", "failed"]] = {}
+    # (subject, case_id, subject id) -> handed over, or the handover raised
+    slots: dict[tuple[str, str, str], Literal["posted", "failed"]] = {}
     app.add_exception_handler(Refused, _refused)
 
     async def known(case_id: str) -> Case:
@@ -259,23 +278,13 @@ def add_case_routes(
     async def rep_page(case_id: Id) -> Response:
         return await page("rep", case_id)
 
-    @app.post("/api/cases/{case_id}/approvals/{approval_id}")
-    async def approve(request: Request, case_id: Id, approval_id: Id) -> Response:
-        case = await allowed(request, "user", case_id)
-        body = await parse(request, ApprovalBody)
-        # No await from here on: concurrent POSTs cannot interleave.
-        key = (case_id, approval_id)
+    def hand_over(case: Case, case_id: str, post: ApprovalPost) -> Response:
+        """No await in here: concurrent POSTs cannot interleave."""
+        key, what = (post.subject, case_id, post.subject_id), post.subject
         if slots.get(key) == "failed":
             raise Refused(503, "unavailable")
         if key in slots:  # handed over; the board may not show it yet
             raise Refused(409, "already_decided")
-        post = ApprovalPost(
-            subject="approval",
-            subject_id=approval_id,
-            decision=body.decision,
-            subject_hash=body.terms_hash,
-            authority_epoch=body.authority_epoch,
-        )
         got = decide(case.blackboard(), post, "ui")
         if isinstance(got, Denial):
             error = "already_decided" if got.reason == "already_decided" else "stale"
@@ -286,9 +295,36 @@ def add_case_routes(
         except Exception as err:  # loud: logged, 503, and the id stays refused
             slots[key] = "failed"
             why = type(err).__name__  # only: no text, traceback or cause (rule 15)
-            _log.error("post_approval failed for %s/%s: %s", case_id, approval_id, why)
+            ids = (what, case_id, post.subject_id, why)
+            _log.error("post_approval failed for %s %s/%s: %s", *ids)
             raise Refused(503, "unavailable") from err
         return JSONResponse({"status": "posted"})
+
+    @app.post("/api/cases/{case_id}/approvals/{approval_id}")
+    async def approve(request: Request, case_id: Id, approval_id: Id) -> Response:
+        case = await allowed(request, "user", case_id)
+        body = await parse(request, ApprovalBody)
+        post = ApprovalPost(
+            subject="approval",
+            subject_id=approval_id,
+            decision=body.decision,
+            subject_hash=body.terms_hash,
+            authority_epoch=body.authority_epoch,
+        )
+        return hand_over(case, case_id, post)
+
+    @app.post("/api/cases/{case_id}/mandates/{mandate_id}")
+    async def mandate(request: Request, case_id: Id, mandate_id: Id) -> Response:
+        case = await allowed(request, "user", case_id)
+        body = await parse(request, MandateBody)
+        post = ApprovalPost(
+            subject="mandate",
+            subject_id=mandate_id,
+            decision=body.decision,
+            subject_hash=body.mandate_hash,
+            authority_epoch=body.authority_epoch,
+        )
+        return hand_over(case, case_id, post)
 
     def send(ingress: Callable[[str], None], text: str, case_id: str) -> Response:
         try:
