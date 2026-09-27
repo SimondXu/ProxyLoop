@@ -10,17 +10,30 @@ from typing import cast
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
+from tests.guard.build import CASE, READBACK, offer
 from tests.support.manual_clock import ManualClock
 
 from proxyloop.contract.base import HOLD_REASONS
 from proxyloop.contract.bundle import EVENTS
-from proxyloop.contract.events import EVENT_TYPES, Event, Stream
+from proxyloop.contract.events import EVENT_TYPES, ApprovalPost, Event, Stream
 from proxyloop.contract.messages import GuideMove
 from proxyloop.contract.protocol import render_messages
-from proxyloop.contract.state import Blackboard, CaseStatus
+from proxyloop.contract.state import Blackboard
 from proxyloop.contract.views import Trigger, view_cp
 from proxyloop.core.bus import Bus
 from proxyloop.core.fold import RECORD_ONLY, REDUCERS, WORLD_OPS, apply, fold
+from proxyloop.guard.authorize import (
+    Denial,
+    Effect,
+    accept_offer,
+    decide,
+    decline_offer,
+    request_approval,
+)
+from proxyloop.guard.capability import revalidate
+from proxyloop.guard.mandate import proposal
+from proxyloop.guard.readback import readback_update
+from proxyloop.guard.status import TRANSITIONS, status_change
 
 RUN = "r1"
 _STARTED = EVENT_TYPES["session.started"].payload_keys
@@ -121,13 +134,8 @@ def _steps() -> st.SearchStrategy[Step]:
                 {"new": n, "reason": "slow_revoke"},  # an increment: see _emit_all
             )
         ),
-        st.sampled_from(list(CaseStatus)).map(
-            lambda s: (
-                "status.changed",
-                "guard",
-                "agent",
-                {"previous": "INTAKE", "status": s.value},
-            )
+        st.sampled_from(sorted({t for _, t in TRANSITIONS} | {"hang_up"})).map(
+            lambda t: ("status.changed", "guard", "agent", {"trigger": t})
         ),
         st.tuples(st.sampled_from(["private", "public"]), _KEY, _TEXT).map(
             lambda a: (
@@ -179,24 +187,172 @@ def _steps() -> st.SearchStrategy[Step]:
     )
 
 
+# Guard flows: each emits what Guard allows on the current blackboard, if any.
+FLOWS = [
+    "offer",
+    "readback",
+    "request",
+    "decide",
+    "accept",
+    "release",
+    "propose",
+    "mandate",
+    "decline",
+    "evidence",
+]
+CHAINS = {
+    "by_approval": ("offer", "readback", "request", "decide", "accept"),
+    "by_mandate": ("offer", "readback", "propose", "mandate", "accept", "release"),
+}
+
+
+def _flow(bus: Bus, name: str) -> None:
+    bb, last = bus.bb, bus.events[-1].event_id
+
+    def guard(effects: tuple[Effect, ...] | Denial) -> None:
+        for kind, payload in () if isinstance(effects, Denial) else effects:
+            bus.emit(kind, "guard", "agent", payload, [bus.events[-1].event_id])
+
+    o1 = bb.public.offers.get("o1")
+    if name in CHAINS:  # a whole path to an accept line in one step
+        for step in CHAINS[name]:
+            _flow(bus, step)
+    elif name == "offer":
+        said = {"lane": "cp", "speaker": "partner", "utt_id": "c-r", "text": READBACK}
+        bus.emit("utt.final", "kernel", "agent", said)
+        recorded = offer().model_dump(mode="json", include={"offer_ref", "slots"})
+        revision = 1 + (o1.revision if o1 else 0)
+        recorded |= {"revision": revision, "terms_hash": None}
+        guard((("offer.recorded", recorded),))
+    elif name == "readback" and o1 is not None:
+        guard((("readback.updated", readback_update(o1, bb.channels["cp"].lines, 0)),))
+    elif name == "request":
+        guard(request_approval(bb, "o1", CASE))
+    elif name == "accept":
+        guard(accept_offer(bb, "o1", CASE))
+    elif name == "decline":
+        guard(decline_offer(bb, "o1"))
+    elif name == "propose":
+        guard((proposal(bb, "m1", max_monthly_price_minor=7000),))
+    elif name == "evidence" and o1 is not None:
+        e: dict[str, object] = {"evidence_id": "e1", "kind": "ledger"}
+        e["confirmation_id"] = "NW-1"
+        guard((("evidence.recorded", e | {"terms_hash": o1.terms_hash}),))
+    elif name == "release" and (
+        caps := [c for c in bb.capabilities.values() if not c.consumed]
+    ):
+        cap_id = caps[0].cap_id
+        why = revalidate(bb, cap_id, bb.t_ms + 1_000)
+        kind, out = (
+            ("speak.released", {"lane": "cp"})
+            if why is None
+            else ("speak.revoked", {"reason": why})
+        )
+        bus.emit(kind, "kernel", "agent", out | {"cap_id": cap_id}, [last])
+    elif name in ("decide", "mandate"):
+        card, m = bb.private.pending_approval, bb.private.mandate
+        subject = card.approval_id if card and name == "decide" else None
+        if name == "mandate" and m is not None and m.status == "proposed":
+            subject = m.mandate_id
+        if subject is None:
+            return
+        h = (
+            card.terms_hash
+            if card and name == "decide"
+            else m.mandate_hash
+            if m
+            else ""
+        )
+        post = {
+            "subject": "approval" if name == "decide" else name,
+            "subject_id": subject,
+        }
+        post |= {"decision": "granted", "subject_hash": h, "authority_epoch": bb.epoch}
+        posted = bus.emit("approval.post", "sim_approver", "agent", post)
+        decided = decide(bus.bb, ApprovalPost.model_validate(post), "sim_approver")
+        if not isinstance(decided, Denial):
+            bus.emit(decided[0], "kernel", "agent", decided[1], [posted.event_id])
+            if name == "mandate":
+                bump = {"new": bus.bb.epoch + 1, "reason": "mandate_decided"}
+                bus.emit(
+                    "authority.epoch",
+                    "kernel",
+                    "agent",
+                    bump,
+                    [bus.events[-1].event_id],
+                )
+
+
 def _emit_all(path: Path, steps: list[tuple[Step, int]]) -> Bus:
     clock = ManualClock()
     bus = Bus(path, RUN, clock)
     bus.emit("session.started", "kernel", "ops", {k: "" for k in _STARTED})
     for (type_, actor, stream, payload), advance in steps:
         clock.advance(advance)
+        if type_ == "flow":
+            _flow(bus, actor)
+            continue
         spec = EVENT_TYPES[type_]
         causes = [bus.events[-1].event_id] if spec.cause_required else []
         if type_ == "authority.epoch":  # epochs only increase (§9.4)
             payload = payload | {"new": bus.bb.epoch + cast(int, payload["new"])}
+        if type_ == "status.changed":  # a legal move, or none (§9.5)
+            change = status_change(bus.bb, str(payload["trigger"]))
+            if change is None or change["status"] in (
+                "VERIFIED_COMPLETE",
+                "VERIFIED_NO_DEAL",
+            ):
+                continue
+            payload = change
         bus.emit(type_, actor, cast(Stream, stream), payload, causes)
     return bus
+
+
+def _authority_steps() -> st.SearchStrategy[Step]:
+    """Guard flows interleaved with fences, revokes and a contradicting rep."""
+    fence = st.sampled_from(["raised", "cleared"]).map(
+        lambda op: (
+            "authority.fence",
+            "kernel",
+            "agent",
+            {"op": op, "fence_id": "f1", "utt_id": "u"},
+        )
+    )
+    said = {"lane": "cp", "speaker": "partner", "utt_id": "c-x"}
+    empty: dict[str, object] = {}
+    flows = st.sampled_from([*FLOWS, *CHAINS]).map(lambda f: ("flow", f, "", empty))
+    return st.one_of(
+        flows,
+        flows,
+        flows,
+        fence,
+        st.just(
+            ("authority.epoch", "guard", "agent", {"new": 1, "reason": "f2s_revoke"})
+        ),
+        st.just(
+            ("utt.final", "kernel", "agent", said | {"text": "It is $75 a month."})
+        ),
+    )
 
 
 @given(
     st.lists(st.tuples(_steps(), st.integers(0, 50)), max_size=25), st.integers(0, 26)
 )
 def test_fold_is_deterministic(steps: list[tuple[Step, int]], cut: int) -> None:
+    _deterministic(steps, cut)
+
+
+@given(
+    st.lists(st.tuples(_authority_steps(), st.integers(0, 50)), max_size=30),
+    st.integers(0, 40),
+)
+def test_the_authority_fold_is_deterministic(
+    steps: list[tuple[Step, int]], cut: int
+) -> None:
+    _deterministic(steps, cut)
+
+
+def _deterministic(steps: list[tuple[Step, int]], cut: int) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         bus = _emit_all(Path(tmp) / EVENTS, steps)
         bus.close()
