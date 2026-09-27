@@ -7,13 +7,18 @@ released with its ``cap_id`` (M7), or revoked with the reason, ``fence`` under
 a raised fence. So every accept line ends in exactly one ``speak.released`` or
 ``speak.revoked``, and never waits on a fence: a held line could wedge the case
 on ``accept_in_flight``. Its status follows only from what happened: heard
-whole, cut by a barge-in (``accept_truncated``) or revoked."""
+whole, cut by a barge-in (``accept_truncated``) or revoked.
+
+A partner turn goes before a queued verbatim line: from its barge-in until its
+lines have landed, no verbatim line takes the floor, so an accept is revalidated
+only on a board that has the partner's turn (I6 timing)."""
 
 from __future__ import annotations
 
 import asyncio
 import re
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 from proxyloop.contract.base import Lane
@@ -43,6 +48,9 @@ class Speaker:
         self._lock, self._barge = asyncio.Lock(), asyncio.Event()
         self.speaking = False
         self._stale = False  # the partner was mid-turn when this speech began
+        self._partner = 0  # partner turns begun whose lines have not landed
+        self._partner_idle = asyncio.Event()
+        self._partner_idle.set()
 
     async def speak(
         self, lines: Sequence[tuple[str, str, str]], interruptible: bool = True
@@ -57,7 +65,8 @@ class Speaker:
         k, p = self._k, said.payload
         text, kind, cap = str(p["text"]), p["kind"], p.get("cap_id")
         held = {} if cap is None else {"cap_id": cap}
-        async with self._lock:  # in turn with Fast's lines
+        await self._floor_after_partner()
+        try:  # in turn with Fast's lines, after any pending partner turn
             end = k.now() + round(1000 * speech_s(text))
             why = "call_closed" if k.closed else None
             if why is None and cap is not None:
@@ -76,7 +85,18 @@ class Speaker:
                 cut = bool(last.payload["interrupted"])
                 heard_as = "accept_truncated" if cut else "accept_heard"
                 k.authority.move(heard_as, last.event_id)
+        finally:
+            self._lock.release()
         self._send(last, heard)
+
+    async def _floor_after_partner(self) -> None:
+        """Take the floor with no partner turn pending (the lock, acquired)."""
+        while True:
+            await self._partner_idle.wait()
+            await self._lock.acquire()
+            if self._partner == 0:
+                return
+            self._lock.release()  # a partner turn began while this line queued
 
     async def _deliver(
         self, lines: Sequence[tuple[str, str, str]], interruptible: bool
@@ -109,13 +129,24 @@ class Speaker:
             utt_id = str(last.payload["utt_id"])
             k.spawn(self._channel.send(text, utt_id, last.event_id, k.now()))
 
-    async def barge_in(self) -> None:  # cut the line; wait for the floor
-        """A partner turn begun before this speech answers an older line: it
-        waits for the floor instead of cutting the line (ROOT-05 i)."""
-        if not (self.speaking and self._stale):
-            self._barge.set()
-        async with self._lock:
-            return
+    @asynccontextmanager
+    async def partner_turn(self) -> AsyncGenerator[None]:
+        """A partner turn: it cuts the line and waits for the floor, and its
+        lines land inside the block; until then no verbatim line is released.
+        A partner turn begun before this speech answers an older line: it waits
+        for the floor instead of cutting the line (ROOT-05 i)."""
+        self._partner += 1
+        self._partner_idle.clear()
+        try:
+            if not (self.speaking and self._stale):
+                self._barge.set()
+            async with self._lock:
+                pass
+            yield
+        finally:
+            self._partner -= 1
+            if self._partner == 0:
+                self._partner_idle.set()
 
     async def _clock(self, text: str, interruptible: bool) -> str:
         start, seconds = self._k.now(), speech_s(text)

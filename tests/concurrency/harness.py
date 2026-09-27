@@ -122,6 +122,7 @@ class Sim:
         self.k = Kernel(cfg, task, specs, root, vt, vt.sleep, make, None)
         self._run: asyncio.Task[object] | None = None
         self._rep = 0
+        self.rep_turns: list[int] = []  # the next seq when each rep turn was queued
 
     async def start(self) -> None:
         """Run the session past the disclosure (about 4 s of speech)."""
@@ -157,6 +158,7 @@ class Sim:
         self.user.incoming.put_nowait(Incoming(((text, None),)))
 
     def rep_says(self, text: str) -> None:
+        self.rep_turns.append(len(self.k.bus.events))
         self.rep.incoming.put_nowait(Incoming(((text, None),)))
 
     def post(self, card: ApprovalCard, by: Approver = "ui", **change: object) -> None:

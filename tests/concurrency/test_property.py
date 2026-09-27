@@ -5,6 +5,8 @@ accepts, stops, revokes, barge-ins, FastU latency, time) and the log must show:
 - no ``speak.released{accept}`` under a raised fence, at a stale epoch, past its
   capability's ``expires_ms`` or with its line ending past it;
 - at most one released accept per ``terms_hash``;
+- no ``speak.released{cap_id}`` while a partner turn is pending (queued, its
+  ``utt.final`` not yet in the log);
 - every accept line ending in exactly one ``speak.released`` or
   ``speak.revoked`` (none wedges on ``accept_in_flight``);
 - ``accept_revoked``/``accept_truncated`` only after a real ``speak.revoked`` /
@@ -205,6 +207,7 @@ def _check(sim: Sim) -> None:
             assert real or e.payload["previous"] != "COMMIT_AUTHORIZED", e
         bb = apply(bb, e)
     assert all(n == 1 for n in released.values()), f"accepts per terms: {released}"
+    _partner_first(sim)
     accepts = [
         e.event_id
         for e in events
@@ -214,6 +217,26 @@ def _check(sim: Sim) -> None:
     assert not any(
         c.intent == "accept_offer" and not c.consumed for c in bb.capabilities.values()
     )
+
+
+def _partner_first(sim: Sim) -> None:
+    """A rep turn is pending from its queueing until its ``utt.final``: no
+    accept is released in between (it is revalidated after the turn)."""
+    events = sim.events
+    said = [
+        e.seq
+        for e in events
+        if e.type == "utt.final" and e.payload["speaker"] == "partner"
+    ]
+    ends = said + [len(events)] * (len(sim.rep_turns) - len(said))
+    for e in events:
+        if e.type == "speak.released" and "cap_id" in e.payload:
+            pending = [
+                (a, b)
+                for a, b in zip(sim.rep_turns, ends, strict=True)
+                if a <= e.seq < b
+            ]
+            assert not pending, f"{e.event_id}: released with a rep turn pending"
 
 
 TestInterleavings = Interleavings.TestCase  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]

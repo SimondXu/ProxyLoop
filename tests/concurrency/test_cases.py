@@ -186,6 +186,34 @@ def test_4_a_barge_in_during_the_accept_leaves_it_unheard(tmp_path: Path) -> Non
     arun(case())
 
 
+def test_a_partner_turn_begun_before_a_queued_accept_lands_first(
+    tmp_path: Path,
+) -> None:  # the accept waits behind FastC's line; the rep barges in meanwhile
+    async def case() -> None:
+        sim = Sim(tmp_path, {"fast_cp": [LONG]})
+        await sim.start()
+        await granted(sim)
+        sim.rep_says("Anything else?")
+        await sim.vt.run_for(500)  # FastC holds the floor for ten seconds
+        assert sim.accept().startswith("accept_offer: accept line queued")
+        await sim.vt.run_for(2_000)
+        sim.rep_says("Correction: that offer is gone, it is $75 now.")
+        await sim.vt.run_for(15_000)
+        (said,) = sim.of(
+            "utt.final", text="Correction: that offer is gone, it is $75 now."
+        )
+        released = sim.of("speak.released", cap_id="cap-1")
+        revoked = sim.of("speak.revoked", cap_id="cap-1")
+        assert len(released) + len(revoked) == 1  # the line ends exactly once
+        assert revoked or said.seq < released[0].seq  # heard, then revalidated
+        for moved in sim.of("status.changed", status="COMMITTED"):
+            assert said.seq < moved.seq
+        await sim.stop()
+        assert check_path(sim.k.path, "offline").ok
+
+    arun(case())
+
+
 def test_5_duplicate_approvals_decide_once(tmp_path: Path) -> None:
     async def case() -> None:
         sim = Sim(tmp_path)

@@ -486,17 +486,11 @@ class Kernel:
                 await self._disclosed.wait()
             if (wait := inc.due_ms - self.now()) > 0:
                 await self.sleep(wait / 1000)
-            if key == "cp" and inc.lines:
-                await self.speakers["cp"].barge_in()
-            last, first = opened, [c for _, c in inc.lines if c][:1]
-            closing = inc.end == "closed" and key == "cp" and not self.closed
-            self.closed |= closing  # before its lines: they trigger no FastC
-            if inc.strike:
-                last = self.emit(
-                    "chan.strike", "kernel", {"lane": "cp"}, first
-                ).event_id
-            for text, cause in inc.lines:
-                last = self._line(key, text, [cause] if cause else [])
+            if key == "cp" and inc.lines:  # cuts the line; lands before a verbatim
+                async with self.speakers["cp"].partner_turn():
+                    last, closing = self._turn(key, inc, opened)
+            else:
+                last, closing = self._turn(key, inc, opened)
             if inc.delivered is not None:
                 inc.delivered.set()
             channel.floor(True, self.now())
@@ -509,6 +503,16 @@ class Kernel:
                     await asyncio.sleep(0)  # the person still reads the last line
                     raise SessionEnd("stopped")
                 self.slow.wake("call_closed")
+
+    def _turn(self, key: str, inc: Incoming, opened: str) -> tuple[str, bool]:
+        last, first = opened, [c for _, c in inc.lines if c][:1]
+        closing = inc.end == "closed" and key == "cp" and not self.closed
+        self.closed |= closing  # before its lines: they trigger no FastC
+        if inc.strike:
+            last = self.emit("chan.strike", "kernel", {"lane": "cp"}, first).event_id
+        for text, cause in inc.lines:
+            last = self._line(key, text, [cause] if cause else [])
+        return last, closing
 
     def _line(self, key: str, text: str, causes: list[str]) -> str:
         if key == "user":
