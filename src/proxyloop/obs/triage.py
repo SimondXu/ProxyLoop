@@ -23,16 +23,7 @@ from proxyloop.contract.bundle import EVENTS, MANIFEST, Manifest
 from proxyloop.contract.events import Event
 from proxyloop.obs import runs
 from proxyloop.obs.detectors import BANNER, Inputs, run_all
-from proxyloop.obs.trace import (
-    _TOOLS,  # pyright: ignore[reportPrivateUsage]
-    Prompts,
-    Refused,
-    lines,
-    unseal,
-)
-from proxyloop.obs.trace import (
-    _identifier as _is_code,  # pyright: ignore[reportPrivateUsage]
-)
+from proxyloop.obs.trace import TOOL_NAMES, Prompts, Refused, identifier, lines, unseal
 
 SCHEMA = "pl.triage/1"
 Row = dict[str, object]
@@ -102,7 +93,7 @@ def _dict(value: object) -> dict[str, object]:
 
 def _code(value: object) -> object:
     """An identifier, number or bool as is; any other value is withheld."""
-    return value if value is None or _is_code(value) else "?"
+    return value if value is None or identifier(value) else "?"
 
 
 def _timeline(e: Event, content: bool) -> Row | None:
@@ -113,7 +104,7 @@ def _timeline(e: Event, content: bool) -> Row | None:
         intent = _dict(p.get("intent"))
         row = {"from": p.get("from"), "to": p.get("to"), "intent": intent.get("kind")}
     elif t == "slow.tool":
-        name = p.get("name") if p.get("name") in _TOOLS else "unknown"
+        name = p.get("name") if p.get("name") in TOOL_NAMES else "unknown"
         result = str(p.get("result_text", ""))
         row = {"name": name, "ok": p.get("ok"), "result_len": len(result)}
         text = {"result_text": result[:100]}
