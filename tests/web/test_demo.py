@@ -235,6 +235,12 @@ def test_stop_fences_and_the_stale_card_is_refused_by_the_kernel(
     )
     kinds = {e.payload["kind"] for e in of(log, "speak.verbatim")}
     assert kinds == {"disclosure"} and len(of(log, "speak.released")) == 1
-    assert [e.payload["status"] for e in of(log, "status.changed")][-1] == (
-        "AWAITING_APPROVAL"
+    # the stale card replans (S1-SYS-38): the bump moves it to NEEDS_REPLAN,
+    # Slow's next step back to IN_CALL; nothing is ever authorized
+    (replan,) = of(
+        log, "status.changed", previous="AWAITING_APPROVAL", status="NEEDS_REPLAN"
     )
+    assert bump.event_id in replan.cause_ids
+    resumed = of(log, "status.changed", previous="NEEDS_REPLAN", status="IN_CALL")
+    assert resumed and resumed[0].seq > replan.seq
+    assert not of(log, "status.changed", status="COMMIT_AUTHORIZED")

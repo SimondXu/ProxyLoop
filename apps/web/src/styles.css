@@ -48,3 +48,20 @@ details pre, .drawer pre { white-space: pre-wrap; font-size: 11px; }
 .slots .confirmed { color: #2b6cb0; }
 .slots .unknown { color: #b00020; }
 .start { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; max-width: 640px; }
+.sticky {
+  position: sticky; top: 0; z-index: 1; background: #f6f6f4;
+  border-bottom: 1px solid #ddd; max-height: 60vh; overflow-y: auto;
+}
+.status-line { font-size: 15px; font-weight: 600; margin: 4px 0; }
+.outcome { background: #fff; border: 2px solid #666; border-radius: 4px; padding: 6px 10px; margin: 4px 0; }
+.outcome.verified { border-color: #2b6cb0; }
+.outcome h2, .pane h2 { font-size: 15px; text-transform: none; letter-spacing: 0; }
+.outcome p { margin: 2px 0; }
+.sim { background: #fff4d6; border: 1px solid #e0c060; padding: 2px 8px; margin: 4px 0; }
+.authority summary { cursor: pointer; font-size: 14px; color: #444; }
+.panes { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-top: 8px; }
+.pane { background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+.pane ol { list-style: none; margin: 0; padding: 0; height: 55vh; overflow-y: auto; font-size: 15px; }
+.pane li { padding: 4px 6px; margin-bottom: 4px; border-radius: 4px; overflow-wrap: anywhere; }
+.pane .line-you, .pane .line-rep { background: #eef4fb; }
+.pane .line-call { color: #555; }

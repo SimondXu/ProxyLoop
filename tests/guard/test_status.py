@@ -46,6 +46,14 @@ S = CaseStatus
         ),
         (["call_opened", "no_deal_verified"], S.VERIFIED_NO_DEAL),
         (["call_opened", "approval_requested", "hang_up"], S.ABANDONED),
+        (  # S1-SYS-38: a stale card replans, then any IN_CALL outcome
+            ["call_opened", "approval_requested", "approval_stale", "replan"],
+            S.IN_CALL,
+        ),
+        (
+            ["call_opened", "approval_requested", "approval_expired", "escalate"],
+            S.ESCALATED,
+        ),
     ],
 )
 def test_paths(path: list[str], end: CaseStatus) -> None:
@@ -69,6 +77,28 @@ def test_illegal_and_terminal_moves_are_refused() -> None:
     assert into == {
         S.VERIFIED_COMPLETE: "completion_ok",
         S.VERIFIED_NO_DEAL: "no_deal_verified",
+    }
+
+
+def test_a_pending_card_leaves_only_by_a_decision_staleness_or_a_hang_up() -> None:
+    """S1-SYS-38 (I6, restrict-only): a stale or expired card moves
+    AWAITING_APPROVAL to NEEDS_REPLAN, never toward a commitment; the two
+    triggers move nothing else, and a decided card keeps its IN_CALL edge."""
+    out = {t: to for (was, t), to in TRANSITIONS.items() if was is S.AWAITING_APPROVAL}
+    assert out == {
+        "approval_decided": S.IN_CALL,
+        "approval_stale": S.NEEDS_REPLAN,
+        "approval_expired": S.NEEDS_REPLAN,
+    }
+    for status in S:
+        if status is not S.AWAITING_APPROVAL:
+            assert next_status(status, "approval_stale") is None, status
+            assert next_status(status, "approval_expired") is None, status
+    assert next_status(S.AWAITING_APPROVAL, "hang_up") is S.ABANDONED
+    bb = board(status=S.AWAITING_APPROVAL)
+    assert status_change(bb, "approval_stale") == {
+        "previous": "AWAITING_APPROVAL",
+        "status": "NEEDS_REPLAN",
     }
 
 

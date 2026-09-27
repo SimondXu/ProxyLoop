@@ -385,18 +385,25 @@ def test_8_an_epoch_bump_between_the_post_and_the_decide_grants_nothing(
 def test_guard_runs_at_the_bus_clocks_now(tmp_path: Path) -> None:
     """A card and then a grant expire with no event since: Guard, reading
     ``bb.t_ms``, must see the clock's now, or it would decide on a stale board
-    and the fold would then reject (raise on) what it emitted (N-c)."""
+    and the fold would then reject (raise on) what it emitted (N-c). Since
+    S1-SYS-38 a pending card's expiry is itself an event, so the post is
+    decided at the tick the card expires, before that timer runs."""
 
     async def case() -> None:
         sim = Sim(tmp_path)
         await sim.start()
         await sim.offer()
         card = sim.card()
-        await sim.vt.run_for(card.expires_ms - sim.vt.monotonic_ms() + 1)
+        sim.vt.advance(card.expires_ms - sim.vt.monotonic_ms())  # no timer run yet
         assert sim.bb.t_ms < card.expires_ms  # no event since: the fold is stale
-        sim.post(card)
-        await sim.vt.run_for(100)
+        post = {"subject": "approval", "subject_id": card.approval_id}
+        post |= {"decision": "granted", "subject_hash": card.terms_hash}
+        post |= {"authority_epoch": card.authority_epoch}
+        sim.k.authority.decide(ApprovalPost.model_validate(post), "ui")
         (denied,) = sim.of("action.denied", intent="approval.post")
+        await sim.vt.run_for(100)  # the card's expiry timer runs now: it replans
+        (expired,) = sim.of("status.changed", status="NEEDS_REPLAN")
+        assert expired.seq > denied.seq
         assert denied.payload["reason"] == "card_expired"
         assert not sim.of("approval.post") and not sim.of("approval.decided")
         granted_card = await granted(sim, dollars=66)  # a new revision, granted
