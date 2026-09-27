@@ -306,16 +306,26 @@ def test_messages_and_rep_lines_go_through_their_own_role(live: Live) -> None:
     assert live.case.posts == []
 
 
-@pytest.mark.parametrize("text", ["", "x" * 4001], ids=["empty", "over the cap"])
-def test_text_is_bounded(live: Live, text: str) -> None:
-    got = post(
-        live.http,
-        f"/api/cases/{CASE}/messages",
-        {"text": text},
-        headers(login(live.http, "user", CASE)),
-    )
-    assert got.status_code == 422
-    assert live.case.messages == []
+@pytest.mark.parametrize(
+    "text",
+    ["", "x" * 4001, " ", " \n\t ", "\u3000"],
+    ids=["empty", "over the cap", "a space", "whitespace", "ideographic space"],
+)
+@pytest.mark.parametrize("role", ["user", "rep"])
+def test_text_is_bounded(live: Live, text: str, role: str) -> None:
+    url = f"/api/cases/{CASE}/{'messages' if role == 'user' else 'rep'}"
+    got = post(live.http, url, {"text": text}, headers(login(live.http, role, CASE)))
+    assert (got.status_code, got.json()) == (422, {"error": "invalid body"})
+    assert live.case.messages == live.case.utterances == []
+
+
+def test_accepted_text_is_forwarded_as_sent(live: Live) -> None:
+    user, rep = login(live.http, "user", CASE), login(live.http, "rep", CASE)
+    sent = "  stop, please \n"
+    for url, hdrs in [("messages", headers(user)), ("rep", headers(rep))]:
+        got = post(live.http, f"/api/cases/{CASE}/{url}", {"text": sent}, hdrs)
+        assert got.status_code == 200
+    assert live.case.messages == live.case.utterances == [sent]
 
 
 def test_an_unknown_case_is_404(live: Live) -> None:
@@ -360,5 +370,6 @@ def test_a_failed_message_or_rep_line_is_503_and_logged(
             got = post(live.http, f"/api/cases/{CASE}/{url}", {"text": "hi"}, hdrs)
             assert (got.status_code, got.json()) == (503, {"error": "unavailable"})
     logged = [r for r in caplog.records if r.name == "proxyloop.serve.cases"]
-    assert [r.exc_info is not None for r in logged] == [True, True]
+    assert [r.exc_info for r in logged] == [None, None]  # the type only (rule 15)
+    assert [r.getMessage().endswith(": RuntimeError") for r in logged] == [True] * 2
     assert live.case.messages == live.case.utterances == []
