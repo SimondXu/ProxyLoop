@@ -148,11 +148,12 @@ def prompts(path: Path, responses: dict[str, str]) -> None:
     (path / PROMPTS).write_text(text, "utf-8")
 
 
-def bare(root: Path, run_id: str, sha: str, hours: int = 0) -> Path:
-    """A run with only session.started on ``sha``, ``hours`` after WALL."""
+def bare(root: Path, run_id: str, sha: str, hours: int = 0, **extra: object) -> Path:
+    """A run with only session.started on ``sha`` (plus ``extra`` keys, e.g.
+    ``slow_fp``), ``hours`` after WALL."""
     log = Log(run_id)
     start = log.events[0]
-    payload = start.payload | {"git_sha": sha}
+    payload = start.payload | {"git_sha": sha} | extra
     wall = start.wall + timedelta(hours=hours)
     log.events[0] = start.model_copy(update={"payload": payload, "wall": wall})
     return write(root / run_id, log, manifest(run_id))

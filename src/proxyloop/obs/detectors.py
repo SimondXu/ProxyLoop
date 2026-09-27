@@ -6,8 +6,9 @@ never imported by ``proxyloop.eval``).
 ``DETECTORS`` maps a name to ``fn(Inputs) -> value``: a number, a per-role
 count, a dict with a ``count`` and the seqs behind it, or ``None`` when the
 bundle cannot tell. An unknown is never 0. Values carry ids, codes and numbers
-only; the one text-reading detector (the hand-off claim in ``relay_gap``)
-runs only with ``content`` and is ``None`` otherwise.
+only; the text-reading detectors (the hand-off claim in ``relay_gap``, the
+closing reply in ``grading``) run only with ``content`` and are ``None``
+otherwise. ``grading`` adds the H5 detectors to this one registry.
 """
 
 from __future__ import annotations
@@ -25,17 +26,19 @@ from proxyloop.contract import protocol as fp
 from proxyloop.contract.bundle import Manifest
 from proxyloop.contract.events import Event
 from proxyloop.contract.llm import LLMCallRecord
+from proxyloop.obs.trace import identifier
 
 BANNER = "advisory triage signals: not metrics, not claims, not a merge gate"
 Value = object
 _PAUSES = (fp.Hold, fp.Wait)
 _DIRECTIVES = (fp.Relay, fp.Hold, fp.Wait, fp.EndCall)
 _STALE = frozenset({"identify", "hold_for_fact", "deflect_fact_request"})
-# Hand-offs FastU may claim to the user; a negation earlier in the sentence
-# ("I haven't passed that along") voids the match.
+# Hand-offs FastU may claim to the user; a negation earlier in the same
+# sentence ("I haven't passed that along") voids the match. A bare "forward"
+# is no claim ("I look forward to it").
 _HANDOFF = re.compile(
     r"\bpass(?:ed|ing)? (?:it |that |this |those |these |them )?(?:along|on)\b"
-    r"|\b(?:relay|forward)(?:ed|ing)?\b"
+    r"|\brelay(?:ed|ing)?\b|\bforward(?:ed|ing)\b"
     r"|\blet (?:them|the rep|the representative) know\b"
     r"|\bcheck(?:ing)? with (?:them|the rep|the representative)\b"
     r"|\b(?:i've|i have) (?:shared|sent|told them)\b",
@@ -43,6 +46,7 @@ _HANDOFF = re.compile(
 )
 _NEGATION = re.compile(r"n't\b|\b(?:not|never|cannot|unable)\b", re.IGNORECASE)
 _SENTENCE_END = re.compile(r"[.!?\u2026][\"'\u201d\u2019)\]]*\s*$")
+_SENTENCE = re.compile(r"[.!?\u2026]\s")  # a sentence break inside a line
 _ERROR_TYPE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}")
 _HTTP = re.compile(r"\bHTTP (\d{3})\b")
 
@@ -69,6 +73,10 @@ class Inputs:
     ) -> None:
         self.events, self.manifest, self.prompt = tuple(events), manifest, prompt
         self.relay_window_ms, self.content = relay_window_ms, content
+
+    @cached_property
+    def by_id(self) -> dict[str, Event]:
+        return {e.event_id: e for e in self.events}
 
     def of(self, *types: str) -> list[Event]:
         return [e for e in self.events if e.type in types]
@@ -124,6 +132,11 @@ def scalar(value: Value) -> int | float | None:
     return None
 
 
+def safe(value: object) -> object:
+    """An identifier, number or bool as is; any other value is withheld."""
+    return value if value is None or identifier(value) else "?"
+
+
 def as_dict(value: object) -> dict[str, object]:
     return cast(dict[str, object], value) if isinstance(value, dict) else {}
 
@@ -145,7 +158,7 @@ DETECTORS["finish_reason_null"] = _per_role(lambda r: r.finish_reason is None)
 @detector("end_reason")
 def _end(x: Inputs) -> Value:
     ends = x.of("session.ended")
-    return ends[-1].payload.get("reason") if ends else None
+    return safe(ends[-1].payload.get("reason")) if ends else None
 
 
 @detector("first_llm_error")
@@ -169,6 +182,13 @@ def _slow_gap(x: Inputs) -> Value:
     """From session.started to the first step, then step to step; None: no step."""
     ts = [e.t_ms for e in x.of("session.started", "slow.step.started")]
     return max((b - a for a, b in pairwise(ts)), default=None)
+
+
+@detector("slow_last_step_to_end_ms")
+def _slow_tail(x: Inputs) -> Value:
+    """From the last slow.step.started to the log's last event; None: no step."""
+    steps = x.of("slow.step.started")
+    return x.events[-1].t_ms - steps[-1].t_ms if steps else None
 
 
 def _speech_after(x: Inputs, marks: tuple[type, ...]) -> Value:
@@ -244,7 +264,7 @@ def _relay_gap(x: Inputs) -> Value:
     ``sim_revealed``: the flagged ones whose user.sim cause revealed facts
     (world data). (b) ``handoff_claims``: flagged messages whose heard FastU
     reply in the window claims a hand-off; only with ``content``, else None."""
-    by_id = {e.event_id: e for e in x.events}
+    by_id = x.by_id
     end = x.events[-1].t_ms if x.events else 0
     relayed: dict[str, list[int]] = {}
     for f in x.of("f2s.msg"):
@@ -283,7 +303,8 @@ def _claims(x: Inputs, flagged: Sequence[Event]) -> list[dict[str, object]]:
                 continue
             text = str(d.payload.get("text_heard", "")).replace("\u2019", "'")
             m = _HANDOFF.search(text)
-            if m and not _NEGATION.search(text[: m.start()]):
+            before = _SENTENCE.split(text[: m.start()])[-1] if m else ""
+            if m and not _NEGATION.search(before):  # in this sentence only
                 hits.append({"seq": msg.seq, "reply_seq": d.seq, "phrase": m.group()})
                 break
     return hits
@@ -380,3 +401,6 @@ def _holds(x: Inputs) -> Value:
     if not ends or not isinstance(ends[-1].payload.get("counts"), dict):
         return None
     return as_dict(ends[-1].payload["counts"]).get("hold_repeat", 0)
+
+
+from proxyloop.obs import grading as grading  # noqa: E402  (registers H5)

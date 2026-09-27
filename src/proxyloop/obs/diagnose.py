@@ -1,11 +1,14 @@
-"""The detectors across runs, grouped by git_sha, newest first.
+"""The detectors across runs, grouped by slow_fp (else git_sha), newest first.
 
 ADVISORY ONLY: triage signals, never a metric, a claim or a merge gate.
 
-``python -m proxyloop.obs.diagnose [--root DIR ...] [--json]`` takes every
-``ok`` bundle ``runs.index`` finds (sealed data is never listed or read), one
-copy per run_id, and groups them by the git_sha they ran on, then task_ref, so
-an issue fixed on a newer sha shows under its old sha, not as current.
+``python -m proxyloop.obs.diagnose [--root DIR ...] [--json] [--content]``
+takes every ``ok`` bundle ``runs.index`` finds (sealed data is never listed or
+read), one copy per run_id, and groups them by the Slow fingerprint they ran
+with (``session.started.slow_fp``, S1-SYS-43), or by git_sha for a run without
+one, then task_ref: an issue fixed later shows under its old group, not as
+current, and bundles across agent harness v2 are never pooled (ADR-0018).
+``--content`` lets the text-reading detectors run; the output stays codes.
 """
 
 from __future__ import annotations
@@ -23,8 +26,16 @@ from proxyloop.obs.trace import Refused
 from proxyloop.obs.triage import Row, Unreadable, read, row
 
 
-def rows(roots: Sequence[Path], window_s: float = 10) -> tuple[list[Row], list[str]]:
-    """One row per ok run, newest sha group first (by its newest run), then
+def group(r: Row) -> str:
+    """``slow_fp:<fp>`` when the run carries one, else ``git_sha:<sha>``."""
+    fp = r.get("slow_fp")
+    return f"slow_fp:{fp}" if fp is not None else f"git_sha:{r['git_sha']}"
+
+
+def rows(
+    roots: Sequence[Path], window_s: float = 10, content: bool = False
+) -> tuple[list[Row], list[str]]:
+    """One row per ok run, newest group first (by its newest run), then
     task_ref and start time within a group; and why each skipped run was."""
     seal, seen = runs.Seal(), set[str]()
     out, skipped = list[Row](), list[str]()
@@ -33,45 +44,52 @@ def rows(roots: Sequence[Path], window_s: float = 10) -> tuple[list[Row], list[s
             continue
         seen.add(run.run_id)
         try:
-            out.append(row(*read(Path(run.path), seal, window_s)))
+            out.append(row(*read(Path(run.path), seal, window_s, content)))
         except (Unreadable, Refused) as err:  # one bad bundle never ends the table
             skipped.append(str(err))
     newest: dict[str, str] = {}
     for r in out:
-        sha, at = str(r["git_sha"]), str(r["started"])
-        newest[sha] = max(newest.get(sha, ""), at)
+        g, at = group(r), str(r["started"])
+        newest[g] = max(newest.get(g, ""), at)
     out.sort(key=lambda r: (str(r["task_ref"]), str(r["started"])))
-    out.sort(key=lambda r: newest[str(r["git_sha"])], reverse=True)
+    out.sort(key=lambda r: newest[group(r)], reverse=True)
     return out, skipped
 
 
-_TEXT = {"end_reason": "end", "first_llm_error": "err"}  # shown, not summed
+_TEXT = {  # shown, not summed
+    "end_reason": "end", "first_llm_error": "err", "end.status": "status",
+    "approval.path": "approval",
+}  # fmt: skip
 # The max, not the sum; guide_to_heard_ms shows its p50 (ms), not its count.
 _MAX = frozenset(
-    {"slow_max_step_gap_ms", "max_consecutive_ok_hold", "guide_to_heard_ms"}
-)
+    {"slow_max_step_gap_ms", "slow_last_step_to_end_ms", "max_consecutive_ok_hold",
+     "guide_to_heard_ms", "identity.ask_user_per_key",
+     "slow.readback_asks_max_per_revision", "close.reply_to_finish_steps"}
+)  # fmt: skip
 
 
 def _brief(value: object) -> str:
     if isinstance(value, dict):
         d = cast(dict[str, object], value)
-        return ":".join(str(d[k]) for k in ("role", "type", "http") if k in d) or "-"
+        keys = ("role", "type", "http", "h5_pass")
+        return ":".join(str(d[k]) for k in keys if k in d) or "-"
     return str(value)
 
 
 def table(all_rows: Sequence[Row]) -> str:
-    """Per sha: one line per run with its nonzero or unknown (``?``) detector
-    scalars, then the group's sums (maxima for ``_MAX``; unknowns are counted,
-    not summed)."""
+    """Per group: one line per run with its nonzero or unknown (``?``)
+    detector scalars, then the group's totals: ``sum`` (``max`` for ``_MAX``;
+    unknowns are counted, not summed)."""
     out = [f"# {BANNER}"]
     groups: dict[str, list[Row]] = {}
     for r in all_rows:
-        groups.setdefault(str(r["git_sha"]), []).append(r)
-    for sha, group in groups.items():
-        out.append(f"== {sha[:12]}  runs={len(group)}")
+        groups.setdefault(group(r), []).append(r)
+    for key, members in groups.items():
+        kind, _, value = key.partition(":")
+        out.append(f"== {kind} {value[:12]}  runs={len(members)}")
         sums: dict[str, float] = {}
         unknown: dict[str, int] = {}
-        for r in group:
+        for r in members:
             cells: list[str] = []
             for name, value in cast(dict[str, object], r["detectors"]).items():
                 if name in _TEXT:
@@ -89,9 +107,11 @@ def table(all_rows: Sequence[Row]) -> str:
                     cells.append(f"{name}={n}")
             head = f"  {r['run_id']} {r['task_ref']} {r['mode']}"
             out.append(" ".join([head, *cells]))
-        total = [f"{k}={v:g}" for k, v in sorted(sums.items())]
+        total = ["sum", *(f"{k}={v:g}" for k, v in sorted(sums.items())
+                          if k not in _MAX)]  # fmt: skip
+        total += ["max", *(f"{k}={v:g}" for k, v in sorted(sums.items()) if k in _MAX)]
         total += [f"{k}:?x{v}" for k, v in sorted(unknown.items())]
-        out.append("  sum " + " ".join(total))
+        out.append("  " + " ".join(total))
     return "\n".join(out)
 
 
@@ -100,13 +120,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--root", type=Path, action="append")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--relay-window", type=float, default=10, metavar="S")
+    parser.add_argument(
+        "--content", action="store_true", help="run the text-reading detectors"
+    )
     args = parser.parse_args(argv)
     roots = args.root or [p for p in (Path("runs"), Path("evidence")) if p.is_dir()]
     if sealed := [str(r) for r in roots if runs.Seal().covers(r)]:
         why = ", ".join(sealed)
         print(f"refused: {why} is sealed (AGENTS rule 11)", file=sys.stderr)
         return 2
-    found, skipped = rows(roots, args.relay_window)
+    found, skipped = rows(roots, args.relay_window, args.content)
     notes = [f"skipped: {why}" for why in skipped] + [f"skipped={len(skipped)}"]
     print("\n".join(notes), file=sys.stderr)
     if args.json:

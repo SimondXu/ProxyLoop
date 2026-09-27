@@ -33,7 +33,7 @@ def test_groups_by_sha_newest_first(
     out = capsys.readouterr().out.splitlines()
     assert out[0] == f"# {detectors.BANNER}"
     heads = [line for line in out if line.startswith("== ")]
-    assert heads == ["== new  runs=1", "== old  runs=2"]
+    assert heads == ["== git_sha new  runs=1", "== git_sha old  runs=2"]
     # a bare run: no end and no step are unknown ("?"), counted per group
     assert "end_reason" not in out[2] and "end=None" in out[2]
     assert "slow_max_step_gap_ms:?x2" in out[-1]
@@ -61,3 +61,35 @@ def test_a_sealed_root_is_refused(
     sealed.mkdir(parents=True)
     assert diagnose.main(["--root", str(sealed)]) == 2
     assert capsys.readouterr().err.startswith("refused: ")
+
+
+def test_groups_by_slow_fp_when_present(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bare(tmp_path, "rA", "s1", hours=0, slow_fp="fpA")
+    bare(tmp_path, "rB", "s2", hours=1, slow_fp="fpA")  # same Slow, newer sha
+    bare(tmp_path, "rC", "s1", hours=2)  # no slow_fp: its sha
+    rows, _ = diagnose.rows([tmp_path])
+    assert [(diagnose.group(r), r["run_id"]) for r in rows] == [
+        ("git_sha:s1", "rC"),
+        ("slow_fp:fpA", "rA"),
+        ("slow_fp:fpA", "rB"),
+    ]
+    assert diagnose.main(["--root", str(tmp_path)]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert [x for x in out if x.startswith("== ")] == [
+        "== git_sha s1  runs=1",
+        "== slow_fp fpA  runs=2",
+    ]
+
+
+def test_totals_label_sums_and_maxima(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bundle(tmp_path)
+    assert diagnose.main(["--root", str(tmp_path)]) == 0
+    total = capsys.readouterr().out.splitlines()[-1].split()
+    sums, maxima = total[: total.index("max")], total[total.index("max") :]
+    assert sums[0] == "sum" and "llm_calls=5" in sums
+    assert "slow_max_step_gap_ms=2900" in maxima  # a max, not under "sum"
+    assert not any(c.startswith("slow_max_step_gap_ms") for c in sums)

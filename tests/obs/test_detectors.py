@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from tests.obs.bundles import Log, manifest, write
-from tests.obs.triage_bundle import WINDOW_S, bundle
+from tests.obs.triage_bundle import WINDOW_S, bundle, said
 
 from proxyloop.obs import detectors, runs, triage
 
@@ -55,6 +55,7 @@ def test_every_detector_equals_the_hand_count(tmp_path: Path) -> None:
             "handoff_claims": None,  # text: only with content
         },
         "slow_max_step_gap_ms": 2900,  # 0→100 = 100, 100→3000 = 2900
+        "slow_last_step_to_end_ms": 800,  # step 30 (t=3000) to the end, 3800
         "slow_steps": 2,  # seqs 1, 30
         # after @hold in cp-g1 (turn 13): "Stray one." + "Stray two." +
         # "Again." = 3; turn 28 has no llm.call
@@ -73,6 +74,22 @@ def test_every_detector_equals_the_hand_count(tmp_path: Path) -> None:
             "count": 3, "undelivered": [17, 35], "interrupted": [16], "cut": [17],
             "unknown": [35],
         },
+        # the H5 detectors (test_grading has their own bundle): rep.policy
+        # 19-22 and no chan.strike; slow.tool 32 is no tool of Slow's; every
+        # other signal is absent here, so None
+        "identity.strikes": {
+            "count": 0, "strikes": [], "abandoned": None, "kind_from": "causes",
+            "h5_pass": True,
+        },
+        "slow.unknown_tool": {"count": 1, "seqs": [32]},
+        "slow.lever_refusals": {"count": 0, "seqs": [], "by": {}},
+        **dict.fromkeys((
+            "identity.cp_opened_ready", "identity.ask_user_per_key", "end.status",
+            "approval.path", "slow.invalid_args", "slow.finish_before_offer",
+            "offer.required_unconfirmed_after_readback",
+            "slow.readback_asks_max_per_revision", "close.reply_to_finish_steps",
+            "end.unclosed_after_reply", "user.told_terms",
+        )),
     }  # fmt: skip
 
 
@@ -107,3 +124,40 @@ def test_scalar() -> None:
     assert detectors.scalar({"fast_cp": 2, "slow": 1}) == 3
     assert detectors.scalar({"count": 4, "turns": []}) == 4
     assert detectors.scalar([1, 2]) == 2
+
+
+def test_handoff_claims_skip_forward_and_other_sentences(tmp_path: Path) -> None:
+    log = Log("rF")
+    said(log, "PRIV-a")  # 1 (t=100): never relayed
+    for n, text in enumerate(
+        ("I look forward to helping.", "I can't stay long. I've passed that along.")
+    ):
+        payload: dict[str, object] = {"lane": "user", "utt_id": f"u{n}"}
+        payload["text_generated"] = text
+        payload |= {"text_heard": text, "interrupted": False}
+        log.add("utt.delivered", "kernel", "agent", payload, (log.start,))  # 2, 3
+    log.add("session.ended", "kernel", "ops", {"reason": "done"})  # 4 (t=400)
+    run = write(tmp_path / "rF", log, manifest("rF"))
+    x = triage.read(run, runs.Seal(), 0.3, True)[1]
+    gap = detectors.as_dict(detectors.run_all(x)["relay_gap"])
+    # "forward to" is no claim; "can't" is in the sentence before the claim
+    assert gap["handoff_claims"] == [
+        {"seq": 1, "reply_seq": 3, "phrase": "passed that along"}
+    ]
+
+
+def test_end_reason_is_a_code_or_withheld(tmp_path: Path) -> None:
+    log = Log("rR")
+    log.add("session.ended", "kernel", "ops", {"reason": "PRIV text reason"})
+    assert _values(write(tmp_path / "rR", log, manifest("rR")))["end_reason"] == "?"
+
+
+def test_events_are_parsed_once(tmp_path: Path) -> None:
+    run, x = triage.read(bundle(tmp_path), runs.Seal())
+    assert x.events is run.log  # the tuple runs.load parsed, not a second parse
+
+
+def test_eval_never_imports_obs() -> None:
+    src = Path(__file__).parents[2] / "src" / "proxyloop" / "eval"
+    for path in src.rglob("*.py"):
+        assert "proxyloop.obs" not in path.read_text("utf-8"), path
