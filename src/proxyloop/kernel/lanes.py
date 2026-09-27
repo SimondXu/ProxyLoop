@@ -158,19 +158,22 @@ class FastLane:
         k.expect(request.call_id, req)
         parser, items, text = fp.StreamParser(lane), list[fp.TurnItem](), ""
         start, ttfs, record = k.now(), None, None
-        async for delta in client.stream_text(request):
-            if isinstance(delta, LLMCallRecord):
-                record = delta  # the sink already wrote it
-                continue
-            text += delta
-            items += parser.feed(delta)
-            if ttfs is None and _speaks(items):
-                ttfs = k.now() - start
+        try:
+            async for delta in client.stream_text(request):
+                if isinstance(delta, LLMCallRecord):
+                    record = delta  # the sink already wrote it
+                    continue
+                text += delta
+                items += parser.feed(delta)
+                if ttfs is None and _speaks(items):
+                    ttfs = k.now() - start
+        finally:  # a cut or failed stream's record hashes the text delivered
+            if text or record is not None:
+                k.store("response", text)
         items += parser.close()  # a last sentence is released only here
         if ttfs is None and _speaks(items):
             ttfs = k.now() - start
         assert record is not None, "every call ends with its record"
-        k.store("response", text)
         causes = [req, k.call_event(request.call_id)]
         if k.bb.epoch != epoch:  # stale: cancelled before its first sentence
             cancel = {"gen_id": gen_id, "reason": "epoch"}
