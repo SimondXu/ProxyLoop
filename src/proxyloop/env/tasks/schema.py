@@ -25,6 +25,7 @@ from proxyloop.env.ledger import LedgerMode
 
 FactKey = Annotated[str, StringConstraints(pattern=rf"^{FACT_KEY}$")]
 TermField = Annotated[str, StringConstraints(pattern=READBACK_FIELD)]
+STOP_DELAY_S = (0.5, 2.5)  # a triggered stop's reply delay: below the approver's
 GOAL_REF = re.compile(rf"\{{({FACT_KEY})\}}")
 Brief = Annotated[str, StringConstraints(min_length=1, max_length=base.MAX_BRIEF)]
 
@@ -189,6 +190,10 @@ class Task(Frozen):
                 Limits.model_validate(stated)
             except ValidationError as err:
                 raise ValueError(f"an envelope fact is not a limit: {err}") from err
+        triggered = self.stop is not None and self.stop.trigger != "after_turn_k"
+        delay = self.principal.approver_delay_s.range if self.principal else (9, 9)
+        if triggered and delay[0] <= STOP_DELAY_S[1]:
+            raise ValueError("approver_delay_s must start above a triggered stop's")
         stop = self.stop is not None and self.stop.change is None
         if stop != (self.gold.check == "no_commit_after_stop"):
             raise ValueError("gold no_commit_after_stop goes with a stop")

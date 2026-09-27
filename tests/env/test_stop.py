@@ -13,8 +13,10 @@ from tests.env.bus_sink import BusSink
 from tests.env.cards import card as _card
 from tests.env.cards import offer as _offer
 
+from proxyloop.env.tasks.instances import instance
 from proxyloop.env.tasks.loader import load_task
-from proxyloop.env.tasks.schema import Task
+from proxyloop.env.tasks.schema import STOP_DELAY_S, Task
+from proxyloop.env.user.approver import Approver
 from proxyloop.env.user.simuser import SimReply, SimUser, says_stop
 
 TASK = load_task("x-user-mind-change")  # a stop after the card
@@ -69,7 +71,8 @@ def test_the_card_stops_the_user_unprompted_and_no_card_is_granted_after(
     assert stop is not None and stop.text == stop_line
     assert f"Now, in this reply: {HINT}" in _prompt(sink)
     (sim,) = sink.of("user.sim")
-    assert sim.payload["stop"] == "stop" and 2 <= stop.delay_s <= 20
+    assert sim.payload["stop"] == "stop"
+    assert STOP_DELAY_S[0] <= stop.delay_s <= STOP_DELAY_S[1]
     assert _trigger(sink, user, "after_card") is None  # it fires once
     _say(sink, user, "Understood.")
     assert "stop" not in sink.of("user.sim")[1].payload
@@ -183,3 +186,37 @@ def test_the_schema_ties_stop_gold_and_principal(edit: Edit, match: str) -> None
 )
 def test_a_stop_cue_is_a_phrase_and_not_negated(text: str, stop: bool) -> None:
     assert says_stop(text) is stop
+
+
+def test_a_triggered_stop_is_delivered_before_the_cards_grant(tmp_path: Path) -> None:
+    """Card time 0: the approver decides, then the stop fires; the stop lands
+    (0 + its delay) before the grant (0 + the approver's delay), every seed."""
+    for seed in range(50):
+        task = instance(TASK, seed)
+        (tmp_path / str(seed)).mkdir()
+        sink = BusSink(tmp_path / str(seed))
+        user = SimUser(task, sink.llm(_reply("Please stop.")), sink.world, seed)
+        assert user.approver is not None
+        grant = user.approver.decide(_card(), _offer(7600, months=12))
+        stop = _trigger(sink, user, "after_card")
+        assert stop is not None and stop.delay_s < grant.delay_s, seed
+        assert STOP_DELAY_S[0] <= stop.delay_s <= STOP_DELAY_S[1]
+
+
+def test_a_triggered_stop_is_faster_than_any_approver_delay() -> None:
+    for seed in range(200):  # the approver's own draws, whatever the seed
+        a = Approver(TASK, seed)
+        delays = [a.decide(_card(), _offer(7600, months=12)).delay_s for _ in range(5)]
+        assert min(delays) > STOP_DELAY_S[1]
+    data = TASK.model_dump(mode="json")
+    data["principal"]["approver_delay_s"] = {"range": [2, 15]}
+    with pytest.raises(ValueError, match="approver_delay_s"):
+        Task.model_validate(data)
+
+
+def test_an_ordinary_reply_keeps_the_reply_delay(tmp_path: Path) -> None:
+    sink = BusSink(tmp_path)
+    task = _task(trigger="after_turn_k", k=1)
+    user = SimUser(task, sink.llm(_reply("Stop.")), sink.world, 7)
+    out = _say(sink, user, "Update.")
+    assert out is not None and 2 <= out.delay_s <= 20

@@ -26,7 +26,12 @@ Kernel side (S1-SYS-02/05, not wired here): on ``approval.requested`` first
 on a ``rep.policy`` whose intent is ``offer``/``final_offer``, ``await
 on_trigger("after_offer", event_id)``. Serialise it with ``on_agent_message``
 (``SimUserChannel``'s lock) and deliver a returned reply ``delay_s`` later, as
-a reply.
+a reply. A triggered stop's delay is drawn from ``STOP_DELAY_S`` (0.5-2.5 s),
+below every approver delay (the schema checks), so on the simulated clock it
+lands before the triggering card's grant; a later grant is the kernel's to
+fence or deny. The stop's generation time is not in ``delay_s``: to keep the
+order on the wall clock, the kernel must not post the grant before the stop
+is delivered.
 """
 
 from __future__ import annotations
@@ -48,7 +53,7 @@ from proxyloop.contract.llm import (
     ToolSpec,
 )
 from proxyloop.env import world
-from proxyloop.env.tasks.schema import Stop, Task
+from proxyloop.env.tasks.schema import STOP_DELAY_S, Stop, Task
 from proxyloop.env.user.approver import Approver
 
 _NOT = r"(?:don['\u2019]t|do not)"
@@ -181,10 +186,14 @@ class SimUser:
         stop = self._stop
         if stop is None or self._fired or stop.trigger != trigger:
             return None
-        return await self._reply(False, cause, stop)
+        return await self._reply(False, cause, stop, STOP_DELAY_S)
 
     async def _reply(
-        self, opening: bool, cause: str, stop: Stop | None
+        self,
+        opening: bool,
+        cause: str,
+        stop: Stop | None,
+        delay_s: tuple[float, float] | None = None,
     ) -> SimReply | None:
         now = ""
         if stop is not None:
@@ -226,7 +235,7 @@ class SimUser:
         if out.text is None:  # silent: its llm.call records are the only trace
             return None
         self._chat.append(f"You: {out.text}")
-        delay = round(self._rng.uniform(*self._delay), 3)
+        delay = round(self._rng.uniform(*(delay_s or self._delay)), 3)
         payload = {"text": out.text, "revealed": out.revealed, "delay_s": delay}
         payload["attempts"] = attempts
         if stop is not None:
