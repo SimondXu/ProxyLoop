@@ -25,4 +25,17 @@ format:
 	uv run ruff check --fix src tests scripts serving training_jobs
 	uv run ruff format src tests scripts serving training_jobs
 
+# evidence-check (S0-ROOT-14): proxyloop.evidence.check.check_path on one bundle; no keys,
+# no GPU. RUN=<bundle dir>; MODE=offline (default) or claim. Exits non-zero on any failure.
+.PHONY: evidence-check
+evidence-check: MODE ?= offline
+evidence-check:
+	$(if $(RUN),,$(error RUN=<bundle dir> is required))
+	$(if $(filter-out offline claim,$(MODE)),$(error MODE must be offline or claim))
+	uv run python -c 'import sys, pathlib; from proxyloop.evidence.check import check_path; \
+	run, mode = sys.argv[1:]; r = check_path(pathlib.Path(run), mode); \
+	print(f"evidence-check {mode} {run}:", "ok" if r.ok else "FAILED"); \
+	print("".join(f"  - {f}\n" for f in r.failures), end=""); sys.exit(0 if r.ok else 1)' \
+		"$(RUN)" "$(MODE)"
+
 -include mk/*.mk
