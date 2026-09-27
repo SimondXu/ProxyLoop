@@ -3,7 +3,8 @@
 Root-run (L+G), driven by ``mk/mod.mk``. One subcommand per step group:
 
 - ``select`` (steps 1-2): up to 60 real base-9B Fast turns (S0 labels, §9 E1) from
-  evidence bundles whose renderer fingerprints equal the current ones, built into rows
+  evidence bundles whose renderer fingerprints equal the current ones (the lane
+  profiles in ``kernel.lanes.PROFILE``, exactly), built into rows
   through ``training.dataset`` (``render_prompt`` only) with P5 on every row.
 - ``slot`` (step 4): ``<name>=<path>`` for serving's ``PL_TRAINED_ADAPTER``.
 - ``check`` (steps 5-8): liveness through the slot, then one product-path session with
@@ -11,8 +12,9 @@ Root-run (L+G), driven by ``mk/mod.mk``. One subcommand per step group:
   evidence-check), the served echoes and adapter shas, and the result JSON.
 - ``liveness``: step 5 alone, for any trained slot (the S0-MOD-02 smoke adapter).
 
-The session is a subprocess of the CLI: nothing here imports the kernel or
-evidence-check (PLAN §0.2). A dead endpoint fails the run; nothing is retried.
+The session is a subprocess of the CLI: nothing here runs the kernel or imports
+evidence-check (PLAN §0.2); only the ``kernel.lanes.PROFILE`` constant is read. A dead
+endpoint fails the run; nothing is retried.
 """
 
 from __future__ import annotations
@@ -34,8 +36,9 @@ import httpx
 from proxyloop.contract.base import Lane, canonical_json, sha256_text
 from proxyloop.contract.bundle import Bundle, read_bundle
 from proxyloop.contract.llm import AdapterKind, LLMCallRecord
-from proxyloop.contract.protocol import PROFILES, ParseIssue, fingerprint, parse_turn
+from proxyloop.contract.protocol import ParseIssue, fingerprint, parse_turn
 from proxyloop.contract.views import FastView
+from proxyloop.kernel.lanes import PROFILE  # the live lane profiles, read only
 from proxyloop.training.dataset import build_row, tokenize_row
 from proxyloop.training.masking import verify_trained_span
 from serving import config, liveness  # top-level MOD package: run from the repo root
@@ -48,7 +51,9 @@ RESULT = Path("docs/results/pull-through.json")
 
 
 def current_fingerprints() -> dict[str, str]:
-    return {p: fingerprint(p) for p in sorted(PROFILES)}
+    """The profiles the product path renders with now (I3), not every one the contract
+    keeps: a bundle or card on a frozen profile is stale, its fingerprint unchanged."""
+    return {p: fingerprint(p) for p in sorted(set(PROFILE.values()))}
 
 
 def fp8(fps: dict[str, str]) -> str:
