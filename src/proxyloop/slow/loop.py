@@ -99,7 +99,7 @@ class SlowLoop:
         wake = basis | {"wake_reasons": list(reasons)}
         started = host.emit("slow.step.started", "slow", wake, []).event_id
         wakes = f"[WAKE] {', '.join(reasons)}"
-        bar = prompt.status_bar(view, self._keys, host.now())
+        bar = prompt.status_bar(view, self._keys, host.bb.t_ms)  # Guard's clock
         notes = [wakes, *map(prompt.note, new), bar]
         context = self._context("\n".join(notes), view)
         self.steps += 1
@@ -130,6 +130,12 @@ class SlowLoop:
         self._results = [
             (c.call_id, self.tools.act(c, causes)) for c in resp.tool_calls
         ]
+        filtered = resp.record.finish_reason == "content_filter"  # S1-SYS-28
+        if filtered:  # counted, never retried; any tool calls ran as usual
+            host.counts["slow_content_filter"] += 1
         if not resp.tool_calls:
-            host.emit("slow.tool", "slow", _NO_TOOL, causes)
+            none = dict(_NO_TOOL)
+            if filtered:
+                none["result_text"] = "no tool call (content_filter)"
+            host.emit("slow.tool", "slow", none, causes)
         host.emit("slow.step.completed", "slow", basis, [started])

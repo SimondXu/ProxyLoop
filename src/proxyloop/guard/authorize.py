@@ -98,20 +98,28 @@ REASONS: Mapping[str, tuple[str, ...]] = {
 
 def _open_offer(bb: Blackboard, ref: str) -> tuple[OfferPublic, Terms] | Denial:
     """An open, unexpired, confirmed offer without hard violations."""
-    if bb.fences:
+    offer, fenced = bb.public.offers.get(ref), bool(bb.fences)
+    return open_offer(offer, bb.private.mandate, bb.t_ms, fenced)
+
+
+def open_offer(
+    offer: OfferPublic | None, mandate: Mandate | None, t_ms: int, fenced: bool
+) -> tuple[OfferPublic, Terms] | Denial:
+    """``_open_offer``'s rule on its inputs alone, so Slow's status bar asks
+    exactly what ``request_approval`` and ``accept_offer`` will ask."""
+    if fenced:
         return Denial("fence_raised")
-    offer = bb.public.offers.get(ref)
     if offer is None:
         return Denial("no_such_offer")
     if offer.status != "open":
         return Denial("offer_not_open")
-    if offer.expires_ms is not None and offer.expires_ms <= bb.t_ms:
+    if offer.expires_ms is not None and offer.expires_ms <= t_ms:
         return Denial("offer_expired")
     terms = offer_terms(offer)
     bound = terms is not None and offer.terms_hash == terms_hash(terms)
     if terms is None or not bound or readback_status(offer) != "confirmed":
         return Denial("readback_not_confirmed")
-    if hard_violations(terms, bb.private.mandate):
+    if hard_violations(terms, mandate):
         return Denial("policy_violation")
     return offer, terms
 
@@ -125,8 +133,9 @@ def request_approval(
     if isinstance(got, Denial):
         return got
     offer, epoch = got[0], bb.epoch
-    card = current_card(bb)  # a superseded, stale or expired card does not block
-    if card is not None and card.authority_epoch == epoch and card.expires_ms > bb.t_ms:
+    card = bb.private.pending_approval
+    of_card = None if card is None else bb.public.offers.get(card.offer_ref)
+    if card_blocks(card, of_card, epoch, bb.t_ms):
         return Denial("approval_pending")
     stem = f"apr-{offer.offer_ref}-r{offer.revision}-e{epoch}-"
     n = sum(a.startswith(stem) for a in bb.private.approvals)
@@ -157,10 +166,27 @@ def current_card(bb: Blackboard) -> ApprovalCard | None:
     """The pending card, unless a newer revision or terms superseded its offer."""
     card = bb.private.pending_approval
     offer = None if card is None else bb.public.offers.get(card.offer_ref)
+    return _current(card, offer)
+
+
+def _current(
+    card: ApprovalCard | None, offer: OfferPublic | None
+) -> ApprovalCard | None:
     if card is None or offer is None:
         return None
     same = (offer.revision, offer.terms_hash) == (card.revision, card.terms_hash)
     return card if same else None
+
+
+def card_blocks(
+    card: ApprovalCard | None, offer: OfferPublic | None, epoch: int, t_ms: int
+) -> bool:
+    """Whether the pending ``card`` (``offer``: the offer it is for) blocks
+    any new card: it is current, of this epoch and unexpired; a superseded,
+    stale or expired card does not block. Pure, so Slow's status bar asks
+    exactly what ``request_approval`` asks."""
+    card = _current(card, offer)
+    return card is not None and card.authority_epoch == epoch and card.expires_ms > t_ms
 
 
 def _grant(

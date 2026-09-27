@@ -153,12 +153,16 @@ class Interleavings(RuleBasedStateMachine):
     @rule(change=st.sampled_from(["decline", "revise"]))
     def the_offer_changes_mid_accept(self, change: str) -> None:
         """While an accept line waits for the floor, Slow declines the offer
-        (``offer_closed``) or re-records it (``terms_changed``)."""
+        (``offer_closed``) or re-records it at the price the rep just said
+        (``terms_changed``)."""
         if not accept_in_flight(self.sim.k.bb):
             return
         if change == "decline":
             self.sim.act({"tool": "decline_offer", "offer_ref": "o1"})
-        else:
+        else:  # S1-SYS-28: the same terms are a no-op, so the rep changes one
+            self.dollars += 1
+            self._rep(terms(self.dollars))
+            self.run(self.sim.vt.run_for(1_500))  # the rep's line lands
             said = [
                 x
                 for x in self.sim.bb.channels["cp"].lines
@@ -168,7 +172,8 @@ class Interleavings(RuleBasedStateMachine):
                 return
             record: dict[str, object] = {"tool": "record_offer", "offer_ref": "o1"}
             record["offer_slots"] = slots(self.dollars, said[-1].utt_id)
-            self.sim.act(record)
+            out = self.sim.act(record)
+            assert out[0].startswith("record_offer: recorded o1 r"), out
         self.run(settle())
 
     # Slow's tools, whatever Guard answers.
