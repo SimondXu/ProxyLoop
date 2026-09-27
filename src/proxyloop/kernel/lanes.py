@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from proxyloop.contract import protocol as fp
 from proxyloop.contract.base import Lane, canonical_json, sha256_text
+from proxyloop.contract.events import Event
 from proxyloop.contract.llm import LLMCallRecord, TextRequest, request_content
 from proxyloop.contract.messages import FastToSlow
 from proxyloop.contract.views import FastView, Trigger, view_cp, view_user
@@ -51,6 +52,11 @@ async def p3(client: VLLMClient, view: FastView, tok: fp.ChatTokenizer) -> bool:
     prompt = fp.render_prompt(view, profile, tok)
     golden = GoldenPrompt(profile, chat, prompt, tuple(ids))
     return (await check_parity(client, [golden])).passed
+
+
+def _cp(e: Event, relay: str, type_: str) -> bool:  # a cp f2s/s2f msg of a type
+    p = e.payload
+    return e.type == f"{relay}.msg" and p["lane"] == "cp" and p["type"] == type_
 
 
 def _speaks(items: list[fp.TurnItem]) -> bool:  # a sentence has been released
@@ -157,6 +163,30 @@ class FastLane:
         if lines:
             await k.speakers[lane].speak(lines)
 
+    def _unanswered(self) -> bool:
+        """S1-SYS-26: Slow saw the last relayed cp HOLD and left it. Its last step
+        whose basis holds that HOLD has completed without a ``wait`` (its own
+        wake), and no cp GUIDE has been sent since the HOLD."""
+        events = self._k.bus.events
+        held = next((e.seq for e in reversed(events) if _cp(e, "f2s", "HOLD")), None)
+        since = [e for e in events if held is not None and e.seq > held]
+        if held is None or any(_cp(e, "s2f", "GUIDE") for e in since):
+            return False
+        done = [
+            e
+            for e in since
+            if e.type == "slow.step.completed"
+            and cast(int, e.payload["basis_seq"]) >= held
+        ]
+        if not done:
+            return False  # Slow has not looked yet
+        start = next(e.seq for e in since if e.event_id == done[-1].cause_ids[0])
+        return not any(
+            e.type == "slow.tool" and e.payload["name"] == "wait" and e.payload["ok"]
+            for e in since
+            if start < e.seq < done[-1].seq
+        )
+
     def _relay(
         self, items: list[fp.TurnItem], turn: str, gen_id: str, utt_ref: str | None
     ) -> None:
@@ -170,8 +200,10 @@ class FastLane:
             elif isinstance(item, fp.Hold):
                 hold = k.bb.public.cp_hold if lane == "cp" else None  # cp only
                 if hold is not None and hold.reason == item.reason:
-                    k.counts["hold_repeat"] += 1  # unchanged: Slow has it (ROOT-05)
-                    continue
+                    if not self._unanswered():
+                        k.counts["hold_repeat"] += 1  # Slow has it (ROOT-05)
+                        continue
+                    k.counts["hold_rerelay"] += 1  # Slow left it (S1-SYS-26)
                 fields = {"type": "HOLD", "text": item.reason}
             else:
                 continue
