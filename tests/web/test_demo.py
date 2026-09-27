@@ -190,8 +190,9 @@ def test_approve_on_the_real_kernel_up_to_the_closed_call(tmp_path: Path) -> Non
     assert log[-1].payload["reason"] == "stopped"
     run = tmp_path / "runs" / "live" / log[0].run_id / log[0].run_id
     assert check_path(run, "offline").failures == ()
-    reality = read_bundle(run).manifest.reality
-    assert set(reality.values()) == {AdapterKind.TEST_FAKE}
+    manifest = read_bundle(run).manifest
+    assert set(manifest.reality.values()) == {AdapterKind.TEST_FAKE}
+    assert not manifest.cfg.live  # never a live run: live mode takes real_http only
 
 
 def test_stop_fences_and_the_card_goes_stale(tmp_path: Path) -> None:
