@@ -11,6 +11,7 @@ in served bytes are redacted (AGENTS rule 15).
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ REDACTED = b"<redacted-url>"
 RUN_ID = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
 SEALED = ("evidence", "s4", "test")  # held-out bundles, sealed until the report
 LIVE = ("runs", "live")  # <runs root>/live/<case_id>/<run_id>
+TAIL = 4096  # bytes Run.ended reads: session.ended is one short line
 
 
 def redact(data: bytes) -> bytes:
@@ -85,6 +87,24 @@ class Run:
         split = event.payload.get("split")
         started = event.type == "session.started" and isinstance(split, str)
         return cast(str, split) if started else None
+
+    def ended(self) -> bool:
+        """The last complete line of ``events.jsonl`` is ``session.ended``:
+        nothing follows it (``core.bus``), so the last line is the only one to
+        check. Reads at most the file's last ``TAIL`` bytes; a last line longer
+        than that is not session.ended. A partial last line is not complete."""
+        if (path := self.file(EVENTS)) is None:
+            return False
+        with path.open("rb") as f:
+            start = max(0, f.seek(0, os.SEEK_END) - TAIL)
+            f.seek(start)
+            tail = f.read(TAIL)
+        whole = tail.split(b"\n")[1 if start else 0 : -1]  # cut partial ends
+        last = next((line for line in reversed(whole) if line.strip()), b"")
+        try:
+            return Event.model_validate_json(last).type == "session.ended"
+        except ValidationError:  # none yet, or not an event
+            return False
 
     def servable(self) -> bool:
         """Not sealed, its split is known (from the manifest or session.started),

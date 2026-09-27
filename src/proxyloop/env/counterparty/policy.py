@@ -6,10 +6,11 @@ clock (no agent state). Each distinct lever unlocks the next ladder rung;
 hidden terms are said only on a read-back; offers expire after their TTL;
 silence over ``silence_s`` while the floor is free (``floor``), or a hold over
 ``hold_s``, is a timer strike; any act but ``provide_fact`` while identifying
-(hold and supervisor requests aside) is an identity strike. While identifying,
-a repeated hold request resumes the hold clock of the first one since the last
-newly verified fact (S1-SYS-20): asking to hold again, or giving a wrong value,
-never resets it. Each kind has
+(hold and supervisor requests aside) is an identity strike. A repeated hold
+request resumes the hold clock of the first one since the last progress, in
+every state (S1-SYS-20, S1-SYS-28): while identifying, progress is a newly
+verified fact (asking to hold again, or giving a wrong value, never resets
+it); in any other state, any heard act but a hold request. Each kind has
 its own counter, neither adds to the other, and either reaching
 ``patience.strikes`` hangs up. Identity strikes count what was heard, not
 time, so they apply in rep-chat too, where only the timer patience is
@@ -125,7 +126,7 @@ class Policy:
         self._levers: set[str] = set()
         self._pending: str | None = None
         self._hold_since: int | None = None
-        self._identify_hold: int | None = None  # IDENTIFY's hold clock, if held
+        self._hold_clock: int | None = None  # since the last progress, if held
         self._free_since: int | None = t0_ms  # None: someone has the floor
 
     @property
@@ -160,8 +161,8 @@ class Policy:
         before, strikes = self.state, self.strikes
         intent, commit = self._react(act, utt_id, heard, t_ms)
         struck = self.strikes > strikes
-        if self.state != "IDENTIFY":
-            self._identify_hold = None
+        if before != "IDENTIFY" and act.act != "hold_request":  # progress
+            self._hold_clock = None
         return [
             *out,
             Decision(before, self.state, intent, self._rung(), commit, struck),
@@ -181,8 +182,8 @@ class Policy:
             return out
         self.timer_strikes += 1  # the rep speaks up: it takes the floor
         self._free_since, self._hold_since = None, None if hold is None else t_ms
-        if hold is not None and self._identify_hold is not None:
-            self._identify_hold = t_ms  # the next strike after one more hold_s
+        if hold is not None and self._hold_clock is not None:
+            self._hold_clock = t_ms  # the next strike after one more hold_s
         before = self.state
         self.state = "ENDED" if self.timer_strikes >= p.strikes else self.state
         intent = PublicIntent(kind="hang_up" if self.done else "check_in")
@@ -196,10 +197,9 @@ class Policy:
             self.state = "TRANSFER"
             return PublicIntent(kind="transfer"), None
         if a == "hold_request":
-            if self.state == "IDENTIFY" and self._identify_hold is None:
-                self._identify_hold = t_ms
-            held = self._identify_hold if self.state == "IDENTIFY" else None
-            self._hold_since = t_ms if held is None else held
+            if self._hold_clock is None:
+                self._hold_clock = t_ms
+            self._hold_since = self._hold_clock
             return PublicIntent(kind="ok_hold"), None
         if self.state == "GREET":
             self.state = "IDENTIFY"
@@ -218,7 +218,7 @@ class Policy:
                 if value and value == norm(self.identity.get(fact.key, "")):
                     self._verified.add(fact.key)
             if len(self._verified) > known:  # a new key: the next hold starts afresh
-                self._identify_hold = None
+                self._hold_clock = None
             if missing := self._missing():
                 return PublicIntent(kind="ask_identity", ask=missing), None
             self.state = "DISCOVER"

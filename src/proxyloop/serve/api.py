@@ -104,11 +104,13 @@ def create_app(
     cases: Cases | None = None,
     web_dir: Path | None = None,
     start: Starter | None = None,
+    start_timeout_s: float = 60.0,
 ) -> FastAPI:
     """The API over bundles under ``roots`` (listed again on every request);
     ``origins`` is the fixed list of browser origins allowed in; ``cases``
     finds a live case by id (None: replay only); ``web_dir`` is a built web;
-    ``start`` starts live cases (None: no start routes)."""
+    ``start`` starts live cases (None: no start routes), each bounded by
+    ``start_timeout_s`` (``serve.start``)."""
     roots = tuple(roots)
     app = FastAPI(title="ProxyLoop replay")
     app.add_middleware(_Origins, origins=tuple(origins))
@@ -175,7 +177,7 @@ def create_app(
         await follow(ws, path, run_id, from_seq)
 
     csrf = Csrf()
-    started = add_start_routes(app, start, csrf)
+    started = add_start_routes(app, roots, start, csrf, start_timeout_s)
 
     def lookup(case_id: str) -> Case | None:
         found = started(case_id)

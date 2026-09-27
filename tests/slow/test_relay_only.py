@@ -95,7 +95,7 @@ def test_the_transcript_view_reaches_slow(tmp_path: Path) -> None:
     assert any("[CONVERSATIONS] " in c for c in context)
     (ended,) = [e for e in bundle.events if e.type == "session.ended"]
     counts = ended.payload["counts"]
-    assert isinstance(counts, dict) and counts["slow_transcript_omitted"] == 0
+    assert isinstance(counts, dict) and "slow_transcript_omitted" not in counts
 
 
 def _slow_context(bundle: Bundle) -> list[str]:

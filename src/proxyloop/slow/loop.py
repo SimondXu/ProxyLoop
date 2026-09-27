@@ -108,13 +108,14 @@ class SlowLoop:
         wake = basis | {"wake_reasons": list(reasons)}
         started = host.emit("slow.step.started", "slow", wake, []).event_id
         wakes = f"[WAKE] {', '.join(reasons)}"
-        bar = prompt.status_bar(view, self._keys, host.now())
+        bar = prompt.status_bar(view, self._keys, host.bb.t_ms)  # Guard's clock
         reads = self._mode is SlowViewMode.TRANSCRIPT
         relays = [prompt.note(r, quoted=reads) for r in new]
         text = stub = "\n".join([wakes, *relays, bar])
         if reads:
             block, self._cursor = transcript.render(view.transcripts, self._cursor)
-            host.counts["slow_transcript_omitted"] += self._cursor.omitted
+            if self._cursor.omitted:  # counted as dropped (ADR-0016)
+                host.counts["slow_transcript_omitted"] += self._cursor.omitted
             shown = f"[CONVERSATIONS shown at step {self.steps + 1}: "
             shown += f"+{self._cursor.new} lines]"
             text = "\n".join([wakes, block, *relays, bar])
@@ -151,6 +152,12 @@ class SlowLoop:
         self._results = [
             (c.call_id, self.tools.act(c, causes)) for c in resp.tool_calls
         ]
+        filtered = resp.record.finish_reason == "content_filter"  # S1-SYS-28
+        if filtered:  # counted, never retried; any tool calls ran as usual
+            host.counts["slow_content_filter"] += 1
         if not resp.tool_calls:
-            host.emit("slow.tool", "slow", _NO_TOOL, causes)
+            none = dict(_NO_TOOL)
+            if filtered:
+                none["result_text"] = "no tool call (content_filter)"
+            host.emit("slow.tool", "slow", none, causes)
         host.emit("slow.step.completed", "slow", basis, [started])
