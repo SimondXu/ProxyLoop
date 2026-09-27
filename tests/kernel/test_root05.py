@@ -3,6 +3,7 @@ HOLD relay dedupe (e) and stale rep replies (i)."""
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import cast
 
@@ -12,6 +13,7 @@ from tests.support.sessions import act, fake, fake_config, only_bundle, run
 
 from proxyloop.contract.config import SessionConfig
 from proxyloop.contract.events import Event
+from proxyloop.contract.llm import ModelRef
 from proxyloop.kernel import session
 from proxyloop.kernel.channels import Channel, End, Incoming
 from proxyloop.llm.spend import SESSION_CAP_MICRO_USD, Rate, RunawaySpend, SpendLedger
@@ -171,8 +173,8 @@ def test_the_2_usd_cap_ends_the_session_with_budget(
 ) -> None:  # (j): a test-only rate prices Slow at $1 per call
     rate = {"slow-fake": Rate(1_000_000.0, 1_000_000.0)}
 
-    def ledger(tokens: int, calls: int) -> SpendLedger:
-        return SpendLedger(tokens, calls, rates=rate)
+    def ledger(tokens: int, calls: int, refs: Iterable[ModelRef]) -> SpendLedger:
+        return SpendLedger(tokens, calls, rates=rate, refs=refs)
 
     monkeypatch.setattr(session, "SpendLedger", ledger)
     slow = fake("slow").model_copy(update={"endpoint": "relay"})
@@ -182,3 +184,35 @@ def test_the_2_usd_cap_ends_the_session_with_budget(
     assert (
         sum(cast(int, e.payload["micro_usd"]) for e in priced) > SESSION_CAP_MICRO_USD
     )
+
+
+def _guard(tmp_path: Path, cfg: SessionConfig) -> Mapping[str, object]:
+    run(tmp_path, SCRIPTS, cfg=cfg, until=UNTIL)
+    started = only_bundle(tmp_path).events[0]
+    return cast(Mapping[str, object], started.payload["runaway"])
+
+
+def test_an_unpriced_model_sets_the_guard_factor_to_1_at_the_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:  # main root decision, #133 round 2
+    unpriced = _guard(tmp_path / "a", fake_config())  # every fake is unpriced
+    assert unpriced == {
+        "factor": 1,
+        "tokens": session.PROJECTED[0],
+        "unpriced_calls": session.PROJECTED[1],
+        "cap_micro_usd": SESSION_CAP_MICRO_USD,
+    }
+    cfg = fake_config()
+    roles = ("fast_user", "fast_cp", "slow")
+    world = {r: fake(r, True) for r in ("ear", "mouth", "simuser")}
+    relay = {r: fake(r).model_copy(update={"endpoint": "relay"}) for r in roles}
+    world = {r: w.model_copy(update={"endpoint": "relay"}) for r, w in world.items()}
+    cfg = cfg.model_copy(update=relay | {"world": cfg.world.model_copy(update=world)})
+    rate = {f"{r}-fake": Rate(0.001, 0.001) for r in (*roles, *world)}
+
+    def ledger(tokens: int, calls: int, refs: Iterable[ModelRef]) -> SpendLedger:
+        return SpendLedger(tokens, calls, rates=rate, refs=refs)
+
+    monkeypatch.setattr(session, "SpendLedger", ledger)
+    priced = _guard(tmp_path / "b", cfg)
+    assert (priced["factor"], priced["tokens"]) == (3, 3 * session.PROJECTED[0])

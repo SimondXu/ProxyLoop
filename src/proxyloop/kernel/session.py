@@ -206,7 +206,6 @@ class Kernel:
         self.cfg, self.task, self.clock, self.sleep = cfg, task, clock, sleep
         self.counts: Counter[str] = Counter()
         self.prompts: dict[str, b.PromptRecord] = {}
-        self.ledger = SpendLedger(*PROJECTED)
         self._causes: dict[str, str] = {}  # call_id -> the event it answers
         self._calls: dict[str, str] = {}  # call_id -> its last llm.call event
         self._dead, self._utt, self._tg = False, 0, asyncio.TaskGroup()
@@ -226,6 +225,8 @@ class Kernel:
             if client.ref != refs[role]:
                 raise ValueError(f"the {role} client is not the cfg's model")
             self.clients[role] = _Loud(client, self._die)
+        refs_now = [c.ref for c in self.clients.values()]  # the factor, at the start
+        self.ledger = SpendLedger(*PROJECTED, refs=refs_now)
         fast = [self.clients.get(r) for r in ("fast_user", "fast_cp")]
         vllm = any(c is not None and c.ref.endpoint == "vllm" for c in fast)
         self.tok = tok if tok is not None or not vllm else load_tokenizer()
@@ -383,6 +384,10 @@ class Kernel:
         except Exception as err:  # vLLM cannot answer P3: the endpoint is dead
             self.p3, self.attest, dead = "fail", None, err
         head = started | {"models": models, "attest": self.attest, "parity": self.p3}
+        led = self.ledger  # the S0 runaway guard in force (an extra key, §4.2)
+        head["runaway"] = {"factor": led.factor, "tokens": led.limit_tokens}
+        head["runaway"] |= {"unpriced_calls": led.limit_unpriced_calls}
+        head["runaway"] |= {"cap_micro_usd": led.limit_micro_usd}
         root = self.emit("session.started", "kernel", head, (), "ops").event_id
         if self.p3 == "fail":  # refuse to start (§12)
             self._close("p3_failed" if dead is None else "llm_unavailable", started)

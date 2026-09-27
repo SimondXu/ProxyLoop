@@ -164,3 +164,24 @@ def test_unpriced_call_guard_raises_past_3x_the_projected_calls() -> None:
 def test_limits_must_be_positive(tokens: int, calls: int, cap: int) -> None:
     with pytest.raises(ValueError):
         _ledger(tokens, calls, cap_micro_usd=cap)
+
+
+@pytest.mark.parametrize(
+    ("refs", "factor"),
+    [
+        ((), RUNAWAY_FACTOR),
+        ((SONNET, QWEN), RUNAWAY_FACTOR),  # every role priced (or GPU time)
+        ((SONNET, QWEN, GEMINI), 1),  # TeamRouter: no rate card row yet
+        ((SONNET.model_copy(update={"model_id": "no-such-rate"}),), 1),
+    ],
+)
+def test_an_unpriced_role_drops_the_guard_factor_to_1(
+    refs: tuple[ModelRef, ...], factor: int
+) -> None:  # main root decision, #133 round 2
+    ledger = _ledger(tokens=1_000, calls=10, refs=refs)
+    assert ledger.factor == factor
+    assert (ledger.limit_tokens, ledger.limit_unpriced_calls) == (
+        factor * 1_000,
+        factor * 10,
+    )
+    assert ledger.limit_micro_usd == SESSION_CAP_MICRO_USD  # absolute either way

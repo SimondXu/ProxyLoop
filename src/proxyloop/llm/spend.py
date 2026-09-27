@@ -10,25 +10,28 @@ Three pricing bases, so no call is ever silently priced at zero:
 Three runaway guards raise ``RunawaySpend``, with the charge that crossed the line
 (the S0 guard, root decision under PLAN §0.5a, 2026-09-26):
 - the priced total passes the absolute session cap (``SESSION_CAP_MICRO_USD``);
-- the hosted tokens (every call but ``gpu_time``) pass ``RUNAWAY_FACTOR`` times
-  the projected tokens per episode;
-- the unpriced calls pass ``RUNAWAY_FACTOR`` times the projected calls per
-  episode (no rate is invented for them).
+- the hosted tokens (every call but ``gpu_time``) pass the factor times the
+  projected tokens per episode;
+- the unpriced calls pass the factor times the projected calls per episode (no
+  rate is invented for them).
+The factor is ``RUNAWAY_FACTOR``, or ``UNPRICED_FACTOR`` when a session's model
+has no rate: its spend has no $ bound, so the projection itself is the limit.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import Field
 
 from proxyloop.contract.base import Frozen
-from proxyloop.contract.llm import Endpoint, LLMCallRecord, LLMRole
+from proxyloop.contract.llm import Endpoint, LLMCallRecord, LLMRole, ModelRef
 from proxyloop.contract.state import Spend
 
 RUNAWAY_FACTOR = 3  # was 10 (S0-SYS-04)
+UNPRICED_FACTOR = 1  # a session with an unpriced model (main root, #133)
 SESSION_CAP_MICRO_USD = 2_000_000  # $2 per session, whatever the projection
 
 
@@ -71,19 +74,26 @@ class SpendLedger:
         projected_calls: int,
         cap_micro_usd: int = SESSION_CAP_MICRO_USD,
         rates: Mapping[str, Rate] = RELAY_RATES,
+        refs: Iterable[ModelRef] = (),
     ) -> None:
+        """``refs``: the session's models, known at its start."""
         if min(projected_tokens, projected_calls, cap_micro_usd) <= 0:
             raise ValueError("the episode projections and the cap must be positive")
-        self.limit_micro_usd = cap_micro_usd
-        self.limit_tokens = RUNAWAY_FACTOR * projected_tokens
-        self.limit_unpriced_calls = RUNAWAY_FACTOR * projected_calls
         self._rates = rates
+        priced = all(r.endpoint == "vllm" or self._rate(r) for r in refs)
+        self.factor = RUNAWAY_FACTOR if priced else UNPRICED_FACTOR
+        self.limit_micro_usd = cap_micro_usd
+        self.limit_tokens = self.factor * projected_tokens
+        self.limit_unpriced_calls = self.factor * projected_calls
         self._by_role: dict[str, int] = {}
         self.unpriced_calls = self.tokens = 0
 
+    def _rate(self, ref: ModelRef) -> Rate | None:
+        return self._rates.get(ref.model_id) if ref.endpoint == "relay" else None
+
     def price(self, record: LLMCallRecord) -> Charge:
         ref, usage = record.model_ref, record.usage
-        rate = self._rates.get(ref.model_id) if ref.endpoint == "relay" else None
+        rate = self._rate(ref)
         micro: int | None = None
         if ref.endpoint == "vllm":
             basis = "gpu_time"
