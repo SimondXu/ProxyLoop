@@ -2,10 +2,11 @@
 
 ``Manifest.reality``, ``Manifest.models``, ``cfg`` and the ``llm.call``
 records must agree. For a claimed role the served model is checked on each
-successful ``llm.call``: ``served_model_echo`` (what the endpoint said it
-served) must equal ``RoleModel.served_model`` when the manifest names one
-(a LoRA slot, a dated hosted id), else the ``ModelRef.model_id`` the call
-requested (``requested_model == model_ref.model_id`` is a contract rule).
+successful or billed (cancelled, with usage) ``llm.call``:
+``served_model_echo`` (what the endpoint said it served) must equal
+``RoleModel.served_model`` when the manifest names one (a LoRA slot, a dated
+hosted id), else the ``ModelRef.model_id`` the call requested
+(``requested_model == model_ref.model_id`` is a contract rule).
 E1: a teacher-substituted Fast call keeps its ``fast_*`` role and carries the
 teacher's ``ModelRef``; it is the teacher's call only on the lane whose
 ``teacher_repair_*`` ablation the cfg sets, and is checked as the teacher's.
@@ -79,6 +80,8 @@ def consistency_failures(m: Manifest, calls: Sequence[LLMCallRecord]) -> list[st
             out.append(f"call {c.call_id}: role {c.role} is not in the manifest")
         elif c.model_ref != refs.get(_model_role(m.cfg, c)):
             out.append(f"call {c.call_id}: model_ref is not the cfg's {c.role} model")
+        if c.error is not None and not c.error.strip():  # chain.py: a success
+            out.append(f"call {c.call_id} records an empty error")
         if c.error is None:
             continue
         # A failed call hashes only text delivered, after its first token
@@ -98,7 +101,8 @@ def _call_failures(m: Manifest, c: LLMCallRecord) -> list[str]:
     where = f"call {c.call_id} ({c.role})"
     if c.adapter_kind is not AdapterKind.REAL_HTTP:
         return [f"{where} is {c.adapter_kind}, not real_http"]
-    if c.error is not None:  # a failed attempt backs no line (chain.py)
+    billed = c.error == "cancelled" and c.usage is not None  # checked as one
+    if c.error is not None and not billed:  # a failed attempt backs no line
         return []
     model = m.models.get(_model_role(m.cfg, c))
     expected = model and (model.served_model or model.ref.model_id)
