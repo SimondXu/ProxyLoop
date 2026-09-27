@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # The pinned CI Python patch release, for every uv call in every job (uv installs it).
+  UV_PYTHON: "3.12.11"
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -19,8 +23,6 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.8.4"
-          # The pinned CI Python patch release (sets UV_PYTHON).
-          python-version: "3.12.11"
           enable-cache: true
       - run: uv sync --frozen
       - run: make check
@@ -34,8 +36,8 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.8.4"
-          python-version: "3.12.11"
-          enable-cache: true
+          # Its near-empty cache would share, and overwrite, the key check and web use.
+          enable-cache: false
       - run: make shellcheck
 
   # The web suite (`make web-test`): lint, typecheck, vitest, the build, the Playwright e2e
@@ -48,7 +50,6 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.8.4"
-          python-version: "3.12.11"
           enable-cache: true
       - run: uv sync --frozen
       - uses: actions/setup-node@v4
