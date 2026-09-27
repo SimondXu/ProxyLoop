@@ -98,12 +98,18 @@ def declassify(
     ]
     leaked = sorted((said & _bounds(bb)) - public)
     out += [f"the private value {n.normalize():f} is not public" for n in leaked]
-    words, letters, digits = _canon(text)  # the forms of slow.tools._leaks
-    for key, (theirs, their_letters, their_digits) in _protected(bb):
-        if (
-            _overlap(words, theirs)
-            or _overlap(letters, their_letters)
-            or _overlap(digits, their_digits)
-        ):
-            out.append(f"the protected value of {key}")
+    out += [f"the protected value of {key}" for key in protected_keys(text, bb)]
     return tuple(out)
+
+
+def protected_keys(text: str, bb: Blackboard) -> list[str]:
+    """The protected case facts ``text`` says in any spelling: word, letter or
+    any-script digit form, either containing the other (as slow.tools._leaks)."""
+    words, letters, digits = _canon(text)
+    return [
+        key
+        for key, (theirs, their_letters, their_digits) in _protected(bb)
+        if _overlap(words, theirs)
+        or _overlap(letters, their_letters)
+        or _overlap(digits, their_digits)
+    ]

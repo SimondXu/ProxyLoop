@@ -108,3 +108,21 @@ def test_the_screen_flags_protected_values_always() -> None:
     assert screen("I can sign for 24 months.", board(mandate=mandate())) == (
         "mandate:24",
     )
+
+
+@pytest.mark.parametrize(
+    ("value", "text"),
+    [
+        ("O'Brien", "Is that OBRIEN?"),
+        ("Lee-Smith", "The holder is lee smith."),
+        ("7777", "The code is 77-77."),
+        ("7777", "The code is " + "\N{FULLWIDTH DIGIT SEVEN}" * 4 + "."),
+        ("王小明", "Holder 王小明."),  # any script
+    ],
+)
+def test_the_screen_flags_protected_values_in_any_spelling(
+    value: str, text: str
+) -> None:
+    """The same canonical forms as declass: words, letters, any-script digits."""
+    secret = Fact(key="account.secret", value=value, protected=True)
+    assert screen(text, board(facts=(secret,))) == ("protected:account.secret",)
