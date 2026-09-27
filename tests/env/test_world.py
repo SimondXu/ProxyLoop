@@ -115,17 +115,22 @@ def test_the_whole_call_bound_is_the_old_worst_case() -> None:
 
 
 def test_one_deadline_bounds_every_attempt_together() -> None:
-    seen: list[int] = []
+    """Attempt n ends at start + (n + 1) * 0.6 T (loop time): each lasts 0.6 T,
+    under a per-attempt bound, but the third ends at 1.8 T, past one T for the
+    whole call. The outcome does not depend on scheduling: a per-attempt bound
+    ends invalid-exhausted, a whole-call bound always times out."""
 
-    async def slow_invalid(n: int) -> int:  # each attempt well inside the bound
-        seen.append(n)
-        await asyncio.sleep(0.04)
+    bound, starts = 0.1, list[float]()
+
+    async def invalid_at(n: int) -> int:
+        loop = asyncio.get_running_loop()
+        starts.append(loop.time())
+        await asyncio.sleep(starts[0] + (n + 1) * 0.6 * bound - loop.time())
         return -1
 
     with pytest.raises(world.WorldError, match=r"no answer within 0\.1 s"):
-        asyncio.run(world.bounded(slow_invalid, _check, what="t", timeout_s=0.1))
-    # per attempt, all three would pass in time and end as invalid instead
-    assert len(seen) >= 2
+        asyncio.run(world.bounded(invalid_at, _check, what="t", timeout_s=bound))
+    assert starts  # it ran; never a regeneration past the deadline
 
 
 def test_a_whole_call_timeout_aborts_the_ear_loudly(tmp_path: Path) -> None:
@@ -143,6 +148,7 @@ def test_a_whole_call_timeout_aborts_the_ear_loudly(tmp_path: Path) -> None:
     ear.timeout_s = 0.1
     with pytest.raises(world.WorldError, match="ear: no answer within"):
         asyncio.run(ear.classify("u1", "hello", heard.event_id, {}))
-    calls = sink.of("llm.call")
-    assert len(calls) >= 2 and calls[-1].payload["error"] == "cancelled"
+    *done, cut = sink.of("llm.call")  # how many ended in time depends on timing
+    assert cut.payload["error"] == "cancelled"
+    assert all(c.payload["error"] is None for c in done)
     assert sink.of("rep.ear") == []  # no default act

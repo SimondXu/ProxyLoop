@@ -9,6 +9,7 @@ Risks).
 
 from __future__ import annotations
 
+import re
 from collections.abc import Collection, Mapping
 from decimal import Decimal
 from typing import Literal, get_args
@@ -67,6 +68,24 @@ class EarAct(Frozen):
     facts: tuple[Fact, ...] = ()
 
 
+_DIGIT_RUN = re.compile(r"\d+(?:[ -]\d+)*")  # groups joined by one space or dash
+_TOKEN = re.compile(r"[^\W_]+")
+
+
+def said(value: str, heard: str) -> bool:
+    """A digit value is a whole digit run of ``heard`` ("4 8 2 1" is 4821; not
+    part of 5554821999); any other value is whole tokens in a row (casefold)."""
+
+    digits = world.norm(value)
+    if digits.isdigit():
+        runs = (re.sub(r"[ -]", "", m) for m in _DIGIT_RUN.findall(heard))
+        return digits in set(runs)
+    want = _TOKEN.findall(value.casefold())
+    tokens = _TOKEN.findall(heard.casefold())
+    n = len(want)
+    return n > 0 and any(tokens[i : i + n] == want for i in range(len(tokens) - n + 1))
+
+
 def check_act(
     calls: tuple[ToolCall, ...],
     heard: str,
@@ -86,7 +105,7 @@ def check_act(
     for fact in act.facts:
         if fact.key not in keys:
             raise world.Invalid(f"unknown key {fact.key!r}")
-        if not (value := world.norm(fact.value)) or value not in world.norm(heard):
+        if not said(fact.value, heard):
             raise world.Invalid(f"{fact.key} {fact.value!r} was not said")
     if act.price_usd is not None and Decimal(str(act.price_usd)) not in world.numbers(
         heard

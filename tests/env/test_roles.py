@@ -9,11 +9,12 @@ from typing import Any, cast
 
 import pytest
 from tests.env.bus_sink import BusSink
+from tests.support import sessions
 
 from proxyloop.contract.events import Event, check_causes
-from proxyloop.contract.llm import LLMCallRecord, LLMUnavailable
+from proxyloop.contract.llm import LLMCallRecord, LLMUnavailable, ToolCall
 from proxyloop.env import world
-from proxyloop.env.counterparty.ear import Ear
+from proxyloop.env.counterparty.ear import Ear, check_act
 from proxyloop.env.counterparty.mouth import Mouth, template
 from proxyloop.env.counterparty.policy import PublicIntent
 from proxyloop.env.counterparty.simrep import RepTurn, SimRep
@@ -532,3 +533,52 @@ def test_the_simuser_channel_enqueues_nothing_on_silence(tmp_path: Path) -> None
     inc = channel.incoming.get_nowait()
     assert inc.lines == (("Thanks.", sink.of("user.sim")[0].event_id),)
     assert inc.due_ms >= 1_000 and channel.incoming.empty()
+
+
+@pytest.mark.parametrize(
+    ("heard", "fact", "said"),
+    [
+        ("Last four 4821.", (LAST4, "4821"), True),
+        ("It's 4 8 2 1.", (LAST4, "4821"), True),
+        ("It's 48-21, and the name is Dana Reyes.", (LAST4, "4821"), True),
+        ("555 482 1999", (LAST4, "4821"), False),  # part of a longer run
+        ("Card 14821.", (LAST4, "4821"), False),
+        ("dana REYES here.", (NAME, "Dana Reyes"), True),
+        ("Is that Dan? A Reyes account?", (NAME, "Dana Reyes"), False),
+        ("Danar Reyes", (NAME, "Dana Reyes"), False),
+    ],
+)
+def test_a_fact_is_said_only_as_a_whole_run_or_whole_tokens(
+    heard: str, fact: tuple[str, str], said: bool
+) -> None:
+    call = ToolCall(
+        call_id="t",
+        name="classify",
+        arguments=json.dumps({"act": "provide_fact", "facts": [_fact(*fact)]}),
+    )
+    if said:
+        assert check_act((call,), heard, (), (NAME, LAST4)).facts
+    else:
+        with pytest.raises(world.Invalid, match="was not said"):
+            check_act((call,), heard, (), (NAME, LAST4))
+
+
+def test_identity_strikes_apply_in_rep_chat(tmp_path: Path) -> None:
+    """Content, not timing: rep-chat suspends only the timer patience."""
+    person = sessions.Person(
+        ["Hi, I'm calling about my bill.", "I'd rather not say.", "No."]
+    )
+    scripts = {
+        "ear": [
+            sessions.ear("other"),
+            sessions.ear("smalltalk"),
+            sessions.ear("refuse_fact"),
+        ],
+        "mouth": ["Northwind Mobile, may I have the account holder name?"],
+    }
+    result = sessions.run(tmp_path, scripts, channels={"cp": "sim", "cp_agent": person})
+    assert result.reason == "abandoned"
+    events = sessions.only_bundle(tmp_path).events
+    assert len([e for e in events if e.type == "chan.strike"]) == 3
+    last = [e for e in events if e.type == "rep.policy"][-1]
+    assert (last.payload["from"], last.payload["to"]) == ("IDENTIFY", "ENDED")

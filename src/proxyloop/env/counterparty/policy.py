@@ -6,7 +6,9 @@ clock (no agent state). Each distinct lever unlocks the next ladder rung;
 hidden terms are said only on a read-back; offers expire after their TTL;
 silence over ``silence_s`` while the floor is free (``floor``), a hold over
 ``hold_s``, or any act but ``provide_fact`` while identifying (hold and
-supervisor requests aside) is a strike, and the last strike hangs up.
+supervisor requests aside) is a strike, and the last strike hangs up. Identity
+strikes count what was heard, not time, so they apply in rep-chat too, where
+only the timer patience (silence, hold) is suspended.
 
 World rule (for S1-SYS-04 to confirm): accepting an open offer by name commits
 at once (``rep.commit_heard``) and the ledger binds all its terms, hidden ones

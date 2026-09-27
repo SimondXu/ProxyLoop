@@ -96,6 +96,16 @@ def test_a_vllm_fast_refuses_an_effort() -> None:
         cli.main(["session", "--family", "f", "--fast-effort", "low"])
 
 
+def test_a_redirect_never_makes_a_claim_bundle(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    argv = ["session", "--family", "f", "--fast-cp-base-url", "http://127.0.0.1:9"]
+    with pytest.raises(SystemExit) as exit_:
+        cli.main([*argv, "--claim"])
+    assert exit_.value.code == 2
+    assert "never with --claim" in capsys.readouterr().err
+
+
 def _env(monkeypatch: pytest.MonkeyPatch) -> None:
     for endpoint in ("RELAY", "VLLM"):
         monkeypatch.setenv(f"PL_{endpoint}_BASE_URL", "https://real.example")

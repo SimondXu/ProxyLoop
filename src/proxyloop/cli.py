@@ -163,6 +163,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command != "replay" and args.fast_endpoint == "vllm" and args.fast_effort:
         parser.error("--fast-effort is for a hosted Fast; a vLLM Fast keeps its own")
+    if args.command != "replay" and args.fast_cp_base_url and args.claim:
+        parser.error("--fast-cp-base-url is not in the bundle: never with --claim")
     if args.command == "replay":
         return replay(Path(args.run.removeprefix("RUN=")), args.speed)
     if args.command == "rep-chat":
