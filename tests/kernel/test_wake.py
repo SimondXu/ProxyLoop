@@ -260,6 +260,26 @@ def test_in_a_call_slow_is_woken_by_its_wait_or_the_heartbeat(
     )
 
 
+@pytest.mark.parametrize("seconds", [5.0, 7.5, True, "5"], ids=str)
+def test_a_wait_that_is_not_a_json_integer_is_refused(
+    tmp_path: Path, seconds: object
+) -> None:  # review D1: refused and counted, never coerced (rule 12)
+    sim = Call(tmp_path, [act("Waiting.", {"tool": "wait", "seconds": seconds}), NOTED])
+
+    async def case() -> None:
+        await sim.start()
+        sim.rep_says("Hello, who is this?")
+        await sim.vt.run_for(20_000)
+        await sim.stop()
+
+    play(case)
+    assert [e.payload["reason"] for e in sim.of("session.ended")] == ["stopped"]
+    assert [t.payload["ok"] for t in sim.of("slow.tool", name="wait")] == [False]
+    (_, done), (nxt, _) = sim.steps()
+    assert done is not None and nxt.t_ms - done.t_ms == 15_000
+    assert reasons(nxt) == ["heartbeat"]
+
+
 @pytest.mark.parametrize(
     ("kind", "woken"), [(NOTED, 0), (wait(5), 1)], ids=["noted", "wait5"]
 )

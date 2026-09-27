@@ -59,7 +59,7 @@ class Wakes:
             self._wait, self._done = None, False
         elif e.type == "slow.tool" and p["ok"] and p["name"] in ("wait", "finish"):
             if p["name"] == "wait":
-                self._wait = int(str(cast(dict[str, object], p["args"])["seconds"]))
+                self._wait = cast(dict[str, int], p["args"])["seconds"]  # SlowTools
             self._done |= p["name"] == "finish"
         elif e.type == "slow.step.completed" and not self._done:
             self._arm(e.t_ms)

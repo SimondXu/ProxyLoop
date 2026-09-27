@@ -153,9 +153,10 @@ class SlowTools:
         if name in ("ask_user", "tell_user"):
             return self._s2f(lane="user", type=name.upper(), text=str(a["text"]))
         if name == "wait":  # its slow.tool arms the timer (kernel.wake)
-            if not 1 <= (seconds := int(a["seconds"])) <= HEARTBEAT_S:
-                return no(f"seconds must be 1-{HEARTBEAT_S}: in a call a heartbeat "
-                          f"wakes you every {HEARTBEAT_S} s anyway")  # fmt: skip
+            seconds = a["seconds"]  # a JSON integer, never coerced (rule 12)
+            if type(seconds) is not int or not 1 <= seconds <= HEARTBEAT_S:
+                beat = f"in a call a heartbeat wakes you every {HEARTBEAT_S} s anyway"
+                return no(f"seconds must be an integer 1-{HEARTBEAT_S}: {beat}")
             return Result(True, f"waking in {seconds} s")
         if name == "guide_fast":
             return self._guide(bb, a)
