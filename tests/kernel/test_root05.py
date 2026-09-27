@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from tests.contract.samples import SONNET, call_record
 from tests.kernel.test_session import FINISH, SCRIPTS, UNTIL
 from tests.support.fakes import RepeatingLLM
 from tests.support.manual_clock import ScaledClock
@@ -18,6 +19,7 @@ from proxyloop.contract.config import SessionConfig
 from proxyloop.contract.events import Event
 from proxyloop.contract.llm import LLMClient, LLMRole, ModelRef
 from proxyloop.contract.protocol import Hold
+from proxyloop.env.world import WorldError
 from proxyloop.kernel import session
 from proxyloop.kernel.channels import Channel, End, Incoming
 from proxyloop.kernel.session import ChannelSpec, Kernel
@@ -242,3 +244,13 @@ def test_only_a_cp_hold_is_deduped_against_the_cp_hold(tmp_path: Path) -> None:
     relay(list(hold), held.event_id, "cp-g1")  # the cp hold, unchanged: deduped
     assert (k.counts["hold_repeat"], k.counts["relay_rejected"]) == (1, 1)
     k.bus.close()
+
+
+def test_budget_outranks_a_world_error_when_both_end_the_session() -> None:
+    charge = SpendLedger(1, 1).price(  # main root, #133 round 3: the matrix aborts
+        call_record(SONNET, usage=None, error="x", response_sha=None)
+    )
+    spent, world = RunawaySpend("runaway calls", charge), WorldError("ear timeout")
+    outcome = session._outcome  # pyright: ignore[reportPrivateUsage]
+    for leaves in ([world, spent], [spent, world]):
+        assert outcome(BaseExceptionGroup("both", leaves)) == ("budget", spent)

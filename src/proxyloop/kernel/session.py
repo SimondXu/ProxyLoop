@@ -50,9 +50,9 @@ PromptKind = Literal["view", "prompt", "messages", "response"]
 P3 = Literal["pass", "fail", "not_applicable"]
 REAL = llm.AdapterKind.REAL_HTTP
 _ACTOR = {"fast_user": "fast.user", "fast_cp": "fast.cp", "slow": "slow"}
-_ERRORS: dict[type[Exception], str] = {
-    **{llm.LLMUnavailable: "llm_unavailable", WorldError: "world_error"},
-    **{RunawaySpend: "budget"},
+_ERRORS: dict[type[Exception], str] = {  # in priority: budget before the world
+    **{llm.LLMUnavailable: "llm_unavailable", RunawaySpend: "budget"},
+    **{WorldError: "world_error"},
 }
 _AFTER_DEATH = ("llm.call", "spend.charged", "session.ended")
 
