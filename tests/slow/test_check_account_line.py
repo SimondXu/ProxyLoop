@@ -129,3 +129,16 @@ def test_a_line_after_the_steps_view_is_refused(tmp_path: Path) -> None:
     seen = h.tools.act(call, [h.root.event_id], basis=done.seq)
     assert "482913 binds the accepted terms" in seen
     h.bus.close()
+
+
+def test_the_last_line_with_the_cited_utt_id_is_the_one_checked(
+    tmp_path: Path,
+) -> None:
+    """#183 review N-d: when an utt id repeats in the cp lane, the text check
+    and the seq check read the same line, the last one."""
+    h = accepted(tmp_path)
+    h.rep("cp-3", "One moment please.")  # an earlier line with the same utt id
+    _confirmed_by_the_rep(h)  # cp-3 again, saying the id
+    (account,) = h.act(check())
+    assert account == "check_account: 482913 binds the accepted terms", account
+    h.bus.close()

@@ -79,7 +79,8 @@ class Host:
     def act(self, *calls: dict[str, Any]) -> list[str]:
         body = {"private_summary": "digest", "calls": list(calls)}
         call = ToolCall(call_id="c", name="act", arguments=json.dumps(body))
-        return self.tools.act(call, [self.root.event_id]).splitlines()[1:]
+        seen = self.bb.seq  # the step's view: everything so far
+        return self.tools.act(call, [self.root.event_id], basis=seen).splitlines()[1:]
 
 
 class Call:
@@ -107,12 +108,10 @@ class Call:
 
 
 def _slot(field: str, value: str, utt: str) -> dict[str, str]:
-    unit, role = SLOT_KINDS[field.partition(":")[0]]
+    unit, _ = SLOT_KINDS[field.partition(":")[0]]  # Slow sends no role or unit
     if unit == "usd_minor":
         value = str(int(Decimal(value) * 100))
-    return {"field": field, "value": value, "unit": unit, "role": role} | {
-        "utt_ref": utt
-    }
+    return {"field": field, "value": value, "utt_ref": utt}
 
 
 def _confirm_every_offer(tmp_path: Path, family: str) -> tuple[Host, Call]:

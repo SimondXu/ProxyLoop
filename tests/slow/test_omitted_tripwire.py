@@ -19,12 +19,15 @@ class Log:
     def __init__(self) -> None:
         self.events: list[Event] = []
 
-    def add(self, type_: str, actor: str, payload: dict[str, Any], *causes: str) -> str:
+    def add(
+        self, type_: str, actor: str, payload: dict[str, Any], *causes: str,
+        stream: str = "agent",
+    ) -> str:  # fmt: skip
         seq = len(self.events)
         e = Event.model_validate(
             {"run_id": RUN, "seq": seq, "event_id": f"{RUN}:{seq}", "t_ms": seq,
              "wall": datetime(2026, 9, 27, tzinfo=UTC), "type": type_,
-             "actor": actor, "stream": "agent", "cause_ids": causes or (),
+             "actor": actor, "stream": stream, "cause_ids": causes or (),
              "epoch": 0, "payload": payload}
         )  # fmt: skip
         self.events.append(e)
@@ -75,6 +78,21 @@ def test_a_line_shown_once_before_the_release_is_not_flagged() -> None:
 def test_no_omission_is_empty() -> None:
     log = Log()
     for n in range(3):
+        log.rep(n)
+    log.step()
+    log.release()
+    assert omitted_before_release(log.events) == []
+
+
+def test_a_relay_only_run_is_not_checked() -> None:
+    """#183 review N-b: a ``relay_only`` run renders no conversations, so no
+    line was ever "omitted" from one; the tripwire reports nothing for it."""
+    log = Log()
+    head = dict.fromkeys(("cfg_hash", "task_ref", "instance_hash", "git_sha"), "x")
+    head |= {"split": "train", "models": {}, "renderer_fp": {}, "attest": None}
+    head |= {"contract_version": "x", "parity": "pass", "slow_view": "relay_only"}
+    log.add("session.started", "kernel", head, stream="ops")
+    for n in range(12):
         log.rep(n)
     log.step()
     log.release()
