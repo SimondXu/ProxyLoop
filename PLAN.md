@@ -99,15 +99,14 @@ Legend:
   - S0: 16 → 18 (user decision 2026-09-26); 18 → 19, because S0-ROOT-05's fix work splits into S0-SYS-07 and S0-SYS-08 on disjoint paths (root decision under §0.5a, 2026-09-26); 19 → 20 for the S0-SYS-08 follow-up PR that separates identity strikes from timer strikes (root decision under §0.5a, 2026-09-27); 20 → 21 for the S0-SYS-07 follow-up PR (the identity hold flow and the cancelled-stream record) (root decision under §0.5a, 2026-09-27); 21 → 22 because that follow-up splits: item 1 (the identity hold flow) shipped as #140, and item 2 (the cancelled-stream record) comes as its own PR (root decision under §0.5a, 2026-09-27).
   - S1: 14 → 25 (14 + 7 + 5 − 1): the product lanes add seven S1 PRs; S1-SYS-14, S1-MOD-04, S1-CON-01, S1-CON-02 and S1-MOD-01 part B add five; S1-SYS-06 is superseded (−1) (root decisions under §0.5a, 2026-09-26); 25 → 26 for S1-SYS-15 (root decision under §0.5a, 2026-09-27); 26 → 31 (26 + 5): S1-SYS-16, S1-SYS-17, the S1-MOD-02 follow-up PR, S1-CON-03 and S1-SYS-18 add one each (root decisions under §0.5a, 2026-09-27).
   - A probe PR that only adds a probe script and its ADR data (e.g. S0-ROOT-12) counts as a root evidence PR and is excluded (root decision under §0.5a, 2026-09-26).
-- **Code size:**
-  - `src/` Python over 6,300 lines at S0 close, over 9,000 at S1 close, or over 7,000 at S3 close (S0 3,700 → 6,300 and S1 5,800 → 9,000, user decision 2026-09-26), counted in non-blank lines (user decision 2026-09-26);
-    - the S3 figure (unchanged) now sits below S1's and must be revisited at S1 close;
+- **Code size** (user decision 2026-09-27: absolute total-line caps replaced by the stage-close size review, §0.7):
+  - per task/PR: S ≤ 300, M ≤ 700, L ≤ 1,200 changed lines excluding tests (the Legend);
   - S0-SYS-06: a hard cap of L = 1,200 changed lines (user decision 2026-09-26).
-  - web TypeScript over 1,500 lines through S1;
-  - S1-SYS-08 (P-WEB): a cap of 850 changed lines excluding tests and the lockfile (M = 700 → 850); the TypeScript cap of 1,500 is unchanged, and code is never reformatted to fit a cap (root decision under §0.5a, 2026-09-26);
-  - `serving/` + `training_jobs/` over 900 lines (700 → 900, user decision 2026-09-26; reformat of serving/), counted in non-blank lines like `src/` (root decision under §0.5a, 2026-09-26). Pre-approved up to 1,000 non-blank lines for S1-MOD-01 part B only if the 4B app cannot fit by reusing the 9B app with parameters; the PR states the reason and the final count (root decision under §0.5a, 2026-09-26).
+  - S1-SYS-08 (P-WEB): a cap of 850 changed lines excluding tests and the lockfile (M = 700 → 850) (root decision under §0.5a, 2026-09-26);
   - Size exceptions accepted (root decisions under §0.5a, 2026-09-27): #126 (S1-SYS-01) at 1,317 changed lines excluding tests, over L = 1,200 (a numeric cap; the growth is the requested authority hardening); #143 (S1-SYS-04) at 726 `src/` lines, over M = 700. S1-SYS-08's 850 and S1-MOD-02's re-size to L stand as recorded above and in its block.
   - A module over 600 lines is a warning.
+  - Code is never reformatted to fit a cap.
+  - (History, no longer rules: until 2026-09-27 this section capped `src/` Python at stage close (S0, S1, S3), web TypeScript through S1, and `serving/` + `training_jobs/` in total, in non-blank lines, with a pre-approved raise for S1-MOD-01 part B.)
 - **No new reality:** after merge point 1 (S0-ROOT-05), two consecutive merged SYS/MOD PRs without a new real bundle or real artefact cited mean the root runs the smoke itself before merging anything else.
   - Only PRs that touch session-path code (the SYS agent paths and MOD) count; product-lane PRs (P-WEB, P-API, P-OBS, P-TOOLS) do not (user decision 2026-09-26).
 - **Contract discipline:**
@@ -123,7 +122,8 @@ The user closes every stage; the root never self-closes one. The close requires:
 1. a replay the user watches (terminal in S0, web from S1);
 2. **a live, unscripted correction performed by the user**, chosen at the gate and written in no packet. The bundle must show it handled: relayed, and then fenced, revoked or applied;
 3. the stage's docs gate (DOCS §7);
-4. the stage's spend summary when due (§0.8).
+4. the stage's spend summary when due (§0.8);
+5. a size review: a fresh reviewer lists non-blank lines per module (`src/`, web, `serving/` + `training_jobs/`), flags redundancy, dead code and modules over 600 lines, and the root schedules a simplification pass (e.g. S1-SYS-00) for what it flags; there is no numeric gate (user decision 2026-09-27). The baseline at `ede8172` is in the main root's log, 2026-09-27.
 
 ### 0.8 Spend visibility (information stops, not approvals)
 After S0, after S1, after S3, and before S4's data generation (a projection), the root shows:
@@ -659,7 +659,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work may be coded and reviewed earlier, but merge only at the gate (§0.1, user decision 2026-09-26). **Any teacher run in the harness** (the T and R conditions, S1-MOD-01's teacher smoke, S1-MOD-03, S1-ROOT-02) waits until S1-SYS-01, -02, -03, -05 and -10 (the approval endpoint, split from -05) have merged. Decisions D require capability minting, read-back slots, the fence and epochs, and approval-endpoint security first (§9 E1).
 
 ### S1-SYS-00 Simplification pass (no weaker guarantees) — SYS — M — todo
-- **Objective:** before the rest of S1, trim only redundancy in the S0 code, without weakening any guarantee (e.g. a target of `llm/` ≈ 550 lines) (user decision 2026-09-26).
+- **Objective:** before the rest of S1, trim only redundancy in the S0 code, without weakening any guarantee (e.g. a target of `llm/` ≈ 550 lines) (user decision 2026-09-26). The stage-close size review (§0.7) is its trigger and scope (user decision 2026-09-27).
 - **Owned paths:** `src/proxyloop/{core,evidence,llm,env,kernel,slow}/**` (code only; no contract).
 - **Acceptance:** `make check` green; every existing test unchanged or strictly stronger; net `src/` lines reduced.
 
@@ -828,7 +828,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Acceptance:**
   - with keys and GPU unset, Playwright loads an `evidence/s0` bundle and asserts a Fast sentence (with its model label) and a Slow tool event;
   - the web never imports prompt text (lint);
-  - web TypeScript stays within the 1,500-line cap through S1 (§0.6).
+  - web TypeScript size is reviewed at each stage close, with no line cap (§0.7; user decision 2026-09-27).
 - **Verify:** `make web-test`.
 - **Escalate if:** the UI needs data that is neither in the events nor in `prompts.jsonl`.
 
