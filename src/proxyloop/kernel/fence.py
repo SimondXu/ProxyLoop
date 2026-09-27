@@ -31,6 +31,10 @@
   and never before that stop is delivered (N6).
 - **Status.** A decided card moves AWAITING_APPROVAL back to IN_CALL, and
   NEEDS_REPLAN goes back to IN_CALL once Slow completed a step that saw it.
+  A pending card an ``authority.epoch`` stales moves AWAITING_APPROVAL to
+  NEEDS_REPLAN, caused by that bump; one still pending at its ``expires_ms``
+  does so on the bus clock at that instant, caused by its
+  ``approval.requested`` (S1-SYS-38; restrict-only, I6).
 """
 
 from __future__ import annotations
@@ -89,6 +93,9 @@ class Authority:
             self._closed(e)
         elif e.type == "authority.epoch":  # a waiting accept revalidates now
             self._move()
+            card = k.bb.private.pending_approval
+            if card is not None and card.authority_epoch < k.bb.epoch:
+                self.move("approval_stale", e.event_id)  # AWAITING_APPROVAL only
         elif e.type == "slow.step.completed":
             self._completed(e)
         elif e.type == "f2s.msg" and p["type"] == "REVOKE":
@@ -97,6 +104,8 @@ class Authority:
         elif e.type in ("approval.requested", "mandate.proposed"):
             self._asked[str(p.get("approval_id") or p["mandate_id"])] = e.event_id
             self._sim(e)
+            if e.type == "approval.requested":
+                k.spawn(self._expires(e))
         elif e.type == "rep.policy" and p["intent"] in _OFFERED:
             self._trigger(e)
         elif e.type == "status.changed" and p["status"] == CaseStatus.NEEDS_REPLAN:
@@ -232,6 +241,16 @@ class Authority:
         k.emit("authority.epoch", "kernel", bump, [decided])
         if post.decision == "granted":
             self.move("mandate_granted", decided)
+
+    async def _expires(self, asked: Event) -> None:
+        """The card still pending at its ``expires_ms`` (bus clock) replans
+        the case, caused by the card: one timer, derivable from the log."""
+        k, card = self._k, ApprovalCard.model_validate(asked.payload)
+        while (left := card.expires_ms - k.now()) > 0:
+            await k.sleep(left / 1000)
+        pending = k.bb.private.pending_approval
+        if pending is not None and pending.approval_id == card.approval_id:
+            self.move("approval_expired", asked.event_id)  # AWAITING_APPROVAL only
 
     # The sim approver and the SimUser's triggers (#143).
     def _sim(self, e: Event) -> None:

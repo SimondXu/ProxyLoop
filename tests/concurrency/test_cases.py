@@ -383,9 +383,10 @@ def test_8_an_epoch_bump_between_the_post_and_the_decide_grants_nothing(
 
 
 def test_guard_runs_at_the_bus_clocks_now(tmp_path: Path) -> None:
-    """A card and then a grant expire with no event since: Guard, reading
-    ``bb.t_ms``, must see the clock's now, or it would decide on a stale board
-    and the fold would then reject (raise on) what it emitted (N-c)."""
+    """A grant expires with no event since: Guard, reading ``bb.t_ms``, must
+    see the clock's now, or it would decide on a stale board and the fold would
+    then reject (raise on) what it emitted (N-c). A pending card's expiry is
+    itself an event since S1-SYS-38 (the case replans); a post is refused."""
 
     async def case() -> None:
         sim = Sim(tmp_path)
@@ -393,7 +394,8 @@ def test_guard_runs_at_the_bus_clocks_now(tmp_path: Path) -> None:
         await sim.offer()
         card = sim.card()
         await sim.vt.run_for(card.expires_ms - sim.vt.monotonic_ms() + 1)
-        assert sim.bb.t_ms < card.expires_ms  # no event since: the fold is stale
+        (expired,) = sim.of("status.changed", status="NEEDS_REPLAN")
+        assert expired.t_ms == card.expires_ms  # S1-SYS-38: the card replans
         sim.post(card)
         await sim.vt.run_for(100)
         (denied,) = sim.of("action.denied", intent="approval.post")

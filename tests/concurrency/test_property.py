@@ -21,7 +21,10 @@ accepts, stops, revokes, barge-ins, FastU latency, time) and the log must show:
 - the same while Slow declines or re-records the offer under an accept line in
   flight (revoked ``offer_closed`` / ``terms_changed``);
 - ``accept_revoked``/``accept_truncated`` only after a real ``speak.revoked`` /
-  a real cut delivery; ``seq`` dense.
+  a real cut delivery; ``seq`` dense;
+- AWAITING_APPROVAL → NEEDS_REPLAN only for a pending card that is stale (it
+  cites the ``authority.epoch`` past the card's epoch) or expired (it cites the
+  card's ``approval.requested``, at or after its ``expires_ms``) (S1-SYS-38).
 """
 
 from __future__ import annotations
@@ -46,7 +49,7 @@ from tests.concurrency.harness import (
 )
 from tests.concurrency.test_cases import Valve
 
-from proxyloop.contract.events import ApprovalPost
+from proxyloop.contract.events import ApprovalPost, Event
 from proxyloop.contract.state import Blackboard
 from proxyloop.core.fold import apply
 from proxyloop.guard.capability import CAP_TTL_MS, accept_in_flight, released_accept
@@ -302,6 +305,8 @@ def _check(sim: Sim) -> None:
                 c for c in why if c.type == "utt.delivered" and c.payload["interrupted"]
             ]
             assert real or e.payload["previous"] != "COMMIT_AUTHORIZED", e
+            if e.payload["previous"] == "AWAITING_APPROVAL":
+                _card_left(e, why, bb)
         bb = apply(bb, e)
     assert all(n == 1 for n in released.values()), f"accepts per terms: {released}"
     _partner_first(sim)
@@ -315,6 +320,19 @@ def _check(sim: Sim) -> None:
     assert not any(
         c.intent == "accept_offer" and not c.consumed for c in bb.capabilities.values()
     )
+
+
+def _card_left(e: Event, why: list[Event], bb: Blackboard) -> None:
+    """A stale or expired pending card, and nothing else, replans (S1-SYS-38)."""
+    card = bb.private.pending_approval
+    assert card is not None and len(why) == 1, e
+    (cause,) = why
+    if cause.type == "authority.epoch":
+        assert card.authority_epoch < bb.epoch, f"{e.event_id}: card not stale"
+    else:
+        assert cause.type == "approval.requested", e
+        assert cause.payload["approval_id"] == card.approval_id, e
+        assert e.t_ms >= card.expires_ms, f"{e.event_id}: card not expired"
 
 
 def _slow_saw_it(sim: Sim) -> None:
