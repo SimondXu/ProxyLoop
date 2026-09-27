@@ -51,9 +51,21 @@ from proxyloop.env import world
 from proxyloop.env.tasks.schema import Stop, Task
 from proxyloop.env.user.approver import Approver
 
-STOP_CUE = re.compile(
-    r"\b(?:stop|cancel|don['\u2019]t|do not|hold off|never ?mind|wait|no longer)\b"
+_NOT = r"(?:don['\u2019]t|do not)"
+STOP_CUE = re.compile(  # phrases, casefolded, whole words
+    r"\b(?:stop|cancel|hold off|never ?mind|no longer|forget it|let['\u2019]s not"
+    rf"|{_NOT} (?:accept|agree|sign|go ahead|proceed)|keep my (?:current )?plan)\b"
 )
+NEGATED = re.compile(rf"\b(?:{_NOT}|no need to|never|not)\s+$")  # "don't stop"
+
+
+def says_stop(text: str) -> bool:
+    """Whether ``text`` says a stop cue that no negation right before undoes."""
+
+    text = text.casefold()
+    return any(not NEGATED.search(text[: m.start()]) for m in STOP_CUE.finditer(text))
+
+
 TEMPERATURE = 0.7  # pinned: persona variety; the reveal check guards the facts
 SYSTEM = """You are {persona}
 You asked an assistant to do this for you: {goal}
@@ -111,7 +123,7 @@ def check_reply(
     if missing := sorted(change.keys() - out.revealed.keys()):
         raise world.Invalid(f"the mind change does not reveal {missing}")
     plain = stop is not None and stop.change is None
-    if plain and not STOP_CUE.search((out.text or "").casefold()):
+    if plain and not says_stop(out.text or ""):
         raise world.Invalid("the stop says no stop cue")
     if unknown := sorted(out.revealed.keys() - facts.keys()):
         raise world.Invalid(f"revealed unknown keys {unknown}")

@@ -15,7 +15,7 @@ from tests.env.cards import offer as _offer
 
 from proxyloop.env.tasks.loader import load_task
 from proxyloop.env.tasks.schema import Task
-from proxyloop.env.user.simuser import SimReply, SimUser
+from proxyloop.env.user.simuser import SimReply, SimUser, says_stop
 
 TASK = load_task("x-user-mind-change")  # a stop after the card
 HINT = TASK.stop.text_hint.strip() if TASK.stop else ""
@@ -165,3 +165,21 @@ def test_the_schema_ties_stop_gold_and_principal(edit: Edit, match: str) -> None
     edit(data)
     with pytest.raises(ValueError, match=match):
         Task.model_validate(data)
+
+
+@pytest.mark.parametrize(
+    ("text", "stop"),
+    [
+        ("Wait, what's the fee?", False),
+        ("Sure, go ahead, don't worry about it.", False),
+        ("Great, don't forget to ask about fees.", False),
+        ("Please don't stop, keep going!", False),
+        ("No need to stop yet.", False),
+        ("Actually, let's not do this.", True),
+        ("Forget it, I'll keep my plan.", True),
+        ("Please stop, don't accept anything.", True),
+        ("Don\N{RIGHT SINGLE QUOTATION MARK}t go ahead with it.", True),
+    ],
+)
+def test_a_stop_cue_is_a_phrase_and_not_negated(text: str, stop: bool) -> None:
+    assert says_stop(text) is stop
