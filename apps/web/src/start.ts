@@ -6,10 +6,11 @@ import type { Failed } from "./liveApi";
 import { isObject } from "./liveState";
 
 export type LaneKey = "fast_user" | "fast_cp" | "slow";
+/** Each lane's plain name (redesign §2.5) with its internal one, which stays visible. */
 export const START_LANES: { lane: LaneKey; title: string }[] = [
-  { lane: "fast_user", title: "Fast-U" },
-  { lane: "fast_cp", title: "Fast-C" },
-  { lane: "slow", title: "Slow" },
+  { lane: "fast_user", title: "Chat voice (Fast-U)" },
+  { lane: "fast_cp", title: "Phone voice (Fast-C)" },
+  { lane: "slow", title: "Planner (Slow)" },
 ];
 /** serve.cases ModelOption. */
 export type ModelOption = { id: string; lane: LaneKey; label: string; endpoint: string; model_id: string; default: boolean };
@@ -37,6 +38,16 @@ export function parseOffer(body: unknown): Offer | string {
 /** Each lane's default option id (exactly one per lane that has options). */
 export const defaults = (options: ModelOption[]): Record<string, string> =>
   Object.fromEntries(options.filter((o) => o.default).map((o) => [o.lane, o.id]));
+
+/**
+ * A task card's heading: the task_ref's family name made readable, nothing more
+ * ("x-out-of-envelope-approval@1" → "X out of envelope approval"). The card also
+ * shows the ref verbatim; titles and goals wait for the task-metadata API (P1).
+ */
+export function taskName(ref: string): string {
+  const words = ref.replace(/@.*$/, "").split(/[-_]+/).filter(Boolean).join(" ");
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : ref;
+}
 
 const WHY: Record<string, string> = {
   unknown_task: "the kernel does not know this task",
