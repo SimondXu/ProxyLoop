@@ -12,7 +12,7 @@ from tests.guard.build import CASE, offer
 from tests.support.manual_clock import ManualClock
 
 from proxyloop.contract.events import ApprovalPost
-from proxyloop.contract.state import OfferPublic
+from proxyloop.contract.state import Capability, OfferPublic
 from proxyloop.core.bus import Bus
 from proxyloop.guard.authorize import Denial, accept_offer, decide, request_approval
 from proxyloop.guard.mandate import proposal
@@ -27,6 +27,8 @@ class Session:
         self.last = self.bus.emit(
             "user.msg", "kernel", "agent", {"text": "go"}
         ).event_id
+        opened = {"previous": "INTAKE", "status": "IN_CALL"}  # accepts mint IN_CALL
+        self.emit("status.changed", "guard", opened)
 
     def emit(self, type_: str, actor: str, payload: Mapping[str, object]) -> str:
         self.last = self.bus.emit(type_, actor, "agent", payload, [self.last]).event_id
@@ -46,7 +48,8 @@ class Session:
             }
         )
         statuses = {s.field: "confirmed" for s in raw.slots}
-        update: dict[str, object] = {"offer_ref": "o1", "revision": raw.revision}
+        update: dict[str, object] = {"offer_ref": raw.offer_ref}
+        update["revision"] = raw.revision
         update |= {"slot_statuses": statuses, "terms_hash": offer_terms_hash(done)}
         self.emit("readback.updated", "guard", update)
 
@@ -71,8 +74,8 @@ class Session:
         payload = {"approval_id": card["approval_id"], "decision": decision, "by": "ui"}
         self.emit("approval.decided", "kernel", payload)
 
-    def accept(self) -> str:
-        effects = accept_offer(self.bus.bb, "o1", CASE)
+    def accept(self, ref: str = "o1") -> str:
+        effects = accept_offer(self.bus.bb, ref, CASE)
         assert not isinstance(effects, Denial), effects
         for kind, payload in effects:
             self.emit(kind, "guard", payload)
@@ -170,7 +173,6 @@ def test_6_a_release_passes_when_nothing_changed(tmp_path: Path) -> None:
 
 def test_7_the_status_machine_holds_in_the_fold(tmp_path: Path) -> None:
     s = Session(tmp_path)
-    s.emit("status.changed", "guard", {"previous": "INTAKE", "status": "IN_CALL"})
     s.emit("completion.decided", "guard", {"verdict": "ok", "reasons": []})
     with pytest.raises(ValueError, match="but the case is IN_CALL"):
         s.emit(
@@ -204,7 +206,6 @@ def test_7_the_status_machine_holds_in_the_fold(tmp_path: Path) -> None:
 def test_7_verified_no_deal_needs_no_released_accept(tmp_path: Path) -> None:
     s, cap_id = _queued(tmp_path)
     s.emit("speak.released", "kernel", {"lane": "cp", "cap_id": cap_id})
-    s.emit("status.changed", "guard", {"previous": "INTAKE", "status": "IN_CALL"})
     s.emit("completion.decided", "guard", {"verdict": "ok", "reasons": []})
     with pytest.raises(ValueError, match="of its kind"):
         s.emit(
@@ -288,24 +289,45 @@ def test_10_one_released_accept_per_terms(tmp_path: Path) -> None:
     assert accept_offer(s.bus.bb, "o1", CASE) == Denial("already_accepted")
 
 
-def test_10_the_fold_releases_one_accept_per_terms(tmp_path: Path) -> None:
-    s, cap_a = _queued(tmp_path)
+def _hand_minted(cap: Capability, **changes: object) -> dict[str, object]:
+    """An ``action.authorized`` copying ``cap`` under a new id: a buggy emitter,
+    which the fold must refuse on its own."""
+    new = {"cap_id": "cap-x", "business_action_id": "x", "consumed": False}
+    copy = cap.model_copy(update=new | changes)
+    return {"intent": "accept_offer", "capability": copy.model_dump(mode="json")}
+
+
+def test_10_guard_holds_one_accept_in_flight(tmp_path: Path) -> None:
+    s, _ = _queued(tmp_path)
     _second_grant(s)
-    cap_b = s.accept()  # B's capability, queued while A's is still unreleased
-    s.emit("speak.released", "kernel", {"lane": "cp", "cap_id": cap_a})
-    with pytest.raises(ValueError, match="already released"):
-        s.emit("speak.released", "kernel", {"lane": "cp", "cap_id": cap_b})
-    assert not s.bus.bb.capabilities[cap_b].consumed
+    assert accept_offer(s.bus.bb, "o1", CASE) == Denial("accept_in_flight")
 
 
 def test_10_the_fold_mints_no_accept_after_one_was_released(tmp_path: Path) -> None:
     s, cap_a = _queued(tmp_path)
-    _second_grant(s)
-    effects = accept_offer(s.bus.bb, "o1", CASE)  # minted before A's release...
-    assert not isinstance(effects, Denial)
+    cap = s.bus.bb.capabilities[cap_a]
     s.emit("speak.released", "kernel", {"lane": "cp", "cap_id": cap_a})
-    with pytest.raises(ValueError, match="already released"):  # ...emitted after
-        s.emit(effects[0][0], "guard", effects[0][1])
+    with pytest.raises(ValueError, match="already released"):
+        s.emit("action.authorized", "guard", _hand_minted(cap))
+
+
+def test_12_the_fold_holds_one_accept_in_flight(tmp_path: Path) -> None:
+    s, cap_a = _queued(tmp_path)
+    cap = s.bus.bb.capabilities[cap_a]
+    with pytest.raises(ValueError, match="in flight"):
+        s.emit("action.authorized", "guard", _hand_minted(cap))
+    s.emit("speak.revoked", "kernel", {"reason": "fence", "cap_id": cap_a})
+    s.emit("action.authorized", "guard", _hand_minted(cap))  # none in flight
+
+
+def test_12_the_fold_mints_no_expired_capability(tmp_path: Path) -> None:
+    s, cap_a = _queued(tmp_path)
+    cap = s.bus.bb.capabilities[cap_a]
+    s.emit("speak.revoked", "kernel", {"reason": "fence", "cap_id": cap_a})
+    s.clock.advance(1)  # the next event's time is past the expiry below
+    expired = _hand_minted(cap, expires_ms=s.clock.monotonic_ms())
+    with pytest.raises(ValueError, match="expired"):
+        s.emit("action.authorized", "guard", expired)
 
 
 def _move(s: Session, *triggers: str) -> None:
@@ -315,6 +337,16 @@ def _move(s: Session, *triggers: str) -> None:
         s.emit("status.changed", "guard", change)
 
 
+def _mandated(s: Session) -> None:
+    kind, m = proposal(s.bus.bb, "m1", max_monthly_price_minor=9000)
+    s.emit(kind, "guard", m)
+    post: dict[str, object] = {"subject": "mandate", "subject_id": "m1"}
+    post |= {"decision": "granted", "subject_hash": m["mandate_hash"]}
+    s.emit("approval.post", "ui", post | {"authority_epoch": 0})
+    decided = {"mandate_id": "m1", "mandate_hash": m["mandate_hash"], "by": "ui"}
+    s.emit("mandate.decided", "kernel", decided | {"decision": "granted"})
+
+
 def test_11_a_truncated_accept_is_retried_only_on_a_new_revision(
     tmp_path: Path,
 ) -> None:
@@ -322,7 +354,6 @@ def test_11_a_truncated_accept_is_retried_only_on_a_new_revision(
     consumed its capability, so these terms stay accepted; a new revision
     (new terms_hash) and a new grant may mint again."""
     s = Session(tmp_path)
-    _move(s, "call_opened")
     s.confirmed()
     card = s.card()
     s.post(card)
@@ -344,3 +375,40 @@ def test_11_a_truncated_accept_is_retried_only_on_a_new_revision(
     cap_2 = s.accept()
     s.emit("speak.released", "kernel", {"lane": "cp", "cap_id": cap_2})
     assert s.bus.bb.capabilities[cap_2].consumed
+
+
+def test_13_a_second_offer_is_not_accepted_after_a_commit(tmp_path: Path) -> None:
+    """Re-review probe, case A: a mandate covers o1 and o2; o1 is accepted and
+    released; o2 may not mint in COMMIT_AUTHORIZED."""
+    s = Session(tmp_path)
+    _mandated(s)
+    s.confirmed(offer("o1"))
+    s.confirmed(offer("o2", monthly="6500"))
+    cap = s.accept("o1")
+    _move(s, "accept_authorized")
+    s.emit("speak.released", "kernel", {"lane": "cp", "cap_id": cap})
+    assert accept_offer(s.bus.bb, "o2", CASE) == Denial("not_in_call")
+
+
+def test_13_a_retry_after_a_released_accept_needs_a_new_approval(
+    tmp_path: Path,
+) -> None:
+    """Re-review probe, case B: under a mandate, o1 r1 is accepted and released;
+    r2 (same prices) is confirmed. In COMMIT_AUTHORIZED nothing mints; after a
+    replan the mandate alone no longer grants; a new approval does."""
+    s = Session(tmp_path)
+    _mandated(s)
+    s.confirmed()
+    cap = s.accept()
+    _move(s, "accept_authorized")
+    s.emit("speak.released", "kernel", {"lane": "cp", "cap_id": cap})
+    s.confirmed(offer().model_copy(update={"revision": 2}))
+    assert accept_offer(s.bus.bb, "o1", CASE) == Denial("not_in_call")
+    _move(s, "accept_truncated", "replan")  # NEEDS_REPLAN, then IN_CALL
+    assert accept_offer(s.bus.bb, "o1", CASE) == Denial("not_authorized")
+    card = s.card()
+    s.post(card)
+    s.decided(card)
+    again = s.accept()
+    s.emit("speak.released", "kernel", {"lane": "cp", "cap_id": again})
+    assert s.bus.bb.capabilities[again].consumed

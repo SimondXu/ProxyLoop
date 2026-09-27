@@ -21,6 +21,7 @@ from proxyloop.contract.state import (
 )
 from proxyloop.guard.capability import (
     CAP_TTL_MS,
+    accept_in_flight,
     business_action_id,
     mint,
     released_accept,
@@ -63,6 +64,7 @@ REASONS: Mapping[str, tuple[str, ...]] = {
     "accept_offer": (
         "already_committed",
         "case_closed",
+        "not_in_call",
         *_OFFER,
         "already_accepted",
         "approval_denied",
@@ -73,6 +75,7 @@ REASONS: Mapping[str, tuple[str, ...]] = {
         "outside_mandate",
         "not_authorized",
         "already_authorized",
+        "accept_in_flight",
     ),
     "decline_offer": ("no_such_offer", "offer_not_open"),
     "share_fact": ("protected", "not_shareable"),
@@ -173,8 +176,8 @@ def _grant(
     if any(a.decision == "denied" for a in now):
         return None, "approval_denied"
     m, why = bb.private.mandate, mandate_gap(bb, terms)
-    if m is not None and why is None:
-        return m, ""
+    if m is not None and why is None and not released_accept(bb):
+        return m, ""  # after any released accept, only a new approval grants
     live = [a for a in now if a.expires_ms is not None and a.expires_ms > bb.t_ms]
     if live:  # all granted
         return live[0], ""
@@ -192,6 +195,8 @@ def accept_offer(
         return Denial("already_committed")
     if bb.public.status in TERMINAL:
         return Denial("case_closed")
+    if bb.public.status is not CaseStatus.IN_CALL:  # §9.5: accept_authorized
+        return Denial("not_in_call")  # leaves IN_CALL only; NEEDS_REPLAN replans
     got = _open_offer(bb, ref)
     if isinstance(got, Denial):
         return got
@@ -206,6 +211,8 @@ def accept_offer(
     bid = business_action_id(case.case_id, "accept_offer", ref, offer.revision, th, by)
     if any(c.business_action_id == bid for c in bb.capabilities.values()):
         return Denial("already_authorized")
+    if accept_in_flight(bb):
+        return Denial("accept_in_flight")
     # min(grant expiry, offer expiry, TTL); a live approval's is never None
     until = [grant.expires_ms, offer.expires_ms, bb.t_ms + CAP_TTL_MS]
     cap = mint(bb, bid, "accept_offer", th, min(t for t in until if t is not None))

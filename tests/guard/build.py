@@ -7,6 +7,7 @@ from proxyloop.contract.state import (
     ApprovalCard,
     Blackboard,
     Capability,
+    CaseStatus,
     ChannelState,
     Fact,
     Fence,
@@ -146,13 +147,14 @@ def board(
     caps: tuple[Capability, ...] = (),
     facts: tuple[Fact, ...] = (),
     cp: tuple[Line, ...] = (),
+    status: CaseStatus = CaseStatus.IN_CALL,  # the only status that mints an accept
 ) -> Blackboard:
     return Blackboard(
         seq=seq,
         t_ms=t_ms,
         epoch=epoch,
         fences=fences,
-        public=PublicState(offers={o.offer_ref: o for o in offers}),
+        public=PublicState(offers={o.offer_ref: o for o in offers}, status=status),
         private=PrivateState(
             mandate=mandate,
             pending_approval=pending,

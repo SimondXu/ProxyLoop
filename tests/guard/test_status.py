@@ -73,7 +73,7 @@ def test_illegal_and_terminal_moves_are_refused() -> None:
 
 
 def test_status_change_payload() -> None:
-    bb = board()
+    bb = board(status=CaseStatus.INTAKE)
     assert status_change(bb, "call_opened") == {
         "previous": "INTAKE",
         "status": "IN_CALL",

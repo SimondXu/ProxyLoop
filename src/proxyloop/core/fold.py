@@ -45,7 +45,7 @@ from proxyloop.contract.state import (
     PublicFact,
     ReadbackSlot,
 )
-from proxyloop.guard.capability import released_accept
+from proxyloop.guard.capability import accept_in_flight, released_accept
 from proxyloop.guard.status import TERMINAL, TRANSITIONS
 
 Reducer = Callable[[Blackboard, Event], Blackboard]
@@ -306,8 +306,12 @@ def _authorized(bb: Blackboard, e: Event) -> Blackboard:
         cap.cap_id in bb.capabilities
     ):
         raise ValueError(f"capability {cap.cap_id}: not a new one of this epoch")
+    if cap.expires_ms <= e.t_ms:
+        raise ValueError(f"capability {cap.cap_id}: expired when minted")
     if a.intent == "accept_offer" and released_accept(bb, cap.terms_hash):
         raise ValueError(f"capability {cap.cap_id}: an accept was already released")
+    if a.intent == "accept_offer" and accept_in_flight(bb):  # one per case
+        raise ValueError(f"capability {cap.cap_id}: another accept is in flight")
     offers = bb.public.offers.items()
     ref = next((r for r, o in offers if o.terms_hash == cap.terms_hash), None)
     if ref is None and a.intent == "accept_offer":

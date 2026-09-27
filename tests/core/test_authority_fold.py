@@ -56,6 +56,7 @@ def _confirmed_offer(log: Log) -> None:
     raw = offer()
     recorded = raw.model_dump(mode="json", include={"offer_ref", "revision", "slots"})
     log.emit("user.msg", {"text": "go"})
+    log.emit("status.changed", {"previous": "INTAKE", "status": "IN_CALL"})
     log.emit("offer.recorded", recorded | {"terms_hash": None})
     statuses = {s.field: "confirmed" for s in raw.slots}
     done = raw.model_copy(

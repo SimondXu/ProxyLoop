@@ -36,12 +36,21 @@ def mint(
     )
 
 
-def released_accept(bb: Blackboard, terms_hash: str | None) -> bool:
-    """An accept of these terms (one offer revision) was released: at most one
-    ever is (I6); a retry needs a new revision, so new terms and a new grant."""
+def released_accept(bb: Blackboard, terms_hash: str | None = None) -> bool:
+    """An accept of these terms (one offer revision), or with ``None`` of any
+    terms, was released: at most one ever is per revision (I6); a retry needs a
+    new revision, so new terms, and a new approval."""
     return any(
-        c.intent == "accept_offer" and c.consumed and c.terms_hash == terms_hash
+        c.intent == "accept_offer" and c.consumed and terms_hash in (None, c.terms_hash)
         for c in bb.capabilities.values()
+    )
+
+
+def accept_in_flight(bb: Blackboard) -> bool:
+    """An accept capability neither released nor revoked (revoked ones leave the
+    blackboard): one accept in flight per case."""
+    return any(
+        c.intent == "accept_offer" and not c.consumed for c in bb.capabilities.values()
     )
 
 

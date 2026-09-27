@@ -154,6 +154,13 @@ CASES: list[tuple[str, str, Rule, Blackboard]] = [
     ),
     ("accept_offer", "already_committed", _accept(), _status(CaseStatus.COMMITTED)),
     ("accept_offer", "case_closed", _accept(), _status(CaseStatus.VERIFIED_NO_DEAL)),
+    ("accept_offer", "not_in_call", _accept(), _status(CaseStatus.NEEDS_REPLAN)),
+    (
+        "accept_offer",
+        "accept_in_flight",
+        _accept(),
+        board(O1, approvals=(_GOOD,), caps=(_cap("other"),)),
+    ),
     ("accept_offer", "not_authorized", _accept(), board(O1)),
     (
         "accept_offer",
@@ -470,17 +477,35 @@ def test_a_mandate_grant_ignores_approval_expiry() -> None:
 
 
 @pytest.mark.parametrize("status", list(CaseStatus))
-def test_no_accept_is_minted_once_committed_or_closed(status: CaseStatus) -> None:
+def test_only_in_call_mints_an_accept(status: CaseStatus) -> None:
+    """ARCHITECTURE §9.5: accept_authorized leaves IN_CALL only; NEEDS_REPLAN
+    replans to IN_CALL first."""
     got = accept_offer(_status(status), "o1", CASE)
     if status in (CaseStatus.COMMITTED, CaseStatus.EVIDENCE_PENDING):
         assert got == Denial("already_committed")
     elif status in TERMINAL:
         assert got == Denial("case_closed")
-    else:
+    elif status is CaseStatus.IN_CALL:
         assert not isinstance(got, Denial), got
+    else:
+        assert got == Denial("not_in_call")
 
 
-def test_an_unreleased_capability_of_these_terms_does_not_block() -> None:
-    """Only a released (consumed) accept blocks; a queued one may be revoked."""
+def test_one_accept_in_flight_per_case() -> None:
+    """A queued (unreleased, unrevoked) accept of any offer blocks another."""
     bb = board(O1, approvals=(_GOOD,), caps=(_cap("other"),))
-    assert not isinstance(accept_offer(bb, "o1", CASE), Denial)
+    assert accept_offer(bb, "o1", CASE) == Denial("accept_in_flight")
+
+
+def test_after_a_released_accept_a_mandate_no_longer_grants() -> None:
+    """A retry needs a new revision and a new approval (main root decision)."""
+    o2 = confirm(offer(monthly="6500").model_copy(update={"revision": 2}))
+    done = board(o2, mandate=mandate(), caps=(_cap("r1", consumed=True),))
+    assert accept_offer(done, "o1", CASE) == Denial("not_authorized")
+    approved = board(
+        o2,
+        mandate=mandate(),
+        caps=(_cap("r1", consumed=True),),
+        approvals=(approval(o2),),
+    )
+    assert not isinstance(accept_offer(approved, "o1", CASE), Denial)

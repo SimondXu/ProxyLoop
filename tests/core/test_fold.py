@@ -283,10 +283,13 @@ def _flow(bus: Bus, name: str) -> None:
                 )
 
 
-def _emit_all(path: Path, steps: list[tuple[Step, int]]) -> Bus:
+def _emit_all(path: Path, steps: list[tuple[Step, int]], in_call: bool = False) -> Bus:
     clock = ManualClock()
     bus = Bus(path, RUN, clock)
     bus.emit("session.started", "kernel", "ops", {k: "" for k in _STARTED})
+    if in_call:  # only IN_CALL mints an accept (§9.5)
+        opened = {"previous": "INTAKE", "status": "IN_CALL"}
+        bus.emit("status.changed", "guard", "agent", opened, [bus.events[-1].event_id])
     for (type_, actor, stream, payload), advance in steps:
         clock.advance(advance)
         if type_ == "flow":
@@ -344,7 +347,7 @@ def _authority_steps() -> st.SearchStrategy[Step]:
     st.lists(st.tuples(_steps(), st.integers(0, 50)), max_size=25), st.integers(0, 26)
 )
 def test_fold_is_deterministic(steps: list[tuple[Step, int]], cut: int) -> None:
-    _deterministic(steps, cut)
+    _deterministic(steps, cut, in_call=False)
 
 
 @given(
@@ -354,12 +357,12 @@ def test_fold_is_deterministic(steps: list[tuple[Step, int]], cut: int) -> None:
 def test_the_authority_fold_is_deterministic(
     steps: list[tuple[Step, int]], cut: int
 ) -> None:
-    _deterministic(steps, cut)
+    _deterministic(steps, cut, in_call=True)
 
 
-def _deterministic(steps: list[tuple[Step, int]], cut: int) -> None:
+def _deterministic(steps: list[tuple[Step, int]], cut: int, in_call: bool) -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        bus = _emit_all(Path(tmp) / EVENTS, steps)
+        bus = _emit_all(Path(tmp) / EVENTS, steps, in_call)
         bus.close()
         events = bus.events
         lines = (Path(tmp) / EVENTS).read_text("utf-8").splitlines()
