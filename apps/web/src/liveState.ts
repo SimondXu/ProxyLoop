@@ -1,5 +1,5 @@
 // Pure pieces of the live views: the WebSocket streams (/ws/live: one
-// events.jsonl line per frame; /ws/rep: rebuilt frames, rep.ts), the per-lane
+// events.jsonl line per frame; /ws/rep: rebuilt frames with their own seq, rep.ts), the per-lane
 // model options, and which sent messages have not
 // yet come back as events. The UI shows only what events say.
 import { CLOSE } from "./liveApi";
@@ -35,19 +35,16 @@ export const parseEvent = (text: string): Ev | string => {
 };
 
 /**
- * Accept one parsed frame (or a parse error). A seq below `next` is a duplicate
- * (a reconnect overlap) and is dropped. On a dense stream (/ws/live) a seq above
- * `next` is a gap: the stream stops with a visible error, never papered over.
- * The rep's filtered stream keeps original seqs and skips by design, so it only
- * has to increase.
+ * Accept one parsed frame (or a parse error). Both streams are dense from 0
+ * (/ws/live: the event seq; /ws/rep: the rep stream's own seq). A seq below
+ * `next` is a duplicate (a reconnect overlap) and is dropped; a seq above it is
+ * a gap: the stream stops with a visible error, never papered over.
  */
-export function acceptFrame<T extends Framed>(s: Stream<T>, frame: T | string, dense: boolean): Stream<T> {
+export function acceptFrame<T extends Framed>(s: Stream<T>, frame: T | string): Stream<T> {
   if (s.phase === "error") return s;
   if (typeof frame === "string") return { ...s, phase: "error", message: `bad frame after seq ${s.next - 1}: ${frame}` };
   if (frame.seq < s.next) return s;
-  if (dense && frame.seq > s.next) {
-    return { ...s, phase: "error", message: `seq gap: expected ${s.next}, got ${frame.seq}` };
-  }
+  if (frame.seq > s.next) return { ...s, phase: "error", message: `seq gap: expected ${s.next}, got ${frame.seq}` };
   return { ...s, events: [...s.events, frame], next: frame.seq + 1 };
 }
 

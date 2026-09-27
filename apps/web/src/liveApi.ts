@@ -33,7 +33,8 @@ export const paths = {
   liveSession: (caseId: string) => `/live/${enc(caseId)}`,
   repSession: (caseId: string) => `/rep/${enc(caseId)}`,
   liveSocket: (runId: string, fromSeq: number) => `/ws/live/${enc(runId)}?from_seq=${fromSeq}`,
-  // The rep's own server-filtered stream of rebuilt frames; the rep page never opens /ws/live.
+  // The rep's own server-filtered stream of rebuilt frames, numbered 0, 1, 2, … on
+  // that stream (from_seq is a rep seq); the rep page never opens /ws/live.
   repSocket: (caseId: string, fromSeq: number) => `/ws/rep/${enc(caseId)}?from_seq=${fromSeq}`,
   approval: (caseId: string, approvalId: string) => `${cases(caseId)}/approvals/${enc(approvalId)}`,
   messages: (caseId: string) => `${cases(caseId)}/messages`,

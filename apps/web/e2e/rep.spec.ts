@@ -14,14 +14,14 @@ test("rep page: its own stream, only what the rep can hear, and it sends a rep u
   );
   const ws = await connected;
   const frame = repFrames();
-  // Rebuilt frames with original, skipping seqs. Private types pushed on the rep
-  // stream (even claiming the cp lane) must still not show.
-  ws.send(frame("chan.opened", { lane: "cp" }, 1));
+  // Rebuilt frames, dense rep seqs. Private types pushed on the rep stream (even
+  // claiming the cp lane) must still not show.
+  ws.send(frame("chan.opened", { lane: "cp" }));
   ws.send(frame("user.msg", { lane: "cp", text: PRIVATE[1] }));
   ws.send(frame("summary.updated", { lane: "cp", scope: "private", text: PRIVATE[0] }));
   ws.send(frame("approval.requested", { lane: "cp", readback_text: PRIVATE[2] }));
   ws.send(frame("f2s.msg", { lane: "cp", text: PRIVATE[0] }));
-  ws.send(frame("fast.sentence", { lane: "cp", text: "Hi, calling about the bill. generated but cut" }, 2));
+  ws.send(frame("fast.sentence", { lane: "cp", text: "Hi, calling about the bill. generated but cut" }));
   ws.send(
     frame("utt.delivered", {
       lane: "cp",
@@ -30,7 +30,7 @@ test("rep page: its own stream, only what the rep can hear, and it sends a rep u
       interrupted: true,
     }),
   );
-  ws.send(frame("utt.final", { lane: "cp", speaker: "partner", text: "We can do $75." }, 3));
+  ws.send(frame("utt.final", { lane: "cp", speaker: "partner", text: "We can do $75." }));
 
   const transcript = page.getByRole("list", { name: "Call transcript" });
   await expect(transcript.getByRole("listitem")).toHaveText([
@@ -49,7 +49,7 @@ test("rep page: its own stream, only what the rep can hear, and it sends a rep u
   expect(posts).toEqual([
     { method: "POST", path: `/api/cases/${RUN}/rep`, body: { text: "Best I can do is $72." }, csrf: REP_CSRF },
   ]);
-  ws.send(frame("utt.final", { lane: "cp", speaker: "partner", text: "Best I can do is $72." }, 4));
+  ws.send(frame("utt.final", { lane: "cp", speaker: "partner", text: "Best I can do is $72." }));
   await expect(transcript.getByRole("listitem").last()).toHaveText("You: Best I can do is $72.");
   await expect(page.getByRole("list", { name: "Pending" })).toHaveCount(0);
   await shot(page, "rep-page");
@@ -68,4 +68,15 @@ test("rep page: a 4403 close says not authorised, names /rep/{id}, and does not 
   await expect(page.getByRole("button", { name: /Reconnect/ })).toHaveCount(0);
   await page.waitForTimeout(300);
   expect(urls).toHaveLength(1);
+});
+
+test("rep page: a gap in the rep stream's seq stops it with a visible error", async ({ page }) => {
+  const { connected } = await mockSockets(page);
+  await page.goto(`/?rep=${RUN}`);
+  const ws = await connected;
+  const frame = repFrames();
+  ws.send(frame("chan.opened", { lane: "cp" }));
+  ws.send(frame("utt.final", { lane: "cp", speaker: "partner", text: "after a gap" }, 1));
+  await expect(page.getByRole("alert")).toHaveText("Stream stopped: seq gap: expected 1, got 2");
+  await expect(page.getByRole("list", { name: "Call transcript" })).not.toContainText("after a gap");
 });

@@ -6,7 +6,7 @@ export const RUN = "run-live-1";
 export const CSRF = "csrf-e2e-token";
 export const REP_CSRF = "rep-csrf-e2e-token";
 
-/** An event factory with its own seq counter; `skip` leaves seqs out (the rep's filtered stream). */
+/** An event factory with its own seq counter; `skip` leaves seqs out to fake a gap. */
 export function events(runId = RUN) {
   let seq = 0;
   return (type: string, actor: string, payload: Record<string, unknown> = {}, opts: { stream?: string; skip?: number } = {}) => {
@@ -30,7 +30,7 @@ export function events(runId = RUN) {
   };
 }
 
-/** /ws/rep frames as S1-SYS-10 rebuilds them: {seq (original), t_ms, type, payload}; seqs skip. */
+/** /ws/rep frames as S1-SYS-10 rebuilds them: {seq (the rep stream's own, dense), t_ms, type, payload}; `skip` fakes a gap. */
 export function repFrames() {
   let seq = 0;
   return (type: string, payload: Record<string, unknown>, skip = 0) => {

@@ -3,8 +3,9 @@ import { acceptFrame, closed, start, type Framed, type Stream } from "./liveStat
 import { entry, paths, socketUrl, type Role } from "./liveApi";
 
 /**
- * Frames over /ws/live (the user's shell: events, dense) or /ws/rep (the rep
- * page: rebuilt frames, original seqs). `parse` must be a module-level function.
+ * Frames over /ws/live (the user's shell: events) or /ws/rep (the rep page:
+ * rebuilt frames with the rep stream's own seq); both are dense from 0.
+ * `parse` must be a module-level function.
  * A reconnect is the user's click and resumes at the last seq + 1; nothing
  * reconnects or retries on its own.
  */
@@ -24,7 +25,7 @@ export function useEventStream<T extends Framed>(role: Role, id: string, parse: 
     ws.onopen = () => mine && set({ ...current.current, phase: "open", message: "" });
     ws.onmessage = (m: MessageEvent) => {
       if (!mine) return;
-      const next = acceptFrame(current.current, parse(String(m.data)), role === "live");
+      const next = acceptFrame(current.current, parse(String(m.data)));
       set(next);
       if (next.phase === "error") ws.close();
     };

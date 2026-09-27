@@ -6,8 +6,9 @@
 import { parseFrame } from "./liveState";
 
 /**
- * A /ws/rep frame, rebuilt by the server: {seq (the original seq), t_ms, type,
- * payload (allow-listed fields)}, with no actor or stream. A full event fits
+ * A /ws/rep frame, rebuilt by the server: {seq (the rep stream's own dense seq,
+ * not the event's), t_ms (the event's), type, payload (allow-listed fields)},
+ * with no actor or stream. A full event fits
  * this shape too, and then its actor and stream must match as well.
  */
 export type RepFrame = {

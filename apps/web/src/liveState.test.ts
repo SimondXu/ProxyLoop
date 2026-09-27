@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { acceptFrame, closed, laneModels, parseEvent, START, unechoed, type Stream } from "./liveState";
+import { acceptFrame, closed, laneModels, parseEvent, start, START, unechoed, type Stream } from "./liveState";
 import { CLOSE, csrfToken, entry, pageMode, paths, postApproval, postRep } from "./liveApi";
 import type { Ev } from "./replay";
+import { parseRepFrame, type RepFrame } from "./rep";
 
 const line = (seq: number, type = "fast.sentence") => JSON.stringify({ seq, type, payload: {} });
-const feed = (frames: string[], dense = true) =>
-  frames.reduce((s: Stream, f) => acceptFrame(s, parseEvent(f), dense), START);
+const feed = (frames: string[]) => frames.reduce((s: Stream, f) => acceptFrame(s, parseEvent(f)), START);
 
 describe("the live event stream", () => {
   it("appends dense frames and drops duplicates from a reconnect overlap", () => {
@@ -23,10 +23,12 @@ describe("the live event stream", () => {
     expect(feed([JSON.stringify({ seq: 0, type: "user.msg" })]).message).toMatch(/no seq, type or payload$/);
   });
 
-  it("lets the rep's filtered stream skip seqs, but never go back", () => {
-    const s = feed([line(3), line(9), line(5)], false);
-    expect(s.events.map((e) => e.seq)).toEqual([3, 9]);
-    expect(s.phase).toBe("connecting");
+  it("holds the rep stream to the same dense seq: duplicates dropped, a gap stops it", () => {
+    const rep = (seqs: number[]) =>
+      seqs.reduce((s: Stream<RepFrame>, seq) => acceptFrame(s, parseRepFrame(line(seq, "utt.final"))), start<RepFrame>());
+    expect(rep([0, 1, 1, 2]).events.map((e) => e.seq)).toEqual([0, 1, 2]);
+    expect(rep([0, 2])).toMatchObject({ phase: "error", message: "seq gap: expected 1, got 2" });
+    expect(rep([3]).phase).toBe("error");
   });
 
   it("reads the close codes and shows the reason", () => {
