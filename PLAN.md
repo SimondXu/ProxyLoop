@@ -1,6 +1,6 @@
 # PLAN.md: the single state file
 
-**Current:** S0 in progress (the user gave the go on 2026-09-26). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01, S0-SYS-02 (#115), S0-ROOT-07 (#114), S0-CON-01 (#116), S0-MOD-01 (#113, provisional: `serve-attest-local` pending the user's go), S0-ROOT-08 (#117), S0-SYS-03 (#118), S0-SYS-04 (#120), S0-SYS-05 (#121), S0-MOD-02 (#119), S0-ROOT-09 (#122), S0-SYS-06 (#123), S0-ROOT-10 (#127), S0-ROOT-11 (#128), S0-SYS-08 (#130), S0-SYS-07 (#133). **In progress:** S0-ROOT-05 (merge point 1): the re-run on S0-SYS-07/08 is done; a follow-up S0-SYS-08 PR (#138) separates the identity and timer strike counters, then the smokes are re-run; no bundle is committed yet; S0-ROOT-13 (this PR). **Blocked:** S0-ROOT-12 (held for the user: auto-mode refused the probe-script edit; #129 CI red). **In flight** (merged only at the gate, §0.1): #124, #125, #126, #131, #132, #134, #135, #136, S1-SYS-10 (#137). **Last closed stage:** none. **Contract version:** v1 (ADR-0004; fingerprints `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`, `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490`).
+**Current:** S0 in progress (the user gave the go on 2026-09-26). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01, S0-SYS-02 (#115), S0-ROOT-07 (#114), S0-CON-01 (#116), S0-MOD-01 (#113, provisional: `serve-attest-local` pending the user's go), S0-ROOT-08 (#117), S0-SYS-03 (#118), S0-SYS-04 (#120), S0-SYS-05 (#121), S0-MOD-02 (#119), S0-ROOT-09 (#122), S0-SYS-06 (#123), S0-ROOT-10 (#127), S0-ROOT-11 (#128), S0-SYS-08 (#130), S0-SYS-07 (#133). **In progress:** S0-ROOT-05 (merge point 1): the re-run on S0-SYS-07/08 is done; a follow-up S0-SYS-08 PR (#138) separated the identity and timer strike counters, and the runs after it still ended `abandoned`; a second follow-up (S0-SYS-07: the identity hold flow and the cancelled-stream record) comes before the next re-run; no bundle is committed yet; S0-ROOT-13 (this PR). **Blocked:** S0-ROOT-12 (held for the user: auto-mode refused the probe-script edit; #129 CI red). **In flight** (merged only at the gate, §0.1): #124, #125, #126, #131, #132, #134, #135, #136, S1-SYS-10 (#137). **Last closed stage:** none. **Contract version:** v1 (ADR-0004; fingerprints `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`, `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490`).
 
 **Sessions:** a main root (business) with up to five lane-lead sub-sessions (L-CORE and the four product lanes P-WEB, P-API, P-OBS, P-TOOLS), plus a top-level model root (ML) for the MOD lane, run in parallel (user decision 2026-09-26; §0.1, §0.2, `CLAUDE.md`).
 
@@ -95,8 +95,8 @@ Legend:
 
 ### 0.6 Tripwires (stop and decide)
 - Under §0.5a the main root may adjust only the **numeric caps** (PR counts, code-size limits) and records each change under "Decisions changed". The mechanism tripwires — contract discipline, red signals, no new reality, fallback bans — are never waived by a session.
-- **PR count:** S0 > 20 PRs, S1 > 26, S2 > 10, S3 > 10. Root evidence PRs and ROOT docs/harness PRs are excluded (root decision under §0.5a, 2026-09-26).
-  - S0: 16 → 18 (user decision 2026-09-26); 18 → 19, because S0-ROOT-05's fix work splits into S0-SYS-07 and S0-SYS-08 on disjoint paths (root decision under §0.5a, 2026-09-26); 19 → 20 for the S0-SYS-08 follow-up PR that separates identity strikes from timer strikes (root decision under §0.5a, 2026-09-27).
+- **PR count:** S0 > 21 PRs, S1 > 26, S2 > 10, S3 > 10. Root evidence PRs and ROOT docs/harness PRs are excluded (root decision under §0.5a, 2026-09-26).
+  - S0: 16 → 18 (user decision 2026-09-26); 18 → 19, because S0-ROOT-05's fix work splits into S0-SYS-07 and S0-SYS-08 on disjoint paths (root decision under §0.5a, 2026-09-26); 19 → 20 for the S0-SYS-08 follow-up PR that separates identity strikes from timer strikes (root decision under §0.5a, 2026-09-27); 20 → 21 for the S0-SYS-07 follow-up PR (the identity hold flow and the cancelled-stream record) (root decision under §0.5a, 2026-09-27).
   - S1: 14 → 25 (14 + 7 + 5 − 1): the product lanes add seven S1 PRs; S1-SYS-14, S1-MOD-04, S1-CON-01, S1-CON-02 and S1-MOD-01 part B add five; S1-SYS-06 is superseded (−1) (root decisions under §0.5a, 2026-09-26); 25 → 26 for S1-SYS-15 (root decision under §0.5a, 2026-09-26).
   - A probe PR that only adds a probe script and its ADR data (e.g. S0-ROOT-12) counts as a root evidence PR and is excluded (root decision under §0.5a, 2026-09-26).
 - **Code size:**
@@ -170,7 +170,7 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
   - `tests/serving` test doubles live outside `tests/support` (AGENTS rule 5).
 - #115 (SYS): `fetch_external.sh` clones into a temp dir then moves; drop the stale `!.env.example` in `.gitignore`; pin the CI Python patch release; add shellcheck; amend S0-SYS-02's acceptance grep to the exclusions actually used.
 - Hook (#114): protect the worktree parent `../pl-wt`; track `pushd`; the heredoc false positive (text that mentions recursive deletes near data/external is blocked when shlex cannot parse it).
-- Process: S0 PR count: 14 merged (#108–#121) + S0-ROOT-09 = 15; S0-SYS-06 makes 16 (at the limit; the tripwire is > 16); S0-MOD-03 would be the 17th. Root evidence PRs (S0-ROOT-05/06) are excluded. Resolved: the tripwire is now > 19 (§0.6), so S0-MOD-03 is the 17th PR, S0-SYS-07 the 18th and S0-SYS-08 the 19th; S0-ROOT-10/11 are ROOT docs/harness PRs and S0-ROOT-12 a probe PR (excluded). Now: S0-SYS-08 (#130) and S0-SYS-07 (#133) are merged, S0-MOD-03 (#125) is pending, and the S0-SYS-08 strike-counter follow-up (#138) is the 20th (the tripwire is > 20, §0.6); S0-ROOT-13 is a ROOT docs PR (excluded).
+- Process: S0 PR count: 14 merged (#108–#121) + S0-ROOT-09 = 15; S0-SYS-06 makes 16 (at the limit; the tripwire is > 16); S0-MOD-03 would be the 17th. Root evidence PRs (S0-ROOT-05/06) are excluded. Resolved: the tripwire is now > 19 (§0.6), so S0-MOD-03 is the 17th PR, S0-SYS-07 the 18th and S0-SYS-08 the 19th; S0-ROOT-10/11 are ROOT docs/harness PRs and S0-ROOT-12 a probe PR (excluded). Now: S0-SYS-08 (#130) and S0-SYS-07 (#133) are merged, S0-MOD-03 (#125) is pending, the S0-SYS-08 strike-counter follow-up (#138) is the 20th, and the S0-SYS-07 identity-hold follow-up the 21st (the tripwire is > 21, §0.6); S0-ROOT-13 is a ROOT docs PR (excluded).
 - #118 (SYS evidence):
   - a scripted bundle relabelled `real_http` still passes `--claim` (authenticity is provenance, ADR-0006);
   - extra files in a bundle are ignored;
@@ -200,7 +200,13 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
   - the cached-result path still allocates an H100;
   - `src/proxyloop/training` is 160 lines against a ≈ 150-line target;
   - S3 cost planning must re-measure tokens/s on a realistic batch: the smoke (`docs/decisions/data/peft-train-smoke.json` `tokens_per_s`) is far below TRAINING §8's estimate.
-- #134 (P-API, S1-SYS-09): round-2 review nits N-a…N-e and N3 (listed in the P-API lane's review; not restated here).
+- #134 (P-API, S1-SYS-09), round-2 review nits:
+  - N-a `/api/bundles` does not redact `task_ref`;
+  - N-b a malformed WebSocket `run_id` closes 4404, not 422;
+  - N-c handled in S1-SYS-10 (the starter waits for `seq` 0);
+  - N-d an HTTP TOCTOU between the split check and the read (the kernel only appends);
+  - N-e the tests use Starlette private fields (`_send_rx`, `_Reader`);
+  - N3 a truncated or replaced `events.jsonl` stalls the WebSocket tail.
 - S0-SYS-08 (#130):
   - the dead-endpoint redirect is not recorded in `cfg` (the evidence commit records it);
   - a silent SimUser turn emits no event;
@@ -473,7 +479,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** `make test`; `python -m proxyloop.cli rep-chat …` (root).
 - **Escalate if:** a behaviour needs a contract change.
 
-### S0-ROOT-05 MERGE POINT 1: the first real interaction — ROOT — S — flags L+U — doing (the first three live smokes failed; S0-SYS-07 and S0-SYS-08 merged; the re-run is done, and the S0-SYS-08 strike-counter follow-up and a second re-run come before the bundles are committed)
+### S0-ROOT-05 MERGE POINT 1: the first real interaction — ROOT — S — flags L+U — doing (the first three live smokes failed; S0-SYS-07 and S0-SYS-08 merged; the re-runs are done; the S0-SYS-07 follow-up and another re-run come before the bundles are committed)
 - **Objective:** run the SYS kernel with Fast = `gpt-6-luna` and Slow = `gemini-3.8-flash`, both via TeamRouter (user decision 2026-09-26: during development the whole flow runs on this combination; the gate needs no GPU). The model root researches fine-tuned Qwen as Fast in parallel; once it merges, the system supports both, and the user chooses Luna or fine-tuned Qwen as Fast by config.
   - `make smoke-live FAMILY=cp-direct-discount CLAIM=0` ×3 (sim user, sim rep), with the Luna/Gemini model-selection flags that S0-SYS-08 defines (named as S0-SYS-08 names them);
   - 1 session in which the user types as principal (an unscripted opening);
@@ -493,7 +499,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
   - TTFS p50 from the Mac is recorded, labelled relay-measured;
   - the user's opening appears verbatim in `user.msg`.
 - **Re-run:** after S0-SYS-07 and S0-SYS-08 merge. Those two are not merge-at-gate: they unblock the gate.
-- **Runs so far** (root, 2026-09-27; Luna Fast + Gemini Slow, `CLAIM=0`): smokes `runs/20260927T004510Z-ab0a63`, `runs/20260927T004720Z-232834`, `runs/20260927T004814Z-db141c`; dead-endpoint run `runs/20260927T004935Z-99e63e`. Honest reading: the acceptance items these runs cover are met (the principal session is not among them), but every call ended `abandoned` before identity arrived (the shared strike counter counted both silence and `refuse_fact`). The bundles are held, not committed to `evidence/s0/`, until the S0-SYS-08 follow-up merges and the three smokes are re-run.
+- **Runs so far** (root, 2026-09-27; Luna Fast + Gemini Slow, `CLAIM=0`): smokes `runs/20260927T004510Z-ab0a63`, `runs/20260927T004720Z-232834`, `runs/20260927T004814Z-db141c`; dead-endpoint run `runs/20260927T004935Z-99e63e`. Honest reading: the acceptance items these runs cover are met (the principal session is not among them), but every call ended `abandoned` before identity arrived (the shared strike counter counted both silence and `refuse_fact`). After #138: smokes `runs/20260927T005541Z-aeab91`, `runs/20260927T005713Z-4ce0ad`, `runs/20260927T005836Z-4cd024`, all `abandoned`. The agent deflected the identity request while it waited for the user (`deflect_fact_request` → `refuse_fact` strikes), and `4ce0ad` failed `make evidence-check --offline` (a failed `fast_cp` call records a response and usage). The bundles are held, not committed to `evidence/s0/`, until the S0-SYS-07 follow-up merges and the three smokes are re-run.
 - **After:** S0-SYS-03…06 become `done` only on a bundle that passes `make evidence-check --claim` (§0.5): the Qwen@vllm train bundle of S0-MOD-03's run order, or the Luna gate bundles re-checked with `--claim` once S1-SYS-14 scopes claims. Until then they stay `provisional`.
 
 ### S0-SYS-07 ROOT-05 live fixes: Slow and kernel — SYS (L-CORE) — L — flags L for the smoke (the root, or L-CORE inside an envelope) — done (#133)
@@ -516,6 +522,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** `make test`; `make smoke-live FAMILY=cp-direct-discount` (root or L-CORE, L).
 - **Escalate if:** a contract change is needed, or the Slow context bound changes what Slow may see (relay-only, AGENTS rule 9).
 - **Known limitations** (accepted for S0, root decisions under §0.5a, 2026-09-26): from a user message only `*.last4` (four ASCII digits, a standalone token) and `*.holder_name` (1–4 ASCII-letter words, an exact substring) can go public; `competitor.*` and tenure stay private in S0, so `cite_competitor` is unavailable; a residual wrong-key risk remains (per-key value formats: S1-SYS-15); TeamRouter exposes no prices, so its roles are unpriced and the runaway guard runs at factor 1 on tokens and calls (300k tokens, 150 calls), and the $2 cap cannot bind.
+- **Follow-up PR** (root decision under §0.5a, 2026-09-27; after the post-#138 runs in S0-ROOT-05): the identity hold flow (`hold_for_decision`, then identify with the public facts, instead of deflecting the rep's identity request), and the cancelled-stream record (a failed or cancelled `fast_cp` call must not record a response or usage). Then the root re-runs the three smokes.
 
 ### S0-SYS-08 ROOT-05 live fixes: world — SYS (L-CORE) — M — flags L for the smoke (the root, or L-CORE inside an envelope) — done (#130)
 - **Objective:** fix the failed smokes' world causes (handoff §3; each item a root decision under §0.5a, 2026-09-26):
@@ -727,6 +734,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
   - `HumanWebChannel` in `kernel/channels.py` for the user and cp lanes, and its session wiring;
   - `make demo`.
   - The `HumanWebChannel` ingress interface (web↔API interface, root decision under §0.5a, 2026-09-26): `POST /api/cases/{id}/messages {text}` → `user.msg`; `POST /api/cases/{id}/rep {text}` → the cp partner's `utt.final`; an approvals queue that the kernel consumes, re-deciding with `guard.decide` and turning each post into `approval.decided`.
+  - M1 (root decision under §0.5a, 2026-09-27): when the kernel's re-decide denies a posted approval, the kernel emits a restrict-only `action.denied{intent: "approval.post", reason}` (actor `kernel`) and wakes Slow. If the contract's cause rule forbids that event, the alternative is a fold change (L-CORE, #126) that records a stale `approval.post` which is never decided.
   - The four kernel asks from #134 (S1-SYS-09, routed to L-CORE by the main root, 2026-09-26): `kernel/web.py` composes a web session through a serve `Case` protocol; the approvals ingress; `_git_sha()` cached; the tokenizer loaded once.
   - Live runs are written to `runs/live/<case_id>/<run_id>` (the S1-SYS-09 listing reads one extra level for `runs/live` only; root decision under §0.5a, 2026-09-26).
 - **Owned paths:** `src/proxyloop/kernel/{channels,session,web}.py`, `tests/kernel/**`, `mk/sys.mk`.
@@ -786,10 +794,13 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
   - The web↔API interface (P-WEB's proposal, adopted; root decisions under §0.5a, 2026-09-26): `case_id = run_id` in S1; `GET /live/{case_id}` sets the session and `pl_csrf` cookies; every POST carries `X-CSRF-Token` (double submit) and passes the Origin check; `POST /api/cases/{id}/approvals/{approval_id} {decision, terms_hash, authority_epoch}` → 200, 403 `csrf|origin`, or 409 `already_decided|stale`. The message and rep POSTs follow the same rules and reach the kernel through `HumanWebChannel` (S1-SYS-05).
   - A server-filtered `WS /ws/rep/{case_id}` for the human rep page (I4; P-WEB escalation): an allow-list of cp `utt.delivered` (`text_heard`), the partner's `utt.final` and cp `chan.*`; a separate rep cookie and role, so user and rep POSTs are not interchangeable. `/ws/live` stays user/operator only, on 127.0.0.1.
   - The session starter waits for `seq` 0 before it answers (N-c).
+  - M1 (root decision under §0.5a, 2026-09-27): a 200 means "posted", not "decided"; the kernel's re-decide can still deny (S1-SYS-05).
+  - M2 (root decision under §0.5a, 2026-09-27): on a single-machine 127.0.0.1 server, the user/rep split guards only against cross-site attacks and web bugs, not against a hostile local rep. Real rep separation is deferred.
   - Later: `GET /api/models` lists `real_http` refs only.
 - **Owned paths:** `src/proxyloop/serve/**`, `tests/serve/**`.
 - **Deps:** S1-SYS-01 (#126), S1-CON-01, S1-SYS-09.
 - **Acceptance:** a missing CSRF token → 403; a wrong Origin → 403; a stale epoch or hash → 409; a replayed POST → 409 with exactly one `approval.post`; a Denial → 409 and no event; the server binds 127.0.0.1; a test shows that no private event type leaves `/ws/rep`.
+- **Known limitation:** the rep is not isolated from the user on the same machine (M2); no claim may say it is.
 - **Verify:** `uv run pytest tests/serve -q`.
 - **Escalate if:** a question of authority or approval semantics.
 
