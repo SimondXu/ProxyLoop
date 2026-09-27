@@ -30,15 +30,19 @@ class Log:
     """Builds a folded log one event at a time; each event cites the previous."""
 
     def __init__(self) -> None:
-        self.bb, self.seq = Blackboard(), 0
+        self.bb, self.seq, self.t_ms = Blackboard(), 0, 0
 
-    def emit(self, type_: str, payload: Mapping[str, object]) -> Blackboard:
+    def emit(
+        self, type_: str, payload: Mapping[str, object], t_ms: int | None = None
+    ) -> Blackboard:
+        """At ``t_ms`` (never earlier than the last event), else 100 ms later."""
+        t = max(self.t_ms, 100 * self.seq if t_ms is None else t_ms)
         e = Event.model_validate(
             {
                 "run_id": RUN,
                 "seq": self.seq,
                 "event_id": f"{RUN}:{self.seq}",
-                "t_ms": 100 * self.seq,
+                "t_ms": t,
                 "wall": "2026-09-26T00:00:00Z",
                 "type": type_,
                 "actor": _ACTOR.get(type_, "guard"),
@@ -48,7 +52,7 @@ class Log:
                 "payload": payload,
             }
         )
-        self.bb, self.seq = apply(self.bb, e), self.seq + 1
+        self.bb, self.seq, self.t_ms = apply(self.bb, e), self.seq + 1, t
         return self.bb
 
 
@@ -121,6 +125,18 @@ def test_a_revoked_capability_is_never_released() -> None:
     with pytest.raises(ValueError, match="unknown or used"):
         log.emit("speak.released", {"lane": "cp", "cap_id": cap_id})
     assert accept_offer(log.bb, "o1", CASE) != Denial("already_authorized")
+
+
+def test_a_capability_past_its_expiry_is_never_released() -> None:  # S1-SYS-02
+    log = Log()
+    _confirmed_offer(log)
+    _granted(log)
+    cap_id = _accept(log)
+    expires = log.bb.capabilities[cap_id].expires_ms
+    with pytest.raises(ValueError, match="expired"):
+        log.emit("speak.released", {"lane": "cp", "cap_id": cap_id}, t_ms=expires)
+    log.emit("speak.released", {"lane": "cp", "cap_id": cap_id}, t_ms=expires - 1)
+    assert log.bb.capabilities[cap_id].consumed
 
 
 def test_a_decision_without_its_card_or_proposal_is_rejected() -> None:

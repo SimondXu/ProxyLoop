@@ -6,6 +6,9 @@ text follow from the re-parsed response bytes; a turn is backed by the one
 successful attempt of its own call, of its lane's Fast role, with its
 request's model and prompt; lane, gen_id and utt_id agree; each call backs
 one turn, and each Speech item or verbatim line is delivered at most once.
+M7: an accept ``speak.released`` carries the ``cap_id`` of the
+``speak.verbatim{accept}`` it cites (the fold revalidates only a release that
+names its capability), and a release with a ``cap_id`` cites such a line.
 """
 
 from __future__ import annotations
@@ -123,6 +126,20 @@ def _delivered(
     return None
 
 
+def _release(e: Event, by_id: Mapping[str, Event]) -> str | None:
+    """M7: why an accept release does not carry its line's capability."""
+    lines, cap = _cited(e, "speak.verbatim", by_id), e.payload.get("cap_id")
+    accepts = [v for v in lines if v.payload["kind"] == "accept"]
+    if cap is not None and not accepts:
+        return "a cap_id release must cite a speak.verbatim{accept}"
+    for line in accepts:
+        if (held := line.payload.get("cap_id")) is None:
+            return "its speak.verbatim{accept} carries no cap_id"
+        if cap != held:
+            return f"an accept release must carry its line's cap_id {held}"
+    return None
+
+
 def chain_failures(
     events: Sequence[Event], prompts: Mapping[str, PromptRecord], real_only: bool
 ) -> list[str]:
@@ -139,6 +156,8 @@ def chain_failures(
             turned.add(e.payload["call_id"])
         elif e.type == "utt.delivered":
             reason = _delivered(e, by_id, real_only, used, left)
+        elif e.type == "speak.released":
+            reason = _release(e, by_id)
         if reason is not None:
             failures.append(f"{e.type} {e.event_id}: {reason}")
     return failures

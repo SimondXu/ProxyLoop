@@ -3,6 +3,7 @@
 # `make -f mk/mod.mk <target>` and `include mk/*.mk` from the root Makefile work.
 #   SERVE_VARIANT=pinned|prefix-align  (prefix-align is measure-only)
 #   PL_LORA_RUNG=all|attn-mlp          (the ladder rung whose zero/live adapters are served)
+#   SERVE_MODEL=9b|4b                  (serve-up/serve-down only; 4b: C3's base Qwen3.5-4B)
 # No recipe uses $(MAKE), so `make -n` only prints and never reaches Modal.
 
 SERVE_VARIANT ?= pinned
@@ -12,15 +13,21 @@ MOD_MODAL := uv run --no-project --with modal==1.5.5 modal
 MOD_PY := uv run --no-project --with modal==1.5.5 --with httpx==0.28.1 \
 	--with transformers==5.17.0 --with jinja2==3.1.6 python
 MOD_BASELINE := $(if $(MOD_SUFFIX),--baseline $(MOD_DATA)/vllm-probe.json,)
-MOD_SERVE_DOWN := $(MOD_MODAL) app stop --yes proxyloop-vllm$(MOD_SUFFIX)
+SERVE_MODEL ?= 9b
+MOD_MODEL := 9b
+serve-up serve-down: MOD_MODEL := $(SERVE_MODEL)
+# Every other recipe (serve-probe, pull-through, liveness) serves the 9B, whatever the shell has.
+export PL_SERVE_MODEL = $(MOD_MODEL)
+MOD_APP_SUFFIX = $(if $(filter 9b,$(MOD_MODEL)),,-$(MOD_MODEL))$(MOD_SUFFIX)
+MOD_SERVE_DOWN = $(MOD_MODAL) app stop --yes proxyloop-vllm$(MOD_APP_SUFFIX)
 # Run order (ADR-0002): serve-lora-ladder -> serve-probe -> serve-attest-local -> prefix-align probe.
 MOD_LADDER_GUARD := test -f $(MOD_DATA)/vllm-lora-ladder.json || \
 	{ echo "missing $(MOD_DATA)/vllm-lora-ladder.json: run serve-lora-ladder first" >&2; exit 1; }
 # serve-up refuses to deploy without the ladder, and stops the app itself when the deploy or the
 # health wait fails.
-MOD_SERVE_UP := $(MOD_LADDER_GUARD); { PL_SERVE_VARIANT=$(SERVE_VARIANT) $(MOD_MODAL) deploy -m serving.modal_vllm && \
-	$(MOD_PY) -m scripts.mod.probe --wait-healthy --variant $(SERVE_VARIANT) \
-	--out $(MOD_DATA)/vllm-coldstart$(MOD_SUFFIX).json; } || { $(MOD_SERVE_DOWN); exit 1; }
+MOD_SERVE_UP = $(MOD_LADDER_GUARD); { PL_SERVE_VARIANT=$(SERVE_VARIANT) $(MOD_MODAL) deploy -m serving.modal_vllm && \
+	$(MOD_PY) -m scripts.mod.probe --wait-healthy --variant $(SERVE_VARIANT) --model $(MOD_MODEL) \
+	--out $(MOD_DATA)/vllm-coldstart$(MOD_APP_SUFFIX).json; } || { $(MOD_SERVE_DOWN); exit 1; }
 
 .PHONY: serve-lora-ladder serve-up serve-down serve-probe serve-attest-local
 
