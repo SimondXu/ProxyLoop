@@ -17,7 +17,7 @@ from tests.support.sessions import patient_task as task
 
 from proxyloop.contract.config import SessionConfig
 from proxyloop.contract.events import Event
-from proxyloop.contract.llm import LLMClient, LLMRole, ModelRef
+from proxyloop.contract.llm import LLMClient, LLMRole, LLMUnavailable, ModelRef
 from proxyloop.contract.protocol import Hold
 from proxyloop.env.world import WorldError
 from proxyloop.kernel import session
@@ -254,3 +254,7 @@ def test_budget_outranks_a_world_error_when_both_end_the_session() -> None:
     outcome = session._outcome  # pyright: ignore[reportPrivateUsage]
     for leaves in ([world, spent], [spent, world]):
         assert outcome(BaseExceptionGroup("both", leaves)) == ("budget", spent)
+    record = call_record(SONNET, usage=None, error="HTTP 503", response_sha=None)
+    dead = LLMUnavailable("endpoint is dead", record)  # N5: a dead endpoint first
+    for leaves in ([world, spent, dead], [dead, spent, world]):
+        assert outcome(BaseExceptionGroup("all", leaves)) == ("llm_unavailable", dead)
