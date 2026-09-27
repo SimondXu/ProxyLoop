@@ -92,6 +92,10 @@ class Case(Protocol):
           <decide's reason>}`` (actor ``kernel``) citing a legal cause (e.g.
           the refused card's ``approval.requested``), and wake Slow.
 
+        For subject "mandate": ``approval.post`` (ui), then ``mandate.decided``,
+        then ``authority.epoch{reason: "mandate_decided"}``; ``action.denied``
+        as above on a Denial.
+
         Either way the user's click leaves an event. (Should the contract
         refuse such an ``action.denied``, that is an L-CORE fold change.)
         Raising here makes serve answer 503 ``unavailable``."""

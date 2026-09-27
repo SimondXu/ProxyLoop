@@ -188,15 +188,18 @@ def test_concurrent_mandate_posts_make_exactly_one_post(live: Live) -> None:
     m, hdrs = live.case.propose(), user(live)
     url = f"/api/cases/{CASE}/mandates/{m.mandate_id}"
 
-    async def race() -> list[int]:
+    async def race() -> list[httpx.Response]:
         transport = httpx.ASGITransport(app=live.http.app)
         async with httpx.AsyncClient(
             transport=transport, base_url="http://127.0.0.1"
         ) as http:
             sent = [http.post(url, json=body(m), headers=hdrs) for _ in range(8)]
-            return sorted(r.status_code for r in await asyncio.gather(*sent))
+            return list(await asyncio.gather(*sent))
 
-    assert asyncio.run(race()) == [200] + [409] * 7
+    got = asyncio.run(race())
+    assert sorted(r.status_code for r in got) == [200] + [409] * 7
+    refused = [r.json() for r in got if r.status_code == 409]
+    assert refused == [{"error": "already_decided"}] * 7  # the slot's: no reason
     assert len(live.case.posts) == 1 and live.case.posted() == 1
 
 

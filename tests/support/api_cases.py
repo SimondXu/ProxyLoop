@@ -4,9 +4,12 @@ Blackboard whose card ``guard.request_approval`` minted, or whose mandate
 ``propose`` put there the way Slow's ``propose_mandate`` does. The calls the
 API makes are recorded. An approval post only emits ``approval.post`` (actor
 ``ui``); ``decided`` stands in for the kernel's own ``approval.decided``. A
-mandate post mirrors the kernel's ``Authority.decide`` at once: ``guard.decide``
-on the board, then ``approval.post`` (ui), ``mandate.decided`` (kernel, by ui)
-and ``authority.epoch``; on a Denial the kernel's ``action.denied``.
+mandate post is decided at once, roughly as the kernel's ``Authority.decide``
+does: ``guard.decide`` on the board, then ``approval.post`` (ui),
+``mandate.decided`` (kernel, by ui) and ``authority.epoch``. Unlike the kernel
+it emits no ``status.changed`` (mandate_granted), and its ``action.denied`` on
+a Denial cites the proposal, never the kernel's root fallback; neither is
+reachable through the route, whose pre-check denies first.
 ``FakeStarter`` starts such cases the way the kernel's starter will."""
 
 from __future__ import annotations
