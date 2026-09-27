@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { listBundles, loadPrompt, loadRun, type BundleInfo, type PromptRecord, type Run } from "./bundleSource";
 import { endOf, indexEvents, LANES, laneOf, modelLabel, runHeader, selectRun, shasOf, summary, type Ev, type Index, type Lane } from "./replay";
+import { parties } from "./conversation";
 import { Panes, Story, useView } from "./ConversationView";
 import { usePlayback, type Speed } from "./usePlayback";
 
@@ -77,6 +78,8 @@ export function App() {
 function Replay({ runId, run, engineer }: { runId: string; run: Run; engineer: boolean }) {
   const index = useMemo(() => indexEvents(run.events), [run]);
   const end = useMemo(() => endOf(run.events), [run]);
+  // From the whole log, not the time-filtered one: the sim labels are on every frame, also before session.started's t_ms (I11).
+  const who = useMemo(() => parties(run.events), [run]);
   const clock = usePlayback(end);
   const [god, setGod] = useState(false);
   const { drill, open, close } = useDrill(runId);
@@ -112,7 +115,7 @@ function Replay({ runId, run, engineer }: { runId: string; run: Run; engineer: b
             </label>
           )}
         </section>
-        <Story events={shown} />
+        <Story events={shown} p={who} />
       </div>
       <RunSummary events={run.events} />
       {engineer ? (
@@ -121,7 +124,7 @@ function Replay({ runId, run, engineer }: { runId: string; run: Run; engineer: b
           {drill && <Drawer drill={drill} close={close} />}
         </>
       ) : (
-        <Panes events={shown} />
+        <Panes events={shown} p={who} announce={false} />
       )}
     </>
   );

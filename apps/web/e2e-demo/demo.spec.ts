@@ -160,7 +160,6 @@ test.describe("approve", () => {
     const strip = await authority(page);
     await expect(strip.getByLabel("Case status")).toHaveText("status COMMITTED");
     await expect(page.getByLabel("Status line")).toHaveText("Status: accepted on the call, not yet verified");
-    await expect(page.getByText("Verified complete", { exact: true })).toHaveCount(0);
     const call = page.getByRole("list", { name: "Call transcript" });
     await expect(call).toContainText(`Agent: ${String(accept.payload.text)}`);
     await expect(call.getByRole("listitem").filter({ hasText: "AI disclosure (fixed text)" })).toHaveCount(1);

@@ -44,6 +44,19 @@ test("opens in the conversation view: the heard lines at the end, the status lin
     .map((l) => JSON.parse(l) as Ev);
   await expect(page.getByRole("region", { name: "Fast-U" })).toHaveCount(0);
   await expect(page.getByLabel("Status line")).toHaveText(/^Status: /);
+  // I11: at t=0, before session.started's t_ms, every frame already names the simulated parties (from the whole log).
+  await expect(page.getByLabel("Clock")).toContainText(/^0\.0 s/);
+  const roles = Object.keys((events.find((e) => e.type === "session.started" && e.actor === "kernel")?.payload.models ?? {}) as object);
+  const labels = [
+    ...(roles.includes("ear") || roles.includes("mouth") ? ["Simulated rep; no real company was called"] : []),
+    ...(roles.includes("simuser") ? ["Simulated user"] : []),
+  ];
+  expect(labels.length, "a replayable bundle runs against the sim world").toBeGreaterThan(0);
+  for (const frame of [page.locator(".sticky"), page.getByRole("region", { name: "Chat" }), page.getByRole("region", { name: "Call" })]) {
+    await expect(frame.getByLabel("Simulated parties")).toHaveText(labels.join(" · "));
+  }
+  // A seek must not read every line out: the replay transcripts are not aria-live.
+  await expect(page.getByRole("list", { name: "Chat transcript" })).not.toHaveAttribute("aria-live", /.*/);
   const timeline = page.getByRole("slider", { name: "Timeline" });
   await timeline.fill((await timeline.getAttribute("max")) ?? "0");
 

@@ -6,6 +6,7 @@
 // shows the ones session.started names.
 import { useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { Drawer, Lanes, RunSummary, useDrill } from "./App";
+import { parties } from "./conversation";
 import { Panes, Story, useView } from "./ConversationView";
 import { approvalCards, type CardStatus, type CardView, type Posting } from "./approval";
 import { authorityStrip, type Strip } from "./authority";
@@ -30,6 +31,7 @@ export function Live({ runId }: { runId: string }) {
 
   const cards = useMemo(() => approvalCards(events, posts), [events, posts]);
   const strip = useMemo(() => authorityStrip(events), [events]);
+  const who = useMemo(() => parties(events), [events]); // live: only what has arrived
   // Cards with a pending or ok post: a second click, even before a re-render, never POSTs again.
   const claimed = useRef(new Set<string>());
   const decide = (view: CardView, decision: Decision) => {
@@ -65,7 +67,7 @@ export function Live({ runId }: { runId: string }) {
             </label>
           )}
         </header>
-        <Story events={events} />
+        <Story events={events} p={who} />
         {cards.length > 0 && (
           <section className="approvals" aria-label="Approvals">
             {cards.map((v) => (
@@ -87,7 +89,7 @@ export function Live({ runId }: { runId: string }) {
           {drill && <Drawer drill={drill} close={close} />}
         </>
       ) : (
-        <Panes events={events} composer={composer} />
+        <Panes events={events} p={who} announce composer={composer} />
       )}
     </main>
   );

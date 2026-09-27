@@ -3,8 +3,8 @@
 // frame, the status line and the outcome banner. The six engineer lanes and the
 // prompt drawer are behind ?view=engineer.
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { conversation, parties, simLabels, speakerName, type Line, type Parties } from "./conversation";
-import { statusView, statusWords } from "./outcome";
+import { conversation, simLabels, speakerName, type Line, type Parties } from "./conversation";
+import { statusView } from "./outcome";
 import type { Ev } from "./replay";
 
 const ENGINEER = "engineer";
@@ -58,8 +58,7 @@ export function StatusBar({ events }: { events: Ev[] }) {
         <section className={`outcome${outcome.verified ? " verified" : ""}`} aria-label="Outcome">
           <h2>{outcome.title}</h2>
           <p>
-            Reason: {outcome.reason} · case status at the end:{" "}
-            {outcome.status === null ? "none" : `${statusWords(outcome.status)} (${outcome.status})`}
+            Reason: {outcome.reason} · last case status: {outcome.status ?? "none"}
             {outcome.verdict ? ` · verifier: ${outcome.verdict}` : ""}
           </p>
         </section>
@@ -68,9 +67,11 @@ export function StatusBar({ events }: { events: Ev[] }) {
   );
 }
 
-/** The sticky header's shared part: the sim labels, the status line and the banner. */
-export function Story({ events }: { events: Ev[] }) {
-  const p = useMemo(() => parties(events), [events]);
+/**
+ * The sticky header's shared part: the sim labels, the status line and the banner.
+ * `p` comes from the whole log where it is known (the replay), so every frame is labelled (I11).
+ */
+export function Story({ events, p }: { events: Ev[]; p: Parties }) {
   return (
     <>
       <SimNote p={p} />
@@ -79,16 +80,16 @@ export function Story({ events }: { events: Ev[] }) {
   );
 }
 
-export function Panes({ events, composer }: { events: Ev[]; composer?: ReactNode }) {
+/** `announce`: the transcripts are aria-live (live mode only: a replay seek must not read out every line). */
+export function Panes({ events, p, announce, composer }: { events: Ev[]; p: Parties; announce: boolean; composer?: ReactNode }) {
   const c = useMemo(() => conversation(events), [events]);
-  const p = useMemo(() => parties(events), [events]);
   const rep = p.simRep ? "Rep (simulated)" : "Rep";
   return (
     <div className="panes">
-      <Pane name="Chat" title="Chat · You / Assistant" p={p} lines={c.chat}>
+      <Pane name="Chat" title="Chat · You / Assistant" p={p} lines={c.chat} announce={announce}>
         {composer}
       </Pane>
-      <Pane name="Call" title={`Call · Agent / ${rep} / Call`} p={p} lines={c.call} />
+      <Pane name="Call" title={`Call · Agent / ${rep} / Call`} p={p} lines={c.call} announce={announce} />
     </div>
   );
 }
@@ -96,7 +97,9 @@ export function Panes({ events, composer }: { events: Ev[]; composer?: ReactNode
 // Follows the newest line while the list is scrolled to its end; once the reader scrolls up it stays put.
 const AT_END_PX = 8;
 
-function Pane({ name, title, p, lines, children }: { name: string; title: string; p: Parties; lines: Line[]; children?: ReactNode }) {
+type PaneProps = { name: string; title: string; p: Parties; lines: Line[]; announce: boolean; children?: ReactNode };
+
+function Pane({ name, title, p, lines, announce, children }: PaneProps) {
   const list = useRef<HTMLOListElement>(null);
   const [following, setFollowing] = useState(true);
   useLayoutEffect(() => {
@@ -111,7 +114,7 @@ function Pane({ name, title, p, lines, children }: { name: string; title: string
     <section className="pane" aria-label={name}>
       <h2>{title}</h2>
       <SimNote p={p} />
-      <ol ref={list} aria-label={`${name} transcript`} aria-live="polite" onScroll={onScroll}>
+      <ol ref={list} aria-label={`${name} transcript`} aria-live={announce ? "polite" : undefined} onScroll={onScroll}>
         {lines.map((l) => (
           <li key={l.seq} className={`line-${l.who}`}>
             <strong>

@@ -302,6 +302,7 @@ test("conversation view: two panes with the right speakers, heard text only, the
   ]);
   for (const hidden of ["UNHEARD", "GENERATED-ONLY"]) await expect(page.locator("main")).not.toContainText(hidden);
   await expect(page.getByLabel("Status line")).toHaveText("Status: on the call");
+  for (const pane of ["Chat", "Call"]) await expect(page.getByRole("list", { name: `${pane} transcript` })).toHaveAttribute("aria-live", "polite");
   await expect(page.getByRole("region", { name: "User chat" })).toHaveCount(0); // the engineer lanes are not shown
   await expect(page.getByRole("region", { name: "Outcome" })).toHaveCount(0);
   await shot(page, "live-conversation");
@@ -311,7 +312,8 @@ test("conversation view: two panes with the right speakers, heard text only, the
   await expect(page.getByLabel("Status line")).toHaveText("Session ended: the rep hung up");
   const banner = page.getByRole("region", { name: "Outcome" });
   await expect(banner.getByRole("heading")).toHaveText("Ended: the rep hung up. Not verified complete.");
-  await expect(banner).toContainText("case status at the end: on the call (IN_CALL)");
+  await expect(banner).toContainText("Reason: abandoned · last case status: IN_CALL");
+  await expect(banner).not.toContainText("on the call");
   await shot(page, "live-ended");
 });
 
