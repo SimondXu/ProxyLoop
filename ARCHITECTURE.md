@@ -110,7 +110,7 @@ proxyloop/
 ├── README.md NORTH_STAR.md PLAN.md AGENTS.md CLAUDE.md LICENSE Makefile pyproject.toml uv.lock
 ├── mk/                 sys.mk (SYS-owned targets)  mod.mk (MOD-owned targets)   # included by Makefile
 ├── src/proxyloop/
-│   ├── contract/       events.py state.py views.py messages.py protocol.py llm.py config.py bundle.py profiles/{pl_user_v1,pl_cp_v1,pl_cp_v2}.py
+│   ├── contract/       events.py state.py views.py messages.py protocol.py llm.py config.py bundle.py profiles/{pl_user_v1,pl_cp_v1,pl_cp_v2,pl_cp_v3}.py
 │   ├── core/           log.py bus.py fold.py clock.py
 │   ├── kernel/         session.py lanes.py speaker.py fence.py channels.py watchdog.py
 │   ├── slow/           loop.py tools.py prompt.py            (browser.py in S4)
