@@ -32,6 +32,7 @@ sys = [
 mod = [
   "httpx==0.28.1",
   "modal==1.5.5",
+  "pyyaml==6.0.3",
   "starlette==1.7.0",
 ]
 
