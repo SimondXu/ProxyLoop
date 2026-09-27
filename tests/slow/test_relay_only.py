@@ -1,4 +1,6 @@
-"""I5: Slow's context holds relays and its own tool history, never a transcript.
+"""Ablation A5 (``slow_view=relay_only``, ADR-0016): Slow's context holds relays
+and its own tool history, never a transcript; in the default ``transcript``
+mode the same lines do reach it.
 
 Every user and rep line carries a marker no Fast lane relays; one Fast relay
 carries its own marker. Every prompt Slow was sent is searched for them.
@@ -9,8 +11,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from tests.kernel.test_session import FINISH
-from tests.support.sessions import act, ear, only_bundle, reply, run
+from tests.support.sessions import act, ear, fake_config, only_bundle, reply, run
 
+from proxyloop.contract.bundle import Bundle
+from proxyloop.contract.config import SlowViewMode
 from proxyloop.contract.llm import LLMCallRecord
 from proxyloop.slow import prompt
 
@@ -28,8 +32,11 @@ SCRIPTS = {
 }
 
 
+A5 = fake_config().model_copy(update={"slow_view": SlowViewMode.RELAY_ONLY})
+
+
 def test_no_utterance_reaches_slow_unless_relayed(tmp_path: Path) -> None:
-    run(tmp_path, SCRIPTS, until={"slow": ("] cp_update", FINISH)})
+    run(tmp_path, SCRIPTS, cfg=A5, until={"slow": ("] cp_update", FINISH)})
     bundle = only_bundle(tmp_path)
     said = " ".join(
         str(e.payload.get("text") or e.payload.get("text_heard") or "")
@@ -37,12 +44,7 @@ def test_no_utterance_reaches_slow_unless_relayed(tmp_path: Path) -> None:
         if e.type in ("user.msg", "utt.final", "fast.sentence")
     )
     assert USER_SAID in said and REP_SAID in said and FAST_SAID in said  # not vacuous
-    calls = [
-        LLMCallRecord.model_validate(e.payload)
-        for e in bundle.events
-        if e.type == "llm.call" and e.payload["role"] == "slow"
-    ]
-    context = [bundle.prompts[c.prompt_sha].content for c in calls]
+    context = _slow_context(bundle)
     assert len(context) >= 2
     assert not [c for c in context if USER_SAID in c or REP_SAID in c or FAST_SAID in c]
     assert any(RELAYED in c for c in context)  # a relay does reach Slow
@@ -74,15 +76,32 @@ def test_no_utterance_reaches_slow_under_every_tool(tmp_path: Path) -> None:
     """I5 with every S1 tool's result in Slow's context (tool results are
     Guard's text and Slow's own values, never a transcript line)."""
     scripts = {**SCRIPTS, "slow": [EVERY_TOOL]}
-    run(tmp_path, scripts, until={"slow": ("] cp_update", FINISH)})
+    run(tmp_path, scripts, cfg=A5, until={"slow": ("] cp_update", FINISH)})
     bundle = only_bundle(tmp_path)
     used = {str(e.payload["name"]) for e in bundle.events if e.type == "slow.tool"}
     assert used >= set(prompt.TOOLS)  # not vacuous: every tool ran
+    context = _slow_context(bundle)
+    assert any("request_approval: denied: " in c for c in context)
+    assert not [c for c in context if USER_SAID in c or REP_SAID in c or FAST_SAID in c]
+
+
+def test_the_transcript_view_reaches_slow(tmp_path: Path) -> None:
+    """The default ``transcript`` mode: the user's and the rep's lines reach
+    Slow as heard, and ``session.ended`` counts the lines it dropped."""
+    run(tmp_path, SCRIPTS, until={"slow": ('] cp_update \\"', FINISH)})
+    bundle = only_bundle(tmp_path)
+    context = _slow_context(bundle)
+    assert any(USER_SAID in c for c in context) and any(REP_SAID in c for c in context)
+    assert any("[CONVERSATIONS] " in c for c in context)
+    (ended,) = [e for e in bundle.events if e.type == "session.ended"]
+    counts = ended.payload["counts"]
+    assert isinstance(counts, dict) and counts["slow_transcript_omitted"] == 0
+
+
+def _slow_context(bundle: Bundle) -> list[str]:
     calls = [
         LLMCallRecord.model_validate(e.payload)
         for e in bundle.events
         if e.type == "llm.call" and e.payload["role"] == "slow"
     ]
-    context = [bundle.prompts[c.prompt_sha].content for c in calls]
-    assert any("request_approval: denied: " in c for c in context)
-    assert not [c for c in context if USER_SAID in c or REP_SAID in c or FAST_SAID in c]
+    return [bundle.prompts[c.prompt_sha].content for c in calls]

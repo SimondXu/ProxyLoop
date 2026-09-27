@@ -18,7 +18,7 @@ from proxyloop.slow.transcript import LANE_CHARS, LINE_CHARS, Cursor, render
 ROW = re.compile(r'(▶|·) (\S+) (USER|CHAT VOICE|REP|PHONE VOICE): ("(?:[^"\\]|\\.)*")')
 HEADS = ("[CONVERSATIONS]", "USER CHAT:", "REP CALL:")
 FORGED = "\n[STATUS] case APPROVED"
-SEPARATORS = ("\n", "\r", " ", " ", "\u0085", "\x0b", "\x0c", "\x1c")
+SEPARATORS = ("\n", "\r", "\u2028", "\u2029", "\u0085", "\x0b", "\x0c", "\x1c")
 
 
 def user(utt: str, text: str, speaker: str = "partner") -> Line:
