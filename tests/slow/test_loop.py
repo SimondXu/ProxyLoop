@@ -225,9 +225,10 @@ def test_a_slow_call_past_its_deadline_ends_the_session_loudly(
     assert [e.payload["error"] for e in slow] == ["cancelled"]  # the call's record
 
 
+@pytest.mark.parametrize("calls", [False, True])
 @pytest.mark.parametrize("reason", ["content_filter", "stop"])
 def test_a_filtered_slow_reply_is_counted_never_retried(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reason: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reason: str, calls: bool
 ) -> None:
     """S1-SYS-28 (run ed5063, slow:6): a provider content filter left Slow with
     no tool call, silently. It is counted and named; the step ends as today,
@@ -235,6 +236,9 @@ def test_a_filtered_slow_reply_is_counted_never_retried(
     idle = Idle(tmp_path)
     k = idle.k
     slow = idle.slow([json.dumps({"text": "", "tool_calls": []})])
+    if calls:  # #166 N4: counted with tool calls too; they run as today
+        fact = {"tool": "record_fact", "key": "note", "value": "x", "utt_ref": "u"}
+        slow = idle.slow([act("Noted.", fact)])
     client = slow._client  # pyright: ignore[reportPrivateUsage]
     reply = client.chat_tools
 
@@ -245,10 +249,14 @@ def test_a_filtered_slow_reply_is_counted_never_retried(
 
     monkeypatch.setattr(client, "chat_tools", filtered)
     asyncio.run(slow.step(["relay"]))
-    (tool,) = [e for e in k.bus.events if e.type == "slow.tool"]
+    tools = [e for e in k.bus.events if e.type == "slow.tool"]
     filtered_ = reason == "content_filter"
     text = "no tool call (content_filter)" if filtered_ else "no tool call"
-    assert (tool.payload["result_text"], tool.payload["ok"]) == (text, False)
+    if calls:
+        assert [t.payload["name"] for t in tools] == ["act", "record_fact"]
+    else:
+        (tool,) = tools
+        assert (tool.payload["result_text"], tool.payload["ok"]) == (text, False)
     assert dict(k.counts) == ({"slow_content_filter": 1} if filtered_ else {})
     assert len([e for e in k.bus.events if e.type == "llm.call"]) == 1
     assert [e.type for e in k.bus.events][-1] == "slow.step.completed"

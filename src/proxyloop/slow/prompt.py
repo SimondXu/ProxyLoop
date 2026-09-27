@@ -8,9 +8,9 @@ from proxyloop.contract.llm import ToolSpec
 from proxyloop.contract.messages import FastToSlow, GuideMove
 from proxyloop.contract.state import Blackboard, OfferPublic, PrivateState
 from proxyloop.contract.views import SlowView
+from proxyloop.guard.authorize import Denial, open_offer
 from proxyloop.guard.mandate import mandate_gap
 from proxyloop.guard.readback import missing_required, readback_status
-from proxyloop.guard.terms import offer_terms
 from proxyloop.slow import offer_slots
 from proxyloop.slow.tools import identity_hint
 
@@ -181,12 +181,14 @@ def status_bar(view: SlowView, keys: frozenset[str], now_ms: int) -> str:
 
 
 def approval_hint(view: SlowView, o: OfferPublic, now_ms: int) -> str:
-    """S1-SYS-28 (run ed5063): a confirmed offer that Guard's mandate check
-    finds outside the granted mandate needs the user's approval; shown until a
-    card or a decision for its terms exists in this epoch. Nothing is sent."""
-    terms = offer_terms(o)
-    if o.status != "open" or readback_status(o) != "confirmed" or terms is None:
+    """S1-SYS-28 (run ed5063): an offer Guard would put on a card (its
+    ``open_offer`` rule) that its mandate check finds outside the granted
+    mandate needs the user's approval; shown until a card or a decision for
+    its terms exists in this epoch. Nothing is sent."""
+    got = open_offer(o, view.mandate, now_ms, bool(view.fences))
+    if isinstance(got, Denial):
         return ""
+    terms = got[1]
     cards = [] if view.pending_approval is None else [view.pending_approval]
     for a in (*cards, *view.approvals):
         if (a.terms_hash, a.authority_epoch) == (o.terms_hash, view.epoch):

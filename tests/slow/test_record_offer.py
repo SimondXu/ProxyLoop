@@ -44,6 +44,10 @@ PRICE = _slot("monthly_price", "7500", "usd_minor", "recurring") | {"utt_ref": "
         _slot("fees_none", "yes", "bool", "one_time"),
         _slot("monthly_price", "7500", "months", "recurring"),  # wrong unit
         _slot("price", "7500", "usd_minor", "recurring"),  # ed5063 seq 538
+        _slot("fee:activation", "20.00", "usd_minor", "one_time"),  # #166 N1
+        _slot("term_months", "12 months", "months", "recurring"),
+        _slot("term_months", 12, "months", "recurring"),  # type: ignore[arg-type]
+        _slot("expires", "2026-10-01T00:00:00-05:00", "iso", "expiry"),  # 25 chars
     ],
 )
 def test_a_slot_the_read_back_cannot_confirm_is_refused_with_the_table(
@@ -51,7 +55,36 @@ def test_a_slot_the_read_back_cannot_confirm_is_refused_with_the_table(
 ) -> None:
     result = record_offer(BB, "o1", [PRICE, slot | {"utt_ref": "cp-3"}], 0, NOW)
     assert not result.ok and not result.effects  # whole: no partial record
-    assert TABLE_ROW in result.text and "String should match" not in result.text
+    assert TABLE_ROW in result.text and "String should" not in result.text
+
+
+@pytest.mark.parametrize(
+    ("slots", "why"),
+    [
+        ([], "no slots"),
+        ([PRICE, PRICE], "monthly_price repeats"),
+        (
+            [PRICE, _slot("fees_none", "true", "bool", "one_time"),
+             _slot("fee:activation", "2000", "usd_minor", "one_time")],
+            "fees_none=true with fee:activation",
+        ),
+        (
+            [PRICE, _slot("changes_none", "true", "bool", "change"),
+             _slot("applied_change:plan", "true", "bool", "change")],
+            "changes_none=true with applied_change:plan",
+        ),
+    ],
+)  # fmt: skip
+def test_slots_that_contradict_each_other_are_refused(
+    slots: list[dict[str, Any]], why: str
+) -> None:  # #166 N2: no terms hash could ever bind them
+    slots = [s | {"utt_ref": "cp-3"} for s in slots]
+    result = record_offer(BB, "o1", slots, 0, NOW)
+    assert not result.ok and not result.effects and why in result.text
+
+
+def test_the_table_bounds_the_iso_form() -> None:  # #166 N1: -05:00 is 25 chars
+    assert "≤ 24 chars, prefer …Z" in SYSTEM
 
 
 def test_the_table_is_guards_role_table_and_is_in_slows_prompt() -> None:

@@ -572,9 +572,9 @@ def test_the_same_terms_again_are_unchanged_and_a_change_is_a_revision(
     assert h.bb.public.offers["save-2"].revision == 2
 
 
-def _mandate(h: Host, max_minor: int) -> None:
+def _mandate(h: Host, max_minor: int, **more: Any) -> None:
     """A granted mandate, as the UI and the kernel decide it."""
-    envelope = {"max_monthly_price_minor": max_minor}
+    envelope = {"max_monthly_price_minor": max_minor, **more}
     h.act({"tool": "propose_mandate", "envelope": envelope})
     m = h.bb.private.mandate
     assert m is not None
@@ -609,3 +609,23 @@ def test_a_confirmed_offer_inside_the_mandate_shows_no_hint(tmp_path: Path) -> N
     h = _confirmed(tmp_path)
     _mandate(h, 7000)
     assert "outside mandate" not in _bar(h)
+
+
+def test_no_hint_when_guard_would_refuse_the_request(tmp_path: Path) -> None:
+    """#166 review D1: the hint fires only when Guard would allow
+    request_approval; a hard violation, unbound terms or an expired offer
+    would be denied, and a hint repeated after a denial drives a loop."""
+    h = _confirmed(tmp_path)
+    _mandate(h, 6500, required_features=["unlimited_data"])
+    assert "outside mandate" not in _bar(h)
+    (denied,) = h.act({"tool": "request_approval", "offer_ref": "save-2"})
+    assert "denied: policy_violation" in denied
+    (tmp_path / "b").mkdir()
+    h = _confirmed(tmp_path / "b")
+    _mandate(h, 6500)
+    view = view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b")
+    assert HINT in status_bar(view, KEYS, h.now())
+    (o,) = view.offers
+    for change in ({"terms_hash": "0" * 64}, {"expires_ms": h.now()}):
+        bad = view.model_copy(update={"offers": (o.model_copy(update=change),)})
+        assert "outside mandate" not in status_bar(bad, KEYS, h.now()), change

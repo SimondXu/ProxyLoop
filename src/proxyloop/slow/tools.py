@@ -513,13 +513,14 @@ def record_offer(
 ) -> Result:  # every money or term value is one the rep said
     if bad := [p for s in raw if (p := offer_slots.shape(s))]:
         return no(offer_slots.refused(bad))  # whole: no partial record
+    if bad := offer_slots.conflicts(raw):
+        return no(f"record_offer refused, nothing recorded: {'; '.join(bad)}")
     slots = [st.ReadbackSlot(source_utt=s.get("utt_ref"), **_slot(s)) for s in raw]
     said = {x.utt_id: x.text for x in bb.channels["cp"].lines if x.speaker == "partner"}
     unbound = [
         f"{s.field}={s.value} is not in rep line {s.source_utt}"
         for s in slots
         if (line := said.get(str(s.source_utt))) is None
-        or (s.unit in SCALE and not s.value.isdigit())  # plain integers only
         or not _value(s) <= spoken(line, s.unit)
     ]
     if unbound:

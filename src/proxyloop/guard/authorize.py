@@ -98,20 +98,28 @@ REASONS: Mapping[str, tuple[str, ...]] = {
 
 def _open_offer(bb: Blackboard, ref: str) -> tuple[OfferPublic, Terms] | Denial:
     """An open, unexpired, confirmed offer without hard violations."""
-    if bb.fences:
+    offer, fenced = bb.public.offers.get(ref), bool(bb.fences)
+    return open_offer(offer, bb.private.mandate, bb.t_ms, fenced)
+
+
+def open_offer(
+    offer: OfferPublic | None, mandate: Mandate | None, t_ms: int, fenced: bool
+) -> tuple[OfferPublic, Terms] | Denial:
+    """``_open_offer``'s rule on its inputs alone, so Slow's status bar asks
+    exactly what ``request_approval`` and ``accept_offer`` will ask."""
+    if fenced:
         return Denial("fence_raised")
-    offer = bb.public.offers.get(ref)
     if offer is None:
         return Denial("no_such_offer")
     if offer.status != "open":
         return Denial("offer_not_open")
-    if offer.expires_ms is not None and offer.expires_ms <= bb.t_ms:
+    if offer.expires_ms is not None and offer.expires_ms <= t_ms:
         return Denial("offer_expired")
     terms = offer_terms(offer)
     bound = terms is not None and offer.terms_hash == terms_hash(terms)
     if terms is None or not bound or readback_status(offer) != "confirmed":
         return Denial("readback_not_confirmed")
-    if hard_violations(terms, bb.private.mandate):
+    if hard_violations(terms, mandate):
         return Denial("policy_violation")
     return offer, terms
 
