@@ -217,7 +217,8 @@ def check_account(
     said = re.compile(rf"(?<![0-9A-Za-z]){re.escape(conf)}(?![0-9A-Za-z])")
     if cited is not None:  # the same boundary rule, on the line itself
         lines = bb.channels.get("cp", ChannelState()).lines
-        line = next((x for x in lines if x.utt_id == cited), None)
+        same = [x for x in lines if x.utt_id == cited]  # the last, as said_at
+        line = same[-1] if same else None
         if line is None or line.speaker != "partner":  # none, or a self-binding
             return no(f"{cited!r} is no rep line: cite the REP line that said {conf}")
         if not conf or not said.search(line.text):
