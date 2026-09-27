@@ -19,13 +19,18 @@ from proxyloop.obs import detectors, grading, runs, triage
 ASK = ("ask", "")
 SAID = ("rep", "I can offer $68 a month.")
 CLOSE = ("rep", "That is our best offer, and I cannot do any better.")
+NO_DEAL = ("finish", "no_deal")  # a successful finish with this outcome
 Script = tuple[tuple[str, str], ...]
 
 
-def _log(script: Script, finish: bool = True) -> Log:
+def _log(script: Script) -> Log:
     log = Log("rC")
     for n, (who, text) in enumerate(script):
-        if who == "ask":
+        if who == "finish":
+            done: P = {"name": "finish", "args": {"outcome": text}}
+            done |= {"result_text": "verified", "ok": True}
+            log.add("slow.tool", "slow", "agent", done, (log.start,))
+        elif who == "ask":
             final: P = {"move": "ask_final_offer", "slots": []}
             s2f(log, f"s2f-{n}", "cp", "GUIDE", log.start, guide=final)
         elif who == "rep":
@@ -35,16 +40,13 @@ def _log(script: Script, finish: bool = True) -> Log:
             heard: P = {"lane": "cp", "utt_id": f"c{n}", "text_generated": text}
             heard |= {"text_heard": text, "interrupted": False}
             log.add("utt.delivered", "kernel", "agent", heard, (log.start,))
-    if finish:
-        done: P = {"name": "finish", "args": {"outcome": "no_deal"}}
-        done |= {"result_text": "verified no deal", "ok": True}
-        log.add("slow.tool", "slow", "agent", done, (log.start,))
     log.add("session.ended", "kernel", "ops", {"reason": "timeout"})
     return log
 
 
 def _inputs(tmp_path: Path, script: Script, finish: bool = True) -> detectors.Inputs:
-    run = write(tmp_path / "rC", _log(script, finish), manifest("rC"))
+    log = _log((*script, NO_DEAL) if finish else script)
+    run = write(tmp_path / "rC", log, manifest("rC"))
     return triage.read(run, runs.Seal(), content=True)[1]
 
 
@@ -107,14 +109,28 @@ def test_a_retraction_after_the_closing_line_is_not_a_pass(tmp_path: Path) -> No
             assert values[name] is None, (finish, name)
 
 
+def _close(tmp_path: Path, script: Script) -> object:
+    return detectors.run_all(_inputs(tmp_path, script, False))[
+        "close.reply_to_finish_steps"
+    ]
+
+
 def test_the_finish_bounds_the_window(tmp_path: Path) -> None:
-    """Lines after the first successful finish are not Guard's: a closing line
-    said after it does not make the finish a close."""
-    log = _log((SAID, ASK))  # 1 said, 2 ask, 3 finish, 4 ended
-    log.events.pop()
-    said: P = {"lane": "cp", "speaker": "partner", "utt_id": "late"}
-    log.add("utt.final", "kernel", "agent", said | {"text": CLOSE[1]})  # 4
-    run = write(tmp_path / "rC", log, manifest("rC"))
-    x = triage.read(run, runs.Seal(), content=True)[1]
+    """Lines after the first successful no_deal finish are not Guard's: a
+    closing line said after it does not make the finish a close."""
+    x = _inputs(tmp_path, (SAID, ASK, NO_DEAL, CLOSE), False)
     assert grading.closing_reply(x, len(x.events)) is not None  # at the log's end
-    assert detectors.run_all(x)["close.reply_to_finish_steps"] is None
+    assert _close(tmp_path / "b", (SAID, ASK, NO_DEAL, CLOSE)) is None
+
+
+def test_an_ask_after_the_finish_is_ignored(tmp_path: Path) -> None:
+    """1 said, 2 ask, 3 closing, 4 finish, 5 a late ask: the reply stays 3."""
+    value = _close(tmp_path, (SAID, ASK, CLOSE, NO_DEAL, ASK))
+    assert value == {"count": 0, "reply_seq": 3, "finish_seq": 4, "h5_pass": True}
+
+
+def test_a_deal_finish_does_not_bound_the_window(tmp_path: Path) -> None:
+    """A deal finish goes through verify_completion, not verify_no_deal: the
+    window runs to the log's end and no finish is claimed to have judged it."""
+    value = _close(tmp_path, (SAID, ASK, CLOSE, ("finish", "completed")))
+    assert value == {"count": 0, "reply_seq": 3, "finish_seq": None, "h5_pass": False}

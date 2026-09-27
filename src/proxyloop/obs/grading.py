@@ -311,15 +311,22 @@ def closing_reply(x: Inputs, at: int) -> Event | None:
 
 
 def _finish(x: Inputs) -> int | None:
-    """The first successful ``finish`` slow.tool's seq (any outcome)."""
-    done = [e.seq for e in _tools(x, "finish") if e.payload.get("ok") is True]
+    """The first successful ``finish(no_deal)`` slow.tool's seq: the one call
+    verify_no_deal judged (a deal finish goes through verify_completion)."""
+    done = [
+        e.seq
+        for e in _tools(x, "finish")
+        if e.payload.get("ok") is True
+        and as_dict(e.payload.get("args")).get("outcome") == "no_deal"
+    ]
     return done[0] if done else None
 
 
 def _reply(x: Inputs) -> Event | None:
     """The closing reply the three ``close`` detectors share: ``closing_reply``
-    at the first successful ``finish`` (Guard judged it there), or at the log's
-    end when there is none. None without ``content``."""
+    at the first successful ``finish(no_deal)`` (Guard judged it there), or at
+    the log's end when there is none (asks and lines after the finish are
+    ignored). None without ``content``."""
     if not x.content:
         return None
     done = _finish(x)
@@ -329,9 +336,9 @@ def _reply(x: Inputs) -> Event | None:
 @detector("close.reply_to_finish_steps")
 def _to_finish(x: Inputs) -> Value:
     """Slow steps (slow.step.started) after the closing reply up to the first
-    successful ``finish``, which bounds the reply (``finish_seq`` None: none;
-    the steps then run to the log's end). None: no ``content``, or no closing
-    reply."""
+    successful ``finish(no_deal)``, which bounds the reply (``finish_seq``
+    None: none, even with a deal finish; the steps then run to the log's
+    end). None: no ``content``, or no closing reply."""
     reply = _reply(x)
     if reply is None:
         return None
@@ -357,8 +364,9 @@ def _unclosed(x: Inputs) -> Value:
 @detector("user.told_terms")
 def _told(x: Inputs) -> Value:
     """User-lane TELL_USER s2f.msg events after the closing reply that FastU
-    voiced (s2f.voiced); what they said is not read. None: no ``content``, or
-    no closing reply."""
+    voiced (s2f.voiced); what they said is not read. Anchored to the closing
+    reply Guard verified, so a tell before the final close is premature and
+    not counted (527345). None: no ``content``, or no closing reply."""
     reply = _reply(x)
     if reply is None:
         return None
