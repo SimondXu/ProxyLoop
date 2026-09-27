@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 from tests.concurrency.harness import SCRIPTS, Sim, VirtualTime
 from tests.support.fakes import RepeatingLLM
@@ -457,17 +457,22 @@ def test_a_cancelled_generation_lets_slow_see_the_line_at_once(
     within_the_lag_bound(sim)
 
 
-@pytest.mark.parametrize("step_ms", [0, 20_000], ids=["idle", "long_steps"])
+@pytest.mark.parametrize(
+    ("step_ms", "gap_ms"),
+    [(0, 17_000), (20_000, 17_000), (0, 2_000), (0, 5_000)],
+    ids=["idle", "long_steps", "lines_every_2s", "lines_every_5s"],
+)
 def test_a_generation_with_no_end_still_lets_slow_see_the_line(
-    tmp_path: Path, step_ms: int
-) -> None:  # ADR-0015 M1 (b): FastC hangs from the first rep line on
+    tmp_path: Path, step_ms: int, gap_ms: int
+) -> None:  # ADR-0015 M1 (b): FastC hangs from the first rep line on; lines
+    # under HEARTBEAT_S apart never push the backstop out (review D-A)
     sim = Call(tmp_path, step_ms=step_ms, fast_ms=10**9)
 
     async def case() -> None:
         await sim.start()
-        for _ in range(3):
+        for _ in range(max(3, 30_000 // gap_ms)):
             sim.rep_says("Hello, who is this?")
-            await sim.vt.run_for(17_000)
+            await sim.vt.run_for(gap_ms)
         await sim.vt.run_for(40_000)
         await sim.stop()
 
@@ -556,8 +561,10 @@ def test_a_rep_turn_every_2_s_for_720_s_stays_bounded(
 
 
 # L4 (rule 12): the schedule is a function of external events and the clock.
-def schedule(root: Path, kinds: Sequence[str], rep_ms: Sequence[int]) -> list[Any]:
-    sim = Call(root, [*kinds, "normal"], step_ms=1_000)
+def schedule(
+    root: Path, kinds: Sequence[str], rep_ms: Sequence[int], fast_ms: int
+) -> list[Any]:
+    sim = Call(root, [*kinds, "normal"], step_ms=1_000, fast_ms=fast_ms)
 
     async def case() -> None:
         await sim.start()
@@ -573,17 +580,23 @@ def schedule(root: Path, kinds: Sequence[str], rep_ms: Sequence[int]) -> list[An
     return [(s.t_ms, reasons(s)) for s, _ in sim.steps()]
 
 
-@settings(max_examples=25, deadline=None)
+@settings(max_examples=40, deadline=None)
 @given(
     kinds=st.lists(st.sampled_from(sorted(STEP)), min_size=1, max_size=6),
     rep_ms=st.lists(st.integers(0, 60_000), min_size=1, max_size=4, unique=True),
+    fast_ms=st.sampled_from([0, 2_500]),  # 2.5 s: steps land while FastC runs (D-B)
 )
+@example(kinds=["bad_wait"], rep_ms=[0, 1], fast_ms=2_500)  # a refused tool, pending
+@example(kinds=["refused", "no_tool"], rep_ms=[0, 1], fast_ms=2_500)  # FastC turns
 def test_no_step_content_moves_the_wake_schedule(
-    tmp_path_factory: pytest.TempPathFactory, kinds: list[str], rep_ms: list[int]
+    tmp_path_factory: pytest.TempPathFactory,
+    kinds: list[str],
+    rep_ms: list[int],
+    fast_ms: int,
 ) -> None:
     root = tmp_path_factory.mktemp("l4")
-    base = schedule(root / "base", ["normal"] * len(kinds), rep_ms)
-    assert schedule(root / "kinds", kinds, rep_ms) == base
+    base = schedule(root / "base", ["normal"] * len(kinds), rep_ms, fast_ms)
+    assert schedule(root / "kinds", kinds, rep_ms, fast_ms) == base
     gaps = [b[0] - a[0] for a, b in pairwise(base)]
     assert base and max(gaps, default=0) <= 16_001  # L2: 15 s after a 1 s step
 
