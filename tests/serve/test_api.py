@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import time
 from pathlib import Path
@@ -256,3 +257,34 @@ def test_a_broken_manifest_or_prompt_line_is_not_an_error(
     line = prompts.splitlines()[0]
     got = _get(client, f"/api/replay/{bundles.plain}/prompts/{json.loads(line)['sha']}")
     assert (got.status_code, got.content) == (200, line)
+
+
+def test_the_listing_redacts_a_url_in_the_task_ref(
+    bundles: Bundles, tmp_path: Path
+) -> None:
+    run = _copy(bundles.root / bundles.plain, tmp_path)
+    manifest = json.loads((run / MANIFEST).read_bytes())
+    (run / MANIFEST).write_text(json.dumps(manifest | {"task_ref": f"{URL}/t"}))
+    (listed,) = _get(_client(tmp_path), "/api/bundles").json()["bundles"]
+    assert listed["task_ref"] == "<redacted-url>"
+
+
+@pytest.mark.parametrize("change", ["truncated", "replaced", "removed"])
+def test_a_truncated_or_replaced_log_closes_1011(
+    bundles: Bundles, tmp_path: Path, change: str
+) -> None:
+    lines = _lines(bundles.root / bundles.plain / EVENTS)
+    run = _copy(bundles.root / bundles.plain, tmp_path, lines[:3])
+    log = run / EVENTS
+    with connect(_client(tmp_path), f"/ws/live/{run.name}") as ws:
+        got = [receive(ws)["text"].encode() for _ in range(3)]
+        if change == "truncated":
+            log.write_bytes(lines[0] + b"\n")
+        elif change == "replaced":  # a new file under the name, longer
+            (run / "new").write_bytes(b"".join(ln + b"\n" for ln in lines[:4]))
+            os.replace(run / "new", log)
+        else:
+            log.unlink()
+        message = receive(ws)
+    assert got == lines[:3]
+    assert (message["type"], message["code"]) == ("websocket.close", 1011)

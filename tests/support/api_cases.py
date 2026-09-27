@@ -39,7 +39,7 @@ class ApiCase:
         self.messages: list[str] = []
         self.utterances: list[str] = []
         self._last: str | None = None
-        self.unavailable = False  # post_approval raises, as a dead kernel would
+        self.unavailable = False  # every ingress raises, as a dead kernel would
 
     # The Case protocol.
     def blackboard(self) -> Blackboard:
@@ -52,9 +52,13 @@ class ApiCase:
         self.emit("approval.post", post.model_dump(mode="json"), "ui", causes=())
 
     def user_message(self, text: str) -> None:
+        if self.unavailable:
+            raise RuntimeError("the case's kernel is gone")
         self.messages.append(text)
 
     def rep_utterance(self, text: str) -> None:
+        if self.unavailable:
+            raise RuntimeError("the case's kernel is gone")
         self.utterances.append(text)
 
     # Test setup: real events through the bus.
