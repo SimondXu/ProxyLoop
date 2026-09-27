@@ -295,13 +295,78 @@ def _retry(run: Path, first_succeeded: bool) -> None:
     _write(run, _renumber([*events[:i], first, *events[i:]]))
 
 
+CUT = "Could you"
+
+
+def _cut_call(run: Path, **update: object) -> None:
+    """A second FastC call cut after its first token (run ``4ce0ad``): the
+    adapter hashes the delivered text, the lane stores it, it backs no line."""
+    cut = _copy(_calls(_events(run))[0])
+    cut["event_id"] = "tmp-cut"
+    cut["payload"].update(call_id="call-cut", request_id="req-cut", error="cancelled")
+    cut["payload"].update(finish_reason=None, response_sha=sha256_text(CUT))
+    cut["payload"].update(update)
+    stored = {"sha": sha256_text(CUT), "kind": "response", "content": CUT}
+    with (run / PROMPTS).open("a", encoding="utf-8") as f:
+        f.write(json.dumps(stored) + "\n")
+    _before_end(run, cut)
+
+
+def response_before_any_token(run: Path) -> None:
+    _cut_call(run, t_first_token=None)
+
+
+def response_not_in_prompts(run: Path) -> None:
+    _cut_call(run, response_sha=sha256_text("never stored"))
+
+
+def failed_call_with_usage(run: Path) -> None:
+    _cut_call(run, error="connection reset")  # usage is the copied call's
+
+
+def _blank_error_backs_a_line(run: Path, error: str) -> None:
+    """Review #177: next to one honest call, the line's own call says
+    ``error=""`` (a success to chain.py) with a forged echo and no usage."""
+    _cut_call(run, error=None, finish_reason="stop", call_id="call-x")
+    events = _events(run)
+    forged = {"usage": None, "request_id": None, "served_model_echo": "forged"}
+    _calls(events)[0]["payload"].update(forged | {"error": error})
+    _write(run, events)
+
+
+def empty_error_backs_a_line(run: Path) -> None:
+    _blank_error_backs_a_line(run, "")
+
+
+def blank_error_backs_a_line(run: Path) -> None:
+    _blank_error_backs_a_line(run, " \t")
+
+
+def billed_cut_call_with_a_forged_echo(run: Path) -> None:
+    _cut_call(run, served_model_echo="forged")  # usage is the copied call's
+
+
+def billed_cut_call_without_request_id(run: Path) -> None:
+    _cut_call(run, request_id=None)
+
+
 def two_successful_attempts(run: Path) -> None:
     _retry(run, first_succeeded=True)
 
 
 PROBES: list[tuple[Callable[[Path], None], Mode, str]] = [
     (errored_call_backs_a_line, "offline", "one successful attempt of its call"),
-    (errored_call_backs_a_line, "offline", "failed yet records a response or usage"),
+    (response_before_any_token, "offline", "records a response before any token"),
+    (response_not_in_prompts, "offline", "no response"),
+    (failed_call_with_usage, "offline", "failed yet records usage"),
+    (empty_error_backs_a_line, "offline", "call call-1 records an empty error"),
+    (blank_error_backs_a_line, "offline", "call call-1 records an empty error"),
+    (billed_cut_call_with_a_forged_echo, "claim", "served 'forged', configured"),
+    (
+        billed_cut_call_without_request_id,
+        "claim",
+        "call-cut (fast_cp) has no request_id",
+    ),
     (slow_text_in_a_cp_turn, "offline", "is a slow call, not fast_cp"),
     (
         no_fast_call_at_all,
@@ -413,6 +478,35 @@ def test_a_dead_endpoint_bundle_fails_the_claim_but_reads_offline(real: Path) ->
     failures = check_path(real, "claim").failures
     assert "claimed role fast_cp has no successful real_http call" in failures
     assert any("session ended with 'llm_unavailable'" in f for f in failures)
+
+
+def test_a_cut_call_with_its_delivered_text_passes_the_claim(real: Path) -> None:
+    """#120's adapter record of a cut stream: ``error="cancelled"``, the
+    delivered text's sha, and any usage seen (billed); it backs no line."""
+    _cut_call(real)  # with the usage chunk
+    assert check_path(real, "claim").ok, check_path(real, "claim").failures
+    _cut_call(real, usage=None, request_id="req-cut-2", call_id="call-cut-2")
+    assert check_path(real, "claim").ok, check_path(real, "claim").failures
+    unbilled = {"usage": None, "request_id": None, "served_model_echo": None}
+    _cut_call(real, call_id="call-cut-3", **unbilled)  # nothing billed to check
+    assert check_path(real, "claim").ok, check_path(real, "claim").failures
+
+
+def test_a_billed_cut_before_any_token_passes_both_modes(real: Path) -> None:
+    """Cancelled after the usage arrived but with no text: usage, no response."""
+    _cut_call(real, t_first_token=None, response_sha=None)
+    assert check_path(real, "offline").ok, check_path(real, "offline").failures
+    assert check_path(real, "claim").ok, check_path(real, "claim").failures
+
+
+def test_a_line_backed_by_a_cut_call_is_rejected(real: Path) -> None:
+    """Delivered text on a failed call never backs a released line (chain.py)."""
+    errored_call_backs_a_line(real)
+    events = _events(real)
+    _calls(events)[0]["payload"]["error"] = "cancelled"
+    _write(real, events)
+    failures = check_path(real, "offline").failures
+    assert any("one successful attempt of its call" in f for f in failures), failures
 
 
 @settings(max_examples=40)
