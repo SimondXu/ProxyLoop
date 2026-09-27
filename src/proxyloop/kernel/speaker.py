@@ -4,10 +4,11 @@
 Guard's verbatim lines (§9.4) take the floor in turn with Fast's. There an
 accept is revalidated (``guard.revalidate`` at now plus its speech time): it is
 released with its ``cap_id`` (M7), or revoked with the reason, ``fence`` under
-a user fence. Under partner fences only (S1-SYS-23) it gives the floor back and
-waits until they clear (Slow saw the rep's turn), then is revalidated; a wait
-that lasts until the line could no longer end before its capability expires
-ends it ``expired`` (fail closed, bounded: no line wedges the case on
+a user fence (or one raised while it waited). Under partner fences only
+(S1-SYS-23) it gives the floor back and waits until they clear (Slow saw the
+rep's turn) or the epoch moves, then is revalidated; a wait that lasts until
+the line could no longer end before its capability expires ends it
+``expired`` (fail closed, bounded: no line wedges the case on
 ``accept_in_flight``). So every accept line ends in exactly one
 ``speak.released`` or ``speak.revoked`` (unless the session ends first: N3).
 Its status follows only from what happened: heard whole, cut by a barge-in
@@ -94,16 +95,20 @@ class Speaker:
     async def _floor_revalidated(self, cap: str | None, text: str) -> str | None:
         """Take the floor, then revalidate ``cap``: why the line may not go out.
         Under partner fences only, give the floor back and wait until a fence
-        moves or the line would end past its capability's expiry."""
-        k, speech = self._k, round(1000 * speech_s(text))
+        or the epoch moves, or the line would end past its capability's
+        expiry. A user fence raised while it waits revokes it ``fence``."""
+        k, speech, users = self._k, round(1000 * speech_s(text)), None
         while True:
             await self._floor_after_partner()
             end = k.now() + speech
             why = "call_closed" if k.closed else None
             if why is None and cap is not None:
                 why = revalidate(k.bb, cap, end)
+            if why in (None, "fence") and users not in (None, k.authority.user_fences):
+                return "fence"  # a user fence rose (even if it cleared) meanwhile
             if why != "fence" or cap is None or not k.authority.partner_only():
                 return why
+            users = k.authority.user_fences if users is None else users
             expires = k.bb.capabilities[cap].expires_ms  # revalidate found it
             if expires <= end:
                 return "expired"

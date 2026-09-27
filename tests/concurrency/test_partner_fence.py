@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from tests.concurrency.harness import Sim, granted, slots, terms
+from tests.concurrency.harness import ACCEPT, Sim, SlowGate, granted, slots, terms
 from tests.concurrency.test_cases import FIX, Valve, arun
 from tests.support.sessions import act
 
@@ -207,6 +207,8 @@ def test_a_call_closed_during_the_wait_revokes_the_accept_at_once(
         (revoked,) = _ends(sim)
         assert revoked.payload["reason"] == "call_closed" and revoked.seq > closed.seq
         assert len(sim.of("authority.fence", op="raised")) == 1
+        cleared = _one(sim, "authority.fence", op="cleared")  # FastC never answers
+        assert cleared.cause_ids == (closed.event_id,) and sim.bb.fences == ()
         await sim.stop()
 
     arun(case())
@@ -249,3 +251,149 @@ def _seq(sim: Sim, event_id: str) -> int:
 
 def _accept_seq(sim: Sim) -> int:
     return _one(sim, "speak.verbatim", kind="accept").seq
+
+
+@pytest.mark.parametrize("change", ["none", "decline"])
+def test_a_correction_before_the_authorising_step_mints_fences_the_accept(
+    tmp_path: Path, change: str
+) -> None:
+    """Review M1: the rep's correction lands after the basis of the Slow step
+    that then authorises the accept (no accept in flight yet, so no fence at
+    the line). The mint raises the fence for it; the accept waits for a step
+    that saw the line: released if it changed nothing, else revoked."""
+
+    async def case() -> None:
+        sim = Sim(tmp_path, {"slow": [ACCEPT]})
+        await sim.start()
+        gate = SlowGate(sim)
+        await sim.offer()
+        card = sim.card()
+        gate.let(0)  # the step the grant wakes is in flight, held
+        sim.post(card)
+        await sim.vt.run_for(100)
+        step = sim.of("slow.step.started")[-1]
+        sim.rep_says(FIX)
+        await sim.vt.run_for(3_000)  # FastC answers the line
+        said = _one(sim, "utt.final", text=FIX)
+        assert int(str(step.payload["basis_seq"])) < said.seq
+        assert sim.of("authority.fence") == [] and sim.of("fast.turn", lane="cp")
+        gate.let(1)  # that step authorises the accept; the next step is held
+        await sim.vt.run_for(100)
+        auth = _one(sim, "action.authorized")
+        fence = _one(sim, "authority.fence", op="raised")
+        assert fence.cause_ids == (said.event_id,) and fence.seq == auth.seq + 1
+        assert fence.payload["utt_id"] == said.payload["utt_id"]
+        await sim.vt.run_for(2_000)
+        assert _ends(sim) == []  # waiting for a step that saw the correction
+        if change == "decline":
+            sim.act({"tool": "decline_offer", "offer_ref": "o1"})
+        gate.let(None)
+        await sim.vt.run_for(20_000)
+        cleared = _one(sim, "authority.fence", op="cleared")
+        saw = sim.events[_seq(sim, cleared.cause_ids[0])]
+        assert int(str(saw.payload["basis_seq"])) >= said.seq
+        (end,) = _ends(sim)
+        assert end.seq > cleared.seq
+        if change == "none":
+            assert end.type == "speak.released"
+        else:
+            assert end.type == "speak.revoked"
+            assert end.payload["reason"] == "offer_closed"
+        await sim.stop()
+        assert check_path(sim.k.path, "offline").ok
+
+    arun(case())
+
+
+def test_an_epoch_bump_ends_a_waiting_accept_at_once(tmp_path: Path) -> None:
+    """Review M2: a revoke during the partner-fence wait wakes the accept:
+    ``speak.revoked{epoch}`` then, not at the capability's expiry."""
+
+    async def case() -> None:
+        fast_cp = Valve()
+        sim = Sim(tmp_path, gates={"fast_cp": fast_cp})
+        fast_cp.open.clear()  # the partner fence stays up
+        await _queued_then_rep(sim, ELSE)
+        await sim.vt.run_for(500)
+        sim.revoke()
+        bump = sim.of("authority.epoch")[-1]
+        await sim.vt.run_for(100)
+        (revoked,) = _ends(sim)
+        assert revoked.payload["reason"] == "epoch" and revoked.seq > bump.seq
+        assert revoked.t_ms - bump.t_ms < 100
+        _one(sim, "status.changed", status="NEEDS_REPLAN")
+        await sim.stop()
+
+    arun(case())
+
+
+def _raised_by(sim: Sim, type_: str) -> Event:
+    (fence,) = [
+        f
+        for f in sim.of("authority.fence", op="raised")
+        if sim.events[_seq(sim, f.cause_ids[0])].type == type_
+    ]
+    return fence
+
+
+def _up(sim: Sim, fence: Event) -> bool:
+    return fence.payload["fence_id"] in {f.fence_id for f in sim.bb.fences}
+
+
+def test_a_fastc_turn_never_binds_a_user_fence(tmp_path: Path) -> None:
+    """Review M3: FastU has not answered the user; FastC answers the rep and
+    Slow completes a step after that: the user fence stays up."""
+
+    async def case() -> None:
+        fast_user = Valve()
+        sim = Sim(tmp_path, gates={"fast_user": fast_user})
+        await sim.start()
+        await granted(sim)
+        fast_user.open.clear()
+        sim.user_says("Hold on, stop.")
+        await sim.vt.run_for(100)
+        user = _raised_by(sim, "user.msg")
+        sim.rep_says(ELSE)
+        await sim.vt.run_for(3_000)
+        turn = sim.of("fast.turn", lane="cp")[-1]
+        assert turn.seq > user.seq
+        assert sim.k.slow is not None
+        sim.k.slow.wake("test")
+        await sim.vt.run_for(1_000)
+        step = sim.of("slow.step.completed")[-1]
+        assert int(str(step.payload["basis_seq"])) >= turn.seq
+        assert _up(sim, user)
+        assert sim.accept().startswith("accept_offer: denied: fence_raised")
+        fast_user.open.set()
+        await sim.stop()
+
+    arun(case())
+
+
+def test_a_fastu_turn_never_binds_a_partner_fence(tmp_path: Path) -> None:
+    """Review M3, the reverse: FastC has not answered the rep; FastU answers
+    the user and Slow completes a step after that: the partner fence stays up
+    (the user fence clears, and still revoked the accept ``fence``)."""
+
+    async def case() -> None:
+        fast_cp = Valve()
+        sim = Sim(tmp_path, gates={"fast_cp": fast_cp})
+        fast_cp.open.clear()
+        partner = await _queued_then_rep(sim, ELSE)
+        sim.user_says("Thanks, go ahead.")
+        await sim.vt.run_for(1_000)
+        user = _raised_by(sim, "user.msg")
+        turn = sim.of("fast.turn", lane="user")[-1]
+        assert turn.seq > user.seq > partner.seq
+        assert sim.k.slow is not None
+        sim.k.slow.wake("test")
+        await sim.vt.run_for(1_000)
+        assert not _up(sim, user) and _up(sim, partner)
+        (revoked,) = _ends(sim)
+        assert revoked.payload["reason"] == "fence"
+        fast_cp.open.set()
+        await sim.vt.run_for(15_000)
+        assert sim.bb.fences == ()
+        await sim.stop()
+
+    arun(case())

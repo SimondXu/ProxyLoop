@@ -15,7 +15,7 @@ import asyncio
 import contextlib
 import heapq
 import json
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 
 from tests.support.fakes import RepeatingLLM
@@ -24,7 +24,16 @@ from tests.support.sessions import Gated, act, fake_config, patient_task
 
 from proxyloop.contract.config import SessionConfig
 from proxyloop.contract.events import ApprovalPost, Approver, Event
-from proxyloop.contract.llm import LLMClient, LLMRole, ModelRef, ToolCall
+from proxyloop.contract.llm import (
+    LLMCallRecord,
+    LLMClient,
+    LLMRole,
+    ModelRef,
+    TextRequest,
+    ToolCall,
+    ToolRequest,
+    ToolResponse,
+)
 from proxyloop.contract.state import ApprovalCard, Blackboard
 from proxyloop.env.tasks.schema import Task
 from proxyloop.guard.mandate import proposal
@@ -34,6 +43,7 @@ from proxyloop.llm.http import RecordSink
 from proxyloop.slow.tools import SlowTools
 
 NOTED = act("Noted.")  # Slow's own step: a private summary, no tool
+ACCEPT = act("take it", {"tool": "accept_offer", "offer_ref": "o1"})  # its own
 SCRIPTS: Mapping[str, Sequence[str]] = {
     "fast_user": ["Okay."],
     "fast_cp": ["Okay."],
@@ -240,6 +250,33 @@ class Sim:
         post |= {"decision": "granted", "subject_hash": m["mandate_hash"]}
         post |= {"authority_epoch": m["epoch"]}
         self.k.post_approval(ApprovalPost.model_validate(post))
+
+
+class SlowGate:
+    """Slow's step calls wait here: ``let(n)`` lets ``n`` more through, and
+    ``let(None)`` opens it (review probe 1)."""
+
+    def __init__(self, sim: Sim) -> None:
+        loud = sim.k.clients["slow"]
+        self.inner, self.ref = loud.inner, loud.inner.ref
+        loud.inner = self
+        self._tickets: int | None = None
+        self._moved = asyncio.Event()
+
+    def let(self, n: int | None) -> None:
+        self._tickets = n
+        self._moved.set()
+
+    def stream_text(self, request: TextRequest) -> AsyncIterator[str | LLMCallRecord]:
+        return self.inner.stream_text(request)
+
+    async def chat_tools(self, request: ToolRequest) -> ToolResponse:
+        while self._tickets == 0:
+            self._moved.clear()
+            await self._moved.wait()
+        if self._tickets is not None:
+            self._tickets -= 1
+        return await self.inner.chat_tools(request)
 
 
 async def granted(sim: Sim, ref: str = "o1", dollars: int = 68) -> ApprovalCard:

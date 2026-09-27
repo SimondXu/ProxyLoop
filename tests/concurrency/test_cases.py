@@ -209,6 +209,8 @@ def test_a_partner_turn_begun_before_a_queued_accept_lands_first(
         revoked = sim.of("speak.revoked", cap_id="cap-1")
         assert len(released) + len(revoked) == 1  # the line ends exactly once
         assert revoked or said.seq < released[0].seq  # heard, then revalidated
+        (cleared,) = sim.of("authority.fence", op="cleared")  # Slow saw it (C)
+        assert released and released[0].seq > cleared.seq
         for moved in sim.of("status.changed", status="COMMITTED"):
             assert said.seq < moved.seq
         await sim.stop()
