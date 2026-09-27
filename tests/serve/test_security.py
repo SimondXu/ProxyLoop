@@ -132,3 +132,29 @@ def test_main_refuses_a_non_local_extra_origin(
     with pytest.raises(SystemExit) as exited:
         _served(monkeypatch, ["--allow-origin", origin])
     assert exited.value.code == 2
+
+
+def test_the_built_web_is_mounted_after_the_api(
+    bundles: Bundles, tmp_path: Any
+) -> None:
+    web = tmp_path / "web"
+    web.mkdir()
+    (web / "index.html").write_text("<html>ProxyLoop</html>")
+    http = client(bundles.root, web_dir=web)
+    page = get(http, "/")
+    assert (page.status_code, page.text) == (200, "<html>ProxyLoop</html>")
+    assert get(http, "/api/bundles").json()["bundles"]  # the API still wins
+    assert get(http, "/", {"origin": "http://evil.example"}).status_code == 403
+    assert get(client(bundles.root), "/").status_code == 404  # no web_dir
+
+
+def test_main_mounts_the_web_dir_on_localhost(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "web").mkdir()
+    (tmp_path / "web" / "index.html").write_text("ok")
+    served = _served(monkeypatch, ["--port", "8124", "--web-dir", "web"])
+    assert (served["host"], served["port"]) == ("127.0.0.1", 8124)
+    http = TestClient(served["app"], base_url="http://127.0.0.1:8124")
+    assert get(http, "/").text == "ok"

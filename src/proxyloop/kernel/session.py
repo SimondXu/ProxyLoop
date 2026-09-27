@@ -373,7 +373,7 @@ class Kernel:
         }
         started: dict[str, Any] = {
             "cfg_hash": config_hash(self.cfg),
-            "task_ref": f"{self.task.family}@{self.task.version}",
+            "task_ref": self.task.ref,
             "instance_hash": instance_hash(self.task),
             "split": "train",  # piloted families are train-only (I9)
             "renderer_fp": {p: fingerprint(p) for p in PROFILE.values()},

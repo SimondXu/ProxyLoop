@@ -22,6 +22,7 @@ from collections.abc import Callable
 from decimal import Decimal
 
 from proxyloop.env import world
+from proxyloop.env.tasks.refs import format_task_ref, parse_task_ref
 from proxyloop.env.tasks.schema import Task
 
 PRICE_SHIFT, CENTS = (-8, 8), ("0", "0.49", "0.99")  # dollars, and cents
@@ -57,10 +58,16 @@ def collisions(task: Task) -> set[Decimal]:
 
 
 def instance(task: Task, seed: int) -> Task:
+    """Instance ``seed`` of a file's task, its ref ending in ``#seed``."""
+
     if seed == 0:
         return task
+    if (ref := parse_task_ref(task.ref)).seed:
+        raise ValueError(f"{task.ref} is already an instance")
+    stamp = {"ref": format_task_ref(ref._replace(seed=seed))}  # raises on seed < 0
     for attempt in range(DRAWS):
-        drawn = _draw(task, seed, random.Random(f"{task.family}:{seed}:{attempt}"))
+        rng = random.Random(f"{task.family}:{seed}:{attempt}")
+        drawn = _draw(task, seed, rng).model_copy(update=stamp)
         if not collisions(drawn):
             return drawn
     raise ValueError(f"{task.family} instance {seed}: every draw collides")

@@ -24,7 +24,8 @@ from proxyloop.contract.llm import (
     ReasoningEffort,
 )
 from proxyloop.core.clock import Clock, WallClock
-from proxyloop.env.tasks.loader import load_task
+from proxyloop.env.tasks.loader import load_task, resolve, task_ref_of
+from proxyloop.env.tasks.schema import Task
 from proxyloop.evidence.check import ENDED_OK, check_path
 from proxyloop.kernel.session import ChannelSpec, ClientFactory, run_session
 from proxyloop.llm.factory import make_client
@@ -105,6 +106,14 @@ def replay(run: Path, speed: float) -> int:
     return 0 if report.ok else 1
 
 
+def task_of(args: argparse.Namespace) -> Task:
+    """The instance ``--instance`` of ``--family`` in ``--mode`` (unset: the
+    family's default mode), resolved from its canonical task_ref."""
+
+    version = load_task(args.family).version
+    return resolve(task_ref_of(args.family, version, args.mode, args.instance))
+
+
 def session(args: argparse.Namespace, channels: dict[str, ChannelSpec]) -> int:
     cfg, clock = live_config(args), WallClock()
     if "human" in channels.values():
@@ -113,7 +122,7 @@ def session(args: argparse.Namespace, channels: dict[str, ChannelSpec]) -> int:
     clients = redirect_fast_cp(url, clock) if url else None
     run = run_session(
         cfg,
-        load_task(args.family),
+        task_of(args),
         channels,
         runs_dir=Path(args.runs),
         clock=clock,
@@ -133,6 +142,8 @@ def build_parser() -> argparse.ArgumentParser:
     for name in ("session", "rep-chat"):
         p = sub.add_parser(name)
         p.add_argument("--family", required=True)
+        p.add_argument("--mode", help="a family mode; unset: the family's default")
+        p.add_argument("--instance", type=int, default=0, help="0: the file itself")
         efforts, endpoints = get_args(ReasoningEffort), get_args(Endpoint)
         p.add_argument("--world-effort", default=WORLD_EFFORT, choices=efforts)
         for role in WORLD_ROLES:  # per role; unset: --world-effort
@@ -165,6 +176,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--fast-effort is for a hosted Fast; a vLLM Fast keeps its own")
     if args.command != "replay" and args.fast_cp_base_url and args.claim:
         parser.error("--fast-cp-base-url is not in the bundle: never with --claim")
+    if args.command != "replay" and args.instance < 0:
+        parser.error("--instance is a seed >= 0")
     if args.command == "replay":
         return replay(Path(args.run.removeprefix("RUN=")), args.speed)
     if args.command == "rep-chat":
