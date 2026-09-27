@@ -5,8 +5,10 @@ built web same-origin on 127.0.0.1, over a tmp root of stub cases
 ``uv run python -m tests.web.wiring_server [--port N]`` from the repo root; the
 Playwright project "wiring" (``apps/web/playwright.wiring.config.ts``) starts
 it. Every case in ``CASES`` is seeded at start, one per flow under test, so no
-test changes another's case and the server needs no control route. Synthetic
-events go only under the tmp directory, removed at exit.
+test changes another's case and the server needs no control route. The start
+routes (``GET /start``, ``/api/models``, ``POST /api/cases``) run over a
+``WiringStarter``, whose task picks the outcome. Synthetic events go only under
+the tmp directory, removed at exit.
 
 ``--replay`` (S1-SYS-30; ``apps/web/playwright.config.ts``) serves replay only,
 without cases, over ``PL_BUNDLE_DIR`` (default ``tests/web/fixtures``) and two
@@ -29,7 +31,7 @@ from types import FrameType
 
 import uvicorn
 from fastapi import FastAPI
-from tests.support.web_wiring import Mode, WiringCase
+from tests.support.web_wiring import Mode, WiringCase, WiringStarter
 
 from proxyloop.serve.api import HOST, create_app
 from proxyloop.serve.bundles import sealed
@@ -49,20 +51,24 @@ CASES: dict[str, Mode] = {
     "wire-chat": "ok",
     "wire-csrf": "ok",
     "wire-rep": "ok",
+    "wire-authority": "authority",
 }
 
 
 def build(
     tmp: Path, origin: str, web_dir: Path | None = WEB
-) -> tuple[FastAPI, dict[str, WiringCase]]:
-    """The app and its seeded cases; ``origin`` is the one allowed browser origin."""
+) -> tuple[FastAPI, dict[str, WiringCase], WiringStarter]:
+    """The app, its seeded cases and its starter; ``origin`` is the one allowed
+    browser origin."""
     root = tmp / "wiring"
     root.mkdir()
     cases = {
         case_id: WiringCase(root, case_id, mode) for case_id, mode in CASES.items()
     }
-    app = create_app([root, EVIDENCE], [origin], cases=cases.get, web_dir=web_dir)
-    return app, cases
+    starter = WiringStarter(root)
+    roots = [root, EVIDENCE]
+    app = create_app(roots, [origin], cases=cases.get, web_dir=web_dir, start=starter)
+    return app, cases, starter
 
 
 def _copy(bundle: Path, dest: Path, split: str | None = None) -> None:
@@ -118,15 +124,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     signal.signal(signal.SIGTERM, _exit)
     with tempfile.TemporaryDirectory(prefix="pl-wiring-") as tmp:
         cases: dict[str, WiringCase] = {}
+        started: list[WiringCase] = []  # the starter's own list: it grows
         if args.replay:
             bundles = REPO / os.environ.get("PL_BUNDLE_DIR", str(FIXTURES))
             app = create_app(replay_roots(Path(tmp), bundles), [origin], web_dir=WEB)
         else:
-            app, cases = build(Path(tmp), origin)
+            app, cases, starter = build(Path(tmp), origin)
+            started = starter.cases
         try:
             uvicorn.run(app, host=HOST, port=port)
         finally:
-            for case in cases.values():
+            for case in [*cases.values(), *started]:
                 case.close()
     return 0
 

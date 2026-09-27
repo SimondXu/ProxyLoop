@@ -17,6 +17,7 @@ from pathlib import Path
 import httpx
 import pytest
 import uvicorn
+from tests.support.web_wiring import OPTIONS, WiringStarter
 from tests.web.wiring_server import build
 from websockets.exceptions import InvalidStatus
 from websockets.sync.client import connect
@@ -32,6 +33,7 @@ FOREIGN = "http://evil.example"
 class Running:
     origin: str  # http://127.0.0.1:<port>, the one allowed browser origin
     ws: str
+    starter: WiringStarter
 
 
 @pytest.fixture
@@ -40,7 +42,7 @@ def server(tmp_path: Path) -> Iterator[Running]:
     sock.bind((HOST, 0))
     port = sock.getsockname()[1]
     origin = f"http://{HOST}:{port}"
-    app, cases = build(tmp_path, origin, web_dir=None)
+    app, cases, starter = build(tmp_path, origin, web_dir=None)
     run = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
     thread = threading.Thread(target=run.run, kwargs={"sockets": [sock]}, daemon=True)
     thread.start()
@@ -48,10 +50,10 @@ def server(tmp_path: Path) -> Iterator[Running]:
     while not run.started:
         assert thread.is_alive() and time.monotonic() < deadline, "no server"
         time.sleep(0.02)
-    yield Running(origin, f"ws://{HOST}:{port}")
+    yield Running(origin, f"ws://{HOST}:{port}", starter)
     run.should_exit = True
     thread.join(10)
-    for case in cases.values():
+    for case in [*cases.values(), *starter.cases]:
         case.close()
 
 
@@ -94,3 +96,33 @@ def test_a_foreign_origin_cannot_open_a_stream(server: Running, stream: str) -> 
     own = Origin(server.origin)
     with connect(url, origin=own, additional_headers=cookies, proxy=None) as ws:
         assert json.loads(ws.recv(timeout=5))["seq"] == 0
+
+
+def test_start_routes_over_the_stub_starter(server: Running) -> None:
+    """The stub Starter serves the S1-SYS-33 shapes; a broken options call is
+    500 ``options`` with a reason (the page shows it: e2e/start.spec.ts)."""
+    with httpx.Client(base_url=server.origin) as http:
+        models = http.get("/api/models").json()
+        assert [o["id"] for o in models["options"]] == [o.id for o in OPTIONS]
+        assert {o["lane"] for o in models["options"] if o["default"]} == {
+            "fast_user",
+            "fast_cp",
+            "slow",
+        }
+        got = http.get("/start")
+        assert (got.status_code, got.headers["location"]) == (303, "/?start")
+        own = {"origin": server.origin, "x-csrf-token": got.cookies["pl_op_csrf"]}
+        body: dict[str, object] = {
+            "task_ref": "wire-start",
+            "models": {},
+            "rep": "human",
+        }
+        started = http.post("/api/cases", json=body, headers=own)
+        assert (started.status_code, started.json()) == (201, {"case_id": "started-1"})
+        assert server.starter.calls == [("wire-start", {}, "human")]
+        assert http.get("/live/started-1").status_code == 303
+        server.starter.broken_options = True
+        broken = http.get("/api/models")
+        assert broken.status_code == 500
+        assert broken.json()["error"] == "options"
+        assert "default" in broken.json()["reason"]

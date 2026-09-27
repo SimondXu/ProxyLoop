@@ -17,8 +17,8 @@ The reference shape is unchanged [O TalkAct, principal-loyalty and interaction-s
 - The claim ledger records the stage and whether the user closed it. A claim cannot be `final` before the stage closes.
 
 ## 2. README.md outline (`[gen]` = a generated block between markers)
-1. **Title + pitch:** "A small, real Pine-AI-style agent: one self-hosted Qwen3.5-9B (vLLM) chats with the user and talks live to a company rep while Claude Sonnet 5 plans from its typed relays. Transactions are guarded, unauthorised speech is measured, and status is evidence-verified." Architecture figure.
-2. **Demo:** a GIF recorded from the web replay of a **synthetic** bundle, and `make replay`.
+1. **Title + pitch:** "A small, real Pine-AI-style agent: one self-hosted Qwen3.5-9B (vLLM) chats with the user and talks live to a company rep while a hosted Slow model reads both conversations and plans. Transactions are guarded, unauthorised speech is measured, and status is evidence-verified." Architecture figure.
+2. **Demo:** a GIF recorded from the web replay of a **synthetic** bundle (both parties simulated: SimUser and SimRep over a synthetic task persona), and `make replay`, which serves the committed `evidence/` bundles.
 3. **Results `[gen]`**, with rows appearing as stages close:
    - (S2) Ear audit: precision and recall per harmful class with CIs;
    - (S3) ablation table and learning-curve figure (LOFO), with cost per useful example;
@@ -100,7 +100,8 @@ docs/
 | Target | Needs | Does |
 |---|---|---|
 | `make check` | – | lint, typecheck, tests, P1/P2/P4 (+P6/P7 from S4), counterfactual test, import contracts, pilot-lock, seal-check, docs-check, web build |
-| `make replay [RUN=]` | – | web replay over committed `evidence/` bundles |
+| `make replay` | – | builds the web and serves the replay UI through `serve.api` over the committed `evidence/` bundles (and local `runs/`); no `RUN=` |
+| `make replay-cli RUN=` | – | terminal replay of one bundle |
 | `make demo` | keys + GPU | serve-up + kernel server + live web (you are the principal; `REP=human` optional) |
 | `make smoke-live FAMILY= [FAST=]` | keys + GPU | one real episode → bundle → `evidence-check --claim` |
 | `make evidence-check RUN= [--claim\|--offline]` | – | chain verification + reality report |

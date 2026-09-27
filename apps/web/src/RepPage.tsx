@@ -29,7 +29,7 @@ export function RepPage({ caseId }: { caseId: string }) {
         <Connection stream={stream} reconnect={reconnect} />
       </header>
       <p role="note" className="note">
-        human rep mode: not for live sessions until the server-side filter lands (S1-SYS-10)
+        Human rep mode: this page speaks for the rep in a case started from the start page with rep: human.
       </p>
       <ol aria-label="Call transcript" className="transcript">
         {lines.map((l) => (
