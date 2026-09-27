@@ -193,7 +193,7 @@ class FakeStarter:
                 raise StartRefused("unknown_model")
             if by_id[option_id].lane != lane:
                 raise StartRefused("wrong_lane")
-        defaults = {o.lane: o.id for o in self.options if o.default}
+        defaults: dict[LaneKey, str] = {o.lane: o.id for o in self.options if o.default}
         self.resolved.append(defaults | dict(models))
         run_id = f"live-{len(self.cases) + 1}"
         case = ApiCase(self.runs / "live" / run_id, run_id).start()

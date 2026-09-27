@@ -233,7 +233,8 @@ def test_a_refused_start_answers_its_reason(env: Env, reason: str, status: int) 
 def test_the_models_are_forwarded_as_given(env: Env) -> None:
     hdrs = headers(operator(env.http))
     assert start(env, hdrs).status_code == 201
-    human = BODY | {"models": {}, "rep": "human"}
+    no_models: dict[str, str] = {}
+    human = BODY | {"models": no_models, "rep": "human"}
     assert start(env, hdrs, human).status_code == 201
     assert env.starter.calls == [
         (TASKS[0], {"slow": "teamrouter:flash"}, "sim"),  # no default filled in

@@ -11,7 +11,8 @@ browser sends one, the Origin against a fixed list (else 403
 ``{"error": "origin"}``, or a WebSocket closed before accept with 4403); every
 POST and /ws/rep must send an Origin. It adds no CORS headers. Live cases
 (``serve.cases``, ``serve.rep``) are served only when ``create_app`` gets a
-``cases`` lookup; a built web (``web_dir``) is mounted at "/" after every API
+``cases`` lookup or a ``start`` (``serve.start``: the cases it started are
+looked up first); a built web (``web_dir``) is mounted at "/" after every API
 route.
 
 ``python -m proxyloop.serve.api [--port N] [--allow-origin URL]...
@@ -50,9 +51,10 @@ from proxyloop.serve.bundles import (
     list_runs,
     redact,
 )
-from proxyloop.serve.cases import Cases, add_case_routes
+from proxyloop.serve.cases import Case, Cases, Starter, add_case_routes
 from proxyloop.serve.csrf import Csrf
 from proxyloop.serve.rep import add_rep_route
+from proxyloop.serve.start import add_start_routes
 from proxyloop.serve.stream import follow
 
 HOST = "127.0.0.1"  # hard-coded: no flag widens it (§9.6)
@@ -101,10 +103,12 @@ def create_app(
     *,
     cases: Cases | None = None,
     web_dir: Path | None = None,
+    start: Starter | None = None,
 ) -> FastAPI:
     """The API over bundles under ``roots`` (listed again on every request);
     ``origins`` is the fixed list of browser origins allowed in; ``cases``
-    finds a live case by id (None: replay only); ``web_dir`` is a built web."""
+    finds a live case by id (None: replay only); ``web_dir`` is a built web;
+    ``start`` starts live cases (None: no start routes)."""
     roots = tuple(roots)
     app = FastAPI(title="ProxyLoop replay")
     app.add_middleware(_Origins, origins=tuple(origins))
@@ -170,8 +174,15 @@ def create_app(
         await follow(ws, path, run_id, from_seq)
 
     csrf = Csrf()
-    add_case_routes(app, roots, cases, csrf)
-    add_rep_route(app, roots, cases, csrf)
+    started = add_start_routes(app, start, csrf)
+
+    def lookup(case_id: str) -> Case | None:
+        found = started(case_id)
+        return found if found is not None or cases is None else cases(case_id)
+
+    any_case = lookup if cases is not None or start is not None else None
+    add_case_routes(app, roots, any_case, csrf)
+    add_rep_route(app, roots, any_case, csrf)
     if web_dir is not None:  # last: every API route matches first
         app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")
     return app
