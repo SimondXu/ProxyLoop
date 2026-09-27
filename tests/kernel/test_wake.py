@@ -17,7 +17,7 @@ from typing import Any, cast
 import pytest
 from hypothesis import example, given, settings
 from hypothesis import strategies as st
-from tests.concurrency.harness import SCRIPTS, Sim, VirtualTime
+from tests.concurrency.harness import SCRIPTS, Sim, VirtualTime, called
 from tests.support.fakes import RepeatingLLM
 from tests.support.manual_clock import ManualClock
 from tests.support.sessions import act, fake_config, patient_task
@@ -112,7 +112,7 @@ class Call(Sim):
             )
 
         specs: dict[str, ChannelSpec] = {"user": self.user, "cp": self.rep}
-        cfg, task = fake_config(), patient_task()
+        cfg, task = fake_config(), called(patient_task())
         self.k = Kernel(cfg, task, specs, root, vt, vt.sleep, make, None)
 
     def steps(self) -> list[tuple[Event, Event | None]]:  # (started, completed)

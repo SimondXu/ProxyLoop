@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Literal, cast
 
 import pytest
 
-from proxyloop.contract.config import SlowViewMode
 from proxyloop.contract.messages import FastToSlow, Guide, GuideMove
 from proxyloop.contract.protocol import render_messages
 from proxyloop.contract.state import (
@@ -19,10 +18,9 @@ from proxyloop.contract.state import (
     Mandate,
     PublicFact,
 )
-from proxyloop.contract.views import Trigger, view_cp, view_slow
+from proxyloop.contract.views import Trigger, view_cp
 from proxyloop.guard.declass import declassify
 from proxyloop.slow.offer_slots import record_offer
-from proxyloop.slow.prompt import status_bar
 from proxyloop.slow.tools import SlowTools, case_ref, public_guide
 
 if TYPE_CHECKING:
@@ -600,9 +598,6 @@ def test_cite_competitor_needs_a_shareable_competitor_quote() -> None:  # I11
     assert ok and len(sent) == 1, text
 
 
-IDENTIFY = "guide_fast(identify, slots=[fact:account.holder_name, fact:account.last4])"
-
-
 def _public(bb: Blackboard, *keys: str) -> Blackboard:
     values = {"account.holder_name": "Dana Reyes", "account.last4": "4821"}
     facts = {
@@ -614,32 +609,20 @@ def _public(bb: Blackboard, *keys: str) -> Blackboard:
     )
 
 
-def test_a_deflect_is_sent_and_says_how_to_hold_for_a_fact_instead() -> None:
+def test_a_deflect_is_sent_and_says_the_rep_hears_a_refusal() -> None:
     bb, _ = _told()  # S0-SYS-07 (run aeab91): deflect while waiting for the user
     ok, text, sent = _guide(bb, move="deflect_fact_request")
     assert ok and len(sent) == 1  # sent as asked: Slow decides, never refused
-    assert "refus" in text and "hold_for_fact" in text and "ask_user" in text
-    ok, text, _ = _guide(_public(bb, H, L4), move="deflect_fact_request")
-    assert ok and IDENTIFY in text
+    assert text == "sent s2f-1; the rep hears a refusal to share"  # F-b: no hint
 
 
-def test_the_status_bar_tells_slow_how_to_give_or_get_identity_facts() -> None:
+def test_identify_is_public_only_once_both_identity_facts_are() -> None:
+    """The readiness line replaced the identity hint (ADR-0018 F-b); Guard's
+    renderer still judges the identify guide."""
     bb, _ = _told()
-    bar = status_bar(view_slow(bb, SlowViewMode.RELAY_ONLY, "b"), KEYS, 0)
-    assert "account.holder_name, account.last4 not given yet" in bar
-    assert "ask_user" in bar and "hold_for_fact" in bar and "identify" not in bar
-    half = status_bar(view_slow(_public(bb, L4), SlowViewMode.RELAY_ONLY, "b"), KEYS, 0)
-    assert "guide_fast(identify, slots=[fact:account.last4])" in half
-    assert "account.holder_name not given yet" in half
-    both = _public(bb, H, L4)
-    bar = status_bar(view_slow(both, SlowViewMode.RELAY_ONLY, "b"), KEYS, 0)
-    assert IDENTIFY in bar and "not given yet" not in bar
     guide = Guide(move=GuideMove.IDENTIFY, slots=(f"fact:{H}", f"fact:{L4}"))
-    assert public_guide(both, guide) and not public_guide(_public(bb, L4), guide)
-    other = status_bar(
-        view_slow(bb, SlowViewMode.RELAY_ONLY, "b"), frozenset({PRICE}), 0
-    )
-    assert "identity" not in other  # no identity key, no hint
+    assert public_guide(_public(bb, H, L4), guide)
+    assert not public_guide(_public(bb, L4), guide)
 
 
 def test_a_hold_for_fact_is_a_public_guide() -> None:

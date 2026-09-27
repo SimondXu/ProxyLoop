@@ -35,7 +35,7 @@ from proxyloop.contract.llm import (
 )
 from proxyloop.contract.state import ApprovalCard
 from proxyloop.core.bus import Bus
-from proxyloop.kernel import session, web
+from proxyloop.kernel import calls, session, web
 from proxyloop.kernel.channels import HumanWebChannel, Incoming
 from proxyloop.kernel.session import ClientFactory, Kernel, RunResult
 from proxyloop.kernel.web import CATALOG, LUNA, TRAINING, Offer, Starter, WebCase
@@ -47,6 +47,7 @@ from proxyloop.serve.cases import LaneKey, StartRefused
 from proxyloop.serve.start import OPTION_ID, REASONS, TASK_REF, broken
 
 REF = "cp-direct-discount@1"
+CALLED_MS = 1000 * calls.INTAKE_S + 5_000  # the intake ran out; the disclosure said
 USER_QWEN = "fast_user:vllm:Qwen3.5-9B"
 SLOW_ID = "slow:teamrouter:gemini-3.8-flash"
 ENDPOINTS: tuple[Endpoint, ...] = get_args(Endpoint)
@@ -350,7 +351,7 @@ def test_a_user_message_and_a_human_rep_line_become_events(tmp_path: Path) -> No
     async def case() -> None:
         vt = VirtualTime()
         case = await starter(tmp_path, vt).start_case(REF, {}, "human")
-        await vt.run_for(5_000)  # past the disclosure
+        await vt.run_for(CALLED_MS)  # no identity given: the deadline opens it
         case.user_message("Please lower my bill.")
         case.rep_utterance("We can do $68 a month.")
         await vt.run_for(100)
@@ -430,7 +431,7 @@ def test_a_ui_approval_is_decided_by_the_kernel_and_a_stale_one_denied(
     async def case() -> None:
         vt = VirtualTime()
         case = await starter(tmp_path, vt).start_case(REF, {}, "human")
-        await vt.run_for(5_000)
+        await vt.run_for(CALLED_MS)
         card = await _card(case, vt)
         assert case.blackboard().private.pending_approval == card
         case.post_approval(_post(card))  # enqueued only
@@ -540,7 +541,7 @@ def test_serve_starts_a_case_and_its_posts_reach_the_kernel(tmp_path: Path) -> N
         said = {"text": "Can you lower my bill?"}
         user = headers(login(http, "user", case_id))
         assert post(http, f"/api/cases/{case_id}/messages", said, user).is_success
-        cast(Any, http).portal.call(vt.run_for, 5_000)  # past the disclosure
+        cast(Any, http).portal.call(vt.run_for, CALLED_MS)  # the call is open
         rep = headers(login(http, "rep", case_id))
         line = {"text": "We can do $68."}
         assert post(http, f"/api/cases/{case_id}/rep", line, rep).is_success
@@ -608,7 +609,7 @@ def test_a_failed_session_logs_no_upstream_text(
 
         s = Starter(tmp_path / "runs", clock=vt, sleep=vt.sleep, clients=make)
         case = await s.start_case(REF, {})
-        await vt.run_for(20_000)
+        await vt.run_for(CALLED_MS + 15_000)  # FastC's first call fails
         run = case._run  # pyright: ignore[reportPrivateUsage]
         await asyncio.gather(run, return_exceptions=True)
         await asyncio.sleep(0)  # the done-callback logs

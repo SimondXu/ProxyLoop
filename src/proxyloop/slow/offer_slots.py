@@ -78,6 +78,8 @@ def shape(raw: object) -> str | None:
         )
     if form := _form(m.get("field"), m.get("value")):
         out.append(form)
+    if not isinstance(ref := m.get("utt_ref"), str):  # A3: never pydantic's loc
+        out.append(f"utt_ref is the utt id of the rep line that says it, not {ref!r}")
     return "; ".join(out) or None
 
 
@@ -134,9 +136,9 @@ def record_offer(
     wall: datetime,
 ) -> Result:  # every money or term value is one the rep said
     if bad := [p for s in raw if (p := shape(s))]:
-        return no(refused(bad))  # whole: no partial record
+        return _invalid(refused(bad))  # whole: no partial record
     if bad := conflicts(raw):
-        return no(f"record_offer refused, nothing recorded: {'; '.join(bad)}")
+        return _invalid(f"record_offer refused, nothing recorded: {'; '.join(bad)}")
     slots = [st.ReadbackSlot(source_utt=s.get("utt_ref"), **_slot(s)) for s in raw]
     said = {x.utt_id: x.text for x in bb.channels["cp"].lines if x.speaker == "partner"}
     unbound = [
@@ -149,7 +151,7 @@ def record_offer(
         text = f"{'; '.join(unbound)}. {CITE}"
         return no(text, ("declass.denied", {"violations": unbound}))
     if bad := [p for s in slots if (p := value(s))]:
-        return no(refused(bad))
+        return _invalid(refused(bad))
     prev = bb.public.offers.get(ref)
     if (
         prev is not None
@@ -168,6 +170,10 @@ def record_offer(
         f", expires at t={expires} ms" if expires else ""
     )
     return Result(True, text, (("offer.recorded", recorded),))
+
+
+def _invalid(text: str) -> Result:  # the slots' form, not the rep's words
+    return Result(False, text, code="invalid_args")
 
 
 def _expires_ms(

@@ -28,12 +28,14 @@ def act_problem(args: Mapping[str, Any]) -> str | None:
 
 
 def item_problem(n: int, item: object) -> str | None:
-    """Why ``calls[n]`` names no tool; else None."""
+    """Why ``calls[n]`` names no tool (none, or not a string); else None."""
     if not isinstance(item, Mapping):
         return f"calls[{n}] is not an object {ITEM}"
     if "tool" not in item:
         keys = ", ".join(sorted(map(str, cast(Mapping[object, object], item))))
         return f"calls[{n}] has no tool (keys: {keys or 'none'}); each is {ITEM}"
+    if not isinstance(item["tool"], str):  # A2: {"tool": null} names no tool
+        return f"calls[{n}]: tool must be a tool name, not {item['tool']!r}"
     return None
 
 

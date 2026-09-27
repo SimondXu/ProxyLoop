@@ -268,8 +268,12 @@ test.describe("human rep", () => {
     // The user's own words and the case agent's private summary never reach the rep.
     const secret = "My limit is 65 dollars a month, keep that between us.";
     await say(page, secret);
+    // Readiness first (S1-SYS-21): the user answers the identity ask in its own message, so the call opens ready.
+    await expect(page.getByRole("list", { name: "Chat transcript" })).toContainText(ASK, FLOW);
+    await say(page, IDENTITY);
     const transcript = rep.getByRole("list", { name: "Call transcript" });
     await expect(transcript.getByRole("listitem").nth(1)).toHaveText(/^Agent: Hello, this is an AI assistant/, FLOW);
+    await expect(transcript).toContainText("Agent: The account holder is", FLOW); // Guard-shared facts, not the user's words
 
     const offer = "I can offer you 70 dollars a month on a 24-month term.";
     const readback = "Here are the full terms: 70 dollars a month; a 24-month term; no fees; no other changes; no expiry.";
@@ -287,10 +291,11 @@ test.describe("human rep", () => {
     expect(of(events, "utt.final", { speaker: "partner" }).map((e) => e.payload.text)).toEqual([offer, readback]);
     const hidden = [
       secret,
+      IDENTITY,
       ...of(events, "summary.updated").map((e) => String(e.payload.text)),
       ...of(events, "utt.delivered", { lane: "user" }).map((e) => String(e.payload.text_heard)),
     ];
-    expect(hidden.length).toBeGreaterThan(2);
+    expect(hidden.length).toBeGreaterThan(3);
     for (const text of hidden) await expect(rep.locator("body")).not.toContainText(text);
     expect(repSockets).toEqual([`/ws/rep/${id}?from_seq=0`]);
     const api = repHttp.filter((p) => p.startsWith("/api/") || p.startsWith("/ws/"));
