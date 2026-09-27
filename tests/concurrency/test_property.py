@@ -23,7 +23,10 @@ accepts, stops, revokes, barge-ins, FastU latency, time) and the log must show:
 - the same while Slow declines or re-records the offer under an accept line in
   flight (revoked ``offer_closed`` / ``terms_changed``);
 - ``accept_revoked``/``accept_truncated`` only after a real ``speak.revoked`` /
-  a real cut delivery; ``seq`` dense.
+  a real cut delivery; ``seq`` dense;
+- AWAITING_APPROVAL → NEEDS_REPLAN only for a pending card that is stale (it
+  cites the ``authority.epoch`` past the card's epoch) or expired (it cites the
+  card's ``approval.requested``, at or after its ``expires_ms``) (S1-SYS-38).
 """
 
 from __future__ import annotations
@@ -31,7 +34,7 @@ from __future__ import annotations
 import asyncio
 import tempfile
 from collections import Counter
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
@@ -50,10 +53,13 @@ from tests.concurrency.harness import (
 from tests.concurrency.test_cases import Valve
 
 from proxyloop.contract.config import SessionConfig, SlowViewMode
-from proxyloop.contract.events import ApprovalPost
-from proxyloop.contract.state import Blackboard
+from proxyloop.contract.events import ApprovalPost, Event
+from proxyloop.contract.state import Blackboard, CaseStatus
 from proxyloop.core.fold import apply
 from proxyloop.guard.capability import CAP_TTL_MS, accept_in_flight, released_accept
+from proxyloop.kernel.watchdog import MAX_SESSION_S
+
+_TEARDOWN_MS = CAP_TTL_MS + 30_000  # every queued line ends by then
 
 
 class Interleavings(RuleBasedStateMachine):
@@ -183,6 +189,25 @@ class Interleavings(RuleBasedStateMachine):
             assert out[0].startswith("record_offer: recorded o1 r"), out
         self.run(settle())
 
+    @rule(then=st.sampled_from(["revoke", "expire"]))
+    def a_card_waits(self, then: str) -> None:
+        """A card the UI leaves pending goes stale (Slow revokes) or expires
+        (S1-SYS-38): AWAITING_APPROVAL replans, never toward a commit."""
+        bb = self.sim.k.bb
+        if bb.public.status is CaseStatus.IN_CALL:
+            offer = bb.public.offers.get("o1")
+            if offer is None or released_accept(bb, offer.terms_hash):
+                self._offer()
+            self._act("card")
+        bb = self.sim.k.bb
+        card = bb.private.pending_approval
+        if bb.public.status is not CaseStatus.AWAITING_APPROVAL or card is None:
+            return
+        if then == "revoke":
+            self._act("revoke")
+        elif card.expires_ms + _TEARDOWN_MS < 1000 * MAX_SESSION_S:  # no timeout
+            self.run(self.sim.vt.run_for(card.expires_ms - self.sim.vt.monotonic_ms()))
+
     # Slow's tools, whatever Guard answers.
     @rule(step=st.sampled_from(["next", "next", "next", "accept", "revoke"]))
     def slow_acts(self, step: str) -> None:
@@ -244,7 +269,7 @@ class Interleavings(RuleBasedStateMachine):
             if self.sim.rep.busy:  # the rep's turn ends: every line can go out
                 self.sim.rep_done()
             # every queued line gets the floor, or expires waiting for it
-            self.run(self.sim.vt.run_for(CAP_TTL_MS + 30_000))
+            self.run(self.sim.vt.run_for(_TEARDOWN_MS))
             self.run(self._stop())
             _check(self.sim)
         finally:
@@ -309,6 +334,8 @@ def _check(sim: Sim) -> None:
                 c for c in why if c.type == "utt.delivered" and c.payload["interrupted"]
             ]
             assert real or e.payload["previous"] != "COMMIT_AUTHORIZED", e
+            if e.payload["previous"] == "AWAITING_APPROVAL":
+                _card_left(e, why, bb)
         bb = apply(bb, e)
     assert all(n == 1 for n in released.values()), f"accepts per terms: {released}"
     _partner_first(sim)
@@ -322,6 +349,23 @@ def _check(sim: Sim) -> None:
     assert not any(
         c.intent == "accept_offer" and not c.consumed for c in bb.capabilities.values()
     )
+
+
+REACHED: Counter[str] = Counter()  # the causes of AWAITING_APPROVAL -> NEEDS_REPLAN
+
+
+def _card_left(e: Event, why: list[Event], bb: Blackboard) -> None:
+    """A stale or expired pending card, and nothing else, replans (S1-SYS-38)."""
+    card = bb.private.pending_approval
+    assert card is not None and len(why) == 1, e
+    (cause,) = why
+    REACHED[cause.type] += 1
+    if cause.type == "authority.epoch":
+        assert card.authority_epoch < bb.epoch, f"{e.event_id}: card not stale"
+    else:
+        assert cause.type == "approval.requested", e
+        assert cause.payload["approval_id"] == card.approval_id, e
+        assert e.t_ms >= card.expires_ms, f"{e.event_id}: card not expired"
 
 
 def _slow_saw_it(sim: Sim) -> None:
@@ -375,11 +419,27 @@ class RelayOnlyInterleavings(Interleavings):
     cfg = A5
 
 
-TestInterleavings = Interleavings.TestCase  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-TestInterleavings.settings = settings(  # 500 interleavings
-    max_examples=500, stateful_step_count=16, deadline=None
-)
-TestRelayOnlyInterleavings = RelayOnlyInterleavings.TestCase  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-TestRelayOnlyInterleavings.settings = settings(  # 500 more, the A5 rule
-    max_examples=500, stateful_step_count=16, deadline=None
-)
+def _reaching(run: Callable[[], None]) -> None:
+    """The run must reach both ways a pending card replans (S1-SYS-38):
+    otherwise ``_card_left`` checked nothing."""
+    REACHED.clear()
+    run()
+    assert REACHED["authority.epoch"] and REACHED["approval.requested"], REACHED
+
+
+class TestInterleavings(Interleavings.TestCase):  # pyright: ignore[reportUnknownMemberType, reportUntypedBaseClass]
+    settings = settings(  # 500 interleavings
+        max_examples=500, stateful_step_count=16, deadline=None
+    )
+
+    def runTest(self) -> None:
+        _reaching(super().runTest)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+
+
+class TestRelayOnlyInterleavings(RelayOnlyInterleavings.TestCase):  # pyright: ignore[reportUnknownMemberType, reportUntypedBaseClass]
+    settings = settings(  # 500 more, the A5 rule
+        max_examples=500, stateful_step_count=16, deadline=None
+    )
+
+    def runTest(self) -> None:
+        _reaching(super().runTest)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
