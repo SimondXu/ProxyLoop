@@ -6,13 +6,16 @@
   FastU relayed, even if it relayed nothing (a Fast failure, measured). Binding
   a turn wakes Slow, so a fence never waits on a step that is not coming.
 - **Partner fence** (S1-SYS-23). Guard cannot read a rep line, so an accept
-  waits (the Speaker) until every rep line before it is **covered**: a FastC
-  ``fast.turn`` whose request's ``basis_seq`` is at or after the line, and a
-  completed Slow step whose ``basis_seq`` is at or after that turn (Slow has
-  seen whatever FastC relayed of it). The accept's ``action.authorized`` raises
-  a fence for each rep line not yet covered (caused by the line and the mint;
-  bound at once if that turn exists), and a rep line landing while the accept
-  is in flight raises one at once. Each clears as a user fence does. The
+  waits (the Speaker) until every rep line before it is **covered**. Under
+  ``cfg.slow_view=transcript`` (ADR-0016 note) that is a completed Slow step
+  whose ``basis_seq`` is at or after the line's ``utt.final`` (Slow read it);
+  under ``relay_only`` a FastC ``fast.turn`` whose request's ``basis_seq`` is
+  at or after the line, and a completed Slow step whose ``basis_seq`` is at or
+  after that turn (Slow has seen whatever FastC relayed of it). The accept's
+  ``action.authorized`` raises a fence for each rep line not yet covered
+  (caused by the line and the mint; bound at once if that turn exists, or in
+  ``transcript`` mode), and a rep line landing while the accept is in flight
+  raises one at once. Each clears as a user fence does. The
   guarantee: no accept is released before every rep line that landed before
   the release is covered. The one exception is a cp fence FastC never bound
   when the call closes: it clears at ``chan.closed``, and the line is then
@@ -40,6 +43,7 @@ from collections.abc import Coroutine
 from typing import TYPE_CHECKING, Any
 
 from proxyloop.contract.base import Lane
+from proxyloop.contract.config import SlowViewMode
 from proxyloop.contract.events import ApprovalPost, Approver, Event
 from proxyloop.contract.state import ApprovalCard, CaseStatus, Mandate
 from proxyloop.env.user.approver import Post
@@ -63,8 +67,9 @@ class Authority:
         # fence_id -> (its lane, its utt, that line's seq, the binding turn's seq)
         self._raised: dict[str, tuple[Lane, str, int, int | None]] = {}
         self._basis: dict[str, int] = {}  # Fast gen_id -> its request's basis
-        # rep lines not yet covered: [event id, utt, seq, the first FastC turn
-        # whose request saw the line (its seq)]
+        # rep lines not yet covered: [event id, utt, seq, the seq a completed
+        # step's basis must reach: the line's own in transcript mode, else the
+        # first FastC turn whose request saw the line]
         self._lines: list[tuple[str, str, int, int | None]] = []
         self._moved = asyncio.Event()  # set (and replaced) as a fence moves
         self.user_fences = 0  # user fences raised so far
@@ -138,9 +143,11 @@ class Authority:
         if not self._live():  # no mint follows: nothing to cover
             return
         utt = str(said.payload["utt_id"])
-        self._lines.append((said.event_id, utt, said.seq, None))
+        reads = self._k.cfg.slow_view is SlowViewMode.TRANSCRIPT
+        at = said.seq if reads else None  # Slow reads the line itself (ADR-0016)
+        self._lines.append((said.event_id, utt, said.seq, at))
         if accept_in_flight(self._k.bus.bb):
-            self._raise([said.event_id], said.seq, "cp", utt)
+            self._raise([said.event_id], said.seq, "cp", utt, at)
 
     def _minted(self, auth: Event) -> None:
         """A fence for each rep line not yet covered and not yet fenced."""
