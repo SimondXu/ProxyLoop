@@ -304,6 +304,11 @@ def _emit_all(path: Path, steps: list[tuple[Step, int]]) -> Bus:
             ):
                 continue
             payload = change
+        if type_ == "fact.recorded" and payload["scope"] == "public":  # I4
+            told = [e.event_id for e in bus.events if e.type == "user.msg"]
+            if not told:  # a shareable fact cites the user's own message
+                continue
+            payload = payload | {"source_ref": told[-1]}
         bus.emit(type_, actor, cast(Stream, stream), payload, causes)
     return bus
 
@@ -505,6 +510,26 @@ def test_a_public_fact_must_be_source_bound() -> None:
                 _event(1, "fact.recorded", private, "guard"),
             ]
         )
+
+
+def test_a_shareable_fact_must_cite_a_user_message() -> None:
+    """I4: a shareable fact goes public only from the user's own message."""
+    rep = {"lane": "cp", "speaker": "partner", "utt_id": "cp-1", "text": "4821?"}
+    heard = {"lane": "user", "utt_id": "a-1", "text_generated": "4821"}
+    heard |= {"text_heard": "4821", "interrupted": False}  # an agent line
+    events = [
+        _event(0, "user.msg", {"text": "My last four are 4821."}),
+        _event(1, "utt.final", rep),
+        _event(2, "utt.delivered", heard),
+    ]
+    bb = fold(events)
+    last4 = {"key": "account.last4", "value": "4821", "source": "shareable"}
+    last4 |= {"scope": "public"}
+    for ref in ("cp-1", "a-1", "r1:9", None):  # a rep line, the agent, no such
+        with pytest.raises(ValueError, match="no user msg"):
+            apply(bb, _event(3, "fact.recorded", last4 | {"source_ref": ref}))
+    told = apply(bb, _event(3, "fact.recorded", last4 | {"source_ref": "r1:0"}))
+    assert told.public.facts["account.last4"].source_ref == "r1:0"
 
 
 def test_a_guide_changes_fastcs_rendered_view() -> None:

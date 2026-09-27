@@ -119,6 +119,9 @@ def _fact(bb: Blackboard, e: Event) -> Blackboard:
     said = [x.utt_id for x in bb.channels["cp"].lines if x.speaker == "partner"]
     if p["source"] == "cp_utt" and p["source_ref"] not in said:
         raise ValueError(f"public fact {p['key']}: {p['source_ref']} is no rep line")
+    told = [x.utt_id for x in bb.channels["user"].lines if x.speaker == "partner"]
+    if p["source"] == "shareable" and p["source_ref"] not in told:  # I4 (#133)
+        raise ValueError(f"public fact {p['key']}: {p['source_ref']} is no user msg")
     public = PublicFact.model_validate(fact | {"source": p["source"]})
     facts = {**bb.public.facts, public.key: public}
     return _with(bb, public=_with(bb.public, facts=facts))
