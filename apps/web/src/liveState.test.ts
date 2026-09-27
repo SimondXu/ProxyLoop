@@ -36,9 +36,17 @@ describe("the live event stream", () => {
     expect(closed(START, 1000, "session.ended", at)).toMatchObject({ phase: "ended", message: "stream ended (1000 session.ended)" });
     expect(closed(START, 4404, "", at)).toMatchObject({ phase: "error", message: "unknown run (4404)" });
     expect(closed(START, 1011, "gap at 7", at).phase).toBe("error");
-    expect(closed(START, 1006, "", at)).toMatchObject({ phase: "closed", message: "disconnected (1006)" });
+    expect(closed({ ...START, phase: "open" }, 1006, "", at)).toMatchObject({ phase: "closed", message: "disconnected (1006)" });
     const failed = feed(["{oops"]);
     expect(closed(failed, 1000, "", at)).toBe(failed);
+  });
+
+  it("reads a 1006 before the socket opened as refused (Origin), and after it opened as a disconnect (N8)", () => {
+    const refused = closed(START, 1006, "", entry("rep", "r1"));
+    expect(refused).toMatchObject({ phase: "error", message: "refused: open /rep/r1 from this origin" });
+    expect(closed(START, 1006, "", entry("live", "r1")).message).toBe("refused: open /live/r1 from this origin");
+    const opened: Stream = { ...START, phase: "open" };
+    expect(closed(opened, 1006, "", "/live/r1")).toMatchObject({ phase: "closed", message: "disconnected (1006)" });
   });
 
   it("says 4403 is not authorised and names the role's entry; only 'closed' offers a reconnect", () => {

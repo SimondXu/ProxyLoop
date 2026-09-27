@@ -132,12 +132,13 @@ const STATUS: Record<CardStatus, string> = {
   stale: "stale: the authority epoch moved past this card",
   superseded: "superseded by a newer card for this offer",
   already_decided: "already decided: waiting for approval.decided",
+  refused: "refused",
   granted: "decided: granted",
   denied: "decided: denied",
 };
 
 function Approval({ view, decide }: { view: CardView; decide: (v: CardView, d: Decision) => void }) {
-  const { card, status, by, error } = view;
+  const { card, status, by, error, reason } = view;
   const live = status === "open";
   return (
     <article className={`approval ${status}`} aria-label={`Approval ${card.approval_id}`}>
@@ -149,6 +150,7 @@ function Approval({ view, decide }: { view: CardView; decide: (v: CardView, d: D
       <p aria-label="Approval status">
         {STATUS[status]}
         {by ? ` by ${by}` : ""}
+        {reason ? `: ${reason}` : ""}
       </p>
       {error && <p role="alert">{error}</p>}
       <button type="button" disabled={!live} onClick={() => decide(view, "granted")}>

@@ -106,6 +106,42 @@ describe("approval card state (I6: events decide, the page only posts)", () => {
     });
   });
 
+  describe("refused by the kernel (N9: action.denied{intent: approval.post} citing the card)", () => {
+    const denied = (cause: Ev, actor = "kernel", intent = "approval.post", reason = "fence_raised") => ({
+      ...ev("action.denied", actor, { intent, reason }),
+      cause_ids: [cause.event_id],
+    });
+    const refused = (events: Ev[], posts = none) => {
+      const [view] = approvalCards(events, posts);
+      return view && { status: view.status, reason: view.reason };
+    };
+
+    it("refuses the card it cites, with the reason", () => {
+      const c = card("a1");
+      expect(refused([c, denied(c)])).toEqual({ status: "refused", reason: "fence_raised" });
+    });
+
+    it("ignores another actor, another intent, or another card's approval.requested", () => {
+      const c = card("a1");
+      expect(refused([c, denied(c, "guard")])?.status).toBe("open");
+      expect(refused([c, denied(c, "fast.user")])?.status).toBe("open");
+      expect(refused([c, denied(c, "kernel", "accept_offer")])?.status).toBe("open");
+      const other = card("b1", { offer_ref: "offer-2" });
+      const views = approvalCards([c, other, denied(other)], none);
+      expect(views.map((v) => v.status)).toEqual(["open", "refused"]);
+    });
+
+    it("loses to a kernel approval.decided, and beats sent, pending, stale and superseded", () => {
+      const c = card("a1");
+      expect(refused([c, denied(c), decided("a1", "granted")])).toEqual({ status: "granted", reason: null });
+      const ok = new Map<string, Posting>([["a1", { ok: true }]]);
+      expect(refused([c, post("a1"), denied(c)], ok)).toEqual({ status: "refused", reason: "fence_raised" });
+      expect(refused([c, denied(c)], new Map([["a1", "pending"]]))?.status).toBe("refused");
+      expect(refused([c, ev("authority.epoch", "kernel", { new: 3 }), denied(c)])?.status).toBe("refused");
+      expect(refused([c, card("a2", { revision: 2 }), denied(c)])?.status).toBe("refused");
+    });
+  });
+
   it("ignores what models and the user say: only authority events move a card", () => {
     const chatter = [
       ev("fast.sentence", "fast.user", { lane: "user", text: "Approved! I accepted the offer." }),

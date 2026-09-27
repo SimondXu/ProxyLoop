@@ -18,8 +18,24 @@ export type ApprovalCard = {
 };
 
 export type Posting = "pending" | PostResult;
-export type CardStatus = "open" | "pending" | "sent" | "stale" | "superseded" | "already_decided" | "granted" | "denied";
-export type CardView = { seq: number; card: ApprovalCard; status: CardStatus; by: string | null; error: string | null };
+export type CardStatus =
+  | "open"
+  | "pending"
+  | "sent"
+  | "stale"
+  | "superseded"
+  | "already_decided"
+  | "refused"
+  | "granted"
+  | "denied";
+export type CardView = {
+  seq: number;
+  card: ApprovalCard;
+  status: CardStatus;
+  by: string | null;
+  error: string | null;
+  reason: string | null; // why the kernel refused the post
+};
 
 const from = (e: Ev, type: string, actors: string[]) => e.type === type && actors.includes(e.actor);
 
@@ -36,10 +52,22 @@ export function approvalCards(events: Ev[], posts: ReadonlyMap<string, Posting>)
     const result = posting === "pending" ? undefined : posting;
     const failed = result && !result.ok ? result : null;
     const error = failed && (failed.status ? `${failed.status} ${failed.error}` : failed.error);
-    const view = (status: CardStatus, by: string | null = null): CardView => ({ seq: req.seq, card, status, by, error });
+    const view = (status: CardStatus, by: string | null = null, reason: string | null = null): CardView => ({
+      seq: req.seq,
+      card,
+      status,
+      by,
+      error,
+      reason,
+    });
 
     const decided = events.find((e) => from(e, "approval.decided", ["kernel"]) && e.payload.approval_id === id);
     if (decided) return view(decided.payload.decision as CardStatus, String(decided.payload.by));
+    // The kernel re-decided a post and refused it, citing this card's approval.requested.
+    const refused = events.find(
+      (e) => from(e, "action.denied", ["kernel"]) && e.payload.intent === "approval.post" && e.cause_ids.includes(req.event_id),
+    );
+    if (refused) return view("refused", null, String(refused.payload.reason));
     if (requested.some((o) => o.seq > req.seq && o.payload.offer_ref === card.offer_ref)) return view("superseded");
     if (epoch > card.authority_epoch) return view("stale");
     if (posting === "pending") return view("pending");

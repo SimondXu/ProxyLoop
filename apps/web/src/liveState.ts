@@ -53,6 +53,10 @@ export function closed<T extends Framed>(s: Stream<T>, code: number, reason: str
   if (s.phase === "error") return s;
   const why = `${code}${reason ? ` ${reason}` : ""}`;
   if (code === CLOSE.ended) return { ...s, phase: "ended", message: `stream ended (${why})` };
+  // 1006 before the socket ever opened: the server refused the upgrade (a foreign or missing Origin).
+  if (code === CLOSE.abnormal && s.phase === "connecting") {
+    return { ...s, phase: "error", message: `refused: open ${entry} from this origin` };
+  }
   if (code === CLOSE.forbidden) {
     return { ...s, phase: "error", message: `not authorised (${why}): open ${entry} from this origin` };
   }

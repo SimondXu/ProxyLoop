@@ -56,6 +56,38 @@ test("approval card: appears on approval.requested, Approve posts the contract b
   expect(urls).toEqual([expect.stringMatching(new RegExp(`/ws/live/${RUN}\\?from_seq=0$`))]);
 });
 
+test("approval card: a kernel action.denied citing the card after a 200 shows refused with its reason", async ({ page, baseURL }) => {
+  await csrfCookie(page, baseURL);
+  const { connected } = await mockSockets(page);
+  const posts = await capturePosts(page);
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  const requested = ev("approval.requested", "guard", CARD);
+  ws.send(requested);
+  const card = page.getByRole("article", { name: "Approval ap-1" });
+  await card.getByRole("button", { name: "Approve" }).click();
+  await expect(card.getByLabel("Approval status")).toHaveText("sent: waiting for the kernel's decision");
+  expect(posts).toHaveLength(1);
+  const denied = JSON.parse(ev("action.denied", "kernel", { intent: "approval.post", reason: "fence_raised" }));
+  ws.send(JSON.stringify({ ...denied, cause_ids: [JSON.parse(requested).event_id] }));
+  await expect(card.getByLabel("Approval status")).toHaveText("refused: fence_raised");
+  await expect(card.getByRole("button", { name: "Approve" })).toBeDisabled();
+  await expect(card.getByRole("button", { name: "Deny" })).toBeDisabled();
+});
+
+test("a socket refused before it opens (1006) says refused, with no reconnect", async ({ page }) => {
+  // Not mocked: the preview server has no /ws endpoint, so the upgrade fails before open.
+  const opened: string[] = [];
+  page.on("websocket", (ws) => opened.push(ws.url()));
+  await page.goto(`/?live=${RUN}`);
+  await expect(page.getByRole("alert")).toHaveText(`Stream stopped: refused: open /live/${RUN} from this origin`);
+  await expect(page.getByRole("button", { name: /Reconnect/ })).toHaveCount(0);
+  await page.waitForTimeout(300);
+  expect(opened).toHaveLength(1);
+});
+
 test("approval card: a 409 stale is shown, closes the card and is never retried", async ({ page, baseURL }) => {
   await csrfCookie(page, baseURL);
   const { connected } = await mockSockets(page);
