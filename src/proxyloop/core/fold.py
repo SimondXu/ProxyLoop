@@ -16,7 +16,7 @@ from typing import Literal, cast
 
 from pydantic import BaseModel
 
-from proxyloop.contract.base import MAX_GUIDES, Frozen, Lane
+from proxyloop.contract.base import Frozen, Lane
 from proxyloop.contract.events import (
     EVENT_TYPES,
     ActionAuthorized,
@@ -107,7 +107,7 @@ def _s2f(bb: Blackboard, e: Event) -> Blackboard:
     msg = SlowToFast.model_validate(e.payload)
     pending = {**bb.s2f_pending, msg.lane: (*bb.s2f_pending.get(msg.lane, ()), msg)}
     guides = (*bb.public.guidance_cp, *([msg.guide] if msg.guide else []))
-    public = _with(bb.public, guidance_cp=guides[-MAX_GUIDES:])  # the last 3
+    public = _with(bb.public, guidance_cp=guides[-1:])  # the newest (ADR-0013 A)
     return _with(bb, s2f_pending=pending, public=public)
 
 

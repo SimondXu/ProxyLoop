@@ -17,6 +17,7 @@ from proxyloop.contract.base import HOLD_REASONS
 from proxyloop.contract.bundle import EVENTS
 from proxyloop.contract.events import EVENT_TYPES, ApprovalPost, Event, Stream
 from proxyloop.contract.messages import GuideMove
+from proxyloop.contract.profiles.pl_cp_v2 import PROFILE as PL_CP_V2
 from proxyloop.contract.protocol import render_messages
 from proxyloop.contract.state import Blackboard
 from proxyloop.contract.views import Trigger, view_cp
@@ -479,11 +480,7 @@ def test_guides_facts_holds_and_strikes_reach_the_state() -> None:
         _event(8, "chan.strike", {"lane": "cp"}),
     ]
     bb = fold(events)
-    assert [g.move for g in bb.public.guidance_cp] == [
-        "identify",
-        "ask_discount",
-        "ask_readback",
-    ]  # the last 3
+    assert [g.move for g in bb.public.guidance_cp] == ["ask_readback"]  # the newest
     assert bb.public.facts["offer.price"].source == "cp_utt"
     assert "account.pin" in bb.private.case_facts
     assert "account.pin" not in bb.public.facts
@@ -552,3 +549,47 @@ def test_a_guide_changes_fastcs_rendered_view() -> None:
     ]
     assert "Ask whether they can lower the monthly price." in rendered[1]
     assert "Ask whether they can lower" not in rendered[0]
+
+
+def _guided(*moves: str) -> Blackboard:
+    guides = [
+        {"msg_id": f"s{n}", "lane": "cp", "type": "GUIDE", "guide": {"move": m}}
+        for n, m in enumerate(moves, 1)
+    ]
+    start = _event(0, "user.msg", {"text": "x"})
+    return fold(
+        [start, *(_event(n, "s2f.msg", g, "slow") for n, g in enumerate(guides, 1))]
+    )
+
+
+def _cp_guidance(bb: Blackboard) -> list[str]:
+    view = view_cp(bb, Trigger(kind="guidance"), "b")
+    assert view.guidance == bb.public.guidance_cp  # the view shows the fold's
+    return [g.move for g in bb.public.guidance_cp]
+
+
+def test_guidance_cp_keeps_only_the_newest_guide() -> None:
+    """ADR-0013 option A: FastC is told one current guide, never a stale one."""
+    bb = _guided("open_call", "ask_discount")
+    assert _cp_guidance(bb) == ["ask_discount"]
+
+
+def test_identify_after_hold_for_fact_shows_only_identify() -> None:
+    bb = _guided("hold_for_fact", "identify")
+    assert _cp_guidance(bb) == ["identify"]
+    voiced = apply(
+        bb, _event(3, "s2f.voiced", {"msg_id": "s2", "gen_id": "g"}, "fast.cp")
+    )
+    assert _cp_guidance(voiced) == ["identify"]  # voicing does not clear it
+    moves = PL_CP_V2.moves  # the contract renderer's own move text
+    for state in (bb, voiced):
+        view = view_cp(state, Trigger(kind="guidance"), "b")
+        text = render_messages(view, "pl_cp_v2")[1].content
+        assert moves["identify"] in text
+        assert moves["hold_for_fact"] not in text
+
+
+def test_a_resent_guide_leaves_the_guidance_unchanged() -> None:
+    """A re-sent identical guide neither stacks nor changes what FastC reads."""
+    once, twice = _guided("identify"), _guided("identify", "identify")
+    assert twice.public.guidance_cp == once.public.guidance_cp
