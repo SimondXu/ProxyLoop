@@ -303,10 +303,11 @@ test("h) rep: /rep 303s to ?rep, opens /ws/rep only, sees only public cp speech,
 // WiringStarter, whose task picks the outcome.
 type Option = { id: string; lane: string; label: string; endpoint: string; model_id: string; default: boolean };
 const LANES = [
-  ["fast_user", "Fast-U"],
-  ["fast_cp", "Fast-C"],
-  ["slow", "Slow"],
+  ["fast_user", "Chat voice (Fast-U)"],
+  ["fast_cp", "Phone voice (Fast-C)"],
+  ["slow", "Planner (Slow)"],
 ] as const;
+const REP = { sim: "Simulated rep", human: "A person" } as const;
 const shot = async (page: Page, name: string) => {
   if (process.env.PL_SHOTS) await page.screenshot({ path: `${process.env.PL_SHOTS}/${name}.png`, fullPage: true });
 };
@@ -319,8 +320,8 @@ async function openStart(page: Page) {
 
 async function start(page: Page, task: string, rep: "sim" | "human" = "sim") {
   await openStart(page);
-  await page.getByRole("combobox", { name: "Task" }).selectOption(task);
-  await page.getByRole("radio", { name: rep }).check();
+  await page.getByRole("radiogroup", { name: "Task" }).getByRole("radio", { name: new RegExp(`${task}$`) }).check();
+  await page.getByRole("radio", { name: REP[rep] }).check();
   const [res] = await Promise.all([
     page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/api/cases"),
     page.getByRole("button", { name: "Start" }).click(),
@@ -335,11 +336,12 @@ test("j) start: /start sets the operator's cookies and 303s; each lane lists onl
   const offered = (await (await page.request.get("/api/models")).json()) as { options: Option[]; tasks: string[] };
   await openStart(page);
   await expect(page.getByRole("note")).toHaveCount(0); // the cookie is there: no "open /start" link
-  await expect(page.getByRole("combobox", { name: "Task" }).locator("option")).toHaveText(offered.tasks);
+  await expect(page.getByRole("radiogroup", { name: "Task" }).locator("code")).toHaveText(offered.tasks);
   await expect(page.getByRole("radio", { name: "sim" })).toBeChecked();
+  await page.getByText("Advanced: models").click();
   for (const [lane, title] of LANES) {
     const own = offered.options.filter((o) => o.lane === lane);
-    const select = page.getByRole("combobox", { name: `${title} model` });
+    const select = page.getByRole("combobox", { name: title });
     await expect(select.locator("option")).toHaveText(own.map((o) => `${o.label} · ${o.model_id} · ${o.endpoint}`));
     await expect(select).toHaveValue(own.find((o) => o.default)?.id ?? "no default");
   }

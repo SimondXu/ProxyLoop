@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaults, maybeStarted, parseOffer, startError, type LaneKey } from "./start";
+import { defaults, maybeStarted, parseOffer, startError, taskName, type LaneKey } from "./start";
 
 const option = (id: string, lane: LaneKey | "ear", isDefault = false, extra: Record<string, unknown> = {}) => ({
   id,
@@ -54,5 +54,12 @@ describe("the start page's options (GET /api/models)", () => {
     expect(maybeStarted(f(0, "no case_id in the answer"))).toBe(true);
     expect(maybeStarted(f(503, "Service Unavailable"))).toBe(true); // no serve body
     expect(maybeStarted(f(500, "Internal Server Error"))).toBe(true);
+  });
+
+  it("names a task card from its ref's family only, never from a copy table", () => {
+    expect(taskName("x-out-of-envelope-approval@1")).toBe("X out of envelope approval");
+    expect(taskName("cp-direct-discount")).toBe("Cp direct discount");
+    expect(taskName("wire_start-human@2")).toBe("Wire start human");
+    expect(taskName("@1")).toBe("@1"); // nothing readable: the ref as sent
   });
 });
