@@ -404,6 +404,78 @@ def test_one_slow_step_per_rep_turn_after_fastc_answers(
     for u, (s, _) in zip(turns, steps, strict=True):
         assert 2_000 <= s.t_ms - u.t_ms <= 2_000 + 2  # the lag: one generation
     seen_after_fastc(sim, 2_000)
+    within_the_lag_bound(sim)
+    one_at_a_time(sim)
+
+
+def within_the_lag_bound(sim: Call) -> None:
+    """ADR-0015 M1: each rep line is seen (a step with basis at or after it)
+    by the later of the end of the step running when it was said and the end
+    of the FastC generation that saw it; with no terminal for that generation,
+    HEARTBEAT_S after the line (or that step's end, if later)."""
+    steps, heartbeat = sim.steps(), 1000 * wake.HEARTBEAT_S
+    ends = {
+        str(e.payload["gen_id"]): e.t_ms
+        for e in sim.events
+        if e.type in ("fast.turn", "fast.cancelled")
+    }
+    asked = sim.of("fast.request", lane="cp")
+    for u in sim.of("utt.final", speaker="partner"):
+        saw = [r for r in asked if int(str(r.payload["basis_seq"])) >= u.seq]
+        end = ends.get(str(saw[0].payload["gen_id"])) if saw else None
+        answered = u.t_ms + heartbeat if end is None else min(end, u.t_ms + heartbeat)
+        running = [
+            d.t_ms
+            for s, d in steps
+            if s.seq < u.seq and d is not None and d.seq > u.seq
+        ]
+        nxt = next(s for s, _ in steps if s.seq > u.seq)
+        assert int(str(nxt.payload["basis_seq"])) >= u.seq
+        assert nxt.t_ms <= max([answered, *running]) + 2, (u.t_ms, nxt.t_ms)
+
+
+def test_a_cancelled_generation_lets_slow_see_the_line_at_once(
+    tmp_path: Path,
+) -> None:  # ADR-0015 M1 (a)
+    sim = Call(tmp_path, fast_ms=3_000)
+
+    async def case() -> None:
+        await sim.start()
+        sim.rep_says("Hello, who is this?")
+        await sim.vt.run_for(1_000)  # the epoch moves while FastC streams
+        bump = {"new": sim.bb.epoch + 1, "reason": "f2s_revoke"}
+        sim.k.emit("authority.epoch", "kernel", bump, [sim.k.authority.root])
+        await sim.vt.run_for(10_000)
+        await sim.stop()
+
+    play(case)
+    (u,) = sim.of("utt.final", speaker="partner")
+    cancelled, *_ = sim.of("fast.cancelled")
+    first, *_ = sim.steps()
+    assert (first[0].t_ms - cancelled.t_ms, reasons(first[0])) == (0, ["rep_turn"])
+    assert int(str(first[0].payload["basis_seq"])) >= u.seq
+    within_the_lag_bound(sim)
+
+
+@pytest.mark.parametrize("step_ms", [0, 20_000], ids=["idle", "long_steps"])
+def test_a_generation_with_no_end_still_lets_slow_see_the_line(
+    tmp_path: Path, step_ms: int
+) -> None:  # ADR-0015 M1 (b): FastC hangs from the first rep line on
+    sim = Call(tmp_path, step_ms=step_ms, fast_ms=10**9)
+
+    async def case() -> None:
+        await sim.start()
+        for _ in range(3):
+            sim.rep_says("Hello, who is this?")
+            await sim.vt.run_for(17_000)
+        await sim.vt.run_for(40_000)
+        await sim.stop()
+
+    play(case)
+    assert sim.of("fast.turn", lane="cp") == sim.of("fast.cancelled") == []
+    (u, *_), (first, _) = sim.of("utt.final", speaker="partner"), sim.steps()[0]
+    assert first.t_ms - u.t_ms == 15_000 and reasons(first) == ["heartbeat"]
+    within_the_lag_bound(sim)
     one_at_a_time(sim)
 
 
