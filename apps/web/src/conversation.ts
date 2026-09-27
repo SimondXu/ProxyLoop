@@ -34,15 +34,20 @@ const BY: Record<string, string> = { ui: "approved by you", sim_approver: "appro
 
 /**
  * The accept's approver: its capability (Guard's action.authorized, same cap_id)
- * → the approval card with that terms_hash → the kernel's grant of that card.
- * An accept under your limits (no card) says only "fixed wording".
+ * → the approval cards with that terms_hash and authority epoch → the kernel's
+ * last grant of one of them before the authorization. An accept under your
+ * limits (no such grant) says only "fixed wording".
  */
 function acceptedBy(said: Ev, events: Ev[]): string {
-  const cap = (e: Ev) => (e.payload.capability ?? {}) as { cap_id?: unknown; terms_hash?: unknown };
-  const auth = events.find((e) => from(e, "action.authorized", ["guard"]) && cap(e).cap_id === said.payload.cap_id);
-  const cards = events.filter((e) => from(e, "approval.requested", ["guard"]) && auth && e.payload.terms_hash === cap(auth).terms_hash);
+  const cap = (e: Ev) => (e.payload.capability ?? {}) as { cap_id?: unknown; terms_hash?: unknown; epoch?: unknown };
+  const capId = said.payload.cap_id;
+  const auth = typeof capId === "string" ? events.find((e) => from(e, "action.authorized", ["guard"]) && cap(e).cap_id === capId) : undefined;
+  const { terms_hash, epoch } = auth ? cap(auth) : {};
+  if (!auth || typeof terms_hash !== "string" || typeof epoch !== "number") return "fixed wording";
+  const cards = events.filter((e) => from(e, "approval.requested", ["guard"]) && e.payload.terms_hash === terms_hash && e.payload.authority_epoch === epoch);
   const ids = new Set(cards.map((e) => e.payload.approval_id));
-  const grant = events.find((e) => from(e, "approval.decided", ["kernel"]) && e.payload.decision === "granted" && ids.has(e.payload.approval_id));
+  const granted = (e: Ev) => from(e, "approval.decided", ["kernel"]) && e.payload.decision === "granted" && ids.has(e.payload.approval_id);
+  const grant = events.filter((e) => e.seq < auth.seq && granted(e)).at(-1);
   return (grant && BY[str(grant.payload.by)]) ?? "fixed wording";
 }
 
@@ -108,8 +113,10 @@ export function speakerName(who: Speaker, p: Parties): string {
 export type CallHead = { calls: number; open: boolean; holdSince: number | null };
 
 /**
- * A hold starts at FastC's chan.hold and ends at its release (reason null), the
- * rep's next line, the agent's next heard line, or the call's end.
+ * The hold follows the kernel's fold (core/fold.py cp_hold): FastC's chan.hold
+ * with a reason sets it, one with reason null clears it, and so does the call's
+ * opening or end. The same turn's speech comes after its chan.hold, so a heard
+ * line does not end a hold.
  */
 export function callHead(events: Ev[]): CallHead {
   const h: CallHead = { calls: 0, open: false, holdSince: null };
@@ -119,7 +126,6 @@ export function callHead(events: Ev[]): CallHead {
     if (from(e, "chan.opened", ["kernel"])) Object.assign(h, { calls: h.calls + 1, open: true, holdSince: null });
     else if (from(e, "chan.closed", ["kernel"])) Object.assign(h, { open: false, holdSince: null });
     else if (from(e, "chan.hold", ["fast.cp"])) h.holdSince = p.reason == null ? null : e.t_ms;
-    else if (from(e, "utt.delivered", ["kernel"]) || (from(e, "utt.final", ["kernel"]) && p.speaker === "partner")) h.holdSince = null;
   }
   return h;
 }

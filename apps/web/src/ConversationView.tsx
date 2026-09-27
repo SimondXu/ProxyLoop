@@ -184,7 +184,7 @@ function ChatPanel({ events, lines, p, announce, input }: ColumnProps & { input?
     ...(input?.cards ?? []).map((c) => ({
       seq: c.seq,
       el: (
-        <li key={c.el.key ?? c.seq} className="pl-line-card">
+        <li key={c.el.key ?? c.seq} className="pl-line-card" aria-live="off">
           {c.el}
         </li>
       ),

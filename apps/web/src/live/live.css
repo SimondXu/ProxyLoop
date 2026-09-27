@@ -50,7 +50,7 @@
   .pl-line-rep .pl-av { color: var(--rep); background: var(--rep-soft); }
   .pl-av .pl-mark { width: 20px; height: 20px; }
   .pl-av[data-av]::before { content: attr(data-av); }
-  .pl-jump { align-self: center; margin: calc(-1 * var(--s10)) 0 var(--s2); position: relative; box-shadow: var(--e2); }
+  .pl-jump { align-self: center; min-height: 28px; margin: var(--s1) 0 var(--s2); font-size: var(--fs-meta); box-shadow: var(--e2); } /* below the list: it covers no line */
   .pl-pending { display: flex; flex-direction: column; align-items: flex-end; gap: var(--s1); list-style: none; margin: 0; padding: 0 var(--s4) var(--s2); }
   .pl-pending .pl-bubble { opacity: 0.7; }
 

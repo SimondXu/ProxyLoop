@@ -275,6 +275,7 @@ test("conversation view: two panes with the right speakers, heard text only, the
   await expect(page.getByRole("region", { name: "Call" }).getByLabel("Simulated parties")).toHaveText(SIM_REP);
   await expect(page.getByRole("region", { name: "Chat" }).getByLabel("Simulated parties")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Call with the company" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Call" })).toContainText("Rep (simulated)");
   await expect(page.getByLabel("Status line")).toHaveText("Status: starting (no status yet)");
 
   const opened = JSON.parse(ev("chan.opened", "kernel", { lane: "cp" })) as { event_id: string };

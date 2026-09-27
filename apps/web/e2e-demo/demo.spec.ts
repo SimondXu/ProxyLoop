@@ -107,6 +107,7 @@ async function toCard(page: Page) {
   await expect(page.getByRole("note", { name: "Simulated parties" })).toHaveText(SIM_REP);
   await expect(page.getByRole("region", { name: "Call" }).getByLabel("Simulated parties")).toHaveText(SIM_REP);
   await expect(page.getByRole("region", { name: "Chat" }).getByLabel("Simulated parties")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Call" })).toContainText("Rep (simulated)");
   // Every model is a test_fake: the band says so (I8), before any model would have spoken.
   await expect(page.getByText("Scripted test run · no models called")).toBeVisible();
   await say(page, TASK_SAID);
@@ -263,6 +264,7 @@ test.describe("human rep", () => {
     await onlyFakes(page, ["fast_user", "fast_cp", "slow"]);
     await expect(page.getByRole("heading", { name: "Call with the company" })).toBeVisible();
     await expect(page.getByLabel("Simulated parties")).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Call" })).not.toContainText("(simulated)"); // a person, not the world
 
     // The user's own words and the case agent's private summary never reach the rep.
     const secret = "My limit is 65 dollars a month, keep that between us.";
