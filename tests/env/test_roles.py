@@ -573,6 +573,10 @@ def test_the_simuser_channel_enqueues_nothing_on_silence(tmp_path: Path) -> None
         ("four eight two-thirty one", (LAST4, "4821"), False),
         ("someone four eight two", (LAST4, "4821"), False),
         ("Card 48, 21.", (LAST4, "4821"), False),  # digits alone: no comma runs
+        # a run with a number word holds single digits only
+        ("the last four, 821", (LAST4, "4821"), False),
+        ("four eight 21", (LAST4, "4821"), False),
+        ("12 four eight two one", (LAST4, "4821"), False),
         ("dana REYES here.", (NAME, "Dana Reyes"), True),
         ("Is that Dan? A Reyes account?", (NAME, "Dana Reyes"), False),
         ("Danar Reyes", (NAME, "Dana Reyes"), False),
