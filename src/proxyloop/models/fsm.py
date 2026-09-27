@@ -54,7 +54,8 @@ READBACK = (
 CHECKING = "I need to check with my customer before agreeing to anything."
 MOVES: dict[str, str] = {  # GuideMove -> what the FSM says ({} = slot values)
     "open_call": "I'm calling on behalf of my customer about their account.",
-    "identify": "The account details are {}.",
+    # a fixed tail after the value: a split or cut fragment never matches it
+    "identify": "The account details are {}, for verification.",
     "ask_discount": "Is there any way you could lower the monthly price?",
     "cite_competitor": "My customer has a competing quote of {}.",
     "mention_tenure": "My customer has been with you for {}.",
@@ -258,19 +259,16 @@ def _identity(v: Seen) -> tuple[str, ...]:
     """The identity values the FSM may say: the newest guide if it is
     ``identify``, else its own newest identify line in the transcript, parsed
     back through the template and kept only if ``_guide`` re-says it exactly.
-    If another agent line follows that line directly, it may be the first part
-    of a split sentence ("Dana J." + "Reyes, 4821."): nothing, never a partial
-    identity. Partner lines and older guides are never a source."""
+    The template's fixed tail means a fragment of a split line ("... Dana J.")
+    never matches: no partial identity, the FSM deflects. Partner lines and
+    older guides are never a source."""
 
     if v.guides and v.guides[-1][0] == "identify" and v.guides[-1][1]:
         return v.guides[-1][1]
     head, tail = MOVES["identify"].split("{}")
-    for n in range(len(v.lines) - 1, -1, -1):
-        speaker, text = v.lines[n]
+    for speaker, text in reversed(v.lines):
         if speaker != "agent" or not (text.startswith(head) and text.endswith(tail)):
             continue
-        if n + 1 < len(v.lines) and v.lines[n + 1][0] == "agent":
-            return ()
         values = tuple(text[len(head) : len(text) - len(tail)].split(", "))
         said = [
             i.text for i in _guide("cp", "identify", values) if isinstance(i, Speech)
