@@ -58,6 +58,8 @@ class Turn:
     lane: str
     record: LLMCallRecord | None  # the turn's llm.call, final attempt
     items: tuple[fp.TurnItem, ...] | None  # the raw response parsed; None: missing
+    text: str | None  # the raw response; None: missing
+    profile: str | None  # its fast.request's profile; None: no fast.request
 
 
 class Inputs:
@@ -89,6 +91,10 @@ class Inputs:
     @cached_property
     def turns(self) -> list[Turn]:
         last = {r.call_id: r for _, r in self.calls}
+        profile = {
+            str(e.payload["gen_id"]): str(e.payload["profile"])
+            for e in self.of("fast.request")
+        }
         out: list[Turn] = []
         for e in self.of("fast.turn"):
             p = e.payload
@@ -96,8 +102,9 @@ class Inputs:
             sha = record.response_sha if record else None
             text = self.prompt(sha) if sha else None
             lane = "cp" if p["lane"] == "cp" else "user"
-            items = None if text is None else fp.parse_turn(text, lane)
-            out.append(Turn(e.seq, str(p["gen_id"]), lane, record, items))
+            items = None if text is None else fp.parse_turn(text, lane)  # base grammar
+            gen = str(p["gen_id"])
+            out.append(Turn(e.seq, gen, lane, record, items, text, profile.get(gen)))
         return out
 
 
@@ -191,27 +198,60 @@ def _slow_tail(x: Inputs) -> Value:
     return x.events[-1].t_ms - steps[-1].t_ms if steps else None
 
 
-def _speech_after(x: Inputs, marks: tuple[type, ...]) -> Value:
-    """Speech items after the first ``marks`` item in each Fast turn's raw
-    response, parsed by the contract parser; ``turns`` lists [seq, items]."""
+def _after(items: Sequence[fp.TurnItem], marks: tuple[type, ...]) -> int:
+    """Speech items after the first ``marks`` item."""
+    n, seen = 0, False
+    for item in items:
+        seen = seen or isinstance(item, marks)
+        n += seen and isinstance(item, fp.Speech)
+    return n
+
+
+@detector("speech_after_directive")
+def _speech_after(x: Inputs) -> Value:
+    """Speech items after the first directive in each Fast turn's raw
+    response, parsed by the contract parser's base grammar; ``turns`` lists
+    [seq, items]."""
     turns: list[list[int]] = []
     unknown: list[int] = []
     for t in x.turns:
         if t.items is None:
             unknown.append(t.seq)
-            continue
-        n, seen = 0, False
-        for item in t.items:
-            seen = seen or isinstance(item, marks)
-            if seen and isinstance(item, fp.Speech):
-                n += 1
-        if n:
+        elif n := _after(t.items, _DIRECTIVES):
             turns.append([t.seq, n])
     return {"count": sum(n for _, n in turns), "turns": turns, "unknown": unknown}
 
 
-DETECTORS["speech_after_pause"] = lambda x: _speech_after(x, _PAUSES)
-DETECTORS["speech_after_directive"] = lambda x: _speech_after(x, _DIRECTIVES)
+@detector("speech_after_pause")
+def _speech_after_pause(x: Inputs) -> Value:
+    """Speech after a Hold/Wait in each Fast turn's raw response, in the
+    grammar of its fast.request ``profile`` (the contract parser): ``items``,
+    Speech items after the pause on a profile without ``pause_ends_speech``;
+    ``issues``, ParseIssue(speech_after_pause) on one with it (pl_cp_v3, one
+    per line, ADR-0017); ``count``, both; ``turns`` lists [seq, n];
+    ``unknown``: no response, or a missing or unknown profile."""
+    turns: list[list[int]] = []
+    unknown: list[int] = []
+    items = issues = 0
+    for t in x.turns:
+        spec = fp.PROFILES.get(t.profile or "")
+        if t.items is None or t.text is None or spec is None or spec.lane != t.lane:
+            unknown.append(t.seq)
+            continue
+        if spec.pause_ends_speech:
+            parsed = fp.parse_turn(t.text, spec.lane, t.profile)
+            n = sum(
+                isinstance(i, fp.ParseIssue) and i.reason == "speech_after_pause"
+                for i in parsed
+            )
+            issues += n
+        else:
+            n = _after(t.items, _PAUSES)
+            items += n
+        if n:
+            turns.append([t.seq, n])
+    return {"count": items + issues, "items": items, "issues": issues,
+            "turns": turns, "unknown": unknown}  # fmt: skip
 
 
 @detector("empty_length")

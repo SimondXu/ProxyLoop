@@ -5,8 +5,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tests.contract.samples import QWEN
 from tests.obs.bundles import Log, manifest, write
-from tests.obs.triage_bundle import WINDOW_S, bundle, said
+from tests.obs.triage_bundle import WINDOW_S, bundle, call, prompts, said, turn
 
 from proxyloop.obs import detectors, runs, triage
 
@@ -57,10 +58,15 @@ def test_every_detector_equals_the_hand_count(tmp_path: Path) -> None:
         "slow_max_step_gap_ms": 2900,  # 0→100 = 100, 100→3000 = 2900
         "slow_last_step_to_end_ms": 800,  # step 30 (t=3000) to the end, 3800
         "slow_steps": 2,  # seqs 1, 30
+        # no fast.request names a profile here, so every turn's grammar is
+        # unknown (test_speech_after_pause_follows_the_profile has them)
+        "speech_after_pause": {
+            "count": 0, "items": 0, "issues": 0, "turns": [],
+            "unknown": [5, 13, 25, 28],
+        },
         # after @hold in cp-g1 (turn 13): "Stray one." + "Stray two." +
-        # "Again." = 3; turn 28 has no llm.call
-        "speech_after_pause": {"count": 3, "turns": [[13, 3]], "unknown": [28]},
-        # plus user-g1 (turn 5): "Thanks." after the @slow line: 3 + 1 = 4
+        # "Again." = 3; plus user-g1 (turn 5): "Thanks." after the @slow
+        # line: 3 + 1 = 4; turn 28 has no llm.call
         "speech_after_directive": {
             "count": 4, "turns": [[5, 1], [13, 3]], "unknown": [28],
         },
@@ -170,3 +176,27 @@ def test_hold_repeats_missing_key_is_zero_missing_counts_none(tmp_path: Path) ->
         log.add("session.ended", "kernel", "ops", {"reason": "done"} | end)
         values = _values(write(tmp_path / run_id, log, manifest(run_id)))
         assert values["hold_repeats"] == (0 if end else None), run_id
+
+
+def test_speech_after_pause_follows_the_profile(tmp_path: Path) -> None:
+    """The same raw response per turn: v2 counts the Speech items after the
+    pause, v3 (pause_ends_speech) its one speech_after_pause issue per line;
+    an unknown profile or no fast.request is unknown."""
+    log = Log("rP")
+    for n, profile in enumerate(("pl_cp_v2", "pl_cp_v3", "pl_cp_v9", None)):
+        gen = f"cp-g{n}"
+        if profile is not None:
+            request: dict[str, object] = {"lane": "cp", "gen_id": gen}
+            request |= {"trigger": "t", "view_sha": "v", "prompt_sha": "p"}
+            request |= {"profile": profile, "model_ref": {}, "basis_seq": 0}
+            log.add("fast.request", "kernel", "agent", request)
+        turn(log, "cp", gen, f"c{n}", call(log, "fast_cp", QWEN, f"c{n}"))
+    run = write(tmp_path / "rP", log, manifest("rP"))
+    raw = "Please hold.\n@hold fact_request\nStray one. Stray two."
+    prompts(run, {f"resp-c{n}": raw for n in range(4)})
+    x = triage.read(run, runs.Seal())[1]
+    assert detectors.DETECTORS["speech_after_pause"](x) == {
+        "count": 3, "items": 2, "issues": 1,
+        "turns": [[3, 2], [6, 1]],  # v2's turn (seq 3), v3's (seq 6)
+        "unknown": [9, 11],  # pl_cp_v9 is no profile; the last has no request
+    }  # fmt: skip
