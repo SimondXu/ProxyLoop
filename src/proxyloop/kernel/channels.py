@@ -29,10 +29,20 @@ class Incoming:  # One partner turn: lines with the world event behind each, if 
 class Channel:  # The base: a partner that never speaks first and has no clock
     def __init__(self) -> None:
         self.incoming: asyncio.Queue[Incoming] = asyncio.Queue()
+        self._composing, self._quiet = 0, asyncio.Event()
+        self._quiet.set()
 
     @property
-    def busy(self) -> bool:
-        return False
+    def busy(self) -> bool:  # the partner is hearing a line or composing a reply
+        return self._composing > 0
+
+    def composing(self, delta: int) -> None:
+        """A partner turn starts (+1) or ends (-1); queue its reply first."""
+        self._composing += delta
+        (self._quiet.clear if self._composing else self._quiet.set)()
+
+    async def quiet(self) -> None:  # until the partner composes nothing
+        await self._quiet.wait()
 
     async def send(self, text: str | None, utt_id: str, cause: str, t_ms: int) -> None:
         return None

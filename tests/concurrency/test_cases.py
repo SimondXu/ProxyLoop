@@ -9,6 +9,7 @@ from collections.abc import Coroutine
 from pathlib import Path
 from typing import Any
 
+import pytest
 from tests.concurrency.harness import LONG, Sim, granted
 from tests.support.sessions import fake_config, patient_task
 
@@ -18,6 +19,8 @@ from proxyloop.evidence.check import check_path
 from proxyloop.guard.authorize import Denial, accept_offer, decide
 from proxyloop.guard.readback import readback_text
 from proxyloop.kernel.speaker import speech_s
+
+FIX = "Correction: that offer is gone, it is $75 now."
 
 
 def arun(case: Coroutine[Any, Any, None]) -> None:
@@ -208,6 +211,57 @@ def test_a_partner_turn_begun_before_a_queued_accept_lands_first(
         assert revoked or said.seq < released[0].seq  # heard, then revalidated
         for moved in sim.of("status.changed", status="COMMITTED"):
             assert said.seq < moved.seq
+        await sim.stop()
+        assert check_path(sim.k.path, "offline").ok
+
+    arun(case())
+
+
+def test_an_accept_waits_while_the_rep_composes_a_reply(tmp_path: Path) -> None:
+    """ROOT-05 (i) would not cut the line for a reply to an older line: so the
+    accept does not take the floor while the rep composes one (option A)."""
+
+    async def case() -> None:
+        sim = Sim(tmp_path)
+        await sim.start()
+        await granted(sim)
+        sim.rep_composes()  # the rep answers an older line
+        assert sim.accept().startswith("accept_offer: accept line queued")
+        await sim.vt.run_for(1_000)
+        sim.rep_done(FIX)
+        await sim.vt.run_for(15_000)
+        (said,) = sim.of("utt.final", text=FIX)
+        (released,) = sim.of("speak.released", cap_id="cap-1")
+        assert said.seq < released.seq  # heard, then revalidated
+        (moved,) = sim.of("status.changed", status="COMMITTED")
+        assert said.seq < moved.seq
+        await sim.stop()
+        assert check_path(sim.k.path, "offline").ok
+
+    arun(case())
+
+
+@pytest.mark.parametrize("reply", [FIX, None])
+def test_an_accept_outwaited_by_a_composing_rep_is_revoked_expired(
+    tmp_path: Path, reply: str | None
+) -> None:  # fails closed through the expiry check; the line ends once
+    async def case() -> None:
+        sim = Sim(tmp_path)
+        await sim.start()
+        card = await granted(sim)
+        sim.rep_composes()
+        assert sim.accept().startswith("accept_offer: accept line queued")
+        (cap,) = sim.bb.capabilities.values()
+        assert cap.expires_ms <= card.expires_ms
+        await sim.vt.run_for(cap.expires_ms - sim.vt.monotonic_ms() + 1_000)
+        assert not sim.of("speak.released", cap_id=cap.cap_id)
+        assert not sim.of("speak.revoked", cap_id=cap.cap_id)  # still waiting
+        sim.rep_done(reply)
+        await sim.vt.run_for(15_000)
+        (revoked,) = sim.of("speak.revoked", cap_id=cap.cap_id)
+        assert revoked.payload["reason"] == "expired"
+        assert not sim.of("speak.released", cap_id=cap.cap_id)
+        assert sim.bb.capabilities == {}  # nothing left in flight
         await sim.stop()
         assert check_path(sim.k.path, "offline").ok
 

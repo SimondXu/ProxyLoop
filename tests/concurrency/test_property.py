@@ -6,7 +6,7 @@ accepts, stops, revokes, barge-ins, FastU latency, time) and the log must show:
   capability's ``expires_ms`` or with its line ending past it;
 - at most one released accept per ``terms_hash``;
 - no ``speak.released{cap_id}`` while a partner turn is pending (queued, its
-  ``utt.final`` not yet in the log);
+  ``utt.final`` not yet in the log) or the rep composes one (option A);
 - every accept line ending in exactly one ``speak.released`` or
   ``speak.revoked`` (none wedges on ``accept_in_flight``);
 - the same while Slow declines or re-records the offer under an accept line in
@@ -81,7 +81,22 @@ class Interleavings(RuleBasedStateMachine):
 
     @rule()
     def the_rep_talks(self) -> None:
-        self.sim.rep_says("Sorry, can you say that again?")
+        self._rep("Sorry, can you say that again?")
+        self.run(settle())
+
+    def _rep(self, text: str) -> None:  # a composing rep's line is its reply
+        (self.sim.rep_done if self.sim.rep.busy else self.sim.rep_says)(text)
+
+    @rule()
+    def the_rep_starts_composing(self) -> None:  # a reply to an older line
+        if not self.sim.rep.busy:
+            self.sim.rep_composes()
+        self.run(settle())
+
+    @rule(speaks=st.booleans())
+    def the_rep_is_done(self, speaks: bool) -> None:
+        if self.sim.rep.busy:
+            self.sim.rep_done("Correction: that offer is gone." if speaks else None)
         self.run(settle())
 
     @rule(answering=st.booleans())
@@ -116,6 +131,8 @@ class Interleavings(RuleBasedStateMachine):
                 for x in self.sim.bb.channels["cp"].lines
                 if x.speaker == "partner" and x.text == terms(self.dollars)
             ]
+            if not said:  # the rep's line has not landed yet
+                return
             record: dict[str, object] = {"tool": "record_offer", "offer_ref": "o1"}
             record["offer_slots"] = slots(self.dollars, said[-1].utt_id)
             self.sim.act(record)
@@ -163,20 +180,22 @@ class Interleavings(RuleBasedStateMachine):
 
     def _offer(self) -> None:
         self.dollars += 1
-        self.sim.rep_says(terms(self.dollars))
+        self._rep(terms(self.dollars))
         self.run(self.sim.vt.run_for(1_500))  # the rep's line lands (a barge-in)
         rep = [x for x in self.sim.bb.channels["cp"].lines if x.speaker == "partner"]
         record: dict[str, object] = {"tool": "record_offer", "offer_ref": "o1"}
         record["offer_slots"] = slots(self.dollars, rep[-1].utt_id)
         ask = {"tool": "guide_fast", "move": "ask_readback", "slots": ["offer:o1"]}
         self.sim.act(record, ask)
-        self.sim.rep_says(terms(self.dollars))  # the read-back
+        self._rep(terms(self.dollars))  # the read-back
         self.run(self.sim.vt.run_for(1_500))
         self.sim.tools.readback()
 
     def teardown(self) -> None:
         try:
             self.valve.open.set()  # FastU answers; every fence can clear
+            if self.sim.rep.busy:  # the rep's turn ends: every line can go out
+                self.sim.rep_done()
             self.run(self.sim.vt.run_for(30_000))  # every queued line gets the floor
             self.run(self._stop())
             _check(self.sim)
@@ -241,8 +260,9 @@ def _check(sim: Sim) -> None:
 
 
 def _partner_first(sim: Sim) -> None:
-    """A rep turn is pending from its queueing until its ``utt.final``: no
-    accept is released in between (it is revalidated after the turn)."""
+    """A rep turn is pending from its queueing until its ``utt.final``, and
+    the rep is busy while it composes one: no accept is released in either
+    window (it is revalidated after the turn)."""
     events = sim.events
     said = [
         e.seq
@@ -250,14 +270,12 @@ def _partner_first(sim: Sim) -> None:
         if e.type == "utt.final" and e.payload["speaker"] == "partner"
     ]
     ends = said + [len(events)] * (len(sim.rep_turns) - len(said))
+    spans = list(zip(sim.rep_turns, ends, strict=True))
+    spans += [(a, len(events) if b < 0 else b) for a, b in sim.rep_busy]
     for e in events:
         if e.type == "speak.released" and "cap_id" in e.payload:
-            pending = [
-                (a, b)
-                for a, b in zip(sim.rep_turns, ends, strict=True)
-                if a <= e.seq < b
-            ]
-            assert not pending, f"{e.event_id}: released with a rep turn pending"
+            pending = [(a, b) for a, b in spans if a <= e.seq < b]
+            assert not pending, f"{e.event_id}: released with the rep mid-turn"
 
 
 TestInterleavings = Interleavings.TestCase  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]

@@ -9,9 +9,11 @@ a raised fence. So every accept line ends in exactly one ``speak.released`` or
 on ``accept_in_flight``. Its status follows only from what happened: heard
 whole, cut by a barge-in (``accept_truncated``) or revoked.
 
-A partner turn goes before a queued verbatim line: from its barge-in until its
-lines have landed, no verbatim line takes the floor, so an accept is revalidated
-only on a board that has the partner's turn (I6 timing)."""
+A partner turn goes before a queued verbatim line: while the partner composes
+it, while it is queued, and from its barge-in until its lines have landed, no
+verbatim line takes the floor, so an accept is revalidated only on a board that
+has the partner's turn (I6 timing). A wait past the capability's expiry ends
+the line ``expired`` there."""
 
 from __future__ import annotations
 
@@ -89,12 +91,22 @@ class Speaker:
             self._lock.release()
         self._send(last, heard)
 
+    def _partner_pending(self) -> bool:  # a turn begun, queued or composed
+        ch = self._channel
+        return self._partner > 0 or ch.busy or not ch.incoming.empty()
+
     async def _floor_after_partner(self) -> None:
-        """Take the floor with no partner turn pending (the lock, acquired)."""
+        """Take the floor (the lock, acquired) with no partner turn pending: not
+        begun, queued, or being composed, as a reply the stale path (ROOT-05 i)
+        would not let cut the line."""
         while True:
             await self._partner_idle.wait()
+            await self._channel.quiet()
+            if not self._channel.incoming.empty():  # the ingress takes it next
+                await asyncio.sleep(0)
+                continue
             await self._lock.acquire()
-            if self._partner == 0:
+            if not self._partner_pending():
                 return
             self._lock.release()  # a partner turn began while this line queued
 

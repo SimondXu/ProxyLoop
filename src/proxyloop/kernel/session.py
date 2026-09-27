@@ -106,11 +106,7 @@ class _Loud:  # The session dies the moment one of its endpoints does
 class SimRepChannel(Channel):  # hears text_heard; ticks on a free floor
     def __init__(self, rep: SimRep) -> None:
         super().__init__()
-        self._rep, self._turns = rep, 0
-
-    @property
-    def busy(self) -> bool:
-        return self._turns > 0
+        self._rep = rep
 
     def send(self, text: str | None, utt_id: str, cause: str, t_ms: int) -> Turn:
         heard = (
@@ -125,19 +121,20 @@ class SimRepChannel(Channel):  # hears text_heard; ticks on a free floor
         self._rep.floor(free, t_ms)
 
     def _run(self, turn: Coroutine[Any, Any, RepTurn] | None) -> Turn:
-        self._turns += 1  # busy from the spawn: a tick never overlaps a turn
+        self.composing(1)  # busy from the spawn: a tick never overlaps a turn
 
         async def run() -> None:
             try:
                 done = await turn if turn else None
+                if done is None:
+                    return
+                end: End = ("hangup" if done.strike else "closed") if done.ended else ""
+                if done.lines or end or done.strike:
+                    lines = tuple((text, ev) for text, ev in done.lines)
+                    inc = Incoming(lines, strike=done.strike, end=end)
+                    self.incoming.put_nowait(inc)  # queued before it is quiet
             finally:
-                self._turns -= 1
-            if done is None:
-                return
-            end: End = ("hangup" if done.strike else "closed") if done.ended else ""
-            if done.lines or end or done.strike:
-                lines = tuple((text, ev) for text, ev in done.lines)
-                self.incoming.put_nowait(Incoming(lines, strike=done.strike, end=end))
+                self.composing(-1)
 
         return run()
 

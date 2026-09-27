@@ -123,6 +123,7 @@ class Sim:
         self._run: asyncio.Task[object] | None = None
         self._rep = 0
         self.rep_turns: list[int] = []  # the next seq when each rep turn was queued
+        self.rep_busy: list[list[int]] = []  # [from, to) seqs the rep composed in
 
     async def start(self) -> None:
         """Run the session past the disclosure (about 4 s of speech)."""
@@ -160,6 +161,18 @@ class Sim:
     def rep_says(self, text: str) -> None:
         self.rep_turns.append(len(self.k.bus.events))
         self.rep.incoming.put_nowait(Incoming(((text, None),)))
+
+    def rep_composes(self) -> None:  # as SimRepChannel while the rep's LLM runs
+        assert not self.rep.busy
+        self.rep.composing(1)
+        self.rep_busy.append([len(self.k.bus.events), -1])
+
+    def rep_done(self, text: str | None = None) -> None:
+        """The rep's turn ends: its reply (if any) queued, then it is quiet."""
+        if text is not None:
+            self.rep_says(text)
+        self.rep.composing(-1)
+        self.rep_busy[-1][1] = len(self.k.bus.events)
 
     def post(self, card: ApprovalCard, by: Approver = "ui", **change: object) -> None:
         post = {"subject": "approval", "subject_id": card.approval_id}
