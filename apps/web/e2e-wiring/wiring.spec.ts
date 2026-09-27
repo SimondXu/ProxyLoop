@@ -1,4 +1,6 @@
 import { expect, test, type Page, type Response } from "@playwright/test";
+import { inWords } from "../src/mandate";
+import { READBACK_CHIP, termRow } from "../src/terms";
 
 // The web against the real API (S1-SYS-18): nothing in the browser is mocked.
 // Each test owns one stub case of tests/web/wiring_server.py (its mode is fixed
@@ -152,15 +154,15 @@ test("b) live: /live sets the cookies and 303s, /ws/live streams the seed, Appro
   const status = card.getByLabel("Approval status");
   const got = await click(page, id, "approvals/", () => card.getByRole("button", { name: "Approve" }).click());
   expect(got).toEqual({ status: 200, body: { status: "posted" } });
-  await expect(status).toHaveText("sent: waiting for the kernel's decision");
-  await expect(status).toHaveText("decided: granted by ui", { timeout: DECIDED_MS });
+  await expect(status).toHaveText("Sent. Waiting for Guard to record it");
+  await expect(status).toHaveText(/^You approved/, { timeout: DECIDED_MS });
 
   // The same post again, with the same token: single use.
   const requested = one(seed, "approval.requested").payload;
   const body = { decision: "granted", terms_hash: requested.terms_hash, authority_epoch: requested.authority_epoch };
   const path = `/api/cases/${id}/approvals/${String(requested.approval_id)}`;
   conflict(await postFrom(page, path, body, await cookie(page, "pl_csrf")), "already_decided");
-  await expect(status).toHaveText("decided: granted by ui");
+  await expect(status).toHaveText(/^You approved/);
   await expect(card.getByRole("alert")).toHaveCount(0);
   const after = await log(page, id);
   expect([count(after, "approval.post"), count(after, "approval.decided")]).toEqual([1, 1]);
@@ -177,7 +179,7 @@ test("c) stale: an epoch bumped in the board before the post is a 409 stale, sho
   expect(reason, "a stale refusal from guard.decide says why").toBeDefined();
   await expect(card.getByRole("alert")).toHaveText(`409 stale: ${String(reason)}`);
   // #150 nit 4: the status line names the 409's own reason (here the epoch did move: stale_epoch).
-  await expect(card.getByLabel("Approval status")).toHaveText(`stale: ${String(reason)}`);
+  await expect(card.getByLabel("Approval status")).toHaveText(`No longer valid: ${String(inWords(String(reason)))}`);
   await expect(card.getByRole("button", { name: "Approve" })).toBeDisabled();
   const after = await log(page, id);
   expect([count(after, "authority.epoch"), count(after, "approval.post"), count(after, "action.denied")]).toEqual([1, 0, 0]);
@@ -189,11 +191,11 @@ test("d) refused: a 200, then the kernel's action.denied citing the card, shown 
   const status = card.getByLabel("Approval status");
   const got = await click(page, id, "approvals/", () => card.getByRole("button", { name: "Approve" }).click());
   expect(got).toEqual({ status: 200, body: { status: "posted" } });
-  await expect(status).toHaveText("sent: waiting for the kernel's decision");
-  await expect(status).toHaveText(/^refused: ./, { timeout: DECIDED_MS });
+  await expect(status).toHaveText("Sent. Waiting for Guard to record it");
+  await expect(status).toHaveText(/^Not accepted by the system: ./, { timeout: DECIDED_MS });
   await expect(card.getByRole("button", { name: "Approve" })).toBeDisabled();
   const after = await log(page, id);
-  await expect(status).toHaveText(`refused: ${String(one(after, "action.denied").payload.reason)}`);
+  await expect(status).toHaveText(`Not accepted by the system: ${String(inWords(String(one(after, "action.denied").payload.reason)))}`);
   expect(one(after, "action.denied").cause_ids).toEqual([one(after, "approval.requested").event_id]);
   expect(count(after, "approval.post")).toBe(0);
 });
@@ -430,9 +432,9 @@ test("o) live: the authority strip and the card's read-back progress, from the s
   const own = readbacks.filter((e) => e.payload.revision === requested.payload.revision);
   for (const e of readbacks.filter((e) => e.seq > requested.seq)) expect(statuses(e).every(([, s]) => s === "confirmed")).toBe(true);
   await expect(card.getByRole("list", { name: "Read-back progress" }).getByRole("listitem")).toHaveText(
-    statuses(own.at(-1)).map(([field, s]) => `${field}: ${s}`),
+    statuses(own.at(-1)).map(([field, s]) => new RegExp(`^${termRow(field, undefined)[0]}.*${READBACK_CHIP[s] ?? s}$`)),
   );
   expect(statuses(own.at(-1)).map(([, s]) => s)).toEqual(Array(5).fill("confirmed"));
-  await expect(card.getByLabel("Fence note")).toHaveText("fence raised: the accept waits until it clears");
+  await expect(card.getByLabel("Fence note")).toHaveText("Paused: reading your new message before anything is accepted.");
   await shot(page, "live-strip");
 });

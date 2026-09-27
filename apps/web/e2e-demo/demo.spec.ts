@@ -147,7 +147,7 @@ test.describe("approve", () => {
     const { id, card } = await toCard(page);
     const [res] = await Promise.all([page.waitForResponse(isPost(/\/approvals\//)), card.getByRole("button", { name: "Approve" }).click()]);
     expect([res.status(), await res.json()]).toEqual([200, { status: "posted" }]);
-    await expect(card.getByLabel("Approval status")).toHaveText("decided: granted by ui", FLOW);
+    await expect(card.getByLabel("Approval status")).toHaveText(/^You approved/, FLOW);
 
     const events = await until(page, id, (e) => of(e, "chan.closed", { lane: "cp" }).length > 0);
     const posted = one(events, "approval.post");
@@ -202,9 +202,9 @@ test.describe("stop", () => {
     const strip = await authority(page);
     await say(page, STOP);
     await expect(strip.getByLabel("Fence")).toHaveText(/^fence raised \(fence-\d+\)$/);
-    await expect(card.getByLabel("Fence note")).toHaveText("fence raised: the accept waits until it clears");
+    await expect(card.getByLabel("Fence note")).toHaveText("Paused: reading your new message before anything is accepted.");
     // FastU relays the stop as a revoke: the kernel moves the epoch and the card is stale.
-    await expect(card.getByLabel("Approval status")).toHaveText("stale: the authority epoch moved past this card", FLOW);
+    await expect(card.getByLabel("Approval status")).toHaveText("No longer valid: your instructions changed", FLOW);
     await expect(card.getByRole("button", { name: "Approve" })).toBeDisabled();
     await expect(strip.getByLabel("Epoch")).toHaveText("epoch 1");
 

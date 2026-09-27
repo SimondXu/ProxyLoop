@@ -43,7 +43,7 @@ test("approval card: appears on approval.requested, Approve posts the contract b
   await shot(page, "live-card");
 
   await card.getByRole("button", { name: "Approve" }).click();
-  await expect(card.getByLabel("Approval status")).toHaveText("sent: waiting for the kernel's decision");
+  await expect(card.getByLabel("Approval status")).toHaveText("Sent. Waiting for Guard to record it");
   expect(posts).toEqual([
     {
       method: "POST",
@@ -57,7 +57,7 @@ test("approval card: appears on approval.requested, Approve posts the contract b
   const post = { subject: "approval", subject_id: "ap-1", decision: "granted", subject_hash: CARD.terms_hash, authority_epoch: 2 };
   ws.send(ev("approval.post", "ui", post));
   ws.send(ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" }));
-  await expect(card.getByLabel("Approval status")).toHaveText("decided: granted by ui");
+  await expect(card.getByLabel("Approval status")).toHaveText(/^You approved/);
   expect(urls).toEqual([expect.stringMatching(new RegExp(`/ws/live/${RUN}\\?from_seq=0$`))]);
 });
 
@@ -73,11 +73,11 @@ test("approval card: a kernel action.denied citing the card after a 200 shows re
   ws.send(requested);
   const card = page.getByRole("article", { name: "Approval ap-1" });
   await card.getByRole("button", { name: "Approve" }).click();
-  await expect(card.getByLabel("Approval status")).toHaveText("sent: waiting for the kernel's decision");
+  await expect(card.getByLabel("Approval status")).toHaveText("Sent. Waiting for Guard to record it");
   expect(posts).toHaveLength(1);
   const denied = JSON.parse(ev("action.denied", "kernel", { intent: "approval.post", reason: "fence_raised" }));
   ws.send(JSON.stringify({ ...denied, cause_ids: [JSON.parse(requested).event_id] }));
-  await expect(card.getByLabel("Approval status")).toHaveText("refused: fence_raised");
+  await expect(card.getByLabel("Approval status")).toHaveText("Not accepted by the system: your new message came first");
   await expect(card.getByRole("button", { name: "Approve" })).toBeDisabled();
   await expect(card.getByRole("button", { name: "Decline" })).toBeDisabled();
 });
@@ -109,7 +109,7 @@ test("approval card: a 409 stale is shown, closes the card and is never retried"
   const card = page.getByRole("article", { name: "Approval ap-1" });
   await card.getByRole("button", { name: "Decline" }).click();
   await expect(card.getByRole("alert")).toHaveText("409 stale");
-  await expect(card.getByLabel("Approval status")).toHaveText(/^stale/);
+  await expect(card.getByLabel("Approval status")).toHaveText(/^No longer valid/);
   await expect(card.getByRole("button", { name: "Decline" })).toBeDisabled();
   await page.waitForTimeout(300);
   expect(posts.map((p) => p.body)).toEqual([{ decision: "denied", terms_hash: CARD.terms_hash, authority_epoch: 2 }]);
@@ -204,11 +204,11 @@ test("the authority strip and the card's read-back progress follow the fixed emi
   await expect(strip.getByLabel("Last denied")).toHaveText("last action.denied accept_offer: fence_raised (kernel)");
   const card = page.getByRole("article", { name: "Approval ap-1" });
   await expect(card.getByRole("list", { name: "Read-back progress" }).getByRole("listitem")).toHaveText([
-    "monthly_price: confirmed",
-    "term_months: heard",
+    /^Monthly price.*Read back$/,
+    /^Contract length.*Heard, not read back$/,
   ]);
   await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision"); // epoch 2 = the card's
-  await expect(card.getByLabel("Fence note")).toHaveText("fence raised: the accept waits until it clears");
+  await expect(card.getByLabel("Fence note")).toHaveText("Paused: reading your new message before anything is accepted.");
   await shot(page, "live-strip-mock");
   ws.send(ev("authority.fence", "kernel", { op: "cleared", fence_id: "fence-1", utt_id: `${RUN}:0` }));
   await expect(strip.getByLabel("Fence")).toHaveText("fence cleared (fence-1)");
