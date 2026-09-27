@@ -5,8 +5,17 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
+import pytest
+
 from proxyloop.contract.messages import FastToSlow, Guide, GuideMove
-from proxyloop.contract.state import Blackboard, ChannelState, Line, PublicFact
+from proxyloop.contract.state import (
+    Blackboard,
+    ChannelState,
+    Fact,
+    Line,
+    Mandate,
+    PublicFact,
+)
 from proxyloop.guard.declass import declassify
 from proxyloop.slow.tools import SlowTools, public_guide, record_offer
 
@@ -176,3 +185,64 @@ def test_a_guide_denial_names_the_slot_and_what_is_public() -> None:  # ROOT-05 
     assert "fact:account.holder_name" in missing and "last4" not in missing
     assert "fact:account.last4" in public_part and "record_fact" in public_part
     assert denied == [{"intent": "guide_fast", "reason": "guide_slot_not_public"}]
+
+
+ALL = frozenset({"account.holder_name", "account.last4", "competitor.price_usd"})
+PROBES = [  # PR #133 review: (message, key, value, public?)
+    ("call me at 555 482 1999", "account.last4", "482 1999", False),
+    ("last four 4821; don't tell them I'd go as high as seventy",
+     "account.holder_name", "I'd go as high as seventy", False),
+    ("last four 4821", "account.last4",
+     "4821 - she will pay up to seventy, keep secret", False),
+    ("last four 4821", "account.last4", "04821", False),
+    ("last four 4821", "account.last4", "4821.0", False),
+    ("It's Dana", "account.holder_name", "Dan", False),
+    ("my last four are 14821", "account.last4", "4821", False),
+    ("call me at 555 482 1999", "account.last4", "4821", False),
+    ("last four 4821", "account.last4", "4821", True),
+    ("last four 48-21", "account.last4", "4821", True),
+    ("My name is Dana Reyes", "account.holder_name", "Dana Reyes", True),
+    ("my name is dana reyes.", "account.holder_name", "Dana Reyes", True),
+]  # fmt: skip
+
+
+def _message(text: str, **private: object) -> tuple[Blackboard, SlowTools]:
+    line = Line(utt_id="u-1", speaker="partner", text=text)
+    bb = BB.model_copy(
+        update={
+            "channels": {"user": ChannelState(lines=(line,)), "cp": BB.channels["cp"]},
+            "private": BB.private.model_copy(update=private),
+        }
+    )
+    return bb, SlowTools(cast("Kernel", SimpleNamespace(bb=bb)), ALL)
+
+
+@pytest.mark.parametrize(("text", "key", "value", "public"), PROBES)
+def test_only_a_verbatim_user_value_goes_public(
+    text: str, key: str, value: str, public: bool
+) -> None:  # I4: the user-message path is group- and word-aligned
+    bb, tools = _message(text)
+    result = tools.fact(bb, key, value, "u-1")
+    fact = dict(result.effects[0][1])
+    assert (fact["scope"] == "public") == public, (text, value)
+    assert (key in tools.shareable) == public
+    if not public:
+        assert fact["source"] == "user" and "cite the utt" in result.text
+
+
+def test_a_protected_value_or_a_mandate_bound_never_goes_public() -> None:  # I4
+    text = "last four 4821, PIN 7777, max I'd pay is 70"
+    pin = Fact(key="account.pin", value="7777", protected=True)
+    mandate = Mandate(
+        mandate_id="m1", mandate_hash="h", status="granted", epoch=1, decided_by="ui",
+        max_monthly_price_minor=7000,
+    )  # fmt: skip
+    bb, tools = _message(text, case_facts={"account.pin": pin}, mandate=mandate)
+    for key, value in (("account.last4", "7777"), ("competitor.price_usd", "70")):
+        result = tools.fact(bb, key, value, "u-1")
+        (_, fact), (denied, why) = result.effects
+        assert (fact["scope"], denied) == ("private", "declass.denied"), key
+        assert why["violations"] and "never public" in result.text
+    assert tools.shareable == {}
+    result = tools.fact(bb, "account.last4", "4821", "u-1")  # still works
+    assert dict(result.effects[0][1])["scope"] == "public"

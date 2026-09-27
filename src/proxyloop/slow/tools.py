@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -27,6 +28,9 @@ Effect = tuple[str, Mapping[str, object]]
 SCALE = {"usd_minor": 100, "months": 1}  # minor units and months, as spoken
 _INVALID = (ValidationError, ValueError, KeyError, TypeError, ArithmeticError)
 _GUIDE = frozenset({"tool", "move", "slots"})
+_DIGITS, _SEP = re.compile(r"\d+(?:[ -]\d+)*"), re.compile(r"[ -]")  # "48-21"
+_WORD = re.compile(r"[^\W_]+")  # "I'd" is two words
+MAX_WORDS, MAX_CHARS = 6, 60  # a shareable text value the user said
 _EMPTY: tuple[object, ...] = (None, "", [])
 
 
@@ -163,8 +167,9 @@ class SlowTools:
         relays = [r for r in bb.f2s_pending if r.lane == "user"]
         hits = [r.msg_id for r in relays if (key, value) in r.facts]  # typed only
         told = _partner(bb, "user").get(str(ref), "")  # the user's own message
-        hits += [str(ref)] if told and _said(value, told) else []
-        shareable = key in self._shareable_keys and hits
+        hits += [str(ref)] if told and _user_said(value, told) else []
+        leaks = _leaks(value, bb) if hits else []  # never a protected value or bound
+        shareable = key in self._shareable_keys and hits and not leaks
         in_line = bool(line) and _said(value, line)
         source = "cp_utt" if in_line else "shareable" if shareable else "user"
         ref = str(ref) if source == "cp_utt" else hits[0] if shareable else ref
@@ -177,10 +182,17 @@ class SlowTools:
             st.PublicFact.model_validate(fact | {"source": source})
             self.shareable |= {key: value} if source == "shareable" else {}
         recorded = fact | {"source": source, "scope": where}
+        effects: list[Effect] = [("fact.recorded", recorded)]
         text = f"recorded {where}"
-        if where == "private" and key in self._shareable_keys:  # how to share it
-            text += ": to make it public, cite the utt of the user message that says it"
-        return Result(True, text, (("fact.recorded", recorded),))
+        if where == "private" and key in self._shareable_keys and leaks:
+            text += ", never public: " + "; ".join(leaks)  # counted as declass
+            effects.append(("declass.denied", {"violations": leaks}))
+        elif where == "private" and key in self._shareable_keys:  # how to share it
+            text += (
+                ": to make it public, cite the utt of the user message that says "
+                "exactly this value (whole digits or whole words)"
+            )
+        return Result(True, text, tuple(effects))
 
 
 def _partner(bb: st.Blackboard, lane: Lane) -> dict[str, str]:  # utt id -> text
@@ -191,6 +203,28 @@ def _partner(bb: st.Blackboard, lane: Lane) -> dict[str, str]:  # utt id -> text
 def _said(value: str, line: str) -> bool:  # its digits, else its text verbatim
     digits = numbers(value)
     return digits <= numbers(line) if digits else value.casefold() in line.casefold()
+
+
+def _user_said(value: str, message: str) -> bool:
+    """I4, the user-message path: a value with a digit is only digits in groups
+    and equals one whole digit run of ``message`` ("48-21" says 4821; "14821"
+    and "555 482 1999" do not); any other value is at most ``MAX_WORDS`` whole
+    words in a row (casefold) and ``MAX_CHARS`` characters."""
+    if any(c.isdigit() for c in value):
+        if not _DIGITS.fullmatch(value):
+            return False
+        runs = _DIGITS.findall(message)
+        return any(_SEP.sub("", run) == _SEP.sub("", value) for run in runs)
+    want, heard = _WORD.findall(value.casefold()), _WORD.findall(message.casefold())
+    if not want or len(want) > MAX_WORDS or len(value) > MAX_CHARS:
+        return False
+    n = len(want)
+    return any(heard[i : i + n] == want for i in range(len(heard) - n + 1))
+
+
+def _leaks(value: str, bb: st.Blackboard) -> list[str]:  # guard.declass decides
+    """A protected case-fact value or an unsaid mandate bound in ``value``."""
+    return [v for v in declassify(value, bb, {}) if not v.endswith("source-bound")]
 
 
 def public_guide(bb: st.Blackboard, guide: Guide) -> bool:  # the renderer judges
