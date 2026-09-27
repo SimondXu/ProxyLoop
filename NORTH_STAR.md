@@ -1,6 +1,6 @@
 # ProxyLoop v3: North Star
 
-**Goal.** A small but real Pine-AI-style agent. One self-hosted **Qwen3.5-9B Fast** (vLLM, the same weights on two lanes) chats asynchronously with the **user** and talks in real time to a **counterparty**, while **Claude Sonnet 5 Slow** plans from Fast's typed relays. The repo shows the whole ML cycle through the real serving path: teacher-in-harness distillation → BF16 LoRA SFT → held-out evaluation → vLLM serving. It also shows traceable records and, later, durability, voice, browser compilation and memory.
+**Goal.** A small but real Pine-AI-style agent. One self-hosted **Qwen3.5-9B Fast** (vLLM, the same weights on two lanes) chats asynchronously with the **user** and talks in real time to a **counterparty**, while **gemini-3.8-flash Slow** (via TeamRouter) plans from Fast's typed relays. The repo shows the whole ML cycle through the real serving path: teacher-in-harness distillation → BF16 LoRA SFT → held-out evaluation → vLLM serving. It also shows traceable records and, later, durability, voice, browser compilation and memory.
 
 **Architecture in one sentence.** One asyncio kernel (`run_session`) appends typed, causally linked events to `events.jsonl`. It folds them into a blackboard split into **public** and **private** state, and renders three views from it: `FastView[user]` (public + private), `FastView[cp]` (public only) and a relay-only `SlowView`. Guard-minted capabilities release authority-bearing lines only after revalidation at release time, and only the evidence-bound verifier sets a `VERIFIED_*` status.
 
