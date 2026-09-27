@@ -169,7 +169,7 @@ test.describe("approve", () => {
     await expect(page.getByLabel("Status line")).toHaveText("Status: accepted on the call, not yet verified");
     const call = page.getByRole("list", { name: "Call transcript" });
     await expect(call).toContainText(`Agent: ${String(accept.payload.text)}`);
-    await expect(call.getByRole("listitem").filter({ hasText: "AI disclosure (fixed text)" })).toHaveCount(1);
+    await expect(call.getByRole("listitem").filter({ hasText: "AI disclosure · fixed wording" })).toHaveCount(1);
     await shot(page, "demo-live-conversation");
 
     // c) the replay UI, from /api/bundles: the same run and the same chain.

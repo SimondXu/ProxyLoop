@@ -142,8 +142,9 @@ function TranscriptLine({ l, p, receipt }: { l: Line; p: Parties; receipt?: Rece
   return (
     <li className={`pl-line pl-line-${l.who}`}>
       {!mine && (
-        <span className="pl-av" aria-hidden="true">
-          {AVATAR[l.who] ?? <BrandMark />}
+        // The initials are CSS content: decorative, and never part of the line's text.
+        <span className="pl-av" data-av={AVATAR[l.who]} aria-hidden="true">
+          {!AVATAR[l.who] && <BrandMark />}
         </span>
       )}
       <div className="pl-line-body">
