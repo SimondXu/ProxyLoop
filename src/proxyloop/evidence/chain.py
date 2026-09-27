@@ -2,7 +2,8 @@
 
 ``llm.call -> fast.turn(items) -> fast.sentence -> utt.delivered``, or
 ``speak.verbatim -> speak.released -> utt.delivered``. Items and delivered
-text follow from the re-parsed response bytes; a turn is backed by the one
+text follow from the response bytes re-parsed under the grammar of the
+profile its ``fast.request`` names (ADR-0017); a turn is backed by the one
 successful attempt of its own call, of its lane's Fast role, with its
 request's model and prompt; lane, gen_id and utt_id agree; each call backs
 one turn, and each Speech item or verbatim line is delivered at most once.
@@ -21,7 +22,7 @@ from pydantic import TypeAdapter, ValidationError
 from proxyloop.contract.bundle import PromptRecord
 from proxyloop.contract.events import Event
 from proxyloop.contract.llm import AdapterKind, LLMCallRecord
-from proxyloop.contract.protocol import Speech, TurnItem, parse_turn
+from proxyloop.contract.protocol import PROFILES, Speech, TurnItem, parse_turn
 
 _ITEMS: TypeAdapter[list[TurnItem]] = TypeAdapter(list[TurnItem])
 Chain = tuple[object, str | None, str | None]  # (generated text, source id, why not)
@@ -64,7 +65,10 @@ def _turn(
     response = prompts.get(call.response_sha or "")
     if response is None:
         return f"the response of call {call.call_id} is not in prompts.jsonl"
-    parsed = parse_turn(response.content, lane)
+    profile = str(request["profile"])  # its grammar, e.g. pl_cp_v3's (ADR-0017)
+    if profile not in PROFILES or PROFILES[profile].lane != lane:
+        return f"its fast.request names profile {profile!r}, no {lane} profile"
+    parsed = parse_turn(response.content, lane, profile)
     if e.payload["items"] != [item.model_dump(mode="json") for item in parsed]:
         return "its items are not the parse of the recorded response"
     return None
