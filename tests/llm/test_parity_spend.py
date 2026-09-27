@@ -185,3 +185,25 @@ def test_an_unpriced_role_drops_the_guard_factor_to_1(
         factor * 10,
     )
     assert ledger.limit_micro_usd == SESSION_CAP_MICRO_USD  # absolute either way
+
+
+def test_totals_count_unpriced_calls_beside_the_priced_subtotal() -> None:
+    ledger = _ledger()
+    ledger.charge(_record(GEMINI, 900, 100, role="ear"))  # unpriced, with usage
+    assert ledger.totals() == {
+        "priced_micro_usd": 0,
+        "priced_by_role": {},
+        "unpriced_calls": 1,
+        "unpriced_by_role": {"ear": 1},
+        "gpu_time_calls": 0,
+        "tokens": 1_000,
+    }
+    ledger.charge(_record(SONNET, 1_000, 200, role="slow"))  # 6,000 micro-USD
+    ledger.charge(_record(QWEN, 5_000, 500))  # gpu_time: no $ and no tokens here
+    totals = ledger.totals()
+    assert (totals["priced_micro_usd"], totals["priced_by_role"]) == (
+        6_000,
+        {"slow": 6_000},
+    )
+    assert (totals["unpriced_calls"], totals["gpu_time_calls"]) == (1, 1)
+    assert totals["tokens"] == 2_200
