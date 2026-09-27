@@ -73,3 +73,17 @@ test("no answer, or a 201 without a case_id, may have started a session: Start s
     abort = false;
   }
 });
+
+test("a malformed operator cookie is not a missing one: no 'open /start' note, and the Start says why without posting", async ({
+  page,
+  baseURL,
+}) => {
+  await csrfCookie(page, baseURL, "pl_op_csrf", "%E0%A4%A"); // #173 N-4: decodeURIComponent throws
+  const posts = await answer(page, { status: 200, json: OPTIONS }, { status: 201, json: { case_id: "never" } });
+  await page.goto("/?start");
+  await expect(page.getByRole("button", { name: "Start" })).toBeEnabled();
+  await expect(page.getByRole("note")).toHaveCount(0);
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Not started: bad pl_op_csrf cookie");
+  expect(posts).toEqual([]);
+});
