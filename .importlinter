@@ -78,3 +78,15 @@ forbidden_modules =
     proxyloop.llm
     proxyloop.slow
     proxyloop.env
+
+[importlinter:contract:obs-reads-bundles-only]
+name = obs reads bundles only (ADR-0008)
+type = forbidden
+source_modules =
+    proxyloop.obs
+forbidden_modules =
+    proxyloop.kernel
+    proxyloop.core.bus
+    proxyloop.llm
+    proxyloop.slow
+    proxyloop.env

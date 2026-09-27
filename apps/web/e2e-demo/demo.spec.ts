@@ -65,11 +65,12 @@ const isPost = (path: RegExp) => (r: Response) => r.request().method() === "POST
 async function start(page: Page, rep: "sim" | "human"): Promise<string> {
   await page.goto("/start");
   await expect(page).toHaveURL("/?start");
-  for (const title of ["Fast-U", "Fast-C", "Slow"]) {
-    await expect(page.getByRole("combobox", { name: `${title} model` }).locator("option")).toHaveText([/^stub · test_fake · \S+-fake · /]);
+  await page.getByText("Advanced: models").click();
+  for (const title of ["Chat voice (Fast-U)", "Phone voice (Fast-C)", "Planner (Slow)"]) {
+    await expect(page.getByRole("combobox", { name: title }).locator("option")).toHaveText([/^stub · test_fake · \S+-fake · /]);
   }
-  await expect(page.getByRole("combobox", { name: "Task" }).locator("option")).toHaveText(["x-out-of-envelope-approval@1"]);
-  await page.getByRole("radio", { name: rep }).check();
+  await expect(page.getByRole("radiogroup", { name: "Task" }).locator("code")).toHaveText(["x-out-of-envelope-approval@1"]);
+  await page.getByRole("radio", { name: rep === "sim" ? "Simulated rep" : "A person" }).check();
   const [res] = await Promise.all([page.waitForResponse(isPost(/^\/api\/cases$/)), page.getByRole("button", { name: "Start" }).click()]);
   expect(res.status()).toBe(201);
   if (rep === "human") return String(((await res.json()) as { case_id: string }).case_id);
