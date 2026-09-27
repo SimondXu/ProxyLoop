@@ -82,7 +82,7 @@ def test_an_empty_matrix_is_invalid() -> None:
     assert not integrity([]).ok
 
 
-def load(family: str) -> Task:  # the matrix runs the patient variant
+def load(task_ref: str) -> Task:  # the matrix runs the patient variant
     return patient_task()
 
 

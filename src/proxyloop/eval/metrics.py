@@ -8,6 +8,11 @@ rep hung up) or ``infra_error`` (every other failure, including an unreadable
 bundle or a task mismatch). Both failures have ``success = safe_success = 0``
 (EVAL §7 "Failed attempts"); the other metrics are computed on the log left.
 ``python -m proxyloop.eval.metrics <dir>...`` prints the records as JSON.
+
+The task is the instance the manifest's full ``task_ref``
+(``family@version[:mode][#seed]``) names, through ``loader.resolve``; a ref
+that does not resolve, or whose instance hash is not the manifest's, is an
+infra_error.
 """
 
 from __future__ import annotations
@@ -22,13 +27,15 @@ from itertools import product
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from proxyloop.contract.bundle import EVENTS, Bundle, Manifest, read_bundle
 from proxyloop.contract.events import Event
 from proxyloop.contract.llm import LLMCallRecord, ModelRef
 from proxyloop.contract.messages import FastToSlow
 from proxyloop.contract.state import READBACK_FIELD, ApprovalCard, Capability
 from proxyloop.contract.views import FastView
-from proxyloop.env.tasks.loader import instance_hash, load_task
+from proxyloop.env.tasks.loader import instance_hash, resolve
 from proxyloop.env.tasks.schema import Task
 from proxyloop.guard.declass import numbers
 from proxyloop.slow import tools
@@ -67,7 +74,7 @@ _EXPECT: Mapping[str, tuple[str, str | None]] = {
 }
 _TERM = re.compile(READBACK_FIELD)
 _LANES = ("user", "cp")
-Loader = Callable[[str], Task]
+Loader = Callable[[str], Task]  # a full task_ref -> its instance
 
 
 class HeldOutRefused(RuntimeError):
@@ -483,12 +490,13 @@ def _record(
 
 
 def _task(m: Manifest, load: Loader) -> tuple[Task | None, str]:
-    family, _, version = m.task_ref.partition("@")
+    """The instance the full ``task_ref`` names; ``load`` checks the ref (its
+    grammar, canonical form, version, mode and seed), this the hash."""
     try:
-        task = load(family)
-    except (OSError, ValueError) as err:
+        task = load(m.task_ref)
+    except (OSError, ValueError, yaml.YAMLError) as err:  # what resolve raises
         return None, f"task {m.task_ref} does not load: {err}"
-    if str(task.version) != version or instance_hash(task) != m.instance_hash:
+    if instance_hash(task) != m.instance_hash:
         return None, f"task {m.task_ref} is not this bundle's instance (hash mismatch)"
     return task, ""
 
@@ -503,10 +511,10 @@ def _success_reason(task: Task) -> str:
 
 
 def metrics(
-    bundle: Bundle, load: Loader = load_task, *, allow_test: bool = False
+    bundle: Bundle, load: Loader = resolve, *, allow_test: bool = False
 ) -> dict[str, Any]:
-    """One episode's record. ``load`` maps a family to its task (tests pass
-    their own; production is ``load_task``). A ``test``-split bundle raises
+    """One episode's record. ``load`` maps a task_ref to its task (tests pass
+    their own; production is ``resolve``). A ``test``-split bundle raises
     ``HeldOutRefused`` before any task is loaded, unless ``allow_test`` (the
     root sets it only after the unseal, S4)."""
     log, m = Log(bundle.events), bundle.manifest
@@ -536,7 +544,7 @@ def metrics(
 
 
 def episode(
-    path: Path, load: Loader = load_task, *, allow_test: bool = False
+    path: Path, load: Loader = resolve, *, allow_test: bool = False
 ) -> dict[str, Any]:
     """``metrics`` of a bundle dir; an unreadable bundle is an infra_error."""
     try:
