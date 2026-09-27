@@ -33,20 +33,19 @@ FINAL_END = re.compile(r"[.!?]$")  # only once the stream has finished
 Json = dict[str, Any]
 
 
-def base_url(variant: str) -> str:
+def base_url(variant: str, model: str) -> str:
+    app = config.app_name(variant, model)
     url = os.environ.get("PROXYLOOP_VLLM_BASE_URL")
     if not url:
         import modal
 
         # modal leaves Function.from_name partially untyped.
         fn = modal.Function.from_name(  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-            config.app_name(variant), "serve"
+            app, "serve"
         )
         url = fn.get_web_url()
     if not url:
-        raise SystemExit(
-            f"no URL: set PROXYLOOP_VLLM_BASE_URL or deploy {config.app_name(variant)}"
-        )
+        raise SystemExit(f"no URL: set PROXYLOOP_VLLM_BASE_URL or deploy {app}")
     return url.rstrip("/")
 
 
@@ -394,6 +393,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="vLLM serving probe (ADR-0002)")
     parser.add_argument("--out", required=True)
     parser.add_argument("--variant", default="pinned", choices=sorted(config.VARIANTS))
+    parser.add_argument("--model", default="9b", choices=sorted(config.MODELS))
     parser.add_argument(
         "--wait-healthy", action="store_true", help="only time /health to 200"
     )
@@ -406,7 +406,8 @@ def main(argv: list[str] | None = None) -> int:
         "--baseline", help="probe JSON of the pinned variant, for derived deltas"
     )
     args = parser.parse_args(argv)
-    url, key = base_url(args.variant), os.environ.get("PROXYLOOP_VLLM_API_KEY", "")
+    url = base_url(args.variant, args.model)
+    key = os.environ.get("PROXYLOOP_VLLM_API_KEY", "")
     if not args.wait_healthy and not key:
         raise SystemExit("PROXYLOOP_VLLM_API_KEY is not set")
     report: Json = {"variant": args.variant, "measured_at": time.time()}
