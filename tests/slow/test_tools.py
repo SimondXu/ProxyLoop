@@ -21,8 +21,9 @@ from proxyloop.contract.state import (
 )
 from proxyloop.contract.views import Trigger, view_cp, view_slow
 from proxyloop.guard.declass import declassify
+from proxyloop.slow.offer_slots import record_offer
 from proxyloop.slow.prompt import status_bar
-from proxyloop.slow.tools import SlowTools, case_ref, public_guide, record_offer
+from proxyloop.slow.tools import SlowTools, case_ref, public_guide
 
 if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
@@ -35,22 +36,16 @@ NOW = datetime(2026, 9, 26, tzinfo=UTC)
 CASE = case_ref("case-1")
 
 
-def _slot(field: str, value: str, unit: str, role: str) -> dict[str, object]:
-    return {
-        "field": field,
-        "value": value,
-        "unit": unit,
-        "role": role,
-        "utt_ref": "cp-3",
-    }
+def _slot(field: str, value: str) -> dict[str, object]:  # role, unit: derived
+    return {"field": field, "value": value, "utt_ref": "cp-3"}
 
 
 def test_an_offer_the_rep_said_is_recorded() -> None:
-    price = _slot("monthly_price", "7500", "usd_minor", "recurring")
+    price = _slot("monthly_price", "7500")
     result = record_offer(
         BB,
         "loyal-1",
-        [price, _slot("term_months", "12", "months", "recurring")],
+        [price, _slot("term_months", "12")],
         0,
         NOW,
     )
@@ -63,7 +58,7 @@ def test_an_offer_value_the_rep_never_said_is_denied() -> None:
     result = record_offer(
         BB,
         "loyal-1",
-        [_slot("monthly_price", "7000", "usd_minor", "recurring")],
+        [_slot("monthly_price", "7000")],
         0,
         NOW,
     )
@@ -79,9 +74,9 @@ def test_a_guide_slot_must_resolve_in_public_state() -> None:
 
 def test_every_offer_slot_is_bound_to_a_cited_rep_line() -> None:  # review B1
     cases = [
-        _slot("feature:x", "user pays 85", "bool", "feature"),  # a number, any unit
-        _slot("term_months", "12", "months", "recurring") | {"utt_ref": "nope"},
-        _slot("monthly_price", "1200", "usd_minor", "recurring"),  # "12 months"
+        _slot("feature:x", "user pays 85"),  # a number, any unit
+        _slot("term_months", "12") | {"utt_ref": "nope"},
+        _slot("monthly_price", "1200"),  # "12 months"
     ]
     for slot in cases:
         result = record_offer(BB, "loyal-1", [slot], 0, NOW)
@@ -135,10 +130,12 @@ def test_a_cited_relay_counts_only_through_the_user_message_it_points_to() -> No
 
 
 def test_money_and_term_values_are_plain_integers() -> None:  # R2 N3
-    for value, unit in (("7.5E+3", "usd_minor"), ("12.0", "months"), ("-12", "months")):
-        result = record_offer(
-            BB, "loyal-1", [_slot("monthly_price", value, unit, "recurring")], 0, NOW
-        )
+    for field, value in (
+        ("monthly_price", "7.5E+3"),
+        ("term_months", "12.0"),
+        ("term_months", "-12"),
+    ):
+        result = record_offer(BB, "loyal-1", [_slot(field, value)], 0, NOW)
         assert not result.ok, value
 
 

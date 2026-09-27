@@ -8,7 +8,6 @@ import json
 import re
 import unicodedata
 from collections.abc import Callable, Collection, Mapping, Sequence
-from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
 
@@ -23,16 +22,16 @@ from proxyloop.contract.protocol import GuideMoveError, GuideSlotError, render_m
 from proxyloop.contract.views import Trigger, view_cp
 from proxyloop.guard import authorize as guard
 from proxyloop.guard.authorize import CaseRef, Denial
-from proxyloop.guard.declass import declassify, numbers, spoken
+from proxyloop.guard.declass import declassify, numbers
 from proxyloop.guard.readback import readback_update
 from proxyloop.kernel.wake import HEARTBEAT_S
-from proxyloop.slow import authority, offer_slots
+from proxyloop.slow import authority, offer_slots, shape
 from proxyloop.slow.result import Effect, Result, no
 
 if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
 
-SCALE = {"usd_minor": 100, "months": 1}  # minor units and months, as spoken
+SCALE = {"usd_minor": 100, "months": 1}  # = offer_slots' (tests/slow: equality)
 CP_PROFILE = "pl_cp_v2"  # = kernel.lanes.PROFILE["cp"] (tests/slow: equality)
 _INVALID = (ValidationError, ValueError, KeyError, TypeError, ArithmeticError)
 _GUIDE = frozenset({"tool", "move", "slots"})
@@ -90,7 +89,7 @@ class SlowTools:
         self.received: set[str] = set()  # the relay ids SlowLoop handed to Slow
 
     def act(
-        self, call: ToolCall, causes: Sequence[str], *, basis: int | None = None
+        self, call: ToolCall, causes: Sequence[str], *, basis: int
     ) -> str:  # the text Slow reads; ``basis``: the step's view (its basis_seq)
         self.readback()
         self._basis = basis
@@ -99,20 +98,25 @@ class SlowTools:
             if call.name != "act" or not isinstance(raw, dict):
                 raise ValueError(f"expected one act call, not {call.name}")
             args = cast(dict[str, Any], raw)
+            if problem := shape.act_problem(args):  # f828f1: refused whole
+                raise ValueError(problem)
             summaries = {k: args.get(k) for k in ("private_summary", "public_summary")}
             head = self._summaries(summaries)
         except ValueError as err:  # JSON and schema errors: the whole act
             return self._apply("act", {"raw": call.arguments}, no(str(err)), causes)
         out = [self._apply("act", summaries, head, causes)]
-        for c in cast(list[Any], args.get("calls") or []):
-            a = cast(dict[str, Any], c if isinstance(c, dict) else {})
+        for n, c in enumerate(cast(list[Any], args.get("calls") or [])):
+            if missing := shape.item_problem(n, c):  # never "unknown tool 'None'"
+                out.append(self._apply("act", c, no(missing), causes))
+                continue
+            a = cast(dict[str, Any], c)
             try:
-                result = self._run(str(a.get("tool")), a)
+                result = self._run(str(a["tool"]), a)
             except GuideMoveError:  # a move the cp profile cannot render: a bug
                 raise
-            except _INVALID as err:
-                result = no(f"invalid arguments: {err}")
-            out.append(self._apply(str(a.get("tool")), a, result, causes))
+            except _INVALID as err:  # aeab91: one line, not a pydantic dump
+                result = no(f"invalid arguments: {shape.invalid(err)}")
+            out.append(self._apply(str(a["tool"]), a, result, causes))
         return "\n".join(out)
 
     def _apply(self, name: str, args: object, r: Result, causes: Sequence[str]) -> str:
@@ -173,7 +177,8 @@ class SlowTools:
             return self.fact(bb, str(a["key"]), str(a["value"]), a.get("utt_ref"))
         if name == "record_offer":
             t_ms, wall = host.now(), host.clock.wall()  # one instant
-            return record_offer(bb, str(a["offer_ref"]), a["offer_slots"], t_ms, wall)
+            ref, slots = str(a["offer_ref"]), a["offer_slots"]
+            return offer_slots.record_offer(bb, ref, slots, t_ms, wall)
         if name == "share_fact":
             return self._share(bb, str(a["key"]))
         if name == "request_approval":
@@ -518,76 +523,3 @@ def public_guide(bb: st.Blackboard, guide: Guide) -> bool:  # the renderer judge
     except GuideSlotError:
         return False
     return True
-
-
-def record_offer(
-    bb: st.Blackboard,
-    ref: str,
-    raw: Sequence[Mapping[str, Any]],
-    t_ms: int,
-    wall: datetime,
-) -> Result:  # every money or term value is one the rep said
-    if bad := [p for s in raw if (p := offer_slots.shape(s))]:
-        return no(offer_slots.refused(bad))  # whole: no partial record
-    if bad := offer_slots.conflicts(raw):
-        return no(f"record_offer refused, nothing recorded: {'; '.join(bad)}")
-    slots = [st.ReadbackSlot(source_utt=s.get("utt_ref"), **_slot(s)) for s in raw]
-    said = {x.utt_id: x.text for x in bb.channels["cp"].lines if x.speaker == "partner"}
-    unbound = [
-        f"{s.field}={s.value} is not in rep line {s.source_utt}"
-        for s in slots
-        if (line := said.get(str(s.source_utt))) is None
-        or not _value(s) <= spoken(line, s.unit)
-    ]
-    if unbound:
-        text = f"{'; '.join(unbound)}. {offer_slots.CITE}"
-        return no(text, ("declass.denied", {"violations": unbound}))
-    if bad := [p for s in slots if (p := offer_slots.value(s))]:
-        return no(offer_slots.refused(bad))
-    prev = bb.public.offers.get(ref)
-    if (
-        prev is not None
-        and prev.status == "open"
-        and _terms(prev.slots) == _terms(slots)
-    ):  # the same terms: the revision and its read-back request stand
-        return Result(True, f"unchanged {ref} r{prev.revision}")
-    if prev is None and len(bb.public.offers) >= base.MAX_OFFERS:
-        return no("too many offers")
-    revision = prev.revision + 1 if prev else 1
-    offer = st.OfferPublic(offer_ref=ref, revision=revision, slots=tuple(slots))
-    recorded = offer.model_dump(mode="json", include={"offer_ref", "revision", "slots"})
-    expires = _expires_ms(slots, t_ms, wall)  # the same instant on both clocks
-    recorded |= {"terms_hash": None, "expires_ms": expires}  # Guard binds terms
-    text = f"recorded {ref} r{revision}" + (
-        f", expires at t={expires} ms" if expires else ""
-    )
-    return Result(True, text, (("offer.recorded", recorded),))
-
-
-def _expires_ms(
-    slots: Sequence[st.ReadbackSlot], t_ms: int, now: datetime
-) -> int | None:
-    """The rep's stated expiry on the session clock; ``None`` for "no expiry",
-    none stated, or no timezone-aware ISO time (terms need one, §9.1)."""
-    found = [s.value for s in slots if s.field == "expires"]
-    try:
-        at = datetime.fromisoformat(found[0].replace("Z", "+00:00")) if found else None
-    except ValueError:
-        return None
-    if at is None or at.utcoffset() is None:
-        return None
-    return max(0, t_ms + int((at - now).total_seconds() * 1000))
-
-
-def _value(s: st.ReadbackSlot) -> set[Decimal]:  # in the unit as spoken
-    if s.unit in SCALE:
-        return {Decimal(s.value) / SCALE[s.unit]}
-    return numbers(s.value)
-
-
-def _slot(s: Mapping[str, Any]) -> dict[str, Any]:
-    return {k: s[k] for k in ("field", "value", "unit", "role")}
-
-
-def _terms(slots: Sequence[st.ReadbackSlot]) -> list[tuple[str, str, str, str]]:
-    return sorted((s.field, s.value, s.unit, s.role) for s in slots)

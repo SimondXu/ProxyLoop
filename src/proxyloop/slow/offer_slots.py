@@ -1,19 +1,28 @@
-"""The read-back slot table Slow records offers by (S1-SYS-28, run ed5063): each
-field's role (Guard's ``ROLE_OF``), unit (the ledger's ``UNITS``) and value form.
-A slot Guard's read-back or terms code could never confirm or hash is refused
-when it is recorded, with this table; it is never repaired (rule 12)."""
+"""``record_offer`` and the read-back slot table it records by (S1-SYS-28, run
+ed5063): each field's role (Guard's ``ROLE_OF``), unit (the ledger's ``UNITS``)
+and value form. Slow sends a slot as {field, value, utt_ref}; its role and unit
+follow from the field (S1-SYS-45), and a slot that sends them is refused. A slot
+Guard's read-back or terms code could never confirm or hash is refused when it
+is recorded, with this table; it is never repaired (rule 12)."""
 
 from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, cast
 
 from proxyloop.contract import base
+from proxyloop.contract import state as st
 from proxyloop.contract.state import READBACK_FIELD, ReadbackSlot
+from proxyloop.guard.declass import numbers, spoken
 from proxyloop.guard.readback import ROLE_OF
 from proxyloop.slow.authority import UNITS
+from proxyloop.slow.result import Result, no
+
+SCALE = {"usd_minor": 100, "months": 1}  # minor units and months, as spoken
+KEYS = ("field", "value", "utt_ref")  # a slot as Slow sends it
 
 _FORM = {  # the value form of each unit, as the read-back and terms code read it
     "usd_minor": "whole cents",
@@ -48,30 +57,39 @@ CITE = (  # run 84f731: Slow cited the line after the offer
 
 def refused(problems: list[str]) -> str:
     return (
-        f"record_offer refused, nothing recorded: {'; '.join(problems)}. "
-        f"Slots (field → role, unit, value): {TABLE}"
+        f"record_offer refused, nothing recorded: {'; '.join(problems)}. Each "
+        f"slot is {{{', '.join(KEYS)}}}; by field (field → role, unit, value): "
+        f"{TABLE}"
     )
 
 
 def shape(raw: object) -> str | None:
-    """Why a raw slot's field, role, unit or value text is not the table's;
-    else None. Before binding: "78.00" is refused here, not as a declass."""
+    """Why a raw slot is not {field, value, utt_ref} with the table's field and
+    value text; else None. Before binding: "78.00" is refused here, not as a
+    declass. A role or unit Slow sends is refused, never checked or dropped."""
     if not isinstance(raw, Mapping):
         return f"a slot is an object, not {raw!r}"
     m = cast(Mapping[str, Any], raw)
-    field, role, unit, v = (m.get(k) for k in ("field", "role", "unit", "value"))
+    out: list[str] = []
+    if extra := sorted(set(m) - set(KEYS)):
+        why = "role and unit follow from field; " if {"role", "unit"} & {*extra} else ""
+        out.append(
+            f"a slot takes no {', '.join(extra)}: {why}send only {', '.join(KEYS)}"
+        )
+    if form := _form(m.get("field"), m.get("value")):
+        out.append(form)
+    return "; ".join(out) or None
+
+
+def _form(field: object, v: object) -> str | None:
     if not isinstance(field, str) or not re.fullmatch(READBACK_FIELD, field):
         return f"unknown field {field!r}"
     if len(field) > base.MAX_SLOT_FIELD:
         return f"{field} is over {base.MAX_SLOT_FIELD} chars"
-    kind = field.partition(":")[0]
-    if role != ROLE_OF[kind]:
-        return f"{field} has role {ROLE_OF[kind]}, not {role!r}"
-    if unit != _unit(kind):
-        return f"{field} has unit {_unit(kind)}, not {unit!r}"
     if not isinstance(v, str) or len(v) > base.MAX_SLOT_VALUE:
         return f"{field} value is text of ≤ {base.MAX_SLOT_VALUE} chars, not {v!r}"
-    if unit in ("usd_minor", "months") and not _WHOLE.fullmatch(v):
+    unit = _unit(field.partition(":")[0])
+    if unit in SCALE and not _WHOLE.fullmatch(v):
         return f"{field} is {_FORM[unit]}, not {v!r}"
     return None
 
@@ -106,3 +124,80 @@ def _zoned(v: str) -> bool:
     except ValueError:
         return False
     return at.utcoffset() is not None and _DAY.match(v) is not None
+
+
+def record_offer(
+    bb: st.Blackboard,
+    ref: str,
+    raw: Sequence[Mapping[str, Any]],
+    t_ms: int,
+    wall: datetime,
+) -> Result:  # every money or term value is one the rep said
+    if bad := [p for s in raw if (p := shape(s))]:
+        return no(refused(bad))  # whole: no partial record
+    if bad := conflicts(raw):
+        return no(f"record_offer refused, nothing recorded: {'; '.join(bad)}")
+    slots = [st.ReadbackSlot(source_utt=s.get("utt_ref"), **_slot(s)) for s in raw]
+    said = {x.utt_id: x.text for x in bb.channels["cp"].lines if x.speaker == "partner"}
+    unbound = [
+        f"{s.field}={s.value} is not in rep line {s.source_utt}"
+        for s in slots
+        if (line := said.get(str(s.source_utt))) is None
+        or not _value(s) <= spoken(line, s.unit)
+    ]
+    if unbound:
+        text = f"{'; '.join(unbound)}. {CITE}"
+        return no(text, ("declass.denied", {"violations": unbound}))
+    if bad := [p for s in slots if (p := value(s))]:
+        return no(refused(bad))
+    prev = bb.public.offers.get(ref)
+    if (
+        prev is not None
+        and prev.status == "open"
+        and _terms(prev.slots) == _terms(slots)
+    ):  # the same terms: the revision and its read-back request stand
+        return Result(True, f"unchanged {ref} r{prev.revision}")
+    if prev is None and len(bb.public.offers) >= base.MAX_OFFERS:
+        return no("too many offers")
+    revision = prev.revision + 1 if prev else 1
+    offer = st.OfferPublic(offer_ref=ref, revision=revision, slots=tuple(slots))
+    recorded = offer.model_dump(mode="json", include={"offer_ref", "revision", "slots"})
+    expires = _expires_ms(slots, t_ms, wall)  # the same instant on both clocks
+    recorded |= {"terms_hash": None, "expires_ms": expires}  # Guard binds terms
+    text = f"recorded {ref} r{revision}" + (
+        f", expires at t={expires} ms" if expires else ""
+    )
+    return Result(True, text, (("offer.recorded", recorded),))
+
+
+def _expires_ms(
+    slots: Sequence[st.ReadbackSlot], t_ms: int, now: datetime
+) -> int | None:
+    """The rep's stated expiry on the session clock; ``None`` for "no expiry",
+    none stated, or no timezone-aware ISO time (terms need one, §9.1)."""
+    found = [s.value for s in slots if s.field == "expires"]
+    try:
+        at = datetime.fromisoformat(found[0].replace("Z", "+00:00")) if found else None
+    except ValueError:
+        return None
+    if at is None or at.utcoffset() is None:
+        return None
+    return max(0, t_ms + int((at - now).total_seconds() * 1000))
+
+
+def _value(s: st.ReadbackSlot) -> set[Decimal]:  # in the unit as spoken
+    if s.unit in SCALE:
+        return {Decimal(s.value) / SCALE[s.unit]}
+    return numbers(s.value)
+
+
+def _slot(s: Mapping[str, Any]) -> dict[str, Any]:  # role and unit from field
+    kind = str(s["field"]).partition(":")[0]
+    return {"field": s["field"], "value": s["value"]} | {
+        "unit": _unit(kind),
+        "role": ROLE_OF[kind],
+    }
+
+
+def _terms(slots: Sequence[st.ReadbackSlot]) -> list[tuple[str, str, str, str]]:
+    return sorted((s.field, s.value, s.unit, s.role) for s in slots)

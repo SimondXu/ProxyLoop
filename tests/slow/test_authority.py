@@ -33,17 +33,12 @@ TERMS = (
     "It is $69 a month on a 24-month term, no fees, no other changes, "
     "and the offer does not expire."
 )
-SLOTS = [
-    {"field": "monthly_price", "value": "6900", "unit": "usd_minor",
-     "role": "recurring", "utt_ref": "cp-1"},
-    {"field": "term_months", "value": "24", "unit": "months", "role": "recurring",
-     "utt_ref": "cp-1"},
-    {"field": "fees_none", "value": "true", "unit": "bool", "role": "one_time",
-     "utt_ref": "cp-1"},
-    {"field": "changes_none", "value": "true", "unit": "bool", "role": "change",
-     "utt_ref": "cp-1"},
-    {"field": "expires", "value": "none", "unit": "iso", "role": "expiry",
-     "utt_ref": "cp-1"},
+SLOTS = [  # {field, value, utt_ref}: role and unit follow from the field
+    {"field": "monthly_price", "value": "6900", "utt_ref": "cp-1"},
+    {"field": "term_months", "value": "24", "utt_ref": "cp-1"},
+    {"field": "fees_none", "value": "true", "utt_ref": "cp-1"},
+    {"field": "changes_none", "value": "true", "utt_ref": "cp-1"},
+    {"field": "expires", "value": "none", "utt_ref": "cp-1"},
 ]  # fmt: skip
 BOUND = {  # the world's ledger binding, in dollars
     "monthly_price": "69.00",
@@ -96,7 +91,8 @@ class Host:
     def act(self, *calls: dict[str, Any]) -> list[str]:
         body = {"private_summary": "digest", "calls": list(calls)}
         call = ToolCall(call_id="c", name="act", arguments=json.dumps(body))
-        return self.tools.act(call, [self.root.event_id]).splitlines()[1:]
+        seen = self.bb.seq  # the step's view: everything so far
+        return self.tools.act(call, [self.root.event_id], basis=seen).splitlines()[1:]
 
     def rep(self, utt_id: str, text: str) -> Event:
         said = {"lane": "cp", "speaker": "partner", "utt_id": utt_id, "text": text}
@@ -478,13 +474,12 @@ def test_record_offer_sets_the_stated_expiry_on_the_session_clock(
 ) -> None:
     h = Host(tmp_path)
     h.rep("cp-1", "It is $69 a month, valid until 2026-09-26T00:10:00Z.")
-    slot = {"field": "expires", "value": "2026-09-26T00:10:00Z", "unit": "iso"}
-    slot |= {"role": "expiry", "utt_ref": "cp-1"}
+    slot = {"field": "expires", "value": "2026-09-26T00:10:00Z", "utt_ref": "cp-1"}
     (text,) = h.act({"tool": "record_offer", "offer_ref": "o1", "offer_slots": [slot]})
     offer = h.bb.public.offers["o1"]  # ten minutes from the session's start
     assert offer.expires_ms == 600_000 and "expires at t=600000 ms" in text
     bar = status_bar(view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b"), KEYS, 300_000)
-    assert "expires in 300 s" in bar and "missing monthly_price" in bar
+    assert "expires in 300 s" in bar and "not recorded: monthly_price" in bar
 
 
 def test_the_status_bar_shows_authority_state(tmp_path: Path) -> None:

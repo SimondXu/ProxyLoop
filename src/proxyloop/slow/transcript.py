@@ -16,6 +16,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from proxyloop.contract.base import Lane
+from proxyloop.contract.config import SlowViewMode
 from proxyloop.contract.events import Event
 from proxyloop.contract.state import Blackboard, Line
 from proxyloop.core.fold import apply
@@ -123,12 +124,19 @@ def omitted_before_release(events: Iterable[Event]) -> list[tuple[str, str]]:
     released accept (its ``speak.released`` id) with every rep line (its utt
     id) before it that no Slow render since the line showed. Each step's
     render is redone from the log as ``SlowLoop`` made it (``transcript``
-    mode, default caps); the partner fence counts such a line as covered."""
+    mode, default caps); the partner fence counts such a line as covered.
+    A run whose ``session.started`` says ``slow_view`` ``relay_only`` renders
+    no conversations, so nothing is reported for it (#183 review N-b)."""
     bb, cursor, accepts = Blackboard(), Cursor(), set[str]()
     unseen: list[str] = []  # rep lines no render has shown yet
     out: list[tuple[str, str]] = []
     for e in events:
         p = e.payload
+        if (
+            e.type == "session.started"
+            and p.get("slow_view") == SlowViewMode.RELAY_ONLY
+        ):
+            return []
         if e.type in _LINES:
             bb = apply(bb, e)
         if e.type == "utt.final" and (p["lane"], p["speaker"]) == ("cp", "partner"):

@@ -2,7 +2,8 @@
 could never confirm or hash is refused when recorded, whole, with the slot
 table; re-recording the same terms is a no-op; a confirmed offer outside the
 mandate shows the request_approval step in the status bar (run ed5063; the
-bus-backed cases are in ``test_authority``)."""
+bus-backed cases are in ``test_authority``). S1-SYS-45: a slot is {field,
+value, utt_ref}; a role or unit sent with it is refused (``test_act_shape``)."""
 
 from __future__ import annotations
 
@@ -12,9 +13,10 @@ from typing import Any
 import pytest
 
 from proxyloop.contract.state import Blackboard, ChannelState, Line
+from proxyloop.slow import offer_slots, tools
 from proxyloop.slow.authority import HINTS
+from proxyloop.slow.offer_slots import record_offer
 from proxyloop.slow.prompt import SYSTEM
-from proxyloop.slow.tools import record_offer
 
 REP = Line(
     utt_id="cp-3",
@@ -26,28 +28,27 @@ NOW = datetime(2026, 9, 26, tzinfo=UTC)
 TABLE_ROW = "term_months → recurring, months"  # one row of the slot table
 
 
-def _slot(field: str, value: str, unit: str, role: str) -> dict[str, Any]:
-    return {"field": field, "value": value, "unit": unit, "role": role}
+def _slot(field: str, value: str) -> dict[str, Any]:  # role and unit: derived
+    return {"field": field, "value": value}
 
 
-PRICE = _slot("monthly_price", "7500", "usd_minor", "recurring") | {"utt_ref": "cp-3"}
+PRICE = _slot("monthly_price", "7500") | {"utt_ref": "cp-3"}
 
 
 @pytest.mark.parametrize(
     "slot",
     [
-        _slot("term_months", "12", "months", "expiry"),  # ed5063 r1: wrong role
-        _slot("expires", "false", "bool", "expiry"),  # ed5063 r2: never confirmable
-        _slot("expires", "false", "iso", "expiry"),
-        _slot("expires", "2026-10-01", "iso", "expiry"),  # no zone: no terms hash
-        _slot("fees_none", "True", "bool", "one_time"),
-        _slot("fees_none", "yes", "bool", "one_time"),
-        _slot("monthly_price", "7500", "months", "recurring"),  # wrong unit
-        _slot("price", "7500", "usd_minor", "recurring"),  # ed5063 seq 538
-        _slot("fee:activation", "20.00", "usd_minor", "one_time"),  # #166 N1
-        _slot("term_months", "12 months", "months", "recurring"),
-        _slot("term_months", 12, "months", "recurring"),  # type: ignore[arg-type]
-        _slot("expires", "2026-10-01T00:00:00-05:00", "iso", "expiry"),  # 25 chars
+        _slot("term_months", "12") | {"role": "expiry"},  # ed5063 r1: sent a role
+        _slot("monthly_price", "7500") | {"unit": "months"},  # sent a unit
+        _slot("expires", "false"),  # ed5063 r2: never confirmable
+        _slot("expires", "2026-10-01"),  # no zone: no terms hash
+        _slot("fees_none", "True"),
+        _slot("fees_none", "yes"),
+        _slot("price", "7500"),  # ed5063 seq 538
+        _slot("fee:activation", "20.00"),  # #166 N1
+        _slot("term_months", "12 months"),
+        _slot("term_months", 12),  # type: ignore[arg-type]
+        _slot("expires", "2026-10-01T00:00:00-05:00"),  # 25 chars
     ],
 )
 def test_a_slot_the_read_back_cannot_confirm_is_refused_with_the_table(
@@ -64,13 +65,13 @@ def test_a_slot_the_read_back_cannot_confirm_is_refused_with_the_table(
         ([], "no slots"),
         ([PRICE, PRICE], "monthly_price repeats"),
         (
-            [PRICE, _slot("fees_none", "true", "bool", "one_time"),
-             _slot("fee:activation", "2000", "usd_minor", "one_time")],
+            [PRICE, _slot("fees_none", "true"),
+             _slot("fee:activation", "2000")],
             "fees_none=true with fee:activation",
         ),
         (
-            [PRICE, _slot("changes_none", "true", "bool", "change"),
-             _slot("applied_change:plan", "true", "bool", "change")],
+            [PRICE, _slot("changes_none", "true"),
+             _slot("applied_change:plan", "true")],
             "changes_none=true with applied_change:plan",
         ),
     ],
@@ -100,9 +101,9 @@ def test_the_table_is_guards_role_table_and_is_in_slows_prompt() -> None:
 def test_a_valid_record_passes() -> None:
     slots = [
         PRICE,
-        _slot("term_months", "12", "months", "recurring") | {"utt_ref": "cp-3"},
-        _slot("fees_none", "true", "bool", "one_time") | {"utt_ref": "cp-3"},
-        _slot("expires", "2026-10-01T00:00:00Z", "iso", "expiry") | {"utt_ref": "cp-3"},
+        _slot("term_months", "12") | {"utt_ref": "cp-3"},
+        _slot("fees_none", "true") | {"utt_ref": "cp-3"},
+        _slot("expires", "2026-10-01T00:00:00Z") | {"utt_ref": "cp-3"},
     ]
     result = record_offer(BB, "o1", slots, 0, NOW)
     assert result.ok, result.text
@@ -128,7 +129,7 @@ def test_money_binds_to_the_rep_line_that_says_it(said: str) -> None:
     after = Line(utt_id="cp-8", speaker="partner", text="That is the best I can do.")
     cp = ChannelState(lines=(offer, after))
     bb = Blackboard(channels={"user": ChannelState(), "cp": cp})
-    price = _slot("monthly_price", "7500", "usd_minor", "recurring")
+    price = _slot("monthly_price", "7500")
     wrong = record_offer(bb, "o1", [price | {"utt_ref": "cp-8"}], 0, NOW)
     assert not wrong.ok and "monthly_price=7500 is not in rep line cp-8" in wrong.text
     assert "cite the utt of the rep line that says it" in wrong.text
@@ -137,3 +138,9 @@ def test_money_binds_to_the_rep_line_that_says_it(said: str) -> None:
     assert denied["violations"] == ["monthly_price=7500 is not in rep line cp-8"]
     right = record_offer(bb, "o1", [price | {"utt_ref": "cp-7"}], 0, NOW)
     assert right.ok, right.text
+
+
+def test_tools_keeps_eval_metrics_copy_of_the_unit_scale() -> None:
+    """``eval.metrics`` reads ``tools.SCALE``; ``record_offer`` moved to
+    ``offer_slots`` with the table (S1-SYS-45): one value, checked here."""
+    assert tools.SCALE == offer_slots.SCALE
