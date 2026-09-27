@@ -203,9 +203,11 @@ test("the authority strip and the card's read-back progress follow the fixed emi
     "term_months: heard",
   ]);
   await expect(card.getByLabel("Approval status")).toHaveText("awaiting your decision"); // epoch 2 = the card's
+  await expect(card.getByLabel("Fence note")).toHaveText("fence raised: the accept waits until it clears");
   await shot(page, "live-strip-mock");
   ws.send(ev("authority.fence", "kernel", { op: "cleared", fence_id: "fence-1", utt_id: `${RUN}:0` }));
   await expect(strip.getByLabel("Fence")).toHaveText("fence cleared (fence-1)");
+  await expect(card.getByLabel("Fence note")).toHaveCount(0);
 });
 
 test("a /ws/live frame of another run stops the stream (#136 N4)", async ({ page }) => {

@@ -48,3 +48,28 @@ for (const [status, json, shown] of [
     await expect(page.getByRole("button", { name: "Start" })).toBeEnabled(); // a new start is the operator's click
   });
 }
+
+test("no answer, or a 201 without a case_id, may have started a session: Start stays disabled (no second paid session)", async ({
+  page,
+  baseURL,
+}) => {
+  await csrfCookie(page, baseURL, "pl_op_csrf", "op-token");
+  await page.route("**/api/models", (route) => route.fulfill({ status: 200, json: OPTIONS }));
+  let posts = 0;
+  let abort = true;
+  await page.route("**/api/cases", (route) => {
+    posts += 1;
+    return abort ? route.abort("connectionreset") : route.fulfill({ status: 201, json: {} });
+  });
+  for (const shown of [/^Not started: no response: .*The session may have started: open the live page or reload$/, /^Not started: no case_id in the answer\. The session may have started/]) {
+    const before = posts;
+    await page.goto("/?start");
+    await page.getByRole("button", { name: "Start" }).click();
+    await expect(page.getByRole("alert")).toHaveText(shown);
+    await expect(page.getByRole("button", { name: "Start" })).toBeDisabled();
+    await page.getByRole("button", { name: "Start" }).click({ force: true });
+    await page.waitForTimeout(300);
+    expect(posts - before).toBe(1);
+    abort = false;
+  }
+});

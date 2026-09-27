@@ -59,7 +59,8 @@ export const socketUrl = (path: string, origin = location.origin) => origin.repl
 export type Decision = "granted" | "denied";
 
 /** 403 {error: "csrf" | "origin"}; 409 {error: "already_decided" | "stale", reason?}; status 0: never sent or no response. */
-export type Failed = { ok: false; status: number; error: string; reason?: string };
+/** `unsent`: refused before any request left the page (a missing or bad CSRF cookie). */
+export type Failed = { ok: false; status: number; error: string; reason?: string; unsent?: true };
 export type PostResult = { ok: true; body?: unknown } | Failed;
 
 /** The approval POST body: exactly the card's terms hash and epoch. */
@@ -91,10 +92,10 @@ async function post(role: Role, caseId: string, path: string, body: unknown): Pr
   try {
     token = csrfToken(document.cookie, role);
   } catch {
-    return { ok: false, status: 0, error: `bad ${CSRF_COOKIE[role]} cookie` }; // decodeURIComponent: URIError
+    return { ok: false, status: 0, error: `bad ${CSRF_COOKIE[role]} cookie`, unsent: true }; // decodeURIComponent: URIError
   }
   if (token === null) {
-    return { ok: false, status: 0, error: `no ${CSRF_COOKIE[role]} cookie: open ${entry(role, caseId)} first` };
+    return { ok: false, status: 0, error: `no ${CSRF_COOKIE[role]} cookie: open ${entry(role, caseId)} first`, unsent: true };
   }
   let res: Response;
   let text: string;

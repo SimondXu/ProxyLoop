@@ -419,5 +419,6 @@ test("o) live: the authority strip and the card's read-back progress, from the s
     Object.entries(latest).map(([field, s]) => `${field}: ${s}`),
   );
   expect(Object.values(latest)).toContain("heard");
+  await expect(card.getByLabel("Fence note")).toHaveText("fence raised: the accept waits until it clears");
   await shot(page, "live-strip");
 });

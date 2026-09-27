@@ -10,7 +10,7 @@ test("rep page: its own stream, only what the rep can hear, and it sends a rep u
   const posts = await capturePosts(page);
   await page.goto(`/?rep=${RUN}`);
   await expect(page.getByRole("note")).toHaveText(
-    'Human rep mode: this page speaks for the rep only in a case started with rep "human" (the start page or make demo).',
+    "Human rep mode: this page speaks for the rep in a case started from the start page with rep: human.",
   );
   const ws = await connected;
   const frame = repFrames();

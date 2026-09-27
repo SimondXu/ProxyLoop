@@ -120,8 +120,8 @@ describe("liveApi posts", () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
     vi.stubGlobal("document", { cookie: "pl_csrf=%E0%A4%A; pl_rep_csrf=%" });
-    await expect(postApproval("c", card, "granted")).resolves.toEqual({ ok: false, status: 0, error: "bad pl_csrf cookie" });
-    await expect(postRep("c", "hi")).resolves.toEqual({ ok: false, status: 0, error: "bad pl_rep_csrf cookie" });
+    await expect(postApproval("c", card, "granted")).resolves.toEqual({ ok: false, status: 0, error: "bad pl_csrf cookie", unsent: true });
+    await expect(postRep("c", "hi")).resolves.toEqual({ ok: false, status: 0, error: "bad pl_rep_csrf cookie", unsent: true });
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -151,6 +151,9 @@ describe("liveApi posts", () => {
     vi.stubGlobal("fetch", answer(409, { error: "start", reason: "busy" }));
     await expect(startCase(body)).resolves.toEqual({ ok: false, status: 409, error: "start", reason: "busy" });
     vi.stubGlobal("document", { cookie: "pl_csrf=u" });
-    await expect(startCase(body)).resolves.toEqual({ ok: false, status: 0, error: "no pl_op_csrf cookie: open /start first" });
+    await expect(startCase(body)).resolves.toEqual({ ok: false, status: 0, error: "no pl_op_csrf cookie: open /start first", unsent: true });
+    vi.stubGlobal("document", { cookie: "pl_op_csrf=op" });
+    vi.stubGlobal("fetch", answer(201, {}));
+    await expect(startCase(body)).resolves.toEqual({ ok: false, status: 0, error: "no case_id in the answer" });
   });
 });

@@ -50,6 +50,15 @@ const WHY: Record<string, string> = {
   "invalid body": "the server refused the form",
 };
 
+/**
+ * Whether a failed start may still have started a case (a paid session): no
+ * answer, or a 2xx without a case_id, or a 5xx other than serve's own 503
+ * {error: "unavailable"}. Only a request never sent, a 4xx, or that 503 is a
+ * definite refusal; anything else must not offer a second Start.
+ */
+export const maybeStarted = (r: Failed) =>
+  !(r.unsent || (r.status >= 400 && r.status < 500) || (r.status === 503 && r.error === "unavailable"));
+
 /** A refused start as one line: status, error, reason and what it means. */
 export function startError(r: Failed): string {
   const head = `${r.status ? `${r.status} ` : ""}${r.error}${r.reason ? `: ${r.reason}` : ""}`;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaults, parseOffer, startError, type LaneKey } from "./start";
+import { defaults, maybeStarted, parseOffer, startError, type LaneKey } from "./start";
 
 const option = (id: string, lane: LaneKey | "ear", isDefault = false, extra: Record<string, unknown> = {}) => ({
   id,
@@ -42,5 +42,17 @@ describe("the start page's options (GET /api/models)", () => {
     expect(startError({ ok: false, status: 503, error: "unavailable" })).toMatch(/^503 unavailable \(/);
     expect(startError({ ok: false, status: 422, error: "invalid body" })).toBe("422 invalid body (the server refused the form)");
     expect(startError({ ok: false, status: 0, error: "no response: offline" })).toBe("no response: offline");
+  });
+
+  it("treats only a definite refusal as 'nothing started' (no second paid session)", () => {
+    const f = (status: number, error: string, extra: object = {}) => ({ ok: false as const, status, error, ...extra });
+    expect(maybeStarted(f(409, "start", { reason: "busy" }))).toBe(false);
+    expect(maybeStarted(f(403, "csrf"))).toBe(false);
+    expect(maybeStarted(f(503, "unavailable"))).toBe(false);
+    expect(maybeStarted(f(0, "no pl_op_csrf cookie: open /start first", { unsent: true }))).toBe(false);
+    expect(maybeStarted(f(0, "no response: TypeError: Failed to fetch"))).toBe(true);
+    expect(maybeStarted(f(0, "no case_id in the answer"))).toBe(true);
+    expect(maybeStarted(f(503, "Service Unavailable"))).toBe(true); // no serve body
+    expect(maybeStarted(f(500, "Internal Server Error"))).toBe(true);
   });
 });

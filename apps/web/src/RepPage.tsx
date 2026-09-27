@@ -29,8 +29,7 @@ export function RepPage({ caseId }: { caseId: string }) {
         <Connection stream={stream} reconnect={reconnect} />
       </header>
       <p role="note" className="note">
-        Human rep mode: this page speaks for the rep only in a case started with rep &quot;human&quot; (the start page or make
-        demo).
+        Human rep mode: this page speaks for the rep in a case started from the start page with rep: human.
       </p>
       <ol aria-label="Call transcript" className="transcript">
         {lines.map((l) => (

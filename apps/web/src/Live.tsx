@@ -5,10 +5,10 @@
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Drawer, Lanes, RunSummary, useDrill } from "./App";
 import { approvalCards, type CardStatus, type CardView, type Posting } from "./approval";
-import { authorityStrip } from "./authority";
+import { authorityStrip, type Strip } from "./authority";
 import { parseEvent, unechoed, type Framed, type Sent, type Stream } from "./liveState";
 import { postApproval, postMessage, type Decision, type PostResult } from "./liveApi";
-import { indexEvents, type Ev } from "./replay";
+import { indexEvents } from "./replay";
 import { useEventStream } from "./useEventStream";
 
 // serve reads prompts.jsonl, which the kernel writes when it closes the run (kernel/session.py).
@@ -25,6 +25,7 @@ export function Live({ runId }: { runId: string }) {
   const [sent, setSent] = useState<Sent[]>([]);
 
   const cards = useMemo(() => approvalCards(events, posts), [events, posts]);
+  const strip = useMemo(() => authorityStrip(events), [events]);
   // Cards with a pending or ok post: a second click, even before a re-render, never POSTs again.
   const claimed = useRef(new Set<string>());
   const decide = (view: CardView, decision: Decision) => {
@@ -56,11 +57,11 @@ export function Live({ runId }: { runId: string }) {
       </header>
       <p className="meta">{ended ? "Run ended: the prompt drill-down reads prompts.jsonl." : PROMPTS_LATER}</p>
       <RunSummary events={events} />
-      <AuthorityStrip events={events} />
+      <AuthorityStrip a={strip} />
       {cards.length > 0 && (
         <section className="approvals" aria-label="Approvals">
           {cards.map((v) => (
-            <Approval key={v.card.approval_id} view={v} decide={decide} />
+            <Approval key={v.card.approval_id} view={v} decide={decide} fenced={strip.fences.length > 0} />
           ))}
         </section>
       )}
@@ -98,8 +99,7 @@ export function Connection<T extends Framed>({
   );
 }
 
-function AuthorityStrip({ events }: { events: Ev[] }) {
-  const a = useMemo(() => authorityStrip(events), [events]);
+function AuthorityStrip({ a }: { a: Strip }) {
   const fence = a.fences.length > 0 ? `raised (${a.fences.join(", ")})` : a.lastFence ? `cleared (${a.lastFence.fence_id})` : "none";
   return (
     <section className="bar strip" aria-label="Authority">
@@ -128,7 +128,11 @@ const STATUS: Record<CardStatus, string> = {
   denied: "decided: denied",
 };
 
-function Approval({ view, decide }: { view: CardView; decide: (v: CardView, d: Decision) => void }) {
+// A raised fence does not block the approval (guard.decide does not check fences);
+// it holds the accept (ARCHITECTURE §9.4), so the card says so while it may still be decided.
+const UNDECIDED: CardStatus[] = ["open", "pending", "sent"];
+
+function Approval({ view, decide, fenced }: { view: CardView; decide: (v: CardView, d: Decision) => void; fenced: boolean }) {
   const { card, status, by, error, reason, slots } = view;
   const live = status === "open";
   return (
@@ -154,6 +158,7 @@ function Approval({ view, decide }: { view: CardView; decide: (v: CardView, d: D
         {by ? ` by ${by}` : ""}
         {reason ? `: ${reason}` : ""}
       </p>
+      {fenced && UNDECIDED.includes(status) && <p aria-label="Fence note">fence raised: the accept waits until it clears</p>}
       {error && <p role="alert">{error}</p>}
       <button type="button" disabled={!live} onClick={() => decide(view, "granted")}>
         Approve

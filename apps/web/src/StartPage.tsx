@@ -2,7 +2,7 @@
 // lane, from GET /api/models only, then one POST /api/cases (start.ts, liveApi.ts).
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { csrfToken, getOptions, paths, startCase } from "./liveApi";
-import { defaults, parseOffer, START_LANES, startError, type Offer } from "./start";
+import { defaults, maybeStarted, parseOffer, START_LANES, startError, type Offer } from "./start";
 
 const hasCookie = () => {
   try {
@@ -40,8 +40,11 @@ export function StartPage() {
     setBusy(true);
     setError("");
     void startCase({ task_ref: task, models, rep }).then((r) => {
-      if (!r.ok) {
-        claimed.current = false; // shown; a new start is the operator's click
+      if (!r.ok && maybeStarted(r)) {
+        // Start stays disabled: a second click could start a second paid session.
+        setError(`${startError(r)}. The session may have started: open the live page or reload`);
+      } else if (!r.ok) {
+        claimed.current = false; // a definite refusal, shown; a new start is the operator's click
         setBusy(false);
         setError(startError(r));
       } else if (rep === "sim") location.assign(paths.liveSession(r.caseId));
