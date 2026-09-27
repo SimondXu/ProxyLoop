@@ -144,15 +144,6 @@ def test_a_mind_change_after_the_card_is_completed_under_the_new_limit() -> None
     ]
 
 
-def test_after_offer_is_refused_when_an_offer_price_is_a_known_number() -> None:
-    def after_offer(d: dict[str, Any]) -> None:
-        d["stop"]["trigger"] = "after_offer"
-        d["profile"]["facts"]["competitor.price_usd"] = "76"  # keep-1's price
-
-    verdict = completable(_edit("x-user-mind-change", after_offer))
-    assert not verdict.ok and "profile number" in verdict.path[-1]
-
-
 def test_after_turn_k_and_after_offer_stops_are_reachable() -> None:
     def trigger(name: str, k: int | None) -> Edit:
         return lambda d: d["stop"].update(trigger=name, k=k)

@@ -49,25 +49,51 @@ def _prompt(sink: BusSink) -> str:
     return [c for kind, c in sink.prompts.values() if kind == "messages"][-1]
 
 
-def test_the_stop_fires_on_the_first_reply_after_the_card(tmp_path: Path) -> None:
+def _trigger(sink: BusSink, user: SimUser, trigger: Any) -> SimReply | None:
+    cause = sink.heard("(a world event)", lane="cp").event_id
+    return asyncio.run(user.on_trigger(trigger, cause))
+
+
+def test_the_card_stops_the_user_unprompted_and_no_card_is_granted_after(
+    tmp_path: Path,
+) -> None:
+    """(i): the agent never writes to the user after the card."""
     sink = BusSink(tmp_path)
-    responses = (_reply("Sure, go on."), _reply("Stop, don't accept anything."))
-    user = SimUser(TASK, sink.llm(*responses, _reply("OK.")), sink.world, seed=7)
-    before = _say(sink, user, "I asked about a better price.")
-    assert before is not None and HINT not in _prompt(sink)
+    stop_line = "Stop, don't accept anything."
+    user = SimUser(TASK, sink.llm(_reply(stop_line), _reply("OK.")), sink.world, 7)
     assert user.approver is not None
-    granted = user.approver.decide(_card(), _offer(7600, months=12))
-    assert granted.post.decision == "granted"  # the principal approved the card
-    stop = _say(sink, user, "Please approve 76 dollars a month for 12 months.")
-    assert stop is not None and stop.text == "Stop, don't accept anything."
+    card = user.approver.decide(_card(), _offer(7600, months=12))  # as issued
+    assert card.post.decision == "granted"  # decided before the stop
+    assert asyncio.run(user.on_trigger("after_offer", "x")) is None  # not its trigger
+    stop = _trigger(sink, user, "after_card")
+    assert stop is not None and stop.text == stop_line
     assert f"Now, in this reply: {HINT}" in _prompt(sink)
-    sims = sink.of("user.sim")
-    assert "stop" not in sims[0].payload and sims[1].payload["stop"] == "stop"
-    assert user.approver.decide(_card(), _offer(7300, months=12)).reasons == (
-        "stopped",
+    (sim,) = sink.of("user.sim")
+    assert sim.payload["stop"] == "stop" and 2 <= stop.delay_s <= 20
+    assert _trigger(sink, user, "after_card") is None  # it fires once
+    _say(sink, user, "Understood.")
+    assert "stop" not in sink.of("user.sim")[1].payload
+
+
+def test_a_card_issued_after_the_stop_trigger_is_denied(tmp_path: Path) -> None:
+    """(ii)"""
+    sink = BusSink(tmp_path)
+    user = SimUser(TASK, sink.llm(_reply("Please stop.")), sink.world, 7)
+    _trigger(sink, user, "after_card")
+    assert user.approver is not None
+    later = user.approver.decide(_card(), _offer(7300, months=12))
+    assert later.post.decision == "denied" and later.reasons == ("stopped",)
+
+
+def test_a_stop_without_a_stop_cue_is_regenerated(tmp_path: Path) -> None:
+    sink = BusSink(tmp_path)
+    good = "Please stop, don't accept anything."
+    user = SimUser(
+        TASK, sink.llm(_reply("Sure, go ahead."), _reply(good)), sink.world, 7
     )
-    _say(sink, user, "Understood, I stopped.")  # it fires once
-    assert "stop" not in sink.of("user.sim")[2].payload
+    out = _trigger(sink, user, "after_card")
+    assert out is not None and out.text == good
+    assert sink.of("user.sim")[0].payload["attempts"] == 2
 
 
 def test_a_silent_stop_is_regenerated(tmp_path: Path) -> None:
@@ -83,7 +109,7 @@ def test_a_silent_stop_is_regenerated(tmp_path: Path) -> None:
 
 def test_after_turn_k_fires_on_the_kth_agent_message(tmp_path: Path) -> None:
     sink = BusSink(tmp_path)
-    responses = [_reply(f"r{n}") for n in range(3)]
+    responses = [_reply("r0"), _reply("Wait, stop."), _reply("r2")]
     user = SimUser(
         _task(trigger="after_turn_k", k=2), sink.llm(*responses), sink.world, 7
     )
@@ -92,13 +118,14 @@ def test_after_turn_k_fires_on_the_kth_agent_message(tmp_path: Path) -> None:
     assert ["stop" in s.payload for s in sink.of("user.sim")] == [False, True, False]
 
 
-def test_after_offer_fires_when_the_agent_says_an_offer_price(tmp_path: Path) -> None:
+def test_after_offer_stops_unprompted_when_the_rep_offers(tmp_path: Path) -> None:
     sink = BusSink(tmp_path)
-    responses = [_reply(f"r{n}") for n in range(2)]
-    user = SimUser(_task(trigger="after_offer"), sink.llm(*responses), sink.world, 7)
-    _say(sink, user, "Your bill is 95 dollars now.")  # not an offer price
-    _say(sink, user, "They offer 76 dollars a month.")
-    assert ["stop" in s.payload for s in sink.of("user.sim")] == [False, True]
+    user = SimUser(
+        _task(trigger="after_offer"), sink.llm(_reply("Stop.")), sink.world, 7
+    )
+    assert _trigger(sink, user, "after_card") is None
+    out = _trigger(sink, user, "after_offer")
+    assert out is not None and sink.of("user.sim")[0].payload["stop"] == "stop"
 
 
 def test_a_mind_change_must_reveal_the_changed_fact(tmp_path: Path) -> None:

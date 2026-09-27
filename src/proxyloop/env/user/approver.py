@@ -5,7 +5,8 @@ It decides an ``ApprovalCard`` or a proposed ``Mandate`` from the principal's
 hidden constraints (``Task.principal``) and returns the ``ApprovalPost`` the
 approval endpoint would receive, with a delay sampled from
 ``principal.approver_delay_s`` (its own seeded stream). A card is granted iff
-the terms it shows are within the limits; a mandate iff each bound the user
+it shows every required slot (else ``incomplete_card``), all confirmed (else
+``unconfirmed``), with terms within the limits; a mandate iff each bound the user
 stated is bounded no looser. After a stop every decision is a denial; after a
 mind change the changed facts are the envelope, and the limits drop to it.
 
@@ -23,7 +24,7 @@ approver emits no event: a post is agent-stream ingress, not a world event.
 from __future__ import annotations
 
 import random
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -79,6 +80,19 @@ def terms_violations(b: Bounds, terms: Mapping[str, str]) -> tuple[str, ...]:
     return violations(b, minor(terms["monthly_price"]), int(terms["term_months"]), fees)
 
 
+def missing_required(fields: Collection[str]) -> list[str]:
+    """Required read-back fields (ARCHITECTURE §9.2) absent from ``fields``: a
+    missing fee is never "no fee"."""
+
+    kinds = {f.partition(":")[0] for f in fields}
+    out = [f for f in ("monthly_price", "term_months", "expires") if f not in fields]
+    if "fee" not in kinds and "fees_none" not in fields:
+        out.append("fee:*|fees_none")
+    if "applied_change" not in kinds and "changes_none" not in fields:
+        out.append("applied_change:*|changes_none")
+    return out
+
+
 def _slot(offer: OfferPublic, field: str, unit: str) -> int:
     found = [s for s in offer.slots if s.field == field]
     if len(found) != 1 or found[0].unit != unit or not found[0].value.isdigit():
@@ -93,7 +107,6 @@ class Approver:
         self._principal = task.principal
         self.facts = dict(task.profile.facts)  # as the user changed them
         self.changed = self.stopped = False
-        self.cards_seen = 0
         self._rng = random.Random(f"approver:{seed}")
 
     def envelope(self) -> Bounds:
@@ -116,12 +129,17 @@ class Approver:
     def decide(self, card: ApprovalCard, offer: OfferPublic) -> Post:
         if (offer.offer_ref, offer.revision) != (card.offer_ref, card.revision):
             raise ValueError("the offer is not the card's offer and revision")
-        monthly = _slot(offer, "monthly_price", "usd_minor")
-        months = _slot(offer, "term_months", "months")
-        fee_fields = [s.field for s in offer.slots if s.field.startswith("fee:")]
-        fees = sum(_slot(offer, f, "usd_minor") for f in fee_fields)
-        self.cards_seen += 1
-        reasons = violations(self.limits(), monthly, months, fees)
+        fields = [s.field for s in offer.slots]
+        reasons = ("incomplete_card",) if missing_required(fields) else ()
+        if any(s.status != "confirmed" for s in offer.slots):
+            reasons += ("unconfirmed",)  # Guard's read-back stays authoritative
+        if not reasons:
+            monthly = _slot(offer, "monthly_price", "usd_minor")
+            months = _slot(offer, "term_months", "months")
+            fees = sum(
+                _slot(offer, f, "usd_minor") for f in fields if f.startswith("fee:")
+            )
+            reasons = violations(self.limits(), monthly, months, fees)
         return self._post(
             "approval", card.approval_id, card.terms_hash, card.authority_epoch, reasons
         )

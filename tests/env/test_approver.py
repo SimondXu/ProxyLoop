@@ -9,7 +9,7 @@ import pytest
 from tests.env.cards import card as _card
 from tests.env.cards import offer as _offer
 
-from proxyloop.contract.state import Mandate, OfferPublic
+from proxyloop.contract.state import Mandate, OfferPublic, ReadbackSlot
 from proxyloop.env.tasks.loader import load_task
 from proxyloop.env.user.approver import Approver
 
@@ -57,13 +57,43 @@ def test_the_delay_is_seeded_and_its_own_stream() -> None:
     assert len(set(delays)) == 3
 
 
-def test_a_card_must_come_with_its_offer_and_readable_slots() -> None:
+def test_a_card_must_come_with_its_offer() -> None:
+    newer = _offer(6900).model_copy(update={"revision": 2})
     with pytest.raises(ValueError, match="card's offer and revision"):
-        newer = _offer(6900).model_copy(update={"revision": 2})
         Approver(TASK, seed=1).decide(_card(), newer)
-    bad = _offer(6900).model_copy(update={"slots": _offer(6900).slots[1:]})
-    with pytest.raises(ValueError, match="monthly_price"):
-        Approver(TASK, seed=1).decide(_card(), bad)
+
+
+def test_an_incomplete_unconfirmed_card_is_denied() -> None:
+    """The reviewer's case: price and term only, both unknown, fee unsaid."""
+    task = load_task("cp-hidden-fee-readback")
+    slots = [
+        ReadbackSlot(
+            field="monthly_price", value="5500", unit="usd_minor", role="recurring"
+        ),
+        ReadbackSlot(field="term_months", value="12", unit="months", role="recurring"),
+    ]
+    bare = OfferPublic(offer_ref="save-2", revision=1, slots=tuple(slots))
+    out = Approver(task, seed=1).decide(_card(), bare)
+    assert out.post.decision == "denied"
+    assert out.reasons == ("incomplete_card", "unconfirmed")
+
+
+def test_a_missing_fee_is_never_no_fee() -> None:
+    full = _offer(6900)
+    no_fee = full.model_copy(
+        update={"slots": tuple(s for s in full.slots if s.field != "fees_none")}
+    )
+    out = Approver(TASK, seed=1).decide(_card(), no_fee)
+    assert out.reasons == ("incomplete_card",)
+
+
+def test_one_unconfirmed_slot_denies_the_card() -> None:
+    full = _offer(6900)
+    heard = full.slots[0].model_copy(update={"status": "heard"})
+    out = Approver(TASK, seed=1).decide(
+        _card(), full.model_copy(update={"slots": (heard, *full.slots[1:])})
+    )
+    assert out.reasons == ("unconfirmed",)
 
 
 def test_a_mandate_is_granted_only_no_looser_than_the_stated_envelope() -> None:

@@ -9,7 +9,10 @@ state every required slot (ARCHITECTURE §9.2), or Guard could never confirm
 it. An offer within the envelope is accepted under the mandate; one outside it
 but within the limits needs a card, and the caller holds for the approver's
 longest delay first; any other is declined. An accept must commit and the
-ledger bind terms within the limits. The stop fires where its trigger would.
+ledger bind terms within the limits. The stop fires where its trigger occurs,
+unprompted (``SimUser.on_trigger``): as an offer is made, or as a card is
+issued (that card was decided before it), whether or not the caller writes to
+the user.
 
 - ``ledger``: an accept commits within the limits (after a mind change, the
   changed ones);
@@ -29,9 +32,13 @@ from typing import Any
 from proxyloop.contract.state import Mandate
 from proxyloop.env.counterparty.ear import EarAct
 from proxyloop.env.counterparty.policy import Decision, Policy
-from proxyloop.env.tasks.instances import collisions
 from proxyloop.env.tasks.schema import Task
-from proxyloop.env.user.approver import Approver, Bounds, terms_violations
+from proxyloop.env.user.approver import (
+    Approver,
+    Bounds,
+    missing_required,
+    terms_violations,
+)
 
 STEP_MS = 10_000  # one exchange: the caller speaks, the rep answers
 LEVERS = ("ask_discount", "tenure", "cite_competitor")
@@ -46,18 +53,6 @@ class Verdict:
     def __str__(self) -> str:
         head = "completable" if self.ok else "NOT completable"
         return f"{head}: {' > '.join(self.path)}"
-
-
-def unconfirmable(terms: dict[str, str]) -> list[str]:
-    """Required read-back fields a read-back of ``terms`` would leave unsaid."""
-
-    kinds = {k.partition(":")[0] for k in terms}
-    out = [f for f in ("monthly_price", "term_months", "expires") if f not in terms]
-    if "fee" not in kinds and "fees_none" not in terms:
-        out.append("fee:*|fees_none")
-    if "applied_change" not in kinds and "changes_none" not in terms:
-        out.append("applied_change:*|changes_none")
-    return out
 
 
 class _Caller:
@@ -105,32 +100,29 @@ def completable(task: Task) -> Verdict:
         offer = caller.say(lever)
         if offer.intent.kind not in OFFERED or (ref := offer.intent.offer_ref) is None:
             break
-        if trigger == "after_offer" and not fired:
-            if collisions(task):
-                verdict.path.append("an offer price is also a profile number")
-                return verdict
-            if fire("offer"):
-                return verdict
+        if trigger == "after_offer" and not fired and fire("offer"):
+            return verdict  # the stop comes unprompted as the offer is made
         rb = caller.say("ask_readback", offer_ref=ref)
         terms = dict(rb.intent.say)
-        missing = unconfirmable(terms)
+        missing = missing_required(terms)
         if rb.intent.kind != "readback" or missing:
             verdict.path.append(f"{ref} unconfirmable {missing}")
             continue
         outside = terms_violations(principal.envelope(), terms)
         if outside and terms_violations(principal.limits(), terms):
             continue  # declined
-        if outside:  # a card: hold while the approver takes its longest
-            caller.say("hold_request")
-            caller.t_ms += int(1000 * max(task.principal.approver_delay_s.range))
-            if caller.policy.tick(caller.t_ms) and caller.policy.done:
-                verdict.path.append("hung up during the approval")
-                return verdict
+        if outside:  # a card, decided as issued; an after_card stop follows it
+            verdict.path.append(f"card {ref}")
             if trigger == "after_card" and not fired:
                 if fire("card"):
                     return verdict
                 if terms_violations(principal.limits(), terms):
                     continue  # the mind change rules it out
+            caller.say("hold_request")  # while the approver takes its longest
+            caller.t_ms += int(1000 * max(task.principal.approver_delay_s.range))
+            if caller.policy.tick(caller.t_ms) and caller.policy.done:
+                verdict.path.append("hung up during the approval")
+                return verdict
         if stop is not None and not fired:
             verdict.path.append("commits before the stop fires")
             return verdict
@@ -192,7 +184,7 @@ def _over(b: Bounds, said: dict[str, str]) -> tuple[str, ...]:
 def _needs_a_card(task: Task) -> bool:
     """The first acceptable offer is outside the envelope."""
 
-    return "hold_request->ok_hold" in completable(task).path
+    return any(step.startswith("card ") for step in completable(task).path)
 
 
 FAMILY_CHECKS: dict[str, Callable[[Task], bool]] = {
