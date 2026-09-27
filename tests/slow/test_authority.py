@@ -469,6 +469,23 @@ def test_no_deal_needs_the_final_offer_asked_and_a_closing_reply(
     assert h.bb.public.status is CaseStatus.VERIFIED_NO_DEAL
 
 
+def test_no_deal_judges_the_rep_after_the_last_final_offer_ask(
+    tmp_path: Path,
+) -> None:  # S1-SYS-57
+    h = Host(tmp_path)
+    h.call()
+    finish = {"tool": "finish", "outcome": "no_deal", "summary": "no deal"}
+    ask = {"tool": "guide_fast", "move": "ask_final_offer"}
+    h.act(ask)
+    h.rep("cp-1", "I am afraid I cannot do better than what I offered.")
+    h.act(ask)  # a second ask: the window starts again here
+    (early,) = h.act(finish)
+    assert "no_closing_reply" in early and not h.ended
+    h.rep("cp-2", "That is our best offer.")
+    (done,) = h.act(finish)
+    assert done == "finish: verified no deal" and h.ended == ["no_deal"]
+
+
 def test_record_offer_sets_the_stated_expiry_on_the_session_clock(
     tmp_path: Path,
 ) -> None:
