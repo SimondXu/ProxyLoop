@@ -19,7 +19,13 @@ from tests.support.sessions import act, fake, fake_config
 from tests.support.sessions import patient_task as task
 
 from proxyloop.contract.config import SlowViewMode
-from proxyloop.contract.llm import LLMClient, LLMRole, ModelRef
+from proxyloop.contract.llm import (
+    LLMClient,
+    LLMRole,
+    ModelRef,
+    ToolRequest,
+    ToolResponse,
+)
 from proxyloop.contract.messages import FastToSlow
 from proxyloop.kernel.session import ChannelSpec, Kernel
 from proxyloop.llm.http import RecordSink
@@ -30,6 +36,18 @@ SNAPSHOT = Path(__file__).parent / "snapshots" / "relay_only_requests.json"
 NOTED = act("Noted.", public="Asking for a lower price.")
 ASK = act("Asking.", {"tool": "ask_user", "text": "Any price limit?"})
 SILENT = json.dumps({"text": "Thinking.", "tool_calls": []})
+
+
+class Recording(RepeatingLLM):
+    """Slow's scripted client, keeping every whole request it was sent."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.sent: list[ToolRequest] = []
+
+    async def chat_tools(self, request: ToolRequest) -> ToolResponse:
+        self.sent.append(request)
+        return await super().chat_tools(request)
 
 
 class Board:
@@ -48,11 +66,15 @@ class Board:
         specs: dict[str, ChannelSpec] = {"user": "sim", "cp": "sim"}
         t = task()
         self.k = Kernel(cfg, t, specs, tmp_path, self.clock, asyncio.sleep, make, None)
-        client = RepeatingLLM(
-            fake("slow"), script or [NOTED], self.clock, on_record=sinks["slow"]
-        )
+        self._sink = sinks["slow"]
+        self.script(script or [NOTED])
+
+    def script(self, script: list[str]) -> None:
+        """A fresh Slow loop answering from ``script``."""
+        self.client = Recording(fake("slow"), script, self.clock, on_record=self._sink)
+        t = self.k.task
         keys = frozenset(t.disclosure.shareable)
-        self.slow = SlowLoop(self.k, client, t.slow_brief, keys)
+        self.slow = SlowLoop(self.k, self.client, t.slow_brief, keys)
 
     def emit(self, type_: str, payload: dict[str, Any], *causes: str) -> str:
         self.clock.advance(1_000)
@@ -318,3 +340,40 @@ def test_transcript_text_grants_nothing(tmp_path: Path) -> None:
         await sim.stop()
 
     arun(case())
+
+
+IDENTITY = "It's Dana Reyes, and my last four are 4821."
+
+
+def test_an_unrelayed_identity_message_reaches_slow(tmp_path: Path) -> None:
+    """Smoke 289b86: the user gave name and last 4, FastU relayed nothing for
+    190 s, and a relay-only Slow never learned them. Transcript mode: the
+    message is in the request and citable by its utt id for record_fact."""
+    b = Board(tmp_path, SlowViewMode.TRANSCRIPT)
+    said = f"{b.k.run_id}:{len(b.k.bus.events)}"  # the user.msg's utt id
+    record = [
+        {"tool": "record_fact", "key": "account.holder_name", "value": "Dana Reyes",
+         "utt_ref": said},
+        {"tool": "record_fact", "key": "account.last4", "value": "4821",
+         "utt_ref": said},
+    ]  # fmt: skip
+    b.script([act("Identity given.", *record)])
+    assert b.user(IDENTITY) == said  # no relay follows
+    b.step("heartbeat")
+    (request,) = b.requests()
+    assert f"▶ {said} USER: {json.dumps(IDENTITY)}" in block(request[-1]["content"])
+    public = b.k.bb.public.facts
+    assert {k: (f.value, f.source_ref) for k, f in public.items()} == {
+        "account.holder_name": ("Dana Reyes", said),
+        "account.last4": ("4821", said),
+    }
+    b.k.bus.close()
+
+
+def test_a5_an_unrelayed_identity_message_never_reaches_slow(tmp_path: Path) -> None:
+    b = Board(tmp_path, SlowViewMode.RELAY_ONLY)
+    b.user(IDENTITY)
+    b.step("heartbeat")
+    (request,) = b.requests()
+    assert "Dana" not in json.dumps(request) and "4821" not in json.dumps(request)
+    b.k.bus.close()
