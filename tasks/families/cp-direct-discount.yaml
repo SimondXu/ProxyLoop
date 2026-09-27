@@ -81,8 +81,9 @@ variants:
       with every term read back. Accept it only within the account holder's
       mandate or with their approval; otherwise end with no deal.
     user_goal: >-
-      Pay less every month for the same plan: at most 70 dollars a month, a
-      contract of at most 24 months, and at most 25 dollars in one-time fees.
+      Pay less every month for the same plan: at most {budget.max_monthly_usd}
+      dollars a month, a contract of at most {budget.max_term_months} months, and
+      at most {budget.max_fees_usd} dollars in one-time fees.
     profile:
       persona: >-
         Dana Reyes, a busy nurse who has been with Northwind Mobile for six

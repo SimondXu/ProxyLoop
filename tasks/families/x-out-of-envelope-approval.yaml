@@ -37,8 +37,9 @@ profile:
     budget.max_term_months: "24"
     budget.max_fees_usd: "0"
 user_goal: >-
-  Pay less for the same phone plan: at most 65 dollars a month, a contract of
-  at most 24 months, and no one-time fees.
+  Pay less for the same phone plan: at most {budget.max_monthly_usd} dollars a
+  month, a contract of at most {budget.max_term_months} months, and at most
+  {budget.max_fees_usd} dollars in one-time fees.
 probes: []
 disclosure:
   shareable: [account.holder_name, account.last4, tenure_years, competitor.name,

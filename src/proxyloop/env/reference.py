@@ -24,13 +24,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from decimal import Decimal
 from typing import Any
 
 from proxyloop.contract.state import Mandate
-from proxyloop.env import world
 from proxyloop.env.counterparty.ear import EarAct
 from proxyloop.env.counterparty.policy import Decision, Policy
+from proxyloop.env.tasks.instances import collisions
 from proxyloop.env.tasks.schema import Task
 from proxyloop.env.user.approver import Approver, Bounds, terms_violations
 
@@ -107,7 +106,7 @@ def completable(task: Task) -> Verdict:
         if offer.intent.kind not in OFFERED or (ref := offer.intent.offer_ref) is None:
             break
         if trigger == "after_offer" and not fired:
-            if _collides(task):
+            if collisions(task):
                 verdict.path.append("an offer price is also a profile number")
                 return verdict
             if fire("offer"):
@@ -171,19 +170,6 @@ def _mandate(principal: Approver, verdict: Verdict) -> bool:
     granted = not principal.decide_mandate(mandate).reasons
     verdict.path.append("mandate granted" if granted else "mandate denied")
     return granted
-
-
-def _collides(task: Task) -> bool:
-    """An offer price the user also knows as a fact: ``after_offer`` would be
-    ambiguous."""
-
-    prices = {
-        Decimal(o.all_terms["monthly_price"])
-        for o in task.counterparty.ladder
-        if "monthly_price" in o.all_terms
-    }
-    known = {n for v in task.profile.facts.values() for n in world.numbers(v)}
-    return bool(prices & known)
 
 
 def _hidden_fee_trap(task: Task) -> bool:

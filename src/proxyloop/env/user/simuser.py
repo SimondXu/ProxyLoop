@@ -116,7 +116,7 @@ class SimUser:
         self.approver = Approver(task, seed) if task.principal is not None else None
         self._facts = self.approver.facts if self.approver else dict(task.profile.facts)
         self._delay = task.user.reply_delay_s.range
-        self._goal, self._persona = task.user_goal.strip(), task.profile.persona.strip()
+        self._task, self._persona = task, task.profile.persona.strip()
         self._stop, self._fired, self._turns = task.stop, False, 0
         ladder = [o.all_terms for o in task.counterparty.ladder]
         self._prices = {
@@ -157,7 +157,8 @@ class SimUser:
                 now += f" Say your changed facts exactly: {said}."
         chat = "\n".join(self._chat) or "(empty: write your opening request)"
         facts = "\n".join(f"{k}: {v}" for k, v in sorted(self._facts.items()))
-        system = SYSTEM.format(persona=self._persona, goal=self._goal, facts=facts)
+        goal = self._task.goal(self._facts).strip()
+        system = SYSTEM.format(persona=self._persona, goal=goal, facts=facts)
         messages = (
             ChatMessage(role="system", content=system),
             ChatMessage(role="user", content=f"Chat so far:\n{chat}{now}"),

@@ -3,11 +3,14 @@ predicate's refusals."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
+from decimal import Decimal
 from typing import Any
 
 import pytest
 
+from proxyloop.env import world
 from proxyloop.env.counterparty.ear import EarAct
 from proxyloop.env.counterparty.policy import Policy
 from proxyloop.env.reference import FAMILY_CHECKS, completable
@@ -57,9 +60,9 @@ def test_an_instance_keeps_the_family_and_zero_is_the_file() -> None:
     assert one.id == "cp-hidden-fee-readback-i7" and one.family == task.family
     assert one.profile.facts["budget.max_fees_usd"] == "0"  # "no fees" stays zero
     trap, fine = (o.all_terms for o in one.counterparty.ladder)
-    assert float(trap["fee:installation"]) >= 99 and fine["fees_none"] == "true"
-    shift = float(fine["monthly_price"]) - 62
-    assert float(one.profile.facts["budget.max_monthly_usd"]) - 65 == shift
+    assert Decimal(trap["fee:installation"]) >= 99 and fine["fees_none"] == "true"
+    shift = Decimal(fine["monthly_price"]) - 62
+    assert Decimal(one.profile.facts["budget.max_monthly_usd"]) - 65 == shift
     assert instance(task, 7) == one
 
 
@@ -179,3 +182,40 @@ def test_the_hidden_fee_is_said_only_on_the_read_back() -> None:
     offered = say("ask_discount")
     assert offered == {"monthly_price": "55.00", "term_months": "12"}
     assert say("ask_readback", offer_ref="promo-1")["fee:installation"] == "99.00"
+
+
+def _money(task: Task) -> set[Decimal]:
+    """Every offer's non-zero money amounts."""
+    return {
+        Decimal(v)
+        for o in task.counterparty.ladder
+        for k, v in o.all_terms.items()
+        if k == "monthly_price" or k.startswith(("fee:", "credit:"))
+        if Decimal(v) != 0
+    }
+
+
+def _known(task: Task) -> set[Decimal]:
+    """Every number the user knows or the approver judges by."""
+    values = [*task.profile.facts.values()]
+    if task.principal is not None and task.principal.limits is not None:
+        values += [str(v) for v in task.principal.limits.model_dump().values() if v]
+    if task.stop is not None:
+        values += [*(task.stop.change or {}).values()]
+    return {n for v in values for n in world.numbers(v)}
+
+
+@pytest.mark.parametrize("family", sorted(SLICE))
+def test_instances_state_one_limit_and_offers_never_echo_a_known_number(
+    family: str,
+) -> None:
+    task = load_task(family, mode=SLICE[family])
+    for seed in range(50):
+        one = instance(task, seed)
+        refs = re.findall(r"\{([^}]*)\}", one.user_goal)
+        assert refs and not re.search(r"\d", re.sub(r"\{[^}]*\}", "", one.user_goal))
+        stated = set[Decimal]().union(
+            *(world.numbers(one.profile.facts[k]) for k in refs)
+        )
+        assert world.numbers(one.goal(one.profile.facts)) == stated, one.id
+        assert not _money(one) & _known(one), one.id

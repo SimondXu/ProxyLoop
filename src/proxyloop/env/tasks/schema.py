@@ -4,11 +4,15 @@
 data: agent modules get only the briefs, through the kernel. A ``full`` task has
 a ``principal`` (what the sim approver grants); ``stop`` is the unscripted stop
 or mind change of ``x-user-mind-change``. New fields default to ``None`` so the
-instance hash (``exclude_none``) of an older task is unchanged.
+instance hash (``exclude_none``) of an older task is unchanged. ``user_goal``
+states a number only as a ``{fact.key}`` reference, so the goal and the facts
+never disagree (instances, mind changes): ``Task.goal(facts)`` renders it.
 """
 
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
 from typing import Annotated, Literal, Self
 
 from pydantic import Field, StringConstraints, ValidationError, model_validator
@@ -21,6 +25,7 @@ from proxyloop.env.ledger import LedgerMode
 
 FactKey = Annotated[str, StringConstraints(pattern=rf"^{FACT_KEY}$")]
 TermField = Annotated[str, StringConstraints(pattern=READBACK_FIELD)]
+GOAL_REF = re.compile(rf"\{{({FACT_KEY})\}}")
 Brief = Annotated[str, StringConstraints(min_length=1, max_length=base.MAX_BRIEF)]
 
 
@@ -158,9 +163,17 @@ class Task(Frozen):
         if self.principal is not None:
             named |= set(self.principal.envelope.values())
         named |= set(self.stop.change or ()) if self.stop is not None else set()
+        named |= set(GOAL_REF.findall(self.user_goal))
+        if re.search(r"\d", GOAL_REF.sub("", self.user_goal)):
+            raise ValueError("user_goal states numbers only as {fact.key}")
         if unknown := sorted(named - self.profile.facts.keys()):
             raise ValueError(f"unknown profile facts {unknown}")
         return self
+
+    def goal(self, facts: Mapping[str, str]) -> str:
+        """``user_goal`` with each ``{fact.key}`` said as its value in ``facts``."""
+
+        return GOAL_REF.sub(lambda m: facts[m.group(1)], self.user_goal)
 
     @model_validator(mode="after")
     def _principal(self) -> Self:

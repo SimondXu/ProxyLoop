@@ -38,8 +38,9 @@ profile:
     budget.max_term_months: "12"
     budget.max_fees_usd: "0"
 user_goal: >-
-  Pay less for the same cable plan: at most 70 dollars a month, a
-  contract of at most 12 months, and no one-time fees.
+  Pay less for the same cable plan: at most {budget.max_monthly_usd} dollars a
+  month, a contract of at most {budget.max_term_months} months, and at most
+  {budget.max_fees_usd} dollars in one-time fees.
 probes: []
 disclosure:
   shareable: [account.holder_name, account.last4, tenure_years, competitor.name,
