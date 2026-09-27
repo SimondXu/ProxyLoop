@@ -172,11 +172,23 @@ def test_app_names_by_model_and_variant(monkeypatch: pytest.MonkeyPatch):
 
 
 def make(*argv: str, env: dict[str, str], mk: str = "mk/mod.mk") -> str:
-    """``make -n`` unless argv says otherwise: it only prints, never reaches Modal."""
+    """``make -n`` unless argv says otherwise: it only prints, never reaches Modal.
+
+    The child ignores an outer make's flags (CI's ``make check`` passes ``w``), so
+    no "Entering directory" line wraps the recipe.
+    """
+    outer = {"MAKEFLAGS", "MFLAGS", "MAKELEVEL"}
+    base = {k: v for k, v in os.environ.items() if k not in outer}
     run = subprocess.run(
-        ["make", "-f", mk, *(argv if "-s" in argv else ("-n", *argv))],
+        [
+            "make",
+            "--no-print-directory",
+            "-f",
+            mk,
+            *(argv if "-s" in argv else ("-n", *argv)),
+        ],
         cwd=ROOT,
-        env=os.environ | env,
+        env=base | env,
         capture_output=True,
         text=True,
         check=True,
@@ -185,6 +197,15 @@ def make(*argv: str, env: dict[str, str], mk: str = "mk/mod.mk") -> str:
 
 
 STRAY = {"PL_SERVE_MODEL": "4b", "SERVE_MODEL": "4b", "MODEL": "4b"}
+
+
+def test_the_outer_makes_print_directory_flag_never_reaches_the_child(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # CI runs these tests under `make check`, whose MAKEFLAGS carries `w`.
+    monkeypatch.setenv("MAKEFLAGS", "w")
+    monkeypatch.setenv("MAKELEVEL", "1")
+    assert "directory" not in make("serve-down", env={})
 
 
 def test_a_stray_shell_never_redirects_the_9b_targets(tmp_path: Path):
