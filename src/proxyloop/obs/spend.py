@@ -128,15 +128,15 @@ def _rows(tally: Tally, per_episode: bool = False) -> list[dict[str, Any]]:
     return rows
 
 
-def _projection(live: Tally, n: int) -> dict[str, Any]:
+def _projection(live: Tally, episodes: int, n: int) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
+    per = n / Decimal(episodes)
     for k, c in sorted(live.items()):
-        per = n / Decimal(c["episodes"])
         micro = None if _unknown(c) else _whole(c["priced_micro_usd"] * per)
         rows.append(
             {"role": k[0], "endpoint": k[1] or None, "model_id": k[2]}
             | {
-                "episodes_basis": c["episodes"],
+                "live_episodes_basis": episodes,
                 "micro_usd": micro,
                 "usd": None if micro is None else _usd(micro),
                 "priced_lower_bound_micro_usd": (
@@ -154,7 +154,8 @@ def _projection(live: Tally, n: int) -> dict[str, Any]:
     return {
         "episodes": n,
         "by_model": rows,
-        "note": "N x total / the live episodes each key ran in; null $ where any"
+        "note": "N x the key's total / all live episodes (not only those the key"
+        " ran in: a projected episode need not run every key); null $ where any"
         " call of the key is unpriced, gpu_time, without usage or uncharged."
         " priced_lower_bound_* sums the priced calls only: with lower_bound true"
         " it is a floor, never the full cost",
@@ -209,6 +210,7 @@ def report(
     mismatches = total["charge_without_call"] + total["call_without_charge"]
     gaps = total["calls_unpriced"] + total["usage_missing"] + mismatches
     excluded = {s: sum(r.status == s for r in runs) for s in _EXCLUDED}
+    complete = gpu_micro is not None and not gaps and not any(excluded.values())
     unindexed = sum(
         c.charge.micro_usd or 0
         for r in runs
@@ -246,6 +248,7 @@ def report(
             "gpu_micro_usd": gpu_micro,
             "micro_usd": micro,
             "usd": _usd(micro),
+            "lower_bound": not complete,
             "calls_unpriced": total["calls_unpriced"],
             "unpriced_prompt_tokens": total["unpriced_prompt"],
             "unpriced_completion_tokens": total["unpriced_completion"],
@@ -253,11 +256,11 @@ def report(
             "mismatches": mismatches,
             "excluded_bundles": excluded,
             "unindexed_priced_micro_usd": unindexed,  # never in micro_usd
-            "complete": gpu_micro is not None
-            and not gaps
-            and not any(excluded.values()),
+            "complete": complete,
         },
-        "projection": None if project is None else _projection(live_tally, project),
+        "projection": None
+        if project is None
+        else _projection(live_tally, len(live), project),
     }
 
 
@@ -282,7 +285,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     b, c = out["bundles"], out["cumulative"]
     print(" ".join(f"{k}={v}" for k, v in b.items() if k != "not_counted"))
     print(f"live={out['live']['episodes']} non_live={out['non_live']['episodes']}")
-    print(" ".join(f"{k}={v}" for k, v in c.items()))
+    first = ("complete", "lower_bound")
+    print(" ".join(f"{k}={c[k]}" for k in first), end=" ")
+    print(" ".join(f"{k}={v}" for k, v in c.items() if k not in first))
     print(f"wrote {args.out}")
     return 0
 

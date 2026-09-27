@@ -78,28 +78,6 @@ def test_cli_json(
 # Regressions from the S1-SYS-12 review, each from the reviewer's failing input.
 
 
-def test_a_root_in_another_case_is_still_sealed(corpus: tuple[Path, Path]) -> None:
-    runs, evidence = corpus
-    if not (runs.parent / "EVIDENCE").exists():
-        pytest.skip("case-sensitive file system")
-    rows = index([runs.parent / "Evidence"])  # listing s4/test would raise
-    assert [r.run_id for r in rows] == ["rC"]
-    with pytest.raises(ValueError, match="rule 11"):
-        index([evidence / "S4" / "TEST"])
-
-
-def test_file_symlinks_into_sealed_data_are_not_read(
-    corpus: tuple[Path, Path],
-) -> None:
-    _, evidence = corpus
-    other = evidence.parent / "other" / "rZ"
-    other.mkdir(parents=True)
-    for name in ("manifest.json", "events.jsonl"):
-        (other / name).symlink_to(evidence / "s4" / "test" / "rH" / name)
-    [row] = index([other.parent])
-    assert (row.run_id, row.status, row.events) == ("rZ", "sealed", None)
-
-
 def test_a_symlink_loop_ends(tmp_path: Path) -> None:
     (tmp_path / "runs" / "a").mkdir(parents=True)
     (tmp_path / "runs" / "a" / "back").symlink_to(tmp_path / "runs")
@@ -132,3 +110,13 @@ def test_kind_is_relative_to_the_root(tmp_path: Path) -> None:
     write(tmp_path / "evidence" / "s1" / "rB", Log("rB"), manifest("rB"))
     [row] = index([tmp_path / "evidence" / "s1"])
     assert (row.kind, row.stage) == ("evidence", "s1")
+
+
+def test_a_drifted_charge_payload_is_invalid(tmp_path: Path) -> None:
+    log = Log("rW")
+    log.add(
+        "spend.charged", "kernel", "ops", {"call_id": "c", "surprise": 1}, (log.start,)
+    )
+    write(tmp_path / "runs" / "rW", log, manifest("rW"))
+    [row] = index([tmp_path / "runs"])
+    assert row.status == "invalid" and "extra_forbidden@surprise" in (row.error or "")

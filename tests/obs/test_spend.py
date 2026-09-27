@@ -8,10 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.contract.samples import SONNET
-from tests.obs.bundles import Log, manifest, write
 
-from proxyloop.contract.llm import Usage
 from proxyloop.obs.spend import load_gpu, main
 
 GPU = [
@@ -121,6 +118,7 @@ def test_hand_computation(corpus: tuple[Path, Path], tmp_path: Path) -> None:
         "gpu_micro_usd": 3734567,
         "micro_usd": 3744467,
         "usd": "3.744467",
+        "lower_bound": True,  # not complete: unpriced calls, excluded bundles
         "calls_unpriced": 6,  # ear 3, simuser 1, mouth 1, slow 1
         "unpriced_prompt_tokens": 350,
         "unpriced_completion_tokens": 55,
@@ -152,7 +150,7 @@ def test_projection(corpus: tuple[Path, Path], tmp_path: Path) -> None:
         "role": "ear",
         "endpoint": "teamrouter",
         "model_id": "gemini-3.8-flash",
-        "episodes_basis": 3,
+        "live_episodes_basis": 3,
         "micro_usd": None,
         "usd": None,
         "priced_lower_bound_micro_usd": 0,
@@ -164,8 +162,10 @@ def test_projection(corpus: tuple[Path, Path], tmp_path: Path) -> None:
         "unpriced_prompt_tokens": 1167,
         "unpriced_completion_tokens": 183,
     }
-    # fast_cp ran in 1 live episode, on GPU time: its $ is Modal's, not 0
-    assert (rows["fast_cp"]["episodes_basis"], rows["fast_cp"]["usd"]) == (1, None)
+    # fast_cp ran in 1 of the 3 live episodes, on GPU time: its $ is Modal's,
+    # not 0, and its basis is all 3 live episodes (10 x total / 3)
+    fast_cp = rows["fast_cp"]
+    assert (fast_cp["live_episodes_basis"], fast_cp["usd"]) == (3, None)
     assert projection["gpu"] is None and "Modal" in projection["gpu_note"]
 
 
@@ -191,37 +191,3 @@ def test_gpu_usage_is_strict(tmp_path: Path, entry: dict[str, object]) -> None:
     path.write_text(json.dumps([GPU[2] | entry]), "utf-8")
     with pytest.raises(ValueError):
         load_gpu(path)
-
-
-def test_complete_needs_every_bundle_counted(tmp_path: Path) -> None:
-    """S1-SYS-12 review: a crashed run's real charge left ``complete`` true."""
-    runs, gpu, out = tmp_path / "runs", tmp_path / "gpu.json", tmp_path / "s.json"
-    gpu.write_text(json.dumps(GPU[2:]), "utf-8")
-    log = Log("rP")
-    log.call(
-        "slow", SONNET, Usage(prompt_tokens=100, completion_tokens=0), "tokens", 300
-    )
-    write(runs / "rP", log, manifest("rP"))
-    args = ["--root", str(runs), "--gpu-usage", str(gpu), "--out", str(out)]
-    assert main(args) == 0
-    clean = json.loads(out.read_text("utf-8"))
-    assert clean["cumulative"]["complete"] is True
-    [row] = clean["live"]["models"]  # 300 / 1 episode, every call priced: exact
-    assert (row["usd_per_episode"], row["lower_bound"]) == ("0.00030000", False)
-    crashed = Log("rQ")
-    crashed.call(
-        "slow", SONNET, Usage(prompt_tokens=1, completion_tokens=0), "tokens", 50000
-    )
-    write(runs / "rQ", crashed, None)
-    assert main(args) == 0
-    cumulative = json.loads(out.read_text("utf-8"))["cumulative"]
-    assert cumulative["complete"] is False
-    assert cumulative["excluded_bundles"] == {
-        "incomplete": 1,
-        "invalid": 0,
-        "sealed": 0,
-    }
-    assert (cumulative["micro_usd"], cumulative["unindexed_priced_micro_usd"]) == (
-        300 + 2000000,
-        50000,
-    )

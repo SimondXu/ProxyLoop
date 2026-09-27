@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 
 import pytest
@@ -42,16 +44,37 @@ def test_file_symlink_bypass(sealed_priced: Path) -> None:
     assert rows == [("rZ", "sealed", None)]
 
 
+def test_hard_link_bypass(sealed_priced: Path, tmp_path: Path) -> None:
+    z = sealed_priced / "runs" / "rZ"
+    z.mkdir(parents=True)
+    for name in ("manifest.json", "events.jsonl", "prompts.jsonl"):
+        os.link(sealed_priced / "evidence" / "s4" / "test" / "rH" / name, z / name)
+    rows = index([z.parent])
+    assert [(r.run_id, r.status, r.error) for r in rows] == [
+        ("rZ", "sealed", "hard-linked file")
+    ]
+    report = spend.report(rows, None, None, {"gpu_usage": None})
+    assert "777" not in json.dumps(report)
+
+
 def test_crashed_run_is_not_complete(tmp_path: Path) -> None:
     ok, crash = Log("rOK"), Log("rCRASH")
     ok.call("slow", SONNET, ONE, "tokens", 100)
     ok.end("done")
     crash.call("slow", SONNET, ONE, "tokens", 50000)
     write(tmp_path / "rOK", ok, manifest("rOK"))
+    clean = spend.report(index([tmp_path]), [], 10, {"gpu_usage": "gpu.json"})
+    assert (clean["cumulative"]["complete"], clean["cumulative"]["lower_bound"]) == (
+        True,
+        False,
+    )
+    [row] = clean["live"]["models"]  # 100 / 1 episode, every call priced: exact
+    assert (row["usd_per_episode"], row["lower_bound"]) == ("0.00010000", False)
     write(tmp_path / "rCRASH", crash, None)
     report = spend.report(index([tmp_path]), [], 10, {"gpu_usage": "gpu.json"})
     cumulative = report["cumulative"]
-    assert (cumulative["complete"], cumulative["micro_usd"]) == (False, 100)
+    assert (cumulative["complete"], cumulative["lower_bound"]) == (False, True)
+    assert cumulative["micro_usd"] == 100
     assert cumulative["unindexed_priced_micro_usd"] == 50000
     assert report["bundles"]["not_counted"] == ["rCRASH"]
 

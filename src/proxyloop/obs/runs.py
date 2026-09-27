@@ -19,15 +19,30 @@ from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import Literal
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from proxyloop.contract.bundle import EVENTS, MANIFEST, PROMPTS, Manifest
 from proxyloop.contract.events import Event, check_causes
-from proxyloop.contract.llm import LLMCallRecord
-from proxyloop.llm.spend import Charge
+from proxyloop.contract.llm import Endpoint, LLMCallRecord, LLMRole
 
 SEALED = ("evidence", "s4", "test")
 Status = Literal["ok", "incomplete", "invalid", "sealed"]
+FILES = (MANIFEST, EVENTS, PROMPTS)
+
+
+class Charge(BaseModel):
+    """The ``spend.charged`` payload, read here without importing the ledger
+    (obs imports only the contract): a drifted payload makes the bundle invalid."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    call_id: str
+    role: LLMRole
+    attempt: int
+    endpoint: Endpoint | None
+    model_id: str
+    basis: Literal["tokens", "gpu_time", "unpriced"]
+    micro_usd: int | None = Field(ge=0)
 
 
 @dataclass(frozen=True)
@@ -119,7 +134,7 @@ def bundles(root: Path, seal: Seal) -> Iterator[Path]:
             continue
         seen.add((st.st_dev, st.st_ino))
         names = sorted(os.listdir(here))
-        if any(name in names for name in (MANIFEST, EVENTS, PROMPTS)):
+        if any(name in names for name in FILES):
             yield here
             continue
         subdirs = [here / n for n in names]
@@ -137,8 +152,10 @@ def load(path: Path, root: Path, seal: Seal) -> Run:
     elif len(rel) == 3 and rel[0] == "live":
         kind, case_id = "live", rel[1]
     run = Run(path.name, str(path), kind, "ok", case_id, stage)
-    if any(seal.covers(path / name) for name in (MANIFEST, EVENTS)):
+    if any(seal.covers(path / name) for name in FILES):
         return replace(run, status="sealed", error="a file resolves into sealed data")
+    if any(f.is_file() and f.stat().st_nlink > 1 for f in (path / n for n in FILES)):
+        return replace(run, status="sealed", error="hard-linked file")  # maybe sealed
     try:
         return _load(path, run)
     except ValidationError as err:  # the type and location only, never input values
