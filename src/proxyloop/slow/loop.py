@@ -15,7 +15,7 @@ from proxyloop.contract.llm import ChatMessage
 from proxyloop.contract.views import SlowView, view_slow
 from proxyloop.kernel.watchdog import Abort
 from proxyloop.slow import prompt
-from proxyloop.slow.tools import SlowTools
+from proxyloop.slow.tools import SlowTools, case_ref
 
 if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
@@ -32,7 +32,8 @@ class SlowLoop:
         self, host: Kernel, client: llm.LLMClient, brief: str, keys: frozenset[str]
     ):
         self._host, self._client, self._brief = host, client, brief
-        self.tools, self._keys = SlowTools(host, keys), keys
+        self.tools = SlowTools(host, keys, case_ref(host.task.id))
+        self._keys = keys
         self._head = (
             f"TASK: {brief}\nSHAREABLE FACT KEYS (record_fact uses exactly these "
             f"keys, whatever a relay calls them): {', '.join(sorted(keys))}"
@@ -88,9 +89,10 @@ class SlowLoop:
         return [ChatMessage(role="user", content=head), *turns]
 
     async def step(self, reasons: Sequence[str]) -> None:
-        host, bb = self._host, self._host.bb
         if self.steps >= MAX_STEPS:  # a loud end, never a fallback
             raise Abort("slow_step_cap", f"Slow reached {MAX_STEPS} steps")
+        self.tools.readback()  # the status bar shows Guard's current statuses
+        host, bb = self._host, self._host.bb
         view = view_slow(bb, SlowViewMode.RELAY_ONLY, self._brief)
         new = [r for r in view.relays if r.msg_id not in self._read]
         self._read |= {r.msg_id for r in new}
@@ -98,7 +100,8 @@ class SlowLoop:
         wake = basis | {"wake_reasons": list(reasons)}
         started = host.emit("slow.step.started", "slow", wake, []).event_id
         wakes = f"[WAKE] {', '.join(reasons)}"
-        notes = [wakes, *map(prompt.note, new), prompt.status_bar(view, self._keys)]
+        bar = prompt.status_bar(view, self._keys, host.now())
+        notes = [wakes, *map(prompt.note, new), bar]
         context = self._context("\n".join(notes), view)
         self.steps += 1
         request = llm.ToolRequest(
