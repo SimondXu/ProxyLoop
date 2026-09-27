@@ -11,7 +11,7 @@ from proxyloop.contract.state import Blackboard
 from proxyloop.guard.declass import numbers, protected_keys, rep_numbers
 from proxyloop.guard.mandate import bound_numbers
 
-_SCALE = {"usd_minor": 100, "months": 1}
+_PER_UNIT = {"usd_minor": 100, "months": 1}
 
 
 def _public(bb: Blackboard) -> set[Decimal]:
@@ -20,9 +20,9 @@ def _public(bb: Blackboard) -> set[Decimal]:
     }
     for offer in bb.public.offers.values():
         out |= {
-            Decimal(s.value) / _SCALE[s.unit]
+            Decimal(s.value) / _PER_UNIT[s.unit]
             for s in offer.slots
-            if s.unit in _SCALE and s.value.isdigit()
+            if s.unit in _PER_UNIT and s.value.isdigit()
         }
     return out
 
