@@ -26,6 +26,7 @@ from proxyloop.contract.events import Event, check_causes
 from proxyloop.contract.llm import Endpoint, LLMCallRecord, LLMRole
 
 SEALED = ("evidence", "s4", "test")
+OPEN_SPLITS = frozenset({"train", "dev"})  # any other split is sealed (rule 11)
 Status = Literal["ok", "incomplete", "invalid", "sealed"]
 FILES = (MANIFEST, EVENTS, PROMPTS)
 
@@ -165,10 +166,8 @@ def load(path: Path, root: Path, seal: Seal) -> Run:
     run = Run(path.name, str(path), kind, "ok", case_id, stage)
     if not path.exists():
         return replace(run, status="invalid", error="dangling path")
-    if any(seal.covers(path / name) for name in FILES):
-        return replace(run, status="sealed", error="a file resolves into sealed data")
-    if any(f.is_file() and f.stat().st_nlink > 1 for f in (path / n for n in FILES)):
-        return replace(run, status="sealed", error="hard-linked file")  # maybe sealed
+    if why := sealed(path, seal):
+        return replace(run, status="sealed", error=why)
     try:
         return _load(path, run)
     except ValidationError as err:  # the type and location only, never input values
@@ -181,11 +180,21 @@ def load(path: Path, root: Path, seal: Seal) -> Run:
         return replace(run, status="invalid", error=f"{type(err).__name__}: {err}")
 
 
-def _load(path: Path, run: Run) -> Run:
-    at: dict[str, object]
+def sealed(path: Path, seal: Seal) -> str | None:
+    """Why the bundle at ``path`` may be sealed data (None: it is not)."""
+    if any(seal.covers(path / name) for name in FILES):
+        return "a file resolves into sealed data"
+    if any(f.is_file() and f.stat().st_nlink > 1 for f in (path / n for n in FILES)):
+        return "hard-linked file"  # maybe sealed
+    return None
+
+
+def head(path: Path) -> dict[str, object] | None:
+    """What a bundle says of itself before any event is read: the manifest, or
+    else session.started on the first line alone. None: neither is there."""
     if (path / MANIFEST).is_file():
         man = Manifest.model_validate_json((path / MANIFEST).read_text("utf-8"))
-        at = {
+        return {
             "run_id": man.run_id,
             "task_ref": man.task_ref,
             "split": man.split,
@@ -195,17 +204,25 @@ def _load(path: Path, run: Run) -> Run:
             },
             "reality": {r: str(k) for r, k in sorted(man.reality.items())},
         }
-    elif (path / EVENTS).is_file():  # the split from session.started, read alone
-        with (path / EVENTS).open(encoding="utf-8") as f:
-            first = f.readline()
-        start = Event.model_validate_json(first) if first.strip() else None
-        if start is None or start.type != "session.started":
-            return replace(run, status="incomplete", error=f"no {MANIFEST}, no split")
-        at = {k: start.payload[k] for k in ("task_ref", "split")}
-        at["run_id"] = start.run_id
-    else:
-        return replace(run, status="incomplete", error=f"no {MANIFEST} or {EVENTS}")
-    if at["split"] == "test":
+    if not (path / EVENTS).is_file():
+        return None
+    with (path / EVENTS).open(encoding="utf-8") as f:  # the split, read alone
+        first = f.readline()
+    start = Event.model_validate_json(first) if first.strip() else None
+    if start is None or start.type != "session.started":
+        return None
+    return {k: start.payload[k] for k in ("task_ref", "split")} | {
+        "run_id": start.run_id
+    }
+
+
+def _load(path: Path, run: Run) -> Run:
+    at = head(path)
+    if at is None:
+        has = (path / EVENTS).is_file()
+        why = f"no {MANIFEST}, no split" if has else f"no {MANIFEST} or {EVENTS}"
+        return replace(run, status="incomplete", error=why)
+    if at["split"] not in OPEN_SPLITS:
         return replace(run, run_id=at["run_id"], status="sealed")
     if not (path / EVENTS).is_file():
         return replace(run, **at, status="incomplete", error=f"no {EVENTS}")
