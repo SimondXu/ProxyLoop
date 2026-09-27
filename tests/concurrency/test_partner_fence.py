@@ -15,6 +15,7 @@ from tests.support.sessions import act
 
 from proxyloop.contract.events import Event
 from proxyloop.contract.llm import LLMUnavailable
+from proxyloop.evidence.check import check_path
 from proxyloop.kernel.channels import Incoming
 from proxyloop.kernel.speaker import speech_s
 
@@ -89,6 +90,7 @@ def test_a_a_correction_during_a_queued_accept_revokes_it(
             assert fence.seq < declined.seq < cleared.seq
         assert not sim.of("status.changed", status="COMMITTED")
         await sim.stop()
+        assert check_path(sim.k.path, "offline").ok
 
     arun(case())
 
@@ -106,6 +108,7 @@ def test_b_a_harmless_rep_turn_delays_the_accept_until_the_fence_clears(
         assert released.type == "speak.released" and released.seq > cleared.seq
         _one(sim, "status.changed", status="COMMITTED")
         await sim.stop()
+        assert check_path(sim.k.path, "offline").ok
 
     arun(case())
 
@@ -235,6 +238,7 @@ def test_f_an_accept_waiting_at_session_end_gets_no_terminal_event(
         assert ended.payload["reason"] == ("abandoned" if end == "hangup" else end)
         assert _ends(sim) == []  # no speak.released or speak.revoked
         assert not sim.of("utt.delivered", utt_id=f"accept-{_accept_seq(sim)}")
+        assert check_path(sim.k.path, "offline").ok  # a valid bundle all the same
 
     arun(case())
 
