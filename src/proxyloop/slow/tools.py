@@ -25,6 +25,7 @@ from proxyloop.guard import authorize as guard
 from proxyloop.guard.authorize import CaseRef, Denial
 from proxyloop.guard.declass import declassify, numbers, spoken
 from proxyloop.guard.readback import readback_update
+from proxyloop.kernel.wake import HEARTBEAT_S
 from proxyloop.slow import authority
 from proxyloop.slow.result import Effect, Result, no
 
@@ -151,11 +152,12 @@ class SlowTools:
         bb, host, case = self._host.bb, self._host, self._case
         if name in ("ask_user", "tell_user"):
             return self._s2f(lane="user", type=name.upper(), text=str(a["text"]))
-        if name == "wait":
-            if not 1 <= (seconds := int(a["seconds"])) <= 15:
-                return no("seconds must be 1-15")
-            then = lambda: host.wake_slow("timer", seconds)  # noqa: E731
-            return Result(True, f"waking in {seconds} s", then=then)
+        if name == "wait":  # its slow.tool arms the timer (kernel.wake)
+            seconds = a["seconds"]  # a JSON integer, never coerced (rule 12)
+            if type(seconds) is not int or not 1 <= seconds <= HEARTBEAT_S:
+                beat = f"in a call a heartbeat wakes you every {HEARTBEAT_S} s anyway"
+                return no(f"seconds must be an integer 1-{HEARTBEAT_S}: {beat}")
+            return Result(True, f"waking in {seconds} s")
         if name == "guide_fast":
             return self._guide(bb, a)
         if name == "record_fact":

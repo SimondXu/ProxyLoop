@@ -67,6 +67,8 @@ so the representative waits while the phone voice gets it from the user. As soon
 the user gives it, record_fact it and, in the same act, guide_fast(identify, \
 slots=["fact:<key>", ...]). Use deflect_fact_request only for a fact that must not \
 be given: the representative hears a refusal and may hang up.
+A rep_turn or heartbeat wake without a new [REP CALL] note means nothing was \
+relayed; read the status bar and act or wait.
 Tool results come back as text; a refusal says why."""
 
 Schema = dict[str, object]
