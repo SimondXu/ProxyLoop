@@ -235,10 +235,37 @@ def test_a_single_hold_then_the_facts_behave_as_before() -> None:
     assert p.tick(hold - 1) == []
     done = _say(p, "provide_fact", hold - 1, facts={NAME: "Dana Reyes", LAST4: "4821"})
     assert (done.to, done.intent.kind, p.strikes) == ("DISCOVER", "how_can_help", 0)
-    _say(p, "hold_request", hold)  # outside IDENTIFY: each hold starts its clock
+    _say(p, "hold_request", hold)  # S1-SYS-28: a repeat resumes this clock
     _say(p, "hold_request", 2 * hold - 1_000)
-    assert p.tick(2 * hold) == [] and p.tick(3 * hold - 1_001) == []
-    assert p.tick(3 * hold - 1_000)[-1].intent.kind == "check_in"
+    assert p.tick(2 * hold - 1) == []
+    assert p.tick(2 * hold)[-1].intent.kind == "check_in"
+
+
+def test_repeated_holds_outside_identify_do_not_restart_the_hold_clock() -> None:
+    """S1-SYS-28 (world semantics, run f3a106): FastC re-asking to hold every
+    few seconds kept the call alive for 400 s. In every state a repeated hold
+    request resumes the clock of the first hold since the last progress."""
+    p, hold = _verified(0), int(CP.patience.hold_s * 1000)
+    step, t, struck = hold - 1_000, 0, list[int]()
+    while not p.done and t < 20 * hold:
+        assert p.state == "DISCOVER"
+        assert _say(p, "hold_request", t).intent.kind == "ok_hold"
+        for tick in range(t + 1_000, t + step + 1, 1_000):
+            if [d for d in p.tick(tick) if d.strike]:
+                struck.append(tick)
+        t += step
+    assert struck[:2] == [hold, 2 * hold]  # as for a single hold
+    assert (p.done, p.timer_strikes) == (True, CP.patience.strikes)
+
+
+def test_any_other_utterance_outside_identify_restarts_the_hold_clock() -> None:
+    """Progress outside IDENTIFY is any heard act but a hold request."""
+    p, hold = _verified(0), int(CP.patience.hold_s * 1000)
+    _say(p, "hold_request", 0)
+    _say(p, "smalltalk", hold - 2_000)
+    _say(p, "hold_request", hold - 1_000)
+    assert p.tick(2 * hold - 1_001) == []
+    assert p.tick(2 * hold - 1_000)[-1].intent.kind == "check_in"
 
 
 def test_accept_by_name_commits_and_binds_every_term_hidden_included() -> None:

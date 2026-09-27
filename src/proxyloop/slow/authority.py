@@ -25,7 +25,8 @@ from proxyloop.guard.verify import verify_completion, verify_no_deal
 from proxyloop.slow.result import Effect, Result, no
 
 HINTS = {  # what Slow can do about a denial; the reason itself is Guard's
-    "fence_raised": "a user message is not relayed to you yet: act after it",
+    "fence_raised": "a new user message or rep turn is not reflected in your view "
+    "yet: wait for the next step",
     "readback_not_confirmed": "every required slot must be confirmed: record the "
     "offer as read back, then guide_fast(ask_readback, [offer:<ref>]) for that "
     "revision; the rep's next read-back confirms it",
@@ -38,7 +39,7 @@ HINTS = {  # what Slow can do about a denial; the reason itself is Guard's
 }
 BOUNDS = ("max_monthly_price_minor", "max_term_months", "max_one_time_fees_minor")
 LISTS = ("required_features", "forbidden_changes")
-_UNITS = {  # a ledger term's unit, by field kind; any other kind is a bool
+UNITS = {  # a ledger term's unit, by field kind; any other kind is a bool
     "monthly_price": "usd_minor",
     "fee": "usd_minor",
     "credit": "usd_minor",
@@ -261,7 +262,7 @@ def _ledger_hash(binding: object, offer: OfferPublic) -> str:
         slots: list[ReadbackSlot] = []
         for field, value in sorted(terms.items()):
             kind = field.partition(":")[0]
-            unit = _UNITS.get(kind, "bool")
+            unit = UNITS.get(kind, "bool")
             text = _minor(str(value)) if unit == "usd_minor" else str(value)
             slot = {"field": field, "value": text, "unit": unit}
             role = ROLE_OF.get(kind, "feature")
