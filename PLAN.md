@@ -272,6 +272,8 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
 - #165 (SYS, S1-SYS-27): cp `s2f.voiced` is emitted for guides the fold dropped and the generation never saw (`kernel/lanes.py:145,189`); S1-MOD-05 must not read it as spoken; S1-SYS-21's R3a ack rule fixes it.
 - `README.md:5` and `DOCS.md:20` still say "Claude Sonnet 5 plans from its typed relays" (the Slow model name and I5); outside S1-ROOT-08's paths.
 - A1's meaning changes under ADR-0016 ("do typed relays add anything beyond the transcript?"), so the S3 "no causal headroom" switch criterion (§8) may fire more easily — flagged to the user (S3 go/stop is theirs).
+- #172 (ROOT, S1-ROOT-09; for P-OBS) n5: an import-linter contract forbidding `proxyloop.obs` from importing `kernel`, `core.bus`, `llm`, `slow` and `env` (the exporter reads bundles only; ADR-0008).
+- #172 (ROOT, S1-ROOT-09; for P-OBS) n8: S1-SYS-12's run index reuses `serve.bundles.sealed`/`held_out` instead of a second held-out barrier.
 - NORTH_STAR résumé lines still say Sonnet / typed relays — the user's call (2026-09-27: leave for now). The S1 line's "plans from typed relays" no longer matches I5 (ADR-0016).
 
 ---
@@ -993,9 +995,16 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 ### S1-SYS-11 Offline OTel exporter and Phoenix — SYS (P-OBS) — S — todo
 - **Objective:** an offline exporter: a bundle's `events.jsonl` → OTel spans (parent/child from `cause_ids`, lanes as resources) → Phoenix via `compose.yaml`, plus a replay-to-trace CLI. It reads events only and never touches the session path. **Supersedes S1-SYS-06**; ADR-0008 (an offline exporter instead of a live subscriber) is recorded by the main root before merge.
 - **Owned paths:** `src/proxyloop/obs/**`, `tests/obs/**`, `compose.yaml`.
-- **Deps:** ADR-0008 (before merge).
-- **Acceptance:** on fixture bundles, span parent/child matches `cause_ids` and the lanes appear as resources; an exported real S0 bundle shows overlapping Fast and Slow spans (span JSON + a screenshot in the PR).
+- **Deps:** ADR-0008 (S1-ROOT-09).
+- **Acceptance:** on fixture bundles, span parent/child matches `cause_ids` and the lanes appear as resources; an exported real S0 bundle shows overlapping Fast and Slow spans (span JSON + a screenshot in the PR). Also (root decisions under §0.5a, 2026-09-27; ADR-0008):
+  - a fixture with private values yields spans containing none of them, by default and with the content flag;
+  - a sealed path or a bundle whose split is `test` is refused before any span is emitted.
 - **Verify:** `uv run pytest tests/obs -q`.
+
+### S1-ROOT-09 ADR-0008: offline OTel exporter — ROOT — S — doing
+- **Objective:** record ADR-0008 (root decision under §0.5a, 2026-09-27): S1-SYS-06's live `OTelExporter(bus)` subscriber is replaced by an offline exporter over a bundle's `events.jsonl` (finished, or tailed read-only): the first of `cause_ids` is the parent span and the others are links; lanes are resources; `gen_ai.*` attributes from `llm.call` records; default deny (the envelope plus a named allow-list of non-content payload keys; a flag may add only cp-lane text and `fast_cp` prompts); sealed and `test` bundles refused before any span (AGENTS rule 11); Phoenix via `compose.yaml` on 127.0.0.1 and the CLI `python -m proxyloop.obs.trace RUN [--endpoint]`. It unblocks S1-SYS-11.
+- **Owned paths:** `docs/decisions/0008-*.md` (new); `ARCHITECTURE.md` (the `obs` module row, the repo-tree `obs/` line, the per-session task list and the §14 OTel bullet only); `PLAN.md` (this block, S1-SYS-11's Deps and Acceptance lines, and two §0.9 lines).
+- **Acceptance:** `make docs-check` and `make lint` green; no measured number typed (AGENTS rule 13).
 
 ### S1-SYS-12 Spend report and run index — SYS (P-OBS) — S — todo
 - **Objective:** a `spend.json` generator (§0.8: measured $/episode by role, GPU $ by job from a Modal usage input, the cumulative total, the projection), and a run index over `runs/` and `evidence/`. `docs/results/spend.json` is generated only.
