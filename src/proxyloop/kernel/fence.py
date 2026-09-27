@@ -6,16 +6,17 @@
   FastU relayed, even if it relayed nothing (a Fast failure, measured). Binding
   a turn wakes Slow, so a fence never waits on a step that is not coming.
 - **Partner fence** (S1-SYS-23). Guard cannot read a rep line, so an accept
-  waits (the Speaker) until Slow has seen every rep line it may not have seen:
-  one landing while the accept is in flight raises a fence at once, and the
-  accept's ``action.authorized`` raises one for each rep line after the
-  ``basis_seq`` of the Slow step minting it. Each binds to the first FastC turn
-  whose request saw the line (one already made binds at once) and clears as a
-  user fence does. The guarantee: no accept is released before a Slow step
-  completed whose basis covers a FastC turn that saw every rep line landed
-  after the minting step's basis (after the mint, for one minted outside a
-  step: tests only). A cp fence FastC never bound when the call closes clears
-  at ``chan.closed`` (the line then is revoked ``call_closed``).
+  waits (the Speaker) until every rep line before it is **covered**: a FastC
+  ``fast.turn`` whose request's ``basis_seq`` is at or after the line, and a
+  completed Slow step whose ``basis_seq`` is at or after that turn (Slow has
+  seen whatever FastC relayed of it). The accept's ``action.authorized`` raises
+  a fence for each rep line not yet covered (caused by the line and the mint;
+  bound at once if that turn exists), and a rep line landing while the accept
+  is in flight raises one at once. Each clears as a user fence does. The
+  guarantee: no accept is released before every rep line that landed before
+  the release is covered. The one exception is a cp fence FastC never bound
+  when the call closes: it clears at ``chan.closed``, and the line is then
+  revoked ``call_closed``, never released.
 - ``Fence.utt_id`` is the ``user.msg`` event id for a user fence (that line's
   id on the board) and the rep line's ``utt_id`` for a partner fence.
 - **Epochs.** An f2s ``REVOKE`` bumps the epoch at once (models restrict, never
@@ -62,9 +63,9 @@ class Authority:
         # fence_id -> (its lane, its utt, that line's seq, the binding turn's seq)
         self._raised: dict[str, tuple[Lane, str, int, int | None]] = {}
         self._basis: dict[str, int] = {}  # Fast gen_id -> its request's basis
-        self._turns: list[tuple[str, int, int]] = []  # (lane, basis, seq) of turns
-        self._lines: list[tuple[str, str, int]] = []  # rep lines: (event, utt, seq)
-        self._step: int | None = None  # the basis of the Slow step in flight
+        # rep lines not yet covered: [event id, utt, seq, the first FastC turn
+        # whose request saw the line (its seq)]
+        self._lines: list[tuple[str, str, int, int | None]] = []
         self._moved = asyncio.Event()  # set (and replaced) as a fence moves
         self.user_fences = 0  # user fences raised so far
         self._asked: dict[str, str] = {}  # card or mandate id -> the asking event
@@ -73,7 +74,7 @@ class Authority:
     def on_event(self, e: Event) -> None:
         p, k = e.payload, self._k
         if e.type == "user.msg" and k.slow is not None:  # rep-chat has no Slow
-            self._raise(e.event_id, e.seq, "user", e.event_id)
+            self._raise([e.event_id], e.seq, "user", e.event_id)
         elif e.type == "utt.final" and p["lane"] == "cp" and p["speaker"] == "partner":
             self._rep_line(e)
         elif e.type == "action.authorized" and p["intent"] == "accept_offer":
@@ -88,10 +89,7 @@ class Authority:
             self._closed(e)
         elif e.type == "authority.epoch":  # a waiting accept revalidates now
             self._move()
-        elif e.type == "slow.step.started":
-            self._started(int(str(p["basis_seq"])))
         elif e.type == "slow.step.completed":
-            self._step = None
             self._completed(e)
         elif e.type == "f2s.msg" and p["type"] == "REVOKE":
             bump = {"new": k.bb.epoch + 1, "reason": "f2s_revoke"}
@@ -138,34 +136,27 @@ class Authority:
 
     def _rep_line(self, said: Event) -> None:
         utt = str(said.payload["utt_id"])
-        self._lines.append((said.event_id, utt, said.seq))
+        self._lines.append((said.event_id, utt, said.seq, None))
         if self._live() and accept_in_flight(self._k.bus.bb):
-            self._raise(said.event_id, said.seq, "cp", utt)
+            self._raise([said.event_id], said.seq, "cp", utt)
 
     def _minted(self, auth: Event) -> None:
-        """Rep lines after the minting step's basis, not yet fenced: the step
-        may not have seen them (an accept minted outside a step: none)."""
-        if self._step is None or not self._live():
+        """A fence for each rep line not yet covered and not yet fenced."""
+        if not self._live():
             return
         fenced = {seq for lane, _, seq, _ in self._raised.values() if lane == "cp"}
-        for said, utt, seq in self._lines:
-            if seq > self._step and seq not in fenced:
-                turns = (t for lane, b, t in self._turns if lane == "cp" and b >= seq)
-                self._raise(said, seq, "cp", utt, next(turns, None))
-
-    def _started(self, basis: int) -> None:  # older lines and turns cannot matter
-        self._step = basis
-        self._lines = [x for x in self._lines if x[2] > basis]
-        self._turns = [x for x in self._turns if x[1] > basis]
+        for said, utt, seq, turn in self._lines:
+            if seq not in fenced:
+                self._raise([said, auth.event_id], seq, "cp", utt, turn)
 
     def _raise(
-        self, cause: str, seq: int, lane: Lane, utt: str, at: int | None = None
+        self, causes: list[str], seq: int, lane: Lane, utt: str, at: int | None = None
     ) -> None:
         self._n += 1
         self.user_fences += lane == "user"
         fence = {"op": "raised", "fence_id": f"fence-{self._n}", "utt_id": utt}
         self._raised[fence["fence_id"]] = (lane, utt, seq, at)
-        self._k.emit("authority.fence", "kernel", fence, [cause])
+        self._k.emit("authority.fence", "kernel", fence, causes)
         self._move()
         if at is not None:  # bound already: a step must see that turn
             self._wake("fence")
@@ -173,7 +164,11 @@ class Authority:
     def _bind(self, turn: Event) -> None:
         lane = str(turn.payload["lane"])
         basis = self._basis.pop(str(turn.payload["gen_id"]), -1)
-        self._turns.append((lane, basis, turn.seq))
+        if lane == "cp":  # the lines this turn's request saw
+            self._lines = [
+                (e, u, s, t if t is not None or s > basis else turn.seq)
+                for e, u, s, t in self._lines
+            ]
         for fence, (on, utt, seq, at) in self._raised.items():
             if on == lane and at is None and seq <= basis:  # its request saw the line
                 self._raised[fence] = (on, utt, seq, turn.seq)
@@ -195,6 +190,7 @@ class Authority:
 
     def _completed(self, step: Event) -> None:
         basis = int(str(step.payload["basis_seq"]))
+        self._lines = [x for x in self._lines if x[3] is None or x[3] > basis]
         for fence, (*_, at) in list(self._raised.items()):
             if at is not None and at <= basis:
                 self._clear(fence, step.event_id)

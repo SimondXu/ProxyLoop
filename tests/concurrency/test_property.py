@@ -11,9 +11,10 @@ accepts, stops, revokes, barge-ins, FastU latency, time) and the log must show:
   a rep line landing, or at the mint for lines after the minting Slow step's
   basis), and an accept revoked ``fence`` only under a user fence or after one
   rose while it waited (under partner fences only it waits);
-- no accept released before a Slow step completed whose basis is at or after
-  every rep line landed after the minting step's basis (review M1: Slow's
-  latency varies, so its calls often land while a step is in flight);
+- no accept released before every earlier rep line is covered: a FastC turn
+  whose request saw it, then a completed Slow step whose basis is at or after
+  that turn (review M1, D1, D2: Slow's latency varies, so its calls often land
+  while a step is in flight);
 - every accept line ending in exactly one ``speak.released`` or
   ``speak.revoked``, by its expiry at the latest (none wedges on
   ``accept_in_flight``: the teardown runs past ``CAP_TTL_MS``);
@@ -30,7 +31,7 @@ import tempfile
 from collections import Counter
 from collections.abc import Coroutine
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from hypothesis import settings
 from hypothesis import strategies as st
@@ -128,7 +129,7 @@ class Interleavings(RuleBasedStateMachine):
         self.slow.let(None if answering else 0)
         if not answering:
             assert self.sim.k.slow is not None
-            self.sim.k.slow.wake("timer")
+            self.sim.k.slow.wake("fence")
         self.run(settle())
 
     @rule(answering=st.booleans())
@@ -260,7 +261,8 @@ def _check(sim: Sim) -> None:
     users: list[int] = []  # the seqs of user fences raised
     for e in events:
         if e.type == "authority.fence" and e.payload["op"] == "raised":
-            (said,) = [by_id[c] for c in e.cause_ids]
+            said, *minted = [by_id[c] for c in e.cause_ids]  # at the mint: + auth
+            assert [m.type for m in minted] in ([], ["action.authorized"]), e
             by_user[str(e.payload["fence_id"])] = said.type == "user.msg"
             users += [e.seq] if said.type == "user.msg" else []
             if said.type == "utt.final":  # a partner fence: an accept in flight
@@ -311,29 +313,27 @@ def _check(sim: Sim) -> None:
 
 
 def _slow_saw_it(sim: Sim) -> None:
-    """Every rep line after the minting step's basis (or the mint, outside a
-    step) and before the release: a Slow step completed before the release
-    with its basis at or after the line."""
-    step: int | None = None  # the basis of the Slow step in flight
-    since: dict[str, int] = {}  # cap_id -> the seq after which lines count
+    """Before each release every earlier rep line is covered: a cp
+    ``fast.turn`` whose request's basis is at or after the line, and a
+    completed Slow step whose basis is at or after that turn (review D1, D2)."""
+    basis: dict[str, int] = {}  # cp gen_id -> its request's basis
+    turns: list[tuple[int, int]] = []  # (seq, request basis) of cp turns
     lines: list[int] = []
-    done: list[tuple[int, int]] = []  # (seq, basis) of completed steps
+    done: list[int] = []  # the bases of completed steps
     for e in sim.events:
         p = e.payload
-        if e.type == "slow.step.started":
-            step = int(str(p["basis_seq"]))
+        if e.type == "fast.request" and p["lane"] == "cp":
+            basis[str(p["gen_id"])] = int(str(p["basis_seq"]))
+        elif e.type == "fast.turn" and p["lane"] == "cp":
+            turns.append((e.seq, basis[str(p["gen_id"])]))
         elif e.type == "slow.step.completed":
-            step = None
-            done.append((e.seq, int(str(p["basis_seq"]))))
+            done.append(int(str(p["basis_seq"])))
         elif e.type == "utt.final" and p["speaker"] == "partner":
             lines.append(e.seq)
-        elif e.type == "action.authorized" and p["intent"] == "accept_offer":
-            cap = cast(dict[str, object], p["capability"])
-            since[str(cap["cap_id"])] = e.seq if step is None else step
         elif e.type == "speak.released" and "cap_id" in p:
-            after = since[str(p["cap_id"])]
-            for line in [x for x in lines if after < x]:
-                seen = [s for s, b in done if b >= line]
+            for line in lines:
+                saw = [t for t, b in turns if b >= line]
+                seen = saw and any(d >= min(saw) for d in done)
                 assert seen, f"{e.event_id}: released before Slow saw line {line}"
 
 

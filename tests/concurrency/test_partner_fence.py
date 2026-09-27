@@ -6,6 +6,7 @@ accept still waiting when the session ends gets no terminal event (N3)."""
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -29,15 +30,34 @@ def _one(sim: Sim, type_: str, **match: object) -> Event:
     return e
 
 
+def _fence_of(sim: Sim, said: Event) -> Event:
+    """The fence raised for the line ``said`` (its first cause)."""
+    (fence,) = [
+        f
+        for f in sim.of("authority.fence", op="raised")
+        if f.cause_ids[0] == said.event_id
+    ]
+    return fence
+
+
+def _cleared(sim: Sim, fence: Event) -> Event:
+    return _one(
+        sim, "authority.fence", op="cleared", fence_id=fence.payload["fence_id"]
+    )
+
+
 def _ends(sim: Sim, cap: str = "cap-1") -> list[Event]:
     return sim.of("speak.released", cap_id=cap) + sim.of("speak.revoked", cap_id=cap)
 
 
-async def _queued_then_rep(sim: Sim, text: str) -> Event:
+async def _queued_then_rep(sim: Sim, text: str, hold: Valve | None = None) -> Event:
     """A granted accept queued while the rep composes (option A holds it),
-    then the rep's line lands: the partner fence it raises."""
+    then the rep's line lands: the partner fence it raises. ``hold``: FastC
+    is held from the accept on (it answered the offer's lines)."""
     await sim.start()
     await granted(sim)
+    if hold is not None:
+        hold.open.clear()
     sim.rep_composes()
     assert sim.accept().startswith("accept_offer: accept line queued")
     await sim.vt.run_for(1_000)
@@ -64,10 +84,9 @@ def test_a_a_correction_during_a_queued_accept_revokes_it(
         mark |= {"slow": ("that offer is gone", DECLINE)}
         until = mark if change == "decline" else None
         sim = Sim(tmp_path, gates={"fast_cp": fast_cp}, until=until)
-        if change == "revise":
-            fast_cp.open.clear()
         fix = FIX if change == "decline" else terms(75)  # the new terms, whole
-        fence = await _queued_then_rep(sim, fix)
+        hold = fast_cp if change == "revise" else None  # FastC is still out
+        fence = await _queued_then_rep(sim, fix, hold)
         if change == "revise":
             said = _one(sim, "utt.final", text=fix).payload["utt_id"]
             record = {"tool": "record_offer", "offer_ref": "o1"}
@@ -120,8 +139,7 @@ def test_c_a_user_fence_during_the_wait_still_revokes_the_accept(
         fast_cp, fast_user = Valve(), Valve()
         gates = {"fast_cp": fast_cp, "fast_user": fast_user}
         sim = Sim(tmp_path, gates=gates)
-        fast_cp.open.clear()  # the partner fence stays up
-        await _queued_then_rep(sim, ELSE)
+        await _queued_then_rep(sim, ELSE, fast_cp)  # the partner fence stays up
         await sim.vt.run_for(2_000)
         assert _ends(sim) == []  # waiting, not revoked for the partner fence
         fast_user.open.clear()
@@ -150,8 +168,9 @@ def test_d_an_accept_outwaited_by_a_partner_fence_is_revoked_expired_once(
     async def case() -> None:
         fast_cp = Valve()
         sim = Sim(tmp_path, gates={"fast_cp": fast_cp})
-        fast_cp.open.clear()  # FastC never answers: the fence never binds
-        await _queued_then_rep(sim, ELSE)
+        await _queued_then_rep(
+            sim, ELSE, fast_cp
+        )  # FastC never answers: the fence never binds
         (cap,) = sim.bb.capabilities.values()
         line = _one(sim, "speak.verbatim", kind="accept")
         speech = round(1000 * speech_s(str(line.payload["text"])))
@@ -179,7 +198,11 @@ def test_e_a_rep_turn_with_no_accept_in_flight_raises_no_fence(
         await sim.start()
         await granted(sim)  # the offer and its read-back: no accept yet
         sim.rep_says(ELSE)
-        await sim.vt.run_for(3_000)
+        await sim.vt.run_for(3_000)  # FastC answers it
+        assert sim.of("authority.fence") == []  # no fence as it lands
+        assert sim.k.slow is not None
+        sim.k.slow.wake("fence")  # a step that sees FastC's turn: covered
+        await sim.vt.run_for(1_000)
         assert sim.accept().startswith("accept_offer: accept line queued")
         await sim.vt.run_for(15_000)
         _one(sim, "speak.released", cap_id="cap-1")  # released and heard whole
@@ -198,8 +221,7 @@ def test_a_call_closed_during_the_wait_revokes_the_accept_at_once(
     async def case() -> None:
         fast_cp = Valve()
         sim = Sim(tmp_path, gates={"fast_cp": fast_cp})
-        fast_cp.open.clear()
-        await _queued_then_rep(sim, ELSE)
+        await _queued_then_rep(sim, ELSE, fast_cp)
         await sim.vt.run_for(1_000)
         sim.rep.incoming.put_nowait(Incoming((("Goodbye.", None),), end="closed"))
         await sim.vt.run_for(100)
@@ -221,8 +243,7 @@ def test_f_an_accept_waiting_at_session_end_gets_no_terminal_event(
     async def case() -> None:
         fast_cp = Valve()
         sim = Sim(tmp_path, gates={"fast_cp": fast_cp})
-        fast_cp.open.clear()
-        await _queued_then_rep(sim, ELSE)
+        await _queued_then_rep(sim, ELSE, fast_cp)
         await sim.vt.run_for(1_000)
         assert _ends(sim) == []  # waiting on the partner fence
         if end == "hangup":
@@ -280,20 +301,22 @@ def test_a_correction_before_the_authorising_step_mints_fences_the_accept(
         gate.let(1)  # that step authorises the accept; the next step is held
         await sim.vt.run_for(100)
         auth = _one(sim, "action.authorized")
-        fence = _one(sim, "authority.fence", op="raised")
-        assert fence.cause_ids == (said.event_id,) and fence.seq == auth.seq + 1
+        fence = _fence_of(sim, said)
+        assert fence.cause_ids == (said.event_id, auth.event_id)
         assert fence.payload["utt_id"] == said.payload["utt_id"]
+        for other in sim.of("authority.fence", op="raised"):  # all at the mint
+            assert other.cause_ids[1:] == (auth.event_id,)
         await sim.vt.run_for(2_000)
         assert _ends(sim) == []  # waiting for a step that saw the correction
         if change == "decline":
             sim.act({"tool": "decline_offer", "offer_ref": "o1"})
         gate.let(None)
         await sim.vt.run_for(20_000)
-        cleared = _one(sim, "authority.fence", op="cleared")
+        cleared = _cleared(sim, fence)
         saw = sim.events[_seq(sim, cleared.cause_ids[0])]
         assert int(str(saw.payload["basis_seq"])) >= said.seq
         (end,) = _ends(sim)
-        assert end.seq > cleared.seq
+        assert end.seq > max(c.seq for c in sim.of("authority.fence", op="cleared"))
         if change == "none":
             assert end.type == "speak.released"
         else:
@@ -312,8 +335,7 @@ def test_an_epoch_bump_ends_a_waiting_accept_at_once(tmp_path: Path) -> None:
     async def case() -> None:
         fast_cp = Valve()
         sim = Sim(tmp_path, gates={"fast_cp": fast_cp})
-        fast_cp.open.clear()  # the partner fence stays up
-        await _queued_then_rep(sim, ELSE)
+        await _queued_then_rep(sim, ELSE, fast_cp)  # the partner fence stays up
         await sim.vt.run_for(500)
         sim.revoke()
         bump = sim.of("authority.epoch")[-1]
@@ -358,7 +380,7 @@ def test_a_fastc_turn_never_binds_a_user_fence(tmp_path: Path) -> None:
         turn = sim.of("fast.turn", lane="cp")[-1]
         assert turn.seq > user.seq
         assert sim.k.slow is not None
-        sim.k.slow.wake("test")
+        sim.k.slow.wake("fence")
         await sim.vt.run_for(1_000)
         step = sim.of("slow.step.completed")[-1]
         assert int(str(step.payload["basis_seq"])) >= turn.seq
@@ -378,15 +400,14 @@ def test_a_fastu_turn_never_binds_a_partner_fence(tmp_path: Path) -> None:
     async def case() -> None:
         fast_cp = Valve()
         sim = Sim(tmp_path, gates={"fast_cp": fast_cp})
-        fast_cp.open.clear()
-        partner = await _queued_then_rep(sim, ELSE)
+        partner = await _queued_then_rep(sim, ELSE, fast_cp)
         sim.user_says("Thanks, go ahead.")
         await sim.vt.run_for(1_000)
         user = _raised_by(sim, "user.msg")
         turn = sim.of("fast.turn", lane="user")[-1]
         assert turn.seq > user.seq > partner.seq
         assert sim.k.slow is not None
-        sim.k.slow.wake("test")
+        sim.k.slow.wake("fence")
         await sim.vt.run_for(1_000)
         assert not _up(sim, user) and _up(sim, partner)
         (revoked,) = _ends(sim)
@@ -394,6 +415,112 @@ def test_a_fastu_turn_never_binds_a_partner_fence(tmp_path: Path) -> None:
         fast_cp.open.set()
         await sim.vt.run_for(15_000)
         assert sim.bb.fences == ()
+        await sim.stop()
+
+    arun(case())
+
+
+class Tickets:
+    """A Fast lane's gate: ``let(n)`` lets ``n`` more generations through,
+    ``let(None)`` opens it (review probe 10)."""
+
+    def __init__(self) -> None:
+        self._n: int | None = None
+        self._moved = asyncio.Event()
+
+    def let(self, n: int | None) -> None:
+        self._n = n
+        self._moved.set()
+
+    async def __call__(self) -> None:
+        while self._n == 0:
+            self._moved.clear()
+            await self._moved.wait()
+        if self._n is not None:
+            self._n -= 1
+
+
+def test_a_rep_line_fastc_has_not_answered_fences_the_accept_at_the_mint(
+    tmp_path: Path,
+) -> None:
+    """Review D1: the correction lands before the minting step's basis, but
+    FastC has not answered it (nothing relayed to Slow): the mint fences it
+    unbound; the accept waits for FastC's turn and a step that saw it."""
+
+    async def case() -> None:
+        fast_cp = Valve()
+        sim = Sim(tmp_path, {"slow": [ACCEPT]}, gates={"fast_cp": fast_cp})
+        await sim.start()
+        gate = SlowGate(sim)
+        await sim.offer()
+        card = sim.card()
+        gate.let(0)
+        fast_cp.open.clear()
+        sim.rep_says(FIX)
+        await sim.vt.run_for(500)
+        said = _one(sim, "utt.final", text=FIX)
+        sim.post(card)
+        await sim.vt.run_for(100)
+        step = sim.of("slow.step.started")[-1]
+        assert int(str(step.payload["basis_seq"])) > said.seq
+        gate.let(1)  # that step mints the accept
+        await sim.vt.run_for(100)
+        auth = _one(sim, "action.authorized")
+        fence = _fence_of(sim, said)
+        assert fence.cause_ids == (said.event_id, auth.event_id)
+        await sim.vt.run_for(5_000)
+        assert _ends(sim) == []  # FastC has not answered the line
+        fast_cp.open.set()
+        gate.let(None)
+        await sim.vt.run_for(20_000)
+        cleared = _cleared(sim, fence)
+        turn = next(t for t in sim.of("fast.turn", lane="cp") if t.seq > said.seq)
+        saw = sim.events[_seq(sim, cleared.cause_ids[0])]
+        assert int(str(saw.payload["basis_seq"])) >= turn.seq
+        (released,) = _ends(sim)
+        assert released.type == "speak.released" and released.seq > cleared.seq
+        await sim.stop()
+        assert check_path(sim.k.path, "offline").ok
+
+    arun(case())
+
+
+def test_a_fastc_turn_whose_request_missed_the_line_binds_nothing(
+    tmp_path: Path,
+) -> None:
+    """Review D2: a FastC generation requested before the rep's line lands
+    after it: its turn does not bind the line's fence, so the accept waits
+    for the generation that saw the line."""
+
+    async def case() -> None:
+        fast_cp = Tickets()
+        sim = Sim(tmp_path, gates={"fast_cp": fast_cp})
+        await sim.start()
+        await granted(sim)
+        fast_cp.let(0)
+        sim.rep_says("Let me see.")  # FastC's request for it is held
+        await sim.vt.run_for(500)
+        old = sim.of("fast.request", lane="cp")[-1]
+        sim.rep_composes()
+        assert sim.accept().startswith("accept_offer: accept line queued")
+        await sim.vt.run_for(500)
+        sim.rep_done(FIX)
+        await sim.vt.run_for(200)
+        said = _one(sim, "utt.final", text=FIX)
+        fence = _fence_of(sim, said)
+        assert int(str(old.payload["basis_seq"])) < said.seq
+        fast_cp.let(1)  # only the old generation answers
+        await sim.vt.run_for(500)
+        assert sim.of("fast.turn", gen_id=old.payload["gen_id"])
+        assert sim.k.slow is not None
+        sim.k.slow.wake("fence")
+        await sim.vt.run_for(5_000)
+        assert _up(sim, fence) and _ends(sim) == []
+        fast_cp.let(None)  # the generation that saw the line answers
+        await sim.vt.run_for(20_000)
+        (released,) = _ends(sim)
+        cleared = _cleared(sim, fence)
+        assert released.type == "speak.released" and released.seq > cleared.seq
         await sim.stop()
 
     arun(case())

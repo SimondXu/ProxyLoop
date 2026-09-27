@@ -81,7 +81,12 @@ def test_1_a_stop_while_an_accept_is_queued_revokes_it_under_the_fence(
         fast_user.open.clear()  # FastU has not answered the stop yet
         sim.user_says("Stop, do not accept anything.")
         await sim.vt.run_for(15_000)
-        (fence,) = sim.of("authority.fence", op="raised")
+        (msg,) = sim.of("user.msg")
+        (fence,) = [
+            f
+            for f in sim.of("authority.fence", op="raised")
+            if f.cause_ids == (msg.event_id,)
+        ]
         (revoked,) = sim.of("speak.revoked")
         assert revoked.payload["reason"] == "fence" and revoked.seq > fence.seq
         (line,) = sim.of("speak.verbatim", kind="accept")
@@ -95,8 +100,10 @@ def test_1_a_stop_while_an_accept_is_queued_revokes_it_under_the_fence(
         assert _cites(replan, revoked)  # accept_revoked: only a real revoke
         fast_user.open.set()  # FastU answers; Slow sees it; the fence clears
         await sim.vt.run_for(1_000)
-        (cleared,) = sim.of("authority.fence", op="cleared")
-        assert sim.bb.fences == () and cleared.payload["fence_id"] == "fence-1"
+        cleared = sim.of(
+            "authority.fence", op="cleared", fence_id=fence.payload["fence_id"]
+        )
+        assert sim.bb.fences == () and cleared
         assert _status(sim) is CaseStatus.IN_CALL  # replanned after Slow's step
         await sim.stop()
 
@@ -209,8 +216,8 @@ def test_a_partner_turn_begun_before_a_queued_accept_lands_first(
         revoked = sim.of("speak.revoked", cap_id="cap-1")
         assert len(released) + len(revoked) == 1  # the line ends exactly once
         assert revoked or said.seq < released[0].seq  # heard, then revalidated
-        (cleared,) = sim.of("authority.fence", op="cleared")  # Slow saw it (C)
-        assert released and released[0].seq > cleared.seq
+        cleared = sim.of("authority.fence", op="cleared")  # Slow saw it (C)
+        assert released and released[0].seq > max(c.seq for c in cleared)
         for moved in sim.of("status.changed", status="COMMITTED"):
             assert said.seq < moved.seq
         await sim.stop()
