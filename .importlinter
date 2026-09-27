@@ -55,3 +55,18 @@ forbidden_modules =
     jinja2
     hypothesis
     pytest
+
+[importlinter:contract:serve-is-read-only]
+name = serve is read-only (ARCHITECTURE section 2)
+type = forbidden
+source_modules =
+    proxyloop.serve
+forbidden_modules =
+    proxyloop.contract.protocol
+    proxyloop.core.bus
+    proxyloop.core.log
+    proxyloop.core.fold
+    proxyloop.kernel
+    proxyloop.llm
+    proxyloop.slow
+    proxyloop.env
