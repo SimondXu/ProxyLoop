@@ -14,7 +14,7 @@ from tests.serve.client import client, frames, get
 from tests.serve.conftest import Bundles
 
 from proxyloop.contract.bundle import EVENTS, MANIFEST, PROMPTS
-from proxyloop.serve.api import _Reader  # pyright: ignore[reportPrivateUsage]
+from proxyloop.serve.stream import Reader
 
 TRAIN, TEST = b'"split":"train"', b'"split":"test"'  # session.started (compact)
 M_TRAIN, M_TEST = '"split": "train"', '"split": "test"'  # manifest (indented)
@@ -100,4 +100,4 @@ def test_the_tail_never_sends_a_test_split_run(bundles: Bundles) -> None:
     # Even if the file changed after the check: seq 0 itself closes 4404.
     first = (bundles.root / bundles.plain / EVENTS).read_bytes().splitlines()[0]
     log = io.BytesIO(first.replace(TRAIN, TEST) + b"\n")
-    assert _Reader(log, bundles.plain, 0).step() == ([], (4404, "unknown run"), False)
+    assert Reader(log, bundles.plain, 0).step() == ([], (4404, "unknown run"), False)
