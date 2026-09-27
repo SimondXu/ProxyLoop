@@ -28,9 +28,13 @@ from proxyloop.contract.config import SessionConfig, config_hash
 from proxyloop.contract.events import Event, check_causes, event_id
 from proxyloop.contract.llm import ModelRef
 from proxyloop.contract.protocol import fingerprint
-from proxyloop.contract.state import Spend
+from proxyloop.contract.state import CaseStatus, OfferPublic, PublicFact, Spend
+from proxyloop.contract.views import FastView, Trigger
+from proxyloop.env.tasks.loader import instance_hash, load_task
 
 RUN = "run-s"
+TASK_REF = "cp-direct-discount@1"
+INSTANCE = instance_hash(load_task("cp-direct-discount"))  # a piloted train family
 WALL = datetime(2026, 9, 26, tzinfo=UTC)
 _WORLD = {
     "user.sim": "world.simuser",
@@ -44,6 +48,7 @@ _ACTOR = {
     "approval.requested": "guard",
     "offer.recorded": "guard",
     "approval.post": "sim_approver",
+    "action.authorized": "guard",
 }
 
 
@@ -68,7 +73,7 @@ class Stream:
         stream = "world" if type_ in _WORLD else "ops" if type_ in _OPS else "agent"
         body = dict(payload or {})
         if type_ == "session.started":
-            body |= {"task_ref": "cp-direct-discount@1", "instance_hash": "i1"}
+            body |= {"task_ref": TASK_REF, "instance_hash": INSTANCE}
             body |= {"split": "train", "models": {}, "renderer_fp": {}, "attest": None}
             body |= {"contract_version": CONTRACT_VERSION, "git_sha": "t"}
             body |= {"parity": "not_applicable"}
@@ -99,25 +104,30 @@ class Stream:
     def fast(
         self,
         lane: str,
-        trigger: str,
+        trigger: str | None,
         response_items: Sequence[Mapping[str, object]] = (),
-        prompt: str = "",
+        view: FastView | None = None,
         ref: ModelRef = QWEN,
         first_token_ms: int = 50,
         ttfs_ms: int | None = 80,
         wait_ms: int = 10,
+        heard_start: int | None = None,
     ) -> str:
-        """One Fast generation answering ``trigger``: request, call, turn,
-        sentences, delivered lines. Returns its gen_id."""
+        """One Fast generation answering ``trigger``: request (with its stored
+        view), call, turn, sentences, delivered lines. ``heard_start`` sets
+        ``t_start_ms`` that many ms before each delivery. Returns its gen_id."""
 
         self._calls += 1
         gen_id = f"{lane}-g{self._calls}"
         actor = f"fast.{lane}"
-        req = {"lane": lane, "gen_id": gen_id, "trigger": "t", "view_sha": "v"}
-        req |= {"prompt_sha": self.store("messages", prompt or f"p{self._calls}")}
+        view = view or fast_view(lane)
+        shown = self.store("view", canonical_json(view.model_dump(mode="json")))
+        req = {"lane": lane, "gen_id": gen_id, "trigger": "t", "view_sha": shown}
+        req |= {"prompt_sha": self.store("messages", f"p{self._calls}")}
         req |= {"profile": f"pl_{lane}_v1", "basis_seq": len(self.events) - 1}
         req |= {"model_ref": ref.model_dump(mode="json")}
-        asked = self.emit("fast.request", req, [trigger], actor, dt=wait_ms)
+        causes = [trigger] if trigger else []  # None: a timer trigger
+        asked = self.emit("fast.request", req, causes, actor, dt=wait_ms)
         start = self.t
         record = call_record(
             ref,
@@ -137,7 +147,10 @@ class Stream:
             utt = {"lane": lane, "gen_id": gen_id, "utt_id": f"{gen_id}-u{n}"}
             said = self.emit("fast.sentence", utt | {"text": item["text"]}, [turned])
             heard = {"text_generated": item["text"], "text_heard": item["text"]}
-            out = {"lane": lane, "utt_id": utt["utt_id"], "interrupted": False}
+            out: dict[str, object] = {"lane": lane, "utt_id": utt["utt_id"]}
+            out["interrupted"] = False
+            if heard_start is not None:
+                out["t_start_ms"] = self.t + 10 - heard_start
             self.emit("utt.delivered", out | heard, [said])
         for item in response_items:
             if item["kind"] == "relay":
@@ -188,8 +201,8 @@ class Stream:
             contract_version=CONTRACT_VERSION,
             cfg=self.cfg,
             cfg_hash=config_hash(self.cfg),
-            task_ref="cp-direct-discount@1",
-            instance_hash="i1",
+            task_ref=TASK_REF,
+            instance_hash=INSTANCE,
             split="train",
             fingerprints={"pl_cp_v1": fingerprint("pl_cp_v1")},
             models={"fast_cp": RoleModel(ref=QWEN), "slow": RoleModel(ref=SONNET)},
@@ -237,5 +250,34 @@ def offer_slot(
     }
 
 
-def prompt_text(*lines: str) -> str:
-    return canonical_json({"messages": [{"role": "user", "content": "\n".join(lines)}]})
+def fast_view(
+    lane: str,
+    partner: Sequence[str] = (),
+    agent: Sequence[str] = (),
+    offers: Sequence[OfferPublic] = (),
+    facts: Sequence[PublicFact] = (),
+    summary: str = "",
+    brief: str = "",
+) -> FastView:
+    """A stored FastView: partner lines, then the agent's own lines."""
+    lines = [
+        {"utt_id": f"p{n}", "speaker": "partner", "text": t}
+        for n, t in enumerate(partner)
+    ]
+    lines += [
+        {"utt_id": f"a{n}", "speaker": "agent", "text": t} for n, t in enumerate(agent)
+    ]
+    trigger = Trigger(kind="user_msg" if lane == "user" else "rep_spoke")
+    return FastView.model_validate(
+        {
+            "lane": lane,
+            "brief": brief,
+            "public_summary": summary,
+            "action_log": (),
+            "offers": offers,
+            "public_facts": facts,
+            "status": CaseStatus.IN_CALL,
+            "transcript": lines,
+            "trigger": trigger,
+        }
+    )

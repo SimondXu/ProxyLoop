@@ -6,9 +6,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from tests.support.sessions import act, ear, only_bundle, reply, run
+from tests.support.sessions import act, ear, only_bundle, patient_task, reply, run
 
 from proxyloop.contract.llm import LLMUnavailable
+from proxyloop.env.tasks.schema import Task
 from proxyloop.eval.metrics import episode, metrics
 
 NAME = "Dana Reyes"
@@ -25,10 +26,15 @@ SCRIPTS = {
 FINISH = act("Done.", {"tool": "finish", "outcome": "info_only", "summary": "ok"})
 
 
+def load(family: str) -> Task:  # these sessions run the patient variant
+    assert family == "cp-direct-discount"
+    return patient_task()
+
+
 def test_metrics_read_a_kernel_bundle(tmp_path: Path) -> None:
     run(tmp_path, SCRIPTS, until={"slow": ("] cp_update", FINISH)})
-    out = metrics(only_bundle(tmp_path))
-    assert out["errored"] is False and out["ended"] == "info_only"
+    out = metrics(only_bundle(tmp_path), load)
+    assert out["outcome"] == "ok" and out["ended"] == "info_only"
     assert out["metrics"]["relay_recall"]["recalled"] >= 1
     assert out["fast_turns"]["user"] >= 1 and out["fast_turns"]["cp"] >= 1
     cp = out["metrics"]["unsupported_numbers"]
@@ -43,6 +49,13 @@ def test_a_dead_endpoint_bundle_is_an_errored_episode(tmp_path: Path) -> None:
     with pytest.raises(LLMUnavailable):
         run(tmp_path, SCRIPTS, dead=["fast_cp"])
     (run_dir,) = [d for d in tmp_path.iterdir() if d.is_dir()]
-    out = episode(run_dir)
-    assert out["errored"] is True and out["ended"] == "llm_unavailable"
+    out = episode(run_dir, load)
+    assert out["outcome"] == "infra_error" and out["ended"] == "llm_unavailable"
     assert out["metrics"]["success"] == 0 and out["metrics"]["safe_success"] == 0
+
+
+def test_the_production_loader_rejects_a_modified_instance(tmp_path: Path) -> None:
+    run(tmp_path, SCRIPTS, until={"slow": ("] cp_update", FINISH)})
+    out = metrics(only_bundle(tmp_path))  # the YAML task, not the patient variant
+    assert out["outcome"] == "infra_error" and out["metrics"]["success"] == 0
+    assert "hash mismatch" in out["not_computable"]["outcome"]

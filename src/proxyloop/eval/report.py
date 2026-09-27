@@ -2,11 +2,12 @@
 ``{report_id, git_sha, contract_version, spec_hash, prereg_hash?, bundles:
 [{run_id, evidence_sha}], tables: {name: {columns, rows, n, ci}}, generated_at}``.
 
-Rows are keyed by name (``/tables/outcome/rows/C2/error_rate``); ``ci`` holds
-``[lo, hi]`` per row and column. Errored episodes stay in every denominator
-(I10); a rate with any unknown episode value is ``None``, and the
-``not_computable`` table says why. Latency rows name the endpoint they were
-measured on: hosted latency is "relay-measured", never self-hosted.
+Rows are keyed by name (``/tables/outcome/rows/C2/model_failure_rate``); ``ci``
+holds ``[lo, hi]`` per row and column. Failed episodes stay in every denominator
+(I10); the model-failure rate leads the outcome table (the integrity gate counts
+infra errors only, so this rate must never be hidden). A rate with any unknown
+episode value is ``None`` and the ``not_computable`` table says why. Latency
+rows name their endpoint ("relay-measured" for hosted) and their turn counts.
 """
 
 from __future__ import annotations
@@ -27,11 +28,13 @@ Episode = dict[str, Any]
 Table = dict[str, Any]
 _POOLED = {  # metric: (hits, trials), pooled over episodes
     "relay_recall": ("recalled", "revealed"),
+    "relay_precision_value_only": ("correct", "facts"),
     "offer_capture": ("captured", "voiced"),
     "approval_c": ("complete", "cards"),
 }
 _PER_100 = ("unsupported_numbers", "directive_error")
 _LATENCY = {"ttft": "ttft_ms", "ttfs": "ttfs_ms", "heard": "time_to_heard_ms"}
+_COUNTS = ("turns", "untimed", "ttfs_missing", "heard_missing")
 
 
 def evidence_sha(run_dir: Path) -> str:
@@ -59,24 +62,30 @@ def _rate(k: int, n: int) -> tuple[float, list[float]]:
 def outcome_table(
     by_cond: Mapping[str, Sequence[Episode]], seed: int, resamples: int
 ) -> Table:
-    columns = ["episodes", "errors", "error_rate", "success", "safe_success"]
-    columns += ["approval_b", *_POOLED, *(f"{m}_per_100" for m in _PER_100)]
+    columns = ["episodes", "model_failures", "model_failure_rate", "infra_errors"]
+    columns += ["infra_error_rate", "success", "safe_success", "approval_b"]
+    columns += ["accepts", *_POOLED, "offer_terms_unscored"]
+    columns += [f"{m}_per_100" for m in _PER_100]
     table = _table(columns)
     boot = {"seed": seed, "resamples": resamples}
     for cond, eps in by_cond.items():
         row: dict[str, Any] = {"episodes": len(eps)}
         ci: dict[str, list[float]] = {}
-        row["errors"] = errors = sum(e["errored"] for e in eps)
-        row["error_rate"], ci["error_rate"] = _rate(errors, len(eps))
+        for kind in ("model_failure", "infra_error"):
+            row[f"{kind}s"] = k = sum(e["outcome"] == kind for e in eps)
+            row[f"{kind}_rate"], ci[f"{kind}_rate"] = _rate(k, len(eps))
         for name in ("success", "safe_success"):
             values = [e["metrics"][name] for e in eps]
             row[name] = None
             if None not in values:
                 row[name], ci[name] = _rate(sum(values), len(values))
         known = [b for e in eps if (b := e["metrics"]["approval_b"]) is not None]
-        row["approval_b"] = None
+        row["approval_b"], row["accepts"] = None, sum(b["accepts"] for b in known)
         if known:
-            row["approval_b"], ci["approval_b"] = _rate(sum(known), len(known))
+            held = sum(b["held"] for b in known)
+            row["approval_b"], ci["approval_b"] = _rate(held, len(known))
+        offers = [o for e in eps if (o := e["metrics"]["offer_capture"]) is not None]
+        row["offer_terms_unscored"] = sum(o["unscored"] for o in offers)
         for name, (hit, of) in _POOLED.items():
             found = [v for e in eps if (v := e["metrics"][name]) is not None]
             pairs = [(v[hit], v[of]) for v in found if v[of]]
@@ -104,19 +113,25 @@ def latency_table(
     by_cond: Mapping[str, Sequence[Episode]], seed: int, resamples: int
 ) -> Table:
     """p50/p95 per condition, lane and endpoint, with episode-clustered CIs."""
-    table = _table([f"{k}_{q}" for k in _LATENCY for q in ("p50", "p95")])
+    columns = [f"{k}_{q}" for k in _LATENCY for q in ("p50", "p95")]
+    table = _table([*_COUNTS, *columns])
     groups: dict[str, dict[str, list[list[float]]]] = {}
+    counts: dict[str, dict[str, int]] = {}
     for cond, eps in by_cond.items():
         for e in eps:
             latency: dict[str, dict[str, Any]] = e["metrics"]["latency"] or {}
             for lane, labels in latency.items():
                 for label, samples in labels.items():
-                    group = groups.setdefault(f"{cond}|{lane}|{label}", {})
+                    name = f"{cond}|{lane}|{label}"
+                    group = groups.setdefault(name, {})
+                    tally = counts.setdefault(name, dict.fromkeys(_COUNTS, 0))
+                    for c in _COUNTS:
+                        tally[c] += samples[c]
                     for key, field in _LATENCY.items():
                         if xs := samples[field]:
                             group.setdefault(key, []).append(xs)
     for name, group in sorted(groups.items()):
-        row: dict[str, float | None] = dict.fromkeys(table["columns"])
+        row: dict[str, float | None] = {**dict.fromkeys(columns), **counts[name]}
         ci: dict[str, list[float]] = {}
         for key, clusters in group.items():
             for q, level in (("p50", 0.5), ("p95", 0.95)):
@@ -125,7 +140,7 @@ def latency_table(
                 stat = _quantile_of(level)
                 boot = cluster_bootstrap(clusters, stat, seed=seed, resamples=resamples)
                 ci[f"{key}_{q}"] = list(boot)
-        _put(table, name, row, sum(len(c) for c in group.get("ttft", [])), ci)
+        _put(table, name, row, counts[name]["turns"], ci)
     return table
 
 
@@ -135,8 +150,8 @@ def _quantile_of(level: float) -> Callable[[list[float]], float]:
 
 def cost_table(by_cond: Mapping[str, Sequence[Episode]]) -> Table:
     """Relay USD per episode by role (descriptive, no CI); ``None`` while any
-    call of the role is unpriced. GPU $ come from Modal usage, not bundles."""
-    columns = ["usd_per_episode", "usd_priced_per_episode"]
+    call of the role is unpriced or on GPU time, with ``usd_missing`` saying why."""
+    columns = ["usd_per_episode", "usd_missing", "usd_priced_per_episode"]
     table = _table([*columns, "unpriced_calls", "gpu_time_calls"])
     for cond, eps in by_cond.items():
         readable = [
@@ -148,6 +163,10 @@ def cost_table(by_cond: Mapping[str, Sequence[Episode]]) -> Table:
             priced = [0.0 if r is None else r["usd_priced"] for r in roles]
             row = {
                 "usd_per_episode": None if None in usd else fmean(usd),
+                "usd_missing": "; ".join(
+                    sorted({r["usd_missing"] for r in roles if r and r["usd_missing"]})
+                )
+                or None,
                 "usd_priced_per_episode": fmean(priced),
                 "unpriced_calls": sum(r["unpriced_calls"] for r in roles if r),
                 "gpu_time_calls": sum(r["gpu_time_calls"] for r in roles if r),
