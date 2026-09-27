@@ -129,6 +129,7 @@ def create_app(
         listed: list[dict[str, object]] = []
         for run_id, run in sorted(list_runs(roots).items(), reverse=True):
             ref, root = task_ref(run), run.root.resolve().name
+            ref = redact(ref.encode()).decode() if ref else ref
             listed.append(
                 {"run_id": run_id, "root": root, "complete": bool(ref), "task_ref": ref}
             )

@@ -14,7 +14,8 @@ known case; else 403 ``{"error": "origin" | "csrf"}`` or 404:
   raises, 503 ``unavailable``, and that approval id stays 503 (fail closed).
   The endpoint never decides, mints or emits a decision (I6).
 - ``POST /api/cases/{case}/messages`` (user) and ``/rep`` (the human rep):
-  text into the case's user-lane and cp-lane ingress.
+  text into the case's user-lane and cp-lane ingress; if the ingress raises,
+  503 ``unavailable``, logged.
 
 A Denial does not use up the single-use slot: only a post handed to the kernel
 does. ``guard.decide`` is a pure function of the board, so a later POST is
@@ -266,14 +267,22 @@ def add_case_routes(
             raise Refused(503, "unavailable") from err
         return JSONResponse({"status": "posted"})
 
+    def send(ingress: Callable[[str], None], text: str, case_id: str) -> Response:
+        try:
+            ingress(text)
+        except Exception as err:  # loud: logged, 503, no retry
+            _log.exception("the ingress failed for case %s", case_id)
+            raise Refused(503, "unavailable") from err
+        return JSONResponse({"status": "sent"})
+
     @app.post("/api/cases/{case_id}/messages")
     async def message(request: Request, case_id: Id) -> Response:
         case = await allowed(request, "user", case_id)
-        case.user_message((await parse(request, TextBody)).text)
-        return JSONResponse({"status": "sent"})
+        text = (await parse(request, TextBody)).text
+        return send(case.user_message, text, case_id)
 
     @app.post("/api/cases/{case_id}/rep")
     async def rep_line(request: Request, case_id: Id) -> Response:
         case = await allowed(request, "rep", case_id)
-        case.rep_utterance((await parse(request, TextBody)).text)
-        return JSONResponse({"status": "sent"})
+        text = (await parse(request, TextBody)).text
+        return send(case.rep_utterance, text, case_id)
