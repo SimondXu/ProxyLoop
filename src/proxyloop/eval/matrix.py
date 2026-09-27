@@ -26,7 +26,11 @@ from proxyloop.kernel.session import run_session
 from proxyloop.llm.spend import RunawaySpend
 
 MAX_ERROR_RATE = 0.05
-_RERUN = frozenset({"llm_unavailable", "budget", "unended", "unreadable"})
+# End reasons that abort the matrix, whatever run_session raised. On resume a
+# cell is re-run only if no model output could be scored: the endpoint died,
+# or the bundle is unended or unreadable. A budget stop is final (infra_error).
+_ABORT = frozenset({"llm_unavailable", "budget"})
+_RERUN = frozenset({"llm_unavailable", "unended", "unreadable"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,10 +117,10 @@ async def run_matrix(
     *,
     seams: Seams | None = None,
 ) -> list[CellRun]:
-    """Resumable: a cell whose folder holds a finished bundle (ended, and not
-    by an abort) is skipped; an aborted, unended or unreadable one is re-run
-    beside it (old bundles are kept). A cell that leaves no readable bundle
-    is an infra_error cell whose ``path`` is its folder."""
+    """Resumable: a cell whose folder holds a bundle not in ``_RERUN`` is
+    skipped (budget, timeout and abandoned included); otherwise it is re-run
+    beside the old bundles, which are kept. A cell that leaves no bundle is an
+    infra_error cell whose ``path`` is its folder."""
     runs: list[CellRun] = []
     seen: dict[tuple[str, str], str] = {}
     for k, cell in enumerate(cells):
@@ -129,17 +133,20 @@ async def run_matrix(
         folder.mkdir(parents=True, exist_ok=True)
         base = configs[cell.condition].model_dump()
         cfg = SessionConfig.model_validate(base | {"seed": cell.seed})
-        error: str | None = None
+        caught: Exception | None = None
         try:
             keywords: Mapping[str, Any] = seams(cell) if seams else {}
             await run_session(cfg, tasks[cell.instance], runs_dir=folder, **keywords)
-        except (LLMUnavailable, RunawaySpend):
-            raise  # a dead endpoint or runaway spend aborts the matrix (I8)
         except Exception as err:  # the episode failed; its bundle says how
-            error = f"{type(err).__name__}: {err}"
+            caught = err
         new = sorted(_bundles(folder) - before)
         path = new[-1] if new else folder
         reason = _ended(path, seen) if new else "no_bundle"
+        if isinstance(caught, (LLMUnavailable, RunawaySpend)):
+            raise caught  # a dead endpoint or runaway spend aborts the matrix (I8)
+        if reason in _ABORT:  # e.g. P3/attest failures close as llm_unavailable
+            raise MatrixAborted(f"{cell} ended {reason}") from caught
+        error = None if caught is None else f"{type(caught).__name__}: {caught}"
         runs.append(CellRun(cell, path, reason, error))
     return runs
 

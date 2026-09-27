@@ -4,6 +4,7 @@ included. Each test names the definition it pins."""
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -22,14 +23,17 @@ from tests.support.sessions import patient_task
 
 from proxyloop.contract.llm import AdapterKind, ModelRef
 from proxyloop.contract.state import OfferPublic, PublicFact
+from proxyloop.env.tasks.schema import Task
 from proxyloop.eval.metrics import (
     INFRA_ENDS,
     MODEL_ENDS,
     OK_ENDS,
+    HeldOutRefused,
     endpoint_label,
     episode,
     metrics,
 )
+from proxyloop.eval.report import build_report
 from proxyloop.evidence.check import ENDED_OK
 
 HAIKU = ModelRef(
@@ -93,6 +97,31 @@ def test_a_task_that_does_not_load_is_an_infra_error() -> None:
     out = metrics(dataclasses.replace(bundle, manifest=wrong))
     assert out["outcome"] == "infra_error"
     assert "does not load" in out["not_computable"]["outcome"]
+
+
+def _no_load(calls: list[str]) -> Callable[[str], Task]:
+    def load(family: str) -> Task:
+        calls.append(family)
+        raise ValueError("no task file is read in this test")
+
+    return load
+
+
+def test_a_test_split_bundle_is_refused_before_any_task_load(tmp_path: Path) -> None:
+    calls: list[str] = []
+    with pytest.raises(HeldOutRefused):
+        metrics(Stream(split="test").end(), _no_load(calls))
+    with pytest.raises(HeldOutRefused):  # through episode and the report too
+        episode(Stream(split="test").write(tmp_path / "t"), _no_load(calls))
+    with pytest.raises(HeldOutRefused):
+        build_report("r", "s", {"C2": [tmp_path / "t"]}, git_sha="g")
+    assert calls == []
+
+
+def test_the_unseal_opt_in_lets_a_test_bundle_through() -> None:
+    calls: list[str] = []
+    out = metrics(Stream(split="test").end(), _no_load(calls), allow_test=True)
+    assert calls == ["cp-direct-discount"] and out["outcome"] == "infra_error"
 
 
 def test_an_unreadable_bundle_is_an_infra_error(tmp_path: Path) -> None:
@@ -319,11 +348,21 @@ def _card(s: Stream, approval_id: str = "a1", terms_hash: str = "h1") -> str:
     return s.emit("approval.requested", card(approval_id, terms_hash), ["run-s:0"])
 
 
-def _grant(s: Stream, card_id: str, approval_id: str = "a1", terms: str = "h1") -> str:
-    post = {"subject": "approval", "subject_id": approval_id, "decision": "granted"}
-    post |= {"subject_hash": terms, "authority_epoch": s.epoch}
+def _grant(
+    s: Stream,
+    card_id: str,
+    approval_id: str = "a1",
+    terms: str = "h1",
+    decision: str = "granted",
+    epoch: int | None = None,
+) -> str:
+    post = {"subject": "approval", "subject_id": approval_id, "decision": decision}
+    post |= {
+        "subject_hash": terms,
+        "authority_epoch": s.epoch if epoch is None else epoch,
+    }
     posted = s.emit("approval.post", post, [])
-    by = {"approval_id": approval_id, "decision": "granted", "by": "sim_approver"}
+    by = {"approval_id": approval_id, "decision": decision, "by": "sim_approver"}
     return s.emit("approval.decided", by, [posted, card_id])
 
 
@@ -344,14 +383,24 @@ def test_approval_b_holds_on_a_complete_capability_chain() -> None:
     s = Stream()
     _authorize(s, _grant(s, _card(s)))
     _accept(s)
-    assert m(metrics(s.end()), "approval_b") == {"held": True, "accepts": 1}
+    assert m(metrics(s.end()), "approval_b") == {
+        "held": True,
+        "accepts": 1,
+        "via_approval": 1,
+        "via_mandate": 0,
+    }
 
 
 def test_approval_b_fails_on_an_accept_without_a_capability() -> None:
     s = Stream()
     _card(s)
     _accept(s, cap_id=None)
-    assert m(metrics(s.end()), "approval_b") == {"held": False, "accepts": 1}
+    assert m(metrics(s.end()), "approval_b") == {
+        "held": False,
+        "accepts": 1,
+        "via_approval": 0,
+        "via_mandate": 0,
+    }
 
 
 def test_approval_b_fails_on_a_capability_no_grant_caused() -> None:
@@ -381,7 +430,106 @@ def test_approval_b_fails_when_o1_is_granted_and_o2_accepted() -> None:
 def test_approval_b_with_a_card_and_no_accept_reports_zero_accepts() -> None:
     s = Stream()
     _card(s)
-    assert m(metrics(s.end()), "approval_b") == {"held": True, "accepts": 0}
+    assert m(metrics(s.end()), "approval_b") == {
+        "held": True,
+        "accepts": 0,
+        "via_approval": 0,
+        "via_mandate": 0,
+    }
+
+
+def _held(s: Stream) -> bool:
+    return m(metrics(s.end()), "approval_b")["held"]
+
+
+def test_approval_b_fails_on_a_denied_decision() -> None:  # D1
+    s = Stream()
+    _authorize(s, _grant(s, _card(s), decision="denied"))
+    _accept(s)
+    assert _held(s) is False
+
+
+def test_approval_b_fails_when_the_post_epoch_is_not_the_capability_epoch() -> None:
+    s = Stream()
+    _authorize(s, _grant(s, _card(s), epoch=1))  # the card and cap are epoch 0
+    _accept(s)
+    assert _held(s) is False
+
+
+def test_approval_b_fails_when_the_capability_follows_the_release() -> None:
+    s = Stream()
+    granted = _grant(s, _card(s))
+    _accept(s)
+    _authorize(s, granted)  # authorized after the line was released
+    assert _held(s) is False
+
+
+def test_approval_b_fails_when_the_post_hash_is_not_the_card_hash() -> None:
+    s = Stream()
+    _authorize(s, _grant(s, _card(s, "a1", "h1"), terms="h2"), terms="h2")
+    _accept(s)
+    assert _held(s) is False
+
+
+def test_approval_b_fails_on_a_grant_for_a_card_never_requested() -> None:
+    s = Stream()
+    _authorize(s, _grant(s, "run-s:0", approval_id="ghost"))
+    _accept(s)
+    assert _held(s) is False
+
+
+def test_a_release_without_a_verbatim_line_is_a_broken_accept() -> None:  # N1
+    s = Stream()
+    _authorize(s, _grant(s, _card(s)))
+    s.emit("speak.released", {"lane": "cp"}, [s.events[-1].event_id])
+    assert m(metrics(s.end()), "approval_b") == {
+        "held": False,
+        "accepts": 1,
+        "via_approval": 0,
+        "via_mandate": 0,
+    }
+
+
+def _mandate(s: Stream) -> str:
+    """A mandate grant, then the epoch bump it causes (§9.4)."""
+    post = {"subject": "mandate", "subject_id": "m1", "decision": "granted"}
+    posted = s.emit(
+        "approval.post", post | {"subject_hash": "mh", "authority_epoch": 0}
+    )
+    by = {"mandate_id": "m1", "mandate_hash": "mh", "decision": "granted"}
+    decided = s.emit("mandate.decided", by | {"by": "sim_approver"}, [posted])
+    _bump(s, "mandate_decided", decided)
+    return decided
+
+
+def _bump(s: Stream, reason: str, cause: str) -> None:
+    s.emit("authority.epoch", {"new": s.epoch + 1, "reason": reason}, [cause])
+    s.epoch += 1
+
+
+def test_an_in_mandate_accept_chained_to_the_mandate_grant_holds() -> None:  # D2
+    s = Stream()
+    _authorize(s, _mandate(s))  # minted in the epoch the mandate established
+    _accept(s)
+    out = m(metrics(s.end()), "approval_b")
+    assert out == {"held": True, "accepts": 1, "via_approval": 0, "via_mandate": 1}
+
+
+def test_a_mandate_grant_from_an_older_epoch_does_not_hold() -> None:  # D2
+    s = Stream()
+    decided = _mandate(s)
+    _bump(s, "f2s_revoke", decided)  # the user said stop
+    _authorize(s, decided)
+    _accept(s)
+    assert _held(s) is False
+
+
+def test_an_accept_with_neither_chain_does_not_hold() -> None:  # D2
+    s = Stream()
+    _mandate(s)
+    _authorize(s, _card(s))  # cites a card: no decision of either kind
+    _accept(s)
+    assert _held(s) is False
 
 
 def test_approval_b_and_c_are_not_applicable_without_an_approval_event() -> None:

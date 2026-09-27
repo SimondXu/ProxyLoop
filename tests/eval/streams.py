@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from tests.contract.samples import QWEN, SONNET, call_record, session_config
 
@@ -53,8 +54,13 @@ _ACTOR = {
 
 
 class Stream:
-    def __init__(self, cfg: SessionConfig | None = None) -> None:
+    def __init__(
+        self,
+        cfg: SessionConfig | None = None,
+        split: Literal["train", "dev", "test"] = "train",
+    ) -> None:
         self.cfg = cfg or session_config()
+        self.split: Literal["train", "dev", "test"] = split
         self.events: list[Event] = []
         self.prompts: dict[str, PromptRecord] = {}
         self.t, self.epoch, self._calls = 0, 0, 0
@@ -74,7 +80,12 @@ class Stream:
         body = dict(payload or {})
         if type_ == "session.started":
             body |= {"task_ref": TASK_REF, "instance_hash": INSTANCE}
-            body |= {"split": "train", "models": {}, "renderer_fp": {}, "attest": None}
+            body |= {
+                "split": self.split,
+                "models": {},
+                "renderer_fp": {},
+                "attest": None,
+            }
             body |= {"contract_version": CONTRACT_VERSION, "git_sha": "t"}
             body |= {"parity": "not_applicable"}
         event = Event(
@@ -203,7 +214,7 @@ class Stream:
             cfg_hash=config_hash(self.cfg),
             task_ref=TASK_REF,
             instance_hash=INSTANCE,
-            split="train",
+            split=self.split,
             fingerprints={"pl_cp_v1": fingerprint("pl_cp_v1")},
             models={"fast_cp": RoleModel(ref=QWEN), "slow": RoleModel(ref=SONNET)},
             p3="not_applicable",

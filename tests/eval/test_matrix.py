@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.eval.streams import Stream
 from tests.eval.test_kernel_bundle import FINISH, SCRIPTS
 from tests.support.manual_clock import ScaledClock
 from tests.support.sessions import clients, ear, fake_config, patient_task
@@ -174,6 +175,43 @@ def test_a_cell_that_leaves_no_bundle_is_an_infra_error_cell(
     (run,) = _run(tmp_path, [Cell("C2", "i1", 1)])
     assert run.reason == "no_bundle" and run.error == "ValueError: refused"
     assert episode(run.path, load)["outcome"] == "infra_error"
+
+
+def test_an_llm_unavailable_bundle_aborts_whatever_was_raised(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:  # D3: P3/attest failures close as llm_unavailable, then raise others
+    async def session(*args: Any, runs_dir: Path, **kwargs: Any) -> None:
+        Stream().write(runs_dir / "run-p3", "llm_unavailable")
+        raise RuntimeError("P3: vLLM /tokenize != the pinned tokenizer")
+
+    monkeypatch.setattr("proxyloop.eval.matrix.run_session", session)
+    with pytest.raises(MatrixAborted, match="llm_unavailable"):
+        _run(tmp_path, [Cell("C2", "i1", 1), Cell("C2", "i1", 2)])
+    assert len(list(tmp_path.iterdir())) == 1  # the second cell never ran
+
+
+def test_resume_skips_timeout_abandoned_and_budget_cells(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:  # D4: a budget stop is final, never re-run
+    cells = [Cell("C2", "i1", seed) for seed in (1, 2, 3)]
+    ends = ("timeout", "abandoned", "budget")
+    for k, (cell, end) in enumerate(zip(cells, ends, strict=True)):
+        Stream().write(tmp_path / f"{k:04d}-C2-i1-s{cell.seed}" / "run-s", end)
+    calls: list[object] = []
+
+    async def session(*args: Any, **kwargs: Any) -> None:
+        calls.append(args)
+
+    monkeypatch.setattr("proxyloop.eval.matrix.run_session", session)
+    runs = _run(tmp_path, cells)
+    assert calls == [] and [r.reason for r in runs] == list(ends)
+    eps = [episode(r.path) for r in runs]
+    assert [e["outcome"] for e in eps] == [
+        "model_failure",
+        "model_failure",
+        "infra_error",
+    ]
+    assert integrity(eps).infra_errors == 1  # the budget stop is counted
 
 
 def test_a_changed_served_model_aborts_the_matrix() -> None:

@@ -140,3 +140,20 @@ def test_gpu_time_leaves_usd_unknown_with_its_reason(tmp_path: Path) -> None:
     report = build_report("r", "s", {"C2": [s.write(tmp_path / "x")]}, git_sha="g")
     row = report["tables"]["cost"]["rows"]["C2|fast_cp"]
     assert row["usd_per_episode"] is None and "Modal" in row["usd_missing"]
+
+
+def test_budget_stops_are_counted_apart_from_infra_errors(tmp_path: Path) -> None:
+    runs = [
+        _ok(tmp_path / "a", True),
+        _ok(tmp_path / "b", True, "budget"),
+        _ok(tmp_path / "c", True, "error"),
+    ]
+    report = build_report("r", "s", {"C2": runs}, git_sha="g", resamples=50)
+    row = report["tables"]["outcome"]["rows"]["C2"]
+    assert (row["budget_stops"], row["infra_errors"], row["model_failures"]) == (
+        1,
+        1,
+        0,
+    )
+    assert row["budget_rate"] == pytest.approx(1 / 3)
+    assert row["infra_error_rate"] == pytest.approx(1 / 3)

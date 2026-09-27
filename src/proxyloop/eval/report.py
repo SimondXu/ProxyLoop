@@ -5,7 +5,9 @@
 Rows are keyed by name (``/tables/outcome/rows/C2/model_failure_rate``); ``ci``
 holds ``[lo, hi]`` per row and column. Failed episodes stay in every denominator
 (I10); the model-failure rate leads the outcome table (the integrity gate counts
-infra errors only, so this rate must never be hidden). A rate with any unknown
+infra errors only, so this rate must never be hidden). ``budget_stops`` (runaway
+spend: an infra_error outcome that a looping model may cause) are counted apart
+and not in ``infra_errors``; the gate counts both. A rate with any unknown
 episode value is ``None`` and the ``not_computable`` table says why. Latency
 rows name their endpoint ("relay-measured" for hosted) and their turn counts.
 """
@@ -62,18 +64,25 @@ def _rate(k: int, n: int) -> tuple[float, list[float]]:
 def outcome_table(
     by_cond: Mapping[str, Sequence[Episode]], seed: int, resamples: int
 ) -> Table:
-    columns = ["episodes", "model_failures", "model_failure_rate", "infra_errors"]
-    columns += ["infra_error_rate", "success", "safe_success", "approval_b"]
-    columns += ["accepts", *_POOLED, "offer_terms_unscored"]
+    columns = ["episodes", "model_failures", "model_failure_rate", "budget_stops"]
+    columns += ["budget_rate", "infra_errors", "infra_error_rate", "success"]
+    columns += ["safe_success", "approval_b", "accepts", "accepts_via_approval"]
+    columns += ["accepts_via_mandate", *_POOLED, "offer_terms_unscored"]
     columns += [f"{m}_per_100" for m in _PER_100]
     table = _table(columns)
     boot = {"seed": seed, "resamples": resamples}
     for cond, eps in by_cond.items():
         row: dict[str, Any] = {"episodes": len(eps)}
         ci: dict[str, list[float]] = {}
-        for kind in ("model_failure", "infra_error"):
-            row[f"{kind}s"] = k = sum(e["outcome"] == kind for e in eps)
-            row[f"{kind}_rate"], ci[f"{kind}_rate"] = _rate(k, len(eps))
+        budget = [e["outcome"] == "infra_error" and e["ended"] == "budget" for e in eps]
+        counts = {"budget_stop": sum(budget)}
+        counts["model_failure"] = sum(e["outcome"] == "model_failure" for e in eps)
+        counts["infra_error"] = sum(e["outcome"] == "infra_error" for e in eps)
+        counts["infra_error"] -= counts["budget_stop"]
+        for kind, k in counts.items():
+            row[f"{kind}s"] = k
+            rate = "budget_rate" if kind == "budget_stop" else f"{kind}_rate"
+            row[rate], ci[rate] = _rate(k, len(eps))
         for name in ("success", "safe_success"):
             values = [e["metrics"][name] for e in eps]
             row[name] = None
@@ -81,6 +90,8 @@ def outcome_table(
                 row[name], ci[name] = _rate(sum(values), len(values))
         known = [b for e in eps if (b := e["metrics"]["approval_b"]) is not None]
         row["approval_b"], row["accepts"] = None, sum(b["accepts"] for b in known)
+        for via in ("approval", "mandate"):
+            row[f"accepts_via_{via}"] = sum(b[f"via_{via}"] for b in known)
         if known:
             held = sum(b["held"] for b in known)
             row["approval_b"], ci["approval_b"] = _rate(held, len(known))
@@ -194,9 +205,14 @@ def build_report(
     prereg_hash: str | None = None,
     seed: int = 0,
     resamples: int = 10_000,
+    allow_test: bool = False,
 ) -> dict[str, Any]:
-    """``bundles`` maps a condition to its bundle dirs."""
-    by_cond = {cond: [episode(d) for d in dirs] for cond, dirs in bundles.items()}
+    """``bundles`` maps a condition to its bundle dirs. A test-split bundle
+    raises ``HeldOutRefused`` unless ``allow_test`` (after the unseal only)."""
+    by_cond = {
+        cond: [episode(d, allow_test=allow_test) for d in dirs]
+        for cond, dirs in bundles.items()
+    }
     listed = [
         {"run_id": e["run_id"], "evidence_sha": evidence_sha(d)}
         for cond, dirs in bundles.items()
