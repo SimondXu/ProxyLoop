@@ -30,8 +30,9 @@ from __future__ import annotations
 import asyncio
 import re
 from collections.abc import Callable, Mapping
+from datetime import datetime
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
 
 from tests.support.fakes import RepeatingLLM
 from tests.support.manual_clock import ManualClock
@@ -73,6 +74,24 @@ Request = TextRequest | ToolRequest
 Answer = Callable[[Request], str]
 
 
+class _Session(ManualClock):
+    """The session's ``Clock`` as the ``ManualClock`` the fakes read: every
+    reading is the session's; ``advance`` is a no-op (time flows on its own)."""
+
+    def __init__(self, clock: Clock) -> None:
+        super().__init__()
+        self._session = clock
+
+    def advance(self, ms: int) -> None:
+        return None
+
+    def monotonic_ms(self) -> int:
+        return self._session.monotonic_ms()
+
+    def wall(self) -> datetime:
+        return self._session.wall()
+
+
 class Reactive(RepeatingLLM):
     """A ``test_fake`` whose answer is a function of the request, given after
     ``seconds`` on the session's ``sleep``; each call's record goes to ``sink``."""
@@ -86,9 +105,7 @@ class Reactive(RepeatingLLM):
         seconds: float,
         sink: RecordSink,
     ) -> None:
-        super().__init__(ref, [], None, False, sink)
-        # the session's clock times the records; only monotonic_ms is read
-        self._clock = cast(ManualClock, clock)
+        super().__init__(ref, [], _Session(clock), False, sink)  # it times records
         self._answer, self._sleep, self._seconds = answer, sleep, seconds
 
     async def _next(self, request: Request) -> tuple[str, int]:
@@ -121,6 +138,9 @@ def _said(prompt: str, who: str) -> str:  # the last line of USER, REP, ...
 def _money(text: str) -> str | None:
     found = re.search(r"(\d+(?:\.\d\d)?) dollars|\$(\d+(?:\.\d\d)?)", text)
     return None if found is None else f"{float(found.group(1) or found.group(2)):.2f}"
+
+
+_MONTHS = re.compile(r"(\d+)\s*-?\s*months?\b")  # "24 months", "a 24-month term"
 
 
 def fast_user(request: Request) -> str:
@@ -176,7 +196,7 @@ def fast_cp(request: Request) -> str:
         )
     if "you are verified" in rep:
         return "I am calling to ask for a lower monthly price on this plan."
-    price, term = _money(rep), re.search(r"(\d+)-month", rep)
+    price, term = _money(rep), _MONTHS.search(rep)
     if price and term:
         facts = [f"monthly_price={price}", f"term_months={term.group(1)}"]
         facts += [fact for fact, words in _STATED.items() if words in rep]
@@ -278,10 +298,10 @@ def rep_ear(request: Request) -> str:
 
 
 def rep_mouth(request: Request) -> str:
-    """The policy's template line (``Line:``), its values said naturally."""
+    """The policy's template line (``Line:``) from this request, its money said
+    as dollars a month; every other value is kept as the world wrote it."""
     line = _last(request).split("Line: ", 1)[-1]
     line = re.sub(r"monthly price: (\d+(?:\.\d+)?)", r"\1 dollars a month", line)
-    line = re.sub(r"term months: (\d+)", r"a \1-month term", line)
     return line.replace("confirmation: ", "")
 
 

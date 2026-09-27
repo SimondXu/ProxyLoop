@@ -10,7 +10,8 @@ What the kernel on main does, asserted as it is:
   so no confirmation is relayed and Slow cannot ``check_account``. The run is
   then stopped here (``stopped``), never shown as completed;
 - stop: the fence rises on the user's message, FastU's revoke moves the epoch,
-  the card goes stale and no accept is ever minted; the case stays
+  the card goes stale, a post of it is refused by the kernel (``action.denied``
+  ``stale_epoch``) and no accept is ever minted; the case stays
   AWAITING_APPROVAL.
 """
 
@@ -195,7 +196,9 @@ def test_approve_on_the_real_kernel_up_to_the_closed_call(tmp_path: Path) -> Non
     assert not manifest.cfg.live  # never a live run: live mode takes real_http only
 
 
-def test_stop_fences_and_the_card_goes_stale(tmp_path: Path) -> None:
+def test_stop_fences_and_the_stale_card_is_refused_by_the_kernel(
+    tmp_path: Path,
+) -> None:
     async def case() -> tuple[list[Event], object]:
         s = starter(tmp_path)
         case, log = await to_card(s, tmp_path)
@@ -204,6 +207,10 @@ def test_stop_fences_and_the_card_goes_stale(tmp_path: Path) -> None:
         await until(case, tmp_path, has("authority.epoch", reason="f2s_revoke"))
         await until(case, tmp_path, stop_cleared)
         got = decide(case.blackboard(), post(card.payload), "ui")  # serve's pre-check
+        # the card, approved after the stop: straight to the kernel's queue (serve
+        # would answer 409 stale first, the e2e's path); the kernel decides
+        case.post_approval(post(card.payload))
+        await until(case, tmp_path, has("action.denied", intent="approval.post"))
         await s.stop()
         return events(case, tmp_path), got
 
@@ -217,6 +224,12 @@ def test_stop_fences_and_the_card_goes_stale(tmp_path: Path) -> None:
     (revoke,) = of(log, "f2s.msg", type="REVOKE")
     assert bump.cause_ids == (revoke.event_id,) and bump.seq > stop.seq
     assert isinstance(got, Denial) and got.reason == "stale_epoch"  # 409 stale
+    # the kernel's own outcome for the stale post: refused, citing the card
+    (card,) = of(log, "approval.requested")
+    (denied,) = of(log, "action.denied", intent="approval.post")
+    assert (denied.actor, denied.payload["reason"]) == ("kernel", "stale_epoch")
+    assert denied.cause_ids == (card.event_id,) and denied.seq > bump.seq
+    assert not of(log, "approval.post") and not of(log, "approval.decided")
     assert not of(log, "action.authorized") and not of(
         log, "speak.verbatim", kind="accept"
     )

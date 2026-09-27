@@ -165,8 +165,10 @@ test.describe("approve", () => {
 test.describe("stop", () => {
   test.use({ baseURL: `http://127.0.0.1:${PORTS.stop}` });
 
-  test("b) a stop while the card is pending raises the fence, the revoke stales the card, and no accept is ever minted", async ({ page }) => {
-    const { id, card } = await toCard(page);
+  test("b) a stop while the card is pending raises the fence, the revoke stales the card, a post of it is refused, and no accept is minted", async ({
+    page,
+  }) => {
+    const { id, card, requested } = await toCard(page);
     const strip = page.getByRole("region", { name: "Authority" });
     await say(page, STOP);
     await expect(strip.getByLabel("Fence")).toHaveText(/^fence raised \(fence-\d+\)$/);
@@ -187,11 +189,26 @@ test.describe("stop", () => {
     const revoke = one(events, "f2s.msg", { type: "REVOKE" });
     expect(one(events, "authority.epoch", { reason: "f2s_revoke" }).cause_ids).toEqual([revoke.event_id]);
     await expect(strip.getByLabel("Fence")).toHaveText(`fence cleared (${String(raised?.payload.fence_id)})`);
+    // Approve the stale card anyway, from the page with the user's token (the button is disabled):
+    // serve's guard.decide pre-check answers 409 stale for the moved epoch, and nothing reaches the kernel.
+    const token = (await page.context().cookies()).find((c) => c.name === "pl_csrf")?.value ?? "";
+    expect(token).not.toBe("");
+    const body = { decision: "granted", terms_hash: requested.payload.terms_hash, authority_epoch: requested.payload.authority_epoch };
+    const path = `/api/cases/${id}/approvals/${String(requested.payload.approval_id)}`;
+    const got = await page.evaluate(
+      async ({ path, body, token }) => {
+        const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": token }, body: JSON.stringify(body) });
+        return { status: res.status, body: (await res.json()) as unknown };
+      },
+      { path, body, token },
+    );
+    expect(got).toEqual({ status: 409, body: { error: "stale", reason: "stale_epoch" } });
+    const after = await log(page, id);
+    expect([of(after, "approval.post").length, of(after, "approval.decided").length]).toEqual([0, 0]);
     // The accept is never minted, so never released: the only released line is the disclosure.
-    expect(of(events, "action.authorized")).toHaveLength(0);
-    expect(of(events, "speak.verbatim").map((e) => e.payload.kind)).toEqual(["disclosure"]);
-    expect(of(events, "speak.released")).toHaveLength(1);
-    expect(of(events, "approval.post")).toHaveLength(0);
+    expect(of(after, "action.authorized")).toHaveLength(0);
+    expect(of(after, "speak.verbatim").map((e) => e.payload.kind)).toEqual(["disclosure"]);
+    expect(of(after, "speak.released")).toHaveLength(1);
   });
 });
 
@@ -240,6 +257,6 @@ test.describe("human rep", () => {
     for (const text of hidden) await expect(rep.locator("body")).not.toContainText(text);
     expect(repSockets).toEqual([`/ws/rep/${id}?from_seq=0`]);
     const api = repHttp.filter((p) => p.startsWith("/api/") || p.startsWith("/ws/"));
-    expect(api.every((p) => p === `/api/cases/${id}/rep`)).toBe(true);
+    expect(api).toEqual([`/api/cases/${id}/rep`, `/api/cases/${id}/rep`]); // the two lines it sent, and nothing else
   });
 });
