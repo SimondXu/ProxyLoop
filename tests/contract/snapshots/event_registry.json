@@ -255,7 +255,8 @@
    "t_end",
    "finish_reason",
    "attempt",
-   "error"
+   "error",
+   "sampling_sent"
   ]
  },
  "mandate.decided": {

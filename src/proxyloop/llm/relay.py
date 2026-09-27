@@ -16,6 +16,7 @@ from collections.abc import AsyncIterator
 
 from proxyloop.contract.llm import (
     ChatMessage,
+    Endpoint,
     LLMCallRecord,
     TextRequest,
     ToolCall,
@@ -26,6 +27,13 @@ from proxyloop.contract.llm import (
 from proxyloop.llm.http import HTTPAdapter, Json
 
 PATH = "/v1/chat/completions"
+# For a listed model, only the sampling keys its provider supports are sent, so no
+# record claims sampling that had no effect (ADR-0019); unlisted models send all.
+# Source: OpenRouter GET /api/v1/models, `supported_parameters` of
+# openai/gpt-6-luna, fetched 2026-09-27: seed listed; temperature, top_p not.
+SUPPORTED_SAMPLING: dict[tuple[Endpoint | None, str], frozenset[str]] = {
+    ("openrouter", "openai/gpt-6-luna"): frozenset({"seed"}),
+}
 
 
 def _message(m: ChatMessage) -> Json:
@@ -81,16 +89,30 @@ class ChatClient(HTTPAdapter):
             body["reasoning_effort"] = self.ref.reasoning_effort
         return body
 
+    def _sampling(
+        self,
+        body: Json,
+        temperature: float | None,
+        top_p: float | None = None,
+        seed: int | None = None,
+    ) -> None:
+        """Add the requested sampling; a listed model gets only its supported keys."""
+
+        supported = SUPPORTED_SAMPLING.get((self.ref.endpoint, self.ref.model_id))
+        requested = {"temperature": temperature, "top_p": top_p, "seed": seed}
+        body |= {
+            k: v
+            for k, v in requested.items()
+            if v is not None and (supported is None or k in supported)
+        }
+
     def stream_text(self, request: TextRequest) -> AsyncIterator[str | LLMCallRecord]:
         if not request.messages:
             raise ValueError("a chat endpoint takes messages, not a prompt")
         body = self._body(request.messages, request.max_tokens)
-        body |= {"temperature": request.temperature, "stream": True}
-        body["stream_options"] = {"include_usage": True}
-        if request.top_p != 1.0:
-            body["top_p"] = request.top_p
-        if request.seed is not None:
-            body["seed"] = request.seed
+        body |= {"stream": True, "stream_options": {"include_usage": True}}
+        top_p = request.top_p if request.top_p != 1.0 else None
+        self._sampling(body, request.temperature, top_p, request.seed)
         return self._call(request, PATH, body, _delta_text)
 
     async def chat_tools(self, request: ToolRequest) -> ToolResponse:
@@ -104,8 +126,7 @@ class ChatClient(HTTPAdapter):
                 "type": "function",
                 "function": {"name": request.tool_choice},
             }
-        if request.temperature is not None:
-            body["temperature"] = request.temperature
+        self._sampling(body, request.temperature)
         *parts, record = [
             item async for item in self._call(request, PATH, body, _tools)
         ]
