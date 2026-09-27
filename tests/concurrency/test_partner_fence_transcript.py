@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tests.concurrency.harness import Sim, SlowGate, granted
+from tests.concurrency.harness import Sim, SlowGate, granted, settle
 from tests.concurrency.test_cases import FIX, Valve, arun
 
 from proxyloop.contract.config import SlowViewMode
@@ -170,6 +170,50 @@ def test_a_line_a_step_already_read_raises_no_fence_at_the_mint(
         assert sim.accept().startswith("accept_offer: accept line queued")
         await sim.vt.run_for(15_000)
         assert sim.of("authority.fence") == []
+        (released,) = _ends(sim)
+        assert released.type == "speak.released"
+        fast_cp.open.set()
+        await sim.stop()
+
+    arun(case())
+
+
+def test_a_line_right_after_a_step_started_is_not_covered_by_it(
+    tmp_path: Path,
+) -> None:
+    """Review N1, the tight edge: the rep's line is the event right after
+    ``slow.step.started`` (its basis is the line's seq - 2); that step never
+    read it, so its completion leaves the fence up."""
+
+    async def case() -> None:
+        fast_cp = Valve()
+        sim = await _started(tmp_path, fast_cp)
+        fast_cp.open.clear()
+        sim.rep_composes()  # the accept waits for the floor
+        assert sim.accept().startswith("accept_offer: accept line queued")
+        await sim.vt.run_for(1_000)
+        gate = SlowGate(sim)
+        gate.let(0)
+        assert sim.k.slow is not None
+        sim.k.slow.wake("fence")
+        await settle()
+        started = sim.of("slow.step.started")[-1]
+        assert started.seq == sim.events[-1].seq  # held, nothing after it yet
+        sim.rep_done(ELSE)
+        await settle()
+        said = _one(sim, "utt.final", text=ELSE)
+        assert said.seq == started.seq + 1
+        assert int(str(started.payload["basis_seq"])) == said.seq - 2
+        fence = _one(sim, "authority.fence", op="raised")
+        gate.let(1)  # that step completes; the next is held
+        await sim.vt.run_for(3_000)
+        done = [e for e in sim.of("slow.step.completed") if e.seq > said.seq]
+        assert [int(str(e.payload["basis_seq"])) for e in done] == [said.seq - 2]
+        assert _up(sim, fence) and _ends(sim) == []
+        gate.let(None)
+        await sim.vt.run_for(5_000)
+        step = _step_of(sim, _one(sim, "authority.fence", op="cleared"))
+        assert int(str(step.payload["basis_seq"])) >= said.seq
         (released,) = _ends(sim)
         assert released.type == "speak.released"
         fast_cp.open.set()
