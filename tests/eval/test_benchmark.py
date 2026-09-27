@@ -29,6 +29,7 @@ from proxyloop.eval.benchmark import (
     NO_SHARDS,
     NOT_INTERLEAVED,
     Benchmark,
+    ConditionSpec,
     build,
     cells,
     live_configs,
@@ -135,13 +136,14 @@ def test_live_configs_apply_a_registry_condition_to_the_cli_config() -> None:
     assert cfg.live and cfg.fast_cp.model_id == cfg.fast_user.model_id == "Qwen3.5-9B"
     assert cfg.slow.model_id == "slow-x"  # the CLI's options, not a copy of them
     with pytest.raises(KeyError, match="unknown condition"):
-        live_configs(bench, ["C0"], [])  # e.g. C5/C1 before the registry has them
+        live_configs(bench, ["C0"], [])  # e.g. C1: the registry does not have it
 
 
 @pytest.fixture(autouse=True)
 def stand_ins(monkeypatch: pytest.MonkeyPatch) -> None:
-    """C5 (and the fake conditions A, B) as registry conditions: C5 enters the
-    registry with #132; every other name resolves through the real registry."""
+    """C5 as the S0 TeamRouter Luna ref (the synthetic streams' and the
+    committed S0 bundle's; the registry's C5 is OpenRouter since S1-MOD-01) and
+    the fake conditions A, B; every other name resolves through the registry."""
     real = registry.condition
     lanes = {"C5": (LUNA, LUNA), "A": (FAKE_USER, FAKE_A), "B": (FAKE_USER, FAKE_B)}
 
@@ -366,6 +368,28 @@ def test_not_computable_columns_carry_reasons(tmp_path: Path) -> None:
     assert "S2" in why["blocked_harm"]["reason"]  # never 0
     assert "acceptable_outcomes" in why["success"]["reason"]
     assert "one instance" in why["comparison.C2-C5.ci"]["reason"]
+
+
+C5_NOTE = (
+    "sampling set by the provider (temperature/top_p not supported by "
+    "openai/gpt-6-luna on OpenRouter)"
+)
+
+
+def test_c5_rows_carry_the_provider_sampling_note_and_no_other_does(
+    tmp_path: Path,
+) -> None:
+    rows = _build(tmp_path)["tables"]["conditions"]["rows"]
+    assert {c: r["note"] for c, r in rows.items()} == {
+        "C5": C5_NOTE,
+        "C2": None,
+        "C1": None,
+    }
+
+
+def test_an_empty_condition_note_is_refused() -> None:
+    with pytest.raises(ValueError, match="at least 1 character"):
+        ConditionSpec(name="C5", note="")
 
 
 def test_every_bundle_carries_its_evidence_label(tmp_path: Path) -> None:
