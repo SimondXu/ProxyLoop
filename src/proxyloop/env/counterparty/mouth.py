@@ -51,11 +51,19 @@ def _label(key: str) -> str:
     return key.replace(":", " ").replace("_", " ").replace(".", " ")
 
 
+def _term(key: str, value: str) -> str:
+    if (absent := NONE.get((key, value))) is not None:
+        return absent
+    if key == "term_months":  # "12 months": the unit after the number, as spoken
+        return f"term: {value} months"
+    return f"{_label(key)}: {value}"
+
+
 def template(intent: PublicIntent, company: str) -> str:
     line = LINES[intent.kind].format(company=company)
     if intent.ask:
         line += " Please give your " + " and ".join(map(_label, intent.ask)) + "."
-    values = "; ".join(NONE.get((k, v)) or f"{_label(k)}: {v}" for k, v in intent.say)
+    values = "; ".join(_term(k, v) for k, v in intent.say)
     return f"{line} {values}." if values else line
 
 

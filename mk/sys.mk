@@ -68,3 +68,18 @@ web-test:
 
 replay:
 	$(WEB_DEPS) && npm run build && cd $(CURDIR) && uv run python -m proxyloop.serve.api --web-dir apps/web/dist
+
+# demo (S1-SYS-05). Root-run only, flag L; G only when a start picks the Qwen3.5-9B (vLLM)
+# option (`make serve-up` first). Builds the web, then serves it same-origin with live starts
+# (`python -m proxyloop.kernel.web --web-dir apps/web/dist`, http://127.0.0.1:8000): /start
+# picks a training task, each lane's model (default: Luna on OpenRouter for both Fast lanes,
+# gemini-3.8-flash on TeamRouter for Slow) and the rep (sim, or human at /rep/<case_id>).
+# One case at a time; each run is written to runs/live/<run_id>/<run_id>. The root exports,
+# in the shell only (never a repo file), the variables of the endpoints a start uses:
+#   PL_OPENROUTER_BASE_URL PL_OPENROUTER_API_KEY PL_TEAMROUTER_BASE_URL PL_TEAMROUTER_API_KEY
+# and, for the vLLM option, PL_VLLM_BASE_URL PL_VLLM_API_KEY. A start whose variables are
+# missing is refused ("unavailable"); no value is printed. Afterwards:
+# `make evidence-check RUN=runs/live/<run_id>/<run_id> MODE=claim`.
+.PHONY: demo
+demo:
+	$(WEB_DEPS) && npm run build && cd $(CURDIR) && uv run python -m proxyloop.kernel.web --web-dir apps/web/dist
