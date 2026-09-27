@@ -4,6 +4,11 @@
 to that), so ``FastView[cp]`` is a function of public state, the cp
 transcript, the trigger and the task's public brief (I4). The brief is task
 data, not state, so the views take it as an argument (ADR-0004).
+
+``view_slow`` gives Slow both lanes' transcripts as heard plus Fast's typed
+relays and the agent's state; it never carries prompts or Fast's unheard
+output. The ``relay_only`` mode (ablation A5) leaves the transcripts out (I5,
+ADR-0016).
 """
 
 from __future__ import annotations
@@ -89,7 +94,8 @@ class FastView(Frozen):
 
 
 class SlowView(Frozen):
-    """Relay-only by default: no transcripts unless ``raw_transcript`` (I5)."""
+    """What one Slow step may see (I5): both lanes' transcripts as heard in
+    ``transcript`` mode (the default), none in ``relay_only`` (ablation A5)."""
 
     mode: SlowViewMode
     brief: str
@@ -154,7 +160,7 @@ def view_cp(bb: Blackboard, trigger: Trigger, brief: str) -> FastView:
 
 def view_slow(bb: Blackboard, mode: SlowViewMode, brief: str) -> SlowView:
     transcripts: dict[Lane, tuple[Line, ...]] = {}
-    if mode is SlowViewMode.RAW_TRANSCRIPT:
+    if mode is SlowViewMode.TRANSCRIPT:
         transcripts = {lane: channel.lines for lane, channel in bb.channels.items()}
     return SlowView(
         mode=mode,
