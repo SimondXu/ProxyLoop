@@ -1,9 +1,15 @@
 """A live case handle for the serve tests (tests only, I8). A real ``Bus``
 writes ``events.jsonl`` and folds it, so ``guard.decide`` runs on a real
-Blackboard whose card ``guard.request_approval`` minted. The calls the API
-makes are recorded; ``post_approval`` also emits ``approval.post`` (actor
-``ui``) the way the kernel's ingress will (S1-SYS-05). Nothing here decides:
-``decided`` stands in for the kernel's own ``approval.decided``.
+Blackboard whose card ``guard.request_approval`` minted, or whose mandate
+``propose`` put there the way Slow's ``propose_mandate`` does. The calls the
+API makes are recorded. An approval post only emits ``approval.post`` (actor
+``ui``); ``decided`` stands in for the kernel's own ``approval.decided``. A
+mandate post is decided at once, roughly as the kernel's ``Authority.decide``
+does: ``guard.decide`` on the board, then ``approval.post`` (ui),
+``mandate.decided`` (kernel, by ui) and ``authority.epoch``. Unlike the kernel
+it emits no ``status.changed`` (mandate_granted), and its ``action.denied`` on
+a Denial cites the proposal, never the kernel's root fallback; neither is
+reachable through the route, whose pre-check denies first.
 ``FakeStarter`` starts such cases the way the kernel's starter will."""
 
 from __future__ import annotations
@@ -17,9 +23,10 @@ from tests.support.manual_clock import ManualClock
 
 from proxyloop.contract.bundle import EVENTS
 from proxyloop.contract.events import ApprovalPost, Event, Stream
-from proxyloop.contract.state import ApprovalCard, Blackboard
+from proxyloop.contract.state import ApprovalCard, Blackboard, Mandate
 from proxyloop.core.bus import Bus
-from proxyloop.guard.authorize import Denial, request_approval
+from proxyloop.guard.authorize import Denial, decide, request_approval
+from proxyloop.guard.mandate import proposal
 from proxyloop.guard.terms import offer_terms_hash
 from proxyloop.serve.cases import LaneKey, ModelOption, StartRefused
 
@@ -39,6 +46,7 @@ class ApiCase:
         self.messages: list[str] = []
         self.utterances: list[str] = []
         self._last: str | None = None
+        self._proposed = ""  # the last mandate.proposed event
         self.unavailable = False  # every ingress raises, as a dead kernel would
 
     # The Case protocol.
@@ -49,7 +57,22 @@ class ApiCase:
         if self.unavailable:
             raise RuntimeError("the case's kernel is gone")
         self.posts.append(post)
+        if post.subject == "mandate":
+            return self._decide_mandate(post)
         self.emit("approval.post", post.model_dump(mode="json"), "ui", causes=())
+
+    def _decide_mandate(self, post: ApprovalPost) -> None:
+        """As the kernel's ``Authority.decide`` does for a UI mandate post."""
+        got = decide(self.bus.bb, post, "ui")
+        if isinstance(got, Denial):
+            denied = {"intent": "approval.post", "reason": got.reason}
+            self.emit("action.denied", denied, "kernel", causes=[self._proposed])
+            return
+        sent = self.emit("approval.post", post.model_dump(mode="json"), "ui", causes=())
+        kind, payload = got
+        done = self.emit(kind, payload, "kernel", causes=[sent.event_id])
+        bump = {"new": self.bus.bb.epoch + 1, "reason": "mandate_decided"}
+        self.emit("authority.epoch", bump, "kernel", causes=[done.event_id])
 
     def user_message(self, text: str) -> None:
         if self.unavailable:
@@ -98,6 +121,14 @@ class ApiCase:
         ((kind, payload),) = effects
         self.emit(kind, payload)
         return ApprovalCard.model_validate(payload)
+
+    def propose(self, mandate_id: str = "mandate-1", **bounds: object) -> Mandate:
+        """A mandate proposed as Slow's ``propose_mandate`` does (Guard's
+        ``proposal``, at the current epoch); by default a price cap."""
+        bounds = bounds or {"max_monthly_price_minor": 7000}
+        kind, payload = proposal(self.bus.bb, mandate_id, **bounds)
+        self._proposed = self.emit(kind, payload).event_id
+        return Mandate.model_validate(payload)
 
     def bump_epoch(self) -> None:
         new = self.bus.bb.epoch + 1
