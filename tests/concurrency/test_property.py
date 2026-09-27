@@ -7,8 +7,17 @@ accepts, stops, revokes, barge-ins, FastU latency, time) and the log must show:
 - at most one released accept per ``terms_hash``;
 - no ``speak.released{cap_id}`` while a partner turn is pending (queued, its
   ``utt.final`` not yet in the log) or the rep composes one (option A);
+- a partner fence (S1-SYS-23) raised only while an accept is in flight (by
+  a rep line landing, or at the mint for lines after the minting Slow step's
+  basis), and an accept revoked ``fence`` only under a user fence or after one
+  rose while it waited (under partner fences only it waits);
+- no accept released before every earlier rep line is covered: a FastC turn
+  whose request saw it, then a completed Slow step whose basis is at or after
+  that turn (review M1, D1, D2: Slow's latency varies, so its calls often land
+  while a step is in flight);
 - every accept line ending in exactly one ``speak.released`` or
-  ``speak.revoked`` (none wedges on ``accept_in_flight``);
+  ``speak.revoked``, by its expiry at the latest (none wedges on
+  ``accept_in_flight``: the teardown runs past ``CAP_TTL_MS``);
 - the same while Slow declines or re-records the offer under an accept line in
   flight (revoked ``offer_closed`` / ``terms_changed``);
 - ``accept_revoked``/``accept_truncated`` only after a real ``speak.revoked`` /
@@ -27,13 +36,20 @@ from typing import Any
 from hypothesis import settings
 from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, initialize, rule
-from tests.concurrency.harness import LONG, Sim, settle, slots, terms
+from tests.concurrency.harness import (
+    LONG,
+    Sim,
+    SlowGate,
+    settle,
+    slots,
+    terms,
+)
 from tests.concurrency.test_cases import Valve
 
 from proxyloop.contract.events import ApprovalPost
 from proxyloop.contract.state import Blackboard
 from proxyloop.core.fold import apply
-from proxyloop.guard.capability import accept_in_flight, released_accept
+from proxyloop.guard.capability import CAP_TTL_MS, accept_in_flight, released_accept
 
 
 class Interleavings(RuleBasedStateMachine):
@@ -41,15 +57,17 @@ class Interleavings(RuleBasedStateMachine):
         super().__init__()
         self.dir = tempfile.TemporaryDirectory()
         self.loop = asyncio.new_event_loop()
-        self.valve = Valve.__new__(Valve)
+        self.valve, self.fastc = Valve.__new__(Valve), Valve.__new__(Valve)
         self.run(self._open())
         self.dollars = 60
 
     async def _open(self) -> None:
         self.valve.__init__()
-        gates = {"fast_user": self.valve}  # FastC answers the rep at length
+        self.fastc.__init__()
+        gates = {"fast_user": self.valve, "fast_cp": self.fastc}  # FastC: at length
         self.sim = Sim(Path(self.dir.name), {"fast_cp": [LONG]}, gates=gates)
         await self.sim.start()
+        self.slow = SlowGate(self.sim)
 
     def run(self, step: Coroutine[Any, Any, None]) -> None:
         self.loop.run_until_complete(step)
@@ -102,6 +120,21 @@ class Interleavings(RuleBasedStateMachine):
     @rule(answering=st.booleans())
     def fastu_latency(self, answering: bool) -> None:
         (self.valve.open.set if answering else self.valve.open.clear)()
+        self.run(settle())
+
+    @rule(answering=st.booleans())
+    def slow_latency(self, answering: bool) -> None:
+        """Slow's calls answer, or a step starts (a relay, a timer) and is held
+        in flight while the rep talks and Slow's tools act (review M1)."""
+        self.slow.let(None if answering else 0)
+        if not answering:
+            assert self.sim.k.slow is not None
+            self.sim.k.slow.wake("fence")
+        self.run(settle())
+
+    @rule(answering=st.booleans())
+    def fastc_latency(self, answering: bool) -> None:  # a partner fence stays up
+        (self.fastc.open.set if answering else self.fastc.open.clear)()
         self.run(settle())
 
     @rule(
@@ -193,10 +226,13 @@ class Interleavings(RuleBasedStateMachine):
 
     def teardown(self) -> None:
         try:
-            self.valve.open.set()  # FastU answers; every fence can clear
+            self.valve.open.set()  # FastU and FastC answer; every fence can clear
+            self.fastc.open.set()
+            self.slow.let(None)
             if self.sim.rep.busy:  # the rep's turn ends: every line can go out
                 self.sim.rep_done()
-            self.run(self.sim.vt.run_for(30_000))  # every queued line gets the floor
+            # every queued line gets the floor, or expires waiting for it
+            self.run(self.sim.vt.run_for(CAP_TTL_MS + 30_000))
             self.run(self._stop())
             _check(self.sim)
         finally:
@@ -221,7 +257,23 @@ def _check(sim: Sim) -> None:
     by_id, bb = {e.event_id: e for e in events}, Blackboard()
     released: Counter[str] = Counter()
     ends: Counter[str] = Counter()  # accept line -> its releases and revokes
+    by_user: dict[str, bool] = {}  # fence_id -> raised by a user.msg
+    users: list[int] = []  # the seqs of user fences raised
     for e in events:
+        if e.type == "authority.fence" and e.payload["op"] == "raised":
+            said, *minted = [by_id[c] for c in e.cause_ids]  # at the mint: + auth
+            assert [m.type for m in minted] in ([], ["action.authorized"]), e
+            by_user[str(e.payload["fence_id"])] = said.type == "user.msg"
+            users += [e.seq] if said.type == "user.msg" else []
+            if said.type == "utt.final":  # a partner fence: an accept in flight
+                assert accept_in_flight(bb), f"{e.event_id}: no accept in flight"
+            else:
+                assert said.type == "user.msg", e
+        if e.type == "speak.revoked" and e.payload["reason"] == "fence":
+            (line,) = [by_id[c] for c in e.cause_ids]
+            up = [f for f in bb.fences if by_user[f.fence_id]]
+            rose = [u for u in users if u > line.seq]
+            assert up or rose, f"{e.event_id}: revoked under partner fences only"
         if e.type in ("speak.released", "speak.revoked"):
             lines = [by_id[c] for c in e.cause_ids if by_id[c].type == "speak.verbatim"]
             for line in lines:
@@ -248,6 +300,7 @@ def _check(sim: Sim) -> None:
         bb = apply(bb, e)
     assert all(n == 1 for n in released.values()), f"accepts per terms: {released}"
     _partner_first(sim)
+    _slow_saw_it(sim)
     accepts = [
         e.event_id
         for e in events
@@ -257,6 +310,31 @@ def _check(sim: Sim) -> None:
     assert not any(
         c.intent == "accept_offer" and not c.consumed for c in bb.capabilities.values()
     )
+
+
+def _slow_saw_it(sim: Sim) -> None:
+    """Before each release every earlier rep line is covered: a cp
+    ``fast.turn`` whose request's basis is at or after the line, and a
+    completed Slow step whose basis is at or after that turn (review D1, D2)."""
+    basis: dict[str, int] = {}  # cp gen_id -> its request's basis
+    turns: list[tuple[int, int]] = []  # (seq, request basis) of cp turns
+    lines: list[int] = []
+    done: list[int] = []  # the bases of completed steps
+    for e in sim.events:
+        p = e.payload
+        if e.type == "fast.request" and p["lane"] == "cp":
+            basis[str(p["gen_id"])] = int(str(p["basis_seq"]))
+        elif e.type == "fast.turn" and p["lane"] == "cp":
+            turns.append((e.seq, basis[str(p["gen_id"])]))
+        elif e.type == "slow.step.completed":
+            done.append(int(str(p["basis_seq"])))
+        elif e.type == "utt.final" and p["speaker"] == "partner":
+            lines.append(e.seq)
+        elif e.type == "speak.released" and "cap_id" in p:
+            for line in lines:
+                saw = [t for t, b in turns if b >= line]
+                seen = saw and any(d >= min(saw) for d in done)
+                assert seen, f"{e.event_id}: released before Slow saw line {line}"
 
 
 def _partner_first(sim: Sim) -> None:
