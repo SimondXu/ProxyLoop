@@ -437,7 +437,7 @@ COMMIT_AUTHORIZED ──speak.revoked | truncated──► NEEDS_REPLAN
 COMMITTED ──evidence.recorded──► EVIDENCE_PENDING ──completion.decided(ok)──► VERIFIED_COMPLETE
 EVIDENCE_PENDING ──completion.decided(fail)──► NEEDS_REPLAN ──► IN_CALL | ESCALATED
 IN_CALL ──finish(info_only)──► CLOSED_NO_ACTION
-IN_CALL ──finish(no_deal) ∧ verify_no_deal──► VERIFIED_NO_DEAL      any ──cp hang-up (identity or timer strikes ≥ patience.strikes)──► ABANDONED
+IN_CALL ──finish(no_deal) ∧ verify_no_deal──► VERIFIED_NO_DEAL      any ──cp hang-up (identity or timer strikes ≥ patience.strikes)──► ABANDONED (unreachable until S1-SYS-55 wires hang_up)
 ```
 Only `completion.decided` sets a `VERIFIED_*` status. Fast sees the status in the `CASE STATUS` section.
 

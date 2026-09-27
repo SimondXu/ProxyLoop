@@ -1358,7 +1358,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
   - re-scoped by the UI redesign (root decision under §0.5a, 2026-09-27; see S1-SYS-48): built on S1-SYS-48's `ui/` primitives (ApprovalCard, LimitsCard, `terms.ts`, `mandate.ts`, `liveApi.postMandate`, the fence overlay and post-approval progress), in #192's layout for now; the approval card sits in the chat column.
 - **Owned paths:** `apps/web/**`, `tests/web/**`.
 - **Deps:** S1-SYS-48 and S1-SYS-41 (merged, #186) (root decision under §0.5a, 2026-09-27).
-- **Acceptance:** the approval card shows the items above, and the ids, epoch and hash only under the collapsed details; a mandate is confirmed only by a click on the card, through S1-SYS-41's route; a card moves only on fixed-emitter events, with one post per click and no retry; `make web-test` green.
+- **Acceptance:** the approval card shows the items above, and the ids, epoch and hash only under the collapsed details; a mandate is confirmed only by a click on the card, through S1-SYS-41's route; a card moves only on fixed-emitter events, with one post per click and no retry; the card may hide once the status leaves AWAITING_APPROVAL (#185); `make web-test` green.
 - **Verify:** `make web-test`.
 - **Escalate if:** a card would move on anything but fixed-emitter events, or the mandate card needs a field the route does not carry.
 
@@ -1437,7 +1437,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Objective:** responsive three zones; ChatPanel (bubbles, fence receipt, textarea); CallPanel (header, hold, the four verbatim labels); PhaseStepper.
 - **Owned paths:** `apps/web/**`, `tests/web/**`.
 - **Deps:** S1-SYS-48.
-- **Acceptance:** the three zones, ChatPanel, CallPanel and PhaseStepper as above; `make web-test` green.
+- **Acceptance:** the three zones, ChatPanel, CallPanel and PhaseStepper as above; ChatPanel and CallPanel render only heard lines; the HonestyBand and the sim labels appear on Live; `make web-test` green.
 - **Verify:** `make web-test`.
 - **Escalate if:** a card or view would move on anything but fixed-emitter events, or show anything but heard text; a new route or field is needed (P-API/L-CORE); a dependency beyond the approved list (S1-SYS-48).
 
@@ -1450,7 +1450,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Escalate if:** a card or view would move on anything but fixed-emitter events, or show anything but heard text; a new route or field is needed (P-API/L-CORE); a dependency beyond the approved list (S1-SYS-48).
 
 ### S1-SYS-51 UI-5 receipt variants — SYS (P-WEB) — S — todo
-- **Objective:** all receipt variants, fees under details.
+- **Objective:** all receipt variants (VERIFIED_COMPLETE; COMMITTED, not yet verified; VERIFIED_NO_DEAL; CLOSED_NO_ACTION; ABANDONED or timeout; stopped or void), fees under details.
 - **Owned paths:** `apps/web/**`, `tests/web/**`.
 - **Deps:** S1-SYS-40.
 - **Acceptance:** every receipt variant renders, with fees under details; `make web-test` green.
@@ -1487,17 +1487,17 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
   - a rep hang-up calls `authority.move("hang_up")` before `SessionEnd("abandoned")`, so the case reaches ABANDONED (`hang_up` had no caller, #192's review).
 - **Owned paths:** `src/proxyloop/guard/readback.py`, `src/proxyloop/kernel/session.py` (the `hang_up` line only), `tests/guard/**`, `tests/kernel/**`; granted: `tests/evidence/test_probes.py` (event counts only).
 - **Deps:** none.
-- **Acceptance** (test-first ✱): ✱ real rep lines as positives; ✱ ≥ 5 negatives, including negation and questions; ✱ a rep hang-up ends in ABANDONED; no Fast-side change (rule 12); `make check` green.
+- **Acceptance** (test-first ✱): ✱ real rep lines as positives; ✱ ≥ 5 negatives, including negation and questions; ✱ every existing `closing` cue in `LEXICON` stays positive ("cannot do better" and "no better" contain negation words: the negation guard must not flip them); ✱ a rep hang-up ends in ABANDONED; no Fast-side change (rule 12); no test outside `tests/guard`, `tests/kernel` and the granted `tests/evidence/test_probes.py` changes: `tests/slow/test_close_confirmed.py`, `tests/obs/test_grading.py`, `tests/obs/test_detectors.py` and `tests/evidence/test_check.py` stay green unchanged, otherwise escalate; `make check` green. Note: it shifts P-OBS's diagnose output (`obs/grading.py` uses `has_cue`) and the VERIFIED_NO_DEAL rate, so smoke #2 comparisons span the change.
 - **Verify:** `uv run pytest tests/guard tests/kernel -q`; `make check`.
 - **Escalate if:** Guard's verify semantics change beyond the cue match.
 
 ### S1-SYS-56 Verbatim release when FastC holds the floor — SYS (L-CORE) — S — todo
-- **Objective** (root decision under §0.5a, 2026-09-27; run `45d7ed` seq 502): a verbatim is released even when FastC keeps the floor (`speaker._floor_after_partner` requires an idle rep channel).
+- **Objective** (root decision under §0.5a, 2026-09-27; run `45d7ed` seq 502): a verbatim is released when FastC holds the floor while the rep channel is idle (`speaker._floor_after_partner` requires an idle rep channel).
 - **Owned paths:** `src/proxyloop/kernel/speaker.py`, `tests/kernel/**`, `tests/concurrency/**`.
 - **Deps:** S1-SYS-55.
-- **Acceptance** (test-first ✱): ✱ a verbatim queued while FastC holds the floor is released; `make check` green.
+- **Acceptance** (test-first ✱): ✱ a verbatim queued while FastC holds the floor and the rep channel is idle is released; ✱ negatives: (a) an accept verbatim is still not released while a rep turn is begun, queued or composed (S1-SYS-23's partner-turn fence, ROOT-05 i, `speaker._floor_after_partner`); (b) `_floor_revalidated` still revalidates the capability after taking the floor; `make check` green.
 - **Verify:** `uv run pytest tests/kernel tests/concurrency -q`; `make check`.
-- **Escalate if:** the floor or fence semantics change.
+- **Escalate if:** the floor or fence semantics change beyond that case.
 
 ### S1-SYS-25 World: identity mismatch, caller left, redial, recheck variants (ADR-0014) — SYS (L-CORE) — M (S–M expected) — todo (deferred until the E2E demo passes)
 - **Objective** (labelled world-semantics changes):
