@@ -94,6 +94,8 @@ class SimUserChannel(Channel):  # replies delay_s after each message
     async def send(self, text: str | None, utt_id: str, cause: str, t_ms: int) -> None:
         async with self._lock:  # one reply at a time, in message order
             reply = await self._user.on_agent_message(text, cause)
+        if reply is None:  # the user stays silent: nothing to deliver
+            return
         due = 0 if text is None else t_ms + round(1000 * reply.delay_s)
         self.incoming.put_nowait(Incoming(((reply.text, reply.event_id),), due))
 

@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Callable
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
+from tests.env.bus_sink import BusSink
 from tests.support.fakes import ScriptedLLM, fake_ref
 
 from proxyloop.contract.llm import LLMUnavailable, TextRequest
 from proxyloop.env import world
+from proxyloop.env.counterparty.ear import Ear
 from proxyloop.env.counterparty.mouth import fidelity_ok, template
 from proxyloop.env.counterparty.policy import PublicIntent
 
@@ -104,3 +108,47 @@ def test_an_identifier_must_be_voiced_verbatim() -> None:
     assert fidelity_ok("Your confirmation number is 048213.", done)
     assert not fidelity_ok("Your confirmation number is 48213.", done)
     assert fidelity_ok(template(done, "Northwind"), done)
+
+
+def test_the_whole_call_bound_is_the_old_worst_case() -> None:
+    assert world.TIMEOUT_S == 60.0  # provisional: 3 attempts x the old 20 s
+
+
+def test_one_deadline_bounds_every_attempt_together() -> None:
+    """Attempt n ends at start + (n + 1) * 0.6 T (loop time): each lasts 0.6 T,
+    under a per-attempt bound, but the third ends at 1.8 T, past one T for the
+    whole call. The outcome does not depend on scheduling: a per-attempt bound
+    ends invalid-exhausted, a whole-call bound always times out."""
+
+    bound, starts = 0.1, list[float]()
+
+    async def invalid_at(n: int) -> int:
+        loop = asyncio.get_running_loop()
+        starts.append(loop.time())
+        await asyncio.sleep(starts[0] + (n + 1) * 0.6 * bound - loop.time())
+        return -1
+
+    with pytest.raises(world.WorldError, match=r"no answer within 0\.1 s"):
+        asyncio.run(world.bounded(invalid_at, _check, what="t", timeout_s=bound))
+    assert starts  # it ran; never a regeneration past the deadline
+
+
+def test_a_whole_call_timeout_aborts_the_ear_loudly(tmp_path: Path) -> None:
+    sink = BusSink(tmp_path)
+    heard = sink.heard("hello")
+    invalid = json.dumps(
+        {
+            "text": "",
+            "tool_calls": [
+                {"call_id": "t", "name": "classify", "arguments": '{"act": "x"}'}
+            ],
+        }
+    )
+    ear = Ear(sink.llm(*[invalid] * 3, hang_s=0.04), sink.world, "Co", ("k",))
+    ear.timeout_s = 0.1
+    with pytest.raises(world.WorldError, match="ear: no answer within"):
+        asyncio.run(ear.classify("u1", "hello", heard.event_id, {}))
+    *done, cut = sink.of("llm.call")  # how many ended in time depends on timing
+    assert cut.payload["error"] == "cancelled"
+    assert all(c.payload["error"] is None for c in done)
+    assert sink.of("rep.ear") == []  # no default act
