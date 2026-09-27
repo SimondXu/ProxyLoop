@@ -84,7 +84,7 @@ class SlowTools:
         self.shareable: dict[str, str] = {}  # recorded shareable values (declass)
         self.finished, self._n, self._mandates = False, 0, 0
         # the cp transcript length when a read-back was first asked for an
-        # offer revision, and when the final offer was first asked (§9.2, §9.3)
+        # offer revision, and when the final offer was last asked (§9.2, §9.3)
         self.asked: dict[tuple[str, int], int] = {}
         self.asked_final: int | None = None
         self.received: set[str] = set()  # the relay ids SlowLoop handed to Slow
@@ -266,7 +266,7 @@ class SlowTools:
             sent = self._s2f(lane="cp", type="GUIDE", guide=guide)
             if guide.move == GuideMove.ASK_READBACK:
                 return self._asked(bb, guide, sent)
-            if guide.move == GuideMove.ASK_FINAL_OFFER and self.asked_final is None:
+            if guide.move == GuideMove.ASK_FINAL_OFFER:  # the last ask (S1-SYS-57)
                 self.asked_final = len(bb.channels["cp"].lines)
             if guide.move != "deflect_fact_request":
                 return sent
