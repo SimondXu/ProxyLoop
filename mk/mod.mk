@@ -69,9 +69,14 @@ metrics:
 # S1-MOD-04: the Fast benchmark (src/proxyloop/eval/specs/fast_benchmark.yaml). benchmark-fast
 # is root-run (L+G): C5 is hosted (TeamRouter), C2 and C1 need `make serve-up`; C1 fails loudly
 # without PL_TRAINED_ADAPTER. BENCH_ARGS go to `proxyloop.cli session` (the Slow/world options).
-# The run is resumable; the report is written only if the integrity gate passes.
-# benchmark-report is offline, no keys and no GPU (`make benchmark-report RUNS=<dir>`).
+# A runs dir holds one matrix: resume only with the identical BENCH_CONDITIONS. C1 runs later
+# as its own matrix in a fresh dir (BENCH_CONDITIONS=C1 BENCH_RUNS=runs/fast-benchmark-c1
+# BENCH_REPORT_RUNS="runs/fast-benchmark runs/fast-benchmark-c1"); comparisons across the
+# two are marked "not interleaved". The report is gated (integrity, pairing, one shared
+# config): refused, nothing written, unless `--descriptive` is passed by hand.
+# benchmark-report is offline, no keys and no GPU (`make benchmark-report RUNS="<dir>..."`).
 BENCH_RUNS ?= runs/fast-benchmark
+BENCH_REPORT_RUNS ?= $(BENCH_RUNS)
 BENCH_CONDITIONS ?= C5,C2
 BENCH_OUT ?= docs/results/fast-benchmark.json
 BENCH := uv run python -m proxyloop.eval.benchmark
@@ -81,7 +86,7 @@ BENCH_REPORT = $(BENCH) report --git-sha $$(git rev-parse HEAD) --out $(BENCH_OU
 
 benchmark-fast:
 	$(BENCH) run --runs $(BENCH_RUNS) --conditions $(BENCH_CONDITIONS) $(BENCH_ARGS)
-	$(BENCH_REPORT) --runs $(BENCH_RUNS)
+	$(BENCH_REPORT) $(foreach r,$(BENCH_REPORT_RUNS),--runs $(r))
 
 benchmark-report:
-	$(BENCH_REPORT) --runs $(RUNS)
+	$(BENCH_REPORT) $(foreach r,$(RUNS),--runs $(r))

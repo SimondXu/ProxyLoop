@@ -4,7 +4,10 @@
 # the unseal (I9, AGENTS rule 11); the loader refuses split "test". Adding a
 # family is a data change here, never a code change.
 # attested_adapter: a bundle counts only if its manifest's Fast model carries
-# adapter shard hashes that match its attestation (C1: the trained LoRA slot).
+# adapter shard hashes under adapters/<its Fast model_id>/ that match its
+# attestation, and passes evidence-check --claim (C1: the trained LoRA slot).
+# C1 runs later as its own matrix (BENCH_CONDITIONS=C1 in a fresh RUNS dir): its
+# comparisons with C5/C2 are then time-separated, marked "not interleaved".
 id: fast-benchmark
 conditions:
   - {name: C5}
