@@ -27,6 +27,7 @@ class AdapterKind(StrEnum):
 Endpoint = Literal["relay", "teamrouter", "vllm", "openrouter"]
 ReasoningEffort = Literal["none", "minimal", "low", "medium", "high"]
 LLMRole = Literal["fast_user", "fast_cp", "slow", "ear", "mouth", "simuser", "teacher"]
+SamplingKey = Literal["temperature", "top_p", "seed"]
 
 
 class ModelRef(Frozen):
@@ -131,9 +132,14 @@ class LLMCallRecord(Frozen):
     finish_reason: str | None  # as the provider reports it; None on error
     attempt: Literal[0, 1]  # one record per HTTP attempt: a retry is a second
     error: str | None = None
+    # The sampling keys that went into the HTTP body (ADR-0019); None: none were
+    # sent, so the provider's default applied (and every record before the field).
+    sampling_sent: dict[SamplingKey, float | int] | None = None
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
+        if self.sampling_sent == {}:
+            raise ValueError("sampling_sent is None when no sampling was sent")
         if self.requested_model != self.model_ref.model_id:
             raise ValueError("requested_model must be the ModelRef's model_id")
         if self.adapter_kind is not self.model_ref.kind:

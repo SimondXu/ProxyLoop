@@ -22,7 +22,7 @@ import os
 from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from contextlib import aclosing
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 import httpx
 
@@ -32,6 +32,7 @@ from proxyloop.contract.llm import (
     LLMCallRecord,
     LLMUnavailable,
     ModelRef,
+    SamplingKey,
     TextRequest,
     ToolRequest,
     Usage,
@@ -108,6 +109,7 @@ class Attempt:
     usage: Usage | None = None
     finish_reason: str | None = None
     saw_done: bool = False  # the SSE "[DONE]" line
+    sampling_sent: dict[SamplingKey, float | int] | None = None
 
     def headers(self, resp: httpx.Response) -> None:
         self.request_id = resp.headers.get("x-request-id") or resp.headers.get(
@@ -160,6 +162,7 @@ class Attempt:
             finish_reason=None if error else self.finish_reason,
             attempt=self.attempt,
             error=error,
+            sampling_sent=self.sampling_sent,
         )
 
 
@@ -207,8 +210,10 @@ class HTTPAdapter:
         from ``parse``), then its record."""
 
         streaming = bool(body.get("stream"))
+        # Recorded from the body itself, so a record never claims unsent sampling.
+        sent = {k: body[k] for k in get_args(SamplingKey) if k in body} or None
         for n in ATTEMPTS:
-            attempt = Attempt(self._ref, request, n, self._clock())
+            attempt = Attempt(self._ref, request, n, self._clock(), sampling_sent=sent)
             text: list[str] = []
             try:
                 async with self._http.stream("POST", path, json=body) as resp:

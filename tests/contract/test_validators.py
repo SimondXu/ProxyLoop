@@ -11,6 +11,7 @@ from proxyloop.contract.config import AblationId, WorldModels, config_hash
 from proxyloop.contract.llm import (
     AdapterKind,
     ChatMessage,
+    LLMCallRecord,
     ModelRef,
     TextRequest,
     ToolRequest,
@@ -118,6 +119,20 @@ def test_call_record_consistency() -> None:
         call_record(adapter_kind=AdapterKind.TEST_FAKE)
     with pytest.raises(ValueError, match="t_first_token"):
         call_record(t_first_token=50)
+
+
+def test_sampling_sent_is_optional_and_never_empty() -> None:
+    """ADR-0019: a record written before the field reads as "provider default"."""
+    old = call_record().model_dump(mode="json")
+    del old["sampling_sent"]
+    assert LLMCallRecord.model_validate(old).sampling_sent is None
+    sent = call_record(sampling_sent={"temperature": 0.3, "seed": 7}).sampling_sent
+    assert sent is not None and isinstance(sent["seed"], int)
+    assert sent == {"temperature": 0.3, "seed": 7}
+    with pytest.raises(ValueError, match="sampling_sent"):
+        call_record(sampling_sent={})
+    with pytest.raises(ValueError):
+        call_record(sampling_sent={"max_tokens": 5})
 
 
 def test_requests() -> None:
