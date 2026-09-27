@@ -46,3 +46,19 @@ smoke-live:
 # replay-cli: the terminal replay of a bundle (no keys, no GPU). RUN=runs/<run_id>
 replay-cli:
 	uv run python -m proxyloop.cli replay $(RUN)
+
+# web-test (S1-SYS-07). No flags: no keys, no GPU. The web suite in apps/web: lint,
+# typecheck, vitest, build and the Playwright e2e (`npm run web-test`). `npm ci` runs only
+# when node_modules/.package-lock.json (written by npm on install) is missing or not newer
+# than package-lock.json.
+# replay (S1-SYS-07). No flags: no keys, no GPU. Serves the replay UI (`npm run replay`,
+# the Vite dev server). RUN=<bundle dir or dir of bundles>, relative to the repo root or
+# absolute, becomes PL_BUNDLE_DIR; unset: the npm script's default fixture
+# (tests/web/fixtures).
+WEB_DEPS = cd apps/web && { [ node_modules/.package-lock.json -nt package-lock.json ] || npm ci; }
+.PHONY: web-test replay
+web-test:
+	$(WEB_DEPS) && npm run web-test
+
+replay:
+	$(WEB_DEPS) && $(if $(RUN),PL_BUNDLE_DIR=$(RUN) ,)npm run replay

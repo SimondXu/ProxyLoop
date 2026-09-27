@@ -22,9 +22,12 @@ dev = [
   "transformers==5.17.0",
 ]
 sys = [
+  "fastapi==0.141.1",
   "httpx==0.28.1",
   "pyyaml==6.0.3",
   "transformers==5.17.0",
+  "uvicorn==0.54.0",
+  "websockets==17.1",
 ]
 mod = [
   "httpx==0.28.1",
