@@ -151,8 +151,8 @@ class FakeStarter:
     default, an unknown task, unknown model or model of another lane is
     refused, and a case is returned only after its seq 0 exists, at
     ``runs/live/<run_id>/<run_id>``. ``refuse`` or ``fail`` make the next
-    starts refuse or raise; ``delay_s`` holds each start open (to see the
-    lock)."""
+    starts refuse or raise; ``returns`` makes them return that case (a run_id
+    twice); ``delay_s`` holds each start open (to see the lock)."""
 
     def __init__(
         self, runs: Path, options: Sequence[ModelOption], tasks: Sequence[str]
@@ -163,6 +163,7 @@ class FakeStarter:
         self.cases: list[ApiCase] = []
         self.refuse: str | None = None
         self.fail = False
+        self.returns: ApiCase | None = None
         self.delay_s = 0.0
         self.inside = self.most = 0  # starts in flight now, and at most
 
@@ -199,6 +200,8 @@ class FakeStarter:
                 raise StartRefused("wrong_lane")
         defaults: dict[LaneKey, str] = {o.lane: o.id for o in self.options if o.default}
         self.resolved.append(defaults | dict(models))
+        if self.returns is not None:
+            return self.returns
         run_id = f"live-{len(self.cases) + 1}"
         case = ApiCase(self.runs / "live" / run_id, run_id).start()
         self.cases.append(case)

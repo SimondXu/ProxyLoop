@@ -21,13 +21,20 @@ seam: serve never imports the kernel. Without a starter every route here is
 A started case is kept in serve's own map, which ``create_app`` puts in front
 of its ``cases`` lookup: ``GET /live``, ``/rep``, the case POSTs and
 ``/ws/rep`` find it like any other case (and 404 while its run is not
-servable).
+servable). A run_id already in the map is 503 ``unavailable``, logged, and
+never replaces the case it names. A refusal reason outside ``REASONS`` is 503
+``unavailable`` too, logged with its URLs redacted (AGENTS rule 15).
+
+Threat model: ``GET /start`` needs no authentication, so any local process can
+act as operator and start a paid session; the operator pair and the Origin
+check guard only against cross-site requests (as for ``serve.cases``).
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import Sequence
 from typing import Annotated, Literal, cast, get_args
 
@@ -36,6 +43,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from proxyloop.contract.llm import Endpoint
+from proxyloop.serve.bundles import redact
 from proxyloop.serve.cases import (
     Case,
     Cases,
@@ -49,6 +57,9 @@ from proxyloop.serve.csrf import HEADER, NO_CASE, Csrf
 
 TASK_REF = r"^[a-z0-9][a-z0-9._@-]{0,63}$"  # a family name, e.g. cp-direct-discount
 OPTION_ID = r"^[!-~]{1,128}$"  # printable ASCII without spaces: an opaque option id
+REASONS = frozenset(
+    ("unknown_task", "unknown_model", "wrong_lane", "not_live", "busy", "unavailable")
+)  # the frozen StartRefused reasons: only these reach the browser
 _log = logging.getLogger(__name__)
 
 
@@ -66,9 +77,13 @@ def broken(options: Sequence[object], tasks: object) -> str | None:
         return "tasks are not a list"
     if not all(isinstance(task, str) for task in cast(Sequence[object], tasks)):
         return "a task is not a string"
+    if not all(re.fullmatch(TASK_REF, task) for task in cast(Sequence[str], tasks)):
+        return "a task would be refused by POST /api/cases (TASK_REF)"
     if not all(isinstance(option, ModelOption) for option in options):
         return "an option is not a ModelOption"
     offered = cast(Sequence[ModelOption], options)
+    if not all(re.fullmatch(OPTION_ID, option.id) for option in offered):
+        return "an option id would be refused by POST /api/cases (OPTION_ID)"
     if len({option.id for option in offered}) != len(offered):
         return "option ids are not unique"
     for option in offered:  # a buggy starter can skip validation (model_copy)
@@ -126,11 +141,18 @@ def add_start_routes(app: FastAPI, start: Starter | None, csrf: Csrf) -> Cases:
             try:
                 case = await kernel.start_case(body.task_ref, body.models, body.rep)
             except StartRefused as refused:
+                if refused.reason not in REASONS:
+                    why = redact(refused.reason.encode()).decode()
+                    _log.error("start refused with an unknown reason: %s", why)
+                    raise Refused(503, "unavailable") from None
                 status = 409 if refused.reason == "busy" else 400
                 raise Refused(status, "start", refused.reason) from refused
             except Exception as err:  # loud: logged, 503, no retry
                 _log.exception("start_case failed for task %s", body.task_ref)
                 raise Refused(503, "unavailable") from err
+            if case.run_id in started:
+                _log.error("the starter returned run_id %r twice", case.run_id)
+                raise Refused(503, "unavailable")
             started[case.run_id] = case
         return JSONResponse({"case_id": case.run_id}, 201)
 

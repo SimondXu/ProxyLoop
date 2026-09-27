@@ -242,6 +242,38 @@ def test_the_models_are_forwarded_as_given(env: Env) -> None:
     ]
 
 
+def test_an_unknown_refusal_reason_is_503_and_logged_redacted(
+    env: Env, caplog: pytest.LogCaptureFixture
+) -> None:
+    env.starter.refuse = "relay https://relay.example/v1 is down"
+    with caplog.at_level(logging.ERROR, logger=LOGGER):
+        got = start(env, headers(operator(env.http)))
+    assert (got.status_code, got.json()) == (503, {"error": "unavailable"})
+    (record,) = [r for r in caplog.records if r.name == LOGGER]
+    assert record.levelno == logging.ERROR
+    assert "<redacted-url>" in record.getMessage()
+    assert "https://" not in caplog.text and "https://" not in got.text
+
+
+def test_a_run_id_started_twice_is_503_and_keeps_the_first(
+    env: Env, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    hdrs = headers(operator(env.http))
+    assert start(env, hdrs).json() == {"case_id": "live-1"}
+    (first,) = env.starter.cases
+    impostor = ApiCase(tmp_path / "elsewhere", "live-1").start()
+    env.starter.returns = impostor
+    with caplog.at_level(logging.ERROR, logger=LOGGER):
+        got = start(env, hdrs)
+    impostor.close()
+    assert (got.status_code, got.json()) == (503, {"error": "unavailable"})
+    assert [r.levelno for r in caplog.records if r.name == LOGGER] == [logging.ERROR]
+    user = login(env.http, "user", "live-1")
+    got = post(env.http, "/api/cases/live-1/messages", {"text": "hi"}, headers(user))
+    assert got.status_code == 200
+    assert first.messages == ["hi"] and impostor.messages == []
+
+
 def test_a_raising_starter_is_503_logged_and_not_retried(
     env: Env, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -322,6 +354,8 @@ BROKEN: dict[str, tuple[object, object]] = {  # (options, tasks)
     "baseline endpoint": (_with(3, endpoint="baseline"), TASKS),
     "unknown lane": (_with(3, lane="ear"), TASKS),
     "not an option": ([*OPTIONS, OPTIONS[0].model_dump()], TASKS),
+    "an id with a space": (_with(1, id="open router"), TASKS),
+    "a task POST would refuse": (OPTIONS, [*TASKS, "Upper-Task"]),
     "tasks a bare string": (OPTIONS, TASKS[0]),
     "a task not a string": (OPTIONS, [TASKS[0], 7]),
 }  # fmt: skip

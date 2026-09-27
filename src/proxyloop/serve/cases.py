@@ -149,7 +149,10 @@ class Starter(Protocol):
         ``unavailable``. Returns only after the run's ``session.started``
         (seq 0) is written; the Case's ``run_id`` is the case_id, and the run
         lives at ``runs/live/<run_id>/<run_id>``. Model failures after the
-        start are the session's, never raised here."""
+        start are the session's, never raised here. serve may cancel this call
+        when the client disconnects, and then never registers the case: a
+        kernel that completes the start must accept the cancellation cleanly
+        or keep the run reachable."""
         ...
 
 
