@@ -269,6 +269,7 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
   - (e) pre-existing: `_say`/`_guide` strip "@", so an email-like value is spoken wrongly;
   - F's identify wording changed to "The account details are {}, for verification."; the world verifies by value, and only a root smoke shows the Ear's reaction.
 - #162 (SYS, S1-SYS-26): `tests/kernel/test_root05.py::test_an_unchanged_hold_is_relayed_once` emits a "coroutine 'SimRep.tick' was never awaited" `RuntimeWarning`.
+- #165 (SYS, S1-SYS-27): cp `s2f.voiced` is emitted for guides the fold dropped and the generation never saw (`kernel/lanes.py:145,189`); S1-MOD-05 must not read it as spoken; S1-SYS-21's R3a ack rule fixes it.
 - NORTH_STAR résumé lines still say Sonnet / typed relays — the user's call (2026-09-27: leave for now). The S1 line's "plans from typed relays" no longer matches I5 (ADR-0016).
 
 ---
@@ -1135,7 +1136,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Deps:** S1-SYS-26 (#162, merged).
 - **Acceptance** (test-first ✱, manual clock): ✱ wakes that arrive during a step coalesce; ✱ L4 property: a normal, a no-tool, a refused and a `content_filter` step give the same schedule; ✱ `wait` against the heartbeat (a wait only makes the next step sooner); ✱ the rate limit: a rep turn during FastC's pending generation for that line does not wake Slow, and its end wakes Slow once; ✱ `chan.opened{cp}` is not a wake and opens the heartbeat window; ✱ no heartbeat outside a call; ✱ regressions shaped like `655087` and `f3a106`; ✱ bounded under a rep turn every 2 s for 720 s; wake reasons are fixed strings; `kernel/session.py` does not grow; `make check` green. Root run: smoke #2 reads `slow_attention_lag` (EVAL §7).
 - **Verify:** `uv run pytest tests/kernel tests/slow tests/concurrency -q`; `make check`.
-- **Escalate if:** it needs a contract change; a wake would depend on the content of a model output (rule 12); the rate limit needs FastC state outside the owned paths; `kernel/session.py` passes 600 lines.
+- **Escalate if:** it needs a contract change; a wake would depend on the content of a model output (rule 12); the rate limit needs FastC state outside the owned paths (option B's pending-generation check should come from `fast.request` / `fast.turn` events in `kernel/wake.py` (events only), not from `kernel/lanes.py` internals; root decision under §0.5a, 2026-09-27); `kernel/session.py` passes 600 lines.
 
 ### S1-SYS-34 Slow reads the conversations (ADR-0016) — SYS (L-CORE) — M — flags L for the smoke (root) — todo
 - **Objective** (user decision 2026-09-27 on I5; the architect's design, adopted by the root under §0.5a, 2026-09-27):
@@ -1344,8 +1345,8 @@ The user also watches a replay of one probe episode per condition, and the size 
 - **Acceptance:** `make docs-check` and `make lint` green; every sync item is either done or listed in the PR body as deliberately deferred, with the reason.
 
 ### S1-ROOT-08 Wake contract and transcript-reading Slow: ADRs, NORTH_STAR I5, E2E re-plan — ROOT — S — doing
-- **Objective:** record ADR-0015 (the Slow wake contract; root decisions under §0.5a, 2026-09-27) and ADR-0016 (Slow reads the conversations; the user's I5 decision and the adopted design), with the documents and task blocks that follow from them and from the user's decision to run the business path end to end before the model work: NORTH_STAR I5, the Goal phrase and the Architecture sentence (the user's I5 decision; not the résumé lines), AGENTS rule 9, ARCHITECTURE §0 C2, §1, §5, §8, §11, §15, EVAL A1, A5, §7, §8.3; the pointers in ADR-0012 and ADR-0014; the blocks S1-SYS-29…34 and S1-CON-08; the amendments to S1-SYS-05, S1-SYS-21, S1-SYS-26, S1-CON-06 and S1-ROOT-06; the E2E order; the S1 PR cap.
-- **Owned paths:** `docs/decisions/**` (new ADR files; the one-line pointers in ADR-0012 and ADR-0014), `NORTH_STAR.md` (I5, the Goal phrase, the Architecture sentence only), `AGENTS.md` (rule 9 only), `ARCHITECTURE.md`, `EVAL.md`, `PLAN.md`.
+- **Objective:** record ADR-0015 (the Slow wake contract; root decisions under §0.5a, 2026-09-27) and ADR-0016 (Slow reads the conversations; the user's I5 decision and the adopted design), with the documents and task blocks that follow from them and from the user's decision to run the business path end to end before the model work: NORTH_STAR I5, the Goal phrase and the Architecture sentence (the user's I5 decision; not the résumé lines), AGENTS rule 9, ARCHITECTURE §0 C2, §1, §5, §8, §11, §15, EVAL A1, A5, §7, §8.3; the pointers in ADR-0009, ADR-0012 and ADR-0014; the blocks S1-SYS-29…34 and S1-CON-08; the amendments to S1-SYS-05, S1-SYS-21, S1-SYS-26, S1-CON-06 and S1-ROOT-06; the E2E order; the S1 PR cap.
+- **Owned paths:** `docs/decisions/**` (new ADR files; the one-line pointers in ADR-0009, ADR-0012 and ADR-0014), `NORTH_STAR.md` (I5, the Goal phrase, the Architecture sentence only), `AGENTS.md` (rule 9 only), `ARCHITECTURE.md`, `EVAL.md`, `PLAN.md`.
 - **Acceptance:** `make docs-check` and `make lint` green; no measured number typed (AGENTS rule 13).
 
 ---
