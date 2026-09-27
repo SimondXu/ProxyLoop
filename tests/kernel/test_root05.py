@@ -9,13 +9,19 @@ from typing import cast
 
 import pytest
 from tests.kernel.test_session import FINISH, SCRIPTS, UNTIL
+from tests.support.fakes import RepeatingLLM
+from tests.support.manual_clock import ScaledClock
 from tests.support.sessions import act, fake, fake_config, only_bundle, run
+from tests.support.sessions import patient_task as task
 
 from proxyloop.contract.config import SessionConfig
 from proxyloop.contract.events import Event
-from proxyloop.contract.llm import ModelRef
+from proxyloop.contract.llm import LLMClient, LLMRole, ModelRef
+from proxyloop.contract.protocol import Hold
 from proxyloop.kernel import session
 from proxyloop.kernel.channels import Channel, End, Incoming
+from proxyloop.kernel.session import ChannelSpec, Kernel
+from proxyloop.llm.http import RecordSink
 from proxyloop.llm.spend import SESSION_CAP_MICRO_USD, Rate, RunawaySpend, SpendLedger
 
 
@@ -216,3 +222,23 @@ def test_an_unpriced_model_sets_the_guard_factor_to_1_at_the_start(
     monkeypatch.setattr(session, "SpendLedger", ledger)
     priced = _guard(tmp_path / "b", cfg)
     assert (priced["factor"], priced["tokens"]) == (3, 3 * session.PROJECTED[0])
+
+
+def test_only_a_cp_hold_is_deduped_against_the_cp_hold(tmp_path: Path) -> None:
+    clock = ScaledClock(100)  # (e), #133 round 3 N2: an idle kernel, never run
+
+    def make(role: LLMRole, ref: ModelRef, sink: RecordSink) -> LLMClient:
+        return RepeatingLLM(ref, ["unused"], clock, on_record=sink)
+
+    specs: dict[str, ChannelSpec] = {"user": "sim", "cp": "sim"}
+    k = Kernel(fake_config(), task(), specs, tmp_path, clock, clock.sleep, make, None)
+    said = k.emit("user.msg", "kernel", {"text": "hi"}).event_id
+    held = k.emit("chan.hold", "fast.cp", {"lane": "cp", "reason": "decision"}, [said])
+    hold = [Hold(reason="decision")]
+    relay = k.lanes["user"]._relay  # pyright: ignore[reportPrivateUsage]
+    relay(list(hold), held.event_id, "user-g1")  # a user-lane Hold: never compared
+    assert (k.counts["hold_repeat"], k.counts["relay_rejected"]) == (0, 1)
+    relay = k.lanes["cp"]._relay  # pyright: ignore[reportPrivateUsage]
+    relay(list(hold), held.event_id, "cp-g1")  # the cp hold, unchanged: deduped
+    assert (k.counts["hold_repeat"], k.counts["relay_rejected"]) == (1, 1)
+    k.bus.close()
