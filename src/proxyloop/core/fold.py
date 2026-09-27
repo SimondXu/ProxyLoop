@@ -289,6 +289,7 @@ def _approval_decided(bb: Blackboard, e: Event) -> Blackboard:
         by=d.by,
         terms_hash=card.terms_hash,
         authority_epoch=card.authority_epoch,
+        expires_ms=card.expires_ms,  # the card's window (ADR-0007)
     )
     approvals = {**bb.private.approvals, d.approval_id: approval}
     return _private(bb, pending_approval=None, approvals=approvals)

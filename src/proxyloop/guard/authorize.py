@@ -11,8 +11,10 @@ from dataclasses import dataclass
 
 from proxyloop.contract.events import ApprovalPost, Approver
 from proxyloop.contract.state import (
+    Approval,
     ApprovalCard,
     Blackboard,
+    Mandate,
     OfferPublic,
     ReadbackBinding,
 )
@@ -55,6 +57,7 @@ REASONS: Mapping[str, tuple[str, ...]] = {
         "approval_stale_epoch",
         "mandate_stale_epoch",
         "mandate_expired",
+        "approval_expired",
         "outside_mandate",
         "not_authorized",
         "already_authorized",
@@ -145,9 +148,13 @@ def current_card(bb: Blackboard) -> ApprovalCard | None:
     return card if same else None
 
 
-def _grant(bb: Blackboard, offer: OfferPublic, terms: Terms) -> tuple[str | None, str]:
-    """The covering mandate's hash or the approval id, else why neither. A
-    user's denial of these terms in this epoch wins over both (I6)."""
+def _grant(
+    bb: Blackboard, offer: OfferPublic, terms: Terms
+) -> tuple[Mandate | Approval | None, str]:
+    """The covering mandate or a live approval, else why neither. A user's
+    denial of these terms in this epoch wins over both, whatever its expiry
+    (I6, M3). Expiry filters grants only: the first granted approval with
+    ``expires_ms > now``; ``None`` is never live (ADR-0007, fail closed)."""
     approvals = bb.private.approvals.values()
     mine = [a for a in approvals if a.terms_hash == offer.terms_hash]
     now = [a for a in mine if a.authority_epoch == bb.epoch]
@@ -155,9 +162,12 @@ def _grant(bb: Blackboard, offer: OfferPublic, terms: Terms) -> tuple[str | None
         return None, "approval_denied"
     m, why = bb.private.mandate, mandate_gap(bb, terms)
     if m is not None and why is None:
-        return m.mandate_hash, ""
-    if now:  # all granted
-        return now[0].approval_id, ""
+        return m, ""
+    live = [a for a in now if a.expires_ms is not None and a.expires_ms > bb.t_ms]
+    if live:  # all granted
+        return live[0], ""
+    if now:
+        return None, "approval_expired"
     return None, "approval_stale_epoch" if mine else why or "not_authorized"
 
 
@@ -174,14 +184,12 @@ def accept_offer(
     if grant is None:
         return Denial(why)
     th = str(offer.terms_hash)
-    bid = business_action_id(
-        case.case_id, "accept_offer", ref, offer.revision, th, grant
-    )
+    by = grant.mandate_hash if isinstance(grant, Mandate) else grant.approval_id
+    bid = business_action_id(case.case_id, "accept_offer", ref, offer.revision, th, by)
     if any(c.business_action_id == bid for c in bb.capabilities.values()):
         return Denial("already_authorized")
-    m = bb.private.mandate
-    until = [offer.expires_ms, bb.t_ms + CAP_TTL_MS]
-    until += [m.expires_ms] if m is not None and grant == m.mandate_hash else []
+    # min(grant expiry, offer expiry, TTL); a live approval's is never None
+    until = [grant.expires_ms, offer.expires_ms, bb.t_ms + CAP_TTL_MS]
     cap = mint(bb, bid, "accept_offer", th, min(t for t in until if t is not None))
     text = f"Yes, we accept these terms: {readback_text(offer)}."
     line: dict[str, object] = {"lane": "cp", "kind": "accept", "text": text}

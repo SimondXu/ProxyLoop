@@ -92,15 +92,22 @@ def mandate(status: str = "granted", **kw: object) -> Mandate:
     return Mandate.model_validate(base | kw)
 
 
-def approval(o: OfferPublic, decision: str = "granted", epoch: int = 0) -> Approval:
+def approval(
+    o: OfferPublic,
+    decision: str = "granted",
+    epoch: int = 0,
+    expires_ms: int | None = 60_000,  # the card's; None: a pre-ADR-0007 record
+    approval_id: str = "apr-1",
+) -> Approval:
     assert o.terms_hash is not None
     return Approval.model_validate(
         {
-            "approval_id": "apr-1",
+            "approval_id": approval_id,
             "decision": decision,
             "by": "ui",
             "terms_hash": o.terms_hash,
             "authority_epoch": epoch,
+            "expires_ms": expires_ms,
         }
     )
 

@@ -69,8 +69,8 @@ def _confirmed_offer(log: Log) -> None:
     log.emit("readback.updated", update | {"terms_hash": offer_terms_hash(done)})
 
 
-def _granted(log: Log) -> None:
-    """Card, post, decision: the approval path to an accept."""
+def _granted(log: Log) -> object:
+    """Card, post, decision: the approval path to an accept; the card's expiry."""
     effects = request_approval(log.bb, "o1", CASE)
     assert not isinstance(effects, Denial)
     ((kind, card),) = effects
@@ -80,6 +80,7 @@ def _granted(log: Log) -> None:
     log.emit("approval.post", post | {"authority_epoch": 0})
     decided = {"approval_id": card["approval_id"], "decision": "granted", "by": "ui"}
     log.emit("approval.decided", decided)
+    return card["expires_ms"]
 
 
 def _accept(log: Log) -> str:
@@ -95,10 +96,11 @@ def test_readback_card_decision_accept_release() -> None:
     _confirmed_offer(log)
     o = log.bb.public.offers["o1"]
     assert {s.status for s in o.slots} == {"confirmed"} and o.terms_hash
-    _granted(log)
+    expires = _granted(log)
     assert log.bb.private.pending_approval is None
     (approval,) = log.bb.private.approvals.values()
     assert (approval.decision, approval.terms_hash) == ("granted", o.terms_hash)
+    assert approval.expires_ms == expires is not None  # the card's (ADR-0007)
     cap_id = _accept(log)
     assert log.bb.authorizations[0].offer_ref == "o1"
     assert not log.bb.capabilities[cap_id].consumed
