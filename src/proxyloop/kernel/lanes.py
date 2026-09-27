@@ -21,7 +21,7 @@ from proxyloop.llm.vllm import VLLMClient
 if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
 
-PROFILE: dict[Lane, str] = {"user": "pl_user_v1", "cp": "pl_cp_v1"}
+PROFILE: dict[Lane, str] = {"user": "pl_user_v1", "cp": "pl_cp_v2"}
 URGENT = ("user_msg", "rep_spoke")  # served before Slow's messages and timers
 _F2S = {  # "": the lane's own update type
     **{"note": "NOTE", "request": "REQUEST", "revoke": "REVOKE"},
