@@ -27,6 +27,7 @@ def test_the_row_names_what_ran(tmp_path: Path) -> None:
         "status": "ok",
         "started": "2026-09-27T01:00:00+00:00",
         "git_sha": "g",
+        "slow_fp": None,  # before S1-SYS-43
         "task_ref": "cp-direct-discount@1",
         "split": "train",
         "mode": "live",  # the manifest's cfg.live

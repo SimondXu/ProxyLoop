@@ -6,8 +6,9 @@ never imported by ``proxyloop.eval``).
 ``DETECTORS`` maps a name to ``fn(Inputs) -> value``: a number, a per-role
 count, a dict with a ``count`` and the seqs behind it, or ``None`` when the
 bundle cannot tell. An unknown is never 0. Values carry ids, codes and numbers
-only; the one text-reading detector (the hand-off claim in ``relay_gap``)
-runs only with ``content`` and is ``None`` otherwise.
+only; the text-reading detectors (the hand-off claim in ``relay_gap``, the
+closing reply in ``grading``) run only with ``content`` and are ``None``
+otherwise. ``grading`` adds the H5 detectors to this one registry.
 """
 
 from __future__ import annotations
@@ -25,17 +26,19 @@ from proxyloop.contract import protocol as fp
 from proxyloop.contract.bundle import Manifest
 from proxyloop.contract.events import Event
 from proxyloop.contract.llm import LLMCallRecord
+from proxyloop.obs.trace import identifier
 
 BANNER = "advisory triage signals: not metrics, not claims, not a merge gate"
 Value = object
 _PAUSES = (fp.Hold, fp.Wait)
 _DIRECTIVES = (fp.Relay, fp.Hold, fp.Wait, fp.EndCall)
 _STALE = frozenset({"identify", "hold_for_fact", "deflect_fact_request"})
-# Hand-offs FastU may claim to the user; a negation earlier in the sentence
-# ("I haven't passed that along") voids the match.
+# Hand-offs FastU may claim to the user; a negation earlier in the same
+# sentence ("I haven't passed that along") voids the match. A bare "forward"
+# is no claim ("I look forward to it").
 _HANDOFF = re.compile(
     r"\bpass(?:ed|ing)? (?:it |that |this |those |these |them )?(?:along|on)\b"
-    r"|\b(?:relay|forward)(?:ed|ing)?\b"
+    r"|\brelay(?:ed|ing)?\b|\bforward(?:ed|ing)\b"
     r"|\blet (?:them|the rep|the representative) know\b"
     r"|\bcheck(?:ing)? with (?:them|the rep|the representative)\b"
     r"|\b(?:i've|i have) (?:shared|sent|told them)\b",
@@ -43,6 +46,7 @@ _HANDOFF = re.compile(
 )
 _NEGATION = re.compile(r"n't\b|\b(?:not|never|cannot|unable)\b", re.IGNORECASE)
 _SENTENCE_END = re.compile(r"[.!?\u2026][\"'\u201d\u2019)\]]*\s*$")
+_SENTENCE = re.compile(r"[.!?\u2026]\s")  # a sentence break inside a line
 _ERROR_TYPE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}")
 _HTTP = re.compile(r"\bHTTP (\d{3})\b")
 
@@ -54,6 +58,8 @@ class Turn:
     lane: str
     record: LLMCallRecord | None  # the turn's llm.call, final attempt
     items: tuple[fp.TurnItem, ...] | None  # the raw response parsed; None: missing
+    text: str | None  # the raw response; None: missing
+    profile: str | None  # its fast.request's profile; None: no fast.request
 
 
 class Inputs:
@@ -70,6 +76,10 @@ class Inputs:
         self.events, self.manifest, self.prompt = tuple(events), manifest, prompt
         self.relay_window_ms, self.content = relay_window_ms, content
 
+    @cached_property
+    def by_id(self) -> dict[str, Event]:
+        return {e.event_id: e for e in self.events}
+
     def of(self, *types: str) -> list[Event]:
         return [e for e in self.events if e.type in types]
 
@@ -81,6 +91,10 @@ class Inputs:
     @cached_property
     def turns(self) -> list[Turn]:
         last = {r.call_id: r for _, r in self.calls}
+        profile = {
+            str(e.payload["gen_id"]): str(e.payload["profile"])
+            for e in self.of("fast.request")
+        }
         out: list[Turn] = []
         for e in self.of("fast.turn"):
             p = e.payload
@@ -88,8 +102,9 @@ class Inputs:
             sha = record.response_sha if record else None
             text = self.prompt(sha) if sha else None
             lane = "cp" if p["lane"] == "cp" else "user"
-            items = None if text is None else fp.parse_turn(text, lane)
-            out.append(Turn(e.seq, str(p["gen_id"]), lane, record, items))
+            items = None if text is None else fp.parse_turn(text, lane)  # base grammar
+            gen = str(p["gen_id"])
+            out.append(Turn(e.seq, gen, lane, record, items, text, profile.get(gen)))
         return out
 
 
@@ -124,6 +139,11 @@ def scalar(value: Value) -> int | float | None:
     return None
 
 
+def safe(value: object) -> object:
+    """An identifier, number or bool as is; any other value is withheld."""
+    return value if value is None or identifier(value) else "?"
+
+
 def as_dict(value: object) -> dict[str, object]:
     return cast(dict[str, object], value) if isinstance(value, dict) else {}
 
@@ -145,7 +165,7 @@ DETECTORS["finish_reason_null"] = _per_role(lambda r: r.finish_reason is None)
 @detector("end_reason")
 def _end(x: Inputs) -> Value:
     ends = x.of("session.ended")
-    return ends[-1].payload.get("reason") if ends else None
+    return safe(ends[-1].payload.get("reason")) if ends else None
 
 
 @detector("first_llm_error")
@@ -171,27 +191,75 @@ def _slow_gap(x: Inputs) -> Value:
     return max((b - a for a, b in pairwise(ts)), default=None)
 
 
-def _speech_after(x: Inputs, marks: tuple[type, ...]) -> Value:
-    """Speech items after the first ``marks`` item in each Fast turn's raw
-    response, parsed by the contract parser; ``turns`` lists [seq, items]."""
+@detector("slow_last_step_to_end_ms")
+def _slow_tail(x: Inputs) -> Value:
+    """From the last slow.step.started to the log's last event; None: no step."""
+    steps = x.of("slow.step.started")
+    return x.events[-1].t_ms - steps[-1].t_ms if steps else None
+
+
+def _after(items: Sequence[fp.TurnItem], marks: tuple[type, ...]) -> int:
+    """Speech items after the first ``marks`` item."""
+    n, seen = 0, False
+    for item in items:
+        seen = seen or isinstance(item, marks)
+        n += seen and isinstance(item, fp.Speech)
+    return n
+
+
+@detector("speech_after_directive")
+def _speech_after(x: Inputs) -> Value:
+    """Speech items after the first directive in each Fast turn's raw
+    response, parsed by the contract parser's base grammar; ``turns`` lists
+    [seq, items]; ``count`` None: no turn could be read."""
     turns: list[list[int]] = []
     unknown: list[int] = []
     for t in x.turns:
         if t.items is None:
             unknown.append(t.seq)
+        elif n := _after(t.items, _DIRECTIVES):
+            turns.append([t.seq, n])
+    count = _known(sum(n for _, n in turns), unknown, x)
+    return {"count": count, "turns": turns, "unknown": unknown}
+
+
+def _known(count: int, unknown: list[int], x: Inputs) -> int | None:
+    """None when there were turns and none could be read: no clean 0."""
+    return None if unknown and len(unknown) == len(x.turns) else count
+
+
+@detector("speech_after_pause")
+def _speech_after_pause(x: Inputs) -> Value:
+    """Speech after a Hold/Wait in each Fast turn's raw response, in the
+    grammar of its fast.request ``profile`` (the contract parser): ``items``,
+    Speech items after the pause on a profile without ``pause_ends_speech``;
+    ``issues``, ParseIssue(speech_after_pause) on one with it (pl_cp_v3, one
+    per line, ADR-0017); ``count``, both (None: no turn could be read);
+    ``turns`` lists [seq, n];
+    ``unknown``: no response, or a missing or unknown profile."""
+    turns: list[list[int]] = []
+    unknown: list[int] = []
+    items = issues = 0
+    for t in x.turns:
+        spec = fp.PROFILES.get(t.profile or "")
+        if t.items is None or t.text is None or spec is None or spec.lane != t.lane:
+            unknown.append(t.seq)
             continue
-        n, seen = 0, False
-        for item in t.items:
-            seen = seen or isinstance(item, marks)
-            if seen and isinstance(item, fp.Speech):
-                n += 1
+        if spec.pause_ends_speech:
+            parsed = fp.parse_turn(t.text, spec.lane, t.profile)
+            n = sum(
+                isinstance(i, fp.ParseIssue) and i.reason == "speech_after_pause"
+                for i in parsed
+            )
+            issues += n
+        else:
+            n = _after(t.items, _PAUSES)
+            items += n
         if n:
             turns.append([t.seq, n])
-    return {"count": sum(n for _, n in turns), "turns": turns, "unknown": unknown}
-
-
-DETECTORS["speech_after_pause"] = lambda x: _speech_after(x, _PAUSES)
-DETECTORS["speech_after_directive"] = lambda x: _speech_after(x, _DIRECTIVES)
+    return {"count": _known(items + issues, unknown, x), "items": items,
+            "issues": issues,
+            "turns": turns, "unknown": unknown}  # fmt: skip
 
 
 @detector("empty_length")
@@ -244,7 +312,7 @@ def _relay_gap(x: Inputs) -> Value:
     ``sim_revealed``: the flagged ones whose user.sim cause revealed facts
     (world data). (b) ``handoff_claims``: flagged messages whose heard FastU
     reply in the window claims a hand-off; only with ``content``, else None."""
-    by_id = {e.event_id: e for e in x.events}
+    by_id = x.by_id
     end = x.events[-1].t_ms if x.events else 0
     relayed: dict[str, list[int]] = {}
     for f in x.of("f2s.msg"):
@@ -283,7 +351,8 @@ def _claims(x: Inputs, flagged: Sequence[Event]) -> list[dict[str, object]]:
                 continue
             text = str(d.payload.get("text_heard", "")).replace("\u2019", "'")
             m = _HANDOFF.search(text)
-            if m and not _NEGATION.search(text[: m.start()]):
+            before = _SENTENCE.split(text[: m.start()])[-1] if m else ""
+            if m and not _NEGATION.search(before):  # in this sentence only
                 hits.append({"seq": msg.seq, "reply_seq": d.seq, "phrase": m.group()})
                 break
     return hits
@@ -375,8 +444,12 @@ def _rank(xs: Sequence[int], q: float) -> int | None:
 @detector("hold_repeats")
 def _holds(x: Inputs) -> Value:
     """The kernel's own count (session.ended ``counts.hold_repeat``); None: no
-    end record. A Counter omits zeros, so a missing key is 0."""
+    end record, or no ``counts``. ``counts`` is a Counter (kernel/lanes.py,
+    ``k.counts["hold_repeat"] += 1``), which omits zeros: a missing key is 0."""
     ends = x.of("session.ended")
     if not ends or not isinstance(ends[-1].payload.get("counts"), dict):
         return None
     return as_dict(ends[-1].payload["counts"]).get("hold_repeat", 0)
+
+
+from proxyloop.obs import grading as grading  # noqa: E402  (registers H5)

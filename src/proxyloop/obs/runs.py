@@ -80,9 +80,10 @@ class Run:
     error: str | None = None
     costs: tuple[Cost, ...] = ()
     uncharged: tuple[LLMCallRecord, ...] = ()
+    log: tuple[Event, ...] = ()  # the parsed events, read once (triage)
 
     def row(self) -> dict[str, object]:
-        skip = ("costs", "uncharged")
+        skip = ("costs", "uncharged", "log")
         return {
             f.name: getattr(self, f.name) for f in fields(self) if f.name not in skip
         }
@@ -227,8 +228,10 @@ def _load(path: Path, run: Run) -> Run:
     if not (path / EVENTS).is_file():
         return replace(run, **at, status="incomplete", error=f"no {EVENTS}")
     raw = (path / EVENTS).read_bytes()
-    lines = raw.decode("utf-8").splitlines()
-    events = tuple(Event.model_validate_json(x) for x in lines if x.strip())
+    done, _, partial = raw.decode("utf-8").rpartition("\n")
+    if partial.strip() and (path / MANIFEST).is_file():  # as trace.lines (strict)
+        raise ValueError(f"{EVENTS} ends in a partial line")
+    events = tuple(Event.model_validate_json(x) for x in done.splitlines() if x.strip())
     check_causes(events)
     if any(e.run_id != at["run_id"] for e in events):
         raise ValueError("an event's run_id is not the bundle's")
@@ -260,6 +263,7 @@ def _load(path: Path, run: Run) -> Run:
         uncharged_calls=len(uncharged),
         costs=costs,
         uncharged=uncharged,
+        log=events,
     )
 
 
@@ -277,8 +281,9 @@ def index(roots: Sequence[Path]) -> list[Run]:
         if r.status == "ok":
             shas[r.run_id].add(r.events_sha256)
     clash = {run_id for run_id, s in shas.items() if len(s) > 1}
+    gone = {"status": "invalid", "error": "run_id collision"}
     return [
-        replace(r, status="invalid", error="run_id collision", costs=(), uncharged=())
+        replace(r, **gone, costs=(), uncharged=(), log=())
         if r.status == "ok" and r.run_id in clash
         else r
         for r in runs
