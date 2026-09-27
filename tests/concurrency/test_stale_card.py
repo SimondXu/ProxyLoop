@@ -155,3 +155,76 @@ def test_an_old_cards_expiry_never_moves_a_newer_card(tmp_path: Path) -> None:
         assert check_path(sim.k.path, "offline").ok
 
     arun(case())
+
+
+def test_an_expired_card_re_requested_at_its_expiry_is_not_moved(
+    tmp_path: Path,
+) -> None:  # an undecided card's id repeats: the timer matches the whole card
+    async def case() -> None:
+        sim = Sim(tmp_path)
+        await sim.start()
+        await sim.offer()
+        old = sim.card()
+        sim.vt.advance(old.expires_ms - sim.vt.monotonic_ms())  # its timer not run
+        new = sim.card()  # at the tick it expires, before its timer runs
+        assert new.approval_id == old.approval_id and new != old
+        await sim.vt.run_for(100)  # the old card's timer runs now
+        assert not _stale(sim) and sim.bb.public.status is S.AWAITING_APPROVAL
+        await sim.vt.run_for(new.expires_ms - sim.vt.monotonic_ms())
+        (stale,) = _stale(sim)
+        (_, asked) = sim.of("approval.requested")
+        assert stale.cause_ids == (asked.event_id,) and stale.t_ms == new.expires_ms
+        await sim.stop()
+        assert check_path(sim.k.path, "offline").ok
+
+    arun(case())
+
+
+def test_a_tightened_mandate_stales_the_pending_card(tmp_path: Path) -> None:
+    async def case() -> None:
+        sim = Sim(tmp_path)
+        await sim.start()
+        await sim.offer()
+        sim.mandate(expires_ms=sim.vt.monotonic_ms() + 600_000)
+        await sim.vt.run_for(100)
+        sim.card()  # at the mandate's epoch
+        assert sim.bb.public.status is S.AWAITING_APPROVAL
+        tighter = {"max_monthly_price_minor": 7000}
+        (text,) = sim.act({"tool": "tighten_mandate", "changes": tighter})
+        assert "the user must re-grant it" in text
+        (bump,) = sim.of("authority.epoch", reason="tighten_mandate")
+        (stale,) = _stale(sim)
+        assert stale.cause_ids == (bump.event_id,)
+        _nothing_granted(sim)
+        await sim.stop()
+        assert check_path(sim.k.path, "offline").ok
+
+    arun(case())
+
+
+def test_a_mandate_granted_while_a_card_waits_replans_then_it_can_accept(
+    tmp_path: Path,
+) -> None:  # the user granted authority (the UI): Slow may use it once IN_CALL
+    async def case() -> None:
+        sim = Sim(tmp_path)
+        await sim.start()
+        await sim.offer()
+        sim.card()
+        sim.mandate(expires_ms=sim.vt.monotonic_ms() + 600_000)
+        await sim.vt.run_for(100)
+        (decided,) = sim.of("mandate.decided", decision="granted")
+        (bump,) = sim.of("authority.epoch", reason="mandate_decided")
+        assert bump.cause_ids == (decided.event_id,)
+        (stale,) = _stale(sim)
+        assert stale.cause_ids == (bump.event_id,)
+        await sim.vt.run_for(2_000)  # Slow's step saw it: back IN_CALL
+        (back,) = sim.of("status.changed", previous="NEEDS_REPLAN", status="IN_CALL")
+        assert back.seq > stale.seq and sim.bb.public.status is S.IN_CALL
+        assert sim.accept().startswith("accept_offer: accept line queued")
+        await sim.vt.run_for(15_000)
+        assert sim.of("speak.released", cap_id="cap-1")
+        assert not sim.of("approval.decided")  # the mandate granted it, not the card
+        await sim.stop()
+        assert check_path(sim.k.path, "offline").ok
+
+    arun(case())

@@ -248,8 +248,7 @@ class Authority:
         k, card = self._k, ApprovalCard.model_validate(asked.payload)
         while (left := card.expires_ms - k.now()) > 0:
             await k.sleep(left / 1000)
-        pending = k.bb.private.pending_approval
-        if pending is not None and pending.approval_id == card.approval_id:
+        if k.bb.private.pending_approval == card:  # ids repeat: the whole card
             self.move("approval_expired", asked.event_id)  # AWAITING_APPROVAL only
 
     # The sim approver and the SimUser's triggers (#143).
