@@ -16,11 +16,11 @@ from proxyloop.contract.views import SlowView
 from proxyloop.guard.authorize import Denial, card_blocks, open_offer
 from proxyloop.guard.mandate import mandate_gap
 from proxyloop.guard.readback import missing_required, readback_status
-from proxyloop.slow import offer_slots
-from proxyloop.slow.tools import identity_hint
+from proxyloop.slow import asks, offer_slots
 
 TOOLS = (
     *("ask_user", "tell_user", "wait", "guide_fast", "record_fact", "record_offer"),
+    "start_call",
     *("share_fact", "propose_mandate", "tighten_mandate", "revoke"),
     *("request_approval", "accept_offer", "decline_offer", "check_account", "finish"),
 )
@@ -35,7 +35,11 @@ Every turn, call `act` once. `private_summary` (required) is your case digest fo
 the user-side voice. `public_summary` (optional) is all the phone voice knows about \
 the case: it may contain only numbers the representative said or values of the \
 shareable facts you recorded; anything else is refused. `calls` lists your actions:
-- ask_user(text) / tell_user(text): the chat voice passes it to the user.
+- ask_user(text, keys) / tell_user(text): the chat voice passes it to the user. \
+keys lists the SHAREABLE FACT KEYS a question asks for; while one is pending (no \
+reply yet) it is not asked again. A question for anything else takes no keys.
+- start_call(): open the phone call while a readiness fact is still missing; \
+allowed only once each missing one was asked and the user replied.
 - wait(seconds 1-15): wake me again after that long if nothing else happens.
 - guide_fast(move, slots): steer the phone voice; slots are "fact:<key>" or \
 "offer:<ref>.<field>" and must already be public. It takes no text: the phone \
@@ -70,12 +74,18 @@ representative's final answer, with every offer declined; "info_only" when the t
 is only to report the offers to the user (accept nothing); "escalate" when a failed \
 accept cannot be replanned.
 Calls run in order, so a guide_fast may cite a fact recorded earlier in the same act.
-Identity: when the representative asks for a fact the user has not given yet (e.g. \
-the account holder name or last 4), ask_user for it and guide_fast(hold_for_fact) \
-so the representative waits while the phone voice gets it from the user. As soon as \
-the user gives it, record_fact it and, in the same act, guide_fast(identify, \
-slots=["fact:<key>", ...]). Use deflect_fact_request only for a fact that must not \
-be given: the representative hears a refusal and may hang up.
+Readiness: the phone call opens only once the facts it needs are public (the \
+readiness line of the status bar; e.g. the account holder name and last 4). If the \
+user already gave one, record_fact it citing the utt of the user's message before \
+asking. In your first step, ask_user once for every other missing one, with keys \
+naming them all. When the user answers, record_fact each: the call opens by itself \
+once none is missing. If the user replied but a fact cannot go public, \
+start_call(); at the deadline the call opens anyway. In the call, when the \
+representative asks for a public fact, guide_fast(identify, slots=["fact:<key>", \
+...]); for one the user has not given, ask_user for it (with keys) and \
+guide_fast(hold_for_fact) so the representative waits. Use deflect_fact_request \
+only for a fact that must not be given: the representative hears a refusal and may \
+hang up.
 A rep_turn or heartbeat wake without a new [REP CALL] note means nothing was \
 relayed; read the status bar and act or wait.
 Tool results come back as text; a refusal says why."""
@@ -167,7 +177,7 @@ _CALL = {
     **dict(confirmation_id=S),
     **dict(envelope=_ENVELOPE, changes=_ENVELOPE),
     **dict(tool=_enum(*TOOLS), move=_enum(*GuideMove)),
-    **dict(slots={"type": "array", "items": S}),
+    **dict(slots={"type": "array", "items": S}, keys={"type": "array", "items": S}),
     **dict(offer_slots={"type": "array", "items": _SLOT}),
     **dict(seconds={"type": "integer", "minimum": 1, "maximum": 15}),
     **dict(outcome=_enum("info_only", "completed", "no_deal", "escalate")),
@@ -196,9 +206,12 @@ def note(relay: FastToSlow, quoted: bool = False) -> str:  # [USER CHAT] … (ut
     return f"[{where}] {body} (utt {relay.utt_ref or 'none'})"
 
 
-def status_bar(view: SlowView, keys: frozenset[str], now_ms: int) -> str:
-    """Case status, epoch, offers (slot statuses, read-back, TTL), mandate,
-    approvals, fences, hold and strikes, and the facts Slow recorded (§8)."""
+def status_bar(view: SlowView, now_ms: int, intake: asks.Intake | None = None) -> str:
+    """One ``[STATUS]`` header, then labelled lines (ADR-0018 F-a): the case
+    (status, epoch, mandate, fences), offers (slot statuses, read-back, TTL),
+    approvals, the facts Slow recorded (values JSON-quoted: no line can be
+    forged), hold and strikes, and with ``intake`` the call's readiness and
+    Slow's keyed asks (ADR-0012). Read-only views of the board and Guard."""
 
     def secs(t_ms: int) -> str:
         return f"{max(0, t_ms - now_ms) // 1000} s"
@@ -217,9 +230,12 @@ def status_bar(view: SlowView, keys: frozenset[str], now_ms: int) -> str:
             f"; {h}" for h in hints if h
         )
 
+    def fact(key: str, value: str, scope: str) -> str:
+        return f"{key}={json.dumps(value, ensure_ascii=True)} [{scope}]"
+
     facts = "; ".join(
-        [f"{f.key}={f.value} [public]" for f in view.public_facts]
-        + [f"{f.key}={f.value} [private]" for f in view.case_facts]
+        [fact(f.key, f.value, "public") for f in view.public_facts]
+        + [fact(f.key, f.value, "private") for f in view.case_facts]
     )
     m = view.mandate
     mandate = "none" if m is None else f"{m.mandate_id} {m.status} (epoch {m.epoch})"
@@ -236,16 +252,18 @@ def status_bar(view: SlowView, keys: frozenset[str], now_ms: int) -> str:
         if hold is None
         else f"{hold.reason} for {(now_ms - hold.since_ms) // 1000} s"
     )
-    public = {f.key for f in view.public_facts}
-    private = {f.key for f in view.case_facts}
-    hint = identity_hint(public, keys, private)
-    return (
-        f"[STATUS] case {view.status.value}; epoch {view.epoch}; "
-        f"offers: {'; '.join(map(offer, view.offers)) or 'none'}; "
-        f"mandate: {mandate}; approvals: {', '.join(approvals) or 'none'}; "
-        f"fences raised: {len(view.fences)}; facts: {facts or 'none'}; "
-        f"hold: {held}; strikes: {view.cp_strikes}"
-    ) + (f"; {hint}" if hint else "")
+    lines = [
+        "[STATUS]",
+        f"case: {view.status.value}; epoch {view.epoch}; mandate: {mandate}; "
+        f"fences raised: {len(view.fences)}",
+        f"offers: {'; '.join(map(offer, view.offers)) or 'none'}",
+        f"approvals: {', '.join(approvals) or 'none'}",
+        f"facts: {facts or 'none'}",
+        f"hold: {held}; strikes: {view.cp_strikes}",
+    ]
+    if intake is not None:
+        lines += [asks.readiness_line(intake, now_ms), asks.asks_line(intake, now_ms)]
+    return "\n".join(lines)
 
 
 def approval_hint(view: SlowView, o: OfferPublic, now_ms: int) -> str:

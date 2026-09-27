@@ -1,6 +1,7 @@
-"""Watchdog (§11): the rep's clock ticks on a free floor; the user lane has no
-patience (I7). Past the run budget the session ends with ``timeout``. The S0
-runaway guard (root decision under PLAN §0.5a, 2026-09-26) sets the budget."""
+"""Watchdog (§11): the rep's clock ticks on a free floor, and only once the cp
+call's disclosure was said (ADR-0012); the user lane has no patience (I7). Past
+the run budget the session ends with ``timeout``. The S0 runaway guard (root
+decision under PLAN §0.5a, 2026-09-26) sets the budget."""
 
 from __future__ import annotations
 
@@ -31,5 +32,6 @@ async def watchdog(k: Kernel) -> None:
         if (t := k.now()) > 1000 * MAX_SESSION_S:
             raise SessionEnd("timeout")
         human = "cp_agent" in k.channels  # a person types: no rep patience
-        if not (speaker.speaking or rep.busy or k.closed or human):
+        called = k.calls.disclosed.is_set()  # no rep clock in the intake (R2)
+        if called and not (speaker.speaking or rep.busy or k.closed or human):
             k.spawn(rep.tick(t))

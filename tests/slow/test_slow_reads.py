@@ -144,7 +144,8 @@ RELAY_SCRIPT = [NOTED, SILENT, ASK, NOTED, SILENT, NOTED, ASK, SILENT, NOTED]
 def test_relay_only_requests_equal_the_pre_transcript_ones(tmp_path: Path) -> None:
     """The regression pin (A5): under ``relay_only`` Slow's requests are byte
     for byte what they were before S1-SYS-34 (snapshot taken on that code;
-    past the window, so the ``[EARLIER]`` head is pinned too)."""
+    past the window, so the ``[EARLIER]`` head is pinned too), but for the
+    status bar, re-taken at S1-SYS-21 (ADR-0018 F-a: both modes change)."""
     b = Board(tmp_path, SlowViewMode.RELAY_ONLY, RELAY_SCRIPT)
     conversation(b, len(RELAY_SCRIPT))
     got = b.plain()

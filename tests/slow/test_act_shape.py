@@ -96,7 +96,7 @@ def _raw(h: Host, arguments: str) -> str:
 
 
 def _bar(h: Host) -> str:
-    return status_bar(view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b"), frozenset(), 0)
+    return status_bar(view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b"), 0)
 
 
 def test_f4_the_84f731_act_is_refused_and_bare_slots_confirm(tmp_path: Path) -> None:
@@ -157,8 +157,9 @@ def test_f5_a_calls_item_without_a_tool_says_so(tmp_path: Path) -> None:
     assert "calls[0] has no tool" in first and "x" in first
     assert "calls[1] has no tool" in second and "utt_ref" in second
     assert "calls[2] is not an object" in third
-    oks = [e.payload["ok"] for e in h.of("slow.tool")]
-    assert oks == [True, False, False, False]  # counted, one refusal each
+    tools = [(e.payload["ok"], e.payload["code"]) for e in h.of("slow.tool")]
+    shape = (False, "act_shape")  # counted, one refusal each; the act's summaries
+    assert tools == [shape, shape, shape, (True, None)]  # after its calls (R3b)
     h.bus.close()
 
 

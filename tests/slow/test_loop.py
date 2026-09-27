@@ -138,11 +138,14 @@ def test_slow_holds_for_a_missing_identity_fact_then_is_told_to_identify(
     assert set(k.bb.public.facts) == {"account.holder_name", "account.last4"}
     asyncio.run(slow.step(["timer"]))
     first, _, third = (m[-1]["content"] for m in idle.requests())
-    assert "not given yet" in first and "hold_for_fact" in first
+    missing = "missing: account.holder_name not asked, account.last4 not asked"
+    assert f"readiness: call not open; {missing}" in first  # F-b: the readiness line
     system = idle.requests()[0][0]["content"]  # S1-SYS-20: the fact hold (ADR-0011)
     assert "guide_fast(hold_for_fact)" in system and "hold_for_decision" not in system
-    slots = "slots=[fact:account.holder_name, fact:account.last4]"
-    assert f"guide_fast(identify, {slots})" in third
+    assert 'guide_fast(identify, slots=["fact:<key>"' in system
+    assert "readiness: nothing missing" in third  # the call may open
+    answered = "account.holder_name answered; account.last4 answered"
+    assert f"asks: {answered}; 1 without keys" in third  # the hold's ask: keyless
     k.bus.close()
 
 
@@ -177,6 +180,14 @@ def test_slow_context_is_bounded_and_keeps_every_call_with_its_result(
         assert roles[:2] == ["system", "user"] and _paired(messages), n
         assert roles.count("assistant") == min(n, window)
         assert f"<{n}>" in messages[-1]["content"]  # the new notes come last
+        lines = messages[-1]["content"].splitlines()  # F-a: one bar, labelled
+        assert [x for x in lines if x.startswith("[STATUS]")] == ["[STATUS]"]
+        bar = lines[lines.index("[STATUS]") :]
+        assert bar[-2].startswith("readiness: call not open; missing: ")
+        assert bar[-1] == "asks: none"
+        for m in messages:  # one bar per step's notes, in history too
+            said = str(m.get("content") or "").splitlines()
+            assert sum(x.startswith("[STATUS]") for x in said) <= 1
         text = json.dumps(messages)
         kept = [r for r in range(n + 1) if f"<{r}>" in text]
         assert kept == list(range(n - window + 1 if n > window else 0, n + 1))
@@ -253,7 +264,7 @@ def test_a_filtered_slow_reply_is_counted_never_retried(
     filtered_ = reason == "content_filter"
     text = "no tool call (content_filter)" if filtered_ else "no tool call"
     if calls:
-        assert [t.payload["name"] for t in tools] == ["act", "record_fact"]
+        assert [t.payload["name"] for t in tools] == ["record_fact", "act"]  # R3b
     else:
         (tool,) = tools
         assert (tool.payload["result_text"], tool.payload["ok"]) == (text, False)

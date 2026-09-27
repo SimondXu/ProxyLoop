@@ -5,6 +5,7 @@ never grant, and the approval chain holds end to end (ARCHITECTURE §8, §9)."""
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -19,8 +20,10 @@ from proxyloop.contract.state import Blackboard, CaseStatus
 from proxyloop.contract.views import view_slow
 from proxyloop.core.bus import Bus
 from proxyloop.eval.metrics import Log, approval_b
+from proxyloop.guard import needs
 from proxyloop.guard.authorize import CARD_TTL_MS
 from proxyloop.kernel.lanes import PROFILE
+from proxyloop.slow import asks
 from proxyloop.slow import tools as slow_tools
 from proxyloop.slow.prompt import ACT, status_bar
 from proxyloop.slow.tools import SlowTools, case_ref
@@ -48,20 +51,34 @@ BOUND = {  # the world's ledger binding, in dollars
 }
 
 
+class Calls:
+    """The kernel's call gate as Slow's tools read it: the needs ledger, folded
+    from the bus (the gate itself is tests/kernel/test_calls.py's)."""
+
+    def __init__(self, bus: Bus) -> None:
+        self.needs = needs.Ledger()
+        bus.subscribe(self.on_event)
+
+    def on_event(self, e: Event) -> None:
+        self.needs = needs.step(self.needs, e)
+
+
 class Host:
     """The kernel's seams Slow's tools use, over a real bus (not a model fake)."""
 
     def __init__(self, tmp_path: Path) -> None:
         self.clock = ManualClock()
         self.bus = Bus(tmp_path / "events.jsonl", "r1", self.clock)
+        self.calls, self.counts = Calls(self.bus), Counter[str]()
         self.ended: list[str] = []
         self.delivered: Event | None = None  # the accept line as heard
         self.tools = SlowTools(cast("Kernel", self), KEYS, case_ref("case-1"))
         self.root = self.emit("user.msg", "kernel", {"text": "Lower my bill."})
 
     @property
-    def bb(self) -> Blackboard:
-        return self.bus.bb
+    def bb(self) -> Blackboard:  # at the clock's now, as ``Kernel.bb``
+        bb = self.bus.bb
+        return bb.model_copy(update={"t_ms": max(bb.t_ms, self.now())})
 
     def emit(
         self,
@@ -447,9 +464,11 @@ def test_a_shared_fact_follows_the_record_fact_rule(tmp_path: Path) -> None:
     assert "account.holder_name is not recorded" in out[1]
     assert "denied: not_shareable" in out[2]
     assert "account.last4 stays private" in out[3]
-    bar = status_bar(view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b"), KEYS, 0)
-    assert "account.last4 recorded private: re-record citing the user's message" in bar
-    assert "account.holder_name not given yet" in bar  # #140
+    ids = ("account.holder_name", "account.last4")
+    intake = asks.Intake(ids, None, 120_000, h.calls.needs)
+    bar = status_bar(view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b"), 0, intake)
+    private = "account.last4 answered, recorded private: re-record it citing"
+    assert private in bar and "account.holder_name not asked" in bar  # #140
     h.act(record | {"value": "5190", "utt_ref": said.event_id})
     assert h.bb.public.facts["account.last4"].source_ref == said.event_id
 
@@ -478,7 +497,7 @@ def test_record_offer_sets_the_stated_expiry_on_the_session_clock(
     (text,) = h.act({"tool": "record_offer", "offer_ref": "o1", "offer_slots": [slot]})
     offer = h.bb.public.offers["o1"]  # ten minutes from the session's start
     assert offer.expires_ms == 600_000 and "expires at t=600000 ms" in text
-    bar = status_bar(view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b"), KEYS, 300_000)
+    bar = status_bar(view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b"), 300_000)
     assert "expires in 300 s" in bar and "not recorded: monthly_price" in bar
 
 
@@ -487,8 +506,8 @@ def test_the_status_bar_shows_authority_state(tmp_path: Path) -> None:
     h.act({"tool": "request_approval", "offer_ref": "save-2"})
     raised = {"op": "raised", "fence_id": "f1", "utt_id": h.root.event_id}
     h.emit("authority.fence", "kernel", raised, [h.root.event_id])
-    bar = status_bar(view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b"), KEYS, 0)
-    assert "case AWAITING_APPROVAL" in bar and "fences raised: 1" in bar
+    bar = status_bar(view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b"), 0)
+    assert "\ncase: AWAITING_APPROVAL;" in bar and "fences raised: 1" in bar
     assert "apr-save-2-r1-e0-0 for save-2 r1 pending, expires in 1" in bar
     assert "save-2 r1 (open, read-back confirmed)" in bar and "mandate: none" in bar
 
@@ -588,7 +607,7 @@ HINT = "save-2 confirmed, outside mandate → request_approval(save-2)"
 
 
 def _bar(h: Host) -> str:
-    return status_bar(view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b"), KEYS, h.now())
+    return status_bar(view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b"), h.now())
 
 
 def test_a_confirmed_offer_outside_the_mandate_shows_request_approval(
@@ -620,11 +639,11 @@ def test_no_hint_when_guard_would_refuse_the_request(tmp_path: Path) -> None:
     h = _confirmed(tmp_path / "b")
     _mandate(h, 6500)
     view = view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b")
-    assert HINT in status_bar(view, KEYS, h.now())
+    assert HINT in status_bar(view, h.now())
     (o,) = view.offers
     for change in ({"terms_hash": "0" * 64}, {"expires_ms": h.now()}):
         bad = view.model_copy(update={"offers": (o.model_copy(update=change),)})
-        assert "outside mandate" not in status_bar(bad, KEYS, h.now()), change
+        assert "outside mandate" not in status_bar(bad, h.now()), change
 
 
 @pytest.mark.parametrize("end", ["expires", "decided"])

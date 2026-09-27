@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
 
@@ -21,12 +21,13 @@ from proxyloop.contract.messages import Guide, GuideMove, SlowToFast
 from proxyloop.contract.protocol import GuideMoveError, GuideSlotError, render_messages
 from proxyloop.contract.views import Trigger, view_cp
 from proxyloop.guard import authorize as guard
+from proxyloop.guard import readiness
 from proxyloop.guard.authorize import CaseRef, Denial
 from proxyloop.guard.declass import declassify, numbers
 from proxyloop.guard.readback import readback_update
 from proxyloop.kernel.wake import HEARTBEAT_S
-from proxyloop.slow import authority, offer_slots, shape
-from proxyloop.slow.result import Effect, Result, no
+from proxyloop.slow import asks, authority, offer_slots, shape
+from proxyloop.slow.result import Effect, Result, no, refused
 
 if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
@@ -54,7 +55,7 @@ _BEFORE = (  # a token start; an opener only where it starts a token (no $"4821"
 _AFTER = r"(?=[)\"\u201d]?[.,;:!?]?(?:\s|$))"  # a closer, a mark; a space or the end
 _EDGE = r"(?<![\w'\u2019-])", r"(?![\w'\u2019-])"  # a name's word bounds
 MAX_NAME_CHARS = 60
-_IDENTITY = ("account.holder_name", "account.last4")
+_IDENTITY = readiness.IDENTITY  # A6: Guard's table now; obs mirrors it
 NUMBER_WORDS = frozenset(
     """zero one two three four five six seven eight nine ten eleven twelve
     thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty
@@ -101,13 +102,18 @@ class SlowTools:
             if problem := shape.act_problem(args):  # f828f1: refused whole
                 raise ValueError(problem)
             summaries = {k: args.get(k) for k in ("private_summary", "public_summary")}
-            head = self._summaries(summaries)
+            private = summaries["private_summary"]
+            if not isinstance(private, str) or len(private) > base.MAX_PRIVATE_SUMMARY:
+                raise ValueError(
+                    "private_summary must be text of at most 1200 characters"
+                )
         except ValueError as err:  # JSON and schema errors: the whole act
-            return self._apply("act", {"raw": call.arguments}, no(str(err)), causes)
-        out = [self._apply("act", summaries, head, causes)]
+            whole = refused("act_shape", str(err))
+            return self._apply("act", {"raw": call.arguments}, whole, causes)
+        out: list[str] = []
         for n, c in enumerate(cast(list[Any], args.get("calls") or [])):
             if missing := shape.item_problem(n, c):  # never "unknown tool 'None'"
-                out.append(self._apply("act", c, no(missing), causes))
+                out.append(self._apply("act", c, refused("act_shape", missing), causes))
                 continue
             a = cast(dict[str, Any], c)
             try:
@@ -115,12 +121,16 @@ class SlowTools:
             except GuideMoveError:  # a move the cp profile cannot render: a bug
                 raise
             except _INVALID as err:  # aeab91: one line, not a pydantic dump
-                result = no(f"invalid arguments: {shape.invalid(err)}")
+                result = refused(
+                    "invalid_args", f"invalid arguments: {shape.invalid(err)}"
+                )
             out.append(self._apply(str(a["tool"]), a, result, causes))
-        return "\n".join(out)
+        head = self._summaries(summaries)  # R3b: after the calls it may cite
+        return "\n".join([self._apply("act", summaries, head, causes), *out])
 
     def _apply(self, name: str, args: object, r: Result, causes: Sequence[str]) -> str:
         done = {"name": name, "args": args, "result_text": r.text, "ok": r.ok}
+        done["code"] = r.code  # A1: a refusal's class; None on success
         tool = self._host.emit("slow.tool", "slow", done, causes).event_id
         for type_, payload in r.effects:
             self._host.emit(type_, "guard", payload, [tool, *r.causes])
@@ -148,9 +158,7 @@ class SlowTools:
             self._host.emit("readback.updated", "guard", update, causes)
 
     def _summaries(self, s: Mapping[str, object]) -> Result:
-        private, public = s["private_summary"], s["public_summary"]
-        if not isinstance(private, str) or len(private) > base.MAX_PRIVATE_SUMMARY:
-            raise ValueError("private_summary must be text of at most 1200 characters")
+        private, public = str(s["private_summary"]), s["public_summary"]
         mine: Effect = ("summary.updated", {"scope": "private", "text": private})
         if public is None:
             return Result(True, "private summary updated", (mine,))
@@ -163,13 +171,23 @@ class SlowTools:
 
     def _run(self, name: str, a: Mapping[str, Any]) -> Result:
         bb, host, case = self._host.bb, self._host, self._case
-        if name in ("ask_user", "tell_user"):
-            return self._s2f(lane="user", type=name.upper(), text=str(a["text"]))
+        if name == "ask_user":  # A1: a pending key is not asked again
+            keys, needs = self._shareable_keys, host.calls.needs
+            if problem := asks.ask_problem(a, keys, needs):
+                return problem
+            if not a.get("keys"):
+                host.counts["keyless_ask"] += 1  # counted, not deduped
+            return self._s2f(lane="user", type="ASK_USER", text=str(a["text"]))
+        if name == "tell_user":
+            return self._s2f(lane="user", type="TELL_USER", text=str(a["text"]))
+        if name == "start_call":  # Guard-checked (ADR-0012 R1)
+            return asks.start_call(host)
         if name == "wait":  # its slow.tool arms the timer (kernel.wake)
             seconds = a["seconds"]  # a JSON integer, never coerced (rule 12)
             if type(seconds) is not int or not 1 <= seconds <= HEARTBEAT_S:
                 beat = f"in a call a heartbeat wakes you every {HEARTBEAT_S} s anyway"
-                return no(f"seconds must be an integer 1-{HEARTBEAT_S}: {beat}")
+                why = f"seconds must be an integer 1-{HEARTBEAT_S}: {beat}"
+                return refused("invalid_args", why)
             return Result(True, f"waking in {seconds} s")
         if name == "guide_fast":
             return self._guide(bb, a)
@@ -206,7 +224,7 @@ class SlowTools:
             events, seen = host.bus.events, self._basis
             return authority.check_account(bb, conf, told, events, cited, seen)
         if name != "finish":
-            return no(f"unknown tool {name!r}")
+            return refused("unknown_tool", f"unknown tool {name!r}")
         outcome = str(a.get("outcome"))
         r = authority.finish(bb, outcome, self.asked_final)
         if not r.ok:
@@ -252,9 +270,7 @@ class SlowTools:
                 self.asked_final = len(bb.channels["cp"].lines)
             if guide.move != "deflect_fact_request":
                 return sent
-            private = bb.private.case_facts
-            hint = identity_hint(bb.public.facts, self._shareable_keys, private)
-            text = f"{sent.text}; the rep hears a refusal to share. {hint}".strip()
+            text = f"{sent.text}; the rep hears a refusal to share"
             return Result(True, text, sent.effects)  # sent as asked: Slow decides
         hidden = [
             s
@@ -341,38 +357,6 @@ class SlowTools:
                 "tenure as 'I've been with you for N years'); other keys stay private"
             )
         return Result(True, text, tuple(effects))
-
-
-def identity_hint(
-    public: Collection[str], keys: frozenset[str], private: Collection[str] = ()
-) -> str:
-    """S0-SYS-07 (run aeab91): the identity flow, as text for Slow only. The keys
-    that can go public from the user are public (identify with them), recorded
-    private (re-record them from the user's own words), or not given yet (ask
-    the user and hold). Slow decides; nothing is sent."""
-    ids = sorted(k for k in keys if k in _IDENTITY)
-    ready = [k for k in ids if k in public]
-    kept = [k for k in ids if k not in public and k in private]
-    missing = [k for k in ids if k not in public and k not in private]
-    parts: list[str] = []
-    if ready:
-        slots = ", ".join(f"fact:{k}" for k in ready)
-        parts.append(
-            f"{', '.join(ready)} public: when the rep asks, "
-            f"guide_fast(identify, slots=[{slots}])"
-        )
-    if kept:  # #140: given, but not in words that can go public
-        parts.append(
-            f"{', '.join(kept)} recorded private: re-record citing the user's "
-            "message that contains exactly the value"
-        )
-    if missing:
-        parts.append(
-            f"{', '.join(missing)} not given yet: when the rep asks, ask_user and "
-            "guide_fast(hold_for_fact) until it is public; deflect_fact_request "
-            "only for a fact that must not be given"
-        )
-    return f"identity: {'; '.join(parts)}" if parts else ""
 
 
 def lever_denial(bb: st.Blackboard, guide: Guide) -> tuple[str, str] | None:

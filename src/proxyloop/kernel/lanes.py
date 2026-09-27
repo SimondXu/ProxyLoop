@@ -72,6 +72,10 @@ def _speaks(items: list[fp.TurnItem]) -> bool:  # a sentence has been released
     return any(isinstance(i, fp.Speech) for i in items)
 
 
+def _acts(items: list[fp.TurnItem]) -> bool:  # it spoke or gave a directive
+    return any(not isinstance(i, fp.ParseIssue) for i in items)
+
+
 @dataclass(slots=True)
 class _Ask:  # a pending trigger
     trigger: Trigger
@@ -88,6 +92,7 @@ class FastLane:
         self._pending: list[_Ask] = []
         self._wake = asyncio.Event()
         self._n = 0
+        self._retried: set[str] = set()  # GUIDEs re-triggered after an empty turn
 
     def trigger(self, trigger: Trigger, cause: str, acks: tuple[str, ...] = ()) -> None:
         self._add(_Ask(trigger, cause, acks))
@@ -190,6 +195,11 @@ class FastLane:
             turned["resamples"] = k.teacher.resamples.get(request.call_id, 0)
         turn = k.emit("fast.turn", self._actor, turned, causes).event_id
         slow_msg = [trigger.msg_id] if trigger.msg_id else []
+        if guides and not _acts(items):  # R3a: an empty turn voices no GUIDE
+            if again := [g for g in guides if g not in self._retried]:
+                self._retried |= set(again)  # re-triggered once per message
+                self.trigger(Trigger(kind="guidance"), turn)
+            guides = []
         for msg_id in [*guides, *slow_msg, *ask.acks]:
             voiced = {"msg_id": msg_id, "gen_id": gen_id}
             k.emit("s2f.voiced", self._actor, voiced, [turn])

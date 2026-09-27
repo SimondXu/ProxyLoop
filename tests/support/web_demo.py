@@ -17,10 +17,13 @@ adapter does, after a latency on the session's clock. The scripts:
   (``revoke``); conveys Slow's messages and the card.
 - ``fast_cp``: stalls with a hold while a fact or a decision is pending, voices
   Slow's guidance, and relays each stated term as a ``fact``.
-- ``SlowScript``: records the user's identity and the rep's offer from the
-  relays, asks for a read-back of each revision, requests approval once the
-  status bar says the read-back is confirmed, and accepts once its wake says
-  the card was decided and the status bar says it was granted.
+- ``SlowScript``: asks the user for identity (with keys) while the status
+  bar's readiness line says the call waits for it (S1-SYS-21), records the
+  user's identity and the rep's offer from the relays, identifies again when
+  the rep asks and identity is public, asks for a read-back of each revision,
+  requests approval once the status bar says the read-back is confirmed, and
+  accepts once its wake says the card was decided and the status bar says it
+  was granted.
 - ``rep_ear``/``rep_mouth``: classify the heard line by its words; voice the
   policy's template line with its values said naturally.
 """
@@ -213,6 +216,8 @@ _SLOTS = {  # field -> unit (only for the cents conversion; Guard derives role/u
     "expires": "iso",
 }
 _RELAY = re.compile(r"\[(USER CHAT|REP CALL)\] (.*) \(utt (\S+)\)")
+_IDENTITY = ("account.holder_name", "account.last4")
+_ASK = "The company needs the account holder name and the last 4 digits."
 _FACT = re.compile(r"([a-z][a-z0-9_.]*)=([^;]+?)(?=;|$)")
 
 
@@ -241,6 +246,11 @@ class SlowScript:
     def __call__(self, request: Request) -> str:
         notes, calls = _last(request), list[dict[str, object]]()
         status = notes[notes.find("[STATUS]") :]
+        slots = [f"fact:{k}" for k in _IDENTITY]
+        public = all(re.search(rf'{k}="[^"]*" \[public\]', status) for k in _IDENTITY)
+        if "readiness: call not open; missing:" in status and not self.asked_identity:
+            self.asked_identity = True  # readiness first: before the call opens
+            calls.append({"tool": "ask_user", "text": _ASK, "keys": list(_IDENTITY)})
         # o1 is recorded from the offer, then once more, whole, from a read-back
         offer = re.search(r"o1 r\d+ \(([^)]*)\)", status)
         new = offer is None
@@ -249,18 +259,16 @@ class SlowScript:
             body = _said_in(note)
             facts = dict(_FACT.findall(body))
             if lane == "USER CHAT" and "account.last4" in facts:
-                keys = ("account.holder_name", "account.last4")
-                for key in keys:
+                for key in _IDENTITY:
                     fact = {"key": key, "value": facts[key], "utt_ref": utt}
                     calls.append({"tool": "record_fact", **fact})
-                slots = [f"fact:{k}" for k in keys]
+                calls.append({"tool": "guide_fast", "move": "identify", "slots": slots})
+            elif lane == "REP CALL" and "identity" in body and public:
                 calls.append({"tool": "guide_fast", "move": "identify", "slots": slots})
             elif lane == "REP CALL" and "identity" in body and not self.asked_identity:
                 self.asked_identity = True
-                text = (
-                    "The company needs the account holder name and the last 4 digits."
-                )
-                calls.append({"tool": "ask_user", "text": text})
+                keys = list(_IDENTITY)
+                calls.append({"tool": "ask_user", "text": _ASK, "keys": keys})
                 calls.append({"tool": "guide_fast", "move": "hold_for_fact"})
             elif (
                 lane == "REP CALL"

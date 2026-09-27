@@ -27,7 +27,7 @@ from proxyloop.contract.config import (
 )
 from proxyloop.contract.events import ApprovalPost, Approver, Event, Stream, event_id
 from proxyloop.contract.protocol import ChatTokenizer, fingerprint
-from proxyloop.contract.state import Blackboard, CaseStatus
+from proxyloop.contract.state import Blackboard
 from proxyloop.contract.views import Trigger
 from proxyloop.core.bus import Bus, Subscriber
 from proxyloop.core.clock import Clock, WallClock
@@ -35,6 +35,8 @@ from proxyloop.env.tasks.loader import instance_hash
 from proxyloop.env.tasks.schema import Task
 from proxyloop.env.world import World, WorldError
 from proxyloop.evidence.reality import role_refs
+from proxyloop.kernel.calls import DISCLOSURE as DISCLOSURE
+from proxyloop.kernel.calls import Calls
 from proxyloop.kernel.channels import (
     Channel,
     HumanChannel,
@@ -57,8 +59,6 @@ from proxyloop.llm.vllm import VLLMClient
 from proxyloop.models.repair import TeacherRepair
 from proxyloop.slow.loop import SlowLoop
 
-# Guard-authored and fixed (I11, C14): the first thing the rep hears.
-DISCLOSURE = "Hello, this is an AI assistant calling on behalf of the account holder."
 PROJECTED = (900_000, 400)  # tokens, calls per episode (guard at 3x): provisional until
 # the root re-derives both from smoke #2 bundles and TeamRouter prices (S1-SYS-29)
 ClientFactory = Callable[[llm.LLMRole, llm.ModelRef, RecordSink], llm.LLMClient]
@@ -223,7 +223,9 @@ class Kernel:
         keys = frozenset(task.disclosure.shareable)
         slow = self.clients.get("slow")  # none in rep-chat
         self.slow = slow and SlowLoop(self, slow, task.slow_brief, keys)
-        self.closed, self._disclosed = False, asyncio.Event()  # the cp call
+        self.closed = False  # the cp call
+        self.calls = Calls(self, self._ingress)  # when it opens (ADR-0012)
+        self.bus.subscribe(self.calls.on_event)
         self.bus.subscribe(Wakes(self).on_event)  # Slow's wakes and its one timer
 
     def _make(self, role: str, ref: llm.ModelRef, sink: RecordSink) -> llm.LLMClient:
@@ -387,40 +389,23 @@ class Kernel:
             "pass" if all(passed) else "fail"
         ) if passed else "not_applicable", attest
 
-    def _open(self, root: str) -> None:
-        lanes = self.speakers
-        opened = {
-            x: self.emit("chan.opened", "kernel", {"lane": x}, [root]) for x in lanes
-        }
-        cp = opened["cp"].event_id
-        status = {"previous": CaseStatus.INTAKE, "status": CaseStatus.IN_CALL}
-        self.emit("status.changed", "guard", status, [cp])
-        self.spawn(self._disclose(cp))
-        for key, channel in self.channels.items():
-            self.spawn(self._ingress(key, channel, cp))
-        if "user" in opened:
+    def _open(self, root: str) -> None:  # the user lane; the cp call: ``calls``
+        if "user" in self.channels:
+            opened = self.emit("chan.opened", "kernel", {"lane": "user"}, [root])
             user = self.channels["user"]
-            self.spawn(user.send(None, "", opened["user"].event_id, self.now()))
+            self.spawn(self._ingress("user", user, opened.event_id))
+            self.spawn(user.send(None, "", opened.event_id, self.now()))
         if "user" in self.lanes:
             self.spawn(self.lanes["user"].run())
         if self.slow:
             self.spawn(self.slow.run())
         self.spawn(self.authority.run())  # the approvals queue
         self.spawn(watchdog(self))
+        self.calls.start(root)
         if humans := {
             k: c for k, c in self.channels.items() if isinstance(c, HumanChannel)
         }:
             read_stdin(humans)
-
-    async def _disclose(self, opened: str) -> None:  # first cp agent line (I11)
-        line = {"lane": "cp", "kind": "disclosure", "text": DISCLOSURE}
-        said = self.emit("speak.verbatim", "guard", line, [opened]).event_id
-        released = self.emit("speak.released", "kernel", {"lane": "cp"}, [said])
-        said = [("disclosure", DISCLOSURE, released.event_id)]
-        await self.speakers["cp"].speak(said, interruptible=False)
-        self._disclosed.set()
-        if "cp" in self.lanes:
-            self.spawn(self.lanes["cp"].run())
 
     async def _ingress(self, key: str, channel: Channel, opened: str) -> None:
         while True:  # partner turns become user.msg / utt.final
@@ -428,7 +413,7 @@ class Kernel:
             if key != "user" and self.closed and inc.end != "quit":
                 continue  # the call is over: nothing more on its lane
             if key == "cp_agent":
-                await self._disclosed.wait()
+                await self.calls.disclosed.wait()
             if (wait := inc.due_ms - self.now()) > 0:
                 await self.sleep(wait / 1000)
             if key == "cp" and inc.lines:  # cuts the line; lands before a verbatim
