@@ -17,8 +17,10 @@ from typing import Any
 import pytest
 from tests.concurrency.harness import LONG, Sim, granted
 from tests.concurrency.test_cases import arun
+from tests.support.sessions import ear
 
 from proxyloop.contract.events import Event
+from proxyloop.env.tasks.loader import load_task
 from proxyloop.env.tasks.schema import Patience
 from proxyloop.kernel.channels import Channel, Incoming
 from proxyloop.kernel.speaker import speech_s
@@ -128,6 +130,22 @@ def _said(sim: Sim, kind: str) -> Event:
     return e
 
 
+async def _fastc_resumes(sim: Sim, released: Event) -> Event:
+    """FastC's first line heard after the verbatim line ``released``: it ends
+    no later than that line's speech plus one FastC line after the release
+    (the end of FastC's pause)."""
+    (said,) = [e for e in sim.events if e.event_id == released.cause_ids[0]]
+    bound = released.t_ms + round(1000 * speech_s(str(said.payload["text"]))) + FAST_MS
+    await sim.vt.run_for(bound - sim.vt.monotonic_ms())
+    fast = [
+        e
+        for e in sim.of("utt.delivered", lane="cp")
+        if e.seq > released.seq and str(e.payload["utt_id"]).startswith("cp-g")
+    ]
+    assert fast, f"FastC is still silent at {bound} ms"
+    return fast[0]
+
+
 @pytest.mark.parametrize("kind", ["decline", "accept"])
 def test_a_verbatim_queued_while_fastc_holds_the_floor_is_released(
     tmp_path: Path, kind: str
@@ -153,11 +171,12 @@ def test_a_verbatim_queued_while_fastc_holds_the_floor_is_released(
         (released,) = _ends(sim)
         assert released.type == "speak.released"
         assert released.seq > said.seq > heard.seq
-        await sim.vt.run_for(15_000)  # the line is said, then FastC's answer
+        resumed = await _fastc_resumes(sim, released)  # the line, then FastC
         (line,) = sim.of("utt.delivered", utt_id=f"{kind}-{_said(sim, kind).seq}")
         assert line.payload["interrupted"] is False
         after = [e for e in sim.of("fast.sentence", lane="cp") if e.seq > said.seq]
         assert after and not any(_heard_before(sim, e, line.seq) for e in after)
+        assert any(_heard_before(sim, e, resumed.seq + 1) for e in after)
         if kind == "accept":
             assert sim.of("status.changed", status="COMMITTED")
         await sim.stop()
@@ -309,6 +328,7 @@ def test_fastc_is_held_silent_at_most_the_rep_s_backlog(tmp_path: Path) -> None:
         assert 0 < paused <= (backlog + 1) * LAG_MS, (paused, backlog)
         last = [e for e in sim.of("utt.final", text=BEST) if e.seq < released.seq]
         assert released.t_ms == last[-1].t_ms  # no free floor in between
+        await _fastc_resumes(sim, released)  # and FastC's pause ends
         await sim.stop()
 
     arun(case())
@@ -329,6 +349,103 @@ def test_an_accept_queued_while_the_rep_lags_ends(tmp_path: Path) -> None:
         await sim.vt.run_for(60_000)
         (end,) = _ends(sim)
         assert end.seq > _said(sim, "accept").seq
+        await sim.stop()
+
+    arun(case())
+
+
+class MouthClock:
+    """The real rep's Mouth calls wait here: held (the rep is still composing)
+    until ``go`` is set, then ``LAG_MS`` each (45d7ed's slow Ear and Mouth)."""
+
+    def __init__(self) -> None:
+        self.go = asyncio.Event()
+        self.sleep: Callable[[float], Awaitable[None]] | None = None
+
+    async def __call__(self) -> None:
+        await self.go.wait()
+        assert self.sleep is not None
+        await self.sleep(LAG_MS / 1000)
+
+
+ME = "This is Dana Reyes, the account ending 4821."  # FastC's first line
+IDENTIFIED = ear(  # the rep's Ear on it (the disclosure before it: other)
+    "provide_fact",
+    facts=[
+        {"key": "account.holder_name", "value": "Dana Reyes"},
+        {"key": "account.last4", "value": "4821"},
+    ],
+)
+
+
+def test_the_real_rep_does_not_strike_while_a_decline_waits(tmp_path: Path) -> None:
+    """The 45d7ed shape on the world's SimRep and its Policy, with the
+    family's own patience (``silence_s`` 6, not the tests' patient rep): the
+    rep's Ear falls behind while its Mouth is held, then answers one heard
+    line per LAG_MS. The decline is released; the rep never strikes or hangs
+    up."""
+
+    async def case() -> None:
+        clock = MouthClock()
+        scripts = {"fast_cp": [ME, LONG], "ear": [ear("other"), IDENTIFIED]}
+        scripts["ear"] += [ear("other")]
+        scripts |= {"mouth": ["Sorry, how can I help with your account?"]}
+        task = load_task("cp-direct-discount")
+        assert task.counterparty.patience.silence_s == SILENCE_MS / 1000
+        sim = Sim(tmp_path, scripts, task=task, rep="sim", gates={"mouth": clock})
+        clock.sleep = sim.vt.sleep
+        await sim.start()
+        await sim.offer(wait=12_000)  # the rep is still voicing its greeting
+        await sim.vt.run_for(20_000)
+        clock.go.set()
+        await sim.vt.run_for(40_000)
+        assert sim.rep.busy and len(sim.of("rep.mouth")) >= 2
+        out = sim.act({"tool": "decline_offer", "offer_ref": "o1"})
+        assert "queued" in out[0], out
+        for _ in range(200):
+            await sim.vt.run_for(1_000)
+            if _ends(sim):
+                break
+        (released,) = _ends(sim)
+        assert released.type == "speak.released"
+        assert sim.of("chan.strike") == [] and sim.of("chan.closed") == []
+        intents = [str(e.payload["intent"]) for e in sim.of("rep.policy")]
+        assert not [i for i in intents if "hang_up" in i or "check_in" in i]
+        await sim.stop()
+
+    arun(case())
+
+
+def test_fastc_waiting_behind_a_verbatim_yields_to_the_next(tmp_path: Path) -> None:
+    """FastC already waits for the floor behind a verbatim line being said
+    when a second one queues: as the first ends, FastC re-checks and yields,
+    so the second line takes the floor then, before FastC's turn."""
+
+    async def case() -> None:
+        sim = Sim(tmp_path)
+        await sim.start()
+        await sim.offer("o1", 68)
+        await sim.offer("o2", 75)
+        await sim.vt.run_for(10_000)
+        assert not sim.k.speakers["cp"].speaking
+        assert "queued" in sim.act({"tool": "decline_offer", "offer_ref": "o1"})[0]
+        await sim.vt.run_for(500)  # the first decline has the floor
+        guide = {"tool": "guide_fast", "move": "ask_final_offer"}
+        assert "guide" in sim.act(guide)[0]
+        await sim.vt.run_for(100)  # FastC's turn waits for the floor
+        (turn,) = [
+            e
+            for e in sim.of("fast.sentence", lane="cp")
+            if not _heard_before(sim, e, len(sim.events))
+        ]
+        assert "queued" in sim.act({"tool": "decline_offer", "offer_ref": "o2"})[0]
+        await sim.vt.run_for(20_000)
+        first, second = _ends(sim)
+        assert first.type == second.type == "speak.released"
+        (line,) = [e for e in sim.events if e.event_id == first.cause_ids[0]]
+        (said,) = sim.of("utt.delivered", utt_id=f"decline-{line.seq}")
+        heard = _heard(sim, turn)
+        assert second.t_ms == said.t_ms and said.seq < second.seq < heard.seq
         await sim.stop()
 
     arun(case())
