@@ -215,3 +215,41 @@ def test_a_voicing_by_a_turn_without_speech_is_void() -> None:
     assert ask_denial(log.ledger, [L4]) is None
     log.ask(L4)
     assert log.ledger.unvoiced == frozenset()
+
+
+EMPTY = {"kind": "issue", "reason": "empty_turn", "text": ""}
+
+
+def test_a_key_answered_before_an_unheard_voicing_stays_answered() -> None:
+    """Review M1: the user volunteered it and Slow recorded it between the ask
+    and FastU's empty turn; the empty voicing reverts nothing."""
+    log = Log()
+    msg = log.ask(L4)
+    log.user("4821 btw")
+    log.fact(L4)
+    log.voiced(msg, EMPTY)
+    assert log.ledger.states() == {L4: "answered"}
+    assert log.ledger.unvoiced == frozenset()
+    assert start_denial(log.ledger, [L4]) is None
+
+
+def test_an_answer_after_a_re_ask_is_kept_by_an_unheard_voicing() -> None:
+    log = Log()
+    log.voiced(log.ask(L4))
+    log.user()
+    log.fact(L4)
+    msg = log.ask(L4)
+    log.fact(L4)
+    second = log.ledger.needs[L4].answered_seq
+    log.voiced(msg, EMPTY)
+    assert log.ledger.needs[L4].answered_seq == second  # never rolled back
+    assert log.ledger.state(L4) == "answered" and not log.ledger.unvoiced
+
+
+def test_an_answer_clears_an_unheard_ask() -> None:
+    """n1: a fact.recorded for an unvoiced key drops it from ``unvoiced``."""
+    log = Log()
+    log.voiced(log.ask(L4), EMPTY)
+    assert log.ledger.unvoiced == frozenset({L4})
+    log.fact(L4)
+    assert log.ledger.state(L4) == "answered" and not log.ledger.unvoiced

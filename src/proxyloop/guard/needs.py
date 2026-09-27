@@ -7,9 +7,10 @@ over Slow's keyed asks. Per key:
 - ``answered`` once a ``fact.recorded`` for the key exists (either scope).
 Asking a replied or answered key again makes it pending again. An ask whose
 ``s2f.voiced`` cites a turn with no speech (the fold reads the ``fast.turn``
-item kinds) was never heard: its keys return to their state before the ask
-and are ``unvoiced`` until asked again (review D1). Keyless asks are counted,
-not tracked; ``holds`` counts the cp holds (``chan.hold``).
+item kinds) was never heard: its keys still pending return to their state
+before the ask and are ``unvoiced`` until asked again or answered (review
+D1). Keyless asks are counted, not tracked; ``holds`` counts the cp holds
+(``chan.hold``).
 
 It holds key names, states, seqs, times and counts only, never text, so it
 adds no transcript path to Slow (I5). The kernel holds it, as ``Authority``."""
@@ -103,10 +104,17 @@ def step(ledger: Ledger, e: Event) -> Ledger:
         voicing = dict(ledger.voicing)
         seq, before = voicing.pop(str(p["msg_id"]))
         ledger = dataclasses.replace(ledger, voicing=voicing)
-        mine = [(k, b) for k, b in before if k in n and n[k].asked_seq == seq]
+        mine = [  # still this ask's, and still waiting for it (M1: not answered)
+            (k, b)
+            for k, b in before
+            if k in n
+            and n[k].asked_seq == seq
+            and n[k].state == "pending"
+            and n[k].voiced_seq is None
+        ]
         heard = ledger.turn is not None and ledger.turn == (e.cause_ids[0], True)
         if heard:
-            asked = [k for k, _ in mine if n[k].voiced_seq is None]
+            asked = [k for k, _ in mine]
             return _set(ledger, asked, voiced_seq=e.seq)
         needs = dict(n)  # never heard: as before the ask (fail closed)
         for k, b in mine:
@@ -119,8 +127,10 @@ def step(ledger: Ledger, e: Event) -> Ledger:
     if e.type == "user.msg":
         heard = [k for k, x in n.items() if x.state == "pending" and x.voiced_seq]
         return _set(ledger, heard, state="replied", replied_seq=e.seq)
-    if e.type == "fact.recorded":
-        return _set(ledger, (str(p["key"]),), state="answered", answered_seq=e.seq)
+    if e.type == "fact.recorded":  # an answer also ends an unheard ask (n1)
+        key = str(p["key"])
+        ledger = dataclasses.replace(ledger, unvoiced=ledger.unvoiced - {key})
+        return _set(ledger, (key,), state="answered", answered_seq=e.seq)
     if e.type == "chan.hold" and p.get("reason") is not None:
         return dataclasses.replace(ledger, holds=ledger.holds + 1)
     return ledger
