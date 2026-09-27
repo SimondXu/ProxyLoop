@@ -97,7 +97,7 @@ def claim_scope(m: Manifest, roles: Collection[LLMRole]) -> str:
 def _scope_failures(
     m: Manifest, roles: Collection[LLMRole], about: About | None
 ) -> list[str]:
-    fast, out = _fast(m, roles), []
+    fast, out = _fast(m, roles), list[str]()
     for role, ref in fast.items():
         slot = m.models[role].served_model or ref.model_id
         trained = ref.endpoint == "vllm" and TRAINED_MARK in slot
