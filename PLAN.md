@@ -300,6 +300,7 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
 - #190 (SYS (P-OBS), S1-SYS-42): the `.importlinter` obs contract (done in S1-ROOT-14); obs mirrors `slow/tools._IDENTITY` (P-OBS switches the import when it moves to `guard/readiness.py`, S1-SYS-21).
 - #191 (SYS (P-WEB), S1-SYS-32 red-main fix): `tests/support/web_demo.py` `_said_in` detects transcript mode by a leading quote (pass the mode explicitly); a CP_UPDATE carrying both facts and text runs the text into the last fact.
 - #184 (SYS (P-WEB), S1-SYS-32): D5 prefer composition over subclassing `kernel.web.Starter`, or add a public launch seam; D7 add `ModelOption.kind`; D8 the N-3 seed reuses the default offer slots.
+- ARCHITECTURE §9.5's diagram lacks `guard/status.py`'s `IN_CALL ──info_only──► CLOSED_NO_ACTION` edge (found by S1-ROOT-14; add it at the next doc sync).
 - #185 (SYS, S1-SYS-38): the ARCHITECTURE §9.5 diagram edge (done in S1-ROOT-14); the stop test waits only for `action.denied`, not for IN_CALL (add an `until` if it ever flakes).
 - #194 (SYS, S1-SYS-45): the demo fake keys on status-bar prose ("required slots not recorded"); a structural marker would be sturdier; N-b is a no-op until S1-SYS-43 adds `slow_view` to `session.started`.
 
