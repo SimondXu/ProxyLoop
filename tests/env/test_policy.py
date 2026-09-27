@@ -220,3 +220,50 @@ def test_ask_supervisor_transfers_and_ends_the_rep_side() -> None:
     d = _say(p, "ask_supervisor")
     assert (d.to, d.intent.kind, p.done) == ("TRANSFER", "transfer", True)
     assert p.step(EarAct(act="ask_discount"), "u", "", 1) == []
+
+
+def _silence(p: Policy, t_ms: int) -> Decision:
+    """The floor goes free at ``t_ms`` and stays free past ``silence_s``."""
+    p.floor(True, t_ms)
+    (d,) = p.tick(t_ms + int(CP.patience.silence_s * 1000))
+    assert d.strike
+    return d
+
+
+@pytest.mark.parametrize(
+    "strikes",
+    [
+        ("silence", "refuse_fact", "refuse_fact"),  # gate smoke runs 1 and 2
+        ("silence", "silence", "refuse_fact"),  # gate smoke run 3
+        ("silence", "silence", "refuse_fact", "refuse_fact"),  # mixed 2 + 2
+    ],
+)
+def test_timer_and_identity_strikes_never_add_up(strikes: tuple[str, ...]) -> None:
+    p = _policy()
+    _say(p, "other")  # the greeting: IDENTIFY
+    for i, kind in enumerate(strikes):
+        t_ms = (i + 1) * 100_000
+        d = _silence(p, t_ms) if kind == "silence" else _say(p, kind, t_ms)
+        assert d.strike and d.intent.kind != "hang_up" and not p.done
+    done = _say(p, "provide_fact", 10**6, facts={NAME: "Dana Reyes", LAST4: "4821"})
+    assert (done.to, done.intent.kind, p.done) == ("DISCOVER", "how_can_help", False)
+    assert p.strikes == len(strikes)  # the total, as many as chan.strike events
+
+
+def test_three_refusals_still_hang_up_after_a_silence() -> None:
+    p = _policy()
+    _say(p, "other")
+    _silence(p, 0)
+    kinds = [_say(p, "refuse_fact", t).intent.kind for t in (1, 2, 3)]
+    assert kinds == ["ask_identity", "ask_identity", "hang_up"]
+    assert (p.state, p.identity_strikes, p.timer_strikes) == ("ENDED", 3, 1)
+
+
+def test_three_silences_hang_up_after_identity_strikes() -> None:
+    p = _policy()
+    _say(p, "other")
+    _say(p, "refuse_fact", 1)
+    _say(p, "refuse_fact", 2)
+    kinds = [_silence(p, t).intent.kind for t in (100_000, 200_000, 300_000)]
+    assert kinds == ["check_in", "check_in", "hang_up"]
+    assert (p.state, p.identity_strikes, p.timer_strikes) == ("ENDED", 2, 3)
