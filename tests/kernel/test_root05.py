@@ -238,10 +238,11 @@ def test_only_a_cp_hold_is_deduped_against_the_cp_hold(tmp_path: Path) -> None:
     held = k.emit("chan.hold", "fast.cp", {"lane": "cp", "reason": "decision"}, [said])
     hold = [Hold(reason="decision")]
     relay = k.lanes["user"]._relay  # pyright: ignore[reportPrivateUsage]
-    relay(list(hold), held.event_id, "user-g1")  # a user-lane Hold: never compared
+    # a user-lane Hold: never compared
+    relay(list(hold), held.event_id, "user-g1", said)
     assert (k.counts["hold_repeat"], k.counts["relay_rejected"]) == (0, 1)
     relay = k.lanes["cp"]._relay  # pyright: ignore[reportPrivateUsage]
-    relay(list(hold), held.event_id, "cp-g1")  # the cp hold, unchanged: deduped
+    relay(list(hold), held.event_id, "cp-g1", None)  # the cp hold, unchanged: deduped
     assert (k.counts["hold_repeat"], k.counts["relay_rejected"]) == (1, 1)
     k.bus.close()
 

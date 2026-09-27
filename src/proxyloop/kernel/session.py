@@ -503,7 +503,8 @@ class Kernel:
         return ev.event_id
 
     def _close(self, reason: str, started: dict[str, Any]) -> None:
-        ended = {"reason": reason, "counts": dict(self.counts)}
+        ended: dict[str, object] = {"reason": reason, "counts": dict(self.counts)}
+        ended["spend"] = self.ledger.totals()  # extra keys: S1-CON-03 types them
         self.emit("session.ended", "kernel", ended, (), "ops")
         self.bus.close()
         prompts = "".join(f"{r.model_dump_json()}\n" for r in self.prompts.values())
