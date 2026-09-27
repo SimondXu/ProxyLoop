@@ -10,12 +10,13 @@ from datetime import UTC, datetime
 from tests.contract.samples import QWEN, SONNET, call_record, session_config
 
 from proxyloop.contract import CONTRACT_VERSION
-from proxyloop.contract.bundle import Manifest, RoleModel
+from proxyloop.contract.bundle import Bundle, Manifest, RoleModel
 from proxyloop.contract.config import SessionConfig, config_hash
 from proxyloop.contract.events import Event
 from proxyloop.contract.llm import AdapterKind, LLMRole, ModelRef
 from proxyloop.contract.state import Spend
 from proxyloop.evidence.chain import chain_failures
+from proxyloop.evidence.check import evidence_check
 from proxyloop.evidence.reality import claim_failures, consistency_failures
 
 RUN = "r1"
@@ -127,3 +128,16 @@ def test_teacher_calls_alone_never_prove_a_fast_role_ran() -> None:  # E1
     repair = session_config(ablations=["teacher_repair_cp"], teacher=TEACHER)
     failures = _failures(repair, ["fast_cp", "slow"], student=False)
     assert "claimed role fast_cp has no successful real_http call" in failures
+
+
+def test_the_default_claim_includes_the_teacher_whenever_it_is_set() -> None:
+    """``roles=None`` claims every role the manifest ran: under condition R the
+    teacher too, so a teacher that never answered fails the claim (E1)."""
+    repair = session_config(ablations=["teacher_repair_cp"], teacher=TEACHER)
+    m = _manifest(repair)
+    assert "teacher" in m.reality
+    report = evidence_check(Bundle(m, (), {}), "claim")
+    assert "claimed role teacher has no successful real_http call" in report.failures
+    assert "claimed role teacher has no successful real_http call" not in (
+        evidence_check(Bundle(m, (), {}), "claim", ["fast_cp"]).failures
+    )
