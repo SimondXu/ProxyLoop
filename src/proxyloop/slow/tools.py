@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -13,6 +15,7 @@ from pydantic import ValidationError
 
 from proxyloop.contract import base
 from proxyloop.contract import state as st
+from proxyloop.contract.base import Lane
 from proxyloop.contract.llm import ToolCall
 from proxyloop.contract.messages import Guide, SlowToFast
 from proxyloop.contract.protocol import GuideSlotError, render_messages
@@ -25,6 +28,19 @@ if TYPE_CHECKING:
 Effect = tuple[str, Mapping[str, object]]
 SCALE = {"usd_minor": 100, "months": 1}  # minor units and months, as spoken
 _INVALID = (ValidationError, ValueError, KeyError, TypeError, ArithmeticError)
+_GUIDE = frozenset({"tool", "move", "slots"})
+_LAST4 = re.compile(r"[0-9]{4}")  # ASCII only: no NFKC, no separators
+_WORD = r"[A-Za-z]+(?:['\u2019-][A-Za-z]+)*"  # O'Brien, Lee-Smith
+_NAME = re.compile(rf"{_WORD}(?: {_WORD}){{0,3}}")  # 1-4 words, single spaces
+MAX_NAME_CHARS = 60
+_PUBLISHABLE = (".last4", ".holder_name")
+NUMBER_WORDS = frozenset(
+    """zero one two three four five six seven eight nine ten eleven twelve
+    thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty
+    forty fifty sixty seventy eighty ninety hundred thousand million billion
+    dozen half""".split()  # noqa: SIM905
+)
+_EMPTY: tuple[object, ...] = (None, "", [])
 
 
 @dataclass(frozen=True)
@@ -98,11 +114,7 @@ class SlowTools:
             then = lambda: host.wake_slow("timer", seconds)  # noqa: E731
             return Result(True, f"waking in {seconds} s", then=then)
         if name == "guide_fast":
-            guide = Guide(move=a["move"], slots=tuple(a.get("slots") or ()))
-            if public_guide(bb, guide):
-                return self._s2f(lane="cp", type="GUIDE", guide=guide)
-            denied = {"intent": "guide_fast", "reason": "guide_slot_not_public"}
-            return _no("a slot is not public", ("action.denied", denied))
+            return self._guide(bb, a)
         if name == "record_fact":
             return self.fact(bb, str(a["key"]), str(a["value"]), a.get("utt_ref"))
         if name == "record_offer":
@@ -119,6 +131,37 @@ class SlowTools:
         then = lambda: host.finish("info_only")  # noqa: E731
         return Result(True, "case closed", (("status.changed", status),), then)
 
+    def _guide(self, bb: st.Blackboard, a: Mapping[str, Any]) -> Result:  # I4
+        extra = sorted(k for k, v in a.items() if k not in _GUIDE and v not in _EMPTY)
+        if extra:  # e.g. free text: refused whole, never dropped (ROOT-05 g)
+            denied = {"intent": "guide_fast", "reason": "guide_extra_fields"}
+            text = (
+                f"guide_fast takes only move and slots, not {', '.join(extra)}: the "
+                "phone voice never gets free text; use ask_user/tell_user for the user"
+            )
+            return _no(text, ("action.denied", denied))
+        guide = Guide(move=a["move"], slots=tuple(a.get("slots") or ()))
+        if public_guide(bb, guide):
+            return self._s2f(lane="cp", type="GUIDE", guide=guide)
+        hidden = [
+            s
+            for s in guide.slots
+            if not public_guide(bb, Guide(move=guide.move, slots=(s,)))
+        ]
+        facts = [f"fact:{k}" for k in sorted(bb.public.facts)]
+        offers = [
+            f"offer:{o.offer_ref}.{s.field}"
+            for o in bb.public.offers.values()
+            for s in o.slots
+        ]
+        text = (
+            f"not public: {', '.join(hidden)}; public slots: "
+            f"{', '.join(facts + offers) or 'none'}. A shareable fact becomes public "
+            "with record_fact(<canonical key>, value, utt_ref of the user's message)"
+        )
+        denied = {"intent": "guide_fast", "reason": "guide_slot_not_public"}
+        return _no(text, ("action.denied", denied))
+
     def _s2f(self, **fields: Any) -> Result:
         self._n += 1
         msg = SlowToFast(msg_id=f"s2f-{self._n}", **fields)
@@ -127,20 +170,24 @@ class SlowTools:
         )
 
     def fact(self, bb: st.Blackboard, key: str, value: str, ref: object) -> Result:
-        """Public iff the rep said it in ``ref``, or shareable and user-relayed."""
-        said = {
-            x.utt_id: x.text for x in bb.channels["cp"].lines if x.speaker == "partner"
-        }
-        line, digits = said.get(str(ref), ""), numbers(value)
-        in_line = (
-            digits <= numbers(line) if digits else value.casefold() in line.casefold()
-        )
-        relays = [r for r in bb.f2s_pending if r.lane == "user"]
-        hits = [r.msg_id for r in relays if (key, value) in r.facts]  # typed only
-        shareable = key in self._shareable_keys and hits
-        source = "cp_utt" if line and in_line else "shareable" if shareable else "user"
+        """Public iff the rep said it in ``ref``, or shareable and said by the user
+        in the ``user.msg`` that ``ref`` names, directly or through the user-lane
+        relay it cites (a relay is Fast's claim, never the source; I4)."""
+        line = _partner(bb, "cp").get(str(ref), "")
+        relayed = {r.msg_id: r.utt_ref for r in bb.f2s_pending if r.lane == "user"}
+        msg_id = relayed.get(str(ref)) or str(ref)  # the user's own message
+        told = _partner(bb, "user").get(msg_id, "")
+        mine = key in self._shareable_keys and told
+        span = _user_span(key, value, told) if mine else None  # the user's words
+        hits = [msg_id] if span is not None else []
+        leaks = _leaks(key, span, bb) if span is not None else []  # never protected
+        shareable = key in self._shareable_keys and hits and not leaks
+        in_line = bool(line) and _said(value, line)
+        source = "cp_utt" if in_line else "shareable" if shareable else "user"
         ref = str(ref) if source == "cp_utt" else hits[0] if shareable else ref
-        ref = None if ref is None else str(ref)  # the rep line or the user relay
+        ref = None if ref is None else str(ref)  # the rep line or user message
+        if source == "shareable" and span is not None:
+            value = span  # the user's words, not Slow's string
         fact = {"key": key, "value": value, "source_ref": ref}
         where = "private" if source == "user" else "public"
         if source == "user":
@@ -149,7 +196,97 @@ class SlowTools:
             st.PublicFact.model_validate(fact | {"source": source})
             self.shareable |= {key: value} if source == "shareable" else {}
         recorded = fact | {"source": source, "scope": where}
-        return Result(True, f"recorded {where}", (("fact.recorded", recorded),))
+        effects: list[Effect] = [("fact.recorded", recorded)]
+        text = f"recorded {where}"
+        if where == "private" and key in self._shareable_keys and leaks:
+            text += ", never public: " + "; ".join(leaks)  # counted as declass
+            effects.append(("declass.denied", {"violations": leaks}))
+        elif where == "private" and key in self._shareable_keys:  # how to share it
+            can = sorted(k for k in self._shareable_keys if k.endswith(_PUBLISHABLE))
+            text += (
+                f": in S0 only {', '.join(can) or 'no key'} can go public from the "
+                "user, by citing the utt of the user message that contains exactly "
+                "the value (a .last4 as 4 digits, a .holder_name as the user wrote "
+                "it); every other shareable key stays private"
+            )
+        return Result(True, text, tuple(effects))
+
+
+def _partner(bb: st.Blackboard, lane: Lane) -> dict[str, str]:  # utt id -> text
+    lines = bb.channels.get(lane, st.ChannelState()).lines
+    return {x.utt_id: x.text for x in lines if x.speaker == "partner"}
+
+
+def _said(value: str, line: str) -> bool:  # its digits, else its text verbatim
+    digits = numbers(value)
+    return digits <= numbers(line) if digits else value.casefold() in line.casefold()
+
+
+def _user_span(key: str, value: str, message: str) -> str | None:
+    """I4, the narrow S0 user-message path (#133 round 4): the span of the raw
+    ``message`` to publish, or None. Only two key shapes can go public:
+    - ``*.last4``: exactly four ASCII digits, a standalone token of the message
+      on an allow-list: after the start, whitespace or one of ``( : " “``;
+      then at most one of ``. , ; : ! ? ) " ”`` and whitespace or the end;
+    - ``*.holder_name``: 1-4 ASCII words (``O'Brien``, ``Lee-Smith``), no number
+      word, found case-insensitively with word boundaries; the user's own
+      spelling is published.
+    Every other key stays private on this path (safety over coverage)."""
+    if key.endswith(".last4") and _LAST4.fullmatch(value):
+        before, after = r"(?:^|(?<=[\s(:\"\u201c]))", r"(?=[.,;:!?)\"\u201d]?(?:\s|$))"
+        return value if re.search(before + value + after, message) else None
+    if not key.endswith(".holder_name") or not _NAME.fullmatch(value):
+        return None
+    if len(value) > MAX_NAME_CHARS or set(_words(value).split()) & NUMBER_WORDS:
+        return None
+    bound = r"(?<![\w'\u2019-])" + re.escape(value) + r"(?![\w'\u2019-])"
+    found = re.search(bound, message, re.IGNORECASE)
+    return found.group() if found and _NAME.fullmatch(found.group()) else None
+
+
+def _words(text: str) -> str:  # "O'Brien" -> "o brien"
+    return " ".join(re.findall(r"[a-z]+", text.casefold()))
+
+
+def _letters(text: str) -> str:  # "O'Brien" -> "obrien"
+    return re.sub(r"[^a-z]", "", text.casefold())
+
+
+def _digits(text: str) -> str:  # "(555) 482-1999" -> "5554821999"; any script
+    text = unicodedata.normalize("NFKC", text)
+    return "".join(str(unicodedata.decimal(c)) for c in text if c.isdecimal())
+
+
+def _leaks(key: str, span: str, bb: st.Blackboard) -> list[str]:
+    """The span to publish against every protected case-fact value (word,
+    letter and digit forms, either containing the other) and, for a ``*.last4``, the
+    mandate bounds in minor units, whole units and months."""
+    out, words, digits = list[str](), _words(span), _digits(span)
+    letters = _letters(span)
+    for name, f in sorted(bb.private.case_facts.items()):
+        theirs, their_digits = _words(f.value), _digits(f.value)
+        same_words = words and theirs and (words in theirs or theirs in words)
+        their_letters = _letters(f.value)  # "Obrien" is "O'Brien"
+        same_words = same_words or (
+            letters
+            and their_letters
+            and (letters in their_letters or their_letters in letters)
+        )
+        same_digits = (
+            digits
+            and their_digits
+            and (digits in their_digits or their_digits in digits)
+        )
+        if f.protected and (same_words or same_digits):
+            out.append(f"the protected value of {name}")
+    m = bb.private.mandate
+    minor = () if m is None else (m.max_monthly_price_minor, m.max_one_time_fees_minor)
+    bounds = {v for v in minor if v is not None}
+    bounds |= {v // 100 for v in minor if v is not None and v % 100 == 0}
+    bounds |= {m.max_term_months} if m and m.max_term_months else set()
+    if key.endswith(".last4") and int(span) in bounds:
+        out.append(f"{span} is a mandate bound")
+    return out
 
 
 def public_guide(bb: st.Blackboard, guide: Guide) -> bool:  # the renderer judges

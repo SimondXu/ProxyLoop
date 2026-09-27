@@ -23,8 +23,14 @@ shareable facts you recorded; anything else is refused. `calls` lists your actio
 - ask_user(text) / tell_user(text): the chat voice passes it to the user.
 - wait(seconds 1-15): wake me again after that long if nothing else happens.
 - guide_fast(move, slots): steer the phone voice; slots are "fact:<key>" or \
-"offer:<ref>.<field>" and must already be public.
-- record_fact(key, value, utt_ref): a fact with the utterance it came from.
+"offer:<ref>.<field>" and must already be public. It takes no text: the phone \
+voice never gets free text from you.
+- record_fact(key, value, utt_ref): a fact with the utt of the relay it came from. \
+Use the canonical key from SHAREABLE FACT KEYS when the fact is one of them, \
+whatever the relay called it. A value the representative said in that utt becomes \
+public. From the user, only a *.last4 key (exactly 4 digits) or a *.holder_name key \
+(the name as the user wrote it) from SHAREABLE FACT KEYS becomes public, when the \
+cited user message contains exactly that value; anything else stays private.
 - record_offer(offer_ref, offer_slots): the offer's terms as the representative said \
 them, each slot {field, value, unit, role, utt_ref}; money in cents (usd_minor).
 - finish(outcome, summary): end the case. Only outcome "info_only" exists here: \
@@ -81,8 +87,13 @@ def status_bar(view: SlowView) -> str:
         + ", ".join(f"{s.field}={s.value} [{s.status}]" for s in o.slots)
         for o in view.offers
     )
+    facts = "; ".join(
+        [f"{f.key}={f.value} [public]" for f in view.public_facts]
+        + [f"{f.key}={f.value} [private]" for f in view.case_facts]
+    )
     hold = view.cp_hold.reason if view.cp_hold is not None else "none"
     return (
         f"[STATUS] case {view.status.value}; epoch {view.epoch}; "
-        f"offers: {offers or 'none'}; hold: {hold}; strikes: {view.cp_strikes}"
+        f"offers: {offers or 'none'}; facts: {facts or 'none'}; hold: {hold}; "
+        f"strikes: {view.cp_strikes}"
     )
