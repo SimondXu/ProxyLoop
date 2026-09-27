@@ -64,23 +64,45 @@ export function closed<T extends Framed>(s: Stream<T>, code: number, reason: str
   return { ...s, phase: "closed", message: `disconnected (${why})` };
 }
 
+const FAST = ["fast_user", "fast_cp"];
+/** Each lane's role, and the roles whose real_http models it may offer (never a world role). */
 export const MODEL_LANES = [
-  { role: "fast_user", title: "Fast-U" },
-  { role: "fast_cp", title: "Fast-C" },
-  { role: "slow", title: "Slow" },
+  { role: "fast_user", title: "Fast-U", from: FAST },
+  { role: "fast_cp", title: "Fast-C", from: FAST },
+  { role: "slow", title: "Slow", from: ["slow"] },
 ] as const;
 
-type Refs = Record<string, { ref?: { kind?: unknown; model_id?: unknown } }>;
+type Ref = { kind?: unknown; model_id?: unknown };
+export type LaneModels = {
+  role: string;
+  title: string;
+  options: string[];
+  running: string | null;
+  placeholder: string | null;
+};
 
-/** The session's real_http model ids (session.started models): the only dropdown options. */
-export function realHttpModels(events: Ev[]): { options: string[]; configured: Record<string, string> } {
+/**
+ * The per-lane dropdowns, from session.started models only. A lane whose own
+ * model is not real_http shows a disabled placeholder naming what it runs, never
+ * another model; otherwise it offers the real_http ids of its `from` roles.
+ */
+export function laneModels(events: Ev[]): LaneModels[] {
   const start = events.find((e) => e.type === "session.started");
-  const models = Object.entries((start?.payload.models ?? {}) as Refs);
-  const configured: Record<string, string> = {};
-  for (const [role, m] of models) {
-    if (m.ref?.kind === "real_http" && typeof m.ref.model_id === "string") configured[role] = m.ref.model_id;
-  }
-  return { options: [...new Set(Object.values(configured))], configured };
+  const refs = (start?.payload.models ?? {}) as Record<string, { ref?: Ref }>;
+  const real = (role: string) => {
+    const ref = refs[role]?.ref;
+    return ref?.kind === "real_http" && typeof ref.model_id === "string" ? ref.model_id : null;
+  };
+  return MODEL_LANES.map(({ role, title, from }) => {
+    const running = real(role);
+    if (running === null) {
+      const ref = refs[role]?.ref;
+      const what = ref ? `${String(ref.model_id)} (${String(ref.kind)})` : "no model";
+      return { role, title, options: [], running, placeholder: `${what}: not selectable` };
+    }
+    const options = [...new Set(from.map(real).filter((id) => id !== null))];
+    return { role, title, options, running, placeholder: null };
+  });
 }
 
 export type Sent = { text: string; after: number };

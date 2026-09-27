@@ -1,10 +1,10 @@
 // The live shell (?live=<run_id>): the replay's lanes, cards and drawer, fed by
 // /ws/live instead of a loaded file, plus the user chat input, the approval
 // cards and the per-lane model dropdowns. It shows only what events say.
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Drawer, Lanes, RunSummary, useDrill } from "./App";
 import { approvalCards, type CardStatus, type CardView, type Posting } from "./approval";
-import { MODEL_LANES, parseEvent, realHttpModels, unechoed, type Framed, type Sent, type Stream } from "./liveState";
+import { laneModels, parseEvent, unechoed, type Framed, type Sent, type Stream } from "./liveState";
 import { postApproval, postMessage, type Decision, type PostResult } from "./liveApi";
 import { indexEvents, type Ev } from "./replay";
 import { useEventStream } from "./useEventStream";
@@ -22,10 +22,17 @@ export function Live({ runId }: { runId: string }) {
   const [sent, setSent] = useState<Sent[]>([]);
 
   const cards = useMemo(() => approvalCards(events, posts), [events, posts]);
+  // Cards with a pending or ok post: a second click, even before a re-render, never POSTs again.
+  const claimed = useRef(new Set<string>());
   const decide = (view: CardView, decision: Decision) => {
     const id = view.card.approval_id;
+    if (claimed.current.has(id)) return;
+    claimed.current.add(id);
     setPosts((m) => new Map(m).set(id, "pending"));
-    void postApproval(runId, view.card, decision).then((r) => setPosts((m) => new Map(m).set(id, r)));
+    void postApproval(runId, view.card, decision).then((r) => {
+      if (!r.ok) claimed.current.delete(id); // a failed post may be clicked again, by hand
+      setPosts((m) => new Map(m).set(id, r));
+    });
   };
   const send = async (text: string) => {
     const after = stream.next;
@@ -89,21 +96,21 @@ export function Connection<T extends Framed>({
 }
 
 function ModelPickers({ events }: { events: Ev[] }) {
-  const { options, configured } = useMemo(() => realHttpModels(events), [events]);
+  const lanes = useMemo(() => laneModels(events), [events]);
   const [chosen, setChosen] = useState<Record<string, string>>({});
   return (
     <section className="bar" aria-label="Models per lane">
-      {MODEL_LANES.map(({ role, title }) => (
+      {lanes.map(({ role, title, options, running, placeholder }) => (
         <label key={role}>
           {title}{" "}
-          {options.length === 0 ? (
+          {placeholder !== null ? (
             <select aria-label={`${title} model`} disabled>
-              <option>no real_http model</option>
+              <option>{placeholder}</option>
             </select>
           ) : (
             <select
               aria-label={`${title} model`}
-              value={chosen[role] ?? configured[role] ?? options[0]}
+              value={chosen[role] ?? running ?? ""}
               onChange={(e) => setChosen((c) => ({ ...c, [role]: e.target.value }))}
             >
               {options.map((id) => (

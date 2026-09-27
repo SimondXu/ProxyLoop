@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { acceptFrame, closed, parseEvent, realHttpModels, START, unechoed, type Stream } from "./liveState";
-import { CLOSE, csrfToken, entry, pageMode, paths } from "./liveApi";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { acceptFrame, closed, laneModels, parseEvent, START, unechoed, type Stream } from "./liveState";
+import { CLOSE, csrfToken, entry, pageMode, paths, postApproval, postRep } from "./liveApi";
 import type { Ev } from "./replay";
 
 const line = (seq: number, type = "fast.sentence") => JSON.stringify({ seq, type, payload: {} });
@@ -57,24 +57,32 @@ describe("model dropdown options", () => {
     },
   ];
 
-  it("lists only real_http models, never test_fake, recorded_replay or baseline", () => {
-    const m = realHttpModels(
-      started({
+  const lanes = (models: Record<string, [string, string]>) =>
+    Object.fromEntries(laneModels(started(models)).map((l) => [l.title, { options: l.options, running: l.running, placeholder: l.placeholder }]));
+
+  it("offers only the lane's own real_http models: Fast from the fast roles, Slow from slow, never a world role", () => {
+    expect(
+      lanes({
         fast_user: ["real_http", "qwen3.5-9b"],
-        fast_cp: ["test_fake", "fast_cp-fake"],
+        fast_cp: ["real_http", "qwen3.5-9b-lora"],
         slow: ["real_http", "claude-sonnet-5"],
-        ear: ["recorded_replay", "ear-rec"],
+        ear: ["real_http", "gemini-3.8-flash"],
         mouth: ["baseline", "fsm"],
-        simuser: ["real_http", "qwen3.5-9b"],
+        simuser: ["recorded_replay", "sim-rec"],
       }),
-    );
-    expect(m.options).toEqual(["qwen3.5-9b", "claude-sonnet-5"]);
-    expect(m.configured).toEqual({ fast_user: "qwen3.5-9b", slow: "claude-sonnet-5", simuser: "qwen3.5-9b" });
+    ).toEqual({
+      "Fast-U": { options: ["qwen3.5-9b", "qwen3.5-9b-lora"], running: "qwen3.5-9b", placeholder: null },
+      "Fast-C": { options: ["qwen3.5-9b", "qwen3.5-9b-lora"], running: "qwen3.5-9b-lora", placeholder: null },
+      Slow: { options: ["claude-sonnet-5"], running: "claude-sonnet-5", placeholder: null },
+    });
   });
 
-  it("has no options without a real_http model or a session.started", () => {
-    expect(realHttpModels(started({ fast_user: ["test_fake", "x"], slow: ["baseline", "fsm"] })).options).toEqual([]);
-    expect(realHttpModels([]).options).toEqual([]);
+  it("never shows a lane a model it is not running: a non-real_http lane gets a disabled placeholder", () => {
+    const m = lanes({ fast_user: ["real_http", "qwen3.5-9b"], fast_cp: ["test_fake", "fast_cp-fake"], slow: ["baseline", "fsm"] });
+    expect(m["Fast-C"]).toEqual({ options: [], running: null, placeholder: "fast_cp-fake (test_fake): not selectable" });
+    expect(m.Slow).toEqual({ options: [], running: null, placeholder: "fsm (baseline): not selectable" });
+    expect(m["Fast-U"]).toEqual({ options: ["qwen3.5-9b"], running: "qwen3.5-9b", placeholder: null });
+    expect(laneModels([]).map((l) => l.placeholder)).toEqual(["no model: not selectable", "no model: not selectable", "no model: not selectable"]);
   });
 });
 
@@ -106,5 +114,19 @@ describe("liveApi names", () => {
       "/rep/c",
       "/ws/rep/c?from_seq=7",
     ]);
+  });
+});
+
+describe("liveApi posts", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const card = { approval_id: "a1", terms_hash: "th", authority_epoch: 2 };
+
+  it("returns a bad-cookie error, never throws, when the CSRF cookie cannot be decoded", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal("document", { cookie: "pl_csrf=%E0%A4%A; pl_rep_csrf=%" });
+    await expect(postApproval("c", card, "granted")).resolves.toEqual({ ok: false, status: 0, error: "bad pl_csrf cookie" });
+    await expect(postRep("c", "hi")).resolves.toEqual({ ok: false, status: 0, error: "bad pl_rep_csrf cookie" });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

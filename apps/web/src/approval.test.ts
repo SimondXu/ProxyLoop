@@ -98,6 +98,7 @@ describe("approval card state (I6: events decide, the page only posts)", () => {
     });
     expect(one([card("a1")], res(403, "csrf"))).toEqual({ status: "open", by: null, error: "403 csrf" });
     expect(one([card("a1")], res(0, "no response: offline"))).toEqual({ status: "open", by: null, error: "no response: offline" });
+    expect(one([card("a1")], res(0, "bad pl_csrf cookie"))).toEqual({ status: "open", by: null, error: "bad pl_csrf cookie" });
     expect(one([card("a1"), decided("a1", "granted")], res(409, "already_decided"))).toEqual({
       status: "granted",
       by: "ui",

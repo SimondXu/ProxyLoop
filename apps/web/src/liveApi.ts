@@ -68,7 +68,12 @@ export function csrfToken(cookie: string, role: Role): string | null {
 
 /** One POST, never retried. Every failure comes back as a visible error. */
 async function post(role: Role, caseId: string, path: string, body: unknown): Promise<PostResult> {
-  const token = csrfToken(document.cookie, role);
+  let token: string | null;
+  try {
+    token = csrfToken(document.cookie, role);
+  } catch {
+    return { ok: false, status: 0, error: `bad ${CSRF_COOKIE[role]} cookie` }; // decodeURIComponent: URIError
+  }
   if (token === null) {
     return { ok: false, status: 0, error: `no ${CSRF_COOKIE[role]} cookie: open ${entry(role, caseId)} first` };
   }

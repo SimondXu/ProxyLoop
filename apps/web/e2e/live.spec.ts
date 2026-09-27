@@ -74,6 +74,49 @@ test("approval card: a 409 stale is shown, closes the card and is never retried"
   expect(posts.map((p) => p.body)).toEqual([{ decision: "denied", terms_hash: CARD.terms_hash, authority_epoch: 2 }]);
 });
 
+test("approval card: double-clicking Approve sends exactly one POST", async ({ page, baseURL }) => {
+  await csrfCookie(page, baseURL);
+  const { connected } = await mockSockets(page);
+  const posts = await capturePosts(page);
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  ws.send(ev("approval.requested", "guard", CARD));
+  ws.send(ev("approval.requested", "guard", { ...CARD, approval_id: "ap-2", offer_ref: "offer-2" }));
+  const approve = (id: string) => page.getByRole("article", { name: `Approval ${id}` }).getByRole("button", { name: "Approve" });
+  // Two clicks in one task, before React re-renders and disables the button.
+  await approve("ap-1").evaluate((b: HTMLButtonElement) => {
+    b.click();
+    b.click();
+  });
+  await approve("ap-2").dblclick();
+  await expect(approve("ap-1")).toBeDisabled();
+  await expect(approve("ap-2")).toBeDisabled();
+  await page.waitForTimeout(300);
+  expect(posts.map((p) => p.path).sort()).toEqual([`/api/cases/${RUN}/approvals/ap-1`, `/api/cases/${RUN}/approvals/ap-2`]);
+});
+
+test("a malformed CSRF cookie is a visible error on the card and the chat, and nothing is posted", async ({ page, baseURL }) => {
+  await csrfCookie(page, baseURL, "pl_csrf", "%E0%A4%A");
+  const { connected } = await mockSockets(page);
+  const posts = await capturePosts(page);
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  ws.send(ev("approval.requested", "guard", CARD));
+  const card = page.getByRole("article", { name: "Approval ap-1" });
+  await card.getByRole("button", { name: "Approve" }).click();
+  await expect(card.getByRole("alert")).toHaveText("bad pl_csrf cookie");
+  await expect(card.getByLabel("Approval status")).toHaveText("awaiting your decision");
+  await page.getByRole("textbox", { name: "Message to the agent" }).fill("hello");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("Not delivered: bad pl_csrf cookie")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+  expect(posts).toEqual([]);
+});
+
 test("model dropdowns list only real_http models", async ({ page }) => {
   const { connected } = await mockSockets(page);
   await page.goto(`/?live=${RUN}`);
@@ -93,12 +136,16 @@ test("model dropdowns list only real_http models", async ({ page }) => {
     ),
   );
   const pickers = page.getByRole("region", { name: "Models per lane" });
-  for (const lane of ["Fast-U", "Fast-C", "Slow"]) {
-    const select = pickers.getByRole("combobox", { name: `${lane} model` });
-    await expect(select.locator("option")).toHaveText(["qwen3.5-9b", "claude-sonnet-5"]);
-  }
-  await expect(pickers).not.toContainText(/fake|recorded|baseline/);
-  await expect(pickers.getByRole("combobox", { name: "Slow model" })).toHaveValue("claude-sonnet-5");
+  const select = (lane: string) => pickers.getByRole("combobox", { name: `${lane} model` });
+  // Fast lanes offer only the fast roles' real_http ids; Slow only slow's; world roles never.
+  await expect(select("Fast-U").locator("option")).toHaveText(["qwen3.5-9b"]);
+  await expect(select("Fast-U")).toBeEnabled();
+  await expect(select("Slow").locator("option")).toHaveText(["claude-sonnet-5"]);
+  await expect(select("Slow")).toHaveValue("claude-sonnet-5");
+  // A test_fake Fast-C never shows a model it is not running: a disabled placeholder.
+  await expect(select("Fast-C").locator("option")).toHaveText(["fast_cp-fake (test_fake): not selectable"]);
+  await expect(select("Fast-C")).toBeDisabled();
+  await expect(pickers).not.toContainText(/recorded|baseline|ear-|fsm-/);
 });
 
 test("user chat posts a message that shows in the lane only when its user.msg arrives", async ({ page, baseURL }) => {
