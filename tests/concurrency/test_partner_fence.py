@@ -1,16 +1,19 @@
-"""The partner-turn fence (S1-SYS-23, option C): a rep line that lands while an
-accept is in flight raises a fence; the accept waits (never revoked ``fence``
-for it) until a Slow step that saw the rep's turn completes, then Guard
-revalidates. A user fence still revokes it; its expiry fails closed; and an
-accept still waiting when the session ends gets no terminal event (N3)."""
+"""The partner-turn fence (S1-SYS-23, option C) under ``slow_view=relay_only``
+(ADR-0016 note: this mode keeps S1-SYS-23's rule; ``transcript`` mode is in
+``test_partner_fence_transcript``): a rep line that lands while an accept is in
+flight raises a fence; the accept waits (never revoked ``fence`` for it) until
+a Slow step that saw FastC's turn on it completes, then Guard revalidates. A
+user fence still revokes it; its expiry fails closed; and an accept still
+waiting when the session ends gets no terminal event (N3)."""
 
 from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import Any
 
 import pytest
-from tests.concurrency.harness import ACCEPT, Sim, SlowGate, granted, slots, terms
+from tests.concurrency.harness import A5, ACCEPT, Sim, SlowGate, granted, slots, terms
 from tests.concurrency.test_cases import FIX, Valve, arun
 from tests.support.sessions import act
 
@@ -23,6 +26,10 @@ from proxyloop.kernel.speaker import speech_s
 GONE = "One moment.\n@slow: the rep says that offer is gone"  # FastC's relay
 DECLINE = act("gone", {"tool": "decline_offer", "offer_ref": "o1"})
 ELSE = "Anything else?"
+
+
+def _sim(tmp_path: Path, *args: Any, **kwargs: Any) -> Sim:
+    return Sim(tmp_path, *args, cfg=A5, **kwargs)
 
 
 def _one(sim: Sim, type_: str, **match: object) -> Event:
@@ -83,7 +90,7 @@ def test_a_a_correction_during_a_queued_accept_revokes_it(
         mark = {"fast_cp": ("that offer is gone", GONE)}
         mark |= {"slow": ("that offer is gone", DECLINE)}
         until = mark if change == "decline" else None
-        sim = Sim(tmp_path, gates={"fast_cp": fast_cp}, until=until)
+        sim = _sim(tmp_path, gates={"fast_cp": fast_cp}, until=until)
         fix = FIX if change == "decline" else terms(75)  # the new terms, whole
         hold = fast_cp if change == "revise" else None  # FastC is still out
         fence = await _queued_then_rep(sim, fix, hold)
@@ -118,7 +125,7 @@ def test_b_a_harmless_rep_turn_delays_the_accept_until_the_fence_clears(
     tmp_path: Path,
 ) -> None:
     async def case() -> None:
-        sim = Sim(tmp_path)
+        sim = _sim(tmp_path)
         fence = await _queued_then_rep(sim, ELSE)
         await sim.vt.run_for(15_000)
         cleared = _one(sim, "authority.fence", op="cleared")
@@ -138,7 +145,7 @@ def test_c_a_user_fence_during_the_wait_still_revokes_the_accept(
     async def case() -> None:
         fast_cp, fast_user = Valve(), Valve()
         gates = {"fast_cp": fast_cp, "fast_user": fast_user}
-        sim = Sim(tmp_path, gates=gates)
+        sim = _sim(tmp_path, gates=gates)
         await _queued_then_rep(sim, ELSE, fast_cp)  # the partner fence stays up
         await sim.vt.run_for(2_000)
         assert _ends(sim) == []  # waiting, not revoked for the partner fence
@@ -167,7 +174,7 @@ def test_d_an_accept_outwaited_by_a_partner_fence_is_revoked_expired_once(
 ) -> None:
     async def case() -> None:
         fast_cp = Valve()
-        sim = Sim(tmp_path, gates={"fast_cp": fast_cp})
+        sim = _sim(tmp_path, gates={"fast_cp": fast_cp})
         await _queued_then_rep(
             sim, ELSE, fast_cp
         )  # FastC never answers: the fence never binds
@@ -194,7 +201,7 @@ def test_e_a_rep_turn_with_no_accept_in_flight_raises_no_fence(
     tmp_path: Path,
 ) -> None:
     async def case() -> None:
-        sim = Sim(tmp_path)
+        sim = _sim(tmp_path)
         await sim.start()
         await granted(sim)  # the offer and its read-back: no accept yet
         sim.rep_says(ELSE)
@@ -220,7 +227,7 @@ def test_a_call_closed_during_the_wait_revokes_the_accept_at_once(
 ) -> None:  # the closing line raises no fence; chan.closed wakes the wait
     async def case() -> None:
         fast_cp = Valve()
-        sim = Sim(tmp_path, gates={"fast_cp": fast_cp})
+        sim = _sim(tmp_path, gates={"fast_cp": fast_cp})
         await _queued_then_rep(sim, ELSE, fast_cp)
         await sim.vt.run_for(1_000)
         sim.rep.incoming.put_nowait(Incoming((("Goodbye.", None),), end="closed"))
@@ -242,7 +249,7 @@ def test_f_an_accept_waiting_at_session_end_gets_no_terminal_event(
 ) -> None:  # N3 (main root decision): fail closed, pinned here, not changed
     async def case() -> None:
         fast_cp = Valve()
-        sim = Sim(tmp_path, gates={"fast_cp": fast_cp})
+        sim = _sim(tmp_path, gates={"fast_cp": fast_cp})
         await _queued_then_rep(sim, ELSE, fast_cp)
         await sim.vt.run_for(1_000)
         assert _ends(sim) == []  # waiting on the partner fence
@@ -284,7 +291,7 @@ def test_a_correction_before_the_authorising_step_mints_fences_the_accept(
     that saw the line: released if it changed nothing, else revoked."""
 
     async def case() -> None:
-        sim = Sim(tmp_path, {"slow": [ACCEPT]})
+        sim = _sim(tmp_path, {"slow": [ACCEPT]})
         await sim.start()
         gate = SlowGate(sim)
         await sim.offer()
@@ -334,7 +341,7 @@ def test_an_epoch_bump_ends_a_waiting_accept_at_once(tmp_path: Path) -> None:
 
     async def case() -> None:
         fast_cp = Valve()
-        sim = Sim(tmp_path, gates={"fast_cp": fast_cp})
+        sim = _sim(tmp_path, gates={"fast_cp": fast_cp})
         await _queued_then_rep(sim, ELSE, fast_cp)  # the partner fence stays up
         await sim.vt.run_for(500)
         sim.revoke()
@@ -368,7 +375,7 @@ def test_a_fastc_turn_never_binds_a_user_fence(tmp_path: Path) -> None:
 
     async def case() -> None:
         fast_user = Valve()
-        sim = Sim(tmp_path, gates={"fast_user": fast_user})
+        sim = _sim(tmp_path, gates={"fast_user": fast_user})
         await sim.start()
         await granted(sim)
         fast_user.open.clear()
@@ -399,7 +406,7 @@ def test_a_fastu_turn_never_binds_a_partner_fence(tmp_path: Path) -> None:
 
     async def case() -> None:
         fast_cp = Valve()
-        sim = Sim(tmp_path, gates={"fast_cp": fast_cp})
+        sim = _sim(tmp_path, gates={"fast_cp": fast_cp})
         partner = await _queued_then_rep(sim, ELSE, fast_cp)
         sim.user_says("Thanks, go ahead.")
         await sim.vt.run_for(1_000)
@@ -449,7 +456,7 @@ def test_a_rep_line_fastc_has_not_answered_fences_the_accept_at_the_mint(
 
     async def case() -> None:
         fast_cp = Valve()
-        sim = Sim(tmp_path, {"slow": [ACCEPT]}, gates={"fast_cp": fast_cp})
+        sim = _sim(tmp_path, {"slow": [ACCEPT]}, gates={"fast_cp": fast_cp})
         await sim.start()
         gate = SlowGate(sim)
         await sim.offer()
@@ -494,7 +501,7 @@ def test_a_fastc_turn_whose_request_missed_the_line_binds_nothing(
 
     async def case() -> None:
         fast_cp = Tickets()
-        sim = Sim(tmp_path, gates={"fast_cp": fast_cp})
+        sim = _sim(tmp_path, gates={"fast_cp": fast_cp})
         await sim.start()
         await granted(sim)
         fast_cp.let(0)
@@ -537,7 +544,7 @@ def test_an_old_fastc_turn_never_covers_a_line_before_the_accept(
 
     async def case() -> None:
         fast_cp = Tickets()
-        sim = Sim(tmp_path, gates={"fast_cp": fast_cp})
+        sim = _sim(tmp_path, gates={"fast_cp": fast_cp})
         await sim.start()
         await granted(sim)
         fast_cp.let(0)

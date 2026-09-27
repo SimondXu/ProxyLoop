@@ -30,7 +30,7 @@ from tests.support.fakes import RepeatingLLM
 from tests.support.manual_clock import ManualClock
 from tests.support.sessions import Gated, act, fake_config, patient_task
 
-from proxyloop.contract.config import SessionConfig
+from proxyloop.contract.config import SessionConfig, SlowViewMode
 from proxyloop.contract.events import ApprovalPost, Approver, Event
 from proxyloop.contract.llm import (
     LLMCallRecord,
@@ -69,6 +69,7 @@ def enumerated_wakes() -> Iterator[None]:
         yield
 
 
+A5 = fake_config().model_copy(update={"slow_view": SlowViewMode.RELAY_ONLY})
 NOTED = act("Noted.")  # Slow's own step: a private summary, no tool
 ACCEPT = act("take it", {"tool": "accept_offer", "offer_ref": "o1"})  # its own
 SCRIPTS: Mapping[str, Sequence[str]] = {

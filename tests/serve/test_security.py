@@ -1,5 +1,5 @@
-"""Host and Origin checks on every route, main()'s fixed origins, and URL
-redaction that keeps every line JSON."""
+"""Host and Origin checks on every route, main()'s fixed origins, and URL and
+credential redaction that keeps every line JSON."""
 
 from __future__ import annotations
 
@@ -43,6 +43,43 @@ def test_redaction_removes_every_url_and_keeps_json(
     assert b"<redacted-url>" in out and kept in out
     assert b"pass@" not in out
     json.loads(out)  # still one JSON document
+
+
+TOKENS: dict[str, tuple[dict[str, str], bytes, bytes]] = {  # payload, gone, kept
+    "sk- token": ({"t": "use sk-abc123DEF456_x-y now"}, b"sk-abc123", b" now"),
+    "key=": ({"t": "call key=abcdef123 next"}, b"abcdef123", b" next"),
+    "API_KEY=": ({"t": "API_KEY=Zx9_secret&b=1"}, b"Zx9_secret", b"&b=1"),
+    "apikey=": ({"t": "?apikey=Q1w2e3<br>"}, b"Q1w2e3", b"<br>"),
+    "secret=": ({"t": "Secret=hunter2 ok"}, b"hunter2", b" ok"),
+    "token= inside": ({"t": "a token=t0k3n b"}, b"t0k3n", b' b"'),
+    "token= at string end": ({"t": "the token=t0k3n"}, b"t0k3n", b'"t": "the '),
+    'before \\"': ({"t": 'say "token=t0k3n" ok'}, b"t0k3n", b'\\" ok'),
+    "before \\n": ({"t": "key=abcdef\nnext"}, b"abcdef", b"\\nnext"),
+    "nested JSON": (
+        {"content": json.dumps({"k": "sk-abcdefgh12345", "n": 1})},
+        b"sk-abcdefgh",
+        b'\\", \\"n\\": 1}',
+    ),
+}
+
+
+@pytest.mark.parametrize(("payload", "gone", "kept"), TOKENS.values(), ids=TOKENS)
+def test_redaction_removes_bare_credentials_and_keeps_json(
+    payload: dict[str, str], gone: bytes, kept: bytes
+) -> None:
+    line = json.dumps(payload).encode()
+    out = redact(line)
+    assert gone not in out and b"<redacted>" in out and kept in out, out
+    json.loads(out)  # still one JSON document
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["monkey=3", "sketch", "turkey=1", "max_tokens=512", "task-direct-discount", "sk-"],
+)
+def test_ordinary_text_is_not_redacted(text: str) -> None:
+    line = json.dumps({"t": text}).encode()
+    assert redact(line) == line
 
 
 def test_a_foreign_host_is_refused_on_http_and_websocket(bundles: Bundles) -> None:
