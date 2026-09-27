@@ -8,7 +8,7 @@ Layout (``tmp_path``):
 - ``runs/rC`` and ``evidence/s1/rC``: the same run twice; slow priced, ear
   unpriced, one mouth ``spend.charged`` with no ``llm.call``;
 - ``runs/rD``: non-live (slow ``recorded_replay``, fast_cp ``baseline``);
-- ``runs/rE``: events without a manifest (incomplete);
+- ``runs/rE``: events without a manifest (incomplete), one priced call;
 - ``runs/rF``: a manifest that is not JSON (invalid);
 - ``runs/rG``: a ``split == "test"`` manifest outside ``evidence/`` (sealed),
   with events that would not parse;
@@ -78,6 +78,7 @@ def corpus(tmp_path: Path) -> Iterator[tuple[Path, Path]]:
 
     e = Log("rE")
     e.call("ear", GEMINI, _usage(1, 1), "unpriced")
+    e.call("slow", SONNET, _usage(10000, 0), "tokens", 30000)  # a crashed run's $
     write(runs / "rE", e, None)
 
     (write(runs / "rF", None, None) / MANIFEST).write_text("{", "utf-8")

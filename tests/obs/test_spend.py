@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.contract.samples import SONNET
+from tests.obs.bundles import Log, manifest, write
 
+from proxyloop.contract.llm import Usage
 from proxyloop.obs.spend import load_gpu, main
 
 GPU = [
@@ -68,6 +71,8 @@ def test_hand_computation(corpus: tuple[Path, Path], tmp_path: Path) -> None:
         "usage_missing": 0,
         "charge_without_call": 0,
         "call_without_charge": 0,
+        "episodes": 3,
+        "usd_per_episode": "0.00330000",  # 9900 / 3 = 3300 micro-USD
     }
     # ear: rA 200/30/25, rB 100/20/-, rC 50/5/5
     ear = _row(live, "ear")
@@ -81,16 +86,13 @@ def test_hand_computation(corpus: tuple[Path, Path], tmp_path: Path) -> None:
     assert _row(live, "simuser")["usage_missing"] == 1  # never read as 0 tokens
     mouth = _row(live, "mouth")  # rC's charge without a call, rB's call without one
     assert (mouth["charge_without_call"], mouth["call_without_charge"]) == (1, 1)
-    # $/episode over the 3 live episodes: 9900 / 3 = 3300 micro-USD
-    slow = live["per_episode_by_role"]["slow"]
-    assert slow == {
-        "micro_usd_total": 9900,
-        "usd_per_episode": "0.00330000",
-        "calls_unpriced": 0,
-        "calls_gpu_time": 0,
-        "usage_missing": 0,
-    }
-    assert live["per_episode_by_role"]["ear"]["calls_unpriced"] == 3
+    # per-key denominators: the live episodes each key ran in
+    episodes = {r["role"]: r["episodes"] for r in live["models"]}
+    assert episodes == {"slow": 3, "ear": 3, "fast_cp": 1, "simuser": 1, "mouth": 2}
+    # any unpriced, gpu_time, usage-missing or uncharged call: $ unknown, not 0
+    assert not [
+        r for r in live["models"] if r["role"] != "slow" and r["usd_per_episode"]
+    ]
     non_live = report["non_live"]
     assert (non_live["episodes"], non_live["run_ids"]) == (1, ["rD"])
     assert _row(non_live, "slow")["priced_micro_usd"] == 9000
@@ -115,6 +117,8 @@ def test_hand_computation(corpus: tuple[Path, Path], tmp_path: Path) -> None:
         "unpriced_completion_tokens": 55,
         "usage_missing": 1,
         "mismatches": 2,
+        "excluded_bundles": {"incomplete": 1, "invalid": 1, "sealed": 1},
+        "unindexed_priced_micro_usd": 30000,  # rE's slow call, never in micro_usd
         "complete": False,
     }
     assert report["projection"] is None
@@ -127,17 +131,25 @@ def test_projection(corpus: tuple[Path, Path], tmp_path: Path) -> None:
     assert (cumulative["gpu_micro_usd"], cumulative["micro_usd"]) == (None, 9900)
     projection = report["projection"]
     assert projection["episodes"] == 10
+    rows = {r["role"]: r for r in projection["by_model"]}
     # 10 x 9900 / 3 = 33000 micro-USD (rounded half-even to the micro-USD)
-    assert projection["by_role"]["slow"] == {"micro_usd": 33000, "usd": "0.033000"}
+    assert rows["slow"]["micro_usd"] == 33000 and rows["slow"]["usd"] == "0.033000"
     # ear unpriced tokens: 10 x 350 / 3 = 1166.67 -> 1167; 10 x 55 / 3 -> 183
-    assert projection["unpriced_tokens"][0] == {
+    assert rows["ear"] == {
         "role": "ear",
         "endpoint": "teamrouter",
         "model_id": "gemini-3.8-flash",
-        "prompt_tokens": 1167,
-        "completion_tokens": 183,
+        "episodes_basis": 3,
+        "micro_usd": None,
+        "usd": None,
+        "calls_unpriced": 3,
+        "calls_gpu_time": 0,
         "usage_missing": 0,
+        "unpriced_prompt_tokens": 1167,
+        "unpriced_completion_tokens": 183,
     }
+    # fast_cp ran in 1 live episode, on GPU time: its $ is Modal's, not 0
+    assert (rows["fast_cp"]["episodes_basis"], rows["fast_cp"]["usd"]) == (1, None)
     assert projection["gpu"] is None and "Modal" in projection["gpu_note"]
 
 
@@ -163,3 +175,34 @@ def test_gpu_usage_is_strict(tmp_path: Path, entry: dict[str, object]) -> None:
     path.write_text(json.dumps([GPU[2] | entry]), "utf-8")
     with pytest.raises(ValueError):
         load_gpu(path)
+
+
+def test_complete_needs_every_bundle_counted(tmp_path: Path) -> None:
+    """S1-SYS-12 review: a crashed run's real charge left ``complete`` true."""
+    runs, gpu, out = tmp_path / "runs", tmp_path / "gpu.json", tmp_path / "s.json"
+    gpu.write_text(json.dumps(GPU[2:]), "utf-8")
+    log = Log("rP")
+    log.call(
+        "slow", SONNET, Usage(prompt_tokens=100, completion_tokens=0), "tokens", 300
+    )
+    write(runs / "rP", log, manifest("rP"))
+    args = ["--root", str(runs), "--gpu-usage", str(gpu), "--out", str(out)]
+    assert main(args) == 0
+    assert json.loads(out.read_text("utf-8"))["cumulative"]["complete"] is True
+    crashed = Log("rQ")
+    crashed.call(
+        "slow", SONNET, Usage(prompt_tokens=1, completion_tokens=0), "tokens", 50000
+    )
+    write(runs / "rQ", crashed, None)
+    assert main(args) == 0
+    cumulative = json.loads(out.read_text("utf-8"))["cumulative"]
+    assert cumulative["complete"] is False
+    assert cumulative["excluded_bundles"] == {
+        "incomplete": 1,
+        "invalid": 0,
+        "sealed": 0,
+    }
+    assert (cumulative["micro_usd"], cumulative["unindexed_priced_micro_usd"]) == (
+        300 + 2000000,
+        50000,
+    )

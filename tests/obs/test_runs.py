@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+from tests.obs.bundles import Log, manifest, write
 
 from proxyloop.obs.runs import Run, index, main
 
@@ -48,8 +49,8 @@ def test_one_row_per_bundle_with_status(corpus: tuple[Path, Path]) -> None:
     assert a.reality["fast_cp"] == "real_http"
     assert (b.uncharged_calls, rows["runs/rC"].unmatched_charges) == (1, 1)
     assert rows["runs/rE"].error == "no manifest.json"
-    assert rows["runs/rE"].events == 3
-    assert "JSON" in (rows["runs/rF"].error or "")
+    assert rows["runs/rE"].events == 5
+    assert rows["runs/rF"].error == "json_invalid@"
 
 
 def test_sealed_bundles_are_never_read(corpus: tuple[Path, Path]) -> None:
@@ -72,3 +73,62 @@ def test_cli_json(
     assert main(["--root", str(runs)]) == 0
     out = capsys.readouterr().out
     assert "rA" in out and "ok=4" in out and "sealed=1" in out
+
+
+# Regressions from the S1-SYS-12 review, each from the reviewer's failing input.
+
+
+def test_a_root_in_another_case_is_still_sealed(corpus: tuple[Path, Path]) -> None:
+    runs, evidence = corpus
+    if not (runs.parent / "EVIDENCE").exists():
+        pytest.skip("case-sensitive file system")
+    rows = index([runs.parent / "Evidence"])  # listing s4/test would raise
+    assert [r.run_id for r in rows] == ["rC"]
+    with pytest.raises(ValueError, match="rule 11"):
+        index([evidence / "S4" / "TEST"])
+
+
+def test_file_symlinks_into_sealed_data_are_not_read(
+    corpus: tuple[Path, Path],
+) -> None:
+    _, evidence = corpus
+    other = evidence.parent / "other" / "rZ"
+    other.mkdir(parents=True)
+    for name in ("manifest.json", "events.jsonl"):
+        (other / name).symlink_to(evidence / "s4" / "test" / "rH" / name)
+    [row] = index([other.parent])
+    assert (row.run_id, row.status, row.events) == ("rZ", "sealed", None)
+
+
+def test_a_symlink_loop_ends(tmp_path: Path) -> None:
+    (tmp_path / "runs" / "a").mkdir(parents=True)
+    (tmp_path / "runs" / "a" / "back").symlink_to(tmp_path / "runs")
+    assert index([tmp_path / "runs"]) == []
+
+
+def test_differing_copies_of_a_run_id_are_invalid(tmp_path: Path) -> None:
+    one, two = Log("rX"), Log("rX")
+    one.end("done")
+    two.end("abandoned")
+    write(tmp_path / "runs" / "rX", one, manifest("rX"))
+    write(tmp_path / "evidence" / "s1" / "rX", two, manifest("rX"))
+    rows = index([tmp_path / "runs", tmp_path / "evidence"])
+    assert [(r.status, r.error) for r in rows] == [("invalid", "run_id collision")] * 2
+
+
+def test_errors_never_carry_input_values(tmp_path: Path) -> None:
+    body = manifest("rS").model_dump(mode="json") | {"split": "SECRET-VALUE"}
+    path = write(tmp_path / "runs" / "rS", Log("rS"), None)
+    (path / "manifest.json").write_text(json.dumps(body), "utf-8")
+    [row] = index([tmp_path / "runs"])
+    assert (row.status, row.error) == ("invalid", "literal_error@split")
+
+
+def test_kind_is_relative_to_the_root(tmp_path: Path) -> None:
+    runs = tmp_path / "evidence" / "proj" / "runs"
+    write(runs / "rA", Log("rA"), manifest("rA"))
+    [row] = index([runs])
+    assert (row.kind, row.stage) == ("runs", None)
+    write(tmp_path / "evidence" / "s1" / "rB", Log("rB"), manifest("rB"))
+    [row] = index([tmp_path / "evidence" / "s1"])
+    assert (row.kind, row.stage) == ("evidence", "s1")

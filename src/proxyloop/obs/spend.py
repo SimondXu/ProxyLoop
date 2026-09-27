@@ -33,7 +33,9 @@ FIELDS = (  # one row per (role, endpoint, model_id); every value an int
     "usage_missing",
     "charge_without_call",
     "call_without_charge",
+    "episodes",
 )
+_EXCLUDED = ("incomplete", "invalid", "sealed")
 Key = tuple[str, str, str]  # role, endpoint ("" for none), model_id
 Tally = dict[Key, Counter[str]]
 
@@ -70,11 +72,13 @@ def _whole(value: Decimal) -> int:
 def _tally(episodes: Sequence[Run], real_only: bool = False) -> Tally:
     acc: Tally = defaultdict(Counter)
     for run in episodes:
+        ran: set[Key] = set()
         for cost in run.costs:
             c = cost.charge
             if real_only and run.reality.get(c.role) != "real_http":
                 continue
-            n = acc[(c.role, c.endpoint or "", c.model_id)]
+            ran.add(key := (c.role, c.endpoint or "", c.model_id))
+            n = acc[key]
             n[f"calls_{c.basis}"] += 1
             if c.micro_usd is not None:  # set iff the basis is tokens
                 n["priced_micro_usd"] += c.micro_usd
@@ -96,51 +100,57 @@ def _tally(episodes: Sequence[Run], real_only: bool = False) -> Tally:
         for r in run.uncharged:
             if not real_only or run.reality.get(r.role) == "real_http":
                 ref = r.model_ref
-                acc[(r.role, ref.endpoint or "", ref.model_id)][
-                    "call_without_charge"
-                ] += 1
+                ran.add(key := (r.role, ref.endpoint or "", ref.model_id))
+                acc[key]["call_without_charge"] += 1
+        for key in ran:
+            acc[key]["episodes"] += 1
     return acc
 
 
-def _rows(tally: Tally) -> list[dict[str, Any]]:
-    return [
-        {"role": k[0], "endpoint": k[1] or None, "model_id": k[2]}
-        | {f: n[f] for f in FIELDS}
-        for k, n in sorted(tally.items())
-    ]
+def _unknown(n: Counter[str]) -> bool:
+    """Whether some of this key's $ is not in its priced calls."""
+    gaps = ("calls_unpriced", "calls_gpu_time", "usage_missing", "call_without_charge")
+    return any(n[g] for g in gaps)
 
 
-def _by_role(tally: Tally) -> dict[str, Counter[str]]:
-    roles: dict[str, Counter[str]] = defaultdict(Counter)
-    for (role, _, _), n in tally.items():
-        roles[role].update(n)
-    return roles
+def _rows(tally: Tally, per_episode: bool = False) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for k, n in sorted(tally.items()):
+        row = {"role": k[0], "endpoint": k[1] or None, "model_id": k[2]}
+        row |= {f: n[f] for f in FIELDS}
+        if per_episode:
+            per = Decimal(n["priced_micro_usd"]) / n["episodes"]
+            row["usd_per_episode"] = None if _unknown(n) else _usd(per, 8)
+        rows.append(row)
+    return rows
 
 
-def _projection(live: Tally, episodes: int, n: int) -> dict[str, Any]:
-    gpu = {"gpu": None, "gpu_note": "GPU $ are not projected; see Modal usage"}
-    if not episodes:
-        return {"episodes": n, "note": "no live episodes"} | gpu
-    by_role = {
-        role: {
-            "micro_usd": (m := _whole(c["priced_micro_usd"] * n / Decimal(episodes))),
-            "usd": _usd(m),
-        }
-        for role, c in sorted(_by_role(live).items())
+def _projection(live: Tally, n: int) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    for k, c in sorted(live.items()):
+        per = n / Decimal(c["episodes"])
+        micro = None if _unknown(c) else _whole(c["priced_micro_usd"] * per)
+        rows.append(
+            {"role": k[0], "endpoint": k[1] or None, "model_id": k[2]}
+            | {
+                "episodes_basis": c["episodes"],
+                "micro_usd": micro,
+                "usd": None if micro is None else _usd(micro),
+                "calls_unpriced": c["calls_unpriced"],
+                "calls_gpu_time": c["calls_gpu_time"],
+                "usage_missing": c["usage_missing"],
+                "unpriced_prompt_tokens": _whole(c["unpriced_prompt"] * per),
+                "unpriced_completion_tokens": _whole(c["unpriced_completion"] * per),
+            }
+        )
+    return {
+        "episodes": n,
+        "by_model": rows,
+        "note": "N x total / the live episodes each key ran in; null $ where any"
+        " call of the key is unpriced, gpu_time, without usage or uncharged",
+        "gpu": None,
+        "gpu_note": "GPU $ are not projected; see Modal usage",
     }
-    tokens = [
-        {"role": k[0], "endpoint": k[1] or None, "model_id": k[2]}
-        | {
-            "prompt_tokens": _whole(c["unpriced_prompt"] * n / Decimal(episodes)),
-            "completion_tokens": _whole(
-                c["unpriced_completion"] * n / Decimal(episodes)
-            ),
-            "usage_missing": c["usage_missing"],
-        }
-        for k, c in sorted(live.items())
-        if c["calls_unpriced"]
-    ]
-    return {"episodes": n, "by_role": by_role, "unpriced_tokens": tokens} | gpu
 
 
 def report(
@@ -154,7 +164,7 @@ def report(
         key=lambda r: (r.kind != "evidence", r.path),
     )
     chosen: dict[str, Run] = {}
-    for run in ok:  # one run_id once; the evidence copy first
+    for run in ok:  # identical copies of a run_id (runs.index); the evidence one
         chosen.setdefault(run.run_id, run)
     episodes = sorted(chosen.values(), key=lambda r: r.run_id)
     live = [
@@ -162,16 +172,6 @@ def report(
     ]
     non_live = [r for r in episodes if r not in live]
     live_tally, all_real = _tally(live), _tally(episodes, real_only=True)
-    per_role = {
-        role: {
-            "micro_usd_total": c["priced_micro_usd"],
-            "usd_per_episode": _usd(Decimal(c["priced_micro_usd"]) / len(live), 8),
-            "calls_unpriced": c["calls_unpriced"],
-            "calls_gpu_time": c["calls_gpu_time"],
-            "usage_missing": c["usage_missing"],
-        }
-        for role, c in sorted(_by_role(live_tally).items())
-    }
     gpu_section: dict[str, object] = {"input": None, "note": "no Modal usage input"}
     gpu_micro: int | None = None
     if gpu is not None:
@@ -193,20 +193,24 @@ def report(
             "jobs": rows,
             "micro_usd": gpu_micro,
         }
-    total = sum(_by_role(all_real).values(), Counter[str]())
+    total = sum(all_real.values(), Counter[str]())
     llm = total["priced_micro_usd"]
     micro = llm if gpu_micro is None else llm + gpu_micro
     mismatches = total["charge_without_call"] + total["call_without_charge"]
     gaps = total["calls_unpriced"] + total["usage_missing"] + mismatches
+    excluded = {s: sum(r.status == s for r in runs) for s in _EXCLUDED}
+    unindexed = sum(
+        c.charge.micro_usd or 0
+        for r in runs
+        if r.status == "incomplete"
+        for c in r.costs
+    )  # tokens basis only; None is every other basis
     return {
         "schema": SCHEMA,
         "inputs": inputs,
         "bundles": {
             "ok": len(ok),
-            **{
-                s: sum(r.status == s for r in runs)
-                for s in ("incomplete", "invalid", "sealed")
-            },
+            **excluded,
             "duplicates_collapsed": len(ok) - len(chosen),
             "episodes": len(episodes),
             "not_counted": sorted(r.run_id for r in runs if r.status != "ok"),
@@ -214,9 +218,10 @@ def report(
         "live": {
             "episodes": len(live),
             "run_ids": [r.run_id for r in live],
-            "denominator": "all live episodes in scope, whether or not the role ran",
-            "models": _rows(live_tally),
-            "per_episode_by_role": per_role,
+            "denominator": "per row: the live episodes in which that"
+            " (role, endpoint, model_id) ran; null where any of its calls is"
+            " unpriced, gpu_time, without usage or without a charge",
+            "models": _rows(live_tally, per_episode=True),
         },
         "non_live": {
             "episodes": len(non_live),
@@ -234,11 +239,13 @@ def report(
             "unpriced_completion_tokens": total["unpriced_completion"],
             "usage_missing": total["usage_missing"],
             "mismatches": mismatches,
-            "complete": gpu_micro is not None and not gaps,
+            "excluded_bundles": excluded,
+            "unindexed_priced_micro_usd": unindexed,  # never in micro_usd
+            "complete": gpu_micro is not None
+            and not gaps
+            and not any(excluded.values()),
         },
-        "projection": None
-        if project is None
-        else _projection(live_tally, len(live), project),
+        "projection": None if project is None else _projection(live_tally, project),
     }
 
 

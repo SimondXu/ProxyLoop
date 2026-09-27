@@ -1,19 +1,25 @@
 """The run index: one row per bundle under ``runs/`` and ``evidence/``.
 
 Each bundle is parsed on its own (not ``read_bundle``), so a bad bundle is a
-row, not a crash. ``evidence/s4/test/`` is never listed (AGENTS rule 11), and a
-bundle whose split is ``test`` is sealed: none of its events are read.
+row, not a crash. ``evidence/s4/test/`` is sealed (AGENTS rule 11): it is known
+by its inode, never listed, and no directory, root or file whose resolved path
+passes through it is read. A bundle whose split is ``test`` is sealed too:
+none of its events are read.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+from collections import defaultdict
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import Literal
+
+from pydantic import ValidationError
 
 from proxyloop.contract.bundle import EVENTS, MANIFEST, PROMPTS, Manifest
 from proxyloop.contract.events import Event, check_causes
@@ -50,6 +56,7 @@ class Run:
     ended: str | None = None
     duration_ms: int | None = None
     events: int | None = None
+    events_sha256: str | None = None
     priced_micro_usd: int | None = None
     unpriced_calls: int | None = None
     unmatched_charges: int | None = None  # spend.charged with no llm.call
@@ -65,37 +72,83 @@ class Run:
         }
 
 
-def _sealed(parts: Sequence[str]) -> bool:
-    return any(tuple(parts[i : i + 3]) == SEALED for i in range(len(parts)))
+class Seal:
+    """Knows ``evidence/s4/test`` by (st_dev, st_ino), wherever a path meets it
+    and in whatever case the file system accepts."""
+
+    def __init__(self) -> None:
+        self._inodes: set[tuple[int, int]] = set()
+        self._learned: set[Path] = set()
+
+    def covers(self, path: Path) -> bool:
+        real = path.resolve()
+        if any(tuple(p.casefold() for p in real.parts[i : i + 3]) == SEALED
+               for i in range(len(real.parts))):  # fmt: skip
+            return True
+        for at in (*reversed(real.parents), real):  # top down: never stat inside
+            if at not in self._learned:
+                self._learned.add(at)
+                self._learn(at / SEALED[0] / SEALED[1] / SEALED[2])
+            try:
+                st = at.stat()
+            except OSError:
+                return False  # nothing there to read
+            if (st.st_dev, st.st_ino) in self._inodes:
+                return True
+        return False
+
+    def _learn(self, sealed: Path) -> None:
+        try:
+            st = sealed.stat()  # the directory itself; it is never listed
+        except OSError:
+            return
+        self._inodes.add((st.st_dev, st.st_ino))
 
 
-def bundles(root: Path) -> Iterator[Path]:
+def bundles(root: Path, seal: Seal) -> Iterator[Path]:
     """Every directory holding a bundle file, without descending into one."""
     root = root.resolve()
-    if _sealed(root.parts):
+    if seal.covers(root):
         raise ValueError(f"{root} is sealed held-out data (AGENTS rule 11)")
-    names = sorted(os.listdir(root))
-    if any(name in names for name in (MANIFEST, EVENTS, PROMPTS)):
-        yield root
-        return
-    for name in names:
-        if not _sealed((*root.parts[-2:], name)) and (root / name).is_dir():
-            yield from bundles(root / name)
+    seen: set[tuple[int, int]] = set()
+    stack = [root]
+    while stack:
+        here = stack.pop()
+        st = here.stat()
+        if (st.st_dev, st.st_ino) in seen:  # a symlink loop
+            continue
+        seen.add((st.st_dev, st.st_ino))
+        names = sorted(os.listdir(here))
+        if any(name in names for name in (MANIFEST, EVENTS, PROMPTS)):
+            yield here
+            continue
+        subdirs = [here / n for n in names]
+        subdirs = [p for p in subdirs if not seal.covers(p) and p.is_dir()]
+        stack.extend(reversed(subdirs))
 
 
-def load(path: Path) -> Run:
-    parts = path.parts
+def load(path: Path, root: Path, seal: Seal) -> Run:
+    root, rel = root.resolve(), path.relative_to(root.resolve()).parts
     kind, case_id, stage = "runs", None, None
-    if "evidence" in parts:
-        at = len(parts) - parts[::-1].index("evidence")
-        kind, stage = "evidence", parts[at] if at < len(parts) - 1 else None
-    elif len(parts) > 2 and parts[-3] == "live":
-        kind, case_id = "live", parts[-2]
+    if root.name.casefold() == "evidence" and len(rel) > 1:
+        kind, stage = "evidence", rel[0]
+    elif root.parent.name.casefold() == "evidence":
+        kind, stage = "evidence", root.name
+    elif len(rel) == 3 and rel[0] == "live":
+        kind, case_id = "live", rel[1]
     run = Run(path.name, str(path), kind, "ok", case_id, stage)
+    if any(seal.covers(path / name) for name in (MANIFEST, EVENTS)):
+        return replace(run, status="sealed", error="a file resolves into sealed data")
     try:
         return _load(path, run)
-    except (OSError, ValueError) as err:  # a pydantic ValidationError is a ValueError
-        return replace(run, status="invalid", error=str(err))
+    except ValidationError as err:  # the type and location only, never input values
+        where = [
+            "{}@{}".format(e["type"], ".".join(map(str, e["loc"])))
+            for e in err.errors()
+        ]
+        return replace(run, status="invalid", error="; ".join(where))
+    except (OSError, ValueError) as err:
+        return replace(run, status="invalid", error=f"{type(err).__name__}: {err}")
 
 
 def _load(path: Path, run: Run) -> Run:
@@ -126,8 +179,9 @@ def _load(path: Path, run: Run) -> Run:
         return replace(run, run_id=at["run_id"], status="sealed")
     if not (path / EVENTS).is_file():
         return replace(run, **at, status="incomplete", error=f"no {EVENTS}")
-    text = (path / EVENTS).read_text("utf-8")
-    events = tuple(Event.model_validate_json(x) for x in text.splitlines() if x.strip())
+    raw = (path / EVENTS).read_bytes()
+    lines = raw.decode("utf-8").splitlines()
+    events = tuple(Event.model_validate_json(x) for x in lines if x.strip())
     check_causes(events)
     if any(e.run_id != at["run_id"] for e in events):
         raise ValueError("an event's run_id is not the bundle's")
@@ -152,6 +206,7 @@ def _load(path: Path, run: Run) -> Run:
         ended=str(ended[-1]) if ended else None,
         duration_ms=events[-1].t_ms if events else None,
         events=len(events),
+        events_sha256=hashlib.sha256(raw).hexdigest(),
         priced_micro_usd=sum(c.micro_usd or 0 for c in charges),  # tokens basis only
         unpriced_calls=sum(c.basis == "unpriced" for c in charges),
         unmatched_charges=sum(c.record is None for c in costs),
@@ -166,7 +221,21 @@ def _is(event: Event, kind: Literal["llm", "spend"]) -> bool:
 
 
 def index(roots: Sequence[Path]) -> list[Run]:
-    return [load(path) for root in roots for path in bundles(root)]
+    """Every bundle under ``roots``. Copies of one run_id (an evidence copy of a
+    run) must have identical events; otherwise every copy is invalid."""
+    seal = Seal()
+    runs = [load(path, root, seal) for root in roots for path in bundles(root, seal)]
+    shas: dict[str, set[str | None]] = defaultdict(set)
+    for r in runs:
+        if r.status == "ok":
+            shas[r.run_id].add(r.events_sha256)
+    clash = {run_id for run_id, s in shas.items() if len(s) > 1}
+    return [
+        replace(r, status="invalid", error="run_id collision", costs=(), uncharged=())
+        if r.status == "ok" and r.run_id in clash
+        else r
+        for r in runs
+    ]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
