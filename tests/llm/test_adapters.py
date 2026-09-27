@@ -429,6 +429,50 @@ def test_factory_picks_the_adapter_by_endpoint(monkeypatch: Any) -> None:
     assert isinstance(client(monkeypatch, QWEN), VLLMClient)
     assert isinstance(client(monkeypatch, SONNET), ChatClient)
     assert isinstance(client(monkeypatch, GEMINI), ChatClient)
+    assert isinstance(client(monkeypatch, LUNA), ChatClient)
+
+
+LUNA = ModelRef(
+    kind=AdapterKind.REAL_HTTP,
+    endpoint="openrouter",
+    model_id="openai/gpt-6-luna",
+    reasoning_effort="low",
+)
+
+
+def test_an_openrouter_fast_streams_from_the_api_root(monkeypatch: Any) -> None:
+    """S1-SYS-20 (ADR-0011): the server root is https://openrouter.ai/api."""
+    set_env(monkeypatch, "openrouter", "https://openrouter.test/api")
+    wire = Recorder(stream_response(sse(*chat_chunks(LUNA, ["Please hold."]))))
+    records: list[LLMCallRecord] = []
+    llm = make_client(
+        LUNA,
+        live=True,
+        clock=counter_clock(),
+        on_record=records.append,
+        transport=wire.transport(),
+    )
+    record = asyncio.run(assert_text_conformance(llm, HOSTED))
+    sent, request = wire.body(), wire.requests[0]
+    assert str(request.url) == "https://openrouter.test/api/v1/chat/completions"
+    assert request.headers["authorization"] == f"Bearer {KEY}"
+    assert sent["model"] == "openai/gpt-6-luna" and sent["reasoning_effort"] == "low"
+    assert (record.model_ref, records) == (LUNA, [record])
+
+
+@pytest.mark.parametrize("missing", ["BASE_URL", "API_KEY"])
+def test_openrouter_env_errors_name_the_variable_not_the_value(
+    monkeypatch: Any, missing: str
+) -> None:
+    set_env(monkeypatch, "openrouter", "https://openrouter.test/api")
+    monkeypatch.delenv(f"PL_OPENROUTER_{missing}")
+    with pytest.raises(LLMConfigError, match=f"PL_OPENROUTER_{missing} is not set"):
+        make_client(LUNA, live=True, clock=counter_clock(), on_record=print)
+    monkeypatch.setenv("PL_OPENROUTER_BASE_URL", "https://openrouter.test/api/v1")
+    monkeypatch.setenv("PL_OPENROUTER_API_KEY", KEY)
+    with pytest.raises(LLMConfigError, match="without /v1") as caught:
+        make_client(LUNA, live=True, clock=counter_clock(), on_record=print)
+    assert "openrouter.test" not in str(caught.value) and KEY not in str(caught.value)
 
 
 def test_wrong_input_shapes_are_refused(monkeypatch: Any) -> None:

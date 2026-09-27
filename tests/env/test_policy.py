@@ -156,6 +156,91 @@ def test_a_hold_is_patient_until_hold_s() -> None:
     assert p.tick(hold)[-1].intent.kind == "check_in"
 
 
+def _identifying() -> Policy:
+    p = _policy()
+    _say(p, "smalltalk")  # the greeting: GREET -> IDENTIFY, no strike
+    assert p.state == "IDENTIFY"
+    return p
+
+
+def test_repeated_holds_in_identify_do_not_restart_the_hold_clock() -> None:
+    """S1-SYS-20 (world semantics): an agent that keeps asking to hold while
+    identifying gets the timer strikes of one hold, then the hang-up."""
+    p, hold = _identifying(), int(CP.patience.hold_s * 1000)
+    step, t, struck = hold - 1_000, 0, list[int]()
+    while not p.done and t < 20 * hold:
+        assert _say(p, "hold_request", t).intent.kind == "ok_hold"
+        for tick in range(t + 1_000, t + step + 1, 1_000):
+            if [d for d in p.tick(tick) if d.strike]:
+                struck.append(tick)
+        t += step
+    assert struck[:2] == [hold, 2 * hold]  # as for a single hold
+    assert (p.done, p.timer_strikes, p.identity_strikes) == (
+        True,
+        CP.patience.strikes,
+        0,
+    )
+
+
+def test_a_provide_fact_restarts_the_hold_clock_in_identify() -> None:
+    p, hold = _identifying(), int(CP.patience.hold_s * 1000)
+    _say(p, "hold_request", 0)
+    _say(p, "provide_fact", hold - 1_000, facts={NAME: "Dana Reyes"})
+    assert p.state == "IDENTIFY" and p.tick(hold) == []
+    _say(p, "hold_request", hold)
+    assert p.tick(2 * hold - 1) == []
+    assert p.tick(2 * hold)[-1].intent.kind == "check_in"
+    assert p.timer_strikes == 1
+
+
+def test_a_wrong_fact_between_holds_does_not_restart_the_hold_clock() -> None:
+    """#157 review nit 3: only a newly verified key restarts IDENTIFY's hold
+    clock; a junk provide_fact (asked again, not struck) between holds does not."""
+    p, hold = _identifying(), int(CP.patience.hold_s * 1000)
+    step, t, struck = hold - 1_000, 0, list[int]()
+    while not p.done and t < 20 * hold:
+        assert _say(p, "hold_request", t).intent.kind == "ok_hold"
+        for tick in range(t + 1_000, t + step, 1_000):
+            if [d for d in p.tick(tick) if d.strike]:
+                struck.append(tick)
+        if not p.done:  # then a junk fact, just before the next hold
+            wrong = _say(p, "provide_fact", t + step - 500, facts={LAST4: "1111"})
+            assert wrong.intent.kind == "ask_identity" and not wrong.strike
+        t += step
+    assert struck[:2] == [hold, 2 * hold]
+    assert (p.done, p.timer_strikes, p.identity_strikes) == (
+        True,
+        CP.patience.strikes,
+        0,
+    )
+
+
+def test_the_identify_hold_clock_runs_across_other_acts_counters_apart() -> None:
+    """#157 review nit 2, kept by design: IDENTIFY's hold clock runs from the
+    first hold since the last verified fact, even across a heard act that
+    ended the hold; that act strikes identity patience, the hold strikes the
+    timer, and neither counter adds to the other."""
+    p, hold = _identifying(), int(CP.patience.hold_s * 1000)
+    _say(p, "hold_request", 0)
+    assert _say(p, "smalltalk", hold - 2_000).strike  # identity strike 1
+    _say(p, "hold_request", hold - 1_000)  # resumes the clock started at 0
+    (checked,) = p.tick(hold)
+    assert (checked.intent.kind, checked.strike) == ("check_in", True)
+    assert (p.identity_strikes, p.timer_strikes) == (1, 1)
+
+
+def test_a_single_hold_then_the_facts_behave_as_before() -> None:
+    p, hold = _identifying(), int(CP.patience.hold_s * 1000)
+    assert _say(p, "hold_request", 0).intent.kind == "ok_hold"
+    assert p.tick(hold - 1) == []
+    done = _say(p, "provide_fact", hold - 1, facts={NAME: "Dana Reyes", LAST4: "4821"})
+    assert (done.to, done.intent.kind, p.strikes) == ("DISCOVER", "how_can_help", 0)
+    _say(p, "hold_request", hold)  # outside IDENTIFY: each hold starts its clock
+    _say(p, "hold_request", 2 * hold - 1_000)
+    assert p.tick(2 * hold) == [] and p.tick(3 * hold - 1_001) == []
+    assert p.tick(3 * hold - 1_000)[-1].intent.kind == "check_in"
+
+
 def test_accept_by_name_commits_and_binds_every_term_hidden_included() -> None:
     p = _verified()
     _say(p, "ask_discount")

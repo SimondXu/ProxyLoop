@@ -14,10 +14,13 @@ from tests.support.manual_clock import ManualClock
 from proxyloop.contract.config import SlowViewMode
 from proxyloop.contract.events import Event, Stream
 from proxyloop.contract.llm import ToolCall
+from proxyloop.contract.protocol import GuideMoveError
 from proxyloop.contract.state import Blackboard, CaseStatus
 from proxyloop.contract.views import view_slow
 from proxyloop.core.bus import Bus
 from proxyloop.eval.metrics import Log, approval_b
+from proxyloop.kernel.lanes import PROFILE
+from proxyloop.slow import tools as slow_tools
 from proxyloop.slow.prompt import ACT, status_bar
 from proxyloop.slow.tools import SlowTools, case_ref
 
@@ -520,3 +523,19 @@ def test_the_act_tool_schema_matches_its_snapshot() -> None:
 def test_every_authority_tool_is_in_the_schema(tool: str) -> None:
     calls = cast(dict[str, Any], ACT.parameters["properties"])["calls"]
     assert tool in calls["items"]["properties"]["tool"]["enum"]
+
+
+def test_slow_judges_guides_with_the_kernels_cp_profile() -> None:
+    """One cp profile (#154 review): what Slow checks is what FastC renders."""
+    assert slow_tools.CP_PROFILE == PROFILE["cp"] == "pl_cp_v2"
+
+
+def test_a_move_the_cp_profile_cannot_render_raises_out_of_act(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:  # #154 review: a GuideMoveError is a bug, never "invalid arguments"
+    monkeypatch.setattr(slow_tools, "CP_PROFILE", "pl_cp_v1")  # ADR-0011: no text
+    h = Host(tmp_path)
+    (sent,) = h.act({"tool": "guide_fast", "move": "hold_for_decision"})
+    assert sent.startswith("guide_fast: sent")
+    with pytest.raises(GuideMoveError, match="hold_for_fact"):
+        h.act({"tool": "guide_fast", "move": "hold_for_fact"})

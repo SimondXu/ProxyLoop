@@ -1,7 +1,8 @@
 """``SpendLedger``: prices every ``llm.call`` record and stops a runaway episode.
 
 Three pricing bases, so no call is ever silently priced at zero:
-- ``tokens``: relay models with a rate solved in ADR-0001 (Decision 7);
+- ``tokens``: relay models with a rate solved in ADR-0001 (Decision 7), and
+  OpenRouter models with a listed rate (``OPENROUTER_RATES``);
 - ``gpu_time``: vLLM calls. Modal bills the GPU per second, per job, outside
   any call; GPU $ come from Modal usage (PLAN §0.8), never from this ledger;
 - ``unpriced``: no measured rate (TeamRouter's world model, ADR-0005; GPT
@@ -48,6 +49,13 @@ RELAY_RATES: Mapping[str, Rate] = {
     "claude-opus-4-8": Rate(5.00, 25.00),
 }
 
+# OpenRouter's list prices, as read by the main root from
+# https://openrouter.ai/api/v1/models on 2026-09-27 (USD per 1M tokens): a rate
+# setting, not a result. A response's ``usage.cost`` is never the price.
+OPENROUTER_RATES: Mapping[str, Rate] = {
+    "openai/gpt-6-luna": Rate(0.10, 0.50),
+}
+
 
 class Charge(Frozen):
     """The ``spend.charged`` payload for one ``llm.call``."""
@@ -75,11 +83,13 @@ class SpendLedger:
         cap_micro_usd: int = SESSION_CAP_MICRO_USD,
         rates: Mapping[str, Rate] = RELAY_RATES,
         refs: Iterable[ModelRef] = (),
+        openrouter_rates: Mapping[str, Rate] = OPENROUTER_RATES,
     ) -> None:
-        """``refs``: the session's models, known at its start."""
+        """``refs``: the session's models, known at its start; ``rates`` and
+        ``openrouter_rates``: the relay's and OpenRouter's, by model id."""
         if min(projected_tokens, projected_calls, cap_micro_usd) <= 0:
             raise ValueError("the episode projections and the cap must be positive")
-        self._rates = rates
+        self._tables = {"relay": rates, "openrouter": openrouter_rates}
         priced = all(r.endpoint == "vllm" or self._rate(r) for r in refs)
         self.factor = RUNAWAY_FACTOR if priced else UNPRICED_FACTOR
         self.limit_micro_usd = cap_micro_usd
@@ -90,7 +100,8 @@ class SpendLedger:
         self.unpriced_calls = self.gpu_time_calls = self.tokens = 0
 
     def _rate(self, ref: ModelRef) -> Rate | None:
-        return self._rates.get(ref.model_id) if ref.endpoint == "relay" else None
+        table = self._tables.get(ref.endpoint or "")
+        return None if table is None else table.get(ref.model_id)
 
     def price(self, record: LLMCallRecord) -> Charge:
         ref, usage = record.model_ref, record.usage
