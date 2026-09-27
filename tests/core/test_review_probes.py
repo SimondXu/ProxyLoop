@@ -16,6 +16,7 @@ from proxyloop.contract.state import OfferPublic
 from proxyloop.core.bus import Bus
 from proxyloop.guard.authorize import Denial, accept_offer, decide, request_approval
 from proxyloop.guard.mandate import proposal
+from proxyloop.guard.status import status_change
 from proxyloop.guard.terms import offer_terms_hash
 
 
@@ -257,3 +258,89 @@ def test_9_authority_is_minted_only_in_the_current_epoch(tmp_path: Path) -> None
     }
     with pytest.raises(ValueError, match="no such proposed mandate"):  # stale proposal
         s.emit("mandate.decided", "kernel", decided | {"by": "ui"})
+
+
+def _later(s: Session, ms: int) -> None:
+    """Advance the clock; Guard's now is the last event's time, so a rep speaks."""
+    s.clock.advance(ms)
+    said = {"lane": "cp", "speaker": "partner", "utt_id": f"c-{ms}", "text": "Hi?"}
+    s.emit("utt.final", "kernel", said)
+
+
+def _second_grant(s: Session) -> None:
+    """Grant B for the same terms 30 s after A; then the clock passes A's expiry."""
+    first = next(iter(s.bus.bb.private.approvals.values()))
+    _later(s, 30_000)
+    b = s.card()
+    s.post(b)
+    s.decided(b)
+    assert first.expires_ms is not None
+    _later(s, first.expires_ms - s.clock.monotonic_ms() + 1)
+    assert s.bus.bb.t_ms > first.expires_ms
+
+
+def test_10_one_released_accept_per_terms(tmp_path: Path) -> None:
+    """Reviewer probe (MAJOR-1): grant A, accept, released; grant B 30 s later;
+    past A's expiry, B must not mint a second accept of these terms."""
+    s, cap_a = _queued(tmp_path)
+    s.emit("speak.released", "kernel", {"lane": "cp", "cap_id": cap_a})
+    _second_grant(s)
+    assert accept_offer(s.bus.bb, "o1", CASE) == Denial("already_accepted")
+
+
+def test_10_the_fold_releases_one_accept_per_terms(tmp_path: Path) -> None:
+    s, cap_a = _queued(tmp_path)
+    _second_grant(s)
+    cap_b = s.accept()  # B's capability, queued while A's is still unreleased
+    s.emit("speak.released", "kernel", {"lane": "cp", "cap_id": cap_a})
+    with pytest.raises(ValueError, match="already released"):
+        s.emit("speak.released", "kernel", {"lane": "cp", "cap_id": cap_b})
+    assert not s.bus.bb.capabilities[cap_b].consumed
+
+
+def test_10_the_fold_mints_no_accept_after_one_was_released(tmp_path: Path) -> None:
+    s, cap_a = _queued(tmp_path)
+    _second_grant(s)
+    effects = accept_offer(s.bus.bb, "o1", CASE)  # minted before A's release...
+    assert not isinstance(effects, Denial)
+    s.emit("speak.released", "kernel", {"lane": "cp", "cap_id": cap_a})
+    with pytest.raises(ValueError, match="already released"):  # ...emitted after
+        s.emit(effects[0][0], "guard", effects[0][1])
+
+
+def _move(s: Session, *triggers: str) -> None:
+    for trigger in triggers:
+        change = status_change(s.bus.bb, trigger)
+        assert change is not None, trigger
+        s.emit("status.changed", "guard", change)
+
+
+def test_11_a_truncated_accept_is_retried_only_on_a_new_revision(
+    tmp_path: Path,
+) -> None:
+    """The fold does not model "truncated" yet (S1-SYS-02): a released accept
+    consumed its capability, so these terms stay accepted; a new revision
+    (new terms_hash) and a new grant may mint again."""
+    s = Session(tmp_path)
+    _move(s, "call_opened")
+    s.confirmed()
+    card = s.card()
+    s.post(card)
+    s.decided(card)
+    cap = s.accept()
+    _move(s, "accept_authorized")
+    s.emit("speak.released", "kernel", {"lane": "cp", "cap_id": cap})
+    _move(s, "accept_truncated", "replan")  # NEEDS_REPLAN, then IN_CALL
+    again = s.card()
+    s.post(again)
+    s.decided(again)
+    assert accept_offer(s.bus.bb, "o1", CASE) == Denial("already_accepted")
+    s.confirmed(offer().model_copy(update={"revision": 2}))  # the same prices
+    assert s.bus.bb.public.offers["o1"].terms_hash != card["terms_hash"]
+    assert accept_offer(s.bus.bb, "o1", CASE) == Denial("not_authorized")
+    new = s.card()
+    s.post(new)
+    s.decided(new)
+    cap_2 = s.accept()
+    s.emit("speak.released", "kernel", {"lane": "cp", "cap_id": cap_2})
+    assert s.bus.bb.capabilities[cap_2].consumed

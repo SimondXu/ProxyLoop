@@ -21,6 +21,7 @@ from proxyloop.contract.state import (
     ApprovalCard,
     Blackboard,
     Capability,
+    CaseStatus,
     Fact,
     OfferPublic,
 )
@@ -37,6 +38,7 @@ from proxyloop.guard.authorize import (
 )
 from proxyloop.guard.capability import CAP_TTL_MS, business_action_id
 from proxyloop.guard.mandate import mandate_hash, proposal
+from proxyloop.guard.status import TERMINAL
 
 O1 = confirm(offer())
 PIN = Fact(key="account.pin", value="1234", protected=True)
@@ -87,6 +89,15 @@ _CLOSED: OfferPublic = O1.model_copy(update={"status": "declined"})
 _UNSUPPORTED = confirm(offer(change="free_phone"))
 _GOOD = approval(O1)
 _CARD: ApprovalCard = card(O1)
+
+
+def _status(status: CaseStatus) -> Blackboard:
+    bb = board(O1, approvals=(_GOOD,))
+    return bb.model_copy(
+        update={"public": bb.public.model_copy(update={"status": status})}
+    )
+
+
 _OFFER_REASONS: list[tuple[str, Blackboard]] = [
     ("fence_raised", board(O1, fences=(FENCE,), approvals=(_GOOD,))),
     ("no_such_offer", board(approvals=(_GOOD,))),
@@ -135,6 +146,14 @@ CASES: list[tuple[str, str, Rule, Blackboard]] = [
         _accept(),
         board(O1, approvals=(approval(O1, expires_ms=1_000),)),  # t_ms 1_000
     ),
+    (
+        "accept_offer",
+        "already_accepted",  # another grant's capability was released
+        _accept(),
+        board(O1, approvals=(_GOOD,), caps=(_cap("other", consumed=True),)),
+    ),
+    ("accept_offer", "already_committed", _accept(), _status(CaseStatus.COMMITTED)),
+    ("accept_offer", "case_closed", _accept(), _status(CaseStatus.VERIFIED_NO_DEAL)),
     ("accept_offer", "not_authorized", _accept(), board(O1)),
     (
         "accept_offer",
@@ -448,3 +467,20 @@ def test_a_mandate_grant_ignores_approval_expiry() -> None:
         approvals=(approval(O1, expires_ms=3_000),),
     )
     assert _cap_of(accept_offer(bb, "o1", CASE)).expires_ms == 7_000
+
+
+@pytest.mark.parametrize("status", list(CaseStatus))
+def test_no_accept_is_minted_once_committed_or_closed(status: CaseStatus) -> None:
+    got = accept_offer(_status(status), "o1", CASE)
+    if status in (CaseStatus.COMMITTED, CaseStatus.EVIDENCE_PENDING):
+        assert got == Denial("already_committed")
+    elif status in TERMINAL:
+        assert got == Denial("case_closed")
+    else:
+        assert not isinstance(got, Denial), got
+
+
+def test_an_unreleased_capability_of_these_terms_does_not_block() -> None:
+    """Only a released (consumed) accept blocks; a queued one may be revoked."""
+    bb = board(O1, approvals=(_GOOD,), caps=(_cap("other"),))
+    assert not isinstance(accept_offer(bb, "o1", CASE), Denial)

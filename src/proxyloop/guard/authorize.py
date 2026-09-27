@@ -14,15 +14,24 @@ from proxyloop.contract.state import (
     Approval,
     ApprovalCard,
     Blackboard,
+    CaseStatus,
     Mandate,
     OfferPublic,
     ReadbackBinding,
 )
-from proxyloop.guard.capability import CAP_TTL_MS, business_action_id, mint
+from proxyloop.guard.capability import (
+    CAP_TTL_MS,
+    business_action_id,
+    mint,
+    released_accept,
+)
 from proxyloop.guard.mandate import hard_violations, mandate_gap
 from proxyloop.guard.readback import readback_status, readback_text
+from proxyloop.guard.status import TERMINAL
 from proxyloop.guard.terms import Terms, offer_terms, terms_hash
 
+# after an accept was heard: no second accept mint (terminal: case_closed)
+_COMMITTED = frozenset({CaseStatus.COMMITTED, CaseStatus.EVIDENCE_PENDING})
 CARD_TTL_MS = 120_000  # a card for an offer without a known expiry
 Effect = tuple[str, dict[str, object]]  # (event type, payload), emitted by guard
 
@@ -52,7 +61,10 @@ _OFFER = (
 REASONS: Mapping[str, tuple[str, ...]] = {
     "request_approval": (*_OFFER, "approval_pending"),
     "accept_offer": (
+        "already_committed",
+        "case_closed",
         *_OFFER,
+        "already_accepted",
         "approval_denied",
         "approval_stale_epoch",
         "mandate_stale_epoch",
@@ -176,10 +188,16 @@ def accept_offer(
 ) -> tuple[Effect, ...] | Denial:
     """``action.authorized`` plus the Guard-written accept line holding the
     capability; the Speaker revalidates it at release."""
+    if bb.public.status in _COMMITTED:
+        return Denial("already_committed")
+    if bb.public.status in TERMINAL:
+        return Denial("case_closed")
     got = _open_offer(bb, ref)
     if isinstance(got, Denial):
         return got
     offer, terms = got
+    if released_accept(bb, offer.terms_hash):
+        return Denial("already_accepted")
     grant, why = _grant(bb, offer, terms)
     if grant is None:
         return Denial(why)
