@@ -21,12 +21,14 @@ It stands in for the kernel's ingress (S1-SYS-05) as ``Case`` documents it:
 - ``refuse``: the revoke lands after serve's pre-check, before the re-decide:
   200, then ``action.denied`` with decide's reason.
 - ``raise``: the handover raises, as a dead kernel would: serve answers 503.
-- ``authority``: as ``ok``, and the seed goes on (S1-SYS-31) with what the
-  authority strip and the card's read-back progress show: Guard's
-  ``status.changed`` INTAKE → IN_CALL → AWAITING_APPROVAL, a later Guard
-  ``readback.updated`` (the rep restated the price: ``heard``), the user's
-  "actually, stop", the kernel's fence on it, a ``speak.revoked`` and an
-  ``action.denied``. Each through the real Bus, from its fixed emitter.
+- ``authority``: as ``ok``, with what the authority strip and the card's
+  read-back progress show (S1-SYS-31), in the kernel's order (#173 N-3):
+  Guard's ``status.changed`` INTAKE → IN_CALL, the offer as first stated
+  (``o1`` r1) with a partial ``readback.updated`` (the price ``heard``), then
+  the read-back revision (r2) confirmed and its card, AWAITING_APPROVAL, the
+  user's "actually, stop", the kernel's fence on it, a ``speak.revoked`` and
+  an ``action.denied``. No slot goes back from confirmed after the card. Each
+  through the real Bus, from its fixed emitter.
 
 ``WiringStarter`` implements ``proxyloop.serve.cases.Starter`` (S1-SYS-31):
 stub options for the three lanes (labelled "stub", with contract endpoints,
@@ -43,6 +45,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Literal
 
+from tests.guard.build import offer
 from tests.support.api_cases import ApiCase
 
 from proxyloop.contract.events import ApprovalPost
@@ -107,7 +110,9 @@ class WiringCase:
         run.emit("utt.delivered", delivered, "kernel")
         run.emit("summary.updated", {"scope": "private", "text": PRIVATE}, "guard")
         run.emit("user.msg", {"text": USER_SAID}, "kernel", causes=())
-        run.card()
+        if mode == "authority":
+            self._partial()
+        run.card(revision=2 if mode == "authority" else 1)
         self.requested = run.bus.events[-1].event_id  # its approval.requested
         if mode == "authority":
             self._authority()
@@ -131,18 +136,26 @@ class WiringCase:
         said = {"lane": "cp", "speaker": "partner", "utt_id": f"rep-{self._utts}"}
         self._run.emit("utt.final", said | {"text": text}, "kernel", causes=())
 
-    def _authority(self) -> None:
+    def _partial(self) -> None:
+        """Before the card: the call, and the offer as first stated (r1) with
+        only its price heard; the card's read-back revision (r2) comes next."""
         run = self._run
         run.emit("status.changed", {"previous": "INTAKE", "status": "IN_CALL"})
+        stated = offer("o1")
+        kept = stated.model_dump(
+            mode="json", include={"offer_ref", "revision", "slots"}
+        )
+        run.emit("offer.recorded", kept | {"terms_hash": None})
+        statuses = {s.field: "unknown" for s in stated.slots} | {
+            "monthly_price": "heard"
+        }
+        partial = {"offer_ref": "o1", "revision": 1, "slot_statuses": statuses}
+        run.emit("readback.updated", partial | {"terms_hash": None})
+
+    def _authority(self) -> None:
+        run = self._run
         waiting = {"previous": "IN_CALL", "status": "AWAITING_APPROVAL"}
         run.emit("status.changed", waiting)
-        card = run.bus.bb.private.pending_approval
-        assert card is not None
-        offer = run.bus.bb.public.offers[card.offer_ref]
-        statuses = {s.field: s.status for s in offer.slots} | {"monthly_price": "heard"}
-        again = {"offer_ref": card.offer_ref, "revision": card.revision}
-        again |= {"slot_statuses": statuses, "terms_hash": offer.terms_hash}
-        run.emit("readback.updated", again)
         stop = run.emit("user.msg", {"text": STOP}, "kernel", causes=())
         fence = {"op": "raised", "fence_id": "fence-1", "utt_id": stop.event_id}
         run.emit("authority.fence", fence, "kernel")

@@ -13,8 +13,9 @@
     "build": "vite build",
     "e2e": "playwright test",
     "e2e:wiring": "playwright test -c playwright.wiring.config.ts",
+    "e2e:demo": "playwright test -c playwright.demo.config.ts",
     "dev": "vite",
-    "web-test": "npm run lint && npm run typecheck && npm test && npm run build && npm run e2e && npm run e2e:wiring"
+    "web-test": "npm run lint && npm run typecheck && npm test && npm run build && npm run e2e && npm run e2e:wiring && npm run e2e:demo"
   },
   "dependencies": {
     "react": "19.3.0",

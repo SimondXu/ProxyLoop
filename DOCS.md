@@ -103,7 +103,7 @@ docs/
 | `make replay` | – | builds the web and serves the replay UI through `serve.api` over the committed `evidence/` bundles (and local `runs/`); no `RUN=` |
 | `make replay-cli RUN=` | – | terminal replay of one bundle |
 | `make demo` | keys + GPU | serve-up + kernel server + live web (you are the principal; `REP=human` optional) |
-| `make smoke-live FAMILY= [FAST=]` | keys + GPU | one real episode → bundle → `evidence-check --claim` |
+| `make smoke-live FAMILY= [FAST=]` | keys + GPU | one real episode → bundle → `evidence-check --claim`; a hosted Fast needs `FAST=` and `FAST_ENDPOINT=` (else the Fast is vLLM) and `CLAIM=0`; confirm/approve smokes use `MODE=full` |
 | `make evidence-check RUN= [--claim\|--offline]` | – | chain verification + reality report |
 | `make pull-through MODE=full\|verify` | keys + GPU | TRAINING §9 |
 | `make eval-l1 SPEC=` / `make curve` / `make eval-talkact` / `make eval-principal` | keys + GPU | matrices → reports |

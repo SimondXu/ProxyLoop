@@ -1,7 +1,10 @@
-"""SlowLoop: one step in flight, wakes coalesced; relay-only ``SlowView`` (I5): unread
-relays become notes on the last tool result and the step's ``slow.tool`` cites them.
-The context is bounded (ADR-0009): the task head and the last ``WINDOW`` answered
-turns; once turns fall out, Slow's own latest summaries stand in for them."""
+"""SlowLoop: one step in flight, wakes coalesced; ``SlowView`` in ``cfg.slow_view``
+(I5, ADR-0016): unread relays become notes on the last tool result and the step's
+``slow.tool`` cites them; in ``transcript`` mode the ``[CONVERSATIONS]`` block of
+both lanes as heard goes in the newest message only and is a one-line stub once
+that turn is history, so each line is in a request once. The context is bounded
+(ADR-0009): the task head and the last ``WINDOW`` answered turns; once turns fall
+out, Slow's own latest summaries stand in for them."""
 
 from __future__ import annotations
 
@@ -14,7 +17,7 @@ from proxyloop.contract.config import SlowViewMode
 from proxyloop.contract.llm import ChatMessage
 from proxyloop.contract.views import SlowView, view_slow
 from proxyloop.kernel.watchdog import Abort
-from proxyloop.slow import prompt
+from proxyloop.slow import prompt, transcript
 from proxyloop.slow.tools import SlowTools, case_ref
 
 if TYPE_CHECKING:
@@ -32,8 +35,10 @@ class SlowLoop:
         self, host: Kernel, client: llm.LLMClient, brief: str, keys: frozenset[str]
     ):
         self._host, self._client, self._brief = host, client, brief
-        self.tools = SlowTools(host, keys, case_ref(host.task.id))
-        self._keys = keys
+        self._mode = host.cfg.slow_view
+        reads = self._mode is SlowViewMode.TRANSCRIPT
+        self.tools = SlowTools(host, keys, case_ref(host.task.id), transcript=reads)
+        self._keys, self._cursor = keys, transcript.Cursor()
         self._head = (
             f"TASK: {brief}\nSHAREABLE FACT KEYS (record_fact uses exactly these "
             f"keys, whatever a relay calls them): {', '.join(sorted(keys))}"
@@ -68,11 +73,13 @@ class SlowLoop:
             ChatMessage(role="tool", content=last_text, tool_call_id=last_id),
         )
 
-    def _context(self, text: str, view: SlowView) -> list[ChatMessage]:
+    def _context(self, text: str, stub: str, view: SlowView) -> list[ChatMessage]:
+        """``text``: this step's notes; ``stub``: the same, as history keeps
+        them (the block stubbed; equal in ``relay_only``)."""
         if self._said is None:  # the first step
-            self._first = f"{self._head}\n\n{text}"
-            return [ChatMessage(role="user", content=self._first)]
-        self._turns.append((self._said, self._answer(text)))
+            self._first = f"{self._head}\n\n{stub}"
+            return [ChatMessage(role="user", content=f"{self._head}\n\n{text}")]
+        self._turns.append((self._said, self._answer(stub)))
         if len(self._turns) > WINDOW:  # every tool call leaves with its result
             del self._turns[0]
             self._dropped += 1
@@ -85,6 +92,8 @@ class SlowLoop:
                 f"PUBLIC SUMMARY: {view.public_summary or 'none'}"
             )
         turns = [m for said, answer in self._turns for m in (said, *answer)]
+        newest = self._answer(text)  # the block only here (ADR-0016)
+        turns[-len(newest) :] = newest
         return [ChatMessage(role="user", content=head), *turns]
 
     async def step(self, reasons: Sequence[str]) -> None:
@@ -92,7 +101,7 @@ class SlowLoop:
             raise Abort("slow_step_cap", f"Slow reached {MAX_STEPS} steps")
         self.tools.readback()  # the status bar shows Guard's current statuses
         host, bb = self._host, self._host.bb
-        view = view_slow(bb, SlowViewMode.RELAY_ONLY, self._brief)
+        view = view_slow(bb, self._mode, self._brief)
         new = [r for r in view.relays if r.msg_id not in self.tools.received]
         self.tools.received |= {r.msg_id for r in new}
         basis = {"basis_seq": bb.seq}
@@ -100,13 +109,26 @@ class SlowLoop:
         started = host.emit("slow.step.started", "slow", wake, []).event_id
         wakes = f"[WAKE] {', '.join(reasons)}"
         bar = prompt.status_bar(view, self._keys, host.bb.t_ms)  # Guard's clock
-        notes = [wakes, *map(prompt.note, new), bar]
-        context = self._context("\n".join(notes), view)
+        reads = self._mode is SlowViewMode.TRANSCRIPT
+        relays = [prompt.note(r, quoted=reads) for r in new]
+        text = stub = "\n".join([wakes, *relays, bar])
+        if reads:
+            block, self._cursor = transcript.render(view.transcripts, self._cursor)
+            if self._cursor.omitted:  # counted as dropped (ADR-0016)
+                host.counts["slow_transcript_omitted"] += self._cursor.omitted
+            shown = f"[CONVERSATIONS shown at step {self.steps + 1}: "
+            shown += f"+{self._cursor.new} lines]"
+            text = "\n".join([wakes, block, *relays, bar])
+            stub = "\n".join([wakes, shown, *relays, bar])
+        context = self._context(text, stub, view)
         self.steps += 1
         request = llm.ToolRequest(
             call_id=f"slow:{self.steps}",
             role="slow",
-            messages=(ChatMessage(role="system", content=prompt.SYSTEM), *context),
+            messages=(
+                ChatMessage(role="system", content=prompt.system(self._mode)),
+                *context,
+            ),
             tools=(prompt.ACT,),
             tool_choice=prompt.ACT.name,
             max_tokens=prompt.MAX_TOKENS,
@@ -128,7 +150,8 @@ class SlowLoop:
             role="assistant", content=resp.text, tool_calls=resp.tool_calls
         )
         self._results = [
-            (c.call_id, self.tools.act(c, causes)) for c in resp.tool_calls
+            (c.call_id, self.tools.act(c, causes, basis=basis["basis_seq"]))
+            for c in resp.tool_calls
         ]
         filtered = resp.record.finish_reason == "content_filter"  # S1-SYS-28
         if filtered:  # counted, never retried; any tool calls ran as usual
