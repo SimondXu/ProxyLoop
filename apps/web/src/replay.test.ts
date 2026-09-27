@@ -2,13 +2,14 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { indexEvents, laneOf, modelLabel, parseJsonl, shasOf, summary, type Ev } from "./replay";
+import { indexEvents, laneOf, modelLabel, parseJsonl, runHeader, shasOf, summary, type Ev } from "./replay";
 
 const fixtures = fileURLToPath(new URL("../../../tests/web/fixtures", import.meta.url));
 const run = join(fixtures, readdirSync(fixtures)[0] ?? "");
 const events = parseJsonl<Ev>(readFileSync(join(run, "events.jsonl"), "utf-8"));
 
 const ev = (type: string, actor: string, payload: Ev["payload"] = {}, extra: Partial<Ev> = {}): Ev => ({
+  run_id: "r",
   seq: 0,
   event_id: `r:${type}`,
   t_ms: 0,
@@ -69,6 +70,38 @@ describe("modelLabel", () => {
     const turn = ev("fast.turn", "fast.cp", { call_id: "missing" }, { event_id: "t" });
     const s = ev("fast.sentence", "fast.cp", {}, { cause_ids: ["t"] });
     expect(modelLabel(s, indexEvents([turn, s]))).toEqual({ model: "unknown", adapter: "unknown" });
+  });
+
+  const chain = (...calls: Ev["payload"][]) => {
+    const records = calls.map((p, i) => ev("llm.call", "fast.cp", { call_id: "c", adapter_kind: "real_http", ...p }, { event_id: `c${i}` }));
+    const turn = ev("fast.turn", "fast.cp", { call_id: "c" }, { event_id: "t" });
+    const s = ev("fast.sentence", "fast.cp", {}, { cause_ids: ["t"] });
+    return modelLabel(s, indexEvents([...records, turn, s]));
+  };
+
+  it("never shows a configured model as if it were served", () => {
+    expect(chain({ served_model_echo: null, model_ref: { model_id: "qwen" } })).toEqual({
+      model: "qwen (no echo)",
+      adapter: "real_http",
+    });
+    expect(chain({ served_model_echo: null })).toEqual({ model: "unknown (no echo)", adapter: "real_http" });
+  });
+
+  it("labels a retried call by its successful attempt", () => {
+    const failed = { attempt: 0, error: "timeout", served_model_echo: null, model_ref: { model_id: "qwen" } };
+    const ok = { attempt: 1, error: null, served_model_echo: "qwen-served" };
+    expect(chain(failed, ok).model).toBe("qwen-served");
+    expect(chain(ok, failed).model).toBe("qwen-served");
+  });
+});
+
+describe("runHeader", () => {
+  it("reads the run header from session.started, with no manifest", () => {
+    const head = runHeader(events);
+    expect(head).toMatchObject({ task_ref: "cp-direct-discount@1", split: "train", contract_version: "v1" });
+    expect(head?.run_id).toBe(events[0]?.run_id);
+    expect(head?.models).toContainEqual({ role: "fast_cp", kind: "test_fake", model_id: "fast_cp-fake" });
+    expect(runHeader(events.filter((e) => e.type !== "session.started"))).toBeNull();
   });
 });
 

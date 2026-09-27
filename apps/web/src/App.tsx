@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { listBundles, loadPrompt, loadRun, type BundleInfo, type PromptRecord, type Run } from "./bundleSource";
-import { indexEvents, LANES, laneOf, modelLabel, shasOf, summary, type Ev, type Index, type Lane, type Payload } from "./replay";
+import { indexEvents, LANES, laneOf, modelLabel, runHeader, shasOf, summary, type Ev, type Index, type Lane } from "./replay";
 import { usePlayback, type Speed } from "./usePlayback";
 
 type Drill = { label: string; sha: string; record?: PromptRecord | null };
@@ -101,7 +101,7 @@ function Replay({ runId, run }: { runId: string; run: Run }) {
           <input type="checkbox" checked={god} onChange={(e) => setGod(e.target.checked)} /> God-view
         </label>
       </section>
-      <ManifestSummary manifest={run.manifest} />
+      <RunSummary events={run.events} />
       <div className="lanes">
         {lanes.map((l) => (
           <section key={l.id} className="lane" aria-label={l.title}>
@@ -119,20 +119,18 @@ function Replay({ runId, run }: { runId: string; run: Run }) {
   );
 }
 
-function ManifestSummary({ manifest }: { manifest: Payload | null }) {
-  if (!manifest) return <p className="manifest">No manifest: the run is incomplete.</p>;
-  const reality = Object.entries((manifest.reality ?? {}) as Record<string, string>);
-  const models = (manifest.models ?? {}) as Record<string, { ref?: { model_id?: string } }>;
+function RunSummary({ events }: { events: Ev[] }) {
+  const head = useMemo(() => runHeader(events), [events]);
+  if (!head) return <p className="run-head">No session.started event in this run.</p>;
   return (
-    <section className="manifest" aria-label="Manifest">
+    <section className="run-head" aria-label="Run">
       <p>
-        {String(manifest.run_id)} · task {String(manifest.task_ref)} · split {String(manifest.split)} · contract{" "}
-        {String(manifest.contract_version)}
+        {head.run_id} · task {head.task_ref} · split {head.split} · contract {head.contract_version}
       </p>
-      <ul aria-label="Reality">
-        {reality.map(([role, kind]) => (
-          <li key={role}>
-            {role}: <strong>{kind}</strong> {models[role]?.ref?.model_id ?? ""}
+      <ul aria-label="Models">
+        {head.models.map((m) => (
+          <li key={m.role}>
+            {m.role}: <strong>{m.kind}</strong> {m.model_id}
           </li>
         ))}
       </ul>

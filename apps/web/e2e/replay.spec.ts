@@ -2,11 +2,13 @@ import { expect, test } from "@playwright/test";
 
 // Generic over any bundle (PL_BUNDLE_DIR): the committed fixture by default, an
 // evidence/s0 bundle later. No fixture-specific strings.
-const KINDS = "real_http|recorded_replay|test_fake|baseline";
+// PL_EXPECT_KIND (e.g. real_http): the Fast sentence's label must carry that kind.
+const KINDS = process.env.PL_EXPECT_KIND ?? "real_http|recorded_replay|test_fake|baseline";
 
 test("replays a bundle: a Fast sentence with its model label, a Slow tool, a prompt", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("region", { name: "Manifest" })).toBeVisible();
+  const run = page.getByRole("region", { name: "Run" });
+  await expect(run.getByRole("list", { name: "Models" }).getByRole("listitem").first()).toBeVisible();
   const timeline = page.getByRole("slider", { name: "Timeline" });
   await timeline.fill((await timeline.getAttribute("max")) ?? "0");
 

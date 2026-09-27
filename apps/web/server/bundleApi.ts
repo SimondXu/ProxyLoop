@@ -2,7 +2,7 @@
 // preview servers from one bundle root (PL_BUNDLE_DIR). Same five GETs, same
 // shapes, so the web has one client path and switching to the real API is a
 // base-URL/proxy change. Nothing here writes.
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, dirname, join } from "node:path";
 import type { Plugin } from "vite";
@@ -21,15 +21,17 @@ const json = (status: number, value: unknown): Reply => ({
   body: JSON.stringify(value),
 });
 const NOT_FOUND = json(404, { detail: "not found" });
+// Symlinks are never followed (lstat): a link could point outside the root.
+const isFile = (path: string) => existsSync(path) && lstatSync(path).isFile();
+const isDir = (path: string) => existsSync(path) && lstatSync(path).isDirectory();
 
 /** The runs under `root`, newest run_id first: `root` itself if it is one bundle. */
 export function runs(root: string): Map<string, string> {
-  const isRun = (dir: string) =>
-    existsSync(join(dir, FILES.manifest)) || existsSync(join(dir, FILES.events));
+  const isRun = (dir: string) => isFile(join(dir, FILES.manifest)) || isFile(join(dir, FILES.events));
   if (isRun(root)) return new Map([[basename(root), root]]);
   if (!existsSync(root)) return new Map();
   const names = readdirSync(root).filter(
-    (n) => RUN_ID.test(n) && statSync(join(root, n)).isDirectory() && isRun(join(root, n)),
+    (n) => RUN_ID.test(n) && isDir(join(root, n)) && isRun(join(root, n)),
   );
   return new Map(names.sort().reverse().map((n) => [n, join(root, n)]));
 }
@@ -39,7 +41,7 @@ function listing(root: string): Reply {
   const label = basename(found.get(basename(root)) === root ? dirname(root) : root);
   const bundles = [...found].map(([run_id, dir]) => {
     const path = join(dir, FILES.manifest);
-    const manifest = existsSync(path)
+    const manifest = isFile(path)
       ? (JSON.parse(readFileSync(path, "utf-8")) as { task_ref?: string })
       : null;
     return { run_id, root: label, complete: manifest !== null, task_ref: manifest?.task_ref ?? null };
@@ -63,7 +65,7 @@ export function route(root: string, method: string, url: string): Reply | null {
   const dir = head === "replay" && RUN_ID.test(runId) ? runs(root).get(runId) : undefined;
   if (dir === undefined || rest.length > 0 || !Object.hasOwn(FILES, file)) return NOT_FOUND;
   const name = join(dir, FILES[file as keyof typeof FILES]);
-  if (!existsSync(name)) return NOT_FOUND;
+  if (!isFile(name)) return NOT_FOUND;
   const text = readFileSync(name, "utf-8").replace(URLS, "<redacted-url>");
   if (sha === undefined) {
     return { status: 200, type: file === "manifest" ? "application/json" : NDJSON, body: text };

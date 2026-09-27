@@ -12,6 +12,15 @@ from proxyloop.contract.bundle import Bundle, read_bundle
 from proxyloop.contract.llm import AdapterKind
 
 MAX_BYTES = 200_000
+DENY = (
+    "http://",
+    "https://",
+    "/Users/",
+    "/home/",
+    "/tmp/",
+    "/private/",
+    "/var/folders/",
+)
 
 
 def _kinds(bundle: Bundle) -> Counter[str]:
@@ -65,4 +74,4 @@ def test_the_committed_fixture_reads_and_stays_small_and_synthetic() -> None:
     assert sum(f.stat().st_size for f in files) < MAX_BYTES
     for f in files:  # no endpoint, and no path from the machine that made it
         text = f.read_text("utf-8")
-        assert not [s for s in ("http://", "https://", "/Users/", "/tmp/") if s in text]
+        assert not [s for s in DENY if s in text]

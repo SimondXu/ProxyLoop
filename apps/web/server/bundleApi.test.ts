@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,5 +61,20 @@ describe("bundleApi", () => {
     expect(get("/api/replay/r1/prompts", root)?.status).toBe(404);
     const listed = JSON.parse(get("/api/bundles", root)?.body ?? "") as { bundles: unknown[] };
     expect(listed.bundles).toEqual([{ run_id: "r1", root: root.split("/").pop(), complete: true, task_ref: null }]);
+  });
+
+  it("never follows a symlinked run or file", () => {
+    const outside = mkdtempSync(join(tmpdir(), "pl-outside-"));
+    writeFileSync(join(outside, "events.jsonl"), '{"secret":1}\n');
+    const root = mkdtempSync(join(tmpdir(), "pl-web-"));
+    symlinkSync(outside, join(root, "linked"));
+    mkdirSync(join(root, "r1"));
+    writeFileSync(join(root, "r1", "manifest.json"), "{}");
+    symlinkSync(join(outside, "events.jsonl"), join(root, "r1", "events.jsonl"));
+    const listed = JSON.parse(get("/api/bundles", root)?.body ?? "") as { bundles: { run_id: string }[] };
+    expect(listed.bundles.map((b) => b.run_id)).toEqual(["r1"]);
+    expect(get("/api/replay/linked/events", root)?.status).toBe(404);
+    expect(get("/api/replay/r1/events", root)?.status).toBe(404);
+    expect(get("/api/replay/r1/manifest", root)?.status).toBe(200);
   });
 });

@@ -4,6 +4,7 @@
 
 export type Payload = Record<string, unknown>;
 export type Ev = {
+  run_id: string;
   seq: number;
   event_id: string;
   t_ms: number;
@@ -84,7 +85,8 @@ export function indexEvents(events: Ev[]): Index {
   const callById = new Map<string, Ev>();
   for (const e of events) {
     const id = str(e.payload.call_id);
-    if (e.type === "llm.call" && id) callById.set(id, e);
+    // Retries share a call_id (one llm.call per attempt): a successful attempt wins.
+    if (e.type === "llm.call" && id && (!callById.has(id) || !e.payload.error)) callById.set(id, e);
   }
   return { byId: new Map(events.map((e) => [e.event_id, e])), callById };
 }
@@ -100,8 +102,35 @@ export function modelLabel(sentence: Ev, index: Index): ModelLabel {
   if (call === undefined) return UNKNOWN;
   const ref = call.payload.model_ref as Payload | undefined;
   return {
-    model: str(call.payload.served_model_echo) ?? str(ref?.model_id) ?? "unknown",
+    model: str(call.payload.served_model_echo) ?? `${str(ref?.model_id) ?? "unknown"} (no echo)`,
     adapter: str(call.payload.adapter_kind) ?? "unknown",
+  };
+}
+
+export type RunHeader = {
+  run_id: string;
+  task_ref: string;
+  split: string;
+  contract_version: string;
+  models: { role: string; kind: string; model_id: string }[];
+};
+
+/** The run header, from the session.started event (not the manifest: events only). */
+export function runHeader(events: Ev[]): RunHeader | null {
+  const start = events.find((e) => e.type === "session.started");
+  if (start === undefined) return null;
+  const p = start.payload;
+  const models = Object.entries((p.models ?? {}) as Record<string, { ref?: Payload }>);
+  return {
+    run_id: start.run_id,
+    task_ref: str(p.task_ref) ?? "?",
+    split: str(p.split) ?? "?",
+    contract_version: str(p.contract_version) ?? "?",
+    models: models.map(([role, m]) => ({
+      role,
+      kind: str(m.ref?.kind) ?? "unknown",
+      model_id: str(m.ref?.model_id) ?? "unknown",
+    })),
   };
 }
 
