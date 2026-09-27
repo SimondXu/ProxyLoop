@@ -1,0 +1,140 @@
+{
+  "schema": "pl.bundle/1",
+  "run_id": "20260926T234834Z-529d8d",
+  "git_sha": "dbba6323fda633183559170828d7e6bfc3a75955",
+  "contract_version": "v1",
+  "cfg": {
+    "fast_user": {
+      "kind": "test_fake",
+      "endpoint": null,
+      "model_id": "fast_user-fake",
+      "reasoning_effort": null
+    },
+    "fast_cp": {
+      "kind": "test_fake",
+      "endpoint": null,
+      "model_id": "fast_cp-fake",
+      "reasoning_effort": null
+    },
+    "slow": {
+      "kind": "test_fake",
+      "endpoint": null,
+      "model_id": "slow-fake",
+      "reasoning_effort": null
+    },
+    "world": {
+      "ear": {
+        "kind": "test_fake",
+        "endpoint": null,
+        "model_id": "ear-fake",
+        "reasoning_effort": "minimal"
+      },
+      "mouth": {
+        "kind": "test_fake",
+        "endpoint": null,
+        "model_id": "mouth-fake",
+        "reasoning_effort": "minimal"
+      },
+      "simuser": {
+        "kind": "test_fake",
+        "endpoint": null,
+        "model_id": "simuser-fake",
+        "reasoning_effort": "minimal"
+      }
+    },
+    "fast_sampling": {
+      "temperature": 0.3,
+      "top_p": 0.9,
+      "max_tokens": 160
+    },
+    "seed": 7,
+    "ablations": [],
+    "slow_view": "relay_only",
+    "teacher": null,
+    "live": false
+  },
+  "cfg_hash": "3431540110a8cc79b6557b1be2f728fd5194c3e1338bf0105420c2d8977eeb8f",
+  "task_ref": "cp-direct-discount@1",
+  "instance_hash": "96e159511f5696cc322928a8ec2f19d961b6b7977dafc18cc2838cede70acce5",
+  "split": "train",
+  "fingerprints": {
+    "pl_user_v1": "796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb",
+    "pl_cp_v1": "76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490"
+  },
+  "models": {
+    "slow": {
+      "ref": {
+        "kind": "test_fake",
+        "endpoint": null,
+        "model_id": "slow-fake",
+        "reasoning_effort": null
+      },
+      "served_model": null,
+      "adapter_shards": {}
+    },
+    "fast_user": {
+      "ref": {
+        "kind": "test_fake",
+        "endpoint": null,
+        "model_id": "fast_user-fake",
+        "reasoning_effort": null
+      },
+      "served_model": null,
+      "adapter_shards": {}
+    },
+    "simuser": {
+      "ref": {
+        "kind": "test_fake",
+        "endpoint": null,
+        "model_id": "simuser-fake",
+        "reasoning_effort": "minimal"
+      },
+      "served_model": null,
+      "adapter_shards": {}
+    },
+    "fast_cp": {
+      "ref": {
+        "kind": "test_fake",
+        "endpoint": null,
+        "model_id": "fast_cp-fake",
+        "reasoning_effort": null
+      },
+      "served_model": null,
+      "adapter_shards": {}
+    },
+    "ear": {
+      "ref": {
+        "kind": "test_fake",
+        "endpoint": null,
+        "model_id": "ear-fake",
+        "reasoning_effort": "minimal"
+      },
+      "served_model": null,
+      "adapter_shards": {}
+    },
+    "mouth": {
+      "ref": {
+        "kind": "test_fake",
+        "endpoint": null,
+        "model_id": "mouth-fake",
+        "reasoning_effort": "minimal"
+      },
+      "served_model": null,
+      "adapter_shards": {}
+    }
+  },
+  "attestation": null,
+  "p3": "not_applicable",
+  "reality": {
+    "slow": "test_fake",
+    "fast_user": "test_fake",
+    "simuser": "test_fake",
+    "fast_cp": "test_fake",
+    "ear": "test_fake",
+    "mouth": "test_fake"
+  },
+  "spend": {
+    "micro_usd": 0,
+    "by_role": {}
+  }
+}
