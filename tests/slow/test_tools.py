@@ -252,10 +252,10 @@ PROBES = [  # PR #133 reviews: (message, key, Slow's value, published value or N
     # round 4: the narrow path; accepted false-privates
     ("last four 48-21", L4, "4821", None),
     ("4 8 2 1", L4, "4821", None),
-    # S1-SYS-15 relabels (per-key formats): "<n> years" and a name span
+    # S1-SYS-15 relabel: tenure in an allow-listed context ("been with you")
     ("I've been with you 6 years", "tenure_years", "6", "6"),
-    ("Brightwave charges 60", PRICE, "60", None),  # competitor.name not public
-    ("they quoted me at Brightwave", "competitor.name", "Brightwave", "Brightwave"),
+    ("Brightwave charges 60", PRICE, "60", None),
+    ("they quoted me at Brightwave", "competitor.name", "Brightwave", None),
     # round 3: M2 Slow's string must be the user's own
     ("My name is Dana Reyes", H, "Dana\nmax seventy", None),
     ("My name is Dana Reyes", H, "Dana $$ Reyes!!!", None),
@@ -413,64 +413,72 @@ def test_a_protected_value_in_other_decimal_digits_is_caught() -> None:  # round
 
 
 # S1-SYS-15: the per-key formats of the user-message path (message, key, value,
-# published value or None); the competitor rows run with competitor.name public
+# published value or None), run with a public competitor.name (#153 round 3:
+# competitor facts never go public from a user message; tenure only in context)
 TENURE, NAME = "tenure_years", "competitor.name"
 Source = Literal["cp_utt", "shareable"]
 FORMATS = [
+    ("I've been with you for 6 years", TENURE, "6", "6"),
     ("I've been with you 6 years", TENURE, "6", "6"),
-    ("customer for 12 Years now.", TENURE, "12", "12"),
-    ("1 year", TENURE, "1", "1"),
-    ("6 lines", TENURE, "6", None),
-    ("I've been with you 6", TENURE, "6", None),
-    ("6years", TENURE, "6", None),
-    ("6  years", TENURE, "6", None),
-    ("6\u00a0years", TENURE, "6", None),
-    ("16 years", TENURE, "6", None),
-    ("1.6 years", TENURE, "6", None),
-    ("-6 years", TENURE, "6", None),
-    ("x6 years", TENURE, "6", None),
-    ("6 yearsx", TENURE, "6", None),
-    ("my son is 6 year-old", TENURE, "6", None),
-    ("100 years", TENURE, "100", None),
-    ("6 years", TENURE, "06", None),
-    ("6 years", TENURE, "6 years", None),
-    ("\uff16 years", TENURE, "\uff16", None),
-    ("\uff16 years", TENURE, "6", None),
-    ("\u0666 years", TENURE, "6", None),
-    ("six years", TENURE, "six", None),
-    ("Brightwave99", NAME, "Brightwave", None),
-    ("Br\u0456ghtwave", NAME, "Br\u0456ghtwave", None),
-    ("they quoted me at Brightwave", NAME, "Brightwave", "Brightwave"),
-    ("Brightwave charges 60", PRICE, "60", "60"),
-    ("Brightwave charges 60.00 a month", PRICE, "60.00", "60.00"),
-    ("Brightwave charges $60.", PRICE, "60", "60"),
-    ("Brightwave: (60)", PRICE, "60", "60"),
-    ("I pay 70 now", PRICE, "70", None),  # the name is not in this message
-    ("Brightwave charges 60 and I pay 70", PRICE, "60", None),  # two amounts
-    ("Brightwave charges 60 and I pay 70", PRICE, "70", None),
-    ("Brightwave charges sixty, I pay 70", PRICE, "70", None),  # a number word
-    ("Brightwave charges 60 \u00bd", PRICE, "60", None),
-    ("Brightwave 5G charges 60", PRICE, "60", None),
-    ("Brightwave charges 1,250", PRICE, "250", None),  # a fragment
-    ("Brightwave charges 1,250", PRICE, "1,250", None),
-    ("Brightwave charges 1250", PRICE, "250", None),
-    ("Brightwave charges 70.50", PRICE, "50", None),
-    ("Brightwave charges 60.5", PRICE, "60.5", None),
-    ("Brightwave charges 60.505", PRICE, "60.50", None),
-    ("Brightwave charges 60-70", PRICE, "60", None),
-    ("Brightwave charges 60/mo", PRICE, "60", None),
-    ("Brightwave charges -60", PRICE, "60", None),
-    ("Brightwave charges 60k", PRICE, "60", None),
-    ("Brightwave charges 6O", PRICE, "6", None),
-    ("Brightwave charges 60\u200b", PRICE, "60", None),
-    ("Brightwave charges \uff16\uff10", PRICE, "\uff16\uff10", None),
-    ("Brightwave charges \uff16\uff10", PRICE, "60", None),
-    ("Brightwave charges \u0666\u0660", PRICE, "60", None),
-    ("brightwave charges 60", PRICE, "60", None),  # not the name's exact span
-    ("Brightwaves charge 60", PRICE, "60", None),
-    ("Br\u0456ghtwave charges 60", PRICE, "60", None),
-    ("Brightwave charges 60", PRICE, "60 dollars", None),
-    ("Brightwave charges 60", PRICE, "$60", None),
+    ("been a customer for 12 Years now.", TENURE, "12", "12"),
+    ("We have been with you for 1 year", TENURE, "1", "1"),
+    # #153 round 3: tenure outside its context, or next to an age word
+    ("I'm 36 years old", TENURE, "36", None),
+    ("I am 36 years of age", TENURE, "36", None),
+    ("my kid is 12 years", TENURE, "12", None),
+    ("my contract is 2 years", TENURE, "2", None),
+    ("I moved here 6 years ago", TENURE, "6", None),
+    ("6 years", TENURE, "6", None),
+    ("I've been with you for 6 years, I'm 36 years old", TENURE, "6", None),
+    ("been with you for 6 years since I was 20, aged 26", TENURE, "6", None),
+    ("I'll stay with you for 2 years", TENURE, "2", None),
+    ("customer for 2 years if the price is right", TENURE, "2", None),
+    ("2 years with you max", TENURE, "2", None),
+    ("I've been with you for 6 years", TENURE, "36", None),
+    ("I've been with you for 36 years", TENURE, "6", None),
+    ("I've been with you for 1.6 years", TENURE, "6", None),
+    ("I've been with you for 6.5 years", TENURE, "6", None),
+    ("I've been with you for 100 years", TENURE, "100", None),
+    ("I've been with you for 6 years", TENURE, "06", None),
+    ("I've been with you for 6 years", TENURE, "6 years", None),
+    ("I've been with you for 6years", TENURE, "6", None),
+    ("I've been with you for 6  years", TENURE, "6", None),
+    ("I've been with you for 6\u00a0years", TENURE, "6", None),
+    ("I've been with you for 6 yearsx", TENURE, "6", None),
+    ("I've been with you for 6 year-old", TENURE, "6", None),
+    ("I've been with you for 6 yea\u0280s", TENURE, "6", None),
+    ("I've been with you for 6 year\u017f", TENURE, "6", None),
+    ("I've been with you for \uff16 years", TENURE, "\uff16", None),
+    ("I've been with you for \uff16 years", TENURE, "6", None),
+    ("I've been with you for \u0666 years", TENURE, "6", None),
+    ("I've been with you for six years", TENURE, "six", None),
+    ("I've been with you for 36 years \u043eld", TENURE, "36", None),
+    ("I've been with you for 36 years, \u0430ged 36", TENURE, "36", None),
+    ("I\u2019ve been with you for 6 years", TENURE, "6", "6"),
+    ("I've BEEN WITH YOU FOR 6 YEARS", TENURE, "6", None),
+    ("I've been with you for 6 years-old", TENURE, "6", None),
+    ("I've been with youfor 6 years", TENURE, "6", None),
+    ("I've been with you for 6 lines", TENURE, "6", None),
+    # #153 round 3: competitor facts stay private, whatever the message says
+    ("Brightwave charges 60", PRICE, "60", None),
+    ("Brightwave charges $60.", PRICE, "60", None),
+    ("Brightwave is fine but I won't pay more than 65", PRICE, "65", None),
+    ("I pay 85 now, Brightwave is way cheaper", PRICE, "85", None),
+    ("I pay 85", PRICE, "85", None),
+    ("Brightwave charges 60, I pay a grand a year", PRICE, "60", None),
+    ("they quoted me at Brightwave", NAME, "Brightwave", None),
+    ("Northwind Mobile raised my bill again", NAME, "Northwind Mobile", None),
+    ("My name is Dana Reyes", NAME, "Dana Reyes", None),
+    ("I pay 85", NAME, "I", None),
+    ("max I'd pay is 70", NAME, "max", None),
+    # N1: plural number words are never a name
+    ("I'm in my sixties", H, "sixties", None),
+    ("in my twenties", H, "twenties", None),
+    ("Dana Sixties", H, "Dana Sixties", None),
+    ("hundreds", H, "hundreds", None),
+    ("thousands", H, "Thousands", None),
+    ("tens of dollars", H, "tens", None),
+    ("sixes and sevens", H, "sixes", None),
 ]  # fmt: skip
 
 
@@ -507,43 +515,29 @@ def test_a_value_goes_public_only_in_its_keys_format(
         assert fact["source"] == "user" and "citing the utt" in result.text
 
 
-@pytest.mark.parametrize("source", [None, "cp_utt"])
-def test_a_competitor_price_needs_the_users_public_competitor_name(
-    source: Source | None,
-) -> None:  # the name not public yet, or public only as the rep's word
-    bb = _named("Brightwave charges 60", source)
-    result = _tools(bb).fact(bb, PRICE, "60", "u-1")
-    assert dict(result.effects[0][1])["scope"] == "private"
-    private = Fact(key=NAME, value="Brightwave")  # recorded private is not public
-    bb = _named("Brightwave charges 60", None, case_facts={NAME: private})
-    result = _tools(bb).fact(bb, PRICE, "60", "u-1")
-    assert dict(result.effects[0][1])["scope"] == "private"
-
-
 def test_a_shareable_key_without_a_format_never_goes_public() -> None:  # I4
     keys = ALL | {"card.last4", "account.zip", "plan.current_price_usd"}
     for text, key, value in (
         ("card last four 4821", "card.last4", "4821"),  # public by suffix in S0
         ("my zip is 94110", "account.zip", "94110"),
         ("I pay 85 now", "plan.current_price_usd", "85"),
+        ("they quoted me at Brightwave", NAME, "Brightwave"),
+        ("Brightwave charges 60", PRICE, "60"),
     ):
-        bb, _ = _message(text)
+        bb = _named(text)
         tools = _tools(bb, keys)
         result = tools.fact(bb, key, value, "u-1")
         assert dict(result.effects[0][1])["scope"] == "private", key
         assert tools.shareable == {} and "citing the utt" in result.text
+        assert "competitor" not in result.text  # the hint names no such rule
 
 
 @pytest.mark.parametrize(
     ("text", "key", "value"),
     [
-        ("Brightwave charges 70", PRICE, "70"),  # $70 a month
-        ("Brightwave charges 70.00", PRICE, "70.00"),
-        ("Brightwave charges 1250", PRICE, "1250"),  # $1,250 of fees
-        ("Brightwave charges 1250.00", PRICE, "1250.00"),
-        ("Brightwave charges 7000", PRICE, "7000"),  # minor units
-        ("with you 24 years", TENURE, "24"),  # 24 months
-        ("they quoted me at Fluffy", NAME, "Fluffy"),  # protected
+        ("I've been with you for 24 years", TENURE, "24"),  # 24 months
+        ("code 0070", L4, "0070"),  # $70
+        ("my pet was Fluffy", H, "Fluffy"),  # protected
     ],
 )
 def test_the_leak_checks_apply_to_every_format(
@@ -557,25 +551,33 @@ def test_the_leak_checks_apply_to_every_format(
     assert tools.shareable == {} and "never public" in result.text
 
 
-def test_cite_competitor_works_only_after_a_users_competitor_quote() -> None:
-    bb, _ = _message("they quoted me at Brightwave, it's 60 a month")
+def _with(bb: Blackboard, *facts: PublicFact) -> Blackboard:
+    public = bb.public.model_copy(update={"facts": {f.key: f for f in facts}})
+    return bb.model_copy(update={"public": public})
+
+
+def test_cite_competitor_needs_a_shareable_competitor_quote() -> None:  # I11
+    bb = _named("they quoted me at Brightwave, it's 60 a month")  # name public
     tools = _tools(bb)
-    cite = {"move": "cite_competitor", "slots": [f"fact:{PRICE}"]}
-    ok, text, _ = _guide(bb, **cite)
-    assert not ok and "no fabricated quotes" in text
-    facts: dict[str, PublicFact] = {}
-    for key, value in ((PRICE, "60"), (NAME, "Brightwave"), (PRICE, "60")):
-        bb = bb.model_copy(
-            update={"public": bb.public.model_copy(update={"facts": facts})}
+    for key, value in ((NAME, "Brightwave"), (PRICE, "60")):  # never from the user
+        assert dict(tools.fact(bb, key, value, "u-1").effects[0][1])["scope"] == (
+            "private"
         )
-        (_, fact), *_ = tools.fact(bb, key, value, "u-1").effects
-        if fact["scope"] == "public":
-            facts = facts | {key: PublicFact.model_validate(
-                {k: fact[k] for k in ("key", "value", "source", "source_ref")}
-            )}  # fmt: skip
-    assert facts[PRICE].value == "60" and facts[PRICE].source == "shareable"
-    bb = bb.model_copy(update={"public": bb.public.model_copy(update={"facts": facts})})
-    ok, text, sent = _guide(bb, **cite)
+    name = bb.public.facts[NAME]
+    for slots in ([f"fact:{NAME}"], [f"fact:{NAME}", f"fact:{PRICE}"], []):
+        ok, text, denied = _guide(bb, move="cite_competitor", slots=slots)
+        assert not ok and "no fabricated quotes" in text, slots  # a name alone
+        assert denied == [
+            {"intent": "guide_fast", "reason": "competitor_quote_not_shareable"}
+        ]
+    said = PublicFact(key=PRICE, value="60", source="cp_utt", source_ref="cp-3")
+    ok, _, _ = _guide(_with(bb, name, said), move="cite_competitor",
+                      slots=[f"fact:{PRICE}"])  # fmt: skip
+    assert not ok  # the rep's word is no quote the user shared
+    quote = said.model_copy(update={"source": "shareable", "source_ref": "u-0"})
+    ok, text, sent = _guide(
+        _with(bb, name, quote), move="cite_competitor", slots=[f"fact:{PRICE}"]
+    )
     assert ok and len(sent) == 1, text
 
 

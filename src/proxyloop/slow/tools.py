@@ -38,10 +38,14 @@ _LAST4 = re.compile(r"[0-9]{4}")  # ASCII only: no NFKC, no separators
 _WORD = r"[A-Za-z]+(?:['\u2019-][A-Za-z]+)*"  # O'Brien, Lee-Smith
 _NAME = re.compile(rf"{_WORD}(?: {_WORD}){{0,3}}")  # 1-4 words, single spaces
 _YEARS = re.compile(r"[0-9]{1,2}")
-_MONEY = re.compile(r"[0-9]+(?:\.[0-9]{2})?")  # plain ASCII dollars
+_TENURE = re.compile(  # #153 round 3: only in context, one ASCII space each
+    r"(?<![\w'\u2019-])[Bb]een (?:[Ww]ith [Yy]ou|[Aa] [Cc]ustomer) (?:[Ff]or )?"
+    r"([0-9]{1,2}) [Yy]ears?(?![\w'\u2019-])"
+)
+_AGE = re.compile(r"(?i)\b(?:old|age|aged|ago)\b")  # "36 years old": no tenure
+_NOT_ASCII = re.compile(r"[^\x00-\x7f\u2018\u2019\u201c\u201d]")  # but quotes
 _NUMBER = re.compile(r"[0-9]+(?:\.[0-9]+)?")
 _BEFORE = r"(?:^|(?<=[\s(:\"\u201c]))"  # allow-listed token starts
-_BEFORE_USD = r"(?:^|(?<=[\s(:\"\u201c$]))"  # and "$60"
 _AFTER = r"(?=[.,;:!?)\"\u201d]?(?:\s|$))"  # then one mark, a space or the end
 _EDGE = r"(?<![\w'\u2019-])", r"(?![\w'\u2019-])"  # a name's word bounds
 MAX_NAME_CHARS = 60
@@ -308,9 +312,8 @@ class SlowTools:
             text += (
                 f": only {', '.join(can) or 'no key'} can go public from the user, "
                 "by citing the utt of the user message that contains exactly the "
-                "value (a last4 as 4 digits, a name as the user wrote it, tenure as "
-                "'<n> years', a competitor price as the only amount of a message "
-                "naming the public competitor.name); other keys stay private"
+                "value (a last4 as 4 digits, a holder name as the user wrote it, "
+                'tenure as "been with you for N years"); other keys stay private'
             )
         return Result(True, text, tuple(effects))
 
@@ -352,16 +355,15 @@ def lever_denial(bb: st.Blackboard, guide: Guide) -> tuple[str, str] | None:
     the user shared, and the cancellation lever only with the user's public
     authorisation. ``(reason, text)`` of a denial, else None."""
     facts = bb.public.facts
-    if guide.move == GuideMove.CITE_COMPETITOR:
+    if guide.move == GuideMove.CITE_COMPETITOR:  # a name alone is no quote
         keys = [s[5:] for s in guide.slots if s.startswith("fact:")]
-        quotes = [
-            k for k in keys if k == "competitor_quote" or k.startswith("competitor.")
-        ]
+        quotes = [k for k in keys if k in ("competitor_quote", "competitor.price_usd")]
         if not any((f := facts.get(k)) and f.source == "shareable" for k in quotes):
             return "competitor_quote_not_shareable", (
-                "cite_competitor needs a fact:competitor_quote (or fact:competitor.*) "
-                "slot the user shared (source shareable); none is public, so the "
-                "lever is denied: no fabricated quotes. Use another move"
+                "cite_competitor needs a fact:competitor.price_usd (or "
+                "fact:competitor_quote) slot the user shared (source shareable); "
+                "none is public, so the lever is denied: no fabricated quotes. "
+                "Use another move"
             )
     lever = facts.get("authorization.cancel_lever")
     granted = lever and lever.value == "granted" and lever.source == "shareable"
@@ -406,44 +408,34 @@ def _name(value: str, message: str, _: st.Blackboard) -> str | None:
     case-insensitively with word bounds; the user's own spelling is published."""
     if not _NAME.fullmatch(value) or len(value) > MAX_NAME_CHARS:
         return None
-    if set(_words(value).split()) & NUMBER_WORDS:
+    if any(_number_word(w) for w in _words(value).split()):
         return None
     found = re.search(_EDGE[0] + re.escape(value) + _EDGE[1], message, re.IGNORECASE)
     return found.group() if found and _NAME.fullmatch(found.group()) else None
 
 
 def _years(value: str, message: str, _: st.Blackboard) -> str | None:
-    """1-2 ASCII digits a standalone token, followed by exactly " year(s)"."""
-    if not _YEARS.fullmatch(value):
+    """1-2 ASCII digits in an allow-listed tenure context ("been with you for
+    6 years", "been a customer 12 years"), in a message with no age word."""
+    if not _YEARS.fullmatch(value) or _AGE.search(message):
         return None
-    said = _BEFORE + value + " [Yy]ears?" + _EDGE[1]
-    return value if re.search(said, message) else None
+    if _NOT_ASCII.search(message):  # no confusable hides an age word
+        return None
+    said = {m.group(1) for m in _TENURE.finditer(message)}
+    return value if value in said else None
 
 
-def _competitor_price(value: str, message: str, bb: st.Blackboard) -> str | None:
-    """Plain dollars, and the only amount of a message that names the
-    competitor.name the user made public (its exact span): a number said with
-    another amount or a number word may be anything else (I11)."""
-    name = bb.public.facts.get("competitor.name")
-    if name is None or name.source != "shareable" or not _MONEY.fullmatch(value):
-        return None
-    if not re.search(_EDGE[0] + re.escape(name.value) + _EDGE[1], message):
-        return None
-    if set(_words(message).split()) & NUMBER_WORDS:
-        return None
-    masked = "".join("0" if c.isnumeric() else c for c in message)  # any script
-    amounts = re.findall(r"0+(?:[.,]0+)*", masked)
-    said = _BEFORE_USD + re.escape(value) + _AFTER
-    return value if len(amounts) == 1 and re.search(said, message) else None
+def _number_word(word: str) -> bool:  # "sixty", "sixties", "sixes", "hundreds"
+    stems = {word, word.removesuffix("s"), word.removesuffix("es")}
+    stems |= {word[:-3] + "y"} if word.endswith("ies") else set()
+    return bool(stems & NUMBER_WORDS)
 
 
 Match = Callable[[str, str, st.Blackboard], str | None]  # (value, message, bb)
 FORMATS: dict[str, Match] = {  # the one per-key format table (S1-SYS-15)
     "account.last4": _digits4,
     "account.holder_name": _name,
-    "competitor.name": _name,
-    "tenure_years": _years,
-    "competitor.price_usd": _competitor_price,
+    "tenure_years": _years,  # competitor facts never (#153 round 3, I11)
 }
 
 
