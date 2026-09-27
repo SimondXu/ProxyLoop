@@ -7,6 +7,7 @@ from proxyloop.contract import base
 from proxyloop.contract.llm import ToolSpec
 from proxyloop.contract.messages import FastToSlow, GuideMove
 from proxyloop.contract.views import SlowView
+from proxyloop.slow.tools import identity_hint
 
 TOOLS = ("ask_user", "tell_user", "wait", "guide_fast", "record_fact", "record_offer")
 MAX_TOKENS = 1_500
@@ -35,6 +36,13 @@ cited user message contains exactly that value; anything else stays private.
 them, each slot {field, value, unit, role, utt_ref}; money in cents (usd_minor).
 - finish(outcome, summary): end the case. Only outcome "info_only" exists here: \
 report the offers to the user first, and never accept anything.
+Calls run in order, so a guide_fast may cite a fact recorded earlier in the same act.
+Identity: when the representative asks for a fact the user has not given yet (e.g. \
+the account holder name or last 4), ask_user for it and guide_fast(hold_for_decision) \
+so the representative waits while the phone voice checks with the user. As soon as \
+the user gives it, record_fact it and, in the same act, guide_fast(identify, \
+slots=["fact:<key>", ...]). Use deflect_fact_request only for a fact that must not \
+be given: the representative hears a refusal and may hang up.
 Tool results come back as text; a refusal says why."""
 
 Schema = dict[str, object]
@@ -81,7 +89,7 @@ def note(relay: FastToSlow) -> str:  # [USER CHAT] <relay> (utt u12)
     return f"[{where}] {body} (utt {relay.utt_ref or 'none'})"
 
 
-def status_bar(view: SlowView) -> str:
+def status_bar(view: SlowView, keys: frozenset[str]) -> str:
     offers = "; ".join(
         f"{o.offer_ref} r{o.revision} {o.status}: "
         + ", ".join(f"{s.field}={s.value} [{s.status}]" for s in o.slots)
@@ -92,8 +100,9 @@ def status_bar(view: SlowView) -> str:
         + [f"{f.key}={f.value} [private]" for f in view.case_facts]
     )
     hold = view.cp_hold.reason if view.cp_hold is not None else "none"
+    public = {f.key for f in view.public_facts}
     return (
         f"[STATUS] case {view.status.value}; epoch {view.epoch}; "
         f"offers: {offers or 'none'}; facts: {facts or 'none'}; hold: {hold}; "
         f"strikes: {view.cp_strikes}"
-    )
+    ) + "".join(f"; {h}" for h in [identity_hint(public, keys)] if h)

@@ -32,7 +32,7 @@ class SlowLoop:
         self, host: Kernel, client: llm.LLMClient, brief: str, keys: frozenset[str]
     ):
         self._host, self._client, self._brief = host, client, brief
-        self.tools = SlowTools(host, keys)
+        self.tools, self._keys = SlowTools(host, keys), keys
         self._head = (
             f"TASK: {brief}\nSHAREABLE FACT KEYS (record_fact uses exactly these "
             f"keys, whatever a relay calls them): {', '.join(sorted(keys))}"
@@ -98,7 +98,7 @@ class SlowLoop:
         wake = basis | {"wake_reasons": list(reasons)}
         started = host.emit("slow.step.started", "slow", wake, []).event_id
         wakes = f"[WAKE] {', '.join(reasons)}"
-        notes = [wakes, *map(prompt.note, new), prompt.status_bar(view)]
+        notes = [wakes, *map(prompt.note, new), prompt.status_bar(view, self._keys)]
         context = self._context("\n".join(notes), view)
         self.steps += 1
         request = llm.ToolRequest(

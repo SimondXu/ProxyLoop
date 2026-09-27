@@ -7,7 +7,9 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
+from proxyloop.contract.config import SlowViewMode
 from proxyloop.contract.messages import FastToSlow, Guide, GuideMove
+from proxyloop.contract.protocol import render_messages
 from proxyloop.contract.state import (
     Blackboard,
     ChannelState,
@@ -16,7 +18,9 @@ from proxyloop.contract.state import (
     Mandate,
     PublicFact,
 )
+from proxyloop.contract.views import Trigger, view_cp, view_slow
 from proxyloop.guard.declass import declassify
+from proxyloop.slow.prompt import status_bar
 from proxyloop.slow.tools import SlowTools, public_guide, record_offer
 
 if TYPE_CHECKING:
@@ -394,3 +398,53 @@ def test_a_protected_value_in_other_decimal_digits_is_caught() -> None:  # round
     result = tools.fact(bb, L4, "7777", "u-1")
     (_, fact), (denied, _) = result.effects
     assert (fact["scope"], denied) == ("private", "declass.denied")
+
+
+IDENTIFY = "guide_fast(identify, slots=[fact:account.holder_name, fact:account.last4])"
+
+
+def _public(bb: Blackboard, *keys: str) -> Blackboard:
+    values = {"account.holder_name": "Dana Reyes", "account.last4": "4821"}
+    facts = {
+        k: PublicFact(key=k, value=values[k], source="shareable", source_ref="u-7")
+        for k in keys
+    }
+    return bb.model_copy(
+        update={"public": bb.public.model_copy(update={"facts": facts})}
+    )
+
+
+def test_a_deflect_is_sent_and_says_how_to_hold_for_a_fact_instead() -> None:
+    bb, _ = _told()  # S0-SYS-07 (run aeab91): deflect while waiting for the user
+    ok, text, sent = _guide(bb, move="deflect_fact_request")
+    assert ok and len(sent) == 1  # sent as asked: Slow decides, never refused
+    assert "refus" in text and "hold_for_decision" in text and "ask_user" in text
+    ok, text, _ = _guide(_public(bb, H, L4), move="deflect_fact_request")
+    assert ok and IDENTIFY in text
+
+
+def test_the_status_bar_tells_slow_how_to_give_or_get_identity_facts() -> None:
+    bb, _ = _told()
+    bar = status_bar(view_slow(bb, SlowViewMode.RELAY_ONLY, "b"), KEYS)
+    assert "account.holder_name, account.last4 not given yet" in bar
+    assert "ask_user" in bar and "hold_for_decision" in bar and "identify" not in bar
+    half = status_bar(view_slow(_public(bb, L4), SlowViewMode.RELAY_ONLY, "b"), KEYS)
+    assert "guide_fast(identify, slots=[fact:account.last4])" in half
+    assert "account.holder_name not given yet" in half
+    both = _public(bb, H, L4)
+    bar = status_bar(view_slow(both, SlowViewMode.RELAY_ONLY, "b"), KEYS)
+    assert IDENTIFY in bar and "not given yet" not in bar
+    guide = Guide(move=GuideMove.IDENTIFY, slots=(f"fact:{H}", f"fact:{L4}"))
+    assert public_guide(both, guide) and not public_guide(_public(bb, L4), guide)
+    other = status_bar(view_slow(bb, SlowViewMode.RELAY_ONLY, "b"), frozenset({PRICE}))
+    assert "identity" not in other  # no identity key, no hint
+
+
+def test_a_hold_for_decision_renders_as_checking_with_the_customer() -> None:
+    guide = Guide(move=GuideMove.HOLD_FOR_DECISION)
+    public = BB.public.model_copy(update={"guidance_cp": (guide,)})
+    view = view_cp(
+        BB.model_copy(update={"public": public}), Trigger(kind="guidance"), ""
+    )
+    rendered = "".join(m.content for m in render_messages(view, "pl_cp_v1"))
+    assert "check with your customer (@hold decision)" in rendered

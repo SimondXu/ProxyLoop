@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
@@ -142,7 +142,12 @@ class SlowTools:
             return _no(text, ("action.denied", denied))
         guide = Guide(move=a["move"], slots=tuple(a.get("slots") or ()))
         if public_guide(bb, guide):
-            return self._s2f(lane="cp", type="GUIDE", guide=guide)
+            sent = self._s2f(lane="cp", type="GUIDE", guide=guide)
+            if guide.move != "deflect_fact_request":
+                return sent
+            hint = identity_hint(bb.public.facts, self._shareable_keys)
+            text = f"{sent.text}; the rep hears a refusal to share. {hint}".strip()
+            return Result(True, text, sent.effects)  # sent as asked: Slow decides
         hidden = [
             s
             for s in guide.slots
@@ -210,6 +215,29 @@ class SlowTools:
                 "it); every other shareable key stays private"
             )
         return Result(True, text, tuple(effects))
+
+
+def identity_hint(public: Collection[str], keys: frozenset[str]) -> str:
+    """S0-SYS-07 (run aeab91): the identity flow, as text for Slow only. The keys
+    that can go public from the user are either public (identify with them) or
+    not given yet (ask the user and hold). Slow decides; nothing is sent."""
+    ids = sorted(k for k in keys if k.endswith(_PUBLISHABLE))
+    ready = [k for k in ids if k in public]
+    missing = [k for k in ids if k not in public]
+    parts: list[str] = []
+    if ready:
+        slots = ", ".join(f"fact:{k}" for k in ready)
+        parts.append(
+            f"{', '.join(ready)} public: when the rep asks, "
+            f"guide_fast(identify, slots=[{slots}])"
+        )
+    if missing:
+        parts.append(
+            f"{', '.join(missing)} not given yet: when the rep asks, ask_user and "
+            "guide_fast(hold_for_decision) until it is public; deflect_fact_request "
+            "only for a fact that must not be given"
+        )
+    return f"identity: {'; '.join(parts)}" if parts else ""
 
 
 def _partner(bb: st.Blackboard, lane: Lane) -> dict[str, str]:  # utt id -> text
