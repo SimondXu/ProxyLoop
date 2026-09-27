@@ -116,6 +116,9 @@ describe("approval card state (I6: events decide, the page only posts)", () => {
     expect(approvalCards([card("a1")], hash)[0]?.reason).toBe("subject_hash_mismatch");
     expect(approvalCards([card("a1")], res(409, "stale"))[0]?.reason).toBeNull();
     expect(approvalCards([card("a1"), ev("authority.epoch", "kernel", { new: 3 })], hash)[0]?.reason).toBe("subject_hash_mismatch");
+    // #173 N-6: a 409 stale without a reason falls back to the epoch label once the epoch moved.
+    const bare = approvalCards([card("a1"), ev("authority.epoch", "kernel", { new: 3 })], res(409, "stale"))[0];
+    expect([bare?.status, bare?.reason]).toEqual(["stale", "the authority epoch moved past this card"]);
     // guard's already_decided reason repeats the error: shown once.
     const same = new Map<string, Posting>([["a1", { ok: false, status: 409, error: "already_decided", reason: "already_decided" }]]);
     expect(one([card("a1")], same)).toEqual({ status: "already_decided", by: null, error: "409 already_decided" });

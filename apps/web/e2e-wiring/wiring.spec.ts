@@ -414,11 +414,19 @@ test("o) live: the authority strip and the card's read-back progress, from the s
   await expect(strip.getByLabel("Last denied")).toHaveText(
     `last action.denied ${String(denied.payload.intent)}: ${String(denied.payload.reason)} (${denied.actor})`,
   );
-  const latest = events.filter((e) => e.type === "readback.updated").at(-1)?.payload.slot_statuses as Record<string, string>;
+  // #173 N-3: the read-back in the kernel's order. The offer as first stated (r1) was only
+  // partly heard before the card; the card's revision was confirmed, and nothing regresses after it.
+  const requested = one(events, "approval.requested");
+  const readbacks = events.filter((e) => e.type === "readback.updated");
+  const statuses = (e: Ev | undefined) => Object.entries((e?.payload.slot_statuses ?? {}) as Record<string, string>);
+  const partial = readbacks.filter((e) => e.seq < requested.seq && e.payload.revision !== requested.payload.revision);
+  expect(partial.flatMap((e) => statuses(e).map(([, s]) => s))).toContain("heard");
+  const own = readbacks.filter((e) => e.payload.revision === requested.payload.revision);
+  for (const e of readbacks.filter((e) => e.seq > requested.seq)) expect(statuses(e).every(([, s]) => s === "confirmed")).toBe(true);
   await expect(card.getByRole("list", { name: "Read-back progress" }).getByRole("listitem")).toHaveText(
-    Object.entries(latest).map(([field, s]) => `${field}: ${s}`),
+    statuses(own.at(-1)).map(([field, s]) => `${field}: ${s}`),
   );
-  expect(Object.values(latest)).toContain("heard");
+  expect(statuses(own.at(-1)).map(([, s]) => s)).toEqual(Array(5).fill("confirmed"));
   await expect(card.getByLabel("Fence note")).toHaveText("fence raised: the accept waits until it clears");
   await shot(page, "live-strip");
 });
