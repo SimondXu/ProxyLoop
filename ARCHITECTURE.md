@@ -118,7 +118,7 @@ proxyloop/
 │   ├── llm/            factory.py vllm.py relay.py spend.py parity.py
 │   ├── env/            tasks/{schema,loader}.py counterparty/{policy,ear,mouth}.py user/{simuser,approver}.py ledger.py splits.py (portal/ in S4)
 │   ├── evidence/       check.py chain.py reality.py
-│   ├── obs/            otel.py
+│   ├── obs/            trace.py
 │   ├── serve/          api.py csrf.py
 │   ├── cli.py          chat / smoke-live / replay (terminal)
 │   ├── models/         registry.py fsm.py repair.py conditions.yaml
@@ -550,7 +550,7 @@ vllm serve Qwen/Qwen3.5-9B@<rev> --served-model-name Qwen3.5-9B --dtype bfloat16
 ---
 
 ## 14. Tracing, replay and evidence (SYS lane)
-- **OTel export** (ADR-0008): offline, from a bundle's `events.jsonl` (finished, or tailed read-only), never a bus subscriber. One span per event; the first of `cause_ids` is the parent, the others are links; lanes are resources; `gen_ai.*` attributes from `llm.call` records, with no prompt or response text unless a flag attaches it; no private-state value; sealed and `test` bundles are refused. Phoenix is the viewer (no bake-off).
+- **OTel export** (ADR-0008): offline, from a bundle's `events.jsonl` (finished, or tailed read-only), never a bus subscriber. One trace per run; one span per event, rooted at `session.started`, whose children are the exogenous events; otherwise the first of `cause_ids` is the parent and the others are links; lanes are resources; `gen_ai.*` attributes from `llm.call` records. Default deny: the envelope plus a named allow-list of non-content payload keys; a flag may add only cp-lane text and `fast_cp` prompts, never private or user-lane content. Sealed and `test` bundles are refused before any span. Phoenix is the viewer (no bake-off).
 - **Run bundle** `runs/<run_id>/`:
   - `manifest.json` (`pl.bundle/1`): cfg and its hash, task and instance hash, split, git sha, contract version, renderer fingerprints, models per role with served name and adapter shard hashes, attestation, P3 result, reality (adapter kind per role), spend;
   - `events.jsonl`;
