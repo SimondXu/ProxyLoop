@@ -13,6 +13,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import cast
 
+import pytest
 from tests.concurrency.harness import SCRIPTS, Sim, VirtualTime, called
 from tests.concurrency.test_cases import arun
 from tests.kernel.test_session import SCRIPTS as SESSION
@@ -24,7 +25,8 @@ from proxyloop.contract.llm import LLMClient, LLMRole, ModelRef
 from proxyloop.contract.messages import FastToSlow
 from proxyloop.contract.state import CaseStatus
 from proxyloop.env.tasks.schema import Task
-from proxyloop.kernel.calls import DISCLOSURE, INTAKE_S
+from proxyloop.kernel import calls, watchdog
+from proxyloop.kernel.calls import DISCLOSURE, INTAKE_S, Calls
 from proxyloop.kernel.channels import Channel
 from proxyloop.kernel.session import ChannelSpec, Kernel
 from proxyloop.llm.http import RecordSink
@@ -361,5 +363,70 @@ def test_an_ask_voiced_by_a_turn_without_speech_is_not_voiced(tmp_path: Path) ->
         (again,) = sim.act(ask)
         assert again.startswith("ask_user: sent"), again
         await sim.stop()
+
+    arun(case())
+
+
+def _ended(sim: Intake) -> Event:
+    (ended,) = sim.of("session.ended")
+    return ended
+
+
+def test_d3_a_call_opened_at_the_deadline_gets_its_full_budget(tmp_path: Path) -> None:
+    """Review D3 (root decision): the 480 s budget counts from chan.opened{cp}."""
+
+    async def case() -> None:
+        sim = Intake(tmp_path)
+        await sim.start()
+        await sim.vt.run_for(DEADLINE + int(1000 * watchdog.MAX_SESSION_S))
+        (opened,) = sim.cp_opened()
+        ended = _ended(sim)
+        assert ended.payload["reason"] == "timeout"
+        budget = ended.t_ms - opened.t_ms
+        assert (
+            1000 * watchdog.MAX_SESSION_S
+            <= budget
+            <= 1000 * watchdog.MAX_SESSION_S + 2_000
+        )
+
+    arun(case())
+
+
+@pytest.mark.parametrize("late", ["never", "past_the_cap"])
+def test_d3_the_hard_cap_holds_from_session_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, late: str
+) -> None:
+    """480 + INTAKE_S from session start, whichever bound comes first: a call
+    that never opens, or one opened so late its own budget would run past it."""
+    if late == "never":
+
+        def never(self: Calls, cause: str, reason: str) -> None:
+            return None
+
+        monkeypatch.setattr(Calls, "_call", never)
+    else:  # the deadline moved to 300 s: 300 + 480 > 600
+        monkeypatch.setattr(calls, "INTAKE_S", 300)
+    cap = 1000 * (watchdog.MAX_SESSION_S + INTAKE_S)
+
+    async def case() -> None:
+        sim = Intake(tmp_path)
+        await sim.start()
+        await sim.vt.run_for(int(cap) + 200_000)
+        ended = _ended(sim)
+        assert ended.payload["reason"] == "timeout"
+        assert cap <= ended.t_ms <= cap + 2_000
+        assert len(sim.cp_opened()) == (0 if late == "never" else 1)
+
+    arun(case())
+
+
+def test_d3_a_call_opened_at_once_keeps_todays_budget(tmp_path: Path) -> None:
+    async def case() -> None:
+        sim = Sim(tmp_path)  # ready at once
+        await sim.start()
+        await sim.vt.run_for(int(1000 * watchdog.MAX_SESSION_S) + 5_000)
+        (ended,) = sim.of("session.ended")
+        assert ended.payload["reason"] == "timeout"
+        assert ended.t_ms <= 1000 * watchdog.MAX_SESSION_S + 2_000
 
     arun(case())
