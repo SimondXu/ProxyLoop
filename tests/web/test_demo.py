@@ -3,8 +3,8 @@ scripted cases (``tests.support.web_demo``) run through ``run_session`` on a
 sped-up clock, and the bundle passes ``evidence.check`` offline.
 
 What the kernel on main does, asserted as it is:
-- the call opens at the start, before the user's first message (S1-SYS-21's
-  readiness gate is not merged); the identity ask comes from the rep;
+- readiness, in either order (S1-SYS-21's gate or main's call at the start):
+  the call happens and the identity facts are public before the rep's offer;
 - approve: the accept is released and heard, the rep confirms and closes the
   call, and the case stays COMMITTED: no FastC turn follows the closing line,
   so no confirmation is relayed and Slow cannot ``check_account``. The run is
@@ -159,13 +159,13 @@ def test_approve_on_the_real_kernel_up_to_the_closed_call(tmp_path: Path) -> Non
     started = body(log[0])["models"]
     assert {m["ref"]["kind"] for m in started.values()} == {"test_fake"}
     assert set(started) == {"fast_user", "fast_cp", "slow", "ear", "mouth"}
-    # main's order: the call opens at the start, then the rep asks for identity
-    (cp,) = of(log, "chan.opened", lane="cp")
-    assert (
-        cp.seq < of(log, "user.msg")[0].seq < of(log, "s2f.msg", type="ASK_USER")[0].seq
-    )
+    # readiness, order-agnostic: the call happens, and the identity facts are
+    # public (from the user's words) before the rep's first offer
+    assert of(log, "chan.opened", lane="cp")
     facts = of(log, "fact.recorded", scope="public", source="shareable")
     assert {f.payload["key"] for f in facts} == {"account.holder_name", "account.last4"}
+    offered = [e for e in of(log, "rep.policy") if body(e)["intent"]["kind"] == "offer"]
+    assert max(f.seq for f in facts) < offered[0].seq
     # the offer, read back and confirmed, then the card
     assert body(of(log, "rep.policy")[0])["intent"]["kind"] == "greet"
     (card,) = of(log, "approval.requested")

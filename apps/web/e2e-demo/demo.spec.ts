@@ -7,10 +7,10 @@ import { PORTS } from "./ports";
 // Each scenario has its own server (ports.ts). Every event checked here is read from the
 // run's own log through the real replay API.
 //
-// What the kernel on main does, asserted as it is: the call opens at the start (S1-SYS-21's
-// readiness gate is not merged), so the identity ask comes from the rep; after the approved
-// accept the rep confirms and closes the call, and the case stays COMMITTED (no confirmation
-// is relayed after the close, so Slow cannot check the account): the run does not end here.
+// Readiness is asserted order-agnostically (S1-SYS-21's gate or main's call at the start): the
+// call happens and the identity facts are public before the rep's offer. After the approved
+// accept the rep confirms and closes the call, and on main the case stays COMMITTED (no
+// confirmation is relayed after the close, so Slow cannot check the account): the run does not end here.
 type Ev = { seq: number; event_id: string; type: string; actor: string; cause_ids: string[]; payload: Record<string, unknown> };
 
 // The family's synthetic principal (tasks/families/x-out-of-envelope-approval.yaml).
@@ -107,11 +107,11 @@ async function toCard(page: Page) {
     "expires: confirmed",
   ]);
   const events = await log(page, id);
-  const cp = one(events, "chan.opened", { lane: "cp" });
-  const first = of(events, "user.msg")[0] as Ev;
-  expect(cp.seq).toBeLessThan(first.seq); // main: the call opens at the start
-  const facts = of(events, "fact.recorded", { scope: "public", source: "shareable" }).map((e) => e.payload.key);
-  expect(facts.sort()).toEqual(["account.holder_name", "account.last4"]);
+  one(events, "chan.opened", { lane: "cp" }); // the call happens, in either readiness order
+  const facts = of(events, "fact.recorded", { scope: "public", source: "shareable" });
+  expect(facts.map((e) => e.payload.key).sort()).toEqual(["account.holder_name", "account.last4"]);
+  const offered = of(events, "rep.policy").filter((e) => (e.payload.intent as { kind?: unknown }).kind === "offer");
+  expect(Math.max(...facts.map((e) => e.seq))).toBeLessThan((offered[0] as Ev).seq); // identity before the offer
   const requested = one(events, "approval.requested");
   await expect(card.getByLabel("Readback")).toHaveText(String(requested.payload.readback_text));
   await expect(page.getByRole("region", { name: "Authority" }).getByLabel("Case status")).toHaveText("status AWAITING_APPROVAL");
