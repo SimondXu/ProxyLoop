@@ -13,7 +13,7 @@ import pytest
 
 from proxyloop.contract.base import Lane
 from proxyloop.contract.state import Line
-from proxyloop.slow.transcript import LANE_CHARS, LINE_CHARS, Cursor, render
+from proxyloop.slow.transcript import LANE_CHARS, ROW_CHARS, Cursor, render
 
 ROW = re.compile(r'(▶|·) (\S+) (USER|CHAT VOICE|REP|PHONE VOICE): ("(?:[^"\\]|\\.)*")')
 HEADS = ("[CONVERSATIONS]", "USER CHAT:", "REP CALL:")
@@ -100,15 +100,53 @@ def test_the_cursor_marks_only_new_lines_and_a_lane_reset_makes_all_new() -> Non
     assert [(m[1], m[2]) for m in rows(text)] == [("▶", "cp-9")]
 
 
+def _cut(said: str, quoted: str) -> tuple[str, str, int]:
+    """(head, tail, chars cut) of a quoted line cut to ``ROW_CHARS``."""
+    kept = json.loads(quoted)
+    m = re.fullmatch(r"(.*)…\[([0-9]+) chars cut\]…(.*)", kept, re.DOTALL)
+    assert m is not None, kept
+    head, tail, cut = m[1], m[3], int(m[2])
+    assert said.startswith(head) and said.endswith(tail)
+    assert len(head) + cut + len(tail) == len(said)
+    assert abs(len(head) - len(tail)) <= 1 and head and tail
+    return head, tail, cut
+
+
 def test_a_long_line_keeps_its_head_and_tail() -> None:
+    assert ROW_CHARS == 480 <= min(LANE_CHARS.values())
     said = "H" * 300 + "M" * 200 + "T" * 300
     text, _ = render(lanes(cp=[user("cp-1", said)]), Cursor())
     (row,) = rows(text)
-    kept = json.loads(row[4])
-    half = LINE_CHARS // 2
-    cut = len(said) - LINE_CHARS
-    assert kept == said[:half] + f"…[{cut} chars cut]…" + said[-half:]
-    assert LINE_CHARS == 480
+    assert len(row[4]) <= ROW_CHARS  # the quoted text, as the request has it
+    head, _, cut = _cut(said, row[4])
+    assert len(row[4]) > ROW_CHARS - 12 and len(head) > 200 and cut < 350
+
+
+@pytest.mark.parametrize(
+    ("lane", "said"),
+    [
+        ("user", "请帮我把月费降到五十美元以下，" * 25),  # 375 CJK: 6 chars each
+        ("cp", "\U0001f600" * 480),  # 480 emoji: 12 chars each (a surrogate pair)
+        ("cp", "é" * 1_000),
+    ],
+    ids=["cjk-user", "emoji-rep", "latin-rep"],
+)
+def test_a_long_non_ascii_line_is_shown_cut_never_omitted(lane: str, said: str) -> None:
+    """Review M1: the cap bounds the escaped row, so a line of any script is
+    shown (head and tail), never dropped as too long."""
+    one = {"user": (), "cp": (), lane: (user("x-1", said),)}
+    text, cursor = render(one, Cursor())
+    (row,) = rows(text)
+    assert row[2] == "x-1" and len(row[4]) <= ROW_CHARS
+    _cut(said, row[4])
+    assert (cursor.new, cursor.omitted) == (1, 0)
+    assert "1 of 1 lines shown, 1 new" in text and "omitted" not in text
+
+
+def test_the_newest_row_is_always_kept() -> None:
+    said = [user("m1", "old"), user("m2", "newest")]
+    text, cursor = render(lanes(u=said), Cursor(), lane_chars={"user": 0, "cp": 0})
+    assert [m[2] for m in rows(text)] == ["m2"] and cursor.omitted == 1
 
 
 def test_each_lane_is_capped_old_lines_first_and_dropped_new_lines_counted() -> None:

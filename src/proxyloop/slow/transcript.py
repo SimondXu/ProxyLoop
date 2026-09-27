@@ -5,8 +5,9 @@ cursor; a lane whose lines no longer extend the ones seen is new again). Text
 is data: ``json.dumps(..., ensure_ascii=True)`` quotes it, so no line carries a
 raw newline or Unicode line separator and none can forge a line of the block
 or of the request. Caps [E]: ``LANE_CHARS`` per lane (old lines are dropped
-first, then the oldest new ones, counted as omitted and marked) and
-``LINE_CHARS`` of each line's text (its head and tail)."""
+first, then the oldest new ones, counted as omitted and marked; the newest
+line always stays) and ``ROW_CHARS`` of each line's quoted text as the request
+carries it, escapes included (its head and tail, cut between code points)."""
 
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from proxyloop.contract.base import Lane
 from proxyloop.contract.state import Line
 
 LANE_CHARS: Mapping[Lane, int] = {"user": 2_000, "cp": 4_000}  # [E] per lane
-LINE_CHARS = 480  # [E] of one line's text
+ROW_CHARS = 480  # [E] of one line's quoted, escaped text (<= every lane cap)
 _LANES: tuple[tuple[Lane, str], ...] = (("user", "USER CHAT"), ("cp", "REP CALL"))
 _SPEAKER = {
     ("user", "partner"): "USER",
@@ -81,22 +82,32 @@ def _first_new(lines: Sequence[Line], seen: tuple[int, str] | None) -> int:
     return count
 
 
+def _quote(text: str) -> str:
+    return json.dumps(text, ensure_ascii=True)
+
+
 def _row(lane: Lane, line: Line, new: bool) -> str:
-    text = line.text
-    if len(text) > LINE_CHARS:
-        half = LINE_CHARS // 2
-        cut = f"…[{len(text) - LINE_CHARS} chars cut]…"
-        text = text[:half] + cut + text[-half:]
-    quoted = json.dumps(text, ensure_ascii=True)
+    quoted, text = _quote(line.text), line.text
+    if len(quoted) > ROW_CHARS:  # head and tail, one code point at a time
+        room = ROW_CHARS - len(_quote(f"…[{len(text)} chars cut]…"))
+        head = tail = 0
+        while True:
+            end = head <= tail  # grow the shorter end
+            c = text[head] if end else text[-tail - 1]
+            if (room := room - len(_quote(c)) + 2) < 0:
+                break
+            head, tail = (head + 1, tail) if end else (head, tail + 1)
+        cut = f"…[{len(text) - head - tail} chars cut]…"
+        quoted = _quote(text[:head] + cut + text[len(text) - tail :])
     marker = "▶" if new else "·"
     return f"{marker} {line.utt_id} {_SPEAKER[lane, line.speaker]}: {quoted}"
 
 
 def _fit(rows: Sequence[str], budget: int) -> list[int]:
     """The indexes kept within ``budget`` characters (a newline each): the
-    oldest old lines go first, then the oldest new ones."""
+    oldest old lines go first, then the oldest new ones; never the newest."""
     kept = list(range(len(rows)))
     size = sum(len(r) + 1 for r in rows)
-    while kept and size > budget:
+    while len(kept) > 1 and size > budget:
         size -= len(rows[kept.pop(0)]) + 1
     return kept
