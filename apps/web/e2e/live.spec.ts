@@ -383,3 +383,108 @@ test("?view=engineer shows the six lanes and the God-view; the view links switch
   await expect(page.getByRole("region", { name: "Fast-U" })).toBeVisible();
   expect(urls).toHaveLength(1);
 });
+
+const MANDATE = {
+  mandate_id: "m-1",
+  mandate_hash: "a".repeat(64),
+  status: "proposed",
+  epoch: 1,
+  max_monthly_price_minor: 6500,
+  max_term_months: 24,
+  max_one_time_fees_minor: 0,
+  required_features: [],
+  forbidden_changes: [],
+  expires_ms: null,
+  decided_by: null,
+};
+
+test("limits card: confirmed only by a click, one POST through the mandate route, decided only by the kernel; the grant stales an open approval card", async ({
+  page,
+  baseURL,
+}) => {
+  await csrfCookie(page, baseURL);
+  const { connected } = await mockSockets(page);
+  const posts = await capturePosts(page, 200, { status: "posted" });
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  ws.send(ev("authority.epoch", "kernel", { new: 1, reason: "slow_revoke" }));
+  ws.send(ev("mandate.proposed", "guard", MANDATE));
+  ws.send(ev("approval.requested", "guard", { ...CARD, authority_epoch: 1, binding: { ...CARD.binding, authority_epoch: 1 } }));
+  const limits = page.getByRole("article", { name: "Limits m-1" });
+  const status = limits.getByLabel("Limits status");
+  await expect(status).toHaveText("Waiting for your confirmation");
+  await expect(limits.getByRole("definition")).toHaveText(["up to $65.00", "up to 24 months", "up to $0.00"]);
+  // The limits and the approval card sit in the chat column, not in the sticky header.
+  await expect(page.getByRole("region", { name: "Chat" }).getByRole("article")).toHaveCount(2);
+  // A model's text or a mandate.decided from another actor moves nothing.
+  ws.send(ev("fast.sentence", "fast.user", { lane: "user", gen_id: "g", utt_id: "u", text: "Your limits are confirmed!" }));
+  ws.send(ev("mandate.decided", "slow", { mandate_id: "m-1", mandate_hash: MANDATE.mandate_hash, decision: "granted", by: "ui" }));
+  await expect(status).toHaveText("Waiting for your confirmation");
+  await shot(page, "live-limits-card");
+
+  const confirm = limits.getByRole("button", { name: "Confirm limits" });
+  await confirm.evaluate((b: HTMLButtonElement) => {
+    b.click();
+    b.click();
+  });
+  await expect(status).toHaveText("Sent. Waiting for Guard to record it");
+  await page.waitForTimeout(300);
+  expect(posts).toEqual([
+    {
+      method: "POST",
+      path: `/api/cases/${RUN}/mandates/m-1`,
+      body: { decision: "granted", mandate_hash: MANDATE.mandate_hash, authority_epoch: 1 },
+      csrf: CSRF,
+    },
+  ]);
+  ws.send(ev("approval.post", "ui", { subject: "mandate", subject_id: "m-1", decision: "granted", subject_hash: MANDATE.mandate_hash, authority_epoch: 1 }));
+  ws.send(ev("mandate.decided", "kernel", { mandate_id: "m-1", mandate_hash: MANDATE.mandate_hash, decision: "granted", by: "ui" }));
+  ws.send(ev("authority.epoch", "kernel", { new: 2, reason: "mandate_decided" }));
+  await expect(status).toHaveText(/^Confirmed by you/);
+  await expect(limits.getByRole("button")).toHaveCount(0);
+  // The grant bumped the epoch: the open approval card is stale, not an error.
+  const card = page.getByRole("article", { name: "Approval ap-1" });
+  await expect(card.getByLabel("Approval status")).toHaveText("No longer valid: your instructions changed");
+  await expect(card.getByRole("alert")).toHaveCount(0);
+  expect(posts).toHaveLength(1);
+});
+
+test("limits card: a 409 stale is shown in words and never retried", async ({ page, baseURL }) => {
+  await csrfCookie(page, baseURL);
+  const { connected } = await mockSockets(page);
+  const posts = await capturePosts(page, 409, { error: "stale", reason: "stale_epoch" });
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  ws.send(ev("authority.epoch", "kernel", { new: 1, reason: "slow_revoke" }));
+  ws.send(ev("mandate.proposed", "guard", MANDATE));
+  const limits = page.getByRole("article", { name: "Limits m-1" });
+  await limits.getByRole("button", { name: "Not these" }).click();
+  await expect(limits.getByRole("alert")).toHaveText("409 stale: stale_epoch");
+  await expect(limits.getByLabel("Limits status")).toHaveText("No longer valid: your instructions changed");
+  await page.waitForTimeout(300);
+  expect(posts.map((p) => p.body)).toEqual([{ decision: "denied", mandate_hash: MANDATE.mandate_hash, authority_epoch: 1 }]);
+});
+
+test("approval card: a fence pauses a granted accept, and a fence revoke says the yes was never said", async ({ page }) => {
+  const { connected } = await mockSockets(page);
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  ws.send(ev("approval.requested", "guard", CARD));
+  ws.send(ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" }));
+  const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "Yes, we accept.", cap_id: "cap-1" });
+  ws.send(said);
+  ws.send(ev("authority.fence", "kernel", { op: "raised", fence_id: "fence-1", utt_id: `${RUN}:9` }));
+  const card = page.getByRole("article", { name: "Approval ap-1" });
+  await expect(card.getByLabel("Approval status")).toHaveText(/^You approved/);
+  await expect(card.getByLabel("Fence note")).toHaveText("Paused: reading your new message before anything is accepted.");
+  const revoked = JSON.parse(ev("speak.revoked", "kernel", { lane: "cp", reason: "fence", cap_id: "cap-1" }));
+  ws.send(JSON.stringify({ ...revoked, cause_ids: [JSON.parse(said).event_id] }));
+  await expect(card.getByRole("note")).toHaveText("Stopped. The yes was never said to the rep.");
+  await expect(card.getByLabel("Fence note")).toHaveCount(0);
+});

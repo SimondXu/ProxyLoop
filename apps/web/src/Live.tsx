@@ -1,17 +1,21 @@
 // The live shell (?live=<run_id>), fed by /ws/live: by default the conversation
 // view (Conversation.tsx) with the chat input in the chat pane; with
 // ?view=engineer the replay's lanes, cards and drawer. Both keep the honesty band,
-// the status line, the authority strip and the approval cards in the sticky header. It shows only
+// the status line and the authority strip in the sticky header; the limits and
+// approval cards sit in the chat column, above the input. It shows only
 // what events say. Models are chosen on the start page (?start); here RunSummary
 // shows the ones session.started names.
 import { useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { Drawer, Lanes, RunSummary, useDrill } from "./App";
 import { parties } from "./conversation";
 import { Panes, StatusBar, useView } from "./ConversationView";
-import { approvalCards, type CardStatus, type CardView, type Posting } from "./approval";
+import { approvalCards, type CardView, type Posting } from "./approval";
 import { authorityStrip, type Strip } from "./authority";
 import { parseEvent, unechoed, type Framed, type Sent, type Stream } from "./liveState";
-import { postApproval, postMessage, type Decision, type PostResult } from "./liveApi";
+import { ApprovalCard } from "./live/ApprovalCard";
+import { LimitsCard } from "./live/LimitsCard";
+import { postApproval, postMandate, postMessage, type Decision, type PostResult } from "./liveApi";
+import { mandateCards, type MandateView } from "./mandate";
 import { honesty } from "./provenance";
 import { indexEvents } from "./replay";
 import { AppShell } from "./shell/AppShell";
@@ -31,23 +35,32 @@ export function Live({ runId }: { runId: string }) {
   const { drill, open, close } = useDrill(runId, ended ? undefined : PROMPTS_LATER);
   const [god, setGod] = useState(false);
   const [posts, setPosts] = useState<ReadonlyMap<string, Posting>>(new Map());
+  const [mandatePosts, setMandatePosts] = useState<ReadonlyMap<string, Posting>>(new Map());
   const [sent, setSent] = useState<Sent[]>([]);
 
   const cards = useMemo(() => approvalCards(events, posts), [events, posts]);
+  const mandates = useMemo(() => mandateCards(events, mandatePosts), [events, mandatePosts]);
   const strip = useMemo(() => authorityStrip(events), [events]);
   const who = useMemo(() => parties(events), [events]); // live: only what has arrived
   const h = useMemo(() => honesty(events), [events]);
   // Cards with a pending or ok post: a second click, even before a re-render, never POSTs again.
   const claimed = useRef(new Set<string>());
+  const once = (key: string, set: typeof setPosts, id: string, send: () => Promise<PostResult>) => {
+    if (claimed.current.has(key)) return;
+    claimed.current.add(key);
+    set((m) => new Map(m).set(id, "pending"));
+    void send().then((r) => {
+      if (!r.ok) claimed.current.delete(key); // a failed post may be clicked again, by hand
+      set((m) => new Map(m).set(id, r));
+    });
+  };
   const decide = (view: CardView, decision: Decision) => {
     const id = view.card.approval_id;
-    if (claimed.current.has(id)) return;
-    claimed.current.add(id);
-    setPosts((m) => new Map(m).set(id, "pending"));
-    void postApproval(runId, view.card, decision).then((r) => {
-      if (!r.ok) claimed.current.delete(id); // a failed post may be clicked again, by hand
-      setPosts((m) => new Map(m).set(id, r));
-    });
+    once(`approval:${id}`, setPosts, id, () => postApproval(runId, view.card, decision));
+  };
+  const decideMandate = (view: MandateView, decision: Decision) => {
+    const id = view.mandate.mandate_id;
+    once(`mandate:${id}`, setMandatePosts, id, () => postMandate(runId, view.mandate, decision));
   };
   const send = async (text: string) => {
     const after = stream.next;
@@ -57,7 +70,30 @@ export function Live({ runId }: { runId: string }) {
   };
   const echoes = events.filter((e) => e.type === "user.msg").map((e) => ({ seq: e.seq, text: String(e.payload.text) }));
   const { engineer, link } = useView();
-  const composer = <Composer label={CHAT_LABEL} post={send} pending={unechoed(sent, echoes).map((s) => s.text)} />;
+  // Guard cards in event order, in the chat column above the input.
+  const guardCards = [
+    ...mandates.map((v) => ({ seq: v.seq, el: <LimitsCard key={`m:${v.mandate.mandate_id}`} view={v} events={events} decide={decideMandate} /> })),
+    ...cards.map((v) => ({
+      seq: v.seq,
+      el: (
+        <ApprovalCard
+          key={`a:${v.card.approval_id}`}
+          view={v}
+          events={events}
+          mandates={mandates}
+          fenced={strip.fences.length > 0}
+          caseStatus={strip.status}
+          decide={decide}
+        />
+      ),
+    })),
+  ].sort((a, b) => a.seq - b.seq);
+  const composer = (
+    <>
+      {guardCards.length > 0 && <div className="pl-gcards">{guardCards.map((c) => c.el)}</div>}
+      <Composer label={CHAT_LABEL} post={send} pending={unechoed(sent, echoes).map((s) => s.text)} />
+    </>
+  );
 
   return (
     <AppShell>
@@ -74,13 +110,6 @@ export function Live({ runId }: { runId: string }) {
           )}
         </header>
         <StatusBar events={events} />
-        {cards.length > 0 && (
-          <section className="approvals" aria-label="Approvals">
-            {cards.map((v) => (
-              <Approval key={v.card.approval_id} view={v} decide={decide} fenced={strip.fences.length > 0} />
-            ))}
-          </section>
-        )}
         <details className="authority">
           <summary>Authority details (raw case status, fence, epoch)</summary>
           <AuthorityStrip a={strip} />
@@ -142,60 +171,6 @@ function AuthorityStrip({ a }: { a: Strip }) {
         last action.denied {a.denied ? `${a.denied.intent}: ${a.denied.reason} (${a.denied.actor})` : "none"}
       </span>
     </section>
-  );
-}
-
-const STATUS: Record<CardStatus, string> = {
-  open: "awaiting your decision",
-  pending: "sending…",
-  sent: "sent: waiting for the kernel's decision",
-  stale: "stale",
-  superseded: "superseded by a newer card for this offer",
-  already_decided: "already decided: waiting for approval.decided",
-  refused: "refused",
-  granted: "decided: granted",
-  denied: "decided: denied",
-};
-
-// A raised fence does not block the approval (guard.decide does not check fences);
-// it holds the accept (ARCHITECTURE §9.4), so the card says so while it may still be decided.
-const UNDECIDED: CardStatus[] = ["open", "pending", "sent"];
-
-function Approval({ view, decide, fenced }: { view: CardView; decide: (v: CardView, d: Decision) => void; fenced: boolean }) {
-  const { card, status, by, error, reason, slots } = view;
-  const live = status === "open";
-  return (
-    <article className={`approval ${status}`} aria-label={`Approval ${card.approval_id}`}>
-      <h2>Approval requested</h2>
-      <pre aria-label="Readback">{card.readback_text}</pre>
-      <p className="meta">
-        offer {card.offer_ref} rev {card.revision} · epoch {card.authority_epoch} · terms {card.terms_hash.slice(0, 12)}
-      </p>
-      {slots ? (
-        <ul aria-label="Read-back progress" className="slots">
-          {slots.map((s) => (
-            <li key={s.field} className={s.status}>
-              {s.field}: {s.status}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="meta">no readback.updated for this offer revision yet</p>
-      )}
-      <p aria-label="Approval status">
-        {STATUS[status]}
-        {by ? ` by ${by}` : ""}
-        {reason ? `: ${reason}` : ""}
-      </p>
-      {fenced && UNDECIDED.includes(status) && <p aria-label="Fence note">fence raised: the accept waits until it clears</p>}
-      {error && <p role="alert">{error}</p>}
-      <Button variant="primary" disabled={!live} onClick={() => decide(view, "granted")}>
-        Approve
-      </Button>
-      <Button disabled={!live} onClick={() => decide(view, "denied")}>
-        Deny
-      </Button>
-    </article>
   );
 }
 
