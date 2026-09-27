@@ -14,7 +14,13 @@ from tests.llm.wire import Recorder, counter_clock, set_env
 
 from proxyloop.contract.llm import ModelRef, Usage
 from proxyloop.llm.parity import GoldenPrompt, check_parity
-from proxyloop.llm.spend import RunawaySpend, SpendLedger
+from proxyloop.llm.spend import (
+    RUNAWAY_FACTOR,
+    SESSION_CAP_MICRO_USD,
+    Rate,
+    RunawaySpend,
+    SpendLedger,
+)
 from proxyloop.llm.vllm import VLLMClient
 from scripts.sys.llm_smoke import golden_prompts
 
@@ -87,8 +93,12 @@ def _record(ref: ModelRef, prompt: int, completion: int, **update: object) -> An
     return call_record(ref, usage=usage, **update)
 
 
+def _ledger(tokens: int = 10**9, calls: int = 50, **kw: Any) -> SpendLedger:
+    return SpendLedger(projected_tokens=tokens, projected_calls=calls, **kw)
+
+
 def test_relay_calls_are_priced_from_the_rate_card() -> None:
-    ledger = SpendLedger(projected_episode_micro_usd=1_000_000, projected_calls=50)
+    ledger = _ledger()
     charge = ledger.charge(_record(SONNET, 1_000, 200, role="slow"))
     assert (charge.basis, charge.micro_usd) == ("tokens", 3_000 + 3_000)
     assert ledger.spend.micro_usd == 6_000 and ledger.spend.by_role == {"slow": 6_000}
@@ -98,14 +108,14 @@ def test_relay_calls_are_priced_from_the_rate_card() -> None:
     ("ref", "basis"),
     [
         (QWEN, "gpu_time"),  # Modal bills the GPU per second, outside the ledger
-        (GEMINI, "unpriced"),  # TeamRouter: no measured rate (ADR-0005)
+        (GEMINI, "unpriced"),  # TeamRouter: no measured rate yet (S0-ROOT-12)
         (SONNET.model_copy(update={"model_id": "gpt-5.4-mini-2026-03-17"}), "unpriced"),
     ],
 )
 def test_calls_without_a_token_rate_are_never_priced_at_zero(
     ref: ModelRef, basis: str
 ) -> None:
-    ledger = SpendLedger(projected_episode_micro_usd=1_000, projected_calls=50)
+    ledger = _ledger()
     charge = ledger.charge(_record(ref, 5_000, 500, requested_model=ref.model_id))
     assert (charge.basis, charge.micro_usd) == (basis, None)
     assert ledger.spend.micro_usd == 0
@@ -113,34 +123,65 @@ def test_calls_without_a_token_rate_are_never_priced_at_zero(
 
 
 def test_failed_call_without_usage_is_unpriced() -> None:
-    ledger = SpendLedger(projected_episode_micro_usd=1_000, projected_calls=50)
     failed = call_record(SONNET, usage=None, error="HTTP 503", response_sha=None)
-    assert ledger.charge(failed).basis == "unpriced"
+    assert _ledger().charge(failed).basis == "unpriced"
 
 
-def test_runaway_guard_raises_past_10x_the_projection() -> None:
-    ledger = SpendLedger(
-        projected_episode_micro_usd=1_000, projected_calls=50
-    )  # limit 10,000 micro-USD
-    ledger.charge(_record(SONNET, 2_000, 0))  # 6,000
-    ledger.charge(_record(SONNET, 1_000, 0))  # 9,000
+def test_the_absolute_session_cap_is_2_usd() -> None:  # root decision, 2026-09-26
+    assert SESSION_CAP_MICRO_USD == 2_000_000 and RUNAWAY_FACTOR == 3
+    test_rate = {SONNET.model_id: Rate(100.0, 0.0)}  # test-only: $1 per 10k tokens
+    ledger = _ledger(rates=test_rate)
+    ledger.charge(_record(SONNET, 10_000, 0))  # $1
+    ledger.charge(_record(SONNET, 10_000, 0))  # $2: at the cap, not past it
     with pytest.raises(RunawaySpend, match="runaway spend") as caught:
-        ledger.charge(_record(SONNET, 1_000, 0, call_id="k9"))  # 12,000
+        ledger.charge(_record(SONNET, 1, 0, call_id="k9"))
     assert caught.value.charge.call_id == "k9"
-    assert ledger.spend.micro_usd == 12_000  # the crossing charge is kept
+    assert ledger.spend.micro_usd == 2_000_100  # the crossing charge is kept
 
 
-def test_unpriced_call_guard_raises_past_10x_the_projected_calls() -> None:
-    ledger = SpendLedger(projected_episode_micro_usd=1_000, projected_calls=2)
-    for k in range(20):  # limit: 20 unpriced calls
-        ledger.charge(_record(GEMINI, 5_000, 500, call_id=f"w{k}"))
+def test_the_token_guard_counts_hosted_tokens_past_3x_the_projection() -> None:
+    ledger = _ledger(tokens=1_000)  # limit: 3,000 hosted tokens
+    for k in range(3):
+        ledger.charge(_record(GEMINI, 900, 100, call_id=f"w{k}"))
+    ledger.charge(_record(QWEN, 5_000, 500))  # gpu_time: Modal bills it, not tokens
+    assert ledger.tokens == 3_000
+    with pytest.raises(RunawaySpend, match="runaway tokens") as caught:
+        ledger.charge(_record(SONNET, 1, 0, call_id="s1"))  # priced ones count too
+    assert caught.value.charge.call_id == "s1"
+
+
+def test_unpriced_call_guard_raises_past_3x_the_projected_calls() -> None:
+    ledger = _ledger(calls=2)
+    for k in range(6):  # limit: 6 unpriced calls
+        ledger.charge(_record(GEMINI, 5, 5, call_id=f"w{k}"))
     ledger.charge(_record(QWEN, 5_000, 500))  # gpu_time: not an unpriced call
     with pytest.raises(RunawaySpend, match="runaway calls") as caught:
-        ledger.charge(_record(GEMINI, 5_000, 500, call_id="w20"))
-    assert caught.value.charge.call_id == "w20" and ledger.unpriced_calls == 21
+        ledger.charge(_record(GEMINI, 5, 5, call_id="w6"))
+    assert caught.value.charge.call_id == "w6" and ledger.unpriced_calls == 7
 
 
-@pytest.mark.parametrize(("cost", "calls"), [(0, 5), (1_000, 0)])
-def test_projections_must_be_positive(cost: int, calls: int) -> None:
+@pytest.mark.parametrize(("tokens", "calls", "cap"), [(0, 5, 1), (9, 0, 1), (9, 5, 0)])
+def test_limits_must_be_positive(tokens: int, calls: int, cap: int) -> None:
     with pytest.raises(ValueError):
-        SpendLedger(projected_episode_micro_usd=cost, projected_calls=calls)
+        _ledger(tokens, calls, cap_micro_usd=cap)
+
+
+@pytest.mark.parametrize(
+    ("refs", "factor"),
+    [
+        ((), RUNAWAY_FACTOR),
+        ((SONNET, QWEN), RUNAWAY_FACTOR),  # every role priced (or GPU time)
+        ((SONNET, QWEN, GEMINI), 1),  # TeamRouter: no rate card row yet
+        ((SONNET.model_copy(update={"model_id": "no-such-rate"}),), 1),
+    ],
+)
+def test_an_unpriced_role_drops_the_guard_factor_to_1(
+    refs: tuple[ModelRef, ...], factor: int
+) -> None:  # main root decision, #133 round 2
+    ledger = _ledger(tokens=1_000, calls=10, refs=refs)
+    assert ledger.factor == factor
+    assert (ledger.limit_tokens, ledger.limit_unpriced_calls) == (
+        factor * 1_000,
+        factor * 10,
+    )
+    assert ledger.limit_micro_usd == SESSION_CAP_MICRO_USD  # absolute either way

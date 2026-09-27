@@ -4,11 +4,13 @@ GREET -> IDENTIFY -> DISCOVER -> OFFER(k) -> FINAL -> CONFIRM -> CONFIRMED |
 TRANSFER | ENDED. The rep knows only the acts it heard, its offers and the
 clock (no agent state). Each distinct lever unlocks the next ladder rung;
 hidden terms are said only on a read-back; offers expire after their TTL;
-silence over ``silence_s`` while the floor is free (``floor``), a hold over
-``hold_s``, or any act but ``provide_fact`` while identifying (hold and
-supervisor requests aside) is a strike, and the last strike hangs up. Identity
-strikes count what was heard, not time, so they apply in rep-chat too, where
-only the timer patience (silence, hold) is suspended.
+silence over ``silence_s`` while the floor is free (``floor``), or a hold over
+``hold_s``, is a timer strike; any act but ``provide_fact`` while identifying
+(hold and supervisor requests aside) is an identity strike. Each kind has its
+own counter, neither adds to the other, and either reaching
+``patience.strikes`` hangs up. Identity strikes count what was heard, not
+time, so they apply in rep-chat too, where only the timer patience is
+suspended.
 
 World rule (for S1-SYS-04 to confirm): accepting an open offer by name commits
 at once (``rep.commit_heard``) and the ledger binds all its terms, hidden ones
@@ -113,7 +115,7 @@ class Policy:
     ) -> None:
         self.spec, self.identity = spec, dict(identity)
         self.state: State = "GREET"
-        self.rung, self.strikes = -1, 0
+        self.rung, self.identity_strikes, self.timer_strikes = -1, 0, 0
         self.offers: dict[str, _Offer] = {}
         self.ledger: Ledger[BoundTerms] = Ledger(spec.ledger)
         self._verified: set[str] = set()
@@ -121,6 +123,12 @@ class Policy:
         self._pending: str | None = None
         self._hold_since: int | None = None
         self._free_since: int | None = t0_ms  # None: someone has the floor
+
+    @property
+    def strikes(self) -> int:
+        """Both kinds together: as many as the ``chan.strike`` events."""
+
+        return self.identity_strikes + self.timer_strikes
 
     @property
     def done(self) -> bool:
@@ -165,10 +173,10 @@ class Policy:
         )
         if since is None or t_ms - since < 1000 * limit:
             return out
-        self.strikes += 1  # the rep speaks up: it takes the floor
+        self.timer_strikes += 1  # the rep speaks up: it takes the floor
         self._free_since, self._hold_since = None, None if hold is None else t_ms
         before = self.state
-        self.state = "ENDED" if self.strikes >= p.strikes else self.state
+        self.state = "ENDED" if self.timer_strikes >= p.strikes else self.state
         intent = PublicIntent(kind="hang_up" if self.done else "check_in")
         return [*out, Decision(before, self.state, intent, self._rung(), strike=True)]
 
@@ -189,8 +197,8 @@ class Policy:
         if self.state == "IDENTIFY":
             facts = act.facts if a == "provide_fact" else ()
             if a != "provide_fact":  # identity patience
-                self.strikes += 1
-                if self.strikes >= self.spec.patience.strikes:
+                self.identity_strikes += 1
+                if self.identity_strikes >= self.spec.patience.strikes:
                     self.state = "ENDED"
                     return PublicIntent(kind="hang_up"), None
             for fact in facts:  # a wrong value is asked again, not struck
