@@ -59,9 +59,10 @@ def test_every_detector_equals_the_hand_count(tmp_path: Path) -> None:
         "slow_last_step_to_end_ms": 800,  # step 30 (t=3000) to the end, 3800
         "slow_steps": 2,  # seqs 1, 30
         # no fast.request names a profile here, so every turn's grammar is
-        # unknown (test_speech_after_pause_follows_the_profile has them)
+        # unknown (test_speech_after_pause_follows_the_profile has them):
+        # no turn could be read, so the count is None, not a clean 0
         "speech_after_pause": {
-            "count": 0, "items": 0, "issues": 0, "turns": [],
+            "count": None, "items": 0, "issues": 0, "turns": [],
             "unknown": [5, 13, 25, 28],
         },
         # after @hold in cp-g1 (turn 13): "Stray one." + "Stray two." +

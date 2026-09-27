@@ -52,6 +52,9 @@ def test_a_bad_bundle_is_skipped_not_fatal(
     runs_lines = [line for line in captured.out.splitlines() if "rT " in line]
     assert len(runs_lines) == 1
     assert "guide_to_heard_ms=400" in runs_lines[0]  # the p50, not the count
+    # no turn has a profile: unknown, and how many, never a clean 0
+    assert "speech_after_pause=?" in runs_lines[0]
+    assert "speech_after_pause.unknown_n=4" in runs_lines[0]
 
 
 def test_a_sealed_root_is_refused(

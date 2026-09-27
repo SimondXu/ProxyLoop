@@ -76,6 +76,15 @@ def _brief(value: object) -> str:
     return str(value)
 
 
+def _extra(d: dict[str, object]) -> list[tuple[str, object]]:
+    """``unasked_n`` as is; ``unknown_n``: the length of an ``unknown`` list."""
+    out = [("unasked_n", d["unasked_n"])] if "unasked_n" in d else []
+    unknown = d.get("unknown")
+    if isinstance(unknown, list) and unknown:
+        out.append(("unknown_n", len(cast(list[object], unknown))))
+    return out
+
+
 def table(all_rows: Sequence[Row]) -> str:
     """Per group: one line per run with its nonzero or unknown (``?``)
     detector scalars, then the group's totals: ``sum`` (``max`` for ``_MAX``;
@@ -92,10 +101,8 @@ def table(all_rows: Sequence[Row]) -> str:
         for r in members:
             cells: list[str] = []
             items = list(cast(dict[str, object], r["detectors"]).items())
-            items += [  # a second scalar, shown on its own
-                (f"{k}.unasked_n", d["unasked_n"])
-                for k, v in items
-                if "unasked_n" in (d := as_dict(v))
+            items += [  # second scalars, shown on their own
+                (f"{k}.{n}", m) for k, v in list(items) for n, m in _extra(as_dict(v))
             ]
             for name, value in items:
                 if name in _TEXT:

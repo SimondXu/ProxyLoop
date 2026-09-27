@@ -211,7 +211,7 @@ def _after(items: Sequence[fp.TurnItem], marks: tuple[type, ...]) -> int:
 def _speech_after(x: Inputs) -> Value:
     """Speech items after the first directive in each Fast turn's raw
     response, parsed by the contract parser's base grammar; ``turns`` lists
-    [seq, items]."""
+    [seq, items]; ``count`` None: no turn could be read."""
     turns: list[list[int]] = []
     unknown: list[int] = []
     for t in x.turns:
@@ -219,7 +219,13 @@ def _speech_after(x: Inputs) -> Value:
             unknown.append(t.seq)
         elif n := _after(t.items, _DIRECTIVES):
             turns.append([t.seq, n])
-    return {"count": sum(n for _, n in turns), "turns": turns, "unknown": unknown}
+    count = _known(sum(n for _, n in turns), unknown, x)
+    return {"count": count, "turns": turns, "unknown": unknown}
+
+
+def _known(count: int, unknown: list[int], x: Inputs) -> int | None:
+    """None when there were turns and none could be read: no clean 0."""
+    return None if unknown and len(unknown) == len(x.turns) else count
 
 
 @detector("speech_after_pause")
@@ -228,7 +234,8 @@ def _speech_after_pause(x: Inputs) -> Value:
     grammar of its fast.request ``profile`` (the contract parser): ``items``,
     Speech items after the pause on a profile without ``pause_ends_speech``;
     ``issues``, ParseIssue(speech_after_pause) on one with it (pl_cp_v3, one
-    per line, ADR-0017); ``count``, both; ``turns`` lists [seq, n];
+    per line, ADR-0017); ``count``, both (None: no turn could be read);
+    ``turns`` lists [seq, n];
     ``unknown``: no response, or a missing or unknown profile."""
     turns: list[list[int]] = []
     unknown: list[int] = []
@@ -250,7 +257,8 @@ def _speech_after_pause(x: Inputs) -> Value:
             items += n
         if n:
             turns.append([t.seq, n])
-    return {"count": items + issues, "items": items, "issues": issues,
+    return {"count": _known(items + issues, unknown, x), "items": items,
+            "issues": issues,
             "turns": turns, "unknown": unknown}  # fmt: skip
 
 
