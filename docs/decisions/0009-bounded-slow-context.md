@@ -1,6 +1,6 @@
 # ADR-0009: Bounded Slow context
 
-- **Status:** proposed
+- **Status:** accepted (root decision under §0.5a, 2026-09-27)
 - **Date:** 2026-09-26
 - **Task:** S0-SYS-07
 - **Amends:** ARCHITECTURE §8 "Slow context" ("the append-only tool history").
