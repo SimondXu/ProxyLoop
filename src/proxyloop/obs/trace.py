@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -25,7 +26,7 @@ from typing import Literal, TypeGuard, cast
 from proxyloop.contract.bundle import EVENTS, MANIFEST, PROMPTS, PromptRecord
 from proxyloop.contract.events import Event
 from proxyloop.contract.llm import LLMCallRecord
-from proxyloop.obs.runs import Seal, head, sealed
+from proxyloop.obs.runs import OPEN_SPLITS, Seal, head, sealed
 
 Value = str | int | float | bool | tuple[str, ...]
 Sink = Callable[[Sequence["SpanRecord"]], None]
@@ -40,6 +41,16 @@ _ALLOWED = (
     "ttft_ms", "ttfs_ms", "offer_ref", "revision", "scope", "status", "previous",
 )  # fmt: skip
 _TOOL = ("name", "ok")
+# Slow's tool names (slow/tools.py ``_run``, plus the ``act`` wrapper); the model
+# picks the name, so any other name is exported as "unknown".
+_TOOLS = frozenset(
+    {"act", "ask_user", "tell_user", "wait", "guide_fast", "record_fact",
+     "record_offer", "share_fact", "request_approval", "accept_offer",
+     "decline_offer", "propose_mandate", "tighten_mandate", "revoke",
+     "check_account"}
+)  # fmt: skip
+# Defence in depth: an allow-listed string is an identifier or it is dropped.
+_TOKEN = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
 # Authority payloads never leave the bundle, whatever their keys.
 _ENVELOPE_ONLY = ("approval.", "mandate.", "declass.denied")
 # The cp-lane text I4 makes public: the rep's lines and the agent's heard lines.
@@ -74,24 +85,34 @@ def span_id(event_id: str) -> str:
 
 def check(run: Path, seal: Seal) -> None:
     """Raise ``Refused`` unless the bundle is unsealed and its split is known
-    and not ``test``. Reads only the manifest or the first line."""
-    if seal.covers(run) or sealed(run, seal):
-        raise Refused(f"{run} is sealed held-out data (AGENTS rule 11)")
+    and open (train or dev). Reads only the manifest or the first line."""
+    unseal(run, seal)
     at = head(run)
     if at is None:
         raise Refused(f"{run}: no {MANIFEST} and no session.started, so no split")
-    if at["split"] == "test":
-        raise Refused(f"{run} has split test (AGENTS rule 11)")
+    if at["split"] not in OPEN_SPLITS:
+        raise Refused(f"{run} has split {at['split']!r} (AGENTS rule 11)")
 
 
-def lines(path: Path, follow: bool, poll_s: float = 0.2) -> Iterator[str]:
-    """Complete lines only: a partial last line waits for its newline. When
-    following, an idle poll yields ``""``."""
+def unseal(run: Path, seal: Seal) -> None:
+    """Refuse a sealed bundle; run again right before any file is opened."""
+    if seal.covers(run) or sealed(run, seal):
+        raise Refused(f"{run} is sealed held-out data (AGENTS rule 11)")
+
+
+def lines(
+    path: Path, follow: bool, strict: bool = False, poll_s: float = 0.2
+) -> Iterator[str]:
+    """Complete lines only: a partial last line waits for its newline, or is
+    an error if ``strict`` (a finished bundle). When following, an idle poll
+    yields ``""``."""
     with path.open("rb") as f:
         rest = b""
         while True:
             chunk = f.read(1 << 16)
             if not chunk:
+                if strict and rest.strip():
+                    raise ValueError(f"{path} ends in a partial line")
                 if not follow:
                     return
                 yield ""
@@ -104,12 +125,14 @@ def lines(path: Path, follow: bool, poll_s: float = 0.2) -> Iterator[str]:
 class Prompts:
     """``prompts.jsonl`` by sha, re-read on a miss (the bundle may be growing)."""
 
-    def __init__(self, path: Path) -> None:
-        self.path, self._by_sha = path, dict[str, str]()
+    def __init__(self, run: Path, seal: Seal) -> None:
+        self.run, self.seal, self._by_sha = run, seal, dict[str, str]()
 
     def get(self, sha: str) -> str | None:
-        if sha not in self._by_sha and self.path.is_file():
-            for line in lines(self.path, follow=False):
+        if sha not in self._by_sha:
+            unseal(self.run, self.seal)
+        if sha not in self._by_sha and (self.run / PROMPTS).is_file():
+            for line in lines(self.run / PROMPTS, follow=False):
                 record = PromptRecord.model_validate_json(line)
                 self._by_sha[record.sha] = record.content
         return self._by_sha.get(sha)
@@ -127,8 +150,8 @@ class Mapper:
         if self._root is None:
             if event.type != "session.started":
                 raise Refused("the first event is not session.started: no split")
-            if event.payload.get("split") == "test":
-                raise Refused("session.started has split test (AGENTS rule 11)")
+            if event.payload.get("split") not in OPEN_SPLITS:
+                raise Refused("session.started's split is not open (AGENTS rule 11)")
             self._origin_ns = _ns(event.wall) - event.t_ms * 1_000_000
             self._root = span_id(event.event_id)
             parent = None
@@ -171,11 +194,13 @@ class Mapper:
         keys = _ALLOWED + (_TOOL if event.type == "slow.tool" else ())
         attrs: dict[str, Value] = {}
         for k in keys:
-            if _scalar(v := p.get(k)):
+            if _identifier(v := p.get(k)):
                 attrs[f"pl.{k}"] = v
+        if event.type == "slow.tool" and p.get("name") not in _TOOLS:
+            attrs["pl.name"] = "unknown"
         guide = p.get("guide")
         guide = cast(dict[str, object], guide) if isinstance(guide, dict) else {}
-        if _scalar(move := guide.get("move")):
+        if _identifier(move := guide.get("move")):
             attrs["pl.move"] = move
         key = _CP_TEXT.get(event.type)
         public = self.prompts is not None and p.get("lane") == "cp"
@@ -209,15 +234,15 @@ def export(run: Path, sink: Sink, content: bool = False, follow: bool = False) -
     """Map the bundle at ``run`` and hand its spans to ``sink``: all at once,
     or when following, per poll until ``session.ended``. Returns the count."""
     seal = Seal()
-    if seal.covers(run):  # never stat inside sealed data, even to wait
-        raise Refused(f"{run} is sealed held-out data (AGENTS rule 11)")
-    while follow and not _ready(run):
+    while follow and not _ready(run, seal):
         time.sleep(0.2)
     check(run, seal)
-    mapper = Mapper(Prompts(run / PROMPTS) if content else None)
+    mapper = Mapper(Prompts(run, seal) if content else None)
     batch: list[SpanRecord] = []
     total = 0
-    for line in lines(run / EVENTS, follow):
+    strict = not follow and (run / MANIFEST).is_file()
+    unseal(run, seal)
+    for line in lines(run / EVENTS, follow, strict):
         if line:
             event = Event.model_validate_json(line)
             batch.append(mapper.span(event))
@@ -234,8 +259,9 @@ def export(run: Path, sink: Sink, content: bool = False, follow: bool = False) -
     return total
 
 
-def _ready(run: Path) -> bool:
+def _ready(run: Path, seal: Seal) -> bool:
     """A manifest, or a complete first line to read the split from."""
+    unseal(run, seal)  # never stat inside sealed data, even to wait
     if (run / MANIFEST).is_file():
         return True
     if not (run / EVENTS).is_file():
@@ -267,6 +293,12 @@ def _scalar(value: object) -> TypeGuard[str | int | float | bool]:
     return isinstance(value, str | int | float | bool)
 
 
+def _identifier(value: object) -> TypeGuard[str | int | float | bool]:
+    if isinstance(value, str):
+        return _TOKEN.fullmatch(value) is not None
+    return _scalar(value)
+
+
 def _ns(wall: datetime) -> int:
     delta = wall - datetime(1970, 1, 1, tzinfo=UTC)
     return (delta.days * 86_400 + delta.seconds) * 10**9 + delta.microseconds * 1000
@@ -282,7 +314,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--endpoint", nargs="?", const=PHOENIX, metavar="URL")
     parser.add_argument("--content", action="store_true")
     parser.add_argument("--json", type=Path, metavar="OUT")
-    parser.add_argument("--follow", action="store_true")
+    parser.add_argument(
+        "--follow",
+        action="store_true",
+        help="tail a bundle being written until session.ended; there is no "
+        "timeout, so stop it with Ctrl-C",
+    )
     args = parser.parse_args(argv)
     endpoint = args.endpoint or (None if args.json else PHOENIX)
     kept: list[SpanRecord] = []

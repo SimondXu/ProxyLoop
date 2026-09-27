@@ -120,3 +120,17 @@ def test_a_drifted_charge_payload_is_invalid(tmp_path: Path) -> None:
     write(tmp_path / "runs" / "rW", log, manifest("rW"))
     [row] = index([tmp_path / "runs"])
     assert row.status == "invalid" and "extra_forbidden@surprise" in (row.error or "")
+
+
+def test_only_train_and_dev_splits_are_open(tmp_path: Path) -> None:
+    for split in ("TEST", "", "holdout", "dev"):
+        log = Log(f"r-{split}", split=split)
+        log.end("done")
+        write(tmp_path / f"r-{split}", log, None)
+    status = {r.run_id: r.status for r in index([tmp_path])}
+    assert status == {
+        "r-TEST": "sealed",
+        "r-": "sealed",
+        "r-holdout": "sealed",
+        "r-dev": "incomplete",  # open; no manifest
+    }

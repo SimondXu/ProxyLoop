@@ -26,6 +26,7 @@ from proxyloop.contract.events import Event, check_causes
 from proxyloop.contract.llm import Endpoint, LLMCallRecord, LLMRole
 
 SEALED = ("evidence", "s4", "test")
+OPEN_SPLITS = frozenset({"train", "dev"})  # any other split is sealed (rule 11)
 Status = Literal["ok", "incomplete", "invalid", "sealed"]
 FILES = (MANIFEST, EVENTS, PROMPTS)
 
@@ -221,7 +222,7 @@ def _load(path: Path, run: Run) -> Run:
         has = (path / EVENTS).is_file()
         why = f"no {MANIFEST}, no split" if has else f"no {MANIFEST} or {EVENTS}"
         return replace(run, status="incomplete", error=why)
-    if at["split"] == "test":
+    if at["split"] not in OPEN_SPLITS:
         return replace(run, run_id=at["run_id"], status="sealed")
     if not (path / EVENTS).is_file():
         return replace(run, **at, status="incomplete", error=f"no {EVENTS}")

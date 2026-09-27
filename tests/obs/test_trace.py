@@ -125,6 +125,15 @@ def private_bundle(path: Path) -> Path:
     }
     log.add("mandate.proposed", "guard", "agent", mandate, (msg,))
     log.add("declass.denied", "guard", "agent", {"violations": ["PRIV-DECL"]}, (msg,))
+    free: dict[str, object] = {  # a tool name is the Slow model's choice
+        "name": "card 4821 PRIV",
+        "args": {},
+        "result_text": "unknown tool",
+        "ok": False,
+    }
+    log.add("slow.tool", "slow", "agent", free, (msg,))
+    denied: dict[str, object] = {"intent": "x", "reason": "PRIV free text"}
+    log.add("action.denied", "guard", "agent", denied, (msg,))
     llm(log, "fast_user", QWEN, (100, 400), msg, "sha-user")
     llm(log, "fast_cp", QWEN, (150, 500), rep, "sha-cp")
     llm(log, "slow", SONNET, (200, 600), msg, "sha-slow")
@@ -149,6 +158,8 @@ def test_private_values_never_reach_a_span(tmp_path: Path) -> None:
     assert not any(text in plain for text in PUBLIC_CP)
     assert all(text in rich for text in PUBLIC_CP)
     assert '"pl.move": "ask_discount"' in plain and '"pl.scope": "private"' in plain
+    tools = [s.attributes["pl.name"] for s in collect(run) if s.name == "slow.tool"]
+    assert tools == ["act", "unknown"]
 
 
 def test_parents_links_services_and_times(tmp_path: Path) -> None:
@@ -205,13 +216,29 @@ def test_llm_attributes_and_world_service(tmp_path: Path) -> None:
     assert collect(write(tmp_path / "rW", log, None))[1].service == "world"
 
 
-def test_a_partial_last_line_waits(tmp_path: Path) -> None:
+def test_a_partial_last_line_waits_unless_the_bundle_is_finished(
+    tmp_path: Path,
+) -> None:
     log = Log("rL")
     log.end("done")
     run = write(tmp_path / "rL", log, None)
     lines = (run / EVENTS).read_text("utf-8").splitlines()
     (run / EVENTS).write_text(lines[0] + "\n" + lines[1][:40], "utf-8")
-    assert [s.name for s in collect(run)] == ["session.started"]
+    assert [s.name for s in collect(run)] == ["session.started"]  # being written
+    (run / MANIFEST).write_text(manifest("rL").model_dump_json(), "utf-8")
+    with pytest.raises(ValueError, match="partial line"):
+        collect(run)
+
+
+def test_time_starts_at_session_started_wall(tmp_path: Path) -> None:
+    log = Log("rO")
+    log.events[0] = start = log.events[0].model_copy(update={"t_ms": 109})
+    llm(log, "slow", SONNET, (200, 300), log.start)
+    log.end("done")
+    root, call, _ = collect(write(tmp_path / "rO", log, manifest("rO")))
+    wall = trace._ns(start.wall)  # pyright: ignore[reportPrivateUsage]
+    assert root.start_ns == wall
+    assert (call.start_ns, call.end_ns) == (wall + 91 * 10**6, wall + 191 * 10**6)
 
 
 def test_follow_tails_until_session_ended(tmp_path: Path) -> None:
@@ -262,6 +289,32 @@ def test_a_test_split_is_refused(tmp_path: Path) -> None:
     train = Log("rY")
     train.end("done")
     _refused(write(tmp_path / "man", train, manifest("rY", split="test")))
+    _refused(write(tmp_path / "lie", log, manifest("rX")))  # session.started: test
+    for i, split in enumerate(("TEST", "", "holdout")):  # an allow-list, not "test"
+        other = Log(f"rZ{i}", split=split)
+        other.end("done")
+        _refused(write(tmp_path / f"z{i}", other, None))
+
+
+def test_follow_refuses_a_log_that_appears_inside_the_seal(tmp_path: Path) -> None:
+    log = Log("rQ")
+    log.end("done")
+    sealed = write(tmp_path / "evidence" / "s4" / "test" / "rQ", log, None)
+    run = tmp_path / "rQ"
+    run.mkdir()
+    sealed.chmod(0)  # opening the log through the link would raise, not refuse
+
+    def link() -> None:
+        time.sleep(0.3)
+        (run / EVENTS).symlink_to(sealed / EVENTS)
+
+    thread = threading.Thread(target=link)
+    thread.start()
+    try:
+        _refused(run, follow=True)
+    finally:
+        thread.join()
+        sealed.chmod(0o755)
 
 
 def test_an_unknown_split_or_a_hard_link_is_refused(tmp_path: Path) -> None:
