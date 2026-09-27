@@ -148,3 +148,23 @@ export function parseJsonl<T>(text: string): T[] {
     .filter((line) => line.trim() !== "")
     .map((line) => JSON.parse(line) as T);
 }
+
+/** The end of the timeline: the max t_ms (events are in seq order, not t_ms order). */
+export function endOf(events: Ev[]): number {
+  return events.reduce((end, e) => Math.max(end, e.t_ms), 0);
+}
+
+/** The replay page's run: its events and error belong only to the latest
+ * selection. `request` numbers selections, so after A→B→A the first A's late
+ * answer is not taken for the second A's. */
+export type RunState = { runId: string; request: number; run: { events: Ev[] } | null; error: string };
+export type RunAction =
+  | { type: "select"; runId: string }
+  | { type: "loaded"; request: number; run: { events: Ev[] } }
+  | { type: "failed"; request: number; error: string };
+
+export function selectRun(s: RunState, a: RunAction): RunState {
+  if (a.type === "select") return { runId: a.runId, request: s.request + 1, run: null, error: "" };
+  if (a.request !== s.request) return s; // a late answer for an earlier selection
+  return a.type === "loaded" ? { ...s, run: a.run } : { ...s, error: a.error };
+}
