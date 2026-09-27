@@ -365,6 +365,8 @@ def _released(bb: Blackboard, e: Event) -> Blackboard:
         raise ValueError(f"release of {cap.cap_id}: stale epoch, fence or closed offer")
     if offer.terms_hash != cap.terms_hash:
         raise ValueError(f"release of {cap.cap_id}: the terms changed")
+    if cap.expires_ms <= e.t_ms:  # S1-SYS-02: never released past its expiry
+        raise ValueError(f"release of {cap.cap_id}: expired")
     if cap.intent == "accept_offer" and released_accept(bb, cap.terms_hash):
         raise ValueError(f"release of {cap.cap_id}: an accept was already released")
     return _with(

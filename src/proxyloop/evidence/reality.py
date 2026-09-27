@@ -6,6 +6,9 @@ successful ``llm.call``: ``served_model_echo`` (what the endpoint said it
 served) must equal ``RoleModel.served_model`` when the manifest names one
 (a LoRA slot, a dated hosted id), else the ``ModelRef.model_id`` the call
 requested (``requested_model == model_ref.model_id`` is a contract rule).
+E1: a teacher-substituted Fast call keeps its ``fast_*`` role and carries the
+teacher's ``ModelRef``; it is the teacher's call only on the lane whose
+``teacher_repair_*`` ablation the cfg sets, and is checked as the teacher's.
 """
 
 from __future__ import annotations
@@ -15,7 +18,7 @@ from collections.abc import Collection, Sequence
 
 from proxyloop.contract import CONTRACT_VERSION
 from proxyloop.contract.bundle import Manifest
-from proxyloop.contract.config import SessionConfig
+from proxyloop.contract.config import AblationId, SessionConfig
 from proxyloop.contract.llm import AdapterKind, LLMCallRecord, LLMRole, ModelRef
 from proxyloop.contract.protocol import fingerprint
 
@@ -28,6 +31,22 @@ def role_refs(cfg: SessionConfig) -> dict[str, ModelRef]:
     refs = {"fast_user": cfg.fast_user, "fast_cp": cfg.fast_cp, "slow": cfg.slow}
     refs |= {"ear": world.ear, "mouth": world.mouth, "simuser": world.simuser}
     return refs | ({"teacher": cfg.teacher} if cfg.teacher is not None else {})
+
+
+def substituted(cfg: SessionConfig, c: LLMCallRecord) -> bool:
+    """E1: a ``fast_<lane>`` call the teacher answered under that lane's
+    ``teacher_repair_<lane>`` ablation."""
+    lane = c.role.removeprefix("fast_") if c.role in ("fast_user", "fast_cp") else ""
+    repair = AblationId(f"teacher_repair_{lane}") if lane else None
+    return (
+        cfg.teacher is not None
+        and c.model_ref == cfg.teacher
+        and (repair in cfg.ablations)
+    )
+
+
+def _model_role(cfg: SessionConfig, c: LLMCallRecord) -> LLMRole:
+    return "teacher" if substituted(cfg, c) else c.role
 
 
 def label(ref: ModelRef) -> str:
@@ -58,7 +77,7 @@ def consistency_failures(m: Manifest, calls: Sequence[LLMCallRecord]) -> list[st
     for c in calls:
         if c.role not in m.reality:
             out.append(f"call {c.call_id}: role {c.role} is not in the manifest")
-        elif c.model_ref != refs.get(c.role):
+        elif c.model_ref != refs.get(_model_role(m.cfg, c)):
             out.append(f"call {c.call_id}: model_ref is not the cfg's {c.role} model")
         if c.error is not None and (c.response_sha is not None or c.usage is not None):
             out.append(f"call {c.call_id} failed yet records a response or usage")
@@ -74,7 +93,7 @@ def _call_failures(m: Manifest, c: LLMCallRecord) -> list[str]:
         return [f"{where} is {c.adapter_kind}, not real_http"]
     if c.error is not None:  # a failed attempt: no response, no usage
         return []
-    model = m.models.get(c.role)
+    model = m.models.get(_model_role(m.cfg, c))
     expected = model and (model.served_model or model.ref.model_id)
     out: list[str] = []
     if not c.request_id:
@@ -93,14 +112,15 @@ def claim_failures(
     profiles: Collection[str],
 ) -> list[str]:
     out: list[str] = []
-    ran = {c.role for c in calls if c.error is None and c.adapter_kind is _REAL}
+    ok = [c for c in calls if c.error is None and c.adapter_kind is _REAL]
+    ran = {_model_role(m.cfg, c) for c in ok}  # a teacher call is the teacher's
     for role in sorted(roles):
         if m.reality.get(role) is not _REAL:
             out.append(f"claimed role {role} ran {m.reality.get(role)}")
         if role not in ran:
             out.append(f"claimed role {role} has no successful real_http call")
     for c in calls:
-        out += _call_failures(m, c) if c.role in roles else []
+        out += _call_failures(m, c) if _model_role(m.cfg, c) in roles else []
     if m.contract_version != CONTRACT_VERSION:
         out.append(f"contract {m.contract_version} is not the current one")
     shards = {

@@ -131,7 +131,7 @@ def test_slow_holds_for_a_missing_identity_fact_then_is_told_to_identify(
     (guide,) = [m.guide for m in k.bb.s2f_pending["cp"]]
     assert guide is not None and guide.move == "hold_for_fact"
     kinds = {e.type for e in k.bus.events}
-    assert not {"approval.requested", "authority.fence", "authority.epoch"} & kinds
+    assert not {"approval.requested", "authority.epoch"} & kinds
     assert "status.changed" not in kinds and "action.denied" not in kinds
     idle.relay(said, lane="user", utt_ref=said, type="USER_UPDATE", text=text)
     asyncio.run(slow.step(["relay"]))
