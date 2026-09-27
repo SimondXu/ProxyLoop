@@ -19,6 +19,7 @@ from proxyloop.contract.events import Event
 from proxyloop.contract.llm import LLMClient, LLMRole, ModelRef
 from proxyloop.contract.protocol import Hold
 from proxyloop.contract.views import Trigger
+from proxyloop.kernel.lanes import _Ask  # pyright: ignore[reportPrivateUsage]
 from proxyloop.kernel.session import ChannelSpec, Kernel
 from proxyloop.llm.http import RecordSink
 
@@ -117,7 +118,7 @@ def test_an_empty_hold_is_a_parse_issue_that_clears_the_public_hold(
     _held_once(k)
     cp = k.lanes["cp"]
     cause = k.emit("user.msg", "kernel", {"text": "still there?"}).event_id
-    asyncio.run(cp.generate(Trigger(kind="rep_spoke"), cause))
+    asyncio.run(cp.generate(_Ask(Trigger(kind="rep_spoke"), cause)))
     (turn,) = [e for e in k.bus.events if e.type == "fast.turn"]
     items = cast(list[dict[str, object]], turn.payload["items"])
     assert [(i["kind"], i["reason"]) for i in items] == [
