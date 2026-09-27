@@ -6,8 +6,13 @@ import json
 from pathlib import Path
 
 import pytest
+from tests.contract.samples import SONNET
 from tests.obs.bundles import Log, manifest, write
 
+from proxyloop.contract.bundle import EVENTS
+from proxyloop.contract.llm import Usage
+from proxyloop.obs import runs as obs_runs
+from proxyloop.obs import spend
 from proxyloop.obs.runs import Run, index, main
 
 
@@ -134,3 +139,26 @@ def test_only_train_and_dev_splits_are_open(tmp_path: Path) -> None:
         "r-holdout": "sealed",
         "r-dev": "incomplete",  # open; no manifest
     }
+
+
+def test_a_partial_last_line(tmp_path: Path) -> None:
+    """A crashed run's half-written line is dropped; a finished bundle's is an
+    error. The spend report still counts the crashed run's charges as
+    unindexed."""
+    log = Log("rP")
+    log.call("slow", SONNET, Usage(prompt_tokens=1, completion_tokens=1), "tokens", 7)
+    partial = log.events[0].model_dump_json()[:20]  # no newline, never valid
+    crashed = write(tmp_path / "runs" / "rP", log, None)
+    with (crashed / EVENTS).open("a", encoding="utf-8") as f:
+        f.write(partial)
+    run = obs_runs.load(crashed, tmp_path / "runs", obs_runs.Seal())
+    assert (run.status, run.events, len(run.log)) == ("incomplete", 3, 3)
+    out = tmp_path / "spend.json"
+    assert spend.main(["--root", str(tmp_path / "runs"), "--out", str(out)]) == 0
+    report = json.loads(out.read_text("utf-8"))
+    assert report["cumulative"]["unindexed_priced_micro_usd"] == 7
+    done = write(tmp_path / "done" / "rD", Log("rD"), manifest("rD"))
+    with (done / EVENTS).open("a", encoding="utf-8") as f:
+        f.write(partial)
+    run = obs_runs.load(done, tmp_path / "done", obs_runs.Seal())
+    assert run.status == "invalid" and "partial line" in str(run.error)
