@@ -13,6 +13,7 @@ infra errors and no lane without a Fast turn, else the matrix is rerun whole.
 from __future__ import annotations
 
 import random
+import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -110,6 +111,30 @@ def _bundles(folder: Path) -> set[Path]:
     return {d for d in folder.iterdir() if d.is_dir()} if folder.exists() else set()
 
 
+_CELL_DIR = re.compile(r"\d{4}-(?P<condition>[^-]+)-(?P<instance>.+)-s(?P<seed>\d+)")
+
+
+def cell_dir(runs_dir: Path, k: int, cell: Cell) -> Path:
+    """The folder of the ``k``-th cell; a condition name holds no ``-``."""
+    return runs_dir / f"{k:04d}-{cell.condition}-{cell.instance}-s{cell.seed}"
+
+
+def read_cell_dir(folder: Path) -> Cell | None:
+    """The cell a ``cell_dir`` folder holds; ``None`` for any other name."""
+    if (m := _CELL_DIR.fullmatch(folder.name)) is None:
+        return None
+    return Cell(m["condition"], m["instance"], int(m["seed"]))
+
+
+def kept(folder: Path, seen: dict[tuple[str, str], str]) -> tuple[Path, str] | None:
+    """The bundle a resume keeps, with its end reason: the latest one not in
+    ``_RERUN``; ``None`` if the cell must be (re-)run."""
+    done = [
+        (d, r) for d in sorted(_bundles(folder)) if (r := _ended(d, seen)) not in _RERUN
+    ]
+    return done[-1] if done else None
+
+
 async def run_matrix(
     cells: Sequence[Cell],
     configs: Mapping[str, SessionConfig],
@@ -125,11 +150,10 @@ async def run_matrix(
     runs: list[CellRun] = []
     seen: dict[tuple[str, str], str] = {}
     for k, cell in enumerate(cells):
-        folder = runs_dir / f"{k:04d}-{cell.condition}-{cell.instance}-s{cell.seed}"
+        folder = cell_dir(runs_dir, k, cell)
         before = _bundles(folder)
-        done = [(d, r) for d in sorted(before) if (r := _ended(d, seen)) not in _RERUN]
-        if done:
-            runs.append(CellRun(cell, *done[-1]))
+        if done := kept(folder, seen):
+            runs.append(CellRun(cell, *done))
             continue
         folder.mkdir(parents=True, exist_ok=True)
         base = configs[cell.condition].model_dump()

@@ -23,7 +23,8 @@ from typing import Any
 
 from proxyloop.contract import CONTRACT_VERSION
 from proxyloop.contract.bundle import EVENTS, MANIFEST, PROMPTS
-from proxyloop.eval.metrics import episode
+from proxyloop.env.tasks.loader import load_task
+from proxyloop.eval.metrics import Loader, episode
 from proxyloop.eval.stats import cluster_bootstrap, quantile, wilson
 
 Episode = dict[str, Any]
@@ -206,11 +207,13 @@ def build_report(
     seed: int = 0,
     resamples: int = 10_000,
     allow_test: bool = False,
+    load: Loader = load_task,
 ) -> dict[str, Any]:
     """``bundles`` maps a condition to its bundle dirs. A test-split bundle
-    raises ``HeldOutRefused`` unless ``allow_test`` (after the unseal only)."""
+    raises ``HeldOutRefused`` unless ``allow_test`` (after the unseal only).
+    ``load`` maps a family to its task (``metrics.metrics``)."""
     by_cond = {
-        cond: [episode(d, allow_test=allow_test) for d in dirs]
+        cond: [episode(d, load, allow_test=allow_test) for d in dirs]
         for cond, dirs in bundles.items()
     }
     listed = [
