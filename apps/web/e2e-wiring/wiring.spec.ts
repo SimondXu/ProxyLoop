@@ -88,7 +88,7 @@ async function openLive(page: Page, id: string) {
   await page.goto(`/live/${id}`);
   await expect(page).toHaveURL(`/?live=${id}`);
   const card = page.getByRole("article", { name: /^Approval / });
-  await expect(card.getByLabel("Approval status")).toHaveText("awaiting your decision");
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
   return card;
 }
 
@@ -206,7 +206,7 @@ test("e) unavailable: the handover raises, the card shows the 503, and nothing r
   const got = await click(page, id, "approvals/", () => card.getByRole("button", { name: "Approve" }).click());
   expect(got).toEqual({ status: 503, body: { error: "unavailable" } });
   await expect(card.getByRole("alert")).toHaveText("503 unavailable");
-  await expect(card.getByLabel("Approval status")).toHaveText("awaiting your decision");
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
   await page.waitForTimeout(1_500);
   expect(posts).toHaveLength(1);
   expect(count(await log(page, id), "approval.post")).toBe(0);
@@ -354,7 +354,7 @@ test("k) start: Start → 201 → /live/{case} → /?live=, and the socket strea
   expect((await created).status()).toBe(201); // its body is gone with the navigation: the id comes from the URL
   await expect(page).toHaveURL(/\/\?live=started-\d+$/);
   const id = new URL(page.url()).searchParams.get("live") ?? "";
-  await expect(page.getByRole("article", { name: /^Approval / }).getByLabel("Approval status")).toHaveText("awaiting your decision");
+  await expect(page.getByRole("article", { name: /^Approval / }).getByLabel("Approval status")).toHaveText("Waiting for your decision");
   const n = (await log(page, id)).length;
   await expect.poll(() => seqs(seen.find((s) => s.path.startsWith(`/ws/live/${id}`)))).toEqual(range(n));
 });

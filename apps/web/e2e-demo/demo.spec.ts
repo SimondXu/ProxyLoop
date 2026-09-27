@@ -115,15 +115,15 @@ async function toCard(page: Page) {
   await expect(chat).toContainText(ASK, FLOW);
   await say(page, IDENTITY);
   const card = page.getByRole("article", { name: /^Approval / });
-  await expect(card.getByLabel("Approval status")).toHaveText("awaiting your decision", FLOW);
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision", FLOW);
   // Guard's read-back of the carded revision: every slot confirmed, shown on the card.
   const slots = card.getByRole("list", { name: "Read-back progress" }).getByRole("listitem");
   await expect(slots).toHaveText([
-    "monthly_price: confirmed",
-    "term_months: confirmed",
-    "fees_none: confirmed",
-    "changes_none: confirmed",
-    "expires: confirmed",
+    /^Monthly price.*Read back$/,
+    /^Contract length.*Read back$/,
+    /^One-time fees.*Read back$/,
+    /^Changes to your plan.*Read back$/,
+    /^Offer valid until.*Read back$/,
   ]);
   const events = await log(page, id);
   one(events, "chan.opened", { lane: "cp" }); // the call happens, in either readiness order

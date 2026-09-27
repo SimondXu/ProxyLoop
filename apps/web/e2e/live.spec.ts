@@ -34,12 +34,12 @@ test("approval card: appears on approval.requested, Approve posts the contract b
 
   const card = page.getByRole("article", { name: "Approval ap-1" });
   await expect(card.getByLabel("Readback")).toHaveText(CARD.readback_text);
-  await expect(card.getByLabel("Approval status")).toHaveText("awaiting your decision");
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
   // Nothing a model or the user says moves the card.
   ws.send(ev("fast.sentence", "fast.user", { lane: "user", gen_id: "g", utt_id: "u", text: "Approved, all done!" }));
   ws.send(ev("user.msg", "kernel", { text: "yes" }));
   await expect(page.getByRole("list", { name: "Chat transcript" }).getByRole("listitem")).toHaveText(["You: yes"]);
-  await expect(card.getByLabel("Approval status")).toHaveText("awaiting your decision");
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
   await shot(page, "live-card");
 
   await card.getByRole("button", { name: "Approve" }).click();
@@ -79,7 +79,7 @@ test("approval card: a kernel action.denied citing the card after a 200 shows re
   ws.send(JSON.stringify({ ...denied, cause_ids: [JSON.parse(requested).event_id] }));
   await expect(card.getByLabel("Approval status")).toHaveText("refused: fence_raised");
   await expect(card.getByRole("button", { name: "Approve" })).toBeDisabled();
-  await expect(card.getByRole("button", { name: "Deny" })).toBeDisabled();
+  await expect(card.getByRole("button", { name: "Decline" })).toBeDisabled();
 });
 
 test("a socket refused or unreachable before it opens (1006) says so, with no reconnect", async ({ page }) => {
@@ -107,10 +107,10 @@ test("approval card: a 409 stale is shown, closes the card and is never retried"
   ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
   ws.send(ev("approval.requested", "guard", CARD));
   const card = page.getByRole("article", { name: "Approval ap-1" });
-  await card.getByRole("button", { name: "Deny" }).click();
+  await card.getByRole("button", { name: "Decline" }).click();
   await expect(card.getByRole("alert")).toHaveText("409 stale");
   await expect(card.getByLabel("Approval status")).toHaveText(/^stale/);
-  await expect(card.getByRole("button", { name: "Deny" })).toBeDisabled();
+  await expect(card.getByRole("button", { name: "Decline" })).toBeDisabled();
   await page.waitForTimeout(300);
   expect(posts.map((p) => p.body)).toEqual([{ decision: "denied", terms_hash: CARD.terms_hash, authority_epoch: 2 }]);
 });
@@ -157,7 +157,7 @@ test("a malformed CSRF cookie is a visible error on the card and the chat, and n
   const card = page.getByRole("article", { name: "Approval ap-1" });
   await card.getByRole("button", { name: "Approve" }).click();
   await expect(card.getByRole("alert")).toHaveText("bad pl_csrf cookie");
-  await expect(card.getByLabel("Approval status")).toHaveText("awaiting your decision");
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
   await page.getByRole("textbox", { name: "Message to the assistant" }).fill("hello");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByText("Not delivered: bad pl_csrf cookie")).toBeVisible();
@@ -207,7 +207,7 @@ test("the authority strip and the card's read-back progress follow the fixed emi
     "monthly_price: confirmed",
     "term_months: heard",
   ]);
-  await expect(card.getByLabel("Approval status")).toHaveText("awaiting your decision"); // epoch 2 = the card's
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision"); // epoch 2 = the card's
   await expect(card.getByLabel("Fence note")).toHaveText("fence raised: the accept waits until it clears");
   await shot(page, "live-strip-mock");
   ws.send(ev("authority.fence", "kernel", { op: "cleared", fence_id: "fence-1", utt_id: `${RUN}:0` }));
