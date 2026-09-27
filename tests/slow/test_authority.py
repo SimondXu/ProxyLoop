@@ -260,6 +260,40 @@ def test_ledger_money_must_be_exact_and_readable(tmp_path: Path, price: str) -> 
     assert "not verified: no_bound_evidence" in done and not h.ended
 
 
+_UNSTATED = {k: v for k, v in BOUND.items() if k not in ("fees_none", "changes_none")}
+
+
+@pytest.mark.parametrize(
+    "ledger",
+    [
+        BOUND | {"changes_none": "false"},  # a change it never records
+        BOUND | {"fees_none": "false"},  # a fee it never records
+        {k: v for k, v in BOUND.items() if k != "fees_none"},  # completeness unstated
+        {k: v for k, v in BOUND.items() if k != "changes_none"},
+        _UNSTATED,
+        _UNSTATED | {"applied_change:plan_swap": "false"},  # no change applied, no list
+        BOUND | {"applied_change:plan_swap": "true"},  # no changes, yet a change
+        BOUND | {"fee:activation": "20.00"},  # no fees, yet a fee
+        # review of #151: a boolean outside true/false is unreadable, not dropped
+        *(BOUND | {"applied_change:plan_swap": v} for v in ("True", "yes", "1", "")),
+        BOUND | {"feature:hotspot": "True"},
+    ],
+)
+def test_a_ledger_must_state_fee_and_change_completeness(
+    tmp_path: Path, ledger: dict[str, str]
+) -> None:
+    """S1-SYS-19: an unrecorded fee or change, or no completeness statement at
+    all, never verifies as the accepted terms (fail closed: it binds nothing)."""
+    h = _accepted(tmp_path)
+    _heard(h, {"terms": ledger})
+    account, done = h.act(CHECK, DONE)
+    assert account == "check_account: 482913: evidence unreadable, it binds nothing"
+    (evidence,) = h.of("evidence.recorded")
+    assert evidence.payload["terms_hash"] is None
+    assert "not verified: no_bound_evidence" in done and not h.ended
+    assert h.bb.public.status is CaseStatus.NEEDS_REPLAN
+
+
 def test_a_confirmation_counts_only_if_it_was_relayed_to_slow(
     tmp_path: Path,
 ) -> None:  # I5: Slow looks up only an id it was told
