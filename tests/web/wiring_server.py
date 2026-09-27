@@ -87,7 +87,9 @@ def replay_roots(tmp: Path, bundles: Path) -> list[Path]:
     not be sealed: a copy would carry held-out data past the path barrier."""
     if sealed(bundles):
         raise SystemExit(f"{bundles} is sealed (AGENTS rule 11)")
-    fixture = next(p for p in sorted(FIXTURES.iterdir()) if (p / "events.jsonl").is_file())
+    fixture = next(
+        p for p in sorted(FIXTURES.iterdir()) if (p / "events.jsonl").is_file()
+    )
     own, held_out = tmp / "replay", tmp / "evidence" / "s4" / "test"
     held_out.mkdir(parents=True)
     _copy(fixture, own / SPLIT_TEST, split="test")
