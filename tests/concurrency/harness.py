@@ -45,6 +45,7 @@ from proxyloop.contract.llm import (
 from proxyloop.contract.state import ApprovalCard, Blackboard
 from proxyloop.env.tasks.schema import Task
 from proxyloop.guard.mandate import proposal
+from proxyloop.guard.readiness import IDENTITY
 from proxyloop.kernel import wake
 from proxyloop.kernel.channels import Channel, Incoming
 from proxyloop.kernel.session import ChannelSpec, Kernel
@@ -96,6 +97,16 @@ def slots(dollars: int, utt: str) -> list[dict[str, str]]:
         ("expires", "none"),
     ]
     return [{"field": f, "value": v, "utt_ref": utt} for f, v in rows]
+
+
+def called(task: Task) -> Task:
+    """``task`` with no readiness key shareable: nothing must be public before
+    the call, so it opens at once (``ready``, ADR-0012). The suites here start
+    in the call; the gate itself is tested in tests/kernel/test_calls.py."""
+    data = task.model_dump(mode="json")
+    shareable = data["disclosure"]["shareable"]
+    data["disclosure"]["shareable"] = [k for k in shareable if k not in IDENTITY]
+    return Task.model_validate(data)
 
 
 async def settle(turns: int = 40) -> None:
@@ -161,7 +172,7 @@ class Sim:
             return client if gate is None else Gated(client, gate)
 
         specs: dict[str, ChannelSpec] = {"user": self.user, "cp": self.rep}
-        task, cfg = task or patient_task(), cfg or fake_config()
+        task, cfg = called(task or patient_task()), cfg or fake_config()
         vt = self.vt
         self.k = Kernel(cfg, task, specs, root, vt, vt.sleep, make, None)
         self._run: asyncio.Task[object] | None = None

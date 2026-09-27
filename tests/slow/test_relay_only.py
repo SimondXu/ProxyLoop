@@ -54,6 +54,7 @@ def test_no_utterance_reaches_slow_unless_relayed(tmp_path: Path) -> None:
 EVERY_TOOL = act(
     "Trying every tool.",
     {"tool": "ask_user", "text": "Any limits?"},
+    {"tool": "start_call"},
     {"tool": "tell_user", "text": "Working on it."},
     {"tool": "guide_fast", "move": "ask_readback", "slots": ["offer:o1"]},
     {"tool": "record_fact", "key": "tenure_years", "value": "6", "utt_ref": "u"},
