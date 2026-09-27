@@ -86,7 +86,7 @@ What v2 missed: Slow could still launder a private bound through the shared dige
 | `llm` | SYS | `client_for(ref) -> LLMClient` (real_http vLLM completions; relay chat and tools); `SpendLedger`; `check_parity(ref, prompts)` (P3) | HTTP, retries (≤ 1, recorded), `/tokenize` |
 | `env` | SYS | `SimRep.on_agent_utterance(utt_heard)`; `SimRep.tick(t)`; `SimUser.on_agent_message(msg)`; `Approver.decide(card)`; `Ledger.lookup(id)`; task loader | Ear, ladder, Mouth, fidelity, TTL, reply delays |
 | `evidence` | SYS | `evidence_check(bundle, mode=claim\|offline) -> Report` (provenance chain, attestation, reality report) | chain walking |
-| `obs` | SYS | `OTelExporter(bus)`; failures are isolated from the session | span mapping |
+| `obs` | SYS | offline: `python -m proxyloop.obs.trace RUN [--endpoint]` maps a bundle's `events.jsonl` to OTel spans; never on the session path (ADR-0008) | span mapping |
 | `serve` | SYS | FastAPI: `/ws/live/{case}`, `/api/replay/{run}`, `POST /api/cases/{case}/approvals/{id}` | CSRF, auth, streaming |
 | `models` | MOD | `registry.resolve(name) -> ModelRef`; `FsmTalker` and `TeacherRepair` (both implement `LLMClient`, adapter kind `baseline`/composite) | conditions, decision-point detection |
 | `training` | MOD | `build_dataset(bundles, spec) -> Manifest`; `verify_trained_span(ids, labels, tok, expected)` (P5); `relabel(bundles, teacher) -> rows`; `pull_through(mode)` | filters, mixture, Modal jobs |
@@ -118,7 +118,7 @@ proxyloop/
 │   ├── llm/            factory.py vllm.py relay.py spend.py parity.py
 │   ├── env/            tasks/{schema,loader}.py counterparty/{policy,ear,mouth}.py user/{simuser,approver}.py ledger.py splits.py (portal/ in S4)
 │   ├── evidence/       check.py chain.py reality.py
-│   ├── obs/            otel.py
+│   ├── obs/            trace.py
 │   ├── serve/          api.py csrf.py
 │   ├── cli.py          chat / smoke-live / replay (terminal)
 │   ├── models/         registry.py fsm.py repair.py conditions.yaml
@@ -496,7 +496,6 @@ A hermetic telecom account app with `/api/reset` and `/api/state` (the TalkAct p
   - `SimUser`/`SimRep` or human channels;
   - `Watchdog` (cp patience, holds, TTL, run budget);
   - `Wake` (`kernel/wake.py`, a bus subscriber that holds the kernel's only Slow timer; ADR-0015, S1-SYS-29);
-  - `OTelExporter` (a subscriber; its crash is logged and isolated, and it never cancels the TaskGroup).
 - **Triggers:**
   - `FastLane[user]` fires on `user.msg`, on a pending s2f for the user lane, and on `chan.opened`.
   - `FastLane[cp]` fires on `utt.final(cp)`, a pending GUIDE, a hold-filler timer (hold over 6 s) and `chan.opened`.
@@ -551,7 +550,7 @@ vllm serve Qwen/Qwen3.5-9B@<rev> --served-model-name Qwen3.5-9B --dtype bfloat16
 ---
 
 ## 14. Tracing, replay and evidence (SYS lane)
-- **OTel export:** as in v2, with `gen_ai.*` attributes; spans are derived from `event_id`/`cause_ids`; Phoenix is the viewer (no bake-off).
+- **OTel export** (ADR-0008): offline, from a bundle's `events.jsonl` (finished, or tailed read-only), never a bus subscriber. One trace per run; one span per event, rooted at `session.started`, whose children are the exogenous events; otherwise the first of `cause_ids` is the parent and the others are links; lanes are resources; `gen_ai.*` attributes from `llm.call` records. Default deny: the envelope plus a named allow-list of non-content payload keys; a flag may add only cp-lane text and `fast_cp` prompts, never private or user-lane content. Sealed and `test` bundles are refused before any span. Phoenix is the viewer (no bake-off).
 - **Run bundle** `runs/<run_id>/`:
   - `manifest.json` (`pl.bundle/1`): cfg and its hash, task and instance hash, split, git sha, contract version, renderer fingerprints, models per role with served name and adapter shard hashes, attestation, P3 result, reality (adapter kind per role), spend;
   - `events.jsonl`;

@@ -1,18 +1,18 @@
 // Pure pieces of the live views: the WebSocket streams (/ws/live: one
-// events.jsonl line per frame; /ws/rep: rebuilt frames with their own seq, rep.ts), the per-lane
-// model options, and which sent messages have not
-// yet come back as events. The UI shows only what events say.
+// events.jsonl line per frame; /ws/rep: rebuilt frames with their own seq, rep.ts)
+// and which sent messages have not yet come back as events. The UI shows only
+// what events say.
 import { CLOSE } from "./liveApi";
 import type { Ev } from "./replay";
 
 export type Phase = "connecting" | "open" | "ended" | "closed" | "error";
-export type Framed = { seq: number; type: string };
+export type Framed = { seq: number; type: string; run_id?: unknown };
 export type Stream<T extends Framed = Ev> = { events: T[]; next: number; phase: Phase; message: string };
 export const start = <T extends Framed>(): Stream<T> => ({ events: [], next: 0, phase: "connecting", message: "" });
 export const START: Stream = start<Ev>();
 
 type Json = Record<string, unknown>;
-const isObject = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
+export const isObject = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** A frame with a numeric seq, a string type and an object payload; otherwise an error string. */
 export function parseFrame(text: string): Json | string {
@@ -35,17 +35,27 @@ export const parseEvent = (text: string): Ev | string => {
 };
 
 /**
- * Accept one parsed frame (or a parse error). Both streams are dense from 0
- * (/ws/live: the event seq; /ws/rep: the rep stream's own seq). A seq below
- * `next` is a duplicate (a reconnect overlap) and is dropped; a seq above it is
- * a gap: the stream stops with a visible error, never papered over.
+ * Accept a batch of parsed frames (or parse errors), in arrival order, copying
+ * the events once per batch. Both streams are dense from 0 (/ws/live: the event
+ * seq; /ws/rep: the rep stream's own seq). A seq below `next` is a duplicate (a
+ * reconnect overlap) and is dropped; a seq above it is a gap, and a frame of
+ * another run than `runId` (/ws/live only) is foreign: either stops the stream
+ * with a visible error, never papered over.
  */
-export function acceptFrame<T extends Framed>(s: Stream<T>, frame: T | string): Stream<T> {
+export function acceptFrames<T extends Framed>(s: Stream<T>, frames: (T | string)[], runId?: string): Stream<T> {
   if (s.phase === "error") return s;
-  if (typeof frame === "string") return { ...s, phase: "error", message: `bad frame after seq ${s.next - 1}: ${frame}` };
-  if (frame.seq < s.next) return s;
-  if (frame.seq > s.next) return { ...s, phase: "error", message: `seq gap: expected ${s.next}, got ${frame.seq}` };
-  return { ...s, events: [...s.events, frame], next: frame.seq + 1 };
+  const events = [...s.events];
+  let next = s.next;
+  const stop = (message: string): Stream<T> => ({ ...s, events, next, phase: "error", message });
+  for (const frame of frames) {
+    if (typeof frame === "string") return stop(`bad frame after seq ${next - 1}: ${frame}`);
+    if (runId !== undefined && frame.run_id !== runId) return stop(`frame of run ${String(frame.run_id)}, not ${runId}`);
+    if (frame.seq < next) continue;
+    if (frame.seq > next) return stop(`seq gap: expected ${next}, got ${frame.seq}`);
+    events.push(frame);
+    next = frame.seq + 1;
+  }
+  return next === s.next ? s : { ...s, events, next };
 }
 
 /** `entry` is where the viewer's role gets its cookies (liveApi.entry). */
@@ -68,47 +78,6 @@ export function closed<T extends Framed>(s: Stream<T>, code: number, reason: str
   if (code === CLOSE.unknownRun) return { ...s, phase: "error", message: `unknown run (${why})` };
   if (code === CLOSE.badStream) return { ...s, phase: "error", message: `server: seq gap or bad line (${why})` };
   return { ...s, phase: "closed", message: `disconnected (${why})` };
-}
-
-const FAST = ["fast_user", "fast_cp"];
-/** Each lane's role, and the roles whose real_http models it may offer (never a world role). */
-export const MODEL_LANES = [
-  { role: "fast_user", title: "Fast-U", from: FAST },
-  { role: "fast_cp", title: "Fast-C", from: FAST },
-  { role: "slow", title: "Slow", from: ["slow"] },
-] as const;
-
-type Ref = { kind?: unknown; model_id?: unknown };
-export type LaneModels = {
-  role: string;
-  title: string;
-  options: string[];
-  running: string | null;
-  placeholder: string | null;
-};
-
-/**
- * The per-lane dropdowns, from session.started models only. A lane whose own
- * model is not real_http shows a disabled placeholder naming what it runs, never
- * another model; otherwise it offers the real_http ids of its `from` roles.
- */
-export function laneModels(events: Ev[]): LaneModels[] {
-  const start = events.find((e) => e.type === "session.started");
-  const refs = (start?.payload.models ?? {}) as Record<string, { ref?: Ref }>;
-  const real = (role: string) => {
-    const ref = refs[role]?.ref;
-    return ref?.kind === "real_http" && typeof ref.model_id === "string" ? ref.model_id : null;
-  };
-  return MODEL_LANES.map(({ role, title, from }) => {
-    const running = real(role);
-    if (running === null) {
-      const ref = refs[role]?.ref;
-      const what = ref ? `${String(ref.model_id)} (${String(ref.kind)})` : "no model";
-      return { role, title, options: [], running, placeholder: `${what}: not selectable` };
-    }
-    const options = [...new Set(from.map(real).filter((id) => id !== null))];
-    return { role, title, options, running, placeholder: null };
-  });
 }
 
 export type Sent = { text: string; after: number };

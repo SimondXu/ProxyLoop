@@ -70,9 +70,27 @@ describe("approval card state (I6: events decide, the page only posts)", () => {
     });
   });
 
+  it("I6 (#136 N5): a kernel approval.decided for another approval_id leaves the card open", () => {
+    expect(one([card("a1"), decided("a2", "granted")])).toEqual({ status: "open", by: null, error: null });
+    expect(one([card("a1"), post("a2"), decided("a2", "denied", "sim_approver")])?.status).toBe("open");
+  });
+
+  it("I6 (#136 N5): with two open cards, B's click posts B's terms_hash and epoch, never A's", () => {
+    const b = card("b1", { offer_ref: "offer-2", authority_epoch: 3, binding: { offer_ref: "offer-2", revision: 1, authority_epoch: 3 } });
+    const views = approvalCards([card("a1"), ev("authority.epoch", "kernel", { new: 2 }), b], none);
+    expect(views.map((v) => [v.card.approval_id, v.status])).toEqual([
+      ["a1", "open"],
+      ["b1", "open"],
+    ]);
+    const [, viewB] = views;
+    expect(viewB && approvalBody(viewB.card, "granted")).toEqual({ decision: "granted", terms_hash: "th-b1", authority_epoch: 3 });
+  });
+
   it("goes stale when authority.epoch moves past the card's epoch", () => {
     expect(one([card("a1"), ev("authority.epoch", "kernel", { new: 2, reason: "slow_revoke" })])?.status).toBe("open");
     expect(one([card("a1"), ev("authority.epoch", "kernel", { new: 3, reason: "f2s_revoke" })])?.status).toBe("stale");
+    const [moved] = approvalCards([card("a1"), ev("authority.epoch", "guard", { new: 3 })], none);
+    expect(moved?.reason).toBe("the authority epoch moved past this card");
     const sent = new Map<string, Posting>([["a1", { ok: true }]]);
     expect(one([card("a1"), ev("authority.epoch", "guard", { new: 3, reason: "tighten_mandate" })], sent)?.status).toBe(
       "stale",
@@ -93,6 +111,11 @@ describe("approval card state (I6: events decide, the page only posts)", () => {
     expect(one([card("a1")], res(409, "stale"))).toEqual({ status: "stale", by: null, error: "409 stale" });
     const why = new Map<string, Posting>([["a1", { ok: false, status: 409, error: "stale", reason: "stale_epoch" }]]);
     expect(one([card("a1")], why)).toEqual({ status: "stale", by: null, error: "409 stale: stale_epoch" });
+    // #150 nit 4: a 409 stale is labelled with its own reason, and blames the epoch only if it moved.
+    const hash = new Map<string, Posting>([["a1", { ok: false, status: 409, error: "stale", reason: "subject_hash_mismatch" }]]);
+    expect(approvalCards([card("a1")], hash)[0]?.reason).toBe("subject_hash_mismatch");
+    expect(approvalCards([card("a1")], res(409, "stale"))[0]?.reason).toBeNull();
+    expect(approvalCards([card("a1"), ev("authority.epoch", "kernel", { new: 3 })], hash)[0]?.reason).toBe("subject_hash_mismatch");
     // guard's already_decided reason repeats the error: shown once.
     const same = new Map<string, Posting>([["a1", { ok: false, status: 409, error: "already_decided", reason: "already_decided" }]]);
     expect(one([card("a1")], same)).toEqual({ status: "already_decided", by: null, error: "409 already_decided" });
@@ -156,5 +179,31 @@ describe("approval card state (I6: events decide, the page only posts)", () => {
       ev("approval.requested", "fast.cp", { approval_id: "fake", offer_ref: "offer-1", authority_epoch: 2 }),
     ];
     expect(one([card("a1"), ...chatter])?.status).toBe("open");
+  });
+});
+
+describe("read-back progress on the card (readback.updated from Guard)", () => {
+  const update = (statuses: Record<string, string>, extra: Ev["payload"] = {}, actor = "guard") =>
+    ev("readback.updated", actor, { offer_ref: "offer-1", revision: 1, slot_statuses: statuses, terms_hash: null, ...extra });
+  const slots = (events: Ev[]) => approvalCards(events, none)[0]?.slots;
+
+  it("shows each slot of the latest update for the card's offer revision, in order", () => {
+    const first = update({ monthly_price: "heard", term_months: "unknown" });
+    const last = update({ monthly_price: "confirmed", term_months: "heard" });
+    expect(slots([card("a1"), first, last])).toEqual([
+      { field: "monthly_price", status: "confirmed" },
+      { field: "term_months", status: "heard" },
+    ]);
+    expect(slots([first, card("a1")])?.map((x) => x.status)).toEqual(["heard", "unknown"]);
+  });
+
+  it("ignores another offer, another revision, and any emitter but Guard", () => {
+    const events = [
+      card("a1"),
+      update({ monthly_price: "confirmed" }, { offer_ref: "offer-2" }),
+      update({ monthly_price: "confirmed" }, { revision: 2 }),
+      update({ monthly_price: "confirmed" }, {}, "fast.cp"),
+    ];
+    expect(slots(events)).toBeNull();
   });
 });

@@ -2,14 +2,14 @@
 
 > **Status: under construction.** This is the plan-v3 rebuild (stage S0). The retired v0 is at the git tag `v0-legacy`; its honest numbers and the résumé numbers it withdrew are in [docs/v0-retrospective.md](docs/v0-retrospective.md). Every result below renders from committed report JSON; empty sections mean the stage has not closed.
 
-A small, real Pine-AI-style agent: one self-hosted Qwen3.5-9B (vLLM) chats with the user and talks live to a company rep while Claude Sonnet 5 plans from its typed relays. Transactions are guarded, unauthorised speech is measured, and status is evidence-verified.
+A small, real Pine-AI-style agent: one self-hosted Qwen3.5-9B (vLLM) chats with the user and talks live to a company rep while a hosted Slow model reads both conversations and plans. Transactions are guarded, unauthorised speech is measured, and status is evidence-verified.
 
 <!-- gen:figure=architecture -->
 <!-- /gen -->
 
 ## Demo
 
-A replay of a **synthetic** bundle, recorded from the web replay, appears here once S1 closes. `make replay` needs no keys and no GPU.
+A GIF recorded from the web replay of a **synthetic** bundle (both parties simulated) appears here once S1 closes. `make replay` serves the committed `evidence/` bundles in the web replay and needs no keys and no GPU.
 
 <!-- gen:media=demo -->
 <!-- /gen -->
