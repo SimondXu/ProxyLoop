@@ -83,6 +83,26 @@ def test_the_schema_rejects(name: str, mutate: Mutate) -> None:
         Task.model_validate(data)
 
 
+BAD_MONEY = ["68.0.0", "1e3", "-5", "68.001", "68.5", "NaN", "Infinity", "",
+             " 68", "68 ", "68.00\n", "\u0666\u0668", "\uff16\uff18", "1,250",
+             "$68"]  # fmt: skip
+
+
+@pytest.mark.parametrize("value", BAD_MONEY)
+@pytest.mark.parametrize(
+    ("part", "field"),
+    [("terms", "monthly_price"), ("hidden", "fee:activation"), ("terms", "credit:x")],
+)
+def test_a_money_term_is_a_plain_decimal(part: str, field: str, value: str) -> None:
+    data = copy.deepcopy(_raw())  # #148 review: instances._usd never meets it
+    data["counterparty"]["ladder"][0]["hidden"].pop("fee:activation")
+    data["counterparty"]["ladder"][0][part][field] = "68.00"
+    Task.model_validate(data)
+    data["counterparty"]["ladder"][0][part][field] = value
+    with pytest.raises(ValidationError, match="money"):
+        Task.model_validate(data)
+
+
 S0_HASH = "6a059e5760a1d2db94c46ccf464336ef2d38013717b6be1bf191e12f6151f2d9"
 
 

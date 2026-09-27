@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
@@ -37,8 +37,20 @@ _GUIDE = frozenset({"tool", "move", "slots"})
 _LAST4 = re.compile(r"[0-9]{4}")  # ASCII only: no NFKC, no separators
 _WORD = r"[A-Za-z]+(?:['\u2019-][A-Za-z]+)*"  # O'Brien, Lee-Smith
 _NAME = re.compile(rf"{_WORD}(?: {_WORD}){{0,3}}")  # 1-4 words, single spaces
+_YEARS = re.compile(r"[0-9]{1,2}")
+_TENURE = re.compile(  # #153 rounds 3-4: first person, in context, one space
+    r"(?<![\w'\u2019`-])I(?:'ve|\u2019ve| have) been (?:with you|a customer) "
+    r"(?:for )?([0-9]{1,2}) [Yy]ears?(?![\w'\u2019-])"
+)
+_AGE = re.compile(r"(?i)\b(?:old|age|aged|ago)\b")  # "36 years old": no tenure
+_NEGATION = re.compile(r"(?i)\b(?:not|never)\b|n['\u2019]t\b")
+_NOT_ASCII = re.compile(r"[^\x00-\x7f\u2018\u2019\u201c\u201d]")  # but quotes
+_NUMBER = re.compile(r"[0-9]+(?:\.[0-9]+)?")
+_BEFORE = r"(?:^|(?<=[\s(:\"\u201c]))"  # allow-listed token starts
+_AFTER = r"(?=[.,;:!?)\"\u201d]?(?:\s|$))"  # then one mark, a space or the end
+_EDGE = r"(?<![\w'\u2019-])", r"(?![\w'\u2019-])"  # a name's word bounds
 MAX_NAME_CHARS = 60
-_PUBLISHABLE = (".last4", ".holder_name")
+_IDENTITY = ("account.holder_name", "account.last4")
 NUMBER_WORDS = frozenset(
     """zero one two three four five six seven eight nine ten eleven twelve
     thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty
@@ -273,7 +285,7 @@ class SlowTools:
         msg_id = relayed.get(str(ref)) or str(ref)  # the user's own message
         told = _partner(bb, "user").get(msg_id, "")
         mine = key in self._shareable_keys and told
-        span = _user_span(key, value, told) if mine else None  # the user's words
+        span = _user_span(key, value, told, bb) if mine else None  # user's words
         hits = [msg_id] if span is not None else []
         leaks = _leaks(key, span, bb) if span is not None else []  # never protected
         shareable = key in self._shareable_keys and hits and not leaks
@@ -297,12 +309,12 @@ class SlowTools:
             text += ", never public: " + "; ".join(leaks)  # counted as declass
             effects.append(("declass.denied", {"violations": leaks}))
         elif where == "private" and key in self._shareable_keys:  # how to share it
-            can = sorted(k for k in self._shareable_keys if k.endswith(_PUBLISHABLE))
+            can = sorted(self._shareable_keys & FORMATS.keys())
             text += (
-                f": in S0 only {', '.join(can) or 'no key'} can go public from the "
-                "user, by citing the utt of the user message that contains exactly "
-                "the value (a .last4 as 4 digits, a .holder_name as the user wrote "
-                "it); every other shareable key stays private"
+                f": only {', '.join(can) or 'no key'} can go public from the user, "
+                "by citing the utt of the user message that contains exactly the "
+                "value (a last4 as 4 digits, a holder name as the user wrote it, "
+                "tenure as 'I've been with you for N years'); other keys stay private"
             )
         return Result(True, text, tuple(effects))
 
@@ -314,7 +326,7 @@ def identity_hint(
     that can go public from the user are public (identify with them), recorded
     private (re-record them from the user's own words), or not given yet (ask
     the user and hold). Slow decides; nothing is sent."""
-    ids = sorted(k for k in keys if k.endswith(_PUBLISHABLE))
+    ids = sorted(k for k in keys if k in _IDENTITY)
     ready = [k for k in ids if k in public]
     kept = [k for k in ids if k not in public and k in private]
     missing = [k for k in ids if k not in public and k not in private]
@@ -344,16 +356,15 @@ def lever_denial(bb: st.Blackboard, guide: Guide) -> tuple[str, str] | None:
     the user shared, and the cancellation lever only with the user's public
     authorisation. ``(reason, text)`` of a denial, else None."""
     facts = bb.public.facts
-    if guide.move == GuideMove.CITE_COMPETITOR:
+    if guide.move == GuideMove.CITE_COMPETITOR:  # a name alone is no quote
         keys = [s[5:] for s in guide.slots if s.startswith("fact:")]
-        quotes = [
-            k for k in keys if k == "competitor_quote" or k.startswith("competitor.")
-        ]
+        quotes = [k for k in keys if k in ("competitor_quote", "competitor.price_usd")]
         if not any((f := facts.get(k)) and f.source == "shareable" for k in quotes):
             return "competitor_quote_not_shareable", (
-                "cite_competitor needs a fact:competitor_quote (or fact:competitor.*) "
-                "slot the user shared (source shareable); none is public, so the "
-                "lever is denied: no fabricated quotes. Use another move"
+                "cite_competitor needs a fact:competitor.price_usd (or "
+                "fact:competitor_quote) slot the user shared (source shareable); "
+                "none is public, so the lever is denied: no fabricated quotes. "
+                "Use another move"
             )
     lever = facts.get("authorization.cancel_lever")
     granted = lever and lever.value == "granted" and lever.source == "shareable"
@@ -375,26 +386,61 @@ def _said(value: str, line: str) -> bool:  # its digits, else its text verbatim
     return digits <= numbers(line) if digits else value.casefold() in line.casefold()
 
 
-def _user_span(key: str, value: str, message: str) -> str | None:
-    """I4, the narrow S0 user-message path (#133 round 4): the span of the raw
-    ``message`` to publish, or None. Only two key shapes can go public:
-    - ``*.last4``: exactly four ASCII digits, a standalone token of the message
-      on an allow-list: after the start, whitespace or one of ``( : " “``;
-      then at most one of ``. , ; : ! ? ) " ”`` and whitespace or the end;
-    - ``*.holder_name``: 1-4 ASCII words (``O'Brien``, ``Lee-Smith``), no number
-      word, found case-insensitively with word boundaries; the user's own
-      spelling is published.
-    Every other key stays private on this path (safety over coverage)."""
-    if key.endswith(".last4") and _LAST4.fullmatch(value):
-        before, after = r"(?:^|(?<=[\s(:\"\u201c]))", r"(?=[.,;:!?)\"\u201d]?(?:\s|$))"
-        return value if re.search(before + value + after, message) else None
-    if not key.endswith(".holder_name") or not _NAME.fullmatch(value):
+def _user_span(key: str, value: str, message: str, bb: st.Blackboard) -> str | None:
+    """I4, the user-message path (#133, S1-SYS-15): the span of the raw
+    ``message`` to publish under ``key``, or None. Only a key in ``FORMATS``
+    can go public, and only in its format; every other key stays private
+    (safety over coverage). ASCII only: no NFKC widening."""
+    match = FORMATS.get(key)
+    return None if match is None else match(value, message, bb)
+
+
+def _digits4(value: str, message: str, _: st.Blackboard) -> str | None:
+    """Exactly four ASCII digits, a standalone token of the message: after the
+    start, whitespace or one of ``( : " “``; then at most one of
+    ``. , ; : ! ? ) " ”`` and whitespace or the end."""
+    if not _LAST4.fullmatch(value):
         return None
-    if len(value) > MAX_NAME_CHARS or set(_words(value).split()) & NUMBER_WORDS:
+    return value if re.search(_BEFORE + value + _AFTER, message) else None
+
+
+def _name(value: str, message: str, _: st.Blackboard) -> str | None:
+    """1-4 ASCII words (``O'Brien``, ``Lee-Smith``), no number word, found
+    case-insensitively with word bounds; the user's own spelling is published."""
+    if not _NAME.fullmatch(value) or len(value) > MAX_NAME_CHARS:
         return None
-    bound = r"(?<![\w'\u2019-])" + re.escape(value) + r"(?![\w'\u2019-])"
-    found = re.search(bound, message, re.IGNORECASE)
+    if any(_number_word(w) for w in _words(value).split()):
+        return None
+    found = re.search(_EDGE[0] + re.escape(value) + _EDGE[1], message, re.IGNORECASE)
     return found.group() if found and _NAME.fullmatch(found.group()) else None
+
+
+def _years(value: str, message: str, _: st.Blackboard) -> str | None:
+    """1-2 ASCII digits in an allow-listed first-person tenure context ("I've
+    been with you for 6 years", "I have been a customer 12 years"), in a
+    message with no age word and no negation."""
+    if not _YEARS.fullmatch(value) or _AGE.search(message):
+        return None
+    if _NEGATION.search(message):  # "I haven't been with you for 6 years"
+        return None
+    if _NOT_ASCII.search(message):  # no confusable hides an age word
+        return None
+    said = {m.group(1) for m in _TENURE.finditer(message)}
+    return value if value in said else None
+
+
+def _number_word(word: str) -> bool:  # "sixty", "sixties", "sixes", "hundreds"
+    stems = {word, word.removesuffix("s"), word.removesuffix("es")}
+    stems |= {word[:-3] + "y"} if word.endswith("ies") else set()
+    return bool(stems & NUMBER_WORDS)
+
+
+Match = Callable[[str, str, st.Blackboard], str | None]  # (value, message, bb)
+FORMATS: dict[str, Match] = {  # the one per-key format table (S1-SYS-15)
+    "account.last4": _digits4,
+    "account.holder_name": _name,
+    "tenure_years": _years,  # competitor facts never (#153 round 3, I11)
+}
 
 
 def _words(text: str) -> str:  # "O'Brien" -> "o brien"
@@ -412,8 +458,8 @@ def _digits(text: str) -> str:  # "(555) 482-1999" -> "5554821999"; any script
 
 def _leaks(key: str, span: str, bb: st.Blackboard) -> list[str]:
     """The span to publish against every protected case-fact value (word,
-    letter and digit forms, either containing the other) and, for a ``*.last4``, the
-    mandate bounds in minor units, whole units and months."""
+    letter and digit forms, either containing the other) and, for a number of
+    any format, the mandate bounds in minor units, dollars and months."""
     out, words, digits = list[str](), _words(span), _digits(span)
     letters = _letters(span)
     for name, f in sorted(bb.private.case_facts.items()):
@@ -434,10 +480,10 @@ def _leaks(key: str, span: str, bb: st.Blackboard) -> list[str]:
             out.append(f"the protected value of {name}")
     m = bb.private.mandate
     minor = () if m is None else (m.max_monthly_price_minor, m.max_one_time_fees_minor)
-    bounds = {v for v in minor if v is not None}
-    bounds |= {v // 100 for v in minor if v is not None and v % 100 == 0}
-    bounds |= {m.max_term_months} if m and m.max_term_months else set()
-    if key.endswith(".last4") and int(span) in bounds:
+    bounds = {Decimal(v) for v in minor if v is not None}
+    bounds |= {Decimal(v) / 100 for v in minor if v is not None}  # dollars
+    bounds |= {Decimal(m.max_term_months)} if m and m.max_term_months else set()
+    if _NUMBER.fullmatch(span) and Decimal(span) in bounds:  # every format
         out.append(f"{span} is a mandate bound")
     return out
 
