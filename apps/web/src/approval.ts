@@ -51,6 +51,8 @@ export function readback(events: Ev[], card: ApprovalCard): Slot[] | null {
   return Object.entries(statuses).map(([field, status]) => ({ field, status: String(status) }));
 }
 
+const EPOCH_MOVED = "the authority epoch moved past this card";
+
 export function approvalCards(events: Ev[], posts: ReadonlyMap<string, Posting>): CardView[] {
   const requested = events.filter((e) => from(e, "approval.requested", ["guard"]));
   const epoch = epochOf(events);
@@ -81,11 +83,13 @@ export function approvalCards(events: Ev[], posts: ReadonlyMap<string, Posting>)
     );
     if (refused) return view("refused", null, String(refused.payload.reason));
     if (requested.some((o) => o.seq > req.seq && o.payload.offer_ref === card.offer_ref)) return view("superseded");
-    // A 409 says why (guard.decide's reason); only a moved epoch blames the epoch.
+    // A 409 says why (guard.decide's reason); only a moved epoch blames the epoch,
+    // also for a 409 stale that gives no reason (#173 N-6).
+    const moved = epoch > card.authority_epoch ? EPOCH_MOVED : null;
     if (failed?.status === 409 && (failed.error === "stale" || failed.error === "already_decided")) {
-      return view(failed.error, null, failed.error === "stale" ? (failed.reason ?? null) : null);
+      return view(failed.error, null, failed.error === "stale" ? (failed.reason ?? moved) : null);
     }
-    if (epoch > card.authority_epoch) return view("stale", null, "the authority epoch moved past this card");
+    if (moved) return view("stale", null, moved);
     if (posting === "pending") return view("pending");
     const posted = events.some(
       (e) => from(e, "approval.post", ["ui", "sim_approver"]) && e.payload.subject === "approval" && e.payload.subject_id === id,
