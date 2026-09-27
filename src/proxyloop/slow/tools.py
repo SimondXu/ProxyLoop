@@ -25,7 +25,7 @@ from proxyloop.guard import authorize as guard
 from proxyloop.guard.authorize import CaseRef, Denial
 from proxyloop.guard.declass import declassify, numbers, spoken
 from proxyloop.guard.readback import readback_update
-from proxyloop.slow import authority
+from proxyloop.slow import authority, offer_slots
 from proxyloop.slow.result import Effect, Result, no
 
 if TYPE_CHECKING:
@@ -511,6 +511,8 @@ def record_offer(
     t_ms: int,
     wall: datetime,
 ) -> Result:  # every money or term value is one the rep said
+    if bad := [p for s in raw if (p := offer_slots.shape(s))]:
+        return no(offer_slots.refused(bad))  # whole: no partial record
     slots = [st.ReadbackSlot(source_utt=s.get("utt_ref"), **_slot(s)) for s in raw]
     said = {x.utt_id: x.text for x in bb.channels["cp"].lines if x.speaker == "partner"}
     unbound = [
@@ -522,7 +524,15 @@ def record_offer(
     ]
     if unbound:
         return no("; ".join(unbound), ("declass.denied", {"violations": unbound}))
+    if bad := [p for s in slots if (p := offer_slots.value(s))]:
+        return no(offer_slots.refused(bad))
     prev = bb.public.offers.get(ref)
+    if (
+        prev is not None
+        and prev.status == "open"
+        and _terms(prev.slots) == _terms(slots)
+    ):  # the same terms: the revision and its read-back request stand
+        return Result(True, f"unchanged {ref} r{prev.revision}")
     if prev is None and len(bb.public.offers) >= base.MAX_OFFERS:
         return no("too many offers")
     revision = prev.revision + 1 if prev else 1
@@ -559,3 +569,7 @@ def _value(s: st.ReadbackSlot) -> set[Decimal]:  # in the unit as spoken
 
 def _slot(s: Mapping[str, Any]) -> dict[str, Any]:
     return {k: s[k] for k in ("field", "value", "unit", "role")}
+
+
+def _terms(slots: Sequence[st.ReadbackSlot]) -> list[tuple[str, str, str, str]]:
+    return sorted((s.field, s.value, s.unit, s.role) for s in slots)

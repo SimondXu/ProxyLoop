@@ -6,9 +6,12 @@ from __future__ import annotations
 from proxyloop.contract import base
 from proxyloop.contract.llm import ToolSpec
 from proxyloop.contract.messages import FastToSlow, GuideMove
-from proxyloop.contract.state import OfferPublic
+from proxyloop.contract.state import Blackboard, OfferPublic, PrivateState
 from proxyloop.contract.views import SlowView
+from proxyloop.guard.mandate import mandate_gap
 from proxyloop.guard.readback import missing_required, readback_status
+from proxyloop.guard.terms import offer_terms
+from proxyloop.slow import offer_slots
 from proxyloop.slow.tools import identity_hint
 
 TOOLS = (
@@ -17,7 +20,7 @@ TOOLS = (
     *("request_approval", "accept_offer", "decline_offer", "check_account", "finish"),
 )
 MAX_TOKENS = 1_500
-SYSTEM = """You are the case agent behind an AI assistant that works for a user. \
+SYSTEM = f"""You are the case agent behind an AI assistant that works for a user. \
 Two voices act for you: a chat voice that talks with the user, and a phone voice on \
 a live call with a company representative. You never hear either conversation. You \
 learn what was said only from their relay notes ([USER CHAT] and [REP CALL], each \
@@ -40,7 +43,8 @@ public. From the user, only a *.last4 key (exactly 4 digits) or a *.holder_name 
 cited user message contains exactly that value; anything else stays private.
 - share_fact(key): make a recorded shareable fact public, by the rule of record_fact.
 - record_offer(offer_ref, offer_slots): the offer's terms as the representative said \
-them, each slot {field, value, unit, role, utt_ref}; money in cents (usd_minor). \
+them, each slot {{field, value, unit, role, utt_ref}}, by this table (field → role, \
+unit, value): {offer_slots.TABLE}. \
 Then guide_fast(ask_readback, ["offer:<ref>"]) for that revision: its slots turn \
 [confirmed] in the status bar when the representative repeats them after it. Only a \
 confirmed offer can be approved or accepted.
@@ -140,7 +144,10 @@ def status_bar(view: SlowView, keys: frozenset[str], now_ms: int) -> str:
         gap = f", missing {' '.join(gaps)}" if gaps else ""
         slots = ", ".join(f"{s.field}={s.value} [{s.status}]" for s in o.slots)
         state = f"{o.status}, read-back {readback_status(o)}{ttl}{gap}"
-        return f"{o.offer_ref} r{o.revision} ({state}): {slots}"
+        hint = approval_hint(view, o, now_ms)
+        return f"{o.offer_ref} r{o.revision} ({state}): {slots}" + (
+            f"; {hint}" if hint else ""
+        )
 
     facts = "; ".join(
         [f"{f.key}={f.value} [public]" for f in view.public_facts]
@@ -171,3 +178,21 @@ def status_bar(view: SlowView, keys: frozenset[str], now_ms: int) -> str:
         f"fences raised: {len(view.fences)}; facts: {facts or 'none'}; "
         f"hold: {held}; strikes: {view.cp_strikes}"
     ) + (f"; {hint}" if hint else "")
+
+
+def approval_hint(view: SlowView, o: OfferPublic, now_ms: int) -> str:
+    """S1-SYS-28 (run ed5063): a confirmed offer that Guard's mandate check
+    finds outside the granted mandate needs the user's approval; shown until a
+    card or a decision for its terms exists in this epoch. Nothing is sent."""
+    terms = offer_terms(o)
+    if o.status != "open" or readback_status(o) != "confirmed" or terms is None:
+        return ""
+    cards = [] if view.pending_approval is None else [view.pending_approval]
+    for a in (*cards, *view.approvals):
+        if (a.terms_hash, a.authority_epoch) == (o.terms_hash, view.epoch):
+            return ""
+    mine = PrivateState(mandate=view.mandate)
+    bb = Blackboard(t_ms=now_ms, epoch=view.epoch, private=mine)
+    if mandate_gap(bb, terms) != "outside_mandate":
+        return ""
+    return f"{o.offer_ref} confirmed, outside mandate → request_approval({o.offer_ref})"

@@ -343,7 +343,13 @@ def test_a_read_back_confirms_only_the_revision_it_was_asked_for(
     h.rep("cp-3", TERMS)
     h.tools.readback()
     assert {s.status for s in h.bb.public.offers["save-2"].slots} == {"confirmed"}
-    h.act({"tool": "record_offer", "offer_ref": "save-2", "offer_slots": SLOTS})
+    h.rep("cp-4", TERMS.replace("$69", "$68"))  # S1-SYS-28: r2 changes a term
+    cheaper = [
+        s | {"utt_ref": "cp-4"} | ({"value": "6800"} if s["value"] == "6900" else {})
+        for s in SLOTS
+    ]
+    h.act({"tool": "record_offer", "offer_ref": "save-2", "offer_slots": cheaper})
+    assert h.bb.public.offers["save-2"].revision == 2
     h.tools.readback()  # r2: the r1 request confirms nothing
     assert {s.status for s in h.bb.public.offers["save-2"].slots} == {"heard"}
     (updated,) = {e.payload["offer_ref"] for e in h.of("readback.updated")}
@@ -539,3 +545,67 @@ def test_a_move_the_cp_profile_cannot_render_raises_out_of_act(
     assert sent.startswith("guide_fast: sent")
     with pytest.raises(GuideMoveError, match="hold_for_fact"):
         h.act({"tool": "guide_fast", "move": "hold_for_fact"})
+
+
+def test_the_same_terms_again_are_unchanged_and_a_change_is_a_revision(
+    tmp_path: Path,
+) -> None:
+    """ed5063 r3: identical to r2 but for utt_ref, it was another revision and
+    another read-back; the confirmed revision now stands."""
+    h = _confirmed(tmp_path)
+    asked = dict(h.tools.asked)
+    h.rep("cp-4", "Again: $69 a month for 24 months.")
+    again = [s | {"utt_ref": "cp-4"} for s in SLOTS]
+    record = {"tool": "record_offer", "offer_ref": "save-2"}
+    (text,) = h.act(record | {"offer_slots": again})
+    assert text == "record_offer: unchanged save-2 r1"
+    offer = h.bb.public.offers["save-2"]
+    assert offer.revision == 1 and {s.status for s in offer.slots} == {"confirmed"}
+    assert len(h.of("offer.recorded")) == 1 and h.tools.asked == asked
+    h.rep("cp-5", "It is $68 a month on a 24-month term.")
+    cheaper = [
+        s | {"value": "6800", "utt_ref": "cp-5"} if s["field"] == "monthly_price" else s
+        for s in SLOTS
+    ]
+    (text,) = h.act(record | {"offer_slots": cheaper})
+    assert text == "record_offer: recorded save-2 r2"
+    assert h.bb.public.offers["save-2"].revision == 2
+
+
+def _mandate(h: Host, max_minor: int) -> None:
+    """A granted mandate, as the UI and the kernel decide it."""
+    envelope = {"max_monthly_price_minor": max_minor}
+    h.act({"tool": "propose_mandate", "envelope": envelope})
+    m = h.bb.private.mandate
+    assert m is not None
+    post = {"subject": "mandate", "subject_id": m.mandate_id, "decision": "granted"}
+    post |= {"subject_hash": m.mandate_hash, "authority_epoch": 0}
+    posted = h.emit("approval.post", "ui", post)
+    decision = {"mandate_id": m.mandate_id, "mandate_hash": m.mandate_hash}
+    decision |= {"decision": "granted", "by": "ui"}
+    decided = h.emit("mandate.decided", "kernel", decision, [posted.event_id])
+    bump = {"new": 1, "reason": "mandate_decided"}
+    h.emit("authority.epoch", "kernel", bump, [decided.event_id])
+
+
+HINT = "save-2 confirmed, outside mandate → request_approval(save-2)"
+
+
+def _bar(h: Host) -> str:
+    return status_bar(view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b"), KEYS, h.now())
+
+
+def test_a_confirmed_offer_outside_the_mandate_shows_request_approval(
+    tmp_path: Path,
+) -> None:
+    h = _confirmed(tmp_path)  # $69
+    _mandate(h, 6500)  # ed5063: $78 against a $65 envelope
+    assert HINT in _bar(h)
+    h.act({"tool": "request_approval", "offer_ref": "save-2"})
+    assert "outside mandate" not in _bar(h)  # its card is out: wait for the user
+
+
+def test_a_confirmed_offer_inside_the_mandate_shows_no_hint(tmp_path: Path) -> None:
+    h = _confirmed(tmp_path)
+    _mandate(h, 7000)
+    assert "outside mandate" not in _bar(h)
