@@ -82,7 +82,7 @@ Table = dict[str, Any]
 class ConditionSpec(Frozen):
     name: str = Field(pattern=r"^[A-Za-z0-9]+$")  # no "-": matrix.cell_dir
     attested_adapter: bool = False
-    note: str | None = None  # verbatim on its ``conditions`` row
+    note: str | None = Field(default=None, min_length=1)  # on its conditions row
 
 
 class FamilySpec(Frozen):

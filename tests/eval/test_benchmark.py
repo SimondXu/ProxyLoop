@@ -29,6 +29,7 @@ from proxyloop.eval.benchmark import (
     NO_SHARDS,
     NOT_INTERLEAVED,
     Benchmark,
+    ConditionSpec,
     build,
     cells,
     live_configs,
@@ -384,6 +385,11 @@ def test_c5_rows_carry_the_provider_sampling_note_and_no_other_does(
         "C2": None,
         "C1": None,
     }
+
+
+def test_an_empty_condition_note_is_refused() -> None:
+    with pytest.raises(ValueError, match="at least 1 character"):
+        ConditionSpec(name="C5", note="")
 
 
 def test_every_bundle_carries_its_evidence_label(tmp_path: Path) -> None:
