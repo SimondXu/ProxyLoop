@@ -17,13 +17,53 @@ llm-smoke:
 # the server roots without /v1 and the keys:
 #   PL_VLLM_BASE_URL PL_VLLM_API_KEY PL_RELAY_BASE_URL PL_RELAY_API_KEY
 #   PL_TEAMROUTER_BASE_URL PL_TEAMROUTER_API_KEY
-# WORLD_EFFORT: provisional: ADR-0005; S1 probe decides.
+# and, for FAST_ENDPOINT=openrouter, PL_OPENROUTER_BASE_URL (https://openrouter.ai/api)
+# and PL_OPENROUTER_API_KEY.
+# WORLD_EFFORT: provisional: ADR-0005; S1 probe decides. EAR_/MOUTH_/SIMUSER_EFFORT
+# override it per world role (unset: WORLD_EFFORT).
+# FAST/FAST_ENDPOINT and SLOW/SLOW_ENDPOINT pick the Fast and Slow ModelRefs (unset: the
+# CLI defaults, Qwen3.5-9B@vllm and claude-sonnet-5@relay); FAST_EFFORT (hosted Fast only)
+# and SLOW_EFFORT pin reasoning_effort (unset: the CLI's provisional values for a hosted
+# Fast and a TeamRouter Slow; a vLLM Fast and a relay Slow keep the provider's default).
+# FAST_CP_BASE_URL: the dead-endpoint smoke only, a dead server root for fast_cp. The
+# redirect is not recorded in the bundle, so it needs CLAIM=0: with the default CLAIM the
+# CLI refuses it (a parser error, non-zero exit).
+# MODE and INSTANCE pick the family mode and the seeded instance (unset: the family's default
+# mode and instance 0, the file itself); the manifest's task_ref names both.
+# CLAIM=0 checks the bundle offline instead of --claim (a hosted Fast); removed by S1-SYS-14.
 WORLD_EFFORT ?= low
+CLAIM ?= 1
 .PHONY: smoke-live replay-cli
 smoke-live:
 	uv run python -m proxyloop.cli session --family $(FAMILY) --user sim --rep sim \
-		--world-effort $(WORLD_EFFORT) $(if $(FAST),--fast-model $(FAST),) --claim
+		$(if $(MODE),--mode $(MODE),) $(if $(INSTANCE),--instance $(INSTANCE),) \
+		--world-effort $(WORLD_EFFORT) \
+		$(if $(EAR_EFFORT),--ear-effort $(EAR_EFFORT),) \
+		$(if $(MOUTH_EFFORT),--mouth-effort $(MOUTH_EFFORT),) \
+		$(if $(SIMUSER_EFFORT),--simuser-effort $(SIMUSER_EFFORT),) \
+		$(if $(FAST),--fast-model $(FAST),) $(if $(FAST_ENDPOINT),--fast-endpoint $(FAST_ENDPOINT),) \
+		$(if $(FAST_EFFORT),--fast-effort $(FAST_EFFORT),) \
+		$(if $(SLOW),--slow-model $(SLOW),) $(if $(SLOW_ENDPOINT),--slow-endpoint $(SLOW_ENDPOINT),) \
+		$(if $(SLOW_EFFORT),--slow-effort $(SLOW_EFFORT),) \
+		$(if $(FAST_CP_BASE_URL),--fast-cp-base-url $(FAST_CP_BASE_URL),) \
+		$(if $(filter 0,$(CLAIM)),,--claim)
 
 # replay-cli: the terminal replay of a bundle (no keys, no GPU). RUN=runs/<run_id>
 replay-cli:
 	uv run python -m proxyloop.cli replay $(RUN)
+
+# web-test (S1-SYS-07). No flags: no keys, no GPU. The web suite in apps/web: lint,
+# typecheck, vitest, build and the Playwright e2e (`npm run web-test`). `npm ci` runs only
+# when node_modules/.package-lock.json (written by npm on install) is missing or not newer
+# than package-lock.json.
+# replay (S1-SYS-07). No flags: no keys, no GPU. Serves the replay UI (`npm run replay`,
+# the Vite dev server). RUN=<bundle dir or dir of bundles>, relative to the repo root or
+# absolute, becomes PL_BUNDLE_DIR; unset: the npm script's default fixture
+# (tests/web/fixtures).
+WEB_DEPS = cd apps/web && { [ node_modules/.package-lock.json -nt package-lock.json ] || npm ci; }
+.PHONY: web-test replay
+web-test:
+	$(WEB_DEPS) && npm run web-test
+
+replay:
+	$(WEB_DEPS) && $(if $(RUN),PL_BUNDLE_DIR=$(RUN) ,)npm run replay

@@ -1,25 +1,44 @@
 """Task schema (EVAL §2): Pine's fields plus ours, one family per YAML file.
 
-``profile`` and ``counterparty`` are world-side hidden data: agent modules get
-only the briefs, through the kernel. The ``stop`` and ``authorization`` fields
-arrive with the S1 families that use them.
+``profile``, ``counterparty``, ``principal`` and ``stop`` are world-side hidden
+data: agent modules get only the briefs, through the kernel. A ``full`` task has
+a ``principal`` (what the sim approver grants); ``stop`` is the unscripted stop
+or mind change of ``x-user-mind-change``. New fields default to ``None`` so the
+instance hash (``exclude_none``) of an older task is unchanged. ``user_goal``
+states a number only as a ``{fact.key}`` reference, so the goal and the facts
+never disagree (instances, mind changes): ``Task.goal(facts)`` renders it.
+``ref`` is the task's canonical task_ref (``refs.py``), stamped by the loader and
+``instance``; left out of the instance hash. A task validated from a mapping
+without one is taken as its file's default mode, instance 0: ``family@version``.
 """
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Self
+import re
+from collections.abc import Mapping
+from typing import Annotated, Literal, Self, cast
 
-from pydantic import Field, StringConstraints, model_validator
+from pydantic import Field, StringConstraints, ValidationError, model_validator
 
 from proxyloop.contract import base
 from proxyloop.contract.base import FACT_KEY, Frozen, Lane
 from proxyloop.contract.messages import OFFER_REF
 from proxyloop.contract.state import READBACK_FIELD
 from proxyloop.env.ledger import LedgerMode
+from proxyloop.env.tasks.refs import parse_task_ref
 
 FactKey = Annotated[str, StringConstraints(pattern=rf"^{FACT_KEY}$")]
 TermField = Annotated[str, StringConstraints(pattern=READBACK_FIELD)]
+STOP_DELAY_S = (0.5, 2.5)  # a triggered stop's reply delay: below the approver's
+GOAL_REF = re.compile(rf"\{{({FACT_KEY})\}}")
 Brief = Annotated[str, StringConstraints(min_length=1, max_length=base.MAX_BRIEF)]
+MONEY = r"^[0-9]+(?:\.[0-9]{2})?$"  # plain ASCII dollars: "68", "68.00"
+Money = Annotated[str, StringConstraints(pattern=MONEY)]
+_MONEY = re.compile(MONEY[1:-1])
+
+
+def money_term(field: str) -> bool:  # the terms instances shift (and _usd reads)
+    return field == "monthly_price" or field.startswith(("fee:", "credit:"))
 
 
 class ReplyDelay(Frozen):
@@ -64,6 +83,9 @@ class OfferSpec(Frozen):
             raise ValueError("a term is either said or hidden, not both")
         if not self.all_terms.get("term_months", "").isdigit():
             raise ValueError("an offer needs an integer term_months")
+        terms = self.all_terms.items()
+        if bad := [k for k, v in terms if money_term(k) and not _MONEY.fullmatch(v)]:
+            raise ValueError(f"{bad} must be money: plain dollars like 68 or 68.00")
         return self
 
 
@@ -88,6 +110,43 @@ class CounterpartySpec(Frozen):
         return self
 
 
+Bound = Literal["max_monthly_price_usd", "max_term_months", "max_one_time_fees_usd"]
+
+
+class Limits(Frozen):
+    max_monthly_price_usd: Money | None = None
+    max_term_months: int | None = Field(default=None, ge=1)
+    max_one_time_fees_usd: Money | None = None
+
+
+class Principal(Frozen):
+    """What the principal grants (ARCHITECTURE §10.2). ``envelope`` names the
+    profile facts in which the user states their limits: a mandate within them
+    is granted. ``limits`` are the unstated limits an approval card is judged
+    by (default: the envelope). The sim approver answers after a delay sampled
+    from ``approver_delay_s``."""
+
+    envelope: dict[Bound, FactKey] = Field(min_length=1)
+    limits: Limits | None = None
+    approver_delay_s: ReplyDelay
+
+
+class Stop(Frozen):
+    """The user's unscripted stop, or with ``change`` a mind change: the
+    profile facts the user changes, said in the stop reply (EVAL §2)."""
+
+    trigger: Literal["after_card", "after_offer", "after_turn_k"]
+    k: int | None = Field(default=None, ge=1)  # after_turn_k only
+    text_hint: Brief
+    change: dict[FactKey, str] | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def _k(self) -> Self:
+        if (self.k is not None) != (self.trigger == "after_turn_k"):
+            raise ValueError("stop.k is set exactly for after_turn_k")
+        return self
+
+
 class Gold(Frozen):
     check: Literal["ledger", "portal", "ledger+no_deal", "no_commit_after_stop"]
 
@@ -109,10 +168,65 @@ class Task(Frozen):
     user: UserSpec
     counterparty: CounterpartySpec
     gold: Gold
+    principal: Principal | None = None
+    stop: Stop | None = None
+    ref: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_ref(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        given = cast(dict[str, object], data)
+        file_ref = f"{given.get('family')}@{given.get('version')}"
+        return given if "ref" in given else given | {"ref": file_ref}
+
+    @model_validator(mode="after")
+    def _ref(self) -> Self:
+        ref = parse_task_ref(self.ref)
+        if (ref.family, ref.version) != (self.family, self.version):
+            raise ValueError(f"ref {self.ref} is not {self.family}@{self.version}")
+        if ref.mode is not None and ref.mode != self.mode:
+            raise ValueError(f"ref {self.ref} is not in mode {self.mode}")
+        return self
 
     @model_validator(mode="after")
     def _facts(self) -> Self:
         named = {*self.counterparty.identity, *self.disclosure.shareable}
+        if self.principal is not None:
+            named |= set(self.principal.envelope.values())
+        named |= set(self.stop.change or ()) if self.stop is not None else set()
+        named |= set(GOAL_REF.findall(self.user_goal))
+        if re.search(r"\d", GOAL_REF.sub("", self.user_goal)):
+            raise ValueError("user_goal states numbers only as {fact.key}")
         if unknown := sorted(named - self.profile.facts.keys()):
             raise ValueError(f"unknown profile facts {unknown}")
+        return self
+
+    def goal(self, facts: Mapping[str, str]) -> str:
+        """``user_goal`` with each ``{fact.key}`` said as its value in ``facts``."""
+
+        return GOAL_REF.sub(lambda m: facts[m.group(1)], self.user_goal)
+
+    @model_validator(mode="after")
+    def _principal(self) -> Self:
+        if (self.principal is not None) != (self.mode == "full"):
+            raise ValueError("a principal is given exactly in full mode")
+        if self.stop is not None and self.principal is None:
+            raise ValueError("a stop needs a full-mode principal")
+        if self.principal is not None:
+            stated = {
+                b: self.profile.facts[k] for b, k in self.principal.envelope.items()
+            }
+            try:
+                Limits.model_validate(stated)
+            except ValidationError as err:
+                raise ValueError(f"an envelope fact is not a limit: {err}") from err
+        triggered = self.stop is not None and self.stop.trigger != "after_turn_k"
+        delay = self.principal.approver_delay_s.range if self.principal else (9, 9)
+        if triggered and delay[0] <= STOP_DELAY_S[1]:
+            raise ValueError("approver_delay_s must start above a triggered stop's")
+        stop = self.stop is not None and self.stop.change is None
+        if stop != (self.gold.check == "no_commit_after_stop"):
+            raise ValueError("gold no_commit_after_stop goes with a stop")
         return self

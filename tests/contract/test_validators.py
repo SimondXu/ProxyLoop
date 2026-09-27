@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 from tests.contract.samples import GEMINI, QWEN, call_record, session_config
@@ -18,7 +18,13 @@ from proxyloop.contract.llm import (
     request_content,
 )
 from proxyloop.contract.messages import FastToSlow, Guide, SlowToFast
-from proxyloop.contract.state import ApprovalCard, Mandate, ReadbackBinding
+from proxyloop.contract.state import (
+    Approval,
+    ApprovalCard,
+    Mandate,
+    ReadbackBinding,
+)
+from proxyloop.contract.views import FastView
 
 
 def _f2s(**update: Any) -> dict[str, Any]:
@@ -193,3 +199,21 @@ def test_decided_mandate_names_who_decided() -> None:
     with pytest.raises(ValueError, match="needs decided_by"):
         Mandate.model_validate(body | {"status": "granted"})
     assert Mandate.model_validate(body | {"status": "granted", "decided_by": "ui"})
+
+
+def test_approval_expiry_is_optional_private_and_absent_from_fast_views() -> None:
+    """ADR-0007: a decided approval carries its card's expiry; ``None`` is a
+    record written before the field existed, and no Fast view holds either."""
+
+    body = {"approval_id": "a", "decision": "granted", "by": "ui"}
+    body |= {"terms_hash": "t", "authority_epoch": 1}
+    assert Approval.model_validate(body).expires_ms is None  # an S0 record
+    assert Approval.model_validate(body | {"expires_ms": 7}).expires_ms == 7
+    fields = FastView.model_fields.values()
+    assert Approval not in _types(*(f.annotation for f in fields))
+
+
+def _types(*annotations: object) -> set[object]:
+    """Every type named in the annotations, through unions and generics."""
+
+    return set(annotations) | {t for a in annotations for t in _types(*get_args(a))}

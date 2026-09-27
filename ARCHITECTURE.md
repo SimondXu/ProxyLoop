@@ -328,13 +328,13 @@ Every tool requires `private_summary`, the principal-facing digest [O pattern fr
 **Slow context.**
 - a stable system prompt;
 - `TASK: slow_brief`;
-- the append-only tool history, with notes appended to tool results:
+- the tool history, bounded to Slow's latest summaries plus the last answered turns (ADR-0009), with notes appended to tool results:
   - `[USER CHAT] <relay text> (utt u12)`;
   - `[REP CALL] <relay text> (utt c7)`;
   - `[APPROVAL] a17 granted`;
   - `[FENCE] user message pending`;
-- the status bar (case status, epoch, offers with slot statuses and TTLs, approvals, hold time, strikes);
-- one cache breakpoint on the newest tool result [O `slow_agent.py:160-171`].
+- the status bar (case status, epoch, offers with slot statuses and TTLs, approvals, hold time, strikes, and the facts Slow recorded as `key=value [public|private]`);
+- one cache breakpoint on the newest tool result [O `slow_agent.py:160-171`], unused until the Slow model is settled (ADR-0009).
 
 There are no transcripts. In duplex, Slow has no free-speech tool.
 
@@ -413,7 +413,7 @@ IN_CALL ──action.authorized(accept)──► COMMIT_AUTHORIZED ──speak.r
 COMMIT_AUTHORIZED ──speak.revoked | truncated──► NEEDS_REPLAN
 COMMITTED ──evidence.recorded──► EVIDENCE_PENDING ──completion.decided(ok)──► VERIFIED_COMPLETE
 EVIDENCE_PENDING ──completion.decided(fail)──► NEEDS_REPLAN ──► IN_CALL | ESCALATED
-IN_CALL ──finish(no_deal) ∧ verify_no_deal──► VERIFIED_NO_DEAL      any ──cp hang-up (strikes ≥ 3)──► ABANDONED
+IN_CALL ──finish(no_deal) ∧ verify_no_deal──► VERIFIED_NO_DEAL      any ──cp hang-up (identity or timer strikes ≥ patience.strikes)──► ABANDONED
 ```
 Only `completion.decided` sets a `VERIFIED_*` status. Fast sees the status in the `CASE STATUS` section.
 
@@ -444,7 +444,7 @@ Voice confirmation (S5) is labelled "not authenticated consent".
   - hidden terms revealed only on `ask_readback`;
   - identity (and PIN demands in hazard families);
   - offer TTL and withdrawal;
-  - **cp patience:** silence over `P_silence` (6 s) → a strike; a hold over `P_hold` (20–60 s, per persona) → a strike; 3 strikes → hang-up;
+  - **cp patience:** silence over `P_silence` (6 s) → a timer strike; a hold over `P_hold` (20–60 s, per persona) → a timer strike; in IDENTIFY, a non-`provide_fact` act (holds and supervisor requests aside) → an identity strike. The two counters are separate: each hangs up at `patience.strikes` (3), and neither adds to the other (S0-SYS-08 follow-up, #138, root decision 2026-09-27);
   - on `accept` of a confirmed offer, `rep.commit_heard` plus a ledger write binding the heard terms (honest, misquote or absent mode). The rep cannot see our capabilities; whether a commitment was authorised is decided by metrics from the cause chain (was the heard accept a released `speak.verbatim`?).
 
   The ported pure parts are the ledger/binding, `offer_compliance_violations` [O `offer_policy.py:105`] and the salted split [O `negotiation_splits.py:81-119`]. The transition policy is written fresh.
@@ -556,7 +556,7 @@ vllm serve Qwen/Qwen3.5-9B@<rev> --served-model-name Qwen3.5-9B --dtype bfloat16
 
 ---
 
-## 16. Size budget (Python under `src/`, excluding tests, web and `serving/`/`training_jobs/`) [E]
+## 16. Size estimate (Python under `src/`, excluding tests, web and `serving/`/`training_jobs/`) [E]
 
 | Area | S0 | S1 adds | S0–S1 total |
 |---|---|---|---|
@@ -570,4 +570,4 @@ vllm serve Qwen/Qwen3.5-9B@<rev> --served-model-name Qwen3.5-9B --dtype bfloat16
 | models + training + eval (MOD) | 300 | 450 | 750 |
 | **Total** | **≈ 4,450** | **≈ 2,150** | **≈ 6,600** |
 
-Tripwires (PLAN §0.6): `src/` over 6,300 at S0 close or over 9,000 at S1 close means stop and ask. The per-area table above predates the detailed design. The web app is capped at 1,500 TypeScript lines through S1, and `serving/` + `training_jobs/` at 900 lines (700 → 900, user decision 2026-09-26; reformat of serving/).
+The per-area table above is a planning estimate [E] that predates the detailed design; it is not a gate. Size is reviewed at each stage close (PLAN §0.7); the PR size caps and the module 600-line warning remain (PLAN §0.6).

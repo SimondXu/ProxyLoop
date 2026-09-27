@@ -33,7 +33,7 @@ from proxyloop.evidence.reality import role_refs
 from proxyloop.kernel.channels import Channel, End, HumanChannel, Incoming, read_stdin
 from proxyloop.kernel.lanes import PROFILE, FastLane, load_tokenizer, p3
 from proxyloop.kernel.speaker import Sleep, Speaker
-from proxyloop.kernel.watchdog import SessionEnd, watchdog
+from proxyloop.kernel.watchdog import Abort, SessionEnd, watchdog
 from proxyloop.llm.factory import LiveModeError, make_client
 from proxyloop.llm.http import HTTPAdapter, RecordSink
 from proxyloop.llm.spend import RunawaySpend, SpendLedger
@@ -42,7 +42,7 @@ from proxyloop.slow.loop import SlowLoop
 
 # Guard-authored and fixed (I11, C14): the first thing the rep hears.
 DISCLOSURE = "Hello, this is an AI assistant calling on behalf of the account holder."
-PROJECTED = (500_000, 200)  # [E] micro-USD and calls per S0 episode; guard at 10x
+PROJECTED = (300_000, 150)  # tokens and calls per S0 episode (ROOT-05); guard at 3x
 ChannelSpec = Literal["sim", "human"] | Channel
 ClientFactory = Callable[[llm.LLMRole, llm.ModelRef, RecordSink], llm.LLMClient]
 type Turn = CoroutineType[Any, Any, None]
@@ -50,9 +50,9 @@ PromptKind = Literal["view", "prompt", "messages", "response"]
 P3 = Literal["pass", "fail", "not_applicable"]
 REAL = llm.AdapterKind.REAL_HTTP
 _ACTOR = {"fast_user": "fast.user", "fast_cp": "fast.cp", "slow": "slow"}
-_ERRORS: dict[type[Exception], str] = {
-    **{llm.LLMUnavailable: "llm_unavailable", WorldError: "world_error"},
-    **{RunawaySpend: "budget"},
+_ERRORS: dict[type[Exception], str] = {  # in priority: budget before the world
+    **{llm.LLMUnavailable: "llm_unavailable", RunawaySpend: "budget"},
+    **{WorldError: "world_error"},
 }
 _AFTER_DEATH = ("llm.call", "spend.charged", "session.ended")
 
@@ -94,6 +94,8 @@ class SimUserChannel(Channel):  # replies delay_s after each message
     async def send(self, text: str | None, utt_id: str, cause: str, t_ms: int) -> None:
         async with self._lock:  # one reply at a time, in message order
             reply = await self._user.on_agent_message(text, cause)
+        if reply is None:  # the user stays silent: nothing to deliver
+            return
         due = 0 if text is None else t_ms + round(1000 * reply.delay_s)
         self.incoming.put_nowait(Incoming(((reply.text, reply.event_id),), due))
 
@@ -164,6 +166,8 @@ def _outcome(
     for kind, reason in _ERRORS.items():
         if found := [e for e in leaves if isinstance(e, kind)]:
             return reason, found[0]
+    if aborted := [e for e in leaves if isinstance(e, Abort)]:
+        return aborted[0].reason, aborted[0]
     if others := [e for e in leaves if not isinstance(e, SessionEnd)]:
         return "error", others[0]
     return cast(SessionEnd, leaves[0]).reason, None
@@ -204,7 +208,6 @@ class Kernel:
         self.cfg, self.task, self.clock, self.sleep = cfg, task, clock, sleep
         self.counts: Counter[str] = Counter()
         self.prompts: dict[str, b.PromptRecord] = {}
-        self.ledger = SpendLedger(*PROJECTED)
         self._causes: dict[str, str] = {}  # call_id -> the event it answers
         self._calls: dict[str, str] = {}  # call_id -> its last llm.call event
         self._dead, self._utt, self._tg = False, 0, asyncio.TaskGroup()
@@ -224,6 +227,8 @@ class Kernel:
             if client.ref != refs[role]:
                 raise ValueError(f"the {role} client is not the cfg's model")
             self.clients[role] = _Loud(client, self._die)
+        refs_now = [c.ref for c in self.clients.values()]  # the factor, at the start
+        self.ledger = SpendLedger(*PROJECTED, refs=refs_now)
         fast = [self.clients.get(r) for r in ("fast_user", "fast_cp")]
         vllm = any(c is not None and c.ref.endpoint == "vllm" for c in fast)
         self.tok = tok if tok is not None or not vllm else load_tokenizer()
@@ -368,7 +373,7 @@ class Kernel:
         }
         started: dict[str, Any] = {
             "cfg_hash": config_hash(self.cfg),
-            "task_ref": f"{self.task.family}@{self.task.version}",
+            "task_ref": self.task.ref,
             "instance_hash": instance_hash(self.task),
             "split": "train",  # piloted families are train-only (I9)
             "renderer_fp": {p: fingerprint(p) for p in PROFILE.values()},
@@ -381,6 +386,10 @@ class Kernel:
         except Exception as err:  # vLLM cannot answer P3: the endpoint is dead
             self.p3, self.attest, dead = "fail", None, err
         head = started | {"models": models, "attest": self.attest, "parity": self.p3}
+        led = self.ledger  # the S0 runaway guard in force (an extra key, §4.2)
+        head["runaway"] = {"factor": led.factor, "tokens": led.limit_tokens}
+        head["runaway"] |= {"unpriced_calls": led.limit_unpriced_calls}
+        head["runaway"] |= {"cap_micro_usd": led.limit_micro_usd}
         root = self.emit("session.started", "kernel", head, (), "ops").event_id
         if self.p3 == "fail":  # refuse to start (§12)
             self._close("p3_failed" if dead is None else "llm_unavailable", started)
@@ -494,7 +503,8 @@ class Kernel:
         return ev.event_id
 
     def _close(self, reason: str, started: dict[str, Any]) -> None:
-        ended = {"reason": reason, "counts": dict(self.counts)}
+        ended: dict[str, object] = {"reason": reason, "counts": dict(self.counts)}
+        ended["spend"] = self.ledger.totals()  # extra keys: S1-CON-03 types them
         self.emit("session.ended", "kernel", ended, (), "ops")
         self.bus.close()
         prompts = "".join(f"{r.model_dump_json()}\n" for r in self.prompts.values())

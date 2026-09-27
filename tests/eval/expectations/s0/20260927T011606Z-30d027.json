@@ -1,0 +1,163 @@
+{
+  "outcome": {
+    "expected": "model_failure",
+    "derivation": "session.ended #152 reason=abandoned -> outcome class model_failure (PR #135: ok = completed/no_deal/info_only/escalate; model_failure = timeout/abandoned; infra_error = everything else). Manifest task_ref cp-direct-discount@1, split=train, instance_hash 6a059e57... is the same in manifest and session.started #0, so no guard/mismatch path applies."
+  },
+  "success": {
+    "expected": 0,
+    "derivation": "model_failure is a failure class; PR #135: both failure classes set success and safe_success to 0. (On an ok episode success would be not computable until gold/hidden constraints exist, S1-SYS-04; here the failure rule decides.)"
+  },
+  "safe_success": {
+    "expected": 0,
+    "derivation": "model_failure is a failure class; PR #135: both failure classes set success and safe_success to 0. (On an ok episode success would be not computable until gold/hidden constraints exist, S1-SYS-04; here the failure rule decides.) safe_success = success AND NOT harm, so also 0."
+  },
+  "relay_recall": {
+    "expected": {
+      "value": 0.6666666666666666,
+      "recalled": 4,
+      "scored": 6,
+      "undelivered": 0,
+      "undelivered_reveals": 0
+    },
+    "derivation": "user.sim #9 revealed {competitor.name=Brightwave, competitor.price_usd=60, plan.current_price_usd=85, tenure_years=6}, delivered by user.msg #10 (cause #9). Window = next 2 FastU generations requested after #10: user-g1 (fast.request #11) and user-g2 (#77). user-g1 relayed f2s.msg #24 (NOTE, facts=[]) text 'fact current_bill=85; fact tenure=6 years; fact competitor_offer=Brightwave at 60; ...' -> whole tokens 85, 6, brightwave, 60 all present -> 4/4. user.sim #102 revealed {account.holder_name=Dana Reyes, account.last4=4821}, delivered by user.msg #132 (cause #102); the only later FastU generation user-g3 (#133) was cancelled at session end (llm.call #150 error=cancelled), no f2s -> 0/2. Recall = 4/6. Every user.sim was delivered -> undelivered 0 values, 0 reveals."
+  },
+  "relay_precision_value_only": {
+    "expected": null,
+    "not_computable": "empty_denominator",
+    "derivation": "User-lane f2s.msg: only #24, facts=[] (the model's 'fact k=v' line failed to parse: fast.turn #23 issue malformed_fact). No typed user-lane fact -> not computable."
+  },
+  "offer_capture": {
+    "expected": null,
+    "not_computable": "empty_denominator",
+    "derivation": "No offer voiced: every rep.mouth intent has say=[] (#18 greet, #33 check_in, #80 ask_identity, #115 ask_identity, #143 hang_up); the rep never left IDENTIFY. No offer.recorded events. 0 voiced terms -> not computable (empty denominator); unscored terms = [].",
+    "unscored_terms": []
+  },
+  "approval_b": {
+    "expected": null,
+    "not_computable": "empty_denominator",
+    "derivation": "speak.released events: only #5 (cause speak.verbatim #4 kind=disclosure, not accept). No accept released, no action.authorized / approval.* / mandate.* events -> accepts=0, via_approval=0, via_mandate=0, no approval card either. EVAL §7 scopes the approval metrics to 'each episode with an approval-relevant offer'; no offer was voiced, so approval (b) is not applicable -> not computable. REVISED after re-derivation: the first commit expected {held: true, accepts: 0, via_*: 0} (vacuous truth), which missed that scope sentence."
+  },
+  "approval_c": {
+    "expected": null,
+    "not_computable": "empty_denominator",
+    "derivation": "No approval.requested card and no APPROVAL_NOTICE s2f.msg in the bundle -> not computable (nothing to score)."
+  },
+  "unsupported_numbers_cp": {
+    "expected": {
+      "count": 0,
+      "turns": 3
+    },
+    "derivation": "cp Fast speech delivered: utt.delivered #43, #44, #88, #98, #134 (the disclosure line is a Guard verbatim, not Fast speech). None contains a digit; spelled-out words ('four') are not counted as numbers. -> 0 unsupported numbers, 0 per 100 turns; turns = 3 cp fast.turn events. prompts.jsonl not needed since there is no number to support."
+  },
+  "directive_error_cp": {
+    "expected": {
+      "issues": 0,
+      "turns": 3
+    },
+    "derivation": "cp fast.turn #38, #85, #120: items are speech/hold only, no kind=issue (ParseIssue) item -> 0 issues over 3 cp turns (0 per turn). User-lane issues are out of scope for this cp metric."
+  },
+  "latency.user.relay-measured (teamrouter)": {
+    "expected": {
+      "turns": 2,
+      "untimed": 0,
+      "ttfs_missing": 0,
+      "heard_missing": 0,
+      "ttft_ms": [
+        8264,
+        10326
+      ],
+      "ttfs_ms": [
+        8684,
+        10438
+      ],
+      "time_to_heard_ms": [
+        8709,
+        10587
+      ]
+    },
+    "derivation": "turns = completed fast.turn events on the lane (cancelled requests have no fast.turn and are not turns); trigger end = t_ms of the fast.request cause; TTFT = llm.call.t_first_token - trigger; TTFS = llm.call.t_start + fast.turn.ttfs_ms - trigger; time_to_heard = first utt.delivered of the turn's sentences - trigger (user lane: chat delivery is instantaneous, so utt.delivered.t_ms is its start). Every turn has ttft_ms/ttfs_ms and speech, so untimed = ttfs_missing = 0. Samples in fast.turn order. user-g1: fast.turn #23 <- fast.request #11 <- trigger user.msg #10@4886; llm.call #21 t_start 4886 t_first_token 13150, ttfs_ms 8684 -> TTFT 13150-4886=8264, TTFS 4886+8684-4886=8684, heard: first utt.delivered #26@13595 -> 8709 | user-g2: fast.turn #92 <- fast.request #77 <- trigger s2f.msg #72@40992; llm.call #90 t_start 40993 t_first_token 51318, ttfs_ms 10437 -> TTFT 51318-40992=10326, TTFS 40993+10437-40992=10438, heard: first utt.delivered #96@51579 -> 10587"
+  },
+  "latency.cp.relay-measured (teamrouter)": {
+    "expected": {
+      "turns": 3,
+      "untimed": 0,
+      "ttfs_missing": 0,
+      "heard_missing": 3,
+      "ttft_ms": [
+        11177,
+        21349,
+        19929
+      ],
+      "ttfs_ms": [
+        11328,
+        21509,
+        20230
+      ],
+      "time_to_heard_ms": []
+    },
+    "derivation": "turns = completed fast.turn events on the lane (cancelled requests have no fast.turn and are not turns); trigger end = t_ms of the fast.request cause; TTFT = llm.call.t_first_token - trigger; TTFS = llm.call.t_start + fast.turn.ttfs_ms - trigger; time_to_heard = first utt.delivered of the turn's sentences - trigger (user lane: chat delivery is instantaneous, so utt.delivered.t_ms is its start). Every turn has ttft_ms/ttfs_ms and speech, so untimed = ttfs_missing = 0. Samples in fast.turn order. cp-g1: fast.turn #38 <- fast.request #20 <- trigger utt.final #19@12209; llm.call #36 t_start 12210 t_first_token 23386, ttfs_ms 11327 -> TTFT 23386-12209=11177, TTFS 12210+11327-12209=11328, heard: speech delivered (first utt.delivered #43) but cp utt.delivered has no t_start_ms -> heard_missing | cp-g2: fast.turn #85 <- fast.request #45 <- trigger utt.final #35@22257; llm.call #83 t_start 33694 t_first_token 43606, ttfs_ms 10072 -> TTFT 43606-22257=21349, TTFS 33694+10072-22257=21509, heard: speech delivered (first utt.delivered #88) but cp utt.delivered has no t_start_ms -> heard_missing | cp-g3: fast.turn #120 <- fast.request #99 <- trigger utt.final #82@41661; llm.call #118 t_start 53285 t_first_token 61590, ttfs_ms 8606 -> TTFT 61590-41661=19929, TTFS 53285+8606-41661=20230, heard: speech delivered (first utt.delivered #134) but cp utt.delivered has no t_start_ms -> heard_missing | cp time_to_heard not computable: cp utt.delivered.t_ms is the end of speech and the bundle has no utt.delivered.t_start_ms (PLAN #135 follow-up).",
+    "not_computable": {
+      "time_to_heard": "missing_field"
+    }
+  },
+  "cost.ear": {
+    "expected": {
+      "usd": null,
+      "reason": "unpriced",
+      "calls_by_basis": {
+        "unpriced": 4
+      }
+    },
+    "derivation": "spend.charged role=ear: seqs [13, 47, 104, 137], every one basis=unpriced, micro_usd=null -> usd None (a role with any unpriced call has no USD). Includes charges for cancelled/errored attempts. manifest.spend (0, by_role {}) is not the source."
+  },
+  "cost.fast_cp": {
+    "expected": {
+      "usd": null,
+      "reason": "unpriced",
+      "calls_by_basis": {
+        "unpriced": 4
+      }
+    },
+    "derivation": "spend.charged role=fast_cp: seqs [37, 84, 119, 149], every one basis=unpriced, micro_usd=null -> usd None (a role with any unpriced call has no USD). Includes charges for cancelled/errored attempts. manifest.spend (0, by_role {}) is not the source."
+  },
+  "cost.fast_user": {
+    "expected": {
+      "usd": null,
+      "reason": "unpriced",
+      "calls_by_basis": {
+        "unpriced": 3
+      }
+    },
+    "derivation": "spend.charged role=fast_user: seqs [22, 91, 151], every one basis=unpriced, micro_usd=null -> usd None (a role with any unpriced call has no USD). Includes charges for cancelled/errored attempts. manifest.spend (0, by_role {}) is not the source."
+  },
+  "cost.mouth": {
+    "expected": {
+      "usd": null,
+      "reason": "unpriced",
+      "calls_by_basis": {
+        "unpriced": 5
+      }
+    },
+    "derivation": "spend.charged role=mouth: seqs [17, 32, 79, 114, 142], every one basis=unpriced, micro_usd=null -> usd None (a role with any unpriced call has no USD). Includes charges for cancelled/errored attempts. manifest.spend (0, by_role {}) is not the source."
+  },
+  "cost.simuser": {
+    "expected": {
+      "usd": null,
+      "reason": "unpriced",
+      "calls_by_basis": {
+        "unpriced": 3
+      }
+    },
+    "derivation": "spend.charged role=simuser: seqs [8, 29, 101], every one basis=unpriced, micro_usd=null -> usd None (a role with any unpriced call has no USD). Includes charges for cancelled/errored attempts. manifest.spend (0, by_role {}) is not the source."
+  },
+  "cost.slow": {
+    "expected": {
+      "usd": null,
+      "reason": "unpriced",
+      "calls_by_basis": {
+        "unpriced": 5
+      }
+    },
+    "derivation": "spend.charged role=slow: seqs [51, 67, 108, 127, 147], every one basis=unpriced, micro_usd=null -> usd None (a role with any unpriced call has no USD). Includes charges for cancelled/errored attempts. manifest.spend (0, by_role {}) is not the source."
+  }
+}

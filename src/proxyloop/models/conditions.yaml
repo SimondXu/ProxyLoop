@@ -1,0 +1,31 @@
+# Fast conditions (EVAL §4.1). Everything else in SessionConfig (Slow, world,
+# sampling, seed) is the same across conditions; a condition sets only the Fast
+# lanes and, for R, the teacher and its ablations. Model ids are exact, never
+# aliases (contract.llm.ModelRef). teacher_resamples: the TeacherRepair limit
+# for a condition whose Fast is the teacher (T) or repaired by it (R); 0 in
+# evaluation, so the teacher gets no retry the student does not (root, #124).
+models:
+  qwen3.5-9b: {kind: real_http, endpoint: vllm, model_id: Qwen3.5-9B}  # ADR-0002
+  qwen3.5-4b: {kind: real_http, endpoint: vllm, model_id: Qwen3.5-4B}  # served by S1-MOD-01B
+  claude-haiku-4-5: {kind: real_http, endpoint: relay, model_id: claude-haiku-4-5-20251001}  # ADR-0001
+  claude-sonnet-5: {kind: real_http, endpoint: relay, model_id: claude-sonnet-5}  # ADR-0001
+  fsm: {kind: baseline, endpoint: null, model_id: proxyloop-fsm-v1}  # models/fsm.py
+  # C5 (user, 2026-09-27). reasoning_effort is provisional (the user's setting).
+  # Sampling is set by the provider: OpenRouter lists no temperature/top_p for
+  # this model, so the shared Fast sampling is not honoured. The served echo is
+  # to be confirmed by the root's C5 smoke bundle.
+  gpt-6-luna: {kind: real_http, endpoint: openrouter, model_id: openai/gpt-6-luna, reasoning_effort: low}
+
+conditions:
+  C2: {fast_user: qwen3.5-9b, fast_cp: qwen3.5-9b}
+  C3: {fast_user: qwen3.5-4b, fast_cp: qwen3.5-4b}
+  C4: {fast_user: claude-haiku-4-5, fast_cp: claude-haiku-4-5}
+  C5: {fast_user: gpt-6-luna, fast_cp: gpt-6-luna}
+  T: {fast_user: claude-sonnet-5, fast_cp: claude-sonnet-5, teacher_resamples: 0}
+  F: {fast_user: fsm, fast_cp: fsm}
+  R:
+    fast_user: qwen3.5-9b
+    fast_cp: qwen3.5-9b
+    teacher: claude-sonnet-5
+    ablations: [teacher_repair_cp, teacher_repair_user]
+    teacher_resamples: 0

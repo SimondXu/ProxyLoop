@@ -27,7 +27,13 @@ from proxyloop.contract.base import (
 )
 from proxyloop.contract.llm import ChatMessage
 from proxyloop.contract.messages import Guide
-from proxyloop.contract.profiles import Profile, SectionKind, pl_cp_v1, pl_user_v1
+from proxyloop.contract.profiles import (
+    Profile,
+    SectionKind,
+    pl_cp_v1,
+    pl_cp_v2,
+    pl_user_v1,
+)
 from proxyloop.contract.state import OfferPublic, ReadbackSlot
 from proxyloop.contract.views import FastView
 
@@ -38,7 +44,7 @@ OMITTED_LINES = "(earlier conversation omitted)"
 OMITTED_ACTIONS = "- (earlier actions omitted)"
 
 PROFILES: Mapping[str, Profile] = MappingProxyType(
-    {p.name: p for p in (pl_user_v1.PROFILE, pl_cp_v1.PROFILE)}
+    {p.name: p for p in (pl_user_v1.PROFILE, pl_cp_v1.PROFILE, pl_cp_v2.PROFILE)}
 )
 _BLOCKS: frozenset[SectionKind] = frozenset(
     {"actions", "offers", "guidance", "transcript"}
@@ -47,6 +53,10 @@ _BLOCKS: frozenset[SectionKind] = frozenset(
 
 class GuideSlotError(ValueError):
     """A guide slot does not resolve in public state (rejected at render time)."""
+
+
+class GuideMoveError(ValueError):
+    """The profile has no text for a guide move (e.g. a newer move, older profile)."""
 
 
 class ContextBudgetError(ValueError):
@@ -95,7 +105,9 @@ def _resolve(slot: str, view: FastView) -> str:
 
 
 def _guide(guide: Guide, view: FastView, profile: Profile) -> str:
-    text = profile.moves[guide.move]
+    text = profile.moves.get(guide.move)
+    if text is None:
+        raise GuideMoveError(f"profile {profile.name} has no text for {guide.move}")
     if guide.slots:
         resolved = "; ".join(f"{s} = {_resolve(s, view)}" for s in guide.slots)
         text = f"{text} ({resolved})"
