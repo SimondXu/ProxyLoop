@@ -14,8 +14,9 @@ teacher's ``ModelRef``; it is the teacher's call only on the lane whose
 A claim is scoped to its Fast model (S1-SYS-14): ``claim_scope`` labels it with
 the claimed Fast lanes' ``ModelRef``s. P3 ``not_applicable`` passes only for a
 hosted Fast, as hosted-Fast evidence that is never a Qwen claim; a Qwen claim
-(``about="qwen"``) needs every claimed Fast lane on vLLM and P3 = pass. A trained
-slot (C1) needs its ``adapter_shards``: no kernel records them yet (D4).
+(``about="qwen"``) needs every claimed Fast lane on vLLM, P3 = pass and no
+teacher repair (R). A trained slot (C1) needs its ``adapter_shards``: no kernel
+records them yet (D4), and the training-card comparison is deferred.
 """
 
 from __future__ import annotations
@@ -86,12 +87,20 @@ def claim_scope(m: Manifest, roles: Collection[LLMRole]) -> str:
         for r, f in fast.items()
     )
     kinds = {label(f) for f in fast.values()}
+    if _repaired(m.cfg):
+        return f"teacher-repaired (R), not a Qwen claim: {lanes}; P3 {m.p3}"
     if kinds == {"vllm"}:
         return f"Qwen@vllm: {lanes}; P3 {m.p3}"
     if "hosted" in kinds:
         p3 = f"P3 {m.p3}" + (" (hosted Fast)" if m.p3 == "not_applicable" else "")
         return f"hosted-Fast evidence, not a Qwen claim: {lanes}; {p3}"
     return f"{'/'.join(sorted(kinds))}: {lanes}; P3 {m.p3}"
+
+
+def _repaired(cfg: SessionConfig) -> bool:
+    """R: the teacher speaks some Fast lines."""
+    repair = {AblationId.TEACHER_REPAIR_CP, AblationId.TEACHER_REPAIR_USER}
+    return cfg.teacher is not None or bool(repair & set(cfg.ablations))
 
 
 def _scope_failures(
@@ -102,7 +111,10 @@ def _scope_failures(
         slot = m.models[role].served_model or ref.model_id
         trained = ref.endpoint == "vllm" and TRAINED_MARK in slot
         if trained and not m.models[role].adapter_shards:  # D4: the kernel's part
-            out.append(f"{role} runs the trained slot {slot} with no adapter_shards")
+            out.append(
+                f"{role} runs the trained slot {slot} with no adapter_shards"
+                " (the training-card comparison is deferred)"
+            )
     if about != "qwen":
         return out
     if not fast:
@@ -112,6 +124,8 @@ def _scope_failures(
             out.append(f"a Qwen claim needs Qwen@vllm: {role} ran {label(ref)}")
     if m.p3 != "pass":
         out.append(f"a Qwen claim needs P3 pass, not {m.p3}")
+    if _repaired(m.cfg):
+        out.append("a Qwen claim excludes teacher repair (R): the teacher spoke")
     return out
 
 

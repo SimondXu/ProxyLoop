@@ -2,9 +2,8 @@
 
 ``src/`` builds only ``real_http`` adapters. ``recorded_replay`` and
 ``test_fake`` clients exist only under ``tests/`` and are injected there. A
-``baseline`` ref is the in-process FSM Fast, condition F (``models.fsm``, §0.2);
-whether a role may run it live is ``SessionConfig``'s and the kernel's rule.
-Live mode refuses ``test_fake`` and ``recorded_replay`` (I8).
+``baseline`` ref is the in-process FSM Fast, condition F (``models.fsm``, §0.2),
+built only outside live mode. Live mode accepts ``real_http`` alone (I8).
 
 ``base_url`` points one client at another server root, for the dead-endpoint
 smoke only (a real, unreachable address for one role, ``--fast-cp-base-url``).
@@ -23,7 +22,7 @@ from proxyloop.models.fsm import FsmTalker
 
 
 class LiveModeError(ValueError):
-    """Live mode was asked for a ``test_fake`` or ``recorded_replay`` adapter."""
+    """Live mode was asked for an adapter that is not ``real_http``."""
 
 
 class Redirect(httpx.AsyncBaseTransport):
@@ -63,7 +62,7 @@ def make_client(
     """``on_record`` receives every record the client produces (``llm.http``);
     ``transport`` is a test seam (httpx.MockTransport); ``base_url``: see above."""
 
-    if ref.kind is AdapterKind.BASELINE:
+    if ref.kind is AdapterKind.BASELINE and not live:
         return FsmTalker(ref, clock, on_record)
     if ref.kind is not AdapterKind.REAL_HTTP:
         if live:

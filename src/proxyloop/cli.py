@@ -72,7 +72,7 @@ CONDITIONS: dict[str, tuple[ModelRef, ModelRef | None]] = {
     "C4": (_ref("relay", "claude-haiku-4-5-20251001", None), None),
     "C5": (_ref("openrouter", "openai/gpt-6-luna", "none"), None),
     "T": (SONNET, None),  # the teacher as Fast, with no repair
-    "F": (FSM, None),  # the FSM talker (llm.factory)
+    "F": (FSM, None),  # the FSM talker (llm.factory): a non-live run (AGENTS 5)
     "R": (QWEN9, SONNET),  # the kernel wraps the teacher in TeacherRepair
 }
 
@@ -88,7 +88,8 @@ def _fast(args: argparse.Namespace) -> ModelRef:
 def live_config(args: argparse.Namespace) -> SessionConfig:
     """The session's models from the options; a vLLM Fast and a relay Slow keep
     the provider's effort, a hosted Fast and a TeamRouter Slow pin it. A
-    ``--condition`` sets both Fast lanes and, for R, the teacher's repair."""
+    ``--condition`` sets both Fast lanes and, for R, the teacher's repair; F
+    runs with ``live=False``, since live mode accepts ``real_http`` alone."""
 
     fast, teacher = CONDITIONS.get(args.condition) or (_fast(args), None)
     slow_effort = args.slow_effort  # the relay's Slow keeps the provider's default
@@ -109,7 +110,7 @@ def live_config(args: argparse.Namespace) -> SessionConfig:
         seed=args.seed,
         ablations=REPAIR if teacher else (),
         teacher=teacher,
-        live=True,
+        live=fast.kind is REAL,
     )
 
 

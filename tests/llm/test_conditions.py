@@ -3,18 +3,14 @@ ids (EVAL §4.1), held here to the MOD registry's ``conditions.yaml``."""
 
 from __future__ import annotations
 
-import asyncio
-from pathlib import Path
 from typing import Any
 
 import pytest
 from tests.llm.wire import counter_clock
-from tests.support.sessions import patient_task
 
 from proxyloop import cli
-from proxyloop.contract.config import AblationId, SessionConfig
+from proxyloop.contract.config import AblationId, SessionConfig, config_hash
 from proxyloop.contract.llm import AdapterKind
-from proxyloop.kernel.session import run_session
 from proxyloop.llm.factory import LiveModeError, make_client
 from proxyloop.llm.relay import ChatClient
 from proxyloop.models import registry
@@ -32,16 +28,22 @@ def test_the_cli_conditions_are_the_registrys() -> None:
     ``condition(name).apply`` sets on the CLI's default config."""
     assert set(cli.CONDITIONS) == set(registry.conditions()) - {"C1"}
     for name in cli.CONDITIONS:
-        assert _cfg("--condition", name) == registry.condition(name).apply(_cfg())
+        cfg = _cfg("--condition", name)
+        assert cfg.live is (name != "F")  # F is a non-live run (AGENTS rule 5)
+        want = registry.condition(name).apply(_cfg())
+        assert cfg == want.model_copy(update={"live": cfg.live})
 
 
-def test_f_builds_the_fsm_on_both_lanes() -> None:
+def test_f_builds_the_fsm_on_both_lanes_in_a_non_live_cfg() -> None:
     cfg = _cfg("--condition", "F")
     assert cfg.fast_user == cfg.fast_cp == cli.FSM
     assert cfg.fast_cp.kind is AdapterKind.BASELINE
-    assert (cfg.teacher, cfg.ablations) == (None, ())
-    fsm = make_client(cfg.fast_cp, live=True, clock=counter_clock(), on_record=print)
+    assert (cfg.teacher, cfg.ablations, cfg.live) == (None, (), False)
+    assert config_hash(cfg) != config_hash(cfg.model_copy(update={"live": True}))
+    fsm = make_client(cfg.fast_cp, live=False, clock=counter_clock(), on_record=print)
     assert isinstance(fsm, FsmTalker)
+    with pytest.raises(LiveModeError):
+        make_client(cfg.fast_cp, live=True, clock=counter_clock(), on_record=print)
 
 
 def test_t_is_the_teacher_as_fast_with_no_repair(monkeypatch: Any) -> None:
@@ -83,17 +85,3 @@ def test_a_condition_refuses_its_own_fast_options(extra: tuple[str, ...]) -> Non
     argv = ["session", "--family", "f", "--condition", "C2", *extra]
     with pytest.raises(SystemExit):
         cli.main(argv)
-
-
-def test_a_live_f_session_is_refused_loudly_by_the_kernel(tmp_path: Path) -> None:
-    """The kernel runs only real_http live (session.py) although the contract
-    admits a baseline Fast: a live F run waits for that kernel change."""
-    cfg = _cfg("--condition", "F")
-
-    def never(*_: object) -> Any:
-        raise AssertionError("no client is built before the refusal")
-
-    run = run_session(cfg, patient_task(), runs_dir=tmp_path, clients=never)
-    with pytest.raises(LiveModeError, match="fast_user"):
-        asyncio.run(run)
-    assert not any(tmp_path.iterdir())
