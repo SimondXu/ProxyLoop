@@ -10,12 +10,20 @@ hosted id), else the ``ModelRef.model_id`` the call requested
 E1: a teacher-substituted Fast call keeps its ``fast_*`` role and carries the
 teacher's ``ModelRef``; it is the teacher's call only on the lane whose
 ``teacher_repair_*`` ablation the cfg sets, and is checked as the teacher's.
+
+A claim is scoped to its Fast model (S1-SYS-14): ``claim_scope`` labels it with
+the claimed Fast lanes' ``ModelRef``s. P3 ``not_applicable`` passes only for a
+hosted Fast, as hosted-Fast evidence that is never a Qwen claim; a Qwen claim
+(``about="qwen"``) needs every claimed Fast lane on vLLM, P3 = pass and no
+teacher repair (R). A trained slot (C1) needs its ``adapter_shards``: no kernel
+records them yet (D4), and the training-card comparison is deferred.
 """
 
 from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Collection, Sequence
+from typing import Literal
 
 from proxyloop.contract import CONTRACT_VERSION
 from proxyloop.contract.bundle import Manifest
@@ -25,6 +33,10 @@ from proxyloop.contract.protocol import fingerprint
 
 _REAL = AdapterKind.REAL_HTTP
 _NOT_LIVE = (AdapterKind.TEST_FAKE, AdapterKind.RECORDED_REPLAY)
+_FAST: tuple[LLMRole, ...] = ("fast_user", "fast_cp")
+TRAINED_MARK = "-pl-"  # in serving.config.TRAINED_PREFIX: a trained LoRA slot (C1)
+QWEN_PREFIX = "Qwen3.5-"  # every name serving.config serves, trained slots too
+About = Literal["qwen"]  # what a claim is about; None: its own Fast ModelRef
 
 
 def role_refs(cfg: SessionConfig) -> dict[str, ModelRef]:
@@ -61,6 +73,74 @@ def reality_report(manifest: Manifest) -> dict[str, str]:
     return {role: label(model.ref) for role, model in manifest.models.items()}
 
 
+def _fast(m: Manifest, roles: Collection[LLMRole]) -> dict[LLMRole, ModelRef]:
+    return {r: m.models[r].ref for r in _FAST if r in roles and r in m.models}
+
+
+def _qwen(m: Manifest, role: LLMRole) -> bool:
+    """Qwen@vllm: a vLLM Fast whose requested and served names are Qwen's."""
+    model = m.models[role]
+    names = (model.ref.model_id, model.served_model or model.ref.model_id)
+    return model.ref.endpoint == "vllm" and all(
+        n.startswith(QWEN_PREFIX) for n in names
+    )
+
+
+def claim_scope(m: Manifest, roles: Collection[LLMRole]) -> str:
+    """What a passing claim is evidence of: the claimed Fast lanes' models."""
+    fast = _fast(m, roles)
+    if not fast:
+        return "no Fast role claimed"
+    effort = {r: f" (effort {f.reasoning_effort})" for r, f in fast.items()}
+    lanes = ", ".join(
+        f"{r}={f.endpoint}:{f.model_id}{effort[r] if f.reasoning_effort else ''}"
+        for r, f in fast.items()
+    )
+    kinds = {"Qwen@vllm" if _qwen(m, r) else label(f) for r, f in fast.items()}
+    if _repaired(m.cfg):
+        return f"teacher-repaired (R), not a Qwen claim: {lanes}; P3 {m.p3}"
+    if kinds == {"Qwen@vllm"}:
+        return f"Qwen@vllm: {lanes}; P3 {m.p3}"
+    if "hosted" in kinds:
+        p3 = f"P3 {m.p3}" + (" (hosted Fast)" if m.p3 == "not_applicable" else "")
+        return f"hosted-Fast evidence, not a Qwen claim: {lanes}; {p3}"
+    return f"{'/'.join(sorted(kinds))}, not a Qwen claim: {lanes}; P3 {m.p3}"
+
+
+def _repaired(cfg: SessionConfig) -> bool:
+    """R: the teacher speaks some Fast lines."""
+    repair = {AblationId.TEACHER_REPAIR_CP, AblationId.TEACHER_REPAIR_USER}
+    return cfg.teacher is not None or bool(repair & set(cfg.ablations))
+
+
+def _scope_failures(
+    m: Manifest, roles: Collection[LLMRole], about: About | None
+) -> list[str]:
+    fast, out = _fast(m, roles), list[str]()
+    for role, ref in fast.items():
+        slot = m.models[role].served_model or ref.model_id
+        names = (ref.model_id, slot)
+        trained = ref.endpoint == "vllm" and any(TRAINED_MARK in n for n in names)
+        if trained and not m.models[role].adapter_shards:  # D4: the kernel's part
+            out.append(
+                f"{role} runs the trained slot {slot} with no adapter_shards"
+                " (the training-card comparison is deferred)"
+            )
+    if about != "qwen":
+        return out
+    if not fast:
+        return [*out, "a Qwen claim needs a claimed Fast role"]
+    for role, ref in fast.items():
+        if not _qwen(m, role):
+            ran = f"{label(ref)} {ref.endpoint}:{ref.model_id}"
+            out.append(f"a Qwen claim needs Qwen@vllm: {role} ran {ran}")
+    if m.p3 != "pass":
+        out.append(f"a Qwen claim needs P3 pass, not {m.p3}")
+    if _repaired(m.cfg):
+        out.append("a Qwen claim excludes teacher repair (R): the teacher spoke")
+    return out
+
+
 def consistency_failures(m: Manifest, calls: Sequence[LLMCallRecord]) -> list[str]:
     refs = role_refs(m.cfg)
     out: list[str] = []
@@ -75,6 +155,8 @@ def consistency_failures(m: Manifest, calls: Sequence[LLMCallRecord]) -> list[st
     kinds = [*m.reality.values(), *(c.adapter_kind for c in calls)]
     if m.cfg.live and any(kind in _NOT_LIVE for kind in kinds):
         out.append("a live bundle contains test_fake or recorded_replay")
+    if m.cfg.live and AdapterKind.BASELINE in kinds:  # F runs non-live (AGENTS 5)
+        out.append("a live bundle contains baseline")
     for c in calls:
         if c.role not in m.reality:
             out.append(f"call {c.call_id}: role {c.role} is not in the manifest")
@@ -121,6 +203,7 @@ def claim_failures(
     calls: Sequence[LLMCallRecord],
     roles: Collection[LLMRole],
     profiles: Collection[str],
+    about: About | None = None,
 ) -> list[str]:
     out: list[str] = []
     ok = [c for c in calls if c.error is None and c.adapter_kind is _REAL]
@@ -149,4 +232,4 @@ def claim_failures(
     on_vllm = any(m.models[r].ref.endpoint == "vllm" for r in roles if r in m.models)
     if m.p3 == "fail" or (m.p3 == "not_applicable" and on_vllm):
         out.append(f"P3 is {m.p3}")
-    return out
+    return out + _scope_failures(m, roles, about)
