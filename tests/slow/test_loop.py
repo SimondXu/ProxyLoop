@@ -96,6 +96,54 @@ def test_the_identity_deadlock_replay_resolves_on_the_first_step(
     k.bus.close()
 
 
+def test_slow_holds_for_a_missing_identity_fact_then_is_told_to_identify(
+    tmp_path: Path,
+) -> None:  # S0-SYS-07, run aeab91: deflected while waiting, recorded, never identified
+    idle = Idle(tmp_path)
+    k = idle.k
+    ask = "What is the account holder name and the last 4 of the account?"
+    hold = act(
+        "The rep asks for identity; asking the user.",
+        {"tool": "ask_user", "text": ask},
+        {"tool": "guide_fast", "move": "hold_for_decision"},
+    )
+    start = k.emit("user.msg", "kernel", {"text": "Find me a lower price."}).event_id
+    text = "My name is Dana Reyes and the last 4 digits are 4821."
+    said = k.emit("user.msg", "kernel", {"text": text}).event_id  # relayed later
+    record = act(
+        "Identity given.",
+        {
+            "tool": "record_fact",
+            "key": "account.holder_name",
+            "value": "Dana Reyes",
+            "utt_ref": said,
+        },
+        {
+            "tool": "record_fact",
+            "key": "account.last4",
+            "value": "4821",
+            "utt_ref": said,
+        },
+    )  # fmt: skip: as in aeab91, no guide follows
+    slow = idle.slow([hold, record])
+    idle.relay(start, lane="cp", utt_ref=None, type="HOLD", text="fact_request")
+    asyncio.run(slow.step(["relay"]))
+    (guide,) = [m.guide for m in k.bb.s2f_pending["cp"]]
+    assert guide is not None and guide.move == "hold_for_decision"
+    kinds = {e.type for e in k.bus.events}
+    assert not {"approval.requested", "authority.fence", "authority.epoch"} & kinds
+    assert "status.changed" not in kinds and "action.denied" not in kinds
+    idle.relay(said, lane="user", utt_ref=said, type="USER_UPDATE", text=text)
+    asyncio.run(slow.step(["relay"]))
+    assert set(k.bb.public.facts) == {"account.holder_name", "account.last4"}
+    asyncio.run(slow.step(["timer"]))
+    first, _, third = (m[-1]["content"] for m in idle.requests())
+    assert "not given yet" in first and "hold_for_decision" in first
+    slots = "slots=[fact:account.holder_name, fact:account.last4]"
+    assert f"guide_fast(identify, {slots})" in third
+    k.bus.close()
+
+
 def _paired(messages: list[dict[str, Any]]) -> bool:  # each tool call, its result
     for n, m in enumerate(messages):
         ids = [c["call_id"] for c in m.get("tool_calls") or ()]
