@@ -1,0 +1,140 @@
+{
+  "schema": "pl.bundle/1",
+  "run_id": "20260927T011606Z-30d027",
+  "git_sha": "2b132751abdd97d9b6412645c353423dcc0e215c",
+  "contract_version": "v1",
+  "cfg": {
+    "fast_user": {
+      "kind": "real_http",
+      "endpoint": "teamrouter",
+      "model_id": "gpt-6-luna",
+      "reasoning_effort": "low"
+    },
+    "fast_cp": {
+      "kind": "real_http",
+      "endpoint": "teamrouter",
+      "model_id": "gpt-6-luna",
+      "reasoning_effort": "low"
+    },
+    "slow": {
+      "kind": "real_http",
+      "endpoint": "teamrouter",
+      "model_id": "gemini-3.8-flash",
+      "reasoning_effort": "low"
+    },
+    "world": {
+      "ear": {
+        "kind": "real_http",
+        "endpoint": "teamrouter",
+        "model_id": "gemini-3.8-flash",
+        "reasoning_effort": "low"
+      },
+      "mouth": {
+        "kind": "real_http",
+        "endpoint": "teamrouter",
+        "model_id": "gemini-3.8-flash",
+        "reasoning_effort": "low"
+      },
+      "simuser": {
+        "kind": "real_http",
+        "endpoint": "teamrouter",
+        "model_id": "gemini-3.8-flash",
+        "reasoning_effort": "low"
+      }
+    },
+    "fast_sampling": {
+      "temperature": 0.3,
+      "top_p": 0.9,
+      "max_tokens": 160
+    },
+    "seed": 0,
+    "ablations": [],
+    "slow_view": "relay_only",
+    "teacher": null,
+    "live": true
+  },
+  "cfg_hash": "8bfc8f2b4f2e6789c4e57853a18ec31ce24dded52d10a70c838b08fbb149dddd",
+  "task_ref": "cp-direct-discount@1",
+  "instance_hash": "6a059e5760a1d2db94c46ccf464336ef2d38013717b6be1bf191e12f6151f2d9",
+  "split": "train",
+  "fingerprints": {
+    "pl_user_v1": "796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb",
+    "pl_cp_v1": "76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490"
+  },
+  "models": {
+    "slow": {
+      "ref": {
+        "kind": "real_http",
+        "endpoint": "teamrouter",
+        "model_id": "gemini-3.8-flash",
+        "reasoning_effort": "low"
+      },
+      "served_model": null,
+      "adapter_shards": {}
+    },
+    "fast_user": {
+      "ref": {
+        "kind": "real_http",
+        "endpoint": "teamrouter",
+        "model_id": "gpt-6-luna",
+        "reasoning_effort": "low"
+      },
+      "served_model": null,
+      "adapter_shards": {}
+    },
+    "simuser": {
+      "ref": {
+        "kind": "real_http",
+        "endpoint": "teamrouter",
+        "model_id": "gemini-3.8-flash",
+        "reasoning_effort": "low"
+      },
+      "served_model": null,
+      "adapter_shards": {}
+    },
+    "fast_cp": {
+      "ref": {
+        "kind": "real_http",
+        "endpoint": "teamrouter",
+        "model_id": "gpt-6-luna",
+        "reasoning_effort": "low"
+      },
+      "served_model": null,
+      "adapter_shards": {}
+    },
+    "ear": {
+      "ref": {
+        "kind": "real_http",
+        "endpoint": "teamrouter",
+        "model_id": "gemini-3.8-flash",
+        "reasoning_effort": "low"
+      },
+      "served_model": null,
+      "adapter_shards": {}
+    },
+    "mouth": {
+      "ref": {
+        "kind": "real_http",
+        "endpoint": "teamrouter",
+        "model_id": "gemini-3.8-flash",
+        "reasoning_effort": "low"
+      },
+      "served_model": null,
+      "adapter_shards": {}
+    }
+  },
+  "attestation": null,
+  "p3": "not_applicable",
+  "reality": {
+    "slow": "real_http",
+    "fast_user": "real_http",
+    "simuser": "real_http",
+    "fast_cp": "real_http",
+    "ear": "real_http",
+    "mouth": "real_http"
+  },
+  "spend": {
+    "micro_usd": 0,
+    "by_role": {}
+  }
+}
