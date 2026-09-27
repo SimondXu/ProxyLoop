@@ -33,7 +33,8 @@
        "enum": [
         "relay",
         "teamrouter",
-        "vllm"
+        "vllm",
+        "openrouter"
        ],
        "type": "string"
       },

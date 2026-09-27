@@ -17,6 +17,7 @@ from proxyloop.contract.protocol import (
     PROFILES,
     ContextBudgetError,
     EndCall,
+    GuideMoveError,
     GuideSlotError,
     Hold,
     ParseIssue,
@@ -353,6 +354,32 @@ def test_public_guide_slots_resolve() -> None:
     assert "(offer:o1.monthly_price = $65.00; fact:rep.name = Jo)" in _render_cp(
         _cp_bb(guide)
     )
+
+
+def test_hold_for_fact_renders_under_pl_cp_v2() -> None:
+    bb = _cp_bb(Guide(move=GuideMove.HOLD_FOR_FACT))
+    view = view_cp(bb, Trigger(kind="guidance"), "b")
+    content = render_messages(view, "pl_cp_v2")[1].content
+    assert "- Say you are getting that detail from your customer" in content
+    assert "(@hold fact_request)." in content
+
+
+def test_pl_cp_v1_refuses_a_move_it_has_no_text_for() -> None:
+    """pl_cp_v1 is frozen (ADR-0011): hold_for_fact fails loudly, never renders."""
+
+    bb = _cp_bb(Guide(move=GuideMove.HOLD_FOR_FACT))
+    with pytest.raises(GuideMoveError, match="pl_cp_v1 has no text for hold_for_fact"):
+        _render_cp(bb)
+    assert not issubclass(GuideMoveError, GuideSlotError)  # not a "private slot"
+
+
+def test_pl_cp_v2_is_pl_cp_v1_plus_hold_for_fact() -> None:
+    v1, v2 = PROFILES["pl_cp_v1"], PROFILES["pl_cp_v2"]
+    assert set(v1.moves) == {m.value for m in GuideMove} - {"hold_for_fact"}
+    assert set(v2.moves) == {m.value for m in GuideMove}
+    assert {k: v for k, v in v2.moves.items() if k != "hold_for_fact"} == v1.moves
+    same = ("lane", "system", "sections", "labels", "triggers", "closing")
+    assert all(getattr(v1, f) == getattr(v2, f) for f in same)
 
 
 def test_over_budget_without_anything_to_trim_is_an_error() -> None:
