@@ -1,0 +1,577 @@
+{
+ "task": "S0-ROOT-12",
+ "part": "fast",
+ "git_sha": "476db3897972abab26b558c2fb9e237506be1a32",
+ "source_run_id": "20260926T214214Z-577710",
+ "source_task_ref": "cp-direct-discount@1",
+ "source_models": {
+  "slow": "claude-sonnet-5",
+  "fast_user": "Qwen3.5-9B",
+  "simuser": "gemini-3.8-flash",
+  "fast_cp": "Qwen3.5-9B",
+  "ear": "gemini-3.8-flash",
+  "mouth": "gemini-3.8-flash"
+ },
+ "endpoint": "teamrouter",
+ "arms": {
+  "default": {
+   "model_id": "gpt-6-luna",
+   "reasoning_effort": null,
+   "n": 20,
+   "n_ok": 16,
+   "n_error": 4,
+   "n_rejected": 4,
+   "finish_reasons": {
+    "None": 4,
+    "stop": 11,
+    "length": 5
+   },
+   "served_model_echo": [
+    "gpt-6-luna-2026-09-22"
+   ],
+   "latency_ms_p50": 10694,
+   "latency_ms_p95": 50320,
+   "reasoning_tokens_p50": 92,
+   "reasoning_n": 16,
+   "reasoning_tokens_p95": 160,
+   "latency": {
+    "relay_measured": true,
+    "ttft_includes_reasoning": true,
+    "ttft_ms_p50": 10510,
+    "ttft_n": 12,
+    "ttft_ms_p95": 50320,
+    "total_ms_p50": 10694,
+    "total_ms_p95": 50320
+   },
+   "parse_issue_rate": 0.45,
+   "parse_issue_rate_answered": 0.3125,
+   "issues_by_reason": {
+    "empty_turn": 4,
+    "stray_directive": 1
+   },
+   "rejections": [
+    "EndpointError: HTTP 400: {\"error\":{\"message\":\"The request could not be completed.\",\"type\":\"upstream_error\",\"code\":400},\"trace_id\":\"cd7c37b2-38bd-4329-a089-cc76bdbad1aa\"}",
+    "EndpointError: HTTP 400: {\"error\":{\"message\":\"The request could not be completed.\",\"type\":\"upstream_error\",\"code\":400},\"trace_id\":\"72ca6e4e-59e6-4952-9f05-fe206694ee88\"}",
+    "EndpointError: HTTP 400: {\"error\":{\"message\":\"The request could not be completed.\",\"type\":\"upstream_error\",\"code\":400},\"trace_id\":\"f621893d-2318-4bb7-910f-e97ca278194f\"}",
+    "EndpointError: HTTP 400: {\"error\":{\"message\":\"The request could not be completed.\",\"type\":\"upstream_error\",\"code\":400},\"trace_id\":\"92094229-f52f-483b-9668-32a993e4a4a9\"}"
+   ],
+   "tokens": {
+    "prompt": 33004,
+    "completion": 1853,
+    "reasoning": 1460,
+    "reasoning_unknown": 0,
+    "records_without_usage": 4,
+    "records": 20
+   }
+  }
+ },
+ "selection_rule": "evenly spaced in log order, index floor((2i+1)N/2n); fast: n/2 per lane; arms run in listed order on even items, reversed on odd ones",
+ "selection": [
+  {
+   "source": "fast_user:3",
+   "t_ms": 31274
+  },
+  {
+   "source": "fast_user:8",
+   "t_ms": 51725
+  },
+  {
+   "source": "fast_user:13",
+   "t_ms": 71481
+  },
+  {
+   "source": "fast_user:17",
+   "t_ms": 101996
+  },
+  {
+   "source": "fast_user:22",
+   "t_ms": 129797
+  },
+  {
+   "source": "fast_user:27",
+   "t_ms": 195798
+  },
+  {
+   "source": "fast_user:32",
+   "t_ms": 233389
+  },
+  {
+   "source": "fast_user:37",
+   "t_ms": 305467
+  },
+  {
+   "source": "fast_user:41",
+   "t_ms": 373861
+  },
+  {
+   "source": "fast_user:46",
+   "t_ms": 446288
+  },
+  {
+   "source": "fast_cp:3",
+   "t_ms": 32333
+  },
+  {
+   "source": "fast_cp:9",
+   "t_ms": 93623
+  },
+  {
+   "source": "fast_cp:15",
+   "t_ms": 138189
+  },
+  {
+   "source": "fast_cp:21",
+   "t_ms": 191896
+  },
+  {
+   "source": "fast_cp:27",
+   "t_ms": 254996
+  },
+  {
+   "source": "fast_cp:32",
+   "t_ms": 301254
+  },
+  {
+   "source": "fast_cp:38",
+   "t_ms": 349751
+  },
+  {
+   "source": "fast_cp:44",
+   "t_ms": 385352
+  },
+  {
+   "source": "fast_cp:50",
+   "t_ms": 425680
+  },
+  {
+   "source": "fast_cp:56",
+   "t_ms": 468147
+  }
+ ],
+ "complete": true,
+ "aborted": null,
+ "calls": [
+  {
+   "source": "fast_user:3",
+   "t_ms": 31274,
+   "rejected": true,
+   "fatal": false,
+   "call_id": "probe-fast:0:default",
+   "served_model_echo": null,
+   "request_id": "54a51261-98e6-48c3-af01-c23f227f6960",
+   "finish_reason": null,
+   "error": "EndpointError: HTTP 400: {\"error\":{\"message\":\"The request could not be completed.\",\"type\":\"upstream_error\",\"code\":400},\"trace_id\":\"cd7c37b2-38bd-4329-a089-cc76bdbad1aa\"}",
+   "latency_ms": 56435,
+   "ttft_ms": null,
+   "usage": null,
+   "arm": "default"
+  },
+  {
+   "source": "fast_user:8",
+   "t_ms": 51725,
+   "rejected": true,
+   "fatal": false,
+   "call_id": "probe-fast:1:default",
+   "served_model_echo": null,
+   "request_id": "1ccce484-7afb-4295-b937-2fc99488ec57",
+   "finish_reason": null,
+   "error": "EndpointError: HTTP 400: {\"error\":{\"message\":\"The request could not be completed.\",\"type\":\"upstream_error\",\"code\":400},\"trace_id\":\"72ca6e4e-59e6-4952-9f05-fe206694ee88\"}",
+   "latency_ms": 49912,
+   "ttft_ms": null,
+   "usage": null,
+   "arm": "default"
+  },
+  {
+   "source": "fast_user:13",
+   "t_ms": 71481,
+   "rejected": true,
+   "fatal": false,
+   "call_id": "probe-fast:2:default",
+   "served_model_echo": null,
+   "request_id": "966ffa1c-0ff9-405d-987f-fd043726c013",
+   "finish_reason": null,
+   "error": "EndpointError: HTTP 400: {\"error\":{\"message\":\"The request could not be completed.\",\"type\":\"upstream_error\",\"code\":400},\"trace_id\":\"f621893d-2318-4bb7-910f-e97ca278194f\"}",
+   "latency_ms": 52494,
+   "ttft_ms": null,
+   "usage": null,
+   "arm": "default"
+  },
+  {
+   "source": "fast_user:17",
+   "t_ms": 101996,
+   "rejected": true,
+   "fatal": false,
+   "call_id": "probe-fast:3:default",
+   "served_model_echo": null,
+   "request_id": "bd9606e2-4b15-4947-8ac2-f98514aa8268",
+   "finish_reason": null,
+   "error": "EndpointError: HTTP 400: {\"error\":{\"message\":\"The request could not be completed.\",\"type\":\"upstream_error\",\"code\":400},\"trace_id\":\"92094229-f52f-483b-9668-32a993e4a4a9\"}",
+   "latency_ms": 54129,
+   "ttft_ms": null,
+   "usage": null,
+   "arm": "default"
+  },
+  {
+   "source": "fast_user:22",
+   "t_ms": 129797,
+   "lane": "user",
+   "text_chars": 5,
+   "relay_measured": true,
+   "n_speech": 0,
+   "issues": [],
+   "call_id": "probe-fast:4:default",
+   "served_model_echo": "gpt-6-luna-2026-09-22",
+   "request_id": "83a6ade4-f283-442d-8622-da344e486809",
+   "finish_reason": "stop",
+   "error": null,
+   "latency_ms": 50320,
+   "ttft_ms": 50320,
+   "usage": {
+    "prompt_tokens": 1783,
+    "completion_tokens": 50,
+    "reasoning_tokens": 39
+   },
+   "arm": "default"
+  },
+  {
+   "source": "fast_user:27",
+   "t_ms": 195798,
+   "lane": "user",
+   "text_chars": 0,
+   "relay_measured": true,
+   "n_speech": 0,
+   "issues": [
+    "empty_turn"
+   ],
+   "call_id": "probe-fast:5:default",
+   "served_model_echo": "gpt-6-luna-2026-09-22",
+   "request_id": "8b089ab3-dd4d-4b25-843d-b6a04dbe57d9",
+   "finish_reason": "length",
+   "error": null,
+   "latency_ms": 9589,
+   "ttft_ms": null,
+   "usage": {
+    "prompt_tokens": 2073,
+    "completion_tokens": 160,
+    "reasoning_tokens": 160
+   },
+   "arm": "default"
+  },
+  {
+   "source": "fast_user:32",
+   "t_ms": 233389,
+   "lane": "user",
+   "text_chars": 5,
+   "relay_measured": true,
+   "n_speech": 0,
+   "issues": [],
+   "call_id": "probe-fast:6:default",
+   "served_model_echo": "gpt-6-luna-2026-09-22",
+   "request_id": "c0a42db6-091c-41db-8737-9b7374cfb2f8",
+   "finish_reason": "stop",
+   "error": null,
+   "latency_ms": 9911,
+   "ttft_ms": 9908,
+   "usage": {
+    "prompt_tokens": 2265,
+    "completion_tokens": 49,
+    "reasoning_tokens": 38
+   },
+   "arm": "default"
+  },
+  {
+   "source": "fast_user:37",
+   "t_ms": 305467,
+   "lane": "user",
+   "text_chars": 5,
+   "relay_measured": true,
+   "n_speech": 0,
+   "issues": [],
+   "call_id": "probe-fast:7:default",
+   "served_model_echo": "gpt-6-luna-2026-09-22",
+   "request_id": "2fd82491-9737-41b6-9286-077a23ece0f1",
+   "finish_reason": "stop",
+   "error": null,
+   "latency_ms": 8468,
+   "ttft_ms": 8465,
+   "usage": {
+    "prompt_tokens": 2409,
+    "completion_tokens": 34,
+    "reasoning_tokens": 23
+   },
+   "arm": "default"
+  },
+  {
+   "source": "fast_user:41",
+   "t_ms": 373861,
+   "lane": "user",
+   "text_chars": 5,
+   "relay_measured": true,
+   "n_speech": 0,
+   "issues": [],
+   "call_id": "probe-fast:8:default",
+   "served_model_echo": "gpt-6-luna-2026-09-22",
+   "request_id": "8d9f6a34-0155-4338-a66d-7d546341989c",
+   "finish_reason": "stop",
+   "error": null,
+   "latency_ms": 10549,
+   "ttft_ms": 10510,
+   "usage": {
+    "prompt_tokens": 2568,
+    "completion_tokens": 21,
+    "reasoning_tokens": 10
+   },
+   "arm": "default"
+  },
+  {
+   "source": "fast_user:46",
+   "t_ms": 446288,
+   "lane": "user",
+   "text_chars": 5,
+   "relay_measured": true,
+   "n_speech": 0,
+   "issues": [],
+   "call_id": "probe-fast:9:default",
+   "served_model_echo": "gpt-6-luna-2026-09-22",
+   "request_id": "e4156f2f-e5d5-4968-af61-e06880a742b4",
+   "finish_reason": "stop",
+   "error": null,
+   "latency_ms": 9221,
+   "ttft_ms": 9217,
+   "usage": {
+    "prompt_tokens": 2663,
+    "completion_tokens": 27,
+    "reasoning_tokens": 16
+   },
+   "arm": "default"
+  },
+  {
+   "source": "fast_cp:3",
+   "t_ms": 32333,
+   "lane": "cp",
+   "text_chars": 180,
+   "relay_measured": true,
+   "n_speech": 2,
+   "issues": [],
+   "call_id": "probe-fast:10:default",
+   "served_model_echo": "gpt-6-luna-2026-09-22",
+   "request_id": "f0ba081e-2137-4dfc-b318-6d0be430ed72",
+   "finish_reason": "stop",
+   "error": null,
+   "latency_ms": 10580,
+   "ttft_ms": 10171,
+   "usage": {
+    "prompt_tokens": 605,
+    "completion_tokens": 139,
+    "reasoning_tokens": 93
+   },
+   "arm": "default"
+  },
+  {
+   "source": "fast_cp:9",
+   "t_ms": 93623,
+   "lane": "cp",
+   "text_chars": 238,
+   "relay_measured": true,
+   "n_speech": 3,
+   "issues": [],
+   "call_id": "probe-fast:11:default",
+   "served_model_echo": "gpt-6-luna-2026-09-22",
+   "request_id": "1e7b2048-94cd-4795-a8d0-f22bdb35ee12",
+   "finish_reason": "stop",
+   "error": null,
+   "latency_ms": 18108,
+   "ttft_ms": 17708,
+   "usage": {
+    "prompt_tokens": 986,
+    "completion_tokens": 154,
+    "reasoning_tokens": 94
+   },
+   "arm": "default"
+  },
+  {
+   "source": "fast_cp:15",
+   "t_ms": 138189,
+   "lane": "cp",
+   "text_chars": 144,
+   "relay_measured": true,
+   "n_speech": 2,
+   "issues": [
+    "stray_directive"
+   ],
+   "call_id": "probe-fast:12:default",
+   "served_model_echo": "gpt-6-luna-2026-09-22",
+   "request_id": "a6e8f8e1-8119-4aa8-8345-94ec6e3bf9bb",
+   "finish_reason": "stop",
+   "error": null,
+   "latency_ms": 31445,
+   "ttft_ms": 31075,
+   "usage": {
+    "prompt_tokens": 1283,
+    "completion_tokens": 148,
+    "reasoning_tokens": 108
+   },
+   "arm": "default"
+  },
+  {
+   "source": "fast_cp:21",
+   "t_ms": 191896,
+   "lane": "cp",
+   "text_chars": 63,
+   "relay_measured": true,
+   "n_speech": 2,
+   "issues": [],
+   "call_id": "probe-fast:13:default",
+   "served_model_echo": "gpt-6-luna-2026-09-22",
+   "request_id": "3dceed80-69a7-41eb-b534-15e3ed00db3b",
+   "finish_reason": "length",
+   "error": null,
+   "latency_ms": 14504,
+   "ttft_ms": 14330,
+   "usage": {
+    "prompt_tokens": 1620,
+    "completion_tokens": 160,
+    "reasoning_tokens": 137
+   },
+   "arm": "default"
+  },
+  {
+   "source": "fast_cp:27",
+   "t_ms": 254996,
+   "lane": "cp",
+   "text_chars": 261,
+   "relay_measured": true,
+   "n_speech": 3,
+   "issues": [],
+   "call_id": "probe-fast:14:default",
+   "served_model_echo": "gpt-6-luna-2026-09-22",
+   "request_id": "1ffbb234-5afb-43e0-98b1-252ab6fbd693",
+   "finish_reason": "stop",
+   "error": null,
+   "latency_ms": 14305,
+   "ttft_ms": 13901,
+   "usage": {
+    "prompt_tokens": 1974,
+    "completion_tokens": 154,
+    "reasoning_tokens": 92
+   },
+   "arm": "default"
+  },
+  {
+   "source": "fast_cp:32",
+   "t_ms": 301254,
+   "lane": "cp",
+   "text_chars": 200,
+   "relay_measured": true,
+   "n_speech": 2,
+   "issues": [],
+   "call_id": "probe-fast:15:default",
+   "served_model_echo": "gpt-6-luna-2026-09-22",
+   "request_id": "be5bf36c-9960-46c5-9f01-550f99eb49a7",
+   "finish_reason": "stop",
+   "error": null,
+   "latency_ms": 11327,
+   "ttft_ms": 11003,
+   "usage": {
+    "prompt_tokens": 2257,
+    "completion_tokens": 130,
+    "reasoning_tokens": 82
+   },
+   "arm": "default"
+  },
+  {
+   "source": "fast_cp:38",
+   "t_ms": 349751,
+   "lane": "cp",
+   "text_chars": 242,
+   "relay_measured": true,
+   "n_speech": 3,
+   "issues": [],
+   "call_id": "probe-fast:16:default",
+   "served_model_echo": "gpt-6-luna-2026-09-22",
+   "request_id": "d780bb45-00a7-4d14-833c-9fca688625cf",
+   "finish_reason": "stop",
+   "error": null,
+   "latency_ms": 10694,
+   "ttft_ms": 10449,
+   "usage": {
+    "prompt_tokens": 2566,
+    "completion_tokens": 147,
+    "reasoning_tokens": 88
+   },
+   "arm": "default"
+  },
+  {
+   "source": "fast_cp:44",
+   "t_ms": 385352,
+   "lane": "cp",
+   "text_chars": 0,
+   "relay_measured": true,
+   "n_speech": 0,
+   "issues": [
+    "empty_turn"
+   ],
+   "call_id": "probe-fast:17:default",
+   "served_model_echo": "gpt-6-luna-2026-09-22",
+   "request_id": "b19eb965-f4a4-4898-8c50-be8b24d6b2b1",
+   "finish_reason": "length",
+   "error": null,
+   "latency_ms": 18456,
+   "ttft_ms": null,
+   "usage": {
+    "prompt_tokens": 2654,
+    "completion_tokens": 160,
+    "reasoning_tokens": 160
+   },
+   "arm": "default"
+  },
+  {
+   "source": "fast_cp:50",
+   "t_ms": 425680,
+   "lane": "cp",
+   "text_chars": 0,
+   "relay_measured": true,
+   "n_speech": 0,
+   "issues": [
+    "empty_turn"
+   ],
+   "call_id": "probe-fast:18:default",
+   "served_model_echo": "gpt-6-luna-2026-09-22",
+   "request_id": "acce2731-38a0-4d76-bd58-82cc3c40eafb",
+   "finish_reason": "length",
+   "error": null,
+   "latency_ms": 23537,
+   "ttft_ms": null,
+   "usage": {
+    "prompt_tokens": 2652,
+    "completion_tokens": 160,
+    "reasoning_tokens": 160
+   },
+   "arm": "default"
+  },
+  {
+   "source": "fast_cp:56",
+   "t_ms": 468147,
+   "lane": "cp",
+   "text_chars": 0,
+   "relay_measured": true,
+   "n_speech": 0,
+   "issues": [
+    "empty_turn"
+   ],
+   "call_id": "probe-fast:19:default",
+   "served_model_echo": "gpt-6-luna-2026-09-22",
+   "request_id": "5ca2b3e7-9dc8-473b-84c6-eb7e03b96a9b",
+   "finish_reason": "length",
+   "error": null,
+   "latency_ms": 10659,
+   "ttft_ms": null,
+   "usage": {
+    "prompt_tokens": 2646,
+    "completion_tokens": 160,
+    "reasoning_tokens": 160
+   },
+   "arm": "default"
+  }
+ ]
+}
