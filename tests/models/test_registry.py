@@ -10,7 +10,7 @@ from tests.contract.samples import SONNET, session_config
 from tests.support.fakes import ScriptedLLM, fake_ref
 
 from proxyloop.contract.config import AblationId, SessionConfig
-from proxyloop.contract.llm import AdapterKind
+from proxyloop.contract.llm import AdapterKind, ModelRef
 from proxyloop.evidence.reality import label
 from proxyloop.models.registry import condition, conditions, resolve
 
@@ -18,11 +18,14 @@ ROOT = Path(__file__).resolve().parents[2]
 REPAIR = (AblationId.TEACHER_REPAIR_CP, AblationId.TEACHER_REPAIR_USER)
 
 
-def test_the_six_conditions() -> None:
-    assert set(conditions()) == {"C2", "C3", "C4", "T", "F", "R"}
+NAMES = ["C2", "C3", "C4", "C5", "T", "F", "R"]
 
 
-@pytest.mark.parametrize("name", ["C2", "C3", "C4", "T", "F", "R"])
+def test_the_seven_conditions() -> None:
+    assert set(conditions()) == set(NAMES)
+
+
+@pytest.mark.parametrize("name", NAMES)
 def test_every_condition_makes_a_valid_live_config(name: str) -> None:
     cfg = condition(name).apply(session_config())
     assert cfg.live and cfg.slow == SONNET  # only the Fast side changes
@@ -35,6 +38,7 @@ def test_what_each_condition_runs() -> None:
         "C2": "Qwen3.5-9B",
         "C3": "Qwen3.5-4B",
         "C4": "claude-haiku-4-5-20251001",
+        "C5": "openai/gpt-6-luna",
         "T": "claude-sonnet-5",
         "F": "proxyloop-fsm-v1",
         "R": "Qwen3.5-9B",
@@ -51,7 +55,7 @@ def test_t_and_r_run_the_teacher_with_no_resamples() -> None:
     """E2 (#124): in evaluation the teacher gets no retry the student lacks."""
 
     limits = {name: condition(name).teacher_resamples for name in conditions()}
-    assert limits == {"C2": None, "C3": None, "C4": None, "T": 0, "F": None, "R": 0}
+    assert limits == {n: 0 if n in ("T", "R") else None for n in NAMES}
     teacher = ScriptedLLM(fake_ref("teacher"), [])
     for name in ("T", "R"):
         assert condition(name).teacher_repair(teacher).max_resamples == 0
@@ -62,7 +66,19 @@ def test_t_and_r_run_the_teacher_with_no_resamples() -> None:
 def test_the_reality_report_labels_f_as_the_baseline_fsm() -> None:
     assert label(condition("F").fast_cp) == "baseline_fsm"
     assert {label(condition(n).fast_cp) for n in ("C2", "C3", "R")} == {"vllm"}
-    assert {label(condition(n).fast_cp) for n in ("C4", "T")} == {"hosted"}
+    assert {label(condition(n).fast_cp) for n in ("C4", "C5", "T")} == {"hosted"}
+
+
+def test_c5_is_luna_on_openrouter_at_the_provisional_effort() -> None:
+    luna = ModelRef(
+        kind=AdapterKind.REAL_HTTP,
+        endpoint="openrouter",
+        model_id="openai/gpt-6-luna",
+        reasoning_effort="low",  # provisional until the user confirms
+    )
+    c5 = condition("C5")
+    assert resolve("gpt-6-luna") == c5.fast_user == c5.fast_cp == luna
+    assert (label(c5.fast_user), label(c5.fast_cp)) == ("hosted", "hosted")
 
 
 def test_apply_merges_ablations_and_refuses_a_second_teacher() -> None:

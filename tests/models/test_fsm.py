@@ -82,6 +82,12 @@ def test_every_golden_turn_parses_cleanly(name: str) -> None:
     assert items and not [i for i in items if isinstance(i, ParseIssue)]
 
 
+def test_hold_for_fact_guidance_ends_the_turn_on_a_fact_request_hold() -> None:
+    v, messages = GOLDENS["c09_v2_hold_for_fact"]  # pl_cp_v2 (S1-CON-04)
+    items = parse_turn(respond(read_view(messages)), v.lane)
+    assert items[-1] == Hold(reason="fact_request")
+
+
 def test_an_offer_gets_the_readback_request_a_relay_and_a_hold() -> None:
     items = _turn(view("cp", "I can do $65 a month for 12 months, plus a $30 fee."))
     assert items[0] == Speech(text=READBACK)
