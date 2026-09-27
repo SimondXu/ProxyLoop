@@ -19,6 +19,7 @@ from proxyloop.contract.state import Blackboard, CaseStatus
 from proxyloop.contract.views import view_slow
 from proxyloop.core.bus import Bus
 from proxyloop.eval.metrics import Log, approval_b
+from proxyloop.guard.authorize import CARD_TTL_MS
 from proxyloop.kernel.lanes import PROFILE
 from proxyloop.slow import tools as slow_tools
 from proxyloop.slow.prompt import ACT, status_bar
@@ -629,3 +630,43 @@ def test_no_hint_when_guard_would_refuse_the_request(tmp_path: Path) -> None:
     for change in ({"terms_hash": "0" * 64}, {"expires_ms": h.now()}):
         bad = view.model_copy(update={"offers": (o.model_copy(update=change),)})
         assert "outside mandate" not in status_bar(bad, KEYS, h.now()), change
+
+
+@pytest.mark.parametrize("end", ["expires", "decided"])
+def test_a_pending_card_for_another_offer_hides_the_hint(
+    tmp_path: Path, end: str
+) -> None:
+    """#166 review D1 (round 3c): Guard refuses any new card while one is
+    pending, whatever its offer; the hint for a second offer waits for it."""
+    h = _confirmed(tmp_path)  # save-2, $69
+    _mandate(h, 6500)
+    h.act({"tool": "request_approval", "offer_ref": "save-2"})
+    card = h.bb.private.pending_approval
+    assert card is not None
+    seventy = TERMS.replace("$69", "$70")
+    h.rep("cp-5", seventy)
+    s3 = [
+        s | {"utt_ref": "cp-5"} | ({"value": "7000"} if s["value"] == "6900" else {})
+        for s in SLOTS
+    ]
+    ask = {"tool": "guide_fast", "move": "ask_readback", "slots": ["offer:save-3"]}
+    h.act({"tool": "record_offer", "offer_ref": "save-3", "offer_slots": s3}, ask)
+    h.rep("cp-6", seventy)
+    h.tools.readback()
+    assert {s.status for s in h.bb.public.offers["save-3"].slots} == {"confirmed"}
+    hint = "save-3 confirmed, outside mandate → request_approval(save-3)"
+    assert "request_approval(save-3)" not in _bar(h)
+    (pending,) = h.act({"tool": "request_approval", "offer_ref": "save-3"})
+    assert "denied: approval_pending" in pending
+    if end == "expires":
+        h.clock.advance(CARD_TTL_MS)
+    else:  # the user denies the save-2 card
+        post = {"subject": "approval", "subject_id": card.approval_id}
+        post |= {"decision": "denied", "subject_hash": card.terms_hash}
+        post |= {"authority_epoch": card.authority_epoch}
+        posted = h.emit("approval.post", "ui", post)
+        decided = {"approval_id": card.approval_id, "decision": "denied", "by": "ui"}
+        h.emit("approval.decided", "kernel", decided, [posted.event_id])
+    assert hint in _bar(h)
+    (sent,) = h.act({"tool": "request_approval", "offer_ref": "save-3"})
+    assert sent.startswith("request_approval: card apr-save-3-r1-e"), sent

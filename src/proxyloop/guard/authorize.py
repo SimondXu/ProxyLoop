@@ -133,8 +133,9 @@ def request_approval(
     if isinstance(got, Denial):
         return got
     offer, epoch = got[0], bb.epoch
-    card = current_card(bb)  # a superseded, stale or expired card does not block
-    if card is not None and card.authority_epoch == epoch and card.expires_ms > bb.t_ms:
+    card = bb.private.pending_approval
+    of_card = None if card is None else bb.public.offers.get(card.offer_ref)
+    if card_blocks(card, of_card, epoch, bb.t_ms):
         return Denial("approval_pending")
     stem = f"apr-{offer.offer_ref}-r{offer.revision}-e{epoch}-"
     n = sum(a.startswith(stem) for a in bb.private.approvals)
@@ -165,10 +166,27 @@ def current_card(bb: Blackboard) -> ApprovalCard | None:
     """The pending card, unless a newer revision or terms superseded its offer."""
     card = bb.private.pending_approval
     offer = None if card is None else bb.public.offers.get(card.offer_ref)
+    return _current(card, offer)
+
+
+def _current(
+    card: ApprovalCard | None, offer: OfferPublic | None
+) -> ApprovalCard | None:
     if card is None or offer is None:
         return None
     same = (offer.revision, offer.terms_hash) == (card.revision, card.terms_hash)
     return card if same else None
+
+
+def card_blocks(
+    card: ApprovalCard | None, offer: OfferPublic | None, epoch: int, t_ms: int
+) -> bool:
+    """Whether the pending ``card`` (``offer``: the offer it is for) blocks
+    any new card: it is current, of this epoch and unexpired; a superseded,
+    stale or expired card does not block. Pure, so Slow's status bar asks
+    exactly what ``request_approval`` asks."""
+    card = _current(card, offer)
+    return card is not None and card.authority_epoch == epoch and card.expires_ms > t_ms
 
 
 def _grant(

@@ -99,7 +99,7 @@ class SlowLoop:
         wake = basis | {"wake_reasons": list(reasons)}
         started = host.emit("slow.step.started", "slow", wake, []).event_id
         wakes = f"[WAKE] {', '.join(reasons)}"
-        bar = prompt.status_bar(view, self._keys, host.now())
+        bar = prompt.status_bar(view, self._keys, host.bb.t_ms)  # Guard's clock
         notes = [wakes, *map(prompt.note, new), bar]
         context = self._context("\n".join(notes), view)
         self.steps += 1
