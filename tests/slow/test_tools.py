@@ -475,6 +475,12 @@ FORMATS = [
     ("I've been with you for 6 years-old", TENURE, "6", None),
     ("I've been with youfor 6 years", TENURE, "6", None),
     ("I've been with you for 6 lines", TENURE, "6", None),
+    # S1-SYS-20: the first person starts the message or a sentence
+    ("She said I've been with you for 6 years", TENURE, "6", None),
+    ("my wife says I've been with you for 6 years", TENURE, "6", None),
+    ("I've been with you for 6 years.", TENURE, "6", "6"),
+    ("Thanks. I've been with you for 6 years", TENURE, "6", "6"),
+    ("Thanks!  I've been with you for 6 years", TENURE, "6", "6"),
     # #153 round 3: competitor facts stay private, whatever the message says
     ("Brightwave charges 60", PRICE, "60", None),
     ("Brightwave charges $60.", PRICE, "60", None),
@@ -615,7 +621,7 @@ def test_a_deflect_is_sent_and_says_how_to_hold_for_a_fact_instead() -> None:
     bb, _ = _told()  # S0-SYS-07 (run aeab91): deflect while waiting for the user
     ok, text, sent = _guide(bb, move="deflect_fact_request")
     assert ok and len(sent) == 1  # sent as asked: Slow decides, never refused
-    assert "refus" in text and "hold_for_decision" in text and "ask_user" in text
+    assert "refus" in text and "hold_for_fact" in text and "ask_user" in text
     ok, text, _ = _guide(_public(bb, H, L4), move="deflect_fact_request")
     assert ok and IDENTIFY in text
 
@@ -624,7 +630,7 @@ def test_the_status_bar_tells_slow_how_to_give_or_get_identity_facts() -> None:
     bb, _ = _told()
     bar = status_bar(view_slow(bb, SlowViewMode.RELAY_ONLY, "b"), KEYS, 0)
     assert "account.holder_name, account.last4 not given yet" in bar
-    assert "ask_user" in bar and "hold_for_decision" in bar and "identify" not in bar
+    assert "ask_user" in bar and "hold_for_fact" in bar and "identify" not in bar
     half = status_bar(view_slow(_public(bb, L4), SlowViewMode.RELAY_ONLY, "b"), KEYS, 0)
     assert "guide_fast(identify, slots=[fact:account.last4])" in half
     assert "account.holder_name not given yet" in half

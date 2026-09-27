@@ -29,6 +29,7 @@ from proxyloop.contract.llm import (
 from proxyloop.kernel.session import run_session
 from proxyloop.llm.factory import make_client
 from proxyloop.llm.http import RecordSink
+from proxyloop.llm.relay import ChatClient
 
 REAL = AdapterKind.REAL_HTTP
 
@@ -70,6 +71,26 @@ def test_the_fast_and_slow_models_are_chosen_by_id_and_endpoint() -> None:
     )
     hosted = _cfg("--fast-endpoint", "relay", "--fast-effort", "minimal")
     assert hosted.fast_cp.reasoning_effort == "minimal"
+
+
+def test_an_openrouter_fast_builds_a_chat_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # S1-SYS-20: FAST_ENDPOINT=openrouter FAST=openai/gpt-6-luna
+    cfg = _cfg("--fast-model", "openai/gpt-6-luna", "--fast-endpoint", "openrouter")
+    assert (
+        cfg.fast_user
+        == cfg.fast_cp
+        == ModelRef(
+            kind=REAL,
+            endpoint="openrouter",
+            model_id="openai/gpt-6-luna",
+            reasoning_effort="low",
+        )
+    )
+    monkeypatch.setenv("PL_OPENROUTER_BASE_URL", "https://openrouter.test/api")
+    monkeypatch.setenv("PL_OPENROUTER_API_KEY", "sekrit")
+    client = make_client(cfg.fast_cp, live=True, clock=lambda: 0, on_record=print)
+    assert isinstance(client, ChatClient) and client.ref == cfg.fast_cp
 
 
 def test_a_teamrouter_slow_pins_the_provisional_effort() -> None:

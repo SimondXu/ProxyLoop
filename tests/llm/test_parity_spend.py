@@ -12,9 +12,10 @@ from tests.golden.cases import CASES
 from tests.golden.tokenizer import encode, load_tokenizer
 from tests.llm.wire import Recorder, counter_clock, set_env
 
-from proxyloop.contract.llm import ModelRef, Usage
+from proxyloop.contract.llm import AdapterKind, ModelRef, Usage
 from proxyloop.llm.parity import GoldenPrompt, check_parity
 from proxyloop.llm.spend import (
+    OPENROUTER_RATES,
     RUNAWAY_FACTOR,
     SESSION_CAP_MICRO_USD,
     Rate,
@@ -207,3 +208,52 @@ def test_totals_count_unpriced_calls_beside_the_priced_subtotal() -> None:
     )
     assert (totals["unpriced_calls"], totals["gpu_time_calls"]) == (1, 1)
     assert totals["tokens"] == 2_200
+
+
+LUNA = ModelRef(
+    kind=AdapterKind.REAL_HTTP, endpoint="openrouter", model_id="openai/gpt-6-luna"
+)
+
+
+def test_openrouter_luna_is_priced_at_its_listed_rate() -> None:
+    """S1-SYS-20: $0.10 / $0.50 per 1M tokens (root, 2026-09-27; a rate setting)."""
+    assert OPENROUTER_RATES["openai/gpt-6-luna"] == Rate(0.10, 0.50)
+    ledger = _ledger()
+    charge = ledger.charge(_record(LUNA, 2_000, 400, requested_model=LUNA.model_id))
+    assert (charge.basis, charge.endpoint, charge.micro_usd) == (
+        "tokens",
+        "openrouter",
+        200 + 200,
+    )
+    assert ledger.spend.by_role == {"fast_cp": 400} and ledger.unpriced_calls == 0
+
+
+def test_an_unknown_openrouter_model_is_unpriced_not_zero() -> None:
+    other = LUNA.model_copy(update={"model_id": "openai/gpt-6-sol"})
+    ledger = _ledger()
+    charge = ledger.charge(_record(other, 2_000, 400, requested_model=other.model_id))
+    assert (charge.basis, charge.micro_usd) == ("unpriced", None)
+    assert ledger.unpriced_calls == 1 and ledger.spend.micro_usd == 0
+    relay_id = LUNA.model_copy(update={"model_id": SONNET.model_id})  # per endpoint
+    assert _ledger().price(_record(relay_id, 1, 1)).basis == "unpriced"
+
+
+@pytest.mark.parametrize(
+    ("refs", "factor"),
+    [
+        ((LUNA, SONNET, QWEN), RUNAWAY_FACTOR),  # every role priced (or GPU time)
+        ((LUNA, SONNET, GEMINI), 1),  # the TeamRouter world: no rate card row
+        ((LUNA.model_copy(update={"model_id": "openai/gpt-6-sol"}), SONNET), 1),
+    ],
+)
+def test_an_openrouter_fast_keeps_the_guard_factor_when_priced(
+    refs: tuple[ModelRef, ...], factor: int
+) -> None:
+    assert _ledger(tokens=1_000, calls=10, refs=refs).factor == factor
+
+
+def test_the_2_usd_cap_binds_on_openrouter_calls() -> None:
+    ledger = _ledger(openrouter_rates={LUNA.model_id: Rate(100.0, 0.0)})  # test-only
+    ledger.charge(_record(LUNA, 20_000, 0))  # $2: at the cap, not past it
+    with pytest.raises(RunawaySpend, match="runaway spend"):
+        ledger.charge(_record(LUNA, 1, 0, call_id="k9"))
