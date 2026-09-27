@@ -205,12 +205,12 @@ def fast_cp(request: Request) -> str:
     return "@wait"
 
 
-_SLOTS = {  # field -> (unit, role)
-    "monthly_price": ("usd_minor", "recurring"),
-    "term_months": ("months", "recurring"),
-    "fees_none": ("bool", "one_time"),
-    "changes_none": ("bool", "change"),
-    "expires": ("iso", "expiry"),
+_SLOTS = {  # field -> unit (only for the cents conversion; Guard derives role/unit)
+    "monthly_price": "usd_minor",
+    "term_months": "months",
+    "fees_none": "bool",
+    "changes_none": "bool",
+    "expires": "iso",
 }
 _RELAY = re.compile(r"\[(USER CHAT|REP CALL)\] (.*) \(utt (\S+)\)")
 _FACT = re.compile(r"([a-z][a-z0-9_.]*)=([^;]+?)(?=;|$)")
@@ -226,10 +226,9 @@ def _said_in(note: str) -> str:
 def _record(facts: Mapping[str, str], utt: str) -> dict[str, object]:
     slots: list[dict[str, str]] = []
     for field, value in facts.items():
-        unit, role = _SLOTS[field]
+        unit = _SLOTS[field]
         said = str(round(float(value) * 100)) if unit == "usd_minor" else value
-        slot = {"field": field, "value": said, "unit": unit, "role": role}
-        slots.append(slot | {"utt_ref": utt})
+        slots.append({"field": field, "value": said, "utt_ref": utt})
     return {"tool": "record_offer", "offer_ref": "o1", "offer_slots": slots}
 
 
