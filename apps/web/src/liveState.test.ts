@@ -1,12 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { acceptFrame, closed, laneModels, parseEvent, start, START, unechoed, type Stream } from "./liveState";
-import { CLOSE, csrfToken, entry, pageMode, paths, postApproval, postRep } from "./liveApi";
-import type { Ev } from "./replay";
+import { acceptFrames, closed, parseEvent, start, START, unechoed, type Stream } from "./liveState";
+import { CLOSE, csrfToken, entry, pageMode, paths, postApproval, postRep, startCase } from "./liveApi";
 import { parseRepFrame, type RepFrame } from "./rep";
 
 const M = "refused or unreachable: check the API is running, then open ";
 const line = (seq: number, type = "fast.sentence") => JSON.stringify({ seq, type, payload: {} });
-const feed = (frames: string[]) => frames.reduce((s: Stream, f) => acceptFrame(s, parseEvent(f)), START);
+const feed = (frames: string[]) => frames.reduce((s: Stream, f) => acceptFrames(s, [parseEvent(f)]), START);
 
 describe("the live event stream", () => {
   it("appends dense frames and drops duplicates from a reconnect overlap", () => {
@@ -26,10 +25,29 @@ describe("the live event stream", () => {
 
   it("holds the rep stream to the same dense seq: duplicates dropped, a gap stops it", () => {
     const rep = (seqs: number[]) =>
-      seqs.reduce((s: Stream<RepFrame>, seq) => acceptFrame(s, parseRepFrame(line(seq, "utt.final"))), start<RepFrame>());
+      seqs.reduce((s: Stream<RepFrame>, seq) => acceptFrames(s, [parseRepFrame(line(seq, "utt.final"))]), start<RepFrame>());
     expect(rep([0, 1, 1, 2]).events.map((e) => e.seq)).toEqual([0, 1, 2]);
     expect(rep([0, 2])).toMatchObject({ phase: "error", message: "seq gap: expected 1, got 2" });
     expect(rep([3]).phase).toBe("error");
+  });
+
+  it("takes a batch as frame-by-frame would, keeping what came before a stop", () => {
+    const frames = [line(0), line(1), line(1), line(2)].map(parseEvent);
+    expect(acceptFrames(START, frames)).toEqual(feed([line(0), line(1), line(1), line(2)]));
+    const stopped = acceptFrames(START, [line(0), line(2), line(1)].map(parseEvent));
+    expect([stopped.phase, stopped.message, stopped.events.length, stopped.next]).toEqual(["error", "seq gap: expected 1, got 2", 1, 1]);
+    const dup = feed([line(0)]);
+    expect(acceptFrames(dup, [parseEvent(line(0))])).toBe(dup);
+  });
+
+  it("stops /ws/live on a frame of another run (N4), like a gap", () => {
+    const of = (run: unknown, seq: number) => parseEvent(JSON.stringify({ run_id: run, seq, type: "user.msg", payload: {} }));
+    const ok = acceptFrames(START, [of("r1", 0), of("r1", 1)], "r1");
+    expect([ok.phase, ok.next]).toEqual(["connecting", 2]);
+    const foreign = acceptFrames(ok, [of("r2", 2), of("r1", 3)], "r1");
+    expect([foreign.phase, foreign.message, foreign.events.length]).toEqual(["error", "frame of run r2, not r1", 2]);
+    expect(acceptFrames(START, [of(undefined, 0)], "r1").message).toBe("frame of run undefined, not r1");
+    expect(acceptFrames(START, [of("r2", 0)]).phase).toBe("connecting"); // /ws/rep frames carry no run_id
   });
 
   it("reads the close codes and shows the reason", () => {
@@ -60,43 +78,6 @@ describe("the live event stream", () => {
   });
 });
 
-describe("model dropdown options", () => {
-  const started = (models: Record<string, [string, string]>): Ev[] => [
-    {
-      run_id: "r", seq: 0, event_id: "r:0", t_ms: 0, type: "session.started", actor: "kernel", stream: "ops", cause_ids: [],
-      payload: { models: Object.fromEntries(Object.entries(models).map(([role, [kind, model_id]]) => [role, { ref: { kind, model_id } }])) },
-    },
-  ];
-
-  const lanes = (models: Record<string, [string, string]>) =>
-    Object.fromEntries(laneModels(started(models)).map((l) => [l.title, { options: l.options, running: l.running, placeholder: l.placeholder }]));
-
-  it("offers only the lane's own real_http models: Fast from the fast roles, Slow from slow, never a world role", () => {
-    expect(
-      lanes({
-        fast_user: ["real_http", "qwen3.5-9b"],
-        fast_cp: ["real_http", "qwen3.5-9b-lora"],
-        slow: ["real_http", "claude-sonnet-5"],
-        ear: ["real_http", "gemini-3.8-flash"],
-        mouth: ["baseline", "fsm"],
-        simuser: ["recorded_replay", "sim-rec"],
-      }),
-    ).toEqual({
-      "Fast-U": { options: ["qwen3.5-9b", "qwen3.5-9b-lora"], running: "qwen3.5-9b", placeholder: null },
-      "Fast-C": { options: ["qwen3.5-9b", "qwen3.5-9b-lora"], running: "qwen3.5-9b-lora", placeholder: null },
-      Slow: { options: ["claude-sonnet-5"], running: "claude-sonnet-5", placeholder: null },
-    });
-  });
-
-  it("never shows a lane a model it is not running: a non-real_http lane gets a disabled placeholder", () => {
-    const m = lanes({ fast_user: ["real_http", "qwen3.5-9b"], fast_cp: ["test_fake", "fast_cp-fake"], slow: ["baseline", "fsm"] });
-    expect(m["Fast-C"]).toEqual({ options: [], running: null, placeholder: "fast_cp-fake (test_fake): not selectable" });
-    expect(m.Slow).toEqual({ options: [], running: null, placeholder: "fsm (baseline): not selectable" });
-    expect(m["Fast-U"]).toEqual({ options: ["qwen3.5-9b"], running: "qwen3.5-9b", placeholder: null });
-    expect(laneModels([]).map((l) => l.placeholder)).toEqual(["no model: not selectable", "no model: not selectable", "no model: not selectable"]);
-  });
-});
-
 describe("pending messages", () => {
   it("clears a sent text only when its event arrives, one echo per send", () => {
     const sent = [
@@ -114,6 +95,9 @@ describe("liveApi names", () => {
     expect(pageMode("?live=run-1")).toEqual({ kind: "live", id: "run-1" });
     expect(pageMode("?rep=run-1&live=run-1")).toEqual({ kind: "rep", id: "run-1" });
     expect(pageMode("")).toEqual({ kind: "replay" });
+    expect(pageMode("?start")).toEqual({ kind: "start" });
+    expect(csrfToken("pl_csrf=u; pl_op_csrf=o", "start")).toBe("o");
+    expect(entry("start", "")).toBe("/start");
     expect(csrfToken("a=1; pl_csrf=tok%3D1; b=2", "live")).toBe("tok=1");
     expect(csrfToken("pl_csrfx=1", "live")).toBeNull();
     // Each role reads only its own CSRF cookie.
@@ -136,8 +120,8 @@ describe("liveApi posts", () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
     vi.stubGlobal("document", { cookie: "pl_csrf=%E0%A4%A; pl_rep_csrf=%" });
-    await expect(postApproval("c", card, "granted")).resolves.toEqual({ ok: false, status: 0, error: "bad pl_csrf cookie" });
-    await expect(postRep("c", "hi")).resolves.toEqual({ ok: false, status: 0, error: "bad pl_rep_csrf cookie" });
+    await expect(postApproval("c", card, "granted")).resolves.toEqual({ ok: false, status: 0, error: "bad pl_csrf cookie", unsent: true });
+    await expect(postRep("c", "hi")).resolves.toEqual({ ok: false, status: 0, error: "bad pl_rep_csrf cookie", unsent: true });
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -148,5 +132,28 @@ describe("liveApi posts", () => {
     await expect(postApproval("c", card, "granted")).resolves.toEqual({ ok: false, status: 409, error: "stale", reason: "stale_epoch" });
     vi.stubGlobal("fetch", answer(409, { error: "already_decided" }));
     await expect(postApproval("c", card, "granted")).resolves.toEqual({ ok: false, status: 409, error: "already_decided" });
+  });
+
+  it("starts a case with the operator's token, once, and reads the case_id or the refusal", async () => {
+    const answer = (status: number, body: unknown) => vi.fn(async () => new Response(JSON.stringify(body), { status }));
+    const body = { task_ref: "t", models: { slow: "s" }, rep: "sim" as const };
+    vi.stubGlobal("document", { cookie: "pl_csrf=u; pl_op_csrf=op" });
+    const created = answer(201, { case_id: "run-1" });
+    vi.stubGlobal("fetch", created);
+    await expect(startCase(body)).resolves.toEqual({ ok: true, caseId: "run-1" });
+    expect(created).toHaveBeenCalledTimes(1);
+    expect(created).toHaveBeenCalledWith("/api/cases", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": "op" },
+      body: JSON.stringify(body),
+    });
+    vi.stubGlobal("fetch", answer(409, { error: "start", reason: "busy" }));
+    await expect(startCase(body)).resolves.toEqual({ ok: false, status: 409, error: "start", reason: "busy" });
+    vi.stubGlobal("document", { cookie: "pl_csrf=u" });
+    await expect(startCase(body)).resolves.toEqual({ ok: false, status: 0, error: "no pl_op_csrf cookie: open /start first", unsent: true });
+    vi.stubGlobal("document", { cookie: "pl_op_csrf=op" });
+    vi.stubGlobal("fetch", answer(201, {}));
+    await expect(startCase(body)).resolves.toEqual({ ok: false, status: 0, error: "no case_id in the answer" });
   });
 });

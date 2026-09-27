@@ -43,3 +43,8 @@ details pre, .drawer pre { white-space: pre-wrap; font-size: 11px; }
 .transcript li { background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 6px 8px; margin-bottom: 6px; }
 .transcript .rep-rep { margin-left: 60px; background: #eef4fb; }
 .transcript .rep-call { color: #666; font-size: 12px; }
+.strip { font-size: 12px; gap: 4px 16px; border-bottom: 1px solid #ddd; }
+.slots { list-style: none; padding: 0; margin: 4px 0; font-size: 12px; }
+.slots .confirmed { color: #2b6cb0; }
+.slots .unknown { color: #b00020; }
+.start { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; max-width: 640px; }
