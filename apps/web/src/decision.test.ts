@@ -42,7 +42,9 @@ describe("terms (display only, rule 13)", () => {
     expect(termRow("fee:activation", "3500")).toEqual(["Fee: activation", "$35.00"]);
     expect(termRow("credit:loyalty", "1000")).toEqual(["Credit: loyalty", "$10.00"]);
     expect(termRow("applied_change:plan_x", "true")).toEqual(["Plan change", "plan_x"]);
+    expect(termRow("applied_change:plan_x", "false")).toEqual(["No plan change", "plan_x"]);
     expect(termRow("feature:hotspot", "true")).toEqual(["Includes", "hotspot"]);
+    expect(termRow("feature:hotspot", "false")).toEqual(["Not included", "hotspot"]);
     expect(termRow("expires", "none")).toEqual(["Offer valid until", "No expiry"]);
     expect(termRow("expires", "2026-10-01T00:00:00Z")[1]).toMatch(/^[A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2}\s?[AP]M$/);
     expect(termRow("monthly_price", "78.5")).toEqual(["Monthly price", "78.5"]); // not whole cents: as sent
@@ -107,6 +109,12 @@ describe("approval card words", () => {
     expect(priceLimit(mandateCards([m], none))).toBeNull();
     expect(why(mandateCards(granted, none))).toMatch(/^It's outside the limits you confirmed/);
     expect(why([])).toMatch(/^You haven't set limits/);
+    const bySim = [m, ev("mandate.decided", "kernel", { mandate_id: "m1", mandate_hash: "h", decision: "granted", by: "sim_approver" })];
+    expect(why(mandateCards(bySim, none))).toMatch(/^It's outside the limits the simulated approver confirmed/);
+    // A newer proposal replaces the granted one without an epoch bump: no limit from the old one.
+    const replaced = mandateCards([...granted, ev("mandate.proposed", "guard", { mandate_id: "m2", mandate_hash: "h2", epoch: 1, max_monthly_price_minor: 5000 })], none);
+    expect(replaced.map((v) => v.status)).toEqual(["superseded", "open"]);
+    expect([priceLimit(replaced), why(replaced)]).toEqual([null, "You haven't set limits, so the agent needs your OK."]);
   });
 
   it("follows the accept Guard minted after this card's grant: held, released or revoked", () => {

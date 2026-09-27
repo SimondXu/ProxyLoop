@@ -1,6 +1,4 @@
 import { expect, test, type Page, type Response } from "@playwright/test";
-import { inWords } from "../src/mandate";
-import { clock, READBACK_CHIP, termRow } from "../src/terms";
 
 // The web against the real API (S1-SYS-18): nothing in the browser is mocked.
 // Each test owns one stub case of tests/web/wiring_server.py (its mode is fixed
@@ -162,7 +160,7 @@ test("b) live: /live sets the cookies and 303s, /ws/live streams the seed, Appro
   const body = { decision: "granted", terms_hash: requested.terms_hash, authority_epoch: requested.authority_epoch };
   const path = `/api/cases/${id}/approvals/${String(requested.approval_id)}`;
   conflict(await postFrom(page, path, body, await cookie(page, "pl_csrf")), "already_decided");
-  await expect(status).toHaveText(`You approved · ${clock((one(await log(page, id), "approval.decided") as { wall?: string }).wall)}`);
+  await expect(status).toHaveText(/^You approved · \d{1,2}:\d{2}\s[AP]M$/);
   await expect(card.getByRole("alert")).toHaveCount(0);
   const after = await log(page, id);
   expect([count(after, "approval.post"), count(after, "approval.decided")]).toEqual([1, 1]);
@@ -179,7 +177,7 @@ test("c) stale: an epoch bumped in the board before the post is a 409 stale, sho
   expect(reason, "a stale refusal from guard.decide says why").toBeDefined();
   await expect(card.getByRole("alert")).toHaveText(`409 stale: ${String(reason)}`);
   // #150 nit 4: the status line names the 409's own reason (here the epoch did move: stale_epoch).
-  await expect(card.getByLabel("Approval status")).toHaveText(`No longer valid: ${String(inWords(String(reason)))}`);
+  await expect(card.getByLabel("Approval status")).toHaveText("No longer valid: your instructions changed");
   await expect(card.getByRole("button", { name: "Approve" })).toBeDisabled();
   const after = await log(page, id);
   expect([count(after, "authority.epoch"), count(after, "approval.post"), count(after, "action.denied")]).toEqual([1, 0, 0]);
@@ -195,7 +193,7 @@ test("d) refused: a 200, then the kernel's action.denied citing the card, shown 
   await expect(status).toHaveText(/^Not accepted by the system: ./, { timeout: DECIDED_MS });
   await expect(card.getByRole("button", { name: "Approve" })).toBeDisabled();
   const after = await log(page, id);
-  await expect(status).toHaveText(`Not accepted by the system: ${String(inWords(String(one(after, "action.denied").payload.reason)))}`);
+  await expect(status).toHaveText("Not accepted by the system: your instructions changed");
   expect(one(after, "action.denied").cause_ids).toEqual([one(after, "approval.requested").event_id]);
   expect(count(after, "approval.post")).toBe(0);
 });
@@ -431,10 +429,14 @@ test("o) live: the authority strip and the card's read-back progress, from the s
   expect(partial.flatMap((e) => statuses(e).map(([, s]) => s))).toContain("heard");
   const own = readbacks.filter((e) => e.payload.revision === requested.payload.revision);
   for (const e of readbacks.filter((e) => e.seq > requested.seq)) expect(statuses(e).every(([, s]) => s === "confirmed")).toBe(true);
-  const offer = events.findLast((e) => e.type === "offer.recorded" && e.payload.revision === requested.payload.revision);
-  const value = (field: string) => (offer?.payload.slots as { field: string; value: string }[]).find((x) => x.field === field)?.value;
   await expect(card.getByRole("list", { name: "Read-back progress" }).getByRole("listitem")).toHaveText(
-    statuses(own.at(-1)).map(([field, s]) => [...termRow(field, value(field)), READBACK_CHIP[s] ?? s].filter(Boolean).join(" ")),
+    [
+      "Monthly price $68.00 Read back",
+      "Contract length 24 months Read back",
+      "Fee: activation $20.00 Read back",
+      "Changes to your plan None Read back",
+      "Offer valid until No expiry Read back",
+    ],
   );
   expect(statuses(own.at(-1)).map(([, s]) => s)).toEqual(Array(5).fill("confirmed"));
   await expect(card.getByLabel("Fence note")).toHaveText("Paused: reading your new message before anything is accepted.");

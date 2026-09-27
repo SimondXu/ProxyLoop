@@ -39,17 +39,20 @@ export function headline(rows: TermRow[]): string {
   return `Accept ${whole(price)} a month${term ? ` for ${term}` : ""}?`;
 }
 
-/** The latest granted mandate's price bound, as a label ("your limit $65.00"); never a difference. */
+// The mandate in force: granted and not superseded, tightened or withdrawn since.
+const current = (mandates: MandateView[]) => mandates.findLast((v) => v.status === "granted");
+
+/** Its price bound, as a label ("your limit $65.00"); never a difference. */
 export function priceLimit(mandates: MandateView[]): string | null {
-  const m = mandates.findLast((v) => v.status === "granted")?.mandate;
-  const limit = m?.max_monthly_price_minor == null ? null : usd(m.max_monthly_price_minor);
-  return limit && `your limit ${limit}`;
+  const bound = current(mandates)?.mandate.max_monthly_price_minor;
+  return bound == null ? null : `your limit ${usd(bound) ?? bound}`;
 }
 
-export const why = (mandates: MandateView[]) =>
-  mandates.some((v) => v.status === "granted")
-    ? "It's outside the limits you confirmed, so the agent can't say yes without you."
-    : "You haven't set limits, so the agent needs your OK.";
+export function why(mandates: MandateView[]): string {
+  const m = current(mandates);
+  if (!m) return "You haven't set limits, so the agent needs your OK.";
+  return `It's outside the limits ${m.by === "ui" ? "you" : "the simulated approver"} confirmed, so the agent can't say yes without you.`;
+}
 
 /** Guard's accept line after this card's grant: none yet, held, released, or revoked (why). */
 export type Accept = { state: "none" | "held" | "released" | "revoked"; reason: string | null };

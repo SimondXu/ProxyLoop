@@ -45,15 +45,8 @@ export function mandateCards(events: Ev[], posts: ReadonlyMap<string, Posting>):
     const failed = posting && posting !== "pending" && !posting.ok ? posting : null;
     const why = failed?.reason && failed.reason !== failed.error ? `: ${failed.reason}` : "";
     const error = failed && `${failed.status ? `${failed.status} ` : ""}${failed.error}${why}`;
-    const view = (status: MandateStatus, by: string | null = null, reason: string | null = null, at: string | null = null) => ({
-      seq: req.seq,
-      mandate: m,
-      status,
-      by,
-      at,
-      error,
-      reason,
-    });
+    const view = (status: MandateStatus, by: string | null = null, reason: string | null = null, at: string | null = null): MandateView =>
+      ({ seq: req.seq, mandate: m, status, by, at, error, reason });
     const later = proposed.some((o) => o.seq > req.seq);
 
     const decided = events.find(
@@ -67,7 +60,7 @@ export function mandateCards(events: Ev[], posts: ReadonlyMap<string, Posting>):
       const own = bumps[0]?.payload.reason === "mandate_decided" ? 1 : 0;
       const end = bumps[own];
       if (end?.payload.reason === "tighten_mandate") return view("tightened", by);
-      if (end) return view(later ? "superseded" : "withdrawn", by);
+      if (later || end) return view(later ? "superseded" : "withdrawn", by); // propose_mandate replaces it without a bump
       return view("granted", by, null, decided.wall ?? null);
     }
     const refused = events.find(

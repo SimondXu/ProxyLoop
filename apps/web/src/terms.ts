@@ -89,7 +89,8 @@ export function termRow(name: string, value: string | undefined): [string, strin
   const label = LABEL[kind] ?? name;
   if (kind === "monthly_price") return [label, usd(v) ?? v];
   if (kind === "fee" || kind === "credit") return [`${label}: ${code}`, usd(v) ?? v];
-  if (kind === "applied_change" || kind === "feature") return [label, code ?? v];
+  // Booleans (guard/terms.py): a false one is never shown as included.
+  if (kind === "applied_change" || kind === "feature") return [v !== "false" ? label : kind === "feature" ? "Not included" : "No plan change", code ?? v];
   if (kind === "term_months") return [label, v && `${v} months`];
   if (kind === "expires") return [label, v === "none" ? "No expiry" : ((v && dateTime(v)) ?? v)];
   if (kind === "fees_none" || kind === "changes_none") return [label, NONE[v] ?? v];

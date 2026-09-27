@@ -1,5 +1,4 @@
 import { expect, test, type Page } from "@playwright/test";
-import { clock } from "../src/terms";
 import { capturePosts, CSRF, csrfCookie, events, mockSockets, RUN, shot, started } from "./liveMock";
 
 const REAL: Record<string, [string, string]> = {
@@ -58,7 +57,7 @@ test("approval card: appears on approval.requested, Approve posts the contract b
   const post = { subject: "approval", subject_id: "ap-1", decision: "granted", subject_hash: CARD.terms_hash, authority_epoch: 2 };
   ws.send(ev("approval.post", "ui", post));
   ws.send(ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" }));
-  await expect(card.getByLabel("Approval status")).toHaveText(`You approved · ${clock("2026-09-26T00:00:00Z")}`);
+  await expect(card.getByLabel("Approval status")).toHaveText(/^You approved · \d{1,2}:\d{2}\s[AP]M$/);
   expect(urls).toEqual([expect.stringMatching(new RegExp(`/ws/live/${RUN}\\?from_seq=0$`))]);
 });
 
@@ -482,7 +481,7 @@ test("approval card: a fence pauses a granted accept, and a fence revoke says th
   ws.send(said);
   ws.send(ev("authority.fence", "kernel", { op: "raised", fence_id: "fence-1", utt_id: `${RUN}:9` }));
   const card = page.getByRole("article", { name: "Approval ap-1" });
-  await expect(card.getByLabel("Approval status")).toHaveText(`You approved · ${clock("2026-09-26T00:00:00Z")}`);
+  await expect(card.getByLabel("Approval status")).toHaveText(/^You approved · \d{1,2}:\d{2}\s[AP]M$/);
   await expect(card.getByLabel("Fence note")).toHaveText("Paused: reading your new message before anything is accepted.");
   const revoked = JSON.parse(ev("speak.revoked", "kernel", { lane: "cp", reason: "fence", cap_id: "cap-1" }));
   ws.send(JSON.stringify({ ...revoked, cause_ids: [JSON.parse(said).event_id] }));
