@@ -933,17 +933,18 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Objective** (root decision under §0.5a, 2026-09-27): a drift test of the web↔API wiring: the real `create_app` serves the built web same-origin, behind a stub `Case` in `tests/support/web_wiring.py`, and a Playwright `wiring` project drives it. It uses synthetic events in a temp dir only; `evidence/s0` is read-only.
 - **Owned paths:** `apps/web/**`, `tests/web/**`, `tests/support/web_wiring.py`.
 
-### S1-MOD-01 Model registry, per-lane swap, 4B serving, hosted/teacher Fast, FSM, teacher-repair — MOD — L — flags L+G for the smoke — review (part A merged in #124; part B #132 in review)
+### S1-MOD-01 Model registry, per-lane swap, 4B serving, hosted/teacher Fast, FSM, teacher-repair — MOD — L — flags L+G for the smoke — review (part A merged in #124; part B #132 in review; C5 via OpenRouter #155 in review)
 - **Objective:**
-  - `models/registry.py` and `conditions.yaml` (C2, C3, C4, C5, T, F, R); C5 is Fast = `gpt-6-luna` via TeamRouter, hosted and labelled (EVAL §4.1);
+  - `models/registry.py` and `conditions.yaml` (C2, C3, C4, C5, T, F, R); C5 is Fast = `openai/gpt-6-luna` via OpenRouter (endpoint `openrouter`, ADR-0011), hosted and labelled (EVAL §4.1); sampling is set by the provider (OpenRouter supports no temperature/top_p for this model); `reasoning_effort` `low` is provisional pending the user (user decision 2026-09-27: the development Fast moves to OpenRouter);
   - a fine-tuned Qwen adapter entry (through S0-MOD-03's LoRA slot); the Fast of each lane is selectable by config;
   - the 4B app in `serving/`;
   - `models/fsm.py`: a capable FSM that templates from `FastView` only, relays every number and key it can parse, asks for the read-back on offers, holds at decisions and never claims completion unless verified;
   - `models/repair.py`: `TeacherRepair` with a decision-point detector over `FastView`.
   - E2: in the eval conditions T and R, `max_resamples=0`; TRAINING §2.1's ≤ 2 resamples apply only to data generation (root decision under §0.5a, 2026-09-26).
-  - Parts: #124 is part A (registry, FSM, `TeacherRepair`); part B is #132 (the 4B serving, C5 and the adapter entry), a branch stacked on #124 and #125 that merges after them (root decision under §0.5a, 2026-09-26).
-  - C5's model id: part B pins the dated `gpt-6-luna-2026-09-22` in the registry once the Luna mini-probe (S0-ROOT-12) confirms it; Luna's echoed model id differs from the requested id (root decision under §0.5a, 2026-09-27).
-- **Owned paths:** `src/proxyloop/models/**`, `serving/modal_vllm.py`, `tests/models/**`; for part B also (granted, root decision under §0.5a, 2026-09-26) `serving/config.py` (model-key parameterisation; the 9B app unchanged), the serve-up arguments in `mk/mod.mk`, `tests/serving/**` and `scripts/mod/probe.py` (the `--model` flag).
+  - Parts: #124 is part A (registry, FSM, `TeacherRepair`); part B is #132 (the 4B serving and the adapter entry), a branch stacked on #124 and #125 that merges after them (root decision under §0.5a, 2026-09-26); C5 ships on its own in #155, split out of #132 so the hosted Fast does not wait for the GPU run, and #132 then drops its duplicate C5 (root decision under §0.5a, 2026-09-27).
+  - C5's model id (supersedes the dated-id pin of 2026-09-27): C5 no longer pins the dated `gpt-6-luna-2026-09-22`, because TeamRouter rejects the dated id (the main root's Luna experiment, part 2). On OpenRouter the served echo equals the requested `openai/gpt-6-luna` (the model root's check of 4 runs, not committed).
+  - C5 cannot run a smoke before S1-SYS-20 (the `openrouter` client and its ledger rate; merged in #157), and its bundles are used as evidence only after S1-CON-05 records the sampling actually sent (#155 review D1, D6).
+- **Owned paths:** `src/proxyloop/models/**`, `serving/modal_vllm.py`, `tests/models/**`; for part B also (granted, root decision under §0.5a, 2026-09-26) `serving/config.py` (model-key parameterisation; the 9B app unchanged), the serve-up arguments in `mk/mod.mk`, `tests/serving/**` and `scripts/mod/probe.py` (the `--model` flag); for #155 also `src/proxyloop/eval/benchmark.py`, `src/proxyloop/eval/specs/fast_benchmark.yaml` and `tests/eval/**` (C5's provider-sampling note in the benchmark spec and report; root decision under §0.5a, 2026-09-27).
 - **Deps:** S0-ROOT-05, S0-CON-01; S0-MOD-03 for the adapter entry.
 - **Acceptance:**
   - the conformance kit passes for `FsmTalker` and `TeacherRepair`;
@@ -952,7 +953,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
   - a root smoke produces one real bundle per condition on `cp-direct-discount`, with the reality report labelling F as `baseline`. The T and R smokes run only after S1-SYS-01/02/03/05/10 merge;
   - teacher outputs are parsed by the student parser, with the resample count recorded;
   - a grep test shows no clock-dilation option exists.
-- **Verify:** `make test`; `make smoke-live FAMILY=cp-direct-discount FAST=<cond>` (root).
+- **Verify:** `make test`; `make smoke-live FAMILY=cp-direct-discount FAST=<cond>` (root; for C5 `FAST=C5`, after S1-SYS-20).
 - **Escalate if:** the hosted-Fast path needs different prompt text (I3: it must not).
 
 ### S1-MOD-02 Metrics v1, report and statistics — MOD — L (re-sized from M, root decision under §0.5a, 2026-09-26) — done (#135; a follow-up PR is queued below)
@@ -976,7 +977,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Deps:** S1-SYS-01…05, S1-MOD-01, S1-MOD-02.
 - **Acceptance:** the integrity gate passes on the 400 episodes (≥ 95 % run without error, and errors count as failures); the report is generated from bundles.
 
-### S1-MOD-04 Fast benchmark: Luna vs base Qwen vs fine-tuned Qwen — MOD — M — flags L+G (root runs) — provisional (#145, code only; the root's benchmark run pending; C5 raises a loud `KeyError` until #132 pins its id)
+### S1-MOD-04 Fast benchmark: Luna vs base Qwen vs fine-tuned Qwen — MOD — M — flags L+G (root runs) — provisional (#145, code only; the root's benchmark run pending; C5 raises a loud `KeyError` until #155 adds it)
 - **Objective:** the user's final-version requirement (user decision 2026-09-26): a benchmark spec and a generated report (`docs/results/`, AGENTS rule 13) comparing C5, C2 and C1 on the same families and seeds through `run_session`: task success, authority/Guard violations, parse-issue rate, TTFT/latency, $/episode, each per its EVAL §7 definition.
   - Before the unseal, only pilot/dev families (I9).
   - The task defines its own make target in `mk/mod.mk`.
@@ -999,6 +1000,11 @@ In the browser, the user as principal:
 - (b) in a second session, performs an **improvised** correction or stop while an approval is pending, and the bundle shows `authority.fence`, REVOKE or an epoch bump, then `speak.revoked` or no accept released.
 
 The user also watches a replay of one probe episode per condition.
+
+### S1-ROOT-07 PLAN sync after the S1 merges — ROOT — S — doing
+- **Objective:** bring this file's header, statuses and task blocks in line with what `main` holds at `3a974d9` and with the decisions recorded in the main root's log; unblock #155.
+- **Owned paths:** `PLAN.md`, `AGENTS.md` (wording fixes only).
+- **Acceptance:** `make docs-check` and `make lint` green; every sync item is either done or listed in the PR body as deliberately deferred, with the reason.
 
 ---
 
