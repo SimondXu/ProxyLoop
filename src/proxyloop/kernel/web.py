@@ -34,7 +34,7 @@ import uvicorn
 from proxyloop.cli import FAST, build_parser, live_config
 from proxyloop.contract.config import SessionConfig
 from proxyloop.contract.events import ApprovalPost, Event
-from proxyloop.contract.llm import AdapterKind, Endpoint
+from proxyloop.contract.llm import AdapterKind, Endpoint, LLMUnavailable
 from proxyloop.contract.protocol import ChatTokenizer
 from proxyloop.contract.state import Blackboard
 from proxyloop.core.clock import Clock
@@ -51,6 +51,7 @@ from proxyloop.kernel.session import (
     run_session,
 )
 from proxyloop.kernel.speaker import Sleep
+from proxyloop.kernel.watchdog import Abort
 from proxyloop.llm.http import EndpointEnv, LLMConfigError
 from proxyloop.serve.api import HOST, create_app
 from proxyloop.serve.bundles import default_roots
@@ -142,15 +143,19 @@ class WebCase:
         self._rep.say(text)
 
     def _live(self) -> None:
-        if self._run.done():
+        if self._run.done() or self._k.ended:  # a line now would be dropped
             raise RuntimeError("the session has ended")
 
 
-def _ended(run: asyncio.Task[RunResult]) -> None:  # the server's log, loudly
+def _ended(run: asyncio.Task[RunResult]) -> None:
+    """The server's log, loudly, but no upstream text (AGENTS rule 15): an
+    error's type, plus the message only of the kernel's redacted or authored
+    ones; no traceback, no chained cause (a raw upstream body)."""
     if run.cancelled():
         _log.info("a live session was cancelled")
     elif (error := run.exception()) is not None:
-        _log.error("a live session failed", exc_info=error)
+        told = f": {error}" if isinstance(error, (LLMUnavailable, Abort)) else ""
+        _log.error("a live session failed: %s%s", type(error).__name__, told)
     else:
         _log.info("a live session ended: %s", run.result().reason)
 

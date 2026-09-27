@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import subprocess
 import time
@@ -28,13 +29,15 @@ from proxyloop.contract.llm import (
     Endpoint,
     LLMClient,
     LLMRole,
+    LLMUnavailable,
     ModelRef,
     ToolCall,
 )
 from proxyloop.contract.state import ApprovalCard
+from proxyloop.core.bus import Bus
 from proxyloop.kernel import session, web
 from proxyloop.kernel.channels import HumanWebChannel, Incoming
-from proxyloop.kernel.session import ClientFactory, Kernel
+from proxyloop.kernel.session import ClientFactory, Kernel, RunResult
 from proxyloop.kernel.web import CATALOG, LUNA, TRAINING, Offer, Starter, WebCase
 from proxyloop.llm.factory import make_client
 from proxyloop.llm.http import RecordSink
@@ -575,3 +578,107 @@ def test_the_git_sha_is_read_once(monkeypatch: pytest.MonkeyPatch) -> None:
     finally:
         session._git_sha.cache_clear()  # pyright: ignore[reportPrivateUsage]
     assert len(calls) == 1
+
+
+# Review round 2 (#179): D1 no upstream text in the server log, D2 the bus
+# closes on a cancelled start, D4 an ended kernel takes no more lines.
+
+
+def test_a_failed_session_logs_no_upstream_text(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    upstream = "bad gateway at endpoint.invalid key " + SECRET
+
+    async def answer(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(502, text=upstream)
+
+    wire = httpx.MockTransport(answer)
+
+    async def case() -> None:
+        vt = VirtualTime()
+        scripted = fakes(vt)
+
+        def make(role: LLMRole, ref: ModelRef, sink: RecordSink) -> LLMClient:
+            if role != "fast_cp":
+                return scripted(role, ref, sink)
+            now = vt.monotonic_ms
+            return make_client(
+                ref, live=False, clock=now, on_record=sink, transport=wire
+            )
+
+        s = Starter(tmp_path / "runs", clock=vt, sleep=vt.sleep, clients=make)
+        case = await s.start_case(REF, {})
+        await vt.run_for(20_000)
+        run = case._run  # pyright: ignore[reportPrivateUsage]
+        await asyncio.gather(run, return_exceptions=True)
+        await asyncio.sleep(0)  # the done-callback logs
+        assert isinstance(run.exception(), LLMUnavailable)
+
+    with caplog.at_level(logging.DEBUG, logger="proxyloop.kernel.web"):
+        arun(case())
+    logged = caplog.text
+    assert "LLMUnavailable" in logged
+    assert SECRET not in logged and "endpoint.invalid" not in logged
+    assert all(r.exc_info is None for r in caplog.records)
+
+
+def test_an_unexpected_session_error_logs_its_type_only(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def fail() -> RunResult:
+        raise KeyError(f"https://endpoint.invalid {SECRET}")
+
+    async def case() -> None:
+        run = asyncio.create_task(fail())
+        await asyncio.gather(run, return_exceptions=True)
+        web._ended(run)  # pyright: ignore[reportPrivateUsage]
+
+    with caplog.at_level(logging.DEBUG, logger="proxyloop.kernel.web"):
+        arun(case())
+    assert "KeyError" in caplog.text
+    assert SECRET not in caplog.text and "endpoint.invalid" not in caplog.text
+    assert all(r.exc_info is None for r in caplog.records)
+
+
+def test_a_start_cancelled_before_seq_0_closes_its_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    buses: list[Bus] = []
+    close = Bus.close
+
+    def spy(self: Bus) -> None:
+        buses.append(self)
+        close(self)
+
+    monkeypatch.setattr(Bus, "close", spy)
+    monkeypatch.setattr(web, "load_tokenizer", FakeTokenizer)
+    web._tokenizer.cache_clear()  # pyright: ignore[reportPrivateUsage]
+
+    async def case() -> None:
+        s = starter(tmp_path, VirtualTime())
+        start = asyncio.create_task(s.start_case(REF, {"fast_user": USER_QWEN}))
+        await settle()  # P3 hangs on the gated vLLM
+        start.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await start
+
+    try:
+        arun(case())
+    finally:
+        web._tokenizer.cache_clear()  # pyright: ignore[reportPrivateUsage]
+    (bus,) = set(buses)
+    assert bus._log._file.closed  # pyright: ignore[reportPrivateUsage]
+
+
+def test_an_ended_kernel_takes_no_more_lines(tmp_path: Path) -> None:
+    async def case() -> None:
+        case = await starter(tmp_path, VirtualTime()).start_case(REF, {}, "human")
+        k = kernel(case)
+        k._ended = True  # pyright: ignore[reportPrivateUsage]
+        for say in (case.user_message, case.rep_utterance):  # _close ran; the
+            with pytest.raises(RuntimeError, match="ended"):  # task has not
+                say("Hello?")  # finished yet
+        k._ended = False  # pyright: ignore[reportPrivateUsage]
+        await stop(case)
+
+    arun(case())

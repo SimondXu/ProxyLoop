@@ -294,6 +294,10 @@ class Kernel:
     def _die(self) -> None:
         self._dead = True
 
+    @property
+    def ended(self) -> bool:  # session.ended is written
+        return self._ended
+
     def post_approval(self, post: ApprovalPost, by: Approver = "ui") -> None:
         """The approvals ingress (§9.6): enqueued, decided in the kernel's loop."""
         if self._ended:
@@ -528,4 +532,5 @@ async def run_session(
     try:
         return await k.run()
     finally:
+        k.bus.close()  # idempotent; else open if cancelled in P3, before seq 0
         await k.aclose()
