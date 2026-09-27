@@ -105,7 +105,7 @@ def test_the_newest_own_identify_line_wins() -> None:
     assert _said(items) == [new]
 
 
-def test_a_split_identify_line_is_never_repeated_in_part() -> None:
+def _split_line() -> list[str]:
     # "Dana J. Reyes": the FSM's own identify speech is two transcript lines.
     split = tuple(
         f | {"value": "Dana J. Reyes"} if f["key"] == "account.holder_name" else f
@@ -113,16 +113,37 @@ def test_a_split_identify_line_is_never_repeated_in_part() -> None:
     )
     said = _guided(IDENTIFY, split)
     assert len(said) == 2 and said[0].endswith("Dana J.")
-    lines = (*(("agent", t) for t in said), ("partner", "Thanks, you're verified."))
+    return said
+
+
+def _never_partial(*lines: tuple[str, str]) -> None:
     items = _turn(_asked(*lines, guidance=(ASK_DISCOUNT,)))
     assert _deflected(items)
     assert not any("Dana J." in t for t in _said(items))
 
 
-def test_an_own_identify_line_followed_by_another_agent_line_deflects() -> None:
+def test_a_split_identify_line_is_never_repeated_in_part() -> None:
+    said = _split_line()
+    _never_partial(*(("agent", t) for t in said), ("partner", "Thanks."))
+
+
+def test_a_first_fragment_alone_then_a_rep_line_is_never_repeated() -> None:
+    # barge-in: the second fragment was never heard, so it has no line
+    _never_partial(("agent", _split_line()[0]), ("partner", "Sorry, hold on."))
+
+
+def test_a_first_fragment_as_the_last_agent_line_is_never_repeated() -> None:
+    # a superseded generation dropped the second fragment (S1-SYS-22)
+    _never_partial(("agent", _split_line()[0]))
+
+
+def test_a_complete_own_line_followed_by_another_own_line_is_repeated() -> None:
     (ask,) = _guided(ASK_DISCOUNT)
-    lines = (("agent", _identify_line()), ("agent", ask), ("partner", "Hmm."))
-    assert _deflected(_turn(_asked(*lines, guidance=(HOLD_FOR_FACT,))))
+    mine = _identify_line()
+    lines = (("agent", mine), ("agent", ask), ("partner", "Hmm."))
+    items = _turn(_asked(*lines, guidance=(HOLD_FOR_FACT,)))
+    assert _said(items) == [mine]
+    assert Hold(reason="fact_request") not in items
 
 
 def test_b_no_identify_guide_and_no_own_line_deflects() -> None:
