@@ -96,24 +96,6 @@
          "field": {
           "type": "string"
          },
-         "role": {
-          "enum": [
-           "recurring",
-           "one_time",
-           "credit",
-           "change",
-           "feature",
-           "expiry"
-          ]
-         },
-         "unit": {
-          "enum": [
-           "usd_minor",
-           "months",
-           "bool",
-           "iso"
-          ]
-         },
          "utt_ref": {
           "type": "string"
          },
@@ -124,8 +106,7 @@
         "required": [
          "field",
          "value",
-         "unit",
-         "role"
+         "utt_ref"
         ],
         "type": "object"
        },

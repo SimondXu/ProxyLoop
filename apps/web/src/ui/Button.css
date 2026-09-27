@@ -1,0 +1,5 @@
+@layer components {
+  .pl-btn { min-height: 40px; padding: 0 var(--s5); font-size: var(--fs-ui); }
+  .pl-btn-primary { background: var(--agent); border-color: var(--agent); color: var(--on-agent); }
+  .pl-btn-primary:hover:not(:disabled) { background: var(--agent-hover); }
+}

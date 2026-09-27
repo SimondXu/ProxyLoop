@@ -2,7 +2,13 @@ import { memo, useCallback, useEffect, useMemo, useReducer, useState } from "rea
 import { listBundles, loadPrompt, loadRun, type BundleInfo, type PromptRecord, type Run } from "./bundleSource";
 import { endOf, indexEvents, LANES, laneOf, modelLabel, runHeader, selectRun, shasOf, summary, type Ev, type Index, type Lane } from "./replay";
 import { parties } from "./conversation";
-import { Panes, Story, useView } from "./ConversationView";
+import { Panes, StatusBar, useView } from "./ConversationView";
+import { honesty } from "./provenance";
+import { AppShell } from "./shell/AppShell";
+import { HonestyBand } from "./shell/HonestyBand";
+import { Banner } from "./ui/Banner";
+import { Card as Panel } from "./ui/Card";
+import { EmptyState } from "./ui/EmptyState";
 import { usePlayback, type Speed } from "./usePlayback";
 
 export type Drill = { label: string; sha: string; record?: PromptRecord | null; note?: string };
@@ -53,7 +59,7 @@ export function App() {
   const { engineer, link } = useView();
 
   return (
-    <main>
+    <AppShell>
       <header className="bar">
         <h1>ProxyLoop replay</h1>
         {link}
@@ -68,10 +74,14 @@ export function App() {
           </select>
         </label>
       </header>
-      {error && <p role="alert">{error}</p>}
-      {!error && bundles.length === 0 && <p>No bundles.</p>}
+      {error && (
+        <Banner tone="danger" role="alert">
+          {error}
+        </Banner>
+      )}
+      {!error && bundles.length === 0 && <EmptyState title="No recorded runs yet." />}
       {run && <Replay key={runId} runId={runId} run={run} engineer={engineer} />}
-    </main>
+    </AppShell>
   );
 }
 
@@ -80,6 +90,7 @@ function Replay({ runId, run, engineer }: { runId: string; run: Run; engineer: b
   const end = useMemo(() => endOf(run.events), [run]);
   // From the whole log, not the time-filtered one: the sim labels are on every frame, also before session.started's t_ms (I11).
   const who = useMemo(() => parties(run.events), [run]);
+  const h = useMemo(() => honesty(run.events), [run]);
   const clock = usePlayback(end);
   const [god, setGod] = useState(false);
   const { drill, open, close } = useDrill(runId);
@@ -88,7 +99,8 @@ function Replay({ runId, run, engineer }: { runId: string; run: Run; engineer: b
 
   return (
     <>
-      <div className="sticky">
+      <div className="pl-sticky">
+        <HonestyBand h={h} />
         <section className="bar" aria-label="Controls">
           <button type="button" onClick={clock.toggle}>
             {clock.playing ? "Pause" : "Play"}
@@ -115,7 +127,7 @@ function Replay({ runId, run, engineer }: { runId: string; run: Run; engineer: b
             </label>
           )}
         </section>
-        <Story events={shown} p={who} />
+        <StatusBar events={shown} />
       </div>
       <RunSummary events={run.events} />
       {engineer ? (
@@ -158,7 +170,7 @@ export function RunSummary({ events }: { events: Ev[] }) {
   const head = useMemo(() => runHeader(events), [events]);
   if (!head) return <p className="run-head">No session.started event in this run.</p>;
   return (
-    <section className="run-head" aria-label="Run">
+    <Panel className="run-head" aria-label="Run">
       <p>
         {head.run_id} · task {head.task_ref} · split {head.split} · contract {head.contract_version}
       </p>
@@ -169,7 +181,7 @@ export function RunSummary({ events }: { events: Ev[] }) {
           </li>
         ))}
       </ul>
-    </section>
+    </Panel>
   );
 }
 

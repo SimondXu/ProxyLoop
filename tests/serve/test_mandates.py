@@ -288,7 +288,7 @@ def _propose(k: Kernel) -> Mandate:
     calls = [{"tool": "propose_mandate", "envelope": envelope}]
     args = json.dumps({"private_summary": "digest", "calls": calls})
     call = ToolCall(call_id="t", name="act", arguments=args)
-    k.slow.tools.act(call, [k.authority.root])
+    k.slow.tools.act(call, [k.authority.root], basis=k.bb.seq)
     m = k.bus.bb.private.mandate
     assert m is not None and m.status == "proposed"
     return m

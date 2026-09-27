@@ -1,18 +1,22 @@
 // The live shell (?live=<run_id>), fed by /ws/live: by default the conversation
 // view (Conversation.tsx) with the chat input in the chat pane; with
-// ?view=engineer the replay's lanes, cards and drawer. Both keep the status line,
-// the authority strip and the approval cards in the sticky header. It shows only
+// ?view=engineer the replay's lanes, cards and drawer. Both keep the honesty band,
+// the status line, the authority strip and the approval cards in the sticky header. It shows only
 // what events say. Models are chosen on the start page (?start); here RunSummary
 // shows the ones session.started names.
 import { useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { Drawer, Lanes, RunSummary, useDrill } from "./App";
 import { parties } from "./conversation";
-import { Panes, Story, useView } from "./ConversationView";
+import { Panes, StatusBar, useView } from "./ConversationView";
 import { approvalCards, type CardStatus, type CardView, type Posting } from "./approval";
 import { authorityStrip, type Strip } from "./authority";
 import { parseEvent, unechoed, type Framed, type Sent, type Stream } from "./liveState";
 import { postApproval, postMessage, type Decision, type PostResult } from "./liveApi";
+import { honesty } from "./provenance";
 import { indexEvents } from "./replay";
+import { AppShell } from "./shell/AppShell";
+import { HonestyBand } from "./shell/HonestyBand";
+import { Button } from "./ui/Button";
 import { useEventStream } from "./useEventStream";
 
 const CHAT_LABEL = "Message to the assistant";
@@ -32,6 +36,7 @@ export function Live({ runId }: { runId: string }) {
   const cards = useMemo(() => approvalCards(events, posts), [events, posts]);
   const strip = useMemo(() => authorityStrip(events), [events]);
   const who = useMemo(() => parties(events), [events]); // live: only what has arrived
+  const h = useMemo(() => honesty(events), [events]);
   // Cards with a pending or ok post: a second click, even before a re-render, never POSTs again.
   const claimed = useRef(new Set<string>());
   const decide = (view: CardView, decision: Decision) => {
@@ -55,8 +60,9 @@ export function Live({ runId }: { runId: string }) {
   const composer = <Composer label={CHAT_LABEL} post={send} pending={unechoed(sent, echoes).map((s) => s.text)} />;
 
   return (
-    <main>
-      <div className="sticky">
+    <AppShell>
+      <div className="pl-sticky">
+        <HonestyBand h={h} />
         <header className="bar">
           <h1>ProxyLoop live · {runId}</h1>
           <Connection stream={stream} reconnect={reconnect} count />
@@ -67,7 +73,7 @@ export function Live({ runId }: { runId: string }) {
             </label>
           )}
         </header>
-        <Story events={events} p={who} />
+        <StatusBar events={events} />
         {cards.length > 0 && (
           <section className="approvals" aria-label="Approvals">
             {cards.map((v) => (
@@ -91,7 +97,7 @@ export function Live({ runId }: { runId: string }) {
       ) : (
         <Panes events={events} p={who} announce composer={composer} />
       )}
-    </main>
+    </AppShell>
   );
 }
 
@@ -183,12 +189,12 @@ function Approval({ view, decide, fenced }: { view: CardView; decide: (v: CardVi
       </p>
       {fenced && UNDECIDED.includes(status) && <p aria-label="Fence note">fence raised: the accept waits until it clears</p>}
       {error && <p role="alert">{error}</p>}
-      <button type="button" disabled={!live} onClick={() => decide(view, "granted")}>
+      <Button variant="primary" disabled={!live} onClick={() => decide(view, "granted")}>
         Approve
-      </button>
-      <button type="button" disabled={!live} onClick={() => decide(view, "denied")}>
+      </Button>
+      <Button disabled={!live} onClick={() => decide(view, "denied")}>
         Deny
-      </button>
+      </Button>
     </article>
   );
 }
@@ -223,9 +229,9 @@ export function Composer({
     <form className="bar composer" aria-label={label} onSubmit={submit}>
       <label htmlFor={id}>{label}</label>
       <input id={id} value={text} onChange={(e) => setText(e.target.value)} />
-      <button type="submit" disabled={busy}>
+      <Button variant="primary" type="submit" disabled={busy}>
         Send
-      </button>
+      </Button>
       {error && <p role="alert">Not delivered: {error}</p>}
       {pending.length > 0 && (
         <ul aria-label="Pending" className="meta">

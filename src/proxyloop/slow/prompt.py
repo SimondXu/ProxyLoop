@@ -48,8 +48,8 @@ public. From the user, only a *.last4 key (exactly 4 digits) or a *.holder_name 
 cited user message contains exactly that value; anything else stays private.
 - share_fact(key): make a recorded shareable fact public, by the rule of record_fact.
 - record_offer(offer_ref, offer_slots): the offer's terms as the representative said \
-them, each slot {{field, value, unit, role, utt_ref}}, by this table (field → role, \
-unit, value): {offer_slots.TABLE}. \
+them, each slot {{field, value, utt_ref}}; its role and unit follow from the field, \
+by this table (field → role, unit, value): {offer_slots.TABLE}. \
 Then guide_fast(ask_readback, ["offer:<ref>"]) for that revision: its slots turn \
 [confirmed] in the status bar when the representative repeats them after it. Only a \
 confirmed offer can be approved or accepted.
@@ -149,11 +149,7 @@ def _enum(*values: str) -> Schema:
     return {"enum": list(values)}
 
 
-_UNIT = _enum("usd_minor", "months", "bool", "iso")
-_ROLE = _enum("recurring", "one_time", "credit", "change", "feature", "expiry")
-_SLOT = _obj(
-    "field value unit role", field=S, value=S, unit=_UNIT, role=_ROLE, utt_ref=S
-)
+_SLOT = _obj("field value utt_ref", field=S, value=S, utt_ref=S)  # S1-SYS-45
 _WHOLE = {"type": "integer", "minimum": 0}
 _WORDS = {"type": "array", "items": S}
 _ENVELOPE: Schema = {
@@ -209,13 +205,16 @@ def status_bar(view: SlowView, keys: frozenset[str], now_ms: int) -> str:
 
     def offer(o: OfferPublic) -> str:
         ttl = "" if o.expires_ms is None else f", expires in {secs(o.expires_ms)}"
-        gaps = missing_required(o)
-        gap = f", missing {' '.join(gaps)}" if gaps else ""
         slots = ", ".join(f"{s.field}={s.value} [{s.status}]" for s in o.slots)
-        state = f"{o.status}, read-back {readback_status(o)}{ttl}{gap}"
-        hint = approval_hint(view, o, now_ms)
-        return f"{o.offer_ref} r{o.revision} ({state}): {slots}" + (
-            f"; {hint}" if hint else ""
+        state = f"{o.status}, read-back {readback_status(o)}{ttl}"
+        hints = [approval_hint(view, o, now_ms)]
+        if gaps := missing_required(o):  # e6ada1: Guard's list, never inferred
+            hints.append(
+                f"required slots not recorded: {', '.join(gaps)}; record them "
+                "from the rep line that states them"
+            )
+        return f"{o.offer_ref} r{o.revision} ({state}): {slots}" + "".join(
+            f"; {h}" for h in hints if h
         )
 
     facts = "; ".join(

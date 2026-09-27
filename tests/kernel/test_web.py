@@ -388,7 +388,7 @@ def _act(k: Kernel, *calls: Mapping[str, object]) -> list[str]:
     assert k.slow is not None
     body = json.dumps({"private_summary": "digest", "calls": list(calls)})
     call = ToolCall(call_id="t", name="act", arguments=body)
-    return k.slow.tools.act(call, [k.authority.root]).splitlines()[1:]
+    return k.slow.tools.act(call, [k.authority.root], basis=k.bb.seq).splitlines()[1:]
 
 
 async def _card(case: WebCase, vt: VirtualTime) -> ApprovalCard:
