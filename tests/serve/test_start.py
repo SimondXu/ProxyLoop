@@ -78,10 +78,12 @@ class Env:  # not a dataclass: pyright sees such a TestClient field as Unknown
         self.http, self.starter, self.other, self.root = http, starter, other, root
 
 
-def _env(root: Path, starter: FakeStarter, **kw: float) -> Env:
+def _env(root: Path, starter: FakeStarter, timeout_s: float = 60.0) -> Env:
     other = ApiCase(root, CASE).start()
     cases = {CASE: other}
-    app = create_app([root], [ORIGIN], cases=cases.get, start=starter, **kw)
+    app = create_app(
+        [root], [ORIGIN], cases=cases.get, start=starter, start_timeout_s=timeout_s
+    )
     return Env(TestClient(app, base_url="http://127.0.0.1"), starter, other, root)
 
 
@@ -399,7 +401,7 @@ def test_a_hung_start_is_cancelled_503_and_frees_the_lock(
     root.mkdir()
     starter = FakeStarter(root, OPTIONS, TASKS)
     starter.hang = True
-    env = _env(root, starter, start_timeout_s=0.05)
+    env = _env(root, starter, timeout_s=0.05)
     hdrs = headers(operator(env.http))
     with caplog.at_level(logging.ERROR, logger=LOGGER):
         got = start(env, hdrs)
@@ -430,7 +432,7 @@ class _Swallows(FakeStarter):
 def test_a_start_returning_after_its_timeout_is_not_registered(tmp_path: Path) -> None:
     root = tmp_path / "runs"
     root.mkdir()
-    env = _env(root, _Swallows(root, OPTIONS, TASKS), start_timeout_s=0.05)
+    env = _env(root, _Swallows(root, OPTIONS, TASKS), timeout_s=0.05)
     got = start(env, headers(operator(env.http)))
     assert (got.status_code, got.json()) == (503, {"error": "unavailable"})
     (late,) = env.starter.cases
@@ -440,35 +442,39 @@ def test_a_start_returning_after_its_timeout_is_not_registered(tmp_path: Path) -
     late.close()
 
 
-_OPENED: list[str] | None = None  # the paths opened while a test records them
+class _Opens:
+    paths: list[str] | None = None  # the paths opened while a test records them
+
+
 _HOOKED: list[object] = []
 
 
 def _audit(event: str, args: tuple[object, ...]) -> None:
-    if _OPENED is not None and event == "open":
-        _OPENED.append(str(args[0]))
+    if _Opens.paths is not None and event == "open":
+        _Opens.paths.append(str(args[0]))
 
 
 def test_a_task_not_offered_is_refused_before_the_starter(env: Env) -> None:
-    global _OPENED
     if _audit not in _HOOKED:  # an audit hook cannot be removed: add it once
         sys.addaudithook(_audit)
         _HOOKED.append(_audit)
     held_out = "x-held-out@1"
     assert held_out not in env.starter.task_options()
     hdrs = headers(operator(env.http))
-    _OPENED = []
+    _Opens.paths = []
     try:
         got = start(env, hdrs, BODY | {"task_ref": held_out})
-        opened = list(_OPENED)
+        (env.root / "held-out-probe").write_text("")  # the hook sees opens
+        opened = list(_Opens.paths)
     finally:
-        _OPENED = None
+        _Opens.paths = None
     assert (got.status_code, got.json()) == (
         400,
         {"error": "start", "reason": "unknown_task"},
     )
     assert env.starter.calls == []  # start_case was never called
-    assert not [path for path in opened if "held-out" in path]
+    probe = str(env.root / "held-out-probe")
+    assert [path for path in opened if "held-out" in path] == [probe]
 
 
 def _case_routes(

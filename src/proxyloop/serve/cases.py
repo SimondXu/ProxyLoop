@@ -15,7 +15,9 @@ known case; else 403 ``{"error": "origin" | "csrf"}`` or 404:
   The endpoint never decides, mints or emits a decision (I6).
 - ``POST /api/cases/{case}/messages`` (user) and ``/rep`` (the human rep):
   text into the case's user-lane and cp-lane ingress; if the ingress raises,
-  503 ``unavailable``, logged.
+  503 ``unavailable``, logged. Text that is empty after ``strip()`` is 422
+  ``invalid body`` (the kernel refuses it too); accepted text is forwarded as
+  sent, not stripped.
 
 A Denial does not use up the single-use slot: only a post handed to the kernel
 does. ``guard.decide`` is a pure function of the board, so a later POST is
@@ -40,7 +42,7 @@ from typing import Annotated, Literal, Protocol
 from fastapi import FastAPI, Request
 from fastapi import Path as Param
 from fastapi.responses import JSONResponse, RedirectResponse, Response
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from proxyloop.contract.bundle import EVENTS
 from proxyloop.contract.events import ApprovalPost, Decision
@@ -169,6 +171,13 @@ class ApprovalBody(_Body):
 class TextBody(_Body):
     text: str = Field(min_length=1, max_length=TEXT_MAX)
 
+    @field_validator("text")
+    @classmethod
+    def _not_blank(cls, text: str) -> str:
+        if not text.strip():  # as HumanWebChannel.say refuses it: a 422, not 503
+            raise ValueError("blank text")
+        return text  # as sent
+
 
 class Refused(Exception):
     """A refusal with a JSON body ``{"error": ..., "reason"?: ...}``."""
@@ -189,15 +198,25 @@ def _events(roots: Sequence[Path], run_id: str) -> Path | None:
     return run.file(EVENTS) if run is not None else None
 
 
+def _open(
+    roots: Sequence[Path], cases: Cases, case_id: str
+) -> tuple[Case, Path] | None:
+    if (case := cases(case_id)) is None:
+        return None
+    path = _events(roots, case.run_id)
+    return None if path is None else (case, path)
+
+
 async def open_case(
     roots: Sequence[Path], cases: Cases | None, case_id: str
 ) -> tuple[Case, Path] | None:
-    """The case and its run's ``events.jsonl``, or None: unknown."""
-    case = cases(case_id) if cases is not None else None
-    if case is None:
+    """The case and its run's ``events.jsonl``, or None: unknown. ``cases``
+    runs in the worker thread with the bundle lookup (the started map's lookup
+    reads files, ``serve.start``); the Case's methods are still called only on
+    the event loop."""
+    if cases is None:
         return None
-    path = await asyncio.to_thread(_events, roots, case.run_id)
-    return None if path is None else (case, path)
+    return await asyncio.to_thread(_open, roots, cases, case_id)
 
 
 def add_case_routes(
