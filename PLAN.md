@@ -993,9 +993,14 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 ### S1-SYS-11 Offline OTel exporter and Phoenix — SYS (P-OBS) — S — todo
 - **Objective:** an offline exporter: a bundle's `events.jsonl` → OTel spans (parent/child from `cause_ids`, lanes as resources) → Phoenix via `compose.yaml`, plus a replay-to-trace CLI. It reads events only and never touches the session path. **Supersedes S1-SYS-06**; ADR-0008 (an offline exporter instead of a live subscriber) is recorded by the main root before merge.
 - **Owned paths:** `src/proxyloop/obs/**`, `tests/obs/**`, `compose.yaml`.
-- **Deps:** ADR-0008 (before merge).
+- **Deps:** ADR-0008 (S1-ROOT-09).
 - **Acceptance:** on fixture bundles, span parent/child matches `cause_ids` and the lanes appear as resources; an exported real S0 bundle shows overlapping Fast and Slow spans (span JSON + a screenshot in the PR).
 - **Verify:** `uv run pytest tests/obs -q`.
+
+### S1-ROOT-09 ADR-0008: offline OTel exporter — ROOT — S — doing
+- **Objective:** record ADR-0008 (root decision under §0.5a, 2026-09-27): S1-SYS-06's live `OTelExporter(bus)` subscriber is replaced by an offline exporter over a bundle's `events.jsonl` (finished, or tailed read-only): the first of `cause_ids` is the parent span and the others are links; lanes are resources; `gen_ai.*` attributes from `llm.call` records with no prompt or response text by default; no private-state value; sealed and `test` bundles refused (AGENTS rule 11); Phoenix via `compose.yaml` on 127.0.0.1 and the CLI `python -m proxyloop.obs.trace RUN [--endpoint]`. It unblocks S1-SYS-11.
+- **Owned paths:** `docs/decisions/0008-*.md` (new); `ARCHITECTURE.md` (the `obs` module row, the per-session task list and the §14 OTel bullet only); `PLAN.md` (this block and S1-SYS-11's Deps line).
+- **Acceptance:** `make docs-check` and `make lint` green; no measured number typed (AGENTS rule 13).
 
 ### S1-SYS-12 Spend report and run index — SYS (P-OBS) — S — todo
 - **Objective:** a `spend.json` generator (§0.8: measured $/episode by role, GPU $ by job from a Modal usage input, the cumulative total, the projection), and a run index over `runs/` and `evidence/`. `docs/results/spend.json` is generated only.
