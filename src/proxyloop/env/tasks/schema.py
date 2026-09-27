@@ -32,6 +32,13 @@ TermField = Annotated[str, StringConstraints(pattern=READBACK_FIELD)]
 STOP_DELAY_S = (0.5, 2.5)  # a triggered stop's reply delay: below the approver's
 GOAL_REF = re.compile(rf"\{{({FACT_KEY})\}}")
 Brief = Annotated[str, StringConstraints(min_length=1, max_length=base.MAX_BRIEF)]
+MONEY = r"^[0-9]+(?:\.[0-9]{2})?$"  # plain ASCII dollars: "68", "68.00"
+Money = Annotated[str, StringConstraints(pattern=MONEY)]
+_MONEY = re.compile(MONEY[1:-1])
+
+
+def money_term(field: str) -> bool:  # the terms instances shift (and _usd reads)
+    return field == "monthly_price" or field.startswith(("fee:", "credit:"))
 
 
 class ReplyDelay(Frozen):
@@ -76,6 +83,9 @@ class OfferSpec(Frozen):
             raise ValueError("a term is either said or hidden, not both")
         if not self.all_terms.get("term_months", "").isdigit():
             raise ValueError("an offer needs an integer term_months")
+        terms = self.all_terms.items()
+        if bad := [k for k, v in terms if money_term(k) and not _MONEY.fullmatch(v)]:
+            raise ValueError(f"{bad} must be money: plain dollars like 68 or 68.00")
         return self
 
 
@@ -100,7 +110,6 @@ class CounterpartySpec(Frozen):
         return self
 
 
-Money = Annotated[str, StringConstraints(pattern=r"^\d+(?:\.\d\d)?$")]  # dollars
 Bound = Literal["max_monthly_price_usd", "max_term_months", "max_one_time_fees_usd"]
 
 
