@@ -12,6 +12,7 @@ from tests.serve.conftest import Bundles
 from tests.serve.test_split import TEST, TRAIN
 
 from proxyloop.contract.bundle import EVENTS
+from proxyloop.serve.bundles import TAIL, Run
 
 
 def _put(bundles: Bundles, dst: Path, run_id: str | None = None) -> Path:
@@ -62,3 +63,37 @@ def test_a_sealed_live_case_is_refused(bundles: Bundles, tmp_path: Path) -> None
     (runs / "live" / "case-1").symlink_to(held, target_is_directory=True)
     assert _listed(runs) == []
     assert frames(client(runs), f"/ws/live/{bundles.plain}") == ([], 4404)
+
+
+def _ended(run: Path, data: bytes) -> bool:
+    (run / EVENTS).write_bytes(data)
+    return Run(run.name, run.parent, run).ended()
+
+
+def test_ended_reads_only_the_last_complete_line(
+    bundles: Bundles, tmp_path: Path
+) -> None:
+    run = _put(bundles, tmp_path)
+    lines = (run / EVENTS).read_bytes().splitlines(keepends=True)
+    assert b"session.ended" in lines[-1] and lines[-1].endswith(b"\n")
+    first, *middle, last = lines
+    assert _ended(run, b"".join(lines))
+    assert _ended(run, b"".join(lines) + b"\n\n")  # blank lines after it
+    assert not _ended(run, b"")
+    assert not _ended(run, first)
+    assert not _ended(run, b"".join(lines)[:-1])  # no newline yet: partial
+    assert not _ended(run, b"".join([first, *middle]))
+    assert not _ended(run, b"".join(lines) + first)  # something after it
+    padding = first * (TAIL // len(first) + 2)  # only the tail is read
+    assert len(padding) > TAIL and _ended(run, padding + last)
+
+
+def test_a_session_ended_longer_than_the_tail_is_not_seen(
+    bundles: Bundles, tmp_path: Path
+) -> None:
+    # The documented bound: only TAIL bytes are read (the kernel's line is short).
+    run = _put(bundles, tmp_path)
+    *rest, last = (run / EVENTS).read_bytes().splitlines(keepends=True)
+    long = last.replace(b'"reason":"', b'"reason":"' + b"x" * TAIL)
+    assert len(long) > TAIL and _ended(run, b"".join(rest) + last)
+    assert not _ended(run, b"".join(rest) + long)
