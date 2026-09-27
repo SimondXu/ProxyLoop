@@ -36,7 +36,7 @@ async def watchdog(k: Kernel) -> None:
         opened, t = k.calls.opened, k.now()
         call = opened is not None and t - opened.t_ms > 1000 * MAX_SESSION_S
         if call or t > 1000 * (MAX_SESSION_S + INTAKE_S):
-            raise SessionEnd("timeout")
+            raise k.end("timeout")
         human = "cp_agent" in k.channels  # a person types: no rep patience
         called = k.calls.disclosed.is_set()  # no rep clock in the intake (R2)
         if called and not (speaker.speaking or rep.busy or k.closed or human):
