@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from tests.concurrency.harness import called
 from tests.contract.samples import SONNET, call_record
 from tests.kernel.test_session import FINISH, SCRIPTS, UNTIL
 from tests.support.fakes import RepeatingLLM
@@ -57,7 +58,7 @@ def test_an_unchanged_hold_is_relayed_once(tmp_path: Path) -> None:  # (e)
         "fast_cp": ["Let me check that with the account holder.\n@hold decision"],
         "slow": [*waits, FINISH],
     }
-    run(tmp_path, scripts)
+    run(tmp_path, scripts, task=called(task()))  # in the call from the start
     events = only_bundle(tmp_path).events
     held = [
         t
