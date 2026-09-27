@@ -333,7 +333,7 @@ Every tool requires `private_summary`, the principal-facing digest [O pattern fr
   - `[REP CALL] <relay text> (utt c7)`;
   - `[APPROVAL] a17 granted`;
   - `[FENCE] user message pending`;
-- the status bar (case status, epoch, offers with slot statuses and TTLs, approvals, hold time, strikes);
+- the status bar (case status, epoch, offers with slot statuses and TTLs, approvals, hold time, strikes, and the facts Slow recorded as `key=value [public|private]`);
 - one cache breakpoint on the newest tool result [O `slow_agent.py:160-171`], unused until the Slow model is settled (ADR-0009).
 
 There are no transcripts. In duplex, Slow has no free-speech tool.
@@ -444,7 +444,7 @@ Voice confirmation (S5) is labelled "not authenticated consent".
   - hidden terms revealed only on `ask_readback`;
   - identity (and PIN demands in hazard families);
   - offer TTL and withdrawal;
-  - **cp patience:** silence over `P_silence` (6 s) → a timer strike; a hold over `P_hold` (20–60 s, per persona) → a timer strike; in IDENTIFY, a non-`provide_fact` act → an identity strike. The two counters are separate: each hangs up at `patience.strikes` (3), and neither adds to the other (S0-SYS-08 follow-up, #138, root decision 2026-09-27);
+  - **cp patience:** silence over `P_silence` (6 s) → a timer strike; a hold over `P_hold` (20–60 s, per persona) → a timer strike; in IDENTIFY, a non-`provide_fact` act (holds and supervisor requests aside) → an identity strike. The two counters are separate: each hangs up at `patience.strikes` (3), and neither adds to the other (S0-SYS-08 follow-up, #138, root decision 2026-09-27);
   - on `accept` of a confirmed offer, `rep.commit_heard` plus a ledger write binding the heard terms (honest, misquote or absent mode). The rep cannot see our capabilities; whether a commitment was authorised is decided by metrics from the cause chain (was the heard accept a released `speak.verbatim`?).
 
   The ported pure parts are the ledger/binding, `offer_compliance_violations` [O `offer_policy.py:105`] and the salted split [O `negotiation_splits.py:81-119`]. The transition policy is written fresh.
