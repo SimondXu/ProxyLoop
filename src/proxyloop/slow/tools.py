@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
 
 SCALE = {"usd_minor": 100, "months": 1}  # minor units and months, as spoken
-CP_PROFILE = "pl_cp_v2"  # = kernel.lanes.PROFILE["cp"] (tests/slow: equality)
+CP_PROFILE = "pl_cp_v3"  # = kernel.lanes.PROFILE["cp"] (tests/slow: equality)
 _INVALID = (ValidationError, ValueError, KeyError, TypeError, ArithmeticError)
 _GUIDE = frozenset({"tool", "move", "slots"})
 _LAST4 = re.compile(r"[0-9]{4}")  # ASCII only: no NFKC, no separators

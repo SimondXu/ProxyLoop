@@ -36,7 +36,7 @@ from proxyloop.models.repair import substitutes
 if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
 
-PROFILE: dict[Lane, str] = {"user": "pl_user_v1", "cp": "pl_cp_v2"}
+PROFILE: dict[Lane, str] = {"user": "pl_user_v1", "cp": "pl_cp_v3"}
 URGENT = ("user_msg", "rep_spoke")  # served before Slow's messages and timers
 _F2S = {  # "": the lane's own update type
     **{"note": "NOTE", "request": "REQUEST", "revoke": "REVOKE"},
@@ -156,7 +156,8 @@ class FastLane:
         asked |= {"model_ref": client.ref.model_dump(mode="json")}
         req = k.emit("fast.request", self._actor, asked, [cause]).event_id
         k.expect(request.call_id, req)
-        parser, items, text = fp.StreamParser(lane), list[fp.TurnItem](), ""
+        parser = fp.StreamParser(lane, PROFILE[lane])  # its grammar (ADR-0017)
+        items, text = list[fp.TurnItem](), ""
         start, ttfs, record = k.now(), None, None
         try:
             async for delta in client.stream_text(request):

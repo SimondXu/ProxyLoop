@@ -534,7 +534,7 @@ def test_every_authority_tool_is_in_the_schema(tool: str) -> None:
 
 def test_slow_judges_guides_with_the_kernels_cp_profile() -> None:
     """One cp profile (#154 review): what Slow checks is what FastC renders."""
-    assert slow_tools.CP_PROFILE == PROFILE["cp"] == "pl_cp_v2"
+    assert slow_tools.CP_PROFILE == PROFILE["cp"] == "pl_cp_v3"
 
 
 def test_a_move_the_cp_profile_cannot_render_raises_out_of_act(
