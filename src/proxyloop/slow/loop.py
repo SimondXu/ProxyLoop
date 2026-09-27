@@ -130,6 +130,10 @@ class SlowLoop:
         self._results = [
             (c.call_id, self.tools.act(c, causes)) for c in resp.tool_calls
         ]
-        if not resp.tool_calls:
-            host.emit("slow.tool", "slow", _NO_TOOL, causes)
+        if not resp.tool_calls:  # a filtered reply is counted, never retried
+            none = dict(_NO_TOOL)
+            if resp.record.finish_reason == "content_filter":  # S1-SYS-28
+                host.counts["slow_content_filter"] += 1
+                none["result_text"] = "no tool call (content_filter)"
+            host.emit("slow.tool", "slow", none, causes)
         host.emit("slow.step.completed", "slow", basis, [started])

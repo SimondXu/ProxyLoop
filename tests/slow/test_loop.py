@@ -223,3 +223,33 @@ def test_a_slow_call_past_its_deadline_ends_the_session_loudly(
     assert events[-1].payload["reason"] == "slow_timeout"
     slow = [e for e in events if e.type == "llm.call" and e.payload["role"] == "slow"]
     assert [e.payload["error"] for e in slow] == ["cancelled"]  # the call's record
+
+
+@pytest.mark.parametrize("reason", ["content_filter", "stop"])
+def test_a_filtered_slow_reply_is_counted_never_retried(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reason: str
+) -> None:
+    """S1-SYS-28 (run ed5063, slow:6): a provider content filter left Slow with
+    no tool call, silently. It is counted and named; the step ends as today,
+    with one call and no retry (rule 12)."""
+    idle = Idle(tmp_path)
+    k = idle.k
+    slow = idle.slow([json.dumps({"text": "", "tool_calls": []})])
+    client = slow._client  # pyright: ignore[reportPrivateUsage]
+    reply = client.chat_tools
+
+    async def filtered(request: Any) -> Any:  # the provider's finish reason
+        resp = await reply(request)
+        record = resp.record.model_copy(update={"finish_reason": reason})
+        return resp.model_copy(update={"record": record})
+
+    monkeypatch.setattr(client, "chat_tools", filtered)
+    asyncio.run(slow.step(["relay"]))
+    (tool,) = [e for e in k.bus.events if e.type == "slow.tool"]
+    filtered_ = reason == "content_filter"
+    text = "no tool call (content_filter)" if filtered_ else "no tool call"
+    assert (tool.payload["result_text"], tool.payload["ok"]) == (text, False)
+    assert dict(k.counts) == ({"slow_content_filter": 1} if filtered_ else {})
+    assert len([e for e in k.bus.events if e.type == "llm.call"]) == 1
+    assert [e.type for e in k.bus.events][-1] == "slow.step.completed"
+    k.bus.close()
