@@ -17,6 +17,7 @@ from proxyloop.contract.config import SessionConfig
 from proxyloop.contract.state import CaseStatus
 from proxyloop.evidence.check import check_path
 from proxyloop.kernel.channels import Incoming
+from proxyloop.slow.transcript import omitted_before_release
 
 CONFIRMED = "All set: your confirmation number is 482913. Goodbye."
 BINDING = {  # the world's ledger entry for the $68, 12-month offer (harness)
@@ -78,6 +79,8 @@ def test_a_closing_confirmation_completes_the_case(tmp_path: Path) -> None:
         assert ended.type == "session.ended"
         assert ended.payload["reason"] == "completed"
         assert check_path(sim.k.path, "offline").ok
+        assert sim.of("speak.released", cap_id="cap-1")  # the tripwire ran on it
+        assert omitted_before_release(sim.events) == []
 
     arun(case())
 

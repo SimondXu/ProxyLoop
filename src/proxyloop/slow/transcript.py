@@ -12,11 +12,13 @@ carries it, escapes included (its head and tail, cut between code points)."""
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from proxyloop.contract.base import Lane
-from proxyloop.contract.state import Line
+from proxyloop.contract.events import Event
+from proxyloop.contract.state import Blackboard, Line
+from proxyloop.core.fold import apply
 
 LANE_CHARS: Mapping[Lane, int] = {"user": 2_000, "cp": 4_000}  # [E] per lane
 ROW_CHARS = 480  # [E] of one line's quoted, escaped text (<= every lane cap)
@@ -111,3 +113,36 @@ def _fit(rows: Sequence[str], budget: int) -> list[int]:
     while len(kept) > 1 and size > budget:
         size -= len(rows[kept.pop(0)]) + 1
     return kept
+
+
+_LINES = ("user.msg", "utt.final", "utt.delivered")  # the fold's line events
+
+
+def omitted_before_release(events: Iterable[Event]) -> list[tuple[str, str]]:
+    """The tripwire (reporting only; nothing calls it in a session): each
+    released accept (its ``speak.released`` id) with every rep line (its utt
+    id) before it that no Slow render since the line showed. Each step's
+    render is redone from the log as ``SlowLoop`` made it (``transcript``
+    mode, default caps); the partner fence counts such a line as covered."""
+    bb, cursor, accepts = Blackboard(), Cursor(), set[str]()
+    unseen: list[str] = []  # rep lines no render has shown yet
+    out: list[tuple[str, str]] = []
+    for e in events:
+        p = e.payload
+        if e.type in _LINES:
+            bb = apply(bb, e)
+        if e.type == "utt.final" and (p["lane"], p["speaker"]) == ("cp", "partner"):
+            unseen.append(str(p["utt_id"]))
+        elif e.type == "slow.step.started":
+            lines: dict[Lane, tuple[Line, ...]] = {
+                lane: c.lines for lane, c in bb.channels.items()
+            }
+            text, cursor = render(lines, cursor)
+            rows = [r.split(" ", 3) for r in text.split("\n") if r[:2] in ("▶ ", "· ")]
+            shown = {r[1] for r in rows if r[2] == "REP:"}
+            unseen = [u for u in unseen if u not in shown]
+        elif e.type == "speak.verbatim" and p["kind"] == "accept":
+            accepts.add(e.event_id)
+        elif e.type == "speak.released" and accepts & set(e.cause_ids):
+            out += [(e.event_id, u) for u in unseen]
+    return out
