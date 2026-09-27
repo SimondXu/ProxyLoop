@@ -10,12 +10,19 @@ hosted id), else the ``ModelRef.model_id`` the call requested
 E1: a teacher-substituted Fast call keeps its ``fast_*`` role and carries the
 teacher's ``ModelRef``; it is the teacher's call only on the lane whose
 ``teacher_repair_*`` ablation the cfg sets, and is checked as the teacher's.
+
+A claim is scoped to its Fast model (S1-SYS-14): ``claim_scope`` labels it with
+the claimed Fast lanes' ``ModelRef``s. P3 ``not_applicable`` passes only for a
+hosted Fast, as hosted-Fast evidence that is never a Qwen claim; a Qwen claim
+(``about="qwen"``) needs every claimed Fast lane on vLLM and P3 = pass. A trained
+slot (C1) needs its ``adapter_shards``: no kernel records them yet (D4).
 """
 
 from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Collection, Sequence
+from typing import Literal
 
 from proxyloop.contract import CONTRACT_VERSION
 from proxyloop.contract.bundle import Manifest
@@ -25,6 +32,9 @@ from proxyloop.contract.protocol import fingerprint
 
 _REAL = AdapterKind.REAL_HTTP
 _NOT_LIVE = (AdapterKind.TEST_FAKE, AdapterKind.RECORDED_REPLAY)
+_FAST: tuple[LLMRole, ...] = ("fast_user", "fast_cp")
+TRAINED_MARK = "-pl-"  # in serving.config.TRAINED_PREFIX: a trained LoRA slot (C1)
+About = Literal["qwen"]  # what a claim is about; None: its own Fast ModelRef
 
 
 def role_refs(cfg: SessionConfig) -> dict[str, ModelRef]:
@@ -59,6 +69,50 @@ def label(ref: ModelRef) -> str:
 
 def reality_report(manifest: Manifest) -> dict[str, str]:
     return {role: label(model.ref) for role, model in manifest.models.items()}
+
+
+def _fast(m: Manifest, roles: Collection[LLMRole]) -> dict[LLMRole, ModelRef]:
+    return {r: m.models[r].ref for r in _FAST if r in roles and r in m.models}
+
+
+def claim_scope(m: Manifest, roles: Collection[LLMRole]) -> str:
+    """What a passing claim is evidence of: the claimed Fast lanes' models."""
+    fast = _fast(m, roles)
+    if not fast:
+        return "no Fast role claimed"
+    effort = {r: f" (effort {f.reasoning_effort})" for r, f in fast.items()}
+    lanes = ", ".join(
+        f"{r}={f.endpoint}:{f.model_id}{effort[r] if f.reasoning_effort else ''}"
+        for r, f in fast.items()
+    )
+    kinds = {label(f) for f in fast.values()}
+    if kinds == {"vllm"}:
+        return f"Qwen@vllm: {lanes}; P3 {m.p3}"
+    if "hosted" in kinds:
+        p3 = f"P3 {m.p3}" + (" (hosted Fast)" if m.p3 == "not_applicable" else "")
+        return f"hosted-Fast evidence, not a Qwen claim: {lanes}; {p3}"
+    return f"{'/'.join(sorted(kinds))}: {lanes}; P3 {m.p3}"
+
+
+def _scope_failures(
+    m: Manifest, roles: Collection[LLMRole], about: About | None
+) -> list[str]:
+    fast, out = _fast(m, roles), []
+    for role, ref in fast.items():
+        slot = m.models[role].served_model or ref.model_id
+        trained = ref.endpoint == "vllm" and TRAINED_MARK in slot
+        if trained and not m.models[role].adapter_shards:  # D4: the kernel's part
+            out.append(f"{role} runs the trained slot {slot} with no adapter_shards")
+    if about != "qwen":
+        return out
+    if not fast:
+        return [*out, "a Qwen claim needs a claimed Fast role"]
+    for role, ref in fast.items():
+        if ref.endpoint != "vllm":
+            out.append(f"a Qwen claim needs Qwen@vllm: {role} ran {label(ref)}")
+    if m.p3 != "pass":
+        out.append(f"a Qwen claim needs P3 pass, not {m.p3}")
+    return out
 
 
 def consistency_failures(m: Manifest, calls: Sequence[LLMCallRecord]) -> list[str]:
@@ -121,6 +175,7 @@ def claim_failures(
     calls: Sequence[LLMCallRecord],
     roles: Collection[LLMRole],
     profiles: Collection[str],
+    about: About | None = None,
 ) -> list[str]:
     out: list[str] = []
     ok = [c for c in calls if c.error is None and c.adapter_kind is _REAL]
@@ -149,4 +204,4 @@ def claim_failures(
     on_vllm = any(m.models[r].ref.endpoint == "vllm" for r in roles if r in m.models)
     if m.p3 == "fail" or (m.p3 == "not_applicable" and on_vllm):
         out.append(f"P3 is {m.p3}")
-    return out
+    return out + _scope_failures(m, roles, about)
