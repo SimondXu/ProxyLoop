@@ -17,7 +17,7 @@
 - The evidence chain re-parses each `fast.turn` under the profile its `fast.request` names; an unknown or other-lane profile is a chain failure. The kernel's cp lane and Slow's `CP_PROFILE` move to `pl_cp_v3`, and the kernel parses with its lane's profile.
 
 ## Rule-12 analysis (anti-absorption)
-Stricter, never more lenient: the rule only turns `Speech` into issues. It applies to every Fast condition on the cp lane (base Qwen, the LoRA, hosted Fast, the teacher), because it lives in the one parser and keys on the profile, not on a model. Its reason is semantic (§6.2's canonical order: after a pause the agent is silent), not a Luna quirk. Base Qwen may pay more for it (more issues, less speech); that is the intended direction.
+Stricter, never more lenient: the rule never adds a `Speech` or a `Relay`, only removes them and counts an issue instead. After a pause, a whole non-directive line becomes one `speech_after_pause` issue: no `Speech` from it is voiced, a mixed line such as `No. @slow: fact a=1` also loses its inline relay, and a `THEN:`-only line, which v2 drops silently, is counted too. It applies to every Fast condition on the cp lane (base Qwen, the LoRA, hosted Fast, the teacher), because it lives in the one parser and keys on the profile, not on a model. Its reason is semantic (§6.2's canonical order: after a pause the agent is silent), not a Luna quirk. Base Qwen may pay more for it (more issues, less speech); that is the intended direction.
 
 ## Evidence
 - The four raw responses above, trimmed, are the parser fixtures in `tests/contract/test_pause_ends_speech.py`: under `pl_cp_v2` they parse as the recorded turns did (the pre-change parser gives the same items), under `pl_cp_v3` every post-hold line is `speech_after_pause`.
