@@ -62,7 +62,15 @@ export function Live({ runId }: { runId: string }) {
 }
 
 /** The stream's phase and close reason; `count` is left out where raw events are not the viewer's business. */
-export function Connection<T extends Framed>({ stream, reconnect, count }: { stream: Stream<T>; reconnect: () => void; count?: boolean }) {
+export function Connection<T extends Framed>({
+  stream,
+  reconnect,
+  count,
+}: {
+  stream: Stream<T>;
+  reconnect: () => void;
+  count?: boolean;
+}) {
   return (
     <>
       <output aria-label="Connection">

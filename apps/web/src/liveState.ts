@@ -29,7 +29,10 @@ export function parseFrame(text: string): Json | string {
 }
 
 /** A /ws/live frame: one events.jsonl line. */
-export const parseEvent = (text: string) => parseFrame(text) as Ev | string;
+export const parseEvent = (text: string): Ev | string => {
+  const v = parseFrame(text);
+  return typeof v === "string" ? v : (v as Ev);
+};
 
 /**
  * Accept one parsed frame (or a parse error). A seq below `next` is a duplicate
