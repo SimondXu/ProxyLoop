@@ -3,9 +3,12 @@
 A forced ``reply`` call returns ``{text, revealed{key: value}}``; every
 revealed key must be a profile fact and every value appear verbatim in
 ``text`` (the relay ground truth, EVAL §7), else the reply is regenerated
-(ADR-0005 D5). The delay is sampled per reply from the task's range; the
-kernel delivers the reply ``delay_s`` after the agent's message, on the wall
-clock. There is no patience and no strike.
+(ADR-0005 D5). The user answers questions but need not answer every status
+message: ``{silent: true, revealed: {}}`` sends nothing (no ``user.sim``; its
+``llm.call`` records stay). The opening is never silent. The delay is sampled
+per reply from the task's range; the kernel delivers the reply ``delay_s``
+after the agent's message, on the wall clock. There is no patience and no
+strike.
 """
 
 from __future__ import annotations
@@ -13,8 +16,9 @@ from __future__ import annotations
 import random
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Self
 
-from pydantic import ConfigDict, Field, ValidationError
+from pydantic import ConfigDict, Field, ValidationError, model_validator
 
 from proxyloop.contract.base import Frozen
 from proxyloop.contract.llm import (
@@ -32,17 +36,28 @@ SYSTEM = """You are {persona}
 You asked an assistant to do this for you: {goal}
 Private facts about you (key: value):
 {facts}
-Answer the assistant's latest chat message as yourself in one to three short \
-sentences by calling `reply`. Share a fact only when asked or useful. When your \
-text contains a fact, copy its value exactly and list it in `revealed` under its \
-key. Never invent facts."""
+Reply to the assistant's latest chat message as yourself in one to three short \
+sentences by calling `reply`. Always answer a question. A status update needs no \
+answer: to stay silent, call `reply` with silent true, no text and nothing \
+revealed. Share a fact only when asked or useful. When your text contains a fact, \
+copy its value exactly and list it in `revealed` under its key. Never invent \
+facts."""
 
 
 class SimOut(Frozen):
     model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
 
-    text: str = Field(min_length=1)
+    silent: bool = False
+    text: str | None = Field(default=None, min_length=1)
     revealed: dict[str, str]
+
+    @model_validator(mode="after")
+    def _silent_or_text(self) -> Self:
+        if self.silent != (self.text is None):
+            raise ValueError("a reply has text exactly when it is not silent")
+        if self.silent and self.revealed:
+            raise ValueError("a silent turn reveals nothing")
+        return self
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,18 +68,23 @@ class SimReply:
     event_id: str  # its user.sim event
 
 
-def check_reply(calls: tuple[ToolCall, ...], facts: Mapping[str, str]) -> SimOut:
+def check_reply(
+    calls: tuple[ToolCall, ...], facts: Mapping[str, str], opening: bool = False
+) -> SimOut:
     if len(calls) != 1 or calls[0].name != "reply":
         raise world.Invalid("expected exactly one reply call")
     try:
         out = SimOut.model_validate_json(calls[0].arguments)
     except ValidationError as err:
         raise world.Invalid(f"schema: {err.errors()[0]['msg']}") from err
+    if out.silent and opening:
+        raise world.Invalid("the opening request cannot be silent")
     if unknown := sorted(out.revealed.keys() - facts.keys()):
         raise world.Invalid(f"revealed unknown keys {unknown}")
     if wrong := sorted(k for k, v in out.revealed.items() if v != facts[k]):
         raise world.Invalid(f"revealed values that are not the profile's: {wrong}")
-    if absent := sorted(k for k, v in out.revealed.items() if v not in out.text):
+    text = out.text or ""
+    if absent := sorted(k for k, v in out.revealed.items() if v not in text):
         raise world.Invalid(f"revealed values not in the text: {absent}")
     return out
 
@@ -80,11 +100,12 @@ class SimUser:
         self._system = SYSTEM.format(persona=persona, goal=goal, facts=facts)
         revealed: dict[str, object] = {"type": "object", "additionalProperties": False}
         revealed["properties"] = {k: {"type": "string"} for k in sorted(self._facts)}
-        props = {"text": {"type": "string"}, "revealed": revealed}
+        silent = {"type": "boolean", "description": "true: send nothing this time"}
+        props = {"text": {"type": "string"}, "revealed": revealed, "silent": silent}
         schema: dict[str, object] = {
             "type": "object",
             "properties": props,
-            "required": ["text", "revealed"],
+            "required": ["revealed"],
         }
         self._tool = ToolSpec(
             name="reply", description="Your message.", parameters=schema
@@ -93,8 +114,9 @@ class SimUser:
         self._chat: list[str] = []
         self.timeout_s = world.TIMEOUT_S
 
-    async def on_agent_message(self, text: str | None, cause: str) -> SimReply:
-        """Reply to the agent's message (``cause``); ``None`` opens the case."""
+    async def on_agent_message(self, text: str | None, cause: str) -> SimReply | None:
+        """Reply to the agent's message (``cause``); ``None`` opens the case.
+        ``None`` back: the user stays silent."""
 
         if text is not None:
             self._chat.append(f"Assistant: {text}")
@@ -119,10 +141,12 @@ class SimUser:
 
         out, attempts, _ = await world.bounded(
             attempt,
-            lambda calls: check_reply(calls, self._facts),
+            lambda calls: check_reply(calls, self._facts, opening=text is None),
             what="simuser",
             timeout_s=self.timeout_s,
         )
+        if out.text is None:  # silent: its llm.call records are the only trace
+            return None
         self._chat.append(f"You: {out.text}")
         delay = round(self._rng.uniform(*self._delay), 3)
         payload = {"text": out.text, "revealed": out.revealed, "delay_s": delay}
