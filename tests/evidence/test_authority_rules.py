@@ -96,10 +96,12 @@ def _manifest(cfg: SessionConfig) -> Manifest:
     )
 
 
-def _failures(cfg: SessionConfig, roles: Sequence[LLMRole]) -> list[str]:
+def _failures(
+    cfg: SessionConfig, roles: Sequence[LLMRole], student: bool = True
+) -> list[str]:
     m = _manifest(cfg)
     calls = [
-        call_record(QWEN, call_id="s1"),
+        *([call_record(QWEN, call_id="s1")] if student else []),
         call_record(TEACHER, call_id="t1", request_id="req_2"),  # role fast_cp
         call_record(SONNET, call_id="w1", role="slow", request_id="req_3"),
     ]
@@ -119,3 +121,9 @@ def test_the_teacher_is_accepted_only_on_its_ablations_lane() -> None:  # E1
     assert "call t1: model_ref is not the cfg's fast_cp model" in _failures(
         plain, ["fast_cp"]
     )
+
+
+def test_teacher_calls_alone_never_prove_a_fast_role_ran() -> None:  # E1
+    repair = session_config(ablations=["teacher_repair_cp"], teacher=TEACHER)
+    failures = _failures(repair, ["fast_cp", "slow"], student=False)
+    assert "claimed role fast_cp has no successful real_http call" in failures

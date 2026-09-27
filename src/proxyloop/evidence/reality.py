@@ -113,15 +113,14 @@ def claim_failures(
 ) -> list[str]:
     out: list[str] = []
     ok = [c for c in calls if c.error is None and c.adapter_kind is _REAL]
-    ran = {c.role for c in ok} | {_model_role(m.cfg, c) for c in ok}
+    ran = {_model_role(m.cfg, c) for c in ok}  # a teacher call is the teacher's
     for role in sorted(roles):
         if m.reality.get(role) is not _REAL:
             out.append(f"claimed role {role} ran {m.reality.get(role)}")
         if role not in ran:
             out.append(f"claimed role {role} has no successful real_http call")
     for c in calls:
-        claimed = c.role in roles or _model_role(m.cfg, c) in roles
-        out += _call_failures(m, c) if claimed else []
+        out += _call_failures(m, c) if _model_role(m.cfg, c) in roles else []
     if m.contract_version != CONTRACT_VERSION:
         out.append(f"contract {m.contract_version} is not the current one")
     shards = {
