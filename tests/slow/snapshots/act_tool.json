@@ -83,7 +83,8 @@
         "decline_offer",
         "ask_final_offer",
         "deflect_fact_request",
-        "close_call"
+        "close_call",
+        "hold_for_fact"
        ]
       },
       "offer_ref": {

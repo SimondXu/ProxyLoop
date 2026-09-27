@@ -494,7 +494,7 @@ def public_guide(bb: st.Blackboard, guide: Guide) -> bool:  # the renderer judge
         bb.model_copy(update={"public": public}), Trigger(kind="guidance"), ""
     )
     try:
-        render_messages(view, "pl_cp_v1")
+        render_messages(view, "pl_cp_v2")
     except GuideSlotError:
         return False
     return True

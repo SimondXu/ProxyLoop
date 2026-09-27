@@ -639,11 +639,16 @@ def test_the_status_bar_tells_slow_how_to_give_or_get_identity_facts() -> None:
     assert "identity" not in other  # no identity key, no hint
 
 
+def test_a_hold_for_fact_is_a_public_guide() -> None:
+    """The cp profile Slow judges with (pl_cp_v2, ADR-0011) renders the move."""
+    assert public_guide(BB, Guide(move=GuideMove.HOLD_FOR_FACT))
+
+
 def test_a_hold_for_decision_renders_as_checking_with_the_customer() -> None:
     guide = Guide(move=GuideMove.HOLD_FOR_DECISION)
     public = BB.public.model_copy(update={"guidance_cp": (guide,)})
     view = view_cp(
         BB.model_copy(update={"public": public}), Trigger(kind="guidance"), ""
     )
-    rendered = "".join(m.content for m in render_messages(view, "pl_cp_v1"))
+    rendered = "".join(m.content for m in render_messages(view, "pl_cp_v2"))
     assert "check with your customer (@hold decision)" in rendered

@@ -55,6 +55,7 @@ PRIVATE = PrivateState(
 )
 USER_BRIEF = "Help Dana Reyes lower her Contoso Mobile bill. Keep her informed."
 CP_BRIEF = "You are calling Contoso Mobile to ask for a lower monthly price."
+V2 = "pl_cp_v2"
 
 
 def _slot(field: str, value: str, unit: str, role: str, status: str) -> ReadbackSlot:
@@ -180,6 +181,7 @@ GUIDES = (
         slots=("offer:o1.monthly_price", "offer:o1.fee:activation"),
     ),
 )
+HOLD_FOR_FACT = Guide(move=GuideMove.HOLD_FOR_FACT)
 ACTIONS = tuple(
     f"action number {i}: " + "recorded a fact and a note. " * 32 for i in range(12)
 )
@@ -202,8 +204,14 @@ def _user(name: str, bb: Blackboard, trigger: Trigger) -> Case:
     return Case(name, "pl_user_v1", bb, trigger, USER_BRIEF)
 
 
-def _cp(name: str, bb: Blackboard, trigger: Trigger, brief: str = CP_BRIEF) -> Case:
-    return Case(name, "pl_cp_v1", bb, trigger, brief)
+def _cp(
+    name: str,
+    bb: Blackboard,
+    trigger: Trigger,
+    brief: str = CP_BRIEF,
+    profile: str = "pl_cp_v1",
+) -> Case:
+    return Case(name, profile, bb, trigger, brief)
 
 
 def _public(**update: object) -> PublicState:
@@ -260,5 +268,13 @@ CASES = (
         "c07_over_budget_actions",
         _bb(public=_public(action_log=ACTIONS)),
         Trigger(kind="rep_spoke"),
+    ),
+    # pl_cp_v2 (ADR-0011): the call start, and hold_for_fact after a slotted guide
+    _cp("c08_v2_empty", Blackboard(), Trigger(kind="call_connected"), profile=V2),
+    _cp(
+        "c09_v2_hold_for_fact",
+        _bb(public=_public(guidance_cp=(GUIDES[0], HOLD_FOR_FACT))),
+        Trigger(kind="guidance"),
+        profile=V2,
     ),
 )

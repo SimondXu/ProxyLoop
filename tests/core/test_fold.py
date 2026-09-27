@@ -545,7 +545,7 @@ def test_a_guide_changes_fastcs_rendered_view() -> None:
     before = fold([_event(0, "user.msg", {"text": "x"})])
     after = apply(before, _event(1, "s2f.msg", guide, "slow"))
     rendered = [
-        render_messages(view_cp(bb, Trigger(kind="guidance"), "b"), "pl_cp_v1")[
+        render_messages(view_cp(bb, Trigger(kind="guidance"), "b"), "pl_cp_v2")[
             1
         ].content
         for bb in (before, after)

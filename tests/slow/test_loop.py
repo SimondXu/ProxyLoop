@@ -91,7 +91,7 @@ def test_the_identity_deadlock_replay_resolves_on_the_first_step(
     (guide,) = [m.guide for m in k.bb.s2f_pending["cp"]]
     assert guide is not None and (guide.move, list(guide.slots)) == ("identify", slots)
     view = view_cp(k.bb, Trigger(kind="guidance"), k.task.fast_brief_cp)
-    rendered = "".join(m.content for m in render_messages(view, "pl_cp_v1"))
+    rendered = "".join(m.content for m in render_messages(view, "pl_cp_v2"))
     assert "4821" in rendered and "Dana Reyes" in rendered  # FastC can answer
     k.bus.close()
 

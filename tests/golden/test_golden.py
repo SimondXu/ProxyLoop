@@ -45,7 +45,7 @@ def test_stored_view_rerenders_identically(case: Case) -> None:
 
 def test_golden_set_covers_the_acceptance_cases() -> None:
     by_profile = {c.profile for c in CASES}
-    assert len(CASES) >= 12 and by_profile == {"pl_user_v1", "pl_cp_v1"}
+    assert len(CASES) >= 12 and by_profile == {"pl_user_v1", "pl_cp_v1", "pl_cp_v2"}
     user_text = {c.name: _golden(c)["messages"][1]["content"] for c in CASES}
     assert "PENDING APPROVAL: (none)" in user_text["u01_empty"]
     assert "CASE AGENT GUIDANCE:\n(none)" in user_text["c01_empty"]
@@ -56,6 +56,7 @@ def test_golden_set_covers_the_acceptance_cases() -> None:
         assert OMITTED_LINES in user_text[name]
     assert OMITTED_ACTIONS in user_text["c07_over_budget_actions"]
     assert "- action number 11" in user_text["c07_over_budget_actions"]
+    assert "(@hold fact_request)." in user_text["c09_v2_hold_for_fact"]
 
 
 def _private_values(private: PrivateState) -> set[str]:
@@ -74,7 +75,7 @@ def _private_values(private: PrivateState) -> set[str]:
 
 
 @pytest.mark.parametrize(
-    "case", [c for c in CASES if c.profile == "pl_cp_v1"], ids=lambda c: c.name
+    "case", [c for c in CASES if c.profile.startswith("pl_cp_")], ids=lambda c: c.name
 )
 def test_no_protected_or_mandate_value_in_cp_goldens(case: Case) -> None:
     text = json.dumps(_golden(case), ensure_ascii=False)
