@@ -7,13 +7,16 @@ or mind change of ``x-user-mind-change``. New fields default to ``None`` so the
 instance hash (``exclude_none``) of an older task is unchanged. ``user_goal``
 states a number only as a ``{fact.key}`` reference, so the goal and the facts
 never disagree (instances, mind changes): ``Task.goal(facts)`` renders it.
+``ref`` is the task's canonical task_ref (``refs.py``), stamped by the loader and
+``instance``; left out of the instance hash. A task validated from a mapping
+without one is taken as its file's default mode, instance 0: ``family@version``.
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from typing import Annotated, Literal, Self
+from typing import Annotated, Literal, Self, cast
 
 from pydantic import Field, StringConstraints, ValidationError, model_validator
 
@@ -22,6 +25,7 @@ from proxyloop.contract.base import FACT_KEY, Frozen, Lane
 from proxyloop.contract.messages import OFFER_REF
 from proxyloop.contract.state import READBACK_FIELD
 from proxyloop.env.ledger import LedgerMode
+from proxyloop.env.tasks.refs import parse_task_ref
 
 FactKey = Annotated[str, StringConstraints(pattern=rf"^{FACT_KEY}$")]
 TermField = Annotated[str, StringConstraints(pattern=READBACK_FIELD)]
@@ -157,6 +161,25 @@ class Task(Frozen):
     gold: Gold
     principal: Principal | None = None
     stop: Stop | None = None
+    ref: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_ref(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        given = cast(dict[str, object], data)
+        file_ref = f"{given.get('family')}@{given.get('version')}"
+        return given if "ref" in given else given | {"ref": file_ref}
+
+    @model_validator(mode="after")
+    def _ref(self) -> Self:
+        ref = parse_task_ref(self.ref)
+        if (ref.family, ref.version) != (self.family, self.version):
+            raise ValueError(f"ref {self.ref} is not {self.family}@{self.version}")
+        if ref.mode is not None and ref.mode != self.mode:
+            raise ValueError(f"ref {self.ref} is not in mode {self.mode}")
+        return self
 
     @model_validator(mode="after")
     def _facts(self) -> Self:
