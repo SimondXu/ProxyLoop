@@ -15,9 +15,10 @@ import asyncio
 import contextlib
 import heapq
 import json
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from pathlib import Path
 
+import pytest
 from tests.support.fakes import RepeatingLLM
 from tests.support.manual_clock import ManualClock
 from tests.support.sessions import Gated, act, fake_config, patient_task
@@ -28,10 +29,29 @@ from proxyloop.contract.llm import LLMClient, LLMRole, ModelRef, ToolCall
 from proxyloop.contract.state import ApprovalCard, Blackboard
 from proxyloop.env.tasks.schema import Task
 from proxyloop.guard.mandate import proposal
+from proxyloop.kernel import wake
 from proxyloop.kernel.channels import Channel, Incoming
 from proxyloop.kernel.session import ChannelSpec, Kernel
 from proxyloop.llm.http import RecordSink
+from proxyloop.slow.loop import SlowLoop
 from proxyloop.slow.tools import SlowTools
+
+
+@pytest.fixture(autouse=True, scope="module")
+def enumerated_wakes() -> Iterator[None]:
+    """Every reason anything passes to ``SlowLoop.wake`` is in ``wake.REASONS``
+    (review D5: Authority's dynamic ``_wake(e.type)`` included). Re-exported by
+    the conftests of tests/kernel, tests/slow and tests/concurrency."""
+    woken = SlowLoop.wake
+
+    def checked(self: SlowLoop, reason: str) -> None:
+        assert reason in wake.REASONS, f"wake reason {reason!r} is not enumerated"
+        woken(self, reason)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(SlowLoop, "wake", checked)
+        yield
+
 
 NOTED = act("Noted.")  # Slow's own step: a private summary, no tool
 SCRIPTS: Mapping[str, Sequence[str]] = {

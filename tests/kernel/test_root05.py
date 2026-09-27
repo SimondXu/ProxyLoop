@@ -50,7 +50,8 @@ def test_ttfs_is_set_when_the_only_sentence_is_released_at_close(
 
 
 def test_an_unchanged_hold_is_relayed_once(tmp_path: Path) -> None:  # (e)
-    waits = [act("Waiting.", {"tool": "wait", "seconds": 15})] * 4
+    # S1-SYS-29: rep turns and strikes wake Slow too, so its script runs longer
+    waits = [act("Waiting.", {"tool": "wait", "seconds": 15})] * 8
     scripts = SCRIPTS | {
         "fast_cp": ["Let me check that with the account holder.\n@hold decision"],
         "slow": [*waits, FINISH],
