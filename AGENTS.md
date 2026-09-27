@@ -22,7 +22,7 @@ These are the repository rules for every coding agent. Product intent and invari
 ## Commands
 - Everyday: `make check` (lint, typecheck, tests, parity P1/P2/P4, the counterfactual view test, import contracts, pilot-lock, docs-check, web build).
 - Focused: `make lint`, `make typecheck`, `make test`, `uv run pytest <path> -q`, `make web-test`.
-- Offline evidence: `make evidence-check RUN=<dir> --offline`; `make replay` (no keys, no GPU).
+- Offline evidence: `make evidence-check RUN=<dir>` (offline by default); `make replay` (no keys, no GPU).
 - **Root-run** (live keys / GPU / user; the main root, or within their spend envelopes the model root and L-CORE — `CLAUDE.md`): `make smoke-live`, `make demo`, `make llm-smoke`, `make serve-up|serve-down`, `make pull-through`, `make data`, `make relabel`, `make train`, `make curve`, `make eval-*`, `make publish-*`.
 
 ## Rules (a PR that breaks one is rejected)
@@ -60,7 +60,7 @@ These are the repository rules for every coding agent. Product intent and invari
 
 ## Definition of done (your part)
 - Your task's acceptance criteria are met, **as tests you ran** (paste the output tails).
-- Model-touching criteria are marked "needs root run" with the exact command. You cannot close them with fakes, and the task stays `provisional` until the root's real bundle passes `make evidence-check --claim`.
+- Model-touching criteria are marked "needs root run" with the exact command. You cannot close them with fakes, and the task stays `provisional` until the root's real bundle passes `make evidence-check RUN=<dir> MODE=claim`.
 - `make check` is green in your worktree.
 
 ## Proportionality
