@@ -1,12 +1,14 @@
 """Whole sessions from fakes: a ``test_fake`` config, scripted clients for every
 role (through the kernel's record sink, as a real adapter), the S0 family with
-slow patience, and a scripted person. Tests only (I8)."""
+slow patience, and a scripted person. A role's ``gate`` is awaited before each
+of its streamed calls: a test holds a generation open while partner lines land.
+Tests only (I8)."""
 
 from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +18,16 @@ from tests.support.manual_clock import ScaledClock
 
 from proxyloop.contract.bundle import Bundle, read_bundle
 from proxyloop.contract.config import Sampling, SessionConfig, WorldModels
-from proxyloop.contract.llm import AdapterKind, LLMClient, LLMRole, ModelRef
+from proxyloop.contract.llm import (
+    AdapterKind,
+    LLMCallRecord,
+    LLMClient,
+    LLMRole,
+    ModelRef,
+    TextRequest,
+    ToolRequest,
+    ToolResponse,
+)
 from proxyloop.contract.protocol import EMPTY_THINK
 from proxyloop.env.tasks.loader import load_task
 from proxyloop.env.tasks.schema import Task
@@ -27,6 +38,7 @@ from proxyloop.llm.http import RecordSink
 
 Scripts = Mapping[str, Sequence[str]]
 Until = Mapping[str, tuple[str, str]]  # role -> (marker, response)
+Gates = Mapping[str, Callable[[], Awaitable[None]]]  # role -> awaited per stream
 
 
 def fake(role: str, world: bool = False) -> ModelRef:
@@ -89,12 +101,34 @@ def act(private: str, *calls: Mapping[str, object], public: str | None = None) -
     return json.dumps({"text": "", "tool_calls": [call]})
 
 
+class Gated:
+    """A client whose streamed calls first await ``gate`` (a controllable hang)."""
+
+    def __init__(self, inner: LLMClient, gate: Callable[[], Awaitable[None]]) -> None:
+        self._inner, self._gate = inner, gate
+
+    @property
+    def ref(self) -> ModelRef:
+        return self._inner.ref
+
+    async def stream_text(
+        self, request: TextRequest
+    ) -> AsyncIterator[str | LLMCallRecord]:
+        await self._gate()
+        async for item in self._inner.stream_text(request):
+            yield item
+
+    async def chat_tools(self, request: ToolRequest) -> ToolResponse:
+        return await self._inner.chat_tools(request)
+
+
 def clients(
     scripts: Scripts,
     clock: ScaledClock,
     dead: Sequence[str],
     until: Until,
     vllm: httpx.MockTransport | None = None,
+    gates: Gates | None = None,
 ) -> ClientFactory:
     """Each role answers from its script (the last answer repeats); a vLLM ref
     gets the real adapter over the ``vllm`` transport double."""
@@ -106,7 +140,9 @@ def clients(
                 ref, live=False, clock=now, on_record=sink, transport=vllm
             )
         script, stop = scripts.get(role, ["unused"]), until.get(role)
-        return RepeatingLLM(ref, script, clock, role in dead, sink, stop)
+        client = RepeatingLLM(ref, script, clock, role in dead, sink, stop)
+        gate = (gates or {}).get(role)
+        return client if gate is None else Gated(client, gate)
 
     return make
 
@@ -156,6 +192,7 @@ def run(
     until: Until | None = None,
     vllm: httpx.MockTransport | None = None,
     task: Task | None = None,
+    gates: Gates | None = None,
 ) -> RunResult:
     clock = ScaledClock(100)
     session = run_session(
@@ -165,7 +202,7 @@ def run(
         runs_dir=tmp_path,
         clock=clock,
         sleep=clock.sleep,
-        clients=clients(scripts, clock, dead, until or {}, vllm),
+        clients=clients(scripts, clock, dead, until or {}, vllm, gates),
         tokenizer=FakeTokenizer() if vllm else None,
     )
     return asyncio.run(asyncio.wait_for(session, timeout=30))
