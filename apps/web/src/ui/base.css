@@ -1,0 +1,47 @@
+/* The cascade order, then the element defaults (redesign §5.2). Every other sheet sits in one of these layers. */
+@layer tokens, base, components, utilities;
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+  html { background: var(--canvas); }
+  body {
+    margin: 0; color: var(--ink); font: var(--fs-ui) / var(--lh-body) var(--font-ui);
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  h1 { font: 560 var(--fs-card) / 1.2 var(--font-display); font-variation-settings: "SOFT" 40; letter-spacing: -0.01em; margin: 0; }
+  h2 { font: 600 var(--fs-label) / 1.3 var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 var(--s2); }
+  a { color: var(--agent); text-underline-offset: 2px; }
+  a:hover { color: var(--agent-hover); }
+  :focus-visible { outline: 3px solid var(--agent); outline-offset: 2px; border-radius: var(--r-xs); }
+  pre, code, output { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  button {
+    display: inline-flex; align-items: center; gap: var(--s2); min-height: 36px; padding: 0 var(--s4);
+    border: 1px solid var(--line-strong); border-radius: var(--r-pill); background: var(--surface);
+    font-weight: 600; font-size: var(--fs-small); cursor: pointer;
+    transition: background var(--d-state) var(--ease), transform var(--d-press) var(--ease);
+  }
+  button:hover:not(:disabled) { background: var(--sunken); }
+  button:active:not(:disabled) { transform: scale(0.98); }
+  button:disabled { cursor: not-allowed; opacity: 0.55; }
+  button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+  input:not([type="checkbox"], [type="radio"], [type="range"]), select, textarea {
+    min-height: 36px; padding: 0 var(--s3); border: 1px solid var(--line-input); border-radius: var(--r-sm); background: var(--surface);
+  }
+  input[type="range"], input[type="checkbox"], input[type="radio"] { accent-color: var(--agent); }
+  fieldset { border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--s2) var(--s3); }
+  legend { font-size: var(--fs-meta); color: var(--ink-3); }
+  details > summary { cursor: pointer; }
+}
+
+@layer utilities {
+  .meta { font-size: var(--fs-meta); line-height: var(--lh-meta); color: var(--ink-3); }
+  .pl-icon { flex: none; }
+  .pl-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+
+@keyframes pl-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes pl-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
