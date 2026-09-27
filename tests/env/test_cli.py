@@ -84,9 +84,11 @@ def test_an_openrouter_fast_builds_a_chat_client(
             kind=REAL,
             endpoint="openrouter",
             model_id="openai/gpt-6-luna",
-            reasoning_effort="low",
+            reasoning_effort="none",  # user decision 2026-09-27 (S1-SYS-26)
         )
     )
+    chosen = _cfg("--fast-endpoint", "openrouter", "--fast-effort", "low").fast_cp
+    assert chosen.reasoning_effort == "low"  # an explicit effort still wins
     monkeypatch.setenv("PL_OPENROUTER_BASE_URL", "https://openrouter.test/api")
     monkeypatch.setenv("PL_OPENROUTER_API_KEY", "sekrit")
     client = make_client(cfg.fast_cp, live=True, clock=lambda: 0, on_record=print)
