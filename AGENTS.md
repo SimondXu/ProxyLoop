@@ -34,7 +34,7 @@ These are the repository rules for every coding agent. Product intent and invari
 6. **No fallbacks.** A dead model endpoint must abort the session loudly (`LLMUnavailable`). Never catch it and continue, never switch models, never return canned text.
 7. **Events are truth.** Emit events through the bus, with correct `cause_ids`. Never mutate the blackboard directly. The web, metrics and datasets read events only.
 8. **Public/private separation.** `view_cp` and anything rendered for the counterparty lane must never read `PrivateState`. Public numbers must be source-bound (`guard.declass`).
-9. **Relay-only Slow.** Slow never receives transcripts outside the `raw_transcript` ablation.
+9. **Slow sees heard text, relays and state only.** Slow reads the transcripts as heard, never prompts or Fast internals; the `relay_only` ablation removes them.
 10. **Authority.** Models may restrict authority (revoke) but never grant it. Approvals come only from the authenticated UI endpoint or the deterministic sim approver. Never write code in which an LLM output sets approval, mandate or completion.
 11. **Never read held-out data.** Do not open test-family bundles, test seeds or `unseal.json`, and do not edit test-family YAML after the split draw. Treat anything under `evidence/s4/test/` as sealed until the report exists.
 12. **Anti-absorption.** Do not make base Qwen look better without a semantic reason: no lenient parser special cases, no retries on bad model output, no Fast-specific templates or kernel help. Parse errors are counted, not hidden.

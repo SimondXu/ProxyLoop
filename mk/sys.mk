@@ -56,14 +56,15 @@ replay-cli:
 # typecheck, vitest, build and the Playwright e2e (`npm run web-test`). `npm ci` runs only
 # when node_modules/.package-lock.json (written by npm on install) is missing or not newer
 # than package-lock.json.
-# replay (S1-SYS-07). No flags: no keys, no GPU. Serves the replay UI (`npm run replay`,
-# the Vite dev server). RUN=<bundle dir or dir of bundles>, relative to the repo root or
-# absolute, becomes PL_BUNDLE_DIR; unset: the npm script's default fixture
-# (tests/web/fixtures).
+# replay (S1-SYS-07, S1-SYS-30). No flags: no keys, no GPU. Builds the web, then serves it
+# same-origin from the real API (`python -m proxyloop.serve.api --web-dir apps/web/dist`,
+# http://127.0.0.1:8000) over its default roots: runs/ and each evidence/<stage>/. The API
+# never serves a held-out bundle (evidence/s4/test, split test). It has no roots option, so
+# there is no RUN=: pick a run under those roots in the page.
 WEB_DEPS = cd apps/web && { [ node_modules/.package-lock.json -nt package-lock.json ] || npm ci; }
 .PHONY: web-test replay
 web-test:
 	$(WEB_DEPS) && npm run web-test
 
 replay:
-	$(WEB_DEPS) && $(if $(RUN),PL_BUNDLE_DIR=$(RUN) ,)npm run replay
+	$(WEB_DEPS) && npm run build && cd $(CURDIR) && uv run python -m proxyloop.serve.api --web-dir apps/web/dist

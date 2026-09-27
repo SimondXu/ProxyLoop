@@ -4,6 +4,7 @@
 - **Date:** 2026-09-27
 - **Task:** S1-ROOT-05 (records); S1-SYS-21 builds it
 - **Amends:** ARCHITECTURE §8 (tools, status bar), §9.5 (INTAKE), §11 (when the cp lane starts).
+- **Amended by ADR-0016:** `replied` = a `user.msg` newer than the ask's voicing (no relay needed), and the counterfactual that pins Slow's request under perturbed user text (M4) is dropped.
 
 ## Context
 - **No readiness.** `Kernel._open` opens both lanes at once: INTAKE→IN_CALL, the disclosure, the rep's ingress and the watchdog's rep clock all start before the user's first message. Slow's identity rule is reactive ("when the representative asks … ask_user"). In the reviewed runs the rep asked for identity before the facts were public, FastC answered unguided (a refusal, heard as `refuse_fact`), and the rep struck. Bundles: `evidence/s0/20260927T011721Z-dcb1a6`; the main checkout's git-ignored `runs/20260927T032340Z-cb8cb2`, `runs/20260927T050729Z-723c8f`, `runs/20260927T054451Z-655087`. Sources: the architect's design (plan-v3 handoff `2026-09-27-plan-before-act-design.md` §1–§2, §6.1) and the principal-architect review (`2026-09-27-dual-agent-review.md`, F1–F3, F8, F14a/b, R1, R3).

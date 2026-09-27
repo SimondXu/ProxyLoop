@@ -4,6 +4,7 @@
 - **Date:** 2026-09-27
 - **Task:** S1-ROOT-05 (records); S1-CON-06 (contract), S1-SYS-25 (world) and S1-SYS-24 (kernel, Guard) build it
 - **Amends:** ARCHITECTURE §6.2 (`@end_call`), §6.3, §7, §9.5, §10.1; EVAL §7 (the `deferred` outcome).
+- **Amended by ADR-0016:** the R4 system-text sentence ("When you hold for a detail, also relay `@slow: rep asks for <what>`.") is dropped from `pl_cp_v3`.
 
 ## Context
 - A fact can go missing mid-call (a wrong value, or a key outside the readiness table). Since #157 the rep's IDENTIFY hold clock resumes across repeated holds: a timer strike after each `hold_s`, a hang-up on the third. Nothing lets the agent leave politely and call back, so the case ends `abandoned`.
