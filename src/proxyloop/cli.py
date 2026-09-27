@@ -40,6 +40,7 @@ WORLD_ROLES = ("ear", "mouth", "simuser")
 WORLD_EFFORT = "low"  # provisional: ADR-0005; S1 probe decides
 TEAMROUTER_SLOW_EFFORT = "low"  # provisional until S0-ROOT-12; the user's setting
 HOSTED_FAST_EFFORT = "low"  # provisional until S0-ROOT-12; the user's setting
+OPENROUTER_FAST_EFFORT = "none"  # user decision 2026-09-27 (S1-SYS-26): Luna
 SHOWN = {  # what a person follows in a replay: the payload field per event type
     **{"user.msg": "text", "utt.final": "text", "utt.delivered": "text_heard"},
     **{"f2s.msg": "facts", "s2f.msg": "text", "slow.tool": "result_text"},
@@ -59,7 +60,8 @@ def live_config(args: argparse.Namespace) -> SessionConfig:
 
     fast_effort = args.fast_effort
     if args.fast_endpoint != "vllm" and fast_effort is None:
-        fast_effort = HOSTED_FAST_EFFORT
+        openrouter = args.fast_endpoint == "openrouter"
+        fast_effort = OPENROUTER_FAST_EFFORT if openrouter else HOSTED_FAST_EFFORT
     fast = _ref(args.fast_endpoint, args.fast_model, fast_effort)
     slow_effort = args.slow_effort  # the relay's Slow keeps the provider's default
     if args.slow_endpoint == "teamrouter" and slow_effort is None:

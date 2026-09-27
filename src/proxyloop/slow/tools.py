@@ -48,8 +48,10 @@ _AGE = re.compile(r"(?i)\b(?:old|age|aged|ago)\b")  # "36 years old": no tenure
 _NEGATION = re.compile(r"(?i)\b(?:not|never)\b|n['\u2019]t\b")
 _NOT_ASCII = re.compile(r"[^\x00-\x7f\u2018\u2019\u201c\u201d]")  # but quotes
 _NUMBER = re.compile(r"[0-9]+(?:\.[0-9]+)?")
-_BEFORE = r"(?:^|(?<=[\s(:\"\u201c]))"  # allow-listed token starts
-_AFTER = r"(?=[.,;:!?)\"\u201d]?(?:\s|$))"  # then one mark, a space or the end
+_BEFORE = (  # a token start; an opener only where it starts a token (no $"4821")
+    r"(?:^|(?<=[\s:])|(?<=(?<![^\s:])[(\"\u201c]))"
+)
+_AFTER = r"(?=[)\"\u201d]?[.,;:!?]?(?:\s|$))"  # a closer, a mark; a space or the end
 _EDGE = r"(?<![\w'\u2019-])", r"(?![\w'\u2019-])"  # a name's word bounds
 MAX_NAME_CHARS = 60
 _IDENTITY = ("account.holder_name", "account.last4")
@@ -401,8 +403,9 @@ def _user_span(key: str, value: str, message: str, bb: st.Blackboard) -> str | N
 
 def _digits4(value: str, message: str, _: st.Blackboard) -> str | None:
     """Exactly four ASCII digits, a standalone token of the message: after the
-    start, whitespace or one of ``( : " “``; then at most one of
-    ``. , ; : ! ? ) " ”`` and whitespace or the end."""
+    start, whitespace or ``:``, or an opener ``( " “`` that itself follows one
+    of them; then at most one closer ``) " ”``, at most one of
+    ``. , ; : ! ?`` and whitespace or the end (S1-SYS-26: "(ending in 4821),")."""
     if not _LAST4.fullmatch(value):
         return None
     return value if re.search(_BEFORE + value + _AFTER, message) else None
