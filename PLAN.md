@@ -95,9 +95,9 @@ Legend:
 
 ### 0.6 Tripwires (stop and decide)
 - Under §0.5a the main root may adjust only the **numeric caps** (PR counts, code-size limits) and records each change under "Decisions changed". The mechanism tripwires — contract discipline, red signals, no new reality, fallback bans — are never waived by a session.
-- **PR count:** S0 > 22 PRs, S1 > 46, S2 > 10, S3 > 10. Root evidence PRs and ROOT docs/harness PRs are excluded (root decision under §0.5a, 2026-09-26).
+- **PR count:** S0 > 22 PRs, S1 > 47, S2 > 10, S3 > 10. Root evidence PRs and ROOT docs/harness PRs are excluded (root decision under §0.5a, 2026-09-26).
   - S0: 16 → 18 (user decision 2026-09-26); 18 → 19, because S0-ROOT-05's fix work splits into S0-SYS-07 and S0-SYS-08 on disjoint paths (root decision under §0.5a, 2026-09-26); 19 → 20 for the S0-SYS-08 follow-up PR that separates identity strikes from timer strikes (root decision under §0.5a, 2026-09-27); 20 → 21 for the S0-SYS-07 follow-up PR (the identity hold flow and the cancelled-stream record) (root decision under §0.5a, 2026-09-27); 21 → 22 because that follow-up splits: item 1 (the identity hold flow) shipped as #140, and item 2 (the cancelled-stream record) comes as its own PR (root decision under §0.5a, 2026-09-27).
-  - S1: 14 → 25 (14 + 7 + 5 − 1): the product lanes add seven S1 PRs; S1-SYS-14, S1-MOD-04, S1-CON-01, S1-CON-02 and S1-MOD-01 part B add five; S1-SYS-06 is superseded (−1) (root decisions under §0.5a, 2026-09-26); 25 → 26 for S1-SYS-15 (root decision under §0.5a, 2026-09-27); 26 → 31 (26 + 5): S1-SYS-16, S1-SYS-17, the S1-MOD-02 follow-up PR, S1-CON-03 and S1-SYS-18 add one each (root decisions under §0.5a, 2026-09-27); 31 → 37 (31 + 6): S1-SYS-19, S1-CON-04, S1-SYS-20, the S1-MOD-01 C5 PR (#155), S1-SYS-23 and S1-CON-05 add one each (root decision under §0.5a, 2026-09-27 (S1-ROOT-07 recount: +2 CON-04/SYS-20, +1 SYS-23, +1 CON-05)); 37 → 46 (37 + 1 + 8): #161 (S1-MOD-01's C5 effort PR) adds one, and S1-SYS-26, S1-CON-06, S1-SYS-21, S1-SYS-22, S1-SYS-24, S1-SYS-25, S1-SYS-27 and S1-MOD-05 add one each, while S1-ROOT-05 (docs) and S1-ROOT-06 (smoke evidence) are excluded (root decision under §0.5a, 2026-09-27 (S1-ROOT-05 recount)).
+  - S1: 14 → 25 (14 + 7 + 5 − 1): the product lanes add seven S1 PRs; S1-SYS-14, S1-MOD-04, S1-CON-01, S1-CON-02 and S1-MOD-01 part B add five; S1-SYS-06 is superseded (−1) (root decisions under §0.5a, 2026-09-26); 25 → 26 for S1-SYS-15 (root decision under §0.5a, 2026-09-27); 26 → 31 (26 + 5): S1-SYS-16, S1-SYS-17, the S1-MOD-02 follow-up PR, S1-CON-03 and S1-SYS-18 add one each (root decisions under §0.5a, 2026-09-27); 31 → 37 (31 + 6): S1-SYS-19, S1-CON-04, S1-SYS-20, the S1-MOD-01 C5 PR (#155), S1-SYS-23 and S1-CON-05 add one each (root decision under §0.5a, 2026-09-27 (S1-ROOT-07 recount: +2 CON-04/SYS-20, +1 SYS-23, +1 CON-05)); 37 → 46 (37 + 1 + 8): #161 (S1-MOD-01's C5 effort PR) adds one, and S1-SYS-26, S1-CON-06, S1-SYS-21, S1-SYS-22, S1-SYS-24, S1-SYS-25, S1-SYS-27 and S1-MOD-05 add one each, while S1-ROOT-05 (docs) and S1-ROOT-06 (smoke evidence) are excluded (root decision under §0.5a, 2026-09-27 (S1-ROOT-05 recount)); 46 → 47 for S1-SYS-28 (root decision under §0.5a, 2026-09-27 (S1-SYS-28)).
   - The recount (S1-ROOT-07): the main root's log reached 34 after #155, counting S1-CON-04 and S1-SYS-20 as one step. The blocks give 37: 33 S1 PRs outside ROOT (S1-MOD-01 as three PRs, #124, #132 and #155; S1-MOD-02 as two, #135 and #148; S1-SYS-06 superseded) plus S1-ROOT-01…04, which the original 14 counted. ROOT docs PRs (S1-ROOT-05, S1-ROOT-07) are excluded.
   - A probe PR that only adds a probe script and its ADR data (e.g. S0-ROOT-12) counts as a root evidence PR and is excluded (root decision under §0.5a, 2026-09-26).
 - **Code size** (user decision 2026-09-27: absolute total-line caps replaced by the stage-close size review, §0.7):
@@ -172,7 +172,7 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
   - `tests/serving` test doubles live outside `tests/support` (AGENTS rule 5).
 - #115 (SYS): `fetch_external.sh` clones into a temp dir then moves; drop the stale `!.env.example` in `.gitignore`; pin the CI Python patch release and add shellcheck (both done in #152); amend S0-SYS-02's acceptance grep to the exclusions actually used.
 - Hook (#114): protect the worktree parent `../pl-wt`; track `pushd`; the heredoc false positive (text that mentions recursive deletes near data/external is blocked when shlex cannot parse it).
-- Process: S0 PR count: 14 merged (#108–#121) + S0-ROOT-09 = 15; S0-SYS-06 makes 16 (at the limit; the tripwire is > 16); S0-MOD-03 would be the 17th. Root evidence PRs (S0-ROOT-05/06) are excluded. Resolved: the tripwire is now > 19 (§0.6), so S0-MOD-03 is the 17th PR, S0-SYS-07 the 18th and S0-SYS-08 the 19th; S0-ROOT-10/11 are ROOT docs/harness PRs and S0-ROOT-12 a probe PR (excluded). Now: S0-SYS-08 (#130) and S0-SYS-07 (#133) are merged, S0-MOD-03 (#125) is pending, the S0-SYS-08 strike-counter follow-up (#138) is the 20th, and the S0-SYS-07 identity-hold follow-up the 21st (the tripwire is > 21, §0.6); S0-ROOT-13 is a ROOT docs PR (excluded). Now: the S0-SYS-07 follow-up split, so #140 (item 1) is the 21st and item 2 (held for the user) will be the 22nd (the tripwire is > 22, §0.6); S0-ROOT-05's bundle PR (#141) is a root evidence PR, and S0-ROOT-13 (#139) and S0-ROOT-14 are ROOT docs PRs (excluded). S1: the tripwire is > 46 (§0.6).
+- Process: S0 PR count: 14 merged (#108–#121) + S0-ROOT-09 = 15; S0-SYS-06 makes 16 (at the limit; the tripwire is > 16); S0-MOD-03 would be the 17th. Root evidence PRs (S0-ROOT-05/06) are excluded. Resolved: the tripwire is now > 19 (§0.6), so S0-MOD-03 is the 17th PR, S0-SYS-07 the 18th and S0-SYS-08 the 19th; S0-ROOT-10/11 are ROOT docs/harness PRs and S0-ROOT-12 a probe PR (excluded). Now: S0-SYS-08 (#130) and S0-SYS-07 (#133) are merged, S0-MOD-03 (#125) is pending, the S0-SYS-08 strike-counter follow-up (#138) is the 20th, and the S0-SYS-07 identity-hold follow-up the 21st (the tripwire is > 21, §0.6); S0-ROOT-13 is a ROOT docs PR (excluded). Now: the S0-SYS-07 follow-up split, so #140 (item 1) is the 21st and item 2 (held for the user) will be the 22nd (the tripwire is > 22, §0.6); S0-ROOT-05's bundle PR (#141) is a root evidence PR, and S0-ROOT-13 (#139) and S0-ROOT-14 are ROOT docs PRs (excluded). S1: the tripwire is > 47 (§0.6).
 - #118 (SYS evidence):
   - a scripted bundle relabelled `real_http` still passes `MODE=claim` (authenticity is provenance, ADR-0006);
   - extra files in a bundle are ignored;
@@ -1041,6 +1041,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Objective** (root decision under §0.5a, 2026-09-27, from the reality smoke on `ff59c9e`, `runs/20260927T054451Z-655087`, abandoned in IDENTIFY): two test-first bug fixes.
   - Declass boundary: `_AFTER` in `slow/tools.py` allows one mark after the digits, so "(account ending in 4821)," kept `account.last4` private and Guard refused `identify`.
   - Slow liveness: `_relay` in `kernel/lanes.py` drops a repeated cp HOLD (`hold_repeat`), so Slow never woke while FastC held. It re-relays iff a Slow step completed since the last relayed cp HOLD and no cp GUIDE came since (counted `hold_rerelay`).
+  - Round-3 extension (#162; root decision under §0.5a, 2026-09-27, from L-CORE's triage of the approval smokes): a Slow step in flight counts as looking at the HOLD, and a cp GUIDE after the HOLD answers it only while that GUIDE is unvoiced.
 - **Owned paths:** `src/proxyloop/slow/tools.py` (`_AFTER`/`_digits4` only), `tests/slow/**`, `src/proxyloop/kernel/lanes.py` (the `_relay` HOLD branch only), `tests/kernel/**`.
 - **Deps:** S1-SYS-02 (#156, merged); the branch merges `origin/main` before its PR.
 - **Acceptance:** test-first regression cases from 655087's inputs; a fresh adversarial I4 review (a root requirement); `make check` green.
@@ -1067,13 +1068,27 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Verify:** `uv run pytest tests/concurrency tests/kernel -q`.
 - **Escalate if:** it needs a new event type, or a relay would be lost.
 
-### S1-SYS-27 Guidance recency and the action log (ADR-0013; review R2A, R3c) — SYS (L-CORE) — S — todo
+### S1-SYS-27 Guidance recency and the action log (ADR-0013; review R2A, R3c) — SYS (L-CORE) — S — doing
 - **Objective:** the fold keeps only the newest cp guide (`core/fold.py`: `guides[-MAX_GUIDES:]` → `guides[-1:]`; the contract bound stays 3). Review R3c (root decision under §0.5a, 2026-09-27): a reducer writes `PublicState.action_log` from a fixed allow-list that maps a tool name to a constant template ("recorded an offer"), with no argument interpolation; private-scope tools (`propose_mandate`, `tighten_mandate`, `revoke`, `request_approval`, a private `record_fact`) produce no cp entry.
+- **Dispatch** (root decision under §0.5a, 2026-09-27, L-CORE's triage of the approval smokes): dispatched now, ahead of S1-SYS-22 and of #163's merge, because stale guidance blocked every approval smoke. The fold part (the newest cp guide) goes first; the R3c action-log part follows as a separate commit or PR under the allow-list design above. A golden or contract change needs a root grant.
 - **Owned paths:** `src/proxyloop/core/fold.py`, `tests/core/**`.
-- **Deps:** S1-SYS-26 merged.
+- **Deps:** none (dispatched ahead, above).
 - **Acceptance** (test-first ✱): ✱ after two different cp guides, `guidance_cp` holds only the newest; the goldens and fingerprints are untouched; ✱ every action-log entry is in the constant template set, and the private-scope tools add none; `make evidence-check` ok on the four `evidence/s0` bundles; `make check` green.
 - **Verify:** `uv run pytest tests/core tests/contract -q`; `make evidence-check RUN=<each evidence/s0 bundle>`.
 - **Escalate if:** a golden or fingerprint changes, or an `evidence/s0` bundle fails.
+
+### S1-SYS-28 Offer recording converges — SYS (L-CORE) — S–M — doing
+- **Objective** (root decision under §0.5a, 2026-09-27, from L-CORE's triage of the approval smokes; evidence: the main checkout's git-ignored `runs/20260927T060019Z-ed5063` and `runs/20260927T055218Z-f3a106`):
+  - record-time slot validation: `record_offer` refuses an invalid slot and the refusal lists the allowed field → role/unit/value table; the same table is in Slow's system prompt;
+  - a `record_offer` with the same terms is a no-op (no new revision, no new read-back); a real change still creates a revision;
+  - a deterministic status-bar hint: "confirmed, outside mandate → request_approval(offer_ref)";
+  - a Slow reply with `finish_reason` `content_filter` is counted as a named issue and never retried (rule 12);
+  - **world semantics (labelled):** a repeated `hold_request` never resets hold patience, in every state (#157 did this for IDENTIFY only).
+- **Owned paths:** `src/proxyloop/slow/{tools,prompt,authority}.py`, `tests/slow/**`, `src/proxyloop/env/counterparty/policy.py`, `tests/env/**`, `src/proxyloop/llm/http.py` (the issue label only), `tests/llm/**`.
+- **Deps:** none (dispatched now; root decision under §0.5a, 2026-09-27).
+- **Acceptance** (test-first ✱): ✱ an invalid slot is refused at record time, and the refusal lists the table; ✱ a same-terms `record_offer` creates no revision and no read-back, and a real change does; ✱ a confirmed offer outside the mandate shows the `request_approval` hint in the status bar; ✱ a `content_filter` reply is counted as a named issue and not retried; ✱ a repeated `hold_request` does not reset hold patience in any policy state; `act_tool.json` regenerated if the tool schema changes; `make check` green.
+- **Verify:** `uv run pytest tests/slow tests/env tests/llm -q`; `make check`.
+- **Escalate if:** it needs a contract change; the table would let an offer confirm without the read-back (I6).
 
 ### S1-SYS-25 World: identity mismatch, caller left, redial, recheck variants (ADR-0014) — SYS (L-CORE) — M (S–M expected) — todo
 - **Objective** (labelled world-semantics changes):
@@ -1199,7 +1214,7 @@ The user also watches a replay of one probe episode per condition, and the size 
   - `INTAKE_S` (120 s, Q3 below).
 - **Owned paths:** `docs/decisions/0012-*.md`, `docs/decisions/0013-*.md`, `docs/decisions/0014-*.md` (new), `ARCHITECTURE.md`, `EVAL.md`, `PLAN.md`, `NORTH_STAR.md` (the Slow model name only).
 - **Acceptance:** `make docs-check` and `make lint` green; no measured number typed (AGENTS rule 13).
-- **Order** (root decision under §0.5a, 2026-09-27; two L-CORE slots): S1-SYS-23 → S1-SYS-22; S1-SYS-26 → S1-SYS-21 ∥ S1-SYS-25; S1-SYS-27 after S1-SYS-21 or S1-SYS-25, whichever frees its slot first; smoke #2 (S1-ROOT-06); S1-CON-06 + S1-SYS-24 (merged back to back); smoke #3 (S1-ROOT-06); S1-MOD-05; then S1-SYS-05, which gains dependencies on S1-SYS-21 and S1-SYS-24.
+- **Order** (root decisions under §0.5a, 2026-09-27; L-CORE is lent two extra slots, four in all, until two tasks hand off): S1-SYS-27 (its fold part) and S1-SYS-28 now, ahead of S1-SYS-22, because stale guidance and non-converging offer records blocked every approval smoke; S1-SYS-23 → S1-SYS-22; S1-SYS-26 → S1-SYS-21 ∥ S1-SYS-25; smoke #2 (S1-ROOT-06); S1-CON-06 + S1-SYS-24 (merged back to back); smoke #3 (S1-ROOT-06); S1-MOD-05; then S1-SYS-05, which gains dependencies on S1-SYS-21 and S1-SYS-24.
 - **User decisions (plan-before-act, 2026-09-27), as recorded in the main root's log:**
   - Q1: "readiness = option A generalized: a framework-wide constraint — before starting a task the agent must confirm it has the required facts from the user; S1's required set for cp calls = identity floor (account.holder_name, account.last4), expressed as a per-task-kind requirement rule so other kinds can add sets later."
   - Q2: "mid-call missing/wrong fact: go back to the user and hold the rep; at most 2 holds; if the fact is still not obtained, FastC tells the rep sorry, the principal has not provided enough information yet, and that it will call back once it has it → end the call; after the user supplies the fact, retry with a second call."
@@ -1413,7 +1428,7 @@ S1  SYS: SYS-01 guard ─┬─ SYS-02 timing+concurrency ─ SYS-05 demo┐
          MOD-02 metrics v1 ────────┘   MOD-04 Luna vs Qwen benchmark (after SYS-14)
     P-*: SYS-07/08 web ∥ SYS-09/10 api ∥ SYS-11/12 obs ∥ SYS-13 CI (coded now, merged at the gate); SYS-08 + SYS-10 ─► SYS-05
     CON: CON-01 `Approval.expires_ms` ─► SYS-01;   SYS: SYS-14 conditions + claim scoping ─► MOD-04
-    plan-before-act: SYS-23 ─ SYS-22;  SYS-26 ─ SYS-21 ∥ SYS-25, then SYS-27 ─ ROOT-06 smoke #2 ─ CON-06 + SYS-24 ─ smoke #3 ─ MOD-05 ─► SYS-05
+    plan-before-act: SYS-27 ∥ SYS-28 now;  SYS-23 ─ SYS-22;  SYS-26 ─ SYS-21 ∥ SYS-25 ─ ROOT-06 smoke #2 ─ CON-06 + SYS-24 ─ smoke #3 ─ MOD-05 ─► SYS-05
 S2  SYS: SYS-01 fam 5–6 ─ ROOT-01 corpus ─┐   SYS-02/03 audit ───┐
     MOD: MOD-01 metric repairs ────────────┼──── MOD-02 audit stats ┴─ ROOT-03 audit (U) ─ ROOT-04 close
          MOD-03 TalkAct anchors (parallel, non-blocking)   ROOT-02 human probes (U) ┘
