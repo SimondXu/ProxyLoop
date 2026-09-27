@@ -70,6 +70,28 @@ NEVER = (
     "I am not entirely sure whether this is the best deal.",
     "Earlier I told you I can't go any lower, but actually I can do 55.",
     "Tell me what is the best offer for you.",
+    "I can't go any lower, but actually I can do 55.",
+    # a condition, time limit, concession or floor after the cue (round 3)
+    "I am unable to do any better unless you commit to 24 months.",
+    "I cannot do any better without my supervisor.",
+    "I cannot do any better yet.",
+    "That is our best offer, unless my supervisor approves more.",
+    "That is our best offer right now, but let me check with my manager.",
+    "That is the best deal I can do before I talk to my supervisor.",
+    "I cannot offer better than that until the promotion starts next week.",
+    "I can't do any better than 60 but I could do 58 on the annual plan.",
+    "I cannot do any better on the monthly price, but I can waive the activation fee.",
+    "I cannot go any lower than 50.",
+    "I can't do any better than 55 dollars.",
+    # more hedges before the cue, and hyphenated ones
+    "Let me confirm that this is our best offer.",
+    "I need to verify this is the best rate.",
+    "I believe that is our best offer.",
+    "I guess that is the best deal.",
+    "Perhaps this is our final offer.",
+    "That probably is our best offer.",
+    "I will give you whichever is the best price.",
+    "Let me double-check that this is our best offer.",
 )
 
 

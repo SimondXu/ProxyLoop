@@ -59,7 +59,12 @@ LEXICON: dict[str, tuple[str, ...]] = {
     # before a closing cue in its clause: a condition, a hedge, a check still to
     # make or someone else's (or an earlier) words, not the rep's position now
     "unsure": ("if", "whether", "see", "check", "think", "sure", "said", "told",
-               "maybe", "might", "may", "earlier"),
+               "maybe", "might", "may", "earlier", "confirm", "verify", "believe",
+               "guess", "perhaps", "probably", "whichever"),
+    # after a closing cue in its sentence: a condition, time limit or concession
+    # means the position is not final ("I can't do better unless ...")
+    "unless": ("unless", "until", "without", "yet", "except", "before", "but",
+               "however", "if", "might", "may", "maybe", "check"),
     "wh": ("what", "which"),  # right before a cue: "what's the best offer"
 }  # fmt: skip
 ROLE_OF = {  # the role a slot of each field kind must carry
@@ -108,6 +113,12 @@ _CUES = {
 }
 _SENTENCE = re.compile(r"(?<=[!?])|(?<=\.)(?!\d)")
 _IS = re.compile(r"\b(that|this|it|here|what)'s\b")  # "that's" is "that is"
+_FLOOR = re.compile(r"\s*than\s+\$?\d")  # "can't go lower than 50": a floor
+
+
+def _tokens(text: str) -> set[str]:
+    """Words, with hyphenated ones split too ("double-check" is "check")."""
+    return {p for w in _WORD.findall(text) for p in (w, *w.split("-"))}
 
 
 def has_cue(text: str, kind: str) -> bool:
@@ -118,8 +129,9 @@ def has_cue(text: str, kind: str) -> bool:
 
 def _closing(text: str) -> bool:
     """A closing cue in a sentence that asks nothing (a question states no
-    position), with no negation or ``unsure`` word in its clause before it
-    and no ``wh`` word right before it."""
+    position), with no negation or ``unsure`` word in its clause before it,
+    no ``wh`` word right before it, no ``unless`` word in its sentence after
+    it, and no ``than <number>`` right after it."""
     t = _IS.sub(r"\1 is", text.lower().replace("\u2019", "'"))
     for sentence in _SENTENCE.split(t):
         if sentence.rstrip().endswith("?"):
@@ -127,10 +139,15 @@ def _closing(text: str) -> bool:
         for m in _CUES["closing"].finditer(sentence):
             start = max((b.end() for b in _SPLIT.finditer(sentence, 0, m.start())),
                         default=0)  # fmt: skip
-            before = _WORD.findall(sentence[start : m.start()])
+            words = _WORD.findall(sentence[start : m.start()])
+            before, after = _tokens(sentence[start : m.start()]), sentence[m.end() :]
             off = set(LEXICON["negation"]) | set(LEXICON["unsure"])
-            wh = bool(before) and before[-1] in LEXICON["wh"]
-            if not wh and not any(w in off or w.endswith("n't") for w in before):
+            if (
+                not (words and words[-1] in LEXICON["wh"])
+                and not any(w in off or w.endswith("n't") for w in before)
+                and not _tokens(after) & set(LEXICON["unless"])
+                and not _FLOOR.match(after)
+            ):
                 return True
     return False
 
