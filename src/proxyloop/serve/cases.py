@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Annotated, Literal, Protocol
 
@@ -43,6 +43,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from proxyloop.contract.bundle import EVENTS
 from proxyloop.contract.events import ApprovalPost, Decision
+from proxyloop.contract.llm import Endpoint
 from proxyloop.contract.state import Blackboard
 from proxyloop.guard.authorize import Denial, decide
 from proxyloop.serve.bundles import RUN_ID, find_run
@@ -98,6 +99,57 @@ class Case(Protocol):
 
 
 Cases = Callable[[str], Case | None]
+LaneKey = Literal["fast_user", "fast_cp", "slow"]
+
+
+class ModelOption(BaseModel):
+    """One model a lane may be started with, as the starter offers it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str  # stable option id, e.g. "openrouter:openai/gpt-6-luna"
+    lane: LaneKey
+    label: str  # dropdown text
+    endpoint: Endpoint
+    model_id: str
+    default: bool  # exactly one default per lane
+
+
+class StartRefused(Exception):
+    """Kernel refuses a start; serve answers 400 {"error": "start", "reason":
+    reason}, or 409 when reason == "busy"."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class Starter(Protocol):
+    """Starts a live case (L-CORE, S1-SYS-05, ``kernel/web.py``): the seam
+    serve calls and never imports. S1: one case = one run."""
+
+    def model_options(self) -> Sequence[ModelOption]:
+        """Pure, fast, in a stable order."""
+        ...
+
+    def task_options(self) -> Sequence[str]:
+        """Training families only (AGENTS rule 11), in a stable order."""
+        ...
+
+    async def start_case(
+        self,
+        task_ref: str,
+        models: Mapping[LaneKey, str],
+        rep: Literal["sim", "human"] = "sim",
+    ) -> Case:
+        """Start one run. A lane missing from ``models`` gets that lane's
+        default. Raises ``StartRefused`` with reason ``unknown_task``,
+        ``unknown_model``, ``wrong_lane``, ``not_live``, ``busy`` or
+        ``unavailable``. Returns only after the run's ``session.started``
+        (seq 0) is written; the Case's ``run_id`` is the case_id, and the run
+        lives at ``runs/live/<run_id>/<run_id>``. Model failures after the
+        start are the session's, never raised here."""
+        ...
 
 
 class _Body(BaseModel):
