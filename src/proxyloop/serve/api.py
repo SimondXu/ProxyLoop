@@ -1,10 +1,13 @@
 """Bundle listing, replay and the live event stream (ARCHITECTURE §2, §14).
 
-Every body is a bundle file's bytes with one transformation: each http(s) URL
-becomes ``<redacted-url>`` (AGENTS rule 15), so a body without a URL is
-byte-equal to its file. ``serve`` only reads: it never writes, folds or renders
-a prompt (import-linter: "serve is read-only"). Which bundles exist and may be
-served, held-out data excluded, is ``serve.bundles``.
+Every body is a bundle file's bytes with one transformation,
+``serve.bundles.redact`` (AGENTS rule 15): each http(s) URL becomes
+``<redacted-url>`` and each bare credential (an ``sk-`` token, a ``key=``,
+``token=`` or ``secret=`` value) ``<redacted>``, in replay bodies and WebSocket
+frames alike, so a body without either is byte-equal to its file. ``serve``
+only reads: it never writes, folds or renders a prompt (import-linter: "serve
+is read-only"). Which bundles exist and may be served, held-out data
+excluded, is ``serve.bundles``.
 
 Every route checks the Host (127.0.0.1 or localhost, else 400) and, when a
 browser sends one, the Origin against a fixed list (else 403

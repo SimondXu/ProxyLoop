@@ -72,9 +72,15 @@ def case_ref(case_id: str) -> CaseRef:
 
 class SlowTools:
     def __init__(
-        self, host: Kernel, shareable_keys: frozenset[str], case: CaseRef
+        self,
+        host: Kernel,
+        shareable_keys: frozenset[str],
+        case: CaseRef,
+        *,
+        transcript: bool = True,  # Slow reads the conversations (ADR-0016)
     ) -> None:
         self._host, self._shareable_keys, self._case = host, shareable_keys, case
+        self._transcript, self._basis = transcript, None  # the step's view
         self.shareable: dict[str, str] = {}  # recorded shareable values (declass)
         self.finished, self._n, self._mandates = False, 0, 0
         # the cp transcript length when a read-back was first asked for an
@@ -83,8 +89,11 @@ class SlowTools:
         self.asked_final: int | None = None
         self.received: set[str] = set()  # the relay ids SlowLoop handed to Slow
 
-    def act(self, call: ToolCall, causes: Sequence[str]) -> str:  # the text Slow reads
+    def act(
+        self, call: ToolCall, causes: Sequence[str], *, basis: int | None = None
+    ) -> str:  # the text Slow reads; ``basis``: the step's view (its basis_seq)
         self.readback()
+        self._basis = basis
         try:
             raw: Any = json.loads(call.arguments)
             if call.name != "act" or not isinstance(raw, dict):
@@ -187,8 +196,10 @@ class SlowTools:
             return authority.revoke(bb)
         if name == "check_account":
             told = [r for r in bb.f2s_pending if r.msg_id in self.received]
-            conf = str(a["confirmation_id"])
-            return authority.check_account(bb, conf, told, host.bus.events)
+            conf, line = str(a["confirmation_id"]), a.get("utt_ref")
+            cited = str(line) if self._transcript and line else None  # a REP line
+            events, seen = host.bus.events, self._basis
+            return authority.check_account(bb, conf, told, events, cited, seen)
         if name != "finish":
             return no(f"unknown tool {name!r}")
         outcome = str(a.get("outcome"))

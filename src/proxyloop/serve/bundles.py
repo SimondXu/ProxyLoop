@@ -5,7 +5,7 @@ A bundle is a directory directly under a configured root that holds
 ``runs/live/<case_id>/<run_id>``. Held-out data has two barriers (AGENTS rule
 11): ``sealed`` refuses any path through ``evidence/s4/test`` without opening
 it, and a run whose split is ``test``, or not yet known, is never served. URLs
-in served bytes are redacted (AGENTS rule 15).
+and bare credentials in served bytes are redacted (AGENTS rule 15).
 """
 
 from __future__ import annotations
@@ -25,6 +25,11 @@ from proxyloop.contract.events import Event
 
 URL = re.compile(rb"""https?://[^\s"'\\<>]+""", re.IGNORECASE)
 REDACTED = b"<redacted-url>"
+SK_TOKEN = re.compile(rb"\bsk-[A-Za-z0-9_-]{8,}")  # an API key's own shape
+ASSIGNED = re.compile(  # a credential's value after its name, as in a query
+    rb"""\b(api_key|apikey|key|token|secret)=[^\s"'\\&<>]+""", re.IGNORECASE
+)
+SECRET = b"<redacted>"
 RUN_ID = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
 SEALED = ("evidence", "s4", "test")  # held-out bundles, sealed until the report
 LIVE = ("runs", "live")  # <runs root>/live/<case_id>/<run_id>
@@ -32,8 +37,10 @@ TAIL = 4096  # bytes Run.ended reads: session.ended is one short line
 
 
 def redact(data: bytes) -> bytes:
-    """Replace URLs; quotes and backslashes end a match, so JSON stays JSON."""
-    return URL.sub(REDACTED, data)
+    """Replace URLs, ``sk-`` tokens and ``key=``-style values (the name stays);
+    quotes and backslashes end every match, so JSON stays JSON."""
+    data = SK_TOKEN.sub(SECRET, URL.sub(REDACTED, data))
+    return ASSIGNED.sub(rb"\1=" + SECRET, data)
 
 
 def sealed(path: Path) -> bool:

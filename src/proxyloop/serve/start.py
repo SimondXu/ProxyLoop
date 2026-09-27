@@ -30,7 +30,7 @@ of its ``cases`` lookup: ``GET /live``, ``/rep``, the case POSTs and
 ``/ws/rep`` find it like any other case (and 404 while its run is not
 servable). A run_id already in the map is 503 ``unavailable``, logged, and
 never replaces the case it names. A refusal reason outside ``REASONS`` is 503
-``unavailable`` too, logged with its URLs redacted (AGENTS rule 15).
+``unavailable`` too, logged redacted (``redact``; AGENTS rule 15).
 
 Pruning: a case whose run has ended (its ``events.jsonl`` ends with
 ``session.ended``, ``Run.ended``) is dropped from the map lazily, when serve
@@ -118,7 +118,7 @@ def broken(options: Sequence[object], tasks: object) -> str | None:
 
 
 def _clean(text: str) -> str:
-    """A starter-supplied string, URLs redacted, before it is logged."""
+    """A starter-supplied string, redacted, before it is logged."""
     return redact(text.encode()).decode()
 
 

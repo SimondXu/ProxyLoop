@@ -10,6 +10,7 @@ from tests.web.make_fixture import FIXTURES, generate
 
 from proxyloop.contract.bundle import Bundle, read_bundle
 from proxyloop.contract.llm import AdapterKind
+from proxyloop.evidence.check import check_path
 
 MAX_BYTES = 200_000
 DENY = (
@@ -75,3 +76,11 @@ def test_the_committed_fixture_reads_and_stays_small_and_synthetic() -> None:
     for f in files:  # no endpoint, and no path from the machine that made it
         text = f.read_text("utf-8")
         assert not [s for s in DENY if s in text]
+
+
+def test_the_committed_fixture_passes_the_offline_evidence_check() -> None:
+    """`make evidence-check RUN=<fixture>` (S1-SYS-32: the #133 shareable rule
+    had broken the old one; a fixture is regenerated, never hand-edited)."""
+    (run_dir,) = [p for p in FIXTURES.iterdir() if p.is_dir()]
+    report = check_path(run_dir, "offline")
+    assert report.failures == ()
