@@ -585,6 +585,7 @@ def test_the_simuser_channel_enqueues_nothing_on_silence(tmp_path: Path) -> None
         ("forty\u2010four eight two one", (LAST4, "4821"), False),
         ("one hundred four eight two one", (LAST4, "4821"), False),
         ("Often four eight two one.", (LAST4, "4821"), True),  # "ten" inside a word
+        ("Sure\u2014four eight two one.", (LAST4, "4821"), True),  # em dash, no spaces
         ("dana REYES here.", (NAME, "Dana Reyes"), True),
         ("Is that Dan? A Reyes account?", (NAME, "Dana Reyes"), False),
         ("Danar Reyes", (NAME, "Dana Reyes"), False),
