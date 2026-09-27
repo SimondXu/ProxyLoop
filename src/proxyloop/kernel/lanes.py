@@ -53,6 +53,10 @@ async def p3(client: VLLMClient, view: FastView, tok: fp.ChatTokenizer) -> bool:
     return (await check_parity(client, [golden])).passed
 
 
+def _speaks(items: list[fp.TurnItem]) -> bool:  # a sentence has been released
+    return any(isinstance(i, fp.Speech) for i in items)
+
+
 class FastLane:
     def __init__(self, k: Kernel, lane: Lane) -> None:
         self._k, self._actor = k, f"fast.{lane}"
@@ -123,9 +127,11 @@ class FastLane:
                 continue
             text += delta
             items += parser.feed(delta)
-            if ttfs is None and any(isinstance(i, fp.Speech) for i in items):
+            if ttfs is None and _speaks(items):
                 ttfs = k.now() - start
-        items += parser.close()
+        items += parser.close()  # a last sentence is released only here
+        if ttfs is None and _speaks(items):
+            ttfs = k.now() - start
         assert record is not None, "every call ends with its record"
         k.store("response", text)
         first = record.t_first_token
@@ -159,6 +165,10 @@ class FastLane:
                 fields = {"type": _F2S[item.type] or own, "text": item.text}
                 fields |= {"facts": item.facts, "correction": item.type == "correction"}
             elif isinstance(item, fp.Hold):
+                hold = k.bb.public.cp_hold if lane == "cp" else None  # cp only
+                if hold is not None and hold.reason == item.reason:
+                    k.counts["hold_repeat"] += 1  # unchanged: Slow has it (ROOT-05)
+                    continue
                 fields = {"type": "HOLD", "text": item.reason}
             else:
                 continue

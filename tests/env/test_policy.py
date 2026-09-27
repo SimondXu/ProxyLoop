@@ -22,6 +22,9 @@ def _policy(**cp: Any) -> Policy:
 
 
 def _say(p: Policy, act: str, t_ms: int = 0, heard: str = "", **args: Any) -> Decision:
+    """``facts={key: value}`` for ``provide_fact``."""
+    if "facts" in args:
+        args["facts"] = tuple({"key": k, "value": v} for k, v in args["facts"].items())
     ear = EarAct.model_validate({"act": act, **args})
     return p.step(ear, f"u{t_ms}", heard, t_ms)[-1]
 
@@ -29,8 +32,8 @@ def _say(p: Policy, act: str, t_ms: int = 0, heard: str = "", **args: Any) -> De
 def _verified(t_ms: int = 0) -> Policy:
     p = _policy()
     _say(p, "other", t_ms)
-    _say(p, "provide_fact", t_ms, key=NAME, value="dana REYES")
-    _say(p, "provide_fact", t_ms, key=LAST4, value="4 8 2 1")
+    _say(p, "provide_fact", t_ms, facts={NAME: "dana REYES"})
+    _say(p, "provide_fact", t_ms, facts={LAST4: "4 8 2 1"})
     assert p.state == "DISCOVER"
     return p
 
@@ -40,13 +43,46 @@ def test_identity_fails_on_a_wrong_value_and_passes_on_the_right_one() -> None:
     greet = _say(p, "smalltalk")
     assert (greet.from_, greet.to, greet.intent.kind) == ("GREET", "IDENTIFY", "greet")
     assert greet.intent.ask == (NAME, LAST4)
-    wrong = _say(p, "provide_fact", key=LAST4, value="1111")
+    wrong = _say(p, "provide_fact", facts={LAST4: "1111"})
     assert wrong.intent.kind == "ask_identity" and wrong.intent.ask == (NAME, LAST4)
     lever = _say(p, "ask_discount")  # no offer before identity
     assert lever.intent.kind == "ask_identity" and not p.offers
-    _say(p, "provide_fact", key=NAME, value="Dana Reyes")
-    done = _say(p, "provide_fact", key=LAST4, value="4821")
+    _say(p, "provide_fact", facts={NAME: "Dana Reyes"})
+    done = _say(p, "provide_fact", facts={LAST4: "4821"})
     assert (done.to, done.intent.kind) == ("DISCOVER", "how_can_help")
+    assert p.strikes == 1  # the lever; a wrong value is no strike
+
+
+def test_one_utterance_can_give_every_identity_fact() -> None:
+    p = _policy()
+    _say(p, "other")
+    done = _say(p, "provide_fact", facts={NAME: "Dana Reyes", LAST4: "4821"})
+    assert (done.to, done.intent.kind, p.strikes) == ("DISCOVER", "how_can_help", 0)
+
+
+def test_identity_patience_abandons_after_the_last_strike() -> None:
+    p = _policy()
+    _say(p, "smalltalk")  # the greeting: no strike
+    first, second = _say(p, "refuse_fact"), _say(p, "refuse_fact")
+    assert [(d.to, d.intent.kind, d.strike) for d in (first, second)] == [
+        ("IDENTIFY", "ask_identity", True)
+    ] * 2
+    last = _say(p, "refuse_fact")
+    assert (last.from_, last.to, last.intent.kind, last.strike) == (
+        "IDENTIFY",
+        "ENDED",
+        "hang_up",
+        True,
+    )
+    assert p.done and p.strikes == CP.patience.strikes == 3
+
+
+def test_smalltalk_then_the_right_facts_reaches_discover_with_one_strike() -> None:
+    p = _policy()
+    _say(p, "other")
+    assert _say(p, "smalltalk").strike
+    done = _say(p, "provide_fact", facts={NAME: "Dana Reyes", LAST4: "4821"})
+    assert (done.to, done.strike, p.strikes) == ("DISCOVER", False, 1)
 
 
 def test_each_distinct_lever_climbs_one_rung_up_to_the_final_offer() -> None:
@@ -165,12 +201,13 @@ def test_a_decline_during_confirmation_returns_to_the_offer() -> None:
 def test_the_ledger_modes_bind_misquoted_or_nothing() -> None:
     for mode, months in ((LedgerMode.MISQUOTE, 24), (LedgerMode.ABSENT, None)):
         p = _policy(ledger=mode)
-        for act, args in (
+        steps: tuple[tuple[str, dict[str, Any]], ...] = (
             ("other", {}),
-            ("provide_fact", {"key": NAME, "value": "Dana Reyes"}),
-            ("provide_fact", {"key": LAST4, "value": "4821"}),
+            ("provide_fact", {"facts": {NAME: "Dana Reyes"}}),
+            ("provide_fact", {"facts": {LAST4: "4821"}}),
             ("ask_discount", {}),
-        ):
+        )
+        for act, args in steps:
             _say(p, act, 0, **args)
         d = _say(p, "accept", heard="We accept loyal-1.", offer_ref="loyal-1")
         assert d.commit is not None
@@ -183,3 +220,50 @@ def test_ask_supervisor_transfers_and_ends_the_rep_side() -> None:
     d = _say(p, "ask_supervisor")
     assert (d.to, d.intent.kind, p.done) == ("TRANSFER", "transfer", True)
     assert p.step(EarAct(act="ask_discount"), "u", "", 1) == []
+
+
+def _silence(p: Policy, t_ms: int) -> Decision:
+    """The floor goes free at ``t_ms`` and stays free past ``silence_s``."""
+    p.floor(True, t_ms)
+    (d,) = p.tick(t_ms + int(CP.patience.silence_s * 1000))
+    assert d.strike
+    return d
+
+
+@pytest.mark.parametrize(
+    "strikes",
+    [
+        ("silence", "refuse_fact", "refuse_fact"),  # gate smoke runs 1 and 2
+        ("silence", "silence", "refuse_fact"),  # gate smoke run 3
+        ("silence", "silence", "refuse_fact", "refuse_fact"),  # mixed 2 + 2
+    ],
+)
+def test_timer_and_identity_strikes_never_add_up(strikes: tuple[str, ...]) -> None:
+    p = _policy()
+    _say(p, "other")  # the greeting: IDENTIFY
+    for i, kind in enumerate(strikes):
+        t_ms = (i + 1) * 100_000
+        d = _silence(p, t_ms) if kind == "silence" else _say(p, kind, t_ms)
+        assert d.strike and d.intent.kind != "hang_up" and not p.done
+    done = _say(p, "provide_fact", 10**6, facts={NAME: "Dana Reyes", LAST4: "4821"})
+    assert (done.to, done.intent.kind, p.done) == ("DISCOVER", "how_can_help", False)
+    assert p.strikes == len(strikes)  # the total, as many as chan.strike events
+
+
+def test_three_refusals_still_hang_up_after_a_silence() -> None:
+    p = _policy()
+    _say(p, "other")
+    _silence(p, 0)
+    kinds = [_say(p, "refuse_fact", t).intent.kind for t in (1, 2, 3)]
+    assert kinds == ["ask_identity", "ask_identity", "hang_up"]
+    assert (p.state, p.identity_strikes, p.timer_strikes) == ("ENDED", 3, 1)
+
+
+def test_three_silences_hang_up_after_identity_strikes() -> None:
+    p = _policy()
+    _say(p, "other")
+    _say(p, "refuse_fact", 1)
+    _say(p, "refuse_fact", 2)
+    kinds = [_silence(p, t).intent.kind for t in (100_000, 200_000, 300_000)]
+    assert kinds == ["check_in", "check_in", "hang_up"]
+    assert (p.state, p.identity_strikes, p.timer_strikes) == ("ENDED", 2, 3)
