@@ -291,7 +291,7 @@ test.describe("human rep", () => {
       ...of(events, "summary.updated").map((e) => String(e.payload.text)),
       ...of(events, "utt.delivered", { lane: "user" }).map((e) => String(e.payload.text_heard)),
     ];
-    expect(hidden.length).toBeGreaterThan(2);
+    expect(hidden.length).toBeGreaterThan(3);
     for (const text of hidden) await expect(rep.locator("body")).not.toContainText(text);
     expect(repSockets).toEqual([`/ws/rep/${id}?from_seq=0`]);
     const api = repHttp.filter((p) => p.startsWith("/api/") || p.startsWith("/ws/"));
