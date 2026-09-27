@@ -135,8 +135,8 @@ class ApprovalCard(Frozen):
 class Approval(Frozen):
     """A decided card; private (ADR-0007). The fold copies ``expires_ms`` from
     the card at ``approval.decided``. ``None`` only on a record written before
-    the field existed: Guard treats it as expired (no capability), never as
-    unbounded."""
+    the field existed. Expiry filters grants only: a grant with ``None`` mints
+    no capability (never unbounded); a denial never expires."""
 
     approval_id: str
     decision: Literal["granted", "denied"]

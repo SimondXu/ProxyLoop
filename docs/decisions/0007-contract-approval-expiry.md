@@ -1,7 +1,7 @@
 # ADR-0007: Contract: a decided approval keeps its card's expiry
 
-- **Status:** accepted (root decision under §0.5a, 2026-09-26)
-- **Date:** 2026-09-26
+- **Status:** accepted (the field: root decision under §0.5a, 2026-09-26; the fail-closed `None` rule and grant-only expiry: root decisions under §0.5a, 2026-09-27)
+- **Date:** 2026-09-26 (amended 2026-09-27)
 - **Task:** S1-CON-01
 
 ## Context
@@ -15,8 +15,12 @@ ARCHITECTURE §9.3 lets `accept_offer` rest on `approval.decided{granted}` only 
 - **Source.** The fold's `approval.decided` handler (`core/fold.py`, SYS) sets `Approval.expires_ms = card.expires_ms` from the pending card it is already checking. That card is Guard-written with `expires_ms = min(offer expiry, now + CARD_TTL_MS)`. No producer takes it from a model or a UI post (I6).
 - **No new event key.** The `approval.decided` payload stays `approval_id, decision, by` (`tests/contract/snapshots/event_registry.json` is unchanged). The value is derived in the fold from `approval.requested`, which already carries `expires_ms`, so replay reproduces it (I2).
 - **Private.** `Approval` lives only in `PrivateState.approvals` and `SlowView.approvals`. It is in no `FastView` (the user lane shows the pending card, not decided approvals) and in no Fast render. `view_cp` does not read private state at all (I4). `tests/contract/test_validators.py::test_approval_expiry_is_optional_private_and_absent_from_fast_views` checks that `FastView` names no `Approval`, and the counterfactual strategy in `tests/contract/test_views.py` now varies `expires_ms`.
-- **Semantics of `None`.** `None` means "no expiry recorded". Only a record folded before this field existed can have it; S0 wrote none (no `approval.decided` exists in `evidence/s0`). Guard treats `None` as **expired**: an approval without a recorded expiry mints no capability. It is never read as unbounded (fail closed, I6).
-- **Use.** When the grant is an approval, Guard (S1-SYS-01) requires `approval.expires_ms > t_now`, and adds it to the capability's `min(...)`. Revalidation at release then enforces the capability's expiry as today (ARCHITECTURE §9.4).
+- **Semantics of `None`** (root decision under §0.5a, 2026-09-27). `None` means "no expiry recorded". Only a record folded before this field existed can have it; S0 wrote none (no `approval.decided` exists in `evidence/s0`). Guard treats `None` as **expired for a grant**: an approval without a recorded expiry mints no capability. It is never read as unbounded (fail closed, I6).
+- **Use** (root decision under §0.5a, 2026-09-27). Expiry filters **grants only**:
+  - A denial of these terms (same `terms_hash`) at this epoch blocks `accept_offer` whatever its `expires_ms`, `None` included. A denial never expires (M3).
+  - The grant is **any** granted approval of these terms at this epoch with `expires_ms is not None and expires_ms > t_now`, never simply the first or oldest one.
+  - Guard (S1-SYS-01) adds that approval's `expires_ms` to the capability's `min(...)`. Revalidation at release then enforces the capability's expiry as today (ARCHITECTURE §9.4).
+  - S1-SYS-01 (#126) adds a regression test: card0 denied (expires t=120), card1 granted (expires t=126); at t=121 no capability is minted.
 
 ## Evidence
 - The fingerprints computed on the branch with `proxyloop.contract.protocol.fingerprint` are unchanged: `pl_user_v1` = `796d2843…9cfb`, `pl_cp_v1` = `76a01858…b490` (PLAN header). The fingerprint hashes only the profile text and the P2 golden ids, and no Fast view gains a field.
@@ -26,4 +30,5 @@ ARCHITECTURE §9.3 lets `accept_offer` rest on `approval.decided{granted}` only 
 - **Contract / fingerprint impact:** none. It is an additive private field with a default. `make pull-through MODE=verify` runs when #125 provides it.
 - **Data invalidated:** none.
 - **Migration:** S1-SYS-01 (#126) sets the field in `_approval_decided` and uses it in `accept_offer`'s grant check and capability expiry. Existing bundles fold unchanged. Other worktrees need no action beyond the usual merge of `main`.
+- **Validity window.** An approval is valid until its card's `expires_ms`, which was fixed when the card was requested (≤ request time + `CARD_TTL_MS`, and ≤ the offer's expiry). The decision does not extend it, so a late decision may leave little time to accept. This matches ARCHITECTURE §9.3 ("an unexpired card").
 - **Risks and what would make us revisit this.** If a later producer builds an `Approval` without a card (e.g. S4 `submit_transaction` over `action_hash`), it must supply its own expiry, or its approvals mint nothing under the `None` rule. Revisit the default then, and make the field required once no pre-field records need to fold.
