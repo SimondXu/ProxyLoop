@@ -161,6 +161,9 @@ def _offer(bb: Blackboard, e: Event) -> Blackboard:
     """A new revision: its slots start ``unknown`` and its terms unbound; only
     ``readback.updated`` (Guard) sets statuses and ``terms_hash``."""
     p = e.payload
+    prev = bb.public.offers.get(str(p["offer_ref"]))
+    if prev is not None and cast(int, p["revision"]) <= prev.revision:
+        raise ValueError(f"offer {p['offer_ref']}: revision {p['revision']} is not new")
     slots = [
         ReadbackSlot.model_validate(s).model_copy(update={"status": "unknown"})
         for s in cast(list[object], p["slots"])

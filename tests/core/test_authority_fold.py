@@ -216,3 +216,22 @@ def test_offer_recorded_cannot_set_statuses_or_terms() -> None:
     assert request_approval(log.bb, "o1", CASE) == Denial("readback_not_confirmed")
     no_ttl = log.emit("offer.recorded", claimed | {"revision": 2, "terms_hash": None})
     assert no_ttl.public.offers["o1"].expires_ms is None
+
+
+def test_offer_recorded_must_move_the_revision_forward() -> None:
+    """A re-record at the same or an older revision would reopen a declined
+    offer and reset its read-back: the fold refuses it."""
+    log = Log()
+    log.emit("user.msg", {"text": "go"})
+    recorded = offer().model_dump(mode="json", include={"offer_ref", "slots"})
+    log.emit("offer.recorded", recorded | {"revision": 2, "terms_hash": None})
+    line = {"lane": "cp", "kind": "decline", "text": "No.", "offer_ref": "o1"}
+    assert log.emit("speak.verbatim", line).public.offers["o1"].status == "declined"
+    for stale in (2, 1):
+        with pytest.raises(ValueError, match="revision"):
+            log.emit(
+                "offer.recorded", recorded | {"revision": stale, "terms_hash": None}
+            )
+    assert log.bb.public.offers["o1"].status == "declined"
+    newer = log.emit("offer.recorded", recorded | {"revision": 3, "terms_hash": None})
+    assert newer.public.offers["o1"].status == "open"
