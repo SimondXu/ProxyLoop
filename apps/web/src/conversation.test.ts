@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { conversation, parties, SIM_REP, SIM_USER, simLabels, speakerName, UNKNOWN_PARTIES } from "./conversation";
+import { callHead, conversation, parties, SIM_REP, SIM_USER, simLabels, speakerName, UNKNOWN_PARTIES } from "./conversation";
 import type { Ev } from "./replay";
 
 let seq = 0;
@@ -15,7 +15,7 @@ const started = (roles: string[]) =>
 describe("the conversation fold (events only)", () => {
   it("shows only the heard text, never text_generated, and marks an interruption", () => {
     const c = conversation([delivered("user", "Your new price is $70 a month.", "Your new price"), delivered("cp", "We accept the offer.", "We accept")]);
-    expect(c.chat).toEqual([{ seq: expect.any(Number), who: "assistant", text: "Your new price", interrupted: true, disclosure: false }]);
+    expect(c.chat).toEqual([{ seq: expect.any(Number), id: expect.any(String), who: "assistant", text: "Your new price", interrupted: true, tag: null }]);
     expect(c.call.map((l) => [l.who, l.text, l.interrupted])).toEqual([["agent", "We accept", true]]);
     expect(JSON.stringify(c)).not.toContain("$70");
   });
@@ -54,26 +54,63 @@ describe("the conversation fold (events only)", () => {
     expect(c).toEqual({ chat: [], call: [] });
   });
 
-  it("marks the disclosure: a delivery released from Guard's speak.verbatim{kind: disclosure}", () => {
+  it("tags the lines Guard's speak.verbatim released, and only those", () => {
     const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "disclosure", text: "Hello, an AI assistant here." });
     const released = ev("speak.released", "kernel", { lane: "cp" }, [said.event_id]);
-    const accept = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "We accept." });
-    const acceptReleased = ev("speak.released", "kernel", { lane: "cp" }, [accept.event_id]);
+    const decline = ev("speak.verbatim", "guard", { lane: "cp", kind: "decline", text: "No, thank you." });
+    const declineReleased = ev("speak.released", "kernel", { lane: "cp" }, [decline.event_id]);
+    const odd = ev("speak.verbatim", "guard", { lane: "cp", kind: "brand_new", text: "Odd." });
+    const oddReleased = ev("speak.released", "kernel", { lane: "cp" }, [odd.event_id]);
     const forged = ev("speak.verbatim", "fast.cp", { lane: "cp", kind: "disclosure", text: "Fast says hi" });
     const forgedReleased = ev("speak.released", "kernel", { lane: "cp" }, [forged.event_id]);
     const c = conversation([
       said,
       released,
       delivered("cp", "Hello, an AI assistant here.", "Hello, an AI assistant here.", [released.event_id]),
-      accept,
-      acceptReleased,
-      delivered("cp", "We accept.", "We accept.", [acceptReleased.event_id]),
+      decline,
+      declineReleased,
+      delivered("cp", "No, thank you.", "No, thank you.", [declineReleased.event_id]),
+      odd,
+      oddReleased,
+      delivered("cp", "Odd.", "Odd.", [oddReleased.event_id]),
       forged,
       forgedReleased,
       delivered("cp", "Fast says hi", "Fast says hi", [forgedReleased.event_id]),
       delivered("cp", "a free line", "a free line"),
     ]);
-    expect(c.call.map((l) => l.disclosure)).toEqual([true, false, false, false]);
+    expect(c.call.map((l) => l.tag)).toEqual(["AI disclosure · fixed wording", "Decline · fixed wording", "brand_new · fixed wording", null, null]);
+  });
+
+  it("names who approved an accept: the kernel's grant of the card with the capability's terms", () => {
+    const accept = (by: string | null) => {
+      const card = ev("approval.requested", "guard", { approval_id: "ap-1", terms_hash: "t1" });
+      const grant = by ? [ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by })] : [];
+      const auth = ev("action.authorized", "guard", { intent: "accept_offer", capability: { cap_id: "cap-1", terms_hash: "t1" } });
+      const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "Yes.", cap_id: "cap-1" });
+      const released = ev("speak.released", "kernel", { lane: "cp", cap_id: "cap-1" }, [said.event_id]);
+      const events = [card, ...grant, auth, said, released, delivered("cp", "Yes.", "Yes.", [released.event_id])];
+      return conversation(events).call[0]?.tag;
+    };
+    expect(accept("ui")).toBe("Acceptance · approved by you");
+    expect(accept("sim_approver")).toBe("Acceptance · approved by the simulated approver");
+    expect(accept(null)).toBe("Acceptance · fixed wording"); // under your limits: no card to name
+  });
+});
+
+describe("the call header, from channel events", () => {
+  const hold = (reason: string | null, actor = "fast.cp") => ev("chan.hold", actor, { lane: "cp", reason });
+  it("counts calls, and holds from FastC's chan.hold until the next heard line or its release", () => {
+    expect(callHead([])).toEqual({ calls: 0, open: false, holdSince: null });
+    const held = hold("check_user");
+    const one = [ev("chan.opened", "kernel", { lane: "cp" }), held];
+    expect(callHead(one)).toEqual({ calls: 1, open: true, holdSince: held.t_ms });
+    expect(callHead([...one, ev("utt.final", "kernel", { lane: "cp", speaker: "partner", utt_id: "x", text: "ok" })]).holdSince).toBeNull();
+    expect(callHead([...one, delivered("cp", "back", "back")]).holdSince).toBeNull();
+    expect(callHead([...one, hold(null)]).holdSince).toBeNull();
+    expect(callHead([...one, hold("x", "slow")]).holdSince).toBe(held.t_ms); // only FastC holds the rep
+    const redial = [...one, ev("chan.closed", "kernel", { lane: "cp" }), ev("chan.opened", "kernel", { lane: "cp" })];
+    expect(callHead(redial)).toEqual({ calls: 2, open: true, holdSince: null });
+    expect(callHead([ev("chan.opened", "kernel", { lane: "user" })]).calls).toBe(0);
   });
 });
 

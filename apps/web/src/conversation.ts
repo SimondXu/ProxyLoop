@@ -3,24 +3,53 @@
 // utt.delivered (Assistant); the call is the cp lane's utt.delivered (Agent),
 // the partner's utt.final (Rep) and the call's opening and closing. Only the
 // kernel emits these (contract EMITTERS), so no other actor's event is shown.
-// A delivery shows text_heard, never text_generated.
+// A delivery shows text_heard, never text_generated. A delivery released from
+// Guard's speak.verbatim carries that line's fixed-wording tag.
 import { from } from "./authority";
 import type { Ev } from "./replay";
 
 export type Speaker = "you" | "assistant" | "agent" | "rep" | "call";
-export type Line = { seq: number; who: Speaker; text: string; interrupted: boolean; disclosure: boolean };
+/** `id` is the event id (a user.msg's is its fences' utt_id); `tag` is the Guard wording's label. */
+export type Line = { seq: number; id: string; who: Speaker; text: string; interrupted: boolean; tag: string | null };
 export type Conversation = { chat: Line[]; call: Line[] };
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
-/** A delivery's Guard verbatim kind: utt.delivered ← speak.released (kernel) ← speak.verbatim (guard). */
-function verbatimKind(e: Ev, byId: Map<string, Ev>): string | null {
+/** A delivery's Guard verbatim line: utt.delivered ← speak.released (kernel) ← speak.verbatim (guard). */
+function verbatimOf(e: Ev, byId: Map<string, Ev>): Ev | null {
   for (const released of e.cause_ids.map((id) => byId.get(id))) {
     if (!released || !from(released, "speak.released", ["kernel"])) continue;
     const said = released.cause_ids.map((id) => byId.get(id)).find((v) => v && from(v, "speak.verbatim", ["guard"]));
-    if (said) return str(said.payload.kind);
+    if (said) return said;
   }
   return null;
+}
+
+const TAG: Record<string, string> = {
+  disclosure: "AI disclosure · fixed wording",
+  readback_request: "Read-back request · fixed wording",
+  decline: "Decline · fixed wording",
+};
+const BY: Record<string, string> = { ui: "approved by you", sim_approver: "approved by the simulated approver" };
+
+/**
+ * The accept's approver: its capability (Guard's action.authorized, same cap_id)
+ * → the approval card with that terms_hash → the kernel's grant of that card.
+ * An accept under your limits (no card) says only "fixed wording".
+ */
+function acceptedBy(said: Ev, events: Ev[]): string {
+  const cap = (e: Ev) => (e.payload.capability ?? {}) as { cap_id?: unknown; terms_hash?: unknown };
+  const auth = events.find((e) => from(e, "action.authorized", ["guard"]) && cap(e).cap_id === said.payload.cap_id);
+  const cards = events.filter((e) => from(e, "approval.requested", ["guard"]) && auth && e.payload.terms_hash === cap(auth).terms_hash);
+  const ids = new Set(cards.map((e) => e.payload.approval_id));
+  const grant = events.find((e) => from(e, "approval.decided", ["kernel"]) && e.payload.decision === "granted" && ids.has(e.payload.approval_id));
+  return (grant && BY[str(grant.payload.by)]) ?? "fixed wording";
+}
+
+function tagOf(said: Ev, events: Ev[]): string {
+  const kind = str(said.payload.kind);
+  if (kind === "accept") return `Acceptance · ${acceptedBy(said, events)}`;
+  return TAG[kind] ?? `${kind} · fixed wording`; // an unknown kind is shown raw
 }
 
 export function conversation(events: Ev[]): Conversation {
@@ -29,17 +58,19 @@ export function conversation(events: Ev[]): Conversation {
   for (const e of events) {
     if (e.actor !== "kernel" || e.stream !== "agent") continue;
     const p = e.payload;
-    const line = (who: Speaker, text: string, interrupted = false, disclosure = false): Line => ({
+    const line = (who: Speaker, text: string, interrupted = false, tag: string | null = null): Line => ({
       seq: e.seq,
+      id: e.event_id,
       who,
       text,
       interrupted,
-      disclosure,
+      tag,
     });
     if (e.type === "user.msg") out.chat.push(line("you", str(p.text)));
     else if (e.type === "utt.delivered" && p.lane === "user") out.chat.push(line("assistant", str(p.text_heard), p.interrupted === true));
     else if (e.type === "utt.delivered" && p.lane === "cp") {
-      out.call.push(line("agent", str(p.text_heard), p.interrupted === true, verbatimKind(e, byId) === "disclosure"));
+      const said = verbatimOf(e, byId);
+      out.call.push(line("agent", str(p.text_heard), p.interrupted === true, said && tagOf(said, events)));
     } else if (e.type === "utt.final" && p.lane === "cp" && p.speaker === "partner") out.call.push(line("rep", str(p.text)));
     else if (e.type === "chan.opened" && p.lane === "cp") out.call.push(line("call", "call connected"));
     else if (e.type === "chan.closed" && p.lane === "cp") out.call.push(line("call", "call ended"));
@@ -71,4 +102,24 @@ export function speakerName(who: Speaker, p: Parties): string {
   if (who === "you") return p.simUser ? "User (simulated)" : "You";
   if (who === "rep") return p.simRep ? "Rep (simulated)" : "Rep";
   return { assistant: "Assistant", agent: "Agent", call: "Call" }[who];
+}
+
+/** The call's header state: calls opened so far, whether one is open, and since when (t_ms) the rep is on hold. */
+export type CallHead = { calls: number; open: boolean; holdSince: number | null };
+
+/**
+ * A hold starts at FastC's chan.hold and ends at its release (reason null), the
+ * rep's next line, the agent's next heard line, or the call's end.
+ */
+export function callHead(events: Ev[]): CallHead {
+  const h: CallHead = { calls: 0, open: false, holdSince: null };
+  for (const e of events) {
+    const p = e.payload;
+    if (p.lane !== "cp") continue;
+    if (from(e, "chan.opened", ["kernel"])) Object.assign(h, { calls: h.calls + 1, open: true, holdSince: null });
+    else if (from(e, "chan.closed", ["kernel"])) Object.assign(h, { open: false, holdSince: null });
+    else if (from(e, "chan.hold", ["fast.cp"])) h.holdSince = p.reason == null ? null : e.t_ms;
+    else if (from(e, "utt.delivered", ["kernel"]) || (from(e, "utt.final", ["kernel"]) && p.speaker === "partner")) h.holdSince = null;
+  }
+  return h;
 }

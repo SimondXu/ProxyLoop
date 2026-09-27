@@ -103,11 +103,10 @@ async function say(page: Page, text: string) {
 async function toCard(page: Page) {
   const id = await start(page, "sim");
   await onlyFakes(page, ["fast_user", "fast_cp", "slow", "ear", "mouth"]);
-  // The world's rep is labelled on every frame: the honesty band and both panes (the user is the person here).
+  // The world's rep is labelled on every frame: the honesty band and the call column; not the chat (the user is the person here).
   await expect(page.getByRole("note", { name: "Simulated parties" })).toHaveText(SIM_REP);
-  for (const frame of [page.getByRole("region", { name: "Chat" }), page.getByRole("region", { name: "Call" })]) {
-    await expect(frame.getByLabel("Simulated parties")).toHaveText(SIM_REP);
-  }
+  await expect(page.getByRole("region", { name: "Call" }).getByLabel("Simulated parties")).toHaveText(SIM_REP);
+  await expect(page.getByRole("region", { name: "Chat" }).getByLabel("Simulated parties")).toHaveCount(0);
   // Every model is a test_fake: the band says so (I8), before any model would have spoken.
   await expect(page.getByText("Scripted test run · no models called")).toBeVisible();
   await say(page, TASK_SAID);
@@ -262,7 +261,7 @@ test.describe("human rep", () => {
     await started.getByRole("link", { name: "open the live page" }).click();
     await expect(page).toHaveURL(`/?live=${id}`);
     await onlyFakes(page, ["fast_user", "fast_cp", "slow"]);
-    await expect(page.getByRole("heading", { name: "Call · Agent / Rep / Call" })).toBeVisible(); // a person, not the world
+    await expect(page.getByRole("heading", { name: "Call with the company" })).toBeVisible();
     await expect(page.getByLabel("Simulated parties")).toHaveCount(0);
 
     // The user's own words and the case agent's private summary never reach the rep.

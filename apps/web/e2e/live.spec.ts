@@ -267,10 +267,11 @@ test("conversation view: two panes with the right speakers, heard text only, the
   const ev = events();
   const ws = await connected;
   ws.send(ev("session.started", "kernel", started(SIM), { stream: "ops" }));
-  // Every frame names the simulated rep: the page header and each pane.
+  // Every frame names the simulated rep: the page header and the call column; the chat column names only a simulated user.
   await expect(page.getByRole("note", { name: "Simulated parties" })).toHaveText(SIM_REP);
-  for (const pane of ["Chat", "Call"]) await expect(page.getByRole("region", { name: pane }).getByLabel("Simulated parties")).toHaveText(SIM_REP);
-  await expect(page.getByRole("heading", { name: "Call · Agent / Rep (simulated) / Call" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Call" }).getByLabel("Simulated parties")).toHaveText(SIM_REP);
+  await expect(page.getByRole("region", { name: "Chat" }).getByLabel("Simulated parties")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Call with the company" })).toBeVisible();
   await expect(page.getByLabel("Status line")).toHaveText("Status: starting (no status yet)");
 
   const opened = JSON.parse(ev("chan.opened", "kernel", { lane: "cp" })) as { event_id: string };
