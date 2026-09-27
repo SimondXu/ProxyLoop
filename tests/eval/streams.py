@@ -58,8 +58,11 @@ class Stream:
         self,
         cfg: SessionConfig | None = None,
         split: Literal["train", "dev", "test"] = "train",
+        task_ref: str = TASK_REF,
+        instance: str = INSTANCE,
     ) -> None:
         self.cfg = cfg or session_config()
+        self.task_ref, self.instance = task_ref, instance
         self.split: Literal["train", "dev", "test"] = split
         self.events: list[Event] = []
         self.prompts: dict[str, PromptRecord] = {}
@@ -79,7 +82,7 @@ class Stream:
         stream = "world" if type_ in _WORLD else "ops" if type_ in _OPS else "agent"
         body = dict(payload or {})
         if type_ == "session.started":
-            body |= {"task_ref": TASK_REF, "instance_hash": INSTANCE}
+            body |= {"task_ref": self.task_ref, "instance_hash": self.instance}
             body |= {
                 "split": self.split,
                 "models": {},
@@ -212,8 +215,8 @@ class Stream:
             contract_version=CONTRACT_VERSION,
             cfg=self.cfg,
             cfg_hash=config_hash(self.cfg),
-            task_ref=TASK_REF,
-            instance_hash=INSTANCE,
+            task_ref=self.task_ref,
+            instance_hash=self.instance,
             split=self.split,
             fingerprints={"pl_cp_v1": fingerprint("pl_cp_v1")},
             models={"fast_cp": RoleModel(ref=QWEN), "slow": RoleModel(ref=SONNET)},

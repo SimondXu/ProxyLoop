@@ -26,8 +26,8 @@ SCRIPTS = {
 FINISH = act("Done.", {"tool": "finish", "outcome": "info_only", "summary": "ok"})
 
 
-def load(family: str) -> Task:  # these sessions run the patient variant
-    assert family == "cp-direct-discount"
+def load(task_ref: str) -> Task:  # these sessions run the patient variant
+    assert task_ref == "cp-direct-discount@1"
     return patient_task()
 
 

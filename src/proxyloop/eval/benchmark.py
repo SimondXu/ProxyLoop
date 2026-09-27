@@ -28,7 +28,7 @@ import asyncio
 import json
 import sys
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import fmean
@@ -75,6 +75,7 @@ NOT_INTERLEAVED = "not interleaved: separate matrices, time-separated"
 _FAST = ("fast_user", "fast_cp")
 _NOT_SHARED = {"fast_user", "fast_cp", "teacher", "seed"}  # ablations: own only
 Key = tuple[str, str, int]  # (family, instance, seed)
+FamilyLoader = Callable[[str], Task]  # a spec family -> its task (the file's)
 Table = dict[str, Any]
 
 
@@ -114,7 +115,7 @@ class Benchmark:
     spec_hash: str
     tasks: Mapping[str, Task]  # instance -> task
     family: Mapping[str, str]  # instance -> family
-    load: Loader  # family -> task, for the metrics
+    load: Loader  # task_ref -> one of ``tasks``, for the metrics
 
     def expected(self) -> set[Key]:
         return {
@@ -125,23 +126,35 @@ class Benchmark:
         }
 
 
-def load_spec(path: Path = SPEC, load: Loader = load_task) -> Benchmark:
+def _by_ref(tasks: Iterable[Task]) -> Loader:
+    """The metrics' loader: a bundle's task_ref -> the spec task of that ref."""
+    known = {t.ref: t for t in tasks}
+
+    def load(task_ref: str) -> Task:
+        if task_ref not in known:
+            raise ValueError(f"{task_ref} is not a task of this benchmark spec")
+        return known[task_ref]
+
+    return load
+
+
+def load_spec(path: Path = SPEC, load: FamilyLoader = load_task) -> Benchmark:
     """The spec, its tasks and hash; a ``test`` family raises ``HeldOutRefused``
-    before any task is read. An instance is a family's task id."""
+    before any task is read. An instance is a family's task id; a bundle's
+    task_ref must be its task's ref (a ``#seed`` instance is not a cell)."""
     text = path.read_text("utf-8")
     spec = Spec.model_validate(yaml.safe_load(text))
     if held := [f.family for f in spec.families if f.split == "test"]:
         raise HeldOutRefused(f"test-split families {held}: sealed until the unseal")
     tasks: dict[str, Task] = {}
-    by_family: dict[str, Task] = {}
     for f in spec.families:
-        task = by_family[f.family] = load(f.family)
+        task = load(f.family)
         for instance in f.instances:
             if instance != task.id:
                 raise ValueError(f"{f.family} has no instance {instance!r}")
             tasks[instance] = task
     family = {i: f.family for f in spec.families for i in f.instances}
-    return Benchmark(spec, sha256_text(text), tasks, family, by_family.__getitem__)
+    return Benchmark(spec, sha256_text(text), tasks, family, _by_ref(tasks.values()))
 
 
 def cells(spec: Spec, conditions: Sequence[str]) -> list[Cell]:
@@ -232,8 +245,9 @@ def _discover(bench: Benchmark, runs_dirs: Sequence[Path]) -> list[_Found]:
             raise ValueError(f"{folder}: cell {cell} is in the runs dirs twice")
         m = manifests.get(path)
         if m is not None:
-            want = (key[0], instance_hash(bench.tasks[cell.instance]), cell.seed)
-            got = (m.task_ref.partition("@")[0], m.instance_hash, m.cfg.seed)
+            task = bench.tasks[cell.instance]
+            want = (task.ref, instance_hash(task), cell.seed)
+            got = (m.task_ref, m.instance_hash, m.cfg.seed)
             if got != want:
                 raise ValueError(f"{path} ran {got}, not its cell {want}")
         name = folder.name if path == folder else f"{folder.name}/{path.name}"

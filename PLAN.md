@@ -1,6 +1,6 @@
 # PLAN.md: the single state file
 
-**Current:** S0 in progress (the user gave the go on 2026-09-26). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01, S0-SYS-02 (#115), S0-ROOT-07 (#114), S0-CON-01 (#116), S0-MOD-01 (#113, provisional: `serve-attest-local` pending the user's go), S0-ROOT-08 (#117), S0-SYS-03 (#118), S0-SYS-04 (#120), S0-SYS-05 (#121), S0-MOD-02 (#119), S0-ROOT-09 (#122), S0-SYS-06 (#123), S0-ROOT-10 (#127), S0-ROOT-11 (#128), S0-SYS-08 (#130, #138), S0-SYS-07 (#133). **In progress:** S0-ROOT-05 (merge point 1): the re-run on S0-SYS-07/08 is done; a follow-up S0-SYS-08 PR (#138) separated the identity and timer strike counters, and the runs after it still ended `abandoned`; a second follow-up (S0-SYS-07: the identity hold flow and the cancelled-stream record) comes before the next re-run; no bundle is committed yet; S0-ROOT-13 (this PR). **Blocked:** S0-ROOT-12 (held for the user: auto-mode refused the probe-script edit; #129 CI red). **In flight** (merged only at the gate, §0.1): #124, #125, #126, #131, #132, #134, #135, #136, S1-SYS-10 (#137). **Last closed stage:** none. **Contract version:** v1 (ADR-0004; fingerprints `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`, `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490`).
+**Current:** S0 in progress (the user gave the go on 2026-09-26). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01, S0-SYS-02 (#115), S0-ROOT-07 (#114), S0-CON-01 (#116), S0-MOD-01 (#113, provisional: `serve-attest-local` pending the user's go), S0-ROOT-08 (#117), S0-SYS-03 (#118), S0-SYS-04 (#120), S0-SYS-05 (#121), S0-MOD-02 (#119), S0-ROOT-09 (#122), S0-SYS-06 (#123), S0-ROOT-10 (#127), S0-ROOT-11 (#128), S0-SYS-08 (#130, #138), S0-SYS-07 (#133, #140 follow-up item 1), S0-ROOT-13 (#139), S0-ROOT-05's gate bundles (#141); after the gate: S1-SYS-09 (#134), S1-SYS-07 (#131), S1-SYS-08 (#136), S1-MOD-01 part A (#124), S1-CON-01 (#142), S1-MOD-02 (#135), S1-SYS-16 (#144), S1-SYS-04 (#143), S1-MOD-04 (#145), S1-SYS-01 (#126), S1-SYS-17 (#146), S1-SYS-10 (#137). **In progress:** S0-ROOT-05 (merge point 1): the gate bundles are committed (#141); the principal session (U) is pending; S0-SYS-03…08 stay `provisional` (S0-ROOT-05 "After"); S0-ROOT-14 (this PR). **Held for the user:** S0-ROOT-12 (#129: auto-mode refused the probe-script edit; CI red); S0-SYS-07 follow-up item 2 (the cancelled-stream record; uncommitted, in a `git stash` of `../pl-wt/S0-SYS-07B`); #125's G run (S0-MOD-03). **In flight:** #132, #125 (held), #129 (held), S1-SYS-03, S1-SYS-18. **Last closed stage:** none. **Contract version:** v1 (ADR-0004; ADR-0007 additive, no fingerprint change; fingerprints `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`, `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490`).
 
 **Sessions:** a main root (business) with up to five lane-lead sub-sessions (L-CORE and the four product lanes P-WEB, P-API, P-OBS, P-TOOLS), plus a top-level model root (ML) for the MOD lane, run in parallel (user decision 2026-09-26; §0.1, §0.2, `CLAUDE.md`).
 
@@ -86,7 +86,7 @@ Legend:
 ### 0.5 Root-run tasks and the reality rule
 - **L, G and U work is executed by the root** (or CI), never by an implementer. Implementers get recorded bundles from `evidence/` through `tests/support/recorded.py`, and fakes from `tests/support/fakes.py`.
 - **Keys:** `.env` is never copied into a worktree.
-- **Acceptance that mentions a model** names a real bundle that passes `make evidence-check --claim`: the provenance chain, echoed served model, request ids, response shas, attestation, fingerprint and P3 (ARCHITECTURE §14).
+- **Acceptance that mentions a model** names a real bundle that passes `make evidence-check RUN=<dir> MODE=claim`: the provenance chain, echoed served model, request ids, response shas, attestation, fingerprint and P3 (ARCHITECTURE §14).
 - **Tests prove logic; bundles prove reality.** A stubbed pass cannot close a model-touching task.
 
 ### 0.5a Delegated decision authority (user grant 2026-09-26)
@@ -95,9 +95,9 @@ Legend:
 
 ### 0.6 Tripwires (stop and decide)
 - Under §0.5a the main root may adjust only the **numeric caps** (PR counts, code-size limits) and records each change under "Decisions changed". The mechanism tripwires — contract discipline, red signals, no new reality, fallback bans — are never waived by a session.
-- **PR count:** S0 > 21 PRs, S1 > 26, S2 > 10, S3 > 10. Root evidence PRs and ROOT docs/harness PRs are excluded (root decision under §0.5a, 2026-09-26).
-  - S0: 16 → 18 (user decision 2026-09-26); 18 → 19, because S0-ROOT-05's fix work splits into S0-SYS-07 and S0-SYS-08 on disjoint paths (root decision under §0.5a, 2026-09-26); 19 → 20 for the S0-SYS-08 follow-up PR that separates identity strikes from timer strikes (root decision under §0.5a, 2026-09-27); 20 → 21 for the S0-SYS-07 follow-up PR (the identity hold flow and the cancelled-stream record) (root decision under §0.5a, 2026-09-27).
-  - S1: 14 → 25 (14 + 7 + 5 − 1): the product lanes add seven S1 PRs; S1-SYS-14, S1-MOD-04, S1-CON-01, S1-CON-02 and S1-MOD-01 part B add five; S1-SYS-06 is superseded (−1) (root decisions under §0.5a, 2026-09-26); 25 → 26 for S1-SYS-15 (root decision under §0.5a, 2026-09-27).
+- **PR count:** S0 > 22 PRs, S1 > 31, S2 > 10, S3 > 10. Root evidence PRs and ROOT docs/harness PRs are excluded (root decision under §0.5a, 2026-09-26).
+  - S0: 16 → 18 (user decision 2026-09-26); 18 → 19, because S0-ROOT-05's fix work splits into S0-SYS-07 and S0-SYS-08 on disjoint paths (root decision under §0.5a, 2026-09-26); 19 → 20 for the S0-SYS-08 follow-up PR that separates identity strikes from timer strikes (root decision under §0.5a, 2026-09-27); 20 → 21 for the S0-SYS-07 follow-up PR (the identity hold flow and the cancelled-stream record) (root decision under §0.5a, 2026-09-27); 21 → 22 because that follow-up splits: item 1 (the identity hold flow) shipped as #140, and item 2 (the cancelled-stream record) comes as its own PR (root decision under §0.5a, 2026-09-27).
+  - S1: 14 → 25 (14 + 7 + 5 − 1): the product lanes add seven S1 PRs; S1-SYS-14, S1-MOD-04, S1-CON-01, S1-CON-02 and S1-MOD-01 part B add five; S1-SYS-06 is superseded (−1) (root decisions under §0.5a, 2026-09-26); 25 → 26 for S1-SYS-15 (root decision under §0.5a, 2026-09-27); 26 → 31 (26 + 5): S1-SYS-16, S1-SYS-17, the S1-MOD-02 follow-up PR, S1-CON-03 and S1-SYS-18 add one each (root decisions under §0.5a, 2026-09-27).
   - A probe PR that only adds a probe script and its ADR data (e.g. S0-ROOT-12) counts as a root evidence PR and is excluded (root decision under §0.5a, 2026-09-26).
 - **Code size:**
   - `src/` Python over 6,300 lines at S0 close, over 9,000 at S1 close, or over 7,000 at S3 close (S0 3,700 → 6,300 and S1 5,800 → 9,000, user decision 2026-09-26), counted in non-blank lines (user decision 2026-09-26);
@@ -106,6 +106,7 @@ Legend:
   - web TypeScript over 1,500 lines through S1;
   - S1-SYS-08 (P-WEB): a cap of 850 changed lines excluding tests and the lockfile (M = 700 → 850); the TypeScript cap of 1,500 is unchanged, and code is never reformatted to fit a cap (root decision under §0.5a, 2026-09-26);
   - `serving/` + `training_jobs/` over 900 lines (700 → 900, user decision 2026-09-26; reformat of serving/), counted in non-blank lines like `src/` (root decision under §0.5a, 2026-09-26). Pre-approved up to 1,000 non-blank lines for S1-MOD-01 part B only if the 4B app cannot fit by reusing the 9B app with parameters; the PR states the reason and the final count (root decision under §0.5a, 2026-09-26).
+  - Size exceptions accepted (root decisions under §0.5a, 2026-09-27): #126 (S1-SYS-01) at 1,317 changed lines excluding tests, over L = 1,200 (a numeric cap; the growth is the requested authority hardening); #143 (S1-SYS-04) at 726 `src/` lines, over M = 700. S1-SYS-08's 850 and S1-MOD-02's re-size to L stand as recorded above and in its block.
   - A module over 600 lines is a warning.
 - **No new reality:** after merge point 1 (S0-ROOT-05), two consecutive merged SYS/MOD PRs without a new real bundle or real artefact cited mean the root runs the smoke itself before merging anything else.
   - Only PRs that touch session-path code (the SYS agent paths and MOD) count; product-lane PRs (P-WEB, P-API, P-OBS, P-TOOLS) do not (user decision 2026-09-26).
@@ -170,7 +171,7 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
   - `tests/serving` test doubles live outside `tests/support` (AGENTS rule 5).
 - #115 (SYS): `fetch_external.sh` clones into a temp dir then moves; drop the stale `!.env.example` in `.gitignore`; pin the CI Python patch release; add shellcheck; amend S0-SYS-02's acceptance grep to the exclusions actually used.
 - Hook (#114): protect the worktree parent `../pl-wt`; track `pushd`; the heredoc false positive (text that mentions recursive deletes near data/external is blocked when shlex cannot parse it).
-- Process: S0 PR count: 14 merged (#108–#121) + S0-ROOT-09 = 15; S0-SYS-06 makes 16 (at the limit; the tripwire is > 16); S0-MOD-03 would be the 17th. Root evidence PRs (S0-ROOT-05/06) are excluded. Resolved: the tripwire is now > 19 (§0.6), so S0-MOD-03 is the 17th PR, S0-SYS-07 the 18th and S0-SYS-08 the 19th; S0-ROOT-10/11 are ROOT docs/harness PRs and S0-ROOT-12 a probe PR (excluded). Now: S0-SYS-08 (#130) and S0-SYS-07 (#133) are merged, S0-MOD-03 (#125) is pending, the S0-SYS-08 strike-counter follow-up (#138) is the 20th, and the S0-SYS-07 identity-hold follow-up the 21st (the tripwire is > 21, §0.6); S0-ROOT-13 is a ROOT docs PR (excluded).
+- Process: S0 PR count: 14 merged (#108–#121) + S0-ROOT-09 = 15; S0-SYS-06 makes 16 (at the limit; the tripwire is > 16); S0-MOD-03 would be the 17th. Root evidence PRs (S0-ROOT-05/06) are excluded. Resolved: the tripwire is now > 19 (§0.6), so S0-MOD-03 is the 17th PR, S0-SYS-07 the 18th and S0-SYS-08 the 19th; S0-ROOT-10/11 are ROOT docs/harness PRs and S0-ROOT-12 a probe PR (excluded). Now: S0-SYS-08 (#130) and S0-SYS-07 (#133) are merged, S0-MOD-03 (#125) is pending, the S0-SYS-08 strike-counter follow-up (#138) is the 20th, and the S0-SYS-07 identity-hold follow-up the 21st (the tripwire is > 21, §0.6); S0-ROOT-13 is a ROOT docs PR (excluded). Now: the S0-SYS-07 follow-up split, so #140 (item 1) is the 21st and item 2 (held for the user) will be the 22nd (the tripwire is > 22, §0.6); S0-ROOT-05's bundle PR (#141) is a root evidence PR, and S0-ROOT-13 (#139) and S0-ROOT-14 are ROOT docs PRs (excluded). S1: the tripwire is > 31 (§0.6).
 - #118 (SYS evidence):
   - a scripted bundle relabelled `real_http` still passes `--claim` (authenticity is provenance, ADR-0006);
   - extra files in a bundle are ignored;
@@ -218,7 +219,29 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
 - #135 (MOD, S1-MOD-02):
   - SYS: `utt.delivered` gains `t_start_ms`, so cp `time_to_heard` becomes computable (no ADR);
   - ARCHITECTURE §9.2 gives no roles for `term_months` and `credit`: align it with the metric.
+  - the clock-dilation guard (`tests/models/test_registry.py::test_no_clock_dilation_option_exists`) is a brittle regex; replace it with an AST check later.
 - #132 (MOD, S1-MOD-01 part B): D3 `serving/attest.py` hard-codes the 9B model id (`modal_vllm` overwrites it; consistent but fragile).
+- #126 (SYS, S1-SYS-01):
+  - **unsafe direction, must be calibrated with the Ear audit (S2-ROOT-03) before S1 close:** the read-back misses a later contradiction that carries no lexicon cue, so such an offer can stay confirmed (root decision under §0.5a, 2026-09-27);
+  - reverse containment in `guard/declass.py` stays strict until a protected-fact producer lands (S2); Unicode letter forms are accepted (root decisions under §0.5a, 2026-09-27);
+  - nit 9: `request_approval` has no status gate (harmless today).
+- #144 (SYS, S1-SYS-16):
+  - (1) `utt_ref` comes from `view.transcript`, not the render-trimmed window (pre-existing, rare);
+  - (2) no explicit test that an empty transcript gives `None`;
+  - (3) `session.ended.spend` is a third spend summary, and its `tokens` exclude `gpu_time`: S1-CON-03 decides the naming and typing;
+  - (4) no session-level test of the runaway crossing or of a `gpu_time` charge;
+  - (5) the test gate's `floor(True)` signal is fragile if reused;
+  - an evidence-check rule that a relay's `utt_ref` lies inside its request's view, keyed by bundle version so that bundles from before #144 stay green (root decision under §0.5a, 2026-09-27);
+  - 5 misattributed relays remain as recorded in `evidence/s0` (by `seq`): `20260927T011606Z-30d027` #39 and #122; `20260927T011721Z-dcb1a6` #156; `20260927T011839Z-a73470` #30 and #90. Their offline replay is still ok.
+- #145 (MOD, S1-MOD-04):
+  - N1 the test-family refusal relies on the spec's self-declared split until the split draw, because the kernel hardcodes `split="train"`;
+  - N2 `benchmark-report` stamps the report with HEAD even when the working tree is dirty;
+  - N3 `--family` in `BENCH_ARGS` overrides silently.
+- #146 (SYS, S1-SYS-17):
+  - N1 the `Task._ref` validator does not check the seed (an option: `run_session` asserts `instance_hash(resolve(task.ref)) == instance_hash(task)`);
+  - N2 a full-mode mapping without a ref gets the default-mode ref (tests only);
+  - N3 `\d` in `refs.py` matches Unicode digits: use `[0-9]`;
+  - N4 `task_ref` now carries the instance seed (`/api/bundles` already refuses test-split bundles).
 
 ---
 
@@ -478,7 +501,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** `make test`; `python -m proxyloop.cli rep-chat …` (root).
 - **Escalate if:** a behaviour needs a contract change.
 
-### S0-ROOT-05 MERGE POINT 1: the first real interaction — ROOT — S — flags L+U — doing (the first three live smokes failed; S0-SYS-07 and S0-SYS-08 merged; the re-runs are done; the S0-SYS-07 follow-up and another re-run come before the bundles are committed)
+### S0-ROOT-05 MERGE POINT 1: the first real interaction — ROOT — S — flags L+U — doing (the gate bundles are committed (#141); the principal session (U) is pending)
 - **Objective:** run the SYS kernel with Fast = `gpt-6-luna` and Slow = `gemini-3.8-flash`, both via TeamRouter (user decision 2026-09-26: during development the whole flow runs on this combination; the gate needs no GPU). The model root researches fine-tuned Qwen as Fast in parallel; once it merges, the system supports both, and the user chooses Luna or fine-tuned Qwen as Fast by config.
   - `make smoke-live FAMILY=cp-direct-discount CLAIM=0` ×3 (sim user, sim rep), with the Luna/Gemini model-selection flags that S0-SYS-08 defines (named as S0-SYS-08 names them);
   - 1 session in which the user types as principal (an unscripted opening);
@@ -491,7 +514,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Owned paths:** `evidence/s0/**`, `PLAN.md`.
 - **Deps:** S0-SYS-06; for the re-run, S0-SYS-07 and S0-SYS-08.
 - **Acceptance:**
-  - `make evidence-check RUN=… --offline` passes on ≥ 3 bundles (the smokes run with `CLAIM=0`, S0-SYS-08, until S1-SYS-14 scopes claims by Fast model);
+  - `make evidence-check RUN=…` (offline) passes on ≥ 3 bundles (the smokes run with `CLAIM=0`, S0-SYS-08, until S1-SYS-14 scopes claims by Fast model);
   - each bundle has ≥ 1 complete "relayed and used" chain (ARCHITECTURE §4.3);
   - ≥ 1 FastC sentence was released while a Slow step was in flight;
   - the dead-endpoint run exits non-zero with `session.ended{llm_unavailable}` and no later `utt.delivered`, and the `LLMUnavailable`/`llm.call` that ends it is on role `fast_cp`;
@@ -499,9 +522,10 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
   - the user's opening appears verbatim in `user.msg`.
 - **Re-run:** after S0-SYS-07 and S0-SYS-08 merge. Those two are not merge-at-gate: they unblock the gate.
 - **Runs so far** (root, 2026-09-27; Luna Fast + Gemini Slow, `CLAIM=0`): smokes `runs/20260927T004510Z-ab0a63`, `runs/20260927T004720Z-232834`, `runs/20260927T004814Z-db141c`; dead-endpoint run `runs/20260927T004935Z-99e63e`. Honest reading: the acceptance items these runs cover are met (the principal session is not among them), but every call ended `abandoned` before identity arrived (the shared strike counter counted both silence and `refuse_fact`). After #138: smokes `runs/20260927T005541Z-aeab91`, `runs/20260927T005713Z-4ce0ad`, `runs/20260927T005836Z-4cd024`, all `abandoned`. The agent deflected the identity request while it waited for the user (`deflect_fact_request` → `refuse_fact` strikes), and `4ce0ad` failed `make evidence-check --offline` (a failed `fast_cp` call records a response and usage). The bundles are held, not committed to `evidence/s0/`, until the S0-SYS-07 follow-up merges and the three smokes are re-run.
+- **Committed** (#141, root, 2026-09-27): after #140, smokes `runs/20260927T011606Z-30d027`, `runs/20260927T011721Z-dcb1a6` and `runs/20260927T011839Z-a73470` (all `abandoned` in IDENTIFY; offline ok) and the dead-endpoint run `runs/20260927T004935Z-99e63e`, now in `evidence/s0/`. Honest reading: the acceptance items these runs cover are met, task success is not reached, and they support no Qwen claim; the principal session (U) is pending. Slow now guides `hold_for_decision` then identify, but Luna FastC keeps delivering stale "I don't have those details" lines (→ `refuse_fact` strikes): read as hosted-Fast model/latency behaviour, with no further world or Slow tuning (Luna's settings are the user's, ADR-0010 on #129). The commit opened the gate for merge-at-gate PRs (§0.1), and "no new reality" (§0.6) is active from it.
 - **After:** S0-SYS-03…08 become `done` only on a bundle that passes `make evidence-check --claim` (§0.5): the Qwen@vllm train bundle of S0-MOD-03's run order, or the Luna gate bundles re-checked with `--claim` once S1-SYS-14 scopes claims. Until then they stay `provisional`.
 
-### S0-SYS-07 ROOT-05 live fixes: Slow and kernel — SYS (L-CORE) — L — flags L for the smoke (the root, or L-CORE inside an envelope) — provisional (merged in #133; until S0-ROOT-05)
+### S0-SYS-07 ROOT-05 live fixes: Slow and kernel — SYS (L-CORE) — L — flags L for the smoke (the root, or L-CORE inside an envelope) — provisional (merged in #133, #140; until S0-ROOT-05)
 - **Objective:** fix the failed smokes' Slow and kernel causes (handoff §3; each item a root decision under §0.5a, 2026-09-26):
   - (a) a shareable identity fact becomes public when its value appears verbatim in the cited `user.msg`; the Slow prompt lists the canonical fact keys (test-first; I4 review);
   - (e) no repeat f2s HOLD for an unchanged reason;
@@ -529,6 +553,8 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 
   Then the root re-runs the three smokes.
 
+  The follow-up split (root decision under §0.5a, 2026-09-27): item 1 (the identity hold flow) merged in #140. Item 2 (the cancelled-stream record) is held for the user: the auto-mode classifier blocked the implementer's test run after the `lanes.py` edit and its read of ADR-0006 twice; this was not worked around, and the uncommitted changes sit in a `git stash` of `../pl-wt/S0-SYS-07B`. It ships as its own PR. Until then a gate bundle that hits a mid-stream cancel fails offline for this known reason and is not used as gate evidence.
+
 ### S0-SYS-08 ROOT-05 live fixes: world — SYS (L-CORE) — M — flags L for the smoke (the root, or L-CORE inside an envelope) — provisional (merged in #130, #138; until S0-ROOT-05)
 - **Objective:** fix the failed smokes' world causes (handoff §3; each item a root decision under §0.5a, 2026-09-26):
   - (b) the Ear's classify schema takes a list of facts per utterance; residual parallel tool calls stay counted invalid under ADR-0005's world policy;
@@ -550,7 +576,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Known limitations:** a silent SimUser turn emits no event; identity patience and the timer shared one strike counter (separated in #138), so silence plus `refuse_fact` ended every first S0-ROOT-05 re-run call before identity arrived.
 - **Follow-up PR (#138):** separate identity strikes from timer strikes, test-first: the three recorded re-run sequences must not hang up, and three `refuse_fact` still do (root decision under §0.5a, 2026-09-27). Then the root re-runs the three smokes (S0-ROOT-05).
 
-### S0-MOD-03 `make pull-through` — MOD — M — flags L+G (root runs) — review (#125; merge at gate)
+### S0-MOD-03 `make pull-through` — MOD — M — flags L+G (root runs) — review (#125; held for the user: its G run needs a Qwen@vllm GPU lease)
 - **Objective:** `training/pull_through.py` and the `make pull-through MODE=full|verify` target, exactly as TRAINING §9 describes. The S0 label source is the base-9B turns from `evidence/s0/` (§9 E1). A trained-adapter LoRA slot in `serving/` (root decision 2026-09-26).
 - **Owned paths:** `src/proxyloop/training/pull_through.py`, `mk/mod.mk`, `tests/training/test_pull_through.py`, `serving/**`, and (per-task grant; #125 edits them) `training_jobs/{modal_train,sft}.py`.
 - **Deps:** one Qwen@vllm-Fast train bundle, S0-MOD-01, S0-MOD-02, S0-SYS-07, S0-SYS-08 (root decision under §0.5a, 2026-09-26).
@@ -616,10 +642,15 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Verify:** `uv run pytest tests/serving/test_probe_roles.py -q`; `make check`; `python scripts/mod/probe_roles.py --part slow|fast|ear` (root, L).
 - **Escalate if:** the spend projection exceeds the estimate, or a model cannot do its role's call shape at all (the user decides).
 
-### S0-ROOT-13 Record the S0-late build decisions — ROOT — S — review
+### S0-ROOT-13 Record the S0-late build decisions — ROOT — S — done (#139)
 - **Objective:** record the main root's and model root's decisions after S0-ROOT-11 merged in this file, EVAL.md §7 and §9.9, ARCHITECTURE §8, §9.5 and §10.1, and ADR-0009's status. Documentation only.
 - **Owned paths:** `PLAN.md`, `EVAL.md` (§7, §9.9), `ARCHITECTURE.md` (§8 "Slow context"; the §9.5 and §10.1 strike lines), `docs/decisions/0009-bounded-slow-context.md` (the Status line).
 - **Acceptance:** `make check` green; no measured number typed (AGENTS rule 13); each decision appears once.
+
+### S0-ROOT-14 Record the S1-early build decisions — ROOT — S — review
+- **Objective:** record the main root's decisions after S0-ROOT-13 merged (#139) in this file, EVAL.md §7 and ADR-0005 (one line); fix `AGENTS.md`'s two invalid `make evidence-check` lines, and add the `evidence-check` target to the `Makefile` (`RUN=<dir>`, `MODE=offline|claim`, offline by default), which runs `evidence.check.check_path` with no new `src/` code. Documentation only, apart from that target.
+- **Owned paths:** `PLAN.md`, `EVAL.md`, `AGENTS.md` (the two `make evidence-check` lines), `Makefile` (the one target), `docs/decisions/0005-world-model.md` (one line).
+- **Acceptance:** `make evidence-check RUN=evidence/s0/<run>` is ok on all four `evidence/s0` bundles; `make check` green; no measured number typed (AGENTS rule 13); each decision appears once.
 
 ---
 
@@ -637,7 +668,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Owned paths:** `tasks/splits/**`, `.github/workflows/ci.yml`.
 - **Acceptance:** a CI run fails on a planted split file.
 
-### S1-CON-01 `Approval.expires_ms` (ADR-0007) — CON — S — todo
+### S1-CON-01 `Approval.expires_ms` (ADR-0007) — CON — S — provisional (#142; `make pull-through MODE=verify` waits on #125)
 - **Objective:** add the private field `Approval.expires_ms`, with ADR-0007, so S1-SYS-01 can expire approval cards (root decision under §0.5a, 2026-09-26).
 - **Owned paths:** `src/proxyloop/contract/**`, `tests/contract/**`, `tests/golden/**`, `docs/decisions/0007-*.md`.
 - **Deps:** none.
@@ -653,7 +684,15 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Verify:** `uv run pytest tests/contract tests/golden tests/llm -q`.
 - **Escalate if:** a fingerprint changes.
 
-### S1-SYS-01 Guard v2 (pure) — SYS — L — review (#126; merge at gate)
+### S1-CON-03 Spend counters — CON (the root) — S — todo
+- **Objective** (root decision under §0.5a, 2026-09-27): the contract's `Spend` (today `micro_usd` and `by_role`, the priced subtotal) gains defaulted counters `unpriced_calls`, `gpu_time_calls` and `tokens` (tokens exclude `gpu_time` calls), so an all-unpriced run no longer reads as $0 (I10). The ADR (next free number) also decides the naming and typing of the `session.ended` spend totals that S1-SYS-16 writes as an interim.
+- **Owned paths:** `src/proxyloop/contract/**`, `tests/contract/**`, `tests/golden/**`, the ADR.
+- **Deps:** S1-SYS-16.
+- **Acceptance:** defaulted fields, so committed bundles still read; no renderer fingerprint change (goldens unchanged); `make pull-through MODE=verify` passes (root, §0.3).
+- **Verify:** `uv run pytest tests/contract tests/golden -q`; `make pull-through MODE=verify` (root).
+- **Escalate if:** a fingerprint changes.
+
+### S1-SYS-01 Guard v2 (pure) — SYS — L — done (#126; size exception, §0.6)
 - **Objective:** `guard/{terms,readback,mandate,authorize,capability,verify,status}.py` per ARCHITECTURE §9.1–§9.5:
   - read-back slots, lexicons and required fields;
   - the binding;
@@ -666,6 +705,15 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
   - the status reducer.
   - M3: a user denial for the same `terms_hash` at the current epoch beats an earlier grant and a covering mandate (root decision under §0.5a, 2026-09-26).
   - #126's next round (root decisions under §0.5a, 2026-09-26): `fold._fact` validates a shareable fact's `source_ref`; `guard/declass.py` must not let shareable values whitelist mandate bounds or protected values, with regression tests.
+  - The final authority rules (#126's review rounds; restrict-only; root decisions under §0.5a, 2026-09-27):
+    - a user denial of the same `terms_hash` at the current epoch wins over any grant and a covering mandate, whatever its expiry; expiry filters grants only, and any live granted approval grants; `expires_ms = None` is no capability (ADR-0007, fail closed);
+    - capability expiry = min(grant, offer, TTL); the fold refuses a capability already expired at mint;
+    - at most one released accept per offer revision (`terms_hash`): a consumed accept capability for it → `already_accepted`; a truncated accept (`NEEDS_REPLAN`) needs a new revision and a new approval;
+    - an accept mints only in `IN_CALL` (an allow-list, ARCHITECTURE §9.5): otherwise `not_in_call`, `already_committed` (`COMMITTED`, `EVIDENCE_PENDING`) or `case_closed` (terminal);
+    - one accept in flight per case (`accept_in_flight`; the fold refuses a second in-flight accept capability);
+    - after any released accept in the case, a mandate no longer grants `accept_offer`: an explicit approval is required;
+    - offer revisions only move forward: `_offer` refuses a revision ≤ the current one;
+    - `guard/screen.py` checks protected values in canonical forms, as `declass` does.
 - **Owned paths:** `src/proxyloop/guard/**` (except `declass.py`, which is granted only for the shareable-whitelist fix above; S1-SYS-03 edits it after S1-SYS-01 merges), `src/proxyloop/core/fold.py`, `tests/guard/**`, `tests/core/**` (#126 edits the fold). #126's branch merges `origin/main` after S0-SYS-07 merges.
 - **Deps:** S0-ROOT-05, S1-CON-01.
 - **Acceptance:**
@@ -697,10 +745,16 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
   - (8) an epoch bump between the POST and the kernel's decide → no approval.
 
   In addition, a hypothesis stateful test (500 interleavings) finds no `speak.released{accept}` with a fence raised or a stale epoch, and `seq` stays dense.
+
+  Also (root decisions under §0.5a, 2026-09-27, from #126 and #143):
+  - the 500-interleaving property also finds no second released accept per `terms_hash` and no release past a capability's `expires_ms`; the fold's `_released` rejects a capability past `expires_ms` (a one-line check);
+  - `accept_revoked`/`accept_truncated` come only from a real `speak.revoked` / a real truncated delivery; every accept line ends in exactly one `speak.released` or `speak.revoked` (held under a fence, expired while held and a stale epoch included), else the case wedges on `accept_in_flight`;
+  - the kernel evaluates Guard at the bus clock's now: a manual-clock case in which a grant expires between the last event and the accept call yields no `speak.released`;
+  - N6: on `x-user-mind-change`, with the agent silent after the card, `user.sim{stop}` is still emitted (the kernel calls `on_trigger` after `approver.decide`), and the kernel never delivers the triggering card's grant before the stop is delivered.
 - **Verify:** `uv run pytest tests/concurrency -q`.
 - **Escalate if:** a case needs a new event type (a contract change).
 
-### S1-SYS-03 Slow v2: authority tools, public/private summaries, declassification — SYS — M — flags L+G for the smoke — todo
+### S1-SYS-03 Slow v2: authority tools, public/private summaries, declassification — SYS — M — flags L+G for the smoke — doing
 - **Objective:**
   - the ARCHITECTURE §8 S1 tools;
   - `private_summary` required and `public_summary` declassified;
@@ -718,7 +772,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Verify:** `make test`; `make smoke-live FAMILY=x-out-of-envelope-approval` (root).
 - **Escalate if:** Slow systematically needs transcript text to act (relay-only is frozen: bring the evidence to the root).
 
-### S1-SYS-04 World for the slice: 3 families, accept path, approver, stop — SYS — M — flags L for the smoke — todo
+### S1-SYS-04 World for the slice: 3 families, accept path, approver, stop — SYS — M — flags L for the smoke — provisional (#143; size exception, §0.6; the root's hand negotiation and one real bundle per family pending)
 - **Objective:**
   - `tasks/families/{cp-hidden-fee-readback,x-out-of-envelope-approval,x-user-mind-change}.yaml`;
   - `cp-direct-discount` gains full mode;
@@ -726,6 +780,10 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
   - the deterministic approver through the endpoint semantics;
   - SimUser `stop` and `mind_change`;
   - a reference completability predicate per family.
+  - The approver and the stop (#143 review; root decisions under §0.5a, 2026-09-27):
+    - the approver denies an `incomplete_card` (a required slot missing; a missing fee is not $0) and an `unconfirmed` card, and never grants after that principal's stop;
+    - the SimUser emits the stop unprompted on its trigger (`after_card`); a trigger-fired stop's reply delay is drawn from [0.5, 2.5] s, below the approver's 3 s floor, so the stop always lands before the grant (fence-and-revoke is what the family tests);
+    - a plain stop reply must carry a phrase-level stop cue with a negation guard; a reply without one is a bounded, counted world regeneration (ADR-0005).
 - **Owned paths:** `src/proxyloop/env/**`, `tasks/families/**`, `tests/env/**`.
 - **Deps:** S1-SYS-01 (types only).
 - **Acceptance:**
@@ -741,6 +799,10 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
   - `make demo`.
   - The `HumanWebChannel` ingress interface (web↔API interface, root decision under §0.5a, 2026-09-26): `POST /api/cases/{id}/messages {text}` → `user.msg`; `POST /api/cases/{id}/rep {text}` → the cp partner's `utt.final`; an approvals queue that the kernel consumes, re-deciding with `guard.decide` and turning each post it accepts into `approval.decided`.
   - M1 (root decision under §0.5a, 2026-09-27): when the kernel's re-decide denies a posted approval, the kernel emits a restrict-only `action.denied{intent: "approval.post", reason}` (actor `kernel`) and wakes Slow (#137 verified that the contract accepts an `action.denied` with a cited cause).
+  - The contract fact behind M1: `action.denied` requires `cause_ids`; the kernel's denial cites the card's `approval.requested` (root decision under §0.5a, 2026-09-27).
+  - N-c (root decision under §0.5a, 2026-09-27): the kernel decides on the board at emit time (`guard.decide` reads `bb.t_ms`; the fold's `_approval_decided` uses the decided event's `t_ms`), so a card that expires in between never leaves a folded post whose decide then throws.
+  - N-d (root decision under §0.5a, 2026-09-27): `post_approval` is atomic: the enqueue succeeds or raises (never a 503 with a decided card).
+  - The sim approver's wiring (root decision under §0.5a, 2026-09-27; `env/user/approver.py`, #143): on `approval.requested` the kernel calls `approver.decide(card, offer)`, and on `mandate.proposed` `approver.decide_mandate(mandate)`; `delay_s` later it emits `approval.post` (actor `sim_approver`) into the approvals queue, where the kernel re-decides it and emits `approval.decided{by: sim_approver}`. The stop's ordering against the grant (N6) is S1-SYS-02's acceptance.
   - The four kernel asks from #134 (S1-SYS-09, routed to L-CORE by the main root, 2026-09-26): `kernel/web.py` composes a web session through a serve `Case` protocol; the approvals ingress; `_git_sha()` cached; the tokenizer loaded once, through the `tokenizer=` keyword in `session.py` (no `lanes.py` grant).
   - Live runs are written to `runs/live/<case_id>/<run_id>` (the S1-SYS-09 listing reads one extra level for `runs/live` only; root decision under §0.5a, 2026-09-26).
 - **Owned paths:** `src/proxyloop/kernel/{channels,session,web}.py`, `tests/kernel/**`, `mk/sys.mk`.
@@ -754,7 +816,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Deps:** S0-ROOT-05.
 - **Acceptance:** a real smoke shows overlapping Fast and Slow spans (span JSON + a screenshot in the PR); concurrency case 6 passes.
 
-### S1-SYS-07 Web toolchain and replay UI — SYS (P-WEB) — M — review (#131; merge at gate)
+### S1-SYS-07 Web toolchain and replay UI — SYS (P-WEB) — M — done (#131; the real-bundle e2e passed on `evidence/s0` bundles dcb1a6 and a73470)
 - **Objective:**
   - a Vite + TypeScript toolchain, lint and unit tests (ARCHITECTURE §3);
   - the replay UI: a timeline on `t_ms` (1×/4×); lanes User chat, Rep, Fast-U, Fast-C, Slow, Guard; a god-view (stream = world); a prompt drill-down from `prompts.jsonl` (never re-rendered, AGENTS rule 4);
@@ -770,7 +832,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Verify:** `make web-test`.
 - **Escalate if:** the UI needs data that is neither in the events nor in `prompts.jsonl`.
 
-### S1-SYS-08 Live chat UI shell, approval card, rep page — SYS (P-WEB) — M — review (#136; merge at gate)
+### S1-SYS-08 Live chat UI shell, approval card, rep page — SYS (P-WEB) — M — done (#136)
 - **Objective:**
   - the live chat UI shell: the replay components over a mocked WebSocket;
   - a per-lane model dropdown that lists only `real_http` models;
@@ -781,7 +843,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Acceptance:** Playwright over the mocked WebSocket: the card appears on `approval.requested`, and approve posts what S1-SYS-10's contract requires; the dropdown lists no non-`real_http` model; the rep page sends a rep utterance.
 - **Verify:** `make web-test`.
 
-### S1-SYS-09 API: bundles, replay endpoints, WebSocket stream, session-start seam — SYS (P-API) — M — review (#134; merge at gate)
+### S1-SYS-09 API: bundles, replay endpoints, WebSocket stream, session-start seam — SYS (P-API) — M — done (#134)
 - **Objective:**
   - a FastAPI app (`serve/api.py`): bundle listing and replay endpoints (events; prompts by sha);
   - the WebSocket live event stream (ARCHITECTURE §14);
@@ -795,7 +857,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Verify:** `uv run pytest tests/serve -q`.
 - **Escalate if:** the WebSocket adds work to the TTFS path, or the seam needs a kernel change.
 
-### S1-SYS-10 Approval endpoint security layer — SYS (P-API) — M — review (#137; merge at gate)
+### S1-SYS-10 Approval endpoint security layer — SYS (P-API) — M — done (#137)
 - **Objective:** the approval endpoint and `serve/csrf.py` per ARCHITECTURE §9.6 (C15): case-scoped; 127.0.0.1 only; CSRF double-submit; an Origin check; single use (a second POST → 409 `already_decided`); bound to (approval id, terms hash, epoch). It runs `guard.decide` as a pre-check: on a Denial it returns 409 and emits no event; on success it emits only `approval.post`. The kernel re-runs `guard.decide` in its own loop and emits `approval.decided` (ARCHITECTURE's fixed emitter; S1-SYS-02) (root decision under §0.5a, 2026-09-26). Security tests first.
   - The web↔API interface (P-WEB's proposal, adopted; root decisions under §0.5a, 2026-09-26): `case_id = run_id` in S1; `GET /live/{case_id}` sets the session and `pl_csrf` cookies; every POST carries `X-CSRF-Token` (double submit) and passes the Origin check; `POST /api/cases/{id}/approvals/{approval_id} {decision, terms_hash, authority_epoch}` → 200, 403 `csrf|origin`, or 409 `already_decided|stale`. The message and rep POSTs follow the same rules and reach the kernel through `HumanWebChannel` (S1-SYS-05).
   - A server-filtered `WS /ws/rep/{case_id}` for the human rep page (I4; P-WEB escalation): an allow-list of cp `utt.delivered` (`text_heard`), the partner's `utt.final` and cp `chan.*`; a separate rep cookie and role, so user and rep POSTs are not interchangeable. `/ws/live` stays user/operator only, on 127.0.0.1.
@@ -849,7 +911,29 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Verify:** `make test`.
 - **Escalate if:** an I4 publication question.
 
-### S1-MOD-01 Model registry, per-lane swap, 4B serving, hosted/teacher Fast, FSM, teacher-repair — MOD — L — flags L+G for the smoke — review (#124 part A, #132 part B; merge at gate)
+### S1-SYS-16 Relay attribution at request time and unpriced spend totals — SYS (L-CORE) — S — done (#144)
+- **Objective** (root decision under §0.5a, 2026-09-27; the attribution bug is confirmed in `evidence/s0` dcb1a6, 30d027 and a73470):
+  - a relay's `utt_ref` is the newest partner line of the request's own view, not the board at completion (both lanes);
+  - `session.ended` carries the ledger totals (the priced subtotal, by role, unpriced calls, unpriced by role, `gpu_time` calls, tokens) as an interim until S1-CON-03; no contract change.
+- **Owned paths:** `src/proxyloop/kernel/{lanes,session}.py`, `src/proxyloop/llm/spend.py`, `tests/{kernel,llm}/**`, and (granted) `tests/support/sessions.py` (test plumbing only).
+- **Acceptance:** tests: a user line and a rep line landing mid-generation are not credited to the relay (both fail before the fix); the totals count unpriced calls beside the priced subtotal and match the `spend.charged` events.
+- **Known:** 5 relays in `evidence/s0` stay misattributed as recorded, and no evidence-check rule checks `utt_ref` yet (§0.9).
+
+### S1-SYS-17 Instance and mode selection via `task_ref` — SYS (L-CORE) — S — done (#146)
+- **Objective** (root decision under §0.5a, 2026-09-27):
+  - the `task_ref` grammar `family@version[:mode][#seed]`; the default mode and seed 0 keep today's `family@version` refs valid, so committed bundles still resolve;
+  - `env.tasks.resolve(task_ref)`; the CLI's `session` and `rep-chat` gain `--mode` and `--instance`, and `make smoke-live` passes `MODE` and `INSTANCE`;
+  - the kernel writes `task.ref` (one line in `kernel/session.py`).
+- **Owned paths:** `src/proxyloop/env/tasks/**`, `src/proxyloop/cli.py`, `mk/sys.mk`, `src/proxyloop/kernel/session.py` (one line), `tests/{env,kernel}/**`.
+- **Deps:** S1-SYS-16, S1-SYS-04. It is a CON task instead if the bundle shape changes.
+- **Acceptance:** tests: the grammar round-trips; the `evidence/s0` bundles resolve to their `instance_hash`; a seeded full-mode bundle resolves.
+- **Verify:** `make test`.
+
+### S1-SYS-18 Web↔API wiring drift test — SYS (P-WEB) — M — doing
+- **Objective** (root decision under §0.5a, 2026-09-27): a drift test of the web↔API wiring: the real `create_app` serves the built web same-origin, behind a stub `Case` in `tests/support/web_wiring.py`, and a Playwright `wiring` project drives it. It uses synthetic events in a temp dir only; `evidence/s0` is read-only.
+- **Owned paths:** `apps/web/**`, `tests/web/**`, `tests/support/web_wiring.py`.
+
+### S1-MOD-01 Model registry, per-lane swap, 4B serving, hosted/teacher Fast, FSM, teacher-repair — MOD — L — flags L+G for the smoke — review (part A merged in #124; part B #132 in review)
 - **Objective:**
   - `models/registry.py` and `conditions.yaml` (C2, C3, C4, C5, T, F, R); C5 is Fast = `gpt-6-luna` via TeamRouter, hosted and labelled (EVAL §4.1);
   - a fine-tuned Qwen adapter entry (through S0-MOD-03's LoRA slot); the Fast of each lane is selectable by config;
@@ -871,11 +955,12 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Verify:** `make test`; `make smoke-live FAMILY=cp-direct-discount FAST=<cond>` (root).
 - **Escalate if:** the hosted-Fast path needs different prompt text (I3: it must not).
 
-### S1-MOD-02 Metrics v1, report and statistics — MOD — L (re-sized from M, root decision under §0.5a, 2026-09-26) — review (#135; merge at gate)
+### S1-MOD-02 Metrics v1, report and statistics — MOD — L (re-sized from M, root decision under §0.5a, 2026-09-26) — done (#135; a follow-up PR is queued below)
 - **Objective:** the EVAL §7 metrics marked S1, plus `stats.py` (Wilson, cluster bootstrap), `report.py` (`pl.report/1`) and `matrix.py` (interleaved blocks, integrity gate).
   - Metric semantics are decided before any data (root decisions under §0.5a, 2026-09-26, on the model root's proposals) and written in EVAL §7: `relay_precision` (value-only), `offer_capture`, `unsupported_numbers`, approval (b) and the episode outcome classes.
   - `matrix.py` aborts the matrix on `LLMUnavailable`, `RunawaySpend` and `p3_failed`; a `WorldError` is an errored cell; resume is per cell and never re-runs a `budget` cell (root decisions under §0.5a, 2026-09-26).
   - Metrics load a task by `task_ref` with an `instance_hash` check, and refuse test-split families before the unseal (AGENTS rule 11; root decision under §0.5a, 2026-09-26).
+  - **Follow-up PR** (the model root, after S1-SYS-17 merges; root decision under §0.5a, 2026-09-27): `metrics._task` resolves the full `task_ref` (mode and seed) through the injected loader (`env.tasks.resolve`), so seeded and full-mode bundles load the instance they ran. It must land before any mode or instance bundle feeds the metrics (a major from #146's review). Owned paths as above.
 - **Owned paths:** `src/proxyloop/eval/**`, `tests/eval/**`, `mk/mod.mk`.
 - **Deps:** S0-ROOT-05. Its branch merges `origin/main` after #125 (S0-MOD-03) merges (shared `mk/mod.mk`).
 - **Acceptance:**
@@ -891,7 +976,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Deps:** S1-SYS-01…05, S1-MOD-01, S1-MOD-02.
 - **Acceptance:** the integrity gate passes on the 400 episodes (≥ 95 % run without error, and errors count as failures); the report is generated from bundles.
 
-### S1-MOD-04 Fast benchmark: Luna vs base Qwen vs fine-tuned Qwen — MOD — M — flags L+G (root runs) — todo
+### S1-MOD-04 Fast benchmark: Luna vs base Qwen vs fine-tuned Qwen — MOD — M — flags L+G (root runs) — provisional (#145, code only; the root's benchmark run pending; C5 raises a loud `KeyError` until #132 pins its id)
 - **Objective:** the user's final-version requirement (user decision 2026-09-26): a benchmark spec and a generated report (`docs/results/`, AGENTS rule 13) comparing C5, C2 and C1 on the same families and seeds through `run_session`: task success, authority/Guard violations, parse-issue rate, TTFT/latency, $/episode, each per its EVAL §7 definition.
   - Before the unseal, only pilot/dev families (I9).
   - The task defines its own make target in `mk/mod.mk`.

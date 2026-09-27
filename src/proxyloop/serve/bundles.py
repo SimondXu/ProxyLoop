@@ -1,10 +1,11 @@
 """Which bundles exist and which may be served (ARCHITECTURE §14).
 
 A bundle is a directory directly under a configured root that holds
-``events.jsonl``. Held-out data has two barriers (AGENTS rule 11): ``sealed``
-refuses any path through ``evidence/s4/test`` without opening it, and a run
-whose split is ``test``, or not yet known, is never served. URLs in served
-bytes are redacted (AGENTS rule 15).
+``events.jsonl``; live runs sit one level deeper, under a ``runs`` root only:
+``runs/live/<case_id>/<run_id>``. Held-out data has two barriers (AGENTS rule
+11): ``sealed`` refuses any path through ``evidence/s4/test`` without opening
+it, and a run whose split is ``test``, or not yet known, is never served. URLs
+in served bytes are redacted (AGENTS rule 15).
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ URL = re.compile(rb"""https?://[^\s"'\\<>]+""", re.IGNORECASE)
 REDACTED = b"<redacted-url>"
 RUN_ID = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
 SEALED = ("evidence", "s4", "test")  # held-out bundles, sealed until the report
+LIVE = ("runs", "live")  # <runs root>/live/<case_id>/<run_id>
 
 
 def redact(data: bytes) -> bytes:
@@ -95,18 +97,33 @@ class Run:
         return known != {None} and "test" not in known
 
 
+def _dirs(parent: Path) -> list[Path]:
+    """Subdirectories with a run-id-shaped name, none sealed: nothing inside a
+    sealed one is touched."""
+    return [
+        child
+        for child in parent.iterdir()
+        if re.fullmatch(RUN_ID, child.name) and not sealed(child) and child.is_dir()
+    ]
+
+
+def _candidates(root: Path) -> list[Path]:
+    """Depth one, plus depth two under ``runs/live`` (live cases)."""
+    found = _dirs(root)
+    live = root / LIVE[1]
+    if root.name == LIVE[0] and live in found:
+        found += [run for case in _dirs(live) for run in _dirs(case)]
+    return found
+
+
 def _found(roots: Sequence[Path]) -> dict[str, Run]:
     runs: dict[str, Run] = {}
     for root in roots:
         if sealed(root) or not root.is_dir():
             continue
-        for child in root.iterdir():
+        for child in _candidates(root):
             run = Run(child.name, root, child)
-            if child.name in runs or not re.fullmatch(RUN_ID, child.name):
-                continue
-            if sealed(child):  # before anything inside it is touched
-                continue
-            if run.file(EVENTS) is not None:
+            if child.name not in runs and run.file(EVENTS) is not None:
                 runs[child.name] = run
     return runs
 

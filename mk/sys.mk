@@ -26,12 +26,15 @@ llm-smoke:
 # FAST_CP_BASE_URL: the dead-endpoint smoke only, a dead server root for fast_cp. The
 # redirect is not recorded in the bundle, so it needs CLAIM=0: with the default CLAIM the
 # CLI refuses it (a parser error, non-zero exit).
+# MODE and INSTANCE pick the family mode and the seeded instance (unset: the family's default
+# mode and instance 0, the file itself); the manifest's task_ref names both.
 # CLAIM=0 checks the bundle offline instead of --claim (a hosted Fast); removed by S1-SYS-14.
 WORLD_EFFORT ?= low
 CLAIM ?= 1
 .PHONY: smoke-live replay-cli
 smoke-live:
 	uv run python -m proxyloop.cli session --family $(FAMILY) --user sim --rep sim \
+		$(if $(MODE),--mode $(MODE),) $(if $(INSTANCE),--instance $(INSTANCE),) \
 		--world-effort $(WORLD_EFFORT) \
 		$(if $(EAR_EFFORT),--ear-effort $(EAR_EFFORT),) \
 		$(if $(MOUTH_EFFORT),--mouth-effort $(MOUTH_EFFORT),) \

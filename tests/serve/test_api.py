@@ -15,7 +15,7 @@ from tests.serve.client import get as _get
 from tests.serve.conftest import URL, Bundles
 
 from proxyloop.contract.bundle import EVENTS, MANIFEST, PROMPTS
-from proxyloop.serve import api
+from proxyloop.serve import api, stream
 
 
 def _lines(path: Path) -> list[bytes]:
@@ -136,7 +136,7 @@ def test_the_socket_follows_a_live_run_line_by_line(
         half = len(lines[3]) // 2
         log.write(lines[3][:half])  # a partial line waits for its newline
         log.flush()
-        time.sleep(3 * api.POLL_S)
+        time.sleep(3 * stream.POLL_S)
         log.write(lines[3][half:] + b"\n")
         log.flush()
         got.append(receive(ws)["text"].encode())
