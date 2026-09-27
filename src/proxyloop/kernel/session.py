@@ -6,6 +6,7 @@ bus clock's now: Guard's "now" is ``bb.t_ms``, so no rule runs on a stale clock.
 from __future__ import annotations
 
 import asyncio
+import functools
 import secrets
 import subprocess
 from collections import Counter
@@ -13,7 +14,6 @@ from collections.abc import AsyncIterator, Callable, Coroutine, Mapping, Sequenc
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from types import CoroutineType
 from typing import Any, Literal, cast
 
 from proxyloop.contract import CONTRACT_VERSION, llm
@@ -31,20 +31,20 @@ from proxyloop.contract.state import Blackboard, CaseStatus
 from proxyloop.contract.views import Trigger
 from proxyloop.core.bus import Bus, Subscriber
 from proxyloop.core.clock import Clock, WallClock
-from proxyloop.env.counterparty.simrep import RepTurn, SimRep
 from proxyloop.env.tasks.loader import instance_hash
 from proxyloop.env.tasks.schema import Task
-from proxyloop.env.user.simuser import SimUser
 from proxyloop.env.world import World, WorldError
 from proxyloop.evidence.reality import role_refs
 from proxyloop.kernel.channels import (
     Channel,
-    End,
     HumanChannel,
     Incoming,
-    SimUserChannel,
+    make_channels,
     read_stdin,
 )
+from proxyloop.kernel.channels import ChannelSpec as ChannelSpec
+from proxyloop.kernel.channels import SimRepChannel as SimRepChannel
+from proxyloop.kernel.channels import SimUserChannel as SimUserChannel
 from proxyloop.kernel.fence import Authority
 from proxyloop.kernel.lanes import PROFILE, FastLane, load_tokenizer, p3
 from proxyloop.kernel.speaker import Sleep, Speaker
@@ -61,9 +61,7 @@ from proxyloop.slow.loop import SlowLoop
 DISCLOSURE = "Hello, this is an AI assistant calling on behalf of the account holder."
 PROJECTED = (900_000, 400)  # tokens, calls per episode (guard at 3x): provisional until
 # the root re-derives both from smoke #2 bundles and TeamRouter prices (S1-SYS-29)
-ChannelSpec = Literal["sim", "human"] | Channel
 ClientFactory = Callable[[llm.LLMRole, llm.ModelRef, RecordSink], llm.LLMClient]
-type Turn = CoroutineType[Any, Any, None]
 PromptKind = Literal["view", "prompt", "messages", "response"]
 P3 = Literal["pass", "fail", "not_applicable"]
 REAL = llm.AdapterKind.REAL_HTTP
@@ -105,42 +103,6 @@ class _Loud:  # The session dies the moment one of its endpoints does
             raise
 
 
-class SimRepChannel(Channel):  # hears text_heard; ticks on a free floor
-    def __init__(self, rep: SimRep) -> None:
-        super().__init__()
-        self._rep = rep
-
-    def send(self, text: str | None, utt_id: str, cause: str, t_ms: int) -> Turn:
-        heard = (
-            self._rep.on_agent_utterance(utt_id, text, cause, t_ms) if text else None
-        )
-        return self._run(heard)
-
-    def tick(self, t_ms: int) -> Turn:
-        return self._run(self._rep.tick(t_ms))
-
-    def floor(self, free: bool, t_ms: int) -> None:
-        self._rep.floor(free, t_ms)
-
-    def _run(self, turn: Coroutine[Any, Any, RepTurn] | None) -> Turn:
-        self.composing(1)  # busy from the spawn: a tick never overlaps a turn
-
-        async def run() -> None:
-            try:
-                done = await turn if turn else None
-                if done is None:
-                    return
-                end: End = ("hangup" if done.strike else "closed") if done.ended else ""
-                if done.lines or end or done.strike:
-                    lines = tuple((text, ev) for text, ev in done.lines)
-                    inc = Incoming(lines, strike=done.strike, end=end)
-                    self.incoming.put_nowait(inc)  # queued before it is quiet
-            finally:
-                self.composing(-1)
-
-        return run()
-
-
 class _WorldSink:
     def __init__(self, k: Kernel) -> None:
         self._k = k
@@ -175,6 +137,10 @@ def _outcome(
     return cast(SessionEnd, leaves[0]).reason, None
 
 
+def new_run_id() -> str:
+    return f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{secrets.token_hex(3)}"
+
+
 def _files(attest: dict[str, Any] | None) -> dict[str, str] | None:
     if attest is None:  # /pl/attest as file -> sha256: shards, tokenizer, adapters
         return None
@@ -183,6 +149,7 @@ def _files(attest: dict[str, Any] | None) -> dict[str, str] | None:
     return {f"{g}/{n}": v for g, files in groups.items() for n, v in files.items()}
 
 
+@functools.cache  # once per process: a web server starts many runs
 def _git_sha() -> str:
     git = ["git", "rev-parse", "HEAD"]
     done = subprocess.run(
@@ -202,6 +169,7 @@ class Kernel:
         sleep: Sleep,
         clients: ClientFactory | None,
         tok: ChatTokenizer | None,
+        run_id: str | None = None,
     ) -> None:
         if set(cfg.ablations) - _REPAIR or cfg.slow_view is not SlowViewMode.RELAY_ONLY:
             raise ValueError("ablations other than R's arrive with S3-SYS-01")
@@ -236,7 +204,7 @@ class Kernel:
         fast = [self.clients.get(r) for r in ("fast_user", "fast_cp")]
         vllm = any(c is not None and c.ref.endpoint == "vllm" for c in fast)
         self.tok = tok if tok is not None or not vllm else load_tokenizer()
-        self.run_id = f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{secrets.token_hex(3)}"
+        self.run_id = run_id or new_run_id()
         self.path = runs_dir / self.run_id
         self.path.mkdir(parents=True)
         self.bus = Bus(self.path / b.EVENTS, self.run_id, clock)
@@ -245,7 +213,7 @@ class Kernel:
         teacher = self.clients.get("teacher")  # condition R: evaluation, 0 resamples
         self.teacher = TeacherRepair(teacher, 0) if teacher is not None else None
         self.world = World(_WorldSink(self))
-        self.channels = {key: self._channel(key, spec) for key, spec in specs.items()}
+        self.channels = make_channels(cfg, task, specs, self.clients, self.world)
         both: tuple[Lane, ...] = ("user", "cp")
         lanes: list[Lane] = [x for x in both if x in self.channels]
         self.speakers = {lane: Speaker(self, lane) for lane in lanes}
@@ -260,19 +228,6 @@ class Kernel:
     def _make(self, role: str, ref: llm.ModelRef, sink: RecordSink) -> llm.LLMClient:
         clock, live = self.clock.monotonic_ms, self.cfg.live
         return make_client(ref, live=live, clock=clock, on_record=sink)
-
-    def _channel(self, key: str, spec: ChannelSpec) -> Channel:
-        if spec == "human":
-            return HumanChannel({"user": "ASSISTANT", "cp": "AGENT"}.get(key, "REP"))
-        if spec != "sim":
-            return spec
-        if key == "user":
-            simuser = self.clients["simuser"]
-            return SimUserChannel(
-                SimUser(self.task, simuser, self.world, self.cfg.seed)
-            )
-        ear, mouth = self.clients["ear"], self.clients["mouth"]
-        return SimRepChannel(SimRep(self.task, ear, mouth, self.world))
 
     @property
     def bb(self) -> Blackboard:  # at the bus clock's now
@@ -553,18 +508,22 @@ async def run_session(
     clients: ClientFactory | None = None,
     tokenizer: ChatTokenizer | None = None,
     observers: Sequence[Subscriber] = (),
+    run_id: str | None = None,
+    opened: Callable[[Kernel], None] | None = None,
 ) -> RunResult:
     """``channels``: ``user``/``cp`` (and for rep-chat ``cp_agent``, a person for
     the agent) -> ``"sim"``/``"human"``/a ``Channel``. ``observers`` are isolated
     bus subscribers (an exporter): their errors are logged, never fatal (§11).
-    The other keywords are test seams."""
+    ``run_id`` (unset: a new one) and ``opened`` (gets the kernel before it runs)
+    serve a web case (``kernel.web``). The other keywords are test seams."""
     sims: dict[str, ChannelSpec] = {"user": "sim", "cp": "sim"}
     specs, clock = sims if channels is None else channels, clock or WallClock()
-    k = Kernel(
-        cfg, task, specs, runs_dir, clock, sleep or asyncio.sleep, clients, tokenizer
-    )
+    sleep = sleep or asyncio.sleep
+    k = Kernel(cfg, task, specs, runs_dir, clock, sleep, clients, tokenizer, run_id)
     for observer in observers:
         k.bus.subscribe(observer, isolated=True)
+    if opened is not None:
+        opened(k)
     try:
         return await k.run()
     finally:

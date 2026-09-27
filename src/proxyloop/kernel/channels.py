@@ -1,20 +1,28 @@
 """Channels (§2, §10): a lane's partner hears the agent (``send``, as heard) and
 queues its turns (``incoming``); ``tick`` runs only on a free, idle floor. The
-SimUser's channel also fires its unprompted stop on a trigger (#143, N6)."""
+SimUser's channel also fires its unprompted stop on a trigger (#143, N6).
+``make_channels`` builds a session's partners from their specs."""
 
 from __future__ import annotations
 
 import asyncio
 import sys
 import threading
-from collections.abc import Mapping
+from collections.abc import Coroutine, Mapping
 from dataclasses import dataclass
-from typing import Literal
+from types import CoroutineType
+from typing import Any, Literal
 
+from proxyloop.contract.config import SessionConfig
+from proxyloop.contract.llm import LLMClient, LLMRole
+from proxyloop.env.counterparty.simrep import RepTurn, SimRep
+from proxyloop.env.tasks.schema import Task
 from proxyloop.env.user.approver import Approver
 from proxyloop.env.user.simuser import SimUser
+from proxyloop.env.world import World
 
 End = Literal["", "hangup", "closed", "quit"]
+type Turn = CoroutineType[Any, Any, None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +95,55 @@ class SimUserChannel(Channel):  # replies delay_s after each message
         return done
 
 
+class SimRepChannel(Channel):  # hears text_heard; ticks on a free floor
+    def __init__(self, rep: SimRep) -> None:
+        super().__init__()
+        self._rep = rep
+
+    def send(self, text: str | None, utt_id: str, cause: str, t_ms: int) -> Turn:
+        heard = (
+            self._rep.on_agent_utterance(utt_id, text, cause, t_ms) if text else None
+        )
+        return self._run(heard)
+
+    def tick(self, t_ms: int) -> Turn:
+        return self._run(self._rep.tick(t_ms))
+
+    def floor(self, free: bool, t_ms: int) -> None:
+        self._rep.floor(free, t_ms)
+
+    def _run(self, turn: Coroutine[Any, Any, RepTurn] | None) -> Turn:
+        self.composing(1)  # busy from the spawn: a tick never overlaps a turn
+
+        async def run() -> None:
+            try:
+                done = await turn if turn else None
+                if done is None:
+                    return
+                end: End = ("hangup" if done.strike else "closed") if done.ended else ""
+                if done.lines or end or done.strike:
+                    lines = tuple((text, ev) for text, ev in done.lines)
+                    inc = Incoming(lines, strike=done.strike, end=end)
+                    self.incoming.put_nowait(inc)  # queued before it is quiet
+            finally:
+                self.composing(-1)
+
+        return run()
+
+
+class HumanWebChannel(Channel):  # a person in the browser (S1-SYS-05)
+    """serve's POSTs call ``say`` (on the kernel's loop): the line is queued,
+    due at once. It hears nothing here: the page reads the event stream.
+    Known gap (N4): the page sends no composing signal, so a human rep is never
+    ``busy`` and #156's wait-while-composing (D1) cannot see them typing; the
+    partner fences still apply once their line lands."""
+
+    def say(self, text: str) -> None:
+        if not text.strip():
+            raise ValueError("an empty line")
+        self.incoming.put_nowait(Incoming(((text, None),)))
+
+
 class HumanChannel(Channel):  # a person at the terminal
     def __init__(self, label: str) -> None:
         super().__init__()
@@ -124,3 +181,28 @@ def read_stdin(humans: Mapping[str, HumanChannel]) -> None:  # u:/r: when two
             loop.call_soon_threadsafe(channel.line, "/quit")
 
     threading.Thread(target=reader, daemon=True).start()
+
+
+ChannelSpec = Literal["sim", "human"] | Channel
+
+
+def make_channels(
+    cfg: SessionConfig,
+    task: Task,
+    specs: Mapping[str, ChannelSpec],
+    clients: Mapping[LLMRole, LLMClient],
+    world: World,
+) -> dict[str, Channel]:
+    """Each lane's partner: a given ``Channel`` as is (a web person, a test),
+    ``"human"`` a person at the terminal, ``"sim"`` the world's SimUser/SimRep."""
+
+    def make(key: str, spec: ChannelSpec) -> Channel:
+        if spec == "human":
+            return HumanChannel({"user": "ASSISTANT", "cp": "AGENT"}.get(key, "REP"))
+        if spec != "sim":
+            return spec
+        if key == "user":
+            return SimUserChannel(SimUser(task, clients["simuser"], world, cfg.seed))
+        return SimRepChannel(SimRep(task, clients["ear"], clients["mouth"], world))
+
+    return {key: make(key, spec) for key, spec in specs.items()}
