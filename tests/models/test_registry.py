@@ -93,12 +93,12 @@ def test_the_reality_report_labels_f_as_the_baseline_fsm() -> None:
     assert {label(condition(n).fast_cp) for n in ("C4", "C5", "T")} == {"hosted"}
 
 
-def test_c5_is_luna_on_openrouter_at_the_provisional_effort() -> None:
+def test_c5_is_luna_on_openrouter_at_the_users_effort_none() -> None:
     luna = ModelRef(
         kind=AdapterKind.REAL_HTTP,
         endpoint="openrouter",
         model_id="openai/gpt-6-luna",
-        reasoning_effort="low",  # provisional until the user confirms
+        reasoning_effort="none",
     )
     c5 = condition("C5")
     assert resolve("gpt-6-luna") == c5.fast_user == c5.fast_cp == luna

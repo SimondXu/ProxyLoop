@@ -1,6 +1,6 @@
 # PLAN.md: the single state file
 
-**Current:** S0 in progress (the user gave the go on 2026-09-26); S1 build work runs since the gate (#141). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01, S0-SYS-02 (#115), S0-ROOT-07 (#114), S0-CON-01 (#116), S0-MOD-01 (#113, provisional: `serve-attest-local` pending the user's go), S0-ROOT-08 (#117), S0-SYS-03 (#118), S0-SYS-04 (#120), S0-SYS-05 (#121), S0-MOD-02 (#119), S0-ROOT-09 (#122), S0-SYS-06 (#123), S0-ROOT-10 (#127), S0-ROOT-11 (#128), S0-SYS-08 (#130, #138), S0-SYS-07 (#133, #140 follow-up item 1), S0-ROOT-13 (#139), S0-ROOT-05's gate bundles (#141), S0-ROOT-14 (#147), S0-ROOT-16 (#159), S0-ROOT-15 (#158); after the gate: S1-SYS-09 (#134), S1-SYS-07 (#131), S1-SYS-08 (#136), S1-MOD-01 part A (#124), S1-CON-01 (#142), S1-MOD-02 (#135, follow-up #148), S1-SYS-16 (#144), S1-SYS-04 (#143), S1-MOD-04 (#145), S1-SYS-01 (#126), S1-SYS-17 (#146), S1-SYS-10 (#137), S1-SYS-03 (#149), S1-SYS-18 (#150), S1-SYS-19 (#151), S1-SYS-15 (#153), S1-SYS-13 (#152), S1-CON-04 (#154), S1-SYS-20 (#157; smoke #1 `runs/20260927T051033Z-dd5094`, `runs/20260927T051648Z-d04021`). **In progress:** S0-ROOT-05 (merge point 1): the gate bundles are committed (#141); the principal session (U) is pending; S0-SYS-03…08 stay `provisional` (S0-ROOT-05 "After"); S1-ROOT-07 (this PR). **Held for the user:** S0-ROOT-12 (#129: auto-mode refused the probe-script edit; CI red); S0-SYS-07 follow-up item 2 (the cancelled-stream record; uncommitted, in a `git stash` of `../pl-wt/S0-SYS-07B`); #125's G run (S0-MOD-03). **In flight:** #156 (S1-SYS-02), #155 (S1-MOD-01, C5 via OpenRouter), #132 (S1-MOD-01 part B); held: #125, #129. **Last closed stage:** none. **Contract version:** v1 (ADR-0004) with ADR-0007 (additive, no fingerprint change) and ADR-0011 (endpoint `openrouter`, `GuideMove.HOLD_FOR_FACT`, the new cp profile `pl_cp_v2`). Live profiles: `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`, `pl_cp_v2` = `ccc12390de8519ce8273c37267e9f46dc932e7a2d0a20bf5f7204fd3da9d0ab2`. `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490` is frozen, so the `evidence/s0` bundles still verify.
+**Current:** S0 in progress (the user gave the go on 2026-09-26); S1 build work runs since the gate (#141). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01, S0-SYS-02 (#115), S0-ROOT-07 (#114), S0-CON-01 (#116), S0-MOD-01 (#113, provisional: `serve-attest-local` pending the user's go), S0-ROOT-08 (#117), S0-SYS-03 (#118), S0-SYS-04 (#120), S0-SYS-05 (#121), S0-MOD-02 (#119), S0-ROOT-09 (#122), S0-SYS-06 (#123), S0-ROOT-10 (#127), S0-ROOT-11 (#128), S0-SYS-08 (#130, #138), S0-SYS-07 (#133, #140 follow-up item 1), S0-ROOT-13 (#139), S0-ROOT-05's gate bundles (#141), S0-ROOT-14 (#147), S0-ROOT-16 (#159), S0-ROOT-15 (#158); after the gate: S1-SYS-09 (#134), S1-SYS-07 (#131), S1-SYS-08 (#136), S1-MOD-01 part A (#124), S1-CON-01 (#142), S1-MOD-02 (#135, follow-up #148), S1-SYS-16 (#144), S1-SYS-04 (#143), S1-MOD-04 (#145), S1-SYS-01 (#126), S1-SYS-17 (#146), S1-SYS-10 (#137), S1-SYS-03 (#149), S1-SYS-18 (#150), S1-SYS-19 (#151), S1-SYS-15 (#153), S1-SYS-13 (#152), S1-CON-04 (#154), S1-SYS-20 (#157; smoke #1 `runs/20260927T051033Z-dd5094`, `runs/20260927T051648Z-d04021`), S1-ROOT-07 (#160), S1-MOD-01's C5 PR (#155), S0-MOD-03 (#125, provisional: code only, its G run waits), S1-SYS-02 (#156), S1-MOD-01 part B (#132), S1-MOD-01's C5 effort `none` (#161). **In progress:** S0-ROOT-05 (merge point 1): the gate bundles are committed (#141); the principal session (U) is pending; S0-SYS-03…08 stay `provisional` (S0-ROOT-05 "After"); S1-ROOT-05 (this PR). **Held for the user:** S0-ROOT-12 (#129: auto-mode refused the probe-script edit; CI red); S0-SYS-07 follow-up item 2 (the cancelled-stream record; uncommitted, in a `git stash` of `../pl-wt/S0-SYS-07B`); #125's G run (S0-MOD-03). **In flight:** S1-SYS-26 (L-CORE; granted 2026-09-27); held: #129. **Last closed stage:** none. **Contract version:** v1 (ADR-0004) with ADR-0007 (additive, no fingerprint change) and ADR-0011 (endpoint `openrouter`, `GuideMove.HOLD_FOR_FACT`, the new cp profile `pl_cp_v2`); ADR-0014 is decided (`GuideMove.DEFER_CALLBACK` and the cp profile `pl_cp_v3`, built by S1-CON-06, whose fingerprint is recorded here when it lands). Live profiles: `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`, `pl_cp_v2` = `ccc12390de8519ce8273c37267e9f46dc932e7a2d0a20bf5f7204fd3da9d0ab2`. `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490` is frozen, so the `evidence/s0` bundles still verify.
 
 **Sessions:** a main root (business) with up to five lane-lead sub-sessions (L-CORE and the four product lanes P-WEB, P-API, P-OBS, P-TOOLS), plus a top-level model root (ML) for the MOD lane, run in parallel (user decision 2026-09-26; §0.1, §0.2, `CLAUDE.md`).
 
@@ -95,9 +95,9 @@ Legend:
 
 ### 0.6 Tripwires (stop and decide)
 - Under §0.5a the main root may adjust only the **numeric caps** (PR counts, code-size limits) and records each change under "Decisions changed". The mechanism tripwires — contract discipline, red signals, no new reality, fallback bans — are never waived by a session.
-- **PR count:** S0 > 22 PRs, S1 > 37, S2 > 10, S3 > 10. Root evidence PRs and ROOT docs/harness PRs are excluded (root decision under §0.5a, 2026-09-26).
+- **PR count:** S0 > 22 PRs, S1 > 47, S2 > 10, S3 > 10. Root evidence PRs and ROOT docs/harness PRs are excluded (root decision under §0.5a, 2026-09-26).
   - S0: 16 → 18 (user decision 2026-09-26); 18 → 19, because S0-ROOT-05's fix work splits into S0-SYS-07 and S0-SYS-08 on disjoint paths (root decision under §0.5a, 2026-09-26); 19 → 20 for the S0-SYS-08 follow-up PR that separates identity strikes from timer strikes (root decision under §0.5a, 2026-09-27); 20 → 21 for the S0-SYS-07 follow-up PR (the identity hold flow and the cancelled-stream record) (root decision under §0.5a, 2026-09-27); 21 → 22 because that follow-up splits: item 1 (the identity hold flow) shipped as #140, and item 2 (the cancelled-stream record) comes as its own PR (root decision under §0.5a, 2026-09-27).
-  - S1: 14 → 25 (14 + 7 + 5 − 1): the product lanes add seven S1 PRs; S1-SYS-14, S1-MOD-04, S1-CON-01, S1-CON-02 and S1-MOD-01 part B add five; S1-SYS-06 is superseded (−1) (root decisions under §0.5a, 2026-09-26); 25 → 26 for S1-SYS-15 (root decision under §0.5a, 2026-09-27); 26 → 31 (26 + 5): S1-SYS-16, S1-SYS-17, the S1-MOD-02 follow-up PR, S1-CON-03 and S1-SYS-18 add one each (root decisions under §0.5a, 2026-09-27); 31 → 37 (31 + 6): S1-SYS-19, S1-CON-04, S1-SYS-20, the S1-MOD-01 C5 PR (#155), S1-SYS-23 and S1-CON-05 add one each (root decision under §0.5a, 2026-09-27 (S1-ROOT-07 recount: +2 CON-04/SYS-20, +1 SYS-23, +1 CON-05)); the plan-before-act tasks are recounted when their blocks land.
+  - S1: 14 → 25 (14 + 7 + 5 − 1): the product lanes add seven S1 PRs; S1-SYS-14, S1-MOD-04, S1-CON-01, S1-CON-02 and S1-MOD-01 part B add five; S1-SYS-06 is superseded (−1) (root decisions under §0.5a, 2026-09-26); 25 → 26 for S1-SYS-15 (root decision under §0.5a, 2026-09-27); 26 → 31 (26 + 5): S1-SYS-16, S1-SYS-17, the S1-MOD-02 follow-up PR, S1-CON-03 and S1-SYS-18 add one each (root decisions under §0.5a, 2026-09-27); 31 → 37 (31 + 6): S1-SYS-19, S1-CON-04, S1-SYS-20, the S1-MOD-01 C5 PR (#155), S1-SYS-23 and S1-CON-05 add one each (root decision under §0.5a, 2026-09-27 (S1-ROOT-07 recount: +2 CON-04/SYS-20, +1 SYS-23, +1 CON-05)); 37 → 46 (37 + 1 + 8): #161 (S1-MOD-01's C5 effort PR) adds one, and S1-SYS-26, S1-CON-06, S1-SYS-21, S1-SYS-22, S1-SYS-24, S1-SYS-25, S1-SYS-27 and S1-MOD-05 add one each, while S1-ROOT-05 (docs) and S1-ROOT-06 (smoke evidence) are excluded (root decision under §0.5a, 2026-09-27 (S1-ROOT-05 recount)); 46 → 47 for S1-SYS-28 (root decision under §0.5a, 2026-09-27 (S1-SYS-28)).
   - The recount (S1-ROOT-07): the main root's log reached 34 after #155, counting S1-CON-04 and S1-SYS-20 as one step. The blocks give 37: 33 S1 PRs outside ROOT (S1-MOD-01 as three PRs, #124, #132 and #155; S1-MOD-02 as two, #135 and #148; S1-SYS-06 superseded) plus S1-ROOT-01…04, which the original 14 counted. ROOT docs PRs (S1-ROOT-05, S1-ROOT-07) are excluded.
   - A probe PR that only adds a probe script and its ADR data (e.g. S0-ROOT-12) counts as a root evidence PR and is excluded (root decision under §0.5a, 2026-09-26).
 - **Code size** (user decision 2026-09-27: absolute total-line caps replaced by the stage-close size review, §0.7):
@@ -172,7 +172,7 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
   - `tests/serving` test doubles live outside `tests/support` (AGENTS rule 5).
 - #115 (SYS): `fetch_external.sh` clones into a temp dir then moves; drop the stale `!.env.example` in `.gitignore`; pin the CI Python patch release and add shellcheck (both done in #152); amend S0-SYS-02's acceptance grep to the exclusions actually used.
 - Hook (#114): protect the worktree parent `../pl-wt`; track `pushd`; the heredoc false positive (text that mentions recursive deletes near data/external is blocked when shlex cannot parse it).
-- Process: S0 PR count: 14 merged (#108–#121) + S0-ROOT-09 = 15; S0-SYS-06 makes 16 (at the limit; the tripwire is > 16); S0-MOD-03 would be the 17th. Root evidence PRs (S0-ROOT-05/06) are excluded. Resolved: the tripwire is now > 19 (§0.6), so S0-MOD-03 is the 17th PR, S0-SYS-07 the 18th and S0-SYS-08 the 19th; S0-ROOT-10/11 are ROOT docs/harness PRs and S0-ROOT-12 a probe PR (excluded). Now: S0-SYS-08 (#130) and S0-SYS-07 (#133) are merged, S0-MOD-03 (#125) is pending, the S0-SYS-08 strike-counter follow-up (#138) is the 20th, and the S0-SYS-07 identity-hold follow-up the 21st (the tripwire is > 21, §0.6); S0-ROOT-13 is a ROOT docs PR (excluded). Now: the S0-SYS-07 follow-up split, so #140 (item 1) is the 21st and item 2 (held for the user) will be the 22nd (the tripwire is > 22, §0.6); S0-ROOT-05's bundle PR (#141) is a root evidence PR, and S0-ROOT-13 (#139) and S0-ROOT-14 are ROOT docs PRs (excluded). S1: the tripwire is > 37 (§0.6).
+- Process: S0 PR count: 14 merged (#108–#121) + S0-ROOT-09 = 15; S0-SYS-06 makes 16 (at the limit; the tripwire is > 16); S0-MOD-03 would be the 17th. Root evidence PRs (S0-ROOT-05/06) are excluded. Resolved: the tripwire is now > 19 (§0.6), so S0-MOD-03 is the 17th PR, S0-SYS-07 the 18th and S0-SYS-08 the 19th; S0-ROOT-10/11 are ROOT docs/harness PRs and S0-ROOT-12 a probe PR (excluded). Now: S0-SYS-08 (#130) and S0-SYS-07 (#133) are merged, S0-MOD-03 (#125) is pending, the S0-SYS-08 strike-counter follow-up (#138) is the 20th, and the S0-SYS-07 identity-hold follow-up the 21st (the tripwire is > 21, §0.6); S0-ROOT-13 is a ROOT docs PR (excluded). Now: the S0-SYS-07 follow-up split, so #140 (item 1) is the 21st and item 2 (held for the user) will be the 22nd (the tripwire is > 22, §0.6); S0-ROOT-05's bundle PR (#141) is a root evidence PR, and S0-ROOT-13 (#139) and S0-ROOT-14 are ROOT docs PRs (excluded). S1: the tripwire is > 47 (§0.6).
 - #118 (SYS evidence):
   - a scripted bundle relabelled `real_http` still passes `MODE=claim` (authenticity is provenance, ADR-0006);
   - extra files in a bundle are ignored;
@@ -195,7 +195,7 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
   - the `refuse_fact` key is not required, and the `provide_fact` value is not checked against the heard text;
   - the reverse reveal check (a fact said but not listed) is missing;
   - the `tests/env/bus_sink` prompts store is a stand-in until S0-SYS-06.
-- Docs (S0-ROOT-11): `NORTH_STAR.md` (the Goal, the S1 résumé line) and `ARCHITECTURE.md` still name Sonnet as Slow; the user's decision of 2026-09-26 makes Slow `gemini-3.8-flash` (NORTH_STAR is the user's to change).
+- Docs (S0-ROOT-11): `NORTH_STAR.md` and `ARCHITECTURE.md` named Sonnet as Slow. The user confirmed Slow = `gemini-3.8-flash` via TeamRouter on 2026-09-27, and S1-ROOT-05 changed the NORTH_STAR Goal and ARCHITECTURE §1. The S0 and S1 résumé lines still name Sonnet; their wording is fixed, so changing them is the user's call.
 - #119 (MOD training):
   - `metrics.jsonl` may repeat steps after a resume;
   - `per_target` is compared only for > 0, not against the committed dump;
@@ -247,7 +247,18 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
 - #152 (SYS (P-WEB), S1-SYS-13): pin the CI actions by SHA.
 - #153 / #157 (SYS, S1-SYS-15 / S1-SYS-20): reported speech ("She said I've been…") published tenure; #157's sentence-start anchor closes it. Residuals with quotes and abbreviations remain (not regressions).
 - #155 (MOD, S1-MOD-01 C5): D4 the benchmark tests' `stand_ins` fixture still maps C5 to the S0 TeamRouter ref; add a test that production refuses that bundle as "not a C5 bundle". D5 consider carrying C5's provider-sampling note on comparison rows that involve C5.
-- #156 (SYS, S1-SYS-02): 7c the full generation-cancellation rule ("a newer trigger cancels an older generation", beyond epoch-stale generations) is still open.
+- #156 (SYS, S1-SYS-02): 7c the full generation-cancellation rule ("a newer trigger cancels an older generation", beyond epoch-stale generations) is replaced by ADR-0013's narrower superseded-speech rule (S1-SYS-22).
+- #156 (SYS, S1-SYS-02), from the merge (root, 2026-09-27):
+  - D3 the `WallClock` ε;
+  - N1 a cp `due_ms > 0` spins; S1-SYS-05's `HumanWebChannel` keeps `due_ms = 0`;
+  - N2 assert `composing ≥ 0`;
+  - N3 an accept still waiting when the session aborts gets no terminal `speak.*` (fail closed); pinned by a test in S1-SYS-23 (root decision);
+  - N4 a human rep has no composing signal (D1 stays open for S1-SYS-05);
+  - `tests/slow/test_loop.py`: assert the fence's absence explicitly;
+  - `Kernel.bb` should return a `model_copy`.
+- After smoke #2 (principal-architect review, 2026-09-27; root decisions under §0.5a):
+  - R5 Slow skills: a lever playbook after verification; `record_offer` refusals list the allowed field/role pairs; Guard refuses an identical GUIDE while the previous one is unvoiced;
+  - R6 tenure coverage: first-person "with (you|them|<company>) for N years", or a value-free `mention_tenure` lever; the SimUser is not tuned to the parser (an I4/I11 review by the root).
 - ADR-0010 needs a committed summary JSON of the OpenRouter/TeamRouter experiment (root to provide; log-main 2026-09-27).
 - #158 (ROOT, S0-ROOT-15; `launch.sh`, outside the repo): the one-per-role `pgrep` guard refuses a main→main rotation when the old main root was itself CLI-launched (it is still running at launch time); exempt role `main`, or have the old root pass its own name.
 
@@ -584,7 +595,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Known limitations:** a silent SimUser turn emits no event; identity patience and the timer shared one strike counter (separated in #138), so silence plus `refuse_fact` ended every first S0-ROOT-05 re-run call before identity arrived.
 - **Follow-up PR (#138):** separate identity strikes from timer strikes, test-first: the three recorded re-run sequences must not hang up, and three `refuse_fact` still do (root decision under §0.5a, 2026-09-27). Then the root re-runs the three smokes (S0-ROOT-05).
 
-### S0-MOD-03 `make pull-through` — MOD — M — flags L+G (root runs) — review (#125; held for the user: its G run needs a Qwen@vllm GPU lease)
+### S0-MOD-03 `make pull-through` — MOD — M — flags L+G (root runs) — provisional (merged in #125 as code; its G run waits for `pl_cp_v2` Qwen bundles and the user's GPU go)
 - **Objective:** `training/pull_through.py` and the `make pull-through MODE=full|verify` target, exactly as TRAINING §9 describes. The S0 label source is the base-9B turns from `evidence/s0/` (§9 E1). A trained-adapter LoRA slot in `serving/` (root decision 2026-09-26).
 - **Owned paths:** `src/proxyloop/training/pull_through.py`, `mk/mod.mk`, `tests/training/test_pull_through.py`, `serving/**`, and (per-task grant; #125 edits them) `training_jobs/{modal_train,sft}.py`.
 - **Deps:** one Qwen@vllm-Fast train bundle, S0-MOD-01, S0-MOD-02, S0-SYS-07, S0-SYS-08 (root decision under §0.5a, 2026-09-26).
@@ -677,6 +688,11 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 
 S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work may be coded and reviewed earlier, but merge only at the gate (§0.1, user decision 2026-09-26). **Any teacher run in the harness** (the T and R conditions, S1-MOD-01's teacher smoke, S1-MOD-03, S1-ROOT-02) waits until S1-SYS-01, -02, -03, -05 and -10 (the approval endpoint, split from -05) have merged. Decisions D require capability minting, read-back slots, the fence and epochs, and approval-endpoint security first (§9 E1).
 
+**User decisions (2026-09-27), as recorded in the main root's log:**
+- **Hold bound:** one hold is one rep hold cycle ending in its check-in; at the 2nd check-in with the fact still missing, FastC apologises, says it will call back, and the call ends; after the user supplies the fact, the agent calls again (ADR-0014).
+- **Slow model:** `gemini-3.8-flash` via TeamRouter, confirmed with no A/B; the NORTH_STAR Goal names it (S1-ROOT-05).
+- **Luna effort:** the hosted Fast (OpenRouter `openai/gpt-6-luna`) runs with `reasoning_effort` `none` (was `low`, provisional). C5's registry entry changed in #161; L-CORE changes the CLI/smoke default for an `openrouter` Fast; smokes use `FAST_EFFORT=none` from now on.
+
 ### S1-SYS-00 Simplification pass (no weaker guarantees) — SYS — M — todo
 - **Objective:** before the rest of S1, trim only redundancy in the S0 code, without weakening any guarantee (e.g. a target of `llm/` ≈ 550 lines) (user decision 2026-09-26). It is scheduled from the S0-close size review (§0.7.5), which sets its scope (user decision 2026-09-27).
 - **Owned paths:** `src/proxyloop/{core,evidence,llm,env,kernel,slow}/**` (code only; no contract).
@@ -728,6 +744,18 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Verify:** `uv run pytest tests/contract tests/golden tests/llm -q`.
 - **Escalate if:** a fingerprint changes.
 
+### S1-CON-06 `defer_callback` and profile `pl_cp_v3` (ADR-0014) — CON (the root) — S — todo
+- **Objective** (ADR-0014; root decision under §0.5a, 2026-09-27, before `semantics-v1`):
+  - `GuideMove.DEFER_CALLBACK = "defer_callback"`, appended last;
+  - a new profile `pl_cp_v3` = `pl_cp_v2` plus the `defer_callback` move text and one system-text sentence (review R4: "When you hold for a detail, also relay `@slow: rep asks for <what>`."), registered in `protocol.PROFILES`;
+  - `pl_user_v1`, `pl_cp_v1` and `pl_cp_v2` are frozen; rendering `defer_callback` with `pl_cp_v2` raises `GuideMoveError`;
+  - the live switch lands in the same PR (ADR-0011's pattern): the kernel's cp profile and Slow's `CP_PROFILE` render `pl_cp_v3`; until S1-SYS-24 merges, Guard refuses `guide_fast(defer_callback)` with a named reason; the FSM says a defer line with `@end_call`.
+- **Owned paths:** `src/proxyloop/contract/**`, `tests/contract/**`, `tests/golden/**`; granted for this task only: the cp `PROFILE` constant in `src/proxyloop/kernel/lanes.py`, `CP_PROFILE` and the named refusal in `src/proxyloop/slow/tools.py`, `tests/slow/snapshots/act_tool.json` (regenerated), the tests pinned to `pl_cp_v2` on the live cp path, `src/proxyloop/models/fsm.py` and `tests/models/**` (MOD grant).
+- **Deps:** S1-ROOT-05 (ADR-0014). It merges back to back with S1-SYS-24.
+- **Acceptance** (test-first ✱): ✱ the fingerprints of `pl_user_v1`, `pl_cp_v1` and `pl_cp_v2` are unchanged and `pl_cp_v3`'s is recorded (the snapshot and this file's header); ✱ `defer_callback` with `pl_cp_v2` raises `GuideMoveError`; the goldens `c10_v3_empty` and `c11_v3_defer_callback` bind their P2 ids; the private-value counterfactual renders with `pl_cp_v3`; `make check` green; `make evidence-check` ok on the four `evidence/s0` bundles. Root-run pending: `make pull-through MODE=full` (G; held for the user's GPU go, §0.3).
+- **Verify:** `uv run pytest tests/contract tests/golden tests/slow tests/models -q`; `make check`; `make evidence-check RUN=<each evidence/s0 bundle>`; `make pull-through MODE=full` (root).
+- **Escalate if:** a frozen fingerprint changes; the migration needs a path not granted here.
+
 ### S1-SYS-01 Guard v2 (pure) — SYS — L — done (#126; size exception, §0.6)
 - **Objective:** `guard/{terms,readback,mandate,authorize,capability,verify,status}.py` per ARCHITECTURE §9.1–§9.5:
   - read-back slots, lexicons and required fields;
@@ -762,7 +790,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Verify:** `make test`.
 - **Escalate if:** a rule needs an LLM judgement.
 
-### S1-SYS-02 Authority timing: fence, epochs, generations/acks, release revalidation, concurrency suite — SYS — L — review (#156)
+### S1-SYS-02 Authority timing: fence, epochs, generations/acks, release revalidation, concurrency suite — SYS — L — provisional (#156; the root's `x-user-mind-change` and `x-out-of-envelope-approval` smokes pending)
 - **Objective:** `kernel/{fence,speaker,lanes,session}.py` per ARCHITECTURE §9.4 and §11, and the concurrency suite in `tests/concurrency/` (8 cases). Also (root decisions under §0.5a, 2026-09-26):
   - the kernel consumes `approval.post`, re-runs `guard.decide` in its own loop and emits `approval.decided` (the fixed emitter; S1-SYS-10);
   - the kernel's `teacher_repair_*` routing for the R condition (moved here from S3-SYS-01);
@@ -784,7 +812,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 
   Also (root decisions under §0.5a, 2026-09-27, from #126 and #143):
   - the 500-interleaving property also finds no second released accept per `terms_hash` and no release past a capability's `expires_ms`; the fold's `_released` rejects a capability past `expires_ms` (a one-line check);
-  - `accept_revoked`/`accept_truncated` come only from a real `speak.revoked` / a real truncated delivery; every accept line ends in exactly one `speak.released` or `speak.revoked` (held under a fence, expired while held and a stale epoch included), else the case wedges on `accept_in_flight`;
+  - `accept_revoked`/`accept_truncated` come only from a real `speak.revoked` / a real truncated delivery; every accept line ends in exactly one `speak.released` or `speak.revoked` (revoked at once under a user fence, never held (#156); expired and a stale epoch included), else the case wedges on `accept_in_flight`; S1-SYS-23's partner-turn fence is the one decided exception: that accept waits, bounded by its capability's expiry (fails closed as `expired`), and the kernel wakes Slow on the partner turn (root decision under §0.5a, 2026-09-27);
   - the kernel evaluates Guard at the bus clock's now: a manual-clock case in which a grant expires between the last event and the accept call yields no `speak.released`;
   - N6: on `x-user-mind-change`, with the agent silent after the card, `user.sim{stop}` is still emitted (the kernel calls `on_trigger` after `approver.decide`), and the kernel never delivers the triggering card's grant before the stop is delivered.
 - **Grants** (root decisions under §0.5a, 2026-09-27), beyond the owned paths above: `src/proxyloop/core/fold.py` (the `_released` expiry check only), `tests/core/**`, `src/proxyloop/kernel/channels.py` (the `SimUserChannel` and approvals plumbing for N6), `tests/kernel/**`, and `tests/slow/test_loop.py` line 134 (7a). No overlap in time: S1-SYS-03 (the fold) merged first, and S1-SYS-05 (`channels.py`) depends on this task.
@@ -853,7 +881,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
   - Live runs are written to `runs/live/<case_id>/<run_id>` (the S1-SYS-09 listing reads one extra level for `runs/live` only; root decision under §0.5a, 2026-09-26).
   - The human-demo value of `INTAKE_S` (120 s; S1-ROOT-05) is revisited here (root decision under §0.5a, 2026-09-27).
 - **Owned paths:** `src/proxyloop/kernel/{channels,session,web}.py`, `tests/kernel/**`, `mk/sys.mk`.
-- **Deps:** S1-SYS-02, S1-SYS-08, S1-SYS-10.
+- **Deps:** S1-SYS-02, S1-SYS-08, S1-SYS-10; S1-SYS-21 and S1-SYS-24 (both own `kernel/session.py`; root decision under §0.5a, 2026-09-27).
 - **Acceptance:** a root live session (L+G): the root clicks approve, and the bundle has `approval.decided{by: ui}` and passes the claim check. Human rep mode is not used in any live session before S1-SYS-10 merges (root decision under §0.5a, 2026-09-26).
 - **Verify:** `make test`; `make demo` (root).
 
@@ -1002,16 +1030,101 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Not here:** the sampling label (#155 D6) → S1-CON-05.
 
 ### S1-SYS-23 Partner-turn fence during a queued accept — SYS (L-CORE) — S — todo
-- **Objective** (root decision under §0.5a, 2026-09-27, option (C) for #156's accept-vs-rep-turn question; #156 itself takes option (A), the ordering fix only): a partner (rep) `utt.final` between an accept's queueing and its release raises a short fence, as a `user.msg` does (ARCHITECTURE §9.4). The accept waits until a Slow step that saw the rep's turn completes, then the Speaker revalidates (§9.4); revocation is that revalidation failing. Restrict-only.
+- **Objective** (root decision under §0.5a, 2026-09-27, option (C) for #156's accept-vs-rep-turn question; #156 itself takes option (A), the ordering fix only): a partner (rep) `utt.final` between an accept's queueing and its release raises a short fence, as a `user.msg` does (ARCHITECTURE §9.4). The accept waits until a Slow step that saw the rep's turn completes, then the Speaker revalidates (§9.4); revocation is that revalidation failing. Restrict-only. It is the one decided exception to "a queued accept never waits" (a user fence revokes at once, #156): the wait is bounded by the capability's expiry (fails closed as `speak.revoked{reason: expired}`), and the kernel wakes Slow on the partner turn, so it cannot wedge (root decision under §0.5a, 2026-09-27).
 - **Owned paths:** `src/proxyloop/kernel/{fence,speaker}.py`, `tests/concurrency/**`, `tests/kernel/**`.
 - **Deps:** S1-SYS-02 (#156). It merges before the approval-flow smokes.
-- **Acceptance:** test-first manual-clock cases: a rep turn during a queued accept holds the release until a Slow step that saw it completes; the Speaker then revalidates, releasing when revalidation passes and revoking when it fails; no path grants authority.
+- **Acceptance:** test-first manual-clock cases: a rep turn during a queued accept holds the release until a Slow step that saw it completes; the Speaker then revalidates, releasing when revalidation passes and revoking when it fails; no path grants authority; a wait past the capability's expiry ends `expired`; the partner turn wakes Slow. Also a test that pins #156's N3: an accept still waiting when the session aborts gets no terminal `speak.*` (fail closed; root decision under §0.5a, 2026-09-27).
 - **Verify:** `uv run pytest tests/concurrency tests/kernel -q`.
 - **Escalate if:** it needs a new event type (a contract change).
 
-### S1-MOD-01 Model registry, per-lane swap, 4B serving, hosted/teacher Fast, FSM, teacher-repair — MOD — L — flags L+G for the smoke — review (part A merged in #124; part B #132 in review; C5 via OpenRouter #155 in review)
+### S1-SYS-26 Declass boundary and held-cp Slow liveness — SYS (L-CORE) — S — doing (granted 2026-09-27)
+- **Objective** (root decision under §0.5a, 2026-09-27, from the reality smoke on `ff59c9e`, `runs/20260927T054451Z-655087`, abandoned in IDENTIFY): two test-first bug fixes.
+  - Declass boundary: `_AFTER` in `slow/tools.py` allows one mark after the digits, so "(account ending in 4821)," kept `account.last4` private and Guard refused `identify`.
+  - Slow liveness: `_relay` in `kernel/lanes.py` drops a repeated cp HOLD (`hold_repeat`), so Slow never woke while FastC held. It re-relays iff a Slow step completed since the last relayed cp HOLD and no cp GUIDE came since (counted `hold_rerelay`).
+  - Round-3 extension (#162; root decision under §0.5a, 2026-09-27, from L-CORE's triage of the approval smokes): a Slow step in flight counts as looking at the HOLD, and a cp GUIDE after the HOLD answers it only while that GUIDE is unvoiced.
+- **Owned paths:** `src/proxyloop/slow/tools.py` (`_AFTER`/`_digits4` only), `tests/slow/**`, `src/proxyloop/kernel/lanes.py` (the `_relay` HOLD branch only), `tests/kernel/**`.
+- **Deps:** S1-SYS-02 (#156, merged); the branch merges `origin/main` before its PR.
+- **Acceptance:** test-first regression cases from 655087's inputs; a fresh adversarial I4 review (a root requirement); `make check` green.
+- **Verify:** `uv run pytest tests/slow tests/kernel -q`.
+- **Escalate if:** the fix widens what can become public (I4).
+
+### S1-SYS-21 Plan before act: readiness and the needs ledger (ADR-0012) — SYS (L-CORE) — M — flags L for the smoke (root) — todo
+- **Objective:** ADR-0012 as written:
+  - `guard/readiness.py` (the `REQUIRED` table, `kind`, `required`, `missing`; `_IDENTITY` moves here from `slow/tools.py`) and `guard/needs.py` (the pure event fold; key states `pending`/`replied`/`answered`; the echo rule);
+  - the gate in the new `kernel/calls.py` (granted: `kernel/session.py` is at 584/600 lines; the gate, `_call`, the deadline and the call counter live there): `_open` opens the user lane only; `_call(cause, reason)` opens the cp lane on `ready`, `slow_start` or `intake_deadline` (`INTAKE_S` = 120 s); the watchdog does not tick the rep before `chan.opened{cp}`;
+  - Slow: `ask_user(question, keys)` with dedupe (A1), `start_call()` (Guard-checked), the readiness-first identity paragraph, and `readiness`/`asks` in the status bar;
+  - review R3a: a GUIDE is acknowledged (`s2f.voiced`) only by a turn that spoke or gave a directive, else it is re-triggered once per message; review R3b: `public_summary` is declassified after the act's calls.
+- **Owned paths:** `src/proxyloop/guard/{readiness,needs}.py` (new), `src/proxyloop/kernel/calls.py` (new; granted, root decision under §0.5a, 2026-09-27), `src/proxyloop/kernel/{session,watchdog}.py`, `src/proxyloop/kernel/lanes.py` (the `s2f.voiced` acknowledgement only, for R3a; a hunk disjoint from S1-SYS-22's, and the second to merge takes `git merge origin/main`), `src/proxyloop/slow/**`, `tests/{guard,kernel,slow}/**`.
+- **Deps:** S1-SYS-26 merged (S1-SYS-02 and S1-SYS-20 are merged).
+- **Acceptance** (test-first ✱): ✱ `test_readiness`; ✱ `test_needs` (the three states, the echo rule, a re-ask after a reply, keyless asks counted); ✱ kernel manual-clock cases: R1, R2, the deadline, ready and the deadline together → exactly one `chan.opened{cp}`, `start_call` refused then accepted, rep-chat and no-user sessions open at once, a GUIDE given in INTAKE is voiced after the disclosure, A1; ✱ R3a: a turn with no speech and no directive emits no `s2f.voiced` and re-triggers once; R3b: a public summary citing a fact recorded in the same act passes; ADR-0009's 18-step test extended with `readiness`/`asks` in the bar; ✱ the needs ledger exposes key names, states, seqs/ages and hold counts only, never text: perturbing `user.msg` and `fast.turn` speech text, with the relays held fixed, leaves Slow's full request (status bar included) byte-identical; `tests/contract/test_views.py::test_slow_view_is_relay_only_by_default` still passes; `act_tool.json` regenerated; `make check` green. Root run: smoke #2 (S1-ROOT-06).
+- **Verify:** `uv run pytest tests/guard tests/kernel tests/slow -q`; `make check`.
+- **Escalate if:** it needs a contract change (an event type, a state field, a `SessionConfig` field); INTAKE time can still turn into rep strikes; Slow would need transcript text (I5); `kernel/session.py` passes 600 lines.
+
+### S1-SYS-22 Superseded cp speech (ADR-0013) — SYS (L-CORE) — S — todo
+- **Objective:** ADR-0013's superseded-speech rule: before each cp line starts, the Speaker drops the line and the rest of its generation when its `basis_seq` predates a public `fact.recorded` or a different cp GUIDE; `fast.cancelled{reason: superseded, utt_ids, by}`; the trigger is re-queued (coalesced); relays are kept.
+- **Owned paths:** `src/proxyloop/kernel/{lanes,speaker}.py`, `tests/concurrency/**`, `tests/kernel/**`.
+- **Deps:** S1-SYS-23 (`kernel/speaker.py` overlap: serial).
+- **Acceptance** (test-first ✱): ✱ manual-clock cases: invariant S1; an identical GUIDE does not supersede; the line being spoken finishes; a rep line does not supersede; the user lane is never superseded; the next `fast.request`'s basis is at or after the superseding seq; every `f2s.msg` of a superseded generation exists; #144's relay test still passes.
+- **Verify:** `uv run pytest tests/concurrency tests/kernel -q`.
+- **Escalate if:** it needs a new event type, or a relay would be lost.
+
+### S1-SYS-27 Guidance recency and the action log (ADR-0013; review R2A, R3c) — SYS (L-CORE) — S — doing
+- **Objective:** the fold keeps only the newest cp guide (`core/fold.py`: `guides[-MAX_GUIDES:]` → `guides[-1:]`; the contract bound stays 3). Review R3c (root decision under §0.5a, 2026-09-27): a reducer writes `PublicState.action_log` from a fixed allow-list that maps a tool name to a constant template ("recorded an offer"), with no argument interpolation; private-scope tools (`propose_mandate`, `tighten_mandate`, `revoke`, `request_approval`, a private `record_fact`) produce no cp entry.
+- **Dispatch** (root decision under §0.5a, 2026-09-27, L-CORE's triage of the approval smokes): dispatched now, ahead of S1-SYS-22 and of #163's merge, because stale guidance blocked every approval smoke. The fold part (the newest cp guide) goes first; the R3c action-log part follows as a separate commit or PR under the allow-list design above. A golden or contract change needs a root grant.
+- **Owned paths:** `src/proxyloop/core/fold.py`, `tests/core/**`.
+- **Deps:** none (dispatched ahead, above).
+- **Acceptance** (test-first ✱): ✱ after two different cp guides, `guidance_cp` holds only the newest; the goldens and fingerprints are untouched; ✱ every action-log entry is in the constant template set, and the private-scope tools add none; `make evidence-check` ok on the four `evidence/s0` bundles; `make check` green.
+- **Verify:** `uv run pytest tests/core tests/contract -q`; `make evidence-check RUN=<each evidence/s0 bundle>`.
+- **Escalate if:** a golden or fingerprint changes, or an `evidence/s0` bundle fails.
+
+### S1-SYS-28 Offer recording converges — SYS (L-CORE) — S–M — doing
+- **Objective** (root decision under §0.5a, 2026-09-27, from L-CORE's triage of the approval smokes; evidence: the main checkout's git-ignored `runs/20260927T060019Z-ed5063` and `runs/20260927T055218Z-f3a106`):
+  - record-time slot validation: `record_offer` refuses an invalid slot and the refusal lists the allowed field → role/unit/value table; the same table is in Slow's system prompt;
+  - a `record_offer` with the same terms is a no-op (no new revision, no new read-back); a real change still creates a revision;
+  - a deterministic status-bar hint: "confirmed, outside mandate → request_approval(offer_ref)";
+  - a Slow reply with `finish_reason` `content_filter` is counted as a named issue and never retried (rule 12);
+  - **world semantics (labelled):** a repeated `hold_request` never resets hold patience, in every state (#157 did this for IDENTIFY only).
+- **Owned paths:** `src/proxyloop/slow/{tools,prompt,authority}.py`, `tests/slow/**`, `src/proxyloop/env/counterparty/policy.py`, `tests/env/**`, `src/proxyloop/llm/http.py` (the issue label only), `tests/llm/**`.
+- **Deps:** none (dispatched now; root decision under §0.5a, 2026-09-27).
+- **Acceptance** (test-first ✱): ✱ an invalid slot is refused at record time, and the refusal lists the table; ✱ a same-terms `record_offer` creates no revision and no read-back, and a real change does; ✱ a confirmed offer outside the mandate shows the `request_approval` hint in the status bar; ✱ a `content_filter` reply is counted as a named issue and not retried; ✱ a repeated `hold_request` does not reset hold patience in any policy state; `act_tool.json` regenerated if the tool schema changes; `make check` green.
+- **Verify:** `uv run pytest tests/slow tests/env tests/llm -q`; `make check`.
+- **Escalate if:** it needs a contract change; the table would let an offer confirm without the read-back (I6).
+
+### S1-SYS-25 World: identity mismatch, caller left, redial, recheck variants (ADR-0014) — SYS (L-CORE) — M (S–M expected) — todo
+- **Objective** (labelled world-semantics changes):
+  - a `provide_fact` with a wrong value gets the intent `identity_mismatch`, voiced by the Mouth as "That does not match our records. Please check your <key>.", with no strike;
+  - `Policy.caller_left()` → `rep.policy{to: ENDED, intent: caller_left}`, no strike; no Ear call after the channel closes;
+  - `SimRep.redial(t)`: a fresh policy (IDENTIFY again, strikes 0, the ladder from its first rung) sharing the account ledger;
+  - family 1's train-only variants `full_recheck` and `full_recheck_slow` (EVAL §3): new optional `UserSpec` fields that default to `None`, so existing instance hashes do not change; the loader allows a variant name that differs from the mode.
+- **Owned paths:** `src/proxyloop/env/counterparty/{policy,mouth,simrep}.py`, `src/proxyloop/env/user/simuser.py`, `src/proxyloop/env/tasks/{schema,loader}.py`, `tasks/families/cp-direct-discount.yaml`, `tests/env/**`.
+- **Deps:** S1-SYS-26 merged (the L-CORE slot order; no path overlap).
+- **Acceptance** (test-first ✱ for the policy): ✱ a wrong value gets `identity_mismatch` and no strike; ✱ `caller_left` ends the policy without a strike; redial starts in IDENTIFY with the shared ledger; the instance hashes of every existing family and mode are unchanged (a test pins them); `make check` green.
+- **Verify:** `uv run pytest tests/env -q`; `make check`.
+- **Escalate if:** an existing instance hash changes; a variant needs agent-side information in the world.
+
+### S1-SYS-24 Hold bound, `defer_callback` and the second call (ADR-0014) — SYS (L-CORE) — M — flags L for the smoke (root) — todo
+- **Objective:** ADR-0014's SYS part (root decisions under §0.5a, 2026-09-27, from #163's review):
+  - holds in the needs fold: a hold check-in is a `chan.strike` while `bb.public.cp_hold` is set; identity and silence strikes outside a hold never count; Guard refuses `hold_for_fact` without an open need or after 2 holds;
+  - on the 2nd check-in of an open need whose fact is still missing, with the case IN_CALL, Guard emits `s2f.msg{GUIDE defer_callback}` unconditionally (no offer precondition; this replaces S1-CON-06's named refusal); Guard refuses Slow's `defer_callback` unless the case is IN_CALL with an open need;
+  - the kernel closes the call after the defer is voiced (or after `DEFER_VOICE_S` = 12 s, adopted by the root from the architect's estimate, without an acknowledgement: `defer_unvoiced`) with `chan.closed{lane: cp, call, reason: deferred, by}`; a superseded generation does not count as voicing the defer and is re-triggered; if the need is answered before the defer line starts, the defer is cancelled and the call continues; the kernel honours `@end_call` after `close_call` or `defer_callback`;
+  - `chan.closed{deferred}` closes every call-1 offer (`offer_closed`), so nothing from call 1 can be approved or accepted in call 2;
+  - the status edges `IN_CALL --call_deferred--> INTAKE` and `IN_CALL --call_deferred_mandated--> MANDATED`; the redial gate (readiness met and the need answered after the deferral) and `chan.opened{cp, call: 2, reason: redial}` with the disclosure again; the fold's `chan.opened/closed` set `ChannelState.open`, and a call ≥ 2 resets the cp transcript, strikes, floor, `cp_hold` and `guidance_cp`;
+  - `MAX_CALLS` = 2, `REDIAL_WAIT_S` = 120 s, `MAX_SESSION_S` = 720 s; `session.ended{reason: deferred, calls}`; `evidence/check.py` accepts `deferred`;
+  - the defer close, the redial and the call counter live in `kernel/calls.py` (S1-SYS-21's module).
+- **Owned paths:** `src/proxyloop/guard/{needs,status}.py`, `src/proxyloop/core/fold.py`, `src/proxyloop/kernel/calls.py` (granted, root decision under §0.5a, 2026-09-27), `src/proxyloop/kernel/{session,channels,watchdog}.py`, `src/proxyloop/kernel/lanes.py` (the `@end_call` item only, if it cannot live in `calls.py`), `src/proxyloop/slow/**`, `src/proxyloop/evidence/check.py`, `tests/{guard,core,kernel,slow,evidence,concurrency}/**` (except `tests/evidence/audit/**`).
+- **Deps:** S1-SYS-21, S1-SYS-22, S1-SYS-25, S1-SYS-27, S1-CON-06 (S1-CON-06 and this task merge back to back).
+- **Acceptance** (test-first ✱):
+  - ✱ extra "please hold" lines inside one hold cycle do not count; ✱ an identity or silence strike outside a hold does not count; ✱ `hold_for_fact` refused without an open need and after 2 holds;
+  - ✱ manual-clock cases: the defer fires on the 2nd check-in of an open need, not earlier and not once the fact is public; the Guard GUIDE cites the strike and the need's opening; ✱ Slow's `defer_callback` refused outside IN_CALL or with no open need; `chan.closed{deferred}` after the defer is voiced, or `defer_unvoiced`; ✱ a superseded generation does not count as voicing the defer and it is re-triggered; ✱ the need answered before the defer line starts cancels the defer and the call continues;
+  - no Ear call after the close; the rep's `caller_left` and no `abandoned`; ✱ after `chan.closed{deferred}` every call-1 offer is closed, and no call-1 offer can be approved or accepted in call 2; the redial only when readiness is met and the need was answered after the deferral, with the disclosure on call 2; call 2 deferred, or no redial within `REDIAL_WAIT_S`, ends `deferred`; nothing can be accepted between calls; `@end_call` after `close_call` closes the call; the reset on call 2 keeps public facts and offers;
+  - `evidence-check` accepts `deferred` and the four `evidence/s0` bundles still pass; `make check` green. Root run: smoke #3 (S1-ROOT-06).
+- **Verify:** `uv run pytest tests/guard tests/core tests/kernel tests/slow tests/evidence tests/concurrency -q`; `make check`.
+- **Escalate if:** it needs a contract change beyond S1-CON-06; any path lets a model output set authority (rule 10); `kernel/session.py` or `kernel/calls.py` passes 600 lines.
+- **Known risk:** the 2nd check-in can coincide with the rep's 3rd timer strike; the rep then hangs up first (`abandoned`).
+
+### S1-MOD-01 Model registry, per-lane swap, 4B serving, hosted/teacher Fast, FSM, teacher-repair — MOD — L — flags L+G for the smoke — provisional (part A #124, part B #132, C5 via OpenRouter #155 and C5 effort `none` #161 merged; the root's smokes per condition pending)
 - **Objective:**
-  - `models/registry.py` and `conditions.yaml` (C2, C3, C4, C5, T, F, R); C5 is Fast = `openai/gpt-6-luna` via OpenRouter (endpoint `openrouter`, ADR-0011), hosted and labelled (EVAL §4.1); sampling is set by the provider (OpenRouter supports no temperature/top_p for this model); `reasoning_effort` `low` is provisional pending the user (user decision 2026-09-27: the development Fast moves to OpenRouter);
+  - `models/registry.py` and `conditions.yaml` (C2, C3, C4, C5, T, F, R); C5 is Fast = `openai/gpt-6-luna` via OpenRouter (endpoint `openrouter`, ADR-0011), hosted and labelled (EVAL §4.1); sampling is set by the provider (OpenRouter supports no temperature/top_p for this model); `reasoning_effort` `none` (user decision 2026-09-27; it was `low`, provisional; the registry entry changed in #161, and L-CORE changes the CLI/smoke default for an `openrouter` Fast) (user decision 2026-09-27: the development Fast moves to OpenRouter);
   - a fine-tuned Qwen adapter entry (through S0-MOD-03's LoRA slot); the Fast of each lane is selectable by config;
   - the 4B app in `serving/`;
   - `models/fsm.py`: a capable FSM that templates from `FastView` only, relays every number and key it can parse, asks for the read-back on offers, holds at decisions and never claims completion unless verified;
@@ -1030,7 +1143,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
   - a root smoke produces one real bundle per condition on `cp-direct-discount`, with the reality report labelling F as `baseline`. The T and R smokes run only after S1-SYS-01/02/03/05/10 merge;
   - teacher outputs are parsed by the student parser, with the resample count recorded;
   - a grep test shows no clock-dilation option exists.
-- **Verify:** `make test`; `make smoke-live FAMILY=cp-direct-discount FAST=<cond>` (root); for C5, until S1-SYS-14's `--condition`: `make smoke-live FAMILY=cp-direct-discount CLAIM=0 FAST_ENDPOINT=openrouter FAST=openai/gpt-6-luna FAST_EFFORT=low SLOW=gemini-3.8-flash SLOW_ENDPOINT=teamrouter SLOW_EFFORT=low` (root).
+- **Verify:** `make test`; `make smoke-live FAMILY=cp-direct-discount FAST=<cond>` (root); for C5, until S1-SYS-14's `--condition`: `make smoke-live FAMILY=cp-direct-discount CLAIM=0 FAST_ENDPOINT=openrouter FAST=openai/gpt-6-luna FAST_EFFORT=none SLOW=gemini-3.8-flash SLOW_ENDPOINT=teamrouter SLOW_EFFORT=low` (root).
 - **Escalate if:** the hosted-Fast path needs different prompt text (I3: it must not).
 
 ### S1-MOD-02 Metrics v1, report and statistics — MOD — L (re-sized from M, root decision under §0.5a, 2026-09-26) — done (#135; follow-up #148)
@@ -1066,6 +1179,13 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Acceptance:** the report is generated from bundles with the same families and seeds per condition; the latency columns carry the relay label; the C1 rows stay empty until an attested adapter exists.
 - **Verify:** `make test`; the task's benchmark target (root, L+G).
 
+### S1-MOD-05 Plan-before-act diagnostics — MOD — S — todo
+- **Objective:** the EVAL §7 plan-before-act diagnostics (the architect's list and review R7), as pure functions of a bundle; the `deferred` ending as its own outcome class, not in `OK_ENDS`, with success forced to 0 and kept in every denominator (ADR-0014; EVAL §7; root decision under §0.5a, 2026-09-27). Diagnostics only, never a headline metric; their definitions are fixed before smoke #2's data is read (root decision under §0.5a, 2026-09-27).
+- **Owned paths:** `src/proxyloop/eval/metrics.py`, `src/proxyloop/eval/diagnostics.py` (new, if `metrics.py` would pass 600 lines), `tests/eval/**`.
+- **Deps:** S1-SYS-24 and smoke #3 (S1-ROOT-06).
+- **Acceptance** (test-first ✱): ✱ each diagnostic is tested on synthetic event fixtures; ✱ `deferred` is its own class, not in `OK_ENDS`, counts as `success=0` and stays in the denominator; the root computes them on the smoke #2 and #3 bundles (run ids cited, no typed numbers); `make check` green.
+- **Verify:** `uv run pytest tests/eval -q`; `make metrics RUN=<smoke bundle>` (offline).
+
 ### S1-ROOT-02 Pull-through, full (teacher turns from now on) — ROOT — S — flags L+G — todo
 - **Acceptance:** `pull-through.json` is refreshed with source = teacher turns, and the claim check passes.
 
@@ -1078,24 +1198,39 @@ In the browser, the user as principal:
 
 The user also watches a replay of one probe episode per condition, and the size review (§0.7.5) is done.
 
-### S1-ROOT-05 Plan-before-act ADRs and docs — ROOT — S — todo
-- **Objective:** readiness gate, open-asks ledger, superseded cp speech, mid-call hold bound and call-back (user decisions 2026-09-27, below). Details follow from the architect's design (the main root's hand-off, outside the repo). ADR numbers and contract impact are fixed when the root adopts the design; the call-back path (Q2) is expected to need a CON task.
-- **Deferred ARCHITECTURE/EVAL edits it also makes** (from S1-ROOT-07):
+### S1-ROOT-05 Plan-before-act ADRs and docs — ROOT — S — doing
+- **Objective:** record the plan-before-act design (the architect's design and its addendum, and the principal-architect review; the main root's hand-offs, outside the repo) as three ADRs, with the documents and task blocks that follow from them:
+  - ADR-0012: the call opens when ready (a per-task-kind requirement table), and the needs ledger (a pure event fold shared by the kernel and Slow), ask dedupe and the acknowledgement fix (review R3a); no contract change;
+  - ADR-0013: superseded cp speech and guidance recency (review R2 option A); no contract change;
+  - ADR-0014: the mid-call hold bound, the Guard-issued `defer_callback` GUIDE and the second call; a contract change (`GuideMove.DEFER_CALLBACK`, profile `pl_cp_v3`, which also carries review R4's relay sentence), decided by the root because `semantics-v1` is not tagged;
+  - `NORTH_STAR.md`: the Slow model name only (user decision 2026-09-27).
+- **Root decisions adopted** (under §0.5a, 2026-09-27): `INTAKE_S` = 120 s, `MAX_CALLS` = 2, `REDIAL_WAIT_S` = 120 s, `MAX_SESSION_S` 480 → 720 s (kernel constants); the tasks S1-CON-06, S1-SYS-21, -22, -24, -25, -27, S1-MOD-05 and S1-ROOT-06; review R5 and R6 wait until after smoke #2 (§0.9).
+- **Deferred ARCHITECTURE/EVAL edits it also makes** (from S1-ROOT-07), besides the design's own (§4.2, §5, §6.2, §6.3, §7, §8, §9.4, §9.5, §10.1, §11, §14; EVAL §3, §4.1, §7):
   - #151 (S1-SYS-19): ARCHITECTURE §9.1–§9.3: `pl.terms/3` (`fees_none`, `changes_none`; `pl.terms/2` kept as `terms_hash_v2`), boolean slots hold exactly `true`/`false`, and `verify_no_deal` counts an offer with unknown terms as open;
   - #149 (S1-SYS-03): the `check_account` seam: it binds only an id relayed to Slow and present in the ledger, stricter than `Ledger.lookup`;
   - #154 (S1-CON-04): `pl_cp_v2` at ARCHITECTURE lines 113, 232, 270, 274 and 303;
   - #157 (S1-SYS-20): the IDENTIFY hold-clock world semantics (the clock resets only on a newly verified key or on leaving IDENTIFY);
   - S1-SYS-23: the partner-turn fence in §9.4;
   - `INTAKE_S` (120 s, Q3 below).
-- **Owned paths:** `docs/decisions/**`, `ARCHITECTURE.md`, `EVAL.md`, `PLAN.md`.
-- **Acceptance:** `make docs-check` green.
+- **Owned paths:** `docs/decisions/0012-*.md`, `docs/decisions/0013-*.md`, `docs/decisions/0014-*.md` (new), `ARCHITECTURE.md`, `EVAL.md`, `PLAN.md`, `NORTH_STAR.md` (the Slow model name only).
+- **Acceptance:** `make docs-check` and `make lint` green; no measured number typed (AGENTS rule 13).
+- **Order** (root decisions under §0.5a, 2026-09-27; L-CORE is lent two extra slots, four in all, until two tasks hand off): S1-SYS-27 (its fold part) and S1-SYS-28 now, ahead of S1-SYS-22, because stale guidance and non-converging offer records blocked every approval smoke; S1-SYS-23 → S1-SYS-22; S1-SYS-26 → S1-SYS-21 ∥ S1-SYS-25; smoke #2 (S1-ROOT-06); S1-CON-06 + S1-SYS-24 (merged back to back); smoke #3 (S1-ROOT-06); S1-MOD-05; then S1-SYS-05, which gains dependencies on S1-SYS-21 and S1-SYS-24.
 - **User decisions (plan-before-act, 2026-09-27), as recorded in the main root's log:**
   - Q1: "readiness = option A generalized: a framework-wide constraint — before starting a task the agent must confirm it has the required facts from the user; S1's required set for cp calls = identity floor (account.holder_name, account.last4), expressed as a per-task-kind requirement rule so other kinds can add sets later."
   - Q2: "mid-call missing/wrong fact: go back to the user and hold the rep; at most 2 holds; if the fact is still not obtained, FastC tells the rep sorry, the principal has not provided enough information yet, and that it will call back once it has it → end the call; after the user supplies the fact, retry with a second call."
   - Q3 was left to the root: `INTAKE_S` = 120 s, a kernel constant (root decision under §0.5a, 2026-09-27); the human-demo value is revisited at S1-SYS-05.
   - Q4 is moot after S0-ROOT-16 (#159).
 
-### S1-ROOT-07 PLAN sync after the S1 merges — ROOT — S — doing
+### S1-ROOT-06 Smokes #2 and #3 (plan-before-act) — ROOT — flags L — todo
+- **Objective** (root decisions under §0.5a, 2026-09-27; review R1: several seeds): the first real runs of ADR-0012…0014. Every run uses the hosted Fast with `FAST_EFFORT=none` (user decision 2026-09-27). Each batch is estimated before it runs and logged after; a batch expected above $10 goes to the user (§0.5a).
+  - **Smoke #2**, after S1-SYS-21, -22, -25, -26 and -27 merge: `make smoke-live FAMILY=cp-direct-discount CLAIM=0 FAST_ENDPOINT=openrouter FAST=openai/gpt-6-luna FAST_EFFORT=none SLOW=gemini-3.8-flash SLOW_ENDPOINT=teamrouter SLOW_EFFORT=low` on at least 3 distinct `INSTANCE` values (the earlier smokes nearly all ran instance 0), plus one `FAMILY=x-out-of-envelope-approval` run checked with `make evidence-check RUN=<dir> MODE=claim`. Mechanics, reported separately from task success: (a) `chan.opened{cp, reason: ready}` follows both identity `fact.recorded{public}`; (b) exactly one successful `ask_user` per identity key, made in INTAKE; (c) `rep.policy` goes IDENTIFY → DISCOVER with no identity strike; (d) no Ear `refuse_fact` after the facts are public, and ADR-0013's invariant S1 holds; (e) `evidence-check` passes. Success: a rep offer intent, an `offer.recorded`, and the final status.
+  - **Smoke #3**, after S1-CON-06 and S1-SYS-24 merge: family 1's `full_recheck` variant ×2 and `full_recheck_slow` ×2 (selected as S1-SYS-25 wires them), plus one plain `full` run. Mechanics: at most 2 holds per need; the defer on the 2nd check-in; `chan.closed{deferred}` and no `abandoned`; call 2 opens only after the new fact is public, with the disclosure; `evidence-check` green.
+- **Owned paths:** `evidence/s1/**` (the bundles that back a claim, committed by the root).
+- **Deps:** as above.
+- **Acceptance:** the named run ids are cited in the PR and here; the mechanics are read from events (no typed numbers in docs).
+- **Escalate if:** any batch estimate exceeds $10; a run needs a code or world change to pass.
+
+### S1-ROOT-07 PLAN sync after the S1 merges — ROOT — S — done (#160)
 - **Objective:** bring this file's header, statuses and task blocks in line with what `main` holds at `3a974d9` and with the decisions recorded in the main root's log; unblock #155.
 - **Owned paths:** `PLAN.md`, `AGENTS.md` (wording fixes only).
 - **Acceptance:** `make docs-check` and `make lint` green; every sync item is either done or listed in the PR body as deliberately deferred, with the reason.
@@ -1293,6 +1428,7 @@ S1  SYS: SYS-01 guard ─┬─ SYS-02 timing+concurrency ─ SYS-05 demo┐
          MOD-02 metrics v1 ────────┘   MOD-04 Luna vs Qwen benchmark (after SYS-14)
     P-*: SYS-07/08 web ∥ SYS-09/10 api ∥ SYS-11/12 obs ∥ SYS-13 CI (coded now, merged at the gate); SYS-08 + SYS-10 ─► SYS-05
     CON: CON-01 `Approval.expires_ms` ─► SYS-01;   SYS: SYS-14 conditions + claim scoping ─► MOD-04
+    plan-before-act: SYS-27 ∥ SYS-28 now;  SYS-23 ─ SYS-22;  SYS-26 ─ SYS-21 ∥ SYS-25 ─ ROOT-06 smoke #2 ─ CON-06 + SYS-24 ─ smoke #3 ─ MOD-05 ─► SYS-05
 S2  SYS: SYS-01 fam 5–6 ─ ROOT-01 corpus ─┐   SYS-02/03 audit ───┐
     MOD: MOD-01 metric repairs ────────────┼──── MOD-02 audit stats ┴─ ROOT-03 audit (U) ─ ROOT-04 close
          MOD-03 TalkAct anchors (parallel, non-blocking)   ROOT-02 human probes (U) ┘
