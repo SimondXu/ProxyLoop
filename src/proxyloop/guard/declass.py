@@ -78,7 +78,7 @@ def _protected(bb: Blackboard) -> list[tuple[str, tuple[str, str, str]]]:
     return [(key, _canon(f.value)) for key, f in facts if f.protected]
 
 
-def _shareable_numbers(bb: Blackboard, shareable: Mapping[str, str]) -> set[Decimal]:
+def shareable_numbers(bb: Blackboard, shareable: Mapping[str, str]) -> set[Decimal]:
     """Numbers of the recorded shareable values, less any mandate bound or protected
     value's digits: a shareable value never whitelists either (#126)."""
     secret = {Decimal(d) for _, (_, _, d) in _protected(bb) if d}
@@ -91,7 +91,7 @@ def declassify(
     out: list[str] = []
     if len(text) > MAX_PUBLIC_TEXT:
         out.append(f"longer than {MAX_PUBLIC_TEXT} characters")
-    public = rep_numbers(bb) | _shareable_numbers(bb, shareable)
+    public = rep_numbers(bb) | shareable_numbers(bb, shareable)
     said = numbers(text)
     out += [
         f"number {n.normalize():f} is not source-bound" for n in sorted(said - public)

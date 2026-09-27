@@ -8,16 +8,24 @@ from __future__ import annotations
 from decimal import Decimal
 
 from proxyloop.contract.state import Blackboard
-from proxyloop.guard.declass import numbers, protected_keys, rep_numbers
+from proxyloop.guard.declass import (
+    numbers,
+    protected_keys,
+    rep_numbers,
+    shareable_numbers,
+)
 from proxyloop.guard.mandate import bound_numbers
 
 _PER_UNIT = {"usd_minor": 100, "months": 1}
 
 
 def _public(bb: Blackboard) -> set[Decimal]:
-    out = rep_numbers(bb) | {
-        n for f in bb.public.facts.values() for n in numbers(f.value)
-    }
+    """Rep-said numbers, source-bound offer slots, and shareable values less any
+    bound or protected value (the declass rule)."""
+    facts = bb.public.facts.values()
+    shared = {f.key: f.value for f in facts if f.source == "shareable"}
+    said = {n for f in facts if f.source == "cp_utt" for n in numbers(f.value)}
+    out = rep_numbers(bb) | said | shareable_numbers(bb, shared)
     for offer in bb.public.offers.values():
         out |= {
             Decimal(s.value) / _PER_UNIT[s.unit]
