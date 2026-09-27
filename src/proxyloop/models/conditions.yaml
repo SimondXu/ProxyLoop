@@ -4,9 +4,11 @@
 # aliases (contract.llm.ModelRef). teacher_resamples: the TeacherRepair limit
 # for a condition whose Fast is the teacher (T) or repaired by it (R); 0 in
 # evaluation, so the teacher gets no retry the student does not (root, #124).
+# qwen3.5-9b-sft (C1) is not listed: its model_id is the trained LoRA slot the
+# server was deployed with, resolved by registry.trained() from serving's config.
 models:
   qwen3.5-9b: {kind: real_http, endpoint: vllm, model_id: Qwen3.5-9B}  # ADR-0002
-  qwen3.5-4b: {kind: real_http, endpoint: vllm, model_id: Qwen3.5-4B}  # served by S1-MOD-01B
+  qwen3.5-4b: {kind: real_http, endpoint: vllm, model_id: Qwen3.5-4B}  # serving SERVE_MODEL=4b
   claude-haiku-4-5: {kind: real_http, endpoint: relay, model_id: claude-haiku-4-5-20251001}  # ADR-0001
   claude-sonnet-5: {kind: real_http, endpoint: relay, model_id: claude-sonnet-5}  # ADR-0001
   fsm: {kind: baseline, endpoint: null, model_id: proxyloop-fsm-v1}  # models/fsm.py
@@ -17,6 +19,7 @@ models:
   gpt-6-luna: {kind: real_http, endpoint: openrouter, model_id: openai/gpt-6-luna, reasoning_effort: low}
 
 conditions:
+  C1: {fast_user: qwen3.5-9b-sft, fast_cp: qwen3.5-9b-sft}
   C2: {fast_user: qwen3.5-9b, fast_cp: qwen3.5-9b}
   C3: {fast_user: qwen3.5-4b, fast_cp: qwen3.5-4b}
   C4: {fast_user: claude-haiku-4-5, fast_cp: claude-haiku-4-5}
