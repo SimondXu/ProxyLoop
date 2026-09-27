@@ -16,7 +16,7 @@ from proxyloop.contract.llm import AdapterKind, ModelRef
 
 class AblationId(StrEnum):
     """The S3 paired ablations (EVAL §4.2). A3 is a lane swap of ``fast_*``;
-    A5 is ``slow_view=raw_transcript``."""
+    A5 is ``slow_view=relay_only``."""
 
     SUPPRESS_RELAY_USER = "suppress_relay_user"  # A1
     SUPPRESS_RELAY_CP = "suppress_relay_cp"  # A1c
@@ -27,8 +27,10 @@ class AblationId(StrEnum):
 
 
 class SlowViewMode(StrEnum):
-    RELAY_ONLY = "relay_only"
-    RAW_TRANSCRIPT = "raw_transcript"  # ablation A5 only (I5)
+    # What Slow reads (I5, ADR-0016): both lanes' transcripts as heard, or, as
+    # ablation A5, Fast's typed relays only.
+    TRANSCRIPT = "transcript"
+    RELAY_ONLY = "relay_only"  # ablation A5
 
 
 class WorldModels(Frozen):
@@ -64,7 +66,7 @@ class SessionConfig(Frozen):
     fast_sampling: Sampling
     seed: int  # run seed; per-generation seeds derive from it
     ablations: tuple[AblationId, ...] = ()
-    slow_view: SlowViewMode = SlowViewMode.RELAY_ONLY
+    slow_view: SlowViewMode = SlowViewMode.TRANSCRIPT
     teacher: ModelRef | None = None  # iff a teacher_repair ablation is set
     live: bool
 
