@@ -27,11 +27,12 @@ from proxyloop.contract.llm import (
 from proxyloop.llm.http import HTTPAdapter, Json
 
 PATH = "/v1/chat/completions"
-# Sampling a provider ignores is not sent, so no record claims it (ADR-0019).
+# For a listed model, only the sampling keys its provider supports are sent, so no
+# record claims sampling that had no effect (ADR-0019); unlisted models send all.
 # Source: OpenRouter GET /api/v1/models, `supported_parameters` of
-# openai/gpt-6-luna, fetched 2026-09-27: no temperature, no top_p.
-UNSUPPORTED: dict[tuple[Endpoint | None, str], frozenset[str]] = {
-    ("openrouter", "openai/gpt-6-luna"): frozenset({"temperature", "top_p"}),
+# openai/gpt-6-luna, fetched 2026-09-27: seed listed; temperature, top_p not.
+SUPPORTED_SAMPLING: dict[tuple[Endpoint | None, str], frozenset[str]] = {
+    ("openrouter", "openai/gpt-6-luna"): frozenset({"seed"}),
 }
 
 
@@ -95,12 +96,14 @@ class ChatClient(HTTPAdapter):
         top_p: float | None = None,
         seed: int | None = None,
     ) -> None:
-        """Add the requested sampling, minus what the model is listed as ignoring."""
+        """Add the requested sampling; a listed model gets only its supported keys."""
 
-        dropped = UNSUPPORTED.get((self.ref.endpoint, self.ref.model_id), frozenset())
+        supported = SUPPORTED_SAMPLING.get((self.ref.endpoint, self.ref.model_id))
         requested = {"temperature": temperature, "top_p": top_p, "seed": seed}
         body |= {
-            k: v for k, v in requested.items() if v is not None and k not in dropped
+            k: v
+            for k, v in requested.items()
+            if v is not None and (supported is None or k in supported)
         }
 
     def stream_text(self, request: TextRequest) -> AsyncIterator[str | LLMCallRecord]:

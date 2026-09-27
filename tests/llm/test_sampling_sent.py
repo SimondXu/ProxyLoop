@@ -1,5 +1,5 @@
 """S1-CON-05 (ADR-0019): each call's record says which sampling reached the HTTP
-body, and a chat model that ignores sampling (OpenRouter's cited list) gets none."""
+body, and a listed chat model gets only the sampling its provider supports."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from tests.llm.wire import (
 )
 
 from proxyloop.contract.llm import LLMCallRecord, LLMUnavailable
+from proxyloop.llm import relay
 
 SAMPLING = ("temperature", "top_p", "seed")
 
@@ -36,14 +37,27 @@ def test_vllm_records_the_sampling_it_sends(monkeypatch: Any) -> None:
     assert record.sampling_sent == sent_sampling(wire)
 
 
-def test_a_listed_model_gets_no_temperature_or_top_p(monkeypatch: Any) -> None:
+def test_luna_with_a_seed_sends_only_the_seed(monkeypatch: Any) -> None:
+    wire = Recorder(stream_response(sse(*chat_chunks(LUNA, ["Please hold."]))))
+    request = HOSTED.model_copy(update={"seed": 7})  # temperature 0.3, top_p 0.9
+    record = asyncio.run(
+        assert_text_conformance(client(monkeypatch, LUNA, wire), request)
+    )
+    body = wire.body()
+    assert "temperature" not in body and "top_p" not in body
+    assert body["seed"] == 7  # seed is on Luna's supported list
+    assert record.sampling_sent == {"seed": 7}
+
+
+def test_a_listed_model_gets_only_its_supported_keys(monkeypatch: Any) -> None:
+    key = ("openrouter", "openai/gpt-6-luna")
+    monkeypatch.setitem(relay.SUPPORTED_SAMPLING, key, frozenset({"top_p"}))
     wire = Recorder(stream_response(sse(*chat_chunks(LUNA, ["Please hold."]))))
     request = HOSTED.model_copy(update={"seed": 7})
     record = asyncio.run(
         assert_text_conformance(client(monkeypatch, LUNA, wire), request)
     )
-    assert sent_sampling(wire) == {"seed": 7}  # seed is not on the cited list
-    assert record.sampling_sent == {"seed": 7}
+    assert sent_sampling(wire) == {"top_p": 0.9} == record.sampling_sent
 
 
 def test_a_listed_model_records_provider_default(monkeypatch: Any) -> None:
@@ -52,7 +66,7 @@ def test_a_listed_model_records_provider_default(monkeypatch: Any) -> None:
         assert_text_conformance(client(monkeypatch, LUNA, wire), HOSTED)
     )
     assert sent_sampling(wire) == {}
-    assert record.sampling_sent is None
+    assert record.sampling_sent == {}  # none sent: the provider default
 
 
 def test_an_unlisted_model_is_unchanged_and_recorded(monkeypatch: Any) -> None:
@@ -65,15 +79,15 @@ def test_an_unlisted_model_is_unchanged_and_recorded(monkeypatch: Any) -> None:
 
 
 @pytest.mark.parametrize(
-    ("temperature", "expected"), [(None, None), (0.2, {"temperature": 0.2})]
+    ("temperature", "expected"), [(None, {}), (0.2, {"temperature": 0.2})]
 )
 def test_tool_calls_record_only_what_was_requested(
-    monkeypatch: Any, temperature: float | None, expected: dict[str, float] | None
+    monkeypatch: Any, temperature: float | None, expected: dict[str, float]
 ) -> None:
     wire = Recorder(httpx.Response(200, json=tool_body(SONNET, '{"act": "offer"}')))
     request = TOOLS.model_copy(update={"temperature": temperature})
     response = asyncio.run(client(monkeypatch, SONNET, wire).chat_tools(request))
-    assert (sent_sampling(wire) or None) == expected
+    assert sent_sampling(wire) == expected
     assert response.record.sampling_sent == expected
 
 
@@ -82,7 +96,7 @@ def test_a_listed_model_tool_call_drops_temperature(monkeypatch: Any) -> None:
     request = TOOLS.model_copy(update={"temperature": 0.2})
     response = asyncio.run(client(monkeypatch, LUNA, wire).chat_tools(request))
     assert sent_sampling(wire) == {}
-    assert response.record.sampling_sent is None
+    assert response.record.sampling_sent == {}
 
 
 def test_a_failed_attempt_records_what_it_sent(monkeypatch: Any) -> None:

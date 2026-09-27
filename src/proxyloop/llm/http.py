@@ -211,7 +211,7 @@ class HTTPAdapter:
 
         streaming = bool(body.get("stream"))
         # Recorded from the body itself, so a record never claims unsent sampling.
-        sent = {k: body[k] for k in get_args(SamplingKey) if k in body} or None
+        sent = {k: body[k] for k in get_args(SamplingKey) if k in body}
         for n in ATTEMPTS:
             attempt = Attempt(self._ref, request, n, self._clock(), sampling_sent=sent)
             text: list[str] = []
