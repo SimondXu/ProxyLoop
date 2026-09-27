@@ -61,7 +61,7 @@ def test_hard_link_bypass(tmp_path: Path) -> None:
     z.mkdir(parents=True)
     for name in ("manifest.json", "events.jsonl", "prompts.jsonl"):
         os.link(ev / "s4" / "test" / "rH" / name, z / name)
-    (repo / "lnk").symlink_to(ev / "S4")
+    (repo / "lnk").symlink_to(ev / "s4")
 
     def seen(*roots: Path) -> list[tuple[str, str, int | None]]:
         rows = index(list(roots))
@@ -73,9 +73,12 @@ def test_hard_link_bypass(tmp_path: Path) -> None:
     assert index([repo / "runs"])[0].error == "hard-linked file"
     assert seen(tmp_path) == seen(repo) == [("rW", "ok", 5), sealed]
     assert seen(ev / "s4") == []
-    assert seen(repo / "lnk") == []  # a directory symlink to S4
+    assert seen(repo / "lnk") == []  # a directory symlink to s4
+    if not (repo / "EVIDENCE").exists():
+        return  # case variants below need a case-insensitive file system
     with pytest.raises(ValueError, match="rule 11"):
         index([ev / "s4" / "x" / ".." / "TEST"])
+    assert seen(ev / "S4") == []
 
 
 def test_crashed_run_is_not_complete(tmp_path: Path) -> None:
@@ -111,3 +114,16 @@ def test_unpriced_and_gpu_time_are_not_zero_dollars(tmp_path: Path) -> None:
         assert (row["usd_per_episode"], row["lower_bound"]) == (None, True)
     for row in report["projection"]["by_model"]:
         assert (row["micro_usd"], row["usd"], row["lower_bound"]) == (None, None, True)
+
+
+def test_a_dangling_symlink_is_an_invalid_row(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    ok = Log("rOK")
+    ok.end("done")
+    write(runs / "rOK", ok, manifest("rOK"))
+    (runs / "rGone").symlink_to(tmp_path / "nowhere")
+    rows = [(r.run_id, r.status, r.error) for r in index([runs])]
+    assert rows == [("rGone", "invalid", "dangling path"), ("rOK", "ok", None)]
+    (tmp_path / "lnk").symlink_to(tmp_path / "nowhere")  # a dangling root
+    [row] = index([tmp_path / "lnk"])
+    assert (row.status, row.error) == ("invalid", "dangling path")

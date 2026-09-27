@@ -121,7 +121,8 @@ class Seal:
 
 
 def bundles(root: Path, seal: Seal) -> Iterator[Path]:
-    """Every directory holding a bundle file, without descending into one."""
+    """Every directory holding a bundle file, without descending into one, and
+    every dangling path (``load`` reports it; one bad entry is not fatal)."""
     root = root.resolve()
     if seal.covers(root):
         raise ValueError(f"{root} is sealed held-out data (AGENTS rule 11)")
@@ -129,16 +130,26 @@ def bundles(root: Path, seal: Seal) -> Iterator[Path]:
     stack = [root]
     while stack:
         here = stack.pop()
-        st = here.stat()
+        try:
+            st = here.stat()
+            names = sorted(os.listdir(here))
+        except FileNotFoundError:  # a dangling symlink, or gone since listed
+            yield here
+            continue
         if (st.st_dev, st.st_ino) in seen:  # a symlink loop
             continue
         seen.add((st.st_dev, st.st_ino))
-        names = sorted(os.listdir(here))
         if any(name in names for name in FILES):
             yield here
             continue
-        subdirs = [here / n for n in names]
-        subdirs = [p for p in subdirs if not seal.covers(p) and p.is_dir()]
+        subdirs: list[Path] = []
+        for p in (here / n for n in names):
+            if seal.covers(p):  # before any stat of the resolved target
+                continue
+            if p.is_dir():
+                subdirs.append(p)
+            elif p.is_symlink() and not p.exists():
+                yield p
         stack.extend(reversed(subdirs))
 
 
@@ -152,6 +163,8 @@ def load(path: Path, root: Path, seal: Seal) -> Run:
     elif len(rel) == 3 and rel[0] == "live":
         kind, case_id = "live", rel[1]
     run = Run(path.name, str(path), kind, "ok", case_id, stage)
+    if not path.exists():
+        return replace(run, status="invalid", error="dangling path")
     if any(seal.covers(path / name) for name in FILES):
         return replace(run, status="sealed", error="a file resolves into sealed data")
     if any(f.is_file() and f.stat().st_nlink > 1 for f in (path / n for n in FILES)):
