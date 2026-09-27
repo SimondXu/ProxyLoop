@@ -80,7 +80,7 @@ _DASH = "[-" + "".join(map(chr, range(0x2010, 0x2016))) + "]"  # and U+2010..201
 # a casefolded run of digit groups and single-digit words joined by a space, a
 # dash or a comma; a word glued to another word ("forty-four", "fourteen") is not
 _SPOKEN_RUN = re.compile(
-    rf"(?<![^\W_])(?<![^\W_]{_DASH}){_ITEM}(?:(?:,\s*|[ -]){_ITEM})*"
+    rf"(?<![^\W_])(?<![^\W_]-){_ITEM}(?:(?:,\s*|[ -]){_ITEM})*"
     r"(?![^\W_])(?!-[^\W_])"
 )
 _BIG = (
