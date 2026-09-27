@@ -8,7 +8,8 @@ silence over ``silence_s`` while the floor is free (``floor``), or a hold over
 ``hold_s``, is a timer strike; any act but ``provide_fact`` while identifying
 (hold and supervisor requests aside) is an identity strike. While identifying,
 a repeated hold request resumes the hold clock of the first one since the last
-``provide_fact`` (S1-SYS-20): asking to hold again never resets it. Each kind has
+newly verified fact (S1-SYS-20): asking to hold again, or giving a wrong value,
+never resets it. Each kind has
 its own counter, neither adds to the other, and either reaching
 ``patience.strikes`` hangs up. Identity strikes count what was heard, not
 time, so they apply in rep-chat too, where only the timer patience is
@@ -206,17 +207,18 @@ class Policy:
                 return PublicIntent(kind="greet", ask=self._missing()), None
         if self.state == "IDENTIFY":
             facts = act.facts if a == "provide_fact" else ()
-            if a == "provide_fact":  # a fact given: the next hold starts afresh
-                self._identify_hold = None
-            else:  # identity patience
+            if a != "provide_fact":  # identity patience
                 self.identity_strikes += 1
                 if self.identity_strikes >= self.spec.patience.strikes:
                     self.state = "ENDED"
                     return PublicIntent(kind="hang_up"), None
+            known = len(self._verified)
             for fact in facts:  # a wrong value is asked again, not struck
                 value = norm(fact.value)
                 if value and value == norm(self.identity.get(fact.key, "")):
                     self._verified.add(fact.key)
+            if len(self._verified) > known:  # a new key: the next hold starts afresh
+                self._identify_hold = None
             if missing := self._missing():
                 return PublicIntent(kind="ask_identity", ask=missing), None
             self.state = "DISCOVER"
