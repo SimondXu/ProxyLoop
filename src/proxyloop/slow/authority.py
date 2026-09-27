@@ -247,10 +247,11 @@ def _evidence(
     return evidence, f"{conf} {'binds' if same else 'does not bind'} the accepted terms"
 
 
-def _ledger_hash(binding: object, offer: OfferPublic) -> str | None:
-    """The ``pl.terms/2`` hash of the ledger's bound terms (the rep says money
+def _ledger_hash(binding: object, offer: OfferPublic) -> str:
+    """The ``pl.terms/3`` hash of the ledger's bound terms (the rep says money
     in dollars, exact to the cent), as a revision of ``offer``; ``""`` if the
-    world's value is unreadable (fail closed: it binds nothing)."""
+    world's value is unreadable, or it leaves fee or change completeness
+    unstated or contradicts it (fail closed: it binds nothing)."""
     b: Mapping[str, Any] = {}
     if isinstance(binding, Mapping):
         b = cast(Mapping[str, Any], binding)
@@ -267,7 +268,7 @@ def _ledger_hash(binding: object, offer: OfferPublic) -> str | None:
             slots.append(ReadbackSlot.model_validate(slot | {"role": role}))
     except (ValueError, TypeError, ArithmeticError):  # pydantic's too
         return ""
-    return offer_terms_hash(offer.model_copy(update={"slots": tuple(slots)}))
+    return offer_terms_hash(offer.model_copy(update={"slots": tuple(slots)})) or ""
 
 
 def _minor(dollars: str) -> str:
