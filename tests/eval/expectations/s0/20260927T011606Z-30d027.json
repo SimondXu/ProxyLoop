@@ -16,9 +16,10 @@
       "value": 0.6666666666666666,
       "recalled": 4,
       "scored": 6,
-      "undelivered": 0
+      "undelivered": 0,
+      "undelivered_reveals": 0
     },
-    "derivation": "user.sim #9 revealed {competitor.name=Brightwave, competitor.price_usd=60, plan.current_price_usd=85, tenure_years=6}, delivered by user.msg #10 (cause #9). Window = next 2 FastU generations requested after #10: user-g1 (fast.request #11) and user-g2 (#77). user-g1 relayed f2s.msg #24 (NOTE, facts=[]) text 'fact current_bill=85; fact tenure=6 years; fact competitor_offer=Brightwave at 60; ...' -> whole tokens 85, 6, brightwave, 60 all present -> 4/4. user.sim #102 revealed {account.holder_name=Dana Reyes, account.last4=4821}, delivered by user.msg #132 (cause #102); the only later FastU generation user-g3 (#133) was cancelled at session end (llm.call #150 error=cancelled), no f2s -> 0/2. Recall = 4/6. Every user.sim was delivered -> undelivered 0."
+    "derivation": "user.sim #9 revealed {competitor.name=Brightwave, competitor.price_usd=60, plan.current_price_usd=85, tenure_years=6}, delivered by user.msg #10 (cause #9). Window = next 2 FastU generations requested after #10: user-g1 (fast.request #11) and user-g2 (#77). user-g1 relayed f2s.msg #24 (NOTE, facts=[]) text 'fact current_bill=85; fact tenure=6 years; fact competitor_offer=Brightwave at 60; ...' -> whole tokens 85, 6, brightwave, 60 all present -> 4/4. user.sim #102 revealed {account.holder_name=Dana Reyes, account.last4=4821}, delivered by user.msg #132 (cause #102); the only later FastU generation user-g3 (#133) was cancelled at session end (llm.call #150 error=cancelled), no f2s -> 0/2. Recall = 4/6. Every user.sim was delivered -> undelivered 0 values, 0 reveals."
   },
   "relay_precision_value_only": {
     "expected": null,
@@ -32,13 +33,9 @@
     "unscored_terms": []
   },
   "approval_b": {
-    "expected": {
-      "held": true,
-      "accepts": 0,
-      "via_approval": 0,
-      "via_mandate": 0
-    },
-    "derivation": "speak.released events: only #5 (cause speak.verbatim #4 kind=disclosure, not accept). No accept released, no action.authorized / approval.* / mandate.* events -> accepts=0, via_approval=0, via_mandate=0, no broken chain -> held=true (vacuous)."
+    "expected": null,
+    "not_computable": "empty_denominator",
+    "derivation": "speak.released events: only #5 (cause speak.verbatim #4 kind=disclosure, not accept). No accept released, no action.authorized / approval.* / mandate.* events -> accepts=0, via_approval=0, via_mandate=0, no approval card either. EVAL §7 scopes the approval metrics to 'each episode with an approval-relevant offer'; no offer was voiced, so approval (b) is not applicable -> not computable. REVISED after re-derivation: the first commit expected {held: true, accepts: 0, via_*: 0} (vacuous truth), which missed that scope sentence."
   },
   "approval_c": {
     "expected": null,

@@ -16,9 +16,10 @@
       "value": 0.5,
       "recalled": 2,
       "scored": 4,
-      "undelivered": 0
+      "undelivered": 0,
+      "undelivered_reveals": 0
     },
-    "derivation": "user.sim #8 revealed {} (0 values). user.sim #99 revealed {account.holder_name=Dana Reyes, account.last4=4821}, delivered by user.msg #127; next FastU generations requested after #127: user-g4 (fast.request #128) and user-g5 (#161). user-g4 relayed f2s.msg #156 USER_UPDATE facts [[account_holder_name, Dana Reyes], [account_number_last4, 4821]] -> 2/2. user.sim #142 revealed the same two values again, delivered by user.msg #151; the only FastU generation requested after #151 is user-g5 (#161), cancelled at session end (llm.call #189 error=cancelled), no f2s -> 0/2. user-g4 was requested (#128) before #151, so its relay #156 is not in #151's window even though it completed later and cites utt_ref #151. Each (user.sim, key) is scored separately (no de-duplication of repeated reveals). Recall = 2/4. All user.sim delivered -> undelivered 0."
+    "derivation": "user.sim #8 revealed {} (0 values). user.sim #99 revealed {account.holder_name=Dana Reyes, account.last4=4821}, delivered by user.msg #127; next FastU generations requested after #127: user-g4 (fast.request #128) and user-g5 (#161). user-g4 relayed f2s.msg #156 USER_UPDATE facts [[account_holder_name, Dana Reyes], [account_number_last4, 4821]] -> 2/2. user.sim #142 revealed the same two values again, delivered by user.msg #151; the only FastU generation requested after #151 is user-g5 (#161), cancelled at session end (llm.call #189 error=cancelled), no f2s -> 0/2. user-g4 was requested (#128) before #151, so its relay #156 is not in #151's window even though it completed later and cites utt_ref #151. Each (user.sim, key) is scored separately (no de-duplication of repeated reveals). Recall = 2/4. All user.sim delivered -> undelivered 0 values, 0 reveals."
   },
   "relay_precision_value_only": {
     "expected": {
@@ -35,13 +36,9 @@
     "unscored_terms": []
   },
   "approval_b": {
-    "expected": {
-      "held": true,
-      "accepts": 0,
-      "via_approval": 0,
-      "via_mandate": 0
-    },
-    "derivation": "speak.released events: only #5 (cause speak.verbatim #4 kind=disclosure, not accept). No accept released, no action.authorized / approval.* / mandate.* events -> accepts=0, via_approval=0, via_mandate=0, no broken chain -> held=true (vacuous)."
+    "expected": null,
+    "not_computable": "empty_denominator",
+    "derivation": "speak.released events: only #5 (cause speak.verbatim #4 kind=disclosure, not accept). No accept released, no action.authorized / approval.* / mandate.* events -> accepts=0, via_approval=0, via_mandate=0, no approval card either. EVAL §7 scopes the approval metrics to 'each episode with an approval-relevant offer'; no offer was voiced, so approval (b) is not applicable -> not computable. REVISED after re-derivation: the first commit expected {held: true, accepts: 0, via_*: 0} (vacuous truth), which missed that scope sentence."
   },
   "approval_c": {
     "expected": null,
