@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { acceptFrame, closed, realHttpModels, START, unechoed, type Stream } from "./liveState";
-import { csrfToken, pageMode } from "./liveApi";
+import { acceptFrame, closed, parseEvent, realHttpModels, START, unechoed, type Stream } from "./liveState";
+import { CLOSE, csrfToken, entry, pageMode, paths } from "./liveApi";
 import type { Ev } from "./replay";
 
 const line = (seq: number, type = "fast.sentence") => JSON.stringify({ seq, type, payload: {} });
-const feed = (frames: string[], dense = true) => frames.reduce((s: Stream, f) => acceptFrame(s, f, dense), START);
+const feed = (frames: string[], dense = true) =>
+  frames.reduce((s: Stream, f) => acceptFrame(s, parseEvent(f), dense), START);
 
 describe("the live event stream", () => {
   it("appends dense frames and drops duplicates from a reconnect overlap", () => {
@@ -19,6 +20,7 @@ describe("the live event stream", () => {
     expect([gap.phase, gap.message, gap.events.length]).toEqual(["error", "seq gap: expected 1, got 2", 1]);
     expect(feed([line(0), "{oops"]).message).toMatch(/^bad frame after seq 0/);
     expect(feed(["{}"]).phase).toBe("error");
+    expect(feed([JSON.stringify({ seq: 0, type: "user.msg" })]).message).toMatch(/no seq, type or payload$/);
   });
 
   it("lets the rep's filtered stream skip seqs, but never go back", () => {
@@ -28,12 +30,22 @@ describe("the live event stream", () => {
   });
 
   it("reads the close codes and shows the reason", () => {
-    expect(closed(START, 1000, "session.ended")).toMatchObject({ phase: "ended", message: "stream ended (1000 session.ended)" });
-    expect(closed(START, 4404, "")).toMatchObject({ phase: "error", message: "unknown run (4404)" });
-    expect(closed(START, 1011, "gap at 7").phase).toBe("error");
-    expect(closed(START, 1006, "")).toMatchObject({ phase: "closed", message: "disconnected (1006)" });
+    const at = "/live/r";
+    expect(closed(START, 1000, "session.ended", at)).toMatchObject({ phase: "ended", message: "stream ended (1000 session.ended)" });
+    expect(closed(START, 4404, "", at)).toMatchObject({ phase: "error", message: "unknown run (4404)" });
+    expect(closed(START, 1011, "gap at 7", at).phase).toBe("error");
+    expect(closed(START, 1006, "", at)).toMatchObject({ phase: "closed", message: "disconnected (1006)" });
     const failed = feed(["{oops"]);
-    expect(closed(failed, 1000, "")).toBe(failed);
+    expect(closed(failed, 1000, "", at)).toBe(failed);
+  });
+
+  it("says 4403 is not authorised and names the role's entry; only 'closed' offers a reconnect", () => {
+    expect(CLOSE.forbidden).toBe(4403);
+    expect(closed(START, 4403, "origin", entry("live", "r 1"))).toMatchObject({
+      phase: "error",
+      message: "not authorised (4403 origin): open /live/r%201 from this origin",
+    });
+    expect(closed(START, 4403, "", entry("rep", "r1")).message).toBe("not authorised (4403): open /rep/r1 from this origin");
   });
 });
 
@@ -83,7 +95,16 @@ describe("liveApi names", () => {
     expect(pageMode("?live=run-1")).toEqual({ kind: "live", id: "run-1" });
     expect(pageMode("?rep=run-1&live=run-1")).toEqual({ kind: "rep", id: "run-1" });
     expect(pageMode("")).toEqual({ kind: "replay" });
-    expect(csrfToken("a=1; pl_csrf=tok%3D1; b=2")).toBe("tok=1");
-    expect(csrfToken("pl_csrfx=1")).toBeNull();
+    expect(csrfToken("a=1; pl_csrf=tok%3D1; b=2", "live")).toBe("tok=1");
+    expect(csrfToken("pl_csrfx=1", "live")).toBeNull();
+    // Each role reads only its own CSRF cookie.
+    expect(csrfToken("pl_csrf=u; pl_rep_csrf=r", "rep")).toBe("r");
+    expect(csrfToken("pl_rep_csrf=r", "live")).toBeNull();
+    expect(csrfToken("pl_csrf=u", "rep")).toBeNull();
+    expect([paths.liveSession("c"), paths.repSession("c"), paths.repSocket("c", 7)]).toEqual([
+      "/live/c",
+      "/rep/c",
+      "/ws/rep/c?from_seq=7",
+    ]);
   });
 });

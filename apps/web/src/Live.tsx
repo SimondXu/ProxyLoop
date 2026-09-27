@@ -4,7 +4,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Drawer, Lanes, RunSummary, useDrill } from "./App";
 import { approvalCards, type CardStatus, type CardView, type Posting } from "./approval";
-import { MODEL_LANES, realHttpModels, unechoed, type Sent, type Stream } from "./liveState";
+import { MODEL_LANES, parseEvent, realHttpModels, unechoed, type Framed, type Sent, type Stream } from "./liveState";
 import { postApproval, postMessage, type Decision, type PostResult } from "./liveApi";
 import { indexEvents, type Ev } from "./replay";
 import { useEventStream } from "./useEventStream";
@@ -12,7 +12,7 @@ import { useEventStream } from "./useEventStream";
 const PROMPTS_LATER = "Prompts are served only after the run ends (session.ended); open this again then.";
 
 export function Live({ runId }: { runId: string }) {
-  const { stream, reconnect } = useEventStream("live", runId);
+  const { stream, reconnect } = useEventStream("live", runId, parseEvent);
   const events = stream.events;
   const index = useMemo(() => indexEvents(events), [events]);
   const ended = events.some((e) => e.type === "session.ended");
@@ -62,7 +62,7 @@ export function Live({ runId }: { runId: string }) {
 }
 
 /** The stream's phase and close reason; `count` is left out where raw events are not the viewer's business. */
-export function Connection({ stream, reconnect, count }: { stream: Stream; reconnect: () => void; count?: boolean }) {
+export function Connection<T extends Framed>({ stream, reconnect, count }: { stream: Stream<T>; reconnect: () => void; count?: boolean }) {
   return (
     <>
       <output aria-label="Connection">

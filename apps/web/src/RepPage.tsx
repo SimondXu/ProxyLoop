@@ -1,16 +1,17 @@
 // The human rep page (?rep=<case_id>): only what a counterparty can hear or has
 // said (rep.ts), from the rep's own filtered stream (/ws/rep, never /ws/live).
+// The rep enters through GET /rep/{case_id} (liveApi.ts), which sets its cookies.
 import { useMemo, useState } from "react";
 import { Composer, Connection } from "./Live";
 import { unechoed, type Sent } from "./liveState";
 import { postRep } from "./liveApi";
-import { repLine, type RepLine } from "./rep";
+import { parseRepFrame, repLine, type RepLine } from "./rep";
 import { useEventStream } from "./useEventStream";
 
 const WHO: Record<RepLine["who"], string> = { agent: "Agent", rep: "You", call: "Call" };
 
 export function RepPage({ caseId }: { caseId: string }) {
-  const { stream, reconnect } = useEventStream("rep", caseId);
+  const { stream, reconnect } = useEventStream("rep", caseId, parseRepFrame);
   const lines = useMemo(() => stream.events.map(repLine).filter((l) => l !== null), [stream.events]);
   const [sent, setSent] = useState<Sent[]>([]);
   const send = async (text: string) => {

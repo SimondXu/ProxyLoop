@@ -4,6 +4,7 @@ import type { Page, WebSocketRoute } from "@playwright/test";
 
 export const RUN = "run-live-1";
 export const CSRF = "csrf-e2e-token";
+export const REP_CSRF = "rep-csrf-e2e-token";
 
 /** An event factory with its own seq counter; `skip` leaves seqs out (the rep's filtered stream). */
 export function events(runId = RUN) {
@@ -26,6 +27,17 @@ export function events(runId = RUN) {
     };
     seq += 1;
     return JSON.stringify(e);
+  };
+}
+
+/** /ws/rep frames as S1-SYS-10 rebuilds them: {seq (original), t_ms, type, payload}; seqs skip. */
+export function repFrames() {
+  let seq = 0;
+  return (type: string, payload: Record<string, unknown>, skip = 0) => {
+    seq += skip;
+    const frame = { seq, t_ms: seq * 100, type, payload };
+    seq += 1;
+    return JSON.stringify(frame);
   };
 }
 
@@ -75,8 +87,9 @@ export async function capturePosts(page: Page, status = 200, body: unknown = {})
   return posts;
 }
 
-export async function csrfCookie(page: Page, baseURL: string | undefined) {
-  await page.context().addCookies([{ name: "pl_csrf", value: CSRF, url: baseURL ?? "http://127.0.0.1:4173" }]);
+/** The readable CSRF cookie a role's entry GET sets: pl_csrf (user) or pl_rep_csrf (rep). */
+export async function csrfCookie(page: Page, baseURL: string | undefined, name = "pl_csrf", value = CSRF) {
+  await page.context().addCookies([{ name, value, url: baseURL ?? "http://127.0.0.1:4173" }]);
 }
 
 export const shot = async (page: Page, name: string) => {
