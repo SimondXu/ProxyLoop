@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SIM_REP, SIM_USER, UNKNOWN_PARTIES } from "./conversation";
-import { BASELINE, honesty, HUMAN_PRINCIPAL, LIVE, RECORDED, SCRIPTED } from "./provenance";
+import { BASELINE, honesty, HUMAN_PRINCIPAL, LIVE, LIVE_AND_BASELINE, RECORDED, SCRIPTED } from "./provenance";
 import type { Ev } from "./replay";
 
 let seq = 0;
@@ -73,9 +73,10 @@ describe("the provenance chip", () => {
     expect(honesty([started({ ...LANES, fast_user: "recorded_replay" })]).chip?.label).toBe(RECORDED);
   });
 
-  it("baseline is named per role in the details; the chip still says which models ran live", () => {
+  it("real_http mixed with baseline says both, and names baseline per role in the details", () => {
     const chip = honesty([started({ ...LANES, fast_cp: "baseline" })]).chip;
-    expect(chip?.label).toBe(LIVE);
+    expect(chip?.label).toBe(LIVE_AND_BASELINE);
+    expect(LIVE_AND_BASELINE).toBe("Live models + baseline (scripted policy)");
     expect(chip?.roles).toContainEqual({ role: "fast_cp", label: BASELINE });
     expect(BASELINE).toBe("Baseline (scripted policy)");
     expect(honesty([started({ fast_cp: "baseline" })]).chip?.label).toBe(BASELINE);
@@ -87,5 +88,11 @@ describe("the provenance chip", () => {
     expect(chip?.roles).toContainEqual({ role: "slow", label: "grpc_magic" });
     const bare = honesty([ev("session.started", "kernel", { models: { slow: {} } })]).chip;
     expect([bare?.label, bare?.roles]).toEqual(["Model kind: unknown", [{ role: "slow", label: "unknown" }]]);
+  });
+
+  it("a kernel session.started with models missing or {} still has a chip: Model kind: unknown", () => {
+    for (const payload of [{}, { models: {} }, { models: null }]) {
+      expect(honesty([ev("session.started", "kernel", payload)]).chip).toEqual({ label: "Model kind: unknown", scripted: false, roles: [] });
+    }
   });
 });

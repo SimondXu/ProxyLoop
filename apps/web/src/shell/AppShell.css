@@ -9,4 +9,6 @@
   .pl-main { padding: 0 var(--s5) var(--s5); }
   /* A page's sticky header: the honesty band and what the page keeps in view */
   .pl-sticky { position: sticky; top: 0; z-index: 2; background: var(--canvas); border-bottom: 1px solid var(--line); max-height: 60vh; overflow-y: auto; margin: 0 calc(-1 * var(--s5)); padding: 0 var(--s5); }
+  /* The band stays in view while the sticky region itself scrolls (its hatch is opaque) */
+  .pl-sticky > .pl-band { position: sticky; top: 0; z-index: 1; background: var(--hatch); }
 }

@@ -10,6 +10,7 @@ export const LIVE = "Live models";
 export const SCRIPTED = "Scripted test run · no models called";
 export const RECORDED = "Recorded replay";
 export const BASELINE = "Baseline (scripted policy)";
+export const LIVE_AND_BASELINE = "Live models + baseline (scripted policy)";
 
 // The adapter kinds (AGENTS rule 5), per role in the chip's details; any other kind is shown raw.
 const KIND: Record<string, string> = {
@@ -27,9 +28,9 @@ const kindOf = (m: unknown): string => {
   return typeof kind === "string" ? kind : "unknown";
 };
 
-function chip(models: Record<string, unknown>): Chip | null {
+function chip(models: Record<string, unknown>): Chip {
   const kinds = Object.entries(models).map(([role, m]) => ({ role, kind: kindOf(m) }));
-  if (kinds.length === 0) return null;
+  if (kinds.length === 0) return { label: "Model kind: unknown", scripted: false, roles: [] }; // never "no provenance"
   const has = (k: string) => kinds.some((r) => r.kind === k);
   const unknown = [...new Set(kinds.map((r) => r.kind).filter((k) => !Object.hasOwn(KIND, k)))];
   const label = has("test_fake")
@@ -38,9 +39,11 @@ function chip(models: Record<string, unknown>): Chip | null {
       ? RECORDED
       : unknown.length > 0
         ? `Model kind: ${unknown.join(", ")}`
-        : has("real_http")
-          ? LIVE
-          : BASELINE;
+        : !has("real_http")
+          ? BASELINE
+          : has("baseline")
+            ? LIVE_AND_BASELINE
+            : LIVE;
   return { label, scripted: label === SCRIPTED, roles: kinds.map(({ role, kind }) => ({ role, label: (Object.hasOwn(KIND, kind) ? KIND[kind] : undefined) ?? kind })) };
 }
 
@@ -48,9 +51,10 @@ export function honesty(events: Ev[]): Honesty {
   const p = parties(events);
   const start = events.find((e) => e.type === "session.started" && e.actor === "kernel");
   const models = start?.payload.models;
+  const known = typeof models === "object" && models !== null && !Array.isArray(models);
   return {
     sim: simLabels(p),
     principal: p.known && !p.simUser ? HUMAN_PRINCIPAL : null,
-    chip: typeof models === "object" && models !== null ? chip(models as Record<string, unknown>) : null,
+    chip: start === undefined ? null : chip(known ? (models as Record<string, unknown>) : {}),
   };
 }
