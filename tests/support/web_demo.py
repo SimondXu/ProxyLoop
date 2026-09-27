@@ -28,6 +28,7 @@ adapter does, after a latency on the session's clock. The scripts:
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from collections.abc import Callable, Mapping
 from datetime import datetime
@@ -215,6 +216,13 @@ _RELAY = re.compile(r"\[(USER CHAT|REP CALL)\] (.*) \(utt (\S+)\)")
 _FACT = re.compile(r"([a-z][a-z0-9_.]*)=([^;]+?)(?=;|$)")
 
 
+def _said_in(note: str) -> str:
+    """A relay note's facts and text: after its type, as written (``relay_only``)
+    or as one JSON string (``transcript``, ADR-0016: ``prompt.note(quoted=True)``)."""
+    said = note.partition(" ")[2]
+    return str(json.loads(said)) if said.startswith('"') else said
+
+
 def _record(facts: Mapping[str, str], utt: str) -> dict[str, object]:
     slots: list[dict[str, str]] = []
     for field, value in facts.items():
@@ -237,7 +245,8 @@ class SlowScript:
         # o1 is recorded from the offer, then once more, whole, from a read-back
         offer = re.search(r"o1 r\d+ \(([^)]*)\)", status)
         new, partial = offer is None, offer is not None and "missing" in offer[1]
-        for lane, body, utt in _RELAY.findall(notes):
+        for lane, note, utt in _RELAY.findall(notes):
+            body = _said_in(note)
             facts = dict(_FACT.findall(body))
             if lane == "USER CHAT" and "account.last4" in facts:
                 keys = ("account.holder_name", "account.last4")
