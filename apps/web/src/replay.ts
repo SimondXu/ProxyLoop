@@ -13,6 +13,7 @@ export type Ev = {
   stream: "agent" | "world" | "ops";
   cause_ids: string[];
   payload: Payload;
+  wall?: string; // ISO wall clock; display only (a time of day), never compared
 };
 export type Lane = "user" | "rep" | "fast_u" | "fast_c" | "slow" | "guard" | "world";
 
