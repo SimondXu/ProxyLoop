@@ -3,13 +3,15 @@
 
 Lines are sent in dense seq order from ``from_seq`` (an original seq), polling
 the file for new bytes; reading and validation run in a worker thread, one
-bounded chunk at a time. A gap, a bad line or another run's event closes 1011,
-a held-out run 4404 (at seq 0), and ``session.ended`` 1000.
+bounded chunk at a time. A gap, a bad line, another run's event, or a file
+truncated, replaced or removed under the tail closes 1011, a held-out run 4404
+(at seq 0), and ``session.ended`` 1000.
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -65,7 +67,21 @@ class Reader:
                 frames.append(text)
             if event.type == "session.ended":
                 return frames, (1000, "session ended"), False
+        if not chunk and self.moved():  # else it would wait forever
+            return frames, (1011, "events.jsonl was truncated or replaced"), False
         return frames, None, not chunk
+
+    def moved(self) -> bool:
+        """The open file shrank below what was read, or its path is gone or
+        now names another file. (A truncation that has already regrown past
+        the read position is not seen.)"""
+        opened = os.fstat(self.file.fileno())
+        try:
+            now = os.stat(self.file.name)
+        except FileNotFoundError:
+            return True
+        same = (now.st_ino, now.st_dev) == (opened.st_ino, opened.st_dev)
+        return opened.st_size < self.file.tell() or not same
 
 
 async def _tail(ws: WebSocket, reader: Reader) -> Close | None:
