@@ -185,7 +185,7 @@ class PublicState:                      # everything FastView[cp] may see
     facts: Mapping[str, PublicFact]     # PublicFact{key, value, source: "cp_utt"|"shareable", source_ref}
     offers: Mapping[str, OfferPublic]   # §9.2
     guidance_cp: tuple[Guide, ...]      # enum + slot refs only; the type allows 3, the fold keeps the newest one (ADR-0013; S1-SYS-27 builds it)
-    action_log: tuple[str, ...]         # last 12; value-free templates from tool names ("recorded an offer"); no reducer writes it yet (S1-SYS-27)
+    action_log: tuple[str, ...]         # last 12; constant templates from a fixed tool-name allow-list, no arguments; private-scope tools add none (S1-SYS-27; no reducer writes it yet)
     status: CaseStatus
     cp_hold: HoldState | None
 
@@ -345,7 +345,7 @@ Every tool requires `private_summary`, the principal-facing digest [O pattern fr
 
 There are no transcripts. In duplex, Slow has no free-speech tool.
 
-The readiness table and the needs ledger (ADR-0012) are pure `guard` modules (`guard/readiness.py`, `guard/needs.py`), folded from events and shared by the kernel and Slow; S1-SYS-21 builds them. `public_summary` is declassified after the act's calls, so it may cite a fact the same act recorded (S1-SYS-21).
+The readiness table and the needs ledger (ADR-0012) are pure `guard` modules (`guard/readiness.py`, `guard/needs.py`), folded from events and shared by the kernel and Slow; S1-SYS-21 builds them. The ledger exposes key names, states, seqs/ages and hold counts only, never text (I5). The call gate, the intake deadline, the defer close, the redial and the call counter live in a new `kernel/calls.py` (S1-SYS-21, S1-SYS-24), since `kernel/session.py` is near the 600-line warning. `public_summary` is declassified after the act's calls, so it may cite a fact the same act recorded (S1-SYS-21).
 
 ---
 
@@ -404,8 +404,8 @@ ReadbackBinding{offer_ref, revision, account_ref, principal_ref, purpose, author
   - an f2s `REVOKE` (the kernel bumps it immediately: models may restrict, never grant).
 
   Approval decisions do **not** bump the epoch: they are grants *bound to* an epoch. An offer's new revision is covered by `terms_hash`, not by the epoch. Cards, approvals and capabilities carry the epoch at which they were minted, and every later check requires `minted_epoch == bb.epoch`.
-- **Ingress fence.** Every user-lane `user.msg` raises `authority.fence{raised, fence_id}` synchronously, before any other processing. The fence clears at the first `slow.step.completed` whose `basis_seq` is at or after the seq of the FastU `fast.turn` produced for that message (Slow has seen whatever FastU relayed). While any fence is raised, `request_approval` and `accept_offer` are denied, and queued `speak.verbatim{accept}` lines are held. If FastU fails to relay a "stop", the fence still clears once Slow has processed FastU's turn. This is a **Fast failure**, and exactly the capability measured (EVAL §7 `revocation_honoured`).
-- **Partner-turn fence** (decided, not yet built: S1-SYS-23). A rep `utt.final` between an accept's queueing and its release raises a short fence, as a `user.msg` does. The accept waits until a Slow step that saw the rep's turn completes, then the Speaker revalidates; a revocation is that revalidation failing. Restrict-only. Until then (#156) a partner turn only goes before a queued verbatim line on the floor.
+- **Ingress fence.** Every user-lane `user.msg` raises `authority.fence{raised, fence_id}` synchronously, before any other processing. The fence clears at the first `slow.step.completed` whose `basis_seq` is at or after the seq of the FastU `fast.turn` produced for that message (Slow has seen whatever FastU relayed). While any fence is raised, `request_approval` and `accept_offer` are denied, and a queued `speak.verbatim{accept}` line that reaches the floor under a user fence is revoked (`speak.revoked{reason: fence}`); it never waits (#156), so the case cannot wedge on `accept_in_flight`. If FastU fails to relay a "stop", the fence still clears once Slow has processed FastU's turn. This is a **Fast failure**, and exactly the capability measured (EVAL §7 `revocation_honoured`).
+- **Partner-turn fence** (decided, not yet built: S1-SYS-23; option C, the one decided exception to "never waits"). A rep `utt.final` between an accept's queueing and its release raises a short fence. The accept waits until a Slow step that saw the rep's turn completes, then the Speaker revalidates; a revocation is that revalidation failing. The wait is bounded by the capability's expiry (it fails closed as `speak.revoked{reason: expired}`), and the kernel wakes Slow on the partner turn, so the wait cannot wedge. Restrict-only. Until then (#156) a partner turn only goes before a queued verbatim line on the floor.
 - **Generations.** Each FastLane generation has a `gen_id`, `basis_seq` and `epoch`.
   - A generation whose epoch moved while it streamed is stale: `fast.cancelled{reason: epoch}` before its first sentence (no turn, relay or speech), and its trigger runs again on the new basis (#156). A newer trigger cancels nothing else: a newer partner line is answered by the next generation, and relays stay credited to the view they came from (#144).
   - **Superseded cp speech** (ADR-0013; S1-SYS-22 builds it): before each cp line starts, the Speaker drops the line and the rest of its generation when its `basis_seq` predates a public `fact.recorded` or a cp GUIDE that differs from the newest one in its view: `fast.cancelled{reason: superseded, utt_ids, by}`, and the trigger is re-queued. Relays are kept, the line being spoken finishes, and the user lane is never superseded.
@@ -424,9 +424,9 @@ ReadbackBinding{offer_ref, revision, account_ref, principal_ref, purpose, author
 
 ### 9.5 Status machine (`CaseStatus`)
 ```
-INTAKE ──chan.opened(cp): ready | start_call | INTAKE_S──► IN_CALL
+INTAKE ──chan.opened(cp): ready | slow_start | intake_deadline──► IN_CALL
 INTAKE ──mandate.decided(granted)──► MANDATED ──chan.opened(cp)──► IN_CALL
-IN_CALL ──chan.closed(cp, deferred): call_deferred──► INTAKE | MANDATED ──chan.opened(cp, redial)──► IN_CALL
+IN_CALL ──chan.closed(cp, deferred): call_deferred──► INTAKE | call_deferred_mandated──► MANDATED ──chan.opened(cp, redial)──► IN_CALL
 IN_CALL ──approval.requested──► AWAITING_APPROVAL ──approval.decided──► IN_CALL
 IN_CALL ──action.authorized(accept)──► COMMIT_AUTHORIZED ──speak.released + utt.delivered(full)──► COMMITTED
 COMMIT_AUTHORIZED ──speak.revoked | truncated──► NEEDS_REPLAN
@@ -437,7 +437,7 @@ IN_CALL ──finish(no_deal) ∧ verify_no_deal──► VERIFIED_NO_DEAL      
 Only `completion.decided` sets a `VERIFIED_*` status. Fast sees the status in the `CASE STATUS` section.
 
 - **INTAKE holds until the call is ready** (ADR-0012; S1-SYS-21 builds it; today the kernel opens the call at session start): the cp call opens when the readiness keys are public, on Slow's Guard-checked `start_call`, or at `INTAKE_S` = 120 s, whichever comes first.
-- **`call_deferred`** (ADR-0014; S1-SYS-24 builds it) is a SYS edge in `guard/status.py`, not a new `CaseStatus`: nothing can be accepted between calls (`accept` is authorised only in IN_CALL). At most `MAX_CALLS` = 2 calls.
+- **`call_deferred`** (→ INTAKE) and **`call_deferred_mandated`** (→ MANDATED, when a mandate is granted) (ADR-0014; S1-SYS-24 builds them) are SYS edges in `guard/status.py`, not a new `CaseStatus`. `chan.closed{deferred}` closes every call-1 offer (`offer_closed`), so nothing from call 1 can be approved or accepted in call 2, and nothing can be accepted between calls (`accept` is authorised only in IN_CALL). At most `MAX_CALLS` = 2 calls.
 
 ### 9.6 Approval endpoint security [C15]
 `POST /api/cases/{case_id}/approvals/{approval_id}` with the body `{decision, terms_hash, authority_epoch}`:
