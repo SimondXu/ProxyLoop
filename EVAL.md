@@ -159,7 +159,11 @@ Both are reported per lane. On the user lane latency is **measured only**, and n
 - Propagation and guidance (ADR-0013): `superseded_lines` (per condition); `stale_line_after_public` (a cp line delivered after the fact it withholds was public); `holds_after_identify` (hold lines heard after an `identify` GUIDE); `unguided_refusals` (Ear `refuse_fact` on a turn with no GUIDE in view); `mixed_identity_hold_turns` (one turn carrying both identity values and a hold); `acks_without_speech` (`s2f.voiced` from a turn that said nothing and gave no directive).
 - Relays and the world: `bare_hold_relays` (cp HOLD relays that do not say what the rep asked for); `ear_lag_ms` (end of a turn to its `rep.ear`).
 - Hold bound and second call (ADR-0014): `calls`, `deferrals`, `defer_by` (guard or slow), `holds_at_defer`, `hold_requests` (voiced `@hold fact_request` per need), `holds_over_budget` (FastC holding after the defer guide), `defer_unvoiced`, `redial_wait_ms`, `second_call_outcome`, and `identity_mismatch` (a world label, used in evaluation only).
-- Slow wake and context (ADR-0015, ADR-0016; the definitions of `slow_attention_lag` and `slow_user_msgs_per_user_msg` are root decisions under §0.5a before any data, 2026-09-27): `slow_attention_lag` (from a rep `utt.final` to the start of the first Slow step whose basis includes it; p50/p95/max); `slow_transcript_omitted` (new transcript lines dropped by the `[CONVERSATIONS]` caps); `slow_user_msgs_per_user_msg` (successful `ask_user`/`tell_user` per `user.msg`, the double-reply risk); Slow input tokens per step (p50/max).
+- Slow wake and context (ADR-0015, ADR-0016; these definitions are root decisions under §0.5a before any data, 2026-09-27):
+  - `slow_attention_lag`: per rep `utt.final`, the time in ms (from event `t_ms`) to the start of the first Slow step whose basis includes it; p50/p95/max. Rep lines that no Slow step ever saw are reported as a separate count, `rep_lines_unseen`, never dropped;
+  - `slow_user_msgs_per_user_msg`: per session, successful `ask_user`/`tell_user` calls per `user.msg` (the double-reply risk); reported as the p50 across sessions plus the pooled ratio; sessions with no `user.msg` are excluded and counted;
+  - `slow_transcript_omitted`: new transcript lines dropped by the `[CONVERSATIONS]` caps, derived by re-rendering Slow's view from the events;
+  - Slow input tokens per step (p50/max).
 
 ## 8. Statistics
 ### 8.1 Planning identity (used to read results, not to gate)
