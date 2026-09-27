@@ -283,6 +283,16 @@ PROBES = [  # PR #133 reviews: (message, key, Slow's value, published value or N
     ("My name is Dana  Reyes", H, "Dana  Reyes", None),
     ("My name is Dana_Reyes", H, "Dana", None),
     ("My name is Dana-Reyes", H, "Dana", None),
+    # round 5 M1: allow-listed boundaries only
+    ("call 555\u2013482\u20131999", L4, "1999", None),
+    ("acct 12\u200b4821", L4, "4821", None),
+    ("call 555\u2011482\u20111999", L4, "1999", None),
+    ("balance \u22124821", L4, "4821", None),
+    ("mail 4821@x.com", L4, "4821", None),
+    ("I owe $4821", L4, "4821", None),
+    ("last four: 4821", L4, "4821", "4821"),
+    ("last four (4821)", L4, "4821", "4821"),
+    ("last four \u201c4821\u201d", L4, "4821", "4821"),
 ]  # fmt: skip
 
 
@@ -342,6 +352,10 @@ LEAKS = [  # values the narrow path accepts, then the leak check refuses
     ("code 0070", L4, "0070"),  # $70 with leading zeros
     ("code 7000", L4, "7000"),  # $70 in minor units
     ("code 0024", L4, "0024"),  # 24 months
+    # round 5 B1: protected names typed without their separators
+    ("maiden name Obrien", H, "Obrien"),
+    ("I'm LeeSmith", H, "LeeSmith"),
+    ("from StJohn", H, "StJohn"),
 ]
 
 
@@ -372,3 +386,11 @@ def test_a_protected_value_or_a_mandate_bound_never_goes_public() -> None:  # I4
     assert tools.shareable == {}
     result = tools.fact(bb, "account.last4", "4821", "u-1")  # still works
     assert dict(result.effects[0][1])["scope"] == "public"
+
+
+def test_a_protected_value_in_other_decimal_digits_is_caught() -> None:  # round 5 B2
+    pin = Fact(key="account.pin", value="\u0667\u0667\u0667\u0667", protected=True)
+    bb, tools = _message("PIN 7777", case_facts={"account.pin": pin})
+    result = tools.fact(bb, L4, "7777", "u-1")
+    (_, fact), (denied, _) = result.effects
+    assert (fact["scope"], denied) == ("private", "declass.denied")

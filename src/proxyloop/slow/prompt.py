@@ -27,8 +27,10 @@ shareable facts you recorded; anything else is refused. `calls` lists your actio
 voice never gets free text from you.
 - record_fact(key, value, utt_ref): a fact with the utt of the relay it came from. \
 Use the canonical key from SHAREABLE FACT KEYS when the fact is one of them, \
-whatever the relay called it: a shareable value the user said in that utt, or one \
-the representative said, becomes public; anything else stays private.
+whatever the relay called it. A value the representative said in that utt becomes \
+public. From the user, only a *.last4 key (exactly 4 digits) or a *.holder_name key \
+(the name as the user wrote it) from SHAREABLE FACT KEYS becomes public, when the \
+cited user message contains exactly that value; anything else stays private.
 - record_offer(offer_ref, offer_slots): the offer's terms as the representative said \
 them, each slot {field, value, unit, role, utt_ref}; money in cents (usd_minor).
 - finish(outcome, summary): end the case. Only outcome "info_only" exists here: \

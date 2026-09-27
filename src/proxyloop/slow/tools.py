@@ -226,14 +226,14 @@ def _user_span(key: str, value: str, message: str) -> str | None:
     """I4, the narrow S0 user-message path (#133 round 4): the span of the raw
     ``message`` to publish, or None. Only two key shapes can go public:
     - ``*.last4``: exactly four ASCII digits, a standalone token of the message
-      (no letter, digit, dash, slash, sign, quote or decimal point touches it;
-      a full stop or comma may follow when no digit does);
+      on an allow-list: after the start, whitespace or one of ``( : " “``;
+      then at most one of ``. , ; : ! ? ) " ”`` and whitespace or the end;
     - ``*.holder_name``: 1-4 ASCII words (``O'Brien``, ``Lee-Smith``), no number
       word, found case-insensitively with word boundaries; the user's own
       spelling is published.
     Every other key stays private on this path (safety over coverage)."""
     if key.endswith(".last4") and _LAST4.fullmatch(value):
-        before, after = r"(?<![\w\-/#+.,\u2019'])", r"(?![\w\-/\u2019'])(?![.,]\d)"
+        before, after = r"(?:^|(?<=[\s(:\"\u201c]))", r"(?=[.,;:!?)\"\u201d]?(?:\s|$))"
         return value if re.search(before + value + after, message) else None
     if not key.endswith(".holder_name") or not _NAME.fullmatch(value):
         return None
@@ -248,18 +248,30 @@ def _words(text: str) -> str:  # "O'Brien" -> "o brien"
     return " ".join(re.findall(r"[a-z]+", text.casefold()))
 
 
-def _digits(text: str) -> str:  # "(555) 482-1999" -> "5554821999"
-    return re.sub(r"\D", "", unicodedata.normalize("NFKC", text))
+def _letters(text: str) -> str:  # "O'Brien" -> "obrien"
+    return re.sub(r"[^a-z]", "", text.casefold())
+
+
+def _digits(text: str) -> str:  # "(555) 482-1999" -> "5554821999"; any script
+    text = unicodedata.normalize("NFKC", text)
+    return "".join(str(unicodedata.decimal(c)) for c in text if c.isdecimal())
 
 
 def _leaks(key: str, span: str, bb: st.Blackboard) -> list[str]:
-    """The span to publish against every protected case-fact value (word forms
-    and digit forms, either containing the other) and, for a ``*.last4``, the
+    """The span to publish against every protected case-fact value (word,
+    letter and digit forms, either containing the other) and, for a ``*.last4``, the
     mandate bounds in minor units, whole units and months."""
     out, words, digits = list[str](), _words(span), _digits(span)
+    letters = _letters(span)
     for name, f in sorted(bb.private.case_facts.items()):
         theirs, their_digits = _words(f.value), _digits(f.value)
         same_words = words and theirs and (words in theirs or theirs in words)
+        their_letters = _letters(f.value)  # "Obrien" is "O'Brien"
+        same_words = same_words or (
+            letters
+            and their_letters
+            and (letters in their_letters or their_letters in letters)
+        )
         same_digits = (
             digits
             and their_digits
