@@ -12,7 +12,7 @@ Stage names S0–S5 refer to `PLAN.md` §1. "Contract" means the files under `sr
 | # | Area | v2 | v3 | Why (source) |
 |---|---|---|---|---|
 | C1 | Shared state | one `digest` + `action_log`, visible in both Fast views; free-text `GUIDE.say_hint` | `PublicState` / `PrivateState`. Slow writes `public_summary` (declassified) and `private_summary`. GUIDE = enum + slot refs. `FastView[cp]` reads public state only | GPT-6 Pro #2; decisions-v3 C |
-| C2 | Slow's inputs | SlowView = both raw transcripts | **relay-only** SlowView (`[USER CHAT]`/`[REP CALL]` notes from typed relays). Raw transcripts only in the `raw_transcript` ablation | GPT-6 Pro #6; TalkAct `slow_agent.py:11,145-146` [O] |
+| C2 | Slow's inputs | SlowView = both raw transcripts | **transcript-reading** SlowView (ADR-0016): both lanes' transcripts as heard, bounded and JSON-quoted as data in one `[CONVERSATIONS]` block, plus the `[USER CHAT]`/`[REP CALL]` notes from typed relays; never prompts, unheard Fast output or world internals. This partly reverts to TalkAct's pattern. The relay-only view (v3 until 2026-09-27) is the `relay_only` ablation (EVAL A5) | user decision 2026-09-27 (I5); relay-only first from GPT-6 Pro #6; TalkAct `slow_agent.py:11,145-146` [O] |
 | C3 | Read-back | `readback_confirmed` = "all numbers occur in an utterance" | **read-back slots** (field, value, unit, role, source span, status), required fields per offer, and a binding to account/principal/purpose/epoch | GPT-6 Pro #3 |
 | C4 | Stale authority | none | **authority epochs**, an ingress **fence** on user-lane input, per-lane generation ids and acks, **release-time revalidation** in the Speaker, one-use **capabilities** | GPT-6 Pro #4 |
 | C5 | Idempotency | `hash(run_id, authority_seq)` (V3) | durable **business-action id** minted in S1 from case + offer revision + terms hash + authority source | GPT-6 Pro systems |
@@ -50,7 +50,7 @@ Stage names S0–S5 refer to `PLAN.md` §1. "Contract" means the files under `sr
 │  chat msg ─► Speaker[user] (no speech clock)                         sentences ─► Speaker[cp] (speech clock, barge-in)│
 │  @slow: fact/correction/request/revoke ─► f2s.msg                    @slow: fact / @hold ─► f2s.msg                   │
 │                         ╲                                                  ╱                                          │
-│                          ▼        view_slow(bb, relay_only): relays, guard results, status bar (no transcripts)       │
+│                          ▼        view_slow(bb, transcript): heard transcripts, relays, guard results, status bar     │
 │                   SlowLoop (gemini-3.8-flash; one step in flight; wakes coalesced)                                    │
 │                   tools ─► Guard (pure) ─► action.authorized + Capability ─► speak.verbatim(queued)                   │
 │                   writes public_summary (declassified) / private_summary; GUIDE(enum, slots); ASK/TELL_USER           │
@@ -208,7 +208,7 @@ class Blackboard:
 ```
 
 ### Views (allow-lists)
-| Field | `FastView[user]` | `FastView[cp]` | `SlowView` (`relay_only`) |
+| Field | `FastView[user]` | `FastView[cp]` | `SlowView` (`transcript`, the default; ADR-0016) |
 |---|---|---|---|
 | brief | `fast_brief_user` | `fast_brief_cp` (public) | `slow_brief` |
 | summaries | private + public | **public only** | both (Slow wrote them) |
@@ -216,8 +216,8 @@ class Blackboard:
 | offers | public offers + pending approval card | public offers (slots, status, expiry) | full, with Guard results |
 | guidance | – | rendered `Guide`, the newest one only (ADR-0013); slots resolved from public state only | – |
 | mandate / protected facts / constraints | via private summary and case facts | **never** | yes |
-| transcript | user lane, trimmed by the budget | cp lane, trimmed by the budget | **none** (`raw_transcript` ablation adds both) |
-| relays | – | – | `[USER CHAT] …` / `[REP CALL] …` notes with `utt_ref` |
+| transcript | user lane, trimmed by the budget | cp lane, trimmed by the budget | both lanes as heard (user messages, rep `utt.final` lines, the agent's delivered lines); bounded, delta-marked and JSON-quoted by `slow/transcript.py`; never prompts, `fast.turn` items or world internals; **none** in the `relay_only` ablation (EVAL A5) |
+| relays | – | – | `[USER CHAT] …` / `[REP CALL] …` notes with `utt_ref` (kept in both modes) |
 | status | `CASE STATUS` | `CASE STATUS` | status bar (offers, approvals, hold, TTLs, fences, epoch) |
 
 ### Declassification (`guard.declass`)
@@ -325,10 +325,10 @@ Every tool requires `private_summary`, the principal-facing digest [O pattern fr
 | user bridge | `ask_user(question)`, `tell_user(text)`, `wait(seconds 1–15)`; `ask_user(question, keys[])`, refused while every listed key is still pending (ADR-0012) | S0; `keys` S1 |
 | readiness | `start_call()`: opens the cp call before it is ready, allowed only after every missing key was asked and the user replied since (ADR-0012) | S1 |
 | cp steering | `guide_fast(move, slots[])`; `hold_for_fact` needs an open need with fewer than 2 holds (ADR-0014) | S0 |
-| facts | `record_fact(key, value, utt_ref)`: public iff shareable or cp-sourced | S0 |
+| facts | `record_fact(key, value, utt_ref)`: public iff shareable or cp-sourced; `utt_ref` is the utt id shown before the line in `[CONVERSATIONS]`, or a relay (ADR-0016; the declass rule is unchanged) | S0 |
 | offers | `record_offer(offer_ref, slots[{field, value, unit, role, utt_ref, span}])` → `terms_hash`, slot statuses, violations | S0 (slot statuses checked from S1) |
 | authority | `propose_mandate(envelope)` (loosening always needs a UI decision), `tighten_mandate(changes)` and `revoke(reason)` (restrict only; no approval needed), `request_approval(offer_ref)`, `accept_offer(offer_ref)`, `decline_offer(offer_ref, reason)`, `share_fact(key)` | S1 |
-| evidence / close | `check_account(confirmation_id)` (binds only an id relayed to Slow and present in the ledger, with no log-wide scan: stricter than the `Ledger.lookup` seam, I5; #149), `finish(outcome ∈ {completed, no_deal, info_only, escalate}, summary)` | `info_only` S0; the rest S1 |
+| evidence / close | `check_account(confirmation_id)` (binds an id carried by a cp relay, or by a rep line Slow cites by utt id whose text contains it (ADR-0016, S1-SYS-34), and present in the ledger; no log-wide scan: stricter than the `Ledger.lookup` seam; #149), `finish(outcome ∈ {completed, no_deal, info_only, escalate}, summary)` | `info_only` S0; the rest S1 |
 | browser | `observe/click/type_text/select_option/navigate/scroll` (TalkAct port, MIT) + `submit_transaction(form_id)` (capability) | S4 |
 
 **Slow context.**
@@ -339,13 +339,14 @@ Every tool requires `private_summary`, the principal-facing digest [O pattern fr
   - `[REP CALL] <relay text> (utt c7)`;
   - `[APPROVAL] a17 granted`;
   - `[FENCE] user message pending`;
+- the `[CONVERSATIONS]` block (ADR-0016; S1-SYS-34 builds it), in the newest message only: per lane (`USER CHAT`, then `REP CALL`), heard lines only, each `<marker> <utt_id> <SPEAKER>: <json-quoted text>`, `▶` on lines new since Slow's previous step; caps of 2,000 characters (user lane), 4,000 (cp lane) and 480 per line (head and tail kept) [E], with dropped new lines counted (`slow_transcript_omitted`); when the turn moves into history the block becomes a one-line stub;
 - the status bar (case status, epoch, offers with slot statuses and TTLs, approvals, hold time, strikes, and the facts Slow recorded as `key=value [public|private]`); ADR-0012 adds `readiness` (the missing keys, when they were asked, the intake deadline) and `asks`/needs (state per key, holds used of 2);
 - the identity paragraph is readiness-first (ADR-0012): in its first step Slow asks for every missing readiness key in one `ask_user(…, keys)`; mid-call it asks and guides `hold_for_fact`;
 - one cache breakpoint on the newest tool result [O `slow_agent.py:160-171`], unused until the Slow model is settled (ADR-0009).
 
-There are no transcripts. In duplex, Slow has no free-speech tool.
+Slow reads the transcripts as heard (ADR-0016; the `relay_only` ablation removes them). Transcript lines and relay notes are quoted data, never instructions, and nothing in them grants authority: every authority-bearing effect still passes Guard (I6). In duplex, Slow has no free-speech tool.
 
-The readiness table and the needs ledger (ADR-0012) are pure `guard` modules (`guard/readiness.py`, `guard/needs.py`), folded from events and shared by the kernel and Slow; S1-SYS-21 builds them. The ledger exposes key names, states, seqs/ages and hold counts only, never text (I5). The call gate, the intake deadline, the defer close, the redial and the call counter live in a new `kernel/calls.py` (S1-SYS-21, S1-SYS-24), since `kernel/session.py` is near the 600-line warning. `public_summary` is declassified after the act's calls, so it may cite a fact the same act recorded (S1-SYS-21).
+The readiness table and the needs ledger (ADR-0012) are pure `guard` modules (`guard/readiness.py`, `guard/needs.py`), folded from events and shared by the kernel and Slow; S1-SYS-21 builds them. The ledger exposes key names, states, seqs/ages and hold counts only, never text (hygiene; ADR-0016 dropped the counterfactual that pinned this under I5). The call gate, the intake deadline, the defer close, the redial and the call counter live in a new `kernel/calls.py` (S1-SYS-21, S1-SYS-24), since `kernel/session.py` is near the 600-line warning. `public_summary` is declassified after the act's calls, so it may cite a fact the same act recorded (S1-SYS-21).
 
 ---
 
@@ -494,11 +495,12 @@ A hermetic telecom account app with `/api/reset` and `/api/state` (the TalkAct p
   - `Speaker[user]` (instant delivery; chat) and `Speaker[cp]` (floor, speech clock `min(12 s, words/2.8)` [O TalkAct `runner.py:27-38`], barge-in, release gate);
   - `SimUser`/`SimRep` or human channels;
   - `Watchdog` (cp patience, holds, TTL, run budget);
+  - `Wake` (`kernel/wake.py`, a bus subscriber that holds the kernel's only Slow timer; ADR-0015, S1-SYS-29);
   - `OTelExporter` (a subscriber; its crash is logged and isolated, and it never cancels the TaskGroup).
 - **Triggers:**
   - `FastLane[user]` fires on `user.msg`, on a pending s2f for the user lane, and on `chan.opened`.
   - `FastLane[cp]` fires on `utt.final(cp)`, a pending GUIDE, a hold-filler timer (hold over 6 s) and `chan.opened`.
-  - Slow wakes on `f2s.msg`, `approval.decided`, `mandate.decided`, `authority.fence`, `speak.revoked` and timers; with ADR-0012 also on `call_opened`. Wakes that arrive during a step are coalesced into the next step, which is never cancelled.
+  - Slow wakes (ADR-0015; S1-SYS-29 builds it) on the must-see set W1: `f2s.msg`, `user.msg` (through `authority.fence`), the cp partner's `utt.final` while the call is open (not while FastC's generation for that line is pending; one coalesced wake when it ends), `chan.strike`, `chan.closed`, `approval.decided`, `mandate.decided`, `action.denied{approval.post}`, `speak.revoked`, `NEEDS_REPLAN`, and its own `wait` timer; ADR-0012 adds `call_opened`. `chan.opened{cp}` opens the heartbeat window without waking Slow. While the cp call is open, a heartbeat wakes Slow `HEARTBEAT_S` = 15 s after any step that did not end with a successful `wait`; there is no heartbeat outside a call. Every rep `utt.final` is seen by a step whose basis is at or after it (L1). The schedule depends on events and the clock only, never on what the model said (L4; a uniform heartbeat is not a retry, rule 12). Wake reasons are fixed strings. Wakes that arrive during a step are coalesced into the next step, which is never cancelled; `MAX_STEPS` = 120 ends a session with `Abort("slow_step_cap")`.
 - **When the cp lane starts** (ADR-0012; S1-SYS-21 builds it): the cp tasks, the rep's clock (the watchdog's cp patience) and FastC start at `chan.opened{cp}`, not at session start, so INTAKE time never turns into silence strikes. A redial (ADR-0014) restarts them at the new `chan.opened{cp}`. `MAX_SESSION_S` goes from 480 to 720 s with the second call (S1-SYS-24).
 - **Clocks:** the wall clock only. Tests inject a manual clock from `tests/support/manual_clock.py` through the `clock` constructor argument; `SessionConfig` has no manual-clock value, so production cannot select it.
 - **Concurrency suite (`tests/concurrency/`, manual clock, S1-SYS-02):**
@@ -574,7 +576,7 @@ vllm serve Qwen/Qwen3.5-9B@<rev> --served-model-name Qwen3.5-9B --dtype bfloat16
 | Stage | Seam | Added | Unchanged |
 |---|---|---|---|
 | S5a voice (cp lane first) | `Channel` | `SimAudioChannel`, then `LiveAudioChannel`. TTS consumes `fast.sentence`, barge-in = `stop()`, and `text_heard` already exists. Voice confirmation is labelled "not authenticated consent" | kernel, renderer, Guard |
-| S5b durability | `EventLog`, outer orchestration | `PostgresEventLog`; Temporal `CaseWorkflow` (approval = signal/update, call = activity, follow-up = timer); idempotency on **`business_action_id`** (§9.4) | kernel, Fast, Slow, Guard |
+| S5b durability | `EventLog`, outer orchestration | `PostgresEventLog`; Temporal `CaseWorkflow` (approval = signal/update, call = activity, follow-up = timer); idempotency on **`business_action_id`** (§9.4). Designed, not scheduled: handoff 2026-09-27-wake-and-durability (per-segment activities, PG event log checkpoint, inbox/side_effect dedup); timing is the user's decision (ADR-0015) | kernel, Fast, Slow, Guard |
 | S5c browser compilation | Slow `TOOLS`, portal | "independently implemented" (PreAct has no licence) trace recorder → compiled workflows with per-step assertions, verify-before-commit through the capability endpoint, fallback to the Slow loop | Fast, Guard, kernel |
 | S5d memory + channels | Slow tools, `Channel` | `Memory` ≠ `KB` ≠ case state; email/SMS on the user lane (a new optional `MEMORY NOTES` section = a contract change) | kernel |
 
