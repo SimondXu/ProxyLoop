@@ -1,6 +1,6 @@
 # PLAN.md: the single state file
 
-**Current:** S0 in progress (the user gave the go on 2026-09-26). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01, S0-SYS-02 (#115), S0-ROOT-07 (#114), S0-CON-01 (#116), S0-MOD-01 (#113, provisional: `serve-attest-local` pending the user's go), S0-ROOT-08 (#117), S0-SYS-03 (#118), S0-SYS-04 (#120), S0-SYS-05 (#121), S0-MOD-02 (#119), S0-ROOT-09 (#122), S0-SYS-06 (#123), S0-ROOT-10 (#127), S0-ROOT-11 (#128), S0-SYS-08 (#130, #138), S0-SYS-07 (#133, #140 follow-up item 1), S0-ROOT-13 (#139), S0-ROOT-05's gate bundles (#141); after the gate: S1-SYS-09 (#134), S1-SYS-07 (#131), S1-SYS-08 (#136), S1-MOD-01 part A (#124), S1-CON-01 (#142), S1-MOD-02 (#135), S1-SYS-16 (#144), S1-SYS-04 (#143), S1-MOD-04 (#145), S1-SYS-01 (#126), S1-SYS-17 (#146), S1-SYS-10 (#137). **In progress:** S0-ROOT-05 (merge point 1): the gate bundles are committed (#141); the principal session (U) is pending; S0-SYS-03…08 stay `provisional` (S0-ROOT-05 "After"); S0-ROOT-14 (this PR). **Held for the user:** S0-ROOT-12 (#129: auto-mode refused the probe-script edit; CI red); S0-SYS-07 follow-up item 2 (the cancelled-stream record; uncommitted, in a `git stash` of `../pl-wt/S0-SYS-07B`); #125's G run (S0-MOD-03). **In flight:** #132, #125 (held), #129 (held), S1-SYS-03, S1-SYS-18. **Last closed stage:** none. **Contract version:** v1 (ADR-0004; ADR-0007 additive, no fingerprint change; fingerprints `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`, `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490`).
+**Current:** S0 in progress (the user gave the go on 2026-09-26); S1 build work runs since the gate (#141). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01, S0-SYS-02 (#115), S0-ROOT-07 (#114), S0-CON-01 (#116), S0-MOD-01 (#113, provisional: `serve-attest-local` pending the user's go), S0-ROOT-08 (#117), S0-SYS-03 (#118), S0-SYS-04 (#120), S0-SYS-05 (#121), S0-MOD-02 (#119), S0-ROOT-09 (#122), S0-SYS-06 (#123), S0-ROOT-10 (#127), S0-ROOT-11 (#128), S0-SYS-08 (#130, #138), S0-SYS-07 (#133, #140 follow-up item 1), S0-ROOT-13 (#139), S0-ROOT-05's gate bundles (#141), S0-ROOT-14 (#147), S0-ROOT-16 (#159), S0-ROOT-15 (#158); after the gate: S1-SYS-09 (#134), S1-SYS-07 (#131), S1-SYS-08 (#136), S1-MOD-01 part A (#124), S1-CON-01 (#142), S1-MOD-02 (#135, follow-up #148), S1-SYS-16 (#144), S1-SYS-04 (#143), S1-MOD-04 (#145), S1-SYS-01 (#126), S1-SYS-17 (#146), S1-SYS-10 (#137), S1-SYS-03 (#149), S1-SYS-18 (#150), S1-SYS-19 (#151), S1-SYS-15 (#153), S1-SYS-13 (#152), S1-CON-04 (#154), S1-SYS-20 (#157). **In progress:** S0-ROOT-05 (merge point 1): the gate bundles are committed (#141); the principal session (U) is pending; S0-SYS-03…08 stay `provisional` (S0-ROOT-05 "After"); the root's smoke #1 after #157 (S1-SYS-20); S1-ROOT-07 (this PR). **Held for the user:** S0-ROOT-12 (#129: auto-mode refused the probe-script edit; CI red); S0-SYS-07 follow-up item 2 (the cancelled-stream record; uncommitted, in a `git stash` of `../pl-wt/S0-SYS-07B`); #125's G run (S0-MOD-03). **In flight:** #156 (S1-SYS-02), #155 (S1-MOD-01, C5 via OpenRouter), #132 (S1-MOD-01 part B); held: #125, #129. **Last closed stage:** none. **Contract version:** v1 (ADR-0004) with ADR-0007 (additive, no fingerprint change) and ADR-0011 (endpoint `openrouter`, `GuideMove.HOLD_FOR_FACT`, the new cp profile `pl_cp_v2`). Live profiles: `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`, `pl_cp_v2` = `ccc12390de8519ce8273c37267e9f46dc932e7a2d0a20bf5f7204fd3da9d0ab2`. `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490` is frozen, so the `evidence/s0` bundles still verify.
 
 **Sessions:** a main root (business) with up to five lane-lead sub-sessions (L-CORE and the four product lanes P-WEB, P-API, P-OBS, P-TOOLS), plus a top-level model root (ML) for the MOD lane, run in parallel (user decision 2026-09-26; §0.1, §0.2, `CLAUDE.md`).
 
@@ -633,7 +633,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 
   The model root's implementer writes the script; the main root runs it (flag L; estimate < $5; outside lane envelopes) and commits the summary JSON under `docs/decisions/data/`. A separate implementer step then writes the ADR (the next free number after 0009): the model decision, the concerns (ADR-0005's schema-valid rate; EVAL §9.7 model-family separation, since Slow and world are both Gemini; the teacher stays `claude-sonnet-5`) and the probe results, citing JSON keys.
 - **Run order** (root decision under §0.5a, 2026-09-26): ear → fast → slow (`--n 12`), stopping at a cumulative $5.
-- **Status** (2026-09-26): the root's run completed all three parts; ADR-0010 and the probe JSONs are on #129. #129's CI is red: `probe_roles.py` still calls the pre-S0-SYS-08 `live_config` signature, and the fix (with `--effort/--model-id/--lane`) was refused by the auto-mode classifier and is not worked around. Held for the user: the #129 merge and the approved Luna mini-probe (< $0.5; root decision under §0.5a, 2026-09-26), which the C5 dated-id pin (S1-MOD-01 part B, #132) waits on. Until then TeamRouter's rate rows stay unpriced (S0-SYS-07's known limitations).
+- **Status** (2026-09-26): the root's run completed all three parts; ADR-0010 and the probe JSONs are on #129. #129's CI is red: `probe_roles.py` still calls the pre-S0-SYS-08 `live_config` signature, and the fix (with `--effort/--model-id/--lane`) was refused by the auto-mode classifier and is not worked around. Held for the user: the #129 merge and the approved Luna mini-probe (< $0.5; root decision under §0.5a, 2026-09-26). The C5 dated-id pin that waited on it is superseded: C5 moved to OpenRouter (S1-MOD-01, 2026-09-27). Until then TeamRouter's rate rows stay unpriced (S0-SYS-07's known limitations).
 - **Pending the user:** the provisional world whole-call timeout (60 s), Slow whole-call timeout (180 s) and `reasoning_effort` "low"; the C5 effort; the EVAL §9.7 same-family risk (Slow and world both Gemini); TeamRouter prices, read from the dashboard; the permission for the #129 edit.
 - **Known limit:** it runs before S0-SYS-08's list schema, and on the unbounded Slow context, so its input sizes are an upper bound.
 - **Owned paths:** `scripts/mod/probe_roles.py`, `tests/serving/test_probe_roles.py`; the outputs `docs/decisions/data/probe-roles-*.json` are written by the root's run. Test fakes come from `tests/support/`.
@@ -647,7 +647,7 @@ Order: the reset tasks (ROOT-01…04, SYS-01/02) clear the ground. **S0-CON-01 i
 - **Owned paths:** `PLAN.md`, `EVAL.md` (§7, §9.9), `ARCHITECTURE.md` (§8 "Slow context"; the §9.5 and §10.1 strike lines), `docs/decisions/0009-bounded-slow-context.md` (the Status line).
 - **Acceptance:** `make check` green; no measured number typed (AGENTS rule 13); each decision appears once.
 
-### S0-ROOT-14 Record the S1-early build decisions — ROOT — S — review
+### S0-ROOT-14 Record the S1-early build decisions — ROOT — S — done (#147)
 - **Objective:** record the main root's decisions after S0-ROOT-13 merged (#139) in this file, EVAL.md §7 and ADR-0005 (one line); fix `AGENTS.md`'s two invalid `make evidence-check` lines, and add the `evidence-check` target to the `Makefile` (`RUN=<dir>`, `MODE=offline|claim`, offline by default), which runs `evidence.check.check_path` with no new `src/` code. Documentation only, apart from that target.
 - **Owned paths:** `PLAN.md`, `EVAL.md`, `AGENTS.md` (the two `make evidence-check` lines), `Makefile` (the one target), `docs/decisions/0005-world-model.md` (one line).
 - **Acceptance:** `make evidence-check RUN=evidence/s0/<run>` is ok on all four `evidence/s0` bundles; `make check` green; no measured number typed (AGENTS rule 13); each decision appears once.
@@ -726,7 +726,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Verify:** `make test`.
 - **Escalate if:** a rule needs an LLM judgement.
 
-### S1-SYS-02 Authority timing: fence, epochs, generations/acks, release revalidation, concurrency suite — SYS — L — todo
+### S1-SYS-02 Authority timing: fence, epochs, generations/acks, release revalidation, concurrency suite — SYS — L — review (#156)
 - **Objective:** `kernel/{fence,speaker,lanes,session}.py` per ARCHITECTURE §9.4 and §11, and the concurrency suite in `tests/concurrency/` (8 cases). Also (root decisions under §0.5a, 2026-09-26):
   - the kernel consumes `approval.post`, re-runs `guard.decide` in its own loop and emits `approval.decided` (the fixed emitter; S1-SYS-10);
   - the kernel's `teacher_repair_*` routing for the R condition (moved here from S3-SYS-01);
@@ -754,7 +754,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Verify:** `uv run pytest tests/concurrency -q`.
 - **Escalate if:** a case needs a new event type (a contract change).
 
-### S1-SYS-03 Slow v2: authority tools, public/private summaries, declassification — SYS — M — flags L+G for the smoke — doing
+### S1-SYS-03 Slow v2: authority tools, public/private summaries, declassification — SYS — M — flags L+G for the smoke — provisional (#149; the root's `x-out-of-envelope-approval` smoke waits on S1-SYS-02 and S1-SYS-05)
 - **Objective:**
   - the ARCHITECTURE §8 S1 tools;
   - `private_summary` required and `public_summary` declassified;
@@ -768,7 +768,8 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
   - a tool-schema snapshot;
   - the relay-only test holds under all tools;
   - `cite_competitor` without a shareable quote, or `cancel_lever` without authorisation, is denied;
-  - a live smoke (root) of `x-out-of-envelope-approval` produces the chain `approval.requested → approval.decided(sim_approver) → action.authorized → speak.released → utt.delivered → ledger.write → evidence.recorded → completion.decided(VERIFIED_COMPLETE)` in an `evidence-check --claim` bundle.
+  - a live smoke (root) of `x-out-of-envelope-approval` produces the chain `approval.requested → approval.decided(sim_approver) → action.authorized → speak.released → utt.delivered → ledger.write → evidence.recorded → completion.decided(VERIFIED_COMPLETE)` in an `evidence-check --claim` bundle. It runs after S1-SYS-02 and S1-SYS-05 merge (#149 lists the kernel gaps they close).
+- **`check_account`** (#149; root decision under §0.5a, 2026-09-27): `check_account(confirmation_id)` binds only an id that was relayed to Slow and is present in the ledger, with no log-wide scan (I5). This is stricter than ARCHITECTURE's `Ledger.lookup` seam (the ARCHITECTURE note is S1-ROOT-05's).
 - **Verify:** `make test`; `make smoke-live FAMILY=x-out-of-envelope-approval` (root).
 - **Escalate if:** Slow systematically needs transcript text to act (relay-only is frozen: bring the evidence to the root).
 
@@ -929,7 +930,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Acceptance:** tests: the grammar round-trips; the `evidence/s0` bundles resolve to their `instance_hash`; a seeded full-mode bundle resolves.
 - **Verify:** `make test`.
 
-### S1-SYS-18 Web↔API wiring drift test — SYS (P-WEB) — M — doing
+### S1-SYS-18 Web↔API wiring drift test — SYS (P-WEB) — M — done (#150)
 - **Objective** (root decision under §0.5a, 2026-09-27): a drift test of the web↔API wiring: the real `create_app` serves the built web same-origin, behind a stub `Case` in `tests/support/web_wiring.py`, and a Playwright `wiring` project drives it. It uses synthetic events in a temp dir only; `evidence/s0` is read-only.
 - **Owned paths:** `apps/web/**`, `tests/web/**`, `tests/support/web_wiring.py`.
 
@@ -956,12 +957,12 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Verify:** `make test`; `make smoke-live FAMILY=cp-direct-discount FAST=<cond>` (root; for C5 `FAST=C5`, after S1-SYS-20).
 - **Escalate if:** the hosted-Fast path needs different prompt text (I3: it must not).
 
-### S1-MOD-02 Metrics v1, report and statistics — MOD — L (re-sized from M, root decision under §0.5a, 2026-09-26) — done (#135; a follow-up PR is queued below)
+### S1-MOD-02 Metrics v1, report and statistics — MOD — L (re-sized from M, root decision under §0.5a, 2026-09-26) — done (#135; follow-up #148)
 - **Objective:** the EVAL §7 metrics marked S1, plus `stats.py` (Wilson, cluster bootstrap), `report.py` (`pl.report/1`) and `matrix.py` (interleaved blocks, integrity gate).
   - Metric semantics are decided before any data (root decisions under §0.5a, 2026-09-26, on the model root's proposals) and written in EVAL §7: `relay_precision` (value-only), `offer_capture`, `unsupported_numbers`, approval (b) and the episode outcome classes.
   - `matrix.py` aborts the matrix on `LLMUnavailable`, `RunawaySpend` and `p3_failed`; a `WorldError` is an errored cell; resume is per cell and never re-runs a `budget` cell (root decisions under §0.5a, 2026-09-26).
   - Metrics load a task by `task_ref` with an `instance_hash` check, and refuse test-split families before the unseal (AGENTS rule 11; root decision under §0.5a, 2026-09-26).
-  - **Follow-up PR** (the model root, after S1-SYS-17 merges; root decision under §0.5a, 2026-09-27): `metrics._task` resolves the full `task_ref` (mode and seed) through the injected loader (`env.tasks.resolve`), so seeded and full-mode bundles load the instance they ran. It must land before any mode or instance bundle feeds the metrics (a major from #146's review). Owned paths as above.
+  - **Follow-up PR** (merged in #148; the model root, after S1-SYS-17 merges; root decision under §0.5a, 2026-09-27): `metrics._task` resolves the full `task_ref` (mode and seed) through the injected loader (`env.tasks.resolve`), so seeded and full-mode bundles load the instance they ran. It must land before any mode or instance bundle feeds the metrics (a major from #146's review). Owned paths as above.
 - **Owned paths:** `src/proxyloop/eval/**`, `tests/eval/**`, `mk/mod.mk`.
 - **Deps:** S0-ROOT-05. Its branch merges `origin/main` after #125 (S0-MOD-03) merges (shared `mk/mod.mk`).
 - **Acceptance:**
