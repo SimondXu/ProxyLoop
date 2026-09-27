@@ -170,7 +170,7 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
   - ADR-0002 hand-types "8.6 GB", "adapter 10 of 16", "9 finished records".
   - `default-groups` now installs the mod group (21 packages, httpx pinned) for every lane.
   - `tests/serving` test doubles live outside `tests/support` (AGENTS rule 5).
-- #115 (SYS): `fetch_external.sh` clones into a temp dir then moves; drop the stale `!.env.example` in `.gitignore`; pin the CI Python patch release; add shellcheck; amend S0-SYS-02's acceptance grep to the exclusions actually used.
+- #115 (SYS): `fetch_external.sh` clones into a temp dir then moves; drop the stale `!.env.example` in `.gitignore`; pin the CI Python patch release and add shellcheck (both done in #152); amend S0-SYS-02's acceptance grep to the exclusions actually used.
 - Hook (#114): protect the worktree parent `../pl-wt`; track `pushd`; the heredoc false positive (text that mentions recursive deletes near data/external is blocked when shlex cannot parse it).
 - Process: S0 PR count: 14 merged (#108–#121) + S0-ROOT-09 = 15; S0-SYS-06 makes 16 (at the limit; the tripwire is > 16); S0-MOD-03 would be the 17th. Root evidence PRs (S0-ROOT-05/06) are excluded. Resolved: the tripwire is now > 19 (§0.6), so S0-MOD-03 is the 17th PR, S0-SYS-07 the 18th and S0-SYS-08 the 19th; S0-ROOT-10/11 are ROOT docs/harness PRs and S0-ROOT-12 a probe PR (excluded). Now: S0-SYS-08 (#130) and S0-SYS-07 (#133) are merged, S0-MOD-03 (#125) is pending, the S0-SYS-08 strike-counter follow-up (#138) is the 20th, and the S0-SYS-07 identity-hold follow-up the 21st (the tripwire is > 21, §0.6); S0-ROOT-13 is a ROOT docs PR (excluded). Now: the S0-SYS-07 follow-up split, so #140 (item 1) is the 21st and item 2 (held for the user) will be the 22nd (the tripwire is > 22, §0.6); S0-ROOT-05's bundle PR (#141) is a root evidence PR, and S0-ROOT-13 (#139) and S0-ROOT-14 are ROOT docs PRs (excluded). S1: the tripwire is > 37 (§0.6).
 - #118 (SYS evidence):
@@ -243,6 +243,12 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
   - N2 a full-mode mapping without a ref gets the default-mode ref (tests only);
   - N3 `\d` in `refs.py` matches Unicode digits: use `[0-9]`;
   - N4 `task_ref` now carries the instance seed (`/api/bundles` already refuses test-split bundles).
+- #151 (SYS, S1-SYS-19): the read-back counts `applied_change:x=false` without `changes_none` as present, so it can show "confirmed" while the accept is denied `readback_not_confirmed` (safe direction).
+- #152 (SYS (P-WEB), S1-SYS-13): pin the CI actions by SHA.
+- #153 / #157 (SYS, S1-SYS-15 / S1-SYS-20): reported speech ("She said I've been…") published tenure; #157's sentence-start anchor closes it. Residuals with quotes and abbreviations remain (not regressions).
+- #155 (MOD, S1-MOD-01 C5): D4 the benchmark tests' `stand_ins` fixture still maps C5 to the S0 TeamRouter ref; add a test that production refuses that bundle as "not a C5 bundle". D5 consider carrying C5's provider-sampling note on comparison rows that involve C5.
+- #156 (SYS, S1-SYS-02): 7c the full generation-cancellation rule ("a newer trigger cancels an older generation", beyond epoch-stale generations) is still open.
+- #158 (ROOT, S0-ROOT-15; `launch.sh`, outside the repo): the one-per-role `pgrep` guard refuses a main→main rotation when the old main root was itself CLI-launched (it is still running at launch time); exempt role `main`, or have the old root pass its own name.
 
 ---
 
