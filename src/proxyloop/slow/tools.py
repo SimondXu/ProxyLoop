@@ -29,10 +29,11 @@ Effect = tuple[str, Mapping[str, object]]
 SCALE = {"usd_minor": 100, "months": 1}  # minor units and months, as spoken
 _INVALID = (ValidationError, ValueError, KeyError, TypeError, ArithmeticError)
 _GUIDE = frozenset({"tool", "move", "slots"})
-_GROUPED, _SEP = re.compile(r"[0-9]+(?:[ -][0-9]+)*"), re.compile(r"[ -]")  # 48-21
-_RUN, _AMOUNT = re.compile(r"[0-9]+(?:[ ,.\-][0-9]+)*"), re.compile(r"[,.]")
-_WORD = re.compile(r"[^\W_]+")  # "I'd" is two words
-MAX_WORDS, MAX_CHARS = 6, 60  # a shareable text value the user said
+_LAST4 = re.compile(r"[0-9]{4}")  # ASCII only: no NFKC, no separators
+_WORD = r"[A-Za-z]+(?:['\u2019-][A-Za-z]+)*"  # O'Brien, Lee-Smith
+_NAME = re.compile(rf"{_WORD}(?: {_WORD}){{0,3}}")  # 1-4 words, single spaces
+MAX_NAME_CHARS = 60
+_PUBLISHABLE = (".last4", ".holder_name")
 NUMBER_WORDS = frozenset(
     """zero one two three four five six seven eight nine ten eleven twelve
     thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty
@@ -176,9 +177,10 @@ class SlowTools:
         relayed = {r.msg_id: r.utt_ref for r in bb.f2s_pending if r.lane == "user"}
         msg_id = relayed.get(str(ref)) or str(ref)  # the user's own message
         told = _partner(bb, "user").get(msg_id, "")
-        span = _user_span(value, told) if told else None  # what the user said
+        mine = key in self._shareable_keys and told
+        span = _user_span(key, value, told) if mine else None  # the user's words
         hits = [msg_id] if span is not None else []
-        leaks = _leaks(span, bb) if span is not None else []  # never protected
+        leaks = _leaks(key, span, bb) if span is not None else []  # never protected
         shareable = key in self._shareable_keys and hits and not leaks
         in_line = bool(line) and _said(value, line)
         source = "cp_utt" if in_line else "shareable" if shareable else "user"
@@ -200,9 +202,12 @@ class SlowTools:
             text += ", never public: " + "; ".join(leaks)  # counted as declass
             effects.append(("declass.denied", {"violations": leaks}))
         elif where == "private" and key in self._shareable_keys:  # how to share it
+            can = sorted(k for k in self._shareable_keys if k.endswith(_PUBLISHABLE))
             text += (
-                ": to make it public, cite the utt of the user message that says "
-                "exactly this value (whole digits or whole words)"
+                f": in S0 only {', '.join(can) or 'no key'} can go public from the "
+                "user, by citing the utt of the user message that contains exactly "
+                "the value (a .last4 as 4 digits, a .holder_name as the user wrote "
+                "it); every other shareable key stays private"
             )
         return Result(True, text, tuple(effects))
 
@@ -217,58 +222,58 @@ def _said(value: str, line: str) -> bool:  # its digits, else its text verbatim
     return digits <= numbers(line) if digits else value.casefold() in line.casefold()
 
 
-def _nfkc(text: str) -> str:
-    return unicodedata.normalize("NFKC", text)
-
-
-def _user_span(value: str, message: str) -> str | None:
-    """I4, the user-message path: the span of ``message`` that ``value`` selects,
-    published instead of ``value``. A value with a digit is digits in groups
-    joined by one space or dash, equal to one whole digit run of the message,
-    and publishes that run's digits ("48-21" and "4 8 2 1" say 4821; "14821",
-    "555 482 1999", "1,250" and "4821.0" do not). Any other value is at most
-    ``MAX_WORDS`` whole words (``MAX_CHARS`` characters) and no number word, in
-    a row in the message (casefold); it publishes those words as the user wrote
-    them, joined by one space."""
-    value, message = _nfkc(value), _nfkc(message)
-    if any(c.isdigit() for c in value):
-        if not _GROUPED.fullmatch(value):
-            return None
-        want = _SEP.sub("", value)
-        runs = (r for r in _RUN.findall(message) if not _AMOUNT.search(r))
-        return want if any(_SEP.sub("", r) == want for r in runs) else None
-    want = _WORD.findall(value.casefold())
-    if not want or len(want) > MAX_WORDS or len(value) > MAX_CHARS:
+def _user_span(key: str, value: str, message: str) -> str | None:
+    """I4, the narrow S0 user-message path (#133 round 4): the span of the raw
+    ``message`` to publish, or None. Only two key shapes can go public:
+    - ``*.last4``: exactly four ASCII digits, a standalone token of the message
+      (no letter, digit, dash, slash, sign, quote or decimal point touches it;
+      a full stop or comma may follow when no digit does);
+    - ``*.holder_name``: 1-4 ASCII words (``O'Brien``, ``Lee-Smith``), no number
+      word, found case-insensitively with word boundaries; the user's own
+      spelling is published.
+    Every other key stays private on this path (safety over coverage)."""
+    if key.endswith(".last4") and _LAST4.fullmatch(value):
+        before, after = r"(?<![\w\-/#+.,\u2019'])", r"(?![\w\-/\u2019'])(?![.,]\d)"
+        return value if re.search(before + value + after, message) else None
+    if not key.endswith(".holder_name") or not _NAME.fullmatch(value):
         return None
-    if set(want) & NUMBER_WORDS:
+    if len(value) > MAX_NAME_CHARS or set(_words(value).split()) & NUMBER_WORDS:
         return None
-    heard = _WORD.findall(message)
-    n = len(want)
-    for i in range(len(heard) - n + 1):
-        if [w.casefold() for w in heard[i : i + n]] == want:
-            return " ".join(heard[i : i + n])
-    return None
+    bound = r"(?<![\w'\u2019-])" + re.escape(value) + r"(?![\w'\u2019-])"
+    found = re.search(bound, message, re.IGNORECASE)
+    return found.group() if found and _NAME.fullmatch(found.group()) else None
 
 
-def _canon(text: str) -> str:  # NFKC, casefold; digits without their separators
-    text = _nfkc(text).casefold()
-    return _SEP.sub("", text) if _GROUPED.fullmatch(text) else text
+def _words(text: str) -> str:  # "O'Brien" -> "o brien"
+    return " ".join(re.findall(r"[a-z]+", text.casefold()))
 
 
-def _leaks(span: str, bb: st.Blackboard) -> list[str]:
-    """A protected case-fact value or a mandate bound in the span to publish,
-    compared in canonical forms (bounds as whole units and as minor units)."""
-    said, out = _canon(span), list[str]()
-    for key, f in sorted(bb.private.case_facts.items()):
-        if f.protected and (value := _canon(f.value)) and value in said:
-            out.append(f"the protected value of {key}")
+def _digits(text: str) -> str:  # "(555) 482-1999" -> "5554821999"
+    return re.sub(r"\D", "", unicodedata.normalize("NFKC", text))
+
+
+def _leaks(key: str, span: str, bb: st.Blackboard) -> list[str]:
+    """The span to publish against every protected case-fact value (word forms
+    and digit forms, either containing the other) and, for a ``*.last4``, the
+    mandate bounds in minor units, whole units and months."""
+    out, words, digits = list[str](), _words(span), _digits(span)
+    for name, f in sorted(bb.private.case_facts.items()):
+        theirs, their_digits = _words(f.value), _digits(f.value)
+        same_words = words and theirs and (words in theirs or theirs in words)
+        same_digits = (
+            digits
+            and their_digits
+            and (digits in their_digits or their_digits in digits)
+        )
+        if f.protected and (same_words or same_digits):
+            out.append(f"the protected value of {name}")
     m = bb.private.mandate
     minor = () if m is None else (m.max_monthly_price_minor, m.max_one_time_fees_minor)
-    forms = {str(v) for v in minor if v is not None}
-    forms |= {str(v // 100) for v in minor if v is not None and v % 100 == 0}
-    forms |= {str(m.max_term_months)} if m and m.max_term_months else set()
-    if said in forms:
-        out.append(f"the private value {said} is a mandate bound")
+    bounds = {v for v in minor if v is not None}
+    bounds |= {v // 100 for v in minor if v is not None and v % 100 == 0}
+    bounds |= {m.max_term_months} if m and m.max_term_months else set()
+    if key.endswith(".last4") and int(span) in bounds:
+        out.append(f"{span} is a mandate bound")
     return out
 
 

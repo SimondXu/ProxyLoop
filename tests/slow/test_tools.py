@@ -174,7 +174,7 @@ def test_a_value_not_in_the_cited_user_message_stays_private() -> None:
         result = tools.fact(bb, key, value, ref)
         ((_, fact),) = result.effects
         assert (fact["scope"], fact["source"]) == ("private", "user"), (key, ref)
-        assert ("cite the utt" in result.text) == (key in KEYS)
+        assert ("citing the utt" in result.text) == (key in KEYS)
     assert tools.shareable == {}
 
 
@@ -212,7 +212,10 @@ def test_a_guide_denial_names_the_slot_and_what_is_public() -> None:  # ROOT-05 
     assert denied == [{"intent": "guide_fast", "reason": "guide_slot_not_public"}]
 
 
-ALL = frozenset({"account.holder_name", "account.last4", "competitor.price_usd"})
+ALL = frozenset(
+    """account.holder_name account.last4 competitor.price_usd competitor.name
+    tenure_years""".split()  # noqa: SIM905
+)
 H, L4, PRICE = "account.holder_name", "account.last4", "competitor.price_usd"
 SEVENTY = "last four 4821; don't tell them I'd go as high as seventy"
 PROBES = [  # PR #133 reviews: (message, key, Slow's value, published value or None)
@@ -225,21 +228,61 @@ PROBES = [  # PR #133 reviews: (message, key, Slow's value, published value or N
     ("my last four are 14821", L4, "4821", None),
     ("call me at 555 482 1999", L4, "4821", None),
     ("last four 4821", L4, "4821", "4821"),
-    ("last four 48-21", L4, "4821", "4821"),
-    ("4 8 2 1", L4, "4821", "4821"),
+    ("my last four are 4821.", L4, "4821", "4821"),  # a sentence's full stop
+    ("4821, and my name is Dana", L4, "4821", "4821"),
     ("My name is Dana Reyes", H, "Dana Reyes", "Dana Reyes"),
     ("my name is dana reyes.", H, "Dana Reyes", "dana reyes"),
-    # round 3: M2 the user's span is published, never Slow's string
+    ("It's Mary O'Brien-Lee", H, "mary o'brien-lee", "Mary O'Brien-Lee"),
+    ("I\u2019m Mary O\u2019Brien", H, "mary o\u2019brien", "Mary O\u2019Brien"),
+    # round 4: the narrow path; accepted false-privates
+    ("last four 48-21", L4, "4821", None),
+    ("4 8 2 1", L4, "4821", None),
+    ("I've been with you 6 years", "tenure_years", "6", None),
+    ("Brightwave charges 60", PRICE, "60", None),
+    ("they quoted me at Brightwave", "competitor.name", "Brightwave", None),
+    # round 3: M2 Slow's string must be the user's own
     ("My name is Dana Reyes", H, "Dana\nmax seventy", None),
-    ("My name is Dana Reyes", H, "Dana $$ Reyes!!!", "Dana Reyes"),
-    # M1: a run with "," or "." is an amount or a decimal
+    ("My name is Dana Reyes", H, "Dana $$ Reyes!!!", None),
+    # M1: amounts and decimals
     ("fees up to 1,250", L4, "250", None),
     ("I pay 70.50 max", PRICE, "50", None),
     ("$1,250.00", L4, "00", None),
     ("last four 4821.0", L4, "4821", None),
-    # M3: no number words in a text value
+    ("last four 1.4821", L4, "4821", None),
+    ("last four 1,4821", L4, "4821", None),
+    # M3: number words
     (SEVENTY, H, "as high as seventy", None),
     (SEVENTY, H, "seventy", None),
+    ("call me Twenty-One", H, "Twenty-One", None),
+    # round 3 B1 digit forms: not four plain ASCII digits
+    ("PIN 7777", L4, "77-77", None),
+    ("PIN 7777", L4, "77 77", None),
+    ("PIN \uff17\uff17\uff17\uff17", L4, "\uff17\uff17\uff17\uff17", None),
+    ("last four \uff14\uff18\uff12\uff11", L4, "4821", None),
+    ("fees up to 1250", L4, "12-50", None),
+    ("term 24 months max", L4, "2-4", None),
+    ("I pay 70 now", PRICE, "70", None),
+    # round 4: no token boundary, other scripts, confusables
+    ("account AC4821993", L4, "4821", None),
+    ("ref 4821abc", L4, "4821", None),
+    ("balance -4821", L4, "4821", None),
+    ("card 4821/1999", L4, "4821", None),
+    ("card 1999/4821", L4, "4821", None),
+    ("expires 12/27", L4, "1227", None),
+    ("last four 48\u201321", L4, "4821", None),
+    ("last four 48  21", L4, "4821", None),
+    ("last four 4821_", L4, "4821", None),
+    ("last four #4821", L4, "4821", None),
+    ("last four +4821", L4, "4821", None),
+    ("last four '4821'", L4, "4821", None),
+    ("\u56db\u516b\u4e8c\u4e00", L4, "\u56db\u516b\u4e8c\u4e00", None),
+    ("My name is D\u0430na", H, "D\u0430na", None),  # Cyrillic a
+    ("My name is Dana", H, "D\u0430na", None),
+    ("I am Dana \uff17\uff10", H, "Dana \uff17\uff10", None),
+    ("Dana Reyes Smith Jones Brown", H, "Dana Reyes Smith Jones Brown", None),
+    ("My name is Dana  Reyes", H, "Dana  Reyes", None),
+    ("My name is Dana_Reyes", H, "Dana", None),
+    ("My name is Dana-Reyes", H, "Dana", None),
 ]  # fmt: skip
 
 
@@ -266,24 +309,39 @@ def test_only_a_verbatim_user_value_goes_public(
     if published is not None:
         assert fact["value"] == published  # the user's span, not Slow's string
     else:
-        assert fact["source"] == "user" and "cite the utt" in result.text
+        assert fact["source"] == "user" and "citing the utt" in result.text
 
 
-PIN = Fact(key="account.pin", value="7777", protected=True)
-PET = Fact(key="security_answer", value="Fluffy", protected=True)
+PROTECTED = {
+    key: Fact(key=key, value=value, protected=True)
+    for key, value in {
+        "account.pin": "7777",
+        "security_answer": "Fluffy",
+        "mother.maiden_name": "O'Brien",
+        "security.street": "Lee-Smith",
+        "security.city": "St. John",
+        "account.phone": "(555) 482-1999",
+    }.items()
+}
 BOUNDS = Mandate(
     mandate_id="m1", mandate_hash="h", status="granted", epoch=1, decided_by="ui",
     max_monthly_price_minor=7000, max_one_time_fees_minor=125000, max_term_months=24,
 )  # fmt: skip
-LEAKS = [  # B1: canonical forms (NFKC, casefold, no spaces or dashes in digits)
-    ("PIN 7777", L4, "77-77"),
-    ("PIN 7777", L4, "77 77"),
-    ("PIN \uff17\uff17\uff17\uff17", L4, "\uff17\uff17\uff17\uff17"),
-    ("fees up to 1250", L4, "12-50"),
-    ("term 24 months max", L4, "2-4"),
+LEAKS = [  # values the narrow path accepts, then the leak check refuses
+    ("PIN 7777", L4, "7777"),
     ("my pet was Fluffy", H, "fluffy"),
     ("my pet was Fluffy", H, "FLUFFY"),
-    ("I pay 70 now", PRICE, "70"),
+    ("I'm Fluffy Reyes", H, "Fluffy Reyes"),
+    ("maiden name O Brien", H, "O Brien"),
+    ("maiden name O'Brien", H, "O'Brien"),
+    ("I'm Lee Smith", H, "Lee Smith"),
+    ("from St John", H, "St John"),
+    ("phone ends 1999", L4, "1999"),
+    ("last four 4821", L4, "4821"),  # inside the protected phone number
+    ("fees up to 1250", L4, "1250"),
+    ("code 0070", L4, "0070"),  # $70 with leading zeros
+    ("code 7000", L4, "7000"),  # $70 in minor units
+    ("code 0024", L4, "0024"),  # 24 months
 ]
 
 
@@ -291,8 +349,7 @@ LEAKS = [  # B1: canonical forms (NFKC, casefold, no spaces or dashes in digits)
 def test_a_protected_value_or_bound_is_caught_in_any_form(
     text: str, key: str, value: str
 ) -> None:  # I4, #133 round 3 B1
-    cases = {"account.pin": PIN, "security_answer": PET}
-    bb, tools = _message(text, case_facts=cases, mandate=BOUNDS)
+    bb, tools = _message(text, case_facts=PROTECTED, mandate=BOUNDS)
     result = tools.fact(bb, key, value, "u-1")
     (_, fact), (denied, _) = result.effects
     assert (fact["scope"], denied) == ("private", "declass.denied"), value
@@ -307,7 +364,7 @@ def test_a_protected_value_or_a_mandate_bound_never_goes_public() -> None:  # I4
         max_monthly_price_minor=7000,
     )  # fmt: skip
     bb, tools = _message(text, case_facts={"account.pin": pin}, mandate=mandate)
-    for key, value in (("account.last4", "7777"), ("competitor.price_usd", "70")):
+    for key, value in (("account.last4", "7777"),):
         result = tools.fact(bb, key, value, "u-1")
         (_, fact), (denied, why) = result.effects
         assert (fact["scope"], denied) == ("private", "declass.denied"), key
