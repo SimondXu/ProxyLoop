@@ -13,7 +13,13 @@ from typing import Any, cast
 
 from proxyloop.contract.events import Event
 from proxyloop.contract.messages import FastToSlow, SlowToFast
-from proxyloop.contract.state import Blackboard, Capability, OfferPublic, ReadbackSlot
+from proxyloop.contract.state import (
+    Blackboard,
+    Capability,
+    ChannelState,
+    OfferPublic,
+    ReadbackSlot,
+)
 from proxyloop.guard import authorize as guard
 from proxyloop.guard.authorize import CaseRef, Denial
 from proxyloop.guard.capability import business_action_id
@@ -194,22 +200,45 @@ def revoke(bb: Blackboard) -> Result:
 
 
 def check_account(
-    bb: Blackboard, conf: str, relays: Sequence[FastToSlow], events: Sequence[Event]
+    bb: Blackboard,
+    conf: str,
+    relays: Sequence[FastToSlow],
+    events: Sequence[Event],
+    cited: str | None = None,
+    seen: int | None = None,
 ) -> Result:
-    """``Ledger.lookup(conf)`` for a confirmation id the rep said and FastC
-    relayed to Slow (I5: Slow looks up only an id it was told). Its binding is
+    """``Ledger.lookup(conf)`` for a confirmation id the rep said: in the rep
+    line ``cited`` (``transcript`` mode, ADR-0016), else in a cp relay FastC
+    sent Slow (I5: Slow looks up only an id it was told; a cited line must be
+    at or before ``seen``, the step's basis, when given). Its binding is
     recorded once as evidence, hashed as the accepted offer's revision; while
     the case is COMMITTED, that evidence moves it to EVIDENCE_PENDING, whenever
     it was recorded. ``verify_completion`` compares the hashes."""
     said = re.compile(rf"(?<![0-9A-Za-z]){re.escape(conf)}(?![0-9A-Za-z])")
-    heard = [
-        r for r in relays
-        if r.lane == "cp" and conf and any(
-            said.search(t) for t in (r.text, *(v for _, v in r.facts))
-        )
-    ]  # fmt: skip
-    if not heard:
-        return no(f"no such confirmation relayed: {conf!r}; cite the id the rep said")
+    if cited is not None:  # the same boundary rule, on the line itself
+        lines = bb.channels.get("cp", ChannelState()).lines
+        line = next((x for x in lines if x.utt_id == cited), None)
+        if line is None or line.speaker != "partner":  # none, or a self-binding
+            return no(f"{cited!r} is no rep line: cite the REP line that said {conf}")
+        if not conf or not said.search(line.text):
+            return no(f"rep line {cited} does not say {conf!r}: cite it as said")
+        said_at = [e for e in events if e.type == "utt.final" and e.payload.get(
+            "utt_id") == cited]  # fmt: skip
+        if seen is not None and said_at[-1].seq > seen:
+            return no(f"rep line {cited} came after your view: cite a line shown")
+        heard = [said_at[-1].event_id]
+    else:
+        told = [
+            r for r in relays
+            if r.lane == "cp" and conf and any(
+                said.search(t) for t in (r.text, *(v for _, v in r.facts))
+            )
+        ]  # fmt: skip
+        if not told:
+            return no(
+                f"no such confirmation relayed: {conf!r}; cite the id the rep said"
+            )
+        heard = [r.msg_id for r in told]
     writes = [
         e for e in events
         if e.type == "ledger.write" and e.payload.get("confirmation_id") == conf
@@ -225,7 +254,7 @@ def check_account(
     # COMMITTED -> EVIDENCE_PENDING, whenever the evidence was recorded (M1);
     # evidence that binds nothing then fails verification: NEEDS_REPLAN
     effects += moved(bb, "evidence_recorded")
-    causes = [writes[-1].event_id, *(r.msg_id for r in heard)]
+    causes = [writes[-1].event_id, *heard]
     return Result(True, text, tuple(effects), causes=tuple(causes))
 
 

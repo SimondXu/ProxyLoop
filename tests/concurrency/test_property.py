@@ -11,10 +11,12 @@ accepts, stops, revokes, barge-ins, FastU latency, time) and the log must show:
   a rep line landing, or at the mint for lines after the minting Slow step's
   basis), and an accept revoked ``fence`` only under a user fence or after one
   rose while it waited (under partner fences only it waits);
-- no accept released before every earlier rep line is covered: a FastC turn
-  whose request saw it, then a completed Slow step whose basis is at or after
-  that turn (review M1, D1, D2: Slow's latency varies, so its calls often land
-  while a step is in flight);
+- no accept released before every earlier rep line is covered (review M1,
+  D1, D2: Slow's latency varies, so its calls often land while a step is in
+  flight): under ``slow_view=transcript`` a completed Slow step whose basis is
+  at or after the line; under ``relay_only`` a FastC turn whose request saw
+  it, then a completed Slow step whose basis is at or after that turn (the
+  machine runs in both modes, ADR-0016 note);
 - every accept line ending in exactly one ``speak.released`` or
   ``speak.revoked``, by its expiry at the latest (none wedges on
   ``accept_in_flight``: the teardown runs past ``CAP_TTL_MS``);
@@ -32,7 +34,7 @@ from __future__ import annotations
 import asyncio
 import tempfile
 from collections import Counter
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +42,7 @@ from hypothesis import settings
 from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, initialize, rule
 from tests.concurrency.harness import (
+    A5,
     LONG,
     Sim,
     SlowGate,
@@ -49,6 +52,7 @@ from tests.concurrency.harness import (
 )
 from tests.concurrency.test_cases import Valve
 
+from proxyloop.contract.config import SessionConfig, SlowViewMode
 from proxyloop.contract.events import ApprovalPost, Event
 from proxyloop.contract.state import Blackboard, CaseStatus
 from proxyloop.core.fold import apply
@@ -59,6 +63,8 @@ _TEARDOWN_MS = CAP_TTL_MS + 30_000  # every queued line ends by then
 
 
 class Interleavings(RuleBasedStateMachine):
+    cfg: SessionConfig | None = None  # the default: slow_view=transcript
+
     def __init__(self) -> None:
         super().__init__()
         self.dir = tempfile.TemporaryDirectory()
@@ -71,7 +77,8 @@ class Interleavings(RuleBasedStateMachine):
         self.valve.__init__()
         self.fastc.__init__()
         gates = {"fast_user": self.valve, "fast_cp": self.fastc}  # FastC: at length
-        self.sim = Sim(Path(self.dir.name), {"fast_cp": [LONG]}, gates=gates)
+        root = Path(self.dir.name)
+        self.sim = Sim(root, {"fast_cp": [LONG]}, gates=gates, cfg=self.cfg)
         await self.sim.start()
         self.slow = SlowGate(self.sim)
 
@@ -362,9 +369,12 @@ def _card_left(e: Event, why: list[Event], bb: Blackboard) -> None:
 
 
 def _slow_saw_it(sim: Sim) -> None:
-    """Before each release every earlier rep line is covered: a cp
-    ``fast.turn`` whose request's basis is at or after the line, and a
-    completed Slow step whose basis is at or after that turn (review D1, D2)."""
+    """Before each release every earlier rep line is covered: in ``transcript``
+    mode a completed Slow step whose basis is at or after the line; in
+    ``relay_only`` a cp ``fast.turn`` whose request's basis is at or after the
+    line, and a completed Slow step whose basis is at or after that turn
+    (review D1, D2)."""
+    reads = sim.k.cfg.slow_view is SlowViewMode.TRANSCRIPT
     basis: dict[str, int] = {}  # cp gen_id -> its request's basis
     turns: list[tuple[int, int]] = []  # (seq, request basis) of cp turns
     lines: list[int] = []
@@ -381,7 +391,7 @@ def _slow_saw_it(sim: Sim) -> None:
             lines.append(e.seq)
         elif e.type == "speak.released" and "cap_id" in p:
             for line in lines:
-                saw = [t for t, b in turns if b >= line]
+                saw = [line] if reads else [t for t, b in turns if b >= line]
                 seen = saw and any(d >= min(saw) for d in done)
                 assert seen, f"{e.event_id}: released before Slow saw line {line}"
 
@@ -405,14 +415,31 @@ def _partner_first(sim: Sim) -> None:
             assert not pending, f"{e.event_id}: released with the rep mid-turn"
 
 
+class RelayOnlyInterleavings(Interleavings):
+    cfg = A5
+
+
+def _reaching(run: Callable[[], None]) -> None:
+    """The run must reach both ways a pending card replans (S1-SYS-38):
+    otherwise ``_card_left`` checked nothing."""
+    REACHED.clear()
+    run()
+    assert REACHED["authority.epoch"] and REACHED["approval.requested"], REACHED
+
+
 class TestInterleavings(Interleavings.TestCase):  # pyright: ignore[reportUnknownMemberType, reportUntypedBaseClass]
     settings = settings(  # 500 interleavings
         max_examples=500, stateful_step_count=16, deadline=None
     )
 
     def runTest(self) -> None:
-        """The run must reach both ways a pending card replans (S1-SYS-38):
-        otherwise ``_card_left`` checked nothing."""
-        REACHED.clear()
-        super().runTest()  # pyright: ignore[reportUnknownMemberType]
-        assert REACHED["authority.epoch"] and REACHED["approval.requested"], REACHED
+        _reaching(super().runTest)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+
+
+class TestRelayOnlyInterleavings(RelayOnlyInterleavings.TestCase):  # pyright: ignore[reportUnknownMemberType, reportUntypedBaseClass]
+    settings = settings(  # 500 more, the A5 rule
+        max_examples=500, stateful_step_count=16, deadline=None
+    )
+
+    def runTest(self) -> None:
+        _reaching(super().runTest)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]

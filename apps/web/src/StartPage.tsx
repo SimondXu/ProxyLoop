@@ -4,11 +4,12 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { csrfToken, getOptions, paths, startCase } from "./liveApi";
 import { defaults, maybeStarted, parseOffer, START_LANES, startError, type Offer } from "./start";
 
+/** Whether the operator's CSRF cookie is there. A malformed one is there: no "open /start" note, and the POST says why (#173 N-4). */
 const hasCookie = () => {
   try {
     return csrfToken(document.cookie, "start") !== null;
   } catch {
-    return false; // a malformed cookie: the POST says so
+    return true;
   }
 };
 

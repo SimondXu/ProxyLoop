@@ -1,0 +1,830 @@
+[
+ {
+  "call_id": "slow:1",
+  "max_tokens": 1500,
+  "messages": [
+   {
+    "cache_breakpoint": false,
+    "content": "<SYSTEM>",
+    "role": "system",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "TASK: Get Northwind Mobile's best retention offer for the account holder's plan, with every term read back, and report it to the user. Information only: no offer may be accepted on this call.\nSHAREABLE FACT KEYS (record_fact uses exactly these keys, whatever a relay calls them): account.holder_name, account.last4, competitor.name, competitor.price_usd, tenure_years\n\n[WAKE] relay\n[USER CHAT] user_update <u0> (utt RUN:0)\n[REP CALL] cp_update <c0> (utt cp-0)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 1; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   }
+  ],
+  "role": "slow",
+  "temperature": null,
+  "tool_choice": "act",
+  "tools": [
+   "<ACT>"
+  ]
+ },
+ {
+  "call_id": "slow:2",
+  "max_tokens": 1500,
+  "messages": [
+   {
+    "cache_breakpoint": false,
+    "content": "<SYSTEM>",
+    "role": "system",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "TASK: Get Northwind Mobile's best retention offer for the account holder's plan, with every term read back, and report it to the user. Information only: no offer may be accepted on this call.\nSHAREABLE FACT KEYS (record_fact uses exactly these keys, whatever a relay calls them): account.holder_name, account.last4, competitor.name, competitor.price_usd, tenure_years\n\n[WAKE] relay\n[USER CHAT] user_update <u0> (utt RUN:0)\n[REP CALL] cp_update <c0> (utt cp-0)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 1; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Noted.\", \"calls\": [], \"public_summary\": \"Asking for a lower price.\"}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: summaries updated\n\n[WAKE] relay\n[USER CHAT] user_update <u1> (utt RUN:16)\n[REP CALL] cp_update <c1> (utt cp-1)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 2; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   }
+  ],
+  "role": "slow",
+  "temperature": null,
+  "tool_choice": "act",
+  "tools": [
+   "<ACT>"
+  ]
+ },
+ {
+  "call_id": "slow:3",
+  "max_tokens": 1500,
+  "messages": [
+   {
+    "cache_breakpoint": false,
+    "content": "<SYSTEM>",
+    "role": "system",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "TASK: Get Northwind Mobile's best retention offer for the account holder's plan, with every term read back, and report it to the user. Information only: no offer may be accepted on this call.\nSHAREABLE FACT KEYS (record_fact uses exactly these keys, whatever a relay calls them): account.holder_name, account.last4, competitor.name, competitor.price_usd, tenure_years\n\n[WAKE] relay\n[USER CHAT] user_update <u0> (utt RUN:0)\n[REP CALL] cp_update <c0> (utt cp-0)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 1; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Noted.\", \"calls\": [], \"public_summary\": \"Asking for a lower price.\"}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: summaries updated\n\n[WAKE] relay\n[USER CHAT] user_update <u1> (utt RUN:16)\n[REP CALL] cp_update <c1> (utt cp-1)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 2; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "Thinking.",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "[WAKE] relay\n[USER CHAT] user_update <u2> (utt RUN:30)\n[REP CALL] cp_update <c2> (utt cp-2)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 3; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   }
+  ],
+  "role": "slow",
+  "temperature": null,
+  "tool_choice": "act",
+  "tools": [
+   "<ACT>"
+  ]
+ },
+ {
+  "call_id": "slow:4",
+  "max_tokens": 1500,
+  "messages": [
+   {
+    "cache_breakpoint": false,
+    "content": "<SYSTEM>",
+    "role": "system",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "TASK: Get Northwind Mobile's best retention offer for the account holder's plan, with every term read back, and report it to the user. Information only: no offer may be accepted on this call.\nSHAREABLE FACT KEYS (record_fact uses exactly these keys, whatever a relay calls them): account.holder_name, account.last4, competitor.name, competitor.price_usd, tenure_years\n\n[WAKE] relay\n[USER CHAT] user_update <u0> (utt RUN:0)\n[REP CALL] cp_update <c0> (utt cp-0)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 1; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Noted.\", \"calls\": [], \"public_summary\": \"Asking for a lower price.\"}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: summaries updated\n\n[WAKE] relay\n[USER CHAT] user_update <u1> (utt RUN:16)\n[REP CALL] cp_update <c1> (utt cp-1)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 2; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "Thinking.",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "[WAKE] relay\n[USER CHAT] user_update <u2> (utt RUN:30)\n[REP CALL] cp_update <c2> (utt cp-2)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 3; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Asking.\", \"calls\": [{\"tool\": \"ask_user\", \"text\": \"Any price limit?\"}]}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: private summary updated\nask_user: sent s2f-1\n\n[WAKE] relay\n[USER CHAT] user_update <u3> (utt RUN:47)\n[REP CALL] cp_update <c3> (utt cp-3)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 4; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   }
+  ],
+  "role": "slow",
+  "temperature": null,
+  "tool_choice": "act",
+  "tools": [
+   "<ACT>"
+  ]
+ },
+ {
+  "call_id": "slow:5",
+  "max_tokens": 1500,
+  "messages": [
+   {
+    "cache_breakpoint": false,
+    "content": "<SYSTEM>",
+    "role": "system",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "TASK: Get Northwind Mobile's best retention offer for the account holder's plan, with every term read back, and report it to the user. Information only: no offer may be accepted on this call.\nSHAREABLE FACT KEYS (record_fact uses exactly these keys, whatever a relay calls them): account.holder_name, account.last4, competitor.name, competitor.price_usd, tenure_years\n\n[WAKE] relay\n[USER CHAT] user_update <u0> (utt RUN:0)\n[REP CALL] cp_update <c0> (utt cp-0)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 1; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Noted.\", \"calls\": [], \"public_summary\": \"Asking for a lower price.\"}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: summaries updated\n\n[WAKE] relay\n[USER CHAT] user_update <u1> (utt RUN:16)\n[REP CALL] cp_update <c1> (utt cp-1)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 2; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "Thinking.",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "[WAKE] relay\n[USER CHAT] user_update <u2> (utt RUN:30)\n[REP CALL] cp_update <c2> (utt cp-2)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 3; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Asking.\", \"calls\": [{\"tool\": \"ask_user\", \"text\": \"Any price limit?\"}]}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: private summary updated\nask_user: sent s2f-1\n\n[WAKE] relay\n[USER CHAT] user_update <u3> (utt RUN:47)\n[REP CALL] cp_update <c3> (utt cp-3)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 4; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Noted.\", \"calls\": [], \"public_summary\": \"Asking for a lower price.\"}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: summaries updated\n\n[WAKE] relay\n[USER CHAT] user_update <u4> (utt RUN:63)\n[REP CALL] cp_update <c4> (utt cp-4)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 5; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   }
+  ],
+  "role": "slow",
+  "temperature": null,
+  "tool_choice": "act",
+  "tools": [
+   "<ACT>"
+  ]
+ },
+ {
+  "call_id": "slow:6",
+  "max_tokens": 1500,
+  "messages": [
+   {
+    "cache_breakpoint": false,
+    "content": "<SYSTEM>",
+    "role": "system",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "TASK: Get Northwind Mobile's best retention offer for the account holder's plan, with every term read back, and report it to the user. Information only: no offer may be accepted on this call.\nSHAREABLE FACT KEYS (record_fact uses exactly these keys, whatever a relay calls them): account.holder_name, account.last4, competitor.name, competitor.price_usd, tenure_years\n\n[WAKE] relay\n[USER CHAT] user_update <u0> (utt RUN:0)\n[REP CALL] cp_update <c0> (utt cp-0)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 1; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Noted.\", \"calls\": [], \"public_summary\": \"Asking for a lower price.\"}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: summaries updated\n\n[WAKE] relay\n[USER CHAT] user_update <u1> (utt RUN:16)\n[REP CALL] cp_update <c1> (utt cp-1)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 2; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "Thinking.",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "[WAKE] relay\n[USER CHAT] user_update <u2> (utt RUN:30)\n[REP CALL] cp_update <c2> (utt cp-2)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 3; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Asking.\", \"calls\": [{\"tool\": \"ask_user\", \"text\": \"Any price limit?\"}]}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: private summary updated\nask_user: sent s2f-1\n\n[WAKE] relay\n[USER CHAT] user_update <u3> (utt RUN:47)\n[REP CALL] cp_update <c3> (utt cp-3)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 4; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Noted.\", \"calls\": [], \"public_summary\": \"Asking for a lower price.\"}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: summaries updated\n\n[WAKE] relay\n[USER CHAT] user_update <u4> (utt RUN:63)\n[REP CALL] cp_update <c4> (utt cp-4)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 5; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "Thinking.",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "[WAKE] relay\n[USER CHAT] user_update <u5> (utt RUN:77)\n[REP CALL] cp_update <c5> (utt cp-5)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 6; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   }
+  ],
+  "role": "slow",
+  "temperature": null,
+  "tool_choice": "act",
+  "tools": [
+   "<ACT>"
+  ]
+ },
+ {
+  "call_id": "slow:7",
+  "max_tokens": 1500,
+  "messages": [
+   {
+    "cache_breakpoint": false,
+    "content": "<SYSTEM>",
+    "role": "system",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "TASK: Get Northwind Mobile's best retention offer for the account holder's plan, with every term read back, and report it to the user. Information only: no offer may be accepted on this call.\nSHAREABLE FACT KEYS (record_fact uses exactly these keys, whatever a relay calls them): account.holder_name, account.last4, competitor.name, competitor.price_usd, tenure_years\n\n[WAKE] relay\n[USER CHAT] user_update <u0> (utt RUN:0)\n[REP CALL] cp_update <c0> (utt cp-0)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 1; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Noted.\", \"calls\": [], \"public_summary\": \"Asking for a lower price.\"}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: summaries updated\n\n[WAKE] relay\n[USER CHAT] user_update <u1> (utt RUN:16)\n[REP CALL] cp_update <c1> (utt cp-1)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 2; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "Thinking.",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "[WAKE] relay\n[USER CHAT] user_update <u2> (utt RUN:30)\n[REP CALL] cp_update <c2> (utt cp-2)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 3; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Asking.\", \"calls\": [{\"tool\": \"ask_user\", \"text\": \"Any price limit?\"}]}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: private summary updated\nask_user: sent s2f-1\n\n[WAKE] relay\n[USER CHAT] user_update <u3> (utt RUN:47)\n[REP CALL] cp_update <c3> (utt cp-3)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 4; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Noted.\", \"calls\": [], \"public_summary\": \"Asking for a lower price.\"}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: summaries updated\n\n[WAKE] relay\n[USER CHAT] user_update <u4> (utt RUN:63)\n[REP CALL] cp_update <c4> (utt cp-4)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 5; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "Thinking.",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "[WAKE] relay\n[USER CHAT] user_update <u5> (utt RUN:77)\n[REP CALL] cp_update <c5> (utt cp-5)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 6; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Noted.\", \"calls\": [], \"public_summary\": \"Asking for a lower price.\"}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: summaries updated\n\n[WAKE] relay\n[USER CHAT] user_update <u6> (utt RUN:93)\n[REP CALL] cp_update <c6> (utt cp-6)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 7; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   }
+  ],
+  "role": "slow",
+  "temperature": null,
+  "tool_choice": "act",
+  "tools": [
+   "<ACT>"
+  ]
+ },
+ {
+  "call_id": "slow:8",
+  "max_tokens": 1500,
+  "messages": [
+   {
+    "cache_breakpoint": false,
+    "content": "<SYSTEM>",
+    "role": "system",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "TASK: Get Northwind Mobile's best retention offer for the account holder's plan, with every term read back, and report it to the user. Information only: no offer may be accepted on this call.\nSHAREABLE FACT KEYS (record_fact uses exactly these keys, whatever a relay calls them): account.holder_name, account.last4, competitor.name, competitor.price_usd, tenure_years\n\n[EARLIER] 1 earlier turns left this context; your latest summaries stand for them.\nPRIVATE SUMMARY: Asking.\nPUBLIC SUMMARY: Asking for a lower price.",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "Thinking.",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "[WAKE] relay\n[USER CHAT] user_update <u2> (utt RUN:30)\n[REP CALL] cp_update <c2> (utt cp-2)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 3; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Asking.\", \"calls\": [{\"tool\": \"ask_user\", \"text\": \"Any price limit?\"}]}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: private summary updated\nask_user: sent s2f-1\n\n[WAKE] relay\n[USER CHAT] user_update <u3> (utt RUN:47)\n[REP CALL] cp_update <c3> (utt cp-3)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 4; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Noted.\", \"calls\": [], \"public_summary\": \"Asking for a lower price.\"}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: summaries updated\n\n[WAKE] relay\n[USER CHAT] user_update <u4> (utt RUN:63)\n[REP CALL] cp_update <c4> (utt cp-4)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 5; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "Thinking.",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "[WAKE] relay\n[USER CHAT] user_update <u5> (utt RUN:77)\n[REP CALL] cp_update <c5> (utt cp-5)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 6; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Noted.\", \"calls\": [], \"public_summary\": \"Asking for a lower price.\"}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: summaries updated\n\n[WAKE] relay\n[USER CHAT] user_update <u6> (utt RUN:93)\n[REP CALL] cp_update <c6> (utt cp-6)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 7; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Asking.\", \"calls\": [{\"tool\": \"ask_user\", \"text\": \"Any price limit?\"}]}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: private summary updated\nask_user: sent s2f-2\n\n[WAKE] relay\n[USER CHAT] user_update <u7> (utt RUN:110)\n[REP CALL] cp_update <c7> (utt cp-7)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 8; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   }
+  ],
+  "role": "slow",
+  "temperature": null,
+  "tool_choice": "act",
+  "tools": [
+   "<ACT>"
+  ]
+ },
+ {
+  "call_id": "slow:9",
+  "max_tokens": 1500,
+  "messages": [
+   {
+    "cache_breakpoint": false,
+    "content": "<SYSTEM>",
+    "role": "system",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "TASK: Get Northwind Mobile's best retention offer for the account holder's plan, with every term read back, and report it to the user. Information only: no offer may be accepted on this call.\nSHAREABLE FACT KEYS (record_fact uses exactly these keys, whatever a relay calls them): account.holder_name, account.last4, competitor.name, competitor.price_usd, tenure_years\n\n[EARLIER] 2 earlier turns left this context; your latest summaries stand for them.\nPRIVATE SUMMARY: Asking.\nPUBLIC SUMMARY: Asking for a lower price.",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Asking.\", \"calls\": [{\"tool\": \"ask_user\", \"text\": \"Any price limit?\"}]}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: private summary updated\nask_user: sent s2f-1\n\n[WAKE] relay\n[USER CHAT] user_update <u3> (utt RUN:47)\n[REP CALL] cp_update <c3> (utt cp-3)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 4; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Noted.\", \"calls\": [], \"public_summary\": \"Asking for a lower price.\"}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: summaries updated\n\n[WAKE] relay\n[USER CHAT] user_update <u4> (utt RUN:63)\n[REP CALL] cp_update <c4> (utt cp-4)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 5; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "Thinking.",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "[WAKE] relay\n[USER CHAT] user_update <u5> (utt RUN:77)\n[REP CALL] cp_update <c5> (utt cp-5)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 6; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Noted.\", \"calls\": [], \"public_summary\": \"Asking for a lower price.\"}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: summaries updated\n\n[WAKE] relay\n[USER CHAT] user_update <u6> (utt RUN:93)\n[REP CALL] cp_update <c6> (utt cp-6)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 7; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": [
+     {
+      "arguments": "{\"private_summary\": \"Asking.\", \"calls\": [{\"tool\": \"ask_user\", \"text\": \"Any price limit?\"}]}",
+      "call_id": "a",
+      "name": "act"
+     }
+    ]
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "act: private summary updated\nask_user: sent s2f-2\n\n[WAKE] relay\n[USER CHAT] user_update <u7> (utt RUN:110)\n[REP CALL] cp_update <c7> (utt cp-7)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 8; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "tool",
+    "tool_call_id": "a",
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "Thinking.",
+    "role": "assistant",
+    "tool_call_id": null,
+    "tool_calls": []
+   },
+   {
+    "cache_breakpoint": false,
+    "content": "[WAKE] relay\n[USER CHAT] user_update <u8> (utt RUN:124)\n[REP CALL] cp_update <c8> (utt cp-8)\n[STATUS] case INTAKE; epoch 0; offers: none; mandate: none; approvals: none; fences raised: 9; facts: none; hold: none; strikes: 0; identity: account.holder_name, account.last4 not given yet: when the rep asks, ask_user and guide_fast(hold_for_fact) until it is public; deflect_fact_request only for a fact that must not be given",
+    "role": "user",
+    "tool_call_id": null,
+    "tool_calls": []
+   }
+  ],
+  "role": "slow",
+  "temperature": null,
+  "tool_choice": "act",
+  "tools": [
+   "<ACT>"
+  ]
+ }
+]
