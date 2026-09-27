@@ -86,7 +86,8 @@ class SpendLedger:
         self.limit_tokens = self.factor * projected_tokens
         self.limit_unpriced_calls = self.factor * projected_calls
         self._by_role: dict[str, int] = {}
-        self.unpriced_calls = self.tokens = 0
+        self._unpriced_by_role: dict[str, int] = {}  # calls, per role
+        self.unpriced_calls = self.gpu_time_calls = self.tokens = 0
 
     def _rate(self, ref: ModelRef) -> Rate | None:
         return self._rates.get(ref.model_id) if ref.endpoint == "relay" else None
@@ -119,6 +120,10 @@ class SpendLedger:
         charge = self.price(record)
         if charge.basis == "unpriced":
             self.unpriced_calls += 1
+            role = charge.role
+            self._unpriced_by_role[role] = self._unpriced_by_role.get(role, 0) + 1
+        elif charge.basis == "gpu_time":
+            self.gpu_time_calls += 1
         if charge.basis != "gpu_time" and (usage := record.usage) is not None:
             self.tokens += usage.prompt_tokens + usage.completion_tokens
         if charge.micro_usd:
@@ -139,3 +144,15 @@ class SpendLedger:
     @property
     def spend(self) -> Spend:
         return Spend(micro_usd=sum(self._by_role.values()), by_role=dict(self._by_role))
+
+    def totals(self) -> dict[str, object]:
+        """Every charge so far, the unpriced and GPU-time calls beside the priced
+        subtotal (the manifest's ``Spend`` holds only the latter until S1-CON-03)."""
+        return {
+            "priced_micro_usd": self.spend.micro_usd,
+            "priced_by_role": dict(self._by_role),
+            "unpriced_calls": self.unpriced_calls,
+            "unpriced_by_role": dict(self._unpriced_by_role),
+            "gpu_time_calls": self.gpu_time_calls,
+            "tokens": self.tokens,
+        }
