@@ -36,6 +36,11 @@ LINES: dict[IntentKind, str] = {
     "clarify": "Sorry, how can I help with your account?",
 }
 IDENTIFIERS = frozenset({"confirmation"})  # voiced verbatim, never as a number
+NONE = {  # read-back terms that state an absence (ARCHITECTURE §9.2)
+    ("fees_none", "true"): "no fees",
+    ("changes_none", "true"): "no other changes",
+    ("expires", "none"): "no expiry",
+}
 SYSTEM = """You are {persona} You are on a phone call with someone calling for \
 your customer. Rephrase the given line as one short, natural spoken line (at most \
 two sentences) with the same meaning and every value. Write every number in \
@@ -50,7 +55,7 @@ def template(intent: PublicIntent, company: str) -> str:
     line = LINES[intent.kind].format(company=company)
     if intent.ask:
         line += " Please give your " + " and ".join(map(_label, intent.ask)) + "."
-    values = "; ".join(f"{_label(k)}: {v}" for k, v in intent.say)
+    values = "; ".join(NONE.get((k, v)) or f"{_label(k)}: {v}" for k, v in intent.say)
     return f"{line} {values}." if values else line
 
 

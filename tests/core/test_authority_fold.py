@@ -56,6 +56,7 @@ def _confirmed_offer(log: Log) -> None:
     raw = offer()
     recorded = raw.model_dump(mode="json", include={"offer_ref", "revision", "slots"})
     log.emit("user.msg", {"text": "go"})
+    log.emit("status.changed", {"previous": "INTAKE", "status": "IN_CALL"})
     log.emit("offer.recorded", recorded | {"terms_hash": None})
     statuses = {s.field: "confirmed" for s in raw.slots}
     done = raw.model_copy(
@@ -69,8 +70,8 @@ def _confirmed_offer(log: Log) -> None:
     log.emit("readback.updated", update | {"terms_hash": offer_terms_hash(done)})
 
 
-def _granted(log: Log) -> None:
-    """Card, post, decision: the approval path to an accept."""
+def _granted(log: Log) -> object:
+    """Card, post, decision: the approval path to an accept; the card's expiry."""
     effects = request_approval(log.bb, "o1", CASE)
     assert not isinstance(effects, Denial)
     ((kind, card),) = effects
@@ -80,6 +81,7 @@ def _granted(log: Log) -> None:
     log.emit("approval.post", post | {"authority_epoch": 0})
     decided = {"approval_id": card["approval_id"], "decision": "granted", "by": "ui"}
     log.emit("approval.decided", decided)
+    return card["expires_ms"]
 
 
 def _accept(log: Log) -> str:
@@ -95,10 +97,11 @@ def test_readback_card_decision_accept_release() -> None:
     _confirmed_offer(log)
     o = log.bb.public.offers["o1"]
     assert {s.status for s in o.slots} == {"confirmed"} and o.terms_hash
-    _granted(log)
+    expires = _granted(log)
     assert log.bb.private.pending_approval is None
     (approval,) = log.bb.private.approvals.values()
     assert (approval.decision, approval.terms_hash) == ("granted", o.terms_hash)
+    assert approval.expires_ms == expires is not None  # the card's (ADR-0007)
     cap_id = _accept(log)
     assert log.bb.authorizations[0].offer_ref == "o1"
     assert not log.bb.capabilities[cap_id].consumed
@@ -214,3 +217,22 @@ def test_offer_recorded_cannot_set_statuses_or_terms() -> None:
     assert request_approval(log.bb, "o1", CASE) == Denial("readback_not_confirmed")
     no_ttl = log.emit("offer.recorded", claimed | {"revision": 2, "terms_hash": None})
     assert no_ttl.public.offers["o1"].expires_ms is None
+
+
+def test_offer_recorded_must_move_the_revision_forward() -> None:
+    """A re-record at the same or an older revision would reopen a declined
+    offer and reset its read-back: the fold refuses it."""
+    log = Log()
+    log.emit("user.msg", {"text": "go"})
+    recorded = offer().model_dump(mode="json", include={"offer_ref", "slots"})
+    log.emit("offer.recorded", recorded | {"revision": 2, "terms_hash": None})
+    line = {"lane": "cp", "kind": "decline", "text": "No.", "offer_ref": "o1"}
+    assert log.emit("speak.verbatim", line).public.offers["o1"].status == "declined"
+    for stale in (2, 1):
+        with pytest.raises(ValueError, match="revision"):
+            log.emit(
+                "offer.recorded", recorded | {"revision": stale, "terms_hash": None}
+            )
+    assert log.bb.public.offers["o1"].status == "declined"
+    newer = log.emit("offer.recorded", recorded | {"revision": 3, "terms_hash": None})
+    assert newer.public.offers["o1"].status == "open"

@@ -5,9 +5,14 @@ TRANSFER | ENDED. The rep knows only the acts it heard, its offers and the
 clock (no agent state). Each distinct lever unlocks the next ladder rung;
 hidden terms are said only on a read-back; offers expire after their TTL;
 silence over ``silence_s`` while the floor is free (``floor``), or a hold over
-``hold_s``, is a strike, and the last strike hangs up.
+``hold_s``, is a timer strike; any act but ``provide_fact`` while identifying
+(hold and supervisor requests aside) is an identity strike. Each kind has its
+own counter, neither adds to the other, and either reaching
+``patience.strikes`` hangs up. Identity strikes count what was heard, not
+time, so they apply in rep-chat too, where only the timer patience is
+suspended.
 
-World rule (for S1-SYS-04 to confirm): accepting an open offer by name commits
+World rule (confirmed in S1-SYS-04): accepting an open offer by name commits
 at once (``rep.commit_heard``) and the ledger binds all its terms, hidden ones
 included, as a real rep's system would; that is the trap the agent must avoid
 by asking for a read-back first. An accept is by name only if the heard text
@@ -27,7 +32,7 @@ from proxyloop.contract.base import Frozen, sha256_text
 from proxyloop.env.counterparty.ear import EarAct, Lever
 from proxyloop.env.ledger import Ledger
 from proxyloop.env.tasks.schema import CounterpartySpec, OfferSpec
-from proxyloop.env.world import numbers
+from proxyloop.env.world import norm, numbers
 
 State = Literal[
     "GREET",
@@ -104,17 +109,13 @@ class _Offer:
     status: Literal["open", "expired", "accepted"] = "open"
 
 
-def _norm(value: str) -> str:
-    return "".join(ch for ch in value.casefold() if ch.isalnum())
-
-
 class Policy:
     def __init__(
         self, spec: CounterpartySpec, identity: Mapping[str, str], t0_ms: int = 0
     ) -> None:
         self.spec, self.identity = spec, dict(identity)
         self.state: State = "GREET"
-        self.rung, self.strikes = -1, 0
+        self.rung, self.identity_strikes, self.timer_strikes = -1, 0, 0
         self.offers: dict[str, _Offer] = {}
         self.ledger: Ledger[BoundTerms] = Ledger(spec.ledger)
         self._verified: set[str] = set()
@@ -122,6 +123,12 @@ class Policy:
         self._pending: str | None = None
         self._hold_since: int | None = None
         self._free_since: int | None = t0_ms  # None: someone has the floor
+
+    @property
+    def strikes(self) -> int:
+        """Both kinds together: as many as the ``chan.strike`` events."""
+
+        return self.identity_strikes + self.timer_strikes
 
     @property
     def done(self) -> bool:
@@ -146,9 +153,13 @@ class Policy:
             return []
         out = self._expire(t_ms)
         self._free_since, self._hold_since = None, None
-        before = self.state
+        before, strikes = self.state, self.strikes
         intent, commit = self._react(act, utt_id, heard, t_ms)
-        return [*out, Decision(before, self.state, intent, self._rung(), commit)]
+        struck = self.strikes > strikes
+        return [
+            *out,
+            Decision(before, self.state, intent, self._rung(), commit, struck),
+        ]
 
     def tick(self, t_ms: int) -> list[Decision]:
         """Timers: offer expiry, silence and hold strikes, the hang-up."""
@@ -162,10 +173,10 @@ class Policy:
         )
         if since is None or t_ms - since < 1000 * limit:
             return out
-        self.strikes += 1  # the rep speaks up: it takes the floor
+        self.timer_strikes += 1  # the rep speaks up: it takes the floor
         self._free_since, self._hold_since = None, None if hold is None else t_ms
         before = self.state
-        self.state = "ENDED" if self.strikes >= p.strikes else self.state
+        self.state = "ENDED" if self.timer_strikes >= p.strikes else self.state
         intent = PublicIntent(kind="hang_up" if self.done else "check_in")
         return [*out, Decision(before, self.state, intent, self._rung(), strike=True)]
 
@@ -184,13 +195,16 @@ class Policy:
             if a != "provide_fact":
                 return PublicIntent(kind="greet", ask=self._missing()), None
         if self.state == "IDENTIFY":
-            key, value = act.key or "", _norm(act.value or "")
-            if (
-                a == "provide_fact"
-                and value
-                and value == _norm(self.identity.get(key, ""))
-            ):
-                self._verified.add(key)
+            facts = act.facts if a == "provide_fact" else ()
+            if a != "provide_fact":  # identity patience
+                self.identity_strikes += 1
+                if self.identity_strikes >= self.spec.patience.strikes:
+                    self.state = "ENDED"
+                    return PublicIntent(kind="hang_up"), None
+            for fact in facts:  # a wrong value is asked again, not struck
+                value = norm(fact.value)
+                if value and value == norm(self.identity.get(fact.key, "")):
+                    self._verified.add(fact.key)
             if missing := self._missing():
                 return PublicIntent(kind="ask_identity", ask=missing), None
             self.state = "DISCOVER"

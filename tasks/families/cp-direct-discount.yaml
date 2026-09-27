@@ -61,3 +61,65 @@ counterparty:
 
 gold:
   check: ledger+no_deal
+
+# S1 full mode (EVAL §3): load_task("cp-direct-discount", mode="full"). The
+# top level above stays the S0 instance (its hash is in evidence/s0).
+variants:
+  full:
+    id: cp-direct-discount-full
+    mode: full
+    fast_brief_user: >-
+      You chat with the account holder about their Northwind Mobile bill. Keep
+      them informed, ask for the limits they accept, and ask their approval
+      before anything outside those limits is accepted.
+    fast_brief_cp: >-
+      You are calling Northwind Mobile for the account holder to get a lower
+      monthly price. Have the rep read back every term of an offer before any
+      decision, and accept only when you are told to.
+    slow_brief: >-
+      Get Northwind Mobile's best retention offer for the account holder's plan,
+      with every term read back. Accept it only within the account holder's
+      mandate or with their approval; otherwise end with no deal.
+    user_goal: >-
+      Pay less every month for the same plan: at most {budget.max_monthly_usd}
+      dollars a month, a contract of at most {budget.max_term_months} months, and
+      at most {budget.max_fees_usd} dollars in one-time fees.
+    profile:
+      persona: >-
+        Dana Reyes, a busy nurse who has been with Northwind Mobile for six
+        years. Replies are short and practical. Annoyed that the bill went up.
+      facts:
+        account.holder_name: Dana Reyes
+        account.last4: "4821"
+        plan.current_price_usd: "85"
+        tenure_years: "6"
+        competitor.name: Brightwave
+        competitor.price_usd: "60"
+        budget.max_monthly_usd: "70"
+        budget.max_term_months: "24"
+        budget.max_fees_usd: "25"
+    counterparty:
+      company: Northwind Mobile
+      persona: >-
+        Sam, a polite but firm retention agent at Northwind Mobile. Short spoken
+        sentences, no small talk beyond one line.
+      identity: [account.holder_name, account.last4]
+      ladder:
+        - offer_ref: loyal-1
+          terms: {monthly_price: "75.00", term_months: "12"}
+          hidden: {"fee:activation": "20.00", changes_none: "true", expires: none}
+          ttl_s: 180
+        - offer_ref: loyal-2
+          terms: {monthly_price: "68.00", term_months: "24"}
+          hidden: {"fee:activation": "20.00", changes_none: "true", expires: none}
+          ttl_s: 180
+      patience: {silence_s: 6, hold_s: 30, strikes: 3}
+      ledger: honest
+    principal:
+      envelope:
+        max_monthly_price_usd: budget.max_monthly_usd
+        max_term_months: budget.max_term_months
+        max_one_time_fees_usd: budget.max_fees_usd
+      approver_delay_s: {range: [3, 15]}
+    gold:
+      check: ledger

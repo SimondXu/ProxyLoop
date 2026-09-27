@@ -7,6 +7,7 @@ from proxyloop.contract.state import (
     ApprovalCard,
     Blackboard,
     Capability,
+    CaseStatus,
     ChannelState,
     Fact,
     Fence,
@@ -92,15 +93,22 @@ def mandate(status: str = "granted", **kw: object) -> Mandate:
     return Mandate.model_validate(base | kw)
 
 
-def approval(o: OfferPublic, decision: str = "granted", epoch: int = 0) -> Approval:
+def approval(
+    o: OfferPublic,
+    decision: str = "granted",
+    epoch: int = 0,
+    expires_ms: int | None = 60_000,  # the card's; None: a pre-ADR-0007 record
+    approval_id: str = "apr-1",
+) -> Approval:
     assert o.terms_hash is not None
     return Approval.model_validate(
         {
-            "approval_id": "apr-1",
+            "approval_id": approval_id,
             "decision": decision,
             "by": "ui",
             "terms_hash": o.terms_hash,
             "authority_epoch": epoch,
+            "expires_ms": expires_ms,
         }
     )
 
@@ -139,13 +147,14 @@ def board(
     caps: tuple[Capability, ...] = (),
     facts: tuple[Fact, ...] = (),
     cp: tuple[Line, ...] = (),
+    status: CaseStatus = CaseStatus.IN_CALL,  # the only status that mints an accept
 ) -> Blackboard:
     return Blackboard(
         seq=seq,
         t_ms=t_ms,
         epoch=epoch,
         fences=fences,
-        public=PublicState(offers={o.offer_ref: o for o in offers}),
+        public=PublicState(offers={o.offer_ref: o for o in offers}, status=status),
         private=PrivateState(
             mandate=mandate,
             pending_approval=pending,

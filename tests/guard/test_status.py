@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from tests.guard.build import board, confirm, mandate, offer, rep
 
-from proxyloop.contract.state import CaseStatus, Fact, PublicFact
+from proxyloop.contract.state import Blackboard, CaseStatus, Fact, PublicFact
 from proxyloop.guard.screen import screen
 from proxyloop.guard.status import TERMINAL, TRANSITIONS, next_status, status_change
 
@@ -73,7 +73,7 @@ def test_illegal_and_terminal_moves_are_refused() -> None:
 
 
 def test_status_change_payload() -> None:
-    bb = board()
+    bb = board(status=CaseStatus.INTAKE)
     assert status_change(bb, "call_opened") == {
         "previous": "INTAKE",
         "status": "IN_CALL",
@@ -104,7 +104,49 @@ def test_the_screen_flags_protected_values_always() -> None:
             "public": bb.public.model_copy(update={"facts": {"tenure_years": public}})
         }
     )
-    assert screen("I have been a customer 24 months.", bb) == ()  # public fact
+    # a shareable fact equal to a bound never makes the bound speakable (#126)
+    assert screen("I have been a customer 24 months.", bb) == ("mandate:24",)
     assert screen("I can sign for 24 months.", board(mandate=mandate())) == (
         "mandate:24",
     )
+
+
+def _with_facts(bb: Blackboard, *facts: PublicFact) -> Blackboard:
+    public = bb.public.model_copy(update={"facts": {f.key: f for f in facts}})
+    return bb.model_copy(update={"public": public})
+
+
+def test_a_shareable_fact_never_exempts_a_bound_or_a_protected_value() -> None:
+    """Reviewer probe: max $70 and a public shareable last4 "0070"."""
+    last4 = PublicFact(
+        key="account.last4", value="0070", source="shareable", source_ref="u1"
+    )
+    bb = _with_facts(board(mandate=mandate(max_monthly_price_minor=7000)), last4)
+    assert screen("I can go up to 70 dollars", bb) == ("mandate:70",)
+    pin = Fact(key="account.pin", value="2400", protected=True)
+    tenure = PublicFact(
+        key="tenure_years", value="6", source="shareable", source_ref="u1"
+    )
+    bb = _with_facts(board(mandate=mandate(), facts=(pin,)), tenure)
+    assert screen("Six years, so 6 it is.", bb) == ()  # not a bound: public
+    said = PublicFact(key="offer.term", value="24", source="cp_utt", source_ref="c1")
+    rep_said = _with_facts(board(mandate=mandate()), said)
+    assert screen("So 24 months, as you said.", rep_said) == ()  # the rep's number
+
+
+@pytest.mark.parametrize(
+    ("value", "text"),
+    [
+        ("O'Brien", "Is that OBRIEN?"),
+        ("Lee-Smith", "The holder is lee smith."),
+        ("7777", "The code is 77-77."),
+        ("7777", "The code is " + "\N{FULLWIDTH DIGIT SEVEN}" * 4 + "."),
+        ("王小明", "Holder 王小明."),  # any script
+    ],
+)
+def test_the_screen_flags_protected_values_in_any_spelling(
+    value: str, text: str
+) -> None:
+    """The same canonical forms as declass: words, letters, any-script digits."""
+    secret = Fact(key="account.secret", value=value, protected=True)
+    assert screen(text, board(facts=(secret,))) == ("protected:account.secret",)

@@ -21,6 +21,7 @@ from proxyloop.contract.state import (
     ApprovalCard,
     Blackboard,
     Capability,
+    CaseStatus,
     Fact,
     OfferPublic,
 )
@@ -28,14 +29,16 @@ from proxyloop.guard.authorize import (
     CARD_TTL_MS,
     REASONS,
     Denial,
+    Effect,
     accept_offer,
     decide,
     decline_offer,
     request_approval,
     share_fact,
 )
-from proxyloop.guard.capability import business_action_id
+from proxyloop.guard.capability import CAP_TTL_MS, business_action_id
 from proxyloop.guard.mandate import mandate_hash, proposal
+from proxyloop.guard.status import TERMINAL
 
 O1 = confirm(offer())
 PIN = Fact(key="account.pin", value="1234", protected=True)
@@ -86,6 +89,15 @@ _CLOSED: OfferPublic = O1.model_copy(update={"status": "declined"})
 _UNSUPPORTED = confirm(offer(change="free_phone"))
 _GOOD = approval(O1)
 _CARD: ApprovalCard = card(O1)
+
+
+def _status(status: CaseStatus) -> Blackboard:
+    bb = board(O1, approvals=(_GOOD,))
+    return bb.model_copy(
+        update={"public": bb.public.model_copy(update={"status": status})}
+    )
+
+
 _OFFER_REASONS: list[tuple[str, Blackboard]] = [
     ("fence_raised", board(O1, fences=(FENCE,), approvals=(_GOOD,))),
     ("no_such_offer", board(approvals=(_GOOD,))),
@@ -127,6 +139,27 @@ CASES: list[tuple[str, str, Rule, Blackboard]] = [
         "outside_mandate",
         _accept(),
         board(O1, mandate=mandate(max_monthly_price_minor=6500)),
+    ),
+    (
+        "accept_offer",
+        "approval_expired",
+        _accept(),
+        board(O1, approvals=(approval(O1, expires_ms=1_000),)),  # t_ms 1_000
+    ),
+    (
+        "accept_offer",
+        "already_accepted",  # another grant's capability was released
+        _accept(),
+        board(O1, approvals=(_GOOD,), caps=(_cap("other", consumed=True),)),
+    ),
+    ("accept_offer", "already_committed", _accept(), _status(CaseStatus.COMMITTED)),
+    ("accept_offer", "case_closed", _accept(), _status(CaseStatus.VERIFIED_NO_DEAL)),
+    ("accept_offer", "not_in_call", _accept(), _status(CaseStatus.NEEDS_REPLAN)),
+    (
+        "accept_offer",
+        "accept_in_flight",
+        _accept(),
+        board(O1, approvals=(_GOOD,), caps=(_cap("other"),)),
     ),
     ("accept_offer", "not_authorized", _accept(), board(O1)),
     (
@@ -361,3 +394,118 @@ def test_a_denial_is_checked_before_the_mandate() -> None:
         }
     )
     assert not isinstance(accept_offer(later, "o1", CASE), Denial)  # a new epoch
+
+
+def _cap_of(effects: tuple[Effect, ...] | Denial) -> Capability:
+    assert not isinstance(effects, Denial), effects
+    return Capability.model_validate(effects[0][1]["capability"])
+
+
+def test_a_denial_blocks_whatever_its_expiry() -> None:
+    """ADR-0007 regression: card0 denied (expires 120), card1 granted (expires
+    126), same terms and epoch: at t=121 no capability is minted."""
+    for denied_until in (120, None):
+        bb = board(
+            O1,
+            approvals=(
+                approval(O1, "denied", expires_ms=denied_until, approval_id="c0"),
+                approval(O1, expires_ms=126, approval_id="c1"),
+            ),
+            t_ms=121,
+        )
+        assert accept_offer(bb, "o1", CASE) == Denial("approval_denied")
+
+
+def test_any_unexpired_grant_counts_not_only_the_first() -> None:
+    bb = board(
+        O1,
+        approvals=(
+            approval(O1, expires_ms=500, approval_id="old"),  # expired at t=1_000
+            approval(O1, expires_ms=None, approval_id="unknown"),  # never counts
+            approval(O1, expires_ms=5_000, approval_id="live"),
+        ),
+    )
+    cap = _cap_of(accept_offer(bb, "o1", CASE))
+    assert cap.business_action_id == business_action_id(
+        "case-1", "accept_offer", "o1", 1, str(O1.terms_hash), "live"
+    )
+    assert cap.expires_ms == 5_000
+
+
+@pytest.mark.parametrize("expires_ms", [None, 999, 1_000])
+def test_a_grant_without_a_live_expiry_mints_nothing(expires_ms: int | None) -> None:
+    """ADR-0007: ``None`` is expired for a grant (fail closed); expiry at t is
+    past (t_ms 1_000)."""
+    bb = board(O1, approvals=(approval(O1, expires_ms=expires_ms),))
+    assert accept_offer(bb, "o1", CASE) == Denial("approval_expired")
+    earlier = accept_offer(bb.model_copy(update={"t_ms": 998}), "o1", CASE)
+    assert isinstance(earlier, Denial) == (expires_ms is None)  # None: never live
+
+
+TTL_END = 1_000 + CAP_TTL_MS  # board t_ms 1_000
+
+
+@pytest.mark.parametrize(
+    ("approval_until", "offer_until", "cap_until"),
+    [
+        (1_001, None, 1_001),  # the approval, one ms after now
+        (5_000, None, 5_000),  # the approval
+        (5_000, 4_000, 4_000),  # the offer
+        (5_000, 5_000, 5_000),  # a tie
+        (TTL_END, None, TTL_END),  # the approval equals the TTL
+        (TTL_END + 1, None, TTL_END),  # the TTL
+        (10**9, TTL_END + 5, TTL_END),  # the TTL, before the offer
+        (10**9, TTL_END - 5, TTL_END - 5),  # the offer, before the TTL
+    ],
+)
+def test_capability_expiry_is_the_min_of_approval_offer_and_ttl(
+    approval_until: int, offer_until: int | None, cap_until: int
+) -> None:
+    o = O1.model_copy(update={"expires_ms": offer_until})
+    bb = board(o, approvals=(approval(o, expires_ms=approval_until),))
+    assert _cap_of(accept_offer(bb, "o1", CASE)).expires_ms == cap_until
+
+
+def test_a_mandate_grant_ignores_approval_expiry() -> None:
+    """A covering mandate grants on its own; its expiry, not an approval's."""
+    bb = board(
+        O1,
+        mandate=mandate(expires_ms=7_000),
+        approvals=(approval(O1, expires_ms=3_000),),
+    )
+    assert _cap_of(accept_offer(bb, "o1", CASE)).expires_ms == 7_000
+
+
+@pytest.mark.parametrize("status", list(CaseStatus))
+def test_only_in_call_mints_an_accept(status: CaseStatus) -> None:
+    """ARCHITECTURE §9.5: accept_authorized leaves IN_CALL only; NEEDS_REPLAN
+    replans to IN_CALL first."""
+    got = accept_offer(_status(status), "o1", CASE)
+    if status in (CaseStatus.COMMITTED, CaseStatus.EVIDENCE_PENDING):
+        assert got == Denial("already_committed")
+    elif status in TERMINAL:
+        assert got == Denial("case_closed")
+    elif status is CaseStatus.IN_CALL:
+        assert not isinstance(got, Denial), got
+    else:
+        assert got == Denial("not_in_call")
+
+
+def test_one_accept_in_flight_per_case() -> None:
+    """A queued (unreleased, unrevoked) accept of any offer blocks another."""
+    bb = board(O1, approvals=(_GOOD,), caps=(_cap("other"),))
+    assert accept_offer(bb, "o1", CASE) == Denial("accept_in_flight")
+
+
+def test_after_a_released_accept_a_mandate_no_longer_grants() -> None:
+    """A retry needs a new revision and a new approval (main root decision)."""
+    o2 = confirm(offer(monthly="6500").model_copy(update={"revision": 2}))
+    done = board(o2, mandate=mandate(), caps=(_cap("r1", consumed=True),))
+    assert accept_offer(done, "o1", CASE) == Denial("not_authorized")
+    approved = board(
+        o2,
+        mandate=mandate(),
+        caps=(_cap("r1", consumed=True),),
+        approvals=(approval(o2),),
+    )
+    assert not isinstance(accept_offer(approved, "o1", CASE), Denial)

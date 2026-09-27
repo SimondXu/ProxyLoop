@@ -17,9 +17,8 @@ O1 = confirm(offer())
 
 
 def _event(run: str, seq: int, type_: str, payload: Mapping[str, object]) -> Event:
-    actor = {"offer.recorded": "guard", "readback.updated": "guard"}.get(
-        type_, "kernel"
-    )
+    guard = {"offer.recorded", "readback.updated", "status.changed"}
+    actor = "guard" if type_ in guard else "kernel"
     return Event.model_validate(
         {
             "run_id": run,
@@ -46,6 +45,7 @@ def _folded(run: str, padding: int) -> Blackboard:
     readback["slot_statuses"] = statuses
     readback["terms_hash"] = O1.terms_hash
     steps = [("user.msg", {"text": "hi"})] * (1 + padding)
+    steps += [("status.changed", {"previous": "INTAKE", "status": "IN_CALL"})]
     steps += [("offer.recorded", recorded | {"terms_hash": None})]
     steps += [("readback.updated", readback)]
     return fold(_event(run, n, t, p) for n, (t, p) in enumerate(steps))
@@ -66,7 +66,7 @@ def _bid(bb: Blackboard) -> str:
 
 def test_business_action_id_is_stable_under_run_id_and_seq() -> None:
     a, b = _folded("run-a", 0), _folded("run-b", 7)
-    assert (a.seq, b.seq) == (2, 9)
+    assert (a.seq, b.seq) == (3, 10)
     assert _bid(a) == _bid(b)
     assert business_action_id("c", "accept_offer", "o1", 1, "h", "apr-1") != (
         business_action_id("c", "accept_offer", "o1", 2, "h", "apr-1")

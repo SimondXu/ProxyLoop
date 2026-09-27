@@ -5,20 +5,22 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from tests.env.bus_sink import BusSink
+from tests.support import sessions
 
 from proxyloop.contract.events import Event, check_causes
-from proxyloop.contract.llm import LLMCallRecord, LLMUnavailable
+from proxyloop.contract.llm import LLMCallRecord, LLMUnavailable, ToolCall
 from proxyloop.env import world
-from proxyloop.env.counterparty.ear import Ear
+from proxyloop.env.counterparty.ear import Ear, check_act
 from proxyloop.env.counterparty.mouth import Mouth, template
 from proxyloop.env.counterparty.policy import PublicIntent
 from proxyloop.env.counterparty.simrep import RepTurn, SimRep
 from proxyloop.env.tasks.loader import load_task
 from proxyloop.env.user.simuser import SimUser
+from proxyloop.kernel.session import SimRepChannel, SimUserChannel
 
 TASK = load_task("cp-direct-discount")
 CP = TASK.counterparty
@@ -28,6 +30,13 @@ OFFERS = {"loyal-1": dict(CP.ladder[0].terms)}
 def _tool(name: str, **args: Any) -> str:
     call = {"call_id": "t", "name": name, "arguments": json.dumps(args)}
     return json.dumps({"text": "", "tool_calls": [call]})
+
+
+NAME, LAST4 = "account.holder_name", "account.last4"
+
+
+def _fact(key: str, value: str) -> dict[str, str]:
+    return {"key": key, "value": value}
 
 
 def _ear(sink: BusSink, *responses: str) -> Ear:
@@ -152,13 +161,8 @@ def test_simrep_commits_heard_and_binds_the_ledger(tmp_path: Path) -> None:
     sink = BusSink(tmp_path)
     ear = [
         _tool("classify", act="other"),
-        _tool(
-            "classify",
-            act="provide_fact",
-            key="account.holder_name",
-            value="Dana Reyes",
-        ),
-        _tool("classify", act="provide_fact", key="account.last4", value="4821"),
+        _tool("classify", act="provide_fact", facts=[_fact(NAME, "Dana Reyes")]),
+        _tool("classify", act="provide_fact", facts=[_fact(LAST4, "4821")]),
         _tool("classify", act="ask_discount"),
         _tool("classify", act="accept", offer_ref="loyal-1"),
     ]
@@ -254,6 +258,7 @@ def test_the_simuser_opens_and_reveals_verbatim(tmp_path: Path) -> None:
         revealed={"account.holder_name": "Dana Reyes", "account.last4": "4821"},
     )
     out = asyncio.run(_user(sink, reply).on_agent_message("How can I help?", cause))
+    assert out is not None
     assert out.revealed == {
         "account.holder_name": "Dana Reyes",
         "account.last4": "4821",
@@ -285,7 +290,7 @@ def test_a_simuser_reveal_not_in_the_text_is_regenerated(
     good = _tool("reply", text="It's 4821.", revealed={"account.last4": "4821"})
     user = _user(sink, _tool("reply", **bad), good)
     out = asyncio.run(user.on_agent_message(None, cause))
-    assert out.text == "It's 4821."
+    assert out is not None and out.text == "It's 4821."
     (sim,) = sink.of("user.sim")
     assert sim.payload["attempts"] == 2 and len(sink.of("llm.call")) == 2
 
@@ -297,9 +302,9 @@ def test_the_reply_delay_is_seeded(tmp_path: Path) -> None:
         sink = BusSink(tmp_path / run)
         cause = sink.heard("hi", lane="user").event_id
         reply = _tool("reply", text="Hi.", revealed={})
-        delays.append(
-            asyncio.run(_user(sink, reply).on_agent_message("hi", cause)).delay_s
-        )
+        out = asyncio.run(_user(sink, reply).on_agent_message("hi", cause))
+        assert out is not None
+        delays.append(out.delay_s)
     assert delays[0] == delays[1]
 
 
@@ -363,3 +368,228 @@ def test_simrep_ticks_nothing_while_a_turn_is_in_flight(tmp_path: Path) -> None:
     silence = int(CP.patience.silence_s * 1000)
     assert asyncio.run(rep.tick(late + silence - 1)) == RepTurn((), False, False)
     assert rep.policy.strikes == 0
+
+
+def test_the_ear_takes_every_fact_of_one_utterance(tmp_path: Path) -> None:
+    sink = BusSink(tmp_path)
+    text = "Dana Reyes, last four 4821."
+    heard = sink.heard(text)
+    facts = [_fact(NAME, "Dana Reyes"), _fact(LAST4, "4821")]
+    ear = _ear(sink, _tool("classify", act="provide_fact", facts=facts))
+    act, _ = asyncio.run(ear.classify("u1", text, heard.event_id, {}))
+    assert [(f.key, f.value) for f in act.facts] == [
+        (NAME, "Dana Reyes"),
+        (LAST4, "4821"),
+    ]
+    (rep_ear,) = sink.of("rep.ear")
+    assert rep_ear.payload["args"] == {"facts": facts}
+    assert rep_ear.payload["attempts"] == 1
+    (messages,) = [c for k, c in sink.prompts.values() if k == "messages"]
+    params = json.loads(messages)["tools"][0]["parameters"]["properties"]
+    assert params["facts"]["items"]["properties"]["key"]["enum"] == [NAME, LAST4]
+    _world_ok(sink)
+
+
+def _calls(*calls: tuple[str, dict[str, Any]]) -> str:
+    tool_calls = [
+        {"call_id": f"t{i}", "name": name, "arguments": json.dumps(args)}
+        for i, (name, args) in enumerate(calls)
+    ]
+    return json.dumps({"text": "", "tool_calls": tool_calls})
+
+
+@pytest.mark.parametrize(
+    ("bad", "why"),
+    [
+        (
+            _calls(
+                ("classify", {"act": "provide_fact", "facts": [_fact(NAME, "Dana")]}),
+                ("classify", {"act": "provide_fact", "facts": [_fact(LAST4, "4821")]}),
+            ),
+            "parallel calls stay invalid",
+        ),
+        (_tool("classify", act="provide_fact", facts=[]), "no fact"),
+        (_tool("classify", act="provide_fact"), "no facts field"),
+        (
+            _tool("classify", act="provide_fact", facts=[_fact(LAST4, "1234")]),
+            "a value not said",
+        ),
+        (
+            _tool("classify", act="provide_fact", facts=[_fact("account.pin", "4821")]),
+            "an unknown key",
+        ),
+        (
+            _tool("classify", act="provide_fact", facts=[{"key": LAST4}]),
+            "a fact without its value",
+        ),
+    ],
+)
+def test_an_invalid_fact_output_is_regenerated_and_counted(
+    tmp_path: Path, bad: str, why: str
+) -> None:
+    sink = BusSink(tmp_path)
+    text = "Dana Reyes, last four 4821."
+    heard = sink.heard(text)
+    facts = [_fact(NAME, "Dana Reyes"), _fact(LAST4, "4821")]
+    good = _tool("classify", act="provide_fact", facts=facts)
+    act, _ = asyncio.run(_ear(sink, bad, good).classify("u1", text, heard.event_id, {}))
+    assert len(act.facts) == 2, why
+    (rep_ear,) = sink.of("rep.ear")
+    assert rep_ear.payload["attempts"] == 2 and len(sink.of("llm.call")) == 2
+    _world_ok(sink)
+
+
+def test_identity_refused_three_times_abandons_the_call(tmp_path: Path) -> None:
+    sink = BusSink(tmp_path)
+    ear = [_tool("classify", act="smalltalk")] + [
+        _tool("classify", act="refuse_fact")
+    ] * 3
+    mouth = [
+        "Northwind Mobile, can I get the account holder name and last 4 digits?",
+        "I need the account holder name and last 4 digits.",
+        "I still need the name and last 4 digits.",
+        "I cannot help without verification. Goodbye.",
+    ]
+    rep = SimRep(TASK, sink.llm(*ear), sink.llm(*mouth), sink.world)
+    said = ["Hi there.", "I'd rather not say.", "No.", "Still no."]
+    turns: list[RepTurn] = []
+    for i, text in enumerate(said):
+        heard = sink.heard(text)
+        utt_id = str(heard.payload["utt_id"])
+        turns.append(
+            asyncio.run(rep.on_agent_utterance(utt_id, text, heard.event_id, i * 100))
+        )
+    assert [(t.strike, t.ended) for t in turns] == [
+        (False, False),
+        (True, False),
+        (True, False),
+        (True, True),
+    ]
+    last = sink.of("rep.policy")[-1]
+    assert (last.payload["from"], last.payload["to"]) == ("IDENTIFY", "ENDED")
+    assert cast(dict[str, object], last.payload["intent"])["kind"] == "hang_up"
+    _world_ok(sink)
+
+
+def test_a_struck_out_rep_turn_is_a_hang_up_for_the_kernel() -> None:
+    class Rep:  # the kernel's channel over a rep whose last strike ended the call
+        async def on_agent_utterance(self, *args: object) -> RepTurn:
+            return RepTurn((("Goodbye.", "ev"),), strike=True, ended=True)
+
+    channel = SimRepChannel(cast(SimRep, Rep()))
+    asyncio.run(channel.send("No.", "u1", "c", 0))
+    inc = channel.incoming.get_nowait()
+    assert (inc.strike, inc.end) == (True, "hangup")  # the kernel: "abandoned"
+
+
+def _silent(**extra: Any) -> str:
+    return _tool("reply", silent=True, revealed={}, **extra)
+
+
+def test_the_simuser_may_stay_silent_and_its_call_is_still_logged(
+    tmp_path: Path,
+) -> None:
+    sink = BusSink(tmp_path)
+    cause = sink.heard("Still on hold with them.", lane="user").event_id
+    user = _user(sink, _silent())
+    assert asyncio.run(user.on_agent_message("Still on hold with them.", cause)) is None
+    assert sink.of("user.sim") == []
+    (call,) = sink.of("llm.call")
+    assert call.cause_ids == (cause,) and call.actor == "world.simuser"
+    (messages,) = [c for k, c in sink.prompts.values() if k == "messages"]
+    params = json.loads(messages)["tools"][0]["parameters"]
+    assert params["properties"]["silent"]["type"] == "boolean"
+    assert params["required"] == ["revealed"]
+    _world_ok(sink)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        _silent(text="Okay."),  # silent with text
+        _tool("reply", silent=True, revealed={"account.last4": "4821"}),
+        _tool("reply", revealed={}),  # neither text nor silent
+        _silent(),  # the opening is never silent
+    ],
+)
+def test_an_invalid_silence_is_regenerated(tmp_path: Path, bad: str) -> None:
+    sink = BusSink(tmp_path)
+    cause = sink.heard("(case opened)", lane="user").event_id
+    good = _tool("reply", text="Please lower my bill.", revealed={})
+    out = asyncio.run(_user(sink, bad, good).on_agent_message(None, cause))
+    assert out is not None and out.text == "Please lower my bill."
+    (sim,) = sink.of("user.sim")
+    assert sim.payload["attempts"] == 2 and len(sink.of("llm.call")) == 2
+
+
+def test_the_simuser_channel_enqueues_nothing_on_silence(tmp_path: Path) -> None:
+    sink = BusSink(tmp_path)
+    cause = sink.heard("Update: still waiting.", lane="user").event_id
+    answer = _tool("reply", text="Thanks.", revealed={})
+    channel = SimUserChannel(_user(sink, _silent(), answer))
+    asyncio.run(channel.send("Update: still waiting.", "u1", cause, 0))
+    assert channel.incoming.empty()
+    asyncio.run(channel.send("Any questions?", "u2", cause, 1_000))
+    inc = channel.incoming.get_nowait()
+    assert inc.lines == (("Thanks.", sink.of("user.sim")[0].event_id),)
+    assert inc.due_ms >= 1_000 and channel.incoming.empty()
+
+
+@pytest.mark.parametrize(
+    ("heard", "fact", "said"),
+    [
+        ("Last four 4821.", (LAST4, "4821"), True),
+        ("It's 4 8 2 1.", (LAST4, "4821"), True),
+        ("It's 48-21, and the name is Dana Reyes.", (LAST4, "4821"), True),
+        ("4821 12 months", (LAST4, "4821"), True),  # whole groups of a run
+        ("last four 4821, 12 months", (LAST4, "4821"), True),
+        ("555 482 1999", (LAST4, "4821"), False),  # groups 555|482|1999
+        ("Card 14821.", (LAST4, "4821"), False),
+        ("dana REYES here.", (NAME, "Dana Reyes"), True),
+        ("Is that Dan? A Reyes account?", (NAME, "Dana Reyes"), False),
+        ("Danar Reyes", (NAME, "Dana Reyes"), False),
+    ],
+)
+def test_a_fact_is_said_only_as_whole_digit_groups_or_whole_tokens(
+    heard: str, fact: tuple[str, str], said: bool
+) -> None:
+    call = ToolCall(
+        call_id="t",
+        name="classify",
+        arguments=json.dumps({"act": "provide_fact", "facts": [_fact(*fact)]}),
+    )
+    if said:
+        assert check_act((call,), heard, (), (NAME, LAST4)).facts
+    else:
+        with pytest.raises(world.Invalid, match="was not said"):
+            check_act((call,), heard, (), (NAME, LAST4))
+
+
+def test_identity_strikes_apply_in_rep_chat(tmp_path: Path) -> None:
+    """Content, not timing: rep-chat suspends only the timer patience."""
+    person = sessions.Person(
+        ["Hi, I'm calling about my bill.", "I'd rather not say.", "No."]
+    )
+    scripts = {
+        "ear": [
+            sessions.ear("other"),
+            sessions.ear("smalltalk"),
+            sessions.ear("refuse_fact"),
+        ],
+        "mouth": ["Northwind Mobile, may I have the account holder name?"],
+    }
+    result = sessions.run(tmp_path, scripts, channels={"cp": "sim", "cp_agent": person})
+    assert result.reason == "abandoned"
+    events = sessions.only_bundle(tmp_path).events
+    assert len([e for e in events if e.type == "chan.strike"]) == 3
+    last = [e for e in events if e.type == "rep.policy"][-1]
+    assert (last.payload["from"], last.payload["to"]) == ("IDENTIFY", "ENDED")
+
+
+def test_a_read_back_says_an_absence_as_words() -> None:
+    say = (("monthly_price", "62.00"), ("fees_none", "true"))
+    say += (("changes_none", "true"), ("expires", "none"))
+    intent = PublicIntent(kind="readback", offer_ref="promo-2", say=say)
+    assert template(intent, "Lumen").endswith(
+        "monthly price: 62.00; no fees; no other changes; no expiry."
+    )

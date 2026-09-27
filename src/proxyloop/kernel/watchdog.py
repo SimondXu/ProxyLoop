@@ -1,5 +1,6 @@
 """Watchdog (§11): the rep's clock ticks on a free floor; the user lane has no
-patience (I7). Past the run budget the session ends with ``timeout``."""
+patience (I7). Past the run budget the session ends with ``timeout``. The S0
+runaway guard (root decision under PLAN §0.5a, 2026-09-26) sets the budget."""
 
 from __future__ import annotations
 
@@ -8,12 +9,18 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
 
-TICK_S, MAX_SESSION_S = 1.0, 900.0  # [E] a stop for one S0 call, not a target
+TICK_S, MAX_SESSION_S = 1.0, 480.0  # a stop for one S0 call, not a target
 
 
 class SessionEnd(Exception):  # a normal end with ``reason``
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
+        self.reason = reason
+
+
+class Abort(RuntimeError):  # a loud failure end: ``reason``, then re-raised
+    def __init__(self, reason: str, message: str) -> None:
+        super().__init__(message)
         self.reason = reason
 
 

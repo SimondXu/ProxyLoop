@@ -29,6 +29,7 @@ class Speaker:
         self._k, self.lane, self._channel = k, lane, k.channels[lane]
         self._lock, self._barge = asyncio.Lock(), asyncio.Event()
         self.speaking = False
+        self._stale = False  # the partner was mid-turn when this speech began
 
     async def speak(
         self, lines: Sequence[tuple[str, str, str]], interruptible: bool = True
@@ -36,7 +37,7 @@ class Speaker:
         k, realtime = self._k, self.lane == "cp"
         async with self._lock:
             self._barge.clear()
-            self.speaking = realtime
+            self.speaking, self._stale = realtime, self._channel.busy
             self._channel.floor(False, k.now())
             heard: list[str] = []
             last: Event | None = None
@@ -60,7 +61,10 @@ class Speaker:
             k.spawn(self._channel.send(text, utt_id, last.event_id, k.now()))
 
     async def barge_in(self) -> None:  # cut the line; wait for the floor
-        self._barge.set()
+        """A partner turn begun before this speech answers an older line: it
+        waits for the floor instead of cutting the line (ROOT-05 i)."""
+        if not (self.speaking and self._stale):
+            self._barge.set()
         async with self._lock:
             return
 

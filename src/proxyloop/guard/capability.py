@@ -36,6 +36,24 @@ def mint(
     )
 
 
+def released_accept(bb: Blackboard, terms_hash: str | None = None) -> bool:
+    """An accept of these terms (one offer revision), or with ``None`` of any
+    terms, was released: at most one ever is per revision (I6); a retry needs a
+    new revision, so new terms, and a new approval."""
+    return any(
+        c.intent == "accept_offer" and c.consumed and terms_hash in (None, c.terms_hash)
+        for c in bb.capabilities.values()
+    )
+
+
+def accept_in_flight(bb: Blackboard) -> bool:
+    """An accept capability neither released nor revoked (revoked ones leave the
+    blackboard): one accept in flight per case."""
+    return any(
+        c.intent == "accept_offer" and not c.consumed for c in bb.capabilities.values()
+    )
+
+
 def revalidate(bb: Blackboard, cap_id: str, t_release_end: int) -> str | None:
     """Why the line holding ``cap_id`` may not be released now (``None``: it
     may): the ``speak.revoked`` reason."""

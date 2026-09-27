@@ -283,10 +283,13 @@ def _flow(bus: Bus, name: str) -> None:
                 )
 
 
-def _emit_all(path: Path, steps: list[tuple[Step, int]]) -> Bus:
+def _emit_all(path: Path, steps: list[tuple[Step, int]], in_call: bool = False) -> Bus:
     clock = ManualClock()
     bus = Bus(path, RUN, clock)
     bus.emit("session.started", "kernel", "ops", {k: "" for k in _STARTED})
+    if in_call:  # only IN_CALL mints an accept (§9.5)
+        opened = {"previous": "INTAKE", "status": "IN_CALL"}
+        bus.emit("status.changed", "guard", "agent", opened, [bus.events[-1].event_id])
     for (type_, actor, stream, payload), advance in steps:
         clock.advance(advance)
         if type_ == "flow":
@@ -304,6 +307,11 @@ def _emit_all(path: Path, steps: list[tuple[Step, int]]) -> Bus:
             ):
                 continue
             payload = change
+        if type_ == "fact.recorded" and payload["scope"] == "public":  # I4
+            told = [e.event_id for e in bus.events if e.type == "user.msg"]
+            if not told:  # a shareable fact cites the user's own message
+                continue
+            payload = payload | {"source_ref": told[-1]}
         bus.emit(type_, actor, cast(Stream, stream), payload, causes)
     return bus
 
@@ -339,7 +347,7 @@ def _authority_steps() -> st.SearchStrategy[Step]:
     st.lists(st.tuples(_steps(), st.integers(0, 50)), max_size=25), st.integers(0, 26)
 )
 def test_fold_is_deterministic(steps: list[tuple[Step, int]], cut: int) -> None:
-    _deterministic(steps, cut)
+    _deterministic(steps, cut, in_call=False)
 
 
 @given(
@@ -349,12 +357,12 @@ def test_fold_is_deterministic(steps: list[tuple[Step, int]], cut: int) -> None:
 def test_the_authority_fold_is_deterministic(
     steps: list[tuple[Step, int]], cut: int
 ) -> None:
-    _deterministic(steps, cut)
+    _deterministic(steps, cut, in_call=True)
 
 
-def _deterministic(steps: list[tuple[Step, int]], cut: int) -> None:
+def _deterministic(steps: list[tuple[Step, int]], cut: int, in_call: bool) -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        bus = _emit_all(Path(tmp) / EVENTS, steps)
+        bus = _emit_all(Path(tmp) / EVENTS, steps, in_call)
         bus.close()
         events = bus.events
         lines = (Path(tmp) / EVENTS).read_text("utf-8").splitlines()
@@ -505,6 +513,26 @@ def test_a_public_fact_must_be_source_bound() -> None:
                 _event(1, "fact.recorded", private, "guard"),
             ]
         )
+
+
+def test_a_shareable_fact_must_cite_a_user_message() -> None:
+    """I4: a shareable fact goes public only from the user's own message."""
+    rep = {"lane": "cp", "speaker": "partner", "utt_id": "cp-1", "text": "4821?"}
+    heard = {"lane": "user", "utt_id": "a-1", "text_generated": "4821"}
+    heard |= {"text_heard": "4821", "interrupted": False}  # an agent line
+    events = [
+        _event(0, "user.msg", {"text": "My last four are 4821."}),
+        _event(1, "utt.final", rep),
+        _event(2, "utt.delivered", heard),
+    ]
+    bb = fold(events)
+    last4 = {"key": "account.last4", "value": "4821", "source": "shareable"}
+    last4 |= {"scope": "public"}
+    for ref in ("cp-1", "a-1", "r1:9", None):  # a rep line, the agent, no such
+        with pytest.raises(ValueError, match="no user msg"):
+            apply(bb, _event(3, "fact.recorded", last4 | {"source_ref": ref}))
+    told = apply(bb, _event(3, "fact.recorded", last4 | {"source_ref": "r1:0"}))
+    assert told.public.facts["account.last4"].source_ref == "r1:0"
 
 
 def test_a_guide_changes_fastcs_rendered_view() -> None:

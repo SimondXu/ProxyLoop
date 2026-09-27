@@ -45,6 +45,7 @@ from proxyloop.contract.state import (
     PublicFact,
     ReadbackSlot,
 )
+from proxyloop.guard.capability import accept_in_flight, released_accept
 from proxyloop.guard.status import TERMINAL, TRANSITIONS
 
 Reducer = Callable[[Blackboard, Event], Blackboard]
@@ -119,6 +120,9 @@ def _fact(bb: Blackboard, e: Event) -> Blackboard:
     said = [x.utt_id for x in bb.channels["cp"].lines if x.speaker == "partner"]
     if p["source"] == "cp_utt" and p["source_ref"] not in said:
         raise ValueError(f"public fact {p['key']}: {p['source_ref']} is no rep line")
+    told = [x.utt_id for x in bb.channels["user"].lines if x.speaker == "partner"]
+    if p["source"] == "shareable" and p["source_ref"] not in told:  # I4 (#133)
+        raise ValueError(f"public fact {p['key']}: {p['source_ref']} is no user msg")
     public = PublicFact.model_validate(fact | {"source": p["source"]})
     facts = {**bb.public.facts, public.key: public}
     return _with(bb, public=_with(bb.public, facts=facts))
@@ -158,6 +162,9 @@ def _offer(bb: Blackboard, e: Event) -> Blackboard:
     """A new revision: its slots start ``unknown`` and its terms unbound; only
     ``readback.updated`` (Guard) sets statuses and ``terms_hash``."""
     p = e.payload
+    prev = bb.public.offers.get(str(p["offer_ref"]))
+    if prev is not None and cast(int, p["revision"]) <= prev.revision:
+        raise ValueError(f"offer {p['offer_ref']}: revision {p['revision']} is not new")
     slots = [
         ReadbackSlot.model_validate(s).model_copy(update={"status": "unknown"})
         for s in cast(list[object], p["slots"])
@@ -286,6 +293,7 @@ def _approval_decided(bb: Blackboard, e: Event) -> Blackboard:
         by=d.by,
         terms_hash=card.terms_hash,
         authority_epoch=card.authority_epoch,
+        expires_ms=card.expires_ms,  # the card's window (ADR-0007)
     )
     approvals = {**bb.private.approvals, d.approval_id: approval}
     return _private(bb, pending_approval=None, approvals=approvals)
@@ -298,6 +306,12 @@ def _authorized(bb: Blackboard, e: Event) -> Blackboard:
         cap.cap_id in bb.capabilities
     ):
         raise ValueError(f"capability {cap.cap_id}: not a new one of this epoch")
+    if cap.expires_ms <= e.t_ms:
+        raise ValueError(f"capability {cap.cap_id}: expired when minted")
+    if a.intent == "accept_offer" and released_accept(bb, cap.terms_hash):
+        raise ValueError(f"capability {cap.cap_id}: an accept was already released")
+    if a.intent == "accept_offer" and accept_in_flight(bb):  # one per case
+        raise ValueError(f"capability {cap.cap_id}: another accept is in flight")
     offers = bb.public.offers.items()
     ref = next((r for r, o in offers if o.terms_hash == cap.terms_hash), None)
     if ref is None and a.intent == "accept_offer":
@@ -351,6 +365,8 @@ def _released(bb: Blackboard, e: Event) -> Blackboard:
         raise ValueError(f"release of {cap.cap_id}: stale epoch, fence or closed offer")
     if offer.terms_hash != cap.terms_hash:
         raise ValueError(f"release of {cap.cap_id}: the terms changed")
+    if cap.intent == "accept_offer" and released_accept(bb, cap.terms_hash):
+        raise ValueError(f"release of {cap.cap_id}: an accept was already released")
     return _with(
         bb, capabilities={**bb.capabilities, cap.cap_id: _with(cap, consumed=True)}
     )

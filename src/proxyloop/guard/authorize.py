@@ -11,16 +11,28 @@ from dataclasses import dataclass
 
 from proxyloop.contract.events import ApprovalPost, Approver
 from proxyloop.contract.state import (
+    Approval,
     ApprovalCard,
     Blackboard,
+    CaseStatus,
+    Mandate,
     OfferPublic,
     ReadbackBinding,
 )
-from proxyloop.guard.capability import CAP_TTL_MS, business_action_id, mint
+from proxyloop.guard.capability import (
+    CAP_TTL_MS,
+    accept_in_flight,
+    business_action_id,
+    mint,
+    released_accept,
+)
 from proxyloop.guard.mandate import hard_violations, mandate_gap
 from proxyloop.guard.readback import readback_status, readback_text
+from proxyloop.guard.status import TERMINAL
 from proxyloop.guard.terms import Terms, offer_terms, terms_hash
 
+# after an accept was heard: no second accept mint (terminal: case_closed)
+_COMMITTED = frozenset({CaseStatus.COMMITTED, CaseStatus.EVIDENCE_PENDING})
 CARD_TTL_MS = 120_000  # a card for an offer without a known expiry
 Effect = tuple[str, dict[str, object]]  # (event type, payload), emitted by guard
 
@@ -50,14 +62,20 @@ _OFFER = (
 REASONS: Mapping[str, tuple[str, ...]] = {
     "request_approval": (*_OFFER, "approval_pending"),
     "accept_offer": (
+        "already_committed",
+        "case_closed",
+        "not_in_call",
         *_OFFER,
+        "already_accepted",
         "approval_denied",
         "approval_stale_epoch",
         "mandate_stale_epoch",
         "mandate_expired",
+        "approval_expired",
         "outside_mandate",
         "not_authorized",
         "already_authorized",
+        "accept_in_flight",
     ),
     "decline_offer": ("no_such_offer", "offer_not_open"),
     "share_fact": ("protected", "not_shareable"),
@@ -145,19 +163,26 @@ def current_card(bb: Blackboard) -> ApprovalCard | None:
     return card if same else None
 
 
-def _grant(bb: Blackboard, offer: OfferPublic, terms: Terms) -> tuple[str | None, str]:
-    """The covering mandate's hash or the approval id, else why neither. A
-    user's denial of these terms in this epoch wins over both (I6)."""
+def _grant(
+    bb: Blackboard, offer: OfferPublic, terms: Terms
+) -> tuple[Mandate | Approval | None, str]:
+    """The covering mandate or a live approval, else why neither. A user's
+    denial of these terms in this epoch wins over both, whatever its expiry
+    (I6, M3). Expiry filters grants only: the first granted approval with
+    ``expires_ms > now``; ``None`` is never live (ADR-0007, fail closed)."""
     approvals = bb.private.approvals.values()
     mine = [a for a in approvals if a.terms_hash == offer.terms_hash]
     now = [a for a in mine if a.authority_epoch == bb.epoch]
     if any(a.decision == "denied" for a in now):
         return None, "approval_denied"
     m, why = bb.private.mandate, mandate_gap(bb, terms)
-    if m is not None and why is None:
-        return m.mandate_hash, ""
-    if now:  # all granted
-        return now[0].approval_id, ""
+    if m is not None and why is None and not released_accept(bb):
+        return m, ""  # after any released accept, only a new approval grants
+    live = [a for a in now if a.expires_ms is not None and a.expires_ms > bb.t_ms]
+    if live:  # all granted
+        return live[0], ""
+    if now:
+        return None, "approval_expired"
     return None, "approval_stale_epoch" if mine else why or "not_authorized"
 
 
@@ -166,22 +191,30 @@ def accept_offer(
 ) -> tuple[Effect, ...] | Denial:
     """``action.authorized`` plus the Guard-written accept line holding the
     capability; the Speaker revalidates it at release."""
+    if bb.public.status in _COMMITTED:
+        return Denial("already_committed")
+    if bb.public.status in TERMINAL:
+        return Denial("case_closed")
+    if bb.public.status is not CaseStatus.IN_CALL:  # §9.5: accept_authorized
+        return Denial("not_in_call")  # leaves IN_CALL only; NEEDS_REPLAN replans
     got = _open_offer(bb, ref)
     if isinstance(got, Denial):
         return got
     offer, terms = got
+    if released_accept(bb, offer.terms_hash):
+        return Denial("already_accepted")
     grant, why = _grant(bb, offer, terms)
     if grant is None:
         return Denial(why)
     th = str(offer.terms_hash)
-    bid = business_action_id(
-        case.case_id, "accept_offer", ref, offer.revision, th, grant
-    )
+    by = grant.mandate_hash if isinstance(grant, Mandate) else grant.approval_id
+    bid = business_action_id(case.case_id, "accept_offer", ref, offer.revision, th, by)
     if any(c.business_action_id == bid for c in bb.capabilities.values()):
         return Denial("already_authorized")
-    m = bb.private.mandate
-    until = [offer.expires_ms, bb.t_ms + CAP_TTL_MS]
-    until += [m.expires_ms] if m is not None and grant == m.mandate_hash else []
+    if accept_in_flight(bb):
+        return Denial("accept_in_flight")
+    # min(grant expiry, offer expiry, TTL); a live approval's is never None
+    until = [grant.expires_ms, offer.expires_ms, bb.t_ms + CAP_TTL_MS]
     cap = mint(bb, bid, "accept_offer", th, min(t for t in until if t is not None))
     text = f"Yes, we accept these terms: {readback_text(offer)}."
     line: dict[str, object] = {"lane": "cp", "kind": "accept", "text": text}
