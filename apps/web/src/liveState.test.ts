@@ -140,4 +140,13 @@ describe("liveApi posts", () => {
     await expect(postRep("c", "hi")).resolves.toEqual({ ok: false, status: 0, error: "bad pl_rep_csrf cookie" });
     expect(fetch).not.toHaveBeenCalled();
   });
+
+  it("keeps the API's 409 reason next to its error (serve.cases: {error, reason?})", async () => {
+    const answer = (status: number, body: unknown) => vi.fn(async () => new Response(JSON.stringify(body), { status }));
+    vi.stubGlobal("document", { cookie: "pl_csrf=t" });
+    vi.stubGlobal("fetch", answer(409, { error: "stale", reason: "stale_epoch" }));
+    await expect(postApproval("c", card, "granted")).resolves.toEqual({ ok: false, status: 409, error: "stale", reason: "stale_epoch" });
+    vi.stubGlobal("fetch", answer(409, { error: "already_decided" }));
+    await expect(postApproval("c", card, "granted")).resolves.toEqual({ ok: false, status: 409, error: "already_decided" });
+  });
 });
