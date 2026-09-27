@@ -78,6 +78,12 @@ function conflict(got: { status: number; body: unknown }, error: "already_decide
   return String(body.reason);
 }
 
+/** The authority strip sits behind a disclosure in the sticky header: open it (idempotent). */
+async function authority(page: Page) {
+  await page.locator("details.authority").evaluate((d: HTMLDetailsElement) => (d.open = true));
+  return page.getByRole("region", { name: "Authority" });
+}
+
 async function openLive(page: Page, id: string) {
   await page.goto(`/live/${id}`);
   await expect(page).toHaveURL(`/?live=${id}`);
@@ -105,7 +111,7 @@ test("a) replay: lists evidence/s0, loads a run with a real_http Fast sentence a
   const run = spoken[0] ?? "";
   expect(run, "an evidence/s0 run with a fast.sentence").not.toBe("");
 
-  await page.goto("/");
+  await page.goto("/?view=engineer"); // the lanes and the prompt drawer: the engineer view
   const select = page.getByRole("combobox", { name: "Run" });
   await expect(select.locator("option")).toHaveCount(listed.bundles.length);
   await select.selectOption(run);
@@ -140,8 +146,8 @@ test("b) live: /live sets the cookies and 303s, /ws/live streams the seed, Appro
   expect(seen.map((s) => s.path)).toEqual([`/ws/live/${id}?from_seq=0`]);
   await expect.poll(() => seqs(seen[0])).toEqual(range(seed.length));
   const said = String(one(seed, "user.msg").payload.text);
-  await expect(page.getByRole("region", { name: "User chat" })).toContainText(said);
-  await expect(page.getByRole("region", { name: "Rep" })).toContainText(String(one(seed, "utt.delivered").payload.text_heard));
+  await expect(page.getByRole("list", { name: "Chat transcript" })).toContainText(`You: ${said}`);
+  await expect(page.getByRole("list", { name: "Call transcript" })).toContainText(`Agent: ${String(one(seed, "utt.delivered").payload.text_heard)}`);
 
   const status = card.getByLabel("Approval status");
   const got = await click(page, id, "approvals/", () => card.getByRole("button", { name: "Approve" }).click());
@@ -232,14 +238,14 @@ test("f, i) a missing or wrong X-CSRF-Token is 403 csrf; a foreign Origin is 403
   expect(after).toHaveLength(seed.length);
 });
 
-test("g) chat: a message is 200 sent, and shows in the User chat lane when its user.msg arrives", async ({ page }) => {
+test("g) chat: a message is 200 sent, and shows in the chat pane when its user.msg arrives", async ({ page }) => {
   const id = "wire-chat";
   await openLive(page, id);
   const text = "Stop, do not accept anything yet.";
-  await page.getByRole("textbox", { name: "Message to the agent" }).fill(text);
+  await page.getByRole("textbox", { name: "Message to the assistant" }).fill(text);
   const got = await click(page, id, "messages", () => page.getByRole("button", { name: "Send" }).click());
   expect(got).toEqual({ status: 200, body: { status: "sent" } });
-  await expect(page.getByRole("region", { name: "User chat" }).getByText(text, { exact: true })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Chat transcript" }).getByRole("listitem").last()).toHaveText(`You: ${text}`);
   await expect(page.getByRole("list", { name: "Pending" })).toHaveCount(0);
   const msgs = (await log(page, id)).filter((e) => e.type === "user.msg").map((e) => e.payload.text);
   expect(msgs.at(-1)).toBe(text);
@@ -401,7 +407,7 @@ test("o) live: the authority strip and the card's read-back progress, from the s
   const id = "wire-authority";
   const card = await openLive(page, id);
   const events = await log(page, id);
-  const strip = page.getByRole("region", { name: "Authority" });
+  const strip = await authority(page);
   const status = events.filter((e) => e.type === "status.changed").at(-1)?.payload.status;
   await expect(strip.getByLabel("Case status")).toHaveText(`status ${String(status)}`);
   const fence = one(events, "authority.fence").payload;
