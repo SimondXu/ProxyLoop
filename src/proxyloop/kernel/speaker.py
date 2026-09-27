@@ -4,10 +4,14 @@
 Guard's verbatim lines (§9.4) take the floor in turn with Fast's. There an
 accept is revalidated (``guard.revalidate`` at now plus its speech time): it is
 released with its ``cap_id`` (M7), or revoked with the reason, ``fence`` under
-a raised fence. So every accept line ends in exactly one ``speak.released`` or
-``speak.revoked``, and never waits on a fence: a held line could wedge the case
-on ``accept_in_flight``. Its status follows only from what happened: heard
-whole, cut by a barge-in (``accept_truncated``) or revoked.
+a user fence. Under partner fences only (S1-SYS-23) it gives the floor back and
+waits until they clear (Slow saw the rep's turn), then is revalidated; a wait
+that lasts until the line could no longer end before its capability expires
+ends it ``expired`` (fail closed, bounded: no line wedges the case on
+``accept_in_flight``). So every accept line ends in exactly one
+``speak.released`` or ``speak.revoked`` (unless the session ends first: N3).
+Its status follows only from what happened: heard whole, cut by a barge-in
+(``accept_truncated``) or revoked.
 
 A partner turn goes before a queued verbatim line: while the partner composes
 it, while it is queued, and from its barge-in until its lines have landed, no
@@ -67,12 +71,8 @@ class Speaker:
         k, p = self._k, said.payload
         text, kind, cap = str(p["text"]), p["kind"], p.get("cap_id")
         held = {} if cap is None else {"cap_id": cap}
-        await self._floor_after_partner()
+        why = await self._floor_revalidated(None if cap is None else str(cap), text)
         try:  # in turn with Fast's lines, after any pending partner turn
-            end = k.now() + round(1000 * speech_s(text))
-            why = "call_closed" if k.closed else None
-            if why is None and cap is not None:
-                why = revalidate(k.bb, str(cap), end)
             if why is not None:
                 out = {"lane": self.lane, "reason": why} | held
                 revoked = k.emit("speak.revoked", "kernel", out, [said.event_id])
@@ -90,6 +90,34 @@ class Speaker:
         finally:
             self._lock.release()
         self._send(last, heard)
+
+    async def _floor_revalidated(self, cap: str | None, text: str) -> str | None:
+        """Take the floor, then revalidate ``cap``: why the line may not go out.
+        Under partner fences only, give the floor back and wait until a fence
+        moves or the line would end past its capability's expiry."""
+        k, speech = self._k, round(1000 * speech_s(text))
+        while True:
+            await self._floor_after_partner()
+            end = k.now() + speech
+            why = "call_closed" if k.closed else None
+            if why is None and cap is not None:
+                why = revalidate(k.bb, cap, end)
+            if why != "fence" or cap is None or not k.authority.partner_only():
+                return why
+            expires = k.bb.capabilities[cap].expires_ms  # revalidate found it
+            if expires <= end:
+                return "expired"
+            self._lock.release()
+            await self._first(k.authority.moved(), k.sleep((expires - end) / 1000))
+
+    @staticmethod
+    async def _first(*waits: Awaitable[object]) -> None:
+        tasks = [asyncio.ensure_future(w) for w in waits]
+        try:
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for task in tasks:
+                task.cancel()
 
     def _partner_pending(self) -> bool:  # a turn begun, queued or composed
         ch = self._channel

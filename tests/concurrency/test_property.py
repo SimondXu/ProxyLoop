@@ -7,8 +7,12 @@ accepts, stops, revokes, barge-ins, FastU latency, time) and the log must show:
 - at most one released accept per ``terms_hash``;
 - no ``speak.released{cap_id}`` while a partner turn is pending (queued, its
   ``utt.final`` not yet in the log) or the rep composes one (option A);
+- a partner fence (S1-SYS-23) raised only by a rep line landing while an
+  accept is in flight, and an accept revoked ``fence`` only under a user fence
+  (under partner fences only it waits);
 - every accept line ending in exactly one ``speak.released`` or
-  ``speak.revoked`` (none wedges on ``accept_in_flight``);
+  ``speak.revoked``, by its expiry at the latest (none wedges on
+  ``accept_in_flight``: the teardown runs past ``CAP_TTL_MS``);
 - the same while Slow declines or re-records the offer under an accept line in
   flight (revoked ``offer_closed`` / ``terms_changed``);
 - ``accept_revoked``/``accept_truncated`` only after a real ``speak.revoked`` /
@@ -33,7 +37,7 @@ from tests.concurrency.test_cases import Valve
 from proxyloop.contract.events import ApprovalPost
 from proxyloop.contract.state import Blackboard
 from proxyloop.core.fold import apply
-from proxyloop.guard.capability import accept_in_flight, released_accept
+from proxyloop.guard.capability import CAP_TTL_MS, accept_in_flight, released_accept
 
 
 class Interleavings(RuleBasedStateMachine):
@@ -41,13 +45,14 @@ class Interleavings(RuleBasedStateMachine):
         super().__init__()
         self.dir = tempfile.TemporaryDirectory()
         self.loop = asyncio.new_event_loop()
-        self.valve = Valve.__new__(Valve)
+        self.valve, self.fastc = Valve.__new__(Valve), Valve.__new__(Valve)
         self.run(self._open())
         self.dollars = 60
 
     async def _open(self) -> None:
         self.valve.__init__()
-        gates = {"fast_user": self.valve}  # FastC answers the rep at length
+        self.fastc.__init__()
+        gates = {"fast_user": self.valve, "fast_cp": self.fastc}  # FastC: at length
         self.sim = Sim(Path(self.dir.name), {"fast_cp": [LONG]}, gates=gates)
         await self.sim.start()
 
@@ -102,6 +107,11 @@ class Interleavings(RuleBasedStateMachine):
     @rule(answering=st.booleans())
     def fastu_latency(self, answering: bool) -> None:
         (self.valve.open.set if answering else self.valve.open.clear)()
+        self.run(settle())
+
+    @rule(answering=st.booleans())
+    def fastc_latency(self, answering: bool) -> None:  # a partner fence stays up
+        (self.fastc.open.set if answering else self.fastc.open.clear)()
         self.run(settle())
 
     @rule(
@@ -193,10 +203,12 @@ class Interleavings(RuleBasedStateMachine):
 
     def teardown(self) -> None:
         try:
-            self.valve.open.set()  # FastU answers; every fence can clear
+            self.valve.open.set()  # FastU and FastC answer; every fence can clear
+            self.fastc.open.set()
             if self.sim.rep.busy:  # the rep's turn ends: every line can go out
                 self.sim.rep_done()
-            self.run(self.sim.vt.run_for(30_000))  # every queued line gets the floor
+            # every queued line gets the floor, or expires waiting for it
+            self.run(self.sim.vt.run_for(CAP_TTL_MS + 30_000))
             self.run(self._stop())
             _check(self.sim)
         finally:
@@ -221,7 +233,18 @@ def _check(sim: Sim) -> None:
     by_id, bb = {e.event_id: e for e in events}, Blackboard()
     released: Counter[str] = Counter()
     ends: Counter[str] = Counter()  # accept line -> its releases and revokes
+    by_user: dict[str, bool] = {}  # fence_id -> raised by a user.msg
     for e in events:
+        if e.type == "authority.fence" and e.payload["op"] == "raised":
+            (said,) = [by_id[c] for c in e.cause_ids]
+            by_user[str(e.payload["fence_id"])] = said.type == "user.msg"
+            if said.type == "utt.final":  # a partner fence: an accept in flight
+                assert accept_in_flight(bb), f"{e.event_id}: no accept in flight"
+            else:
+                assert said.type == "user.msg", e
+        if e.type == "speak.revoked" and e.payload["reason"] == "fence":
+            users = [f for f in bb.fences if by_user[f.fence_id]]
+            assert users, f"{e.event_id}: revoked under partner fences only"
         if e.type in ("speak.released", "speak.revoked"):
             lines = [by_id[c] for c in e.cause_ids if by_id[c].type == "speak.verbatim"]
             for line in lines:

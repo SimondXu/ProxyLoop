@@ -105,14 +105,19 @@ class Sim:
         user: ChannelSpec | None = None,
         gates: Mapping[str, Callable[[], Awaitable[None]]] | None = None,
         cfg: SessionConfig | None = None,
+        until: Mapping[str, tuple[str, str]] | None = None,
     ) -> None:
+        """``until``: role -> (marker, response), as ``RepeatingLLM``'s."""
         self.vt, self.rep = VirtualTime(), Channel()
         self.user = Channel() if user is None else user
         lines = {**SCRIPTS, **(scripts or {})}
+        self.llms: dict[str, RepeatingLLM] = {}  # a test may kill one mid-session
 
         def make(role: LLMRole, ref: ModelRef, sink: RecordSink) -> LLMClient:
             said = lines.get(role, ["unused"])
-            client = RepeatingLLM(ref, said, self.vt, False, sink)
+            mark = (until or {}).get(role)
+            client = RepeatingLLM(ref, said, self.vt, False, sink, mark)
+            self.llms[role] = client
             gate = (gates or {}).get(role)
             return client if gate is None else Gated(client, gate)
 

@@ -201,7 +201,7 @@ def test_a_partner_turn_begun_before_a_queued_accept_lands_first(
         assert sim.accept().startswith("accept_offer: accept line queued")
         await sim.vt.run_for(2_000)
         sim.rep_says("Correction: that offer is gone, it is $75 now.")
-        await sim.vt.run_for(15_000)
+        await sim.vt.run_for(25_000)  # the partner fence: after FastC answers it
         (said,) = sim.of(
             "utt.final", text="Correction: that offer is gone, it is $75 now."
         )
