@@ -52,8 +52,8 @@ export const socketUrl = (path: string, origin = location.origin) => origin.repl
 /** The contract's Decision (src/proxyloop/contract/events.py). */
 export type Decision = "granted" | "denied";
 
-/** 403 {error: "csrf" | "origin"}; 409 {error: "already_decided" | "stale"}; status 0: never sent or no response. */
-export type PostResult = { ok: true } | { ok: false; status: number; error: string };
+/** 403 {error: "csrf" | "origin"}; 409 {error: "already_decided" | "stale", reason?}; status 0: never sent or no response. */
+export type PostResult = { ok: true } | { ok: false; status: number; error: string; reason?: string };
 
 /** The approval POST body: exactly the card's terms hash and epoch. */
 export const approvalBody = (card: { terms_hash: string; authority_epoch: number }, decision: Decision) => ({
@@ -96,13 +96,15 @@ async function post(role: Role, caseId: string, path: string, body: unknown): Pr
   }
   if (res.ok) return { ok: true };
   let error = text || res.statusText;
+  let reason: string | undefined; // a 409 stale says why (guard.decide's reason)
   try {
-    const parsed = (JSON.parse(text) as { error?: unknown }).error;
-    if (typeof parsed === "string") error = parsed;
+    const parsed = JSON.parse(text) as { error?: unknown; reason?: unknown };
+    if (typeof parsed.error === "string") error = parsed.error;
+    if (typeof parsed.reason === "string") reason = parsed.reason;
   } catch {
     // not JSON: show the raw body
   }
-  return { ok: false, status: res.status, error };
+  return { ok: false, status: res.status, error, reason };
 }
 
 export const postApproval = (

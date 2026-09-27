@@ -51,7 +51,8 @@ export function approvalCards(events: Ev[], posts: ReadonlyMap<string, Posting>)
     const posting = posts.get(id);
     const result = posting === "pending" ? undefined : posting;
     const failed = result && !result.ok ? result : null;
-    const error = failed && (failed.status ? `${failed.status} ${failed.error}` : failed.error);
+    const why = failed?.reason && failed.reason !== failed.error ? `: ${failed.reason}` : ""; // not "already_decided: already_decided"
+    const error = failed && `${failed.status ? `${failed.status} ` : ""}${failed.error}${why}`;
     const view = (status: CardStatus, by: string | null = null, reason: string | null = null): CardView => ({
       seq: req.seq,
       card,
