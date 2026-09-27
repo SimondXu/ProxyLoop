@@ -67,4 +67,4 @@ web-test:
 	$(WEB_DEPS) && npm run web-test
 
 replay:
-	$(WEB_DEPS) && npm run build && cd ../.. && uv run python -m proxyloop.serve.api --web-dir apps/web/dist
+	$(WEB_DEPS) && npm run build && cd $(CURDIR) && uv run python -m proxyloop.serve.api --web-dir apps/web/dist

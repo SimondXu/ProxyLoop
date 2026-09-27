@@ -135,24 +135,35 @@ describe("timeline end (D9)", () => {
 describe("run switch (D8)", () => {
   const a = { events: [ev("user.msg", "kernel", {}, { run_id: "a" })] };
   const b = { events: [ev("user.msg", "kernel", {}, { run_id: "b" })] };
-  const start: RunState = { runId: "", run: null, error: "" };
+  const start: RunState = { runId: "", request: 0, run: null, error: "" };
 
   it("never shows the old run or its error under the new id", () => {
     let s = selectRun(start, { type: "select", runId: "a" });
-    s = selectRun(s, { type: "loaded", runId: "a", run: a });
-    s = selectRun(s, { type: "failed", runId: "a", error: "boom" });
+    s = selectRun(s, { type: "loaded", request: 1, run: a });
+    s = selectRun(s, { type: "failed", request: 1, error: "boom" });
     s = selectRun(s, { type: "select", runId: "b" });
-    expect(s).toEqual({ runId: "b", run: null, error: "" });
+    expect(s).toEqual({ runId: "b", request: 2, run: null, error: "" });
     // Late answers for a: dropped.
-    s = selectRun(s, { type: "loaded", runId: "a", run: a });
-    s = selectRun(s, { type: "failed", runId: "a", error: "late" });
-    expect(s).toEqual({ runId: "b", run: null, error: "" });
-    s = selectRun(s, { type: "loaded", runId: "b", run: b });
-    expect(s).toEqual({ runId: "b", run: b, error: "" });
+    s = selectRun(s, { type: "loaded", request: 1, run: a });
+    s = selectRun(s, { type: "failed", request: 1, error: "late" });
+    expect(s).toEqual({ runId: "b", request: 2, run: null, error: "" });
+    s = selectRun(s, { type: "loaded", request: 2, run: b });
+    expect(s).toEqual({ runId: "b", request: 2, run: b, error: "" });
+  });
+
+  it("after A→B→A takes only the second A's answer", () => {
+    let s = selectRun(start, { type: "select", runId: "a" }); // request 1
+    s = selectRun(s, { type: "select", runId: "b" }); // request 2
+    s = selectRun(s, { type: "select", runId: "a" }); // request 3
+    s = selectRun(s, { type: "failed", request: 1, error: "first a, late" });
+    s = selectRun(s, { type: "loaded", request: 1, run: a });
+    expect(s).toEqual({ runId: "a", request: 3, run: null, error: "" });
+    s = selectRun(s, { type: "loaded", request: 3, run: a });
+    expect(s).toEqual({ runId: "a", request: 3, run: a, error: "" });
   });
 
   it("keeps a listing error before any run is selected", () => {
-    expect(selectRun(start, { type: "failed", runId: "", error: "GET /api/bundles: 500" }).error).toBe(
+    expect(selectRun(start, { type: "failed", request: 0, error: "GET /api/bundles: 500" }).error).toBe(
       "GET /api/bundles: 500",
     );
   });

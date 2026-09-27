@@ -37,3 +37,20 @@ def test_a_sealed_bundle_dir_is_refused_before_any_copy(tmp_path: Path) -> None:
     with pytest.raises(SystemExit, match="sealed"):
         replay_roots(tmp_path, tmp_path / "evidence" / "s4" / "test" / "x")
     assert not any(tmp_path.iterdir())
+
+
+def test_a_bundle_of_symlinks_into_a_sealed_dir_is_refused_before_any_copy(
+    tmp_path: Path,
+) -> None:
+    held_out = tmp_path / "data" / "evidence" / "s4" / "test" / "r1"
+    held_out.mkdir(parents=True)
+    lookalike = tmp_path / "data" / "lookalike"
+    lookalike.mkdir()
+    for name in ("events.jsonl", "manifest.json", "prompts.jsonl"):
+        (held_out / name).write_text("held out\n")
+        (lookalike / name).symlink_to(held_out / name)
+    out = tmp_path / "out"
+    out.mkdir()
+    with pytest.raises(SystemExit, match="symlink"):
+        replay_roots(out, lookalike)
+    assert not any(out.iterdir())

@@ -25,8 +25,13 @@ export function useDrill(runId: string, unavailable?: string) {
 
 export function App() {
   const [bundles, setBundles] = useState<BundleInfo[]>([]);
-  // A switch clears the run and the error at once; a late load for another run is dropped.
-  const [{ runId, run, error }, dispatch] = useReducer(selectRun, { runId: "", run: null, error: "" });
+  // A switch clears the run and the error at once; a late load for an earlier selection is dropped.
+  const [{ runId, request, run, error }, dispatch] = useReducer(selectRun, {
+    runId: "",
+    request: 0,
+    run: null,
+    error: "",
+  });
 
   useEffect(() => {
     listBundles()
@@ -34,15 +39,15 @@ export function App() {
         setBundles(list);
         dispatch({ type: "select", runId: list[0]?.run_id ?? "" });
       })
-      .catch((e: unknown) => dispatch({ type: "failed", runId: "", error: String(e) }));
+      .catch((e: unknown) => dispatch({ type: "failed", request: 0, error: String(e) }));
   }, []);
 
   useEffect(() => {
     if (!runId) return;
     loadRun(runId)
-      .then((r) => dispatch({ type: "loaded", runId, run: r }))
-      .catch((e: unknown) => dispatch({ type: "failed", runId, error: String(e) }));
-  }, [runId]);
+      .then((r) => dispatch({ type: "loaded", request, run: r }))
+      .catch((e: unknown) => dispatch({ type: "failed", request, error: String(e) }));
+  }, [runId, request]);
 
   return (
     <main>

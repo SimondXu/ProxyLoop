@@ -66,7 +66,8 @@ def build(
 
 
 def _copy(bundle: Path, dest: Path, split: str | None = None) -> None:
-    """Copy one bundle; ``split`` rewrites session.started's and the manifest's."""
+    """Copy one bundle; ``split`` rewrites session.started's and the manifest's
+    (so the decoys copy file contents: a rewrite never writes through a link)."""
     shutil.copytree(bundle, dest)
     if split is None:
         return
@@ -84,9 +85,11 @@ def replay_roots(tmp: Path, bundles: Path) -> list[Path]:
     """The replay e2e's roots: ``bundles``, then the decoys, all under ``tmp``
     except a directory of bundles, which is read in place. One bundle is copied
     so that it is the only run listed, and the page opens it. ``bundles`` must
-    not be sealed: a copy would carry held-out data past the path barrier."""
-    if sealed(bundles):
-        raise SystemExit(f"{bundles} is sealed (AGENTS rule 11)")
+    not be sealed, nor hold a symlink or anything that resolves to a sealed
+    path: a copy would carry held-out bytes past the path barrier."""
+    inside = [bundles, *bundles.rglob("*")] if bundles.is_dir() else [bundles]
+    if any(p.is_symlink() or sealed(p) for p in inside):
+        raise SystemExit(f"{bundles} is sealed or holds a symlink (AGENTS rule 11)")
     fixture = next(
         p for p in sorted(FIXTURES.iterdir()) if (p / "events.jsonl").is_file()
     )
@@ -95,7 +98,7 @@ def replay_roots(tmp: Path, bundles: Path) -> list[Path]:
     _copy(fixture, own / SPLIT_TEST, split="test")
     _copy(fixture, held_out / SEALED_PATH)
     if (bundles / "events.jsonl").is_file():
-        _copy(bundles, own / bundles.name)
+        shutil.copytree(bundles, own / bundles.name, symlinks=True)  # never follow
         return [own, held_out]
     return [bundles, own, held_out]
 
