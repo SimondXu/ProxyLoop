@@ -1,11 +1,12 @@
 // The conversation view (S1-SYS-39), the default for live and replay: a chat
-// pane and a call pane that follow the newest line, the sim labels on every
-// frame, the status line and the outcome banner. The six engineer lanes and the
+// pane and a call pane that follow the newest line, the sim labels on each pane
+// (the page's honesty band has them too), the status line and the outcome banner. The six engineer lanes and the
 // prompt drawer are behind ?view=engineer.
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { conversation, simLabels, speakerName, type Line, type Parties } from "./conversation";
 import { statusView } from "./outcome";
 import type { Ev } from "./replay";
+import { Card } from "./ui/Card";
 
 const ENGINEER = "engineer";
 
@@ -67,19 +68,6 @@ export function StatusBar({ events }: { events: Ev[] }) {
   );
 }
 
-/**
- * The sticky header's shared part: the sim labels, the status line and the banner.
- * `p` comes from the whole log where it is known (the replay), so every frame is labelled (I11).
- */
-export function Story({ events, p }: { events: Ev[]; p: Parties }) {
-  return (
-    <>
-      <SimNote p={p} />
-      <StatusBar events={events} />
-    </>
-  );
-}
-
 /** `announce`: the transcripts are aria-live (live mode only: a replay seek must not read out every line). */
 export function Panes({ events, p, announce, composer }: { events: Ev[]; p: Parties; announce: boolean; composer?: ReactNode }) {
   const c = useMemo(() => conversation(events), [events]);
@@ -111,7 +99,7 @@ function Pane({ name, title, p, lines, announce, children }: PaneProps) {
     if (el) setFollowing(el.scrollHeight - el.scrollTop - el.clientHeight <= AT_END_PX);
   };
   return (
-    <section className="pane" aria-label={name}>
+    <Card className="pane" aria-label={name}>
       <h2>{title}</h2>
       <SimNote p={p} />
       <ol ref={list} aria-label={`${name} transcript`} aria-live={announce ? "polite" : undefined} onScroll={onScroll}>
@@ -132,6 +120,6 @@ function Pane({ name, title, p, lines, announce, children }: PaneProps) {
         </button>
       )}
       {children}
-    </section>
+    </Card>
   );
 }

@@ -65,11 +65,12 @@ const isPost = (path: RegExp) => (r: Response) => r.request().method() === "POST
 async function start(page: Page, rep: "sim" | "human"): Promise<string> {
   await page.goto("/start");
   await expect(page).toHaveURL("/?start");
-  for (const title of ["Fast-U", "Fast-C", "Slow"]) {
-    await expect(page.getByRole("combobox", { name: `${title} model` }).locator("option")).toHaveText([/^stub · test_fake · \S+-fake · /]);
+  await page.getByText("Advanced: models").click();
+  for (const title of ["Chat voice (Fast-U)", "Phone voice (Fast-C)", "Planner (Slow)"]) {
+    await expect(page.getByRole("combobox", { name: title }).locator("option")).toHaveText([/^stub · test_fake · \S+-fake · /]);
   }
-  await expect(page.getByRole("combobox", { name: "Task" }).locator("option")).toHaveText(["x-out-of-envelope-approval@1"]);
-  await page.getByRole("radio", { name: rep }).check();
+  await expect(page.getByRole("radiogroup", { name: "Task" }).locator("code")).toHaveText(["x-out-of-envelope-approval@1"]);
+  await page.getByRole("radio", { name: rep === "sim" ? "Simulated rep" : "A person" }).check();
   const [res] = await Promise.all([page.waitForResponse(isPost(/^\/api\/cases$/)), page.getByRole("button", { name: "Start" }).click()]);
   expect(res.status()).toBe(201);
   if (rep === "human") return String(((await res.json()) as { case_id: string }).case_id);
@@ -102,10 +103,13 @@ async function say(page: Page, text: string) {
 async function toCard(page: Page) {
   const id = await start(page, "sim");
   await onlyFakes(page, ["fast_user", "fast_cp", "slow", "ear", "mouth"]);
-  // The world's rep is labelled on every frame: the header and both panes (the user is the person here).
-  for (const frame of [page.locator(".sticky"), page.getByRole("region", { name: "Chat" }), page.getByRole("region", { name: "Call" })]) {
+  // The world's rep is labelled on every frame: the honesty band and both panes (the user is the person here).
+  await expect(page.getByRole("note", { name: "Simulated parties" })).toHaveText(SIM_REP);
+  for (const frame of [page.getByRole("region", { name: "Chat" }), page.getByRole("region", { name: "Call" })]) {
     await expect(frame.getByLabel("Simulated parties")).toHaveText(SIM_REP);
   }
+  // Every model is a test_fake: the band says so (I8), before any model would have spoken.
+  await expect(page.getByText("Scripted test run · no models called")).toBeVisible();
   await say(page, TASK_SAID);
   const chat = page.getByRole("list", { name: "Chat transcript" });
   await expect(chat).toContainText(`You: ${TASK_SAID}`);

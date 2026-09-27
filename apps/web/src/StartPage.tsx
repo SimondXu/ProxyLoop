@@ -1,8 +1,16 @@
-// The operator's start page (?start): a task, the rep mode and one model per
+// The operator's start page (?start; redesign §3.1): a task, the rep mode and one model per
 // lane, from GET /api/models only, then one POST /api/cases (start.ts, liveApi.ts).
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { csrfToken, getOptions, paths, startCase } from "./liveApi";
-import { defaults, maybeStarted, parseOffer, START_LANES, startError, type Offer } from "./start";
+import { AppShell } from "./shell/AppShell";
+import { defaults, maybeStarted, parseOffer, START_LANES, startError, taskName, type Offer } from "./start";
+import "./StartPage.css";
+import { Banner } from "./ui/Banner";
+import { Button } from "./ui/Button";
+import "./ui/Card.css"; // the setup boxes and the started note are cards
+import { EmptyState } from "./ui/EmptyState";
+import { Icon } from "./ui/Icon";
+import { Skeleton } from "./ui/Skeleton";
 
 /** Whether the operator's CSRF cookie is there. A malformed one is there: no "open /start" note, and the POST says why (#173 N-4). */
 const hasCookie = () => {
@@ -12,6 +20,11 @@ const hasCookie = () => {
     return true;
   }
 };
+
+const REP_MODES = [
+  { mode: "sim", title: "Simulated rep", hint: "" },
+  { mode: "human", title: "A person", hint: "(opens a rep page)" },
+] as const;
 
 export function StartPage() {
   const [offer, setOffer] = useState<Offer | string | null>(null);
@@ -54,69 +67,107 @@ export function StartPage() {
   };
 
   return (
-    <main>
-      <header className="bar">
-        <h1>ProxyLoop: start a live session</h1>
-      </header>
+    <AppShell>
+      <div className="pl-start-hero">
+        <span className="pl-start-kicker">New case</span>
+        <h1>What should ProxyLoop handle?</h1>
+        <p>Pick a task. ProxyLoop chats with you first, calls the (simulated) company, and asks before anything binding happens.</p>
+      </div>
       {!hasCookie() && (
-        <p role="note" className="note">
+        <Banner tone="attn" role="note">
           No operator cookie: <a href={paths.start}>open /start</a> first.
-        </p>
+        </Banner>
       )}
-      {offer === null && <p>Loading the options…</p>}
-      {typeof offer === "string" && <p role="alert">Options unavailable: {offer}</p>}
+      {offer === null && (
+        <div className="pl-card">
+          <Skeleton label="Loading the options…" />
+        </div>
+      )}
+      {typeof offer === "string" && (
+        <Banner tone="danger" role="alert">
+          Options unavailable: {offer}
+        </Banner>
+      )}
       {offer !== null && typeof offer !== "string" && (
-        <form className="start" aria-label="Start a session" onSubmit={submit}>
-          <label>
-            Task{" "}
-            <select aria-label="Task" value={task} onChange={(e) => setTask(e.target.value)}>
+        <form className="pl-start" aria-label="Start a session" onSubmit={submit}>
+          {offer.tasks.length === 0 ? (
+            <EmptyState title="No tasks offered." />
+          ) : (
+            <div className="pl-tasks" role="radiogroup" aria-label="Task">
               {offer.tasks.map((t) => (
-                <option key={t}>{t}</option>
+                <label key={t} className="pl-task">
+                  <input type="radio" name="task" value={t} checked={task === t} onChange={() => setTask(t)} />
+                  <span className="pl-task-card">
+                    <span className="pl-task-name">{taskName(t)}</span> <code>{t}</code>
+                  </span>
+                </label>
               ))}
-            </select>
-          </label>
-          <fieldset>
-            <legend>Rep</legend>
-            {(["sim", "human"] as const).map((m) => (
-              <label key={m}>
-                <input type="radio" name="rep" value={m} checked={rep === m} onChange={() => setRep(m)} /> {m}
-              </label>
-            ))}
-          </fieldset>
-          {START_LANES.map(({ lane, title }) => {
-            const own = offer.options.filter((o) => o.lane === lane);
-            return (
-              <label key={lane}>
-                {title}{" "}
-                <select
-                  aria-label={`${title} model`}
-                  value={models[lane] ?? ""}
-                  disabled={own.length === 0}
-                  onChange={(e) => setModels((m) => ({ ...m, [lane]: e.target.value }))}
-                >
-                  {own.length === 0 && <option value="">none offered</option>}
-                  {own.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.label} · {o.model_id} · {o.endpoint}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            );
-          })}
-          <button type="submit" disabled={busy || !task}>
-            Start
-          </button>
-          {offer.tasks.length === 0 && <p>No tasks offered.</p>}
-          {error && <p role="alert">Not started: {error}</p>}
+            </div>
+          )}
+          <div className="pl-start-setup">
+            <div className="pl-card">
+              <h2 id="pl-rep-title">Who plays the company's rep?</h2>
+              <div className="pl-seg" role="radiogroup" aria-labelledby="pl-rep-title">
+                {REP_MODES.map(({ mode, title, hint }) => (
+                  <label key={mode}>
+                    <input type="radio" name="rep" value={mode} checked={rep === mode} onChange={() => setRep(mode)} />
+                    {title} {hint && <small>{hint}</small>}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <p className="pl-card pl-start-honest">
+              <Icon name="simulated" size="sm" />
+              <span>
+                The company is simulated and no real company is called; the rep is simulated unless a person plays it. A run with
+                live models calls paid model APIs.
+              </span>
+            </p>
+            <details className="pl-card pl-start-adv">
+              <summary>Advanced: models</summary>
+              {START_LANES.map(({ lane, title }) => {
+                const own = offer.options.filter((o) => o.lane === lane);
+                return (
+                  <label key={lane} className="pl-field">
+                    {title}
+                    <select
+                      value={models[lane] ?? ""}
+                      disabled={own.length === 0}
+                      onChange={(e) => setModels((m) => ({ ...m, [lane]: e.target.value }))}
+                    >
+                      {own.length === 0 && <option value="">none offered</option>}
+                      {own.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.label} · {o.model_id} · {o.endpoint}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                );
+              })}
+            </details>
+            <Button variant="primary" type="submit" className="pl-start-go" disabled={busy || !task}>
+              Start the case <span aria-hidden="true">→</span>
+            </Button>
+            {error && (
+              <Banner tone="danger" role="alert">
+                Not started: {error}
+              </Banner>
+            )}
+          </div>
         </form>
       )}
       {started && (
-        <p aria-label="Started">
-          Case {started} started with a human rep. <a href={paths.repSession(started)} target="_blank" rel="noopener">Open the rep page</a>{" "}
-          in a new tab, then <a href={paths.liveSession(started)}>open the live page</a>.
-        </p>
+        <section className="pl-card pl-started" aria-label="Started">
+          <p>Case {started} started with a human rep. Open the rep page in a new tab first, then the live page.</p>
+          <a className="pl-started-link" href={paths.repSession(started)} target="_blank" rel="noopener">
+            Open the rep page (new tab)
+          </a>
+          <a className="pl-started-link" href={paths.liveSession(started)}>
+            Open the live page
+          </a>
+        </section>
       )}
-    </main>
+    </AppShell>
   );
 }

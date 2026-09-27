@@ -52,7 +52,8 @@ test("opens in the conversation view: the heard lines at the end, the status lin
     ...(roles.includes("simuser") ? ["Simulated user"] : []),
   ];
   expect(labels.length, "a replayable bundle runs against the sim world").toBeGreaterThan(0);
-  for (const frame of [page.locator(".sticky"), page.getByRole("region", { name: "Chat" }), page.getByRole("region", { name: "Call" })]) {
+  await expect(page.getByRole("note", { name: "Simulated parties" })).toHaveText(labels.join(" · "));
+  for (const frame of [page.getByRole("region", { name: "Chat" }), page.getByRole("region", { name: "Call" })]) {
     await expect(frame.getByLabel("Simulated parties")).toHaveText(labels.join(" · "));
   }
   // A seek must not read every line out: the replay transcripts are not aria-live.
