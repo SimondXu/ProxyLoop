@@ -20,7 +20,12 @@ from proxyloop.contract.llm import ModelRef
 Json = dict[str, Any]
 Handler = Callable[[httpx.Request], httpx.Response]
 KEY = "sk-test-secret-0123456789"
-HOSTS = {"vllm": "vllm.test", "relay": "relay.test", "teamrouter": "tr.test"}
+HOSTS = {
+    "vllm": "vllm.test",
+    "relay": "relay.test",
+    "teamrouter": "tr.test",
+    "openrouter": "openrouter.test",
+}
 
 
 def set_env(monkeypatch: Any, endpoint: str, base: str | None = None) -> None:

@@ -17,6 +17,8 @@ llm-smoke:
 # the server roots without /v1 and the keys:
 #   PL_VLLM_BASE_URL PL_VLLM_API_KEY PL_RELAY_BASE_URL PL_RELAY_API_KEY
 #   PL_TEAMROUTER_BASE_URL PL_TEAMROUTER_API_KEY
+# and, for FAST_ENDPOINT=openrouter, PL_OPENROUTER_BASE_URL (https://openrouter.ai/api)
+# and PL_OPENROUTER_API_KEY.
 # WORLD_EFFORT: provisional: ADR-0005; S1 probe decides. EAR_/MOUTH_/SIMUSER_EFFORT
 # override it per world role (unset: WORLD_EFFORT).
 # FAST/FAST_ENDPOINT and SLOW/SLOW_ENDPOINT pick the Fast and Slow ModelRefs (unset: the
