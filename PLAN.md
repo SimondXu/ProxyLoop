@@ -1,6 +1,6 @@
 # PLAN.md: the single state file
 
-**Current:** S0 in progress (the user gave the go on 2026-09-26). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01, S0-SYS-02 (#115), S0-ROOT-07 (#114), S0-CON-01 (#116), S0-MOD-01 (#113, provisional: `serve-attest-local` pending the user's go), S0-ROOT-08 (#117), S0-SYS-03 (#118), S0-SYS-04 (#120), S0-SYS-05 (#121), S0-MOD-02 (#119), S0-ROOT-09 (#122), S0-SYS-06 (#123), S0-ROOT-10 (#127), S0-ROOT-11 (#128), S0-SYS-08 (#130, #138), S0-SYS-07 (#133, #140 follow-up item 1), S0-ROOT-13 (#139), S0-ROOT-05's gate bundles (#141); after the gate: S1-SYS-09 (#134), S1-SYS-07 (#131), S1-SYS-08 (#136), S1-MOD-01 part A (#124), S1-CON-01 (#142), S1-MOD-02 (#135), S1-SYS-16 (#144), S1-SYS-04 (#143), S1-MOD-04 (#145), S1-SYS-01 (#126). **In progress:** S0-ROOT-05 (merge point 1): the gate bundles are committed (#141); the principal session (U) is pending; S0-SYS-03…08 stay `provisional` (S0-ROOT-05 "After"); S0-ROOT-14 (this PR). **Held for the user:** S0-ROOT-12 (#129: auto-mode refused the probe-script edit; CI red); S0-SYS-07 follow-up item 2 (the cancelled-stream record; uncommitted, in a `git stash` of `../pl-wt/S0-SYS-07B`); #125's G run (S0-MOD-03). **In flight:** #132, #125 (held), #129 (held), S1-SYS-10 (#137), S1-SYS-17 (#146), S1-SYS-03. **Last closed stage:** none. **Contract version:** v1 (ADR-0004; ADR-0007 additive, no fingerprint change; fingerprints `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`, `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490`).
+**Current:** S0 in progress (the user gave the go on 2026-09-26). **Merged:** S0-ROOT-01, S0-ROOT-02, S0-ROOT-03, S0-ROOT-04, S0-SYS-01, S0-SYS-02 (#115), S0-ROOT-07 (#114), S0-CON-01 (#116), S0-MOD-01 (#113, provisional: `serve-attest-local` pending the user's go), S0-ROOT-08 (#117), S0-SYS-03 (#118), S0-SYS-04 (#120), S0-SYS-05 (#121), S0-MOD-02 (#119), S0-ROOT-09 (#122), S0-SYS-06 (#123), S0-ROOT-10 (#127), S0-ROOT-11 (#128), S0-SYS-08 (#130, #138), S0-SYS-07 (#133, #140 follow-up item 1), S0-ROOT-13 (#139), S0-ROOT-05's gate bundles (#141); after the gate: S1-SYS-09 (#134), S1-SYS-07 (#131), S1-SYS-08 (#136), S1-MOD-01 part A (#124), S1-CON-01 (#142), S1-MOD-02 (#135), S1-SYS-16 (#144), S1-SYS-04 (#143), S1-MOD-04 (#145), S1-SYS-01 (#126), S1-SYS-17 (#146), S1-SYS-10 (#137). **In progress:** S0-ROOT-05 (merge point 1): the gate bundles are committed (#141); the principal session (U) is pending; S0-SYS-03…08 stay `provisional` (S0-ROOT-05 "After"); S0-ROOT-14 (this PR). **Held for the user:** S0-ROOT-12 (#129: auto-mode refused the probe-script edit; CI red); S0-SYS-07 follow-up item 2 (the cancelled-stream record; uncommitted, in a `git stash` of `../pl-wt/S0-SYS-07B`); #125's G run (S0-MOD-03). **In flight:** #132, #125 (held), #129 (held), S1-SYS-03, S1-SYS-18. **Last closed stage:** none. **Contract version:** v1 (ADR-0004; ADR-0007 additive, no fingerprint change; fingerprints `pl_user_v1` = `796d2843964be1f552b18836093915744a6c543d1fab148ad3ca10d50e5f9cfb`, `pl_cp_v1` = `76a0185865410a3e30755be079c5b539180171114ce82e0a6c8c4a0bb668b490`).
 
 **Sessions:** a main root (business) with up to five lane-lead sub-sessions (L-CORE and the four product lanes P-WEB, P-API, P-OBS, P-TOOLS), plus a top-level model root (ML) for the MOD lane, run in parallel (user decision 2026-09-26; §0.1, §0.2, `CLAUDE.md`).
 
@@ -95,9 +95,9 @@ Legend:
 
 ### 0.6 Tripwires (stop and decide)
 - Under §0.5a the main root may adjust only the **numeric caps** (PR counts, code-size limits) and records each change under "Decisions changed". The mechanism tripwires — contract discipline, red signals, no new reality, fallback bans — are never waived by a session.
-- **PR count:** S0 > 22 PRs, S1 > 29, S2 > 10, S3 > 10. Root evidence PRs and ROOT docs/harness PRs are excluded (root decision under §0.5a, 2026-09-26).
+- **PR count:** S0 > 22 PRs, S1 > 31, S2 > 10, S3 > 10. Root evidence PRs and ROOT docs/harness PRs are excluded (root decision under §0.5a, 2026-09-26).
   - S0: 16 → 18 (user decision 2026-09-26); 18 → 19, because S0-ROOT-05's fix work splits into S0-SYS-07 and S0-SYS-08 on disjoint paths (root decision under §0.5a, 2026-09-26); 19 → 20 for the S0-SYS-08 follow-up PR that separates identity strikes from timer strikes (root decision under §0.5a, 2026-09-27); 20 → 21 for the S0-SYS-07 follow-up PR (the identity hold flow and the cancelled-stream record) (root decision under §0.5a, 2026-09-27); 21 → 22 because that follow-up splits: item 1 (the identity hold flow) shipped as #140, and item 2 (the cancelled-stream record) comes as its own PR (root decision under §0.5a, 2026-09-27).
-  - S1: 14 → 25 (14 + 7 + 5 − 1): the product lanes add seven S1 PRs; S1-SYS-14, S1-MOD-04, S1-CON-01, S1-CON-02 and S1-MOD-01 part B add five; S1-SYS-06 is superseded (−1) (root decisions under §0.5a, 2026-09-26); 25 → 26 for S1-SYS-15 (root decision under §0.5a, 2026-09-27); 26 → 29 (26 + 3): S1-SYS-16, S1-SYS-17 and the S1-MOD-02 follow-up PR add one each (root decisions under §0.5a, 2026-09-27). S1-CON-03 is not in this count: no cap change is recorded for it yet.
+  - S1: 14 → 25 (14 + 7 + 5 − 1): the product lanes add seven S1 PRs; S1-SYS-14, S1-MOD-04, S1-CON-01, S1-CON-02 and S1-MOD-01 part B add five; S1-SYS-06 is superseded (−1) (root decisions under §0.5a, 2026-09-26); 25 → 26 for S1-SYS-15 (root decision under §0.5a, 2026-09-27); 26 → 31 (26 + 5): S1-SYS-16, S1-SYS-17, the S1-MOD-02 follow-up PR, S1-CON-03 and S1-SYS-18 add one each (root decisions under §0.5a, 2026-09-27).
   - A probe PR that only adds a probe script and its ADR data (e.g. S0-ROOT-12) counts as a root evidence PR and is excluded (root decision under §0.5a, 2026-09-26).
 - **Code size:**
   - `src/` Python over 6,300 lines at S0 close, over 9,000 at S1 close, or over 7,000 at S3 close (S0 3,700 → 6,300 and S1 5,800 → 9,000, user decision 2026-09-26), counted in non-blank lines (user decision 2026-09-26);
@@ -171,7 +171,7 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
   - `tests/serving` test doubles live outside `tests/support` (AGENTS rule 5).
 - #115 (SYS): `fetch_external.sh` clones into a temp dir then moves; drop the stale `!.env.example` in `.gitignore`; pin the CI Python patch release; add shellcheck; amend S0-SYS-02's acceptance grep to the exclusions actually used.
 - Hook (#114): protect the worktree parent `../pl-wt`; track `pushd`; the heredoc false positive (text that mentions recursive deletes near data/external is blocked when shlex cannot parse it).
-- Process: S0 PR count: 14 merged (#108–#121) + S0-ROOT-09 = 15; S0-SYS-06 makes 16 (at the limit; the tripwire is > 16); S0-MOD-03 would be the 17th. Root evidence PRs (S0-ROOT-05/06) are excluded. Resolved: the tripwire is now > 19 (§0.6), so S0-MOD-03 is the 17th PR, S0-SYS-07 the 18th and S0-SYS-08 the 19th; S0-ROOT-10/11 are ROOT docs/harness PRs and S0-ROOT-12 a probe PR (excluded). Now: S0-SYS-08 (#130) and S0-SYS-07 (#133) are merged, S0-MOD-03 (#125) is pending, the S0-SYS-08 strike-counter follow-up (#138) is the 20th, and the S0-SYS-07 identity-hold follow-up the 21st (the tripwire is > 21, §0.6); S0-ROOT-13 is a ROOT docs PR (excluded). Now: the S0-SYS-07 follow-up split, so #140 (item 1) is the 21st and item 2 (held for the user) will be the 22nd (the tripwire is > 22, §0.6); S0-ROOT-05's bundle PR (#141) is a root evidence PR, and S0-ROOT-13 (#139) and S0-ROOT-14 are ROOT docs PRs (excluded). S1: the tripwire is > 29 (§0.6).
+- Process: S0 PR count: 14 merged (#108–#121) + S0-ROOT-09 = 15; S0-SYS-06 makes 16 (at the limit; the tripwire is > 16); S0-MOD-03 would be the 17th. Root evidence PRs (S0-ROOT-05/06) are excluded. Resolved: the tripwire is now > 19 (§0.6), so S0-MOD-03 is the 17th PR, S0-SYS-07 the 18th and S0-SYS-08 the 19th; S0-ROOT-10/11 are ROOT docs/harness PRs and S0-ROOT-12 a probe PR (excluded). Now: S0-SYS-08 (#130) and S0-SYS-07 (#133) are merged, S0-MOD-03 (#125) is pending, the S0-SYS-08 strike-counter follow-up (#138) is the 20th, and the S0-SYS-07 identity-hold follow-up the 21st (the tripwire is > 21, §0.6); S0-ROOT-13 is a ROOT docs PR (excluded). Now: the S0-SYS-07 follow-up split, so #140 (item 1) is the 21st and item 2 (held for the user) will be the 22nd (the tripwire is > 22, §0.6); S0-ROOT-05's bundle PR (#141) is a root evidence PR, and S0-ROOT-13 (#139) and S0-ROOT-14 are ROOT docs PRs (excluded). S1: the tripwire is > 31 (§0.6).
 - #118 (SYS evidence):
   - a scripted bundle relabelled `real_http` still passes `--claim` (authenticity is provenance, ADR-0006);
   - extra files in a bundle are ignored;
@@ -223,14 +223,25 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
 - #132 (MOD, S1-MOD-01 part B): D3 `serving/attest.py` hard-codes the 9B model id (`modal_vllm` overwrites it; consistent but fragile).
 - #126 (SYS, S1-SYS-01):
   - **unsafe direction, must be calibrated with the Ear audit (S2-ROOT-03) before S1 close:** the read-back misses a later contradiction that carries no lexicon cue, so such an offer can stay confirmed (root decision under §0.5a, 2026-09-27);
-  - reverse containment in `guard/declass.py` stays strict until a protected-fact producer lands (S2); Unicode letter forms are accepted (root decisions under §0.5a, 2026-09-27).
+  - reverse containment in `guard/declass.py` stays strict until a protected-fact producer lands (S2); Unicode letter forms are accepted (root decisions under §0.5a, 2026-09-27);
+  - nit 9: `request_approval` has no status gate (harmless today).
 - #144 (SYS, S1-SYS-16):
+  - (1) `utt_ref` comes from `view.transcript`, not the render-trimmed window (pre-existing, rare);
+  - (2) no explicit test that an empty transcript gives `None`;
+  - (3) `session.ended.spend` is a third spend summary, and its `tokens` exclude `gpu_time`: S1-CON-03 decides the naming and typing;
+  - (4) no session-level test of the runaway crossing or of a `gpu_time` charge;
+  - (5) the test gate's `floor(True)` signal is fragile if reused;
   - an evidence-check rule that a relay's `utt_ref` lies inside its request's view, keyed by bundle version so that bundles from before #144 stay green (root decision under §0.5a, 2026-09-27);
   - 5 misattributed relays remain as recorded in `evidence/s0` (by `seq`): `20260927T011606Z-30d027` #39 and #122; `20260927T011721Z-dcb1a6` #156; `20260927T011839Z-a73470` #30 and #90. Their offline replay is still ok.
 - #145 (MOD, S1-MOD-04):
   - N1 the test-family refusal relies on the spec's self-declared split until the split draw, because the kernel hardcodes `split="train"`;
   - N2 `benchmark-report` stamps the report with HEAD even when the working tree is dirty;
   - N3 `--family` in `BENCH_ARGS` overrides silently.
+- #146 (SYS, S1-SYS-17):
+  - N1 the `Task._ref` validator does not check the seed (an option: `run_session` asserts `instance_hash(resolve(task.ref)) == instance_hash(task)`);
+  - N2 a full-mode mapping without a ref gets the default-mode ref (tests only);
+  - N3 `\d` in `refs.py` matches Unicode digits: use `[0-9]`;
+  - N4 `task_ref` now carries the instance seed (`/api/bundles` already refuses test-split bundles).
 
 ---
 
@@ -846,7 +857,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Verify:** `uv run pytest tests/serve -q`.
 - **Escalate if:** the WebSocket adds work to the TTFS path, or the seam needs a kernel change.
 
-### S1-SYS-10 Approval endpoint security layer — SYS (P-API) — M — review (#137)
+### S1-SYS-10 Approval endpoint security layer — SYS (P-API) — M — done (#137)
 - **Objective:** the approval endpoint and `serve/csrf.py` per ARCHITECTURE §9.6 (C15): case-scoped; 127.0.0.1 only; CSRF double-submit; an Origin check; single use (a second POST → 409 `already_decided`); bound to (approval id, terms hash, epoch). It runs `guard.decide` as a pre-check: on a Denial it returns 409 and emits no event; on success it emits only `approval.post`. The kernel re-runs `guard.decide` in its own loop and emits `approval.decided` (ARCHITECTURE's fixed emitter; S1-SYS-02) (root decision under §0.5a, 2026-09-26). Security tests first.
   - The web↔API interface (P-WEB's proposal, adopted; root decisions under §0.5a, 2026-09-26): `case_id = run_id` in S1; `GET /live/{case_id}` sets the session and `pl_csrf` cookies; every POST carries `X-CSRF-Token` (double submit) and passes the Origin check; `POST /api/cases/{id}/approvals/{approval_id} {decision, terms_hash, authority_epoch}` → 200, 403 `csrf|origin`, or 409 `already_decided|stale`. The message and rep POSTs follow the same rules and reach the kernel through `HumanWebChannel` (S1-SYS-05).
   - A server-filtered `WS /ws/rep/{case_id}` for the human rep page (I4; P-WEB escalation): an allow-list of cp `utt.delivered` (`text_heard`), the partner's `utt.final` and cp `chan.*`; a separate rep cookie and role, so user and rep POSTs are not interchangeable. `/ws/live` stays user/operator only, on 127.0.0.1.
@@ -908,7 +919,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Acceptance:** tests: a user line and a rep line landing mid-generation are not credited to the relay (both fail before the fix); the totals count unpriced calls beside the priced subtotal and match the `spend.charged` events.
 - **Known:** 5 relays in `evidence/s0` stay misattributed as recorded, and no evidence-check rule checks `utt_ref` yet (§0.9).
 
-### S1-SYS-17 Instance and mode selection via `task_ref` — SYS (L-CORE) — S — review (#146)
+### S1-SYS-17 Instance and mode selection via `task_ref` — SYS (L-CORE) — S — done (#146)
 - **Objective** (root decision under §0.5a, 2026-09-27):
   - the `task_ref` grammar `family@version[:mode][#seed]`; the default mode and seed 0 keep today's `family@version` refs valid, so committed bundles still resolve;
   - `env.tasks.resolve(task_ref)`; the CLI's `session` and `rep-chat` gain `--mode` and `--instance`, and `make smoke-live` passes `MODE` and `INSTANCE`;
@@ -917,6 +928,10 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Deps:** S1-SYS-16, S1-SYS-04. It is a CON task instead if the bundle shape changes.
 - **Acceptance:** tests: the grammar round-trips; the `evidence/s0` bundles resolve to their `instance_hash`; a seeded full-mode bundle resolves.
 - **Verify:** `make test`.
+
+### S1-SYS-18 Web↔API wiring drift test — SYS (P-WEB) — M — doing
+- **Objective** (root decision under §0.5a, 2026-09-27): a drift test of the web↔API wiring: the real `create_app` serves the built web same-origin, behind a stub `Case` in `tests/support/web_wiring.py`, and a Playwright `wiring` project drives it. It uses synthetic events in a temp dir only; `evidence/s0` is read-only.
+- **Owned paths:** `apps/web/**`, `tests/web/**`, `tests/support/web_wiring.py`.
 
 ### S1-MOD-01 Model registry, per-lane swap, 4B serving, hosted/teacher Fast, FSM, teacher-repair — MOD — L — flags L+G for the smoke — review (part A merged in #124; part B #132 in review)
 - **Objective:**
@@ -945,7 +960,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
   - Metric semantics are decided before any data (root decisions under §0.5a, 2026-09-26, on the model root's proposals) and written in EVAL §7: `relay_precision` (value-only), `offer_capture`, `unsupported_numbers`, approval (b) and the episode outcome classes.
   - `matrix.py` aborts the matrix on `LLMUnavailable`, `RunawaySpend` and `p3_failed`; a `WorldError` is an errored cell; resume is per cell and never re-runs a `budget` cell (root decisions under §0.5a, 2026-09-26).
   - Metrics load a task by `task_ref` with an `instance_hash` check, and refuse test-split families before the unseal (AGENTS rule 11; root decision under §0.5a, 2026-09-26).
-  - **Follow-up PR** (the model root, after S1-SYS-17 merges; root decision under §0.5a, 2026-09-27): `metrics._task` resolves the full `task_ref` (mode and seed) through the injected loader (`env.tasks.resolve`), so seeded and full-mode bundles load the instance they ran. Owned paths as above.
+  - **Follow-up PR** (the model root, after S1-SYS-17 merges; root decision under §0.5a, 2026-09-27): `metrics._task` resolves the full `task_ref` (mode and seed) through the injected loader (`env.tasks.resolve`), so seeded and full-mode bundles load the instance they ran. It must land before any mode or instance bundle feeds the metrics (a major from #146's review). Owned paths as above.
 - **Owned paths:** `src/proxyloop/eval/**`, `tests/eval/**`, `mk/mod.mk`.
 - **Deps:** S0-ROOT-05. Its branch merges `origin/main` after #125 (S0-MOD-03) merges (shared `mk/mod.mk`).
 - **Acceptance:**
