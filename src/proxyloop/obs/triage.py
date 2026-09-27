@@ -14,16 +14,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
-from proxyloop.contract.bundle import EVENTS, MANIFEST, Manifest
+from proxyloop.contract.bundle import MANIFEST, Manifest
 from proxyloop.contract.events import Event
 from proxyloop.obs import runs
-from proxyloop.obs.detectors import BANNER, Inputs, as_dict, run_all
-from proxyloop.obs.trace import TOOL_NAMES, Prompts, Refused, identifier, lines, unseal
+from proxyloop.obs.detectors import BANNER, Inputs, as_dict, run_all, safe
+from proxyloop.obs.trace import TOOL_NAMES, Prompts, Refused, unseal
 
 SCHEMA = "pl.triage/1"
 Row = dict[str, object]
@@ -38,7 +39,8 @@ def read(
     path: Path, seal: runs.Seal, window_s: float = 10, content: bool = False
 ) -> tuple[runs.Run, Inputs]:
     """The bundle's index row and its detector inputs. ``incomplete`` (no
-    manifest: e.g. a crashed run) is read; ``sealed`` and ``invalid`` are not."""
+    manifest: e.g. a crashed run) is read; ``sealed`` and ``invalid`` are not.
+    The events are the ones ``runs.load`` parsed (once)."""
     path = path.resolve()  # runs.load places it relative to its parent
     unseal(path, seal)
     run = runs.load(path, path.parent, seal)
@@ -47,10 +49,8 @@ def read(
     if run.status == "invalid" or run.events is None:
         raise Unreadable(f"{path}: {run.status}: {run.error}")
     unseal(path, seal)
-    strict = (path / MANIFEST).is_file()
-    events = [Event.model_validate_json(x) for x in lines(path / EVENTS, False, strict)]
-    man = None
-    if strict:
+    events, man = run.log, None
+    if (path / MANIFEST).is_file():
         man = Manifest.model_validate_json((path / MANIFEST).read_text("utf-8"))
     if not events or events[0].type != "session.started":
         raise Unreadable(f"{path}: no complete session.started line to start from")
@@ -59,8 +59,8 @@ def read(
 
 
 def row(run: runs.Run, x: Inputs) -> Row:
-    """One run: what it ran (sha, task, mode, models, slow_view) and every
-    detector's value."""
+    """One run: what it ran (sha, slow_fp, task, mode, models, slow_view) and
+    every detector's value. Header strings are codes (``_ref``), else "?"."""
     start = x.events[0].payload
     models = {
         r: as_dict(as_dict(m).get("ref")) for r, m in as_dict(start["models"]).items()
@@ -81,20 +81,30 @@ def row(run: runs.Run, x: Inputs) -> Row:
         "path": run.path,
         "status": run.status,
         "started": run.started,
-        "git_sha": start.get("git_sha"),
-        "task_ref": start.get("task_ref"),
-        "split": start.get("split"),
-        "mode": mode,
-        "models": {r: {k: m.get(k) for k in keys} for r, m in sorted(models.items())},
-        "slow_view": slow_view,
+        "git_sha": _ref(start.get("git_sha")),
+        "slow_fp": _ref(start.get("slow_fp")),  # S1-SYS-43; None before it
+        "task_ref": _ref(start.get("task_ref")),
+        "split": _ref(start.get("split")),
+        "mode": _ref(mode),
+        "models": {
+            str(_ref(r)): {k: _ref(m.get(k)) for k in keys}
+            for r, m in sorted(models.items())
+        },
+        "slow_view": _ref(slow_view),
         "duration_ms": x.events[-1].t_ms,
         "detectors": run_all(x),
     }
 
 
-def _code(value: object) -> object:
-    """An identifier, number or bool as is; any other value is withheld."""
-    return value if value is None or identifier(value) else "?"
+_REF = re.compile(r"[A-Za-z0-9_.:@/+-]{1,128}")
+
+
+def _ref(value: object) -> object:
+    """A header string: an identifier, or a ref with ``@`` (``task@version``),
+    ``/`` (``org/model``) or ``+`` (``kinds:a+b``); any other value is "?"."""
+    if isinstance(value, str):
+        return value if _REF.fullmatch(value) else "?"
+    return safe(value)
 
 
 def _timeline(e: Event, content: bool) -> Row | None:
@@ -133,7 +143,7 @@ def _timeline(e: Event, content: bool) -> Row | None:
     else:
         return None
     out: Row = {"seq": e.seq, "t_ms": e.t_ms, "type": t}
-    out |= {k: _code(v) for k, v in row.items() if v is not None}
+    out |= {k: safe(v) for k, v in row.items() if v is not None}
     return out | (text if content else {})
 
 

@@ -89,14 +89,13 @@ def terms(dollars: int) -> str:
 
 def slots(dollars: int, utt: str) -> list[dict[str, str]]:
     rows = [
-        ("monthly_price", str(100 * dollars), "usd_minor", "recurring"),
-        ("term_months", "12", "months", "recurring"),
-        ("fees_none", "true", "bool", "one_time"),
-        ("changes_none", "true", "bool", "change"),
-        ("expires", "none", "iso", "expiry"),
+        ("monthly_price", str(100 * dollars)),
+        ("term_months", "12"),
+        ("fees_none", "true"),
+        ("changes_none", "true"),
+        ("expires", "none"),
     ]
-    keys = ("field", "value", "unit", "role")
-    return [dict(zip(keys, row, strict=True)) | {"utt_ref": utt} for row in rows]
+    return [{"field": f, "value": v, "utt_ref": utt} for f, v in rows]
 
 
 async def settle(turns: int = 40) -> None:
@@ -234,7 +233,10 @@ class Sim:
     def act(self, *calls: Mapping[str, object]) -> list[str]:
         body = json.dumps({"private_summary": "digest", "calls": list(calls)})
         call = ToolCall(call_id="t", name="act", arguments=body)
-        return self.tools.act(call, [self.k.authority.root]).splitlines()[1:]
+        seen = self.k.bb.seq
+        return self.tools.act(call, [self.k.authority.root], basis=seen).splitlines()[
+            1:
+        ]
 
     async def offer(self, ref: str = "o1", dollars: int = 68) -> None:
         """The rep states an offer, Slow records it and asks for the read-back,
