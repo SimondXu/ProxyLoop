@@ -35,6 +35,8 @@ EXPECTED: dict[str, DecisionPoint | None] = {
     "c07_over_budget_actions": "offer",
     "c08_v2_empty": None,  # call_connected: not rep_spoke
     "c09_v2_hold_for_fact": None,  # guidance: not rep_spoke
+    "c10_v3_empty": None,  # call_connected: not rep_spoke
+    "c11_v3_hold_for_fact": None,  # guidance: not rep_spoke
     "u01_empty": None,
     "u02_user_msg": None,
     "u03_ask_user": None,
