@@ -219,9 +219,11 @@ class Mapper:
             attrs["gen_ai.response.model"] = r.served_model_echo
         if r.model_ref.endpoint is not None:
             attrs["pl.endpoint"] = r.model_ref.endpoint
+        # Usage stays under pl.*: Phoenix maps gen_ai.usage.* to llm.token_count.*
+        # and prices it, and the only $ is spend.json's (never an estimate).
         if r.usage is not None:
-            attrs["gen_ai.usage.input_tokens"] = r.usage.prompt_tokens
-            attrs["gen_ai.usage.output_tokens"] = r.usage.completion_tokens
+            attrs["pl.usage.input_tokens"] = r.usage.prompt_tokens
+            attrs["pl.usage.output_tokens"] = r.usage.completion_tokens
             if r.usage.reasoning_tokens is not None:
                 attrs["pl.usage.reasoning_tokens"] = r.usage.reasoning_tokens
         prompts = self.prompts if r.role == "fast_cp" else None

@@ -206,10 +206,17 @@ def test_llm_attributes_and_world_service(tmp_path: Path) -> None:
     slow = calls[2].attributes
     assert slow["gen_ai.response.model"] == f"{SONNET.model_id}-served"
     assert slow["pl.endpoint"] == SONNET.endpoint
-    assert (slow["gen_ai.usage.input_tokens"], slow["gen_ai.usage.output_tokens"]) == (
+    assert (slow["pl.usage.input_tokens"], slow["pl.usage.output_tokens"]) == (
         10,
         3,
     )
+    keys = {k for span in collect(run, content=True) for k in span.attributes}
+    priced = ("llm.", "openinference.", "gen_ai.usage.")  # a viewer prices these
+    assert not [k for k in keys if k.startswith(priced)]
+    assert {k for k in keys if k.startswith("gen_ai.")} == {
+        "gen_ai.request.model",
+        "gen_ai.response.model",
+    }
     log = Log("rW")
     policy: dict[str, object] = {"from": 0, "to": 1, "intent": "x", "rung": 0}
     log.add("rep.policy", "world.policy", "world", policy)
