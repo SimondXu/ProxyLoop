@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from tests.guard.build import board, confirm, mandate, offer, rep
+from tests.guard.build import agent, board, confirm, mandate, offer, rep
 
 from proxyloop.contract.state import (
     Approval,
@@ -18,6 +18,7 @@ from proxyloop.contract.state import (
     Capability,
     CompletionDecision,
     Evidence,
+    Line,
 )
 from proxyloop.guard.verify import verify_completion, verify_no_deal
 
@@ -142,6 +143,45 @@ def test_no_deal_reasons() -> None:
     assert verify_no_deal(_declined(), 3) == _fail("no_closing_reply")
     released = _declined().model_copy(update={"capabilities": {"cap-1": _cap()}})
     assert verify_no_deal(released, ASK) == _fail("accept_released")
+
+
+# S1-SYS-57: only the rep's final line after the last ask counts
+SAID = (rep("c1", "I can offer $68 a month."),)  # ask_final_offer after c1
+CLOSE = rep("c2", "That is our best offer, and I cannot do any better.")
+
+
+def _no_deal(*after: Line, ask: int = 1) -> CompletionDecision:
+    declined = O1.model_copy(update={"status": "declined"})
+    return verify_no_deal(board(declined, cp=(*SAID, *after)), ask)
+
+
+@pytest.mark.parametrize(
+    "later",
+    [
+        "I can waive the activation fee.",  # a concession
+        "Actually, I can do 55.",  # a retraction
+    ],
+)
+def test_a_line_after_the_closing_one_reopens_it(later: str) -> None:
+    assert _no_deal(CLOSE) == OK
+    assert _no_deal(CLOSE, rep("c3", later)) == _fail("no_closing_reply")
+
+
+def test_the_agents_lines_after_the_closing_one_do_not_count() -> None:
+    assert _no_deal(CLOSE, agent("c3", "Can you do $55?")) == OK
+
+
+def test_a_second_ask_resets_the_window() -> None:
+    again = (CLOSE, agent("c3", "Is that really your final offer?"))
+    assert _no_deal(*again, ask=3) == _fail("no_closing_reply")
+    assert _no_deal(*again, rep("c4", "Yes, it is our best offer."), ask=3) == OK
+
+
+def test_a_rep_silent_since_the_last_ask_has_not_closed() -> None:
+    assert _no_deal(ask=1) == _fail("no_closing_reply")
+    assert _no_deal(CLOSE, agent("c3", "Final offer?"), ask=2) == _fail(
+        "no_closing_reply"
+    )
 
 
 def _lint_imports(tree: Path, verify_source: str) -> subprocess.CompletedProcess[str]:
