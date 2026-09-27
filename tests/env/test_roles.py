@@ -541,14 +541,16 @@ def test_the_simuser_channel_enqueues_nothing_on_silence(tmp_path: Path) -> None
         ("Last four 4821.", (LAST4, "4821"), True),
         ("It's 4 8 2 1.", (LAST4, "4821"), True),
         ("It's 48-21, and the name is Dana Reyes.", (LAST4, "4821"), True),
-        ("555 482 1999", (LAST4, "4821"), False),  # part of a longer run
+        ("4821 12 months", (LAST4, "4821"), True),  # whole groups of a run
+        ("last four 4821, 12 months", (LAST4, "4821"), True),
+        ("555 482 1999", (LAST4, "4821"), False),  # groups 555|482|1999
         ("Card 14821.", (LAST4, "4821"), False),
         ("dana REYES here.", (NAME, "Dana Reyes"), True),
         ("Is that Dan? A Reyes account?", (NAME, "Dana Reyes"), False),
         ("Danar Reyes", (NAME, "Dana Reyes"), False),
     ],
 )
-def test_a_fact_is_said_only_as_a_whole_run_or_whole_tokens(
+def test_a_fact_is_said_only_as_whole_digit_groups_or_whole_tokens(
     heard: str, fact: tuple[str, str], said: bool
 ) -> None:
     call = ToolCall(

@@ -72,18 +72,30 @@ _DIGIT_RUN = re.compile(r"\d+(?:[ -]\d+)*")  # groups joined by one space or das
 _TOKEN = re.compile(r"[^\W_]+")
 
 
+def _in_a_row(want: list[str], seq: list[str]) -> bool:
+    n = len(want)
+    return n > 0 and any(seq[i : i + n] == want for i in range(len(seq) - n + 1))
+
+
 def said(value: str, heard: str) -> bool:
-    """A digit value is a whole digit run of ``heard`` ("4 8 2 1" is 4821; not
-    part of 5554821999); any other value is whole tokens in a row (casefold)."""
+    """A digit value is one or more consecutive whole digit groups of a run of
+    ``heard`` ("4 8 2 1", "48-21" and "4821 12" say 4821; "555 482 1999" and
+    "14821" do not); any other value is whole tokens in a row (casefold)."""
 
     digits = world.norm(value)
     if digits.isdigit():
-        runs = (re.sub(r"[ -]", "", m) for m in _DIGIT_RUN.findall(heard))
-        return digits in set(runs)
-    want = _TOKEN.findall(value.casefold())
-    tokens = _TOKEN.findall(heard.casefold())
-    n = len(want)
-    return n > 0 and any(tokens[i : i + n] == want for i in range(len(tokens) - n + 1))
+        for run in _DIGIT_RUN.findall(heard):
+            groups = re.split(r"[ -]", run)
+            for i in range(len(groups)):
+                joined = ""
+                for group in groups[i:]:
+                    joined += group
+                    if joined == digits:
+                        return True
+                    if len(joined) >= len(digits):
+                        break
+        return False
+    return _in_a_row(_TOKEN.findall(value.casefold()), _TOKEN.findall(heard.casefold()))
 
 
 def check_act(
