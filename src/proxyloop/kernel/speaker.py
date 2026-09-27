@@ -18,10 +18,7 @@ A partner turn goes before a queued verbatim line: while the partner composes
 it, while it is queued, and from its barge-in until its lines have landed, no
 verbatim line takes the floor, so an accept is revalidated only on a board that
 has the partner's turn (I6 timing). A wait past the capability's expiry ends
-the line ``expired`` there. A verbatim line waiting while FastC holds the floor
-with no partner turn pending takes the floor as FastC's line ends, before the
-partner, hearing that line, composes (S1-SYS-56); a turn begun or queued in
-between still goes first."""
+the line ``expired`` there."""
 
 from __future__ import annotations
 
@@ -61,15 +58,12 @@ class Speaker:
         self._partner = 0  # partner turns begun whose lines have not landed
         self._partner_idle = asyncio.Event()
         self._partner_idle.set()
-        self._waiting = 0  # verbatim lines waiting for the lock
-        self._handoff = False  # FastC's line ended with no partner turn pending
 
     async def speak(
         self, lines: Sequence[tuple[str, str, str]], interruptible: bool = True
     ) -> None:
         async with self._lock:
             last, heard = await self._deliver(lines, interruptible)
-            self._handoff = self._waiting > 0 and not self._partner_pending()
         self._send(last, heard)
 
     async def verbatim(self, said: Event) -> None:
@@ -137,23 +131,15 @@ class Speaker:
     async def _floor_after_partner(self) -> None:
         """Take the floor (the lock, acquired) with no partner turn pending: not
         begun, queued, or being composed, as a reply the stale path (ROOT-05 i)
-        would not let cut the line. Handed FastC's floor, the partner may be
-        busy only hearing FastC's line, which ended after this one queued."""
+        would not let cut the line."""
         while True:
             await self._partner_idle.wait()
             await self._channel.quiet()
             if not self._channel.incoming.empty():  # the ingress takes it next
                 await asyncio.sleep(0)
                 continue
-            self._waiting += 1
-            try:
-                await self._lock.acquire()
-            finally:
-                self._waiting -= 1
-            handed, self._handoff = self._handoff, False
-            ch = self._channel
-            begun = self._partner > 0 or not ch.incoming.empty()
-            if not (begun or (ch.busy and not handed)):
+            await self._lock.acquire()
+            if not self._partner_pending():
                 return
             self._lock.release()  # a partner turn began while this line queued
 
@@ -200,7 +186,7 @@ class Speaker:
             if not (self.speaking and self._stale):
                 self._barge.set()
             async with self._lock:
-                self._handoff = False
+                pass
             yield
         finally:
             self._partner -= 1
