@@ -9,6 +9,8 @@ accepts, stops, revokes, barge-ins, FastU latency, time) and the log must show:
   ``utt.final`` not yet in the log);
 - every accept line ending in exactly one ``speak.released`` or
   ``speak.revoked`` (none wedges on ``accept_in_flight``);
+- the same while Slow declines or re-records the offer under an accept line in
+  flight (revoked ``offer_closed`` / ``terms_changed``);
 - ``accept_revoked``/``accept_truncated`` only after a real ``speak.revoked`` /
   a real cut delivery; ``seq`` dense.
 """
@@ -31,7 +33,7 @@ from tests.concurrency.test_cases import Valve
 from proxyloop.contract.events import ApprovalPost
 from proxyloop.contract.state import Blackboard
 from proxyloop.core.fold import apply
-from proxyloop.guard.capability import released_accept
+from proxyloop.guard.capability import accept_in_flight, released_accept
 
 
 class Interleavings(RuleBasedStateMachine):
@@ -98,6 +100,25 @@ class Interleavings(RuleBasedStateMachine):
         post |= {"decision": decision, "subject_hash": card.terms_hash}
         post |= {"authority_epoch": card.authority_epoch - int(stale)}
         self.sim.k.post_approval(ApprovalPost.model_validate(post))
+        self.run(settle())
+
+    @rule(change=st.sampled_from(["decline", "revise"]))
+    def the_offer_changes_mid_accept(self, change: str) -> None:
+        """While an accept line waits for the floor, Slow declines the offer
+        (``offer_closed``) or re-records it (``terms_changed``)."""
+        if not accept_in_flight(self.sim.k.bb):
+            return
+        if change == "decline":
+            self.sim.act({"tool": "decline_offer", "offer_ref": "o1"})
+        else:
+            said = [
+                x
+                for x in self.sim.bb.channels["cp"].lines
+                if x.speaker == "partner" and x.text == terms(self.dollars)
+            ]
+            record: dict[str, object] = {"tool": "record_offer", "offer_ref": "o1"}
+            record["offer_slots"] = slots(self.dollars, said[-1].utt_id)
+            self.sim.act(record)
         self.run(settle())
 
     # Slow's tools, whatever Guard answers.
