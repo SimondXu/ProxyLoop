@@ -21,7 +21,6 @@ from pydantic import ValidationError
 
 from proxyloop.contract import protocol as fp
 from proxyloop.contract.base import Lane, canonical_json, sha256_text
-from proxyloop.contract.events import Event
 from proxyloop.contract.llm import (
     LLMCallRecord,
     LLMClient,
@@ -67,11 +66,6 @@ async def p3(client: VLLMClient, view: FastView, tok: fp.ChatTokenizer) -> bool:
     prompt = fp.render_prompt(view, profile, tok)
     golden = GoldenPrompt(profile, chat, prompt, tuple(ids))
     return (await check_parity(client, [golden])).passed
-
-
-def _cp(e: Event, relay: str, type_: str) -> bool:  # a cp f2s/s2f msg of a type
-    p = e.payload
-    return e.type == f"{relay}.msg" and p["lane"] == "cp" and p["type"] == type_
 
 
 def _speaks(items: list[fp.TurnItem]) -> bool:  # a sentence has been released
@@ -207,58 +201,12 @@ class FastLane:
         if lines:
             await k.speakers[lane].speak(lines)
 
-    def _unanswered(self, utt_ref: str | None) -> str | None:
-        """S1-SYS-26: the ``slow.step.completed`` that left the last relayed cp
-        HOLD unanswered, else None. No Slow step is in flight; the last one whose
-        basis holds the HOLD has completed without a ``wait`` (its own wake);
-        every cp GUIDE since the HOLD is voiced, and then the rep has spoken:
-        this hold cites a rep line that landed after the last voicing."""
-        events = self._k.bus.events
-        held = next((e.seq for e in reversed(events) if _cp(e, "f2s", "HOLD")), None)
-        steps = [e for e in events if e.type.startswith("slow.step.")]
-        if held is None or (steps and steps[-1].type == "slow.step.started"):
-            return None  # nothing relayed, or Slow is looking
-        since = [e for e in events if e.seq > held]
-        guides = {e.payload["msg_id"] for e in since if _cp(e, "s2f", "GUIDE")}
-        voiced = [
-            e.seq
-            for e in since
-            if e.type == "s2f.voiced" and e.payload["msg_id"] in guides
-        ]
-        told = {e.payload["msg_id"] for e in since if e.type == "s2f.voiced"}
-        if guides - told:
-            return None  # Slow's answer is still on its way to FastC
-        if voiced and not any(
-            e.type == "utt.final"
-            and e.seq > voiced[-1]
-            and (e.payload["lane"], e.payload["speaker"]) == ("cp", "partner")
-            and e.payload["utt_id"] == utt_ref
-            for e in since
-        ):
-            return None  # the rep has not spoken since FastC voiced it
-        done = [
-            e
-            for e in since
-            if e.type == "slow.step.completed"
-            and cast(int, e.payload["basis_seq"]) >= held
-        ]
-        if not done:
-            return None  # Slow has not looked yet
-        start = next(e.seq for e in since if e.event_id == done[-1].cause_ids[0])
-        waited = any(
-            e.type == "slow.tool" and e.payload["name"] == "wait" and e.payload["ok"]
-            for e in since
-            if start < e.seq < done[-1].seq
-        )
-        return None if waited else done[-1].event_id
-
     def _relay(
         self, items: list[fp.TurnItem], turn: str, gen_id: str, utt_ref: str | None
     ) -> None:
         k, lane = self._k, self.lane
         base = {"lane": lane, "gen_id": gen_id, "utt_ref": utt_ref}
         for item in items:
-            causes = [turn]
             if isinstance(item, fp.Relay):
                 own = "USER_UPDATE" if lane == "user" else "CP_UPDATE"
                 fields = {"type": _F2S[item.type] or own, "text": item.text}
@@ -266,12 +214,8 @@ class FastLane:
             elif isinstance(item, fp.Hold):
                 hold = k.bb.public.cp_hold if lane == "cp" else None  # cp only
                 if hold is not None and hold.reason == item.reason:
-                    left = self._unanswered(utt_ref)
-                    if left is None:
-                        k.counts["hold_repeat"] += 1  # Slow has it (ROOT-05)
-                        continue
-                    k.counts["hold_rerelay"] += 1  # Slow left it (S1-SYS-26)
-                    causes.append(left)  # the step that left it unanswered
+                    k.counts["hold_repeat"] += 1  # unchanged: Slow has it (ROOT-05)
+                    continue
                 fields = {"type": "HOLD", "text": item.reason}
             else:
                 continue
@@ -281,5 +225,5 @@ class FastLane:
             except ValidationError:  # over a contract bound: counted, never repaired
                 k.counts["relay_rejected"] += 1
                 continue
-            ev = k.emit("f2s.msg", self._actor, msg.model_dump(mode="json"), causes)
+            ev = k.emit("f2s.msg", self._actor, msg.model_dump(mode="json"), [turn])
             assert ev.event_id == msg_id, "an f2s msg_id is its event_id"
