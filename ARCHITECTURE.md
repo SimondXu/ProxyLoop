@@ -110,7 +110,7 @@ proxyloop/
 ├── README.md NORTH_STAR.md PLAN.md AGENTS.md CLAUDE.md LICENSE Makefile pyproject.toml uv.lock
 ├── mk/                 sys.mk (SYS-owned targets)  mod.mk (MOD-owned targets)   # included by Makefile
 ├── src/proxyloop/
-│   ├── contract/       events.py state.py views.py messages.py protocol.py llm.py config.py bundle.py profiles/{pl_user_v1,pl_cp_v1,pl_cp_v2}.py
+│   ├── contract/       events.py state.py views.py messages.py protocol.py llm.py config.py bundle.py profiles/{pl_user_v1,pl_cp_v1,pl_cp_v2,pl_cp_v3}.py
 │   ├── core/           log.py bus.py fold.py clock.py
 │   ├── kernel/         session.py lanes.py speaker.py fence.py channels.py watchdog.py
 │   ├── slow/           loop.py tools.py prompt.py            (browser.py in S4)
@@ -265,16 +265,18 @@ On failure the public state is unchanged, `declass.denied{violations}` is emitte
 ```
 - The kernel does not act on `@end_call` yet; S1-SYS-24 builds it for `close_call` and `defer_callback` (ADR-0014).
 - The canonical order is speech, `@slow:` lines, at most one `@hold`/`@wait`, then optionally `@end_call`. The parser is tolerant on input (TalkAct's inline `@slow:` and scaffolding echoes) and canonical on output; training labels are always canonical.
+- Under a `pause_ends_speech` profile (`pl_cp_v3`, ADR-0017) the parser turns every non-directive line after an emitted `Hold`/`Wait` into `ParseIssue(speech_after_pause)`: never voiced, always counted.
 - A directive on the wrong lane (for example `@hold` on the user lane) is dropped and counted as `directive_error`.
 - Fast has no accept, share or commit directive.
 
-### 6.3 Profiles (one renderer; two data profiles in S0, `pl_cp_v2` from S1 (ADR-0011), `pl_cp_v4` decided (ADR-0014); `talkact_v1` added in S4)
+### 6.3 Profiles (one renderer; two data profiles in S0, `pl_cp_v2` from S1 (ADR-0011), `pl_cp_v3` (ADR-0017), `pl_cp_v4` decided (ADR-0014); `talkact_v1` added in S4)
 | Profile | Lane | System | Sections (in order) | Triggers |
 |---|---|---|---|---|
 | `pl_user_v1` | user (async chat) | TalkAct `SYSTEM` adapted to **app chat**: "You are the chat voice of a personal assistant app…", plus the extensions paragraph (typed relays, `revoke`, "claim done only if CASE STATUS is VERIFIED_COMPLETE", "never approve anything yourself; approvals happen on the card") | `TASK CONTEXT`, `CASE AGENT SUMMARY` (private), `SHARED CALL SUMMARY` (public), `CASE AGENT RECENT ACTIONS`, `OFFERS ON THE TABLE`, `PENDING APPROVAL`, `CASE STATUS`, `CONVERSATION SO FAR` (`USER:`/`ASSISTANT:`), `TRIGGER`, `Respond now per the output format.` | `The user just sent a message (last USER line). Respond.` · `The case agent sent a message for the user ({kind}): "{text}". Convey it naturally.` · `An approval card is now shown to the user: {readback_text}. Explain it briefly and ask them to review it.` · `The session just started. Greet the user briefly.` |
 | `pl_cp_v1` | cp (real time) | "You are the voice of an AI assistant on a live phone call with a company representative, calling on behalf of your customer. You have already said you are an AI assistant. Never agree to or accept anything yourself; stall with @hold at decisions. Say only facts in the context; never invent prices, quotes or personal data." | `TASK CONTEXT` (public brief), `CASE AGENT SUMMARY` (public), `CASE AGENT RECENT ACTIONS`, `OFFERS ON THE TABLE`, `CASE AGENT GUIDANCE`, `HOLD STATUS`, `CASE STATUS`, `CONVERSATION SO FAR` (`REP:`/`AGENT:`), `TRIGGER`, `Respond now per the output format.` | `The representative just spoke (last REP line). Respond.` · `You have kept the representative waiting for {n} seconds.` · `New guidance from the case agent.` · `The call connected and you introduced yourself as an AI assistant. Continue.` |
-| `pl_cp_v2` | cp (real time) | `pl_cp_v1`'s; the profile adds one move text, `hold_for_fact` (ADR-0011). The live cp profile; `pl_cp_v1` is frozen, so `evidence/s0` still verifies | as `pl_cp_v1` | as `pl_cp_v1` |
-| `pl_cp_v4` (decided, ADR-0014; S1-CON-06 builds it) | cp (real time) | `pl_cp_v2`'s plus one sentence ("When you hold for a detail, also relay `@slow: rep asks for <what>`."); the profile adds one move text, `defer_callback`. It becomes the live cp profile; `pl_cp_v2` is frozen | as `pl_cp_v1` | as `pl_cp_v1` |
+| `pl_cp_v2` | cp (real time) | `pl_cp_v1`'s; the profile adds one move text, `hold_for_fact` (ADR-0011). Frozen since `pl_cp_v3`; `pl_cp_v1` is frozen too, so `evidence/s0` still verifies | as `pl_cp_v1` | as `pl_cp_v1` |
+| `pl_cp_v3` | cp (real time) | `pl_cp_v2` + the grammar flag `pause_ends_speech=True` (ADR-0017, §6.2); its rendering is byte-identical to `pl_cp_v2`'s. The live cp profile (the kernel's cp lane and Slow's `CP_PROFILE`) | as `pl_cp_v1` | as `pl_cp_v1` |
+| `pl_cp_v4` (decided, ADR-0014 as amended by ADR-0017; S1-CON-06 builds it on `pl_cp_v3`) | cp (real time) | `pl_cp_v3`'s plus one sentence ("When you hold for a detail, also relay `@slow: rep asks for <what>`."); the profile adds one move text, `defer_callback`. It becomes the live cp profile; `pl_cp_v3` is frozen | as `pl_cp_v1` | as `pl_cp_v1` |
 
 - **Every section exists from S0**, even when S0 renders it empty (`(none)`). This keeps the S1 Guard and approval work from changing the fingerprint.
 - **The context budget [P; C17].** `CONTEXT_BUDGET_CHARS = 12_000` [E; P2 records the token count of the worst golden case]. When over budget, the renderer drops the oldest transcript lines and inserts `(earlier conversation omitted)`. If that is not enough, it truncates the action log. It never drops summaries, offers or the trigger. The same trimming happens in teacher prompts, training rows and serving.
@@ -429,13 +431,17 @@ INTAKE ──chan.opened(cp): ready | slow_start | intake_deadline──► IN_C
 INTAKE ──mandate.decided(granted)──► MANDATED ──chan.opened(cp)──► IN_CALL
 IN_CALL ──chan.closed(cp, deferred): call_deferred──► INTAKE | call_deferred_mandated──► MANDATED ──chan.opened(cp, redial)──► IN_CALL
 IN_CALL ──approval.requested──► AWAITING_APPROVAL ──approval.decided──► IN_CALL
+AWAITING_APPROVAL ──authority.epoch past the card's epoch: approval_stale | expires_ms reached: approval_expired──► NEEDS_REPLAN ──Slow's replan step──► IN_CALL
 IN_CALL ──action.authorized(accept)──► COMMIT_AUTHORIZED ──speak.released + utt.delivered(full)──► COMMITTED
 COMMIT_AUTHORIZED ──speak.revoked | truncated──► NEEDS_REPLAN
 COMMITTED ──evidence.recorded──► EVIDENCE_PENDING ──completion.decided(ok)──► VERIFIED_COMPLETE
 EVIDENCE_PENDING ──completion.decided(fail)──► NEEDS_REPLAN ──► IN_CALL | ESCALATED
-IN_CALL ──finish(no_deal) ∧ verify_no_deal──► VERIFIED_NO_DEAL      any ──cp hang-up (identity or timer strikes ≥ patience.strikes)──► ABANDONED
+IN_CALL ──finish(info_only)──► CLOSED_NO_ACTION
+IN_CALL ──finish(no_deal) ∧ verify_no_deal──► VERIFIED_NO_DEAL      any ──cp hang-up (identity or timer strikes ≥ patience.strikes)──► ABANDONED (unreachable until S1-SYS-55 wires hang_up)
 ```
 Only `completion.decided` sets a `VERIFIED_*` status. Fast sees the status in the `CASE STATUS` section.
+
+- **A stale or expired card replans the case** (S1-SYS-38, `guard/status.py`): the `status.changed` to NEEDS_REPLAN cites the `authority.epoch` that staled the pending card, or the card's `approval.requested` once its `expires_ms` is reached; Slow's next completed step moves it back to IN_CALL (`replan`) unless Slow escalated. Restrict-only: it never moves toward a commit.
 
 - **INTAKE holds until the call is ready** (ADR-0012; S1-SYS-21 builds it; today the kernel opens the call at session start): the cp call opens when the readiness keys are public, on Slow's Guard-checked `start_call`, or at `INTAKE_S` = 120 s, whichever comes first.
 - **`call_deferred`** (→ INTAKE) and **`call_deferred_mandated`** (→ MANDATED, when a mandate is granted) (ADR-0014; S1-SYS-24 builds them) are SYS edges in `guard/status.py`, not a new `CaseStatus`. `chan.closed{deferred}` closes every call-1 offer (`offer_closed`), so nothing from call 1 can be approved or accepted in call 2, and nothing can be accepted between calls (`accept` is authorised only in IN_CALL). At most `MAX_CALLS` = 2 calls.
