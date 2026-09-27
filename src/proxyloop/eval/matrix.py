@@ -28,8 +28,9 @@ from proxyloop.llm.spend import RunawaySpend
 MAX_ERROR_RATE = 0.05
 # End reasons that abort the matrix, whatever run_session raised. On resume a
 # cell is re-run only if no model output could be scored: the endpoint died,
-# or the bundle is unended or unreadable. A budget stop is final (infra_error).
-_ABORT = frozenset({"llm_unavailable", "budget"})
+# or the bundle is unended or unreadable. Budget and P3 stops are final
+# (infra_error).
+_ABORT = frozenset({"llm_unavailable", "budget", "p3_failed"})
 _RERUN = frozenset({"llm_unavailable", "unended", "unreadable"})
 
 
@@ -144,7 +145,8 @@ async def run_matrix(
         reason = _ended(path, seen) if new else "no_bundle"
         if isinstance(caught, (LLMUnavailable, RunawaySpend)):
             raise caught  # a dead endpoint or runaway spend aborts the matrix (I8)
-        if reason in _ABORT:  # e.g. P3/attest failures close as llm_unavailable
+        if reason in _ABORT:  # a dead endpoint at P3/attest closes llm_unavailable;
+            # a P3 token mismatch closes p3_failed; both then raise other errors
             raise MatrixAborted(f"{cell} ended {reason}") from caught
         error = None if caught is None else f"{type(caught).__name__}: {caught}"
         runs.append(CellRun(cell, path, reason, error))

@@ -179,15 +179,38 @@ def test_a_cell_that_leaves_no_bundle_is_an_infra_error_cell(
 
 def test_an_llm_unavailable_bundle_aborts_whatever_was_raised(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:  # D3: P3/attest failures close as llm_unavailable, then raise others
+) -> None:  # D3: a dead endpoint at P3/attest closes llm_unavailable, then
+    # the kernel raises the underlying error (for example a ConnectError)
     async def session(*args: Any, runs_dir: Path, **kwargs: Any) -> None:
         Stream().write(runs_dir / "run-p3", "llm_unavailable")
-        raise RuntimeError("P3: vLLM /tokenize != the pinned tokenizer")
+        raise RuntimeError("the endpoint did not answer /tokenize")
 
     monkeypatch.setattr("proxyloop.eval.matrix.run_session", session)
     with pytest.raises(MatrixAborted, match="llm_unavailable"):
         _run(tmp_path, [Cell("C2", "i1", 1), Cell("C2", "i1", 2)])
     assert len(list(tmp_path.iterdir())) == 1  # the second cell never ran
+
+
+def test_a_p3_failed_cell_aborts_and_is_final_on_resume(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[object] = []
+
+    async def session(*args: Any, runs_dir: Path, **kwargs: Any) -> None:
+        calls.append(args)
+        Stream().write(runs_dir / "run-p3", "p3_failed")
+        raise RuntimeError("P3: vLLM /tokenize != the pinned tokenizer")
+
+    monkeypatch.setattr("proxyloop.eval.matrix.run_session", session)
+    cells = [Cell("C2", "i1", 1), Cell("C2", "i1", 2)]
+    with pytest.raises(MatrixAborted, match="p3_failed"):
+        _run(tmp_path, cells)
+    assert len(calls) == 1
+    with pytest.raises(MatrixAborted):  # resume: cell 0 is final, cell 1 runs
+        _run(tmp_path, cells)
+    assert len(calls) == 2 and len(list(tmp_path.iterdir())) == 2
+    (first,) = [d for d in sorted(tmp_path.iterdir())[0].iterdir() if d.is_dir()]
+    assert episode(first)["outcome"] == "infra_error"
 
 
 def test_resume_skips_timeout_abandoned_and_budget_cells(

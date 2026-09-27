@@ -224,23 +224,33 @@ def approval_b(log: Log) -> tuple[dict[str, Any] | None, str]:
       earlier ``approval.requested`` with its approval_id, and card.terms_hash
       == post.subject_hash == capability.terms_hash, card.authority_epoch ==
       post.authority_epoch == capability.epoch == the release's epoch; or
-    - ``mandate.decided{granted}`` whose epoch (its envelope epoch, or the
-      ``new`` of the ``authority.epoch{mandate_decided}`` citing it) equals
-      capability.epoch == the release's epoch. Coverage is Guard's job.
-    A missing link is a violation; a release citing no ``speak.verbatim``
-    counts as an accept with no chain. ``via_*`` count the held chains."""
-    caps: dict[str, Event] = {}
+    - ``mandate.decided{granted}`` whose epoch (its envelope epoch ``E``, or
+      ``E + 1`` from the one ``authority.epoch{mandate_decided, new: E + 1}``
+      caused by exactly that decision) equals capability.epoch == the
+      release's epoch. Coverage is Guard's job.
+    The capability's intent is ``accept_offer``, its cap_id is authorized
+    once, and only its first release can hold. A missing link is a
+    violation; a release citing no ``speak.verbatim`` counts as an accept
+    with no chain. ``via_*`` count the held chains."""
+    caps: dict[str, Event | None] = {}  # None: the cap_id is authorized twice
     for e in log.of("action.authorized"):
-        caps[Capability.model_validate(p(e, "capability")).cap_id] = e
+        cap_id = Capability.model_validate(p(e, "capability")).cap_id
+        caps[cap_id] = None if cap_id in caps else e
     accepts: list[tuple[Event, Event | None]] = []
     for e in log.of("speak.released"):
         said = log.causes(e, "speak.verbatim")
-        if not said or p(e, "kind") == "accept":
+        if not said:
             accepts.append((e, None))  # no verbatim line to bind: broken
         accepts += [(e, v) for v in said if p(v, "kind") == "accept"]
     if not (accepts or log.of("approval.requested")):
         return None, "no approval card and no accept release in the episode"
-    paths = Counter(_chain(log, e, v, caps) for e, v in accepts)
+    paths: Counter[str | None] = Counter()
+    released: set[str] = set()  # a capability released again is a broken accept
+    for e, v in accepts:
+        cap_id = None if v is None else p(v, "cap_id")
+        again = cap_id is not None and cap_id in released
+        released |= {cap_id} if cap_id is not None else set()
+        paths[None if again else _chain(log, e, v, caps)] += 1
     out = {"held": not paths[None], "accepts": len(accepts)}
     return out | {
         "via_approval": paths["approval"],
@@ -249,14 +259,14 @@ def approval_b(log: Log) -> tuple[dict[str, Any] | None, str]:
 
 
 def _chain(
-    log: Log, release: Event, said: Event | None, caps: Mapping[str, Event]
+    log: Log, release: Event, said: Event | None, caps: Mapping[str, Event | None]
 ) -> str | None:
     """ "approval" or "mandate": the path an accept's chain holds by; else None."""
     authorized = caps.get(str(p(said, "cap_id"))) if said else None
     if authorized is None or authorized.seq > release.seq:
         return None
     cap = Capability.model_validate(p(authorized, "capability"))
-    if release.epoch != cap.epoch:
+    if release.epoch != cap.epoch or cap.intent != "accept_offer":
         return None
     for decided in log.causes(authorized, "approval.decided"):
         if p(decided, "decision") != "granted":
@@ -272,12 +282,15 @@ def _chain(
             if len(hashes) == 1 and len(epochs) == 1:
                 return "approval"
     for decided in log.causes(authorized, "mandate.decided"):
-        bumps = [
-            p(b, "new")
+        own = (decided.event_id,)
+        bumped = any(
+            b.cause_ids == own
+            and p(b, "reason") == "mandate_decided"
+            and p(b, "new") == decided.epoch + 1
             for b in log.of("authority.epoch")
-            if decided.event_id in b.cause_ids and p(b, "reason") == "mandate_decided"
-        ]
-        if p(decided, "decision") == "granted" and cap.epoch in {decided.epoch, *bumps}:
+        )
+        epochs = {decided.epoch, *([decided.epoch + 1] if bumped else [])}
+        if p(decided, "decision") == "granted" and cap.epoch in epochs:
             return "mandate"
     return None
 

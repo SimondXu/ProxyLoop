@@ -366,17 +366,25 @@ def _grant(
     return s.emit("approval.decided", by, [posted, card_id])
 
 
-def _authorize(s: Stream, cause: str, cap_id: str = "cap1", terms: str = "h1") -> None:
-    cap = {"cap_id": cap_id, "business_action_id": "b", "intent": "accept_offer"}
+def _authorize(
+    s: Stream,
+    cause: str,
+    cap_id: str = "cap1",
+    terms: str = "h1",
+    intent: str = "accept_offer",
+) -> None:
+    cap = {"cap_id": cap_id, "business_action_id": "b", "intent": intent}
     cap |= {"terms_hash": terms, "epoch": s.epoch, "expires_ms": 99_999}
-    s.emit("action.authorized", {"intent": "accept_offer", "capability": cap}, [cause])
+    s.emit("action.authorized", {"intent": intent, "capability": cap}, [cause])
 
 
-def _accept(s: Stream, cap_id: str | None = "cap1") -> None:
+def _accept(
+    s: Stream, cap_id: str | None = "cap1", released: dict[str, str] | None = None
+) -> None:
     line = {"lane": "cp", "kind": "accept", "text": "I accept the offer."}
     line |= {"cap_id": cap_id} if cap_id else {}
     said = s.emit("speak.verbatim", line, ["run-s:0"])
-    s.emit("speak.released", {"lane": "cp"}, [said])
+    s.emit("speak.released", released or {"lane": "cp"}, [said])
 
 
 def test_approval_b_holds_on_a_complete_capability_chain() -> None:
@@ -442,6 +450,39 @@ def _held(s: Stream) -> bool:
     return m(metrics(s.end()), "approval_b")["held"]
 
 
+def test_a_release_payload_kind_never_double_counts_an_accept() -> None:
+    s = Stream()
+    _authorize(s, _grant(s, _card(s)))
+    _accept(s, released={"lane": "cp", "kind": "accept"})
+    out = m(metrics(s.end()), "approval_b")
+    assert out == {"held": True, "accepts": 1, "via_approval": 1, "via_mandate": 0}
+
+
+def test_a_cap_id_authorized_twice_breaks_the_chain() -> None:
+    s = Stream()
+    granted = _grant(s, _card(s))
+    _authorize(s, granted)
+    _authorize(s, granted)
+    _accept(s)
+    assert _held(s) is False
+
+
+def test_a_capability_for_another_intent_breaks_the_chain() -> None:
+    s = Stream()
+    _authorize(s, _grant(s, _card(s)), intent="submit_transaction")
+    _accept(s)
+    assert _held(s) is False
+
+
+def test_a_capability_released_twice_breaks_the_second_accept() -> None:
+    s = Stream()
+    _authorize(s, _grant(s, _card(s)))
+    _accept(s)
+    _accept(s)  # the same cap_id again
+    out = m(metrics(s.end()), "approval_b")
+    assert out == {"held": False, "accepts": 2, "via_approval": 1, "via_mandate": 0}
+
+
 def test_approval_b_fails_on_a_denied_decision() -> None:  # D1
     s = Stream()
     _authorize(s, _grant(s, _card(s), decision="denied"))
@@ -490,21 +531,49 @@ def test_a_release_without_a_verbatim_line_is_a_broken_accept() -> None:  # N1
     }
 
 
-def _mandate(s: Stream) -> str:
+def _mandate(s: Stream, mandate_id: str = "m1", bump: bool = True) -> str:
     """A mandate grant, then the epoch bump it causes (§9.4)."""
-    post = {"subject": "mandate", "subject_id": "m1", "decision": "granted"}
-    posted = s.emit(
-        "approval.post", post | {"subject_hash": "mh", "authority_epoch": 0}
-    )
-    by = {"mandate_id": "m1", "mandate_hash": "mh", "decision": "granted"}
-    decided = s.emit("mandate.decided", by | {"by": "sim_approver"}, [posted])
-    _bump(s, "mandate_decided", decided)
+    post = {"subject": "mandate", "subject_id": mandate_id, "decision": "granted"}
+    hashed = {"subject_hash": f"{mandate_id}h", "authority_epoch": 0}
+    posted = s.emit("approval.post", post | hashed)
+    by = {"mandate_id": mandate_id, "mandate_hash": f"{mandate_id}h"}
+    by |= {"decision": "granted", "by": "sim_approver"}
+    decided = s.emit("mandate.decided", by, [posted])
+    if bump:
+        _bump(s, "mandate_decided", decided)
     return decided
 
 
-def _bump(s: Stream, reason: str, cause: str) -> None:
-    s.emit("authority.epoch", {"new": s.epoch + 1, "reason": reason}, [cause])
+def _bump(s: Stream, reason: str, *causes: str) -> None:
+    s.emit("authority.epoch", {"new": s.epoch + 1, "reason": reason}, causes)
     s.epoch += 1
+
+
+def test_a_later_bump_citing_an_old_mandate_does_not_count() -> None:  # A
+    s = Stream()
+    decided = _mandate(s)  # epoch 0 -> 1
+    _bump(s, "mandate_decided", decided)  # 1 -> 2, still citing the old decision
+    _authorize(s, decided)
+    _accept(s)
+    assert _held(s) is False
+
+
+def test_a_bump_caused_by_several_decisions_does_not_count() -> None:  # B
+    s = Stream()
+    first, second = _mandate(s, "m1", bump=False), _mandate(s, "m2", bump=False)
+    _bump(s, "mandate_decided", first, second)  # 0 -> 1 for both at once
+    _authorize(s, first)
+    _accept(s)
+    assert _held(s) is False
+
+
+def test_an_accept_after_tighten_mandate_needs_reauthorisation() -> None:
+    s = Stream()
+    decided = _mandate(s)
+    _authorize(s, decided)
+    _bump(s, "tighten_mandate", decided)  # Slow tightened the mandate
+    _accept(s)
+    assert _held(s) is False
 
 
 def test_an_in_mandate_accept_chained_to_the_mandate_grant_holds() -> None:  # D2
