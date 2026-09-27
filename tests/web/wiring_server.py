@@ -35,6 +35,7 @@ CASES: dict[str, Mode] = {
     "wire-refuse": "refuse",
     "wire-raise": "raise",
     "wire-chat": "ok",
+    "wire-csrf": "ok",
     "wire-rep": "ok",
 }
 

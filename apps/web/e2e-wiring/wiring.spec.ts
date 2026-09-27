@@ -5,6 +5,8 @@ import { expect, test, type Page, type Response } from "@playwright/test";
 // there); texts and ids are read from the case's own log through the real API.
 type Ev = { seq: number; event_id: string; type: string; actor: string; cause_ids: string[]; payload: Record<string, unknown> };
 type Sock = { path: string; frames: string[] };
+// The stub kernel decides DECIDE_AFTER_S = 2 s after a post (tests/support/web_wiring.py): wait well past it.
+const DECIDED_MS = 10_000;
 
 /** A run's events.jsonl, through the real replay endpoint. */
 async function log(page: Page, id: string): Promise<Ev[]> {
@@ -60,6 +62,20 @@ function postFrom(page: Page, path: string, body: unknown, token: string | null 
     },
     { path, body, token: token ?? null },
   );
+}
+
+/**
+ * A 409 as serve.cases answers it: {error, reason?}. `error` is pinned; `reason`, when
+ * present, is a non-empty string from an open set (guard.decide's), so its value is not.
+ */
+function conflict(got: { status: number; body: unknown }, error: "already_decided" | "stale"): string | undefined {
+  expect(got.status).toBe(409);
+  const body = got.body as Record<string, unknown>;
+  expect(Object.keys(body).filter((k) => k !== "reason")).toEqual(["error"]);
+  expect(body.error).toBe(error);
+  if (!("reason" in body)) return undefined;
+  expect(typeof body.reason === "string" && body.reason !== "", "reason is a non-empty string").toBe(true);
+  return String(body.reason);
 }
 
 async function openLive(page: Page, id: string) {
@@ -131,13 +147,13 @@ test("b) live: /live sets the cookies and 303s, /ws/live streams the seed, Appro
   const got = await click(page, id, "approvals/", () => card.getByRole("button", { name: "Approve" }).click());
   expect(got).toEqual({ status: 200, body: { status: "posted" } });
   await expect(status).toHaveText("sent: waiting for the kernel's decision");
-  await expect(status).toHaveText("decided: granted by ui");
+  await expect(status).toHaveText("decided: granted by ui", { timeout: DECIDED_MS });
 
   // The same post again, with the same token: single use.
   const requested = one(seed, "approval.requested").payload;
   const body = { decision: "granted", terms_hash: requested.terms_hash, authority_epoch: requested.authority_epoch };
   const path = `/api/cases/${id}/approvals/${String(requested.approval_id)}`;
-  expect(await postFrom(page, path, body, await cookie(page, "pl_csrf"))).toEqual({ status: 409, body: { error: "already_decided" } });
+  conflict(await postFrom(page, path, body, await cookie(page, "pl_csrf")), "already_decided");
   await expect(status).toHaveText("decided: granted by ui");
   await expect(card.getByRole("alert")).toHaveCount(0);
   const after = await log(page, id);
@@ -151,8 +167,9 @@ test("c) stale: an epoch bumped in the board before the post is a 409 stale, sho
   const id = "wire-stale";
   const card = await openLive(page, id);
   const got = await click(page, id, "approvals/", () => card.getByRole("button", { name: "Approve" }).click());
-  expect(got).toEqual({ status: 409, body: { error: "stale", reason: "stale_epoch" } });
-  await expect(card.getByRole("alert")).toHaveText("409 stale: stale_epoch");
+  const reason = conflict(got, "stale");
+  expect(reason, "a stale refusal from guard.decide says why").toBeDefined();
+  await expect(card.getByRole("alert")).toHaveText(`409 stale: ${String(reason)}`);
   await expect(card.getByLabel("Approval status")).toHaveText("stale: the authority epoch moved past this card");
   await expect(card.getByRole("button", { name: "Approve" })).toBeDisabled();
   const after = await log(page, id);
@@ -166,9 +183,10 @@ test("d) refused: a 200, then the kernel's action.denied citing the card, shown 
   const got = await click(page, id, "approvals/", () => card.getByRole("button", { name: "Approve" }).click());
   expect(got).toEqual({ status: 200, body: { status: "posted" } });
   await expect(status).toHaveText("sent: waiting for the kernel's decision");
-  await expect(status).toHaveText("refused: stale_epoch");
+  await expect(status).toHaveText(/^refused: ./, { timeout: DECIDED_MS });
   await expect(card.getByRole("button", { name: "Approve" })).toBeDisabled();
   const after = await log(page, id);
+  await expect(status).toHaveText(`refused: ${String(one(after, "action.denied").payload.reason)}`);
   expect(one(after, "action.denied").cause_ids).toEqual([one(after, "approval.requested").event_id]);
   expect(count(after, "approval.post")).toBe(0);
 });
@@ -188,7 +206,7 @@ test("e) unavailable: the handover raises, the card shows the 503, and nothing r
 });
 
 test("f, i) a missing or wrong X-CSRF-Token is 403 csrf; a foreign Origin is 403 origin; nothing reaches the case", async ({ page }) => {
-  const id = "wire-chat";
+  const id = "wire-csrf";
   const card = await openLive(page, id);
   await expect(card).toBeVisible();
   const seed = await log(page, id);
@@ -232,6 +250,10 @@ test("h) rep: /rep 303s to ?rep, opens /ws/rep only, sees only public cp speech,
   const id = "wire-rep";
   expect(await entry(page, `/rep/${id}`)).toEqual({ status: 303, location: `/?rep=${id}`, cookies: ["pl_rep_csrf", "pl_rep_session"] });
   const seen = sockets(page);
+  // Every HTTP request the rep's page makes (the checks' own page.request calls are not the page's).
+  const http: string[] = [];
+  page.on("request", (r) => http.push(new URL(r.url()).pathname));
+  const api = () => http.filter((p) => p.startsWith("/api/") || p.startsWith("/ws/"));
   await page.goto(`/rep/${id}`);
   await expect(page).toHaveURL(`/?rep=${id}`);
   const seed = await log(page, id);
@@ -252,6 +274,7 @@ test("h) rep: /rep 303s to ?rep, opens /ws/rep only, sees only public cp speech,
   expect(got).toEqual({ status: 200, body: { status: "sent" } });
   await expect(transcript.getByRole("listitem").last()).toHaveText(`You: ${line}`);
   await expect.poll(() => seqs(seen[0])).toEqual([0, 1, 2]);
+  expect(api()).toEqual([`/api/cases/${id}/rep`]); // the page itself reads no replay, listing or /ws/live
 
   // Cross-role: with both roles' cookies in this browser, neither token opens the other's routes.
   expect((await entry(page, `/live/${id}`)).status).toBe(303);
@@ -264,6 +287,7 @@ test("h) rep: /rep 303s to ?rep, opens /ws/rep only, sees only public cp speech,
   expect(await postFrom(page, `/api/cases/${id}/approvals/${String(requested.approval_id)}`, body, rep)).toEqual(csrf);
   expect(await postFrom(page, `/api/cases/${id}/rep`, { text: "with the user's token" }, user)).toEqual(csrf);
   expect(seen.map((s) => s.path)).toEqual([`/ws/rep/${id}?from_seq=0`]);
+  expect(api().filter((p) => ["/api/replay/", "/api/bundles", "/ws/live"].some((f) => p.startsWith(f)))).toEqual([]);
   const after = await log(page, id);
   expect([count(after, "user.msg"), count(after, "utt.final"), count(after, "approval.post")]).toEqual([1, 1, 0]);
 });

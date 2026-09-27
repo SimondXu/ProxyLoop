@@ -36,7 +36,7 @@ from proxyloop.contract.state import Blackboard
 from proxyloop.guard.authorize import Denial, decide
 
 Mode = Literal["ok", "stale", "refuse", "raise"]
-DECIDE_AFTER_S = 1.0  # long enough for the page to show "sent" first
+DECIDE_AFTER_S = 2.0  # long enough for the page to show "sent" first, even loaded
 ROLES = ("fast_user", "fast_cp", "slow")
 STARTED: dict[str, object] = {
     "cfg_hash": "wiring",
