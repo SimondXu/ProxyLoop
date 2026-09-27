@@ -4,6 +4,7 @@
 - **Date:** 2026-09-26
 - **Task:** S0-SYS-07
 - **Amends:** ARCHITECTURE §8 "Slow context" ("the append-only tool history").
+- **Amended by ADR-0016:** "no transcript enters it (I5, AGENTS rule 9)" no longer holds: Slow reads the heard transcripts in a `[CONVERSATIONS]` block in the newest message only, stubbed to one line in history.
 
 ## Context
 ARCHITECTURE §8 gives Slow an append-only tool history, with a prompt cache on the newest tool result. The failed S0-ROOT-05 live smokes (handoff 2026-09-26 §3; the runs are not in the repo) showed what that costs without the cache. Every `f2s.msg` woke Slow, FastC repeated the same HOLD relay every turn, and each step resent the whole history. Back-to-back Slow steps hit the $5 runaway guard in one sim session, all of it Slow spend. The relay adapter refuses the cache breakpoint, and the main root dropped the prompt-cache work until the Slow model is settled. So the history itself has to stop growing. The options were:
