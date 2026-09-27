@@ -107,10 +107,11 @@ def _as_user(cookies: dict[str, str]) -> dict[str, str]:
     return dict(zip(USER, cookies.values(), strict=True))
 
 
-MANDATE_CSRF: dict[str, Callable[[Live], dict[str, str]]] = BAD_CSRF | {
+OPERATOR: dict[str, Callable[[Live], dict[str, str]]] = {
     "the operator's cookies": lambda live: headers(operator(live.http)),
     "the operator's values": lambda live: headers(_as_user(operator(live.http))),
 }
+MANDATE_CSRF = BAD_CSRF | OPERATOR  # the approval route's cases, plus these
 
 
 @pytest.mark.parametrize("make", MANDATE_CSRF.values(), ids=MANDATE_CSRF.keys())
