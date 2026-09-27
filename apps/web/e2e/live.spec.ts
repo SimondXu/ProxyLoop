@@ -38,7 +38,10 @@ test("approval card: appears on approval.requested, Approve posts the contract b
   // Nothing a model or the user says moves the card.
   ws.send(ev("fast.sentence", "fast.user", { lane: "user", gen_id: "g", utt_id: "u", text: "Approved, all done!" }));
   ws.send(ev("user.msg", "kernel", { text: "yes" }));
-  await expect(page.getByRole("list", { name: "Chat transcript" }).getByRole("listitem")).toHaveText(["You: yes"]);
+  const chatItems = page.getByRole("list", { name: "Chat transcript" }).getByRole("listitem");
+  await expect(chatItems.filter({ hasNot: page.getByRole("article") })).toHaveText(["You: yes"]);
+  // The card sits in the chat stream at its event's seq: before the later message.
+  await expect(chatItems.first().getByRole("article", { name: "Approval ap-1" })).toBeVisible();
   await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
   await shot(page, "live-card");
 
@@ -267,10 +270,12 @@ test("conversation view: two panes with the right speakers, heard text only, the
   const ev = events();
   const ws = await connected;
   ws.send(ev("session.started", "kernel", started(SIM), { stream: "ops" }));
-  // Every frame names the simulated rep: the page header and each pane.
+  // Every frame names the simulated rep: the page header and the call column; the chat column names only a simulated user.
   await expect(page.getByRole("note", { name: "Simulated parties" })).toHaveText(SIM_REP);
-  for (const pane of ["Chat", "Call"]) await expect(page.getByRole("region", { name: pane }).getByLabel("Simulated parties")).toHaveText(SIM_REP);
-  await expect(page.getByRole("heading", { name: "Call · Agent / Rep (simulated) / Call" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Call" }).getByLabel("Simulated parties")).toHaveText(SIM_REP);
+  await expect(page.getByRole("region", { name: "Chat" }).getByLabel("Simulated parties")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Call with the company" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Call" })).toContainText("Rep (simulated)");
   await expect(page.getByLabel("Status line")).toHaveText("Status: starting (no status yet)");
 
   const opened = JSON.parse(ev("chan.opened", "kernel", { lane: "cp" })) as { event_id: string };
@@ -292,11 +297,11 @@ test("conversation view: two panes with the right speakers, heard text only, the
 
   await expect(page.getByRole("list", { name: "Chat transcript" }).getByRole("listitem")).toHaveText([
     "You: Please lower my bill.",
-    "Assistant: I will call them now [interrupted]",
+    "Assistant: I will call them now — cut off",
   ]);
   await expect(page.getByRole("list", { name: "Call transcript" }).getByRole("listitem")).toHaveText([
     "Call: call connected",
-    "Agent · AI disclosure (fixed text): Hello, an AI assistant is calling.",
+    "Agent: Hello, an AI assistant is calling. AI disclosure · fixed wording",
     "Rep (simulated): What is the account name?",
     "Agent: The name is on file.",
   ]);
