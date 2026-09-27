@@ -52,6 +52,12 @@ RECIPE |= {
 }
 SMOKE: dict[str, Any] = {**RECIPE, "max_steps": 50, "save_steps": 10}
 SMOKE.update(per_device_train_batch_size=4, gradient_accumulation_steps=2)
+# Pull-through (TRAINING §8-9): plumbing only, claim "none". r 8 / alpha 16, lr 2e-4,
+# 40 steps, effective batch min(8, rows) in micro-batches of at most the smoke's 4.
+# TRAINING §8's effective batch of 64 is the curve recipe's, not pull-through's.
+LORA_PT: dict[str, Any] = {**LORA, "r": 8, "lora_alpha": 16}
+PULL_THROUGH: dict[str, Any] = {**SMOKE, "learning_rate": 2e-4, "max_steps": 40}
+PT_BATCH_NOTE = "effective batch min(8, rows); TRAINING §8's 64 is the curve recipe's"
 SMOKE_TURNS = {  # synthetic plumbing targets, canonicalised like teacher turns
     "user": (
         "I'm on it. I'll tell you as soon as the rep answers.",
@@ -69,6 +75,13 @@ SMOKE_TURNS = {  # synthetic plumbing targets, canonicalised like teacher turns
 def smoke_rows(views: list[tuple[str, str]], n: int = 64) -> list[tuple[str, ...]]:
     rows = [(*views[i % len(views)], i // len(views)) for i in range(n)]
     return [(p, v, SMOKE_TURNS[json.loads(v)["lane"]][k % 3]) for p, v, k in rows]
+
+
+def pull_through_recipe(n_rows: int) -> dict[str, Any]:
+    batch = min(8, n_rows)
+    micro = max(d for d in (1, 2, 3, 4) if batch % d == 0)
+    size = {"per_device_train_batch_size": micro}
+    return PULL_THROUGH | size | {"gradient_accumulation_steps": batch // micro}
 
 
 def fused_kernels(impl: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -140,10 +153,17 @@ def write_json(path: Path, doc: dict[str, Any]) -> None:
     path.write_text(json.dumps(doc, indent=2, default=str) + "\n")  # never lose a run
 
 
-def claim_run_dir(run_dir: Path, views: list[tuple[str, str]], git_sha: str) -> str:
-    """One config per run dir: never resume or return a result under another."""
-    body = {"pins": PINS, "target_regex": TARGET_REGEX, "lora": LORA, "smoke": SMOKE}
-    body |= {"views": views, "git_sha": git_sha}
+def claim_run_dir(
+    run_dir: Path,
+    rows: list[Any],
+    git_sha: str,
+    recipe: dict[str, Any] = SMOKE,
+    lora: dict[str, Any] = LORA,
+) -> str:
+    """One config per run dir: never resume or return a result under another. The
+    training rows are stored under "views" (the S0-MOD-02 key)."""
+    body = {"pins": PINS, "target_regex": TARGET_REGEX, "lora": lora, "recipe": recipe}
+    body |= {"views": rows, "git_sha": git_sha}
     new = hashlib.sha256(json.dumps(body).encode()).hexdigest()
     if not (path := run_dir / "config.json").is_file():
         write_json(path, {"hash": new, **body})
@@ -164,7 +184,7 @@ def perf_record(
     return dict(zip(keys, (metrics, tokens, rate, peak), strict=True))
 
 
-def peft_model(path: str, *, meta: bool) -> tuple[Any, dict[str, Any]]:
+def peft_model(path: str, *, meta: bool, lora: dict = LORA) -> tuple[Any, dict]:
     """(PEFT model over TARGET_REGEX, report with the base named_modules())."""
     import torch
     from peft import LoraConfig, get_peft_model
@@ -178,7 +198,7 @@ def peft_model(path: str, *, meta: bool) -> tuple[Any, dict[str, Any]]:
     else:
         model = Auto.from_pretrained(path, dtype=torch.bfloat16, device_map="cuda")
     modules = [[n, type(m).__name__] for n, m in model.named_modules()]
-    model = get_peft_model(model, LoraConfig(**LORA, target_modules=TARGET_REGEX))
+    model = get_peft_model(model, LoraConfig(**lora, target_modules=TARGET_REGEX))
     trainable, total = model.get_nb_trainable_parameters()
     names = [n for n, p in model.named_parameters() if p.requires_grad]
     report = target_report(names) | {"trainable_params": trainable, "all_params": total}
@@ -186,10 +206,18 @@ def peft_model(path: str, *, meta: bool) -> tuple[Any, dict[str, Any]]:
 
 
 def train(
-    download: Callable, run_dir: Path, views: list, git_sha: str, commit: Callable
+    download: Callable,
+    run_dir: Path,
+    rows: list,
+    git_sha: str,
+    commit: Callable,
+    recipe: dict,
+    lora: dict,
+    card: dict,
 ) -> dict[str, Any]:
-    """The S0 smoke: resumable, P5 on the real batch, adapter + merged BF16 copy."""
-    config_hash = claim_run_dir(run_dir, views, git_sha)
+    """Resumable SFT over (profile, view, turn) rows: P5 on the real batch, adapter +
+    merged BF16 copy. The smoke and pull-through differ only in rows, recipe, lora."""
+    config_hash = claim_run_dir(run_dir, rows, git_sha, recipe, lora)
     if (done := run_dir / "result.json").is_file():
         return json.loads(done.read_text())
     import torch
@@ -202,12 +230,12 @@ def train(
 
     kernels, rt = preflight()  # before any model download or load
     tok = AutoTokenizer.from_pretrained(model_dir := download())
-    parsed = [(p, FastView.model_validate_json(v), t) for p, v, t in smoke_rows(views)]
-    rows = [dataset.build_row(v, p, t, tok) for p, v, t in parsed]
-    pairs = [(r, dataset.tokenize_row(r, tok)) for r in rows]
+    parsed = [(p, FastView.model_validate_json(v), t) for p, v, t in rows]
+    built = [dataset.build_row(v, p, t, tok) for p, v, t in parsed]
+    pairs = [(r, dataset.tokenize_row(r, tok)) for r in built]
     data = [d for _, d in pairs]
     targets = {tuple(d["input_ids"]): r.completion for r, d in pairs}
-    model, lora = peft_model(str(model_dir), meta=False)
+    model, lora_report = peft_model(str(model_dir), meta=False, lora=lora)
 
     class Stream(TrainerCallback):
         commit_s = 0.0
@@ -223,7 +251,7 @@ def train(
             commit()  # a preempted restart resumes from here
             self.commit_s += time.monotonic() - start
 
-    args = SFTConfig(output_dir=str(run_dir / "checkpoints"), **SMOKE)
+    args = SFTConfig(output_dir=str(run_dir / "checkpoints"), **recipe)
     train_set = Dataset.from_list(data)
     trainer = SFTTrainer(model, args, train_dataset=train_set, processing_class=tok)
     trainer.add_callback(stream := Stream())
@@ -256,12 +284,12 @@ def train(
     files = sorted(f for f in (run_dir / "adapter").iterdir() if f.is_file())
     shas = {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in files}
     result = {"run_id": run_dir.name, "config_hash": config_hash, "git_sha": git_sha}
-    result |= {"rows": "synthetic-smoke", "claim": False, "runtime": rt}
+    result |= {**card, "n_rows": len(rows), "claim": False, "runtime": rt}
     result |= {"model": {"id": config.MODEL_ID, "revision": config.MODEL_REVISION}}
-    result |= {"lora": {**LORA, **lora, "target_regex": TARGET_REGEX}}
-    result |= {"sft_config": args.to_dict(), "fused_kernels": kernels}
+    result |= {"lora": {**lora, **lora_report, "target_regex": TARGET_REGEX}}
+    result |= {"recipe": recipe, "sft_config": args.to_dict(), "fused_kernels": kernels}
     result |= {"p5": {"ok": True, "rows": p5}, "resumed_from": resume and resume.name}
-    result |= {"fingerprints": sorted({r.fingerprint for r in rows})}
+    result |= {"fingerprints": sorted({r.fingerprint for r in built})}
     result |= {"max_microbatch_padded_tokens": worst, "adapter_sha256": shas}
     result |= json.loads(perf_file.read_text())
     write_json(done, result)

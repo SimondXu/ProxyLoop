@@ -105,7 +105,7 @@ def test_slow_holds_for_a_missing_identity_fact_then_is_told_to_identify(
     hold = act(
         "The rep asks for identity; asking the user.",
         {"tool": "ask_user", "text": ask},
-        {"tool": "guide_fast", "move": "hold_for_decision"},
+        {"tool": "guide_fast", "move": "hold_for_fact"},
     )
     start = k.emit("user.msg", "kernel", {"text": "Find me a lower price."}).event_id
     text = "My name is Dana Reyes and the last 4 digits are 4821."
@@ -129,7 +129,7 @@ def test_slow_holds_for_a_missing_identity_fact_then_is_told_to_identify(
     idle.relay(start, lane="cp", utt_ref=None, type="HOLD", text="fact_request")
     asyncio.run(slow.step(["relay"]))
     (guide,) = [m.guide for m in k.bb.s2f_pending["cp"]]
-    assert guide is not None and guide.move == "hold_for_decision"
+    assert guide is not None and guide.move == "hold_for_fact"
     kinds = {e.type for e in k.bus.events}
     assert not {"approval.requested", "authority.epoch"} & kinds
     assert "status.changed" not in kinds and "action.denied" not in kinds
@@ -138,7 +138,9 @@ def test_slow_holds_for_a_missing_identity_fact_then_is_told_to_identify(
     assert set(k.bb.public.facts) == {"account.holder_name", "account.last4"}
     asyncio.run(slow.step(["timer"]))
     first, _, third = (m[-1]["content"] for m in idle.requests())
-    assert "not given yet" in first and "hold_for_decision" in first
+    assert "not given yet" in first and "hold_for_fact" in first
+    system = idle.requests()[0][0]["content"]  # S1-SYS-20: the fact hold (ADR-0011)
+    assert "guide_fast(hold_for_fact)" in system and "hold_for_decision" not in system
     slots = "slots=[fact:account.holder_name, fact:account.last4]"
     assert f"guide_fast(identify, {slots})" in third
     k.bus.close()

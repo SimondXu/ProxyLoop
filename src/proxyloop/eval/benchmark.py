@@ -82,6 +82,7 @@ Table = dict[str, Any]
 class ConditionSpec(Frozen):
     name: str = Field(pattern=r"^[A-Za-z0-9]+$")  # no "-": matrix.cell_dir
     attested_adapter: bool = False
+    note: str | None = Field(default=None, min_length=1)  # on its conditions row
 
 
 class FamilySpec(Frozen):
@@ -357,12 +358,12 @@ def _conditions(
     """Pairing: per condition, its cells missing from the spec's set and its
     cells absent from another condition that has bundles; claim status."""
     columns = ["expected", "present", "missing", "unpaired", "excluded"]
-    table = _table([*columns, "claimable", "evidence", "fast_models"])
+    table = _table([*columns, "claimable", "evidence", "fast_models", "note"])
     expected = bench.expected()
     present = {c: {f.key for f in fs} for c, fs in kept_.items()}
     sets = list(present.values())
     paired = sets[0].intersection(*sets[1:]) if sets else set[Key]()
-    for c in (s.name for s in bench.spec.conditions):
+    for c, note in ((s.name, s.note) for s in bench.spec.conditions):
         mine, fs = present.get(c, set[Key]()), kept_.get(c, [])
         claimable = sum(labels[f.name] == "claim" for f in fs)
         refs = [
@@ -384,6 +385,7 @@ def _conditions(
                 f"descriptive ({unclaimable} unclaimable)" if unclaimable else "claim"
             )
         row["fast_models"] = sorted(set(refs))
+        row["note"] = note
         _put(table, c, row, len(fs))
     return table
 

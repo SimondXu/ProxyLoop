@@ -26,3 +26,6 @@ At merge the root moves these into `[dependency-groups] mod`:
 - Mac: `PROXYLOOP_VLLM_API_KEY`, and optionally `PROXYLOOP_VLLM_BASE_URL` (otherwise the probe looks up
   the web URL of the Modal app). Neither is written into any output.
 - `SERVE_VARIANT=pinned|prefix-align` (make) and `PL_LORA_RUNG=all|attn-mlp` (deploy time).
+- `PL_TRAINED_ADAPTER=<name>=<path under the adapter volume>` (deploy time, optional): a third LoRA
+  slot for one trained adapter, named `Qwen3.5-9B-pl-<id>` (pull-through: `Qwen3.5-9B-pl-pt-<fp8>`) and checked
+  before vLLM starts (`config.check_trained`). Set by `make pull-through` and `make pull-through-liveness`.

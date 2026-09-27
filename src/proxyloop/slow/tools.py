@@ -19,7 +19,7 @@ from proxyloop.contract import state as st
 from proxyloop.contract.base import Lane
 from proxyloop.contract.llm import ToolCall
 from proxyloop.contract.messages import Guide, GuideMove, SlowToFast
-from proxyloop.contract.protocol import GuideSlotError, render_messages
+from proxyloop.contract.protocol import GuideMoveError, GuideSlotError, render_messages
 from proxyloop.contract.views import Trigger, view_cp
 from proxyloop.guard import authorize as guard
 from proxyloop.guard.authorize import CaseRef, Denial
@@ -32,14 +32,16 @@ if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
 
 SCALE = {"usd_minor": 100, "months": 1}  # minor units and months, as spoken
+CP_PROFILE = "pl_cp_v2"  # = kernel.lanes.PROFILE["cp"] (tests/slow: equality)
 _INVALID = (ValidationError, ValueError, KeyError, TypeError, ArithmeticError)
 _GUIDE = frozenset({"tool", "move", "slots"})
 _LAST4 = re.compile(r"[0-9]{4}")  # ASCII only: no NFKC, no separators
 _WORD = r"[A-Za-z]+(?:['\u2019-][A-Za-z]+)*"  # O'Brien, Lee-Smith
 _NAME = re.compile(rf"{_WORD}(?: {_WORD}){{0,3}}")  # 1-4 words, single spaces
 _YEARS = re.compile(r"[0-9]{1,2}")
-_TENURE = re.compile(  # #153 rounds 3-4: first person, in context, one space
-    r"(?<![\w'\u2019`-])I(?:'ve|\u2019ve| have) been (?:with you|a customer) "
+_TENURE = re.compile(  # #153 rounds 3-4: first person, in context, one space;
+    # S1-SYS-20: "I" starts the message or a sentence ("She said I've..." never)
+    r"(?:^|(?<=[.!?])\s+)I(?:'ve|\u2019ve| have) been (?:with you|a customer) "
     r"(?:for )?([0-9]{1,2}) [Yy]ears?(?![\w'\u2019-])"
 )
 _AGE = re.compile(r"(?i)\b(?:old|age|aged|ago)\b")  # "36 years old": no tenure
@@ -94,6 +96,8 @@ class SlowTools:
             a = cast(dict[str, Any], c if isinstance(c, dict) else {})
             try:
                 result = self._run(str(a.get("tool")), a)
+            except GuideMoveError:  # a move the cp profile cannot render: a bug
+                raise
             except _INVALID as err:
                 result = no(f"invalid arguments: {err}")
             out.append(self._apply(str(a.get("tool")), a, result, causes))
@@ -345,7 +349,7 @@ def identity_hint(
     if missing:
         parts.append(
             f"{', '.join(missing)} not given yet: when the rep asks, ask_user and "
-            "guide_fast(hold_for_decision) until it is public; deflect_fact_request "
+            "guide_fast(hold_for_fact) until it is public; deflect_fact_request "
             "only for a fact that must not be given"
         )
     return f"identity: {'; '.join(parts)}" if parts else ""
@@ -494,7 +498,7 @@ def public_guide(bb: st.Blackboard, guide: Guide) -> bool:  # the renderer judge
         bb.model_copy(update={"public": public}), Trigger(kind="guidance"), ""
     )
     try:
-        render_messages(view, "pl_cp_v2")
+        render_messages(view, CP_PROFILE)
     except GuideSlotError:
         return False
     return True

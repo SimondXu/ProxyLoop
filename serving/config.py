@@ -4,6 +4,8 @@ ARCHITECTURE §13).
 Pure data and helpers, imported on the Mac and in the Modal containers.
 """
 
+import re
+from pathlib import PurePosixPath
 from typing import Any
 
 MODEL_ID = "Qwen/Qwen3.5-9B"
@@ -36,6 +38,9 @@ LIVE_MIN_MEAN_DIFF = 1e-3  # non-zero adapter: mean |difference| above this (nat
 # Two served LoRA slots, both built for the chosen ladder rung: lora_B = 0, and
 # lora_B != 0.
 ZERO_LORA_NAME, LIVE_LORA_NAME = "Qwen3.5-9B-zero", "Qwen3.5-9B-live"
+# A third slot for one trained adapter (pull-through: Qwen3.5-9B-pl-pt-<fp8>, TRAINING
+# §9), chosen at deploy time: PL_TRAINED_ADAPTER="<name>=<path under the volume>".
+TRAINED_PREFIX = f"{SERVED_NAME}-pl-"
 
 # Prefix caching is OFF in the pinned configuration; the other variant is measure-only.
 VARIANTS = {
@@ -83,13 +88,53 @@ def app_name(variant: str) -> str:
     return APP_NAME if variant == "pinned" else f"{APP_NAME}-{variant}"
 
 
-def lora_slots(rung: str, adapter_root: str) -> dict[str, str]:
+def lora_slots(rung: str, adapter_root: str, trained: str = "") -> dict[str, str]:
     if rung not in RUNGS:
         raise ValueError(f"unknown rung {rung!r}; known: {sorted(RUNGS)}")
     return {
         ZERO_LORA_NAME: f"{adapter_root}/zero-{rung}",
         LIVE_LORA_NAME: f"{adapter_root}/live-{rung}",
-    }
+    } | trained_slot(trained, adapter_root)
+
+
+def trained_slot(spec: str, adapter_root: str) -> dict[str, str]:
+    """PL_TRAINED_ADAPTER "<name>=<relative path>" -> {name: path}; "" -> {}."""
+    if not spec:
+        return {}
+    name, _, rel = spec.partition("=")
+    if not name.startswith(TRAINED_PREFIX) or len(name) == len(TRAINED_PREFIX):
+        raise ValueError(f"a trained slot is named {TRAINED_PREFIX}<id>, not {name!r}")
+    if not rel or rel.startswith("/") or ".." in PurePosixPath(rel).parts:
+        raise ValueError(f"a trained adapter path is relative to the volume: {rel!r}")
+    return {name: f"{adapter_root}/{rel}"}
+
+
+def adapter_targets(adapter_config: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    """The §13 targets a PEFT adapter_config.json covers (a regex or module names)."""
+    modules: str | list[str] = adapter_config["target_modules"]
+
+    def hit(parent: str, proj: str) -> bool:
+        name = f"model.language_model.layers.0.{parent}.{proj}"
+        if isinstance(modules, str):
+            return re.fullmatch(modules, name) is not None
+        return any(name.endswith(f".{m}") for m in modules)
+
+    return tuple(t for t in RUNGS["all"] if hit(*t))
+
+
+def check_trained(adapter_config: dict[str, Any], rung: str) -> None:
+    """A trained slot is served only if vLLM can load it: rank within the server's,
+    targets within the served rung, and no packed trailer without its leader (an
+    in_proj_z adapter without in_proj_qkv kills the engine, ADR-0002 Risks)."""
+    targets = adapter_targets(adapter_config)
+    outside = set(targets) - set(RUNGS[rung])
+    leaders = missing_pack_leaders(targets)
+    if adapter_config["r"] > LORA_RANK or not targets or outside or leaders:
+        raise ValueError(
+            f"trained adapter not servable on rung {rung}: r={adapter_config['r']}, "
+            f"targets={targets}, outside the rung {sorted(outside)}, "
+            f"missing leaders {leaders}"
+        )
 
 
 def serve_args(model_path: str, variant: str, slots: dict[str, str]) -> list[str]:

@@ -62,8 +62,8 @@ is only to report the offers to the user (accept nothing); "escalate" when a fai
 accept cannot be replanned.
 Calls run in order, so a guide_fast may cite a fact recorded earlier in the same act.
 Identity: when the representative asks for a fact the user has not given yet (e.g. \
-the account holder name or last 4), ask_user for it and guide_fast(hold_for_decision) \
-so the representative waits while the phone voice checks with the user. As soon as \
+the account holder name or last 4), ask_user for it and guide_fast(hold_for_fact) \
+so the representative waits while the phone voice gets it from the user. As soon as \
 the user gives it, record_fact it and, in the same act, guide_fast(identify, \
 slots=["fact:<key>", ...]). Use deflect_fact_request only for a fact that must not \
 be given: the representative hears a refusal and may hang up.

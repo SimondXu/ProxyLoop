@@ -556,7 +556,7 @@ vllm serve Qwen/Qwen3.5-9B@<rev> --served-model-name Qwen3.5-9B --dtype bfloat16
 
 ---
 
-## 16. Size budget (Python under `src/`, excluding tests, web and `serving/`/`training_jobs/`) [E]
+## 16. Size estimate (Python under `src/`, excluding tests, web and `serving/`/`training_jobs/`) [E]
 
 | Area | S0 | S1 adds | S0–S1 total |
 |---|---|---|---|
@@ -570,4 +570,4 @@ vllm serve Qwen/Qwen3.5-9B@<rev> --served-model-name Qwen3.5-9B --dtype bfloat16
 | models + training + eval (MOD) | 300 | 450 | 750 |
 | **Total** | **≈ 4,450** | **≈ 2,150** | **≈ 6,600** |
 
-Tripwires (PLAN §0.6): `src/` over 6,300 at S0 close or over 9,000 at S1 close means stop and ask. The per-area table above predates the detailed design. The web app is capped at 1,500 TypeScript lines through S1, and `serving/` + `training_jobs/` at 900 lines (700 → 900, user decision 2026-09-26; reformat of serving/).
+The per-area table above is a planning estimate [E] that predates the detailed design; it is not a gate. Size is reviewed at each stage close (PLAN §0.7); the PR size caps and the module 600-line warning remain (PLAN §0.6).

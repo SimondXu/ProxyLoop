@@ -10,7 +10,9 @@
 # comparisons with C5/C2 are then time-separated, marked "not interleaved".
 id: fast-benchmark
 conditions:
-  - {name: C5}
+  - name: C5
+    # note: emitted verbatim on the condition's row of the report
+    note: sampling set by the provider (temperature/top_p not supported by openai/gpt-6-luna on OpenRouter)
   - {name: C2}
   - {name: C1, attested_adapter: true}
 families:

@@ -1,5 +1,6 @@
 """``python -m proxyloop.cli session|rep-chat|replay`` (sessions via ``run_session``,
-I1). Live runs read ``PL_{VLLM,RELAY,TEAMROUTER}_{BASE_URL,API_KEY}``. The Fast
+I1). Live runs read ``PL_<ENDPOINT>_{BASE_URL,API_KEY}`` for each endpoint in use
+(``VLLM``, ``RELAY``, ``TEAMROUTER``, ``OPENROUTER``). The Fast
 and Slow models are chosen by ``ModelRef`` id and endpoint (only ``SessionConfig``
 values change); a hosted Fast runs through the chat adapter, with P3
 ``not_applicable``."""
