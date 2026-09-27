@@ -75,10 +75,8 @@ class Inputs:
 
     @cached_property
     def calls(self) -> list[tuple[int, LLMCallRecord]]:
-        return [
-            (e.seq, LLMCallRecord.model_validate(e.payload))
-            for e in self.of("llm.call")
-        ]
+        calls = self.of("llm.call")
+        return [(e.seq, LLMCallRecord.model_validate(e.payload)) for e in calls]
 
     @cached_property
     def turns(self) -> list[Turn]:
@@ -87,11 +85,8 @@ class Inputs:
         for e in self.of("fast.turn"):
             p = e.payload
             record = last.get(str(p["call_id"]))
-            text = (
-                self.prompt(record.response_sha)
-                if record and record.response_sha
-                else None
-            )
+            sha = record.response_sha if record else None
+            text = self.prompt(sha) if sha else None
             lane = "cp" if p["lane"] == "cp" else "user"
             items = None if text is None else fp.parse_turn(text, lane)
             out.append(Turn(e.seq, str(p["gen_id"]), lane, record, items))
@@ -129,7 +124,7 @@ def scalar(value: Value) -> int | float | None:
     return None
 
 
-def _dict(value: object) -> dict[str, object]:
+def as_dict(value: object) -> dict[str, object]:
     return cast(dict[str, object], value) if isinstance(value, dict) else {}
 
 
@@ -201,13 +196,14 @@ DETECTORS["speech_after_directive"] = lambda x: _speech_after(x, _DIRECTIVES)
 
 @detector("empty_length")
 def _empty_length(x: Inputs) -> Value:
-    """Fast turns cut at the length cap whose response holds no speech item."""
+    """Fast turns cut at the length cap whose response holds no speech item;
+    ``unknown``: no llm.call record, or no response to parse."""
     turns: list[int] = []
     unknown: list[int] = []
     for t in x.turns:
-        if t.record is None or t.record.finish_reason != "length":
+        if t.record is not None and t.record.finish_reason != "length":
             continue
-        if t.items is None:
+        if t.record is None or t.items is None:
             unknown.append(t.seq)
         elif not any(isinstance(i, fp.Speech) for i in t.items):
             turns.append(t.seq)
@@ -217,12 +213,12 @@ def _empty_length(x: Inputs) -> Value:
 @detector("unterminated_voiced")
 def _unterminated(x: Inputs) -> Value:
     """Voiced lines (fast.sentence) never delivered, delivered interrupted, or
-    ``cut``: the last line of a length-capped turn, with no closing mark."""
+    ``cut``: the last line of a length-capped turn, with no closing mark.
+    ``unknown``: last lines whose turn has no llm.call record (cap unknown)."""
     delivered = {str(e.payload["utt_id"]): e for e in x.of("utt.delivered")}
-    capped = {
-        t.gen_id for t in x.turns if t.record and t.record.finish_reason == "length"
-    }
+    capped = {t.gen_id: t.record.finish_reason == "length" for t in x.turns if t.record}
     out: dict[str, list[int]] = {"undelivered": [], "interrupted": [], "cut": []}
+    unknown: list[int] = []
     last: dict[str, Event] = {}
     for s in x.of("fast.sentence"):
         d = delivered.get(str(s.payload["utt_id"]))
@@ -232,10 +228,13 @@ def _unterminated(x: Inputs) -> Value:
             out["interrupted"].append(s.seq)
         last[str(s.payload.get("gen_id"))] = s
     for gen, s in last.items():
-        if gen in capped and not _SENTENCE_END.search(str(s.payload.get("text", ""))):
+        if gen not in capped:
+            unknown.append(s.seq)
+        elif capped[gen] and not _SENTENCE_END.search(str(s.payload.get("text", ""))):
             out["cut"].append(s.seq)
     out["cut"].sort()
-    return {"count": len({s for seqs in out.values() for s in seqs})} | out
+    count = len({s for seqs in out.values() for s in seqs})
+    return {"count": count} | out | {"unknown": sorted(unknown)}
 
 
 @detector("relay_gap")
@@ -251,8 +250,7 @@ def _relay_gap(x: Inputs) -> Value:
     for f in x.of("f2s.msg"):
         if f.payload.get("lane") == "user":
             relayed.setdefault(str(f.payload.get("utt_ref")), []).append(f.t_ms)
-    flagged: list[Event] = []
-    unknown: list[int] = []
+    flagged, unknown = list[Event](), list[int]()
     for msg in x.of("user.msg"):
         close = msg.t_ms + x.relay_window_ms
         if any(t <= close for t in relayed.get(msg.event_id, [])):
@@ -264,7 +262,7 @@ def _relay_gap(x: Inputs) -> Value:
     revealed = [
         m.seq
         for m in flagged
-        if any(by_id[c].type == "user.sim" and _dict(by_id[c].payload.get("revealed"))
+        if any(by_id[c].type == "user.sim" and as_dict(by_id[c].payload.get("revealed"))
                for c in m.cause_ids)
     ]  # fmt: skip
     return {
@@ -308,7 +306,7 @@ def _stale(x: Inputs) -> Value:
     seqs = [
         e.seq
         for e in x.of("s2f.msg")
-        if e.seq > moved[0] and _dict(e.payload.get("guide")).get("move") in _STALE
+        if e.seq > moved[0] and as_dict(e.payload.get("guide")).get("move") in _STALE
     ]
     return {"count": len(seqs), "seqs": seqs}
 
@@ -322,7 +320,7 @@ def _ok_hold(x: Inputs) -> Value:
         return None
     best = run = 0
     for e in policy:
-        run = run + 1 if _dict(e.payload["intent"]).get("kind") == "ok_hold" else 0
+        run = run + 1 if as_dict(e.payload["intent"]).get("kind") == "ok_hold" else 0
         best = max(best, run)
     return best
 
@@ -331,7 +329,8 @@ def _ok_hold(x: Inputs) -> Value:
 def _guide_to_heard(x: Inputs) -> Value:
     """From each cp GUIDE s2f.msg to the first utt.delivered of a generation
     that voiced it (s2f.voiced msg_id → gen_id; fast.sentence utt_id → gen_id).
-    ``unheard``: guides never voiced or never delivered."""
+    ``unheard``: guides never voiced or delivered; ``unknown``: those the log
+    ends on within the relay window (as in ``relay_gap``)."""
     gens: dict[str, list[str]] = {}
     for v in x.of("s2f.voiced"):
         gens.setdefault(str(v.payload["msg_id"]), []).append(str(v.payload["gen_id"]))
@@ -345,13 +344,16 @@ def _guide_to_heard(x: Inputs) -> Value:
         if gen is not None:
             first.setdefault(gen, d.t_ms)
     ms: list[int] = []
-    unheard = 0
+    unheard = unknown = 0
+    end = x.events[-1].t_ms if x.events else 0
     for g in x.of("s2f.msg"):
         if g.payload.get("type") != "GUIDE":
             continue
         heard = [first[n] for n in gens.get(str(g.payload["msg_id"]), []) if n in first]
         if heard:
             ms.append(min(heard) - g.t_ms)
+        elif end < g.t_ms + x.relay_window_ms:
+            unknown += 1
         else:
             unheard += 1
     ms.sort()
@@ -360,6 +362,7 @@ def _guide_to_heard(x: Inputs) -> Value:
         "p50": _rank(ms, 0.5),
         "p90": _rank(ms, 0.9),
         "unheard": unheard,
+        "unknown": unknown,
         "ms": ms,
     }
 
@@ -376,4 +379,4 @@ def _holds(x: Inputs) -> Value:
     ends = x.of("session.ended")
     if not ends or not isinstance(ends[-1].payload.get("counts"), dict):
         return None
-    return _dict(ends[-1].payload["counts"]).get("hold_repeat", 0)
+    return as_dict(ends[-1].payload["counts"]).get("hold_repeat", 0)

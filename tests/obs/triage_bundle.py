@@ -118,7 +118,7 @@ def bundle(root: Path, split: str = "train") -> Path:
     error = "EndpointError: HTTP 400: PRIV-error-text"
     call(log, "slow", GEMINI, "s1", finish_reason=None, error=error)  # 26
     call(log, "slow", GEMINI, "s2", finish_reason=None, error="cancelled")  # 27
-    turn(log, "cp", "cp-g3", "c-none", c2)  # 28: no llm.call c-none
+    t28 = turn(log, "cp", "cp-g3", "c-none", c2)  # 28: no llm.call c-none
     denied: P = {"violations": ["PRIV-violation"]}
     log.add("declass.denied", "guard", "agent", denied, (log.start,))  # 29
     log.add("slow.step.started", "slow", "agent", step)  # 30 (t=3000)
@@ -130,9 +130,11 @@ def bundle(root: Path, split: str = "train") -> Path:
     no: P = {"intent": "guide_fast", "reason": "guide_slot_not_public"}
     log.add("action.denied", "slow", "agent", no, (t31,))  # 33
     s2f(log, "s2f-3", "user", "ASK_USER", t31, text="PRIV-ask")  # 34
-    said(log, "PRIV-msg-late")  # 35 (t=3500)
+    sentence(log, "cp", "cp-g3", 0, "Hm", t28)  # 35: its turn has no llm.call
+    s2f(log, "s2f-4", "cp", "GUIDE", t31, guide=guide)  # 36 (t=3600): pending
+    said(log, "PRIV-msg-late")  # 37 (t=3700)
     end: P = {"reason": "abandoned", "counts": {"hold_repeat": 3}}
-    log.add("session.ended", "kernel", "ops", end)  # 36 (t=3600)
+    log.add("session.ended", "kernel", "ops", end)  # 38 (t=3800)
     path = write(root / "rT", log, manifest("rT", split=split))
     prompts(path, {"resp-c1": CP_G1, "resp-c2": CP_G2, "resp-u1": USER_G1})
     return path

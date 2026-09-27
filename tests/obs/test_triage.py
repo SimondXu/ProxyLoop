@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from tests.obs.bundles import write
+from tests.obs.bundles import Log, manifest, write
 from tests.obs.triage_bundle import P, bundle
 
-from proxyloop.contract.bundle import MANIFEST
+from proxyloop.contract.bundle import EVENTS, MANIFEST
 from proxyloop.obs import detectors, triage
 
 
@@ -32,7 +32,7 @@ def test_the_row_names_what_ran(tmp_path: Path) -> None:
         "mode": "live",  # the manifest's cfg.live
         "models": {},  # session.started names none in this fixture
         "slow_view": "transcript",
-        "duration_ms": 3600,
+        "duration_ms": 3800,
         "relay_window_ms": 10_000,
     }
 
@@ -108,3 +108,27 @@ def test_an_invalid_bundle_is_reported_not_raised(
     (run / MANIFEST).write_text("{", "utf-8")
     assert triage.main([str(run)]) == 1
     assert capsys.readouterr().err.startswith("unreadable: ")
+
+
+def test_odd_event_files_are_unreadable_not_raised(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    partial = write(tmp_path / "a", None, None)  # incomplete: no manifest
+    first = Log("a").events[0].model_dump_json()
+    (partial / EVENTS).write_text(first, "utf-8")  # no trailing newline
+    empty = write(tmp_path / "b", None, manifest("b"))
+    (empty / EVENTS).write_text("", "utf-8")
+    for run in (partial, empty):
+        assert triage.main([str(run)]) == 1
+        assert capsys.readouterr().err.startswith("unreadable: ")
+
+
+def test_an_incomplete_bundle_is_read_unless_its_split_is_sealed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    train = write(tmp_path / "t", Log("t"), None)
+    assert triage.main([str(train)]) == 0
+    assert "status: incomplete" in capsys.readouterr().out
+    held_out = write(tmp_path / "h", Log("h", split="test"), None)
+    assert triage.main([str(held_out)]) == 2
+    assert capsys.readouterr().err.startswith("refused: ")

@@ -12,36 +12,44 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
 from proxyloop.obs import runs
 from proxyloop.obs.detectors import BANNER, scalar
-from proxyloop.obs.triage import Row, read, row
+from proxyloop.obs.trace import Refused
+from proxyloop.obs.triage import Row, Unreadable, read, row
 
 
-def rows(roots: Sequence[Path], window_s: float = 10) -> list[Row]:
+def rows(roots: Sequence[Path], window_s: float = 10) -> tuple[list[Row], list[str]]:
     """One row per ok run, newest sha group first (by its newest run), then
-    task_ref and start time within a group."""
+    task_ref and start time within a group; and why each skipped run was."""
     seal, seen = runs.Seal(), set[str]()
-    out: list[Row] = []
+    out, skipped = list[Row](), list[str]()
     for run in runs.index(roots):
         if run.status != "ok" or run.run_id in seen:
             continue
         seen.add(run.run_id)
-        out.append(row(*read(Path(run.path), seal, window_s)))
+        try:
+            out.append(row(*read(Path(run.path), seal, window_s)))
+        except (Unreadable, Refused) as err:  # one bad bundle never ends the table
+            skipped.append(str(err))
     newest: dict[str, str] = {}
     for r in out:
         sha, at = str(r["git_sha"]), str(r["started"])
         newest[sha] = max(newest.get(sha, ""), at)
     out.sort(key=lambda r: (str(r["task_ref"]), str(r["started"])))
     out.sort(key=lambda r: newest[str(r["git_sha"])], reverse=True)
-    return out
+    return out, skipped
 
 
 _TEXT = {"end_reason": "end", "first_llm_error": "err"}  # shown, not summed
-_MAX = frozenset({"slow_max_step_gap_ms", "max_consecutive_ok_hold"})  # max, not sum
+# The max, not the sum; guide_to_heard_ms shows its p50 (ms), not its count.
+_MAX = frozenset(
+    {"slow_max_step_gap_ms", "max_consecutive_ok_hold", "guide_to_heard_ms"}
+)
 
 
 def _brief(value: object) -> str:
@@ -70,6 +78,8 @@ def table(all_rows: Sequence[Row]) -> str:
                     cells.insert(0, f"{_TEXT[name]}={_brief(value)}")
                     continue
                 n = scalar(value)
+                if name == "guide_to_heard_ms":
+                    n = cast(dict[str, int | None], value)["p50"]
                 if n is None:
                     unknown[name] = unknown.get(name, 0) + 1
                     cells.append(f"{name}=?")
@@ -77,9 +87,8 @@ def table(all_rows: Sequence[Row]) -> str:
                     was = sums.get(name, 0)
                     sums[name] = max(was, n) if name in _MAX else was + n
                     cells.append(f"{name}={n}")
-            out.append(
-                f"  {r['run_id']} {r['task_ref']} {r['mode']} " + " ".join(cells)
-            )
+            head = f"  {r['run_id']} {r['task_ref']} {r['mode']}"
+            out.append(" ".join([head, *cells]))
         total = [f"{k}={v:g}" for k, v in sorted(sums.items())]
         total += [f"{k}:?x{v}" for k, v in sorted(unknown.items())]
         out.append("  sum " + " ".join(total))
@@ -93,7 +102,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--relay-window", type=float, default=10, metavar="S")
     args = parser.parse_args(argv)
     roots = args.root or [p for p in (Path("runs"), Path("evidence")) if p.is_dir()]
-    found = rows(roots, args.relay_window)
+    if sealed := [str(r) for r in roots if runs.Seal().covers(r)]:
+        why = ", ".join(sealed)
+        print(f"refused: {why} is sealed (AGENTS rule 11)", file=sys.stderr)
+        return 2
+    found, skipped = rows(roots, args.relay_window)
+    notes = [f"skipped: {why}" for why in skipped] + [f"skipped={len(skipped)}"]
+    print("\n".join(notes), file=sys.stderr)
     if args.json:
         print(json.dumps(found, indent=1, sort_keys=True, ensure_ascii=False))
     else:

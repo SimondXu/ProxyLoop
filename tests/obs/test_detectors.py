@@ -31,22 +31,26 @@ def test_every_detector_equals_the_hand_count(tmp_path: Path) -> None:
         "llm_errors": {"slow": 1},  # s1; a cancellation is not an error
         # cp-g2 (seq 25) is capped and "@hold fact_request" holds no speech;
         # cp-g1 is capped too but speaks
-        "empty_length": {"count": 1, "turns": [25], "unknown": []},
+        # turn 28 has no llm.call, so its cap is unknown, not "not capped"
+        "empty_length": {"count": 1, "turns": [25], "unknown": [28]},
         "hold_repeats": 3,  # session.ended counts
         # rep.policy 19 ok_hold, 20 ok_hold, 21 ask_identity, 22 ok_hold: 2
         "max_consecutive_ok_hold": 2,
         # s2f-1 (t=1400) voiced by cp-g1, whose first delivery is seq 18
-        # (t=1800): 1800 - 1400 = 400; s2f-2 is never voiced
+        # (t=1800): 1800 - 1400 = 400; s2f-2 (t=2300) is never voiced and
+        # the log runs past 2300 + 1000; s2f-4 (t=3600) is pending when the
+        # log ends at 3800 < 3600 + 1000 (the relay window)
         "guide_to_heard_ms": {
-            "count": 1, "p50": 400, "p90": 400, "unheard": 1, "ms": [400],
+            "count": 1, "p50": 400, "p90": 400, "unheard": 1, "unknown": 1,
+            "ms": [400],
         },
         # user.msg 3 (t=300) and 10 (t=1000): no f2s cites them by 300 + 1000
-        # and 1000 + 1000, and the log runs to 3600; 8 is cited at t=900; 35
-        # (t=3500) outlives the log (3500 + 1000 > 3600). Only 3 has a user.sim.
+        # and 1000 + 1000, and the log runs to 3800; 8 is cited at t=900; 37
+        # (t=3700) outlives the log (3700 + 1000 > 3800). Only 3 has a user.sim.
         "relay_gap": {
             "count": 2,
             "flagged": [3, 10],
-            "unknown": [35],
+            "unknown": [37],
             "sim_revealed": [3],
             "handoff_claims": None,  # text: only with content
         },
@@ -59,12 +63,15 @@ def test_every_detector_equals_the_hand_count(tmp_path: Path) -> None:
         "speech_after_directive": {
             "count": 4, "turns": [[5, 1], [13, 3]], "unknown": [28],
         },
-        # IDENTIFY→DISCOVER at 22; s2f-2 (seq 23) guides hold_for_fact after it
-        "stale_identity_guides": {"count": 1, "seqs": [23]},
-        # 16 delivered interrupted; 17 never delivered, and it is capped
-        # cp-g1's last line with no closing mark: distinct {16, 17} = 2
+        # IDENTIFY→DISCOVER at 22; after it, s2f-2 (seq 23) guides
+        # hold_for_fact and s2f-4 (seq 36) identify
+        "stale_identity_guides": {"count": 2, "seqs": [23, 36]},
+        # 16 delivered interrupted; 17 and 35 never delivered; 17 is capped
+        # cp-g1's last line with no closing mark: distinct {16, 17, 35} = 3;
+        # 35 is cp-g3's last line and cp-g3 has no llm.call: cap unknown
         "unterminated_voiced": {
-            "count": 2, "undelivered": [17], "interrupted": [16], "cut": [17],
+            "count": 3, "undelivered": [17, 35], "interrupted": [16], "cut": [17],
+            "unknown": [35],
         },
     }  # fmt: skip
 
@@ -88,7 +95,8 @@ def test_unknowns_are_none_not_zero(tmp_path: Path) -> None:
     ):  # fmt: skip
         assert values[name] is None, name
     assert values["guide_to_heard_ms"] == {
-        "count": 0, "p50": None, "p90": None, "unheard": 0, "ms": [],
+        "count": 0, "p50": None, "p90": None, "unheard": 0, "unknown": 0,
+        "ms": [],
     }  # fmt: skip
     assert values["first_llm_error"] == {}  # known: no call failed
 

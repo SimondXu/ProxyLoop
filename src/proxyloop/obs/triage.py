@@ -22,7 +22,7 @@ from typing import cast
 from proxyloop.contract.bundle import EVENTS, MANIFEST, Manifest
 from proxyloop.contract.events import Event
 from proxyloop.obs import runs
-from proxyloop.obs.detectors import BANNER, Inputs, run_all
+from proxyloop.obs.detectors import BANNER, Inputs, as_dict, run_all
 from proxyloop.obs.trace import TOOL_NAMES, Prompts, Refused, identifier, lines, unseal
 
 SCHEMA = "pl.triage/1"
@@ -40,6 +40,7 @@ def read(
     """The bundle's index row and its detector inputs. ``incomplete`` (no
     manifest: e.g. a crashed run) is read; ``sealed`` and ``invalid`` are not."""
     path = path.resolve()  # runs.load places it relative to its parent
+    unseal(path, seal)
     run = runs.load(path, path.parent, seal)
     if run.status == "sealed":
         raise Refused(f"{path} is sealed held-out data (AGENTS rule 11)")
@@ -51,6 +52,8 @@ def read(
     man = None
     if strict:
         man = Manifest.model_validate_json((path / MANIFEST).read_text("utf-8"))
+    if not events or events[0].type != "session.started":
+        raise Unreadable(f"{path}: no complete session.started line to start from")
     window_ms = round(window_s * 1000)
     return run, Inputs(events, man, Prompts(path, seal).get, window_ms, content)
 
@@ -59,7 +62,9 @@ def row(run: runs.Run, x: Inputs) -> Row:
     """One run: what it ran (sha, task, mode, models, slow_view) and every
     detector's value."""
     start = x.events[0].payload
-    models = {r: _dict(_dict(m).get("ref")) for r, m in _dict(start["models"]).items()}
+    models = {
+        r: as_dict(as_dict(m).get("ref")) for r, m in as_dict(start["models"]).items()
+    }
     keys = ("endpoint", "model_id", "reasoning_effort")
     if x.manifest is not None:
         mode = "live" if x.manifest.cfg.live else "not_live"
@@ -87,10 +92,6 @@ def row(run: runs.Run, x: Inputs) -> Row:
     }
 
 
-def _dict(value: object) -> dict[str, object]:
-    return cast(dict[str, object], value) if isinstance(value, dict) else {}
-
-
 def _code(value: object) -> object:
     """An identifier, number or bool as is; any other value is withheld."""
     return value if value is None or identifier(value) else "?"
@@ -101,7 +102,7 @@ def _timeline(e: Event, content: bool) -> Row | None:
     row: Row = {}
     text: dict[str, object] = {}
     if t == "rep.policy":
-        intent = _dict(p.get("intent"))
+        intent = as_dict(p.get("intent"))
         row = {"from": p.get("from"), "to": p.get("to"), "intent": intent.get("kind")}
     elif t == "slow.tool":
         name = p.get("name") if p.get("name") in TOOL_NAMES else "unknown"
@@ -111,7 +112,7 @@ def _timeline(e: Event, content: bool) -> Row | None:
     elif t == "action.denied":
         row = {"intent": p.get("intent"), "reason": p.get("reason")}
     elif t in ("s2f.msg", "f2s.msg"):
-        guide = _dict(p.get("guide"))
+        guide = as_dict(p.get("guide"))
         row = {k: p.get(k) for k in ("msg_id", "lane", "utt_ref")}
         row |= {"msg_type": p.get("type"), "move": guide.get("move")}
         row["n_facts"] = len(cast(list[object], p.get("facts") or []))
@@ -152,7 +153,7 @@ def text_report(report: Row) -> str:
         rest = " ".join(f"{k}={v}" for k, v in r.items() if k not in _LEAD)
         out.append(f"{r['t_ms']:>8} #{r['seq']:<5} {r['type']:<19} {rest}")
     out.append("-- detectors")
-    out += [f"{k}: {v}" for k, v in _dict(report["detectors"]).items()]
+    out += [f"{k}: {v}" for k, v in as_dict(report["detectors"]).items()]
     return "\n".join(out)
 
 
