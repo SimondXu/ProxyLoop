@@ -17,6 +17,7 @@ from proxyloop.contract.base import HOLD_REASONS
 from proxyloop.contract.bundle import EVENTS
 from proxyloop.contract.events import EVENT_TYPES, ApprovalPost, Event, Stream
 from proxyloop.contract.messages import GuideMove
+from proxyloop.contract.profiles.pl_cp_v2 import PROFILE as PL_CP_V2
 from proxyloop.contract.protocol import render_messages
 from proxyloop.contract.state import Blackboard
 from proxyloop.contract.views import Trigger, view_cp
@@ -580,8 +581,15 @@ def test_identify_after_hold_for_fact_shows_only_identify() -> None:
         bb, _event(3, "s2f.voiced", {"msg_id": "s2", "gen_id": "g"}, "fast.cp")
     )
     assert _cp_guidance(voiced) == ["identify"]  # voicing does not clear it
+    moves = PL_CP_V2.moves  # the contract renderer's own move text
+    for state in (bb, voiced):
+        view = view_cp(state, Trigger(kind="guidance"), "b")
+        text = render_messages(view, "pl_cp_v2")[1].content
+        assert moves["identify"] in text
+        assert moves["hold_for_fact"] not in text
 
 
-def test_the_same_guide_twice_is_one_entry() -> None:
-    bb = _guided("identify", "identify")
-    assert _cp_guidance(bb) == ["identify"]
+def test_a_resent_guide_leaves_the_guidance_unchanged() -> None:
+    """A re-sent identical guide neither stacks nor changes what FastC reads."""
+    once, twice = _guided("identify"), _guided("identify", "identify")
+    assert twice.public.guidance_cp == once.public.guidance_cp
