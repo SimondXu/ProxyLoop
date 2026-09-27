@@ -143,9 +143,11 @@ class Sim:
         gates: Mapping[str, Callable[[], Awaitable[None]]] | None = None,
         cfg: SessionConfig | None = None,
         until: Mapping[str, tuple[str, str]] | None = None,
+        rep: Channel | None = None,
     ) -> None:
-        """``until``: role -> (marker, response), as ``RepeatingLLM``'s."""
-        self.vt, self.rep = VirtualTime(), Channel()
+        """``until``: role -> (marker, response), as ``RepeatingLLM``'s;
+        ``rep``: the cp channel (a silent one the test speaks for by default)."""
+        self.vt, self.rep = VirtualTime(), Channel() if rep is None else rep
         self.user = Channel() if user is None else user
         lines = {**SCRIPTS, **(scripts or {})}
         self.llms: dict[str, RepeatingLLM] = {}  # a test may kill one mid-session
