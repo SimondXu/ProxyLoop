@@ -258,14 +258,19 @@ def _identity(v: Seen) -> tuple[str, ...]:
     """The identity values the FSM may say: the newest guide if it is
     ``identify``, else its own newest identify line in the transcript, parsed
     back through the template and kept only if ``_guide`` re-says it exactly.
-    Partner lines and older guides are never a source."""
+    If another agent line follows that line directly, it may be the first part
+    of a split sentence ("Dana J." + "Reyes, 4821."): nothing, never a partial
+    identity. Partner lines and older guides are never a source."""
 
     if v.guides and v.guides[-1][0] == "identify" and v.guides[-1][1]:
         return v.guides[-1][1]
     head, tail = MOVES["identify"].split("{}")
-    for speaker, text in reversed(v.lines):
+    for n in range(len(v.lines) - 1, -1, -1):
+        speaker, text = v.lines[n]
         if speaker != "agent" or not (text.startswith(head) and text.endswith(tail)):
             continue
+        if n + 1 < len(v.lines) and v.lines[n + 1][0] == "agent":
+            return ()
         values = tuple(text[len(head) : len(text) - len(tail)].split(", "))
         said = [
             i.text for i in _guide("cp", "identify", values) if isinstance(i, Speech)

@@ -55,11 +55,15 @@ def _lines(*pairs: tuple[str, str]) -> tuple[Line, ...]:
     )
 
 
-def _identify_line(facts: tuple[dict[str, str], ...] = FACTS) -> str:
-    """What the FSM itself says on an identify guide (never hand-written)."""
+def _guided(guide: object, facts: tuple[dict[str, str], ...] = FACTS) -> list[str]:
+    """What the FSM itself says on a guide (never hand-written)."""
 
-    v = view("cp", trigger="guidance", guidance=(IDENTIFY,), public_facts=facts)
-    (line,) = _said(_turn(v))
+    v = view("cp", trigger="guidance", guidance=(guide,), public_facts=facts)
+    return _said(_turn(v))
+
+
+def _identify_line(facts: tuple[dict[str, str], ...] = FACTS) -> str:
+    (line,) = _guided(IDENTIFY, facts)
     return line
 
 
@@ -81,7 +85,7 @@ def test_c_the_newest_identify_guide_supplies_the_values() -> None:
 
 def test_a_reverification_after_a_later_guide_repeats_the_own_identify_line() -> None:
     mine = _identify_line()
-    lines = (("partner", "Thanks, you're verified."), ("agent", mine))
+    lines = (("agent", mine), ("partner", "Thanks, you're verified."))
     for guide in (HOLD_FOR_FACT, ASK_DISCOUNT):
         items = _turn(_asked(("agent", "Hi."), *lines, guidance=(guide,)))
         assert _said(items) == [mine]
@@ -96,8 +100,29 @@ def test_the_newest_own_identify_line_wins() -> None:
     )
     new = _identify_line(moved)
     assert old != new
-    items = _turn(_asked(("agent", old), ("agent", new), guidance=(ASK_DISCOUNT,)))
+    lines = (("agent", old), ("partner", "Thanks."), ("agent", new))
+    items = _turn(_asked(*lines, guidance=(ASK_DISCOUNT,)))
     assert _said(items) == [new]
+
+
+def test_a_split_identify_line_is_never_repeated_in_part() -> None:
+    # "Dana J. Reyes": the FSM's own identify speech is two transcript lines.
+    split = tuple(
+        f | {"value": "Dana J. Reyes"} if f["key"] == "account.holder_name" else f
+        for f in FACTS
+    )
+    said = _guided(IDENTIFY, split)
+    assert len(said) == 2 and said[0].endswith("Dana J.")
+    lines = (*(("agent", t) for t in said), ("partner", "Thanks, you're verified."))
+    items = _turn(_asked(*lines, guidance=(ASK_DISCOUNT,)))
+    assert _deflected(items)
+    assert not any("Dana J." in t for t in _said(items))
+
+
+def test_an_own_identify_line_followed_by_another_agent_line_deflects() -> None:
+    (ask,) = _guided(ASK_DISCOUNT)
+    lines = (("agent", _identify_line()), ("agent", ask), ("partner", "Hmm."))
+    assert _deflected(_turn(_asked(*lines, guidance=(HOLD_FOR_FACT,))))
 
 
 def test_b_no_identify_guide_and_no_own_line_deflects() -> None:
