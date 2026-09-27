@@ -211,7 +211,7 @@ def test_evaluation_error_is_recorded_and_the_raw_run_kept(
 ) -> None:
     report = raw_report({"/v1/models": 401, "/pl/attest": 401})
 
-    def base_url(variant: str) -> str:
+    def base_url(variant: str, model: str) -> str:
         return "http://vllm.test"
 
     def measure(url: str, key: str, args: argparse.Namespace) -> dict[str, Any]:
