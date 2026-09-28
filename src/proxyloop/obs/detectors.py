@@ -5,10 +5,16 @@ never imported by ``proxyloop.eval``).
 
 ``DETECTORS`` maps a name to ``fn(Inputs) -> value``: a number, a per-role
 count, a dict with a ``count`` and the seqs behind it, or ``None`` when the
-bundle cannot tell. An unknown is never 0. Values carry ids, codes and numbers
-only; the text-reading detectors (the hand-off claim in ``relay_gap``, the
-closing reply in ``grading``) run only with ``content`` and are ``None``
-otherwise. ``grading`` adds the H5 detectors to this one registry.
+bundle cannot tell. An unknown is never 0. By default values carry ids,
+codes and numbers only; the text-reading detectors (the hand-off claim in
+``relay_gap``, the closing reply in ``grading``) run only with ``content`` and
+are ``None`` otherwise, and only with ``content`` does ``end_world_error`` add
+the kernel-authored world_error message. ``grading`` adds the H5 detectors to
+this one registry.
+
+A detector that reads rep.ear labels must pair each with the line it cites
+(its ``utt_id``), never with the nearest line in time: the Ear lags FastC by
+about a turn (L-CORE's 21988c diagnosis).
 """
 
 from __future__ import annotations
@@ -166,6 +172,24 @@ DETECTORS["finish_reason_null"] = _per_role(lambda r: r.finish_reason is None)
 def _end(x: Inputs) -> Value:
     ends = x.of("session.ended")
     return safe(ends[-1].payload.get("reason")) if ends else None
+
+
+@detector("end_world_error")
+def _world_error(x: Inputs) -> Value:
+    """session.ended ``world_error`` (S1-SYS-43): ``world_error_type``, and
+    its kernel-authored ``world_error_message`` only with ``content``. ``{}``:
+    the session ended for another reason (known: none). None: no end, or a
+    ``world_error`` end without the key (a bundle from before it)."""
+    ends = x.of("session.ended")
+    if not ends:
+        return None
+    end = ends[-1].payload
+    if not (err := as_dict(end.get("world_error"))):
+        return None if end.get("reason") == "world_error" else {}
+    out: dict[str, object] = {"world_error_type": safe(err.get("type"))}
+    if x.content:
+        out["world_error_message"] = err.get("message")
+    return out
 
 
 @detector("first_llm_error")
@@ -396,10 +420,18 @@ def _ok_hold(x: Inputs) -> Value:
 
 @detector("guide_to_heard_ms")
 def _guide_to_heard(x: Inputs) -> Value:
-    """From each cp GUIDE s2f.msg to the first utt.delivered of a generation
-    that voiced it (s2f.voiced msg_id → gen_id; fast.sentence utt_id → gen_id).
-    ``unheard``: guides never voiced or delivered; ``unknown``: those the log
-    ends on within the relay window (as in ``relay_gap``)."""
+    """From each GUIDE s2f.msg to the first utt.delivered of a generation that
+    voiced it (s2f.voiced msg_id → gen_id; fast.sentence utt_id → gen_id). A
+    voicing generation that was cancelled (``fast.cancelled``; S1-SYS-59's
+    ``verbatim`` comes after its s2f.voiced) is replaced by its re-run
+    (``_reruns``), followed through further cancellations; ``cancelled``:
+    guides with such a generation. The re-run voices no s2f.voiced for it (the
+    fold dropped it from ``s2f_pending``): its view shows only the newest GUIDE
+    (``guidance_cp``), so a guide another GUIDE on its lane followed before the
+    re-run's fast.request is ``superseded``, never credited with the re-run's
+    lines. ``unheard``: guides never voiced or delivered; ``unknown``: those
+    the log ends on within the relay window (as in ``relay_gap``), or whose
+    cancelled generation has no re-run."""
     gens: dict[str, list[str]] = {}
     for v in x.of("s2f.voiced"):
         gens.setdefault(str(v.payload["msg_id"]), []).append(str(v.payload["gen_id"]))
@@ -412,15 +444,36 @@ def _guide_to_heard(x: Inputs) -> Value:
         gen = gen_of.get(str(d.payload["utt_id"]))
         if gen is not None:
             first.setdefault(gen, d.t_ms)
+    reruns = _reruns(x)
+    asked = {str(r.payload["gen_id"]): r.seq for r in x.of("fast.request")}
+    guides = [g for g in x.of("s2f.msg") if g.payload.get("type") == "GUIDE"]
     ms: list[int] = []
-    unheard = unknown = 0
+    unheard = unknown = cancelled = superseded = 0
     end = x.events[-1].t_ms if x.events else 0
-    for g in x.of("s2f.msg"):
-        if g.payload.get("type") != "GUIDE":
-            continue
-        heard = [first[n] for n in gens.get(str(g.payload["msg_id"]), []) if n in first]
+    for g in guides:
+        voicing = gens.get(str(g.payload["msg_id"]), [])
+        cancelled += any(n in reruns for n in voicing)
+        speakers = [(n, _follow(n, reruns)) for n in voicing]
+        lane = g.payload.get("lane")
+        newer = [
+            h.seq for h in guides if h.seq > g.seq and h.payload.get("lane") == lane
+        ]
+        replaced = [  # a re-run whose view held a newer GUIDE instead
+            n
+            for n, run in speakers
+            if run not in (None, n) and any(s < asked[str(run)] for s in newer)
+        ]
+        heard = [
+            first[run]
+            for n, run in speakers
+            if run is not None and run in first and n not in replaced
+        ]
         if heard:
             ms.append(min(heard) - g.t_ms)
+        elif any(run is None for _, run in speakers):
+            unknown += 1
+        elif replaced:
+            superseded += 1
         elif end < g.t_ms + x.relay_window_ms:
             unknown += 1
         else:
@@ -432,8 +485,53 @@ def _guide_to_heard(x: Inputs) -> Value:
         "p90": _rank(ms, 0.9),
         "unheard": unheard,
         "unknown": unknown,
+        "cancelled": cancelled,
+        "superseded": superseded,
         "ms": ms,
     }
+
+
+def _reruns(x: Inputs) -> dict[str, str | None]:
+    """Each cancelled generation's re-run: the kernel re-queues a cancelled
+    generation's trigger first (lanes.py ``_again``), so its re-run is the
+    first later fast.request on the same ``lane`` with the same ``trigger``
+    kind whose ``basis_seq`` is at or after the fast.cancelled (its board holds
+    the cancellation). Causes are not compared: a newer trigger of the same
+    kind absorbs the re-queued one. None: the cancelled generation has no
+    fast.request, or no request matches."""
+    asked = x.of("fast.request")
+    by_gen = {str(r.payload["gen_id"]): r for r in asked}
+    out: dict[str, str | None] = {}
+    for c in x.of("fast.cancelled"):
+        gen, run = str(c.payload["gen_id"]), None
+        if (own := by_gen.get(gen)) is not None:
+            same = [own.payload.get(k) for k in ("lane", "trigger")]
+            run = next(
+                (
+                    str(r.payload["gen_id"])
+                    for r in asked
+                    if [r.payload.get(k) for k in ("lane", "trigger")] == same
+                    and _at_or_after(r.payload.get("basis_seq"), c.seq)
+                ),
+                None,
+            )
+        out[gen] = run
+    return out
+
+
+def _at_or_after(basis: object, seq: int) -> bool:
+    return isinstance(basis, int) and not isinstance(basis, bool) and basis >= seq
+
+
+def _follow(gen: str, reruns: dict[str, str | None]) -> str | None:
+    """The generation that finally ran for ``gen``; None: a re-run is missing,
+    or the chain loops (only a malformed ``basis_seq`` can make one)."""
+    seen = {gen}
+    while gen in reruns:
+        if (nxt := reruns[gen]) is None or nxt in seen:
+            return None
+        seen.add(gen := nxt)
+    return gen
 
 
 def _rank(xs: Sequence[int], q: float) -> int | None:
