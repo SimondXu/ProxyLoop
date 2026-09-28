@@ -18,11 +18,10 @@ from typing import cast
 
 from proxyloop.contract.events import Event
 from proxyloop.guard.readback import has_cue
+from proxyloop.guard.readiness import IDENTITY
 from proxyloop.obs.detectors import Inputs, Value, as_dict, detector, safe
 from proxyloop.obs.trace import TOOL_NAMES
 
-# slow/tools.py ``_IDENTITY`` (obs cannot import slow, ADR-0008)
-IDENTITY = ("account.holder_name", "account.last4")
 _LEVER_MOVES = frozenset({"ask_discount", "cite_competitor", "mention_tenure",
                           "cancel_lever"})  # fmt: skip
 _LEVER_FACTS = ("competitor", "tenure_years", "authorization.cancel_lever")
@@ -87,9 +86,10 @@ def _heard_identify(x: Inputs, e: Event) -> bool:
 
 @detector("identity.cp_opened_ready")
 def _opened(x: Inputs) -> Value:
-    """The first ``chan.opened{lane: cp}``: its ``ready`` and the identity keys
-    no public ``fact.recorded`` held before it. None: no cp chan.opened carries
-    ``ready`` (S1-SYS-21)."""
+    """The first ``chan.opened{lane: cp}``: its ``reason`` and ``ready``, and
+    the identity keys no public ``fact.recorded`` held before it. ``h5_pass``
+    is None with ``no_intake`` (no user lane to ask: not applicable). None: no
+    cp chan.opened carries ``ready`` (S1-SYS-21)."""
     opened = [e for e in x.of("chan.opened") if e.payload.get("lane") == "cp"]
     if not opened or "ready" not in opened[0].payload:
         return None
@@ -100,9 +100,10 @@ def _opened(x: Inputs) -> Value:
         if f.seq < at.seq and f.payload.get("scope") == "public"
     }
     missing = [k for k in IDENTITY if k not in public]
-    ready = safe(at.payload["ready"])
-    return {"count": len(missing), "seq": at.seq, "ready": ready,
-            "missing": missing, "h5_pass": not missing}  # fmt: skip
+    reason, ready = at.payload.get("reason"), safe(at.payload["ready"])
+    passed = None if reason == "no_intake" else not missing
+    return {"count": len(missing), "seq": at.seq, "reason": safe(reason),
+            "ready": ready, "missing": missing, "h5_pass": passed}  # fmt: skip
 
 
 @detector("identity.ask_user_per_key")
@@ -151,11 +152,29 @@ def _approval(x: Inputs) -> Value:
 def _invalid(x: Inputs) -> Value:
     """slow.tool events whose ``code`` is ``invalid_args``, by tool name. None:
     no slow.tool carries ``code``: the refusal text is never parsed."""
+    coded = _coded(x, "invalid_args")
+    if coded is None:
+        return None
+    n = Counter(_name(e) for e in coded)
+    return {"count": n.total(), "by_tool": dict(sorted(n.items()))}
+
+
+def _coded(x: Inputs, code: str) -> list[Event] | None:
+    """slow.tool events whose ``code`` is ``code``; None: no slow.tool carries
+    ``code`` (a bundle from before S1-SYS-21, where every one does)."""
     tools = _tools(x)
     if not any("code" in e.payload for e in tools):
         return None
-    n = Counter(_name(e) for e in tools if e.payload.get("code") == "invalid_args")
-    return {"count": n.total(), "by_tool": dict(sorted(n.items()))}
+    return [e for e in tools if e.payload.get("code") == code]
+
+
+@detector("slow.act_shape")
+def _act_shape(x: Inputs) -> Value:
+    """slow.tool events whose ``code`` is ``act_shape``: an act refused whole
+    (JSON or schema) or one malformed calls item. None: no ``code``."""
+    coded = _coded(x, "act_shape")
+    return None if coded is None else {"count": len(coded),
+                                       "seqs": [e.seq for e in coded]}  # fmt: skip
 
 
 def _name(e: Event) -> str:
@@ -165,13 +184,16 @@ def _name(e: Event) -> str:
 
 @detector("slow.unknown_tool")
 def _unknown(x: Inputs) -> Value:
-    """slow.tool events whose ``name`` is none of Slow's tools (e.g. ``None``,
-    a calls item without a tool). None: no slow.tool."""
-    tools = _tools(x)
+    """slow.tool events whose ``code`` is ``unknown_tool``; in a bundle
+    without ``code``, those whose ``name`` is none of Slow's tools (e.g.
+    ``None``, a calls item without a tool); ``from``: ``code`` or ``name``.
+    None: no slow.tool."""
+    tools, coded = _tools(x), _coded(x, "unknown_tool")
     if not tools:
         return None
-    seqs = [e.seq for e in tools if _name(e) == "unknown"]
-    return {"count": len(seqs), "seqs": seqs}
+    seen = coded if coded is not None else [e for e in tools if _name(e) == "unknown"]
+    return {"count": len(seen), "seqs": [e.seq for e in seen],
+            "from": "name" if coded is None else "code"}  # fmt: skip
 
 
 @detector("slow.lever_refusals")
