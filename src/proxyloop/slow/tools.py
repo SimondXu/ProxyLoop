@@ -88,6 +88,7 @@ class SlowTools:
         # first heard one anchors the strict rule (§9.2, #219 D-B)
         self.asked: dict[tuple[str, int], list[str]] = {}
         self.final_asks: list[str] = []  # ask_final_offer s2f msg ids (§9.3)
+        self.guides: list[tuple[str, GuideMove]] = []  # cp GUIDEs sent: (msg id, move)
         self.told_at: int | None = None  # the cp length at the last tell_user
         # the cp transcript length at every read-back ask of an offer
         # revision (ADR-0018 V4, slow.state)
@@ -117,6 +118,11 @@ class SlowTools:
         if fate is not None:
             return fate.state == "playing"
         return any(m.msg_id == last for m in bb.s2f_pending.get("cp", ()))
+
+    @property
+    def fates(self) -> dict[str, delivery.Fate]:  # slow.heard's, for slow.state
+        lines = self._host.bb.channels["cp"].lines
+        return delivery.fates(self._host.bus.events, lines)
 
     def act(
         self, call: ToolCall, causes: Sequence[str], *, basis: int
@@ -299,6 +305,7 @@ class SlowTools:
             )
         if public_guide(bb, guide):
             sent = self._s2f(lane="cp", type="GUIDE", guide=guide)
+            self.guides.append((str(sent.effects[0][1]["msg_id"]), guide.move))
             if guide.move == GuideMove.ASK_READBACK:
                 return self._asked(bb, guide, sent)
             if guide.move == GuideMove.ASK_FINAL_OFFER:  # S1-SYS-57
