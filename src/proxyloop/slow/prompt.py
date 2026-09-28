@@ -347,39 +347,32 @@ def approval_hint(view: SlowView, o: OfferPublic, now_ms: int) -> str:
 
 def mandate_hint(view: SlowView, o: OfferPublic, now_ms: int) -> str:
     """S1-SYS-46 (run cc160a): Guard's verdicts on an open offer's terms.
-    ``open_offer`` first: a confirmed offer it refuses as a policy violation
-    shows its ``hard_violations`` classes; one it refuses only as not yet
-    confirmed shows them for the terms recorded so far, or, when
-    ``mandate_gap`` finds it outside the granted mandate, that it needs the
-    user's approval once confirmed. Any other refusal (expired, fenced) or
-    an allowed offer (``approval_hint``'s) shows nothing. Read-only."""
+    Its ``hard_violations`` classes break a hard limit whatever else holds
+    (fenced, expired, confirmed or not); for a revision still incomplete, a
+    required feature not yet stated is not yet missing. Otherwise, only
+    when ``open_offer`` refuses it as not yet confirmed and ``mandate_gap``
+    finds it outside the granted mandate, it needs the user's approval once
+    confirmed (a confirmed one is ``approval_hint``'s). Read-only."""
+    if o.status != "open":
+        return ""
     m = view.mandate
-    got = open_offer(o, m, now_ms, bool(view.fences))
-    if not isinstance(got, Denial):
-        return ""
-    if got.reason == "policy_violation":
-        terms = offer_terms(o)
-    elif got.reason == "readback_not_confirmed" and readback_status(o) != "confirmed":
-        terms = _as_recorded(o)
-        have = {s.field for s in o.slots}  # a feature not yet stated is not missing
-        stated = (
-            tuple(f for f in m.required_features if f"feature:{f}" in have) if m else ()
-        )
-        m = None if m is None else m.model_copy(update={"required_features": stated})
-    else:
-        return ""
+    complete = offer_terms(o)
+    terms = complete or _as_recorded(o)
     if terms is None:
         return ""
+    if complete is None and m is not None:  # a read-back may still add it
+        have = {s.field for s in o.slots}
+        stated = tuple(f for f in m.required_features if f"feature:{f}" in have)
+        m = m.model_copy(update={"required_features": stated})
     if hard := hard_violations(terms, m):
         return f"{HARD_LIMIT}: {', '.join(hard)}"
+    got = open_offer(o, view.mandate, now_ms, bool(view.fences))
+    waiting = isinstance(got, Denial) and got.reason == "readback_not_confirmed"
+    if not waiting or readback_status(o) == "confirmed":
+        return ""  # allowed (approval_hint's), or refused for good
     mine = PrivateState(mandate=view.mandate)
     bb = Blackboard(t_ms=now_ms, epoch=view.epoch, private=mine)
-    if (
-        got.reason != "readback_not_confirmed"
-        or mandate_gap(bb, terms) != "outside_mandate"
-    ):
-        return ""
-    return OUTSIDE_MANDATE
+    return OUTSIDE_MANDATE if mandate_gap(bb, terms) == "outside_mandate" else ""
 
 
 def _as_recorded(o: OfferPublic) -> Terms | None:

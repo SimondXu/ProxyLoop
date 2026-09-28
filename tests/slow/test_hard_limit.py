@@ -180,3 +180,38 @@ def test_no_outside_mandate_signal_when_guard_would_refuse_anyway(
         view = view.model_copy(update={"fences": ("f-1",)})
     assert isinstance(open_offer(o, view.mandate, h.now(), bool(view.fences)), Denial)
     assert prompt.mandate_hint(view, o, h.now()) == ""
+
+
+def test_a_complete_unconfirmed_revision_missing_a_feature_breaks_a_hard_limit(
+    tmp_path: Path,
+) -> None:
+    """#218 r3: every term is stated but the required feature: a read-back
+    cannot add it, so it is a hard limit now, not "approval once confirmed"."""
+    h = Host(tmp_path)
+    _mandate(h, 6500, required_features=["unlimited_data"])
+    h.call()
+    h.rep("cp-1", auth.TERMS)
+    record = {"tool": "record_offer", "offer_ref": "save-2", "offer_slots": auth.SLOTS}
+    ask = {"tool": "guide_fast", "move": "ask_readback", "slots": ["offer:save-2"]}
+    assert h.act(record, ask)[-1].endswith("read-back asked for save-2 r1")
+    line = _offers_line(h)
+    assert f"{prompt.HARD_LIMIT}: required_feature_missing" in line
+    assert prompt.OUTSIDE_MANDATE not in line
+
+
+@pytest.mark.parametrize("why", ["offer_expired", "fence_raised"])
+def test_a_hard_limit_shows_even_when_fenced_or_expired(
+    tmp_path: Path, why: str
+) -> None:
+    """#218 r3: a hard violation is permanent; only the approval signal waits
+    on open_offer."""
+    h = _confirmed(tmp_path)
+    _mandate(h, 6500, required_features=["unlimited_data"])
+    view = view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b")
+    (o,) = view.offers
+    if why == "offer_expired":
+        o = o.model_copy(update={"expires_ms": 1})
+    else:
+        view = view.model_copy(update={"fences": ("f-1",)})
+    got = prompt.mandate_hint(view, o, h.now())
+    assert got == f"{prompt.HARD_LIMIT}: required_feature_missing"
