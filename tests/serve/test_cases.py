@@ -26,7 +26,7 @@ from tests.serve.client import (
 from tests.support.api_cases import ApiCase
 
 from proxyloop.contract.state import ApprovalCard
-from proxyloop.serve.cases import NotOpen
+from proxyloop.serve.cases import Closed, NotOpen
 
 CASE = "case-1"
 
@@ -387,5 +387,20 @@ def test_a_rep_line_before_the_call_opens_is_409_not_open_and_not_logged(
     with caplog.at_level(logging.ERROR, logger="proxyloop.serve.cases"):
         got = post(live.http, f"/api/cases/{CASE}/rep", {"text": "hi"}, rep)
     assert (got.status_code, got.json()) == (409, {"error": "not_open"})
+    assert not [r for r in caplog.records if r.name == "proxyloop.serve.cases"]
+    assert live.case.utterances == []
+
+
+def test_a_rep_line_after_the_call_closed_is_409_closed_and_not_logged(
+    live: Live, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def closed(text: str) -> None:
+        raise Closed
+
+    monkeypatch.setattr(live.case, "rep_utterance", closed)
+    rep = headers(login(live.http, "rep", CASE))
+    with caplog.at_level(logging.ERROR, logger="proxyloop.serve.cases"):
+        got = post(live.http, f"/api/cases/{CASE}/rep", {"text": "hi"}, rep)
+    assert (got.status_code, got.json()) == (409, {"error": "closed"})
     assert not [r for r in caplog.records if r.name == "proxyloop.serve.cases"]
     assert live.case.utterances == []

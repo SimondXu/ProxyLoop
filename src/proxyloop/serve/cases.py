@@ -19,9 +19,10 @@ known case; else 403 ``{"error": "origin" | "csrf"}`` or 404:
   decides, mints or emits a decision (I6).
 - ``POST /api/cases/{case}/messages`` (user) and ``/rep`` (the human rep):
   text into the case's user-lane and cp-lane ingress; if the ingress raises,
-  503 ``unavailable``, logged. Text that is empty after ``strip()`` is 422
-  ``invalid body`` (the kernel refuses it too); accepted text is forwarded as
-  sent, not stripped.
+  503 ``unavailable``, logged. A rep line before the cp call opened is 409
+  ``not_open``, and after it closed 409 ``closed``, neither logged. Text that
+  is empty after ``strip()`` is 422 ``invalid body`` (the kernel refuses it
+  too); accepted text is forwarded as sent, not stripped.
 
 A Denial does not use up the single-use slot: only a post handed to the kernel
 does. ``guard.decide`` is a pure function of the board, so a later POST is
@@ -107,7 +108,9 @@ class Case(Protocol):
 
     def rep_utterance(self, text: str) -> None:
         """The human rep's line: the kernel emits ``utt.final`` (lane cp,
-        speaker partner)."""
+        speaker partner). Raises ``NotOpen`` before the cp call opened (serve:
+        409 ``not_open``), ``Closed`` after it closed (409 ``closed``); any
+        other raise is 503 ``unavailable``."""
         ...
 
 
@@ -139,6 +142,10 @@ class StartRefused(Exception):
 
 class NotOpen(Exception):
     """The cp call has not opened yet; serve answers 409 {"error": "not_open"}."""
+
+
+class Closed(Exception):
+    """The cp call has closed; serve answers 409 {"error": "closed"}."""
 
 
 class Starter(Protocol):
@@ -335,6 +342,8 @@ def add_case_routes(
             ingress(text)
         except NotOpen:
             raise Refused(409, "not_open") from None
+        except Closed:
+            raise Refused(409, "closed") from None
         except Exception as err:  # loud: logged, 503, no retry
             why = type(err).__name__  # only: no text, traceback or cause (rule 15)
             _log.error("the ingress failed for case %s: %s", case_id, why)

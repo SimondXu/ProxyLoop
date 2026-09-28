@@ -43,7 +43,7 @@ from proxyloop.llm.factory import make_client
 from proxyloop.llm.http import RecordSink
 from proxyloop.serve.api import create_app
 from proxyloop.serve.bundles import find_run
-from proxyloop.serve.cases import LaneKey, NotOpen, StartRefused
+from proxyloop.serve.cases import Closed, LaneKey, NotOpen, StartRefused
 from proxyloop.serve.start import OPTION_ID, REASONS, TASK_REF, broken
 
 REF = "cp-direct-discount@1"
@@ -396,6 +396,36 @@ def test_a_human_rep_line_before_the_call_opens_is_refused(tmp_path: Path) -> No
     arun(case())
 
 
+def _close(case: WebCase) -> None:
+    """The cp call closes as a closing rep turn closes it (the SimRep's ``end``;
+    the web page has no close control yet): through the kernel's own ingress."""
+    rep = case._rep  # pyright: ignore[reportPrivateUsage]
+    assert rep is not None
+    rep.incoming.put_nowait(Incoming((), end="closed"))
+
+
+def test_a_human_rep_line_after_the_call_closed_is_refused(tmp_path: Path) -> None:
+    async def case() -> None:
+        vt = VirtualTime()
+        case = await starter(tmp_path, vt).start_case(REF, {}, "human")
+        k = kernel(case)
+        await vt.run_for(CALLED_MS)  # the deadline opens the call
+        _close(case)
+        await vt.run_for(100)
+        assert of(k.bus.events, "chan.closed", lane="cp") and k.closed
+        assert not case._run.done()  # pyright: ignore[reportPrivateUsage]
+        before = k.bus.events
+        with pytest.raises(Closed):  # serve: 409 closed
+            case.rep_utterance("Hello, are you still there?")
+        assert k.bus.events == before
+        await vt.run_for(5_000)
+        assert not of(k.bus.events, "utt.final", speaker="partner")  # never late
+        case.user_message("Thanks.")  # the user lane stays open
+        await stop(case)
+
+    arun(case())
+
+
 def test_a_sim_rep_case_has_no_human_rep_ingress(tmp_path: Path) -> None:
     async def case() -> None:
         case = await starter(tmp_path, VirtualTime()).start_case(REF, {}, "sim")
@@ -598,6 +628,39 @@ def test_serve_refuses_a_rep_line_before_the_call_opens(tmp_path: Path) -> None:
         assert heard == [line["text"]]
         live = s._run  # pyright: ignore[reportPrivateUsage]
         assert live is not None
+        cast(Any, http).portal.call(_cancel, live)
+
+
+def test_serve_refuses_a_rep_line_after_the_call_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vt = VirtualTime()
+    s, started = starter(tmp_path, vt), list[WebCase]()
+    start = s.start_case
+
+    async def keep(*args: Any, **kwargs: Any) -> WebCase:
+        started.append(case := await start(*args, **kwargs))
+        return case
+
+    monkeypatch.setattr(s, "start_case", keep)
+    app = create_app([tmp_path / "runs"], [ORIGIN], start=s)
+    with TestClient(app, base_url="http://127.0.0.1") as http:
+        body: dict[str, object] = {"task_ref": REF, "models": {}, "rep": "human"}
+        got = post(http, "/api/cases", body, headers(_operator(http)))
+        case_id = got.json()["case_id"]
+        run = tmp_path / "runs" / "live" / case_id / case_id / "events.jsonl"
+        cast(Any, http).portal.call(vt.run_for, CALLED_MS)  # the call is open
+        _close(started[0])
+        cast(Any, http).portal.call(vt.run_for, 100)
+        _wait_for(run, "chan.closed")
+        rep, url = headers(login(http, "rep", case_id)), f"/api/cases/{case_id}/rep"
+        before = run.read_text()
+        got = post(http, url, {"text": "Hello?"}, rep)
+        assert (got.status_code, got.json()) == (409, {"error": "closed"})
+        cast(Any, http).portal.call(vt.run_for, 5_000)
+        assert run.read_text() == before  # nothing appended, then or later
+        live = s._run  # pyright: ignore[reportPrivateUsage]
+        assert live is not None and not live.done()
         cast(Any, http).portal.call(_cancel, live)
 
 
