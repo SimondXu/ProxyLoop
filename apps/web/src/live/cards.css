@@ -1,31 +1,34 @@
 /* Guard cards in the chat column: the approval card and the limits card (redesign §3.2). */
 @layer components {
   .pl-gcards { display: flex; flex-direction: column; gap: var(--s3); margin: var(--s2) 0; }
-  .pl-gcard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--e1); overflow: hidden; }
-  .pl-gcard h3 { margin: var(--s2) 0 2px; font: 600 var(--fs-card) / var(--lh-tight) var(--font-display); font-variation-settings: "SOFT" 30; letter-spacing: -0.01em; }
-  .pl-gcard-from { display: flex; align-items: center; gap: 6px; margin: 0; padding: var(--s2) var(--s4) 0; font-size: var(--fs-meta); color: var(--guard); }
+  .pl-gcard { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--shadow-card); overflow: hidden; }
+  .pl-gcard h3 { margin: var(--s2) 0 2px; font: 600 var(--fs-card) / 1.3 var(--font-ui); letter-spacing: -0.015em; }
+  .pl-gcard-from { display: flex; align-items: center; gap: 6px; margin: 0; padding: var(--s2) var(--s4) 0; font-size: var(--fs-meta); color: var(--ink-3); }
   .pl-gcard-actions { display: flex; gap: var(--s3); padding: var(--s3) var(--s4); }
   .pl-gcard-actions .pl-btn { min-height: 46px; flex: 1; }
   .pl-gcard-actions .pl-btn-primary { flex: 1.4; }
   .pl-gcard-tech { border-top: 1px solid var(--line); padding: var(--s2) var(--s4); font-size: var(--fs-meta); color: var(--ink-3); }
   .pl-gcard > .meta, .pl-gcard > [role="alert"], .pl-gcard > .pl-banner { margin: var(--s2) var(--s4) 0; }
   .pl-mono { margin: var(--s2) 0 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
-  .pl-quote { margin: var(--s2) 0 0; padding: 7px var(--s3); border-left: 3px solid var(--guard); background: var(--guard-soft); border-radius: 0 var(--r-sm) var(--r-sm) 0; white-space: pre-wrap; color: var(--ink-2); }
+  .pl-quote { margin: var(--s2) 0 0; padding: 7px var(--s3); border-left: 3px solid var(--line-ui); background: var(--sunk); border-radius: 0 var(--r-sm) var(--r-sm) 0; white-space: pre-wrap; color: var(--ink-2); }
 
-  /* the approval card: the only e3 on the page while it waits for you */
-  .pl-decision.open { border: 1.5px solid var(--attn-ring); box-shadow: var(--e3), 0 0 0 4px rgba(184, 115, 0, 0.1); animation: pl-rise var(--d-decision) var(--ease) both; }
+  /* A Guard card waiting for you (approval or limits): the one place the brand ink appears, with its words
+     ("your approval is needed", "Waiting for your decision"); its primary pill is the only brand fill. */
+  .pl-gcard.open { border-color: var(--you-line); box-shadow: var(--shadow-lift), 0 0 0 4px var(--you-glow); }
+  .pl-gcard.open .pl-gcard-actions .pl-btn-primary { background: var(--you-fill); color: var(--on-you); opacity: 1; }
+  @media (hover: hover) { .pl-gcard.open .pl-gcard-actions .pl-btn-primary:hover:not(:disabled) { background: var(--you-fill-2); } }
+  .pl-decision.open { animation: pl-rise var(--d-decision) var(--ease) both; }
   .pl-decision.stale, .pl-decision.superseded, .pl-decision.already_decided, .pl-decision.refused { opacity: 0.85; }
   .pl-decision-top { padding: var(--s2) var(--s4) var(--s1); }
-  .pl-decision.open .pl-decision-top { background: linear-gradient(180deg, var(--attn-tint), var(--surface)); }
   .pl-decision h3 { font-size: var(--fs-decision); }
   .pl-decision-why, .pl-decision-conseq { margin: 6px 0 0; font-size: var(--fs-small); color: var(--ink-2); }
   .pl-decision-conseq { margin: var(--s3) var(--s4) 0; }
-  .pl-decision-progress { margin: var(--s2) var(--s4) 0; font-weight: 600; color: var(--agent); }
+  .pl-decision-progress { margin: var(--s2) var(--s4) 0; font-weight: 600; color: var(--ink); }
   .pl-terms { list-style: none; margin: 0; padding: 6px var(--s4) 0; }
   .pl-terms li { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: var(--s3); padding: 6px 0; border-top: 1px solid var(--line); font-size: var(--fs-small); }
   .pl-terms li:first-child { border-top: 0; }
   .pl-term-label { color: var(--ink-2); }
-  .pl-term-limit { margin-left: 6px; padding: 2px 7px; border-radius: var(--r-pill); font-size: var(--fs-label); font-weight: 600; color: var(--attn); background: var(--attn-soft); }
+  .pl-term-limit { margin-left: 6px; padding: 2px 7px; border-radius: var(--r-pill); font-size: var(--fs-label); font-weight: 600; color: var(--ink-2); background: var(--neutral-tint); }
   .pl-term-value { font-weight: 600; font-variant-numeric: tabular-nums; }
 
   /* the limits card */

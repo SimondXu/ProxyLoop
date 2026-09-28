@@ -47,7 +47,7 @@ function Limits({ mandates }: { mandates: MandateView[] }) {
     <Card className="pl-rail-limits" aria-label="Your limits (summary)">
       <div className="pl-rail-row">
         <span className="pl-label">Your limits</span>
-        {current && <Chip tone="agent">{limitsStatusText(current)}</Chip>}
+        {current && <Chip tone="ok">{limitsStatusText(current)}</Chip>}
       </div>
       {current ? (
         <ul className="pl-pills">

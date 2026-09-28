@@ -24,7 +24,7 @@ export function ReplayLibrary() {
     <section className="pl-library">
       <h1>Recorded runs</h1>
       {error && (
-        <Banner tone="danger" role="alert">
+        <Banner tone="err" role="alert">
           {error}
         </Banner>
       )}
@@ -40,8 +40,8 @@ export function ReplayLibrary() {
                   <span className="meta">{[b.task_ref, date].filter(Boolean).join(" · ")}</span>
                   <span className="pl-run-id">{b.run_id}</span>
                   <span className="pl-run-chips">
-                    {isEvidence(b.root) && <Chip tone="guard">Evidence</Chip>}
-                    {!b.complete && <Chip tone="attn">Incomplete</Chip>}
+                    {isEvidence(b.root) && <Chip>Evidence</Chip>}
+                    {!b.complete && <Chip tone="over">Incomplete</Chip>}
                   </span>
                 </a>
               </li>
