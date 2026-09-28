@@ -11,6 +11,7 @@ import "./ui/Card.css"; // the setup boxes and the started note are cards
 import { EmptyState } from "./ui/EmptyState";
 import { Icon } from "./ui/Icon";
 import { Skeleton } from "./ui/Skeleton";
+import { useRoleCard, YourRole } from "./YourRole";
 
 /** Whether the operator's CSRF cookie is there. A malformed one is there: no "open /start" note, and the POST says why (#173 N-4). */
 const hasCookie = () => {
@@ -35,6 +36,7 @@ export function StartPage() {
   const [error, setError] = useState("");
   const [started, setStarted] = useState<string | null>(null);
   const claimed = useRef(false); // a double click never starts twice
+  const role = useRoleCard("task", task); // the chosen task's principal: the person who plays it
 
   useEffect(() => {
     void getOptions().then((r) => {
@@ -93,15 +95,24 @@ export function StartPage() {
           {offer.tasks.length === 0 ? (
             <EmptyState title="No tasks offered." />
           ) : (
-            <div className="pl-tasks" role="radiogroup" aria-label="Task">
-              {offer.tasks.map((t) => (
-                <label key={t} className="pl-task">
-                  <input type="radio" name="task" value={t} checked={task === t} onChange={() => setTask(t)} />
-                  <span className="pl-task-card">
-                    <span className="pl-task-name">{taskName(t)}</span> <code>{t}</code>
-                  </span>
-                </label>
-              ))}
+            <div className="pl-start-main">
+              <div className="pl-tasks" role="radiogroup" aria-label="Task">
+                {offer.tasks.map((t) => (
+                  <label key={t} className="pl-task">
+                    <input type="radio" name="task" value={t} checked={task === t} onChange={() => setTask(t)} />
+                    <span className="pl-task-card">
+                      <span className="pl-task-name">{taskName(t)}</span> <code>{t}</code>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {task && (
+                <section className="pl-card pl-role" aria-label="Your role">
+                  <h2>Your role</h2>
+                  <p className="meta">You play the account holder in the chat. This is what they know and want.</p>
+                  <YourRole card={role} />
+                </section>
+              )}
             </div>
           )}
           <div className="pl-start-setup">

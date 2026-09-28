@@ -87,3 +87,37 @@ test("a malformed operator cookie is not a missing one: no 'open /start' note, a
   await expect(page.getByRole("alert")).toHaveText("Not started: bad pl_op_csrf cookie");
   expect(posts).toEqual([]);
 });
+
+// S1-SYS-65: the chosen task's role card, from GET /api/tasks/card (a synthetic card).
+test("the start page shows the chosen task's role card: what you know, and what you would approve (not a target)", async ({ page, baseURL }) => {
+  await csrfCookie(page, baseURL, "pl_op_csrf", "op-token");
+  await answer(page, { status: 200, json: { ...OPTIONS, tasks: ["cp-direct-discount", "x-user-mind-change"] } }, { status: 201, json: {} });
+  const asked: string[] = [];
+  await page.route("**/api/tasks/card?*", (route) => {
+    const ref = new URL(route.request().url()).searchParams.get("ref") ?? "";
+    asked.push(ref);
+    const stop = ref === "x-user-mind-change" ? { trigger: "after_card", text_hint: "Tell the assistant to stop.", change: null } : null;
+    return route.fulfill({
+      status: 200,
+      json: {
+        company: "Example Mobile",
+        persona: `The principal of ${ref}.`,
+        goal: "Pay less every month.",
+        facts: [{ key: "account.last4", value: "1234", identity: true, shareable: true }],
+        approval: stop ? { max_monthly_price_usd: "64.00", max_term_months: 12, max_one_time_fees_usd: "0" } : null,
+        stop,
+      },
+    });
+  });
+  await page.goto("/?start");
+  const role = page.getByRole("region", { name: "Your role" });
+  await expect(role).toContainText("The principal of cp-direct-discount.");
+  await expect(role).toContainText("Nothing: this task only gathers information");
+  await page.getByRole("radio", { name: /X user mind change/ }).check();
+  await expect(role).toContainText("The principal of x-user-mind-change.");
+  await expect(role.getByRole("heading", { name: "What you would approve" })).toBeVisible();
+  await expect(role).toContainText("This is not a target to aim for.");
+  await expect(role).toContainText("Once you have seen an approval card: Tell the assistant to stop.");
+  expect(asked).toEqual(["cp-direct-discount", "x-user-mind-change"]);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});

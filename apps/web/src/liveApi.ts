@@ -48,6 +48,9 @@ export const paths = {
   mandate: (caseId: string, mandateId: string) => `${cases(caseId)}/mandates/${enc(mandateId)}`,
   messages: (caseId: string) => `${cases(caseId)}/messages`,
   rep: (caseId: string) => `${cases(caseId)}/rep`,
+  // The principal's role card (S1-SYS-65): the start page's (operator cookies) and a case's (user cookies).
+  taskCard: (taskRef: string) => `/api/tasks/card?ref=${enc(taskRef)}`,
+  caseCard: (caseId: string) => `${cases(caseId)}/card`,
 };
 
 /** Where a role gets its cookies. */
@@ -147,12 +150,14 @@ export const postMessage = (caseId: string, text: string) => post("live", caseId
 /** Rep utterance → a partner utt.final on the cp lane. */
 export const postRep = (caseId: string, text: string) => post("rep", caseId, paths.rep(caseId), { text });
 
-/** GET /api/models (S1-SYS-33): the options serve offers, as sent; 500 {error: "options", reason} is an error. */
-export async function getOptions(): Promise<{ ok: true; body: unknown } | { ok: false; error: string }> {
+export type Got = { ok: true; body: unknown } | { ok: false; error: string };
+
+/** One same-origin GET, never retried; a refusal is "<status> <error>[: <reason>]". */
+async function getJson(path: string): Promise<Got> {
   let res: Response;
   let text: string;
   try {
-    res = await fetch(paths.models, { credentials: "same-origin" });
+    res = await fetch(path, { credentials: "same-origin" });
     text = await res.text();
   } catch (e) {
     return { ok: false, error: `no response: ${String(e)}` };
@@ -162,6 +167,15 @@ export async function getOptions(): Promise<{ ok: true; body: unknown } | { ok: 
   const why = typeof body?.reason === "string" ? `: ${body.reason}` : "";
   return { ok: false, error: `${res.status} ${typeof body?.error === "string" ? body.error : text || res.statusText}${why}` };
 }
+
+/** GET /api/models (S1-SYS-33): the options serve offers, as sent; 500 {error: "options", reason} is an error. */
+export const getOptions = () => getJson(paths.models);
+
+/** GET /api/tasks/card (the operator's cookies): the principal's role card for a task the start page offers. */
+export const getTaskCard = (taskRef: string) => getJson(paths.taskCard(taskRef));
+
+/** GET /api/cases/{case}/card (this case's user cookies): the role card of the case's own task. Never the rep page's. */
+export const getCaseCard = (caseId: string) => getJson(paths.caseCard(caseId));
 
 export type StartRequest = { task_ref: string; models: Record<string, string>; rep: "sim" | "human" };
 
