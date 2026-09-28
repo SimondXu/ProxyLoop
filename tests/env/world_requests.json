@@ -2,7 +2,7 @@
  "ear_one": [
   {
    "call_id": "ear:r1:1:0",
-   "max_tokens": 512,
+   "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
@@ -98,7 +98,7 @@
  "ear_three_regenerated": [
   {
    "call_id": "ear:r1:3:0",
-   "max_tokens": 512,
+   "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
@@ -200,7 +200,7 @@
   },
   {
    "call_id": "ear:r1:3:1",
-   "max_tokens": 512,
+   "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
@@ -304,7 +304,7 @@
  "mouth_confirmed": [
   {
    "call_id": "mouth:r1:1:0",
-   "max_tokens": 512,
+   "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
@@ -331,7 +331,7 @@
  "mouth_greet": [
   {
    "call_id": "mouth:r1:1:0",
-   "max_tokens": 512,
+   "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
@@ -358,7 +358,7 @@
  "mouth_hang_up": [
   {
    "call_id": "mouth:r1:1:0",
-   "max_tokens": 512,
+   "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
@@ -385,7 +385,7 @@
  "mouth_offer": [
   {
    "call_id": "mouth:r1:1:0",
-   "max_tokens": 512,
+   "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
@@ -410,7 +410,7 @@
   },
   {
    "call_id": "mouth:r1:1:1",
-   "max_tokens": 512,
+   "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
@@ -437,7 +437,7 @@
  "mouth_readback": [
   {
    "call_id": "mouth:r1:1:0",
-   "max_tokens": 512,
+   "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
@@ -464,7 +464,7 @@
  "simuser_chat": [
   {
    "call_id": "simuser:r1:1:0",
-   "max_tokens": 512,
+   "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
@@ -541,7 +541,7 @@
   },
   {
    "call_id": "simuser:r1:4:0",
-   "max_tokens": 512,
+   "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
@@ -618,7 +618,7 @@
   },
   {
    "call_id": "simuser:r1:4:1",
-   "max_tokens": 512,
+   "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
@@ -697,7 +697,7 @@
  "simuser_mind_change": [
   {
    "call_id": "simuser:r1:1:0",
-   "max_tokens": 512,
+   "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
@@ -774,7 +774,7 @@
   },
   {
    "call_id": "simuser:r1:3:0",
-   "max_tokens": 512,
+   "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
@@ -851,7 +851,7 @@
   },
   {
    "call_id": "simuser:r1:6:0",
-   "max_tokens": 512,
+   "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
@@ -930,7 +930,7 @@
  "simuser_stop": [
   {
    "call_id": "simuser:r1:1:0",
-   "max_tokens": 512,
+   "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
@@ -1007,7 +1007,7 @@
   },
   {
    "call_id": "simuser:r1:4:0",
-   "max_tokens": 512,
+   "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
