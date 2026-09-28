@@ -102,6 +102,15 @@ def test_every_detector_equals_the_hand_count(tmp_path: Path) -> None:
         },
         "slow.unknown_tool": {"count": 1, "seqs": [32], "from": "name"},
         "slow.lever_refusals": {"count": 0, "seqs": [], "by": {}},
+        # the ladder (test_ladder has its own streams): rep.policy 19-22 carry
+        # no rung and no rep.ear heard a lever; the run ended "abandoned"
+        # without a commit, so both reachable levers went unused
+        "rungs_reached": {"count": 0, "ladder_exhausted": False, "ladder_len": None},
+        "levers_heard": {"count": 0, "levers": [], "taken": []},
+        "repeated_lever_no_better": {"count": 0, "seqs": []},
+        "no_deal_ladder_unfinished": {
+            "count": 1, "end_reason": "abandoned", "unused": ["ask_discount", "tenure"],
+        },
         **dict.fromkeys((
             "identity.cp_opened_ready", "identity.ask_user_per_key", "end.status",
             "approval.path", "slow.invalid_args", "slow.act_shape",

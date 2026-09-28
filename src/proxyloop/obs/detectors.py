@@ -9,8 +9,8 @@ bundle cannot tell. An unknown is never 0. By default values carry ids,
 codes and numbers only; the text-reading detectors (the hand-off claim in
 ``relay_gap``, the closing reply in ``grading``) run only with ``content`` and
 are ``None`` otherwise, and only with ``content`` does ``end_world_error`` add
-the kernel-authored world_error message. ``grading`` adds the H5 detectors to
-this one registry.
+the kernel-authored world_error message. ``grading`` adds the H5 detectors, and
+``ladder`` the offer-ladder ones, to this one registry.
 
 A detector that reads rep.ear labels must pair each with the line it cites
 (its ``utt_id``), never with the nearest line in time: the Ear lags FastC by
@@ -551,3 +551,4 @@ def _holds(x: Inputs) -> Value:
 
 
 from proxyloop.obs import grading as grading  # noqa: E402  (registers H5)
+from proxyloop.obs import ladder as ladder  # noqa: E402  (registers the ladder)
