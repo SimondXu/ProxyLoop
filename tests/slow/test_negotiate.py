@@ -4,9 +4,11 @@ the offers line names an available lever first (one per rep reply: wait while
 one is on its way); only once none is left does it say request_approval. After
 a denial the playbook again tries an available lever before decline_offer and
 ask_final_offer. The levers line keys "heard" on what the rep heard
-(``slow.heard.fates``): heard, still on its way (queued or playing), or dead
-(cancelled, cut, no speech: available again). No world wording (rule 12).
-The test plays the kernel."""
+(``slow.heard.fates``): heard and answered (a rep line after its delivery:
+used), heard but not answered yet (wait), still on its way (queued or
+playing: wait), or dead (cancelled, cut, no speech: available again once;
+dead twice: unavailable). No world wording (rule 12). The test plays the
+kernel."""
 
 from __future__ import annotations
 
@@ -37,7 +39,12 @@ CANCELLING = (
     "authorised in this build)"
 )
 WAIT = "sent, not heard yet (wait): mention_tenure"
-HEARD = "heard by the rep: mention_tenure"
+HEARD = "heard, rep not answered yet (wait): mention_tenure"
+USED = "heard and answered by the rep: mention_tenure"
+FAILED = (
+    "mention_tenure unavailable (lever_failed_twice: failed to reach the rep twice)"
+)
+QUOTE = "fact:competitor.price_usd"
 FORBIDDEN = ("rung", "ladder", "unlock", "second offer")
 
 
@@ -84,6 +91,12 @@ def _deny(h: Host) -> None:
     ev = h.emit("approval.decided", "kernel", decided, [posted.event_id])
     back = {"previous": "AWAITING_APPROVAL", "status": "IN_CALL"}
     h.emit("status.changed", "guard", back, [ev.event_id])
+
+
+def _reply(h: Host) -> None:
+    """The rep answers (a partner cp line)."""
+    lines = h.bb.channels["cp"].lines
+    h.rep(f"cp-r{len(lines)}", "Let me see what I can do.")
 
 
 def _authorise_cancel(h: Host) -> None:
@@ -137,13 +150,94 @@ def test_p3_all_levers_heard_or_unavailable_means_request_approval(
     h = _outside(tmp_path)
     h.act(TENURE)
     h.voice()  # heard whole
+    _reply(h)  # and answered
     assert _next(h) == "request_approval(save-2)"
     assert HINT in _offers(h)
     _authorise_cancel(h)  # a new lever turns available: it comes first again
     assert "guide_fast(cancel_lever)" in _next(h)
     h.act(CANCEL)
     h.voice()
+    _reply(h)
     assert _next(h) == "request_approval(save-2)"
+
+
+# D1: one lever per rep reply: a heard lever waits for the rep's answer
+
+
+def test_d1_a_heard_lever_waits_for_the_reps_reply(tmp_path: Path) -> None:
+    """Slow also wakes between "heard" and the rep's reply (relays, timers):
+    until a rep line follows the lever's delivery, the hint waits."""
+    h = _outside(tmp_path)
+    h.act(TENURE)
+    h.voice()
+    assert HEARD in _levers(h)
+    step = _next(h)
+    assert "wait" in step and "guide_fast(" not in step, step
+    assert "request_approval" not in step
+    _reply(h)
+    line = _levers(h)
+    assert USED in line and HEARD not in line, line
+    assert _next(h) == "request_approval(save-2)"
+
+
+def test_d1_a_rep_line_before_the_delivery_is_no_reply(tmp_path: Path) -> None:
+    """The rep speaking over the lever's playout answers something else."""
+    h = _outside(tmp_path)
+    h.act(TENURE)
+    gen = h.voice(deliver=False)
+    _reply(h)
+    h.deliver(gen)
+    assert HEARD in _levers(h)
+    assert "wait" in _next(h)
+
+
+# F2: a lever whose guide died twice is unavailable (root ruling, §0.5a)
+
+
+def test_f2_a_lever_dead_once_is_offered_again_dead_twice_is_not(
+    tmp_path: Path,
+) -> None:
+    h = _outside(tmp_path)
+    h.act(TENURE)
+    _cut(h)
+    assert _levers(h).startswith("levers: available: mention_tenure; ")
+    assert "guide_fast(mention_tenure)" in _next(h)
+    h.act(TENURE)
+    _cancelled(h)
+    line = _levers(h)
+    assert line.startswith("levers: available: none; ") and FAILED in line, line
+    assert _next(h) == "request_approval(save-2)"  # not offered a third time
+    h.act(TENURE)  # sent anyway: what the rep hears still counts
+    h.voice()
+    line = _levers(h)
+    assert HEARD in line and FAILED not in line, line
+
+
+# N2: the hint names the slot a lever needs
+
+
+def _share_quote(h: Host) -> None:
+    said = h.emit("user.msg", "kernel", {"text": "Rival quoted me $55 a month."})
+    quote = {"key": "competitor.price_usd", "value": "55", "source": "shareable"}
+    quote |= {"source_ref": said.event_id, "scope": "public"}
+    h.emit("fact.recorded", "guard", quote, [said.event_id])
+
+
+def test_n2_the_hint_names_the_slot_a_lever_needs(tmp_path: Path) -> None:
+    """cite_competitor is refused without its quote slot (lever_denial): the
+    hint and the levers line name the slot; following the hint is sent."""
+    h = _outside(tmp_path)
+    _share_quote(h)
+    step = _next(h)
+    assert f'guide_fast(cite_competitor, ["{QUOTE}"])' in step, step
+    assert "guide_fast(mention_tenure)" in step, step
+    line = _levers(h)
+    assert line.startswith(
+        f"levers: available: cite_competitor with {QUOTE}, mention_tenure; "
+    ), line
+    cite = {"tool": "guide_fast", "move": "cite_competitor", "slots": [QUOTE]}
+    (got,) = h.act(cite)
+    assert got.startswith("guide_fast: sent"), got
 
 
 # P2: after a denial, a lever while one is left; then decline + final offer
@@ -158,8 +252,9 @@ def test_p2_after_a_denial_an_unused_lever_is_still_listed(tmp_path: Path) -> No
     assert _levers(h).startswith("levers: available: mention_tenure; ")
     h.act(TENURE)
     h.voice()
+    _reply(h)
     line = _levers(h)
-    assert line.startswith("levers: available: none; ") and HEARD in line
+    assert line.startswith("levers: available: none; ") and USED in line
 
 
 def test_p2_the_playbook_orders_lever_approval_decline() -> None:
@@ -196,6 +291,11 @@ def _heard(h: Host) -> None:
     h.voice()
 
 
+def _answered(h: Host) -> None:
+    h.voice()
+    _reply(h)
+
+
 def _cancel(h: Host, gen: str) -> None:
     (turn,) = [e for e in h.of("fast.turn") if e.payload["gen_id"] == gen]
     h.emit("fast.cancelled", "fast.cp", {"gen_id": gen, "reason": "verbatim"},
@@ -224,6 +324,7 @@ def _silent(h: Host) -> None:
         (_queued, WAIT),
         (_playing, WAIT),
         (_heard, HEARD),
+        (_answered, USED),
         (_cancelled, "available: mention_tenure"),
         (_cancelled_playing, "available: mention_tenure"),
         (_cut, "available: mention_tenure"),
@@ -237,7 +338,7 @@ def test_l1_each_fate_of_a_sent_lever(tmp_path: Path, fate: Any, want: str) -> N
     fate(h)
     line = _levers(h)
     assert want in line, line
-    others = {WAIT, HEARD, "available: mention_tenure"} - {want}
+    others = {WAIT, HEARD, USED, "available: mention_tenure"} - {want}
     assert not any(x in line for x in others), line
     if want != "available: mention_tenure":
         assert line.startswith("levers: available: none; ")
@@ -266,7 +367,7 @@ def test_l1_a_lever_guard_refuses_stays_unavailable_and_is_not_sent(
 
 def test_l1_unavailable_wins_over_heard() -> None:
     unavailable = (("cancel_lever", "cancel_lever_not_authorized"),)
-    line = state.levers_line(unavailable, {"cancel_lever": "heard"})
+    line = state.levers_line(unavailable, {"cancel_lever": "answered"})
     assert line == (f"levers: available: cite_competitor, mention_tenure; {CANCELLING}")
 
 
