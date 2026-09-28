@@ -12,7 +12,7 @@ transcript text, as is the identify line: the identify's delivery (S1-SYS-74).
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -130,11 +130,8 @@ Sent = Literal["answered", "heard", "waiting", "failed"]
 LIVE: tuple[Sent, ...] = ("answered", "heard", "waiting")  # in precedence order
 
 
-def sent(
-    bb: Blackboard, tools: SlowTools, moves: Collection[GuideMove] = LEVERS
-) -> dict[str, Sent]:
-    """S1-SYS-66: each lever (of ``moves``) Slow sent, by its GUIDEs' fates
-    (``slow.heard``):
+def sent(bb: Blackboard, tools: SlowTools) -> dict[str, Sent]:
+    """S1-SYS-66: each lever Slow sent, by its GUIDEs' fates (``slow.heard``):
     answered once a send was heard and a rep line follows its delivery (at or
     after its ``Fate.at``: one lever per rep reply); heard while the rep has
     not answered yet; waiting while one is queued (``s2f_pending``) or voiced
@@ -143,20 +140,10 @@ def sent(
     later GUIDE, S1-SYS-67, though the fold keeps it queued; or neither
     queued nor voiced) was never tried: no death. A lever dead fewer times
     is left out: available again."""
-    mine = [(msg, move.value) for msg, move in tools.guides if move in moves]
-    fates = tools.fates if mine else {}
-    lines = bb.channels.get("cp", ChannelState()).lines
-    queued = {m.msg_id for m in bb.s2f_pending.get("cp", ())}
+    mine = {msg: move.value for msg, move in tools.guides if move in LEVERS}
     seen: dict[str, list[str]] = {}
-    for msg, move in mine:
-        fate = fates.get(msg)
-        if fate is not None and fate.superseded:
-            continue  # Slow replaced it before any turn: never tried
-        now = fate.state if fate else "playing" if msg in queued else "unvoiced"
-        if now == "heard" and fate is not None:
-            rest = lines[fate.at :]
-            now = "answered" if any(x.speaker == "partner" for x in rest) else now
-        seen.setdefault(move, []).append("waiting" if now == "playing" else now)
+    for msg, now in _states(bb, tools, list(mine)).items():
+        seen.setdefault(mine[msg], []).append(now)
     out: dict[str, Sent] = {}
     for move, got in seen.items():
         live: list[Sent] = [s for s in LIVE if s in got]
@@ -165,6 +152,34 @@ def sent(
         elif got.count("dead") >= DIES:
             out[move] = "failed"
     return out
+
+
+def _states(bb: Blackboard, tools: SlowTools, msgs: Sequence[str]) -> dict[str, str]:
+    """The state of each GUIDE in ``msgs``, in order (``sent``): answered,
+    heard, waiting, dead or unvoiced; a superseded one (Slow replaced it
+    before any turn: never tried) is left out."""
+    fates = tools.fates if msgs else {}
+    lines = bb.channels.get("cp", ChannelState()).lines
+    queued = {m.msg_id for m in bb.s2f_pending.get("cp", ())}
+    out: dict[str, str] = {}
+    for msg in msgs:
+        fate = fates.get(msg)
+        if fate is not None and fate.superseded:
+            continue
+        now = fate.state if fate else "playing" if msg in queued else "unvoiced"
+        if now == "heard" and fate is not None:
+            rest = lines[fate.at :]
+            now = "answered" if any(x.speaker == "partner" for x in rest) else now
+        out[msg] = "waiting" if now == "playing" else now
+    return out
+
+
+def identify_sent(bb: Blackboard, tools: SlowTools) -> Sent | None:
+    """S1-SYS-74 D2: the newest identify Slow sent (not superseded), alone: a
+    second one on its way after the first was answered shows as on its way."""
+    mine = [msg for msg, move in tools.guides if move == GuideMove.IDENTIFY]
+    now = list(_states(bb, tools, mine).values())[-1:]
+    return next((s for s in LIVE if s in now), None)
 
 
 def lever_slots(bb: Blackboard) -> dict[str, str]:
@@ -336,6 +351,6 @@ def bar(bb: Blackboard, kind: Kind, tools: SlowTools) -> Bar:
         if (o := bb.public.offers.get(key[0])) is not None and o.revision == key[1]
     }
     shut = close(bb, kind, tools.asked_final, tools.told_at, tools.final_pending)
-    ident = sent(bb, tools, (GuideMove.IDENTIFY,)).get(GuideMove.IDENTIFY.value)
+    ident = identify_sent(bb, tools)
     sends, slots = sent(bb, tools), lever_slots(bb)
     return Bar(shut, unavailable(bb), readbacks, sends, slots, ident)

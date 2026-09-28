@@ -107,9 +107,12 @@ how it can help), your first phone action is guide_fast(identify, \
 slots=["fact:<key>", ...]) naming each readiness fact that is public, without \
 waiting to be asked: a caller for someone else states them up front. Until then, \
 guide_fast nothing else (no open_call, no lever, no offer request) but \
-hold_for_fact or deflect_fact_request below. Identify once: while the identify line \
-of the status bar shows it on its way, wait; once heard, identify again only if the \
-representative then asks for a fact again or says one is wrong. For a fact the \
+hold_for_fact or deflect_fact_request below. If no readiness fact is public, send \
+no identify: when the representative asks for one, ask_user for it (with keys) and \
+guide_fast(hold_for_fact). Identify once: while the identify line of the status bar \
+shows it on its way, wait; once heard, identify again only if the representative \
+then asks for a fact again; for a fact the representative says is wrong, ask_user \
+for the correct value, record_fact it, then identify again. For a fact the \
 representative asks for that the user has not given, ask_user for it (with keys) \
 and guide_fast(hold_for_fact) so the representative waits. Use \
 deflect_fact_request only for a fact that must not be given: the representative \

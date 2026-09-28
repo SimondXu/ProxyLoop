@@ -147,6 +147,7 @@ def test_t3_an_identify_with_no_ask_leaves_no_need_and_no_push_to_repeat(
     and when the rep then asks, Slow's status bar shows nothing missing and
     the identify as heard: nothing pushes a second one."""
     sim = session(tmp_path)
+    # the ledger assertions pin today's needs.py (read-only here), not a fix
     ledger = needs.fold(sim.events)
     assert ledger == sim.k.calls.needs
     assert ledger.states() == {H: "answered", L4: "answered"}
