@@ -18,6 +18,7 @@ dev = [
   "jinja2==3.1.6",
   "pyright==1.1.414",
   "pytest==9.1.1",
+  "pytest-xdist==3.8.0",
   "ruff==0.16.9",
   "transformers==5.17.0",
 ]
@@ -76,3 +77,6 @@ typeCheckingMode = "strict"
 [tool.pytest.ini_options]
 addopts = "-ra --import-mode=importlib"
 testpaths = ["tests"]
+markers = [
+  "serial: a wall-clock budget; `make test` runs it without xdist (tests/conftest.py)",
+]
