@@ -50,11 +50,18 @@ def _field(kind: str) -> str:  # "fee" -> "fee:<code>"
 
 # S1-SYS-85 (runs dd5094, f828f1): the code is in the terms hash, so it must be
 # the rep's name for the fee or credit, never "activation_fee" for "activation"
-GENERIC = ("fee", "fees", "charge", "charges", *LEXICON["generic_fee"])
+_FEE = ("fee", "fees", "charge", "charges", *LEXICON["generic_fee"])
+GENERIC = {"fee": _FEE, "credit": ("credit", "credits", *_FEE)}  # by the code's kind
+EXAMPLE = {  # the rep's words, the code they name
+    "fee": "an activation fee is fee:activation",
+    "credit": "a loyalty credit is credit:loyalty",
+}
 NAMED = (
     "A fee:<code> or credit:<code> is named by the rep's own words in its cited "
-    "line: each code word is said there and none is a generic word like fee or "
-    "charge (an activation fee is fee:activation, never fee:activation_fee)"
+    "line: each code word is said there and none is a generic word (fee or "
+    "charge; for a credit also credit): "
+    f"{EXAMPLE['fee']}, never fee:activation_fee; "
+    f"{EXAMPLE['credit']}, never credit:loyalty_credit"
 )
 TABLE = (
     "; ".join(
@@ -198,11 +205,10 @@ def _named(slot: st.ReadbackSlot, line: str) -> list[str]:
         return []
     out: list[str] = []
     for w in _words(slot.field):
-        if w in GENERIC:
+        if w in GENERIC[kind]:
             out.append(
                 f"{slot.field}: '{w}' is a generic word; name a {kind} by the words "
-                f"the rep used for it without '{w}' (e.g. an activation fee is "
-                "fee:activation)"
+                f"the rep used for it without '{w}' (e.g. {EXAMPLE[kind]})"
             )
         elif not _names(line.lower(), f"{kind}:{w}"):
             out.append(

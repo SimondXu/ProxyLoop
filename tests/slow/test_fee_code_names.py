@@ -45,8 +45,10 @@ def test_dd5094_a_fee_named_with_fee_is_refused_and_its_rep_name_records() -> No
     bb = _bb(DD5094)
     bad = record_offer(bb, "offer1", [*DD, _slot("fee:activation_fee", "2000")], 0, NOW)
     assert not bad.ok and not bad.effects and bad.code == "invalid_args"
-    assert "fee:activation_fee: 'fee' is a generic word" in bad.text
-    assert "e.g. an activation fee is fee:activation" in bad.text
+    assert (
+        "fee:activation_fee: 'fee' is a generic word; name a fee by the words the "
+        "rep used for it without 'fee' (e.g. an activation fee is fee:activation)"
+    ) in bad.text
     good = record_offer(bb, "offer1", [*DD, _slot("fee:activation", "2000")], 0, NOW)
     assert good.ok, good.text
     ((_, payload),) = good.effects
@@ -64,8 +66,7 @@ def test_dd5094_a_fee_named_with_fee_is_refused_and_its_rep_name_records() -> No
          "fee:installation", "9900"),
         ("You also get a loyalty credit of 10.00 on your first bill.",
          "credit:loyalty", "1000"),
-        ("You also get a loyalty credit of 10.00 on your first bill.",
-         "credit:loyalty_credit", "1000"),  # 'credit' is not on the generic list
+        ("There is a credit check fee of 20.00.", "fee:credit_check", "2000"),
     ],
 )  # fmt: skip
 def test_a_code_in_the_reps_words_records(said: str, field: str, value: str) -> None:
@@ -87,6 +88,8 @@ def test_a_code_in_the_reps_words_records(said: str, field: str, value: str) -> 
          "credit:welcome: 'welcome' is not in the cited line cp-1"),
         ("You get a 10.00 credit for the activation fee.", "credit:activation_fee",
          "credit:activation_fee: 'fee' is a generic word"),
+        ("You get 10.00 in loyalty credits.", "credit:loyalty_credits",
+         "credit:loyalty_credits: 'credits' is a generic word"),
     ],
 )  # fmt: skip
 def test_a_code_word_generic_or_unsaid_is_refused_naming_it(
@@ -97,6 +100,19 @@ def test_a_code_word_generic_or_unsaid_is_refused_naming_it(
     assert not result.ok and not result.effects and result.code == "invalid_args"
     assert why in result.text, result.text
     assert offer_slots.NAMED in result.text  # the rule, with the table
+
+
+def test_a_credit_named_with_credit_is_refused_and_its_rep_name_records() -> None:
+    """For a credit, "credit" is generic as "fee" is for a fee (L-CORE r2)."""
+    bb = _bb("You also get a loyalty credit of 10.00 on your first bill.")
+    bad = record_offer(bb, "o1", [_slot("credit:loyalty_credit", "1000")], 0, NOW)
+    assert not bad.ok and not bad.effects and bad.code == "invalid_args"
+    assert (
+        "credit:loyalty_credit: 'credit' is a generic word; name a credit by the "
+        "words the rep used for it without 'credit' (e.g. a loyalty credit is "
+        "credit:loyalty)"
+    ) in bad.text
+    assert record_offer(bb, "o1", [_slot("credit:loyalty", "1000")], 0, NOW).ok
 
 
 def test_one_bad_code_among_several_slots_refuses_the_whole_record() -> None:
@@ -131,5 +147,8 @@ def test_fees_none_is_untouched() -> None:
     assert record_offer(bb, "o1", slots, 0, NOW).ok
 
 
-def test_the_rule_is_in_slows_prompt() -> None:
+def test_the_rule_is_in_slows_prompt_with_both_examples() -> None:
     assert offer_slots.NAMED in offer_slots.TABLE and offer_slots.NAMED in SYSTEM
+    for example in ("fee:activation, never fee:activation_fee",
+                    "credit:loyalty, never credit:loyalty_credit"):  # fmt: skip
+        assert example in offer_slots.NAMED
