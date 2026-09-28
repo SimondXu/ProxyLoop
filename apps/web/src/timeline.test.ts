@@ -19,6 +19,14 @@ function delivery(lane: string, gen: string, heard = "h", interrupted = false): 
 const s2f = (lane: string, type: string, msg: string, extra: Ev["payload"] = {}, actor = "guard") =>
   ev("s2f.msg", actor, { msg_id: msg, lane, type, text: lane === "user" ? "a question" : "", guide: null, approval_id: null, ...extra });
 const voiced = (lane: string, msg: string, gen: string, actor = `fast.${lane}`) => ev("s2f.voiced", actor, { msg_id: msg, gen_id: gen });
+const guide = (msg: string, actor = "guard") => s2f("cp", "GUIDE", msg, { guide: { move: "identify", slots: [] } }, actor);
+/** fast.cp's open cp request c1, then a forged (by slow) `type` event for it. */
+const openThen = (type: string, payload: Ev["payload"]) => {
+  const req = ev("fast.request", "fast.cp", { lane: "cp", gen_id: "c1" });
+  return [req, ev(type, "slow", payload, [req])];
+};
+const replacedStep: [string, string, string] = ["Planner → phone voice", "Verify your identity", "Replaced by a newer instruction before it was spoken"];
+const passedStep: [string, string, string] = ["Planner → phone voice", "Verify your identity", "Passed to the voice"];
 function verbatim(kind: string, extra: Ev["payload"] = {}): [Ev, Ev, Ev] {
   const said = ev("speak.verbatim", "guard", { lane: "cp", kind, text: "fixed", ...extra });
   const released = ev("speak.released", "kernel", { lane: "cp" }, [said]);
@@ -87,6 +95,22 @@ const rows: Row[] = [
     [["Planner → phone voice", "Verify your identity", "✓ Said on the call (cut off)"]],
   ],
   ["GUIDE unknown move, raw", () => [s2f("cp", "GUIDE", "m1", { guide: { move: "sing_a_song", slots: [] } })], [["Planner → phone voice", "sing_a_song", "Passed to the voice"]]],
+  [
+    "a GUIDE replaced before it was voiced (heard.fates' superseded; tests/web/superseded pins the rest)",
+    () => [s2f("cp", "GUIDE", "m1", { guide: { move: "identify", slots: [] } }), s2f("cp", "GUIDE", "m2", { guide: { move: "ask_discount", slots: [] } })],
+    [["Planner → phone voice", "Verify your identity", "Replaced by a newer instruction before it was spoken"], ["Planner → phone voice", "Ask for a lower price", "Passed to the voice"]],
+  ],
+  [
+    "a user-lane guide is never replaced (the contract forbids one; only the lane rule is under test)",
+    () => [s2f("user", "GUIDE", "m1", { guide: { move: "identify", slots: [] } }), s2f("user", "GUIDE", "m2", { guide: { move: "identify", slots: [] } })],
+    [["Planner → phone voice", "Verify your identity", "Passed to the voice"], ["Planner → phone voice", "Verify your identity", "Passed to the voice"]],
+  ],
+  // Forged actors move no mark between replaced and passed: GUIDEs count by guard, the rest by fast.cp.
+  ["replaced: a forged s2f.voiced does not keep it", () => [guide("m1"), voiced("cp", "m1", "c1", "slow"), guide("m2")], [replacedStep, passedStep]],
+  ["replaced: a forged open fast.request does not keep it", () => [guide("m1"), ev("fast.request", "slow", { lane: "cp", gen_id: "c1" }), guide("m2")], [replacedStep, passedStep]],
+  ["passed: a forged fast.cancelled does not end an open request", () => [guide("m1"), ...openThen("fast.cancelled", { gen_id: "c1" }), guide("m2")], [passedStep, passedStep]],
+  ["passed: a forged fast.turn does not end an open request", () => [guide("m1"), ...openThen("fast.turn", { lane: "cp", gen_id: "c1" }), guide("m2")], [passedStep, passedStep]],
+  ["passed: a forged s2f.msg GUIDE is ignored", () => [guide("m1"), guide("m2", "slow")], [passedStep]],
   ["s2f.msg from a forged actor", () => [s2f("user", "ASK_USER", "m1", {}, "slow")], []],
   ["APPROVAL_NOTICE and END are not steps", () => [s2f("user", "APPROVAL_NOTICE", "m1", { approval_id: "a1" }), s2f("user", "END", "m2")], []],
   ["mandate proposed, then confirmed by you", () => [mandate(), ev("mandate.decided", "kernel", { mandate_id: "m1", mandate_hash: "mh", decision: "granted", by: "ui" })], [["Planner", "Proposed your limits"], ["You", "Confirmed your limits"]]],
