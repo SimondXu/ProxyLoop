@@ -37,7 +37,9 @@ bundle cannot tell, never 0).
   conflict item holds no naming item: a model's field, value, key or ref such
   an item echoes never counts (tests pin it). A list that breaks after k
   naming items, or whose tails do not match, counts k and lists its seq in
-  ``lower_bound`` ("naming ≥ k").
+  ``lower_bound`` ("naming ≥ k"). No refusal vanishes: one whose first item
+  fits no offer_slots template (naming, shape, conflicts, value) nor the
+  dispatcher's is listed in ``naming_unparsed``, never counted as 0.
 - ``sys72_activation`` (B7): a rep.policy{confirm_accept} whose rep.ear heard
   a Guard-released accept line (``tiers._accepted``), and each commit that
   only the confirm path holds (``tiers._check``: confirmed_by_free_speech).
@@ -59,7 +61,9 @@ from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from typing import cast
 
+from proxyloop.contract import base
 from proxyloop.contract.events import Event
+from proxyloop.contract.state import READBACK_FIELD
 from proxyloop.obs import grading, tiers
 from proxyloop.obs.detectors import DETECTORS, Inputs, as_dict, safe
 from proxyloop.obs.progress import LABEL, family, world_refs
@@ -97,6 +101,24 @@ _ITEMS = {
         rf"{re.escape(_EXAMPLE[k])}\)",
     }.items()
 }
+# The first item of offer_slots' other refusals, up to the model's text: shape
+# (l.90-114), value (l.136-138) and conflicts (l.122-127, no table after
+# them), and the dispatcher's (``slow/tools.py``: "invalid arguments: ...").
+_F = READBACK_FIELD.removeprefix("^").removesuffix("$")  # a field shape passed
+_OTHER = re.compile(
+    "|".join((
+        "a slot is an object, not ", "a slot takes no ", "unknown field ",
+        "utt_ref is the utt id of the rep line that says it, not ",
+        rf"{_F} is over {base.MAX_SLOT_FIELD} chars",
+        rf"{_F} value is text of ≤ {base.MAX_SLOT_VALUE} chars, not ",
+        rf"{_F} is whole (?:cents|months), not ",
+        rf"{_F} is true or false, not ",
+        rf"{_F} is an ISO time with zone or none, not ",
+        r"no slots(?:; |\Z)", rf"{_F} repeats(?:; |\Z)",
+        rf"{_F}=true with {_F}(?:; |\Z)",
+    ))
+)  # fmt: skip
+_DISPATCH = "invalid arguments: "
 Item = dict[str, object]
 
 
@@ -215,13 +237,15 @@ def _refusals(x: Inputs) -> Item:
     refused = [e for e in x.of("slow.tool") if e.payload.get("ok") is False]
     codes, tools = Counter[str](), Counter[str]()
     naming, why, lower = list[int](), Counter[str](), list[int]()
+    unparsed = list[int]()
     for e in refused:
         code, name = e.payload.get("code"), e.payload.get("name")
         codes["none" if code is None else str(code) if code in CODES else "other"] += 1
         tools[grading._name(e)] += 1  # pyright: ignore[reportPrivateUsage]
-        got = None
+        got, text = None, str(e.payload.get("result_text", ""))
         if name == "record_offer" and code == "invalid_args":
-            got = _naming(str(e.payload.get("result_text", "")))
+            got = _naming(text)
+            unparsed += [e.seq] * (got is None and not _known(text))
         if got is not None:
             why.update(got[0])
             naming.append(e.seq)
@@ -231,7 +255,9 @@ def _refusals(x: Inputs) -> Item:
             "by_tool": dict(sorted(tools.items())),
             "naming": {"count": len(naming), "seqs": naming,
                        "by": dict(sorted(why.items())),
-                       "lower_bound": lower}}  # fmt: skip
+                       "lower_bound": lower},
+            "naming_unparsed": {"count": len(unparsed),
+                                "seqs": unparsed}}  # fmt: skip
 
 
 def _naming(text: str) -> tuple[Counter[str], bool] | None:
@@ -240,8 +266,9 @@ def _naming(text: str) -> tuple[Counter[str], bool] | None:
     matched whole by an ``_ITEMS`` pattern and followed by "; " or the table;
     at the first point that is neither, the count stops (a lower bound), as it
     does when the tails after the table are not one per named field. None: the
-    first item is no naming item, a shape, value or conflict refusal, which
-    holds none (``record_offer`` returns at its first failing stage)."""
+    first item is no whole naming item; a shape, value or conflict refusal
+    holds none (``record_offer`` returns at its first failing stage), and
+    ``_known`` tells those from a text that fits no template."""
     if not text.startswith(_REFUSED):
         return None
     pos, found, fields = len(_REFUSED), Counter[str](), dict[str, str]()
@@ -267,15 +294,32 @@ def _item(text: str, pos: int) -> tuple[str, re.Match[str]] | None:
 
 def _tails(text: str, start: int, fields: Mapping[str, str]) -> bool:
     """After the table: one ``unnamed`` tail per named field, in order, all
-    naming the same offer ref, and nothing after them."""
+    naming the same offer ref, and nothing after them. The ref is the model's
+    text, so its length is solved from the rest's (n tails, n copies of it)
+    and the tails rebuilt and compared: exact whatever the ref holds, and
+    linear. The first tail starts at its first ". <field>: if ..." after the
+    table (the table, offer_slots' constant, holds none)."""
     head, _, end = _TAIL.partition("{ref}")
-    ref, parts = r"(?P<ref>.*)", list[str]()
-    for field, kind in fields.items():
-        parts.append(re.escape(head.format(field=field, kind=kind)) + ref
-                     + re.escape(end.format(kind=kind)))  # fmt: skip
-        ref = "(?P=ref)"
-    tails = re.compile(r"\. " + r"\. ".join(parts) + r"\Z", re.DOTALL)
-    return tails.search(text, start) is not None
+    heads = [f". {head.format(field=f, kind=k)}" for f, k in fields.items()]
+    ends = [end.format(kind=k) for k in fields.values()]
+    first = text.find(heads[0], start)
+    rest = text[first + len(heads[0]) :] if first >= 0 else ""
+    size = len(rest) - sum(map(len, ends)) - sum(map(len, heads[1:]))
+    if first < 0 or size < 0 or size % len(heads):
+        return False
+    ref = rest[: size // len(heads)]
+    rebuilt = "".join(
+        f"{ref}{e}{h}" for e, h in zip(ends, [*heads[1:], ""], strict=True)
+    )
+    return rest == rebuilt
+
+
+def _known(text: str) -> bool:
+    """A refusal with no naming item whose first item is one of
+    offer_slots' other templates (``_OTHER``), or the dispatcher's."""
+    if text.startswith(_DISPATCH):
+        return True
+    return text.startswith(_REFUSED) and bool(_OTHER.match(text, len(_REFUSED)))
 
 
 def _sys72(x: Inputs) -> Item:
@@ -363,7 +407,8 @@ def summary(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
     """Per family over one diagnose group's rows: per item the ``total`` count,
     the ``runs`` it fired in (``unknown``: runs that cannot tell), the summed
     sub-counts, B9's delays, and B5's naming refusals (``naming_lower_bound``:
-    those whose count is only a lower bound)."""
+    those whose count is only a lower bound; ``naming_unparsed``: record_offer
+    refusals that fit no offer_slots template)."""
     fams: dict[str, dict[str, object]] = {}
     for r in rows:
         w = as_dict(as_dict(r.get("watch")).get("items"))
@@ -389,8 +434,10 @@ def summary(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
             if name == "slow_refusals":
                 naming = as_dict(v.get("naming"))
                 lower = cast(list[object], naming.get("lower_bound", []))
+                unparsed = as_dict(v.get("naming_unparsed")).get("count", 0)
                 for key, k in (("naming", naming.get("count")),
-                               ("naming_lower_bound", len(lower))):  # fmt: skip
+                               ("naming_lower_bound", len(lower)),
+                               ("naming_unparsed", unparsed)):  # fmt: skip
                     got[key] = cast(int, got.get(key, 0)) + cast(int, k)
     return {"label": LABEL, "families": dict(sorted(fams.items()))}
 

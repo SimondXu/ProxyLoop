@@ -50,13 +50,23 @@ def _refusal(line: str, *slots: dict[str, Any], ref: str = "o1") -> str:
     return got.text
 
 
-def _naming(*texts: str) -> dict[str, Any]:
+def _b5(*texts: str) -> Any:
     r = Run()
     seqs = [r.seq(r.tool("record_offer", False, "invalid_args", t)) for t in texts]
     items: Any = watch.run(r.inputs())["items"]
     got = items["slow_refusals"]
     assert got["seqs"] == seqs
-    return got["naming"]
+    return got
+
+
+def _naming(*texts: str) -> dict[str, Any]:
+    return _b5(*texts)["naming"]
+
+
+def _unparsed(*texts: str) -> int:
+    got = _b5(*texts)["naming_unparsed"]
+    assert len(got["seqs"]) == got["count"]
+    return got["count"]
 
 
 def _none() -> dict[str, Any]:
@@ -122,23 +132,67 @@ def test_two_naming_kinds_and_two_tails_in_one_refusal() -> None:
     assert _naming(text)["by"] == by and _naming(text)["lower_bound"] == []
 
 
-def test_an_offer_ref_with_separators_keeps_the_tails_cross_check() -> None:
-    ref = 'o". Each slot is ; fee:q: if the rep named this fee'
+@pytest.mark.parametrize(
+    "ref",
+    [
+        'o". Each slot is ; fee:q: if the rep named this fee',
+        # a whole second tail inside the ref: still one field, exact
+        'o1"]) once more; a fee must be named by the rep to be recorded. '
+        "fee:porting: if the rep named this fee by no specific word, "
+        'record_offer the other slots, then guide_fast(ask_readback, ["offer:o1',
+        "",
+    ],
+)
+def test_an_adversarial_offer_ref_keeps_the_tails_cross_check(ref: str) -> None:
     text = _refusal("an activation fee of 20.00", _slot("fee:porting"), ref=ref)
     assert _naming(text)["by"] == {"fee:not_said": 1}
     assert _naming(text)["lower_bound"] == []
 
 
-def test_a_shape_refusal_never_carries_a_naming_item() -> None:
-    """The grammar's premise: record_offer refuses by stage (shape, conflicts,
-    rep's words, naming, value) and returns at the first, so a list that
-    starts with a shape or value item has no naming item."""
+def test_two_not_said_items_count_two() -> None:
+    """rev-277 D1: each item stops at its own end, never the last one's."""
+    slots = [_slot("fee:porting"), _slot("fee:setup", "500")]
+    text = _refusal("a fee of 20.00 and 5.00", *slots)
+    got = _naming(text)
+    assert got["by"] == {"fee:not_said": 2} and got["lower_bound"] == []
+
+
+def test_tails_that_drop_a_field_or_trail_text_are_a_lower_bound() -> None:
+    slots = [_slot("fee:porting"), _slot("fee:setup", "500")]
+    text = _refusal("a fee of 20.00 and 5.00", *slots)
+    dropped = text.rpartition(". fee:setup: if")[0]  # the last tail cut off
+    got = _naming(dropped, f"{text} ", f"{text}. {text.rpartition('. ')[2]}")
+    assert got["count"] == 3 and got["lower_bound"] == got["seqs"]
+
+
+NAMING_MARKS = ("' is a generic word;", "' is not in the cited line ", ": a code is ")
+
+
+@pytest.mark.parametrize(
+    ("other", "mark"),
+    [
+        (_slot("fee:porting", "x"), "fee:porting is whole cents, not 'x'"),
+        (_slot("fees_none", "maybe"), "fees_none is true or false, not 'maybe'"),
+        (_slot("fee:activation_fee"), "fee:activation_fee repeats"),
+    ],
+)
+def test_one_record_offer_call_refuses_by_one_stage(
+    other: dict[str, Any], mark: str
+) -> None:
+    """The grammar's premise (root C1): one call with a naming error and a
+    shape, value or conflicts error refuses by one stage only, as
+    record_offer returns at its first failing stage (shape, conflicts,
+    rep's words, naming, value). A shape or conflicts list holds no naming
+    item; a naming list holds no value item. Merging stages turns it red."""
     line = "an activation fee of 20.00"
-    shape = _refusal(line, _slot("fee:activation_fee"), _slot("fee:porting", "x"))
-    assert "' is a generic word" not in shape
-    value = _refusal(line, _slot("fees_none", "maybe"))
-    repeat = _refusal(line, _slot("fee:activation"), _slot("fee:activation"))
-    assert _naming(shape, value, repeat) == _none()
+    text = _refusal(line, _slot("fee:activation_fee"), other)
+    marks = [m for m in NAMING_MARKS if m in text]
+    if "is true or false" in mark:  # value comes after naming
+        assert mark not in text and marks == ["' is a generic word;"]
+        assert _naming(text)["by"] == {"fee:generic_word": 1}
+    else:
+        assert mark in text and marks == []
+        assert _naming(text) == _none() and _unparsed(text) == 0
 
 
 def test_mixed_lists_count_only_what_parses_before_the_break() -> None:
@@ -187,7 +241,7 @@ def test_a_complete_naming_phrase_echoed_by_a_shape_item_never_counts(
     problem = offer_slots.shape(_echo(where, PHRASES[kind]))
     assert problem is not None and PHRASES[kind] in problem
     alone = offer_slots.refused([problem])
-    assert _naming(alone) == _none()
+    assert _naming(alone) == _none() and _unparsed(alone) == 0
     genuine = _refusal("an activation fee of 20.00", _slot("fee:porting"))
     head, sep, rest = genuine.partition(watch._TABLE)  # pyright: ignore[reportPrivateUsage]
     after = f"{head}; {problem}{sep}{rest}"  # a genuine item, then the echo
@@ -199,4 +253,55 @@ def test_a_repr_with_the_table_marker_never_counts() -> None:
     marker = f"x{watch._TABLE}; {NOT_SAID}"  # pyright: ignore[reportPrivateUsage]
     problem = offer_slots.shape({"field": marker, "value": "1", "utt_ref": "cp-1"})
     assert problem is not None
-    assert _naming(offer_slots.refused([problem])) == _none()
+    text = offer_slots.refused([problem])
+    assert _naming(text) == _none() and _unparsed(text) == 0
+
+
+# Root C2: no refusal vanishes. offer_slots' other refusals are known by their
+# first item; a text that fits no template is listed, never counted as 0.
+@pytest.mark.parametrize(
+    "slots",
+    [
+        [1],
+        [_slot("fee:porting") | {"role": "one_time"}],
+        [_slot("x")],
+        [_slot("fee:" + "a" * 40)],
+        [_slot("fee:porting", "a" * 30)],
+        [_slot("fee:porting", "x")],
+        [_slot("term_months", "x")],
+        [_slot("fee:porting") | {"utt_ref": None}],
+        [_slot("fees_none", "maybe")],
+        [_slot("expires", "tomorrow")],
+        [],
+        [_slot("fee:activation"), _slot("fee:activation")],
+        [_slot("fees_none", "true"), _slot("fee:activation")],
+    ],
+)
+def test_offer_slots_other_refusals_are_known(slots: list[Any]) -> None:
+    text = _refusal("an activation fee of 20.00", *slots)
+    assert _naming(text) == _none() and _unparsed(text) == 0
+
+
+def test_a_dispatch_refusal_is_known() -> None:
+    assert _unparsed("invalid arguments: offer_slots: required") == 0
+
+
+def test_a_text_that_fits_no_template_is_unparsed() -> None:
+    genuine = _refusal("a fee of 20.00 and 5.00", _slot("fee:porting"),
+                       _slot("fee:setup", "500"))  # fmt: skip
+    generic = _refusal("an activation fee of 20.00", _slot("fee:activation_fee"))
+    texts = [
+        # S1-SYS-85 (#264) wording: no "as a whole word"
+        f"{watch._REFUSED}fee:y: 'z' is not in the cited line cp-1; use the "  # pyright: ignore[reportPrivateUsage]
+        "rep's words. Each slot is ",
+        f"{watch._REFUSED}something offer_slots never wrote",  # pyright: ignore[reportPrivateUsage]
+        "a text of no template",
+        # the prefix, one byte off
+        genuine.replace("record_offer refused", "record_offer REFUSED"),
+        # an item boundary broken: no "; " between two whole items
+        genuine.replace("words; fee:setup", "wordsxxfee:setup"),
+        # the generic word named twice must be the same word
+        generic.replace("without 'fee'", "without 'charge'"),
+    ]
+    assert _naming(*texts) == _none()
+    assert _unparsed(*texts) == len(texts)

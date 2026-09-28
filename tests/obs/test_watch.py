@@ -395,7 +395,8 @@ def test_summary_per_family_lists_runs_and_totals() -> None:
     fam = fams["fam-a"]
     assert fam["runs"] == 2
     assert fam["slow_refusals"] == {"total": 2, "runs": ["r1"], "naming": 0,
-                                    "naming_lower_bound": 0}  # fmt: skip
+                                    "naming_lower_bound": 0,
+                                    "naming_unparsed": 0}  # fmt: skip
     assert fam["identity_strikes"] == {"total": 0, "runs": [], "unknown": 2}
     text = watch.block(s, "git_sha:abc")
     assert text.splitlines()[0] == f"== watch git_sha abc ({watch.LABEL})"
