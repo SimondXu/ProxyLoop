@@ -856,7 +856,10 @@ test("approval card: the hold line counts up from FastC's chan.hold while the ca
   await expect(hold).toHaveCount(0);
 });
 
-/** Every element of the approval card, in order: its tag, class and the computed colours and shadows that could carry a verdict. */
+/**
+ * Every element of the approval card, in document order: its tag, every attribute (name=value), and every computed
+ * style property of the element, its ::before and its ::after (content included); plus the rows' and the bar's text.
+ */
 async function cardLook(browser: Browser, baseURL: string | undefined, priceMinor: string) {
   const context = await browser.newContext({ baseURL, reducedMotion: "reduce" });
   const page = await context.newPage();
@@ -880,26 +883,79 @@ async function cardLook(browser: Browser, baseURL: string | undefined, priceMino
   await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
   await expect(card.locator(".pl-lbar-l")).toHaveCount(2);
   await card.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
-  const look = await card.evaluate((root) =>
-    [root, ...root.querySelectorAll("*")].map((el) => {
-      const s = getComputedStyle(el);
-      return [el.tagName, el.getAttribute("class"), s.backgroundColor, s.boxShadow, s.borderColor, s.color, s.outline, s.textDecorationLine].join(" | ");
-    }),
-  );
-  const marks = await card.locator(".pl-lbar-lim, .pl-lbar-dot").evaluateAll((els) => els.map((el) => (el as HTMLElement).style.left));
+  const look = await card.evaluate((root) => {
+    const all = (s: CSSStyleDeclaration) => Object.fromEntries(Array.from(s, (p) => [p, s.getPropertyValue(p)]));
+    return [root, ...root.querySelectorAll("*")].map((el) => ({
+      el: `${el.tagName.toLowerCase()}.${el.getAttribute("class") ?? ""}`,
+      attrs: Object.fromEntries(Array.from(el.attributes, (a) => [a.name, a.value])),
+      self: all(getComputedStyle(el)),
+      before: all(getComputedStyle(el, "::before")),
+      after: all(getComputedStyle(el, "::after")),
+    }));
+  });
+  const rows = await card.getByRole("list", { name: "Read-back progress" }).getByRole("listitem").allInnerTexts();
+  const bar = await card.locator(".pl-lbar-l").allInnerTexts();
   await context.close();
-  return { look, marks };
+  return { look, rows: rows.map((r) => r.replace(/\s+/g, " ").trim()), bar };
+}
+
+type Look = Awaited<ReturnType<typeof cardLook>>["look"];
+// Only the bar places the amounts: its marks' and labels' position (the inline left and what it resolves to, the
+// labels' translateX) may differ. Nothing else, on any element or pseudo-element.
+const PLACE = ["attr:style", "self:left", "self:right", "self:inset-inline-start", "self:inset-inline-end"];
+const MOVES: Record<string, Set<string>> = {
+  "span.pl-lbar-lim": new Set(PLACE),
+  "span.pl-lbar-dot": new Set(PLACE),
+  "p.pl-lbar-l": new Set([...PLACE, "self:transform"]),
+};
+// The Approve label carries the amount ("Approve $78/mo"), so its button and the promise beside it may differ in
+// width by the glyphs' sub-pixel widths: under 1px, and only in size.
+const GLYPHS: Record<string, Set<string>> = Object.fromEntries(
+  ["button.pl-btn pl-btn-primary", "p.pl-sign-only"].map((el) => [el, new Set(["self:width", "self:inline-size", "self:transform-origin", "self:perspective-origin"])]),
+);
+const subPixel = (a = "", b = "") => {
+  const [x, y] = [a.match(/-?[\d.]+/g) ?? [], b.match(/-?[\d.]+/g) ?? []];
+  return x.length === y.length && x.length > 0 && x.every((v, i) => Math.abs(Number(v) - Number(y[i])) < 1);
+};
+function lookDiff(a: Look, b: Look): string[] {
+  if (a.length !== b.length) return [`element count ${a.length} vs ${b.length}`];
+  const out: string[] = [];
+  a.forEach((x, i) => {
+    const y = b[i];
+    if (!y || x.el !== y.el) return out.push(`#${i} ${x.el} vs ${y?.el}`);
+    const parts = [["attr", x.attrs, y.attrs], ["self", x.self, y.self], ["before", x.before, y.before], ["after", x.after, y.after]] as const;
+    for (const [kind, p, q] of parts) {
+      for (const k of new Set([...Object.keys(p), ...Object.keys(q)])) {
+        const key = `${kind}:${k}`;
+        if (p[k] === q[k] || MOVES[x.el]?.has(key) || (GLYPHS[x.el]?.has(key) && subPixel(p[k], q[k]))) continue;
+        out.push(`#${i} ${x.el} ${key} ${p[k]} vs ${q[k]}`);
+      }
+    }
+  });
+  return out;
 }
 
 test("root ruling (a): an offer over, under or equal to the bound looks the same; only the bar's marks move (S1-SYS-78)", async ({ browser, baseURL }) => {
   const [over, under, equal] = [await cardLook(browser, baseURL, "7800"), await cardLook(browser, baseURL, "5200"), await cardLook(browser, baseURL, "6500")];
   expect(over.look.length).toBeGreaterThan(40);
-  // Same elements, classes, colours, borders and shadows on every term row, the bar's track and both marks, and all else.
-  expect(under.look).toEqual(over.look);
-  expect(equal.look).toEqual(over.look);
-  // The marks' positions (limit, offer) are the only difference.
-  expect(over.marks).not.toEqual(under.marks);
-  expect(over.marks[0]).not.toBe(over.marks[1]);
-  expect(under.marks[0]).not.toBe(under.marks[1]);
-  expect(equal.marks[0]).toBe(equal.marks[1]);
+  expect(Object.keys(over.look[0]?.self ?? {}).length).toBeGreaterThan(200); // every computed property, not a chosen few
+  // Every attribute and every computed property of every element, its ::before and ::after: identical, but where the bar moves.
+  expect(lookDiff(over.look, under.look)).toEqual([]);
+  expect(lookDiff(over.look, equal.look)).toEqual([]);
+  // The text differs only in the amounts themselves.
+  const rows = (price: string) => [
+    `Monthly price ${price} Your limit: up to $65.00 Read back`,
+    "Contract length 12 months Your limit: up to 24 months Heard, not read back",
+    "One-time fees None Your limit: up to $0.00 Read back",
+  ];
+  expect([over.rows, under.rows, equal.rows]).toEqual([rows("$78.00"), rows("$52.00"), rows("$65.00")]);
+  expect([over.bar, under.bar, equal.bar]).toEqual([
+    ["Your limit $65", "This offer $78"],
+    ["Your limit $65", "This offer $52"],
+    ["Your limit $65", "This offer $65"],
+  ]);
+  // The marks do move: the offer's ring by its amount, onto the limit's tick when equal.
+  const left = (l: Look) => l.filter((e) => e.el === "span.pl-lbar-lim" || e.el === "span.pl-lbar-dot").map((e) => e.attrs.style);
+  expect(left(over.look)).not.toEqual(left(under.look));
+  expect(new Set(left(equal.look).map((s) => s?.replace("left: ", ""))).size).toBe(1);
 });

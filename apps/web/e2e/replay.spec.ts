@@ -253,7 +253,16 @@ test("replay: the open card's hold line follows the playback clock, and stands s
   await page.getByRole("button", { name: "Play" }).click();
   await expect(hold).not.toHaveText("The rep is holding · 0:09");
   await page.getByRole("button", { name: "Pause" }).click();
-  const paused = await hold.textContent();
+  // The page follows the slider through useDeferredValue: wait until two reads 300 ms apart agree, then hold it to that.
+  let paused: string | null = null;
+  await expect
+    .poll(async () => {
+      const before = await hold.textContent();
+      await page.waitForTimeout(300);
+      paused = await hold.textContent();
+      return before === paused;
+    })
+    .toBe(true);
   await page.waitForTimeout(2_000);
   await expect(hold).toHaveText(paused ?? "");
 });
