@@ -33,10 +33,15 @@ MADE: dict[str, tuple[str | None, list[list[str]]]] = {
 
 @pytest.fixture(scope="module")
 def sessions(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Two fake sessions with the same scripts: the same heard lines twice."""
+    """Two fake sessions with the same scripts: the same heard lines twice. Their
+    manifests say real_http for every role, as freeze requires (the only way a
+    test bundle reaches the item set)."""
     root = tmp_path_factory.mktemp("runs")
     for name in ("a", "b"):
         run(root / name, SCRIPTS, until=UNTIL)
+        d = run_dir(root, name)
+        roles = {*manifest(d)["reality"], *ws.REAL_ROLES}
+        rewrite(d, reality=dict.fromkeys(sorted(roles), "real_http"))
     return root
 
 
@@ -314,6 +319,48 @@ def test_a_sealed_test_path_is_refused_and_non_train_bundles_are_skipped(
         "mouth": [],
         "simuser": [],
     }
+
+
+def test_a_bundle_not_real_http_for_a_fast_or_world_role_is_skipped(
+    sessions: Path, tmp_path: Path
+) -> None:
+    for role in ws.REAL_ROLES:
+        d = tmp_path / role
+        shutil.copytree(run_dir(sessions, "a"), d)
+        rewrite(d, reality=manifest(d)["reality"] | {role: "test_fake"})
+    shutil.copytree(run_dir(sessions, "b"), tmp_path / "missing")
+    reality = manifest(tmp_path / "missing")["reality"]
+    rewrite(
+        tmp_path / "missing", reality={k: v for k, v in reality.items() if k != "ear"}
+    )
+    doc = ws.freeze(tmp_path)
+    assert doc["skipped"]["bundles_not_real_http"] == len(ws.REAL_ROLES) + 1
+    assert doc["bundles"] == [] and all(not doc["items"][r] for r in ws.ROLES)
+    kept = ws.freeze(sessions)["bundles"]  # all real_http: kept, reality recorded
+    assert [b["reality"]["ear"] for b in kept] == ["real_http", "real_http"]
+
+
+def test_the_offline_evidence_check_is_disclosed_not_a_filter(
+    sessions: Path, tmp_path: Path
+) -> None:
+    backlog().write(tmp_path, run_dir(sessions, "a"))  # no session.started: fails
+    shutil.copytree(run_dir(sessions, "a"), tmp_path / "a")
+    doc = ws.freeze(tmp_path)
+    status = {b["run_id"]: b["evidence_check"] for b in doc["bundles"]}
+    assert not status["r-backlog"]["ok"]
+    assert (
+        "the log does not open with session.started" in status["r-backlog"]["failures"]
+    )
+    summary = doc["evidence_check"]
+    assert "r-backlog" in summary["failing_bundles"] and summary["mode"] == "offline"
+    from_backlog = [  # still items: disclosed, never dropped
+        i
+        for i in doc["items"]["ear"]
+        if {o["run_id"] for o in i["occurrences"]} == {"r-backlog"}
+    ]
+    assert len(from_backlog) == 5
+    failing = summary["items_only_from_failing_bundles"]
+    assert failing["ear_single"] + failing["ear_block"] >= 5
 
 
 def test_simuser_items_only_from_runs_after_9e4e796(

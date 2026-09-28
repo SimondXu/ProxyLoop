@@ -55,9 +55,11 @@ from typing import Any, cast, get_args
 from proxyloop.contract.base import canonical_json, sha256_text
 from proxyloop.contract.bundle import EVENTS, Bundle
 from proxyloop.contract.events import Event
+from proxyloop.contract.llm import AdapterKind
 from proxyloop.env.counterparty.ear import Act
 from proxyloop.env.tasks.loader import instance_hash, load_task, resolve
 from proxyloop.env.tasks.schema import Task
+from proxyloop.evidence.check import evidence_check
 from proxyloop.training.pull_through import load_bundles
 
 Json = dict[str, Any]
@@ -67,10 +69,14 @@ SIMUSER_SINCE = "9e4e796"  # S1-SYS-04: the SimUser of the slice (reply tool, st
 TRIVIAL = ("ask_identity", "ok_hold", "greet", "check_in")
 TRIVIAL_CAP, CAP_SEED = 15, 0
 MAX_BATCH = 25
+REAL_ROLES = ("fast_user", "fast_cp", "ear", "mouth", "simuser")  # Fast and world
 ROLES = ("ear", "mouth", "simuser")
 ELIGIBILITY = (
     "Bundles under --runs read by training.pull_through.load_bundles (a path with a "
-    "'test' part is refused or skipped), manifest split == 'train' only. Ear: every "
+    "'test' part is refused or skipped), manifest split == 'train' only, with "
+    f"real_http for every Fast and world role ({', '.join(REAL_ROLES)}) in the "
+    "manifest's reality; each bundle's offline evidence-check status is recorded "
+    "and disclosed, never a filter. Ear: every "
     "cp-lane utterance a rep.ear classified (its utt.delivered lines of one delivery, "
     "text_heard joined), deduplicated on (whitespace/case-normalised text, offers "
     "made before it with terms and open status, company, identity keys); blocks: the "
@@ -370,13 +376,23 @@ def constructed(path: Path) -> tuple[Json, Json]:
 def freeze(runs: Path, extra: Path | None = None) -> Json:
     ear, mouth, sim = Pool(), Pool(), Pool()
     bundles: list[Json] = []
-    skipped = {"bundles_not_train": 0, "ear_not_cp_delivered": 0}
+    skipped = {"bundles_not_train": 0, "bundles_not_real_http": 0}
+    skipped["ear_not_cp_delivered"] = 0
+    skipped_runs: dict[str, list[str]] = {}
     for b, events_sha in sorted(load(runs), key=lambda x: x[0].manifest.run_id):
         m = b.manifest
+        reality = {role: kind.value for role, kind in sorted(m.reality.items())}
+        why = ""
         if m.split != "train":
-            skipped["bundles_not_train"] += 1
+            why = "bundles_not_train"
+        elif any(m.reality.get(r) is not AdapterKind.REAL_HTTP for r in REAL_ROLES):
+            why = "bundles_not_real_http"
+        if why:
+            skipped[why] += 1
+            skipped_runs.setdefault(why, []).append(m.run_id)
             continue
         task, eligible = task_of(m.task_ref), descends(m.git_sha)
+        report = evidence_check(b, "offline")
         bundles.append(
             {
                 "run_id": m.run_id,
@@ -385,6 +401,8 @@ def freeze(runs: Path, extra: Path | None = None) -> Json:
                 "git_sha": m.git_sha,
                 "task_instance_matches": instance_hash(task) == m.instance_hash,
                 "simuser_eligible": eligible,
+                "reality": reality,
+                "evidence_check": {"ok": report.ok, "failures": list(report.failures)},
             }
         )
         w = walk(b, task)
@@ -417,6 +435,13 @@ def freeze(runs: Path, extra: Path | None = None) -> Json:
     def off(items: Iterable[Json]) -> int:
         return sum(1 for i in items if i["off_distribution"])
 
+    failing = [b["run_id"] for b in bundles if not b["evidence_check"]["ok"]]
+
+    def only_failing(items: Iterable[Json]) -> int:
+        """Items every occurrence of which is in a bundle that fails the check."""
+        runs = [{o["run_id"] for o in i["occurrences"]} for i in items]
+        return sum(1 for r in runs if r <= set(failing))
+
     counts = {
         "recorded": {
             "ear_single": tally(i for i in ears if i["kind"] == "single"),
@@ -434,7 +459,19 @@ def freeze(runs: Path, extra: Path | None = None) -> Json:
         "mouth_reuse": MOUTH_REUSE,
         "bundles": bundles,
         "skipped": skipped,
+        "skipped_runs": skipped_runs,
         "counts": counts,
+        "evidence_check": {
+            "mode": "offline",
+            "rule": "disclosed, not a filter",
+            "failing_bundles": failing,
+            "items_only_from_failing_bundles": {
+                "ear_single": only_failing(i for i in ears if i["kind"] == "single"),
+                "ear_block": only_failing(i for i in ears if i["kind"] == "block"),
+                "mouth": only_failing(mouths),
+                "simuser": only_failing(sims),
+            },
+        },
         "root_hash": sha256_text("\n".join(sorted(ids))),
         "items": {"ear": ears, "mouth": mouths, "simuser": sims},
         "constructed": made,

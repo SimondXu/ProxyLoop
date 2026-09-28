@@ -2,7 +2,21 @@
  "bundles": [
   {
    "events_sha256": "3c5ca03c3e18d79f4aa7fc66b4d80f7ba45c47d0f9ec52bc73d737dc39ed8d0c",
+   "evidence_check": {
+    "failures": [
+     "fold rejects 20260926T213824Z-0e8a9c:161: public fact account.holder_name: 20260926T213824Z-0e8a9c:151 is no user msg"
+    ],
+    "ok": false
+   },
    "git_sha": "fc9cc7d1c7f71573fa22adad6a407aa33f681465",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260926T213824Z-0e8a9c",
    "simuser_eligible": false,
    "task_instance_matches": true,
@@ -10,7 +24,21 @@
   },
   {
    "events_sha256": "572575ca815f972b32d7053c3a8a6f02f3ed9d71fe669431b70f85a3f70d17c7",
+   "evidence_check": {
+    "failures": [
+     "llm.call 20260926T214214Z-577710:2019: no response b45a830e8458"
+    ],
+    "ok": false
+   },
    "git_sha": "fc9cc7d1c7f71573fa22adad6a407aa33f681465",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260926T214214Z-577710",
    "simuser_eligible": false,
    "task_instance_matches": true,
@@ -18,7 +46,19 @@
   },
   {
    "events_sha256": "57bce05e8561fd1dde5357e536e4d27862d2c7de1fac6ceebb19d9a908eee863",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "caa05e32cd98f894365153235ff1fbed1f2f1e35",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T004510Z-ab0a63",
    "simuser_eligible": false,
    "task_instance_matches": true,
@@ -26,7 +66,19 @@
   },
   {
    "events_sha256": "92c7c586827e0fee100f38cdbf50e47cddb8a85ae69e7007253e397919a591aa",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "caa05e32cd98f894365153235ff1fbed1f2f1e35",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T004720Z-232834",
    "simuser_eligible": false,
    "task_instance_matches": true,
@@ -34,7 +86,19 @@
   },
   {
    "events_sha256": "db6daf40006e41fdf34bf3f8a93db3636425fbcef746adf0c7c8fc7d523bfd9b",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "caa05e32cd98f894365153235ff1fbed1f2f1e35",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T004814Z-db141c",
    "simuser_eligible": false,
    "task_instance_matches": true,
@@ -42,7 +106,19 @@
   },
   {
    "events_sha256": "da3f024deccf228e60f3f215f0eced4480fd8c2f5cd09fcb7cc2c2cd2550cf43",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "caa05e32cd98f894365153235ff1fbed1f2f1e35",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T004935Z-99e63e",
    "simuser_eligible": false,
    "task_instance_matches": true,
@@ -50,7 +126,19 @@
   },
   {
    "events_sha256": "836edd667399621ac6372bd05bce81bf03ba6231e034a589cc0abf7e3649b590",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "bc084d405551b0023f9c0cb60c3e2be7a2d2a0be",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T005541Z-aeab91",
    "simuser_eligible": false,
    "task_instance_matches": true,
@@ -58,7 +146,21 @@
   },
   {
    "events_sha256": "85e4f5363bcd67666f9fbbf5d305ae717fc4fe1cb19251b2031658e84fbc2f8d",
+   "evidence_check": {
+    "failures": [
+     "llm.call 20260927T005713Z-4ce0ad:135: no response d369056ab6d3"
+    ],
+    "ok": false
+   },
    "git_sha": "bc084d405551b0023f9c0cb60c3e2be7a2d2a0be",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T005713Z-4ce0ad",
    "simuser_eligible": false,
    "task_instance_matches": true,
@@ -66,7 +168,19 @@
   },
   {
    "events_sha256": "49a3e781fdcb0238b0b77e42baa94bc9178ca4b0bb78fd0cc3ed72eb9443b34f",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "bc084d405551b0023f9c0cb60c3e2be7a2d2a0be",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T005836Z-4cd024",
    "simuser_eligible": false,
    "task_instance_matches": true,
@@ -74,7 +188,19 @@
   },
   {
    "events_sha256": "c0e46215dd35396f60dd5758ac7956d41d5e480216951957d0bdf5c0b9603dd7",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "2b132751abdd97d9b6412645c353423dcc0e215c",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T011606Z-30d027",
    "simuser_eligible": false,
    "task_instance_matches": true,
@@ -82,7 +208,19 @@
   },
   {
    "events_sha256": "979dfa908eec2c98b2227e343bdff65eca2158042934c12ca30bd9f950110a55",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "2b132751abdd97d9b6412645c353423dcc0e215c",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T011721Z-dcb1a6",
    "simuser_eligible": false,
    "task_instance_matches": true,
@@ -90,7 +228,19 @@
   },
   {
    "events_sha256": "27314478e1efc6d7a564043bbb9308abc6394610bd5ca8a10433c24037a2294f",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "2b132751abdd97d9b6412645c353423dcc0e215c",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T011839Z-a73470",
    "simuser_eligible": false,
    "task_instance_matches": true,
@@ -98,7 +248,19 @@
   },
   {
    "events_sha256": "73236e64a63a04d9fc5c40a16129a3ddd1783d7c12e13c5885477da94c218ceb",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "ce55dbea5e9d1184f0c731de3a0bd59d09e99fb1",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T014929Z-c567ee",
    "simuser_eligible": false,
    "task_instance_matches": true,
@@ -106,7 +268,19 @@
   },
   {
    "events_sha256": "77b9917af2f36a6b3880a28e8b76d833e6de706f5ff96316c0d1a1f5241adcfc",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "9e4e79608e9fb533b6ee850d7b0c10450cd9dfd4",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T020809Z-ba151c",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -114,7 +288,21 @@
   },
   {
    "events_sha256": "7a6c43b30a0dd6c32a265f45cf8c5160886d8dd42e3029de360b2a186938a5d6",
+   "evidence_check": {
+    "failures": [
+     "llm.call 20260927T022005Z-3b4cc2:79: no response 163f68a7f7ea"
+    ],
+    "ok": false
+   },
    "git_sha": "24f6234c1d5828cde7d7a93f83b6cbcd3344ffd2",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T022005Z-3b4cc2",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -122,7 +310,19 @@
   },
   {
    "events_sha256": "a59d120280e93567a100c10f05e6f2fc26f9318a0f765e7656bbe2bfffa58eb1",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "24f6234c1d5828cde7d7a93f83b6cbcd3344ffd2",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T022133Z-05521c",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -130,7 +330,19 @@
   },
   {
    "events_sha256": "f4d8f540271a5eb4ed459e01b4f557edc06d6bbc670c7cb37966128998de29b7",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "a5325187bd573495fb00c23937b68aa39e2b4fbf",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T023239Z-ea772b",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -138,7 +350,19 @@
   },
   {
    "events_sha256": "6b19b62be68275de1df8c641533f12c92ff65f851552c20709b672eedcab23c5",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "acfaadbad1ba8c339bea11e485f2915db622fe27",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T031436Z-df655b",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -146,7 +370,19 @@
   },
   {
    "events_sha256": "836b8fe685b5b8e022b2cb279c13b9ee5ae93b8db7cbb9845b202aeaee04628a",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "acfaadbad1ba8c339bea11e485f2915db622fe27",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T031636Z-2957be",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -154,7 +390,19 @@
   },
   {
    "events_sha256": "64695ad0e0890e6f70a7aa4115a8fe939e453bf752a994ef3702511a7ea19360",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "acfaadbad1ba8c339bea11e485f2915db622fe27",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T031809Z-148bbe",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -162,7 +410,19 @@
   },
   {
    "events_sha256": "21270e093d3e625256af96953abec82636d759ff1372c44af8472e04dfe39089",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "d8c4464a02be00d6f512c88af2a2310bcc1a7c80",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T031942Z-da56c9",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -170,7 +430,19 @@
   },
   {
    "events_sha256": "e9fdbd8d44dda5b7ffaa58951fc3d71fd308f9be039afd2679ae41f62cb9303e",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "d8c4464a02be00d6f512c88af2a2310bcc1a7c80",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T031958Z-115e45",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -178,7 +450,19 @@
   },
   {
    "events_sha256": "2e6f61fd59f07c3bf607d00064ffb1243825b045b8dcbf619ea9052db349442c",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "d8c4464a02be00d6f512c88af2a2310bcc1a7c80",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T032015Z-ee2a4f",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -186,7 +470,19 @@
   },
   {
    "events_sha256": "099560f44cf723e3ec24e30291a5107c0882f81141c7bbc43c3b82649563d779",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "d8c4464a02be00d6f512c88af2a2310bcc1a7c80",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T032131Z-0a921a",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -194,7 +490,19 @@
   },
   {
    "events_sha256": "fc16233ce4e07be695d4d675a17c4337925040132aba7d9ce98dd2bbb80313e8",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "d8c4464a02be00d6f512c88af2a2310bcc1a7c80",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T032242Z-e2c82e",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -202,7 +510,19 @@
   },
   {
    "events_sha256": "a303810ef68208cfd9041263c854706f4be17a380a86f620f53a5a14cc67e7e3",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "d8c4464a02be00d6f512c88af2a2310bcc1a7c80",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T032248Z-692650",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -210,7 +530,19 @@
   },
   {
    "events_sha256": "631244bee85deddb174484e634b62de19e6d252b9dc0a312b4711fdcd5dba079",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "d8c4464a02be00d6f512c88af2a2310bcc1a7c80",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T032325Z-9c1bde",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -218,7 +550,19 @@
   },
   {
    "events_sha256": "b4ebed28a1db9395caf47a103e557b63cb5994eb5461a3a9a66d0e1a2b0965a8",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "d8c4464a02be00d6f512c88af2a2310bcc1a7c80",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T032332Z-a9d8eb",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -226,7 +570,19 @@
   },
   {
    "events_sha256": "4828b1f1ee0b02f9b4893758f0bbf36eb9f50613c7f15f48453a4aa91b710548",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "d8c4464a02be00d6f512c88af2a2310bcc1a7c80",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T032340Z-cb8cb2",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -234,7 +590,19 @@
   },
   {
    "events_sha256": "45604d3c44a5de8d08dec5e0152f930ba226570b9f475a84cf04dd2573e4a55b",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "d8c4464a02be00d6f512c88af2a2310bcc1a7c80",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T032440Z-365e7b",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -242,7 +610,19 @@
   },
   {
    "events_sha256": "33e640035ab20816ac59d21dbece6fb7684a6da30dc3050d3c7ea3e195da6c1b",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "d8c4464a02be00d6f512c88af2a2310bcc1a7c80",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T032600Z-46acf1",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -250,7 +630,19 @@
   },
   {
    "events_sha256": "44d5b172d9e8b7d8243982760e7a335168a17d581a2bb82c9d7f23a8c47cbdfc",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "d8c4464a02be00d6f512c88af2a2310bcc1a7c80",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T032651Z-ffa8ea",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -258,7 +650,19 @@
   },
   {
    "events_sha256": "55ee3c83861e769e9f04fe68aed2673f068bf1fbcf404dd9a61e5ba234d6dbc2",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "0009fd5d40d59dd0a43b15386c963ddb26163afe",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T050729Z-723c8f",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -266,7 +670,19 @@
   },
   {
    "events_sha256": "ac861ad9c531d95912390a3d66d57189d11db31bc6c8606b598adfe1054b06d0",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "0009fd5d40d59dd0a43b15386c963ddb26163afe",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T051033Z-dd5094",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -274,7 +690,19 @@
   },
   {
    "events_sha256": "1a325fdba15f535c99deb3afbdcf4451456d0bde8942f397e4b2762e8f0ebdee",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "0009fd5d40d59dd0a43b15386c963ddb26163afe",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T051648Z-d04021",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -282,7 +710,19 @@
   },
   {
    "events_sha256": "175110876861b9c93c1b1b50e9c41c2b73f74d2ca1c4c203ae4f958bc1bcc424",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "ff59c9e69bfad2d156d5f249549d98d58e4cac59",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T054451Z-655087",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -290,7 +730,19 @@
   },
   {
    "events_sha256": "6bebd8958454202d3e34cfa712d1dc24b204fa6572bfdc1a25147082d5b8c007",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "0fb03d36031a00bbd5e1e10faa61178ed173cadd",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T055218Z-f3a106",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -298,7 +750,21 @@
   },
   {
    "events_sha256": "0a239a045caa3ac5550ab75fb72820885073f86362aa56722f14697e4c9ace49",
+   "evidence_check": {
+    "failures": [
+     "llm.call 20260927T060019Z-ed5063:803: no response 2f3a2932a0c0"
+    ],
+    "ok": false
+   },
    "git_sha": "5d98a36e44ee633d539ef4e08ea3847f0d30754c",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T060019Z-ed5063",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -306,7 +772,19 @@
   },
   {
    "events_sha256": "1992093074320d170a067adf6608c33f345cabc270a4fa17dafd7432bb955fb9",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "bc3346ab679501363a3af1c344617737fbd86d6c",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T064626Z-f828f1",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -314,7 +792,19 @@
   },
   {
    "events_sha256": "b00eff707810c39eaee46c0d00769f93b369a6f6f0fb6997614c828623afcdaf",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "c404d7a168f792567eb3a6e9b33abd2b14bc1ca7",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T065319Z-8f7e69",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -322,7 +812,19 @@
   },
   {
    "events_sha256": "7552a621716c32812c5bd084d811482ff31956a51900149c41eb896eeab8232b",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "4dd41ae932ff84acd0b9cc29bfddb33b38e77190",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T081031Z-93f96b",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -330,7 +832,19 @@
   },
   {
    "events_sha256": "9a70a4eefea258762505e6cbebc2d584337e5a64a39c030a7fc3e21d07561848",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "c9a7e0ea8afe1d91c9ed02989a8853e4ea393506",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T083528Z-84f731",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -338,7 +852,19 @@
   },
   {
    "events_sha256": "a119a0014667f7915cc5724d2cd4583fa4e77c782692c9868ac2d9d970fa8dd8",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "e07cd0124d129839f02f7865206d1996897a1b0c",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T091242Z-279efc",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -346,7 +872,19 @@
   },
   {
    "events_sha256": "cbce47a731088439239d4a7c61e3ab4f4c95ccdc369d9fa699f3f28055919cca",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "7f7f902d2b3d1e3b01514564f3c4d87c2a2f8333",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T091443Z-289b86",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -354,7 +892,19 @@
   },
   {
    "events_sha256": "07f4f4da3211e114738bc3688fd1b5b1ceec4c265ec112b8b500f5f081a18246",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "88b98f5f5694a83aa181e5e0200962c1eda21ac5",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T100619Z-e6ada1",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -362,7 +912,19 @@
   },
   {
    "events_sha256": "7c6ec63bc7a81b7c80e646c911e7cf2d5882bcbceadab605c779d65407296de1",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "a4d2d660aae1a727d165f9c6d8a3fec39d2cc6d7",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T205319Z-45d7ed",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -370,7 +932,19 @@
   },
   {
    "events_sha256": "20c7c41f97c5169d211200a51749d68484ba725ccb99e94817b00a0a89c16002",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "1723476afde9724ba166dcdff5b6ee4894270b66",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T222059Z-527345",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -378,7 +952,19 @@
   },
   {
    "events_sha256": "ffdc8157cd24ff0289208991b00b48f63a86b631c22a1c0823937d7cb6b9c1d6",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "7809da40a05e165cef8a03c960730708838dd29c",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260927T234611Z-21988c",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -386,7 +972,19 @@
   },
   {
    "events_sha256": "ec87b43a930a48cef39fc04860d156ffb11a0a279ac33c5e55c970b2b9f31197",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "94c42b50c87243c5f8e8383c903228cb7c3a3f3e",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260928T012957Z-cc160a",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -394,7 +992,19 @@
   },
   {
    "events_sha256": "fb82f170aafc1ffe663a5105899603bf4187f9cb41f2f431cd97dc5bee120424",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "b84cccea011ae47a62244d7f05092720065f9570",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260928T023911Z-a806fc",
    "simuser_eligible": true,
    "task_instance_matches": true,
@@ -402,19 +1012,23 @@
   },
   {
    "events_sha256": "eb401143b2a0f097254974c16ca03fbb42c9bc228332543afce95d585a1a6539",
+   "evidence_check": {
+    "failures": [],
+    "ok": true
+   },
    "git_sha": "a5c897cda2571f0a9f1a2c1b3ff07c620c61be20",
+   "reality": {
+    "ear": "real_http",
+    "fast_cp": "real_http",
+    "fast_user": "real_http",
+    "mouth": "real_http",
+    "simuser": "real_http",
+    "slow": "real_http"
+   },
    "run_id": "20260928T041542Z-bdfcc0",
    "simuser_eligible": true,
    "task_instance_matches": true,
    "task_ref": "x-out-of-envelope-approval@1"
-  },
-  {
-   "events_sha256": "6ff78028f7b37d3329a7c8ad5d9f300c4ce94acc540ad57650db69d5728c393e",
-   "git_sha": "883bdff4263f0ca06ef6f9edcc6c2d29b6b3bc19",
-   "run_id": "20260928T075357Z-6b59de",
-   "simuser_eligible": true,
-   "task_instance_matches": true,
-   "task_ref": "cp-direct-discount@1"
   }
  ],
  "constructed": {
@@ -6627,7 +7241,24 @@
    }
   }
  },
- "eligibility": "Bundles under --runs read by training.pull_through.load_bundles (a path with a 'test' part is refused or skipped), manifest split == 'train' only. Ear: every cp-lane utterance a rep.ear classified (its utt.delivered lines of one delivery, text_heard joined), deduplicated on (whitespace/case-normalised text, offers made before it with terms and open status, company, identity keys); blocks: the ADR-0021 D1 replay on the recorded clock, 2+ utterances. Mouth: every rep.mouth, deduplicated on its semantic inputs; intents ask_identity, ok_hold, greet, check_in capped at 15 unique items each by a seeded draw (seed 0). SimUser: every SimUser request of a bundle whose git_sha descends from 9e4e796. Constructed items are flagged and never pooled with recorded ones. An Ear item whose text names an offer ref (the family ladder's or its own) is off_distribution: true and scored apart.",
+ "eligibility": "Bundles under --runs read by training.pull_through.load_bundles (a path with a 'test' part is refused or skipped), manifest split == 'train' only, with real_http for every Fast and world role (fast_user, fast_cp, ear, mouth, simuser) in the manifest's reality; each bundle's offline evidence-check status is recorded and disclosed, never a filter. Ear: every cp-lane utterance a rep.ear classified (its utt.delivered lines of one delivery, text_heard joined), deduplicated on (whitespace/case-normalised text, offers made before it with terms and open status, company, identity keys); blocks: the ADR-0021 D1 replay on the recorded clock, 2+ utterances. Mouth: every rep.mouth, deduplicated on its semantic inputs; intents ask_identity, ok_hold, greet, check_in capped at 15 unique items each by a seeded draw (seed 0). SimUser: every SimUser request of a bundle whose git_sha descends from 9e4e796. Constructed items are flagged and never pooled with recorded ones. An Ear item whose text names an offer ref (the family ladder's or its own) is off_distribution: true and scored apart.",
+ "evidence_check": {
+  "failing_bundles": [
+   "20260926T213824Z-0e8a9c",
+   "20260926T214214Z-577710",
+   "20260927T005713Z-4ce0ad",
+   "20260927T022005Z-3b4cc2",
+   "20260927T060019Z-ed5063"
+  ],
+  "items_only_from_failing_bundles": {
+   "ear_block": 9,
+   "ear_single": 82,
+   "mouth": 35,
+   "simuser": 4
+  },
+  "mode": "offline",
+  "rule": "disclosed, not a filter"
+ },
  "items": {
   "ear": [
    {
@@ -31133,7 +31764,13 @@
  "root_hash": "471a0a9151af0c85204b6d49d2977fc14fae50fdfcd77cc2c2401246d61a41cc",
  "schema": "pl.world-select-items/1",
  "skipped": {
+  "bundles_not_real_http": 1,
   "bundles_not_train": 0,
   "ear_not_cp_delivered": 0
+ },
+ "skipped_runs": {
+  "bundles_not_real_http": [
+   "20260928T075357Z-6b59de"
+  ]
  }
 }
