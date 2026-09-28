@@ -20,6 +20,10 @@ paired, X - incumbent per segment, Ear consequence-class accuracy and Mouth fide
 rate (one seed for every comparison). No decision rule: the user decides. ``report``
 writes them with the git sha to ``docs/decisions/data/world-select-report.json`` and
 renders ``world-select-report.md`` from that JSON (every number read from it).
+Disclosures (``JUDGED_NOTE`` and ``CALLS_NOTE`` say what each means): ``inputs_sha256``,
+``world_max_tokens``, ``finish_reason`` (``calls``, ``length`` always) and
+``timeout_all_repeats`` per role; per Mouth segment ``fallback_with_length_call`` and,
+judged, ``n_excluded_fallback`` and ``judged_final_call_length``; ``--note`` text.
 
 ``judge-export`` writes blind Mouth batches: every arm's Mouth model output (not a
 fallback template, not an error), one per record with what the Mouth was asked to say
@@ -59,10 +63,35 @@ REPORT, REPORT_MD = DATA / "world-select-report.json", DATA / "world-select-repo
 RUBRIC = DATA / "world-select-mouth-rubric.md"
 RUBRIC_SHA = "38e858bb40ca275e0b05a9555e74c26c5084d76b6fa88ac596928812f9b48b88"
 SHOWN = ("record", "intent", "say", "ask", "heard", "output")  # a record, and no more
+DASH_NOTE = (
+    "A `-` cell is null: a rate with no denominator (n = 0), a count not seen, "
+    "`cost_usd` when the report is made without `--prices`, and "
+    "`undeclared_reveals`, which the rows do not carry."
+)
+JUDGED_NOTE = (
+    "Judged M1-M5 cover non-fallback outputs only; `n_excluded_fallback` counts the "
+    "fallbacks left out (ADR-0024 §5). `fallback_with_length_call`: fallbacks with a "
+    "call that stopped at `length`; `judged_final_call_length`: judged outputs whose "
+    "final call stopped at `length` (their text may be truncated)."
+)
+CALLS_NOTE = (
+    "`finish_reason`, `timeout_all_repeats` and tokens cover every call of every "
+    "attempt and repeat of the final rows (superseded `not_final_rows` left out); "
+    "latency, those calls without an error. `null`: no finish reason (e.g. cancelled). "
+    "`length`: stopped at max_tokens, world.MAX_TOKENS = {n} for every arm at the "
+    "generation commit; the rows do not record the cap, so it is the run's only if "
+    "world.py did not change since the run. A segment's `timeout` is repeat 1 only."
+)
 
 
 def fidelity(row: Obj) -> bool:
     return row["status"] == "ok" and row["result"]["fidelity_ok"] is True
+
+
+def finishes(row: Obj) -> list[str | None]:
+    """Each call's finish reason, in order, over every attempt."""
+    tries = sc.attempts(row)
+    return [c.get("finish_reason") for a in tries for c in a.get("records", [])]
 
 
 def mouth_metrics(items: Sequence[Obj], arm: sc.Arm, judged: Obj | None) -> Obj:
@@ -75,13 +104,19 @@ def mouth_metrics(items: Sequence[Obj], arm: sc.Arm, judged: Obj | None) -> Obj:
     }
     out |= {"fallback": sc.rate(sum(fallback), len(rows)), "timeout": status["timeout"]}
     out["exhausted"] = status["exhausted"]
+    cut = [f and "length" in finishes(r) for r, f in zip(rows, fallback, strict=True)]
+    out["fallback_with_length_call"] = sum(cut)
     if judged is not None:
+        last = [finishes(r)[-1:] == ["length"] for i, r in zip(items, rows, strict=True)
+                if i["item_id"] in judged]  # fmt: skip
+        out["judged_final_call_length"] = sum(last)
         got = [judged[i["item_id"]] for i in items if i["item_id"] in judged]
         out["judged"] = {
             m: sc.rate(sum(j[m] for j in got), len(got)) for m in sc.JUDGED
         }
         clean = sum(all(j[m] for m in sc.JUDGED) for j in got)
         out["judged"]["no_violation"] = sc.rate(clean, len(got))
+        out["n_excluded_fallback"] = sum(fallback)  # never exported to the judge
     return out
 
 
@@ -127,10 +162,15 @@ def pct(values: Sequence[int], q: float) -> int | None:
 
 def usage(arm: sc.Arm, prices: Obj | None) -> Obj:
     out: Obj = {"latency_ms": {}, "tokens": {}, "cost_usd": None}
+    out |= {"finish_reason": {}, "timeout_all_repeats": {}}
     echoes: set[str] = set()
     for role in sorted(arm.roles):
-        recs = [c for (_, r, _), row in sorted(arm.rows.items()) if r == role
-                for a in sc.attempts(row) for c in a.get("records", [])]  # fmt: skip
+        rows = [row for (_, r, _), row in sorted(arm.rows.items()) if r == role]
+        recs = [c for row in rows for a in sc.attempts(row)
+                for c in a.get("records", [])]  # fmt: skip
+        why = Counter(str(c.get("finish_reason") or "null") for c in recs)
+        out["finish_reason"][role] = {"calls": len(recs), "length": 0} | dict(why)
+        out["timeout_all_repeats"][role] = sum(r["status"] == "timeout" for r in rows)
         ms = [c["latency_ms"] for c in recs if c.get("error") is None]
         out["latency_ms"][role] = {
             "n": len(ms),
@@ -186,6 +226,7 @@ def load_rows(paths: Iterable[Path], root: str) -> dict[str, sc.Arm]:
             raise SystemExit(f"{path}: {torn} torn lines, arms {sorted(seen)}")
         for name in seen:
             arms[name].torn += torn
+            arms[name].files.append(path)
     if open_ := sorted(k for k, status in last.items() if status not in wsr.FINAL):
         raise SystemExit(f"{len(open_)} keys end unavailable or capped: {open_[0]}")
     return arms
@@ -222,9 +263,12 @@ def score(args: argparse.Namespace, judged: dict[str, Obj] | None = None) -> Obj
         complete(doc, arm)
     prices = sc.load_json(args.prices) if args.prices else None
     prompts = simuser_prompts(doc, args.runs) if args.runs else None
-    out: Obj = {"note": sc.NOTE, "incumbent": args.incumbent, "arms": {}}
+    note = f"{sc.NOTE} {args.note}" if args.note else sc.NOTE
+    out: Obj = {"note": note, "incumbent": args.incumbent, "arms": {}}
     out |= {"items_root_hash": doc["root_hash"], "codebook_sha256": sha}
+    out["inputs_sha256"] = inputs_sha256(args, arms)
     out |= {"gold_sha256": args.gold_sha, "gold_counts": gold.get("counts")}
+    out["world_max_tokens"] = world.MAX_TOKENS  # at generation, not in the rows
     out |= {"bootstrap": {"seed": args.seed, "resamples": args.resamples}}
     units: dict[str, list[sc.Unit]] = {}
     for name, arm in sorted(arms.items()):
@@ -245,6 +289,21 @@ def score(args: argparse.Namespace, judged: dict[str, Obj] | None = None) -> Obj
             }
         out["arms"][name] = res
     return out | {"paired": paired(doc, arms, units, args)}
+
+
+def inputs_sha256(args: argparse.Namespace, arms: dict[str, sc.Arm]) -> Obj:
+    """The sha256 of each arm's rows files and, judged, of the key and label files,
+    with the key's export id and rubric sha256 (items, codebook, gold: in the head)."""
+    out: Obj = {"rows": {}}
+    for name, arm in arms.items():
+        out["rows"][name] = sorted({sc.sha256_file(p) for p in arm.files})
+    if args.judge_key is not None:
+        key = cast(Obj, sc.load_json(args.judge_key))
+        out |= {"judge_key": sc.sha256_file(args.judge_key)}
+        out |= {f"judge_{f}": key[f] for f in ("export_id", "rubric_sha256")}
+        labels = sorted(cast(Path, args.judge_dir).glob("*.json"))
+        out["judge_labels"] = {f.name: sc.sha256_file(f) for f in labels}
+    return out
 
 
 def paired(
@@ -430,15 +489,21 @@ def render(doc: Obj) -> str:
         "items_root_hash",
         "codebook_sha256",
         "gold_sha256",
+        "world_max_tokens",
     ):
         out.append(f"- {k}: {doc[k]}")
+    for k, v in flat(doc["inputs_sha256"], "inputs_sha256.").items():
+        out.append(f"- {k}: {cell(v)}")
     out += [f"- incumbent: {doc['incumbent']}", "- primary: Ear cc_accuracy", ""]
+    out += [DASH_NOTE, ""]
     for role in ws.ROLES:
         for s in sc.SEGMENTS:
             cols = {
                 a: flat(r[role][s]) for a, r in arms.items() if s in r.get(role, {})
             }
             out += table(f"{role}: {s}", cols) if cols else []
+            if role == "mouth" and any("judged.M1" in c for c in cols.values()):
+                out += [JUDGED_NOTE, ""]
     paired = {a: flat(r) for a, r in doc["paired"].items()}
     out += table("paired: X - incumbent, 95 % CI (no decision rule)", paired)
     keys = (
@@ -448,9 +513,13 @@ def render(doc: Obj) -> str:
         "echoes",
         "torn_lines",
         "not_final_rows",
+        "finish_reason",
+        "timeout_all_repeats",
     )
     cols = {a: flat({k: r[k] for k in keys}) for a, r in arms.items()}
-    return "\n".join(out + table("calls: latency, tokens, cost, served echoes", cols))
+    title = "calls: latency, tokens, cost, finish reasons, timeouts, served echoes"
+    note = CALLS_NOTE.format(n=doc["world_max_tokens"])
+    return "\n".join([*out, *table(title, cols), note])
 
 
 def git_state() -> Obj:
@@ -489,6 +558,7 @@ def parser() -> argparse.ArgumentParser:
         p.add_argument("--roles", type=wsr.roles_arg, help="every arm's, exactly")
         p.add_argument("--seed", type=int, default=0)
         p.add_argument("--resamples", type=int, default=10_000)
+        p.add_argument("--note", help="appended to the note (e.g. post hoc)")
     cmds["score"].add_argument("--out", type=Path, help="default: stdout")
     cmds["report"].add_argument("--out", type=Path, default=REPORT)
     cmds["report"].add_argument("--out-md", type=Path, default=REPORT_MD)

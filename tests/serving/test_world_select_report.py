@@ -14,6 +14,7 @@ from typing import Any, cast
 import pytest
 
 from proxyloop.contract.base import sha256_text
+from proxyloop.env import world
 from scripts.mod import world_select as ws
 from scripts.mod import world_select_report as wr
 from scripts.mod import world_select_run as wsr
@@ -489,3 +490,110 @@ def test_record_ids_are_opaque_and_arms_interleave(
     arms = [records[i]["arm"] for i in ids]
     assert sorted(arms) == [CAND, CAND, INC, INC]
     assert sum(x != y for x, y in itertools.pairwise(arms)) >= 2
+
+
+def test_call_disclosures_cover_every_attempt_and_repeat() -> None:
+    """finish_reason over every call record; timeouts over every repeat."""
+
+    def rec(why: str | None, err: str | None = None) -> Json:
+        return {"latency_ms": 5, "finish_reason": why, "error": err}
+
+    one = [{"records": [rec("length"), rec("tool_calls")]}, {"records": [rec("stop")]}]
+    arm = sc.Arm(INC, {}, {
+        (E1, "ear", 1): {"status": "ok", "attempts": one},
+        (E1, "ear", 2): {"status": "timeout",
+                         "attempts": [{"records": [rec(None, "cancelled")]}]},
+        (E2, "ear", 1): {"status": "timeout", "attempts": []},
+        (M1, "mouth", 1): {"status": "ok", "attempts": [{"records": [rec("stop")]}]},
+    })  # fmt: skip
+    got = wr.usage(arm, None)
+    assert got["finish_reason"] == {
+        "ear": {"calls": 4, "length": 1, "tool_calls": 1, "stop": 1, "null": 1},
+        "mouth": {"calls": 1, "length": 0, "stop": 1},  # length always present
+    }
+    assert got["timeout_all_repeats"] == {"ear": 2, "mouth": 0}
+    assert got["latency_ms"]["ear"]["n"] == 3  # unchanged: errored calls left out
+
+
+def test_report_discloses_inputs_fallbacks_and_note(
+    tree: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cap, plain = world.MAX_TOKENS, scores(tree)
+    assert plain["note"] == sc.NOTE
+    files = {INC: "gemini-3.8-flash@low.jsonl", CAND: "deepseek-flash@low.jsonl"}
+    shas = {a: [sc.sha256_file(tree / f)] for a, f in files.items()}
+    assert plain["inputs_sha256"] == {"rows": shas}  # no judging: rows only
+    assert "n_excluded_fallback" not in plain["arms"][INC]["mouth"]["recorded"]
+    assert plain["arms"][CAND]["timeout_all_repeats"]["ear"] == 1  # E5
+    out, key = tree / "batches", tree / "key.json"
+    ws.main(args(tree, "judge-export", "--out-dir", str(out), "--key-out",
+                  str(key), "--seed", "1"))  # fmt: skip
+    capsys.readouterr()
+    meta = json.loads(key.read_text())
+    labels = [{"record": i, "note": ""} | dict.fromkeys(sc.JUDGED, True)
+              for i in meta["records"]]  # fmt: skip
+    (tree / "judged").mkdir()
+    (tree / "judged" / "labels.json").write_text(json.dumps(labels))
+    judge = ["--judge-dir", str(tree / "judged"), "--judge-key", str(key)]
+    note = ["--note", "Post hoc / exploratory."]
+    rep, md = tree / "report.json", tree / "report.md"
+    monkeypatch.setattr(world, "MAX_TOKENS", 7)  # read at generation, not hard-coded
+    ws.main(args(tree, "report", "--out", str(rep), "--out-md", str(md), *judge, *note))
+    doc, text = json.loads(rep.read_text()), md.read_text()
+    assert doc["note"] == f"{sc.NOTE} Post hoc / exploratory."
+    assert doc["note"] in text.splitlines()[:3]
+    assert doc["inputs_sha256"] == {
+        "rows": shas,
+        "judge_key": sc.sha256_file(key),
+        "judge_export_id": meta["export_id"],
+        "judge_rubric_sha256": wr.RUBRIC_SHA,
+        "judge_labels": {"labels.json": sc.sha256_file(tree / "judged/labels.json")},
+    }
+    assert f"- inputs_sha256.rows.{INC}: {shas[INC][0]}" in text
+    assert f"- inputs_sha256.judge_export_id: {meta['export_id']}" in text
+    # The incumbent's M3 fell back (constructed); the candidate's M2 timed out (not
+    # a fallback): judged n + n_excluded_fallback + timeout = items.
+    inc, cand = doc["arms"][INC]["mouth"], doc["arms"][CAND]["mouth"]
+    assert inc["constructed"]["n_excluded_fallback"] == 1
+    assert inc["constructed"]["judged"]["M1"]["n"] == 0
+    assert inc["recorded"]["n_excluded_fallback"] == 0
+    assert cand["recorded"]["n_excluded_fallback"] == 0
+    assert cand["recorded"]["judged"]["M1"]["n"] == 1
+    assert text.count(wr.JUDGED_NOTE) == 2  # under both judged Mouth tables
+    assert "| n_excluded_fallback | 0 | 0 |" in text
+    assert "| finish_reason.ear.calls |" in text
+    assert "| timeout_all_repeats.ear | 1 | 0 |" in text  # the candidate's E5
+    assert wr.DASH_NOTE in text and wr.CALLS_NOTE.format(n=7) in text
+    assert doc["world_max_tokens"] == 7 and "- world_max_tokens: 7" in text
+    assert "world.MAX_TOKENS = 7 for every arm" in text
+    assert plain["world_max_tokens"] == cap  # before the patch
+
+
+def test_mouth_length_disclosures() -> None:
+    """A fallback with a `length` call anywhere; a judged output whose final call
+    (last attempt, last record) ended `length`."""
+
+    def made(iid: str, status: str, fb: bool, *tries: list[str]) -> Json:
+        got = mouth(INC, iid, status, ok=not fb)
+        calls = [{"records": [{"finish_reason": w} for w in t]} for t in tries]
+        return got | {"attempts": calls}
+
+    rows_ = {
+        "a": made("a", "ok", True, ["length", "stop"]),  # fallback, a length call
+        "b": made("b", "ok", True, ["stop"]),  # fallback, no length call
+        "c": made("c", "ok", False, ["stop"], ["length"]),  # judged, final length
+        "d": made("d", "ok", False, ["length"], ["stop"]),  # judged, final stop
+        "e": made("e", "ok", False, ["length"]),  # final length, not judged
+        "f": made("f", "timeout", False, ["length"]),  # not a fallback
+    }
+    arm = sc.Arm(INC, {}, {(i, "mouth", 1): r for i, r in rows_.items()})
+    items_ = [{"item_id": i} for i in rows_]
+    ok = dict.fromkeys(sc.JUDGED, True)
+    got = wr.mouth_metrics(items_, arm, {"c": ok, "d": ok})
+    assert got["fallback_with_length_call"] == 1
+    assert got["n_excluded_fallback"] == 2
+    assert got["judged_final_call_length"] == 1
+    assert got["judged"]["M1"]["n"] == 2
+    plain = wr.mouth_metrics(items_, arm, None)
+    assert plain["fallback_with_length_call"] == 1  # without judging too
+    assert "judged_final_call_length" not in plain

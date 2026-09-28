@@ -49,6 +49,12 @@ export function taskName(ref: string): string {
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : ref;
 }
 
+/** The hero's greeting word from the local clock (no name: there is none to use): morning 05:00–11:59, afternoon 12:00–17:59, evening 18:00–04:59. */
+export function dayPart(now: Date): "morning" | "afternoon" | "evening" {
+  const h = now.getHours();
+  return h < 5 || h >= 18 ? "evening" : h < 12 ? "morning" : "afternoon";
+}
+
 const WHY: Record<string, string> = {
   unknown_task: "the kernel does not know this task",
   unknown_model: "the kernel does not know a chosen model",
