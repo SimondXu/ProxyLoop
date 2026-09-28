@@ -3,18 +3,17 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
-from typing import cast
 
-from tests.concurrency.harness import called
 from tests.kernel.test_session import SCRIPTS
-from tests.support.sessions import act, only_bundle, patient_task, run
+from tests.kernel.test_session_end import Case
+from tests.support.sessions import act, only_bundle, run
 
 from proxyloop.contract.events import Event
 from proxyloop.contract.state import CaseStatus
 from proxyloop.evidence.check import check_path
 from proxyloop.kernel.channels import Channel, Incoming
-from proxyloop.kernel.session import ChannelSpec
 
 WAIT = act("Waiting.", {"tool": "wait", "seconds": 15})
 
@@ -89,27 +88,28 @@ def test_a_strike_hang_up_abandons_the_case_from_the_strike(tmp_path: Path) -> N
 
 
 def test_a_hang_up_without_a_line_changes_no_status(tmp_path: Path) -> None:
-    """No event of its own to cause a move (I2): main's behaviour stays. The
-    call opens at once (a task that needs nothing public, ADR-0012), so the
-    rep's lines keep their times and the hang-up is at 20 s."""
-    scripts, task = SCRIPTS | {"slow": [WAIT]}, called(patient_task())
-    channels: dict[str, ChannelSpec] = {"user": "sim", "cp": Rep(())}
-    result = run(tmp_path, scripts, channels=channels, task=task)
+    """No event of its own to cause a move (I2): main's behaviour stays. On
+    virtual time, with the user's line landing in the hang-up's instant: it
+    wakes FastU and Slow, yet no Slow step and no Fast turn starts once the
+    hang-up is taken in, and ``session.ended`` is last."""
+
+    def end(c: Case) -> None:
+        c.says("user", "Any news?")
+        c.says("cp", end="hangup")
+
+    case = Case(tmp_path, "user", "cp")
+    result = asyncio.run(asyncio.wait_for(case.run(end), timeout=30))
     assert result.reason == "abandoned"
     assert check_path(result.path, "offline").ok
-    events = only_bundle(tmp_path).events
+    events = case.events
     moved = [e for e in events if e.type == "status.changed"]
     assert [e.payload["status"] for e in moved] == [CaseStatus.IN_CALL.value]
     assert not [e for e in events if e.type == "chan.closed"]
-    # No extra Slow step after the hang-up, from the log: nothing wakes Slow
-    # for it (it has no event: no call_closed, no strike), and the session
-    # ends when it is taken in. A step the SimUser's reply woke just before
-    # it is not one (a wall-clock bound raced that reply under load).
-    steps = [e for e in events if e.type == "slow.step.started"]
-    woken = [set(cast(list[str], e.payload["wake_reasons"])) for e in steps]
-    assert not [w for w in woken if w & {"call_closed", "strike"}]
-    ended = events[-1]
-    assert ended.type == "session.ended" and ended.t_ms < 20_000 + 1_000
+    (said,) = [e for e in events if e.type == "user.msg" and e.t_ms >= case.t_end]
+    after = [e.type for e in events if e.seq > said.seq]
+    assert not set(after) & {"slow.step.started", "fast.request"}, after
+    assert events[-1].type == "session.ended"
+    assert events[-1].payload["reason"] == "abandoned"
 
 
 def test_a_user_quit_stops_without_abandoning(tmp_path: Path) -> None:
