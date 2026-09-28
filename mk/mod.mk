@@ -146,3 +146,8 @@ benchmark-fast:
 
 benchmark-report:
 	$(BENCH_REPORT) $(foreach r,$(RUNS),--runs $(r))
+
+# S1-MOD-08 same-state Fast probe: root-run (L+G) unless PSS_ARGS includes --plan.
+.PHONY: probe-same-state
+probe-same-state:
+	uv run python -m scripts.mod.probe_same_state $(PSS_ARGS)
