@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Page } from "@playwright/test";
 import { capturePosts, CSRF, csrfCookie, events, mockSockets, RUN, shot, started } from "./liveMock";
 
 const REAL: Record<string, [string, string]> = {
@@ -771,4 +771,191 @@ test("your role: a refused card is shown as unavailable, never as an alert", asy
   const role = page.locator("details.pl-role");
   await role.locator("summary").click();
   await expect(role).toContainText("Your role is unavailable: 403 csrf");
+});
+
+/** why()'s static sub-line (root copy ruling, S1-SYS-78). */
+const GUARD_CHECKS = "Guard checks every term — price, term, fees, features and changes — not only the numbers shown below.";
+
+test("approval card beside confirmed limits (S1-SYS-78, root ruling (a)): each term's limit or 'no limit set', no verdict, the lists as text, one price bar", async ({
+  page,
+  baseURL,
+}) => {
+  await csrfCookie(page, baseURL);
+  const { connected } = await mockSockets(page);
+  const posts = await capturePosts(page, 200, { status: "posted" });
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  const limits = { ...MANDATE, max_term_months: null, required_features: ["hotspot"], forbidden_changes: ["speed_tier"] };
+  ws.send(ev("mandate.proposed", "guard", limits));
+  ws.send(ev("mandate.decided", "kernel", { mandate_id: "m-1", mandate_hash: MANDATE.mandate_hash, decision: "granted", by: "ui" }));
+  ws.send(ev("authority.epoch", "kernel", { new: 2, reason: "mandate_decided" }));
+  const slots = [
+    { field: "monthly_price", value: "7500", unit: "usd_minor", status: "confirmed" },
+    { field: "term_months", value: "12", unit: "months", status: "heard" },
+    { field: "fees_none", value: "true", unit: "bool", status: "confirmed" },
+    { field: "feature:hotspot", value: "true", unit: "bool", status: "confirmed" },
+    { field: "expires", value: "none", unit: "iso", status: "confirmed" },
+  ];
+  ws.send(ev("offer.recorded", "guard", { offer_ref: "offer-1", revision: 1, terms_hash: CARD.terms_hash, slots }));
+  ws.send(ev("approval.requested", "guard", CARD));
+  const card = page.getByRole("article", { name: "Approval ap-1" });
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
+  await expect(card.getByRole("list", { name: "Read-back progress" }).getByRole("listitem")).toHaveText([
+    "Monthly price $75.00 Your limit: up to $65.00 Read back",
+    "Contract length 12 months Your limit: no limit set Heard, not read back",
+    "One-time fees None Your limit: up to $0.00 Read back",
+    "Includes hotspot Your limit: see “Must include” below Read back",
+    "No expiry date Your limit: no limit set Read back",
+  ]);
+  await expect(card.getByText("Read back · 4 of 5")).toBeVisible();
+  // The mandate's lists stay text rows, with no bar and no verdict.
+  await expect(card.getByRole("term")).toHaveText(["Must include", "Must not change"]);
+  await expect(card.getByRole("definition")).toHaveText(["Your limit: hotspot", "Your limit: speed_tier"]);
+  // One bar, monthly price only: both amounts as text by their marks; the graphic is aria-hidden.
+  await expect(card.locator(".pl-lbar")).toHaveCount(1);
+  await expect(card.locator(".pl-lbar-l")).toHaveText(["Your limit $65", "This offer $75"]);
+  await expect(card.locator(".pl-lbar-t")).toHaveAttribute("aria-hidden", "true");
+  // Guard alone judges the mandate: no verdict word and no difference ($10) anywhere on the card.
+  await expect(card).not.toContainText(/\b(within|over|under)\b/i);
+  await expect(card).not.toContainText("$10");
+  await expect(card.getByText("Only your clicks can authorize a deal", { exact: true })).toBeVisible(); // a human principal
+  await expect(card.getByText(GUARD_CHECKS, { exact: true })).toBeVisible(); // why()'s sub-line: with a granted mandate only
+  // Still one POST per click, and the card moves only on the kernel's decision.
+  await card.getByRole("button", { name: "Approve $75/mo" }).click();
+  await expect(card.getByLabel("Approval status")).toHaveText("Sent. Waiting for Guard to record it");
+  await page.waitForTimeout(300);
+  expect(posts).toHaveLength(1);
+});
+
+test("approval card: the hold line counts up from FastC's chan.hold while the card is open, and goes with the hold (display only)", async ({
+  page,
+  baseURL,
+}) => {
+  await csrfCookie(page, baseURL);
+  const { connected } = await mockSockets(page);
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  ws.send(ev("approval.requested", "guard", CARD));
+  const card = page.getByRole("article", { name: "Approval ap-1" });
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
+  const hold = card.getByText(/^The rep is holding · /);
+  await expect(hold).toHaveCount(0);
+  await expect(card.getByText(GUARD_CHECKS, { exact: true })).toHaveCount(0); // no granted mandate: no sub-line
+  ws.send(ev("chan.opened", "kernel", { lane: "cp" }));
+  ws.send(ev("chan.hold", "fast.cp", { lane: "cp", reason: "decision" }));
+  ws.send(ev("chan.hold", "slow", { lane: "cp", reason: null })); // not FastC: ends nothing (t_ms +100)
+  await expect(hold).toHaveText("The rep is holding · 0:00");
+  await expect(hold).toHaveText(/^The rep is holding · 0:0[1-3]$/, { timeout: 4000 }); // live: ticks on after the latest event
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision"); // nothing acts on it
+  await expect(card.getByRole("button", { name: "Approve" })).toBeEnabled();
+  ws.send(ev("chan.hold", "fast.cp", { lane: "cp", reason: null }));
+  await expect(hold).toHaveCount(0);
+});
+
+/**
+ * Every element of the approval card, in document order: its tag, every attribute (name=value), and every computed
+ * style property of the element, its ::before and its ::after (content included); plus the rows' and the bar's text.
+ */
+async function cardLook(browser: Browser, baseURL: string | undefined, priceMinor: string) {
+  const context = await browser.newContext({ baseURL, reducedMotion: "reduce" });
+  const page = await context.newPage();
+  await csrfCookie(page, baseURL);
+  const { connected } = await mockSockets(page);
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  ws.send(ev("mandate.proposed", "guard", { ...MANDATE, required_features: ["hotspot"] }));
+  ws.send(ev("mandate.decided", "kernel", { mandate_id: "m-1", mandate_hash: MANDATE.mandate_hash, decision: "granted", by: "ui" }));
+  ws.send(ev("authority.epoch", "kernel", { new: 2, reason: "mandate_decided" }));
+  const slots = [
+    { field: "monthly_price", value: priceMinor, unit: "usd_minor", status: "confirmed" },
+    { field: "term_months", value: "12", unit: "months", status: "heard" },
+    { field: "fees_none", value: "true", unit: "bool", status: "confirmed" },
+  ];
+  ws.send(ev("offer.recorded", "guard", { offer_ref: "offer-1", revision: 1, terms_hash: CARD.terms_hash, slots }));
+  ws.send(ev("approval.requested", "guard", CARD));
+  const card = page.getByRole("article", { name: "Approval ap-1" });
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
+  await expect(card.locator(".pl-lbar-l")).toHaveCount(2);
+  await card.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+  const look = await card.evaluate((root) => {
+    const all = (s: CSSStyleDeclaration) => Object.fromEntries(Array.from(s, (p) => [p, s.getPropertyValue(p)]));
+    return [root, ...root.querySelectorAll("*")].map((el) => ({
+      el: `${el.tagName.toLowerCase()}.${el.getAttribute("class") ?? ""}`,
+      attrs: Object.fromEntries(Array.from(el.attributes, (a) => [a.name, a.value])),
+      self: all(getComputedStyle(el)),
+      before: all(getComputedStyle(el, "::before")),
+      after: all(getComputedStyle(el, "::after")),
+    }));
+  });
+  const rows = await card.getByRole("list", { name: "Read-back progress" }).getByRole("listitem").allInnerTexts();
+  const bar = await card.locator(".pl-lbar-l").allInnerTexts();
+  await context.close();
+  return { look, rows: rows.map((r) => r.replace(/\s+/g, " ").trim()), bar };
+}
+
+type Look = Awaited<ReturnType<typeof cardLook>>["look"];
+// Only the bar places the amounts: its marks' and labels' position (the inline left and what it resolves to, the
+// labels' translateX) may differ. Nothing else, on any element or pseudo-element.
+const PLACE = ["attr:style", "self:left", "self:right", "self:inset-inline-start", "self:inset-inline-end"];
+const MOVES: Record<string, Set<string>> = {
+  "span.pl-lbar-lim": new Set(PLACE),
+  "span.pl-lbar-dot": new Set(PLACE),
+  "p.pl-lbar-l": new Set([...PLACE, "self:transform"]),
+};
+// The Approve label carries the amount ("Approve $78/mo"), so its button and the promise beside it may differ in
+// width by the glyphs' sub-pixel widths: under 1px, and only in size.
+const GLYPHS: Record<string, Set<string>> = Object.fromEntries(
+  ["button.pl-btn pl-btn-primary", "p.pl-sign-only"].map((el) => [el, new Set(["self:width", "self:inline-size", "self:transform-origin", "self:perspective-origin"])]),
+);
+const subPixel = (a = "", b = "") => {
+  const [x, y] = [a.match(/-?[\d.]+/g) ?? [], b.match(/-?[\d.]+/g) ?? []];
+  return x.length === y.length && x.length > 0 && x.every((v, i) => Math.abs(Number(v) - Number(y[i])) < 1);
+};
+function lookDiff(a: Look, b: Look): string[] {
+  if (a.length !== b.length) return [`element count ${a.length} vs ${b.length}`];
+  const out: string[] = [];
+  a.forEach((x, i) => {
+    const y = b[i];
+    if (!y || x.el !== y.el) return out.push(`#${i} ${x.el} vs ${y?.el}`);
+    const parts = [["attr", x.attrs, y.attrs], ["self", x.self, y.self], ["before", x.before, y.before], ["after", x.after, y.after]] as const;
+    for (const [kind, p, q] of parts) {
+      for (const k of new Set([...Object.keys(p), ...Object.keys(q)])) {
+        const key = `${kind}:${k}`;
+        if (p[k] === q[k] || MOVES[x.el]?.has(key) || (GLYPHS[x.el]?.has(key) && subPixel(p[k], q[k]))) continue;
+        out.push(`#${i} ${x.el} ${key} ${p[k]} vs ${q[k]}`);
+      }
+    }
+  });
+  return out;
+}
+
+test("root ruling (a): an offer over, under or equal to the bound looks the same; only the bar's marks move (S1-SYS-78)", async ({ browser, baseURL }) => {
+  const [over, under, equal] = [await cardLook(browser, baseURL, "7800"), await cardLook(browser, baseURL, "5200"), await cardLook(browser, baseURL, "6500")];
+  expect(over.look.length).toBeGreaterThan(40);
+  expect(Object.keys(over.look[0]?.self ?? {}).length).toBeGreaterThan(200); // every computed property, not a chosen few
+  // Every attribute and every computed property of every element, its ::before and ::after: identical, but where the bar moves.
+  expect(lookDiff(over.look, under.look)).toEqual([]);
+  expect(lookDiff(over.look, equal.look)).toEqual([]);
+  // The text differs only in the amounts themselves.
+  const rows = (price: string) => [
+    `Monthly price ${price} Your limit: up to $65.00 Read back`,
+    "Contract length 12 months Your limit: up to 24 months Heard, not read back",
+    "One-time fees None Your limit: up to $0.00 Read back",
+  ];
+  expect([over.rows, under.rows, equal.rows]).toEqual([rows("$78.00"), rows("$52.00"), rows("$65.00")]);
+  expect([over.bar, under.bar, equal.bar]).toEqual([
+    ["Your limit $65", "This offer $78"],
+    ["Your limit $65", "This offer $52"],
+    ["Your limit $65", "This offer $65"],
+  ]);
+  // The marks do move: the offer's ring by its amount, onto the limit's tick when equal.
+  const left = (l: Look) => l.filter((e) => e.el === "span.pl-lbar-lim" || e.el === "span.pl-lbar-dot").map((e) => e.attrs.style);
+  expect(left(over.look)).not.toEqual(left(under.look));
+  expect(new Set(left(equal.look).map((s) => s?.replace("left: ", ""))).size).toBe(1);
 });
