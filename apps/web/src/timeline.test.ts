@@ -87,6 +87,21 @@ const rows: Row[] = [
     [["Planner → phone voice", "Verify your identity", "✓ Said on the call (cut off)"]],
   ],
   ["GUIDE unknown move, raw", () => [s2f("cp", "GUIDE", "m1", { guide: { move: "sing_a_song", slots: [] } })], [["Planner → phone voice", "sing_a_song", "Passed to the voice"]]],
+  [
+    "a GUIDE replaced before it was voiced (heard.fates' superseded; tests/web/superseded pins the rest)",
+    () => [s2f("cp", "GUIDE", "m1", { guide: { move: "identify", slots: [] } }), s2f("cp", "GUIDE", "m2", { guide: { move: "ask_discount", slots: [] } })],
+    [["Planner → phone voice", "Verify your identity", "Replaced by a newer instruction before it was spoken"], ["Planner → phone voice", "Ask for a lower price", "Passed to the voice"]],
+  ],
+  [
+    "a user-lane guide is never replaced (the contract forbids one; only the lane rule is under test)",
+    () => [s2f("user", "GUIDE", "m1", { guide: { move: "identify", slots: [] } }), s2f("user", "GUIDE", "m2", { guide: { move: "identify", slots: [] } })],
+    [["Planner → phone voice", "Verify your identity", "Passed to the voice"], ["Planner → phone voice", "Verify your identity", "Passed to the voice"]],
+  ],
+  [
+    "a GUIDE voiced by any actor is not replaced, as in heard.fates",
+    () => [s2f("cp", "GUIDE", "m1", { guide: { move: "identify", slots: [] } }), voiced("cp", "m1", "c1", "slow"), s2f("cp", "GUIDE", "m2", { guide: { move: "identify", slots: [] } })],
+    [["Planner → phone voice", "Verify your identity", "Passed to the voice"], ["Planner → phone voice", "Verify your identity", "Passed to the voice"]],
+  ],
   ["s2f.msg from a forged actor", () => [s2f("user", "ASK_USER", "m1", {}, "slow")], []],
   ["APPROVAL_NOTICE and END are not steps", () => [s2f("user", "APPROVAL_NOTICE", "m1", { approval_id: "a1" }), s2f("user", "END", "m2")], []],
   ["mandate proposed, then confirmed by you", () => [mandate(), ev("mandate.decided", "kernel", { mandate_id: "m1", mandate_hash: "mh", decision: "granted", by: "ui" })], [["Planner", "Proposed your limits"], ["You", "Confirmed your limits"]]],
