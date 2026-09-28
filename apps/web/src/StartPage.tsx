@@ -76,7 +76,7 @@ export function StartPage() {
         <p>Pick a task. ProxyLoop chats with you first, calls the (simulated) company, and asks before anything binding happens.</p>
       </div>
       {!hasCookie() && (
-        <Banner tone="attn" role="note">
+        <Banner tone="over" role="note">
           No operator cookie: <a href={paths.start}>open /start</a> first.
         </Banner>
       )}
@@ -86,7 +86,7 @@ export function StartPage() {
         </div>
       )}
       {typeof offer === "string" && (
-        <Banner tone="danger" role="alert">
+        <Banner tone="err" role="alert">
           Options unavailable: {offer}
         </Banner>
       )}
@@ -161,7 +161,7 @@ export function StartPage() {
               Start the case <span aria-hidden="true">→</span>
             </Button>
             {error && (
-              <Banner tone="danger" role="alert">
+              <Banner tone="err" role="alert">
                 Not started: {error}
               </Banner>
             )}

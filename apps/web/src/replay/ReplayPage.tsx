@@ -46,7 +46,7 @@ export function ReplayPage({ runId }: { runId: string }) {
   }, [runId]);
   if (error) {
     return (
-      <Banner tone="danger" role="alert">
+      <Banner tone="err" role="alert">
         {error}
       </Banner>
     );

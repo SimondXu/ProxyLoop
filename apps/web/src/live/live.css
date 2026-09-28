@@ -6,7 +6,7 @@
   .pl-runid { font-family: var(--font-mono); }
   .pl-work { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4); margin-top: var(--s4); }
   .pl-live .pl-work { flex: 1; min-height: 0; grid-template-columns: minmax(400px, 484px) minmax(0, 1fr) minmax(300px, 340px); }
-  .pl-col { display: flex; flex-direction: column; min-height: 0; height: min(75vh, 820px); padding: 0; border-radius: var(--r-lg); overflow: hidden; }
+  .pl-col { display: flex; flex-direction: column; min-height: 0; height: min(75vh, 820px); padding: 0; border-radius: var(--r-card); overflow: hidden; }
   .pl-live .pl-col { height: auto; }
   .pl-col > .pl-empty { margin: var(--s4) var(--s4) 0; }
   .pl-rail { display: flex; flex-direction: column; gap: var(--s3); min-height: 0; overflow-y: auto; }
@@ -18,12 +18,13 @@
   .pl-colhead .sim { margin: var(--s2) 0 0; }
   .pl-colhead-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
   .pl-colhead-row h2 { margin-right: auto; }
-  .pl-privacy { padding: 6px 10px; border-radius: var(--r-sm); font-size: var(--fs-meta); color: var(--guard); background: var(--guard-soft); }
+  .pl-privacy { padding: 6px 10px; border-radius: var(--r-panel); font-size: var(--fs-meta); color: var(--ink-2); background: var(--neutral-tint); }
   .pl-legend { gap: var(--s1) var(--s3) !important; }
-  .pl-legend span[class^="pl-key"]::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 6px; border-radius: 3px; }
-  .pl-key-agent::before { background: var(--agent); }
-  .pl-key-rep::before { background: var(--rep); }
-  .pl-key-guard::before { background: var(--guard); }
+  /* each key is its bubble's swatch next to its words */
+  .pl-legend span[class^="pl-key"]::before { content: ""; display: inline-block; width: 16px; height: 10px; margin-right: 6px; border-radius: var(--r-pill); box-shadow: inset 0 0 0 1px var(--line-ui); }
+  .pl-key-agent::before { background: var(--sunk); }
+  .pl-key-rep::before { background: var(--card); }
+  .pl-key-guard::before { background: var(--neutral-tint); }
   .pl-legend-end { margin-left: auto; }
 
   /* the transcripts: yours (you, the agent) on the right, the other side on the left */
@@ -35,22 +36,22 @@
   .pl-line-call { justify-content: center; max-width: none; font-size: var(--fs-meta); color: var(--ink-3); }
   .pl-line-card { list-style: none; margin: var(--s2) 0 var(--s4); }
   .pl-who { margin-bottom: 2px; font-size: var(--fs-meta); font-weight: 600; color: var(--ink-2); }
-  .pl-bubble { margin: 0; padding: 10px 14px; border-radius: var(--r-md); font-size: var(--fs-chat); white-space: pre-wrap; overflow-wrap: anywhere; }
-  .pl-line-you .pl-bubble, .pl-pending .pl-bubble { background: var(--user-bubble); }
-  .pl-line-assistant .pl-bubble, .pl-line-agent .pl-bubble { background: var(--agent-tint); border: 1px solid var(--agent-soft); }
-  .pl-line-rep .pl-bubble { background: var(--rep-soft); }
-  .pl-line .pl-bubble-guard { background: var(--guard-soft); border-color: var(--guard-soft); }
+  .pl-bubble { margin: 0; padding: 10px 14px; border-radius: var(--r-mid); font-size: var(--fs-chat); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .pl-line-you .pl-bubble, .pl-pending .pl-bubble { background: var(--bubble); }
+  .pl-line-assistant .pl-bubble, .pl-line-agent .pl-bubble { background: var(--sunk); border: 1px solid var(--line); }
+  .pl-line-rep .pl-bubble { background: var(--card); border: 1px solid var(--line-2); }
+  .pl-line .pl-bubble-guard { background: var(--neutral-tint); border-color: var(--line-2); }
   .pl-line-meta { display: inline-flex; align-items: center; gap: var(--s1); margin-top: 3px; font-size: var(--fs-meta); color: var(--ink-3); }
-  .pl-line-tag { font-weight: 600; color: var(--guard); }
-  .pl-receipt-read { color: var(--agent); }
-  .pl-receipt-pausing { color: var(--attn); }
+  .pl-line-tag { font-weight: 600; color: var(--ink-2); }
+  .pl-receipt-read { color: var(--ink-2); }
+  .pl-receipt-pausing { color: var(--ink-2); font-weight: 600; }
   .pl-av { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-top: 20px; border-radius: 50%; font: 600 11px / 1 var(--font-ui); }
-  .pl-line-assistant .pl-av { border: 1px solid var(--line); background: var(--surface); }
-  .pl-line-agent .pl-av { color: var(--agent); background: var(--agent-soft); }
-  .pl-line-rep .pl-av { color: var(--rep); background: var(--rep-soft); }
+  .pl-line-assistant .pl-av { border: 1px solid var(--line); background: var(--card); }
+  .pl-line-agent .pl-av { color: var(--ink); background: var(--sunk); }
+  .pl-line-rep .pl-av { color: var(--ink-2); background: var(--neutral-tint); }
   .pl-av .pl-mark { width: 20px; height: 20px; }
   .pl-av[data-av]::before { content: attr(data-av); }
-  .pl-jump { align-self: center; min-height: 28px; margin: var(--s1) 0 var(--s2); font-size: var(--fs-meta); box-shadow: var(--e2); } /* below the list: it covers no line */
+  .pl-jump { align-self: center; min-height: 28px; margin: var(--s1) 0 var(--s2); font-size: var(--fs-meta); background: var(--card); box-shadow: var(--shadow-pop); } /* below the list: it covers no line */
   .pl-pending { display: flex; flex-direction: column; align-items: flex-end; gap: var(--s1); list-style: none; margin: 0; padding: 0 var(--s4) var(--s2); }
   .pl-pending .pl-bubble { opacity: 0.7; }
 
@@ -62,7 +63,7 @@
   /* the tabs and the sheet's bar: only below 1181px and 761px (§3.6) */
   .pl-tabs, .pl-sheet-bar, .pl-sheet-body > .pl-sheet-promise { display: none; }
   .pl-tabs button { position: relative; flex: 1; justify-content: center; min-height: 48px; }
-  .pl-dot { position: absolute; top: 10px; right: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--attn-ring); }
+  .pl-dot { position: absolute; top: 10px; right: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--ink); }
 
   /* 761–1180: the status line as a strip above; chat | call, or chat | steps by tab */
   @media (max-width: 1180px) {
@@ -93,9 +94,9 @@
     .pl-work-rail:not([data-tab="call"]) > .pl-col-call { display: none; }
     /* out of view but not display:none, so that its sheet stays on screen */
     .pl-work-rail:not([data-tab="chat"]) > .pl-col-chat { position: absolute; height: 0; border: 0; visibility: hidden; }
-    .pl-sheet { position: fixed; inset: auto 0 0; z-index: 3; max-height: 75dvh; overflow-y: auto; visibility: visible; background: var(--surface); border-radius: var(--r-lg) var(--r-lg) 0 0; box-shadow: var(--e3); }
+    .pl-sheet { position: fixed; inset: auto 0 0; z-index: 3; max-height: 70dvh; overflow-y: auto; visibility: visible; background: var(--card); border-radius: var(--r-card) var(--r-card) 0 0; box-shadow: var(--shadow-pop); }
     .pl-sheet .pl-decision { border-radius: 0; box-shadow: none; }
-    .pl-sheet-bar { display: flex; width: 100%; min-height: 56px; flex-direction: column; justify-content: center; gap: 0; line-height: 1.25; border: 0; border-radius: 0; background: var(--attn-soft); color: var(--attn); }
+    .pl-sheet-bar { display: flex; width: 100%; min-height: 56px; flex-direction: column; justify-content: center; gap: 0; line-height: 1.25; border: 0; border-radius: 0; background: var(--you-tint); color: var(--you); }
     .pl-sheet-bar .pl-sheet-promise { font-size: var(--fs-meta); font-weight: 500; }
     /* the band's authority line is hidden here: a human principal's promise sits at the click (I6) */
     .pl-sheet-body > .pl-sheet-promise { display: block; margin: 0; padding: var(--s2) var(--s4) 0; font-size: var(--fs-small); font-weight: 600; color: var(--ink); }
