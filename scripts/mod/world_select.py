@@ -559,10 +559,10 @@ def main(argv: Sequence[str] | None = None) -> None:
         from scripts.mod import world_select_run
 
         return world_select_run.main(argv[1:])
-    if argv[:1] in (["gold"], ["score"], ["report"], ["judge-export"]):  # PR2b
+    if argv[:1] == ["gold"]:  # PR2b, in its own module (which imports this one)
         from scripts.mod import world_select_score
 
-        return world_select_score.main(argv)
+        return world_select_score.main(argv[1:])
     ap = argparse.ArgumentParser(prog="python -m scripts.mod.world_select")
     sub = ap.add_subparsers(dest="cmd", required=True)
     f = sub.add_parser("freeze", help="freeze the items from the train bundles")

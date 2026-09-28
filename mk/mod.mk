@@ -186,3 +186,13 @@ world-select-run:
 	uv run python -m scripts.mod.world_select run --items $(MOD_DATA)/world-select-items.json \
 		--runs $(WORLD_SELECT_RUNS) --out-dir $(WORLD_SELECT_OUT) \
 		$(foreach a,$(WORLD_SELECT_ARMS),--arm $(a)) $(WSR_ARGS)
+
+# S1-MOD-09 (PR2b-1): assemble the Ear gold ($(MOD_DATA)/world-select-gold.json) from the
+# annotation outputs. Offline: no keys, no model call; the items and the codebook must hash to
+# their frozen values. WSG_ARGS: --labels-dir <dir> --batch-key <json> --adj-key <json>
+# [--user <decisions json> --review <review sheet json>]. Its printed sha256 goes into ADR-0024.
+WSG_ARGS ?=
+.PHONY: world-select-gold
+
+world-select-gold:
+	uv run python -m scripts.mod.world_select gold $(WSG_ARGS)
