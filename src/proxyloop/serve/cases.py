@@ -137,6 +137,10 @@ class StartRefused(Exception):
         self.reason = reason
 
 
+class NotOpen(Exception):
+    """The cp call has not opened yet; serve answers 409 {"error": "not_open"}."""
+
+
 class Starter(Protocol):
     """Starts a live case (L-CORE, S1-SYS-05, ``kernel/web.py``): the seam
     serve calls and never imports. S1: one case = one run."""
@@ -329,6 +333,8 @@ def add_case_routes(
     def send(ingress: Callable[[str], None], text: str, case_id: str) -> Response:
         try:
             ingress(text)
+        except NotOpen:
+            raise Refused(409, "not_open") from None
         except Exception as err:  # loud: logged, 503, no retry
             why = type(err).__name__  # only: no text, traceback or cause (rule 15)
             _log.error("the ingress failed for case %s: %s", case_id, why)
