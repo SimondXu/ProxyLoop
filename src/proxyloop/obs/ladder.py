@@ -17,6 +17,7 @@ heard, not pulled. None: no rep.policy (no world policy in the bundle).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TypeGuard
 
 from proxyloop.obs.detectors import Inputs, Value, as_dict, detector, safe
 
@@ -27,11 +28,18 @@ LEVERS = frozenset({"ask_discount", "cite_competitor", "cancel_intent", "tenure"
 # build never grants (slow/state.py) and no format makes competitor.* public.
 REACHABLE = frozenset({"ask_discount", "tenure"})
 _TAKES = frozenset({"offer", "final_offer"})
-_BEFORE = frozenset({"GREET", "IDENTIFY"})
-# The policy's states past identity (IDENTIFY -> DISCOVER, or GREET ->
-# DISCOVER when the first line gives every fact); ENDED and TRANSFER straight
-# from IDENTIFY are a hang-up or a transfer, never a passed identity.
-_PAST = frozenset({"DISCOVER", "OFFER", "FINAL", "CONFIRM", "CONFIRMED"})
+# ``env.counterparty.policy.State`` split at identity (test_ladder pins that
+# these, TRANSFER and ENDED cover it): past identity is IDENTIFY -> DISCOVER,
+# or GREET -> DISCOVER when the first line gives every fact; ENDED and
+# TRANSFER straight from IDENTIFY are a hang-up or a transfer, never a pass.
+BEFORE_IDENTITY = frozenset({"GREET", "IDENTIFY"})
+PAST_IDENTITY = frozenset({"DISCOVER", "OFFER", "FINAL", "CONFIRM", "CONFIRMED"})
+
+
+def _is(value: object, names: frozenset[str]) -> TypeGuard[str]:
+    """A payload value is one of ``names``; a malformed one (a list, a dict)
+    matches nothing instead of raising."""
+    return isinstance(value, str) and value in names
 
 
 @dataclass(frozen=True)
@@ -53,16 +61,16 @@ def _read(x: Inputs) -> _Ladder | None:
     heard, taken, pulled = set[str](), set[str](), set[str]()
     repeats, exhausted = list[int](), False
     for ear in x.of("rep.ear"):
-        if (act := ear.payload.get("act")) not in LEVERS:
+        if not _is(lever := ear.payload.get("act"), LEVERS):
             continue
-        lever = str(act)
         heard.add(lever)
         if (reply := answer.get(ear.event_id)) is None:
             continue
-        if reply.payload.get("from") not in _BEFORE:
+        frm = reply.payload.get("from")
+        if isinstance(frm, str) and frm not in BEFORE_IDENTITY:
             pulled.add(lever)
         kind = as_dict(reply.payload.get("intent")).get("kind")
-        if kind in _TAKES:
+        if _is(kind, _TAKES):
             taken.add(lever)
         elif kind == "no_better" and lever in taken:
             repeats.append(reply.seq)
@@ -70,7 +78,7 @@ def _read(x: Inputs) -> _Ladder | None:
             exhausted = True
     rungs = [r for e in policy if isinstance(r := e.payload.get("rung"), int)]
     reached = max(rungs) + 1 if rungs else 0
-    identified = any(e.payload.get("to") in _PAST for e in policy)
+    identified = any(_is(e.payload.get("to"), PAST_IDENTITY) for e in policy)
     return _Ladder(reached, frozenset(heard), frozenset(taken), frozenset(pulled),
                    tuple(repeats), exhausted, identified)  # fmt: skip
 
@@ -109,13 +117,14 @@ def _unfinished(x: Inputs) -> Value:
     """1 when the session ended (any reason) past identity with no
     rep.commit_heard, the ladder not proven exhausted, and a reachable lever
     never pulled (``unused``); else 0, ``reason`` says which: ``no_ladder``
-    (identity never passed: the ladder was never open), ``committed``,
+    (identity never passed: the ladder was never open, ``unused`` is []),
+    ``committed``,
     ``exhausted``, ``all_pulled`` or ``unfinished`` (the 1). None: no
     rep.policy, or no session.ended yet."""
     ends = x.of("session.ended")
     if (d := _read(x)) is None or not ends:
         return None
-    unused = sorted(REACHABLE - d.pulled)
+    unused = sorted(REACHABLE - d.pulled) if d.identified else []
     reason = (
         "no_ladder" if not d.identified
         else "committed" if x.of("rep.commit_heard")
