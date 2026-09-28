@@ -71,6 +71,10 @@ _ERRORS: dict[type[Exception], str] = {  # in priority: budget before the world
     **{WorldError: "world_error"},
 }
 _AFTER_DEATH = ("llm.call", "spend.charged", "session.ended")
+# The TaskGroup aborts only in the ending task's done callback, so every task
+# already ready runs one more step: after the end none may start new work. A
+# call in flight still records (llm.call, spend.charged); world calls go on.
+_NEW_WORK = ("slow.step.started", "fast.request")
 _REPAIR = {AblationId.TEACHER_REPAIR_CP, AblationId.TEACHER_REPAIR_USER}
 
 
@@ -183,6 +187,7 @@ class Kernel:
         self._calls: dict[str, str] = {}  # call_id -> its last llm.call event
         self._dead, self._utt, self._tg = False, 0, asyncio.TaskGroup()
         self._ended = False
+        self._ending: str | None = None  # the first SessionEnd's reason
         self.p3: P3 = "not_applicable"
         self.attest: dict[str, Any] | None = None
         refs, make, roles = role_refs(cfg), clients or self._make, _roles(specs)
@@ -248,6 +253,8 @@ class Kernel:
         causes: Sequence[str] = (),
         stream: Stream = "agent",
     ) -> Event:
+        if self._ending is not None and type_ in _NEW_WORK:
+            raise SessionEnd(self._ending)  # this task ends with the session
         if self._dead and type_ not in _AFTER_DEATH:
             raise RuntimeError(f"no {type_} after an endpoint died")
         return self.bus.emit(type_, actor, stream, payload, causes)
@@ -296,6 +303,11 @@ class Kernel:
     def _die(self) -> None:
         self._dead = True
 
+    def end(self, reason: str) -> SessionEnd:
+        """The session ends: the first reason stands, and no new work starts."""
+        self._ending = self._ending or reason
+        return SessionEnd(self._ending)
+
     @property
     def ended(self) -> bool:  # session.ended is written
         return self._ended
@@ -331,7 +343,7 @@ class Kernel:
                 if "user" not in self.lanes or not self.bb.s2f_pending.get("user"):
                     break
                 await self.sleep(0.5)
-            raise SessionEnd(outcome)
+            raise self.end(outcome)
 
         self.spawn(drain())
 
@@ -428,12 +440,13 @@ class Kernel:
                 hung_up = inc.end == "hangup" and key == "cp"
                 if hung_up and last != opened:  # §9.5 ABANDONED, caused by the
                     self.authority.move("hang_up", last)  # turn's own event (I2)
-                raise SessionEnd("abandoned" if hung_up else "stopped")
+                raise self.end("abandoned" if hung_up else "stopped")
             if closing:
                 self.emit("chan.closed", "kernel", {"lane": "cp"}, [last])
                 if self.slow is None:  # rep-chat: nothing left to judge the case
+                    end = self.end("stopped")
                     await asyncio.sleep(0)  # the person still reads the last line
-                    raise SessionEnd("stopped")
+                    raise end
 
     def _turn(self, key: str, inc: Incoming, opened: str) -> tuple[str, bool]:
         last, first = opened, [c for _, c in inc.lines if c][:1]
