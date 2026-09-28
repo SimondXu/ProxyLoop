@@ -428,7 +428,7 @@ def test_every_arm_calls_the_mouth_the_incumbent_too(
     assert fell["result"]["text"].startswith("I can offer you this:")
     assert [t["valid"] for t in fell["attempts"]] == [False] * 3
     assert fell["status"] == "ok"
-    assert report[INCUMBENT] == {"skipped_final": 0, "mouth:ok": 2}
+    assert report[INCUMBENT] == {"skipped_final": 0, "mouth:ok": 2, "calls": 2}
 
 
 def test_a_mouth_sha_mismatch_is_recorded(items: Path, tmp_path: Path) -> None:
@@ -486,7 +486,7 @@ def test_simuser_rebuilds_the_recorded_request_for_every_arm(
     again = wsr.run(
         args(items, tmp_path, "--roles", "simuser", "--resume", arms=(CANDIDATE,))
     )  # every row is final, not_replayable too: no call
-    assert again[CANDIDATE] == {"skipped_final": 4}
+    assert again[CANDIDATE] == {"skipped_final": 4, "calls": 0}
     prompts = tmp_path / "runs" / "r-1" / PROMPTS
     moved = prompts.read_text("utf-8").replace("What do you pay", "What do you owe")
     prompts.write_text(moved, "utf-8")
@@ -599,7 +599,12 @@ def test_resume_skips_final_rows_and_reruns_the_rest(
     report = wsr.run(
         args(items, tmp_path, *draw, "--resume"), transports=wire.transports()
     )
-    assert report[INCUMBENT] == {"skipped_final": 2, "ear:ok": 1, "torn_lines": 1}
+    assert report[INCUMBENT] == {
+        "skipped_final": 2,
+        "ear:ok": 1,
+        "torn_lines": 1,
+        "calls": 1,
+    }
     assert len(wire.bodies) == 1 and "Dana" in json.dumps(wire.bodies[0])
     text = out.read_text("utf-8").splitlines()
     assert len(text) == 4 and json.loads(text[-1])["item_id"] == "c-e1"  # a clean row
@@ -607,7 +612,7 @@ def test_resume_skips_final_rows_and_reruns_the_rest(
     report = wsr.run(
         args(items, tmp_path, *draw, "--resume"), transports=wire.transports()
     )
-    assert report[INCUMBENT] == {"skipped_final": 3, "torn_lines": 1}
+    assert report[INCUMBENT] == {"skipped_final": 3, "torn_lines": 1, "calls": 0}
     assert wire.bodies == []
 
 
@@ -681,3 +686,20 @@ def test_a_constructed_say_order_survives_a_rewording() -> None:
     item["say"] = {"monthly_price": "99.00"}  # a term its template does not show
     with pytest.raises(SystemExit, match="no say order"):
         wsr.mouth_intent(item, "Summit")
+
+
+def test_max_calls_caps_each_arm_and_aborts_loudly(items: Path, tmp_path: Path) -> None:
+    bad = json.dumps({"acts": [{"act": "other"}]})  # c-e1 regenerates: 3 calls
+    wire = Wire(classify=[SINGLE, bad, bad, bad])
+    capped = ("--roles", "ear", "--concurrency", "1", "--max-calls", "2")
+    with pytest.raises(wsr.CallCap, match="--max-calls 2 reached"):
+        wsr.run(args(items, tmp_path, *capped), transports=wire.transports())
+    assert len(wire.bodies) == 2  # e1's call, c-e1's first; never a third
+    first, cut = rows(tmp_path)
+    assert first["status"] == "ok" and cut["status"] == "capped"
+    assert [t["valid"] for t in cut["attempts"]] == [False]
+    wire = Wire(classify=answer)  # resume re-runs the capped item, with a fresh cap
+    report = wsr.run(
+        args(items, tmp_path, *capped, "--resume"), transports=wire.transports()
+    )
+    assert report[INCUMBENT] == {"skipped_final": 1, "ear:ok": 1, "calls": 1}

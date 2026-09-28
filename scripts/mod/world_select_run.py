@@ -4,25 +4,25 @@ world code, one JSONL of rows per arm. Root-run (L); ``--plan``: no call, no key
     python -m scripts.mod.world_select run --items <items json> --runs runs \
         --out-dir <dir> --arm teamrouter:gemini-3.8-flash@low [--arm ...] \
         [--roles ear,mouth,simuser] [--limit N] [--repeat-subset N --seed S] \
-        [--concurrency K] [--resume] [--plan]
+        [--concurrency K] [--max-calls N] [--resume] [--plan]
 
 An arm is ``<endpoint>:<model_id>[@effort]`` (``cli.world_spec``), its client
 ``make_client``'s (live; keys and URLs only from ``PL_<ENDPOINT>_*``, never written).
 Every arm calls, the recorded incumbent too. The production builders make the requests;
 ``world.bounded`` runs the attempts with the production checks; no other retry: a dead
-endpoint (``LLMUnavailable``) writes its row and aborts (AGENTS rule 6). Ear:
-``Ear.request``, ``check_act`` (``Heard`` ids from the item id). Mouth:
-``Mouth.request``, ``fidelity_ok`` (exhausted: the template, ``fallback: true``, as
-live). SimUser: ``simuser_replay`` (the recorded request rebuilt with
-``SimUser.request`` and ``check_reply``; else the recorded content and ``fact_free``:
-``check: partial``); a constructed item (its chat only prose) makes no call and its row
-is ``not_replayable``, left out of the scoring (decision (c)).
+endpoint (``LLMUnavailable``) writes its row and aborts (AGENTS rule 6), as
+``--max-calls N`` (model calls per arm) does. Ear: ``Ear.request``, ``check_act``
+(``Heard`` ids from the item id). Mouth: ``Mouth.request``, ``fidelity_ok`` (exhausted:
+the template, ``fallback: true``, as live). SimUser: ``simuser_replay`` (the recorded
+request rebuilt with ``SimUser.request`` and ``check_reply``; else the recorded content
+and ``fact_free``: ``check: partial``); a constructed item (its chat only prose) makes
+no call and its row is ``not_replayable``, left out of the scoring (decision (c)).
 
 Row (one JSON line, ``pl.world-select-row/1``; PR2b's scorer takes the last final row
 per (item_id, role, repeat)): ``arm``, ``model_ref``, ``items_root_hash``, ``role``,
 ``item_id``, ``constructed``, ``repeat`` (2: ``--repeat-subset``), ``seed`` and
 ``repeat_subset`` (``--resume`` refuses others), ``status`` (final: ``ok``,
-``exhausted``, ``timeout``, ``not_replayable``; ``unavailable`` is re-run on resume),
+``exhausted``, ``timeout``, ``not_replayable``; ``unavailable`` and ``capped`` re-run),
 ``recorded_ref`` (per occurrence, ``{run_id, response_shas}`` of the recorded
 incumbent's calls: informational, never a result), ``request_sha`` (attempt 0's prompt
 sha), ``elapsed_ms`` (wall), ``attempts`` (per model attempt ``{n, raw, valid, reason,
@@ -82,10 +82,19 @@ ROLES = ws.ROLES
 TRIES = world.MAX_REGENERATIONS + 1
 UNUSED = cast(Any, None)  # the builders are pure: their client and writer stay unused
 Check = Callable[[tuple[ToolCall, ...]], SimOut]  # a SimUser reply's check
+EarInputs = tuple[list[Heard], dict[str, dict[str, str]], list[str]]
+MouthPlan = tuple[PublicIntent, str, list[llm.TextRequest]]  # intent, line, requests
+SimPlan = tuple[list[ToolRequest], str, Check, str | None]  # see simuser_replay
 Sink = defaultdict[str, list[LLMCallRecord]]  # the arm client's records, by call id
 Seam = httpx.AsyncBaseTransport | None  # the test seam into make_client
 PLAIN = ("finish_reason", "error", "prompt_sha", "response_sha", "sampling_sent")
 EST_RULE = "per role, the mean first recorded usage per item called, times its items"
+
+
+class CallCap(RuntimeError):
+    """``--max-calls`` reached: the arm aborts loudly, like a dead endpoint."""
+
+    status = "capped"  # its row's; a dead endpoint's is "unavailable"
 
 
 @dataclass(frozen=True)
@@ -123,8 +132,7 @@ class Work:
 
 
 class Recorded:
-    """The items file and the bundles it was frozen from (read-only): the items must
-    hash to their root hash, each bundle's events.jsonl to its frozen sha."""
+    """The items (as their root hash says) and their bundles (events as frozen)."""
 
     def __init__(self, doc: Json, runs: Path | None) -> None:
         ids = [i["item_id"] for k in ("items", "constructed") for r in ROLES
@@ -145,8 +153,7 @@ class Recorded:
             self._events[run_id] = {e.event_id: e for e in b.events}
 
     def calls(self, role: str, occ: Json) -> list[LLMCallRecord]:
-        """The occurrence's recorded ``llm.call`` records ([] without its bundle,
-        and for an Ear block, which no call classified)."""
+        """The occurrence's ``llm.call`` records ([]: no bundle, or an Ear block)."""
         if (events := self._events.get(occ["run_id"])) is None:
             return []
         ids: list[str] = list(occ.get("llm_calls", []))
@@ -171,11 +178,8 @@ def counterparty(rec: Recorded, item: Json) -> CounterpartySpec:
     return spec
 
 
-def ear_inputs(
-    item: Json, tag: str
-) -> tuple[list[Heard], dict[str, dict[str, str]], list[str]]:
-    """The block as ``Heard`` records, every offer made (in order) with its terms,
-    and the open ones."""
+def ear_inputs(item: Json, tag: str) -> EarInputs:
+    """The block as ``Heard`` records, the offers made (in order), the open ones."""
     if item.get("constructed"):
         offers = {r: dict(t) for r, t in item["offers"].items()}
         opened, said = list(item["open_offers"]), list(item["block"])
@@ -206,9 +210,7 @@ def mouth_intent(item: Json, company: str) -> PublicIntent:
     return PublicIntent(kind=kind, offer_ref=ref, say=say, ask=tuple(item["ask"]))
 
 
-def mouth_requests(
-    rec: Recorded, item: Json, tag: str
-) -> tuple[PublicIntent, str, list[llm.TextRequest]]:
+def mouth_requests(rec: Recorded, item: Json, tag: str) -> MouthPlan:
     """The intent, the template line and ``Mouth.request`` for every attempt."""
     spec = counterparty(rec, item)
     intent, mouth = mouth_intent(item, spec.company), Mouth(UNUSED, UNUSED, spec)
@@ -216,15 +218,11 @@ def mouth_requests(
     return intent, template(intent, spec.company), requests
 
 
-def simuser_replay(
-    rec: Recorded, item: Json, tag: str
-) -> tuple[list[ToolRequest], str, Check, str | None]:
-    """The requests per attempt, their source, the check and why it is partial. The
-    recorded request (by its prompt sha) is rebuilt with ``SimUser.request`` from its
-    task: the facts as the user holds them (the profile's, or with the mind change),
-    the stop (if the request says the task's), the chat (the recorded lines as one
-    block; none: the opening). When that reproduces the sha, the check is
-    ``check_reply`` with those inputs; else the recorded content and ``fact_free``."""
+def simuser_replay(rec: Recorded, item: Json, tag: str) -> SimPlan:
+    """Requests per attempt, their source, the check, why it is partial. The recorded
+    request, rebuilt with ``SimUser.request`` from its task's facts (with the mind
+    change or not), stop (if the request says it) and chat (as one block; none: the
+    opening), checked by ``check_reply``; else the recorded content, ``fact_free``."""
     sha = item["prompt_sha"]
     held = [(o, b.prompts[sha]) for o in item["occurrences"]
             if (b := rec.bundles.get(o["run_id"])) and sha in b.prompts]  # fmt: skip
@@ -258,8 +256,8 @@ def simuser_replay(
 
 
 def fact_free(opening: bool) -> Check:
-    """``check_reply``'s checks that need no facts or stop: one ``reply`` call, the
-    ``SimOut`` schema, no silent opening."""
+    """``check_reply``'s fact- and stop-free part: one reply call, SimOut, no silent
+    opening."""
 
     def check(calls: tuple[ToolCall, ...]) -> SimOut:
         if len(calls) != 1 or calls[0].name != "reply":
@@ -301,8 +299,7 @@ def summary(r: LLMCallRecord) -> Json:
 
 
 class Replay:
-    """One arm's calls through its production client, each item written into its
-    ``row`` as it goes (so an aborted item's row still carries its attempts)."""
+    """One arm's calls, each written into its item's ``row`` as it goes."""
 
     def __init__(self, arm: Arm, rec: Recorded, timeout_s: float, seam: Seam) -> None:
         self.arm, self.rec, self.timeout_s, self.sink = arm, rec, timeout_s, Sink(list)
@@ -310,6 +307,8 @@ class Replay:
             arm.ref, live=True, clock=WallClock().monotonic_ms, on_record=self.record,
             transport=seam,
         )  # fmt: skip
+
+        self.calls, self.cap = 0, cast(int | None, None)  # model calls, --max-calls
 
     def record(self, record: LLMCallRecord) -> None:  # the client's on_record
         self.sink[record.call_id].append(record)
@@ -322,11 +321,13 @@ class Replay:
         check: Callable[[R], T],
         exhausted: Callable[[], T] | None = None,
     ) -> tuple[T, int, bool] | None:
-        """``world.bounded`` over ``requests``, each attempt and its check recorded;
-        None when it ends in a ``WorldError`` (``status``: exhausted or timeout)."""
+        """``world.bounded``, each attempt recorded; None: exhausted or timeout."""
         tries: list[Json] = row["attempts"]
 
         async def attempt(n: int) -> R:
+            if self.cap is not None and self.calls >= self.cap:
+                raise CallCap(f"{self.arm.label}: --max-calls {self.cap} reached")
+            self.calls += 1
             tries.append({"n": n, "raw": None, "valid": None, "reason": None})
             try:
                 tries[-1]["raw"], value = await call(requests[n])
@@ -361,8 +362,7 @@ class Replay:
         return calls, resp.tool_calls
 
     async def text(self, request: llm.TextRequest) -> tuple[object, str]:
-        """As ``World.text`` (deltas joined, the stream closed), stripped as
-        ``Mouth.say`` strips it."""
+        """As ``World.text`` (deltas joined, the stream closed), then ``Mouth.say``."""
         parts: list[str] = []
         stream = self.client.stream_text(request)
         try:
@@ -417,9 +417,8 @@ class Replay:
 
 
 def resume(path: Path, args: argparse.Namespace) -> tuple[set[Key], int]:
-    """The final rows' keys, and the torn lines (unparsable: skipped, their items
-    re-run; a torn tail gets its newline, so the next row starts clean). The rows
-    must have run with this ``--seed`` and ``--repeat-subset``."""
+    """The final rows' keys and the torn (unparsable) lines, skipped: their items
+    re-run. Rows of another ``--seed`` or ``--repeat-subset`` are refused."""
     text = path.read_text("utf-8") if path.exists() else ""
     rows, torn = list[Json](), 0
     for line in text.splitlines():
@@ -443,10 +442,10 @@ def draw(args: argparse.Namespace) -> tuple[int | None, int]:
 async def run_arm(
     replay: Replay, todo: Sequence[Work], out: Path, args: argparse.Namespace
 ) -> Counter[str]:
-    """``todo`` through the arm, ``--concurrency`` at a time, each row appended as it
-    ends. ``LLMUnavailable`` writes its row, cancels the rest (their rows are not
-    written: resume re-runs them) and propagates."""
+    """``todo``, ``--concurrency`` at a time, each row appended as it ends. A dead
+    endpoint or ``--max-calls`` writes its row, cancels the rest and propagates."""
     arm, rec, tally = replay.arm, replay.rec, Counter[str]()
+    replay.cap = args.max_calls
     gate = asyncio.Semaphore(args.concurrency)
     base: Json = {"schema": ROW_SCHEMA, "arm": arm.label}
     base |= dict(zip(("seed", "repeat_subset"), draw(args), strict=True))
@@ -465,8 +464,9 @@ async def run_arm(
                 start = time.monotonic()
                 try:
                     await roles[w.role](w, row, arm)
-                except llm.LLMUnavailable as dead:
-                    row |= {"status": "unavailable", "error": str(dead)}
+                except (llm.LLMUnavailable, CallCap) as dead:
+                    row |= {"status": getattr(dead, "status", "unavailable")}
+                    row["error"] = str(dead)
                     raise
                 finally:
                     if row["status"] is not None:  # None: cancelled by an abort
@@ -480,7 +480,7 @@ async def run_arm(
             async with asyncio.TaskGroup() as tg:
                 for w in todo:
                     tg.create_task(one(w))
-        except* llm.LLMUnavailable as group:
+        except* (llm.LLMUnavailable, CallCap) as group:
             raise group.exceptions[0] from None
         finally:
             await cast(HTTPAdapter, replay.client).aclose()
@@ -498,8 +498,7 @@ def estimate(found: Sequence[Json | None]) -> Json:
 
 
 def plan(rec: Recorded, todo: Sequence[Work], arms: Sequence[Arm]) -> Json:
-    """Calls per arm and role (one per item; up to ``TRIES`` with regenerations) and a
-    token estimate from the recorded usage. No call."""
+    """Calls per arm and role (one per item, up to ``TRIES``) and tokens. No call."""
     usage: dict[Key, Json | None] = {}
     mismatch = 0
     for w in todo:
@@ -546,6 +545,7 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--repeat-subset", type=positive, help="N seeded Ear items again")
     ap.add_argument("--seed", type=int)
     ap.add_argument("--concurrency", type=positive, default=4)
+    ap.add_argument("--max-calls", type=positive, help="per arm: abort at N calls")
     ap.add_argument("--resume", action="store_true", help="skip final rows")
     ap.add_argument("--plan", action="store_true", help="counts only; no call, no key")
     return ap
@@ -588,6 +588,7 @@ def run(
         replay = Replay(arm, rec, timeout_s, seam)
         tally = asyncio.run(run_arm(replay, left, out, args))
         report[arm.label] = {"skipped_final": len(todo) - len(left), **tally}
+        report[arm.label]["calls"] = replay.calls
         report[arm.label] |= {"torn_lines": torn} if torn else {}
     return report
 
