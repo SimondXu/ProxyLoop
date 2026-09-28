@@ -404,10 +404,9 @@ def test_every_arm_calls_the_mouth_the_incumbent_too(
     assert sent["messages"] == [
         {"role": m.role, "content": m.content} for m in built.messages
     ]
-    assert (sent["temperature"], sent["max_tokens"]) == (
-        built.temperature,
-        built.max_tokens,
-    )
+    sampling = {(b["temperature"], b["max_tokens"]) for b in wire.bodies}
+    assert sampling == {(built.temperature, built.max_tokens)}  # every Mouth call
+    assert (built.temperature, built.max_tokens) == (0.7, world.MAX_TOKENS)
     mine = by_item(tmp_path)
     assert mine["m1"]["status"] == "ok" and mine["m1"]["prompt_sha_match"] is True
     assert mine["m1"]["result"]["text"] == short and "reused" not in mine["m1"]
@@ -462,6 +461,9 @@ def test_simuser_rebuilds_the_recorded_request_for_every_arm(
         [ASKED], dict(task.profile.facts), None, "c", 0
     )
     assert len(wire.bodies) == 2 * 3  # both arms; the constructed item makes no call
+    sampling = {(b["temperature"], b["max_tokens"]) for b in wire.bodies}
+    assert sampling == {(built.temperature, built.max_tokens)}  # the builder's, s2 too
+    assert (built.temperature, built.max_tokens) == (0.7, world.MAX_TOKENS)
     sent = [b for b in wire.bodies if ASKED in json.dumps(b)]
     assert len(sent) == 2 and all(
         b["messages"]
