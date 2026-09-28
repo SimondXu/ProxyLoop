@@ -169,6 +169,8 @@ def success(skip: frozenset[str] = frozenset(), rung: int = 1) -> Run:
     readback, request, decide, release, commit, verified. ``rung`` 0 accepts
     the first rung's offer (no lever after it), 1 the second's."""
     r = Run()
+    opening: P = {"lane": "cp", "kind": "disclosure", "text": "PRIV"}  # I11
+    r.release(r.log.add("speak.verbatim", "guard", "agent", opening, (r.start,)))
     r.identify()
     if "ask_discount" not in skip:
         r.guide("ask_discount")
