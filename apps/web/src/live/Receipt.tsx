@@ -5,7 +5,7 @@
 import { useMemo } from "react";
 import { approvalCards, type Posting } from "../approval";
 import { acceptOf, approvedBy } from "../decision";
-import { confirmations, receiptKind, receiptTitle, spendLines, unverifiedCommit, type Outcome } from "../outcome";
+import { confirmations, receiptKind, receiptTitle, spendLines, unverifiedCommit, verifiedLine, type Outcome } from "../outcome";
 import type { Ev } from "../replay";
 import { latestOffers, READBACK_CHIP, termRows, type TermRow } from "../terms";
 import { Chip } from "../ui/Chip";
@@ -39,6 +39,7 @@ export function Receipt({ events, outcome }: { events: Ev[]; outcome: Outcome })
   );
   const offers = kind === "info_only" || kind === "no_deal" ? latestOffers(events) : [];
   const ids = kind === "verified" ? confirmations(events) : [];
+  const verifier = verifiedLine(events);
   return (
     <section className={`pl-gcard pl-outcome pl-outcome-${TONE[kind] ?? "neutral"}`} aria-label="Outcome">
       <p className="pl-gcard-from">
@@ -55,7 +56,7 @@ export function Receipt({ events, outcome }: { events: Ev[]; outcome: Outcome })
               Confirmation <span className="pl-mono">{id}</span>
             </p>
           ))}
-          {outcome.verdict?.startsWith("ok") && <p className="pl-outcome-line">Verified against the company's records</p>}
+          {verifier && <p className="pl-outcome-line">{verifier}</p>}
           {approved && <p className="pl-outcome-line">{approvedBy(events, approved)}</p>}
         </>
       )}
