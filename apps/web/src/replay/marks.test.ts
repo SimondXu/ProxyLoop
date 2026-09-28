@@ -68,6 +68,24 @@ describe("chapters", () => {
   });
 });
 
+describe("chapters: your decision", () => {
+  const at = (events: Ev[]) => {
+    const steps = timeline(events);
+    return chapters(steps, marks(events, steps)).find((c) => c.name === "Your decision")?.t_ms;
+  };
+
+  it("starts at Guard's proposed limits in a limits-only run", () => {
+    expect(at([ev("mandate.proposed", "guard", 2500, { mandate: {} })])).toBe(2500);
+  });
+
+  it("starts at the earlier of the proposed limits and the approval card, and ignores a proposal from another actor", () => {
+    const card = ev("approval.requested", "guard", 3000, { approval_id: "a1", offer_ref: "o1", revision: 1, authority_epoch: 0 });
+    expect(at([card, ev("mandate.proposed", "guard", 4000, { mandate: {} })])).toBe(3000);
+    expect(at([ev("mandate.proposed", "guard", 1000, { mandate: {} }), card])).toBe(1000);
+    expect(at([ev("mandate.proposed", "slow", 1000, { mandate: {} }), card])).toBe(3000);
+  });
+});
+
 describe("clock and cut-off", () => {
   it.each([
     [0, "00:00"],

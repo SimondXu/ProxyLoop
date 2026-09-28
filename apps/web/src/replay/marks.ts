@@ -41,14 +41,18 @@ export function marks(events: Ev[], steps: Step[]): Mark[] {
 
 export type Chapter = { name: string; t_ms: number | null };
 
-/** The four chapters (null: the run never got there). "Call starts" is the first call opening on the phone lane. */
+/**
+ * The four chapters (null: the run never got there). "Call starts" is the first call opening on the phone lane;
+ * "Your decision" the first thing put to you: Guard's approval card or its proposed limits, whichever came first.
+ */
 export function chapters(steps: Step[], found: Mark[]): Chapter[] {
   const first = (kind: MarkKind) => found.find((m) => m.kind === kind)?.t_ms ?? null;
   const call = steps.find((s) => s.kind === "chan.opened");
+  const asked = [first("approval"), ...steps.filter((s) => s.kind === "mandate.proposed").map((s) => s.t_ms)].filter((t) => t !== null);
   return [
     { name: "Call starts", t_ms: call ? call.t_ms : null },
     { name: "Offer", t_ms: first("offer") },
-    { name: "Your decision", t_ms: first("approval") },
+    { name: "Your decision", t_ms: asked.length > 0 ? Math.min(...asked) : null },
     { name: "Outcome", t_ms: first("outcome") },
   ];
 }

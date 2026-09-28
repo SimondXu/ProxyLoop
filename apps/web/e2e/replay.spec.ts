@@ -134,7 +134,7 @@ test("the PlaybackBar: markers and chapters from the run's own log, and a chapte
   for (const [name, at] of [
     ["Call starts", first(cp)],
     ["Offer", first(of("offer.recorded", "guard"))],
-    ["Your decision", first(of("approval.requested", "guard"))],
+    ["Your decision", first([...of("approval.requested", "guard"), ...of("mandate.proposed", "guard")])],
     ["Outcome", first(ended)],
   ] as const) {
     const chip = chapters.getByRole("button", { name, exact: true });
@@ -178,6 +178,9 @@ test("plays on t_ms at 4×: Play at the end starts from 00:00", async ({ page })
   await page.getByRole("button", { name: "4×" }).click();
   await expect(page.getByRole("button", { name: "4×" })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Play" }).click();
-  await page.getByRole("button", { name: "Pause" }).click();
-  await expect(timeline).not.toHaveValue(max);
+  // It restarted from 00:00 and advances on its own, then stops at the end.
+  await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
+  await expect(page.getByLabel("Clock")).not.toHaveText(/^00:00 \//);
+  await expect(page.getByRole("button", { name: "Play" })).toBeVisible({ timeout: 20_000 });
+  await expect(timeline).toHaveValue(max);
 });
