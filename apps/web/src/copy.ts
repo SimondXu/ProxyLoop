@@ -60,6 +60,8 @@ export const SAID_YES = {
   none: "Started to say yes; the rep cut in",
 } as const;
 export const PASSED = "Passed to the voice";
+/** A cp GUIDE Slow replaced before any turn voiced it (heard.fates' superseded): it can never be spoken. */
+export const REPLACED = "Replaced by a newer instruction before it was spoken";
 
 export const limitsDecided = (granted: boolean) => (granted ? "Confirmed your limits" : "Declined your limits");
 export const approvalDecided = (granted: boolean) => (granted ? "Approved" : "Declined");
