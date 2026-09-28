@@ -90,10 +90,10 @@ class Mouth:
         self._system = SYSTEM.format(persona=spec.persona.strip())
         self.timeout_s = world.TIMEOUT_S
 
-    async def say(
-        self, intent: PublicIntent, heard: str, cause: str
-    ) -> tuple[str, str]:
-        """Voice ``intent``; its calls, then ``rep.mouth``."""
+    def request(
+        self, intent: PublicIntent, heard: str, cause: str, n: int
+    ) -> TextRequest:
+        """The exact request ``say`` sends for attempt ``n``; pure."""
 
         line = template(intent, self._company)
         prompt = f"The caller said: {heard or '(nothing yet)'}\nLine: {line}"
@@ -101,17 +101,28 @@ class Mouth:
             ChatMessage(role="system", content=self._system),
             ChatMessage(role="user", content=prompt),
         )
-        call_ids = [f"mouth:{cause}:{n}" for n in range(world.MAX_REGENERATIONS + 1)]
+        return TextRequest(
+            call_id=f"mouth:{cause}:{n}",
+            role="mouth",
+            messages=messages,
+            max_tokens=world.MAX_TOKENS,
+            temperature=0.7,
+        )
+
+    async def say(
+        self, intent: PublicIntent, heard: str, cause: str
+    ) -> tuple[str, str]:
+        """Voice ``intent``; its calls, then ``rep.mouth``."""
+
+        line = template(intent, self._company)
+        requests = [
+            self.request(intent, heard, cause, n)
+            for n in range(world.MAX_REGENERATIONS + 1)
+        ]
+        call_ids = [r.call_id for r in requests]
 
         async def attempt(n: int) -> str:
-            request = TextRequest(
-                call_id=call_ids[n],
-                role="mouth",
-                messages=messages,
-                max_tokens=world.MAX_TOKENS,
-                temperature=0.7,
-            )
-            return (await self._world.text(self._client, request, cause)).strip()
+            return (await self._world.text(self._client, requests[n], cause)).strip()
 
         def check(text: str) -> str:
             if not text or not fidelity_ok(text, intent):
