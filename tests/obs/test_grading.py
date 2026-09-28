@@ -244,11 +244,16 @@ def test_cp_opened_prefers_the_kernel_readiness(tmp_path: Path) -> None:
     }  # fmt: skip
 
 
-def test_cp_opened_without_missing_reads_the_facts(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "extra", [{}, {"missing": None}, {"missing": "account.last4"}]
+)  # no missing (before the payload had it), or one that is not a list
+def test_cp_opened_without_a_missing_list_reads_the_facts(
+    tmp_path: Path, extra: P
+) -> None:
     log = Log("rF")
     fact: P = {"key": "account.last4", "value": "PRIV-4", "scope": "public"}
     log.add("fact.recorded", "guard", "agent", fact, (log.start,))  # 1
-    opened: P = {"lane": "cp", "ready": "ready"}  # before the payload had missing
+    opened: P = {"lane": "cp", "ready": "ready"} | extra
     log.add("chan.opened", "kernel", "agent", opened, (log.start,))  # 2
     value = _values(write(tmp_path / "rF", log, manifest("rF")))
     assert value["identity.cp_opened_ready"] == {

@@ -87,17 +87,19 @@ def _heard_identify(x: Inputs, e: Event) -> bool:
 @detector("identity.cp_opened_ready")
 def _opened(x: Inputs) -> Value:
     """The first ``chan.opened{lane: cp}``: its ``reason``, ``ready`` and
-    ``missing`` (the kernel's readiness, ``from`` ``payload``); a bundle whose
-    payload has no ``missing`` gets the identity keys no public
-    ``fact.recorded`` held before it (``from`` ``facts``). ``h5_pass`` is None
+    ``missing`` list (``from`` ``payload``: the kernel's ``required()`` keys,
+    the shareable IDENTITY keys plus learned rows); a payload without a
+    ``missing`` list gets the IDENTITY keys no public ``fact.recorded`` held
+    before it (``from`` ``facts``). The two measure different key sets: split
+    cross-run tables by ``from``. ``h5_pass`` is None
     with ``no_intake`` (no user lane to ask: not applicable). None: no cp
     chan.opened carries ``ready`` (S1-SYS-21)."""
     opened = [e for e in x.of("chan.opened") if e.payload.get("lane") == "cp"]
     if not opened or "ready" not in opened[0].payload:
         return None
     at, source = opened[0], "payload"
-    if "missing" in at.payload:
-        missing = [safe(k) for k in cast(list[object], at.payload["missing"])]
+    if isinstance(listed := at.payload.get("missing"), list):
+        missing = [safe(k) for k in cast(list[object], listed)]
     else:
         source = "facts"
         public = {
@@ -168,7 +170,9 @@ def _invalid(x: Inputs) -> Value:
 
 def _coded(x: Inputs, code: str) -> list[Event] | None:
     """slow.tool events whose ``code`` is ``code``; None: no slow.tool carries
-    ``code`` (a bundle from before S1-SYS-21, where every one does)."""
+    ``code`` (a bundle from before S1-SYS-21). The switch is per bundle: once
+    any slow.tool carries ``code``, an uncoded one (on main only slow/loop.py's
+    ``_NO_TOOL``) is judged by its absent code, never by its name."""
     tools = _tools(x)
     if not any("code" in e.payload for e in tools):
         return None
