@@ -45,3 +45,6 @@ export function repLine(e: RepFrame): RepLine | null {
   if (e.type === "chan.closed") return line("call", "call ended");
   return null;
 }
+
+/** The call is open once a chan.opened passes the allow-list (the kernel's, on the cp lane): the rep may speak. */
+export const callOpened = (frames: RepFrame[]) => frames.some((e) => e.type === "chan.opened" && repLine(e) !== null);

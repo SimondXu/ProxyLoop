@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Ev } from "./replay";
-import { parseRepFrame, repLine, type RepFrame } from "./rep";
+import { callOpened, parseRepFrame, repLine, type RepFrame } from "./rep";
 
 // Every event type of the contract registry (ARCHITECTURE §4.2).
 // tests/web/test_rep_allowlist.py keeps this list equal to EVENT_TYPES.
@@ -108,5 +108,15 @@ describe("repLine on bare /ws/rep frames (no actor, no stream)", () => {
     expect(line(as({ actor: "fast.cp" }))).toBeNull();
     expect(line(as({ stream: "world" }))).toBeNull();
     expect(parseRepFrame(JSON.stringify({ seq: 4, type: "chan.opened" }))).toBe("no seq, type or payload");
+  });
+
+  it("callOpened: only the kernel's cp chan.opened opens the call for the rep (S1-SYS-61)", () => {
+    const frame = (type: string, payload: RepFrame["payload"], extra: Partial<RepFrame> = {}): RepFrame => ({ seq: 1, t_ms: 0, type, payload, ...extra });
+    expect(callOpened([])).toBe(false);
+    expect(callOpened([frame("utt.final", { lane: "cp", speaker: "partner", text: "hi" })])).toBe(false);
+    expect(callOpened([frame("chan.opened", { lane: "user" })])).toBe(false);
+    expect(callOpened([frame("chan.opened", { lane: "cp" }, { actor: "fast.cp" })])).toBe(false);
+    expect(callOpened([frame("chan.opened", { lane: "cp" })])).toBe(true);
+    expect(callOpened([frame("chan.opened", { lane: "cp" }, { actor: "kernel", stream: "agent" })])).toBe(true);
   });
 });

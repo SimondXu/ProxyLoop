@@ -109,7 +109,8 @@ function Steps({ steps }: { steps: Step[] }) {
       <h2 className="pl-rail-h">
         What the agent did <span className="meta">time since start</span>
       </h2>
-      <div className="pl-steps-scroll" ref={box} onScroll={onScroll}>
+      {/* focusable: a keyboard can scroll it (axe scrollable-region-focusable) */}
+      <div className="pl-steps-scroll" ref={box} onScroll={onScroll} tabIndex={0}>
         {all.length === 0 && <p className="meta">No steps yet.</p>}
         {all.map((g, i) =>
           i < all.length - 1 ? (

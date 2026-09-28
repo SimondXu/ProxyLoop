@@ -4,11 +4,12 @@
 // listener heard (conversation.ts), with the speaker in its text ("You: …"), if
 // only for screen readers. The six engineer lanes and the prompt drawer are
 // behind ?view=engineer.
-import { useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
 import { callHead, conversation, SIM_USER, simLabels, speakerName, type Line, type Parties } from "./conversation";
 import { receipts, type Receipt as Tick } from "./fenceTicks";
 import { Receipt } from "./live/Receipt";
 import { statusView } from "./outcome";
+import { timeline } from "./timeline";
 import type { Ev } from "./replay";
 import { BrandMark } from "./ui/BrandMark";
 import { Card } from "./ui/Card";
@@ -77,14 +78,54 @@ export function StatusBar({ events }: { events: Ev[] }) {
   );
 }
 
+type Tab = "chat" | "call" | "steps";
+const WIDE = "(min-width: 761px)";
+const onWide = (f: () => void) => {
+  const m = matchMedia(WIDE);
+  m.addEventListener("change", f);
+  return () => m.removeEventListener("change", f);
+};
+const TABS: [Tab, string][] = [
+  ["chat", "Chat"],
+  ["call", "Call"],
+  ["steps", "Steps"],
+];
+
 /**
  * The chat and call columns, and the live page's rail when given. `announce`:
  * the transcripts are aria-live (live mode only: a replay seek must not read out every line).
+ * With a rail, the tabs (redesign §3.6; CSS shows them only below 1181px) pick the column in view,
+ * with a dot on a tab that got new items while out of view.
  */
 export function Panes({ events, p, announce, input, rail }: { events: Ev[]; p: Parties; announce: boolean; input?: ChatInput; rail?: ReactNode }) {
   const c = useMemo(() => conversation(events), [events]);
+  const steps = useMemo(() => timeline(events).length, [events]);
+  const [picked, setTab] = useState<Tab>("chat");
+  // Above 760px the chat is always in view, so its tab is the call's.
+  const wide = useSyncExternalStore(onWide, () => matchMedia(WIDE).matches);
+  const tab = wide && picked === "chat" ? "call" : picked;
+  const counts: Record<Tab, number> = { chat: c.chat.length + (input?.cards.length ?? 0), call: c.call.length, steps };
+  const [seen, setSeen] = useState<Record<Tab, number>>({ chat: 0, call: 0, steps: 0 });
+  const pick = (t: Tab) => {
+    setSeen((s) => ({ ...s, [tab]: counts[tab], [t]: counts[t] }));
+    setTab(t);
+  };
   return (
-    <div className={`pl-work${rail ? " pl-work-rail" : ""}`}>
+    <div className={`pl-work${rail ? " pl-work-rail" : ""}`} data-tab={rail ? tab : undefined}>
+      {rail && (
+        <div className="pl-tabs" role="group" aria-label="Show">
+          {TABS.map(([t, name]) => (
+            <button key={t} type="button" className={`pl-tab-${t}`} aria-pressed={t === tab} onClick={() => pick(t)}>
+              {name}
+              {t !== tab && counts[t] > seen[t] && (
+                <span className="pl-dot">
+                  <span className="pl-sr"> (new)</span>
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
       <ChatPanel events={events} lines={c.chat} p={p} announce={announce} input={input} />
       <CallPanel events={events} lines={c.call} p={p} announce={announce} />
       {rail && (
@@ -207,7 +248,7 @@ function ChatPanel({ events, lines, p, announce, input }: ColumnProps & { input?
       : []),
   ].sort((a, b) => a.seq - b.seq);
   return (
-    <Card className="pl-col" aria-label="Chat">
+    <Card className="pl-col pl-col-chat" aria-label="Chat">
       <div className="pl-colhead">
         <h2>Chat with ProxyLoop</h2>
         <p className="meta">
@@ -243,7 +284,7 @@ function CallPanel({ events, lines, p, announce }: ColumnProps) {
   const head = useMemo(() => callHead(events), [events]);
   const state = head.calls === 0 ? null : !head.open ? "Call ended" : head.calls > 1 ? `Call ${head.calls} of ${head.calls}` : "Connected";
   return (
-    <Card className="pl-col" aria-label="Call">
+    <Card className="pl-col pl-col-call" aria-label="Call">
       <div className="pl-colhead">
         <div className="pl-colhead-row">
           <h2>
