@@ -11,7 +11,10 @@ current, and bundles across agent harness v2 are never pooled (ADR-0018).
 slow_fp changes with any edit under slow/ or guard/, so the groups are
 fine-grained by design.
 After the table, the outcome tiers per family (``obs.tiers``), per group;
-``--json`` prints ``{"runs": [...], "tiers": {<group>: {...}}}``.
+then, per group, the success-path progress (``obs.progress``) and the watch
+items (``obs.watch``), DIAGNOSTIC blocks (S1-SYS-86): each row also carries
+its ``progress`` and ``watch``. ``--json`` prints ``{"runs": [...], "tiers":
+{<group>: {...}}, "progress": {<group>: {...}}, "watch": {<group>: {...}}}``.
 ``--content`` lets the text-reading detectors run; their values stay codes,
 but the rows (``--json``) then also carry the kernel-authored world_error
 message.
@@ -26,7 +29,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
-from proxyloop.obs import runs, tiers
+from proxyloop.obs import progress, runs, tiers, watch
 from proxyloop.obs.detectors import BANNER, as_dict, scalar
 from proxyloop.obs.trace import Refused
 from proxyloop.obs.triage import Row, Unreadable, read, row
@@ -50,7 +53,10 @@ def rows(
             continue
         seen.add(run.run_id)
         try:
-            out.append(row(*read(Path(run.path), seal, window_s, content)))
+            at, x = read(Path(run.path), seal, window_s, content)
+            out.append(
+                row(at, x) | {"progress": progress.run(x), "watch": watch.run(x)}
+            )
         except (Unreadable, Refused) as err:  # one bad bundle never ends the table
             skipped.append(str(err))
     newest: dict[str, str] = {}
@@ -157,12 +163,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     for r in found:  # the table's groups, in its order
         groups.setdefault(group(r), []).append(r)
     graded = {g: tiers.summary(members) for g, members in groups.items()}
+    advanced = {g: progress.summary(members) for g, members in groups.items()}
+    watched = {g: watch.summary(members) for g, members in groups.items()}
     if args.json:
-        doc = {"runs": found, "tiers": graded}
+        doc = {"runs": found, "tiers": graded, "progress": advanced, "watch": watched}
         print(json.dumps(doc, indent=1, sort_keys=True, ensure_ascii=False))
     else:
         print(
-            "\n".join([table(found), *(tiers.block(s, g) for g, s in graded.items())])
+            "\n".join(
+                [
+                    table(found),
+                    *(tiers.block(s, g) for g, s in graded.items()),
+                    *(progress.block(s, g) for g, s in advanced.items()),
+                    *(watch.block(s, g) for g, s in watched.items()),
+                ]
+            )
         )
     return 0
 
