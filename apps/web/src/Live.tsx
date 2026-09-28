@@ -15,7 +15,8 @@ import { parseEvent, unechoed, type Framed, type Sent, type Stream } from "./liv
 import { ApprovalCard } from "./live/ApprovalCard";
 import { AgentRail } from "./live/AgentRail";
 import { LimitsCard } from "./live/LimitsCard";
-import { postApproval, postMandate, postMessage, type Decision, type PostResult } from "./liveApi";
+import { Sheet } from "./live/Sheet";
+import { postApproval, postMandate, postMessage, type Decision, type Failed, type PostResult } from "./liveApi";
 import { mandateCards, type MandateView } from "./mandate";
 import { honesty } from "./provenance";
 import { indexEvents } from "./replay";
@@ -23,6 +24,7 @@ import { AppShell } from "./shell/AppShell";
 import { HonestyBand } from "./shell/HonestyBand";
 import { PhaseStepper } from "./shell/PhaseStepper";
 import { taskName } from "./start";
+import { termRows, whole } from "./terms";
 import { Button } from "./ui/Button";
 import { Icon } from "./ui/Icon";
 import { useEventStream } from "./useEventStream";
@@ -77,10 +79,9 @@ export function Live({ runId }: { runId: string }) {
   const { engineer, link } = useView();
   // Guard cards in event order: among the chat's lines, or above the input in the engineer view.
   const guardCards = [
-    ...mandates.map((v) => ({ seq: v.seq, el: <LimitsCard key={`m:${v.mandate.mandate_id}`} view={v} events={events} decide={decideMandate} /> })),
-    ...cards.map((v) => ({
-      seq: v.seq,
-      el: (
+    ...mandates.map((v) => ({ seq: v.seq, status: v.status, el: <LimitsCard key={`m:${v.mandate.mandate_id}`} view={v} events={events} decide={decideMandate} /> })),
+    ...cards.map((v) => {
+      const card = (
         <ApprovalCard
           key={`a:${v.card.approval_id}`}
           view={v}
@@ -90,8 +91,12 @@ export function Live({ runId }: { runId: string }) {
           caseStatus={strip.status}
           decide={decide}
         />
-      ),
-    })),
+      );
+      if (v.status !== "open") return { seq: v.seq, status: v.status, el: card };
+      const price = termRows(events, v.card).find((r) => r.field === "monthly_price")?.value;
+      const bar = `Decision needed${price ? ` · ${whole(price)}/mo` : ""} · Review`;
+      return { seq: v.seq, status: v.status, el: <Sheet key={`a:${v.card.approval_id}`} bar={bar}>{card}</Sheet> };
+    }),
   ].sort((a, b) => a.seq - b.seq);
   const pending = unechoed(sent, echoes).map((s) => s.text);
   const start = events.find((e) => e.type === "session.started" && e.actor === "kernel");
@@ -208,17 +213,22 @@ function AuthorityStrip({ a }: { a: Strip }) {
 /**
  * A message box that posts once per submit: Enter sends, Shift+Enter starts a new line. No Stop button: a stop
  * goes through the chat (redesign §3.2). `pending`: sent texts not yet echoed (the chat shows its own in the stream).
+ * `closed`: why it cannot send yet (input and Send disabled). `explain`: the words for a known refusal.
  */
 export function Composer({
   label,
   post,
   pending = [],
   hint,
+  closed,
+  explain,
 }: {
   label: string;
   post: (text: string) => Promise<PostResult>;
   pending?: string[];
   hint?: string;
+  closed?: string;
+  explain?: (r: Failed) => string | undefined;
 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -226,13 +236,13 @@ export function Composer({
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const t = text.trim();
-    if (!t || busy) return;
+    if (!t || busy || closed) return;
     setBusy(true);
     setError("");
     void post(t).then((r) => {
       setBusy(false);
       if (r.ok) setText("");
-      else setError(`${r.status ? `${r.status} ` : ""}${r.error}`);
+      else setError(explain?.(r) ?? `Not delivered: ${r.status ? `${r.status} ` : ""}${r.error}`);
     });
   };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -247,8 +257,15 @@ export function Composer({
         {label}
       </label>
       <div className="pl-composer-box">
-        <textarea id={id} rows={2} value={text} placeholder={label} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} />
-        <Button variant="primary" type="submit" disabled={busy}>
+        <textarea
+          id={id}
+          rows={2}
+          value={text}
+          placeholder={label}
+          disabled={!!closed}
+          aria-describedby={closed ? `${id}-closed` : undefined}
+          onChange={(e) => setText(e.target.value)} onKeyDown={onKey} />
+        <Button variant="primary" type="submit" disabled={busy || !!closed}>
           Send
         </Button>
       </div>
@@ -258,7 +275,12 @@ export function Composer({
           {hint}
         </p>
       )}
-      {error && <p role="alert">Not delivered: {error}</p>}
+      {closed && (
+        <p className="meta" id={`${id}-closed`}>
+          {closed}
+        </p>
+      )}
+      {error && <p role="alert">{error}</p>}
       {pending.length > 0 && (
         <ul aria-label="Pending" className="meta">
           {pending.map((p, i) => (
