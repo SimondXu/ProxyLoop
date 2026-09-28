@@ -83,6 +83,20 @@ def test_ttl_lost(
     assert got["seqs"] == ([r.seq(lost)] if expire else [])
 
 
+def test_a_mandate_grant_is_not_an_approval_grant() -> None:
+    """The intake pre-approval precedes every expiry and revocation in a
+    mandate family: only a granted card (approval.decided) counts (B1, B2)."""
+    r = Run()
+    decided: P = {"mandate_id": "m1", "mandate_hash": "mh", "decision": "granted"}
+    grant = r.log.add("mandate.decided", "kernel", "agent", decided | {"by": "ui"},
+                      (r.start,))  # fmt: skip
+    r.offer("ask_discount", 0, "save-1")
+    r.policy("OFFER", "OFFER", "offer_expired", "save-1", 0)
+    r.revoke(r.verbatim(r.authorize(grant)))
+    assert _item(r, "ttl_lost")["after_grant"] == 0
+    assert _item(r, "revoked_after_grant")["count"] == 0
+
+
 def test_an_ask_before_the_offer_is_no_readback_in_progress() -> None:
     r = Run()
     r.guide("ask_readback", "offer:offer-0.monthly_price")  # an earlier offer's

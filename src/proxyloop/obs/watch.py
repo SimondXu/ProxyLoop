@@ -7,11 +7,11 @@ with a ``count`` and the ``seqs`` that triggered it (``count`` None: the
 bundle cannot tell, never 0).
 
 - ``revoked_after_grant`` (B1, R-l): a speak.revoked{reason: fence} of an
-  accept line (its speak.verbatim{kind: accept}) after a granted
-  approval.decided or mandate.decided; ``reaccepted``: those followed by a
-  speak.released accept line.
+  accept line (its speak.verbatim{kind: accept}) after a granted card
+  (approval.decided; a mandate grant is not one); ``reaccepted``: those
+  followed by a speak.released accept line.
 - ``ttl_lost`` (B2): rep.policy{intent: offer_expired} (the world expires only
-  open offers); ``after_grant``: a grant before it; ``during_readback``: a cp
+  open offers); ``after_grant``: a granted card before it; ``during_readback``: a cp
   ask_readback GUIDE, or a rep.policy readback/confirm_accept of that world
   offer, between the rep.policy that made the offer and the expiry.
 - ``readback_asks`` (B3): ask_readback GUIDEs per offer revision while it had
@@ -21,7 +21,7 @@ bundle cannot tell, never 0).
   identity}) and the IDENTIFY -> ENDED hang-up with its intent ``reason``.
 - ``slow_refusals`` (B5): slow.tool{ok: false} by ``code`` (``none``: an
   uncoded one) and tool; ``naming``: record_offer ``invalid_args`` refusals
-  for a fee or credit code the rep did not say (S1-SYS-85), found by the
+  for a fee or credit code that is not the rep's name for it (S1-SYS-85), by the
   refusal text ``slow/offer_slots.py`` authors (a fixed emitter, never a
   model's text; tests pin it), by kind and ``generic_word``/``not_said``.
 - ``sys72_activation`` (B7): a rep.policy{confirm_accept} whose rep.ear heard
@@ -62,10 +62,11 @@ Item = dict[str, object]
 
 
 def _grants(x: Inputs) -> list[Event]:
+    """Granted cards (approval.decided); a mandate grant is the intake's
+    pre-approval, before everything in its family, so it tells nothing here."""
     return [
-        e for e in x.of("approval.decided", "mandate.decided")
-        if e.payload.get("decision") == "granted"
-    ]  # fmt: skip
+        e for e in x.of("approval.decided") if e.payload.get("decision") == "granted"
+    ]
 
 
 def _cause(x: Inputs, e: Event, type_: str) -> Event | None:
