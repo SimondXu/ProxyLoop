@@ -72,10 +72,11 @@ another value for them, record_offer a new revision citing that line; otherwise 
 stop asking, they did not state them (the close playbook says what next). A \
 reply that reads nothing back is no read-back: ask again or ask for the final \
 offer.
-- propose_mandate(envelope): the limits the user stated (max_monthly_price_minor, \
+- propose_mandate(envelope): the mandate's bounds the user stated \
+(max_monthly_price_minor, \
 max_term_months, max_one_time_fees_minor, required_features, forbidden_changes); it \
 grants nothing until the user decides it.
-- tighten_mandate(changes): stricter limits, never looser; the user re-grants them. \
+- tighten_mandate(changes): stricter bounds, never looser; the user re-grants them. \
 revoke(reason): withdraw every grant at once, e.g. when the user says stop.
 - request_approval(offer_ref): ask the user to approve a confirmed offer; the chat \
 voice shows the card. accept_offer(offer_ref): accept a confirmed offer that a \
@@ -346,29 +347,45 @@ def approval_hint(view: SlowView, o: OfferPublic, now_ms: int) -> str:
 
 def mandate_hint(view: SlowView, o: OfferPublic, now_ms: int) -> str:
     """S1-SYS-46 (run cc160a): Guard's verdicts on an open offer's terms.
-    A ``hard_violations`` class breaks a hard limit, confirmed or not; a
-    revision not yet confirmed that ``mandate_gap`` finds outside the
-    granted mandate needs the user's approval once confirmed (a confirmed
-    one is ``approval_hint``'s). Read-only; nothing is sent."""
-    if o.status != "open":
+    ``open_offer`` first: a confirmed offer it refuses as a policy violation
+    shows its ``hard_violations`` classes; one it refuses only as not yet
+    confirmed shows them for the terms recorded so far, or, when
+    ``mandate_gap`` finds it outside the granted mandate, that it needs the
+    user's approval once confirmed. Any other refusal (expired, fenced) or
+    an allowed offer (``approval_hint``'s) shows nothing. Read-only."""
+    m = view.mandate
+    got = open_offer(o, m, now_ms, bool(view.fences))
+    if not isinstance(got, Denial):
         return ""
-    confirmed = readback_status(o) == "confirmed"
-    terms = offer_terms(o) if confirmed else _as_recorded(o, view)
+    if got.reason == "policy_violation":
+        terms = offer_terms(o)
+    elif got.reason == "readback_not_confirmed" and readback_status(o) != "confirmed":
+        terms = _as_recorded(o)
+        have = {s.field for s in o.slots}  # a feature not yet stated is not missing
+        stated = (
+            tuple(f for f in m.required_features if f"feature:{f}" in have) if m else ()
+        )
+        m = None if m is None else m.model_copy(update={"required_features": stated})
+    else:
+        return ""
     if terms is None:
         return ""
-    if hard := hard_violations(terms, view.mandate):
+    if hard := hard_violations(terms, m):
         return f"{HARD_LIMIT}: {', '.join(hard)}"
     mine = PrivateState(mandate=view.mandate)
     bb = Blackboard(t_ms=now_ms, epoch=view.epoch, private=mine)
-    if confirmed or mandate_gap(bb, terms) != "outside_mandate":
+    if (
+        got.reason != "readback_not_confirmed"
+        or mandate_gap(bb, terms) != "outside_mandate"
+    ):
         return ""
     return OUTSIDE_MANDATE
 
 
-def _as_recorded(o: OfferPublic, view: SlowView) -> Terms | None:
+def _as_recorded(o: OfferPublic) -> Terms | None:
     """``offer_terms`` of the slots recorded so far, each unstated one
     neutral: price and term 0 (above no bound), no fee, no change, no
-    expiry, and a required feature not yet stated is not yet missing."""
+    expiry. Features are only those recorded."""
     have = {s.field: s.value for s in o.slots}
     listed = {f.partition(":")[0] for f in have if ":" in f}
     changed = {f.partition(":")[0] for f, v in have.items() if v == "true"}
@@ -377,13 +394,11 @@ def _as_recorded(o: OfferPublic, view: SlowView) -> Terms | None:
         fill["fees_none"] = "true"
     if "applied_change" not in changed:
         fill["changes_none"] = "true"
-    required = () if view.mandate is None else view.mandate.required_features
-    fill |= {f"feature:{f}": "true" for f in required}
-    extra: list[ReadbackSlot] = []
-    for field, value in fill.items():
-        kind = field.partition(":")[0]
-        slot = {"field": field, "value": value, "role": ROLE_OF[kind]}
-        if field not in have:
-            unit = UNITS.get(kind, "bool")
-            extra.append(ReadbackSlot.model_validate(slot | {"unit": unit}))
+    extra = [
+        ReadbackSlot.model_validate(
+            {"field": f, "value": v, "role": ROLE_OF[f], "unit": UNITS.get(f, "bool")}
+        )
+        for f, v in fill.items()
+        if f not in have
+    ]
     return offer_terms(o.model_copy(update={"slots": (*o.slots, *extra)}))

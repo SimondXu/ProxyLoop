@@ -16,7 +16,9 @@ from tests.slow.test_authority import HINT, Host
 from proxyloop.contract.config import SlowViewMode
 from proxyloop.contract.state import Mandate
 from proxyloop.contract.views import view_slow
+from proxyloop.guard.authorize import Denial, open_offer
 from proxyloop.guard.mandate import hard_violations
+from proxyloop.guard.policy import UNSUPPORTED_APPLIED_CHANGE
 from proxyloop.guard.terms import NO_EXPIRY, Terms
 from proxyloop.slow import prompt, state
 
@@ -76,6 +78,9 @@ def test_hard_limits_are_exactly_guards_hard_violation_classes() -> None:
         expires_at=NO_EXPIRY,
     )
     assert set(hard_violations(worst, m)) == set(prompt.HARD_LIMITS)
+    # the literal codes guard/mandate.py hard_violations appends (it exports none)
+    codes = {"required_feature_missing", "forbidden_change_present"}
+    assert set(prompt.HARD_LIMITS) == codes | {UNSUPPORTED_APPLIED_CHANGE}
 
 
 @pytest.mark.parametrize("mode", list(SlowViewMode))
@@ -142,3 +147,36 @@ def test_a_confirmed_offer_that_breaks_a_hard_limit_shows_its_class(
     line = _offers_line(h)
     assert f"{prompt.HARD_LIMIT}: required_feature_missing" in line
     assert "outside mandate" not in line
+
+
+@pytest.mark.parametrize("feature", ["unlimited data", "x" * 41])
+def test_a_required_feature_any_name_never_breaks_the_bar(
+    tmp_path: Path, feature: str
+) -> None:
+    """#218 B1: propose_mandate takes any feature name; the bar must not
+    build a read-back slot from it. Not yet stated is not yet missing."""
+    h = Host(tmp_path)
+    _mandate(h, 6500, required_features=[feature], **CAP)
+    h.call()
+    h.rep("cp-6", OFFER)
+    h.act(RECORD, READBACK)
+    line = _offers_line(h)
+    assert prompt.OUTSIDE_MANDATE in line and prompt.HARD_LIMIT not in line
+
+
+@pytest.mark.parametrize("why", ["offer_expired", "fence_raised"])
+def test_no_outside_mandate_signal_when_guard_would_refuse_anyway(
+    tmp_path: Path, why: str
+) -> None:
+    """#218 M1: only Guard's readback_not_confirmed means "once confirmed";
+    an expired offer or a raised fence gets no approval either way."""
+    h = _cc160a(tmp_path)
+    view = view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b")
+    (o,) = view.offers
+    assert prompt.mandate_hint(view, o, h.now()) == prompt.OUTSIDE_MANDATE
+    if why == "offer_expired":
+        o = o.model_copy(update={"expires_ms": 1})
+    else:
+        view = view.model_copy(update={"fences": ("f-1",)})
+    assert isinstance(open_offer(o, view.mandate, h.now(), bool(view.fences)), Denial)
+    assert prompt.mandate_hint(view, o, h.now()) == ""
