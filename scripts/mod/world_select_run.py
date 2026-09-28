@@ -8,24 +8,22 @@ world code, one JSONL of rows per arm. Root-run (L); ``--plan``: no call, no key
 
 An arm is ``<endpoint>:<model_id>[@effort]`` (``cli.world_spec``), its client
 ``make_client``'s (live; keys and URLs only from ``PL_<ENDPOINT>_*``, never written).
-Every arm calls, the recorded incumbent too. The production builders make the
-requests; ``world.bounded`` runs the attempts with the production checks; no other
-retry: a dead endpoint (``LLMUnavailable``) writes its row and aborts (AGENTS rule 6).
-
-- **ear**: every item (``Ear.request``, ``check_act``; ids from the item id), called.
-- **mouth**: every item (``Mouth.request``, ``fidelity_ok``; exhausted, the template,
-  ``fallback: true``, as live), called.
-- **simuser**: a recorded item's request (``prompts.jsonl``, by sha) rebuilt with
-  ``SimUser.request`` (``simuser_replay``), checked by ``check_reply`` (``check:
-  full``); if it does not rebuild, the recorded content, checked by ``fact_free``
-  (``check: partial`` and ``check_reason``). A constructed item (its chat only prose)
-  makes no call: its row is ``not_replayable``, left out of the scoring (decision (c)).
+Every arm calls, the recorded incumbent too. The production builders make the requests;
+``world.bounded`` runs the attempts with the production checks; no other retry: a dead
+endpoint (``LLMUnavailable``) writes its row and aborts (AGENTS rule 6). Ear:
+``Ear.request``, ``check_act`` (``Heard`` ids from the item id). Mouth:
+``Mouth.request``, ``fidelity_ok`` (exhausted: the template, ``fallback: true``, as
+live). SimUser: ``simuser_replay`` (the recorded request rebuilt with
+``SimUser.request`` and ``check_reply``; else the recorded content and ``fact_free``:
+``check: partial``); a constructed item (its chat only prose) makes no call and its row
+is ``not_replayable``, left out of the scoring (decision (c)).
 
 Row (one JSON line, ``pl.world-select-row/1``; PR2b's scorer takes the last final row
 per (item_id, role, repeat)): ``arm``, ``model_ref``, ``items_root_hash``, ``role``,
-``item_id``, ``constructed``, ``repeat`` (2: ``--repeat-subset``), ``status`` (final:
-``ok``, ``exhausted``, ``timeout``, ``not_replayable``; ``unavailable`` is re-run on
-resume), ``recorded_ref`` (per occurrence, ``{run_id, response_shas}`` of the recorded
+``item_id``, ``constructed``, ``repeat`` (2: ``--repeat-subset``), ``seed`` and
+``repeat_subset`` (``--resume`` refuses others), ``status`` (final: ``ok``,
+``exhausted``, ``timeout``, ``not_replayable``; ``unavailable`` is re-run on resume),
+``recorded_ref`` (per occurrence, ``{run_id, response_shas}`` of the recorded
 incumbent's calls: informational, never a result), ``request_sha`` (attempt 0's prompt
 sha), ``elapsed_ms`` (wall), ``attempts`` (per model attempt ``{n, raw, valid, reason,
 records}``: ``raw`` the tool calls ``[{name, arguments}]`` or the streamed text;
@@ -76,6 +74,7 @@ from proxyloop.llm.http import HTTPAdapter
 from scripts.mod import world_select as ws
 
 Json = dict[str, Any]
+Key = tuple[str, str, int]  # (item_id, role, repeat)
 ROW_SCHEMA = "pl.world-select-row/1"
 ITEMS = ws.REPO / "docs/decisions/data/world-select-items.json"
 FINAL = frozenset({"ok", "exhausted", "timeout", "not_replayable"})
@@ -84,6 +83,7 @@ TRIES = world.MAX_REGENERATIONS + 1
 UNUSED = cast(Any, None)  # the builders are pure: their client and writer stay unused
 Check = Callable[[tuple[ToolCall, ...]], SimOut]  # a SimUser reply's check
 Sink = defaultdict[str, list[LLMCallRecord]]  # the arm client's records, by call id
+Seam = httpx.AsyncBaseTransport | None  # the test seam into make_client
 PLAIN = ("finish_reason", "error", "prompt_sha", "response_sha", "sampling_sent")
 EST_RULE = "per role, the mean first recorded usage per item called, times its items"
 
@@ -110,7 +110,7 @@ class Work:
     repeat: int
 
     @property
-    def key(self) -> tuple[str, str, int]:
+    def key(self) -> Key:
         return (self.item["item_id"], self.role, self.repeat)
 
     @property
@@ -300,18 +300,19 @@ def summary(r: LLMCallRecord) -> Json:
     return out | {"ttft_ms": None if first is None else first - r.t_start}
 
 
-def tool_calls(calls: Sequence[ToolCall]) -> list[Json]:
-    return [{"name": c.name, "arguments": c.arguments} for c in calls]
-
-
 class Replay:
-    """One arm's calls, each item written into its ``row`` as it goes (so an
-    aborted item's row still carries its attempts and records)."""
+    """One arm's calls through its production client, each item written into its
+    ``row`` as it goes (so an aborted item's row still carries its attempts)."""
 
-    def __init__(
-        self, client: llm.LLMClient, sink: Sink, rec: Recorded, timeout_s: float
-    ) -> None:
-        self.client, self.sink, self.rec, self.timeout_s = client, sink, rec, timeout_s
+    def __init__(self, arm: Arm, rec: Recorded, timeout_s: float, seam: Seam) -> None:
+        self.arm, self.rec, self.timeout_s, self.sink = arm, rec, timeout_s, Sink(list)
+        self.client = make_client(
+            arm.ref, live=True, clock=WallClock().monotonic_ms, on_record=self.record,
+            transport=seam,
+        )  # fmt: skip
+
+    def record(self, record: LLMCallRecord) -> None:  # the client's on_record
+        self.sink[record.call_id].append(record)
 
     async def bounded[Q: (llm.TextRequest, ToolRequest), R, T](
         self,
@@ -356,7 +357,8 @@ class Replay:
 
     async def tools(self, request: ToolRequest) -> tuple[object, tuple[ToolCall, ...]]:
         resp = await self.client.chat_tools(request)
-        return tool_calls(resp.tool_calls), resp.tool_calls
+        calls = [{"name": c.name, "arguments": c.arguments} for c in resp.tool_calls]
+        return calls, resp.tool_calls
 
     async def text(self, request: llm.TextRequest) -> tuple[object, str]:
         """As ``World.text`` (deltas joined, the stream closed), stripped as
@@ -414,35 +416,40 @@ class Replay:
             row |= {"status": "ok", "result": {"reply": done[0].model_dump()}}
 
 
-def done_keys(path: Path) -> set[tuple[str, str, int]]:
-    lines = path.read_text("utf-8").splitlines() if path.exists() else []
-    return {(r["item_id"], r["role"], r["repeat"]) for r in map(json.loads, lines)
-            if r["status"] in FINAL}  # fmt: skip
+def resume(path: Path, args: argparse.Namespace) -> tuple[set[Key], int]:
+    """The final rows' keys, and the torn lines (unparsable: skipped, their items
+    re-run; a torn tail gets its newline, so the next row starts clean). The rows
+    must have run with this ``--seed`` and ``--repeat-subset``."""
+    text = path.read_text("utf-8") if path.exists() else ""
+    rows, torn = list[Json](), 0
+    for line in text.splitlines():
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            torn += 1
+    if (ran := {(r.get("seed"), r.get("repeat_subset")) for r in rows}) - {draw(args)}:
+        raise SystemExit(f"{path}: (seed, repeat_subset) {ran}, not {draw(args)}")
+    if text and not text.endswith("\n"):
+        with path.open("a", encoding="utf-8") as f:
+            f.write("\n")
+    return {(r["item_id"], r["role"], r["repeat"]) for r in rows
+            if r["status"] in FINAL}, torn  # fmt: skip
+
+
+def draw(args: argparse.Namespace) -> tuple[int | None, int]:
+    return args.seed, args.repeat_subset or 0
 
 
 async def run_arm(
-    arm: Arm,
-    todo: Sequence[Work],
-    rec: Recorded,
-    out: Path,
-    args: argparse.Namespace,
-    timeout_s: float,
-    transport: httpx.AsyncBaseTransport | None,
+    replay: Replay, todo: Sequence[Work], out: Path, args: argparse.Namespace
 ) -> Counter[str]:
     """``todo`` through the arm, ``--concurrency`` at a time, each row appended as it
     ends. ``LLMUnavailable`` writes its row, cancels the rest (their rows are not
     written: resume re-runs them) and propagates."""
-    sink, tally, ms = Sink(list), Counter[str](), WallClock().monotonic_ms
-    client = make_client(
-        arm.ref,
-        live=True,
-        clock=ms,
-        on_record=lambda r: sink[r.call_id].append(r),  # every record, by call id
-        transport=transport,
-    )
-    replay = Replay(client, sink, rec, timeout_s)
+    arm, rec, tally = replay.arm, replay.rec, Counter[str]()
     gate = asyncio.Semaphore(args.concurrency)
     base: Json = {"schema": ROW_SCHEMA, "arm": arm.label}
+    base |= dict(zip(("seed", "repeat_subset"), draw(args), strict=True))
     base |= {"model_ref": arm.ref.model_dump(mode="json")}
     base |= {"items_root_hash": rec.doc["root_hash"], "status": None, "result": None}
     roles = {"ear": replay.ear, "mouth": replay.mouth, "simuser": replay.simuser}
@@ -476,7 +483,7 @@ async def run_arm(
         except* llm.LLMUnavailable as group:
             raise group.exceptions[0] from None
         finally:
-            await cast(HTTPAdapter, client).aclose()
+            await cast(HTTPAdapter, replay.client).aclose()
     return tally
 
 
@@ -493,7 +500,7 @@ def estimate(found: Sequence[Json | None]) -> Json:
 def plan(rec: Recorded, todo: Sequence[Work], arms: Sequence[Arm]) -> Json:
     """Calls per arm and role (one per item; up to ``TRIES`` with regenerations) and a
     token estimate from the recorded usage. No call."""
-    usage: dict[tuple[str, str, int], Json | None] = {}
+    usage: dict[Key, Json | None] = {}
     mismatch = 0
     for w in todo:
         recs = [c for o in w.item.get("occurrences", []) for c in rec.calls(w.role, o)]
@@ -505,10 +512,8 @@ def plan(rec: Recorded, todo: Sequence[Work], arms: Sequence[Arm]) -> Json:
             mismatch += sha256_text(llm.request_content(request)) not in shas
     called = [w for w in todo if w.replayable]
     calls = Counter(w.role for w in called)
-    per_arm: Json = {
-        "calls": dict(calls),
-        "max_calls": {r: n * TRIES for r, n in calls.items()},
-    }
+    per_arm: Json = {"calls": dict(calls)}
+    per_arm["max_calls"] = {r: n * TRIES for r, n in calls.items()}
     per_arm["tokens"] = {
         r: estimate([usage[w.key] for w in called if w.role == r]) for r in calls
     }
@@ -519,10 +524,9 @@ def plan(rec: Recorded, todo: Sequence[Work], arms: Sequence[Arm]) -> Json:
 
 
 def roles_arg(text: str) -> list[str]:
-    roles = [r for r in text.split(",") if r]
-    if bad := [r for r in roles if r not in ROLES]:
+    if bad := set(text.split(",")) - set(ROLES):
         raise argparse.ArgumentTypeError(f"unknown roles {bad}; pick from {ROLES}")
-    return roles
+    return text.split(",")
 
 
 def positive(text: str) -> int:
@@ -578,11 +582,13 @@ def run(
         out = args.out_dir / arm.file
         if out.exists() and out.stat().st_size and not args.resume:
             raise SystemExit(f"{out} exists: pass --resume to continue it")
-        done = done_keys(out)
+        done, torn = resume(out, args)
         left = [w for w in todo if w.key not in done]
         seam = (transports or {}).get(str(arm.ref.endpoint))
-        tally = asyncio.run(run_arm(arm, left, rec, out, args, timeout_s, seam))
+        replay = Replay(arm, rec, timeout_s, seam)
+        tally = asyncio.run(run_arm(replay, left, out, args))
         report[arm.label] = {"skipped_final": len(todo) - len(left), **tally}
+        report[arm.label] |= {"torn_lines": torn} if torn else {}
     return report
 
 

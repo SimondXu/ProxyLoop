@@ -578,22 +578,37 @@ def test_plan_makes_no_call_and_needs_no_key(
 def test_resume_skips_final_rows_and_reruns_the_rest(
     items: Path, tmp_path: Path
 ) -> None:
-    wire = Wire(classify=[SINGLE])
-    wsr.run(
-        args(items, tmp_path, "--roles", "ear", "--limit", "1"),
-        transports=wire.transports(),
-    )
-    with pytest.raises(SystemExit, match="--resume"):
-        wsr.run(args(items, tmp_path, "--roles", "ear"), transports=wire.transports())
+    draw = ("--roles", "ear", "--repeat-subset", "1", "--seed", "0")
     wire = Wire(classify=answer, echo=ECHO)
-    again = ("--roles", "ear", "--resume", "--repeat-subset", "1", "--seed", "0")
-    report = wsr.run(args(items, tmp_path, *again), transports=wire.transports())
-    assert report[INCUMBENT]["skipped_final"] == 1 and len(wire.bodies) == 2
-    keys = [(r["item_id"], r["repeat"]) for r in rows(tmp_path)]
-    assert {("e1", 1), ("c-e1", 1)} < set(keys) and [k[1] for k in keys].count(2) == 1
-    assert all(
-        r["attempts"][0]["records"][0]["echo"] == ECHO for r in rows(tmp_path)[1:]
+    wsr.run(args(items, tmp_path, *draw), transports=wire.transports())
+    assert len(wire.bodies) == 3  # e1, c-e1 and one drawn again
+    first = rows(tmp_path)
+    assert {(r["seed"], r["repeat_subset"]) for r in first} == {(0, 1)}
+    assert sorted(r["repeat"] for r in first) == [1, 1, 2]
+    with pytest.raises(SystemExit, match="--resume"):
+        wsr.run(args(items, tmp_path, *draw), transports=wire.transports())
+    for other in (("--seed", "1"), ("--seed", "0", "--repeat-subset", "2")):
+        with pytest.raises(SystemExit, match="seed, repeat_subset"):  # another draw
+            wsr.run(args(items, tmp_path, "--roles", "ear", "--resume", *other))
+    out = tmp_path / "out" / wsr.parse_arm(INCUMBENT).file
+    lines = out.read_text("utf-8").splitlines()
+    torn = next(line for line in lines if '"c-e1"' in line and '"repeat": 1' in line)
+    kept = [line for line in lines if line is not torn]
+    out.write_text("\n".join(kept) + "\n" + torn[: len(torn) // 2], "utf-8")  # a crash
+    wire = Wire(classify=answer)
+    report = wsr.run(
+        args(items, tmp_path, *draw, "--resume"), transports=wire.transports()
     )
+    assert report[INCUMBENT] == {"skipped_final": 2, "ear:ok": 1, "torn_lines": 1}
+    assert len(wire.bodies) == 1 and "Dana" in json.dumps(wire.bodies[0])
+    text = out.read_text("utf-8").splitlines()
+    assert len(text) == 4 and json.loads(text[-1])["item_id"] == "c-e1"  # a clean row
+    wire = Wire(classify=answer)  # the torn line stays counted, and nothing re-runs
+    report = wsr.run(
+        args(items, tmp_path, *draw, "--resume"), transports=wire.transports()
+    )
+    assert report[INCUMBENT] == {"skipped_final": 3, "torn_lines": 1}
+    assert wire.bodies == []
 
 
 def test_a_dead_endpoint_aborts_with_a_partial_file_and_no_secret(
