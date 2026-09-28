@@ -26,17 +26,21 @@ format:
 	uv run ruff format src tests scripts serving training_jobs
 
 # evidence-check (S0-ROOT-14): proxyloop.evidence.check.check_path on one bundle; no keys,
-# no GPU. RUN=<bundle dir>; MODE=offline (default) or claim. Exits non-zero on any failure.
+# no GPU. RUN=<bundle dir>; MODE=offline (default) or claim; ABOUT=qwen (optional, S1-SYS-14)
+# asks for a Qwen claim. Prints the Report scope when set. Exits non-zero on any failure.
 .PHONY: evidence-check
 evidence-check: MODE ?= offline
+evidence-check: ABOUT ?=
 evidence-check:
 	$(if $(RUN),,$(error RUN=<bundle dir> is required))
 	$(if $(filter-out offline claim,$(MODE)),$(error MODE must be offline or claim))
+	$(if $(filter-out qwen,$(ABOUT)),$(error ABOUT must be empty or qwen))
 	uv run python -c 'import sys, pathlib; from proxyloop.evidence.check import check_path; \
-	run, mode = sys.argv[1:]; r = check_path(pathlib.Path(run), mode); \
+	run, mode, about = sys.argv[1:]; r = check_path(pathlib.Path(run), mode, about=about or None); \
 	print(f"evidence-check {mode} {run}:", "ok" if r.ok else "FAILED"); \
+	r.scope and print(f"  scope: {r.scope}"); \
 	print("".join(f"  - {f}\n" for f in r.failures), end=""); sys.exit(0 if r.ok else 1)' \
-		"$(RUN)" "$(MODE)"
+		"$(RUN)" "$(MODE)" "$(ABOUT)"
 
 # shellcheck (S1-SYS-13): a pinned ShellCheck (the shellcheck-py wheel, run by uvx; no
 # system package) over every scripts/**/*.sh, found with find so new scripts are covered.
