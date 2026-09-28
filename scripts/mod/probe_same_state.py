@@ -1,15 +1,16 @@
 """Same-state Fast probe (S1-MOD-08): at exactly the recorded Fast states, what would
 other Fast candidates have said? Root-run (L+G); ``--plan`` makes no call, needs no key.
 
-Diagnostic only, open-loop (``ABOUT``). Views: every recorded Fast turn (both lanes) of
-the train bundles on the current fingerprints, newest first, up to ``--max-views``, with
-the recorded answer as the reference. Calls go through the production adapter
-(``make_client``, live) in the kernel's request shape (``build_request``). No session,
-kernel, world or Slow runs, and no retry here: the adapter's own rule (one retry of a
-connection failure before the first token) shows under ``failed_attempts``. A failed
-call raises ``LLMUnavailable``: its row is written with the partial report, and the run
-aborts (AGENTS rule 6). Keys and URLs stay in ``PL_<ENDPOINT>_*`` and are never written.
-Numbers: see ``NUMBER_RULE``; number words are not seen. p90: nearest rank.
+Diagnostic only, open-loop (``ABOUT``). Views: the recorded Fast turns (both lanes) of
+the train bundles on the current fingerprints, whole runs newest first, up to
+``--max-views`` (``collect``), with the recorded answer as the reference. Calls go
+through the production adapter (``make_client``, live) in the kernel's request shape
+(``build_request``). No session, kernel, world or Slow runs, and no retry here: the
+adapter's own rule (one retry of a connection failure before the first token) shows
+under ``failed_attempts``. A failed call raises ``LLMUnavailable``: its row is written
+with the partial report, and the run aborts (AGENTS rule 6). Keys and URLs stay in
+``PL_<ENDPOINT>_*`` and are never written. Numbers: see ``NUMBER_RULE``; number words
+are not seen. p90: nearest rank.
 """
 
 from __future__ import annotations
@@ -75,9 +76,13 @@ class View:
 def collect(
     bundles: Sequence[Bundle], fps: dict[str, str], cap: int
 ) -> tuple[list[View], Json]:
-    """Every recorded Fast turn of the train bundles on ``fps``, newest first."""
-    funnel, found = Counter[str](), list[tuple[tuple[Any, ...], View]]()
-    for b in bundles:
+    """The recorded Fast turns of the train bundles on ``fps``: whole bundles, newest
+    first (as ``pull_through.select``), each bundle's turns in their recorded order, cut
+    at ``cap``. The funnel's ``composition``: per run, turns taken of those available,
+    and taken per lane."""
+    funnel, found, composition = Counter[str](), list[View](), dict[str, Json]()
+    newest = sorted(bundles, key=lambda b: (b.events[0].wall, b.manifest.run_id))
+    for b in reversed(newest):
         why = "not_train" if b.manifest.split != "train" else "stale_fingerprint"
         if b.manifest.split != "train" or b.manifest.fingerprints != fps:
             funnel[f"bundle_{why}"] += 1
@@ -86,6 +91,7 @@ def collect(
             e.payload["gen_id"]: e.payload for e in b.events if e.type == "fast.request"
         }
         calls = {c.call_id: c for c in pt.fast_calls(b) if c.error is None}
+        mine = list[View]()
         for e in (e for e in b.events if e.type == "fast.turn"):
             req, rec = asked[e.payload["gen_id"]], calls.get(str(e.payload["call_id"]))
             if rec is None or rec.response_sha is None:
@@ -98,12 +104,16 @@ def collect(
             lane: Lane = "user" if req["lane"] == "user" else "cp"
             args = (b.manifest.run_id, e.event_id, lane, str(req["profile"]), view)
             args += (b.manifest.cfg.fast_sampling, int(seed), rec)
-            key = (e.wall, b.manifest.run_id, e.seq)
-            found.append((key, View(*args, b.prompts[rec.response_sha].content)))
-    found.sort(key=lambda kv: kv[0], reverse=True)
-    kept = [v for _, v in found[:cap]]
-    counts = {"bundles": len(bundles), "views_found": len(found), "selected": len(kept)}
-    return kept, counts | {"dropped_over_cap": len(found) - len(kept), **funnel}
+            mine.append(View(*args, b.prompts[rec.response_sha].content))
+        taken = mine[: max(cap - len(found), 0)]
+        comp: Json = {"taken": len(taken), "available": len(mine)}
+        comp |= {lane: sum(v.lane == lane for v in taken) for lane in LANES}
+        composition[b.manifest.run_id] = comp
+        found += taken
+        funnel["dropped_over_cap"] += len(mine) - len(taken)
+    seen = len(found) + funnel["dropped_over_cap"]
+    counts = {"bundles": len(bundles), "views_found": seen, "selected": len(found)}
+    return found, counts | {**funnel, "composition": composition}
 
 
 def parse_model(spec: str) -> llm.ModelRef:

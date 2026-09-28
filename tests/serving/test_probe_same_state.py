@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, cast
 
@@ -25,6 +26,7 @@ from tests.llm.wire import (
 from tests.support.manual_clock import ScaledClock
 from tests.support.sessions import FakeTokenizer, clients, fake_config, patient_task
 
+from proxyloop.contract.bundle import Bundle
 from proxyloop.contract.config import SessionConfig
 from proxyloop.contract.llm import (
     AdapterKind,
@@ -108,6 +110,35 @@ def views(root: Path) -> list[pss.View]:
     found, funnel = pss.collect(pt.load_bundles(root), pt.current_fingerprints(), 100)
     assert funnel["bundles"] == 1 and funnel["selected"] == len(found) > 0
     return found
+
+
+def older(b: Bundle, run_id: str) -> Bundle:
+    """The same run, a day earlier, under another run id."""
+    day = timedelta(days=1)
+    events = tuple(e.model_copy(update={"wall": e.wall - day}) for e in b.events)
+    manifest = b.manifest.model_copy(update={"run_id": run_id})
+    return Bundle(manifest=manifest, events=events, prompts=b.prompts)
+
+
+def test_a_small_cap_takes_whole_runs_newest_first_in_their_own_order(
+    evidence: tuple[Path, Sent],
+) -> None:
+    """Not the newest run's closing turns: its opening ones, then the next run's."""
+    (new,) = pt.load_bundles(evidence[0])
+    run_id, fps = new.manifest.run_id, pt.current_fingerprints()
+    turns = [e.event_id for e in new.events if e.type == "fast.turn"]
+    both = [older(new, "run-older"), new]
+    found, funnel = pss.collect(both, fps, 2)
+    assert [v.turn for v in found] == turns[:2] and len(turns) > 2
+    assert {v.run_id for v in found} == {run_id}
+    found, funnel = pss.collect(both, fps, len(turns) + 1)
+    assert [(v.run_id, v.turn) for v in found][-1] == ("run-older", turns[0])
+    assert funnel["dropped_over_cap"] == len(turns) - 1
+    comp = funnel["composition"]
+    lanes = {ln: sum(v.lane == ln for v in found[:-1]) for ln in pss.LANES}
+    assert comp[run_id] == {"taken": len(turns), "available": len(turns)} | lanes
+    one = {"user": 0, "cp": 0} | {found[-1].lane: 1}
+    assert comp["run-older"] == {"taken": 1, "available": len(turns)} | one
 
 
 def test_each_request_is_the_one_the_kernel_would_send(
