@@ -256,6 +256,28 @@ describe("the card beside your limits: no verdict and no difference (root ruling
     expect(limitBar(events, CARD, mandates)).toBeNull();
   });
 
+  it("reads the mandate in force, never the latest proposed or superseded one", () => {
+    const m1 = { mandate_id: "m1", mandate_hash: "h1", epoch: 1, max_monthly_price_minor: 6500, required_features: ["hotspot"] };
+    const m2 = { mandate_id: "m2", mandate_hash: "h2", epoch: 1, max_monthly_price_minor: 5000, required_features: ["tv"], forbidden_changes: ["speed_tier"] };
+    const granted1 = [ev("mandate.proposed", "guard", m1), ev("mandate.decided", "kernel", { mandate_id: "m1", mandate_hash: "h1", decision: "granted", by: "ui" })];
+    // A newer proposal replaces the granted one (superseded) and is itself only proposed: no mandate is in force.
+    const pending = mandateCards([...granted1, ev("mandate.proposed", "guard", m2)], none);
+    expect(pending.map((v) => v.status)).toEqual(["superseded", "open"]);
+    expect(limitTextRows(pending)).toEqual([]);
+    expect(offerRows(termRows([offerAt("7800")], CARD), pending).map((r) => r.limit)).toEqual([null, null, null]);
+    // The granted one in force, a later one declined: the rows are the granted one's.
+    const [inForce] = mandateCards(granted1, none);
+    const declined = mandateCards(
+      [ev("mandate.proposed", "guard", m2), ev("mandate.decided", "kernel", { mandate_id: "m2", mandate_hash: "h2", decision: "denied", by: "ui" })],
+      none,
+    );
+    const views = inForce && declined[0] ? [inForce, declined[0]] : [];
+    expect(views.map((v) => v.status)).toEqual(["granted", "denied"]);
+    expect(limitTextRows(views)).toEqual([["Must include", "hotspot"]]);
+    expect(offerRows(termRows([offerAt("7800")], CARD), views)[0]?.limit).toBe("up to $65.00");
+    expect(limitBar([offerAt("7800")], CARD, views)?.limit).toBe("$65");
+  });
+
   it("counts the rows Guard read back", () => {
     const rows = termRows([offerAt("7800")], CARD);
     expect(readbackCount(rows)).toBe("Read back · 2 of 3");

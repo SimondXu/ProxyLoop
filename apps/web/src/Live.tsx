@@ -91,7 +91,7 @@ export function Live({ runId }: { runId: string }) {
           fenced={strip.fences.length > 0}
           caseStatus={strip.status}
           decide={decide}
-          clock="live"
+          clock={{ kind: "live" }}
         />
       );
       if (v.status !== "open") return { seq: v.seq, status: v.status, el: card };

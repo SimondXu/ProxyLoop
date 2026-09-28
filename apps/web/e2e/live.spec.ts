@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Page } from "@playwright/test";
 import { capturePosts, CSRF, csrfCookie, events, mockSockets, RUN, shot, started } from "./liveMock";
 
 const REAL: Record<string, [string, string]> = {
@@ -854,4 +854,52 @@ test("approval card: the hold line counts up from FastC's chan.hold while the ca
   await expect(card.getByRole("button", { name: "Approve" })).toBeEnabled();
   ws.send(ev("chan.hold", "fast.cp", { lane: "cp", reason: null }));
   await expect(hold).toHaveCount(0);
+});
+
+/** Every element of the approval card, in order: its tag, class and the computed colours and shadows that could carry a verdict. */
+async function cardLook(browser: Browser, baseURL: string | undefined, priceMinor: string) {
+  const context = await browser.newContext({ baseURL, reducedMotion: "reduce" });
+  const page = await context.newPage();
+  await csrfCookie(page, baseURL);
+  const { connected } = await mockSockets(page);
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  ws.send(ev("mandate.proposed", "guard", { ...MANDATE, required_features: ["hotspot"] }));
+  ws.send(ev("mandate.decided", "kernel", { mandate_id: "m-1", mandate_hash: MANDATE.mandate_hash, decision: "granted", by: "ui" }));
+  ws.send(ev("authority.epoch", "kernel", { new: 2, reason: "mandate_decided" }));
+  const slots = [
+    { field: "monthly_price", value: priceMinor, unit: "usd_minor", status: "confirmed" },
+    { field: "term_months", value: "12", unit: "months", status: "heard" },
+    { field: "fees_none", value: "true", unit: "bool", status: "confirmed" },
+  ];
+  ws.send(ev("offer.recorded", "guard", { offer_ref: "offer-1", revision: 1, terms_hash: CARD.terms_hash, slots }));
+  ws.send(ev("approval.requested", "guard", CARD));
+  const card = page.getByRole("article", { name: "Approval ap-1" });
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
+  await expect(card.locator(".pl-lbar-l")).toHaveCount(2);
+  await card.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+  const look = await card.evaluate((root) =>
+    [root, ...root.querySelectorAll("*")].map((el) => {
+      const s = getComputedStyle(el);
+      return [el.tagName, el.getAttribute("class"), s.backgroundColor, s.boxShadow, s.borderColor, s.color, s.outline, s.textDecorationLine].join(" | ");
+    }),
+  );
+  const marks = await card.locator(".pl-lbar-lim, .pl-lbar-dot").evaluateAll((els) => els.map((el) => (el as HTMLElement).style.left));
+  await context.close();
+  return { look, marks };
+}
+
+test("root ruling (a): an offer over, under or equal to the bound looks the same; only the bar's marks move (S1-SYS-78)", async ({ browser, baseURL }) => {
+  const [over, under, equal] = [await cardLook(browser, baseURL, "7800"), await cardLook(browser, baseURL, "5200"), await cardLook(browser, baseURL, "6500")];
+  expect(over.look.length).toBeGreaterThan(40);
+  // Same elements, classes, colours, borders and shadows on every term row, the bar's track and both marks, and all else.
+  expect(under.look).toEqual(over.look);
+  expect(equal.look).toEqual(over.look);
+  // The marks' positions (limit, offer) are the only difference.
+  expect(over.marks).not.toEqual(under.marks);
+  expect(over.marks[0]).not.toBe(over.marks[1]);
+  expect(under.marks[0]).not.toBe(under.marks[1]);
+  expect(equal.marks[0]).toBe(equal.marks[1]);
 });

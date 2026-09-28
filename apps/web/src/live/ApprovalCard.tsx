@@ -19,7 +19,7 @@ import {
   whyNote,
   type LimitBar,
 } from "../decision";
-import { holdElapsed, mmss } from "../hold";
+import { holdElapsed, holdElapsedAt, mmss } from "../hold";
 import type { Decision } from "../liveApi";
 import type { MandateView } from "../mandate";
 import { HUMAN_PRINCIPAL, honesty } from "../provenance";
@@ -36,8 +36,8 @@ import "./cards.css";
 const UNDECIDED: CardStatus[] = ["open", "pending", "sent"];
 const CHIP_TONE: Record<string, "ok" | "neutral" | "over"> = { confirmed: "ok", heard: "neutral", unknown: "over" };
 
-/** The hold line's clock: a live page ticks after the latest event; a replay reads the recorded t_ms alone. */
-export type CardClock = "live" | "replay";
+/** The hold line's clock: a live page ticks after the latest event; a replay passes its playback time `t` (t_ms). */
+export type CardClock = { kind: "live" } | { kind: "replay"; t: number };
 
 type Props = {
   view: CardView;
@@ -64,7 +64,7 @@ export function ApprovalCard({ view, events, mandates, fenced, caseStatus, decid
   const progress = status === "granted" && caseStatus ? PROGRESS[caseStatus] : undefined;
   const expiry = aboutClock(events, card.expires_ms);
   const human = honesty(events).principal !== null;
-  const holding = useHold(events, open, clock === "live");
+  const holding = useHold(events, open, clock);
   const note = whyNote(mandates);
   return (
     <article className={`pl-gcard pl-decision ${status}`} aria-label={`Approval ${card.approval_id}`}>
@@ -206,10 +206,11 @@ function PriceBar({ bar }: { bar: LimitBar }) {
 
 /**
  * The hold line's "m:ss" while the card is open and the rep holds, else null; display only.
- * A replay reads the recorded t_ms alone. A live page ticks once a second: the latest event's
- * t_ms plus the local time since it arrived. Nothing acts on it.
+ * A replay follows its playback clock (recorded t_ms). A live page ticks once a second: the
+ * latest event's t_ms plus the local time since it arrived. Nothing acts on it.
  */
-function useHold(events: Ev[], open: boolean, live: boolean): string | null {
+function useHold(events: Ev[], open: boolean, clock: CardClock): string | null {
+  const live = clock.kind === "live";
   const latest = `${events.length}:${events.at(-1)?.event_id ?? ""}`;
   const on = open && live && holdElapsed(events) !== null;
   const [tick, setTick] = useState({ latest, ms: 0 });
@@ -219,6 +220,7 @@ function useHold(events: Ev[], open: boolean, live: boolean): string | null {
     const id = setInterval(() => setTick({ latest, ms: performance.now() - arrived }), 1000);
     return () => clearInterval(id);
   }, [latest, on]);
-  const elapsed = open ? holdElapsed(events, on && tick.latest === latest ? tick.ms : 0) : null;
+  if (!open) return null;
+  const elapsed = clock.kind === "replay" ? holdElapsedAt(events, clock.t) : holdElapsed(events, on && tick.latest === latest ? tick.ms : 0);
   return elapsed === null ? null : mmss(elapsed);
 }

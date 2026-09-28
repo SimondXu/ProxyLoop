@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { holdElapsed, mmss } from "./hold";
+import { holdElapsed, holdElapsedAt, mmss } from "./hold";
 import type { Ev } from "./replay";
 
 let seq = 0;
@@ -32,12 +32,21 @@ describe("the hold line (display only)", () => {
     const first = [opened(0), hold(1_000, "check_user"), hold(4_000, null)];
     expect(holdElapsed([...first, hold(10_000, "decision")])).toBe(0);
     expect(holdElapsed([...first, hold(10_000, "decision"), heard(64_000)])).toBe(54_000);
-    // A replay passes nothing else: the recorded t_ms is the only clock (never the viewer's).
     const events = [opened(0), hold(10_000, "decision"), heard(20_000)];
     expect(holdElapsed(events)).toBe(10_000);
-    expect(holdElapsed(events, 0)).toBe(holdElapsed(events));
     // Live adds the local ms since the latest event arrived, display only.
     expect(holdElapsed(events, 3_500)).toBe(13_500);
     expect(mmss(holdElapsed([opened(0), hold(0, "decision"), heard(600_000)]) ?? -1)).toBe("10:00");
+  });
+
+  it("in a replay follows the playback clock t (recorded t_ms), also between events, and only the shown events' hold", () => {
+    const shown = [opened(0), hold(10_000, "decision"), heard(20_000)];
+    // Between events it moves with t instead of standing at the latest event's t_ms.
+    expect([20_000, 21_000, 25_500, 70_000].map((t) => mmss(holdElapsedAt(shown, t) ?? -1))).toEqual(["0:10", "0:11", "0:15", "1:00"]);
+    expect(holdElapsedAt(shown, 25_500)).toBe(15_500);
+    expect(holdElapsedAt(shown, 25_500)).toBe(holdElapsedAt(shown, 25_500)); // paused: the same t, the same text
+    expect(holdElapsedAt([opened(0), heard(5_000)], 9_000)).toBeNull();
+    expect(holdElapsedAt([...shown, hold(30_000, null)], 40_000)).toBeNull();
+    expect(holdElapsedAt([opened(0), hold(10_000, "decision", "slow")], 40_000)).toBeNull();
   });
 });
