@@ -164,13 +164,35 @@ export function timeline(events: Ev[]): Step[] {
       add(e, C.WHO.guard, get(e, "verdict") === "ok" ? VERIFIED_AGAINST : C.STEP.notVerified, "guard");
     }
   }
+  const gone = replaced(events);
   for (const m of marks) {
     const gens = [...(voiced.get(m.msg) ?? [])].filter((g) => g.startsWith(`${m.lane}:`));
     const best = gens.map((g) => delivered.get(g)).reduce<Heard | undefined>((a, b) => (b !== undefined && (a === undefined || RANK[b] > RANK[a]) ? b : a), undefined);
     const step = steps[at.get(m.key) ?? -1];
-    if (step) step.mark = best === undefined ? C.PASSED : C.said(m.lane, best);
+    if (step) step.mark = best !== undefined ? C.said(m.lane, best) : gone.has(m.msg) ? C.REPLACED : C.PASSED;
   }
   return steps;
+}
+
+/** The msg ids of the cp GUIDEs a later one replaced before any turn voiced them: exactly slow/heard.py
+ * fates' `superseded` (S1-SYS-67), pinned by tests/web/test_superseded.py and superseded.test.ts. For each
+ * consecutive pair (old, new) of cp s2f.msg with a guide: old is cited by no s2f.voiced, and no cp
+ * fast.request between them has a generation still open (neither cancelled nor turned). With the rail's
+ * actor check (heard.fates has none; on a single-writer log they agree): the GUIDEs by guard, the rest by
+ * fast.cp, the lane's own voice. */
+function replaced(events: Ev[]): Set<string> {
+  const cp = (e: Ev, type: string) => from(e, type, ["fast.cp"]);
+  const voiced = new Set(events.filter((e) => cp(e, "s2f.voiced")).map((e) => str(get(e, "msg_id"))));
+  const ended = new Set(events.filter((e) => cp(e, "fast.cancelled") || cp(e, "fast.turn")).map((e) => str(get(e, "gen_id"))));
+  const open = events.filter((e) => cp(e, "fast.request") && get(e, "lane") === "cp" && !ended.has(str(get(e, "gen_id")))).map((e) => e.seq);
+  const guides = events.filter((e) => from(e, "s2f.msg", ["guard"]) && get(e, "lane") === "cp" && get(e, "guide"));
+  const out = new Set<string>();
+  guides.forEach((old, i) => {
+    const next = guides[i + 1];
+    const msg = str(get(old, "msg_id"));
+    if (next && !voiced.has(msg) && !open.some((q) => old.seq < q && q < next.seq)) out.add(msg);
+  });
+  return out;
 }
 
 export type Group = { name: string; steps: Step[] };

@@ -462,12 +462,12 @@ Voice confirmation (S5) is labelled "not authenticated consent".
 
 ### 10.1 Counterparty = Ear → deterministic policy → Mouth
 - **Ear** (`gemini-3.8-flash` via TeamRouter, ADR-0005; JSON schema, closed enum):
-  - `ask_discount`, `cite_competitor{price}`, `cancel_intent`, `tenure`;
-  - `ask_readback{offer_ref}`, `accept{offer_ref}`, `decline`;
-  - `provide_fact{key, value}`, `refuse_fact{key}`, `ask_supervisor`, `hold_request`;
+  - `ask_discount`, `cite_competitor{price_usd}`, `cancel_intent`, `tenure`;
+  - `ask_readback{offer_ref}`, `accept{offer_ref, price_usd}`, `decline`;
+  - `provide_fact{facts: [{key, value}, …]}`, `refuse_fact` (no key), `ask_supervisor`, `hold_request`;
   - `smalltalk`, `injection`, `other`.
 
-  It classifies what the rep **heard** (`text_heard`). Numeric arguments are cross-checked against the offers actually made, and an ambiguous `accept` makes the policy ask for confirmation. The Ear is audited in S2 and re-audited in S4 (EVAL §9).
+  It classifies what the rep **heard** (`text_heard`). Numbers (a price, a fact's value) are checked against the utterance itself, an `offer_ref` must name an offer actually made, and an ambiguous `accept` makes the policy ask for confirmation. The Ear is audited in S2 and re-audited in S4 (EVAL §9).
 
   The rep hears its whole backlog (ADR-0021). The agent turns heard while a rep turn is in flight form one block, which gets one `classify` call with one act per utterance, each checked against its own utterance, and one `rep.ear` per utterance (`heard_utt_ids` names the block). An `accept` needs an offer the rep made before the block, open or not; with none, the tool does not offer it. The policy steps every act in order, as it would one turn at a time. The Mouth voices a run of equal intents without a commit once. The kernel gets one `chan.strike` per strike, each citing its own decision's event, and the turn's end: `hangup` only for a strike-out.
 - **Policy** (deterministic, per-family data): `GREET → IDENTIFY → DISCOVER → OFFER(k) → FINAL → CONFIRM → CONFIRMED | TRANSFER | ENDED`.

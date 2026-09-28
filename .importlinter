@@ -90,3 +90,11 @@ forbidden_modules =
     proxyloop.llm
     proxyloop.slow
     proxyloop.env
+
+[importlinter:contract:eval-is-not-obs]
+name = eval never imports obs (obs diagnostics are advisory, never a metric; ADR-0023)
+type = forbidden
+source_modules =
+    proxyloop.eval
+forbidden_modules =
+    proxyloop.obs
