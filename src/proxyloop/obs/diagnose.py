@@ -68,7 +68,8 @@ _TEXT = {  # shown, not summed
 _MAX = frozenset(
     {"slow_max_step_gap_ms", "slow_last_step_to_end_ms", "max_consecutive_ok_hold",
      "guide_to_heard_ms", "identity.ask_user_per_key",
-     "slow.readback_asks_max_per_revision", "close.reply_to_finish_steps"}
+     "slow.readback_asks_max_per_revision", "close.reply_to_finish_steps",
+     "rungs_reached", "levers_heard"}
 )  # fmt: skip
 
 
