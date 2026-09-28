@@ -18,7 +18,7 @@ from tests.obs.triage_bundle import P
 from proxyloop.contract.events import EpochBump
 from proxyloop.contract.state import READBACK_FIELD, CaseStatus
 from proxyloop.env.tasks.schema import MONEY, money_term
-from proxyloop.obs import detectors, diagnose, tiers
+from proxyloop.obs import detectors, diagnose, stops, tiers
 
 
 def _tier(log: Log) -> dict[str, object]:
@@ -28,9 +28,11 @@ def _tier(log: Log) -> dict[str, object]:
     return value  # type: ignore[return-value]
 
 
-def _status(log: Log, status: str, previous: str = "IN_CALL") -> None:
+def _status(
+    log: Log, status: str, previous: str = "IN_CALL", cause: str | None = None
+) -> str:
     changed: P = {"previous": previous, "status": status}
-    log.add("status.changed", "guard", "agent", changed, (log.start,))
+    return log.add("status.changed", "guard", "agent", changed, (cause or log.start,))
 
 
 def _bump(log: Log, reason: str, cause: str | None = None) -> str:
@@ -77,6 +79,13 @@ def _mandate(
 
 
 def _approval(log: Log, decision: str, price_minor: int, by: str = "ui") -> str:
+    decided: P = {"approval_id": "a1", "decision": decision, "by": by}
+    cid = _card(log, price_minor)
+    return log.add("approval.decided", "kernel", "agent", decided, (cid,))
+
+
+def _card(log: Log, price_minor: int = 6000) -> str:
+    """An approval.requested for ``offer-1`` at ``price_minor``; its id."""
     slots = [{"field": "monthly_price", "value": str(price_minor), "unit": "usd_minor",
               "role": "recurring", "status": "confirmed"}]  # fmt: skip
     offer: P = {"offer_ref": "offer-1", "revision": 1, "slots": slots}
@@ -87,9 +96,7 @@ def _approval(log: Log, decision: str, price_minor: int, by: str = "ui") -> str:
     card: P = {"approval_id": "a1", "offer_ref": "offer-1", "revision": 1,
                "terms_hash": "th", "readback_text": "PRIV", "authority_epoch": 0,
                "expires_ms": 10**9, "binding": binding}  # fmt: skip
-    cid = log.add("approval.requested", "guard", "agent", card, (oid,))
-    decided: P = {"approval_id": "a1", "decision": decision, "by": by}
-    return log.add("approval.decided", "kernel", "agent", decided, (cid,))
+    return log.add("approval.requested", "guard", "agent", card, (oid,))
 
 
 def _accept(
@@ -360,8 +367,8 @@ def test_an_escalated_run_is_s_only_after_the_users_stop() -> None:
     stop = Log("rS")
     _path(stop, "IN_CALL", "COMMIT_AUTHORIZED")
     _bump(stop, "f2s_revoke")
-    _path(stop, "COMMIT_AUTHORIZED", "NEEDS_REPLAN", "ESCALATED")
-    stop.end("escalate")
+    _floor(stop, "epoch")  # the accept that bump staled, revoked at the floor
+    _escalate(stop)
     assert (_tier(stop)["tier"], _tier(stop)["reason"]) == ("S", "user_stop")
     for name, before, bump in (
         ("accept_truncated", "COMMIT_AUTHORIZED", None),
@@ -984,104 +991,205 @@ def test_money_pins() -> None:
     assert _tier(mixed)["best_offer_monthly"] is None
 
 
-# -- the user's stop (S1-SYS-90, ADR-0023: S = the user stopped) --------------
-# A user-originated stop, then a revoke of that lane's authority by FastU
-# (f2s_revoke) or Slow (slow_revoke), both before the last ESCALATED. In a sim
-# run the stop evidence is the world's user.sim{stop} and the revoke follows
-# it; with no such stop (the UI) only an f2s_revoke counts, and a bare
-# slow_revoke is never S.
+# -- the user's stop (S1-SYS-90, obs/stops.py; ADR-0023: S = the user stopped) --
+# stop -> revoke -> replan -> the last ESCALATED. A sim stop is the world's
+# user.sim{stop}, and a revoke by either lane must follow it. With no such stop
+# (the UI) FastU's f2s_revoke is the stop, and a bare slow_revoke never is.
+# Every NEEDS_REPLAN after the revoke must be the revoke's own: (a) a card
+# pending at the revoke needs the replan that bump caused; (b) with no card
+# pending, replan_seq is None.
+
+
+def _at(log: Log) -> int:
+    return len(log.events) - 1
+
+
+def _at_of(log: Log, event_id: str) -> int:
+    return next(e.seq for e in log.events if e.event_id == event_id)
 
 
 def _stop(log: Log, kind: str | None = "stop") -> int:
-    """A sim user's reply; ``kind`` its ``stop`` (``simuser._reply``), None for
-    an ordinary reply. Returns its seq."""
-    sim: dict[str, object] = {"text": "PRIV", "revealed": {}, "delay_s": 1.0}
-    if kind is not None:
-        sim["stop"] = kind
+    """A sim user's reply whose ``stop`` is ``kind`` (``simuser._reply``), or
+    an ordinary reply when ``kind`` is None. Returns its seq."""
+    sim: P = {"text": "PRIV", "revealed": {}, "delay_s": 1.0}
+    sim |= {"stop": kind} if kind else {}
     log.add("user.sim", "world.simuser", "world", sim, (log.start,))
-    return len(log.events) - 1
+    return _at(log)
 
 
-def _revoke(log: Log, reason: str) -> int:
-    _bump(log, reason)
-    return len(log.events) - 1
+def _asked(log: Log) -> str:
+    """A card, the case IN_CALL -> AWAITING_APPROVAL; the card's id."""
+    card = _card(log)
+    _status(log, "AWAITING_APPROVAL", "IN_CALL", card)
+    return card
+
+
+def _replan(log: Log, cause: str, previous: str = "AWAITING_APPROVAL") -> int:
+    """NEEDS_REPLAN caused by ``cause``: a bump that stales the card, or the
+    card itself at its expiry (``kernel/fence.py``). Returns its seq."""
+    _status(log, "NEEDS_REPLAN", previous, cause)
+    return _at(log)
+
+
+def _floor(log: Log, why: str) -> int:
+    """The accept line revoked at the floor for ``why`` (``kernel/speaker.py``)
+    and the case COMMIT_AUTHORIZED -> NEEDS_REPLAN. Returns the replan's seq."""
+    line: P = {"lane": "cp", "kind": "accept", "text": "PRIV", "cap_id": "cap-1"}
+    said = log.add("speak.verbatim", "guard", "agent", line, (log.start,))
+    out: P = {"lane": "cp", "reason": why, "cap_id": "cap-1"}
+    revoked = log.add("speak.revoked", "kernel", "agent", out, (said,))
+    return _replan(log, revoked, "COMMIT_AUTHORIZED")
 
 
 def _escalate(log: Log) -> None:
-    _path(log, "COMMIT_AUTHORIZED", "NEEDS_REPLAN", "ESCALATED")
+    _status(log, "ESCALATED", "NEEDS_REPLAN")
     log.end("escalate")
 
 
-def _graded(log: Log) -> tuple[object, ...]:
+def _cited(log: Log) -> tuple[object, ...]:
     t = _tier(log)
-    return t["tier"], t["reason"], t.get("stop_seq"), t.get("revoke_seq")
+    keys = ("tier", "reason", "stop_seq", "revoke_seq", "replan_seq")
+    return tuple(t.get(k) for k in keys)
 
 
-def _run(name: str, *steps: tuple[str, str | None]) -> tuple[Log, list[int]]:
-    """A run to COMMIT_AUTHORIZED, then ``steps`` in order (``("sim", kind)``
-    a user.sim, ``("epoch", reason)`` a bump), then the escalation."""
-    log = Log(name)
-    _path(log, "IN_CALL", "COMMIT_AUTHORIZED")
-    seqs = [_stop(log, arg) if what == "sim" else _revoke(log, str(arg))
-            for what, arg in steps]  # fmt: skip
-    _escalate(log)
-    return log, seqs
+_F = ("F", "escalated", None, None, None)
 
 
-def test_a_sim_stop_then_either_lanes_revoke_is_s_citing_both_seqs() -> None:
+def test_a_sim_stop_then_either_lanes_revoke_is_s_citing_the_chain() -> None:
     for kind in ("stop", "mind_change"):
         for reason in ("f2s_revoke", "slow_revoke"):
-            log, (s, r) = _run(f"rS-{kind}-{reason}", ("sim", kind), ("epoch", reason))
-            assert _graded(log) == ("S", "user_stop", s, r), (kind, reason)
+            log = Log(f"rS-{kind}-{reason}")
+            _asked(log)
+            s = _stop(log, kind)
+            r = _bump(log, reason)
+            n = _replan(log, r)
+            _escalate(log)
+            want = ("S", "user_stop", s, _at_of(log, r), n)
+            assert _cited(log) == want, (kind, reason)
 
 
-def test_the_first_revoke_after_the_stop_is_cited() -> None:
-    log, (_, s, r, _) = _run(
-        "rS-first", ("epoch", "f2s_revoke"), ("sim", "stop"),
-        ("epoch", "slow_revoke"), ("epoch", "f2s_revoke"),
-    )  # fmt: skip
-    assert _graded(log) == ("S", "user_stop", s, r)
+def test_a_ui_stop_is_fastus_revoke_and_never_a_bare_slow_revoke() -> None:
+    for reply in (False, True):  # the UI, or a sim reply that is no stop
+        ui = Log(f"rS-ui-{reply}")
+        if reply:
+            _stop(ui, None)
+        _asked(ui)
+        r = _bump(ui, "f2s_revoke")
+        n = _replan(ui, r)
+        _escalate(ui)
+        assert _cited(ui) == ("S", "user_stop", None, _at_of(ui, r), n), reply
+        bare = Log(f"rF-ui-slow-{reply}")  # a stop relayed only as a NOTE
+        if reply:
+            _stop(bare, None)
+        _asked(bare)
+        _replan(bare, _bump(bare, "slow_revoke"))
+        _escalate(bare)
+        assert _cited(bare) == _F, reply
 
 
-def test_a_revoke_without_a_stop_after_it_is_f() -> None:
-    cases = {
-        "no-stop": (("sim", None), ("epoch", "slow_revoke")),  # a plain reply
-        "f2s-before": (("epoch", "f2s_revoke"), ("sim", "stop")),  # Q3: order
-        "slow-before": (("epoch", "slow_revoke"), ("sim", "mind_change")),
-        "not-a-revoke": (("sim", "stop"), ("epoch", "tighten_mandate")),
-        "bare-stop": (("sim", "stop"),),
-    }
-    for name, steps in cases.items():
-        log, _ = _run(f"rF-{name}", *steps)
-        assert _graded(log) == ("F", "escalated", None, None), name
+def test_a_revoke_that_does_not_follow_the_stop_is_not_s() -> None:
+    for first, then in (("f2s_revoke", "stop"), ("slow_revoke", "mind_change")):
+        before = Log(f"rF-before-{first}")  # Q3: strictly after the stop
+        _asked(before)
+        _replan(before, _bump(before, first))
+        _stop(before, then)
+        _escalate(before)
+        assert _cited(before) == _F, first
+    other = Log("rF-tighten")  # a bump that is no revoke
+    _asked(other)
+    _stop(other)
+    _replan(other, _bump(other, "tighten_mandate"))
+    _escalate(other)
+    assert _cited(other) == _F
+    late = Log("rF-late")  # a revoke after the last escalation
+    card = _asked(late)
+    _stop(late)
+    _replan(late, card)
+    _status(late, "ESCALATED", "NEEDS_REPLAN")
+    _bump(late, "slow_revoke")
+    _bump(late, "f2s_revoke")
+    late.end("escalate")
+    assert _cited(late) == _F
 
 
-def test_a_revoke_after_the_last_escalation_is_no_stop_of_it() -> None:
-    log = Log("rF-late")
-    _path(log, "IN_CALL", "COMMIT_AUTHORIZED")
-    _stop(log)
-    _path(log, "COMMIT_AUTHORIZED", "NEEDS_REPLAN", "ESCALATED")
-    _revoke(log, "slow_revoke")
-    _revoke(log, "f2s_revoke")
-    log.end("escalate")
-    assert _graded(log) == ("F", "escalated", None, None)
+def test_an_early_hold_off_then_a_later_card_expiry_is_not_s() -> None:
+    """The revoke is stale: a later card expired, and that replan escalated."""
+    for sim, pending in itertools.product((True, False), (True, False)):
+        log = Log(f"rF-hold-{sim}-{pending}")
+        if pending:
+            _asked(log)
+        if sim:
+            _stop(log)
+        r = _bump(log, "f2s_revoke")
+        if pending:
+            _replan(log, r)
+            _status(log, "IN_CALL", "NEEDS_REPLAN")
+        _replan(log, _asked(log))  # a new card, pending at its expiry
+        _escalate(log)
+        assert _cited(log) == _F, (sim, pending)
 
 
-def test_a_ui_run_stops_only_by_fastus_revoke() -> None:
-    """No user.sim stop (the UI, or a sim reply that is no stop): the
-    f2s_revoke is the evidence (stop_seq None); a UI stop relayed only as a
-    NOTE, which Slow revokes, grades F until the UI carries a stop marker."""
-    ui, (r,) = _run("rS-ui", ("epoch", "f2s_revoke"))
-    assert _graded(ui) == ("S", "user_stop", None, r)
-    reply, (_, r2) = _run("rS-reply", ("sim", None), ("epoch", "f2s_revoke"))
-    assert _graded(reply) == ("S", "user_stop", None, r2)
-    bare, _ = _run("rF-ui-slow", ("epoch", "slow_revoke"))
-    assert _graded(bare) == ("F", "escalated", None, None)
+def test_branch_a_needs_the_replan_that_revoke_caused() -> None:
+    skipped = Log("rF-a-no-replan")  # AWAITING_APPROVAL straight to ESCALATED
+    _asked(skipped)
+    _stop(skipped)
+    _bump(skipped, "f2s_revoke")
+    _status(skipped, "ESCALATED", "AWAITING_APPROVAL")
+    skipped.end("escalate")
+    assert _cited(skipped) == _F
+    expired = Log("rF-a-expired")  # the card expired, the bump staled nothing
+    card = _asked(expired)
+    _stop(expired)
+    _bump(expired, "slow_revoke")
+    _replan(expired, card)
+    _escalate(expired)
+    assert _cited(expired) == _F
+
+
+def test_branch_b_holds_with_no_replan_of_another_cause() -> None:
+    demo = Log("rS-b-floor")  # the bump stales the accept line at the floor
+    _path(demo, "IN_CALL", "COMMIT_AUTHORIZED")
+    s = _stop(demo)
+    r = _bump(demo, "f2s_revoke")
+    _floor(demo, "epoch")
+    _escalate(demo)
+    assert _cited(demo) == ("S", "user_stop", s, _at_of(demo, r), None)
+    fenced = Log("rS-b-fence")  # the stop's fence revoked the accept first
+    _path(fenced, "IN_CALL", "COMMIT_AUTHORIZED")
+    s = _stop(fenced)
+    _floor(fenced, "fence")
+    r = _bump(fenced, "slow_revoke")
+    _escalate(fenced)
+    assert _cited(fenced) == ("S", "user_stop", s, _at_of(fenced, r), None)
+    for name, why, bump_between in (("expired", "expired", False),
+                                    ("rebumped", "epoch", True)):  # fmt: skip
+        log = Log(f"rF-b-{name}")
+        _path(log, "IN_CALL", "COMMIT_AUTHORIZED")
+        _stop(log)
+        _bump(log, "f2s_revoke")
+        if bump_between:  # the floor's epoch is that later bump's
+            _bump(log, "tighten_mandate")
+        _floor(log, why)
+        _escalate(log)
+        assert _cited(log) == _F, name
+
+
+def test_a_later_revoke_is_cited_when_an_earlier_chain_broke() -> None:
+    log = Log("rS-later")
+    s = _stop(log)
+    _bump(log, "f2s_revoke")  # no card pending: branch (b)
+    _replan(log, _asked(log))  # but a card expired after it
+    _status(log, "IN_CALL", "NEEDS_REPLAN")
+    _asked(log)
+    r = _bump(log, "slow_revoke")
+    n = _replan(log, r)
+    _escalate(log)
+    assert _cited(log) == ("S", "user_stop", s, _at_of(log, r), n)
 
 
 def test_the_stop_and_revoke_names_match_the_world_and_the_contract() -> None:
     # simuser._reply writes stop: "stop" | "mind_change" (tests/env/test_stop
     # pins the payloads); obs may not import env.
-    assert frozenset({"stop", "mind_change"}) == tiers.STOPS
+    assert frozenset({"stop", "mind_change"}) == stops.STOPS
     reasons = set(get_args(EpochBump.model_fields["reason"].annotation))
-    assert tiers.REVOKES == frozenset({"f2s_revoke", "slow_revoke"}) <= reasons
+    assert stops.REVOKES == frozenset({"f2s_revoke", "slow_revoke"}) <= reasons
