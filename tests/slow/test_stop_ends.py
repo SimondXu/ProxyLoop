@@ -95,6 +95,7 @@ def test_a_an_offer_gets_no_step_after_the_stop(tmp_path: Path) -> None:
     assert levers.startswith(f"levers: {state.STOPPED}: cite_competitor")
     (offers,) = [x for x in got.splitlines() if x.startswith("offers: ")]
     assert "→" not in offers and "comes first" not in offers, offers
+    assert "record them" not in offers, offers  # keep-1's slots note: none now
 
 
 def test_a_no_stop_line_without_a_relayed_revoke(tmp_path: Path) -> None:
