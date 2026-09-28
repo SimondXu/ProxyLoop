@@ -321,7 +321,9 @@ def test_f11_a_slot_read_back_with_another_value_suggests_a_re_record(
     h = _asked_twice(tmp_path, DATED, DATED)
     b = _bar(h)
     assert b.readbacks[("save-2", 1)] == state.Readback(2, ("expires",), False)
-    assert "record_offer a new revision" in b.offer_note(h.bb.public.offers["save-2"])
+    note = b.offer_note(h.bb.public.offers["save-2"])
+    assert "record_offer a new revision" in note
+    assert note.index("otherwise") < note.index("decline_offer")  # the fallback
 
 
 def test_a_refused_tell_user_does_not_count_as_told(tmp_path: Path) -> None:
@@ -329,3 +331,16 @@ def test_a_refused_tell_user_does_not_count_as_told(tmp_path: Path) -> None:
     h.call()
     (got,) = h.act({"tool": "tell_user", "text": ""})
     assert "invalid arguments" in got and h.tools.told_at is None
+
+
+def test_f10_the_tell_hint_waits_until_finish_would_pass(tmp_path: Path) -> None:
+    """Round 3: never tell the user an outcome that is not final yet."""
+    h = _offered(tmp_path)
+    h.act(FINAL)
+    h.rep("cp-10", BEST)
+    c = _close(h)
+    assert (c.reply, c.reasons) == ("cp-10", ("offer_open:offer-1",))
+    assert "tell_user" not in c.line()
+    h.act(DECLINE)
+    c = _close(h)
+    assert (c.reasons, c.told) == ((), False) and "tell_user" in c.line()

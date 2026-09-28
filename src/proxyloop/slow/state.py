@@ -52,7 +52,8 @@ class Close:
         else:
             can = f"blocked: {', '.join(self.reasons)}"
         said = said or "no closing reply"
-        if self.asked and self.reply and not self.told:  # user.told_terms
+        final = self.asked and self.reply and not self.reasons  # finish passes
+        if final and not self.told:  # user.told_terms: only a final outcome
             said += "; tell_user the terms and the outcome before finish"
         return f"close: {asked}; {said}; finish({self.outcome}) {can}"
 
