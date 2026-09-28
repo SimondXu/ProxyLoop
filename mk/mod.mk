@@ -148,11 +148,13 @@ benchmark-report:
 	$(BENCH_REPORT) $(foreach r,$(RUNS),--runs $(r))
 
 # S1-MOD-09 (PR1): freeze the world-model selection items from the train bundles under runs/.
-# Offline: no keys, no model call; a sealed test path is refused. The blind Ear batches are
+# Offline: no keys, no model call; a sealed test path is refused. CONSTRUCTED=<json> copies in
+# the constructed items (kept apart, flagged). The blind Ear batches are
 # exported by hand into an uncommitted dir:
 #   uv run python -m scripts.mod.world_select export --items $(MOD_DATA)/world-select-items.json \
 #       --out-dir runs/world-select-batches --batch 25 --seed <N>
 .PHONY: world-select-freeze
 
 world-select-freeze:
-	uv run python -m scripts.mod.world_select freeze --runs runs --out $(MOD_DATA)/world-select-items.json
+	uv run python -m scripts.mod.world_select freeze --runs runs --out $(MOD_DATA)/world-select-items.json \
+		$(if $(CONSTRUCTED),--constructed $(CONSTRUCTED),)
