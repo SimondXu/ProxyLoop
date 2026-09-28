@@ -91,13 +91,13 @@ function contrast(el: Element): number {
 }
 
 /** A live page with the user's message, a call line, a limits card and an open approval card for $75/mo. */
-async function liveWithCards(page: Page, baseURL: string | undefined) {
+async function liveWithCards(page: Page, baseURL: string | undefined, refs = REAL) {
   await csrfCookie(page, baseURL, "pl_csrf", CSRF);
   const { connected } = await mockSockets(page);
   await page.goto(`/?live=${RUN}`);
   const ws = await connected;
   const ev = events();
-  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  ws.send(ev("session.started", "kernel", started(refs), { stream: "ops" }));
   ws.send(ev("user.msg", "kernel", { text: "Please lower my internet bill." }));
   ws.send(ev("status.changed", "guard", { previous: "INTAKE", status: "IN_CALL" }));
   ws.send(ev("chan.opened", "kernel", { lane: "cp" }));
@@ -162,6 +162,9 @@ test.describe("phone (390×844)", () => {
     expect(approve && decline && approve.y > decline.y && approve.height >= 48 && decline.height >= 48).toBe(true);
     // The read-back chip is its icon; its words stay for screen readers.
     await expect(card.getByLabel("Read-back progress").getByRole("listitem").first()).toHaveText("Monthly price $75.00 Read back");
+    // The band's authority line is hidden on a phone; the sheet carries it, where the click is (I6).
+    const promise = page.getByText("Only your clicks can authorize a deal", { exact: true }).filter({ visible: true });
+    await expect(promise).toHaveCount(1);
 
     // The call tab: the chat is out of view, the card is not.
     await tabs.getByRole("button", { name: /^Call/ }).click();
@@ -181,6 +184,8 @@ test.describe("phone (390×844)", () => {
     await expect(bar).toHaveAttribute("aria-expanded", "false");
     expect((await bar.boundingBox())?.height).toBe(56);
     await expect(card).toBeHidden();
+    await expect(bar.getByText("Only your click authorizes", { exact: true })).toBeVisible();
+    await expect(promise).toHaveCount(0);
     await audit(page);
     await shot(page, "phone-sheet-folded");
 
@@ -193,6 +198,17 @@ test.describe("phone (390×844)", () => {
     await expect(card).toBeVisible();
     await audit(page);
     await shot(page, "phone-steps-tab-sheet");
+  });
+
+  test("a simulated principal's sheet and folded bar never say only your click authorizes (I6)", async ({ page, baseURL }) => {
+    await liveWithCards(page, baseURL, { ...REAL, simuser: ["test_fake", "sim-user"] });
+    await expect(page.getByRole("article", { name: "Approval ap-1" })).toBeVisible();
+    await expect(page.getByText("Only your clicks can authorize a deal", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Hide the decision" }).click();
+    const bar = page.getByRole("button", { name: "Decision needed · $75/mo · Review", exact: true });
+    expect((await bar.boundingBox())?.height).toBe(56);
+    await expect(page.getByText("Only your click authorizes", { exact: true })).toHaveCount(0);
+    await audit(page);
   });
 
   test("a pressed tab under the pointer keeps its pressed colours (#216)", async ({ page, baseURL }) => {
