@@ -167,3 +167,22 @@ WORLD_SELECT_RUNS ?= runs
 world-select-freeze:
 	uv run python -m scripts.mod.world_select freeze --runs $(WORLD_SELECT_RUNS) \
 		--out $(MOD_DATA)/world-select-items.json $(if $(CONSTRUCTED),--constructed $(CONSTRUCTED),)
+
+# S1-MOD-09 (PR2a): replay the frozen items through the production world code, one JSONL per
+# arm under WORLD_SELECT_OUT. Root-run (L) unless WSR_ARGS has --plan (no call, no key): run
+# `make world-select-run WSR_ARGS=--plan` first. Keys only from the shell, by name:
+# PL_TEAMROUTER_BASE_URL, PL_TEAMROUTER_API_KEY. The three arms (the incumbent first):
+#   teamrouter:gemini-3.8-flash@low teamrouter:deepseek-flash@low teamrouter:glm-5.3-flash@low
+# WSR_ARGS also takes --roles, --limit N (a smoke), --repeat-subset N --seed S, --concurrency K,
+# --max-calls N (a hard cap of model calls per arm; take N from --plan's max_calls) and --resume.
+# WORLD_SELECT_RUNS (above) is read-only here.
+WORLD_SELECT_ARMS ?= teamrouter:gemini-3.8-flash@low teamrouter:deepseek-flash@low \
+	teamrouter:glm-5.3-flash@low
+WORLD_SELECT_OUT ?= runs/world-select
+WSR_ARGS ?=
+.PHONY: world-select-run
+
+world-select-run:
+	uv run python -m scripts.mod.world_select run --items $(MOD_DATA)/world-select-items.json \
+		--runs $(WORLD_SELECT_RUNS) --out-dir $(WORLD_SELECT_OUT) \
+		$(foreach a,$(WORLD_SELECT_ARMS),--arm $(a)) $(WSR_ARGS)
