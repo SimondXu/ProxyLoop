@@ -75,8 +75,8 @@ def test_f10_e6ada1_restated_terms_after_the_last_ask_block_no_deal(
     cp-17's closing reply unblocks it."""
     h = _offered(tmp_path)
     h.rep("cp-9", BEST_RATE)
-    c = _close(h)  # a closing line, but the final offer was never asked
-    assert (c.asked, c.reply) == (False, "cp-9")
+    c = _close(h)  # a closing cue, but the final offer was never asked (M1)
+    assert (c.asked, c.reply) == (False, None) and "tell_user" not in c.line()
     assert set(c.reasons) == {"offer_open:offer-1", "final_offer_not_asked"}
     h.act(FINAL)
     h.rep("cp-13", RESTATED)
@@ -114,9 +114,13 @@ def test_f10_info_only_finish_is_allowed_only_in_the_call(tmp_path: Path) -> Non
     (got,) = h.act({"tool": "finish", "outcome": "info_only", "summary": "s"})
     assert got.startswith("finish: finish(info_only) is not possible")
     h.call()
-    h.rep("cp-1", BEST)
+    h.rep("cp-1", BEST)  # mid-negotiation, before any ask (M1): no reply
     c = _close(h, "info_only")
-    assert (c.outcome, c.reply, c.reasons) == ("info_only", "cp-1", ())
+    assert (c.reply, c.reasons) == (None, ()) and "tell_user" not in c.line()
+    h.act(FINAL)
+    h.rep("cp-2", BEST)
+    c = _close(h, "info_only")
+    assert (c.outcome, c.reply, c.reasons) == ("info_only", "cp-2", ())
     assert c.line().endswith("finish(info_only) allowed")
 
 
@@ -303,3 +307,25 @@ def test_f11_one_omitting_reply_and_one_non_reply_do_not_stop_yet(
     b = _bar(h)
     assert b.readbacks[("save-2", 1)] == state.Readback(2, (), True)
     assert "decline" not in b.offer_note(h.bb.public.offers["save-2"])
+
+
+DATED = (  # the rep reads back an expiry Slow recorded as none (M2)
+    "It is $69 a month on a 24-month term, no fees, no other changes, "
+    "and the offer expires on June 30, 2026."
+)
+
+
+def test_f11_a_slot_read_back_with_another_value_suggests_a_re_record(
+    tmp_path: Path,
+) -> None:
+    h = _asked_twice(tmp_path, DATED, DATED)
+    b = _bar(h)
+    assert b.readbacks[("save-2", 1)] == state.Readback(2, ("expires",), False)
+    assert "record_offer a new revision" in b.offer_note(h.bb.public.offers["save-2"])
+
+
+def test_a_refused_tell_user_does_not_count_as_told(tmp_path: Path) -> None:
+    h = Host(tmp_path)
+    h.call()
+    (got,) = h.act({"tool": "tell_user", "text": ""})
+    assert "invalid arguments" in got and h.tools.told_at is None

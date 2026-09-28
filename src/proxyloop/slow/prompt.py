@@ -59,9 +59,11 @@ Then guide_fast(ask_readback, ["offer:<ref>"]) for that revision: its slots turn
 [confirmed] in the status bar when the representative repeats them after it. Only a \
 confirmed offer can be approved or accepted. The status bar counts the read-back \
 asks of each revision (read-back asked k×): once the representative has read the \
-offer back twice leaving out the same slots, stop asking; they did not state them \
-(the close playbook says what next). A reply that reads nothing back is no \
-read-back: ask again or ask for the final offer.
+offer back twice leaving out the same slots as recorded: if a reply states \
+another value for them, record_offer a new revision citing that line; otherwise \
+stop asking, they did not state them (the close playbook says what next). A \
+reply that reads nothing back is no read-back: ask again or ask for the final \
+offer.
 - propose_mandate(envelope): the limits the user stated (max_monthly_price_minor, \
 max_term_months, max_one_time_fees_minor, required_features, forbidden_changes); it \
 grants nothing until the user decides it.

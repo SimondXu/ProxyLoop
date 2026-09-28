@@ -25,8 +25,8 @@ LEVERS = (GuideMove.CITE_COMPETITOR, GuideMove.MENTION_TENURE, GuideMove.CANCEL_
 TENURE = "tenure_years"  # the one lever fact a user can make public (FORMATS)
 WHY = {  # one clause per refusal class (V5)
     "competitor_quote_not_shareable": "no competitor quote the user shared is public",
-    "cancel_lever_not_authorized": "the user has not authorised cancelling",
-    "guide_slot_not_public": f"{TENURE} is private: use the move without that slot",
+    "cancel_lever_not_authorized": "cancelling cannot be authorised in this build",
+    "guide_slot_not_public": f"{TENURE} is private; the move works without it",
 }
 
 
@@ -52,7 +52,7 @@ class Close:
         else:
             can = f"blocked: {', '.join(self.reasons)}"
         said = said or "no closing reply"
-        if self.reply and not self.told:  # pending until told (user.told_terms)
+        if self.asked and self.reply and not self.told:  # user.told_terms
             said += "; tell_user the terms and the outcome before finish"
         return f"close: {asked}; {said}; finish({self.outcome}) {can}"
 
@@ -60,14 +60,15 @@ class Close:
 def close(
     bb: Blackboard, kind: Kind, asked_final: int | None, told_at: int | None = None
 ) -> Close:
-    """The rep's last line since the last ask (the whole call before one) is
-    a closing reply iff Guard's cue list says so; the user counts as told once
+    """The rep's last line since the last ask_final_offer is a closing reply
+    iff Guard's cue list says so (none before an ask: verify_no_deal's
+    window, M1); the user counts as told once
     a tell_user went out after it (``told_at``: the cp length then). ``full``
     dry-runs ``authority.finish(no_deal)``: its status check, then
     ``verify_no_deal`` with the same ``asked_final``."""
     lines = bb.channels.get("cp", ChannelState()).lines
-    start = asked_final or 0
-    rep = [n for n, x in enumerate(lines) if n >= start and x.speaker == "partner"]
+    since = () if asked_final is None else range(asked_final, len(lines))
+    rep = [n for n in since if lines[n].speaker == "partner"]
     last = lines[rep[-1]] if rep else None
     reply = last.utt_id if last and has_cue(last.text, "closing") else None
     told = reply is not None and told_at is not None and told_at > rep[-1]
@@ -98,7 +99,11 @@ def unavailable(bb: Blackboard) -> tuple[tuple[str, str], ...]:
 
 
 def levers_line(levers: Sequence[tuple[str, str]]) -> str:
-    said = "; ".join(f"{m} unavailable ({c}: {WHY.get(c, c)})" for m, c in levers)
+    def what(move: str, code: str) -> str:  # n6: only the slot is unavailable
+        slot = f" with fact:{TENURE}" if code == "guide_slot_not_public" else ""
+        return f"{move}{slot} unavailable ({code}: {WHY.get(code, code)})"
+
+    said = "; ".join(what(m, c) for m, c in levers)
     return f"levers: {said or 'all available'}"
 
 
@@ -162,8 +167,10 @@ class Bar:
             return said
         then = ", then decline_offer and guide_fast(ask_final_offer)"
         return (
-            f"{said}, omitted from {STOP_AFTER} read-backs: {', '.join(left)} → stop "
-            "asking; report them to the user as not stated"
+            f"{said}, omitted from {STOP_AFTER} read-backs: {', '.join(left)} → "
+            "not stated as recorded: if a reply states another value for them, "
+            "record_offer a new revision citing that line; otherwise stop asking, "
+            "report them to the user as not stated"
             + (then if self.close.kind == "full" else "")
         )
 

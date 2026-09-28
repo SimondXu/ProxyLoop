@@ -183,8 +183,9 @@ class SlowTools:
                 host.counts["keyless_ask"] += 1  # counted, not deduped
             return self._s2f(lane="user", type="ASK_USER", text=str(a["text"]))
         if name == "tell_user":
-            self.told_at = len(bb.channels["cp"].lines)  # V3: told after a reply
-            return self._s2f(lane="user", type="TELL_USER", text=str(a["text"]))
+            told = self._s2f(lane="user", type="TELL_USER", text=str(a["text"]))
+            self.told_at = len(bb.channels["cp"].lines)  # V3: once it is sent
+            return told
         if name == "start_call":  # Guard-checked (ADR-0012 R1)
             return asks.start_call(host)
         if name == "wait":  # its slow.tool arms the timer (kernel.wake)
