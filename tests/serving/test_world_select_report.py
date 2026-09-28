@@ -392,3 +392,23 @@ def test_report_md_numbers_are_the_json(tree: Path) -> None:
             assert set(re.findall(r"-?\d+(?:\.\d+)?", c)) <= known, (r, c)
     ear = next(r for r in rows_ if r.startswith("| cc_accuracy |"))  # recorded first
     assert "| 1.0 [0.5101, 1.0] (4/4) |" in ear and "0.5 [0.15, 0.85] (2/4)" in ear
+
+
+def test_open_keys_and_role_sets(tree: Path) -> None:
+    path = tree / "deepseek-flash@low.jsonl"
+    base = path.read_text()
+    retried = json.dumps(row(CAND, "ear", E2, "unavailable", None)) + "\n"
+    path.write_text(retried + base)  # re-run to a final row: counted, not refused
+    got = scores(tree)["arms"][CAND]["not_final_rows"]
+    assert got == {"unavailable": 1, "capped": 0}
+    path.write_text(base + json.dumps(row(CAND, "ear", E2, "capped", None)) + "\n")
+    with pytest.raises(SystemExit, match="1 keys end unavailable or capped"):
+        scores(tree)
+    lines = [x for x in base.splitlines(keepends=True) if '"role": "simuser"' not in x]
+    path.write_text("".join(lines))  # the candidate ran no SimUser
+    with pytest.raises(SystemExit, match="arms not on the roles"):
+        scores(tree)
+    path.write_text(base)
+    with pytest.raises(SystemExit, match="arms not on the roles"):
+        scores(tree, "--roles", "ear,mouth")
+    assert set(scores(tree, "--roles", "ear,mouth,simuser")["arms"]) == {INC, CAND}

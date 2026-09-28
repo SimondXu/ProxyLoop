@@ -68,15 +68,14 @@ import random
 import re
 import sys
 from collections import Counter
-from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
 
 from proxyloop.contract.base import sha256_text
 from scripts.mod import world_select as ws
-from scripts.mod import world_select_run as wsr
 
 Json = dict[str, Any]
 Label = tuple[str, int]  # (item_id, idx)
@@ -406,6 +405,7 @@ class Arm:
     model_ref: Obj
     rows: dict[RowKey, Obj]
     torn: int = 0
+    left: Counter[str] = field(default_factory=Counter[str])  # unavailable, capped
 
     def row(self, item: Obj, role: str, repeat: int = 1) -> Obj:
         return self.rows[(item["item_id"], role, repeat)]
@@ -413,37 +413,6 @@ class Arm:
     @property
     def roles(self) -> set[str]:
         return {role for _, role, _ in self.rows}
-
-
-def load_rows(paths: Iterable[Path], root: str) -> dict[str, Arm]:
-    """Per arm, the last final row per key (unavailable and capped rows re-ran)."""
-    arms: dict[str, Arm] = {}
-    for path in paths:
-        torn, seen = 0, set[str]()
-        for line in path.read_text("utf-8").splitlines():
-            try:
-                r = cast(Obj, json.loads(line))
-            except ValueError:
-                torn += 1  # a line cut by a crash: --resume re-ran its item
-                continue
-            if r.get("schema") != wsr.ROW_SCHEMA or r.get("items_root_hash") != root:
-                raise SystemExit(f"{path}: a row of another schema or items")
-            arm = arms.setdefault(r["arm"], Arm(r["arm"], r["model_ref"], {}))
-            seen.add(arm.label)
-            if r["status"] in wsr.FINAL:
-                arm.rows[(r["item_id"], r["role"], r["repeat"])] = r
-        if torn and len(seen) != 1:
-            raise SystemExit(f"{path}: {torn} torn lines, arms {sorted(seen)}")
-        for name in seen:
-            arms[name].torn += torn
-    return arms
-
-
-def complete(doc: Obj, arm: Arm) -> None:
-    for role in arm.roles:
-        ids = {i["item_id"] for i in role_items(doc, role)}
-        if missing := ids - {i for i, r, n in arm.rows if r == role and n == 1}:
-            raise SystemExit(f"{arm.label}: {len(missing)} {role} items have no row")
 
 
 def attempts(row: Obj) -> list[Obj]:

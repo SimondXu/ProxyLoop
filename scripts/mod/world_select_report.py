@@ -153,9 +153,50 @@ def by_segment[T](items: Iterable[T], of: Callable[[T], Obj]) -> dict[str, list[
     return {s: out[s] for s in sc.SEGMENTS if s in out}
 
 
+def load_rows(paths: Iterable[Path], root: str) -> dict[str, sc.Arm]:
+    """Per arm, the final row per key (item_id, role, repeat); refused: a key whose
+    last row is not final (unavailable or capped: re-run it). ``left`` counts the
+    unavailable and capped rows."""
+    arms: dict[str, sc.Arm] = {}
+    last: dict[tuple[str, sc.RowKey], str] = {}
+    for path in paths:
+        torn, seen = 0, set[str]()
+        for line in path.read_text("utf-8").splitlines():
+            try:
+                r = cast(Obj, json.loads(line))
+            except ValueError:
+                torn += 1  # a line cut by a crash: --resume re-ran its item
+                continue
+            if r.get("schema") != wsr.ROW_SCHEMA or r.get("items_root_hash") != root:
+                raise SystemExit(f"{path}: a row of another schema or items")
+            arm = arms.setdefault(r["arm"], sc.Arm(r["arm"], r["model_ref"], {}))
+            seen.add(arm.label)
+            key = (r["item_id"], r["role"], r["repeat"])
+            last[(arm.label, key)] = r["status"]
+            if r["status"] in wsr.FINAL:
+                arm.rows[key] = r
+            else:
+                arm.left[r["status"]] += 1
+        if torn and len(seen) != 1:
+            raise SystemExit(f"{path}: {torn} torn lines, arms {sorted(seen)}")
+        for name in seen:
+            arms[name].torn += torn
+    if open_ := sorted(k for k, status in last.items() if status not in wsr.FINAL):
+        raise SystemExit(f"{len(open_)} keys end unavailable or capped: {open_[0]}")
+    return arms
+
+
+def complete(doc: Obj, arm: sc.Arm) -> None:
+    for role in arm.roles:
+        ids = {i["item_id"] for i in sc.role_items(doc, role)}
+        if missing := ids - {i for i, r, n in arm.rows if r == role and n == 1}:
+            raise SystemExit(f"{arm.label}: {len(missing)} {role} items have no row")
+
+
 def score(args: argparse.Namespace, judged: dict[str, Obj] | None = None) -> Obj:
     """``args``: items, codebook, gold, gold_sha, rows, runs, prices, incumbent,
-    seed, resamples. ``judged``: arm -> item id -> {M1..M5}."""
+    roles (every arm's scored roles; default: the incumbent's), seed, resamples.
+    ``judged``: arm -> item id -> {M1..M5}."""
     gold, labels = sc.gold_labels(args.gold, args.gold_sha)
     doc = sc.checked_items(args.items, gold["items_root_hash"])
     if (sha := sc.sha256_file(args.codebook)) != gold["codebook_sha256"]:
@@ -166,11 +207,14 @@ def score(args: argparse.Namespace, judged: dict[str, Obj] | None = None) -> Obj
     }
     if missing := need - labels.keys():
         raise SystemExit(f"the gold lacks {len(missing)} labels, e.g. {min(missing)}")
-    arms = sc.load_rows(args.rows, doc["root_hash"])
+    arms = load_rows(args.rows, doc["root_hash"])
     if args.incumbent not in arms:
         raise SystemExit(f"no rows of the incumbent {args.incumbent}")
+    want = set(args.roles or ()) or arms[args.incumbent].roles
+    if odd := {a.label: sorted(a.roles) for a in arms.values() if a.roles != want}:
+        raise SystemExit(f"arms not on the roles {sorted(want)}: {odd}")
     for arm in arms.values():
-        sc.complete(doc, arm)
+        complete(doc, arm)
     prices = sc.load_json(args.prices) if args.prices else None
     prompts = simuser_prompts(doc, args.runs) if args.runs else None
     out: Obj = {"note": sc.NOTE, "incumbent": args.incumbent, "arms": {}}
@@ -180,6 +224,7 @@ def score(args: argparse.Namespace, judged: dict[str, Obj] | None = None) -> Obj
     units: dict[str, list[sc.Unit]] = {}
     for name, arm in sorted(arms.items()):
         res = {"model_ref": arm.model_ref, "torn_lines": arm.torn} | usage(arm, prices)
+        res["not_final_rows"] = {k: arm.left[k] for k in ("unavailable", "capped")}
         if "ear" in arm.roles:
             units[name] = sc.ear_units(doc, labels, arm)
             segs = by_segment(units[name], lambda u: u.item)
@@ -358,7 +403,14 @@ def render(doc: Obj) -> str:
             out += table(f"{role}: {s}", cols) if cols else []
     paired = {a: flat(r) for a, r in doc["paired"].items()}
     out += table("paired: X - incumbent, 95 % CI (no decision rule)", paired)
-    keys = ("latency_ms", "tokens", "cost_usd", "echoes", "torn_lines")
+    keys = (
+        "latency_ms",
+        "tokens",
+        "cost_usd",
+        "echoes",
+        "torn_lines",
+        "not_final_rows",
+    )
     cols = {a: flat({k: r[k] for k in keys}) for a, r in arms.items()}
     return "\n".join(out + table("calls: latency, tokens, cost, served echoes", cols))
 
@@ -385,6 +437,7 @@ def parser() -> argparse.ArgumentParser:
         for flag in ("--runs", "--prices", "--judge-dir", "--judge-key"):
             p.add_argument(flag, type=Path)
         p.add_argument("--incumbent", default=sc.INCUMBENT)
+        p.add_argument("--roles", type=wsr.roles_arg, help="every arm's, exactly")
         p.add_argument("--seed", type=int, default=0)
         p.add_argument("--resamples", type=int, default=10_000)
     cmds["score"].add_argument("--out", type=Path, help="default: stdout")
@@ -404,7 +457,7 @@ def main(argv: Sequence[str]) -> None:
     args = parser().parse_args(argv)
     if args.cmd == "judge-export":
         doc = sc.checked_items(args.items, sc.load_json(args.items)["root_hash"])
-        key = judge_export(doc, sc.load_rows(args.rows, doc["root_hash"]), args)
+        key = judge_export(doc, load_rows(args.rows, doc["root_hash"]), args)
         summary: Obj = {"batches": len(key["batches"]), "records": len(key["records"])}
         summary["not_exported"] = key["not_exported"]
     else:
