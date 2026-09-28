@@ -182,13 +182,19 @@ PLAYBOOK: dict[state.Kind, str] = {  # V3: the head carries the case's own only
     f"{'; '.join(HARD_LIMITS.values())}; no approval can lift it. A price, term "
     "or fee above the user's mandate is outside the mandate, not a hard limit: "
     "the user decides it. A confirmed offer inside the granted mandate: "
-    "accept_offer; outside it: request_approval. Decline an offer only once the "
-    "user denies it, it breaks a hard limit (the offers line says so), or its "
-    "read-back stopped with slots not stated: decline_offer, then "
-    "guide_fast(ask_final_offer). When the close line says finish(no_deal) would "
-    "verify, tell_user the terms offered and why none was taken, and "
-    "finish(no_deal, summary) in the same act; while it says blocked, act on its "
-    "reasons.",
+    "accept_offer. A confirmed offer outside the granted mandate: first "
+    "guide_fast one available lever (the levers line lists them), one lever per "
+    "rep reply; while one is sent but not yet heard, wait. Asking again for a "
+    "lower price or for a final offer is the same request the rep already "
+    "answered: it adds no pressure and is no lever. Only when no lever is "
+    "available: request_approval. After the user denies an offer: again one "
+    "available lever if any; only when none is left: decline_offer, then "
+    "guide_fast(ask_final_offer). Decline an offer otherwise only when it breaks "
+    "a hard limit (the offers line says so) or its read-back stopped with slots "
+    "not stated: decline_offer, then guide_fast(ask_final_offer). When the close "
+    "line says finish(no_deal) would verify, tell_user the terms offered and why "
+    "none was taken, and finish(no_deal, summary) in the same act; while it says "
+    "blocked, act on its reasons.",
 }
 
 
@@ -348,7 +354,7 @@ def status_bar(
         ttl = "" if o.expires_ms is None else f", expires in {secs(o.expires_ms)}"
         slots = ", ".join(f"{s.field}={s.value} [{s.status}]" for s in o.slots)
         state = f"{o.status}, read-back {readback_status(o)}{ttl}"
-        hints = [approval_hint(view, o, now_ms), mandate_hint(view, o, now_ms)]
+        hints = [approval_hint(view, o, now_ms, more), mandate_hint(view, o, now_ms)]
         hints.append("" if more is None else more.offer_note(o))
         if gaps := missing_required(o):  # e6ada1: Guard's list, never inferred
             hints.append(
@@ -397,11 +403,15 @@ def status_bar(
     return "\n".join(lines)
 
 
-def approval_hint(view: SlowView, o: OfferPublic, now_ms: int) -> str:
+def approval_hint(
+    view: SlowView, o: OfferPublic, now_ms: int, more: state.Bar | None = None
+) -> str:
     """S1-SYS-28 (run ed5063): an offer Guard would put on a card (its
     ``open_offer`` and ``card_blocks`` rules) that its mandate check finds
     outside the granted mandate needs the user's approval; shown until a card
-    or a decision for its terms exists in this epoch. Nothing is sent."""
+    or a decision for its terms exists in this epoch. Nothing is sent.
+    S1-SYS-66: with the bar (``more``), a lever on its way means wait, and an
+    available lever comes first; request_approval once none is left."""
     got = open_offer(o, view.mandate, now_ms, bool(view.fences))
     card = view.pending_approval
     of_card = [x for x in view.offers if card and x.offer_ref == card.offer_ref]
@@ -417,7 +427,15 @@ def approval_hint(view: SlowView, o: OfferPublic, now_ms: int) -> str:
     bb = Blackboard(t_ms=now_ms, epoch=view.epoch, private=mine)
     if mandate_gap(bb, terms) != "outside_mandate":
         return ""
-    return f"{o.offer_ref} confirmed, outside mandate → request_approval({o.offer_ref})"
+    ref = f"{o.offer_ref} confirmed, outside mandate → "
+    if more is not None and more.waiting:  # S1-SYS-66: one lever per rep reply
+        return f"{ref}wait for the rep to hear the lever sent (levers line)"
+    if more is not None and more.free:
+        levers = " or ".join(f"guide_fast({m})" for m in more.free)
+        return (
+            f"{ref}first one lever: {levers}; request_approval only once none is left"
+        )
+    return f"{ref}request_approval({o.offer_ref})"
 
 
 def mandate_hint(view: SlowView, o: OfferPublic, now_ms: int) -> str:
