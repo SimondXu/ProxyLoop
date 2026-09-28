@@ -2,11 +2,15 @@
 model call (ADR-0024).
 
     python -m scripts.mod.world_select gold --labels-dir <dir> --batch-key <json> \
-        --adj-key <json> [--user <json> --review <json>] \
+        --adj-key <json> (--user <json> --review <json> | --draft --out <scratch>) \
         [--out docs/decisions/data/world-select-gold.json]
 
 It refuses items that do not hash to the frozen root, a codebook whose sha256 is not
-the frozen one, and a ``--batch-key`` made for other items.
+the frozen one, and a ``--batch-key`` made for other items. Coverage is complete or
+refused: every utterance of every Ear item has one label, every ``--adj-key`` item is
+adjudicated on every utterance, and every review id on the sheet is decided exactly
+once. Only ``--draft`` writes without the user's decisions, never to the default
+``--out``, and it marks the file ``draft: true``.
 
 Per (item_id, idx), the label with the highest precedence wins:
 
@@ -188,13 +192,28 @@ def gold(
         if out.get(k := (adj(b, pos), n), {}).get("source") != "annotator":
             raise SystemExit(f"{b} {pos} {n}: adjudicates no first-pass label")
         out[k] = label(r, "adjudicated", version)
+    short: list[str] = []  # every --adj-key utterance, a missing adj file's too
+    for b, pairs in sorted(adj_key.items()):
+        for pos in range(len(pairs)):
+            iid = adj(b, pos)
+            for n in range(1, (len(said(by_id[iid])) if iid in by_id else 1) + 1):
+                if out.get((iid, n), {}).get("source") != "adjudicated":
+                    short.append(f"{b} {pos} {n}")
+    if short:
+        raise SystemExit(f"{len(short)} --adj-key utterances unadjudicated: {short[0]}")
     need = {(i, n) for i, it in by_id.items() for n in range(1, len(said(it)) + 1)}
     if bad := need ^ out.keys():
         raise SystemExit(f"{len(bad)} labels missing or extra, e.g. {min(bad)}")
+    ids, given = [e["id"] for e in sheet], Counter(d["review_id"] for d in decisions)
+    if len(set(ids)) != len(ids):
+        raise SystemExit("the review sheet lists an id twice")
+    if extra := [i for i in given if i not in ids]:
+        raise SystemExit(f"review_id {extra[0]} is not on the sheet")
+    if odd := [i for i in ids if given[i] != 1]:
+        raise SystemExit(f"{len(odd)} review ids not decided exactly once: {odd[0]}")
     entries, done, lacking = {e["id"]: e for e in sheet}, set[Label](), list[str]()
     for d in decisions:
-        if (e := entries.get(d["review_id"])) is None:
-            raise SystemExit(f"review_id {d['review_id']} is not on the sheet")
+        e = entries[d["review_id"]]
         where = f"review_id {d['review_id']}"
         if "check" in e:
             batch, at_pos, at_idx = e["check"]
@@ -228,6 +247,11 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--user", type=Path, help="the user's decisions, with --review")
     ap.add_argument("--review", type=Path, help="the review sheet")
     ap.add_argument("--out", type=Path, default=GOLD)
+    ap.add_argument(
+        "--draft",
+        action="store_true",
+        help="without the user's decisions, not --out's default",
+    )
     return ap
 
 
@@ -236,9 +260,14 @@ def main(argv: Sequence[str]) -> None:
     args = parser().parse_args(argv)
     if (args.user is None) != (args.review is None):
         raise SystemExit("--user and --review go together")
+    if args.user is None and not args.draft:
+        raise SystemExit("the gold needs --user and --review (or --draft)")
+    if args.draft and args.out.resolve() == GOLD.resolve():
+        raise SystemExit(f"--draft never writes {GOLD}")
     user = (read(args.user), read(args.review)) if args.user else ((), ())
     keys = read(args.batch_key), read(args.adj_key)
     doc = gold(load_items(args.items), args.labels_dir, *keys, args.codebook, *user)
+    doc["draft"] = args.draft
     write(args.out, doc)
     summary = doc["counts"] | {"sha256": file_sha(args.out)}
     json.dump(summary, sys.stdout, indent=1, sort_keys=True)

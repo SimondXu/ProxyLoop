@@ -15,7 +15,7 @@ from scripts.mod import world_select as ws
 from scripts.mod import world_select_score as wss
 
 Json = dict[str, Any]
-A, B, C, D = ("a" * 64, "b" * 64, "c" * 64, "d" * 64)
+A, B, C, D, E = ("a" * 64, "b" * 64, "c" * 64, "d" * 64, "e" * 64)
 B_SAID = ["One moment please.", "Please read back every term of save-1."]
 C_SAID = ["We'll take it at 60."]
 OFFER = [{"open": True, "ref": "save-1", "terms": [["monthly_price", "78.00"]]}]
@@ -27,6 +27,8 @@ def items() -> Json:
          "utterances": ["Can you do better on the price?"]},
         {"item_id": B, "kind": "block", "count": 1, "offers": OFFER,
          "utterances": B_SAID},
+        {"item_id": E, "kind": "single", "count": 1, "offers": [],
+         "utterances": ["Is there anything else?"]},
     ]  # fmt: skip
     made: list[Json] = [
         {"item_id": C, "constructed": True, "block": C_SAID, "offers": {},
@@ -35,7 +37,7 @@ def items() -> Json:
         {"item_id": D, "constructed": True, "block": ["Brightwave is sixty a month."],
          "offers": {}, "gold": [{"act": "excluded"}]},
     ]  # fmt: skip
-    root = sha256_text("\n".join(sorted([A, B, C, D])))
+    root = sha256_text("\n".join(sorted([A, B, C, D, E])))
     empty: dict[str, list[Json]] = {"mouth": [], "simuser": []}
     return {"root_hash": root, "items": {"ear": ear, **empty},
             "constructed": {"ear": made, **empty}}  # fmt: skip
@@ -55,7 +57,7 @@ def tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(
         wss, "CODEBOOK_SHA", hashlib.sha256(book.read_bytes()).hexdigest()
     )
-    batches = {"batch-001": [A], "batch-007": [B], "check-001": [D, C]}
+    batches = {"batch-001": [A], "batch-007": [B, E], "check-001": [D, C]}
     files: dict[str, Any] = {
         "items.json": doc,
         "key.json": {"root_hash": doc["root_hash"], "batches": batches},
@@ -66,8 +68,10 @@ def tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "labels/batch-007.json": [
             lab("batch-007", 0, 1, "hold_request"),
             lab("batch-007", 0, 2, "other"),
+            lab("batch-007", 1, 1, "other"),
         ],
         "labels/adj-001.json": [
+            lab("adj-001", 0, 1, "hold_request"),
             lab(
                 "adj-001",
                 0,
@@ -84,6 +88,7 @@ def tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
                 "adj": "adj-001",
                 "pos": 0,
                 "idx": 2,
+                "orig": ["batch-007", 0],
                 "text": B_SAID[1],
                 "alternates": ["other", "cite_competitor"],
             },
@@ -118,9 +123,13 @@ def test_precedence_annotator_adjudicated_constructed(tree: Path) -> None:
     got = by_key(doc)
     assert (got[(A, 1)]["act"], got[(A, 1)]["source"]) == ("ask_discount", "annotator")
     assert got[(A, 1)]["codebook_version"] == "v1.0"  # batch-001
-    assert (got[(B, 1)]["source"], got[(B, 1)]["codebook_version"]) == (
+    assert (got[(E, 1)]["source"], got[(E, 1)]["codebook_version"]) == (
         "annotator",
         "v1.1",  # batch-007
+    )
+    assert (got[(B, 1)]["act"], got[(B, 1)]["source"]) == (
+        "hold_request",
+        "adjudicated",
     )
     adjudicated = got[(B, 2)]
     assert (adjudicated["act"], adjudicated["offer_ref"]) == ("ask_readback", "save-1")
@@ -138,10 +147,10 @@ def test_precedence_annotator_adjudicated_constructed(tree: Path) -> None:
     assert (got[(D, 1)]["act"], got[(D, 1)]["excluded"]) == ("excluded", True)
     assert not any(x["excluded"] for k, x in got.items() if k != (D, 1))
     assert doc["counts"] == {
-        "by_source": {"constructed": 2, "annotator": 2, "adjudicated": 1},
+        "by_source": {"constructed": 2, "annotator": 2, "adjudicated": 2},
         "excluded": 1,
-        "items": 4,
-        "labels": 5,
+        "items": 5,
+        "labels": 6,
     }
     assert (doc["version"], doc["codebook_version"]) == (1, "v1.2")
 
@@ -160,13 +169,18 @@ def test_user_beats_adjudicated_and_constructed(tree: Path) -> None:
     assert got[(A, 1)]["source"] == "annotator"
 
 
+def one(t: Path, d: Json) -> Json:
+    """The label review 1 decides, review 2 decided ``other``."""
+    return by_key(build(t, [d, {"review_id": 2, "act": "other"}]))[(B, 2)]
+
+
 def test_user_arguments(tree: Path) -> None:
-    same = by_key(build(tree, [{"review_id": 1, "act": "ask_readback"}]))[(B, 2)]
+    same = one(tree, {"review_id": 1, "act": "ask_readback"})
     assert (same["offer_ref"], same["source"]) == ("save-1", "user")  # kept
-    alt = by_key(build(tree, [{"review_id": 1, "act": "cite_competitor"}]))[(B, 2)]
+    alt = one(tree, {"review_id": 1, "act": "cite_competitor"})
     assert alt["price_usd"] == 70  # from the replaced label's alternate
-    given = [{"review_id": 1, "act": "cite_competitor", "price_usd": 65}]
-    assert by_key(build(tree, given))[(B, 2)]["price_usd"] == 65
+    given = {"review_id": 1, "act": "cite_competitor", "price_usd": 65}
+    assert one(tree, given)["price_usd"] == 65
     with pytest.raises(SystemExit, match=r"review_id 1 .*facts; review_id 2 .*price"):
         build(
             tree,
@@ -195,54 +209,75 @@ def test_hash_refusals(tree: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         build(tree)
 
 
+BOTH = [{"review_id": 1, "act": "other"}, {"review_id": 2, "act": "other"}]
+
+
 def test_mapping_refusals(tree: Path) -> None:
-    with pytest.raises(SystemExit, match="not on the sheet"):
-        build(tree, [{"review_id": 9, "act": "other"}])
-    with pytest.raises(SystemExit, match="or twice"):
-        build(tree, [{"review_id": 1, "act": "other"}] * 2)
-    sheet = json.loads((tree / "sheet.json").read_text())
-    sheet[0]["text"] = "Something else."
-    (tree / "sheet.json").write_text(json.dumps(sheet))
+    sheet = get(tree, "sheet.json")
+    put(tree, "sheet.json", [sheet[0], sheet[1] | {"check": ["batch-007", 0, 2]}])
+    with pytest.raises(SystemExit, match="not its text, or twice"):  # one utterance
+        build(tree, BOTH)
+    put(tree, "sheet.json", [sheet[0] | {"text": "Something else."}, sheet[1]])
     with pytest.raises(SystemExit, match="not its text"):
-        build(tree, [{"review_id": 1, "act": "other"}])
-    (tree / "labels/batch-007.json").write_text(
-        json.dumps([lab("batch-007", 0, 1, "hold_request")])
-    )
+        build(tree, BOTH)
+    put(tree, "labels/batch-007.json", [lab("batch-007", 0, 1, "hold_request")])
     with pytest.raises(SystemExit, match="adjudicates no first-pass label"):
         build(tree)
-    (tree / "labels/adj-001.json").unlink()
-    with pytest.raises(SystemExit, match="1 labels missing or extra"):
-        build(tree)
     bad = [lab("batch-007", 0, 1, "haggle"), lab("batch-007", 0, 2, "other")]
-    (tree / "labels/batch-007.json").write_text(json.dumps(bad))
+    put(tree, "labels/batch-007.json", bad)
     with pytest.raises(SystemExit, match="unknown act 'haggle'"):
         build(tree)
 
 
+def test_adjudication_covers_every_utterance(tree: Path) -> None:
+    """A missing adj file refuses; it never falls back to the first pass."""
+    (tree / "labels/adj-001.json").unlink()
+    with pytest.raises(SystemExit, match="2 --adj-key utterances unadjudicated"):
+        build(tree)
+    put(tree, "labels/adj-001.json", [lab("adj-001", 0, 2, "other")])
+    with pytest.raises(
+        SystemExit, match="1 --adj-key utterances unadjudicated: adj-001"
+    ):
+        build(tree)
+
+
+def test_every_review_id_decided_once(tree: Path) -> None:
+    with pytest.raises(SystemExit, match="1 review ids not decided exactly once: 2"):
+        build(tree, BOTH[:1])
+    with pytest.raises(SystemExit, match="not decided exactly once: 1"):
+        build(tree, [*BOTH, BOTH[0]])
+    with pytest.raises(SystemExit, match="review_id 9 is not on the sheet"):
+        build(tree, [*BOTH, {"review_id": 9, "act": "other"}])
+    sheet = get(tree, "sheet.json")
+    put(tree, "sheet.json", [*sheet, sheet[0]])
+    with pytest.raises(SystemExit, match="lists an id twice"):
+        build(tree, BOTH)
+
+
+def cli(t: Path, out: Path | None, *more: str) -> list[str]:
+    argv = ["gold", "--items", str(t / "items.json")]
+    argv += ["--codebook", str(t / "codebook.md")]
+    argv += ["--labels-dir", str(t / "labels")]
+    argv += ["--batch-key", str(t / "key.json")]
+    argv += ["--adj-key", str(t / "adj-key.json")]
+    return argv + (["--out", str(out)] if out else []) + list(more)
+
+
 def test_cli_deterministic(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
     def run(out: Path) -> Json:
-        argv = ["gold", "--items", str(tree / "items.json")]
-        argv += ["--codebook", str(tree / "codebook.md")]
-        argv += ["--labels-dir", str(tree / "labels")]
-        argv += ["--batch-key", str(tree / "key.json")]
-        argv += ["--adj-key", str(tree / "adj-key.json"), "--out", str(out)]
-        argv += [
-            "--user",
-            str(tree / "user.json"),
-            "--review",
-            str(tree / "sheet.json"),
-        ]
-        ws.main(argv)
+        user = ["--user", str(tree / "user.json"), "--review", str(tree / "sheet.json")]
+        ws.main(cli(tree, out, *user))
         return json.loads(capsys.readouterr().out)
 
-    (tree / "user.json").write_text(json.dumps([{"review_id": 2, "act": "other"}]))
-    one, two = run(tree / "g1.json"), run(tree / "g2.json")
+    put(tree, "user.json", [BOTH[0] | {"act": "ask_readback"}, BOTH[1]])
+    first, second = run(tree / "g1.json"), run(tree / "g2.json")
     text = (tree / "g1.json").read_bytes()
     assert text == (tree / "g2.json").read_bytes()
-    assert one == two and one["sha256"] == hashlib.sha256(text).hexdigest()
-    assert one["by_source"]["user"] == 1
+    assert first == second and first["sha256"] == hashlib.sha256(text).hexdigest()
+    assert first["by_source"]["user"] == 2
     doc = json.loads(text)
     assert text.decode() == json.dumps(doc, indent=1, sort_keys=True) + "\n"
+    assert doc["draft"] is False
     with pytest.raises(SystemExit, match="go together"):
         ws.main(["gold", "--labels-dir", "x", "--batch-key", "y", "--adj-key", "z",
                  "--user", "u"])  # fmt: skip
@@ -271,16 +306,16 @@ def test_sheet_positions_refused(tree: Path) -> None:
     sheet = get(tree, "sheet.json")
     put(tree, "sheet.json", [sheet[0], sheet[1] | {"check": ["check-001", -1, 1]}])
     with pytest.raises(SystemExit, match="check-001 pos -1: not an int"):
-        build(tree, [{"review_id": 2, "act": "other"}])
+        build(tree, BOTH)
     put(tree, "sheet.json", [sheet[0], sheet[1] | {"check": ["check-001", 1, True]}])
     with pytest.raises(SystemExit, match="check idx True: not an int"):
-        build(tree, [{"review_id": 2, "act": "other"}])
+        build(tree, BOTH)
     put(tree, "sheet.json", [sheet[0] | {"pos": -1}, sheet[1]])
     with pytest.raises(SystemExit, match="adj-001 pos -1: not an int"):
-        build(tree, [{"review_id": 1, "act": "other"}])
+        build(tree, BOTH)
     put(tree, "sheet.json", [sheet[0] | {"idx": 0}, sheet[1]])
     with pytest.raises(SystemExit, match="review_id 1: idx 0: not an int"):
-        build(tree, [{"review_id": 1, "act": "other"}])
+        build(tree, BOTH)
 
 
 def test_batch_key_ids_unique(tree: Path) -> None:
@@ -309,3 +344,17 @@ def test_first_pass_label_twice_refused(
     monkeypatch.setattr(wss, "read_labels", doubled)
     with pytest.raises(SystemExit, match="a second first-pass label for"):
         build(tree)
+
+
+def test_cli_draft_only(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Without the user's decisions only a --draft writes, and never to GOLD."""
+    with pytest.raises(SystemExit, match="needs --user and --review"):
+        ws.main(cli(tree, tree / "g.json"))
+    with pytest.raises(SystemExit, match="--draft never writes"):
+        ws.main(cli(tree, None, "--draft"))
+    with pytest.raises(SystemExit, match="--draft never writes"):
+        ws.main(cli(tree, wss.GOLD, "--draft"))
+    assert not (tree / "g.json").exists()
+    ws.main(cli(tree, tree / "g.json", "--draft"))
+    assert "user" not in json.loads(capsys.readouterr().out)["by_source"]
+    assert get(tree, "g.json")["draft"] is True
