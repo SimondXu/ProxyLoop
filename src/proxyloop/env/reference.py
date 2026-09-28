@@ -41,7 +41,7 @@ from proxyloop.env.user.approver import (
 )
 
 STEP_MS = 10_000  # one exchange: the caller speaks, the rep answers
-LEVERS = ("ask_discount", "tenure", "cite_competitor")
+LEVERS = ("ask_discount", "tenure")  # not cite_competitor: Guard needs a shared quote
 OFFERED = ("offer", "final_offer")
 
 

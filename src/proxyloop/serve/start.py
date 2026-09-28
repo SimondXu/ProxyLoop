@@ -32,6 +32,20 @@ servable). A run_id already in the map is 503 ``unavailable``, logged, and
 never replaces the case it names. A refusal reason outside ``REASONS`` is 503
 ``unavailable`` too, logged redacted (``redact``; AGENTS rule 15).
 
+The principal's "Your role" card (``RoleCard``; S1-SYS-65), a GET each:
+
+- ``GET /api/tasks/card?ref=<task_ref>`` needs the operator's signed pair
+  (cookies; else 403 ``csrf``): the start page's card for a task it offers.
+- ``GET /api/cases/{case}/card`` needs the user's pair signed for that case
+  (another case's, the rep's or the operator's is 403 ``csrf``): the card of
+  the task_ref the case's run wrote in session.started (seq 0); a case not in
+  serve's map, or with no seq 0, is 404.
+
+Either way a ref not in ``task_options()`` is 400 ``{"error": "start",
+"reason": "unknown_task"}`` and the starter never sees it (AGENTS rule 11);
+``StartRefused`` is 400 with its reason, anything else 503 ``unavailable``,
+logged. The rep page never asks for either.
+
 Pruning: a case whose run has ended (its ``events.jsonl`` ends with
 ``session.ended``, ``Run.ended``) is dropped from the map lazily, when serve
 looks it up and, for every case, before each start; from then on the case
@@ -57,11 +71,14 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from proxyloop.contract.bundle import EVENTS
+from proxyloop.contract.events import Event
 from proxyloop.contract.llm import Endpoint
 from proxyloop.serve.bundles import find_run, redact
 from proxyloop.serve.cases import (
     Case,
     Cases,
+    Id,
     LaneKey,
     ModelOption,
     Refused,
@@ -184,6 +201,41 @@ async def _begin(kernel: Starter, body: StartBody, timeout_s: float) -> Case:
         raise Refused(503, "unavailable") from err
 
 
+def _started_ref(roots: Sequence[Path], run_id: str) -> str | None:
+    """session.started's task_ref, from the first line of a servable run's
+    ``events.jsonl`` only; None while there is none."""
+    run = find_run(roots, run_id)
+    if run is None or (path := run.file(EVENTS)) is None:
+        return None
+    with path.open("rb") as f:
+        first = next((line for line in f if line.strip()), b"")
+    try:
+        event = Event.model_validate_json(first)
+    except ValidationError:  # none yet, partial, or not an event
+        return None
+    ref = event.payload.get("task_ref")
+    return ref if event.type == "session.started" and isinstance(ref, str) else None
+
+
+def _card(kernel: Starter, task_ref: str) -> Response:
+    """The starter's card for an offered ``task_ref`` (in a worker thread: it
+    reads the task's file); any failure is a ``Refused``, as a start's."""
+    offered = kernel.task_options()
+    if isinstance(offered, str) or task_ref not in offered:
+        raise Refused(400, "start", "unknown_task")  # the kernel never sees it
+    try:
+        return JSONResponse(kernel.role_card(task_ref).model_dump(mode="json"))
+    except StartRefused as refused:
+        if refused.reason not in REASONS:
+            _log.error("role card refused: %s", _clean(refused.reason))
+            raise Refused(503, "unavailable") from None
+        raise Refused(400, "start", refused.reason) from refused
+    except Exception as err:  # loud: logged, 503, no retry
+        why = type(err).__name__  # only: no text, traceback or cause (rule 15)
+        _log.error("role_card failed for task %s: %s", _clean(task_ref), why)
+        raise Refused(503, "unavailable") from err
+
+
 def add_start_routes(
     app: FastAPI,
     roots: Sequence[Path],
@@ -233,6 +285,26 @@ def add_start_routes(
             raise Refused(500, "options", why)
         listed = [option.model_dump(mode="json") for option in options]
         return JSONResponse({"options": listed, "tasks": list(tasks)})
+
+    @app.get("/api/tasks/card")
+    async def task_card(request: Request, ref: str) -> Response:
+        kernel = starter()
+        if not csrf.signed("operator", NO_CASE, request.cookies):
+            raise Refused(403, "csrf")
+        return await asyncio.to_thread(_card, kernel, ref)
+
+    def case_ref(case_id: str) -> str | None:
+        case = lookup(case_id)
+        return None if case is None else _started_ref(roots, case.run_id)
+
+    @app.get("/api/cases/{case_id}/card")
+    async def case_card(request: Request, case_id: Id) -> Response:
+        kernel = starter()
+        if not csrf.signed("user", case_id, request.cookies):  # this case's user
+            raise Refused(403, "csrf")
+        if (ref := await asyncio.to_thread(case_ref, case_id)) is None:
+            raise Refused(404, "unknown case")
+        return await asyncio.to_thread(_card, kernel, ref)
 
     @app.post("/api/cases")
     async def start_case(request: Request) -> Response:

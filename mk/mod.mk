@@ -67,13 +67,17 @@ train-smoke:
 	$(MOD_MODAL) run --detach -m training_jobs.modal_train::main --out $(MOD_DATA)/peft-train-smoke.json
 
 # S0-MOD-03 (TRAINING §9). pull-through is root-run (L+G). MODE=full: select up to 60
-# base-9B Fast turns from PT_EVIDENCE (P5 on every row), train the pull-through recipe on
-# Modal, serve the adapter in the trained LoRA slot (PL_TRAINED_ADAPTER), then liveness, one
+# Fast turns of one label source from PT_EVIDENCE (P5 on every row), train the pull-through
+# recipe on Modal, serve the adapter in the trained LoRA slot (PL_TRAINED_ADAPTER), then liveness, one
 # product-path session with both lanes on it (evidence-check --claim), and
 # docs/results/pull-through.json (written only when every check passes; each run's raw
 # JSON stays in PT_DIR). MODE=verify: the serving steps again, with that file's adapter.
 # PT_DIR=<an earlier run's dir> with a train.json skips select and training (no paid
 # retrain after a transient serving or session failure).
+# S1-MOD-07: MODE=full needs PT_SOURCE=base_9b|hosted. base_9b: base-9B turns, and no
+# PT_LABEL_MODEL; hosted: one hosted model's turns, PT_LABEL_MODEL=<endpoint>:<model_id>
+# (e.g. openrouter:openai/gpt-6-luna). A missing or unknown value stops make as it expands
+# the recipe, before any spend and under `make -n` too. MODE=verify takes neither.
 # pull-through-liveness: the liveness step alone for ADAPTER, a path in the adapter volume
 # (the S0-MOD-02 smoke adapter by default). The app stops from a trap. Export in the shell
 # only, as for smoke-live: PL_VLLM_*, PL_RELAY_*, PL_TEAMROUTER_* (BASE_URL, API_KEY).
@@ -84,6 +88,11 @@ PT_FAMILY ?= cp-direct-discount
 ADAPTER ?= train/20260926-smoke-3/adapter
 ADAPTER_NAME ?= Qwen3.5-9B-pl-smoke
 PT_PY := uv run python -m proxyloop.training.pull_through
+PT_SOURCE ?=
+PT_LABEL_MODEL ?=
+PT_SOURCE_base_9b = --source base_9b$(if $(PT_LABEL_MODEL),$(error PT_SOURCE=base_9b takes no PT_LABEL_MODEL))
+PT_SOURCE_hosted = --source hosted --label-model $(or $(PT_LABEL_MODEL),$(error PT_SOURCE=hosted needs PT_LABEL_MODEL=<endpoint>:<model_id>))
+PT_SOURCE_ARGS = $(or $(PT_SOURCE_$(PT_SOURCE)),$(error MODE=full needs PT_SOURCE=base_9b|hosted, got '$(PT_SOURCE)'))
 PT_SERVE_DOWN := $(MOD_MODAL) app stop --yes proxyloop-vllm
 PT_SERVE_UP := PL_SERVE_VARIANT=pinned PL_LORA_RUNG=all $(MOD_MODAL) deploy -m serving.modal_vllm && \
 	$(MOD_PY) -m scripts.mod.probe --wait-healthy --variant pinned --out $(PT_DIR)/coldstart.json
@@ -95,7 +104,7 @@ PT_TRAIN := $(MOD_MODAL) run --detach -m training_jobs.modal_train::pull_through
 pull-through:
 	@case "$(MODE)" in full|verify) ;; *) echo "MODE=full|verify is required" >&2; exit 1;; esac
 	$(MOD_LADDER_GUARD)
-	$(if $(filter full,$(MODE)),test -f $(PT_DIR)/train.json || { $(PT_PY) select --dir $(PT_DIR) --evidence $(PT_EVIDENCE) && $(PT_TRAIN); })
+	$(if $(filter full,$(MODE)),test -f $(PT_DIR)/train.json || { $(PT_PY) select --dir $(PT_DIR) --evidence $(PT_EVIDENCE) $(PT_SOURCE_ARGS) && $(PT_TRAIN); })
 	trap '$(PT_SERVE_DOWN)' EXIT HUP INT TERM; \
 	PL_TRAINED_ADAPTER="$$($(PT_PY) slot --mode $(MODE) --dir $(PT_DIR))" && export PL_TRAINED_ADAPTER && \
 	$(PT_SERVE_UP) && $(PT_PY) check --mode $(MODE) --dir $(PT_DIR) --family $(PT_FAMILY)

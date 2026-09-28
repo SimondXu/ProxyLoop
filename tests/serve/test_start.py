@@ -28,9 +28,10 @@ from tests.serve.client import (
 )
 from tests.support.api_cases import ApiCase, FakeStarter
 
+from proxyloop.contract.bundle import EVENTS, MANIFEST
 from proxyloop.serve.api import create_app
 from proxyloop.serve.bundles import Run
-from proxyloop.serve.cases import LaneKey, ModelOption
+from proxyloop.serve.cases import LaneKey, ModelOption, RoleCard
 
 CASE = "case-1"  # a case of the existing lookup: the user's and rep's tokens
 OP = ("pl_op_session", "pl_op_csrf")
@@ -656,3 +657,179 @@ def test_failures_log_error_types_only(
         assert record.exc_info is None and record.exc_text is None
         logged = logging.Formatter().format(record) + repr(record.args)
         assert not [secret for secret in SECRETS if secret in logged], logged
+
+
+# The principal's role card (S1-SYS-65): two GETs, each behind its own pair.
+
+CARD_OF = "/api/tasks/card?ref="
+STARTED_KEYS = "cfg_hash task_ref instance_hash models renderer_fp contract_version"
+
+
+def _card(env: Env, url: str, cookies: dict[str, str]) -> tuple[int, object]:
+    got = get(
+        env.http, url, {"cookie": "; ".join(f"{k}={v}" for k, v in cookies.items())}
+    )
+    return got.status_code, got.json()
+
+
+def _spy_cards(env: Env, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    asked: list[str] = []
+    real = env.starter.role_card
+
+    def spy(task_ref: str) -> RoleCard:
+        asked.append(task_ref)
+        return real(task_ref)
+
+    monkeypatch.setattr(env.starter, "role_card", spy)
+    return asked
+
+
+NO_OPERATOR: dict[str, Callable[[Env], dict[str, str]]] = {
+    "no cookies": lambda env: {},
+    "no session cookie": lambda env: {OP[1]: operator(env.http)[OP[1]]},
+    "another session": _crossed,
+    "the user's cookies": lambda env: login(env.http, "user", CASE),
+    "the rep's cookies": lambda env: login(env.http, "rep", CASE),
+    "the user's values": lambda env: _renamed(login(env.http, "user", CASE), OP),
+}
+
+
+@pytest.mark.parametrize("make", NO_OPERATOR.values(), ids=NO_OPERATOR.keys())
+def test_a_task_card_needs_the_operator_pair(
+    env: Env, monkeypatch: pytest.MonkeyPatch, make: Callable[[Env], dict[str, str]]
+) -> None:
+    asked = _spy_cards(env, monkeypatch)
+    got = _card(env, CARD_OF + TASKS[0], make(env))
+    assert got == (403, {"error": "csrf"})
+    assert asked == []
+
+
+def test_a_task_card_is_the_starter_s_card(env: Env) -> None:
+    status, card = _card(env, CARD_OF + TASKS[1], operator(env.http))
+    assert status == 200
+    assert card == env.starter.role_card(TASKS[1]).model_dump(mode="json")
+
+
+@pytest.mark.parametrize("ref", ["x-held-out@1", "cp-direct-discount@1#1", ""])
+def test_a_task_card_not_offered_is_400_before_the_starter(
+    env: Env, monkeypatch: pytest.MonkeyPatch, ref: str
+) -> None:
+    asked = _spy_cards(env, monkeypatch)
+    got = _card(env, CARD_OF + ref, operator(env.http))
+    assert got == (400, {"error": "start", "reason": "unknown_task"})
+    assert asked == []  # the kernel never saw it (AGENTS rule 11)
+
+
+def test_a_raising_role_card_is_503_and_logged(
+    env: Env, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(env.starter, "role_card", _boom)
+    with caplog.at_level(logging.DEBUG, logger=LOGGER):
+        got = _card(env, CARD_OF + TASKS[0], operator(env.http))
+    assert got == (503, {"error": "unavailable"})
+    (record,) = [r for r in caplog.records if r.name == LOGGER]
+    assert "RuntimeError" in record.getMessage()
+    logged = logging.Formatter().format(record) + repr(record.args)
+    assert not [secret for secret in SECRETS if secret in logged], logged
+
+
+def _start_as(env: Env, run_id: str, task_ref: str) -> ApiCase:
+    """A case started through POST /api/cases whose seq 0 names ``task_ref``."""
+    case = ApiCase(env.root / "live" / run_id, run_id)
+    started = dict.fromkeys(STARTED_KEYS.split(), "x") | {"task_ref": task_ref}
+    started |= {"git_sha": "x", "attest": "x", "parity": "x", "split": "train"}
+    case.emit("session.started", started, "kernel", "ops")
+    env.starter.returns = case
+    got = start(env, headers(operator(env.http)), BODY | {"task_ref": task_ref})
+    assert got.json() == {"case_id": run_id}
+    return case
+
+
+def test_a_case_card_is_its_own_task_s_card_for_its_own_user_only(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    case = _start_as(env, "live-9", TASKS[1])
+    try:
+        expected = env.starter.role_card(TASKS[1]).model_dump(mode="json")
+        asked = _spy_cards(env, monkeypatch)
+        url = "/api/cases/live-9/card"
+        rep, other = login(env.http, "rep", "live-9"), login(env.http, "user", CASE)
+        for cookies in [
+            {},  # no pair
+            rep,  # the rep's pair for this case
+            _renamed(rep, ("pl_session", "pl_csrf")),  # its values as the user's
+            other,  # the user's pair for another case
+            operator(env.http),
+        ]:
+            assert _card(env, url, cookies) == (403, {"error": "csrf"})
+        assert asked == []
+        status, card = _card(env, url, login(env.http, "user", "live-9"))
+        assert (status, card) == (200, expected)
+        assert asked == [TASKS[1]]  # the run's own task_ref, from its seq 0
+    finally:
+        case.close()
+
+
+def test_a_case_card_is_404_for_a_case_serve_did_not_start(env: Env) -> None:
+    got = _card(env, f"/api/cases/{CASE}/card", login(env.http, "user", CASE))
+    assert got == (404, {"error": "unknown case"})
+
+
+def test_a_case_card_whose_run_names_no_offered_task_is_400(env: Env) -> None:
+    case = _start_as(env, "live-9", TASKS[0])
+    try:
+        env.starter.tasks = TASKS[1:]  # the offer changed since the start
+        got = _card(env, "/api/cases/live-9/card", login(env.http, "user", "live-9"))
+        assert got == (400, {"error": "start", "reason": "unknown_task"})
+    finally:
+        case.close()
+
+
+def test_without_a_starter_the_card_routes_are_404(tmp_path: Path) -> None:
+    root = tmp_path / "runs"
+    root.mkdir()
+    http = client(root)
+    cookies = {"cookie": f"{OP[0]}=s; {OP[1]}=t; pl_session=s; pl_csrf=t"}
+    assert get(http, CARD_OF + TASKS[0], cookies).status_code == 404
+    assert get(http, f"/api/cases/{CASE}/card", cookies).status_code == 404
+
+
+def _first_lines(tmp_path: Path) -> list[str]:
+    """A real session.started line, then a real user.msg line."""
+    donor = ApiCase(tmp_path / "donor", "donor").start()
+    donor.emit("user.msg", {"text": "hi"}, "kernel")
+    donor.close()
+    return (tmp_path / "donor" / "donor" / EVENTS).read_text().splitlines()
+
+
+SEQ_0: dict[str, Callable[[list[str]], str | None]] = {
+    "no events.jsonl": lambda lines: None,
+    "an empty file": lambda lines: "",
+    "a first line not session.started": lambda lines: lines[1] + "\n",
+    "a partial first line": lambda lines: lines[0][: len(lines[0]) // 2],
+}
+
+
+@pytest.mark.parametrize("first", SEQ_0.values(), ids=SEQ_0.keys())
+def test_a_case_card_without_a_readable_seq_0_is_404(
+    env: Env,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    first: Callable[[list[str]], str | None],
+) -> None:
+    content = first(_first_lines(tmp_path))
+    case = _start_as(env, "live-9", TASKS[0])
+    try:
+        user = login(env.http, "user", "live-9")  # while its seq 0 is readable
+        run = env.root / "live" / "live-9" / "live-9"
+        (run / MANIFEST).write_text('{"split": "train"}')  # still servable
+        if content is None:
+            (run / EVENTS).unlink()
+        else:
+            (run / EVENTS).write_text(content)
+        asked = _spy_cards(env, monkeypatch)
+        got = _card(env, "/api/cases/live-9/card", user)
+        assert got == (404, {"error": "unknown case"})
+        assert asked == []
+    finally:
+        case.close()

@@ -2,10 +2,13 @@
 
 Root-run (L+G), driven by ``mk/mod.mk``. One subcommand per step group:
 
-- ``select`` (steps 1-2): up to 60 real base-9B Fast turns (S0 labels, §9 E1) from
+- ``select`` (steps 1-2): up to 60 real Fast turns from one explicit label source
+  (``base_9b``: base-9B turns, S0 labels, §9 E1; ``hosted``: one hosted model's turns,
+  ``--label-model <endpoint>:<model_id>``, the user's decision of 2026-09-28) in
   evidence bundles whose renderer fingerprints equal the current ones (the lane
   profiles in ``kernel.lanes.PROFILE``, exactly), built into rows
-  through ``training.dataset`` (``render_prompt`` only) with P5 on every row.
+  through ``training.dataset`` (``render_prompt`` only) with P5 on every row, and
+  each row's provenance next to them.
 - ``slot`` (step 4): ``<name>=<path>`` for serving's ``PL_TRAINED_ADAPTER``.
 - ``check`` (steps 5-8): liveness through the slot, then one product-path session with
   both lanes on the adapter (``proxyloop.cli session --claim``: ``run_session`` and
@@ -29,14 +32,26 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, get_args
 
 import httpx
 
 from proxyloop.contract.base import Lane, canonical_json, sha256_text
 from proxyloop.contract.bundle import Bundle, read_bundle
-from proxyloop.contract.llm import AdapterKind, LLMCallRecord
-from proxyloop.contract.protocol import ParseIssue, fingerprint, parse_turn
+from proxyloop.contract.events import Event
+from proxyloop.contract.llm import (
+    AdapterKind,
+    Endpoint,
+    LLMCallRecord,
+    TextRequest,
+    request_content,
+)
+from proxyloop.contract.protocol import (
+    ParseIssue,
+    fingerprint,
+    parse_turn,
+    render_messages,
+)
 from proxyloop.contract.views import FastView
 from proxyloop.kernel.lanes import PROFILE  # the live lane profiles, read only
 from proxyloop.training.dataset import build_row, tokenize_row
@@ -46,7 +61,6 @@ from serving import config, liveness  # top-level MOD package: run from the repo
 Json = dict[str, Any]
 MAX_TURNS = 60
 FAST_ROLES = ("fast_user", "fast_cp")
-SOURCE = "base-9B turns (S0 labels, TRAINING §9 E1)"
 RESULT = Path("docs/results/pull-through.json")
 
 
@@ -65,12 +79,50 @@ def adapter_name(fps: dict[str, str]) -> str:
 
 
 @dataclass(frozen=True)
+class Source:
+    """Where the labels come from: a closed choice (TRAINING §3 provenance)."""
+
+    kind: Literal["base_9b", "hosted"]
+    endpoint: str
+    model_id: str
+
+    @property
+    def label(self) -> str:  # rows.json ``source``, copied into the training card
+        if self.kind == "base_9b":
+            return "base-9B turns (S0 labels, TRAINING §9 E1)"
+        return f"hosted {self.endpoint}:{self.model_id} (teacher_exec)"
+
+
+BASE_9B = Source("base_9b", "vllm", config.SERVED_NAME)
+HOSTED_ENDPOINTS = tuple(e for e in get_args(Endpoint) if e != "vllm")
+
+
+def label_source(kind: str, label_model: str | None) -> Source:
+    """``base_9b`` takes no label model; ``hosted`` needs ``<endpoint>:<model_id>``
+    on a hosted endpoint (the vLLM base is ``base_9b``)."""
+    if kind == "base_9b" and label_model is None:
+        return BASE_9B
+    if kind == "base_9b":
+        raise ValueError("--source base_9b takes no --label-model")
+    if kind != "hosted":
+        raise ValueError(f"unknown label source {kind!r}: base_9b or hosted")
+    endpoint, _, model_id = (label_model or "").partition(":")
+    if endpoint not in HOSTED_ENDPOINTS or not model_id:
+        raise ValueError(
+            f"--source hosted needs --label-model <endpoint>:<model_id> with an "
+            f"endpoint in {HOSTED_ENDPOINTS}, got {label_model!r}"
+        )
+    return Source("hosted", endpoint, model_id)
+
+
+@dataclass(frozen=True)
 class Turn:
     event_id: str  # the fast.turn event
     profile: str
     view: str  # the stored FastView JSON
     raw: str  # the model's response text, as streamed
-    prompt_sha: str  # the prompt vLLM was sent (fast.request)
+    prompt_sha: str  # what the model was sent (fast.request): a prompt or messages
+    provenance: Json  # rows.json ``provenance``, one per row
 
 
 def fast_calls(bundle: Bundle) -> list[LLMCallRecord]:
@@ -81,8 +133,63 @@ def fast_calls(bundle: Bundle) -> list[LLMCallRecord]:
     ]
 
 
-def base_turns(bundle: Bundle) -> tuple[list[Turn], Counter[str]]:
-    """Complete Fast turns the base model served over real HTTP; skips are counted."""
+def unqualified(rec: LLMCallRecord, source: Source) -> str | None:
+    """Why ``rec`` is not ``source``'s turn (a funnel key), or None."""
+    if source.kind == "base_9b":
+        real = rec.adapter_kind is AdapterKind.REAL_HTTP
+        ok = real and rec.served_model_echo == config.SERVED_NAME
+        return None if ok else "not_base_real_http"
+    real = rec.adapter_kind is AdapterKind.REAL_HTTP
+    served_by = (rec.model_ref.endpoint, rec.model_ref.model_id)
+    if not real or served_by != (source.endpoint, source.model_id):
+        return "not_label_model"
+    return None if rec.served_model_echo == source.model_id else "echo_mismatch"
+
+
+def messages_sha(view: FastView, profile: str, rec: LLMCallRecord) -> str:
+    """The sha the kernel records for a non-vLLM Fast request (kernel/lanes.py)."""
+    messages = render_messages(view, profile)
+    request = TextRequest(
+        call_id=rec.call_id,
+        role=rec.role,
+        messages=messages,
+        max_tokens=1,  # neither is part of the hashed content
+        temperature=0,
+    )
+    return sha256_text(request_content(request))
+
+
+def provenance(
+    run_id: str, turn: Event, lane: str, profile: str, rec: LLMCallRecord
+) -> Json:
+    """One row's provenance: ``resamples`` is the fast.turn's (a TeacherRepair turn;
+    None when it has none), ``attempt`` the record's HTTP attempt."""
+    ref = rec.model_ref
+    return {
+        "run_id": run_id,
+        "event_id": turn.event_id,
+        "lane": lane,
+        "profile": profile,
+        "model_ref": {
+            "endpoint": ref.endpoint,
+            "model_id": ref.model_id,
+            "reasoning_effort": ref.reasoning_effort,
+        },
+        "served_model_echo": rec.served_model_echo,
+        "request_id": rec.request_id,
+        "sampling_sent": rec.sampling_sent,
+        "resamples": turn.payload.get("resamples"),
+        "attempt": rec.attempt,
+    }
+
+
+def label_turns(
+    bundle: Bundle, source: Source = BASE_9B
+) -> tuple[list[Turn], Counter[str]]:
+    """Complete Fast turns ``source`` served over real HTTP; skips are counted. A hosted
+    turn's record must hash the request's messages, which must re-render from the
+    stored view and profile (its identity check); a base-9B turn's prompt is checked
+    in ``p5_rows``, under the tokenizer."""
     events, skipped = bundle.events, Counter[str]()
     asked = {e.payload["gen_id"]: e.payload for e in events if e.type == "fast.request"}
     cancelled = {e.payload["gen_id"] for e in events if e.type == "fast.cancelled"}
@@ -93,11 +200,11 @@ def base_turns(bundle: Bundle) -> tuple[list[Turn], Counter[str]]:
         if e.payload["gen_id"] in cancelled or rec is None or not rec.response_sha:
             skipped["cancelled_or_no_response"] += 1
             continue
-        if (
-            rec.adapter_kind is not AdapterKind.REAL_HTTP
-            or rec.served_model_echo != config.SERVED_NAME
-        ):
-            skipped["not_base_real_http"] += 1
+        if reason := unqualified(rec, source):
+            skipped[reason] += 1
+            continue
+        if source.kind == "hosted" and rec.prompt_sha != req["prompt_sha"]:
+            skipped["call_prompt_mismatch"] += 1  # the record answered another request
             continue
         if rec.finish_reason != "stop":
             skipped[f"finish_{rec.finish_reason}"] += 1
@@ -111,7 +218,13 @@ def base_turns(bundle: Bundle) -> tuple[list[Turn], Counter[str]]:
             continue
         view = bundle.prompts[str(req["view_sha"])].content
         sha = str(req["prompt_sha"])
-        turns.append(Turn(e.event_id, profile, view, raw, sha))
+        if source.kind == "hosted":
+            fast_view = FastView.model_validate_json(view)
+            if messages_sha(fast_view, profile, rec) != sha:
+                skipped["messages_sha_mismatch"] += 1
+                continue
+        prov = provenance(bundle.manifest.run_id, e, lane, profile, rec)
+        turns.append(Turn(e.event_id, profile, view, raw, sha, prov))
     return turns, skipped
 
 
@@ -124,7 +237,9 @@ def load_bundles(root: Path) -> list[Bundle]:
     return [read_bundle(d) for d in dirs if "test" not in d.parts]
 
 
-def select(bundles: Sequence[Bundle], fps: dict[str, str]) -> tuple[list[Turn], Json]:
+def select(
+    bundles: Sequence[Bundle], fps: dict[str, str], source: Source = BASE_9B
+) -> tuple[list[Turn], Json]:
     """Up to MAX_TURNS turns, newest bundle first; the funnel counts what was left."""
     funnel, chosen = Counter[str](), list[Turn]()
     newest = sorted(bundles, key=lambda b: (b.events[0].wall, b.manifest.run_id))
@@ -134,7 +249,7 @@ def select(bundles: Sequence[Bundle], fps: dict[str, str]) -> tuple[list[Turn], 
         elif b.manifest.fingerprints != fps:
             funnel["bundle_stale_fingerprint"] += 1
         else:
-            turns, skipped = base_turns(b)
+            turns, skipped = label_turns(b, source)
             funnel.update(skipped)
             chosen += turns
     kept = chosen[:MAX_TURNS]
@@ -142,13 +257,17 @@ def select(bundles: Sequence[Bundle], fps: dict[str, str]) -> tuple[list[Turn], 
     return kept, counts | {"dropped_over_cap": len(chosen) - len(kept), **funnel}
 
 
-def p5_rows(turns: Sequence[Turn], tok: Any) -> tuple[list[Turn], Json]:
-    """Rows as training builds them. A turn whose re-rendered prompt is not the one
-    served is dropped (counted); P5 on every kept row, and not ok aborts the run."""
+def p5_rows(
+    turns: Sequence[Turn], tok: Any, source: Source = BASE_9B
+) -> tuple[list[Turn], Json]:
+    """Rows as training builds them. A base-9B turn whose re-rendered prompt is not the
+    one served is dropped (counted); a hosted turn was sent messages, not this prompt,
+    and passed its own identity check in ``label_turns``. P5 on every kept row, and
+    not ok aborts the run."""
     kept, failed, drift = list[Turn](), list[Json](), 0
     for t in turns:
         row = build_row(FastView.model_validate_json(t.view), t.profile, t.raw, tok)
-        if sha256_text(row.prompt) != t.prompt_sha:
+        if source.kind == "base_9b" and sha256_text(row.prompt) != t.prompt_sha:
             drift += 1
             continue
         kept.append(t)
@@ -161,22 +280,38 @@ def p5_rows(turns: Sequence[Turn], tok: Any) -> tuple[list[Turn], Json]:
 
 
 def rows_doc(
-    turns: Sequence[Turn], funnel: Json, fps: dict[str, str], tok: Any
+    turns: Sequence[Turn],
+    funnel: Json,
+    fps: dict[str, str],
+    tok: Any,
+    source: Source = BASE_9B,
 ) -> Json:
-    """The rows JSON ``training_jobs.modal_train::pull_through`` trains on."""
-    turns, p5 = p5_rows(turns, tok)
+    """The rows JSON ``training_jobs.modal_train::pull_through`` trains on; training
+    reads ``rows`` and the card keys, never ``provenance``."""
+    turns, p5 = p5_rows(turns, tok, source)
     rows = [[t.profile, t.view, t.raw] for t in turns]
     return {
         "fingerprint": fps,
         "fp8": fp8(fps),
         "adapter_name": adapter_name(fps),
-        "source": SOURCE,
+        "source": source.label,
         "dataset_hash": sha256_text(canonical_json(rows)),
         "turns": [t.event_id for t in turns],
         "funnel": funnel,
         "p5": p5,
         "rows": rows,
+        "provenance": [t.provenance for t in turns],
     }
+
+
+def provenance_summary(rows: Json) -> Json:
+    """The label models (with their reasoning effort), row count and runs behind a
+    rows.json (the result card)."""
+    prov = rows["provenance"]
+    refs = {canonical_json(p["model_ref"]): p["model_ref"] for p in prov}
+    models = [refs[k] for k in sorted(refs)]
+    runs = sorted({p["run_id"] for p in prov})
+    return {"label_models": models, "rows": len(prov), "run_ids": runs}
 
 
 def echo_failures(bundle: Bundle, name: str) -> list[str]:
@@ -242,7 +377,7 @@ def adapter_card(mode: str, run_dir: Path) -> Json:
         if prev["fingerprint"] != current_fingerprints():
             raise SystemExit("the renderer fingerprint changed: run MODE=full")
         keys = ("fingerprint", "dataset_hash", "adapter", "adapter_shards", "p5")
-        return {k: prev[k] for k in (*keys, "training")}
+        return {k: prev[k] for k in (*keys, "training", "source", "provenance")}
     rows, train = read_json(run_dir / "rows.json"), read_json(run_dir / "train.json")
     p5 = {"ok": rows["p5"]["ok"] and train["p5"]["ok"], "rows": rows["p5"]["rows"]}
     return {
@@ -255,6 +390,8 @@ def adapter_card(mode: str, run_dir: Path) -> Json:
         "adapter_shards": train["adapter_sha256"],
         "p5": p5 | {"on": "every row locally and the first real training batch"},
         "training": {k: train[k] for k in ("run_id", "recipe", "lora", "batch_note")},
+        "source": rows["source"],
+        "provenance": provenance_summary(rows),
     }
 
 
@@ -305,15 +442,21 @@ def main(argv: list[str] | None = None) -> int:
     for p in (slot_p, check_p):
         p.add_argument("--mode", choices=("full", "verify"), required=True)
     select_p.add_argument("--evidence", default="evidence/s0")
+    select_p.add_argument("--source", choices=("base_9b", "hosted"), required=True)
+    select_p.add_argument("--label-model", help="hosted only: <endpoint>:<model_id>")
     check_p.add_argument("--family", default="cp-direct-discount")
     live_p = sub.add_parser("liveness")
     live_p.add_argument("--name", required=True)
     live_p.add_argument("--out", required=True)
     args = parser.parse_args(argv)
     if args.cmd == "select":
+        try:
+            source = label_source(args.source, args.label_model)
+        except ValueError as e:
+            parser.error(str(e))
         fps = current_fingerprints()
-        turns, funnel = select(load_bundles(Path(args.evidence)), fps)
-        doc = rows_doc(turns, funnel, fps, load_tokenizer())
+        turns, funnel = select(load_bundles(Path(args.evidence)), fps, source)
+        doc = rows_doc(turns, funnel, fps, load_tokenizer(), source)
         write(Path(args.dir) / "rows.json", doc)
         print(json.dumps({"funnel": funnel, "p5": doc["p5"]["ok"]}))
         return 0 if doc["p5"]["ok"] else 1
