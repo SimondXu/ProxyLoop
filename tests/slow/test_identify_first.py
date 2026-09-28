@@ -91,3 +91,29 @@ def test_the_identify_line_follows_the_newest_identify_sent(tmp_path: Path) -> N
     assert second.identify == "waiting"
     line = "identify: sent, not heard yet (wait; do not send it again)"
     assert line in second.lines()
+
+
+HOLD = {"tool": "guide_fast", "move": "hold_for_fact"}
+
+
+def test_the_identify_line_survives_a_superseded_second_identify(
+    tmp_path: Path,
+) -> None:
+    """S1-SYS-74 N1: identify #1 is answered; identify #2 is replaced by a
+    later GUIDE before any turn voices it (dead, superseded, never tried:
+    S1-SYS-67). The bar still shows the first identify's answer, not nothing
+    (``state._states`` must read every one of ``mine``, never only the
+    newest, or a superseded newest hides an answered one)."""
+    h = Host(tmp_path)
+    said = h.emit("user.msg", "kernel", {"text": "My last 4 are 4821."})
+    record = {"tool": "record_fact", "key": "account.last4", "value": "4821"}
+    h.act(record | {"utt_ref": said.event_id})
+    h.call()
+    h.act(IDENTIFY)
+    h.voice()  # heard whole
+    h.rep("cp-1", "Thanks, one moment.")
+    h.act(IDENTIFY, HOLD)  # the second identify, replaced unvoiced by HOLD
+    h.voice()  # voices HOLD, the newest cp guide; the identify never played
+    bar = state.bar(h.bb, "full", h.tools)
+    assert bar.identify == "answered"
+    assert "identify: heard by the rep, who has answered since" in bar.lines()

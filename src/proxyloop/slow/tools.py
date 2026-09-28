@@ -306,8 +306,9 @@ class SlowTools:
         stated = [s for s in guide.slots if s.startswith("fact:")]
         if guide.move == GuideMove.IDENTIFY and not stated:  # S1-SYS-74 D1
             text = (  # else FastC is told to identify with nothing, and refuses
-                "identify needs a fact:<key> slot; with no identity fact public, send "
-                "no identify: when the representative asks, ask_user for it and "
+                "identify names each public identity fact as fact:<key> (the "
+                "readiness line lists them); if none is public, send no identify: "
+                "when the representative asks, ask_user for it and "
                 "guide_fast(hold_for_fact)"
             )
             denied = {"intent": "guide_fast", "reason": "identify_without_facts"}
