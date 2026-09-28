@@ -1584,10 +1584,10 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Rulings (root, 2026-09-27):** re-assigned to P-OBS with grants for `kernel/web.py` and `serve/cases.py` (`NotOpen` → 409 `not_open`); the "closed" guard was dropped (YAGNI: web human reps never reach `chan.closed{cp}`); a web rep hang-up control → S1-SYS-25.
 
 ### S1-SYS-62 One read-back window per offer (ADR-0020) — SYS (L-CORE) — S — review (#219) — test-first
-- **Objective** (root decision under §0.5a, 2026-09-27, on the architect's adversarial analysis of run `21988c`): keep the strict per-revision read-back rule and add one more way to confirm: revision r of offer o is confirmed by a voiced ask A for o (same cp call, open offers only) when W1 it is stable since the ask (including the implied completeness flags), W2′ every field that both the asked revision and r carry is equal (the values are stored with the ask), W3 the fields are stated together, W4 the hold is all-or-nothing. The window starts after the voicing generation's last cp `utt.delivered`, and only if every sentence of the ask was delivered uncut. Statuses are recomputed, never copied; revisions with missing required slots are excluded. The same delivered-ask filter is applied to the strict per-revision path (a pre-existing I6 bug on `main`). `readback_completion` and `readback_false_confirm` were never computed, so no data is invalidated.
+- **Objective** (root decision under §0.5a, 2026-09-27, on the architect's adversarial analysis of run `21988c`): keep the strict per-revision read-back rule and add one more way to confirm: revision r of offer o is confirmed by a voiced ask A for o (same cp call, open offers only) when W1 (stable since the ask, including the implied completeness flags), W2′ (every field that both the asked revision and r carry is equal; the values are stored with the ask), W3 (stated together) and W4 (an all-or-nothing hold). The lexical W2 check stays alongside W2′ (the rep's last lexically stated value of each field before A equals r's). The window starts after the voicing generation's last cp `utt.delivered`, and only if every sentence of the ask was delivered uncut. Statuses are recomputed, never copied; revisions with missing required slots are excluded. The same delivered-ask filter is applied to the strict per-revision path (a pre-existing I6 bug on `main`). `readback_completion` and `readback_false_confirm` were never computed, so no data is invalidated.
 - **Owned paths:** `src/proxyloop/guard/readback.py`, `src/proxyloop/guard/needs.py` (a pure extract), `src/proxyloop/slow/tools.py` (the ask record), `tests/{guard,slow}/**`, ADR-0020, ARCHITECTURE §9.2.
 - **Deps:** S1-SYS-57.
-- **Acceptance:** ≥ 10 negatives, including "$68, on a 24-month term" then "$60", a superseded ask and an undelivered ask; positives including `21988c`'s shape confirming after one ask; every existing strict test passes.
+- **Acceptance:** ≥ 10 negatives, including "$68, on a 24-month term" then "$60", a superseded ask and an undelivered ask; positives including `21988c`'s shape confirming after one ask; an ask cut mid-sentence does not anchor; a strict-path ask that was never delivered (or was cut) leaves the revision unconfirmed; the window anchors after the voicing generation's last cp `utt.delivered`; every existing strict test passes.
 - **Verify:** `uv run pytest tests/guard tests/slow -q`; `make check`.
 - **Escalate if:** any contract change, or `readback.py` passes 600 lines.
 
@@ -1822,6 +1822,7 @@ The docs gate S2 and a live correction (for example the user, playing the rep, w
 
 ### S3-ROOT-01 Semantics freeze v1 — ROOT — S — todo
 - **Objective:** tag `semantics-v1` and record in PLAN.md the hashes of the contract version, `src/proxyloop/{env,guard,slow}/**`, `tasks/families/**` and the Ear prompts. From then on, changes to those paths need an ADR and state which S3 data they invalidate.
+- **Freeze checklist:** the S1-SYS-46 S3 gate is met (the V3 close cue and V4 restatement masked in `relay_only`, or A5 redefined by ADR) before any `relay_only` run.
 - **Deps:** S2 closed.
 
 ### S3-SYS-01 Ablation mechanics in the kernel — SYS — M — todo
@@ -1830,13 +1831,14 @@ The docs gate S2 and a live correction (for example the user, playing the rep, w
   - `mute_fastu_explanations` (FastU turns triggered by `APPROVAL_NOTICE` are not delivered; the card stays);
   - `approval_without_fastu_readback`;
   - `teacher_repair_*` wiring to `models.repair` (moved to S1-SYS-02);
-  - the `relay_only` ablation (A5; ADR-0016), runnable since S1-CON-08.
+  - the `relay_only` ablation (A5; ADR-0016), blocked until the S1-SYS-46 S3 gate is met (the V3 close cue and V4 restatement masked in `relay_only`, or A5 redefined by ADR).
 - **Owned paths:** `src/proxyloop/kernel/**`, `tests/kernel/test_ablations.py`.
 - **Deps:** S3-ROOT-01.
 - **Acceptance:**
   - per ablation, a test shows exactly the intended edge removed and nothing else (the event diff against a paired baseline run on recorded fakes);
   - live mode records the ablation in the manifest;
-  - `make evidence-check RUN=<dir> MODE=claim` refuses ablation bundles for product claims.
+  - `make evidence-check RUN=<dir> MODE=claim` refuses ablation bundles for product claims;
+  - a `relay_only` test asserts that Slow's rendered context contains no transcript-derived bar line.
 
 ### S3-MOD-01 Ablation matrix spec and causal report — MOD — M — todo
 - **Objective:** `eval/ablations.py` and `specs/s3_ablations.yaml` (EVAL §4.2, §8.3), with paired estimators for `f̂_repair`, the relay dependence and the Slow compensation → `docs/results/s3-ablations.json`.

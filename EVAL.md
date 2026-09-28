@@ -75,7 +75,7 @@ Hosted latency goes through a relay: it is reported as relay-measured and labell
 | A2 | `{mute_fastu_explanations}` (the approval card is intact; FastU's text about it is withheld) | does FastU's explanation change approvals? |
 | A3 | lane swap: `fast_user=sonnet, fast_cp=qwen9b` and the reverse | which lane holds the headroom? |
 | A4 | `{teacher_repair_cp}`, `{teacher_repair_user}` | the share of failures a better Fast fixes |
-| A5 | `slow_view=relay_only` (ADR-0016) | how much Slow depends on seeing the conversations (**ablation only**) |
+| A5 | `slow_view=relay_only` (ADR-0016) | how much Slow depends on seeing the conversations (**ablation only**); blocked until the S1-SYS-46 S3 gate (PLAN) is met |
 | A6 | `{approval_without_fastu_readback}` | does the read-back step in FastU matter to approval correctness? |
 
 Since ADR-0016 (2026-09-27) the live Slow reads both transcripts (`slow_view=transcript`, the default). `cfg_hash` separates `transcript` from `relay_only` bundles, including every bundle from before the change (`evidence/s0` is `relay_only`), and they are never pooled.
