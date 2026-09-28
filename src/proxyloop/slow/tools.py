@@ -87,8 +87,7 @@ class SlowTools:
         # the s2f msg ids of the read-back asks of each offer revision: its
         # first heard one anchors the strict rule (§9.2, #219 D-B)
         self.asked: dict[tuple[str, int], list[str]] = {}
-        # the cp transcript length when the final offer was last asked (§9.3)
-        self.asked_final: int | None = None
+        self.final_asks: list[str] = []  # ask_final_offer s2f msg ids (§9.3)
         self.told_at: int | None = None  # the cp length at the last tell_user
         # the cp transcript length at every read-back ask of an offer
         # revision (ADR-0018 V4, slow.state)
@@ -98,6 +97,13 @@ class SlowTools:
         # (field: value, record_offer's): Guard's read-back windows (ADR-0020)
         self.readback_asks: dict[str, list[tuple[str, int, Ask]]] = {}
         self.received: set[str] = set()  # the relay ids SlowLoop handed to Slow
+
+    @property
+    def asked_final(self) -> int | None:
+        """``verify_no_deal``'s window: the first cp line after the last
+        ask_final_offer the rep heard (``_heard``, #219); None if none was."""
+        at = self._heard()
+        return max((at[m] for m in self.final_asks if m in at), default=None)
 
     def act(
         self, call: ToolCall, causes: Sequence[str], *, basis: int
@@ -282,8 +288,8 @@ class SlowTools:
             sent = self._s2f(lane="cp", type="GUIDE", guide=guide)
             if guide.move == GuideMove.ASK_READBACK:
                 return self._asked(bb, guide, sent)
-            if guide.move == GuideMove.ASK_FINAL_OFFER:  # the last ask (S1-SYS-57)
-                self.asked_final = len(bb.channels["cp"].lines)
+            if guide.move == GuideMove.ASK_FINAL_OFFER:  # S1-SYS-57
+                self.final_asks.append(str(sent.effects[0][1]["msg_id"]))
             if guide.move != "deflect_fact_request":
                 return sent
             text = f"{sent.text}; the rep hears a refusal to share"

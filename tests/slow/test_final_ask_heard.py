@@ -24,7 +24,6 @@ from tests.slow.test_close_levers import (
 CONCEDE = "Actually, I can waive the activation fee."  # no closing cue
 NOT_ASKED = ("final_offer_not_asked",)
 NO_REPLY = ("no_closing_reply",)
-RED = pytest.mark.xfail(strict=True, reason="S1-SYS-57: anchor at the heard ask")
 
 
 def _declined(tmp_path: Path) -> Host:
@@ -41,7 +40,6 @@ def _refused(h: Host, reasons: tuple[str, ...]) -> None:
     assert c.line().startswith(f"close: final offer {asked}; ")
 
 
-@RED
 def test_r1_a_final_ask_never_voiced_does_not_anchor(tmp_path: Path) -> None:
     """Superseded before FastC voiced it: the rep never heard it, so a closing
     line after it is no reply to it."""
@@ -52,7 +50,6 @@ def test_r1_a_final_ask_never_voiced_does_not_anchor(tmp_path: Path) -> None:
     _refused(h, NOT_ASKED)
 
 
-@RED
 @pytest.mark.parametrize("delivered", [False, True])
 def test_r2_a_final_ask_voiced_by_a_cancelled_turn_does_not_anchor(
     tmp_path: Path, delivered: bool
@@ -66,7 +63,6 @@ def test_r2_a_final_ask_voiced_by_a_cancelled_turn_does_not_anchor(
     _refused(h, NOT_ASKED)
 
 
-@RED
 def test_r3_a_final_ask_cut_mid_sentence_does_not_anchor(tmp_path: Path) -> None:
     h = _declined(tmp_path)
     h.act(FINAL)
@@ -76,7 +72,6 @@ def test_r3_a_final_ask_cut_mid_sentence_does_not_anchor(tmp_path: Path) -> None
     _refused(h, NOT_ASKED)
 
 
-@RED
 @pytest.mark.parametrize("when", ["playing", "before_voiced"])
 def test_r4_a_rep_line_said_before_the_ask_was_heard_is_no_reply(
     tmp_path: Path, when: str
@@ -96,7 +91,6 @@ def test_r4_a_rep_line_said_before_the_ask_was_heard_is_no_reply(
     _refused(h, NO_REPLY)
 
 
-@RED
 @pytest.mark.parametrize("second", ["unvoiced", "cut"])
 def test_r5_an_unheard_later_ask_leaves_the_heard_one_anchoring(
     tmp_path: Path, second: str
