@@ -33,21 +33,26 @@ const TAG: Record<string, string> = {
 const BY: Record<string, string> = { ui: "approved by you", sim_approver: "approved by the simulated approver" };
 
 /**
- * The accept's approver: its capability (Guard's action.authorized, same cap_id)
- * → the approval cards with that terms_hash and authority epoch → the kernel's
- * last grant of one of them before the authorization. An accept under your
- * limits (no such grant) says only "fixed wording".
+ * The kernel grant behind Guard's accept line: its capability (Guard's
+ * action.authorized, same cap_id) → the approval cards with that terms_hash and
+ * authority epoch → the kernel's last grant of one of them before the
+ * authorization. null for an accept under your limits (no such grant).
  */
-function acceptedBy(said: Ev, events: Ev[]): string {
+export function grantOfAccept(said: Ev, events: Ev[]): Ev | null {
   const cap = (e: Ev) => (e.payload.capability ?? {}) as { cap_id?: unknown; terms_hash?: unknown; epoch?: unknown };
   const capId = said.payload.cap_id;
   const auth = typeof capId === "string" ? events.find((e) => from(e, "action.authorized", ["guard"]) && cap(e).cap_id === capId) : undefined;
   const { terms_hash, epoch } = auth ? cap(auth) : {};
-  if (!auth || typeof terms_hash !== "string" || typeof epoch !== "number") return "fixed wording";
+  if (!auth || typeof terms_hash !== "string" || typeof epoch !== "number") return null;
   const cards = events.filter((e) => from(e, "approval.requested", ["guard"]) && e.payload.terms_hash === terms_hash && e.payload.authority_epoch === epoch);
   const ids = new Set(cards.map((e) => e.payload.approval_id));
   const granted = (e: Ev) => from(e, "approval.decided", ["kernel"]) && e.payload.decision === "granted" && ids.has(e.payload.approval_id);
-  const grant = events.filter((e) => e.seq < auth.seq && granted(e)).at(-1);
+  return events.filter((e) => e.seq < auth.seq && granted(e)).at(-1) ?? null;
+}
+
+/** The accept's approver (grantOfAccept); an accept under your limits says only "fixed wording". */
+function acceptedBy(said: Ev, events: Ev[]): string {
+  const grant = grantOfAccept(said, events);
   return (grant && BY[str(grant.payload.by)]) ?? "fixed wording";
 }
 

@@ -315,8 +315,10 @@ test("conversation view: two panes with the right speakers, heard text only, the
   // session.ended: the status line stops saying "on the call", and the banner never implies success.
   ws.send(ev("session.ended", "kernel", { reason: "abandoned", counts: {} }, { stream: "ops" }));
   await expect(page.getByLabel("Status line")).toHaveText("Session ended: the rep hung up");
-  const banner = page.getByRole("region", { name: "Outcome" });
-  await expect(banner.getByRole("heading")).toHaveText("Ended: the rep hung up. Not verified complete.");
+  // The receipt is the chat's last item, at session.ended's seq.
+  const banner = page.getByRole("region", { name: "Chat" }).getByRole("region", { name: "Outcome" });
+  await expect(banner.getByRole("heading")).toHaveText("The rep ended the call.");
+  await expect(page.getByRole("list", { name: "Chat transcript" }).getByRole("listitem").last().getByRole("region", { name: "Outcome" })).toBeVisible();
   await expect(banner).toContainText("Reason: abandoned · last case status: IN_CALL");
   await expect(banner).not.toContainText("on the call");
   await shot(page, "live-ended");
@@ -333,9 +335,10 @@ test("conversation view: Verified complete only on Guard's VERIFIED_COMPLETE", a
   await expect(page.getByLabel("Status line")).toHaveText("Status: accepted on the call, not yet verified");
   ws.send(ev("status.changed", "fast.user", { previous: "COMMITTED", status: "VERIFIED_COMPLETE" })); // not Guard: ignored
   ws.send(ev("session.ended", "kernel", { reason: "completed", counts: {} }, { stream: "ops" }));
-  const banner = page.getByRole("region", { name: "Outcome" });
-  await expect(banner.getByRole("heading")).toHaveText("Ended: the agent reported it complete. Not verified complete.");
+  const banner = page.getByRole("region", { name: "Chat" }).getByRole("region", { name: "Outcome" });
+  await expect(banner.getByRole("heading")).toHaveText("Accepted on the call. Not verified yet.");
   await expect(page.getByText("Verified complete", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Done. Verified.", { exact: true })).toHaveCount(0);
 });
 
 test("conversation view: each pane follows the newest line until the reader scrolls up, then offers Jump to latest", async ({ page }) => {
@@ -482,6 +485,7 @@ test("approval card: a fence pauses a granted accept, and a fence revoke says th
   ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
   ws.send(ev("approval.requested", "guard", CARD));
   ws.send(ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" }));
+  ws.send(ev("action.authorized", "guard", { intent: {}, capability: { cap_id: "cap-1", terms_hash: CARD.terms_hash, epoch: 2 } }));
   const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "Yes, we accept.", cap_id: "cap-1" });
   ws.send(said);
   ws.send(ev("authority.fence", "kernel", { op: "raised", fence_id: "fence-1", utt_id: `${RUN}:9` }));
@@ -493,3 +497,99 @@ test("approval card: a fence pauses a granted accept, and a fence revoke says th
   await expect(card.getByRole("note")).toHaveText("Stopped. The yes was never said to the rep.");
   await expect(card.getByLabel("Fence note")).toHaveCount(0);
 });
+
+// S1-SYS-51: the receipt, in the chat at session.ended, for every variant.
+const SPEND = { priced_micro_usd: 12_345, priced_by_role: {}, unpriced_calls: 3, unpriced_by_role: {}, gpu_time_calls: 0, tokens: 900 };
+const OFFER = {
+  offer_ref: "offer-1",
+  revision: 1,
+  terms_hash: CARD.terms_hash,
+  slots: [
+    { field: "monthly_price", value: "7500", unit: "usd_minor", status: "confirmed" },
+    { field: "term_months", value: "12", unit: "months", status: "confirmed" },
+    { field: "fees_none", value: "false", unit: "bool", status: "heard" },
+    { field: "fee:activation", value: "2000", unit: "usd_minor", status: "heard" },
+    { field: "expires", value: "none", unit: "iso", status: "confirmed" },
+  ],
+};
+
+test("receipt: Done. Verified. with the accepted terms, the confirmation, the verifier and your approval; the cost under details", async ({
+  page,
+}) => {
+  const { connected } = await mockSockets(page);
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  ws.send(ev("offer.recorded", "guard", OFFER));
+  ws.send(ev("approval.requested", "guard", CARD));
+  ws.send(ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" }));
+  ws.send(ev("action.authorized", "guard", { intent: {}, capability: { cap_id: "cap-1", terms_hash: CARD.terms_hash, epoch: 2 } }));
+  const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "Yes, we accept.", cap_id: "cap-1" });
+  ws.send(said);
+  const released = JSON.parse(ev("speak.released", "kernel", { lane: "cp", cap_id: "cap-1" }));
+  ws.send(JSON.stringify({ ...released, cause_ids: [JSON.parse(said).event_id] }));
+  ws.send(ev("evidence.recorded", "guard", { evidence_id: "ledger:CNF-8841", kind: "ledger", confirmation_id: "CNF-8841" }));
+  ws.send(ev("completion.decided", "guard", { verdict: "ok", reasons: [] }));
+  ws.send(ev("status.changed", "guard", { previous: "EVIDENCE_PENDING", status: "VERIFIED_COMPLETE" }));
+  ws.send(ev("session.ended", "kernel", { reason: "completed", counts: {}, spend: SPEND }, { stream: "ops" }));
+
+  const receipt = page.getByRole("region", { name: "Chat" }).getByRole("region", { name: "Outcome" });
+  await expect(receipt.getByRole("heading")).toHaveText("Done. Verified.");
+  await expect(receipt.getByRole("list", { name: "Accepted terms" }).getByRole("listitem")).toHaveText([
+    "Monthly price $75.00 Read back",
+    "Contract length 12 months Read back",
+    "One-time fees apply Heard, not read back",
+    "Fee: activation $20.00 Heard, not read back",
+    "No expiry date Read back",
+  ]);
+  await expect(receipt.getByText("Confirmation CNF-8841", { exact: true })).toBeVisible();
+  await expect(receipt.getByText("Verified against the company's records", { exact: true })).toBeVisible();
+  await expect(receipt.getByText(/^Approved by you at \d{1,2}:\d{2}\s[AP]M$/)).toBeVisible();
+  // The cost: session.ended's spend, formatted, behind a collapsed details; never a saving.
+  const cost = receipt.getByRole("list", { name: "Cost" });
+  await expect(cost).toBeHidden();
+  await receipt.getByText("Cost and details", { exact: true }).click();
+  await expect(cost.getByRole("listitem")).toHaveText(["Priced model calls: $0.012345", "3 calls unpriced"]);
+  await expect(receipt).not.toContainText(/sav/i);
+  await shot(page, "receipt-verified");
+});
+
+const VARIANTS: [slug: string, status: string, reason: string, heading: string][] = [
+  ["committed", "COMMITTED", "completed", "Accepted on the call. Not verified yet."],
+  ["no-deal", "VERIFIED_NO_DEAL", "no_deal", "No deal. Nothing was accepted."],
+  ["info-only", "CLOSED_NO_ACTION", "info_only", "Here's what they offered · nothing accepted (information only)"],
+  ["abandoned", "ABANDONED", "abandoned", "The rep ended the call."],
+  ["timeout", "IN_CALL", "timeout", "Stopped: the session timed out. Not completed."],
+  ["stopped", "IN_CALL", "stopped", "Stopped: the session was stopped. Not completed."],
+  ["endpoint", "IN_CALL", "llm_unavailable", "A model endpoint stopped responding, so the case stopped. ProxyLoop never switches to a backup model."],
+  ["unknown", "IN_CALL", "brand_new_reason", "Ended: brand_new_reason. Not verified complete."],
+];
+for (const [slug, status, reason, heading] of VARIANTS) {
+  test(`receipt: ${slug} (${status}, session.ended{${reason}})`, async ({ page }) => {
+    const { connected } = await mockSockets(page);
+    await page.goto(`/?live=${RUN}`);
+    const ev = events();
+    const ws = await connected;
+    ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+    ws.send(ev("offer.recorded", "guard", OFFER));
+    ws.send(ev("offer.recorded", "guard", { ...OFFER, revision: 2, slots: OFFER.slots.slice(0, 2) }));
+    ws.send(ev("status.changed", "guard", { previous: "IN_CALL", status }));
+    ws.send(ev("session.ended", "kernel", { reason, counts: {}, spend: { ...SPEND, unpriced_calls: 0 } }, { stream: "ops" }));
+    const receipt = page.getByRole("region", { name: "Chat" }).getByRole("region", { name: "Outcome" });
+    await expect(receipt.getByRole("heading")).toHaveText(heading);
+    await expect(receipt).not.toContainText("Verified against");
+    // No deal and information only list each offer's latest revision with its read-back status.
+    const offers = receipt.getByRole("list", { name: /^Offer / });
+    if (slug === "no-deal" || slug === "info-only") {
+      await expect(offers).toHaveCount(1);
+      await expect(receipt.getByRole("list", { name: "Offer offer-1, revision 2" }).getByRole("listitem")).toHaveText([
+        "Monthly price $75.00 Read back",
+        "Contract length 12 months Read back",
+      ]);
+    } else await expect(offers).toHaveCount(0);
+    await receipt.getByText("Cost and details", { exact: true }).click();
+    await expect(receipt.getByRole("list", { name: "Cost" }).getByRole("listitem")).toHaveText(["Priced model calls: $0.012345"]);
+    await shot(page, `receipt-${slug}`);
+  });
+}
