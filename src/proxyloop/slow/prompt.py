@@ -360,7 +360,8 @@ def status_bar(
         state = f"{o.status}, read-back {readback_status(o)}{ttl}"
         hints = [approval_hint(view, o, now_ms, more)]
         hints.append(mandate_hint(view, o, now_ms, more))
-        hints.append("" if more is None else more.offer_note(o))
+        lever = any(FIRST_LEVER in h or WAIT_LEVER in h for h in hints)  # #238 D2
+        hints.append("" if more is None else more.offer_note(o, lever))
         if gaps := missing_required(o):  # e6ada1: Guard's list, never inferred
             hints.append(
                 f"required slots not recorded: {', '.join(gaps)}; record them "
@@ -436,13 +437,12 @@ def approval_hint(
     if more is not None and more.waiting:  # S1-SYS-66: one lever per rep reply
         return f"{ref}{WAIT_LEVER}"
     if levers := _free(more):
-        return (
-            f"{ref}first one lever: {levers}; request_approval only once none is left"
-        )
+        return f"{ref}{FIRST_LEVER}{levers}; request_approval only once none is left"
     return f"{ref}request_approval({o.offer_ref})"
 
 
 WAIT_LEVER = "wait for the rep to hear and answer the lever sent (levers line)"
+FIRST_LEVER = "first one lever: "  # a hint's lever step (S1-SYS-66)
 
 
 def _free(more: state.Bar | None) -> str:
@@ -495,7 +495,7 @@ def mandate_hint(
         return f"{OUTSIDE_MANDATE} → {WAIT_LEVER}; no read-back yet"
     if levers := _free(more):
         return (
-            f"{OUTSIDE_MANDATE} → first one lever: {levers}; "
+            f"{OUTSIDE_MANDATE} → {FIRST_LEVER}{levers}; "
             "ask_readback only once none is left"
         )
     ref = o.offer_ref
