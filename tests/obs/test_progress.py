@@ -142,6 +142,15 @@ def test_no_committed_offer_needs_the_levers() -> None:
     assert out["first_missing"] == "later_rung" and out["furthest"] == "lever_heard"
 
 
+def test_identified_is_the_move_past_identity() -> None:
+    r = Run()
+    r.identify()  # IDENTIFY -> DISCOVER, then the rep hangs up on silence
+    r.end("abandoned")
+    out = _run(r)
+    assert _status(out)["identified"] == "reached"
+    assert out["first_missing"] == "discount_asked"
+
+
 def test_a_lever_before_the_first_offer_is_not_a_lever_sent() -> None:
     r = Run()
     r.identify()

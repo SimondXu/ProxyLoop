@@ -150,12 +150,14 @@ def test_slow_refusals_break_out_naming() -> None:
     u = r.tool("record_offer", False, "invalid_args", unsaid)
     shape = r.tool("record_offer", False, "invalid_args", offer_slots.refused(
         ["unknown field 'x'"]))  # fmt: skip
+    echo = r.tool("share_fact", False, "invalid_args", generic)  # not record_offer
     old = r.tool("finish", False, None)  # uncoded (before S1-SYS-21)
     got = _item(r, "slow_refusals")
-    assert got["count"] == 5
-    assert got["seqs"] == [r.seq(s) for s in (bad, g, u, shape, old)]
-    assert got["by_code"] == {"invalid_args": 4, "none": 1}
-    assert got["by_tool"] == {"finish": 1, "guide_fast": 1, "record_offer": 3}
+    assert got["count"] == 6
+    assert got["seqs"] == [r.seq(s) for s in (bad, g, u, shape, echo, old)]
+    assert got["by_code"] == {"invalid_args": 5, "none": 1}
+    assert got["by_tool"] == {"finish": 1, "guide_fast": 1, "record_offer": 3,
+                              "share_fact": 1}  # fmt: skip
     by = {"fee:generic_word": 1, "fee:not_said": 1}
     assert got["naming"] == {"count": 2, "seqs": [r.seq(g), r.seq(u)], "by": by}
 
@@ -187,6 +189,15 @@ def test_confirm_accept_after_a_released_accept(
     got = _item(r, "sys72_activation")
     assert got["confirm_after_release"] == ([r.seq(confirm)] if count else [])
     assert got["count"] == count and got["confirmed_by_free_speech"] == []
+
+
+def test_a_commit_on_the_released_accept_is_not_free_speech() -> None:
+    r = Run()
+    r.record(r.offer("ask_discount", 0, "save-1"))
+    utt = r.release(r.verbatim(r.authorize(_granted(r))))
+    r.commit(utt, "save-1")  # the rep committed on Guard's own accept line
+    got = _item(r, "sys72_activation")
+    assert got["count"] == 0 and got["confirmed_by_free_speech"] == []
 
 
 def test_a_commit_confirmed_by_free_speech_is_listed() -> None:
@@ -252,6 +263,16 @@ def test_stop_to_grant(outcome: str) -> None:
                     "never": None}[outcome],
         "delay_ms": delay,
     }]  # fmt: skip
+
+
+def test_a_stop_without_a_card_pairs_the_next_sim_post() -> None:
+    r = Run()
+    said, msg = _stop(r, r.policy("DISCOVER", "OFFER", "offer", "save-1", 0))
+    r.post(r.start, "granted", "ui")  # the user's own button: no sim grant
+    sim = r.post(r.request(), "granted", "sim_approver")
+    stop = _item(r, "stop_to_grant")["stops"][0]
+    assert stop["post"] == r.seq(sim) and stop["delivered"] == r.seq(msg)
+    assert stop["stop"] == r.seq(said)
 
 
 def test_a_ui_post_is_no_sim_grant_and_no_stop_no_item() -> None:
