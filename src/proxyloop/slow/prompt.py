@@ -5,8 +5,11 @@ prompt swaps whole sentences of it (ADR-0016)."""
 
 from __future__ import annotations
 
+import hashlib
 import json
+from pathlib import Path
 
+import proxyloop
 from proxyloop.contract import base
 from proxyloop.contract.config import SlowViewMode
 from proxyloop.contract.llm import ToolSpec
@@ -228,25 +231,58 @@ _HEAD = (  # SlowLoop's task head as a template: tests/slow/test_slow_fp.py pins
 )
 
 
+_PACKAGE = Path(proxyloop.__file__).parent  # the installed package, not the CWD
+_SOURCES = ("slow", "guard")  # the bar's close/verify semantics come from Guard
+
+
+def sources_sha(root: Path) -> str:
+    """The sha256 over every ``*.py`` under ``root``'s ``slow/`` and ``guard/``,
+    sorted by relative path: each file's path, its length and its bytes. A
+    root without them (an install that ships no sources) raises: an empty
+    hash would pool every such run."""
+    files = sorted(
+        (f.relative_to(root).as_posix(), f)
+        for d in _SOURCES
+        for f in (root / d).rglob("*.py")
+    )
+    if not files:
+        raise RuntimeError(f"no slow/ or guard/ sources under {root}")
+    h = hashlib.sha256()
+    for rel, f in files:
+        data = f.read_bytes()
+        h.update(f"{rel}\0{len(data)}\0".encode())
+        h.update(data)
+    return h.hexdigest()
+
+
 def fp_inputs(mode: SlowViewMode, kind: state.Kind) -> dict[str, object]:
-    """What ``slow_fp`` hashes (ADR-0018 V6, S1-SYS-43), exactly these four:
-    the mode's system prompt (``system(mode)``), the ACT tool spec (name,
-    description, JSON schema), ``PLAYBOOK[kind]`` and the task head's fixed
-    wording (``_HEAD``; the brief, kind, keys and playbook as placeholders).
-    Not hashed, though they shape Slow's requests too: the status bar's and
-    ``state.Bar``'s wording, ``note``, the tool result texts, ``MAX_TOKENS``
-    and ``loop.WINDOW``; per run, the brief, the keys and the notes."""
+    """What ``slow_fp`` hashes (ADR-0018 V6, S1-SYS-43; the main root's M1
+    decision): the mode's system prompt (``system(mode)``), the ACT tool spec
+    (name, description, JSON schema), ``PLAYBOOK[kind]``, the task head's
+    fixed wording (``_HEAD``), ``MAX_TOKENS``, ``loop.WINDOW`` and
+    ``sources_sha`` of the installed package's ``slow/`` and ``guard/``
+    modules, so the status bar, ``state.Bar``, ``note``, the tool results and
+    Guard's close and verify rules are covered through their source. Any
+    edit under ``slow/`` or ``guard/``, a comment too, changes ``slow_fp``:
+    by design. Not hashed: the per-run brief, keys and notes, and the models
+    (``session.started.models`` names them)."""
+    from proxyloop.slow import loop  # loop imports this module
+
     return {
         "system": system(mode),
         "act": ACT.model_dump(mode="json"),
         "playbook": PLAYBOOK[kind],
         "head": _HEAD,
+        "max_tokens": MAX_TOKENS,
+        "window": loop.WINDOW,
+        "sources": sources_sha(_PACKAGE),
     }
 
 
 def slow_fp(mode: SlowViewMode, kind: state.Kind) -> str:
-    """``session.started.slow_fp``: the sha256 of ``fp_inputs`` as canonical
-    JSON, so runs with different Slow harnesses are never pooled."""
+    """``session.started.slow_fp``, computed once per session: the sha256 of
+    ``fp_inputs`` as canonical JSON, so runs with different Slow harnesses
+    are never pooled."""
     return base.sha256_text(json.dumps(fp_inputs(mode, kind), sort_keys=True))
 
 
