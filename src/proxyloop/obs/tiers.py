@@ -37,9 +37,11 @@ One tier per run, first match wins:
   (``slow/authority.py`` ``_grant_event``; ``eval.metrics._chain``'s idea).
   None when there is no commit (``no_commit``), a grant is not cited
   (``no_grant``) or the accepts disagree (``chain_ambiguous``).
-- **S**: ESCALATED after the user's stop, an ``authority.epoch{f2s_revoke}``
-  before it (correct, and never an A/B); any other ESCALATED (a replan that
-  gave up) is **F** ``escalated``.
+- **S** (S1-SYS-90, ``stops.py``): ESCALATED after the user's stop (correct,
+  and never an A/B): a user stop, then a revoke (FastU's, or in a sim run
+  Slow's), then no NEEDS_REPLAN of another cause before the last ESCALATED;
+  the extra cites ``stop_seq``, ``revoke_seq`` and ``replan_seq``. Any other
+  ESCALATED (a replan that gave up) is **F** ``escalated``.
 - **F-infra**: the end reason is ``world_error`` or ``llm_unavailable``.
 - **F**: any other status not in ``CLOSES``; the reason is the end reason.
 - VERIFIED_NO_DEAL or CLOSED_NO_ACTION (``task_kind: info_only`` with an
@@ -73,6 +75,7 @@ from typing import cast
 
 from proxyloop.contract.events import Event
 from proxyloop.obs.detectors import DETECTORS, Inputs, Value, as_dict, detector, safe
+from proxyloop.obs.stops import stopped
 
 # ``env.tasks.schema.MONEY`` (plain ASCII dollars) and the monthly-price term
 # (``contract.state.READBACK_FIELD``); obs may not import env, test_tiers pins.
@@ -446,18 +449,6 @@ def _grade(x: Inputs, status: object, end: object, v: Mapping[str, object]) -> G
     return tier, reason, extra | {"confirmed_by_free_speech": flagged}
 
 
-def _stopped(x: Inputs) -> bool:
-    """The user's stop: an authority.epoch{f2s_revoke} (FastU's revoke,
-    kernel/fence.py) before the status.changed to ESCALATED."""
-    esc = [
-        e.seq for e in x.of("status.changed") if e.payload.get("status") == "ESCALATED"
-    ]
-    return bool(esc) and any(
-        b.seq < esc[-1] and b.payload.get("reason") == "f2s_revoke"
-        for b in x.of("authority.epoch")
-    )
-
-
 def _graded(
     x: Inputs,
     closed: tuple[object, object],
@@ -470,7 +461,8 @@ def _graded(
     if status == "VERIFIED_COMPLETE":
         return _grant(x, auths)
     if status == "ESCALATED":  # else a replan that gave up: not the user's stop
-        return ("S", "user_stop", {}) if _stopped(x) else ("F", "escalated", {})
+        cited = stopped(x)
+        return ("S", "user_stop", cited) if cited else ("F", "escalated", {})
     if end in INFRA:
         return "F-infra", str(end), {}
     if status not in CLOSES:
