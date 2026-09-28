@@ -4,9 +4,7 @@
 // only PAYLOAD_KEYS: never text_generated, an s2f text or a summary's text
 // (I5), and it never credits a grant that did not happen (I6): "said" needs the
 // kernel's delivery of the same generation, not just the voice's s2f.voiced,
-// and the yes names an approver only on the approval grant Guard cites. One
-// reading is not ours: a GUIDE "replaced" is heard.fates' superseded rule,
-// mirrored as is (it checks no actor), and pinned against it (replaced()).
+// and the yes names an approver only on the approval grant Guard cites.
 import type { CardView } from "./approval";
 import { from } from "./authority";
 import { callHead, grantOfAccept } from "./conversation";
@@ -179,13 +177,15 @@ export function timeline(events: Ev[]): Step[] {
 /** The msg ids of the cp GUIDEs a later one replaced before any turn voiced them: exactly slow/heard.py
  * fates' `superseded` (S1-SYS-67), pinned by tests/web/test_superseded.py and superseded.test.ts. For each
  * consecutive pair (old, new) of cp s2f.msg with a guide: old is cited by no s2f.voiced, and no cp
- * fast.request between them has a generation still open (neither cancelled nor turned). No actor check,
- * like heard.fates: a voiced citing it by any actor keeps it "Passed to the voice". */
+ * fast.request between them has a generation still open (neither cancelled nor turned). With the rail's
+ * actor check (heard.fates has none; on a single-writer log they agree): the GUIDEs by guard, the rest by
+ * fast.cp, the lane's own voice. */
 function replaced(events: Ev[]): Set<string> {
-  const voiced = new Set(events.filter((e) => e.type === "s2f.voiced").map((e) => str(get(e, "msg_id"))));
-  const ended = new Set(events.filter((e) => e.type === "fast.cancelled" || e.type === "fast.turn").map((e) => str(get(e, "gen_id"))));
-  const open = events.filter((e) => e.type === "fast.request" && get(e, "lane") === "cp" && !ended.has(str(get(e, "gen_id")))).map((e) => e.seq);
-  const guides = events.filter((e) => e.type === "s2f.msg" && get(e, "lane") === "cp" && get(e, "guide"));
+  const cp = (e: Ev, type: string) => from(e, type, ["fast.cp"]);
+  const voiced = new Set(events.filter((e) => cp(e, "s2f.voiced")).map((e) => str(get(e, "msg_id"))));
+  const ended = new Set(events.filter((e) => cp(e, "fast.cancelled") || cp(e, "fast.turn")).map((e) => str(get(e, "gen_id"))));
+  const open = events.filter((e) => cp(e, "fast.request") && get(e, "lane") === "cp" && !ended.has(str(get(e, "gen_id")))).map((e) => e.seq);
+  const guides = events.filter((e) => from(e, "s2f.msg", ["guard"]) && get(e, "lane") === "cp" && get(e, "guide"));
   const out = new Set<string>();
   guides.forEach((old, i) => {
     const next = guides[i + 1];
