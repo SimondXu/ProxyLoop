@@ -17,7 +17,7 @@ from proxyloop.contract.config import SlowViewMode
 from proxyloop.contract.llm import ChatMessage
 from proxyloop.contract.views import SlowView, view_slow
 from proxyloop.kernel.watchdog import Abort
-from proxyloop.slow import prompt, transcript
+from proxyloop.slow import asks, prompt, transcript
 from proxyloop.slow.tools import SlowTools, case_ref
 
 if TYPE_CHECKING:
@@ -38,7 +38,7 @@ class SlowLoop:
         self._mode = host.cfg.slow_view
         reads = self._mode is SlowViewMode.TRANSCRIPT
         self.tools = SlowTools(host, keys, case_ref(host.task.id), transcript=reads)
-        self._keys, self._cursor = keys, transcript.Cursor()
+        self._cursor = transcript.Cursor()
         self._head = (
             f"TASK: {brief}\nSHAREABLE FACT KEYS (record_fact uses exactly these "
             f"keys, whatever a relay calls them): {', '.join(sorted(keys))}"
@@ -108,7 +108,8 @@ class SlowLoop:
         wake = basis | {"wake_reasons": list(reasons)}
         started = host.emit("slow.step.started", "slow", wake, []).event_id
         wakes = f"[WAKE] {', '.join(reasons)}"
-        bar = prompt.status_bar(view, self._keys, host.bb.t_ms)  # Guard's clock
+        now = host.bb.t_ms  # Guard's clock
+        bar = prompt.status_bar(view, now, asks.intake(host))
         reads = self._mode is SlowViewMode.TRANSCRIPT
         relays = [prompt.note(r, quoted=reads) for r in new]
         text = stub = "\n".join([wakes, *relays, bar])

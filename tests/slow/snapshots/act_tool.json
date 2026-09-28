@@ -70,6 +70,12 @@
       "key": {
        "type": "string"
       },
+      "keys": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
       "move": {
        "enum": [
         "open_call",
@@ -148,6 +154,7 @@
         "guide_fast",
         "record_fact",
         "record_offer",
+        "start_call",
         "share_fact",
         "propose_mandate",
         "tighten_mandate",

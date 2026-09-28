@@ -103,11 +103,11 @@ async function say(page: Page, text: string) {
 async function toCard(page: Page) {
   const id = await start(page, "sim");
   await onlyFakes(page, ["fast_user", "fast_cp", "slow", "ear", "mouth"]);
-  // The world's rep is labelled on every frame: the honesty band and both panes (the user is the person here).
+  // The world's rep is labelled on every frame: the honesty band and the call column; not the chat (the user is the person here).
   await expect(page.getByRole("note", { name: "Simulated parties" })).toHaveText(SIM_REP);
-  for (const frame of [page.getByRole("region", { name: "Chat" }), page.getByRole("region", { name: "Call" })]) {
-    await expect(frame.getByLabel("Simulated parties")).toHaveText(SIM_REP);
-  }
+  await expect(page.getByRole("region", { name: "Call" }).getByLabel("Simulated parties")).toHaveText(SIM_REP);
+  await expect(page.getByRole("region", { name: "Chat" }).getByLabel("Simulated parties")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Call" })).toContainText("Rep (simulated)");
   // Every model is a test_fake: the band says so (I8), before any model would have spoken.
   await expect(page.getByText("Scripted test run · no models called")).toBeVisible();
   await say(page, TASK_SAID);
@@ -170,7 +170,7 @@ test.describe("approve", () => {
     await expect(page.getByLabel("Status line")).toHaveText("Status: accepted on the call, not yet verified");
     const call = page.getByRole("list", { name: "Call transcript" });
     await expect(call).toContainText(`Agent: ${String(accept.payload.text)}`);
-    await expect(call.getByRole("listitem").filter({ hasText: "AI disclosure (fixed text)" })).toHaveCount(1);
+    await expect(call.getByRole("listitem").filter({ hasText: "AI disclosure · fixed wording" })).toHaveCount(1);
     await shot(page, "demo-live-conversation");
 
     // c) the replay UI, from /api/bundles: the same run and the same chain.
@@ -262,14 +262,19 @@ test.describe("human rep", () => {
     await started.getByRole("link", { name: "open the live page" }).click();
     await expect(page).toHaveURL(`/?live=${id}`);
     await onlyFakes(page, ["fast_user", "fast_cp", "slow"]);
-    await expect(page.getByRole("heading", { name: "Call · Agent / Rep / Call" })).toBeVisible(); // a person, not the world
+    await expect(page.getByRole("heading", { name: "Call with the company" })).toBeVisible();
     await expect(page.getByLabel("Simulated parties")).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Call" })).not.toContainText("(simulated)"); // a person, not the world
 
     // The user's own words and the case agent's private summary never reach the rep.
     const secret = "My limit is 65 dollars a month, keep that between us.";
     await say(page, secret);
+    // Readiness first (S1-SYS-21): the user answers the identity ask in its own message, so the call opens ready.
+    await expect(page.getByRole("list", { name: "Chat transcript" })).toContainText(ASK, FLOW);
+    await say(page, IDENTITY);
     const transcript = rep.getByRole("list", { name: "Call transcript" });
     await expect(transcript.getByRole("listitem").nth(1)).toHaveText(/^Agent: Hello, this is an AI assistant/, FLOW);
+    await expect(transcript).toContainText("Agent: The account holder is", FLOW); // Guard-shared facts, not the user's words
 
     const offer = "I can offer you 70 dollars a month on a 24-month term.";
     const readback = "Here are the full terms: 70 dollars a month; a 24-month term; no fees; no other changes; no expiry.";
@@ -287,10 +292,11 @@ test.describe("human rep", () => {
     expect(of(events, "utt.final", { speaker: "partner" }).map((e) => e.payload.text)).toEqual([offer, readback]);
     const hidden = [
       secret,
+      IDENTITY,
       ...of(events, "summary.updated").map((e) => String(e.payload.text)),
       ...of(events, "utt.delivered", { lane: "user" }).map((e) => String(e.payload.text_heard)),
     ];
-    expect(hidden.length).toBeGreaterThan(2);
+    expect(hidden.length).toBeGreaterThan(3);
     for (const text of hidden) await expect(rep.locator("body")).not.toContainText(text);
     expect(repSockets).toEqual([`/ws/rep/${id}?from_seq=0`]);
     const api = repHttp.filter((p) => p.startsWith("/api/") || p.startsWith("/ws/"));
