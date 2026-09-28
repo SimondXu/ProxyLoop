@@ -30,6 +30,7 @@ CALL = re.compile(
     r"|(?:request_approval|accept_offer|decline_offer)\((?P<ref>[^)]+)\)"
     r"|guide_fast\((?P<move>[a-z_]+)[,)]"
     r"|(?P<tool>ask_final_offer|propose_mandate)"
+    r"|finish\((?P<finish>escalate)"  # S1-SYS-83: the stop act
 )
 ENTRY = re.compile(r"; (?=[a-z0-9-]+ r\d+ \()")  # where an offer entry starts
 
@@ -57,7 +58,9 @@ def next_steps(h: Host) -> set[str]:
         elif line.startswith("levers: available: "):
             free = line.removeprefix("levers: available: ").split(";", 1)[0]
             out |= {m.split(" ", 1)[0] for m in free.split(", ") if m != "none"}
-        elif line.startswith(("case: ", "approvals: ", "request: ", "close: ")):
+        elif line.startswith(
+            ("case: ", "approvals: ", "request: ", "close: ", "stop: ")
+        ):
             out |= _targets(line)
     return out
 
@@ -177,6 +180,35 @@ def granted(h: Host) -> None:
     h.emit("status.changed", "guard", back, [ev.event_id])
 
 
+STOP = "Stop, do not accept anything. I will keep my current plan for now."
+
+
+def stop_relayed(h: Host) -> None:
+    """S1-SYS-83: the SimUser's stop after the card; FastU relays it as a
+    revoke; the kernel bumps the epoch (f2s_revoke), which stales the
+    pending card: NEEDS_REPLAN (kernel/fence.py, played here)."""
+    said = h.emit("user.msg", "kernel", {"text": STOP})
+    relay = {"msg_id": f"r1:{len(h.bus.events)}", "lane": "user", "gen_id": "u"}
+    relay |= {"utt_ref": said.event_id, "type": "REVOKE", "text": "the user said stop"}
+    got = h.emit("f2s.msg", "fast.user", relay, [said.event_id])
+    h.tools.received.add(str(relay["msg_id"]))
+    bump = {"new": h.bb.epoch + 1, "reason": "f2s_revoke"}
+    bumped = h.emit("authority.epoch", "kernel", bump, [got.event_id])
+    stale = {"previous": "AWAITING_APPROVAL", "status": "NEEDS_REPLAN"}
+    h.emit("status.changed", "guard", stale, [bumped.event_id])
+
+
+TOLD = {"tool": "tell_user", "text": "Nothing was accepted; the case is stopped."}
+ESCALATE = {"tool": "finish", "outcome": "escalate", "summary": "the user stopped"}
+
+
+def escalated(h: Host) -> None:
+    """The stop line's one act: tell_user, then finish(escalate)."""
+    told, done = h.act(TOLD, ESCALATE)
+    assert told.startswith("tell_user: ") and done == "finish: case closed", done
+    assert h.bb.public.status.value == "ESCALATED" and h.ended == ["escalate"]
+
+
 # each family: its mandate, then (state, the step to it, the one next step)
 # each family (tasks/families/*.yaml): its mandate, then (state, the step to
 # it, the one next step). The rep states price and term; the read-back
@@ -248,6 +280,8 @@ WALKS: dict[str, tuple[dict[str, int], list[tuple[str, Step | None, str | None]]
             ("keep-2 read-back asked", ask_readback("keep-2"), "keep-2"),
             ("keep-2 read back", reveal("keep-2", 73, 12, None), "keep-2"),
             ("card pending", request("keep-2"), None),
+            ("stop relayed, card stale", stop_relayed, "escalate"),
+            ("escalated", escalated, None),
         ],
     ),
 }

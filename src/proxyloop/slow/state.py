@@ -7,17 +7,31 @@ the board and of Slow's own asks: each calls Guard's own predicates
 closing-cue list, and only as an utt id. The levers line's sent levers are
 Slow's own GUIDEs and their fates (``slow.heard``, S1-SYS-66): state, not
 transcript text, as is the identify line: the identify's delivery (S1-SYS-74).
+The stop line (S1-SYS-83) reads the board: FastU's typed REVOKE relay, the
+case status and the released accepts. The close line's unrecorded amounts
+read only what Slow's view holds of the closing reply: its line as heard
+(``transcript``) and the cp relays citing it (both modes).
 """
 
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Literal
 
 from proxyloop.contract.messages import Guide, GuideMove
-from proxyloop.contract.state import Blackboard, ChannelState, Line, OfferPublic
+from proxyloop.contract.state import (
+    Blackboard,
+    CaseStatus,
+    ChannelState,
+    Line,
+    OfferPublic,
+)
+from proxyloop.contract.views import SlowView
+from proxyloop.guard.capability import released_accept
+from proxyloop.guard.declass import spoken
 from proxyloop.guard.readback import has_cue, slot_statuses
 from proxyloop.guard.status import status_change
 from proxyloop.guard.verify import verify_no_deal
@@ -56,6 +70,13 @@ DISCOUNT_ANSWERED = (  # round 4: a note, not a step (the levers line has it)
 ONCE_MOVED_ON = (
     f"available once the rep has moved on to your request ({IDENTIFY_RULES})"
 )
+STOP = (  # S1-SYS-83 F-i: the one step, and only this step can take it
+    "stop: the user said stop and no accept was released: in this one act, "
+    "tell_user that nothing was accepted and the case is stopped, then "
+    "finish(escalate, summary); once this step completes the case is back "
+    "IN_CALL and can no longer be escalated"
+)
+STOPPED = "not after the user's stop"  # the levers line's label then
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,12 +94,19 @@ class Close:
     def outcome(self) -> str:
         return "info_only" if self.kind == "info_only" else "no_deal"
 
-    def line(self) -> str:
+    def line(self, unrecorded: Sequence[str] = (), stopped: bool = False) -> str:
+        """``unrecorded``: amounts the closing reply states that no recorded
+        offer carries (F-m); ``stopped``: the stop line has the step (F-i)."""
         asked = "final offer asked" if self.asked else "final offer not asked"
         if self.pending:  # M1: queued or playing; asking again would repeat it
             asked = (
                 "final offer asked, not yet heard by the rep (wait for it; do not "
                 "ask again)"
+            )
+        if stopped:  # no competing "act on its reasons" (S1-SYS-83)
+            return (
+                f"close: {asked}; the user stopped the case (stop line): "
+                f"finish({self.outcome}) does not apply"
             )
         said = f"the rep's closing reply {self.reply}" if self.reply else ""
         if not self.reasons:
@@ -87,6 +115,12 @@ class Close:
             can = f"blocked: {', '.join(self.reasons)}"
         said = said or "no closing reply"
         final = self.asked and self.reply and not self.reasons  # finish passes
+        if final and unrecorded and self.kind == "full":  # F-m: an offer unrecorded
+            said += (
+                f" states {', '.join(unrecorded)}, which no recorded offer "
+                "carries: record_offer it first"
+            )
+            return f"close: {asked}; {said}; finish({self.outcome}) not before that"
         if final and not self.told:  # user.told_terms: only a final outcome
             said += "; tell_user the terms and the outcome before finish"
         return f"close: {asked}; {said}; finish({self.outcome}) {can}"
@@ -120,6 +154,37 @@ def close(
     else:
         reasons = verify_no_deal(bb, asked_final).reasons
     return Close(kind, asked_final is not None, reply, reasons, told, pending)
+
+
+def stopped(bb: Blackboard) -> bool:
+    """S1-SYS-83 F-i: FastU relayed the user's stop as a revoke (a typed
+    REVOKE relay: in the view of either mode), the case is NEEDS_REPLAN
+    (the revoke staled a pending card, or it replans for another reason) and
+    no accept was released: finish(escalate) is open for this one step."""
+    revoked = any(r.type == "REVOKE" for r in bb.f2s_pending)
+    replan = bb.public.status is CaseStatus.NEEDS_REPLAN
+    return replan and revoked and not released_accept(bb)
+
+
+def closing_said(view: SlowView, reply: str | None) -> list[str]:
+    """What Slow's view holds of the rep's closing reply ``reply``: its line
+    as heard (``transcript`` mode only) and every cp relay citing it."""
+    if reply is None:
+        return []
+    heard = view.transcripts.get("cp", ())
+    said = [x.text for x in heard if x.utt_id == reply and x.speaker == "partner"]
+    relays = [r for r in view.relays if r.lane == "cp" and r.utt_ref == reply]
+    return said + [" ".join((r.text, *(v for _, v in r.facts))) for r in relays]
+
+
+def unrecorded(offers: Iterable[OfferPublic], said: Iterable[str]) -> tuple[str, ...]:
+    """F-m: the money amounts ``said`` states (Guard's ``spoken``, the one
+    money extraction) that no recorded offer's money slot carries."""
+    carried = {
+        Decimal(s.value) / 100 for o in offers for s in o.slots if s.unit == "usd_minor"
+    }
+    amounts = {n for text in said for n in spoken(text, "usd_minor")}
+    return tuple(f"${n}" for n in sorted(amounts - carried))
 
 
 def unavailable(bb: Blackboard) -> tuple[tuple[str, str], ...]:
@@ -330,6 +395,7 @@ class Bar:
     identify: Sent | None = None  # the identify's delivery (S1-SYS-74)
     offered: bool = True  # an offer was recorded (S1-SYS-82 F-a)
     discount: Sent | None = None  # the ask_discount's delivery (S1-SYS-82)
+    stop: bool = False  # the user's stop replanned the case (S1-SYS-83)
 
     @property
     def free(self) -> tuple[str, ...]:  # the levers to try, in order
@@ -373,20 +439,26 @@ class Bar:
             + (then if self.close.kind == "full" else "")
         )
 
-    def lines(self, outside: bool = True) -> list[str]:
+    def lines(self, outside: bool = True, unrecorded: Sequence[str] = ()) -> list[str]:
         """The free levers are "available" (a next step) once the discount
         ask was answered without an offer (round 4) or, after an offer,
         while ``outside``: an open offer outside the mandate has no better
         offer before it (round 3); otherwise "after the first offer" or "for
-        an offer outside the mandate" (S1-SYS-82)."""
+        an offer outside the mandate" (S1-SYS-82). After the user's stop,
+        the stop line is the one step (S1-SYS-83). ``unrecorded``: the
+        close line's F-m amounts."""
         label = "available" if outside else "for an offer outside the mandate"
         if not self.offered:
             opened = self.discount == "answered"  # round 5: conditional
             label = ONCE_MOVED_ON if opened else "after the first offer"
+        if self.stop:
+            label = STOPPED
         levers = levers_line(self.levers, self.sends, self.slots, label)
         ident = identify_line(self.identify)
         ask = request_line(self.identify, self.offered, self.discount)
-        return [self.close.line(), levers, *(x for x in (ident, ask) if x)]
+        close = self.close.line(unrecorded, self.stop)
+        head = [STOP] if self.stop else []
+        return [*head, close, levers, *(x for x in (ident, ask) if x)]
 
 
 def bar(bb: Blackboard, kind: Kind, tools: SlowTools) -> Bar:
@@ -401,4 +473,7 @@ def bar(bb: Blackboard, kind: Kind, tools: SlowTools) -> Bar:
     sends, slots = sent(bb, tools), lever_slots(bb)
     offered = bool(bb.public.offers)
     asked = identify_sent(bb, tools, GuideMove.ASK_DISCOUNT)
-    return Bar(shut, unavailable(bb), readbacks, sends, slots, ident, offered, asked)
+    return Bar(
+        shut, unavailable(bb), readbacks, sends, slots, ident, offered, asked,
+        stopped(bb),
+    )  # fmt: skip
