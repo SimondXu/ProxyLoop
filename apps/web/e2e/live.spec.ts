@@ -857,8 +857,9 @@ test("approval card: the hold line counts up from FastC's chan.hold while the ca
 });
 
 /**
- * Every element of the approval card, in document order: its tag, every attribute (name=value), and every computed
- * style property of the element, its ::before and its ::after (content included); plus the rows' and the bar's text.
+ * Every element of the approval card, every <details> open, in document order: its tag, every attribute (name=value),
+ * and every computed style property of the element, its ::before and its ::after (content included); plus the rows'
+ * and the bar's text.
  */
 async function cardLook(browser: Browser, baseURL: string | undefined, priceMinor: string) {
   const context = await browser.newContext({ baseURL, reducedMotion: "reduce" });
@@ -882,6 +883,12 @@ async function cardLook(browser: Browser, baseURL: string | undefined, priceMino
   const card = page.getByRole("article", { name: "Approval ap-1" });
   await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
   await expect(card.locator(".pl-lbar-l")).toHaveCount(2);
+  // A closed <details> skips its content's layout (::details-content is content-visibility: hidden), so a size read
+  // there is not the card's: 0px or the laid-out size, by the tab's style history (the CI flake on div.pl-quote's
+  // block-size). Open every <details> in the card, checked, so the whole card is laid out and compared in one state.
+  await card.locator("details").evaluateAll((ds) => ds.forEach((d) => ((d as HTMLDetailsElement).open = true)));
+  await expect(card.locator("details")).not.toHaveCount(0);
+  await expect(card.locator("details:not([open])")).toHaveCount(0);
   await card.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
   const look = await card.evaluate((root) => {
     const all = (s: CSSStyleDeclaration) => Object.fromEntries(Array.from(s, (p) => [p, s.getPropertyValue(p)]));
