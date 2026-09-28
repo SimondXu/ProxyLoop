@@ -24,6 +24,7 @@ from collections.abc import (
     Sequence,
 )
 from pathlib import Path
+from typing import Literal
 
 import pytest
 from tests.support.fakes import RepeatingLLM
@@ -154,11 +155,13 @@ class Sim:
         gates: Mapping[str, Callable[[], Awaitable[None]]] | None = None,
         cfg: SessionConfig | None = None,
         until: Mapping[str, tuple[str, str]] | None = None,
-        rep: Channel | None = None,
+        rep: Channel | Literal["sim"] | None = None,
     ) -> None:
         """``until``: role -> (marker, response), as ``RepeatingLLM``'s;
-        ``rep``: the cp channel (a silent one the test speaks for by default)."""
-        self.vt, self.rep = VirtualTime(), Channel() if rep is None else rep
+        ``rep``: the cp channel (a silent one the test speaks for by default;
+        ``"sim"``: the world's SimRep, on the ``ear`` and ``mouth`` scripts)."""
+        self.vt = VirtualTime()
+        cp: ChannelSpec = Channel() if rep is None else rep
         self.user = Channel() if user is None else user
         lines = {**SCRIPTS, **(scripts or {})}
         self.llms: dict[str, RepeatingLLM] = {}  # a test may kill one mid-session
@@ -171,10 +174,11 @@ class Sim:
             gate = (gates or {}).get(role)
             return client if gate is None else Gated(client, gate)
 
-        specs: dict[str, ChannelSpec] = {"user": self.user, "cp": self.rep}
+        specs: dict[str, ChannelSpec] = {"user": self.user, "cp": cp}
         task, cfg = called(task or patient_task()), cfg or fake_config()
         vt = self.vt
         self.k = Kernel(cfg, task, specs, root, vt, vt.sleep, make, None)
+        self.rep = self.k.channels["cp"]
         self._run: asyncio.Task[object] | None = None
         self._rep = 0
         self.rep_turns: list[int] = []  # the next seq when each rep turn was queued
@@ -249,20 +253,23 @@ class Sim:
             1:
         ]
 
-    async def offer(self, ref: str = "o1", dollars: int = 68) -> None:
+    async def offer(
+        self, ref: str = "o1", dollars: int = 68, wait: int = 3_000
+    ) -> None:
         """The rep states an offer, Slow records it and asks for the read-back,
-        and the rep reads it back: every slot confirmed (§9.2)."""
+        and the rep reads it back: every slot confirmed (§9.2). ``wait``: for
+        each step to land (longer while a busy rep's lines wait for FastC's)."""
         self.rep_says(terms(dollars))
-        await self.vt.run_for(3_000)
+        await self.vt.run_for(wait)
         utt = [x for x in self.bb.channels["cp"].lines if x.speaker == "partner"]
         record: dict[str, object] = {"tool": "record_offer", "offer_ref": ref}
         record["offer_slots"] = slots(dollars, utt[-1].utt_id)
         ask = {"tool": "guide_fast", "move": "ask_readback", "slots": [f"offer:{ref}"]}
         out = self.act(record, ask)
         assert f"read-back asked for {ref} r" in out[-1], out
-        await self.vt.run_for(3_000)
+        await self.vt.run_for(wait)
         self.rep_says(terms(dollars))
-        await self.vt.run_for(3_000)
+        await self.vt.run_for(wait)
         self.tools.readback()
         o = self.bb.public.offers[ref]
         assert {s.status for s in o.slots} == {"confirmed"} and o.terms_hash, o
