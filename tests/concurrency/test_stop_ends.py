@@ -10,8 +10,8 @@ stops after the card; the grant waits for the stop's user fence (#262).
   no revoke, no NEEDS_REPLAN, so the bar shows no stop line. The scripted
   Slow plays the SYSTEM stop clause once the note reaches it: revoke, which
   stales the card and replans the case within the same act (delivery on the
-  bus is synchronous), then tell_user and finish(escalate): ESCALATED, but
-  tier F ``escalated`` (``obs.tiers`` counts only a user's f2s revoke).
+  bus is synchronous), then tell_user and finish(escalate): ESCALATED, tier S
+  as well (S1-SYS-90, #271: a user's stop grades S whichever lane revoked).
 
 Neither run releases an accept or decides the card after the stop.
 
@@ -143,7 +143,7 @@ def test_the_stop_after_the_card_escalates(tmp_path: Path, how: str) -> None:
         assert sim.bb.public.status is CaseStatus.ESCALATED
         _no_accept_after(sim, stop.seq)
         tier = _tier(sim)
-        want = ("S", "user_stop") if how == "revoke" else ("F", "escalated")
+        want = ("S", "user_stop")  # both paths since S1-SYS-90 (#271)
         assert (tier["tier"], tier["reason"]) == want, tier
         await sim.stop()
         _offline_ok(sim)
