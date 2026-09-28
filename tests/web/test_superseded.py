@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -45,7 +46,7 @@ class _Log:
         self.events: list[Event] = []
 
     def emit(
-        self, type_: str, actor: str, payload: dict[str, object], *causes: Event
+        self, type_: str, actor: str, payload: Mapping[str, object], *causes: Event
     ) -> Event:
         seq = len(self.events)
         e = Event(
@@ -59,7 +60,7 @@ class _Log:
             stream="agent",
             cause_ids=tuple(c.event_id for c in causes),
             epoch=0,
-            payload=payload,
+            payload=dict(payload),
         )
         self.events.append(e)
         return e
@@ -67,7 +68,8 @@ class _Log:
     def s2f(
         self, cause: Event, msg: str, lane: str, type_: str, move: str | None = None
     ) -> Event:
-        guide = None if move is None else {"move": move, "slots": []}
+        slots: list[str] = []
+        guide = None if move is None else {"move": move, "slots": slots}
         text = "An update for you." if lane == "user" else ""
         payload = {
             "msg_id": msg,
