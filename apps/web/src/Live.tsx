@@ -1,14 +1,14 @@
 // The live shell (?live=<run_id>), fed by /ws/live. The sticky header keeps the
-// honesty band, the case title and the phase stepper. By default three columns
-// (ConversationView.tsx, redesign §3.2): the chat, with the limits and approval
-// cards among its lines and the message box; the call; and the rail (AgentRail:
-// the status line, limits, steps; then the authority details and the models). With ?view=engineer, the replay's
+// honesty band. By default the v4 case (ConversationView.tsx, S1-SYS-77): the case
+// header (title, phase stepper, connection); one stream (the chat, the cards and the
+// call as call cards) above the message box; the Task details rail (AgentRail: the
+// status line, limits, steps; your role; the authority details and the models, folded). With ?view=engineer, the replay's
 // lanes, cards and drawer. It shows only what events say. Models are chosen on
 // the start page (?start); here RunSummary shows the ones session.started names.
 import { useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Drawer, Lanes, RunSummary, useDrill } from "./App";
 import { parties } from "./conversation";
-import { Panes, StatusBar, useView } from "./ConversationView";
+import { Panes, StatusBar, TechDetails, useView } from "./ConversationView";
 import { approvalCards, type CardView, type Posting } from "./approval";
 import { authorityStrip, type Strip } from "./authority";
 import { parseEvent, unechoed, type Framed, type Sent, type Stream } from "./liveState";
@@ -25,7 +25,6 @@ import { HonestyBand } from "./shell/HonestyBand";
 import { PhaseStepper } from "./shell/PhaseStepper";
 import { taskName } from "./start";
 import { termRows, whole } from "./terms";
-import { Button } from "./ui/Button";
 import { Icon } from "./ui/Icon";
 import { useEventStream } from "./useEventStream";
 import { useRoleCard, YourRole } from "./YourRole";
@@ -115,29 +114,29 @@ export function Live({ runId }: { runId: string }) {
       <RunSummary events={events} />
     </>
   );
-  const head = (
-    <div className="pl-sticky">
-      <HonestyBand h={h} />
-      <header className="bar">
-        <h1>{start ? taskName(String(start.payload.task_ref)) : "Live case"}</h1>
-        <span className="meta pl-runid">{runId}</span>
-        <PhaseStepper events={events} />
-        <Connection stream={stream} reconnect={reconnect} count />
-        {engineer && link}
-        {engineer && (
-          <label>
-            <input type="checkbox" checked={god} onChange={(e) => setGod(e.target.checked)} /> God-view
-          </label>
-        )}
-      </header>
-    </div>
+  const title = (
+    <>
+      <h1>{start ? taskName(String(start.payload.task_ref)) : "Live case"}</h1>
+      <span className="meta pl-runid">{runId}</span>
+      <PhaseStepper events={events} />
+      <Connection stream={stream} reconnect={reconnect} count />
+    </>
   );
 
   return (
     <AppShell>
       {engineer ? (
         <>
-          {head}
+          <div className="pl-sticky">
+            <HonestyBand h={h} />
+            <header className="bar">
+              {title}
+              {link}
+              <label>
+                <input type="checkbox" checked={god} onChange={(e) => setGod(e.target.checked)} /> God-view
+              </label>
+            </header>
+          </div>
           {details}
           <p className="meta">{ended ? "Run ended: the prompt drill-down reads prompts.jsonl." : PROMPTS_LATER}</p>
           {guardCards.length > 0 && <div className="pl-gcards">{guardCards.map((c) => c.el)}</div>}
@@ -147,21 +146,26 @@ export function Live({ runId }: { runId: string }) {
         </>
       ) : (
         <div className="pl-live">
-          {head}
+          <div className="pl-sticky">
+            <HonestyBand h={h} />
+          </div>
           <Panes
             events={events}
             p={who}
             announce
+            head={title}
             input={{ cards: guardCards, pending, composer: <Composer label={CHAT_LABEL} post={send} hint={CHAT_HINT} /> }}
-            rail={
+            details={
               <>
+                <AgentRail events={events} cards={cards} mandates={mandates} />
                 <details className="pl-card pl-role">
                   <summary>Your role</summary>
                   <YourRole card={role} />
                 </details>
-                <AgentRail events={events} cards={cards} mandates={mandates} />
-                {authority}
-                <RunSummary events={events} />
+                <TechDetails>
+                  {authority}
+                  <RunSummary events={events} />
+                </TechDetails>
                 {link}
               </>
             }
@@ -265,15 +269,15 @@ export function Composer({
       <div className="pl-composer-box">
         <textarea
           id={id}
-          rows={2}
+          rows={1}
           value={text}
           placeholder={label}
           disabled={!!closed}
           aria-describedby={closed ? `${id}-closed` : undefined}
           onChange={(e) => setText(e.target.value)} onKeyDown={onKey} />
-        <Button variant="primary" type="submit" disabled={busy || !!closed}>
-          Send
-        </Button>
+        <button type="submit" className="pl-send" aria-label="Send" disabled={busy || !!closed}>
+          <Icon name="send" />
+        </button>
       </div>
       {hint && (
         <p className="meta pl-composer-hint">
