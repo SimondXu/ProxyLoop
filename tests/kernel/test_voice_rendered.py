@@ -57,4 +57,5 @@ def test_a_turn_voices_only_the_guide_its_view_rendered(tmp_path: Path) -> None:
         assert guides[str(v.payload["msg_id"])] in _rendered(b, v.cause_ids[0])
     assert not [v for v in voiced if v.payload["msg_id"] == tenure]
     lines = fold(b.events).channels["cp"].lines
-    assert heard.fates(b.events, lines)[tenure] == heard.Fate("dead", None, superseded=True)
+    dead = heard.Fate("dead", None, superseded=True)
+    assert heard.fates(b.events, lines)[tenure] == dead
