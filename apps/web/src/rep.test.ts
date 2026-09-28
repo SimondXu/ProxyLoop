@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Ev } from "./replay";
-import { parseRepFrame, repLine, type RepFrame } from "./rep";
+import { callState, parseRepFrame, repLine, type RepFrame } from "./rep";
 
 // Every event type of the contract registry (ARCHITECTURE §4.2).
 // tests/web/test_rep_allowlist.py keeps this list equal to EVENT_TYPES.
@@ -108,5 +108,21 @@ describe("repLine on bare /ws/rep frames (no actor, no stream)", () => {
     expect(line(as({ actor: "fast.cp" }))).toBeNull();
     expect(line(as({ stream: "world" }))).toBeNull();
     expect(parseRepFrame(JSON.stringify({ seq: 4, type: "chan.opened" }))).toBe("no seq, type or payload");
+  });
+
+  it("callState: the latest kernel cp chan.opened or chan.closed decides whether the rep may speak (S1-SYS-61)", () => {
+    const frame = (type: string, payload: RepFrame["payload"], extra: Partial<RepFrame> = {}): RepFrame => ({ seq: 1, t_ms: 0, type, payload, ...extra });
+    const opened = frame("chan.opened", { lane: "cp" });
+    const closed = frame("chan.closed", { lane: "cp" });
+    expect(callState([])).toBe("none");
+    expect(callState([frame("utt.final", { lane: "cp", speaker: "partner", text: "hi" })])).toBe("none");
+    expect(callState([frame("chan.opened", { lane: "user" })])).toBe("none");
+    expect(callState([frame("chan.opened", { lane: "cp" }, { actor: "fast.cp" })])).toBe("none");
+    expect(callState([opened])).toBe("open");
+    expect(callState([frame("chan.opened", { lane: "cp" }, { actor: "kernel", stream: "agent" })])).toBe("open");
+    expect(callState([opened, closed])).toBe("ended");
+    expect(callState([opened, closed, opened])).toBe("open"); // a second call
+    // Neither another lane's close nor another actor's moves it.
+    expect(callState([opened, frame("chan.closed", { lane: "user" }), frame("chan.closed", { lane: "cp" }, { actor: "fast.cp" })])).toBe("open");
   });
 });
