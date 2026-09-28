@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Coroutine, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, get_args
 
 import pytest
 from tests.env.bus_sink import BusSink
@@ -25,8 +25,10 @@ from proxyloop.contract.llm import (
     ToolResponse,
 )
 from proxyloop.env.counterparty import ear
+from proxyloop.env.counterparty.ear import Ear, Heard
 from proxyloop.env.counterparty.simrep import RepTurn, SimRep
 from proxyloop.env.tasks.loader import load_task
+from proxyloop.kernel.channels import Incoming, SimRepChannel
 
 TASK = load_task("cp-direct-discount")
 NAME, LAST4 = "account.holder_name", "account.last4"
@@ -62,6 +64,10 @@ ACCEPT1: Line = (  # by name: loyal-1 must be made before its Ear call
     {"act": "accept", "offer_ref": "loyal-1", "price_usd": 75},
 )
 YES: Line = ("Yes, we accept.", {"act": "accept"})
+ACCEPT68: Line = (  # loyal-2's price; loyal-2 is unlocked in the same block
+    "We accept, at $68 a month.",
+    {"act": "accept", "price_usd": 68},
+)
 DECLINE: Line = ("No, thank you.", {"act": "decline"})
 REFUSE: Line = ("I'd rather not say.", {"act": "refuse_fact"})
 HOLD: Line = ("One moment please.", {"act": "hold_request"})
@@ -113,23 +119,30 @@ class Echo(ScriptedLLM):
 class Play:
     """One SimRep over ``lines``: the first ``alone`` lines are heard one turn
     at a time; then one line is in flight (its Ear call held) and the rest are
-    heard while it is, so they queue behind it. ``alone = len(lines)``: every
-    line alone (the sequential reference)."""
+    heard while it is, so they queue behind it; then each of ``after`` alone.
+    ``alone = len(lines)``: every line alone (the sequential reference)."""
 
     def __init__(
-        self, tmp_path: Path, lines: Sequence[Line], alone: int, gap_ms: int = 1000
+        self,
+        tmp_path: Path,
+        lines: Sequence[Line],
+        alone: int,
+        gap_ms: int = 1000,
+        after: Sequence[Line] = (),
     ) -> None:
         self.sink = sink = BusSink(tmp_path)
         items = [act for _, act in lines]
         script = [ears(a) for a in items[: alone + 1]]
         if alone + 1 < len(items):
             script.append(ears(*items[alone + 1 :]))
+        script += [ears(act) for _, act in after]
         hold = alone if alone < len(lines) else None
         self.ear = Held(sink.llm(*script), hold)
         self.mouth = Echo(fake_ref(), [], on_record=sink.world.record)
         self.rep = SimRep(TASK, cast(LLMClient, self.ear), self.mouth, sink.world)
-        self.heard = [sink.heard(text) for text, _ in lines]  # delivered in order
-        self.lines, self.alone, self.gap = lines, alone, gap_ms
+        self.lines = [*lines, *after]
+        self.heard = [sink.heard(text) for text, _ in self.lines]  # in order
+        self.alone, self.gap, self.block = alone, gap_ms, len(lines)
         self.turns: list[RepTurn] = []
 
     def utt(self, i: int) -> str:
@@ -141,19 +154,19 @@ class Play:
         )
 
     async def _run(self) -> list[RepTurn]:
-        turns = [await self._say(i) for i in range(min(self.alone, len(self.lines)))]
-        if self.alone >= len(self.lines):
-            return turns
-        first = asyncio.ensure_future(self._say(self.alone))
-        await self.ear.waiting.wait()
-        rest = [
-            asyncio.ensure_future(self._say(i))
-            for i in range(self.alone + 1, len(self.lines))
-        ]
-        for _ in range(5):
-            await asyncio.sleep(0)  # each queued turn is heard and waits
-        self.ear.release.set()
-        return turns + list(await asyncio.gather(first, *rest))
+        turns = [await self._say(i) for i in range(min(self.alone, self.block))]
+        if self.alone < self.block:
+            first = asyncio.ensure_future(self._say(self.alone))
+            await self.ear.waiting.wait()
+            rest = [
+                asyncio.ensure_future(self._say(i))
+                for i in range(self.alone + 1, self.block)
+            ]
+            for _ in range(5):
+                await asyncio.sleep(0)  # each queued turn is heard and waits
+            self.ear.release.set()
+            turns += await asyncio.gather(first, *rest)
+        return turns + [await self._say(i) for i in range(self.block, len(self.lines))]
 
     def run(self) -> list[RepTurn]:
         self.turns = asyncio.run(self._run())
@@ -163,7 +176,8 @@ class Play:
         return self.sink.of(type_)
 
     def snapshot(self) -> dict[str, object]:
-        """The policy state, every decision, commit and ledger write."""
+        """The policy state, every decision, commit and ledger write, and what
+        the kernel gets: its ``chan.strike`` count and how the call ends."""
         state: dict[str, object] = {
             k: v for k, v in vars(self.rep.policy).items() if k != "ledger"
         }
@@ -171,13 +185,39 @@ class Play:
             (e.payload["from"], e.payload["to"], e.payload["intent"])
             for e in self.of("rep.policy")
         ]
+        strikes, end = kernel_view(self.turns)
+        assert strikes == self.rep.policy.strikes  # exact, not one per turn
         return state | {
             "decisions": decisions,
             "commits": [e.payload for e in self.of("rep.commit_heard")],
             "ledger": [e.payload for e in self.of("ledger.write")],
             "strikes": self.rep.policy.strikes,
-            "ended": self.turns[-1].ended,
+            "chan.strike": strikes,
+            "end": end,
         }
+
+
+def incoming(turn: RepTurn, kind: str = "heard") -> Incoming | None:
+    """What ``SimRepChannel`` queues for the kernel from one rep turn."""
+
+    class Rep:
+        async def on_agent_utterance(self, *args: object) -> RepTurn:
+            return turn
+
+        async def tick(self, t_ms: int) -> RepTurn:
+            return turn
+
+    channel = SimRepChannel(cast(SimRep, Rep()))
+    run = channel.send("x", "u", "c", 0) if kind == "heard" else channel.tick(0)
+    asyncio.run(run)
+    return None if channel.incoming.empty() else channel.incoming.get_nowait()
+
+
+def kernel_view(turns: Sequence[RepTurn]) -> tuple[int, str]:
+    """The kernel's outcome of a run's rep turns: one ``chan.strike`` per
+    strike (kernel/session.py ``_turn``), and the first end, the one it acts on."""
+    queued = [inc for t in turns if (inc := incoming(t)) is not None]
+    return sum(i.strikes for i in queued), next((i.end for i in queued if i.end), "")
 
 
 def _both(
@@ -211,7 +251,7 @@ def test_t1_the_queued_turns_are_one_ear_call_and_the_read_back_is_answered(
         "no_better",
         "readback",
     ]
-    assert turns[3] == RepTurn((), False, False)  # already heard with turn 2
+    assert turns[3] == RepTurn((), 0, "")  # already heard with turn 2
     *_, answer = turns[2].lines
     assert answer[0].startswith("Here are the full terms:")
     assert "fee activation: 20.00" in answer[0]  # the hidden term, on read-back
@@ -238,8 +278,8 @@ def test_t2_a_queued_accept_is_committed_before_the_read_back(
     assert commit.payload == {"utt_id": block.utt(3), "offer_ref": "loyal-1"}
     assert commit.cause_ids == (accept_ear.event_id, policy.event_id)
     assert write.cause_ids == (commit.event_id,)
-    assert block.rep.policy.state == "CONFIRMED" and block.turns[3].ended
-    assert block.turns[4] == RepTurn((), False, True)
+    assert block.rep.policy.state == "CONFIRMED" and block.turns[3].end == "closed"
+    assert block.turns[4] == RepTurn((), 0, "")  # the call was already over
     assert block.snapshot() == seq.snapshot()
 
 
@@ -282,6 +322,9 @@ EQUIVALENT: list[tuple[str, list[Line], int, int]] = [
     ("two levers", [ID, OTHER, COMPETITOR, DISCOUNT, DISCOUNT, READBACK], 1, 1000),
     ("an expiry inside", [ID, DISCOUNT, OTHER, READBACK, DISCOUNT], 2, 100_000),
     ("a transfer ends it", [ID, DISCOUNT, OTHER, SUPERVISOR, CANCEL], 2, 1000),
+    ("a strike, then a transfer", [OTHER, REFUSE, SUPERVISOR], 0, 1000),
+    ("two strikes in one block", [OTHER, REFUSE, REFUSE, ID], 0, 1000),
+    ("three strikes in one block", [OTHER, REFUSE, REFUSE, REFUSE], 0, 1000),
 ]
 
 
@@ -305,21 +348,85 @@ def test_t5_coalesced_stepping_equals_stepping_each_turn_alone(
     assert heard == one_by_one or block.rep.policy.done
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="escalated (S1-SYS-63): an accept of an offer that an earlier act of "
-    "the same block unlocked cannot name it (the Ear lists the offers made "
-    "before the block), so it is read back for confirmation, not committed",
-)
-def test_t5_an_accept_of_an_offer_unlocked_in_the_same_block(tmp_path: Path) -> None:
-    unnamed: Line = (ACCEPT1[0], {"act": "accept", "price_usd": 75})
-    (tmp_path / "seq").mkdir()
-    (tmp_path / "block").mkdir()
-    seq = Play(tmp_path / "seq", [ID, OTHER, DISCOUNT, ACCEPT1], 4)
-    block = Play(tmp_path / "block", [ID, OTHER, DISCOUNT, unnamed], 1)
-    seq.run()
-    block.run()
-    assert block.of("rep.commit_heard") and seq.of("rep.commit_heard")
+def test_t5_a_strike_then_a_transfer_closes_the_call_it_does_not_hang_up(
+    tmp_path: Path,
+) -> None:
+    seq, block = _both(tmp_path, [OTHER, REFUSE, SUPERVISOR], alone=0)
+    assert [(t.strikes, t.end) for t in seq.turns] == [(0, ""), (1, ""), (0, "closed")]
+    assert [(t.strikes, t.end) for t in block.turns] == [
+        (0, ""),
+        (1, "closed"),
+        (0, ""),
+    ]
+    inc = incoming(block.turns[1])
+    assert inc is not None
+    assert (inc.strike, inc.strikes, inc.strike_kind, inc.end) == (
+        True,
+        1,
+        "identity",
+        "closed",
+    )  # a transfer: chan.closed, not ABANDONED
+
+
+@pytest.mark.parametrize("k", [2, 3])
+def test_t5_k_strikes_in_one_block_are_k_strikes_for_the_kernel(
+    tmp_path: Path, k: int
+) -> None:
+    seq, block = _both(tmp_path, [OTHER, *[REFUSE] * k, ID], alone=0)
+    (turn,) = [t for t in block.turns if t.strikes]
+    assert turn.strikes == k and turn.end == ("hangup" if k == 3 else "")
+    inc = incoming(turn)
+    assert inc is not None and inc.strikes == k and inc.end == turn.end
+    assert kernel_view(block.turns) == kernel_view(seq.turns) == (k, turn.end)
+
+
+def test_t5_a_timer_strike_is_one_strike_and_a_timer_strike_out_hangs_up(
+    tmp_path: Path,
+) -> None:
+    play = Play(tmp_path, [ID], alone=1)
+    play.run()
+    channel = SimRepChannel(play.rep)
+    silence = int(TASK.counterparty.patience.silence_s * 1000)
+
+    async def ticks() -> list[Incoming]:
+        out, t = [], 1000
+        for _ in range(TASK.counterparty.patience.strikes):
+            channel.floor(True, t)
+            t += silence
+            await channel.tick(t)
+            out.append(channel.incoming.get_nowait())
+        return out
+
+    got = [(i.strikes, i.strike_kind, i.end) for i in asyncio.run(ticks())]
+    assert got == [(1, "timer", ""), (1, "timer", ""), (1, "timer", "hangup")]
+
+
+def test_t5_an_accept_of_an_offer_unlocked_in_the_same_block_is_read_back(
+    tmp_path: Path,
+) -> None:
+    """ADR-0021 (ruling 1): the accept was said before the caller could hear
+    the offer its block unlocked, so it does not commit; the rep reads the
+    terms back and asks to confirm, and a following confirm commits."""
+    lines = [ID, DISCOUNT, OTHER, CANCEL, ACCEPT68]
+    play = Play(tmp_path, lines, alone=2, after=[YES])
+    turns = play.run()
+    assert len(play.ear.requests) == 5  # ID, DISCOUNT, OTHER, the block, YES
+    assert _intents(play, "rep.policy")[-3:] == [
+        "final_offer",
+        "confirm_accept",
+        "confirmed",
+    ]
+    assert turns[3].end == "" and not turns[3].strikes
+    *_, confirm = turns[3].lines
+    assert confirm[0].startswith("To confirm, do you accept these terms?")
+    assert "fee activation: 20.00" in confirm[0]  # every term, read back
+    yes_ear = next(e for e in play.of("rep.ear") if e.payload["utt_id"] == play.utt(5))
+    (commit,) = play.of("rep.commit_heard")
+    (write,) = play.of("ledger.write")
+    assert commit.payload == {"utt_id": play.utt(5), "offer_ref": "loyal-2"}
+    assert commit.cause_ids[0] == yes_ear.event_id
+    assert write.cause_ids == (commit.event_id,)
+    assert turns[5].end == "closed"
 
 
 def test_t6_equal_decisions_in_a_row_are_voiced_once(tmp_path: Path) -> None:
@@ -368,11 +475,105 @@ def test_t8_a_compound_ask_labelled_read_back_gets_the_terms(tmp_path: Path) -> 
     system = play.ear.requests[-1].messages[0].content
     assert (
         "If one utterance does several things, its act is the first of them in "
-        "this order: accept, decline, provide_fact, ask_readback, then "
-        "ask_discount, cite_competitor, cancel_intent, tenure, then the rest."
+        "this order: accept (only of an offer you made that is still open), "
+        "decline, provide_fact, ask_readback, then ask_discount, "
+        "cite_competitor, cancel_intent, tenure, then the rest."
     ) in system
     assert system == ear.SYSTEM.format(company=TASK.counterparty.company)
     intent = cast(dict[str, Any], play.of("rep.policy")[-1].payload["intent"])
     assert intent["kind"] == "readback"
     assert ["fee:activation", "20.00"] in intent["say"]
     assert turns[2].lines[0][0].startswith("Here are the full terms:")
+
+
+FACTS = [{"key": NAME, "value": "Dana Reyes"}, {"key": LAST4, "value": "4821"}]
+
+
+@pytest.mark.parametrize(
+    ("texts", "wrong", "right"),
+    [
+        pytest.param(
+            ["Dana Reyes, last four 4821.", "Can you lower the price?"],
+            [{"act": "other"}, {"act": "provide_fact", "facts": FACTS}],
+            [{"act": "provide_fact", "facts": FACTS}, {"act": "ask_discount"}],
+            id="facts said in another utterance",
+        ),
+        pytest.param(
+            ["Brightwave offers 60 dollars a month.", "Can you lower the price?"],
+            [{"act": "ask_discount"}, {"act": "cite_competitor", "price_usd": 60}],
+            [{"act": "cite_competitor", "price_usd": 60}, {"act": "ask_discount"}],
+            id="a price said in another utterance",
+        ),
+    ],
+)
+def test_f4_each_act_is_checked_against_its_own_utterance(
+    tmp_path: Path,
+    texts: list[str],
+    wrong: list[dict[str, Any]],
+    right: list[dict[str, Any]],
+) -> None:
+    """Checking against the block's joined text would take ``wrong``."""
+    sink = BusSink(tmp_path)
+    block = [
+        Heard(str(e.payload["utt_id"]), text, e.event_id, 0)
+        for text, e in ((t, sink.heard(t)) for t in texts)
+    ]
+    cp = TASK.counterparty
+    listener = Ear(
+        sink.llm(ears(*wrong), ears(*right)), sink.world, cp.company, cp.identity
+    )
+    out = asyncio.run(listener.classify(block, {}, ()))
+    assert [a.act for a, _ in out] == [item["act"] for item in right]
+    assert [e.payload["attempts"] for e in sink.of("rep.ear")] == [2, 2]
+
+
+def _act_enum(request: ToolRequest) -> list[str]:
+    params = cast(dict[str, Any], request.tools[0].parameters)
+    return list(params["properties"]["acts"]["items"]["properties"]["act"]["enum"])
+
+
+def test_f7_the_ear_may_say_accept_only_while_an_offer_is_open(
+    tmp_path: Path,
+) -> None:
+    play = Play(tmp_path, [OTHER, ID, DISCOUNT, READBACK], alone=4)
+    play.run()
+    acts = list(get_args(ear.Act))
+    without = [a for a in acts if a != "accept"]
+    assert [_act_enum(r) for r in play.ear.requests] == [
+        without,  # GREET
+        without,  # IDENTIFY
+        without,  # DISCOVER: no offer made yet
+        acts,  # loyal-1 is open
+    ]
+    prompts = [r.messages[-1].content for r in play.ear.requests]
+    assert prompts[2].startswith("Offers you made: none\n")
+    assert prompts[3].startswith(
+        "Offers you made: loyal-1 (open): monthly_price 75.00, term_months 12\n"
+    )
+    system = play.ear.requests[0].messages[0].content
+    assert "accept (an offer you made that is still open:" in system
+
+
+def test_f7_an_accept_with_no_open_offer_is_regenerated_and_the_facts_verified(
+    tmp_path: Path,
+) -> None:
+    """ "Sure, yes, it's Dana Reyes, 4821" while identifying is a disclosure:
+    no offer is open, so an accept is invalid (a counted regeneration) and
+    the facts are verified, with no identity strike."""
+    sink = BusSink(tmp_path)
+    said = "Sure, yes, it's Dana Reyes, 4821."
+    script = [ears(OTHER[1]), ears({"act": "accept"})]
+    script.append(ears({"act": "provide_fact", "facts": FACTS}))
+    mouth = Echo(fake_ref(), [], on_record=sink.world.record)
+    rep = SimRep(TASK, sink.llm(*script), mouth, sink.world)
+    for i, text in enumerate([OTHER[0], said]):
+        e = sink.heard(text)
+        asyncio.run(
+            rep.on_agent_utterance(str(e.payload["utt_id"]), text, e.event_id, i)
+        )
+    *_, disclosed = sink.of("rep.ear")
+    assert (disclosed.payload["act"], disclosed.payload["attempts"]) == (
+        "provide_fact",
+        2,
+    )
+    assert rep.policy.state == "DISCOVER" and rep.policy.strikes == 0

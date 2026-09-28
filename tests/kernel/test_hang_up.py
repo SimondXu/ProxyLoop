@@ -72,7 +72,7 @@ class StruckOut(Channel):
     def __init__(self) -> None:
         super().__init__()
         self.incoming.put_nowait(Incoming((("Hello?", None),), due_ms=100))
-        struck = Incoming((), 20_000, True, "hangup", strike_kind="timer")
+        struck = Incoming((), 20_000, True, "hangup", strike_kind="timer", strikes=1)
         self.incoming.put_nowait(struck)
 
 
