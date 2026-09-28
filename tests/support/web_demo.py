@@ -21,9 +21,13 @@ adapter does, after a latency on the session's clock. The scripts:
   bar's readiness line says the call waits for it (S1-SYS-21), records the
   user's identity and the rep's offer from the relays, identifies again when
   the rep asks and identity is public, asks for a read-back of each revision,
-  requests approval once the status bar says the read-back is confirmed, and
+  requests approval once the status bar says the read-back is confirmed,
   accepts once its wake says the card was decided and the status bar says it
-  was granted.
+  was granted, and, once the case is COMMITTED, ``check_account``s the
+  confirmation id a REP line said (citing that line) and ``finish``es
+  ``completed``: Guard verifies it (S1-SYS-44). When the case is NEEDS_REPLAN
+  on the user's relayed revoke (a stop), it tells the user and ``finish``es
+  ``escalate``.
 - ``rep_ear``/``rep_mouth``: classify the heard line by its words; voice the
   policy's template line with its values said naturally.
 """
@@ -218,7 +222,10 @@ _SLOTS = {  # field -> unit (only for the cents conversion; Guard derives role/u
 }
 _RELAY = re.compile(r"\[(USER CHAT|REP CALL)\] (.*) \(utt (\S+)\)")
 _ASK = "The company needs the account holder name and the last 4 digits."
+_STOPPED = "Stopped as you asked: nothing was accepted."
 _FACT = re.compile(r"([a-z][a-z0-9_.]*)=([^;]+?)(?=;|$)")
+# a REP line in [CONVERSATIONS] that says a confirmation id: its utt id and the id
+_CONFIRMED = re.compile(r'^\S+ (\S+) REP: ".*confirmation number is:? (\w+)', re.M)
 
 
 def _said_in(note: str) -> str:
@@ -238,7 +245,9 @@ def _record(facts: Mapping[str, str], utt: str) -> dict[str, object]:
 
 
 class SlowScript:
-    """Slow's steps, from the relays and the status bar of its newest turn."""
+    """Slow's steps, from the relays and the status bar of its newest turn. The
+    ``check_account`` step reads the rep's line in [CONVERSATIONS], so it needs
+    ``slow_view=transcript`` (the demo's default, ADR-0016)."""
 
     def __init__(self) -> None:
         self.asked_identity = False
@@ -256,7 +265,9 @@ class SlowScript:
         offer = re.search(r"o1 r\d+ \(([^)]*)\)", status)
         new = offer is None
         partial = offer is not None and "required slots not recorded" in status
+        revoked = False  # a relayed revoke from the user lane (a stop)
         for lane, note, utt in _RELAY.findall(notes):
+            revoked |= lane == "USER CHAT" and note.partition(" ")[0] == "revoke"
             body = _said_in(note)
             facts = dict(_FACT.findall(body))
             if lane == "USER CHAT" and "account.last4" in facts:
@@ -286,6 +297,16 @@ class SlowScript:
             calls.append({"tool": "request_approval", "offer_ref": "o1"})
         if "approval.decided" in notes and " granted" in status:
             calls.append({"tool": "accept_offer", "offer_ref": "o1"})
+        confirmed = _CONFIRMED.findall(notes)
+        if "case: COMMITTED" in status and confirmed:  # the rep's id, as said
+            utt, conf = confirmed[-1]
+            calls.append(
+                {"tool": "check_account", "confirmation_id": conf, "utt_ref": utt}
+            )
+            calls.append({"tool": "finish", "outcome": "completed", "summary": conf})
+        if "case: NEEDS_REPLAN" in status and revoked:
+            calls.append({"tool": "tell_user", "text": _STOPPED})
+            calls.append({"tool": "finish", "outcome": "escalate", "summary": "stop"})
         return act("The case, as relayed.", *calls)
 
 
