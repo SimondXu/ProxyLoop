@@ -36,6 +36,7 @@ from tests.support.web_wiring import Mode, WiringCase, WiringStarter
 
 from proxyloop.serve.api import HOST, create_app
 from proxyloop.serve.bundles import sealed
+from proxyloop.serve.cases import RoleCard, StartRefused
 
 REPO = Path(__file__).resolve().parents[2]
 EVIDENCE = REPO / "evidence" / "s0"
@@ -56,6 +57,14 @@ CASES: dict[str, Mode] = {
 }
 
 
+class CardlessStarter(WiringStarter):
+    """``WiringStarter`` with the Starter's ``role_card``: its stub tasks have
+    no family file, so every card is refused as ``unknown_task`` (S1-SYS-65)."""
+
+    def role_card(self, task_ref: str) -> RoleCard:
+        raise StartRefused("unknown_task")
+
+
 def build(
     tmp: Path, origin: str, web_dir: Path | None = WEB
 ) -> tuple[FastAPI, dict[str, WiringCase], WiringStarter]:
@@ -68,7 +77,7 @@ def build(
     }
     runs = tmp / "runs"  # serve finds live cases only under a root named "runs"
     runs.mkdir()
-    starter = WiringStarter(root, runs)
+    starter = CardlessStarter(root, runs)
     roots = [root, runs, EVIDENCE]
     app = create_app(roots, [origin], cases=cases.get, web_dir=web_dir, start=starter)
     return app, cases, starter

@@ -40,7 +40,7 @@ from proxyloop.contract.state import Blackboard
 from proxyloop.core.clock import Clock
 from proxyloop.env.tasks.loader import load_task, resolve, task_ref_of
 from proxyloop.env.tasks.refs import parse_task_ref
-from proxyloop.env.tasks.schema import Task
+from proxyloop.env.tasks.schema import Limits, Task
 from proxyloop.kernel.channels import ChannelSpec, HumanWebChannel
 from proxyloop.kernel.lanes import load_tokenizer
 from proxyloop.kernel.session import (
@@ -55,7 +55,16 @@ from proxyloop.kernel.watchdog import Abort
 from proxyloop.llm.http import EndpointEnv, LLMConfigError
 from proxyloop.serve.api import HOST, create_app
 from proxyloop.serve.bundles import default_roots
-from proxyloop.serve.cases import LaneKey, ModelOption, NotOpen, StartRefused
+from proxyloop.serve.cases import (
+    LaneKey,
+    ModelOption,
+    NotOpen,
+    RoleCard,
+    RoleFact,
+    RoleLimits,
+    RoleStop,
+    StartRefused,
+)
 
 REAL = AdapterKind.REAL_HTTP
 # The piloted families, train-only (I9; S1-ROOT-01's pilot lock lists them).
@@ -199,6 +208,37 @@ class Starter:
 
     def task_options(self) -> tuple[str, ...]:
         return self._tasks
+
+    def role_card(self, task_ref: str) -> RoleCard:
+        """An allow-list over the resolved instance: what the SimUser and the
+        approver see of the principal, plus the company's name. Never the
+        counterparty's ladder, persona, patience or ledger, gold, probes,
+        briefs or the user spec (I4)."""
+        task = self._task(task_ref)  # refuses a non-training ref unopened
+        facts, principal = task.profile.facts, task.principal
+        identity, shareable = task.counterparty.identity, task.disclosure.shareable
+        approval = None
+        if principal is not None:
+            stated = {b: facts[k] for b, k in principal.envelope.items()}
+            limits = principal.limits or Limits.model_validate(stated)
+            approval = RoleLimits.model_validate(limits.model_dump())
+        stop = None
+        if (s := task.stop) is not None:
+            hint = s.text_hint.strip()
+            stop = RoleStop(trigger=s.trigger, text_hint=hint, change=s.change)
+        return RoleCard(
+            company=task.counterparty.company,
+            persona=task.profile.persona.strip(),
+            goal=task.goal(facts).strip(),
+            facts=[
+                RoleFact(
+                    key=k, value=v, identity=k in identity, shareable=k in shareable
+                )
+                for k, v in facts.items()
+            ],
+            approval=approval,
+            stop=stop,
+        )
 
     async def start_case(
         self,

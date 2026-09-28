@@ -28,6 +28,7 @@ import { termRows, whole } from "./terms";
 import { Button } from "./ui/Button";
 import { Icon } from "./ui/Icon";
 import { useEventStream } from "./useEventStream";
+import { useRoleCard, YourRole } from "./YourRole";
 
 const CHAT_LABEL = "Message to the assistant";
 const CHAT_HINT = "Changed your mind? Say so. Any message pauses commitments until the agent reads it.";
@@ -50,6 +51,7 @@ export function Live({ runId }: { runId: string }) {
   const strip = useMemo(() => authorityStrip(events), [events]);
   const who = useMemo(() => parties(events), [events]); // live: only what has arrived
   const h = useMemo(() => honesty(events), [events]);
+  const role = useRoleCard("case", runId); // case_id = run_id (S1); only this page, never the rep's
   // Cards with a pending or ok post: a second click, even before a re-render, never POSTs again.
   const claimed = useRef(new Set<string>());
   const once = (key: string, set: typeof setPosts, id: string, send: () => Promise<PostResult>) => {
@@ -153,6 +155,10 @@ export function Live({ runId }: { runId: string }) {
             input={{ cards: guardCards, pending, composer: <Composer label={CHAT_LABEL} post={send} hint={CHAT_HINT} /> }}
             rail={
               <>
+                <details className="pl-card pl-role">
+                  <summary>Your role</summary>
+                  <YourRole card={role} />
+                </details>
                 <AgentRail events={events} cards={cards} mandates={mandates} />
                 {authority}
                 <RunSummary events={events} />
