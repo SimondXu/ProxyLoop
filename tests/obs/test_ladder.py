@@ -275,14 +275,40 @@ LINES: dict[str, dict[str, Any]] = {
 }  # fmt: skip
 
 
-async def _hear(sink: BusSink, rep: SimRep, lines: Sequence[str], t_ms: int) -> None:
-    """``lines`` heard together: the first is in flight (the Ear hangs) while
-    the rest queue behind it, so they reach the policy as one block."""
+class Gated(ScriptedLLM):
+    """An Ear whose first call waits for ``release`` (``waiting`` set): the
+    lines heard meanwhile queue behind it, whatever the machine's load."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.waiting, self.release = asyncio.Event(), asyncio.Event()
+
+    async def _next(self, request: TextRequest | ToolRequest) -> tuple[str, int]:
+        if self.calls == 0:
+            self.waiting.set()
+            await self.release.wait()
+        return await super()._next(request)
+
+
+async def _hear(
+    sink: BusSink, rep: SimRep, lines: Sequence[str], t_ms: int, ear: Gated
+) -> None:
+    """``lines`` heard together: the first is in flight (its Ear call gated,
+    on the first call only) while the rest queue behind it, so they reach the
+    policy as one block."""
     heard = [sink.heard(text) for text in lines]
-    await asyncio.gather(*(
+    say = [
         rep.on_agent_utterance(str(e.payload["utt_id"]), text, e.event_id, t_ms)
         for e, text in zip(heard, lines, strict=True)
-    ))  # fmt: skip
+    ]
+    first = asyncio.ensure_future(say[0])
+    if not ear.release.is_set():
+        await ear.waiting.wait()
+    rest = [asyncio.ensure_future(s) for s in say[1:]]
+    for _ in range(5):
+        await asyncio.sleep(0)  # each queued line is heard and waits for the turn
+    ear.release.set()
+    await asyncio.gather(first, *rest)
 
 
 def test_the_detectors_read_the_real_simrep(tmp_path: Path) -> None:
@@ -296,15 +322,15 @@ def test_the_detectors_read_the_real_simrep(tmp_path: Path) -> None:
     sink = BusSink(tmp_path)
     script = [ears(ID), ears(LINES[discount], LINES[discount]),
               ears(LINES[cancel]), ears(LINES[compete])]  # fmt: skip
-    ear = ScriptedLLM(fake_ref(), script, on_record=sink.world.record, hang_s=0.01)
+    ear = Gated(fake_ref(), script, on_record=sink.world.record)
     rep = SimRep(task, ear, Echo(fake_ref(), [], on_record=sink.world.record),
                  sink.world)  # fmt: skip
     ttl = int(1000 * task.counterparty.ladder[0].ttl_s)
 
     async def play() -> None:
-        await _hear(sink, rep, [identify, discount, discount], 0)
-        await _hear(sink, rep, [cancel], ttl + 1)
-        await _hear(sink, rep, [compete], ttl + 2)
+        await _hear(sink, rep, [identify, discount, discount], 0, ear)
+        await _hear(sink, rep, [cancel], ttl + 1, ear)
+        await _hear(sink, rep, [compete], ttl + 2, ear)
 
     asyncio.run(play())
     sink.bus.emit("session.ended", "kernel", "ops", {"reason": "timeout"}, [])
