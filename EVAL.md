@@ -6,7 +6,7 @@ Legend: [O] observed in source, [E] estimate, [P] proposed. Stages S0–S5 are d
 | Area | v2 | v3 |
 |---|---|---|
 | Family plan | 18 families built in V1, then split | 4 slice families (S1) + 2 (S2) are **piloted and locked train-only**. In S4, 6 new families are split by salt **over never-piloted families only** |
-| Early go/no-go | V1-15 kill switch at "< 40 % Fast-side failures" | S1 headroom probe is **diagnostic only**. The go/no-go is in S3, from audited paired interventions and a LOFO learning curve |
+| Early go/no-go | V1-15 kill switch at "< 40 % Fast-side failures" | The headroom probe is **diagnostic only**; it moved from S1 to S3 (user decision 2026-09-28). The go/no-go is in S3, from audited paired interventions and a LOFO learning curve |
 | Safety metrics | one "unauthorised action" flag, one "leakage" flag | **blocked vs realised** harm; **generated vs heard** leakage; **internal verification attempt vs user-facing claim**; **generation vs delivery** latency |
 | Relay accuracy | UserEar-labelled probes | ground truth from SimUser's `revealed` JSON (deterministic), plus the provenance chain |
 | No-deal | verifier consults the hidden ladder | non-omniscient verifier; the ladder oracle only feeds `missed_deal` |

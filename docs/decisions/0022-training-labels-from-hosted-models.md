@@ -12,7 +12,7 @@
 
 ## Decision
 The user accepts the risk: **hosted-model outputs may be used as SFT labels.**
-- Real SFT (S3/S4): the Sonnet teacher's turns in the harness, as TRAINING §2 describes.
+- Real SFT (S3/S4): the Sonnet teacher's turns in the harness, as TRAINING §2 describes. The teacher choice is still pending with the user (a Gemini teacher was raised on 2026-09-28; main root's log).
 - Development: Luna Fast turns from real sessions. Pull-through (plumbing, `claim: "none"`) takes its labels from them (`PT_SOURCE=hosted`, S1-MOD-07); the three train-split label bundles are in `evidence/s1/pull-through/`. `base_9b` stays a selectable source.
 - **The user's rationale:** a personal research and demo project; a narrow small model that learns protocol discipline for this harness; not a competing product.
 - **Constraint:** adapters trained on hosted-model outputs are **not published** (the root's proposed default; the user did not object). Any publishing still needs the user's release-scoped approval (NORTH_STAR non-goals).
