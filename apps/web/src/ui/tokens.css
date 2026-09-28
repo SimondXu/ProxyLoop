@@ -1,38 +1,65 @@
-/* The design tokens (UI redesign §2.1–§2.4). Light only; the only place raw colours live. */
+/* The design tokens (v4 "calm concierge"): the only place raw colours live.
+   The one brand hue is the ink blue `--you`, used only where the principal must act or decide. Everything else is
+   neutral ink; ok/over/err are ~15 % tints with same-hue text, and always carry an icon or words besides the colour.
+   The light and dark blocks define the same names (tokens.test.ts). The theme is data-theme on <html> (index.html). */
 @layer tokens {
+  /* shared by both themes: type, spacing, radii, motion */
   :root {
-    /* §2.1 colour: green = our agent, terracotta = their rep, indigo = Guard, amber = needs you */
-    --canvas: #f6f5f1; --surface: #ffffff; --sunken: #efede7;
-    --line: #e4e1da; --line-strong: #cfcac0; --line-input: #8c8579;
-    --ink: #1a1917; --ink-2: #4f4b45; --ink-3: #6b665e;
-    --agent: #0e6048; --agent-hover: #0a4c39; --agent-soft: #e4f0ea; --agent-tint: #f1f7f3; --on-agent: #ffffff;
-    --rep: #8a4b2f; --rep-soft: #f6ece5;
-    --guard: #2f4a7f; --guard-soft: #e9eef7;
-    --attn: #8a5100; --attn-ring: #b87300; --attn-soft: #fff3dc; --attn-tint: #fffaf0;
-    --danger: #b3261e; --danger-soft: #fcedeb;
-    --user-bubble: #eae7e0;
-    /* "Simulated" is a neutral fact: a hatch and a dashed border, never a warning colour */
-    --hatch-a: #f3f1ec; --hatch-b: #ece9e2; --hatch-line: #b5aea2;
-    --hatch: repeating-linear-gradient(135deg, var(--hatch-a) 0 6px, var(--hatch-b) 6px 12px);
-
-    /* §2.2 type */
-    --font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
-    --font-ui: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
+    --font-ui: "Red Hat Text Variable", ui-sans-serif, "Helvetica Neue", Arial, sans-serif;
+    --font-serif: "Newsreader Variable", Georgia, "Times New Roman", serif; /* italic only */
     --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
-    --fs-label: 12px; --fs-meta: 13px; --fs-small: 14px; --fs-ui: 15px; --fs-chat: 15.5px;
+    --fs-label: 12px; --fs-meta: 13px; --fs-small: 14px; --fs-ui: 15px; --fs-chat: 15.5px; --fs-body: 16px;
     --fs-card: 18px; --fs-decision: 24px; --fs-page: 32px;
-    --lh-tight: 1.15; --lh-meta: 1.45; --lh-body: 1.55;
+    --lh-tight: 1.15; --lh-meta: 1.45; --lh-body: 1.6;
 
-    /* §2.3 spacing (4px base), radii, elevation */
     --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px; --s8: 32px; --s10: 40px; --s14: 56px;
-    --r-xs: 6px; --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-pill: 999px;
-    --e1: 0 1px 2px rgba(28, 25, 23, 0.06);
-    --e2: 0 1px 2px rgba(28, 25, 23, 0.05), 0 8px 20px -10px rgba(28, 25, 23, 0.14);
-    --e3: 0 2px 6px rgba(28, 25, 23, 0.06), 0 24px 48px -18px rgba(28, 25, 23, 0.3);
-    --focus: 0 0 0 3px var(--agent-soft);
+    --r-card: 20px; --r-mid: 16px; --r-panel: 12px; --r-sm: 8px; --r-pill: 999px;
 
-    /* §2.4 motion */
     --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
     --d-press: 120ms; --d-state: 180ms; --d-enter: 240ms; --d-decision: 320ms;
+  }
+
+  /* light: signature ink on warm linen */
+  :root {
+    color-scheme: light;
+    --page: #f4f2ef; --raised: #faf9f7; --card: #ffffff; --sunk: #f0ede9; --bubble: #e9e5df;
+    --ink: #171513; --ink-2: #58544e; --ink-3: #6f6a63; --on-ink: #ffffff;
+    --line: rgba(56, 40, 24, 0.08); --line-2: rgba(56, 40, 24, 0.15); --line-ui: #8f8a83;
+    --you: #2e4b91; --you-fill: #2e4b91; --you-fill-2: #253e7a; --on-you: #ffffff;
+    --you-tint: rgba(46, 75, 145, 0.12); --you-line: rgba(46, 75, 145, 0.34); --you-glow: rgba(46, 75, 145, 0.12);
+    --ok: #36652f; --ok-tint: rgba(62, 120, 52, 0.15);
+    --over: #83500a; --over-tint: rgba(190, 120, 20, 0.16);
+    --err: #a2342a; --err-tint: rgba(200, 60, 45, 0.12);
+    --sand: rgba(160, 118, 60, 0.13); --neutral-tint: rgba(56, 40, 24, 0.07);
+    --focus: #2e4b91; --req: #b23a2e;
+    --done: #58544e; --on-done: #ffffff; --pill: #171513; --on-pill: #ffffff;
+    --shadow-card: 0 1px 2px rgba(40, 28, 16, 0.04), 0 10px 28px -16px rgba(40, 28, 16, 0.16);
+    --shadow-lift: 0 1px 2px rgba(40, 28, 16, 0.05), 0 18px 44px -18px rgba(33, 52, 105, 0.3);
+    --shadow-pop: 0 2px 6px rgba(40, 28, 16, 0.06), 0 20px 44px -12px rgba(40, 28, 16, 0.24);
+    --scrim: rgba(24, 20, 16, 0.36);
+    /* "Simulated" is a neutral fact: a hatch and a dashed border, never a warning colour */
+    --hatch-a: #f0ede9; --hatch-b: #e9e5df; --hatch-line: #8f8a83;
+    --hatch: repeating-linear-gradient(135deg, var(--hatch-a) 0 6px, var(--hatch-b) 6px 12px);
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #262422; --raised: #2d2b28; --card: #383532; --sunk: #2e2c29; --bubble: #1c1a18;
+    --ink: #f5f2ee; --ink-2: #d3cec6; --ink-3: #ada79e; --on-ink: #1c1a18;
+    --line: rgba(255, 246, 236, 0.07); --line-2: rgba(255, 246, 236, 0.14); --line-ui: #8a847b;
+    --you: #afc2f0; --you-fill: #4866b2; --you-fill-2: #5573c0; --on-you: #ffffff;
+    --you-tint: rgba(150, 175, 235, 0.16); --you-line: rgba(175, 194, 240, 0.34); --you-glow: rgba(150, 175, 235, 0.14);
+    --ok: #a3d192; --ok-tint: rgba(140, 200, 120, 0.15);
+    --over: #ebbb6e; --over-tint: rgba(235, 175, 80, 0.15);
+    --err: #f7a396; --err-tint: rgba(240, 110, 95, 0.16);
+    --sand: rgba(230, 190, 130, 0.1); --neutral-tint: rgba(255, 246, 236, 0.07);
+    --focus: #afc2f0; --req: #f7a396;
+    --done: #d3cec6; --on-done: #2e2c29; --pill: #dad5cd; --on-pill: #1c1a18;
+    --shadow-card: none;
+    --shadow-lift: 0 0 0 1px rgba(175, 194, 240, 0.1), 0 24px 48px -20px rgba(0, 0, 0, 0.55);
+    --shadow-pop: 0 20px 44px -12px rgba(0, 0, 0, 0.6);
+    --scrim: rgba(0, 0, 0, 0.5);
+    --hatch-a: #2e2c29; --hatch-b: #34312e; --hatch-line: #8a847b;
+    --hatch: repeating-linear-gradient(135deg, var(--hatch-a) 0 6px, var(--hatch-b) 6px 12px);
   }
 }

@@ -294,7 +294,7 @@ function CallPanel({ events, lines, p, announce }: ColumnProps) {
           </h2>
           {state && <Chip>{state}</Chip>}
           {head.holdSince !== null && (
-            <Chip tone="attn">
+            <Chip>
               <Icon name="hold" size="xs" />
               On hold since {clock(head.holdSince)}
             </Chip>

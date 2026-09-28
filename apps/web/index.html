@@ -4,6 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ProxyLoop replay</title>
+    <script>
+      // The theme before first paint (src/theme.ts): the stored light | dark | system, else the OS preference.
+      (function () {
+        var t = "system";
+        try {
+          t = window.localStorage.getItem("proxyloop.theme") || "system";
+        } catch (e) {}
+        var dark = t === "dark" || (t !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

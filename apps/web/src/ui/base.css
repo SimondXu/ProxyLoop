@@ -3,34 +3,37 @@
 
 @layer base {
   *, *::before, *::after { box-sizing: border-box; }
-  html { background: var(--canvas); }
+  html { background: var(--page); }
   body {
-    margin: 0; color: var(--ink); font: var(--fs-ui) / var(--lh-body) var(--font-ui);
+    margin: 0; background: var(--page); color: var(--ink); font: 400 var(--fs-body) / var(--lh-body) var(--font-ui);
     -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
   }
   button, input, select, textarea { font: inherit; color: inherit; }
-  h1 { font: 560 var(--fs-card) / 1.2 var(--font-display); font-variation-settings: "SOFT" 40; letter-spacing: -0.01em; margin: 0; }
+  h1 { font: 600 var(--fs-card) / 1.2 var(--font-ui); letter-spacing: -0.015em; margin: 0; }
   h2 { font: 600 var(--fs-label) / 1.3 var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 var(--s2); }
-  a { color: var(--agent); text-underline-offset: 2px; }
-  a:hover { color: var(--agent-hover); }
-  :focus-visible { outline: 3px solid var(--agent); outline-offset: 2px; border-radius: var(--r-xs); }
+  a { color: var(--ink); text-underline-offset: 3px; }
+  a:hover { color: var(--ink-2); }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  ::selection { background: var(--you-tint); }
   pre, code, output { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  /* Buttons are pills; an outline pill's border is --line-ui so that it reaches 3:1 on a card (WCAG 1.4.11). */
   button {
-    display: inline-flex; align-items: center; gap: var(--s2); min-height: 36px; padding: 0 var(--s4);
-    border: 1px solid var(--line-strong); border-radius: var(--r-pill); background: var(--surface);
-    font-weight: 600; font-size: var(--fs-small); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: 44px; padding: 0 18px;
+    border: 1px solid var(--line-ui); border-radius: var(--r-pill); background: transparent;
+    font-weight: 500; font-size: var(--fs-small); cursor: pointer; touch-action: manipulation;
     transition: background var(--d-state) var(--ease), transform var(--d-press) var(--ease);
   }
   /* hover only where a pointer hovers: a touch screen keeps :hover on the last-tapped button */
-  @media (hover: hover) { button:hover:not(:disabled) { background: var(--sunken); } }
+  @media (hover: hover) { button:hover:not(:disabled) { background: var(--neutral-tint); } }
   button:active:not(:disabled) { transform: scale(0.98); }
   button:disabled { cursor: not-allowed; opacity: 0.55; }
-  button[aria-pressed="true"], button[aria-pressed="true"]:hover:not(:disabled) { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+  button[aria-pressed="true"], button[aria-pressed="true"]:hover:not(:disabled) { background: var(--pill); border-color: var(--pill); color: var(--on-pill); }
+  /* Inputs are filled wells with a --line-ui outline (3:1 on a card) */
   input:not([type="checkbox"], [type="radio"], [type="range"]), select, textarea {
-    min-height: 36px; padding: 0 var(--s3); border: 1px solid var(--line-input); border-radius: var(--r-sm); background: var(--surface);
+    min-height: 44px; padding: 0 var(--s3); border: 1px solid var(--line-ui); border-radius: var(--r-panel); background: var(--sunk);
   }
-  input[type="range"], input[type="checkbox"], input[type="radio"] { accent-color: var(--agent); }
-  fieldset { border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--s2) var(--s3); }
+  input[type="range"], input[type="checkbox"], input[type="radio"] { accent-color: var(--ink); }
+  fieldset { border: 1px solid var(--line); border-radius: var(--r-panel); padding: var(--s2) var(--s3); }
   legend { font-size: var(--fs-meta); color: var(--ink-3); }
   details > summary { cursor: pointer; }
 }
