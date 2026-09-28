@@ -1,8 +1,8 @@
-// A phone's open approval card (redesign §3.6): a non-modal bottom sheet over every tab,
+// A phone's open approval card (redesign §3.6): a non-modal bottom sheet above the composer,
 // folded to a bar and back only by the reader's click. No focus trap, no timer, and a new
-// card never takes focus. Above 760px the bar is hidden and the card sits in the chat.
-// The phone hides the band's authority line, so a human principal's (I6) sits here, where
-// the click happens; never for a simulated principal (`human`: honesty().principal is set).
+// card never takes focus. From 768px the bar is hidden and the card sits in the stream.
+// The phone hides the band's authority line, so a human principal's (I6) sits here: read
+// before the card, shown under its click; never for a simulated principal (honesty().principal).
 import { useState, type ReactNode } from "react";
 import { HUMAN_PRINCIPAL, HUMAN_PRINCIPAL_SHORT } from "../provenance";
 
@@ -16,7 +16,7 @@ export function Sheet({ bar, human, children }: { bar: string; human: boolean; c
       </button>
       <div className="pl-sheet-body">
         {human && <p className="pl-sheet-promise">{HUMAN_PRINCIPAL}</p>}
-        {children}
+        <div className="pl-sheet-scroll">{children}</div>
       </div>
     </div>
   );

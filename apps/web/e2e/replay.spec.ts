@@ -1,5 +1,5 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { seriousViolations } from "./axe";
 
 // Generic over any bundle (PL_BUNDLE_DIR), served by the real API: the committed
 // fixture by default, or an evidence/s0 bundle. No fixture-specific strings.
@@ -52,6 +52,7 @@ async function openFirst(page: Page): Promise<{ id: string; events: Ev[] }> {
 
 test("opens a run at its end in the conversation view: the heard lines, the receipt iff the run ended, a recording", async ({ page }) => {
   const { events } = await openFirst(page);
+  await page.getByText("Technical details", { exact: true }).click(); // the run summary is folded in the rail (S1-SYS-77)
   const run = page.getByRole("region", { name: "Run" });
   await expect(run.getByRole("list", { name: "Models" }).getByRole("listitem").first()).toBeVisible();
   await expect(page.getByRole("region", { name: "Fast-U" })).toHaveCount(0);
@@ -75,7 +76,8 @@ test("opens a run at its end in the conversation view: the heard lines, the rece
   // The transcript's own items (a card's or the receipt's nested lists aside), less the Guard cards and the receipt.
   const lines = page
     .getByRole("list", { name: "Chat transcript" })
-    .locator(":scope > li")
+    .locator(":scope > li:not([aria-hidden])")
+    .filter({ hasNot: page.getByRole("group", { name: "Call with the company" }) })
     .filter({ hasNot: page.getByRole("article") })
     .filter({ hasNot: page.getByRole("region", { name: "Outcome" }) });
   await expect(lines).toHaveCount(said.length + heard("user").length);
@@ -93,23 +95,31 @@ test("opens a run at its end in the conversation view: the heard lines, the rece
     await expect(page.getByRole("region", { name: "Outcome" })).toHaveCount(0);
   }
   if (process.env.PL_SHOTS) await page.screenshot({ path: `${process.env.PL_SHOTS}/replay-conversation.png`, fullPage: true });
-
-  // I11: at 00:00, before session.started's t_ms, every frame already names the simulated parties (from the whole log).
-  await timeline.fill("0");
-  await expect(page.getByLabel("Clock")).toHaveText(/^00:00 \/ \d{2}:\d{2}$/);
-  await expect(page.getByRole("region", { name: "Outcome" })).toHaveCount(0);
   const roles = Object.keys((events.find((e) => e.type === "session.started" && e.actor === "kernel")?.payload.models ?? {}) as object);
   const labels = [
     ...(roles.includes("ear") || roles.includes("mouth") ? ["Simulated rep; no real company was called"] : []),
     ...(roles.includes("simuser") ? ["Simulated user"] : []),
   ];
   expect(labels.length, "a replayable bundle runs against the sim world").toBeGreaterThan(0);
+  // Each call card's header names the simulated parties (S1-SYS-77: the call is a card in the stream from its chan.opened).
+  const calls = page.getByRole("group", { name: "Call with the company" });
+  if (events.some((e) => e.type === "chan.opened" && e.actor === "kernel" && e.payload.lane === "cp")) await expect(calls).not.toHaveCount(0);
+  for (const part of await calls.all()) {
+    await expect(part.getByLabel("Simulated parties")).toHaveText(labels.join(" · "));
+  }
+  // The chat itself is labelled only for a simulated user.
+  // Its SimNote is the chat region's own child, before the call cards: the first "Simulated parties" label in it.
+  const chatSim = chatRegion.locator(':scope > [aria-label="Simulated parties"]');
+  if (roles.includes("simuser")) {
+    await expect(chatSim).toHaveText("Simulated user");
+    await expect(chatRegion.getByLabel("Simulated parties", { exact: true }).first()).toHaveText("Simulated user");
+  } else await expect(chatSim).toHaveCount(0);
+
+  // I11: at 00:00, before session.started's t_ms, every frame already names the simulated parties (from the whole log).
+  await timeline.fill("0");
+  await expect(page.getByLabel("Clock")).toHaveText(/^00:00 \/ \d{2}:\d{2}$/);
+  await expect(page.getByRole("region", { name: "Outcome" })).toHaveCount(0);
   await expect(page.getByRole("note", { name: "Simulated parties" })).toHaveText(labels.join(" · "));
-  await expect(page.getByRole("region", { name: "Call" }).getByLabel("Simulated parties")).toHaveText(labels.join(" · "));
-  // The chat column is labelled only for a simulated user.
-  const chatSim = chatRegion.getByLabel("Simulated parties");
-  if (roles.includes("simuser")) await expect(chatSim).toHaveText("Simulated user");
-  else await expect(chatSim).toHaveCount(0);
 });
 
 test("the PlaybackBar: markers and chapters from the run's own log, and a chapter seeks to its moment", async ({ page }) => {
@@ -206,7 +216,6 @@ test.describe("phone (390×844)", () => {
         return hit !== null && el.contains(hit);
       }),
     ).toBe(true);
-    const r = await new AxeBuilder({ page }).analyze();
-    expect(r.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id)).toEqual([]);
+    expect(await seriousViolations(page)).toEqual([]);
   });
 });

@@ -78,8 +78,9 @@ function conflict(got: { status: number; body: unknown }, error: "already_decide
   return String(body.reason);
 }
 
-/** The authority strip sits behind a disclosure in the sticky header: open it (idempotent). */
+/** The authority strip sits behind a disclosure in the rail's Technical details (S1-SYS-77): open both (idempotent). */
 async function authority(page: Page) {
+  await page.locator("details.pl-tech").evaluate((d: HTMLDetailsElement) => (d.open = true));
   await page.locator("details.authority").evaluate((d: HTMLDetailsElement) => (d.open = true));
   return page.getByRole("region", { name: "Authority" });
 }
@@ -151,7 +152,9 @@ test("b) live: /live sets the cookies and 303s, /ws/live streams the seed, Appro
   await expect.poll(() => seqs(seen[0])).toEqual(range(seed.length));
   const said = String(one(seed, "user.msg").payload.text);
   await expect(page.getByRole("list", { name: "Chat transcript" })).toContainText(`You: ${said}`);
-  await expect(page.getByRole("list", { name: "Call transcript" })).toContainText(`Agent: ${String(one(seed, "utt.delivered").payload.text_heard)}`);
+  // Every call part's lines: the call card splits where the chat interleaves (S1-SYS-77).
+  const heard = `Agent: ${String(one(seed, "utt.delivered").payload.text_heard)}`;
+  await expect(page.getByRole("list", { name: "Call transcript" }).getByRole("listitem").filter({ hasText: heard })).toHaveCount(1);
 
   const status = card.getByLabel("Approval status");
   const got = await click(page, id, "approvals/", () => card.getByRole("button", { name: "Approve" }).click());
