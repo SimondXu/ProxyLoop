@@ -315,7 +315,7 @@
     },
     {
      "cache_breakpoint": false,
-     "content": "The caller said: Yes, we accept.\nLine: Done, the offer is accepted. Your confirmation number is: confirmation: 048213.",
+     "content": "The caller said: Yes, we accept.\nLine: Done, the offer is accepted. Your confirmation number is 048213.",
      "role": "user",
      "tool_call_id": null,
      "tool_calls": []
