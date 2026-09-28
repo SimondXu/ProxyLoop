@@ -297,10 +297,14 @@ def _reads_back(x: Inputs, g: Event, o: Event) -> bool:
 
 
 def _heard(x: Inputs) -> set[str]:
-    """The s2f msg ids the rep heard, in ADR-0020's words from events alone:
-    an ``s2f.voiced`` whose generation was never ``fast.cancelled`` and whose
-    every ``fast.sentence`` (one at least) has an ``utt.delivered`` with
-    ``interrupted`` false. No anchor line, no window: advisory only."""
+    """The s2f msg ids Guard counts as heard (ADR-0020's anchor), from events
+    alone: an ``s2f.voiced`` whose generation was never ``fast.cancelled``
+    and whose every ``fast.sentence`` (one at least) has an ``utt.delivered``
+    with ``interrupted`` false. No anchor line, no window: advisory only.
+    Not every GUIDE the rep heard: after #225 one voiced by a
+    verbatim-cancelled turn is spoken by the re-run through ``guidance_cp``
+    with no ``s2f.voiced``, so ``guide_to_heard_ms`` may credit it heard
+    while it is not here."""
     cut = {str(e.payload["gen_id"]) for e in x.of("fast.cancelled")}
     delivered = {str(e.payload["utt_id"]): e for e in x.of("utt.delivered")}
     utts: dict[str, list[str]] = {}
@@ -327,8 +331,10 @@ def _unconfirmed(x: Inputs) -> Value:
     revision's slots not ``confirmed`` at the log's end, from its record and
     readback.updated (Guard's statuses, per-offer window from a5c897c on;
     the same detector reads per-revision statuses on earlier bundles);
-    ``ask_heard``: whether the rep heard one of those asks (``_heard``; never
-    changes ``count`` or ``h5_pass``); ``unasked``: offers whose latest
+    ``ask_heard``: whether Guard counts one of those asks heard (``_heard``;
+    never changes ``count`` or ``h5_pass``; an ask a verbatim-cancelled turn
+    voiced and its re-run spoke is False here though ``guide_to_heard_ms``
+    may credit it heard); ``unasked``: offers whose latest
     revision was never read back (``unasked_n``; then ``h5_pass`` is None: an
     info_only task need not read back, and the mode is not in the bundle).
     None: no offer.recorded."""

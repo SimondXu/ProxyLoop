@@ -334,6 +334,40 @@ def test_an_earlier_revisions_ask_in_the_same_call_grades_the_latest(
     }  # fmt: skip
 
 
+def test_an_ask_after_the_record_in_a_later_call_reads_it_back(
+    tmp_path: Path,
+) -> None:
+    """The per-revision rule has no call filter: r1, recorded in call 1, is
+    read back by an ask in call 2; r2, recorded after that ask in call 2, is
+    read back by the same ask through the per-offer window."""
+    for run_id, last in (("rL", 1), ("rL2", 2)):
+        log = Log(run_id)
+        _call(log)  # 1
+        _rev(log, "o1", 1)  # 2: call 1
+        _call(log)  # 3
+        _readback(log, log.start, "offer:o1")  # 4: call 2, r1 current
+        if last == 2:
+            _rev(log, "o1", 2)  # 5: call 2, after the ask
+        assert _grade(tmp_path, log) == {
+            "count": 1, "offers": {f"o1@{last}": ["monthly_price"]},
+            "ask_heard": {f"o1@{last}": False}, "unasked": [], "unasked_n": 0,
+            "h5_pass": False,
+        }, run_id  # fmt: skip
+
+
+def test_a_user_lane_open_does_not_split_the_cp_call(tmp_path: Path) -> None:
+    log = Log("rU")
+    _call(log)  # 1
+    _readback(log, _rev(log, "o1", 1), "offer:o1")  # 2-3
+    log.add("chan.opened", "kernel", "agent", {"lane": "user"}, (log.start,))  # 4
+    _rev(log, "o1", 2)  # 5: still cp call 1
+    assert _grade(tmp_path, log) == {
+        "count": 1, "offers": {"o1@2": ["monthly_price"]},
+        "ask_heard": {"o1@2": False}, "unasked": [], "unasked_n": 0,
+        "h5_pass": False,
+    }  # fmt: skip
+
+
 def test_a_latest_revision_the_window_confirmed_passes(tmp_path: Path) -> None:
     log = Log("rP")
     _readback(log, _rev(log, "o1", 1), "offer:o1")  # 1-2
@@ -359,13 +393,18 @@ def test_another_offers_ask_does_not_read_back(tmp_path: Path) -> None:
     }  # fmt: skip
 
 
-def _voice(log: Log, ask: str, gen: str, cut: bool, cancel: bool) -> None:
-    """FastC voices the ask (s2f.voiced) in ``gen`` and speaks one sentence,
-    delivered whole unless ``cut``; with ``cancel`` the turn is cancelled."""
+def _voice(
+    log: Log, ask: str, gen: str, cut: bool, cancel: bool, speaks: bool = True
+) -> None:
+    """FastC voices the ask (s2f.voiced) in ``gen`` and speaks one sentence
+    (none unless ``speaks``), delivered whole unless ``cut``; with ``cancel``
+    the turn is cancelled."""
     msg = str(next(e for e in log.events if e.event_id == ask).payload["msg_id"])
     turn(log, "cp", gen, f"c-{gen}", ask)
     voiced: P = {"msg_id": msg, "gen_id": gen}
     log.add("s2f.voiced", "fast.cp", "agent", voiced, (log.events[-1].event_id,))
+    if not speaks:
+        return
     s = sentence(log, "cp", gen, 0, "PRIV-read", log.events[-1].event_id)
     if cancel:
         cancelled: P = {"gen_id": gen, "reason": "verbatim"}
@@ -378,14 +417,15 @@ def test_ask_heard_tells_an_unheard_ask_from_an_unanswered_one(
     tmp_path: Path,
 ) -> None:
     """``ask_heard``: an ask voiced by a turn never cancelled whose every
-    sentence was delivered uncut; it never changes ``count`` or ``h5_pass``."""
-    for run_id, cut, cancel, heard_ in (
-        ("rH", False, False, True), ("rX", True, False, False),
-        ("rZ", False, True, False),
+    sentence (one at least; rS has none) was delivered uncut; it never
+    changes ``count`` or ``h5_pass``."""
+    for run_id, cut, cancel, speaks, heard_ in (
+        ("rH", False, False, True, True), ("rX", True, False, True, False),
+        ("rZ", False, True, True, False), ("rS", False, False, False, False),
     ):  # fmt: skip
         log = Log(run_id)
         ask = _readback(log, _rev(log, "o1", 1), "offer:o1")  # 1-2
-        _voice(log, ask, "cp-g1", cut, cancel)
+        _voice(log, ask, "cp-g1", cut, cancel, speaks)
         _rev(log, "o1", 2)
         assert _grade(tmp_path, log) == {
             "count": 1, "offers": {"o1@2": ["monthly_price"]},
@@ -420,3 +460,22 @@ def test_lever_keys_are_bucketed_never_raw(
     for args in ([], ["--json"]):
         assert triage.main([str(run), *args]) == 0
         assert "64.99" not in capsys.readouterr().out
+
+
+def test_a_heard_ask_that_does_not_read_back_leaves_ask_heard_false(
+    tmp_path: Path,
+) -> None:
+    """A (heard) is in call 1; B (never voiced) in call 2 reads back r2, so
+    r2 is graded but ``ask_heard`` is False: A does not read r2 back."""
+    log = Log("rE")
+    _call(log)  # 1
+    a = _readback(log, _rev(log, "o1", 1), "offer:o1")  # 2-3
+    _voice(log, a, "cp-g1", False, False)  # 4-7: heard
+    _call(log)  # 8
+    _readback(log, log.start, "offer:o1")  # 9: B
+    _rev(log, "o1", 2)  # 10: call 2
+    assert _grade(tmp_path, log) == {
+        "count": 1, "offers": {"o1@2": ["monthly_price"]},
+        "ask_heard": {"o1@2": False}, "unasked": [], "unasked_n": 0,
+        "h5_pass": False,
+    }  # fmt: skip
