@@ -132,7 +132,8 @@ test("a) replay: lists evidence/s0, loads a run with a real_http Fast sentence a
   expect((await entry(page, "/live/no-such-run")).status).toBe(404);
   await page.goto("/?live=no-such-run");
   await expect(page.getByRole("alert")).toHaveText("Stream stopped: unknown run (4404 unknown run)");
-  await expect(page.getByRole("heading", { name: "ProxyLoop live · no-such-run" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Live case" })).toBeVisible();
+  await expect(page.getByText("no-such-run", { exact: true })).toBeVisible();
 });
 
 test("b) live: /live sets the cookies and 303s, /ws/live streams the seed, Approve posts once and the kernel decides", async ({

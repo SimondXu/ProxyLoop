@@ -1,11 +1,11 @@
-// The live shell (?live=<run_id>), fed by /ws/live: by default the conversation
-// view (Conversation.tsx) with the chat input in the chat pane; with
-// ?view=engineer the replay's lanes, cards and drawer. Both keep the honesty band,
-// the status line and the authority strip in the sticky header; the limits and
-// approval cards sit in the chat column, above the input. It shows only
-// what events say. Models are chosen on the start page (?start); here RunSummary
-// shows the ones session.started names.
-import { useId, useMemo, useRef, useState, type FormEvent } from "react";
+// The live shell (?live=<run_id>), fed by /ws/live. The sticky header keeps the
+// honesty band, the case title and the phase stepper. By default three columns
+// (ConversationView.tsx, redesign §3.2): the chat, with the limits and approval
+// cards among its lines and the message box; the call; and the rail (the status
+// line, the authority details, the models). With ?view=engineer, the replay's
+// lanes, cards and drawer. It shows only what events say. Models are chosen on
+// the start page (?start); here RunSummary shows the ones session.started names.
+import { useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Drawer, Lanes, RunSummary, useDrill } from "./App";
 import { parties } from "./conversation";
 import { Panes, StatusBar, useView } from "./ConversationView";
@@ -20,10 +20,14 @@ import { honesty } from "./provenance";
 import { indexEvents } from "./replay";
 import { AppShell } from "./shell/AppShell";
 import { HonestyBand } from "./shell/HonestyBand";
+import { PhaseStepper } from "./shell/PhaseStepper";
+import { taskName } from "./start";
 import { Button } from "./ui/Button";
+import { Icon } from "./ui/Icon";
 import { useEventStream } from "./useEventStream";
 
 const CHAT_LABEL = "Message to the assistant";
+const CHAT_HINT = "Changed your mind? Say so. Any message pauses commitments until the agent reads it.";
 // serve reads prompts.jsonl, which the kernel writes when it closes the run (kernel/session.py).
 const PROMPTS_LATER = "Prompts come from prompts.jsonl, which the kernel writes as the run closes (after session.ended).";
 
@@ -70,7 +74,7 @@ export function Live({ runId }: { runId: string }) {
   };
   const echoes = events.filter((e) => e.type === "user.msg").map((e) => ({ seq: e.seq, text: String(e.payload.text) }));
   const { engineer, link } = useView();
-  // Guard cards in event order, in the chat column above the input.
+  // Guard cards in event order: among the chat's lines, or above the input in the engineer view.
   const guardCards = [
     ...mandates.map((v) => ({ seq: v.seq, el: <LimitsCard key={`m:${v.mandate.mandate_id}`} view={v} events={events} decide={decideMandate} /> })),
     ...cards.map((v) => ({
@@ -88,43 +92,64 @@ export function Live({ runId }: { runId: string }) {
       ),
     })),
   ].sort((a, b) => a.seq - b.seq);
-  const composer = (
+  const pending = unechoed(sent, echoes).map((s) => s.text);
+  const start = events.find((e) => e.type === "session.started" && e.actor === "kernel");
+  const details = (
     <>
-      {guardCards.length > 0 && <div className="pl-gcards">{guardCards.map((c) => c.el)}</div>}
-      <Composer label={CHAT_LABEL} post={send} pending={unechoed(sent, echoes).map((s) => s.text)} />
+      <StatusBar events={events} />
+      <details className="authority">
+        <summary>Authority details (raw case status, fence, epoch)</summary>
+        <AuthorityStrip a={strip} />
+      </details>
+      <RunSummary events={events} />
     </>
+  );
+  const head = (
+    <div className="pl-sticky">
+      <HonestyBand h={h} />
+      <header className="bar">
+        <h1>{start ? taskName(String(start.payload.task_ref)) : "Live case"}</h1>
+        <span className="meta pl-runid">{runId}</span>
+        <PhaseStepper events={events} />
+        <Connection stream={stream} reconnect={reconnect} count />
+        {engineer && link}
+        {engineer && (
+          <label>
+            <input type="checkbox" checked={god} onChange={(e) => setGod(e.target.checked)} /> God-view
+          </label>
+        )}
+      </header>
+    </div>
   );
 
   return (
     <AppShell>
-      <div className="pl-sticky">
-        <HonestyBand h={h} />
-        <header className="bar">
-          <h1>ProxyLoop live · {runId}</h1>
-          <Connection stream={stream} reconnect={reconnect} count />
-          {link}
-          {engineer && (
-            <label>
-              <input type="checkbox" checked={god} onChange={(e) => setGod(e.target.checked)} /> God-view
-            </label>
-          )}
-        </header>
-        <StatusBar events={events} />
-        <details className="authority">
-          <summary>Authority details (raw case status, fence, epoch)</summary>
-          <AuthorityStrip a={strip} />
-        </details>
-      </div>
-      <RunSummary events={events} />
       {engineer ? (
         <>
+          {head}
+          {details}
           <p className="meta">{ended ? "Run ended: the prompt drill-down reads prompts.jsonl." : PROMPTS_LATER}</p>
-          {composer}
+          {guardCards.length > 0 && <div className="pl-gcards">{guardCards.map((c) => c.el)}</div>}
+          <Composer label={CHAT_LABEL} post={send} pending={pending} hint={CHAT_HINT} />
           <Lanes shown={events} index={index} god={god} open={open} />
           {drill && <Drawer drill={drill} close={close} />}
         </>
       ) : (
-        <Panes events={events} p={who} announce composer={composer} />
+        <div className="pl-live">
+          {head}
+          <Panes
+            events={events}
+            p={who}
+            announce
+            input={{ cards: guardCards, pending, composer: <Composer label={CHAT_LABEL} post={send} hint={CHAT_HINT} /> }}
+            rail={
+              <>
+                {details}
+                {link}
+              </>
+            }
+          />
+        </div>
       )}
     </AppShell>
   );
@@ -174,15 +199,20 @@ function AuthorityStrip({ a }: { a: Strip }) {
   );
 }
 
-/** A text input that posts once per submit; a sent text stays "pending" until its event arrives. */
+/**
+ * A message box that posts once per submit: Enter sends, Shift+Enter starts a new line. No Stop button: a stop
+ * goes through the chat (redesign §3.2). `pending`: sent texts not yet echoed (the chat shows its own in the stream).
+ */
 export function Composer({
   label,
   post,
-  pending,
+  pending = [],
+  hint,
 }: {
   label: string;
   post: (text: string) => Promise<PostResult>;
-  pending: string[];
+  pending?: string[];
+  hint?: string;
 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -199,14 +229,29 @@ export function Composer({
       else setError(`${r.status ? `${r.status} ` : ""}${r.error}`);
     });
   };
+  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    e.currentTarget.form?.requestSubmit();
+  };
   const id = useId();
   return (
-    <form className="bar composer" aria-label={label} onSubmit={submit}>
-      <label htmlFor={id}>{label}</label>
-      <input id={id} value={text} onChange={(e) => setText(e.target.value)} />
-      <Button variant="primary" type="submit" disabled={busy}>
-        Send
-      </Button>
+    <form className="pl-composer" aria-label={label} onSubmit={submit}>
+      <label htmlFor={id} className="pl-sr">
+        {label}
+      </label>
+      <div className="pl-composer-box">
+        <textarea id={id} rows={2} value={text} placeholder={label} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} />
+        <Button variant="primary" type="submit" disabled={busy}>
+          Send
+        </Button>
+      </div>
+      {hint && (
+        <p className="meta pl-composer-hint">
+          <Icon name="hold" size="xs" />
+          {hint}
+        </p>
+      )}
       {error && <p role="alert">Not delivered: {error}</p>}
       {pending.length > 0 && (
         <ul aria-label="Pending" className="meta">
