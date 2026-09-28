@@ -28,7 +28,11 @@ def fates(events: Sequence[Event], lines: Sequence[Line]) -> dict[str, Fate]:
     spoke, was not cancelled, and has no sentence cut but not every sentence
     delivered yet; else dead (cancelled, cut, or no speech). Deliberately
     stricter than the needs ledger's ``heard`` (a spoken turn):
-    ``s2f.voiced`` comes before the playout. ``lines``: the cp transcript."""
+    ``s2f.voiced`` comes before the playout. A cp GUIDE never voiced is dead
+    too once a later cp GUIDE superseded it and no generation requested while
+    it was the newest is still open: a turn voices only the GUIDE its view
+    rendered (S1-SYS-67), so it can never be voiced. ``lines``: the cp
+    transcript."""
     turns = {e.event_id: e for e in events if e.type == "fast.turn"}
     cut = {e.payload["gen_id"] for e in events if e.type == "fast.cancelled"}
     sentences: dict[str, list[str]] = {}  # gen id -> its utt ids
@@ -61,6 +65,22 @@ def fates(events: Sequence[Event], lines: Sequence[Line]) -> dict[str, Fate]:
         msg = str(e.payload["msg_id"])
         if msg not in out or _RANK[fate.state] > _RANK[out[msg].state]:
             out[msg] = fate
+    ended = cut | {str(t.payload["gen_id"]) for t in turns.values()}
+    asked = [
+        (e.seq, str(e.payload["gen_id"]))
+        for e in events
+        if e.type == "fast.request" and e.payload["lane"] == "cp"
+    ]
+    guides = [
+        e
+        for e in events
+        if e.type == "s2f.msg" and e.payload["lane"] == "cp" and e.payload.get("guide")
+    ]
+    for old, new in zip(guides, guides[1:], strict=False):
+        msg = str(old.payload["msg_id"])
+        rendered = any(old.seq < q < new.seq and g not in ended for q, g in asked)
+        if msg not in out and not rendered:  # superseded, never voiced
+            out[msg] = Fate("dead", None)
     return out
 
 
