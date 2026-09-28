@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaults, maybeStarted, parseOffer, startError, taskName, type LaneKey } from "./start";
+import { dayPart, defaults, maybeStarted, parseOffer, startError, taskName, type LaneKey } from "./start";
 
 const option = (id: string, lane: LaneKey | "ear", isDefault = false, extra: Record<string, unknown> = {}) => ({
   id,
@@ -61,5 +61,22 @@ describe("the start page's options (GET /api/models)", () => {
     expect(taskName("cp-direct-discount")).toBe("Cp direct discount");
     expect(taskName("wire_start-human@2")).toBe("Wire start human");
     expect(taskName("@1")).toBe("@1"); // nothing readable: the ref as sent
+  });
+});
+
+describe("the start page's greeting (S1-SYS-81)", () => {
+  // Local clock, no name: morning 05:00–11:59, afternoon 12:00–17:59, evening 18:00–04:59.
+  const at = (h: number, m: number) => new Date(2026, 8, 28, h, m);
+  it.each([
+    [0, 0, "evening"],
+    [4, 59, "evening"],
+    [5, 0, "morning"],
+    [11, 59, "morning"],
+    [12, 0, "afternoon"],
+    [17, 59, "afternoon"],
+    [18, 0, "evening"],
+    [23, 59, "evening"],
+  ] as const)("%i:%i is %s", (h, m, part) => {
+    expect(dayPart(at(h, m))).toBe(part);
   });
 });
