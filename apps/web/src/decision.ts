@@ -130,7 +130,11 @@ export function acceptOf(events: Ev[], v: CardView): Accept {
   const said = events.find(
     (e) => from(e, "speak.verbatim", ["guard"]) && e.payload.kind === "accept" && grantOfAccept(e, events)?.event_id === decided.event_id,
   );
-  if (!said) return { state: "none", reason: null };
+  return said ? lineFate(events, said) : { state: "none", reason: null };
+}
+
+/** Guard's accept line after it was said: the kernel's speak.released or speak.revoked citing it, else held. */
+export function lineFate(events: Ev[], said: Ev): Accept {
   const after = (type: string) => events.find((e) => from(e, type, ["kernel"]) && e.cause_ids.includes(said.event_id));
   if (after("speak.released")) return { state: "released", reason: null };
   const revoked = after("speak.revoked");

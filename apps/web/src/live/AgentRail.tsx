@@ -1,14 +1,16 @@
 // The live page's rail (redesign §3.2 AgentRail): the status line with the
-// planner's pulse, the limits in force, the steps (timeline.ts) and how the
-// roles work. Its payload reads all go through helpers: timeline.ts (steps,
-// status line, planner), mandate.ts's limitRows and limitsStatusText (the
-// limits) and replay.ts's runHeader (the models).
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+// planner's pulse, the limits in force, the to-do (v4, S1-SYS-79: todo.ts's
+// milestones, each revealing its steps from timeline.ts) and how the roles work.
+// Its payload reads all go through helpers: timeline.ts (steps, status line,
+// planner), todo.ts (the to-do), mandate.ts's limitRows and limitsStatusText
+// (the limits) and replay.ts's runHeader (the models).
+import { useId, useMemo, useState } from "react";
 import type { CardView } from "../approval";
 import * as C from "../copy";
 import { limitRows, limitsStatusText, type MandateView } from "../mandate";
 import { runHeader, type Ev } from "../replay";
-import { groups, now, planner, timeline, type Step, type StepIcon } from "../timeline";
+import { now, planner, timeline, type Step, type StepIcon } from "../timeline";
+import { RULE, todo, type RowState, type Todo } from "../todo";
 import { Card } from "../ui/Card";
 import { Chip } from "../ui/Chip";
 import { Icon, type ICONS } from "../ui/Icon";
@@ -20,6 +22,7 @@ export function AgentRail({ events, cards, mandates }: Props) {
   const steps = useMemo(() => timeline(events), [events]);
   const line = useMemo(() => now(events, steps, cards, mandates), [events, steps, cards, mandates]);
   const pulse = useMemo(() => planner(events), [events]);
+  const list = useMemo(() => todo(events, steps), [events, steps]);
   return (
     <>
       <section className="pl-now">
@@ -35,7 +38,7 @@ export function AgentRail({ events, cards, mandates }: Props) {
         )}
       </section>
       <Limits mandates={mandates} />
-      <Steps steps={steps} />
+      <ToDo t={list} />
       <HowItWorks events={events} />
     </>
   );
@@ -89,46 +92,84 @@ function StepItem({ s }: { s: Step }) {
   );
 }
 
-const AT_END_PX = 8;
+// Each state's mark (none: the ring is drawn in CSS) and its words for screen readers (Not reached is visible text).
+const MARK: Record<RowState, keyof typeof ICONS | null> = { done: "done", noted: "noted", not_reached: "unreached", current: null, needs_you: null, pending: null };
+const SAY: Record<RowState | "other", string> = {
+  done: "done",
+  noted: "done, with a note",
+  current: "in progress",
+  needs_you: "needs you",
+  pending: "not started",
+  not_reached: "",
+  other: "",
+};
 
-/** The steps in their groups; earlier groups folded. Follows the newest step while scrolled to the end. */
-function Steps({ steps }: { steps: Step[] }) {
-  const box = useRef<HTMLDivElement>(null);
-  const [following, setFollowing] = useState(true);
-  useLayoutEffect(() => {
-    const el = box.current;
-    if (following && el) el.scrollTop = el.scrollHeight;
-  }, [following, steps.length]);
-  const onScroll = () => {
-    const el = box.current;
-    if (el) setFollowing(el.scrollHeight - el.scrollTop - el.clientHeight <= AT_END_PX);
-  };
-  const all = groups(steps);
+/** The to-do (v4 soft panel): the summary tag, one disclosure per milestone, then any steps before the first one. */
+function ToDo({ t }: { t: Todo }) {
+  const id = useId();
+  const tag = t.tag;
   return (
-    <Card className="pl-steps" aria-label="Steps">
-      <h2 className="pl-rail-h">
-        What the agent did <span className="meta">time since start</span>
-      </h2>
-      {/* focusable: a keyboard can scroll it (axe scrollable-region-focusable) */}
-      <div className="pl-steps-scroll" ref={box} onScroll={onScroll} tabIndex={0} role="group" aria-label="Steps list">
-        {all.length === 0 && <p className="meta">No steps yet.</p>}
-        {all.map((g, i) =>
-          i < all.length - 1 ? (
-            <details key={`${g.name}:${i}`} className="pl-grp">
-              <summary>
-                {g.name} <span className="pl-grp-done">✓ {g.steps.length} steps done</span>
-              </summary>
-              <ol className="pl-st-list">{g.steps.map((s) => <StepItem key={s.key} s={s} />)}</ol>
-            </details>
-          ) : (
-            <section key={`${g.name}:${i}`} aria-label={g.name}>
-              <h3 className="pl-grp-name">{g.name}</h3>
-              <ol className="pl-st-list">{g.steps.map((s) => <StepItem key={s.key} s={s} />)}</ol>
-            </section>
-          ),
-        )}
-      </div>
+    <Card className="pl-todo" aria-labelledby={id}>
+      <h3 id={id} className="pl-todo-h">
+        To-do
+      </h3>
+      <p className={`pl-todo-sum pl-todo-sum-${tag.tone}`}>
+        {tag.tone === "you" && <Icon name="you" size="xs" />}
+        {tag.tone === "ok" && <Icon name="done" size="xs" />}
+        {tag.text}
+      </p>
+      <ol className="pl-todo-list" aria-label="To-do">
+        {t.rows.map((r) => (
+          <Milestone key={r.key} state={r.state} label={r.label} note={r.note} steps={r.steps} />
+        ))}
+      </ol>
+      {t.other.length > 0 && (
+        <ul className="pl-todo-list">
+          <Milestone state="other" label="Other steps" note={`${t.other.length} before the first milestone`} steps={t.other} />
+        </ul>
+      )}
+      <p className="meta pl-todo-rule">{RULE}</p>
     </Card>
+  );
+}
+
+/** One milestone: its mark, label, note and state words; a button revealing its steps when it has any. */
+function Milestone({ state, label, note, steps }: { state: RowState | "other"; label: string; note: string | null; steps: Step[] }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  const mark = state === "other" ? null : MARK[state];
+  const body = (
+    <>
+      <span className="pl-td-g" aria-hidden="true">
+        {mark && <Icon name={mark} size="xs" />}
+      </span>
+      <span>
+        <span className="pl-td-lb">{label}</span>{" "}
+        {note && <span className="pl-td-nt">{note}</span>}
+        {SAY[state] && <span className="pl-sr"> · {SAY[state]}</span>}
+      </span>
+    </>
+  );
+  return (
+    <li className={`pl-td pl-td-${state}`}>
+      {steps.length > 0 ? (
+        <>
+          <button type="button" className="pl-td-row" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
+            {body}
+            <span className="pl-td-chev" aria-hidden="true">
+              <Icon name="expand" size="xs" />
+            </span>
+          </button>
+          <ol id={id} className="pl-st-list pl-td-steps" aria-label={`${label}: steps`} hidden={!open}>
+            {steps.map((s) => (
+              <StepItem key={s.key} s={s} />
+            ))}
+          </ol>
+        </>
+      ) : (
+        <div className="pl-td-row">{body}</div>
+      )}
+    </li>
   );
 }
 

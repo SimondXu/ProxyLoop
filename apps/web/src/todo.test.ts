@@ -55,10 +55,9 @@ function accepted(grant?: Ev): Ev[] {
 }
 /** A granted approval run up to the heard yes. */
 function approvedRun(by = "ui"): Ev[] {
-  const m = mandate();
-  const g = limits("granted");
+  const before = [mandate(), limits("granted"), call(), offer(), ALL(), card(), post(by)]; // in seq order
   const d = decided("granted", by);
-  return [m, g, call(), offer(), ALL(), card(), post(by), d, ...accepted(d)];
+  return [...before, d, ...accepted(d)];
 }
 
 const run = (events: Ev[]): Todo => todo(events, timeline(events));
@@ -198,8 +197,9 @@ describe("summary tag", () => {
     [
       "verified with a row not reached says the true count",
       () => {
+        const before = [call(), offer(), ALL(), card()];
         const d = decided("granted");
-        return [call(), offer(), ALL(), card(), d, ...accepted(d), evidence(), verdict("ok"), status("VERIFIED_COMPLETE"), ended()];
+        return [...before, d, ...accepted(d), evidence(), verdict("ok"), status("VERIFIED_COMPLETE"), ended()];
       },
       "plain",
       "7 of 8 done",
@@ -362,32 +362,20 @@ describe("the allow-list: todo reads only PAYLOAD_KEYS", () => {
   /** Every row's events, each free-text key carrying the sentinel. */
   function sentinelRun(): Ev[] {
     const text = { text: SENTINEL, summary: SENTINEL };
-    const m = { ...mandate(), payload: { ...mandate().payload, ...text } };
-    const g = limits("granted");
+    const out = [ev("user.msg", "kernel", text)]; // built in seq order
+    const m = mandate();
+    out.push({ ...m, payload: { ...m.payload, ...text } }, limits("granted"), ev("summary.updated", "guard", { scope: "public", text: SENTINEL }));
+    out.push(call(), ev("s2f.msg", "guard", { msg_id: "x", lane: "user", type: "ASK_USER", ...text }), offer(), ALL());
+    const c = card();
+    out.push({ ...c, payload: { ...c.payload, readback_text: SENTINEL } }, post());
     const d = decided("granted");
+    out.push(d, authorized(d));
     const line = said();
+    out.push({ ...line, payload: { ...line.payload, text: SENTINEL } });
     const release = released(line);
-    return [
-      ev("user.msg", "kernel", text),
-      m,
-      g,
-      ev("summary.updated", "guard", { scope: "public", text: SENTINEL }),
-      call(),
-      ev("s2f.msg", "guard", { msg_id: "x", lane: "user", type: "ASK_USER", ...text }),
-      offer(),
-      ALL(),
-      { ...card(), payload: { ...card().payload, readback_text: SENTINEL } },
-      post(),
-      d,
-      authorized(d),
-      { ...line, payload: { ...line.payload, text: SENTINEL } },
-      release,
-      heard(release, false, SENTINEL),
-      evidence(),
-      verdict("ok"),
-      status("VERIFIED_COMPLETE"),
-      ev("session.ended", "kernel", { reason: "completed", counts: {}, note: SENTINEL }),
-    ];
+    out.push(release, heard(release, false, SENTINEL), evidence(), verdict("ok"), status("VERIFIED_COMPLETE"));
+    out.push(ev("session.ended", "kernel", { reason: "completed", counts: {}, note: SENTINEL }));
+    return out;
   }
 
   it("names no free-text key", () => {
@@ -397,6 +385,7 @@ describe("the allow-list: todo reads only PAYLOAD_KEYS", () => {
   it.each([
     ["the whole run", () => sentinelRun(), true],
     ["mid-run, a card open", () => sentinelRun().slice(0, 10), false],
+    ["limits gone stale (epoch, new)", () => [...sentinelRun().slice(0, 2), bump()], false],
   ])("%s: reads nothing outside the list, and no sentinel reaches the to-do", (_n, build, nested) => {
     const events = build();
     const read = new Set<string>();

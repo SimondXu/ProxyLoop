@@ -1,8 +1,8 @@
 // The live shell (?live=<run_id>), fed by /ws/live. The sticky header keeps the
 // honesty band. By default the v4 case (ConversationView.tsx, S1-SYS-77): the case
-// header (title, phase stepper, connection); one stream (the chat, the cards and the
+// header (title, connection); one stream (the chat, the cards and the
 // call as call cards) above the message box; the Task details rail (AgentRail: the
-// status line, limits, steps; your role; the authority details and the models, folded). With ?view=engineer, the replay's
+// status line, limits, the to-do; your role; the authority details and the models, folded). With ?view=engineer, the replay's
 // lanes, cards and drawer. It shows only what events say. Models are chosen on
 // the start page (?start); here RunSummary shows the ones session.started names.
 import { useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
@@ -22,7 +22,6 @@ import { honesty } from "./provenance";
 import { indexEvents } from "./replay";
 import { AppShell } from "./shell/AppShell";
 import { HonestyBand } from "./shell/HonestyBand";
-import { PhaseStepper } from "./shell/PhaseStepper";
 import { taskName } from "./start";
 import { termRows, whole } from "./terms";
 import { Icon } from "./ui/Icon";
@@ -119,7 +118,6 @@ export function Live({ runId }: { runId: string }) {
     <>
       <h1>{start ? taskName(String(start.payload.task_ref)) : "Live case"}</h1>
       <span className="meta pl-runid">{runId}</span>
-      <PhaseStepper events={events} />
       <Connection stream={stream} reconnect={reconnect} count />
     </>
   );

@@ -6,11 +6,11 @@
   .pl-case { position: relative; flex: 1; min-height: 0; display: grid; column-gap: var(--s6); grid-template: "head details" auto "chat details" minmax(0, 1fr) / minmax(0, 1fr) minmax(330px, 356px); }
   .pl-casehead, .pl-chat { width: 100%; max-width: 760px; justify-self: center; }
 
-  /* the case header row: the title, the connection, the one tag; the compact stepper under it */
+  /* the case header row: the title, the connection, the one tag */
   .pl-casehead { anchor-name: --pl-head; grid-area: head; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3); padding: var(--s3) 0 var(--s2); }
   .pl-casehead h1 { font: 600 19px / 1.3 var(--font-ui); letter-spacing: -0.01em; }
   .pl-casehead output { font-size: var(--fs-meta); color: var(--ink-3); }
-  .pl-casehead .pl-phase, .pl-casehead [role="alert"] { order: 1; flex-basis: 100%; margin: 0; }
+  .pl-casehead [role="alert"] { order: 1; flex-basis: 100%; margin: 0; }
   .pl-case-tag { margin-left: auto; }
 
   /* the stream */
@@ -75,7 +75,6 @@
   .pl-details > * { flex: none; margin: 0; }
   .pl-details-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
   .pl-details-head h2 { margin: 0; font: 600 16px / 1.3 var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--ink); }
-  .pl-details .pl-steps { max-height: min(60vh, 520px); }
   .pl-tech summary { font-weight: 600; }
   .pl-tech .authority { margin: var(--s2) 0 0; }
   .pl-details-toggle, .pl-details-close { display: none; }
@@ -101,7 +100,7 @@
   /* below 768: the phone; an open approval card is a sheet between the case header and the composer (their anchors);
      where anchors are not supported, at the bottom, 70dvh at most */
   @media (max-width: 767px) {
-    .pl-runid, .pl-band > p:not(.pl-band-sim), .pl-stepper li:not(.pl-step-current), .pl-stepper li::before { display: none; }
+    .pl-runid, .pl-band > p:not(.pl-band-sim) { display: none; }
     .pl-case:has(.pl-sheet) .pl-tx { padding-bottom: 72px; }
     .pl-sheet { position: fixed; inset: auto 0 0; z-index: 3; display: flex; flex-direction: column; max-height: 70dvh; overflow: hidden; background: var(--card); border-radius: var(--r-card) var(--r-card) 0 0; box-shadow: var(--shadow-pop); }
     @supports (anchor-name: --a) {

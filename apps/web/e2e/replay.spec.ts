@@ -92,6 +92,10 @@ test("opens a run at its end in the conversation view: the heard lines, the rece
     await expect(outcome).toBeInViewport();
     await expect(outcome).toContainText(`Reason: ${String(ended.payload.reason)}`);
     await expect(page.getByLabel("Status line")).toHaveText((await outcome.getByRole("heading").textContent()) ?? "");
+    // The to-do at the end (S1-SYS-79): no row in progress or waiting, and the Result row is the receipt's title.
+    const todo = page.getByRole("list", { name: "To-do" });
+    await expect(todo.getByRole("listitem").filter({ hasText: /· (in progress|needs you|not started)/ })).toHaveCount(0);
+    await expect(todo.getByRole("listitem").filter({ hasText: /^Result/ })).toContainText((await outcome.getByRole("heading").textContent()) ?? "");
   } else {
     await expect(page.getByRole("region", { name: "Outcome" })).toHaveCount(0);
   }
