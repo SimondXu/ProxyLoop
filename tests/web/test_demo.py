@@ -256,7 +256,9 @@ def test_stop_fences_and_the_stale_card_is_refused_by_the_kernel(
         s = HeldSlow(tmp_path / "runs", ScaledClock(SPEED))
         case, log = await to_card(s, tmp_path)
         (card,) = of(log, "approval.requested")
-        s.slow.clear()  # Slow's step on the stop, which ends the case, waits
+        # every Slow call from here waits; Slow's loop is serial, so no step
+        # can end the case
+        s.slow.clear()
         case.user_message(STOP)
         for _ in range(60_000):  # the revoke's epoch bump, as the board folds it
             if case.blackboard().epoch:
