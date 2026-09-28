@@ -4,7 +4,8 @@ The sim path, with no model: the real rep ``Policy`` makes each ladder offer
 and reads it back in the Mouth's line (``template``: what the Mouth model
 rephrases, and what it says on a fidelity fallback). A Slow-equivalent records
 the read-back's terms through the real Slow tools on a real bus, asks for the
-read-back of that revision, and Guard's ``readback.updated`` must confirm every
+read-back of that revision (FastC's line voicing it delivered whole, emitted
+by hand), and Guard's ``readback.updated`` must confirm every
 slot with nothing required missing. x-out-of-envelope-approval then reaches its
 card (``approval.requested``).
 """
@@ -40,6 +41,7 @@ SLICE = (
     "x-user-mind-change",
 )
 LEVERS = ("ask_discount", "tenure", "cite_competitor")
+ASKED = "Could you read the offer back to me?"  # FastC's voicing of the ask
 SLOT_KINDS = {  # field kind -> (unit, role), as Slow records it (§9.2)
     "monthly_price": ("usd_minor", "recurring"),
     "term_months": ("months", "recurring"),
@@ -81,6 +83,28 @@ class Host:
         call = ToolCall(call_id="c", name="act", arguments=json.dumps(body))
         seen = self.bb.seq  # the step's view: everything so far
         return self.tools.act(call, [self.root.event_id], basis=seen).splitlines()[1:]
+
+    def voice(self) -> None:
+        """FastC voices the newest cp guide in one sentence, delivered whole:
+        only rep lines after it confirm (#219 D-A). The four emits of
+        ``tests/slow/test_authority.Host.voice``, copied: no Fast here."""
+        (msg,) = [
+            e
+            for e in self.bus.events
+            if e.type == "s2f.msg" and e.payload["lane"] == "cp"
+        ][-1:]
+        gen = f"c-g{sum(e.type == 'fast.turn' for e in self.bus.events) + 1}"
+        turn = {"lane": "cp", "gen_id": gen, "call_id": "c", "ttft_ms": 1}
+        said = [{"kind": "speech", "text": ASKED}]
+        cause = self.emit("fast.turn", "fast.cp", turn | {"ttfs_ms": 1, "items": said},
+                          [msg.event_id])  # fmt: skip
+        voiced = {"msg_id": msg.payload["msg_id"], "gen_id": gen}
+        self.emit("s2f.voiced", "fast.cp", voiced, [cause.event_id])
+        line = {"lane": "cp", "gen_id": gen, "utt_id": f"{gen}-u0", "text": ASKED}
+        s = self.emit("fast.sentence", "fast.cp", line, [cause.event_id])
+        heard = {"lane": "cp", "utt_id": f"{gen}-u0", "text_generated": ASKED}
+        heard |= {"text_heard": ASKED, "interrupted": False}
+        self.emit("utt.delivered", "kernel", heard, [s.event_id])
 
 
 class Call:
@@ -133,6 +157,7 @@ def _confirm_every_offer(tmp_path: Path, family: str) -> tuple[Host, Call]:
         ask = {"tool": "guide_fast", "move": "ask_readback", "slots": [f"offer:{ref}"]}
         out = h.act(record, ask)
         assert out[-1].endswith(f"read-back asked for {ref} r1"), out
+        h.voice()
         again, _ = call.rep("ask_readback", offer_ref=ref)
         assert again.kind == "readback"
         h.tools.readback()

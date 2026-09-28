@@ -257,9 +257,18 @@ class Interleavings(RuleBasedStateMachine):
         record["offer_slots"] = slots(self.dollars, rep[-1].utt_id)
         ask = {"tool": "guide_fast", "move": "ask_readback", "slots": ["offer:o1"]}
         self.sim.act(record, ask)
+        self.run(self._ask_heard())
         self._rep(terms(self.dollars))  # the read-back
         self.run(self.sim.vt.run_for(1_500))
         self.sim.tools.readback()
+
+    async def _ask_heard(self) -> None:
+        """Up to 30 s for the ask to be heard whole (#219 D-A): a held FastC
+        or a busy floor may keep it unheard, and then Guard confirms nothing."""
+        for _ in range(60):
+            if self.sim.ask_is_heard():
+                return
+            await self.sim.vt.run_for(500)
 
     def teardown(self) -> None:
         try:

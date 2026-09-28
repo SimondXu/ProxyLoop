@@ -268,11 +268,38 @@ class Sim:
         out = self.act(record, ask)
         assert f"read-back asked for {ref} r" in out[-1], out
         await self.vt.run_for(wait)
+        await self.ask_heard()  # only lines after it confirm (#219 D-A)
         self.rep_says(terms(dollars))
         await self.vt.run_for(wait)
         self.tools.readback()
         o = self.bb.public.offers[ref]
         assert {s.status for s in o.slots} == {"confirmed"} and o.terms_hash, o
+
+    def ask_is_heard(self) -> bool:
+        """Some turn voicing the newest cp guide spoke, was not cancelled, and
+        had every sentence delivered uninterrupted (``SlowTools._heard``)."""
+        (msg,) = [e for e in self.of("s2f.msg") if e.payload["lane"] == "cp"][-1:]
+        voiced = self.of("s2f.voiced", msg_id=msg.payload["msg_id"])
+        cut = {e.payload["gen_id"] for e in self.of("fast.cancelled")}
+        whole = {
+            e.payload["utt_id"]
+            for e in self.of("utt.delivered", lane="cp")
+            if not e.payload["interrupted"]
+        }
+        for gen in {e.payload["gen_id"] for e in voiced} - cut:
+            utts = {e.payload["utt_id"] for e in self.of("fast.sentence", gen_id=gen)}
+            if utts and utts <= whole:
+                return True
+        return False
+
+    async def ask_heard(self, bound_ms: int = 60_000) -> None:
+        """Run until the rep has heard the read-back ask whole; fail loudly
+        if it never is within ``bound_ms``."""
+        for _ in range(bound_ms // 500):
+            if self.ask_is_heard():
+                return
+            await self.vt.run_for(500)
+        raise AssertionError(f"the read-back ask was not heard in {bound_ms} ms")
 
     def card(self, ref: str = "o1") -> ApprovalCard:
         (text,) = self.act({"tool": "request_approval", "offer_ref": ref})
