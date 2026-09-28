@@ -133,3 +133,39 @@ def test_a_dead_endpoint_still_records_its_call(tmp_path: Path) -> None:
     case = _loud(tmp_path, _dead, LLMUnavailable)
     calls = [e for e in case.events if e.type == "llm.call" and e.t_ms >= case.t_end]
     assert [c.payload["error"] for c in calls] == ["connection refused"]
+
+
+# S1-SYS-43: session.ended names a world error (type, authored message: rule 15)
+UPSTREAM = "offer_ref 'PROVIDER BODY 42' was never offered"
+
+
+def _invalid(k: Kernel, inner: RepeatingLLM) -> None:  # an Invalid quoting output
+    raise WorldError(f"ear: invalid after 2 regenerations: {UPSTREAM}")
+
+
+def _timeout(k: Kernel, inner: RepeatingLLM) -> None:
+    raise WorldError("mouth: no answer within 60.0 s")
+
+
+@pytest.mark.parametrize(
+    ("how", "message"),
+    [
+        (_invalid, "ear: invalid after 2 regenerations"),
+        (_timeout, "mouth: no answer within 60.0 s"),
+    ],
+)
+def test_a_world_error_end_records_its_type_and_authored_message(
+    tmp_path: Path, how: Callable[[Kernel, RepeatingLLM], None], message: str
+) -> None:
+    case = _loud(tmp_path, how, WorldError)
+    (ended,) = [e for e in case.events if e.type == "session.ended"]
+    assert ended.payload["reason"] == "world_error"
+    world = {"type": "WorldError", "message": message}
+    assert ended.payload["world_error"] == world
+    assert "PROVIDER BODY" not in (case.k.path / "events.jsonl").read_text()
+
+
+def test_no_other_end_has_a_world_error_key(tmp_path: Path) -> None:
+    case = _loud(tmp_path, _runaway, RunawaySpend)
+    (ended,) = [e for e in case.events if e.type == "session.ended"]
+    assert "world_error" not in ended.payload

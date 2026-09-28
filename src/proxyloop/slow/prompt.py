@@ -219,6 +219,30 @@ ACT = ToolSpec(
 )
 
 
+_HEAD = (  # SlowLoop's task head as a template: tests/slow/test_slow_fp.py pins it
+    "TASK: {brief}\nTASK KIND: {kind}\n"
+    "SHAREABLE FACT KEYS (record_fact uses exactly these keys, whatever a relay "
+    "calls them): {keys}; of these, only {public} can go public from the user's "
+    "words, the others stay private and share_fact cannot publish them\n"
+    "{playbook}"
+)
+
+
+def fp_inputs(mode: SlowViewMode, kind: state.Kind) -> dict[str, object]:
+    """What ``slow_fp`` hashes (ADR-0018 V6, S1-SYS-43): everything fixed per
+    ``slow_view`` mode and task kind that shapes Slow's requests, namely the
+    mode's system prompt, the ACT tool spec (name, description, JSON schema),
+    the kind's close PLAYBOOK and the task head's fixed wording (``_HEAD``,
+    the brief, kind, keys and playbook left as placeholders). Not the brief or
+    the keys, the status bar or the notes: they vary per run."""
+    return {
+        "system": system(mode),
+        "act": ACT.model_dump(mode="json"),
+        "playbook": PLAYBOOK[kind],
+        "head": _HEAD,
+    }
+
+
 def note(relay: FastToSlow, quoted: bool = False) -> str:  # [USER CHAT] … (utt u12)
     """``quoted`` (``transcript`` mode, ADR-0016): the facts and text as one
     JSON string, so a relay cannot forge a line either."""

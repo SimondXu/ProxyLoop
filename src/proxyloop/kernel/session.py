@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import json
 import secrets
 import subprocess
 from collections import Counter
@@ -57,6 +58,7 @@ from proxyloop.llm.http import HTTPAdapter, RecordSink
 from proxyloop.llm.spend import RunawaySpend, SpendLedger
 from proxyloop.llm.vllm import VLLMClient
 from proxyloop.models.repair import TeacherRepair
+from proxyloop.slow import prompt
 from proxyloop.slow.loop import SlowLoop
 
 PROJECTED = (900_000, 400)  # tokens, calls per episode (guard at 3x): provisional until
@@ -145,6 +147,22 @@ def _reason(err: Exception) -> str:  # the end a task's error makes, as _outcome
     if isinstance(err, SessionEnd | Abort):
         return err.reason
     return next((r for kind, r in _ERRORS.items() if isinstance(err, kind)), "error")
+
+
+def _world_error(err: BaseException | None) -> dict[str, str] | None:
+    """A ``WorldError``'s type and authored message (rule 15): the world writes
+    ``<what>: <how>``, and only what follows (an ``Invalid``'s reason, which
+    may quote model output) is dropped: at most two ``": "`` parts are kept."""
+    if not isinstance(err, WorldError):
+        return None
+    authored = ": ".join(str(err).split(": ")[:2])
+    return {"type": type(err).__name__, "message": authored}
+
+
+def slow_fp(mode: SlowViewMode, kind: Literal["info_only", "full"]) -> str:
+    """``session.started.slow_fp``: the sha256 of ``prompt.fp_inputs`` as
+    canonical JSON (ADR-0018 V6): runs with different Slow harnesses differ."""
+    return sha256_text(json.dumps(prompt.fp_inputs(mode, kind), sort_keys=True))
 
 
 def new_run_id() -> str:
@@ -308,7 +326,7 @@ class Kernel:
             charge = self.ledger.charge(r)
         except RunawaySpend as err:
             charge, runaway = err.charge, err
-            self.end("budget")  # before anything else runs: no new paid call
+            self.end("budget")  # before anything else runs: no new Fast or Slow call
         self.emit(
             "spend.charged", "kernel", charge.model_dump(mode="json"), [cause], "ops"
         )
@@ -381,6 +399,9 @@ class Kernel:
         except Exception as err:  # vLLM cannot answer P3: the endpoint is dead
             self.p3, self.attest, dead = "fail", None, err
         head = started | {"models": models, "attest": self.attest, "parity": self.p3}
+        head["slow_view"] = self.cfg.slow_view.value  # extra keys (S1-SYS-43)
+        if self.slow is not None:  # rep-chat has no Slow
+            head["slow_fp"] = slow_fp(self.cfg.slow_view, self.task.mode)
         led = self.ledger  # the S0 runaway guard in force (an extra key, §4.2)
         head["runaway"] = {"factor": led.factor, "tokens": led.limit_tokens}
         head["runaway"] |= {"unpriced_calls": led.limit_unpriced_calls}
@@ -399,7 +420,7 @@ class Kernel:
         except asyncio.CancelledError:
             self._close("stopped", started)
             raise
-        self._close(reason, started)
+        self._close(reason, started, _world_error(error))
         if error is not None:
             raise error
         return RunResult(self.run_id, self.path, reason)
@@ -468,7 +489,8 @@ class Kernel:
         closing = inc.end == "closed" and key == "cp" and not self.closed
         self.closed |= closing  # before its lines: they trigger no FastC
         if inc.strike:
-            last = self.emit("chan.strike", "kernel", {"lane": "cp"}, first).event_id
+            struck = {"lane": "cp", "kind": inc.strike_kind}
+            last = self.emit("chan.strike", "kernel", struck, first).event_id
         for text, cause in inc.lines:
             last = self._line(key, text, [cause] if cause else [])
         return last, closing
@@ -490,9 +512,16 @@ class Kernel:
             self.spawn(other.send(text, utt_id, ev.event_id, self.now()))
         return ev.event_id
 
-    def _close(self, reason: str, started: dict[str, Any]) -> None:
+    def _close(
+        self,
+        reason: str,
+        started: dict[str, Any],
+        world_error: dict[str, str] | None = None,
+    ) -> None:
         ended: dict[str, object] = {"reason": reason, "counts": dict(self.counts)}
         ended["spend"] = self.ledger.totals()  # extra keys: S1-CON-03 types them
+        if world_error is not None:
+            ended["world_error"] = world_error
         self.emit("session.ended", "kernel", ended, (), "ops")
         self._ended = True
         self.bus.close()
