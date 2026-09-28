@@ -119,7 +119,7 @@ def test_every_h5_detector_equals_the_hand_count(tmp_path: Path) -> None:
         },
         "identity.cp_opened_ready": {
             "count": 1, "seq": 3, "reason": "intake_deadline", "ready": False,
-            "missing": ["account.last4"], "h5_pass": False,
+            "missing": ["account.last4"], "from": "payload", "h5_pass": False,
         },
         # 12 and 13 ask for last4, 13 for the holder name too; 14 was refused
         "identity.ask_user_per_key": {
@@ -225,7 +225,35 @@ def test_no_intake_is_not_graded(tmp_path: Path) -> None:
     value = _values(write(tmp_path / "rO", log, manifest("rO")))
     assert value["identity.cp_opened_ready"] == {
         "count": 2, "seq": 1, "reason": "no_intake", "ready": False,
-        "missing": list(grading.IDENTITY), "h5_pass": None,
+        "missing": list(grading.IDENTITY), "from": "payload", "h5_pass": None,
+    }  # fmt: skip
+
+
+def test_cp_opened_prefers_the_kernel_readiness(tmp_path: Path) -> None:
+    log = Log("rR")
+    fact: P = {"key": "account.last4", "value": "PRIV-4", "scope": "public"}
+    log.add("fact.recorded", "guard", "agent", fact, (log.start,))  # 1
+    # the kernel needs only what the task may share: nothing missing
+    opened: P = {"lane": "cp", "call": 1, "reason": "ready"}
+    opened |= {"missing": [], "ready": True}
+    log.add("chan.opened", "kernel", "agent", opened, (log.start,))  # 2
+    value = _values(write(tmp_path / "rR", log, manifest("rR")))
+    assert value["identity.cp_opened_ready"] == {
+        "count": 0, "seq": 2, "reason": "ready", "ready": True, "missing": [],
+        "from": "payload", "h5_pass": True,
+    }  # fmt: skip
+
+
+def test_cp_opened_without_missing_reads_the_facts(tmp_path: Path) -> None:
+    log = Log("rF")
+    fact: P = {"key": "account.last4", "value": "PRIV-4", "scope": "public"}
+    log.add("fact.recorded", "guard", "agent", fact, (log.start,))  # 1
+    opened: P = {"lane": "cp", "ready": "ready"}  # before the payload had missing
+    log.add("chan.opened", "kernel", "agent", opened, (log.start,))  # 2
+    value = _values(write(tmp_path / "rF", log, manifest("rF")))
+    assert value["identity.cp_opened_ready"] == {
+        "count": 1, "seq": 2, "reason": None, "ready": "ready",
+        "missing": ["account.holder_name"], "from": "facts", "h5_pass": False,
     }  # fmt: skip
 
 

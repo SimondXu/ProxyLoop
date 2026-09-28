@@ -86,24 +86,31 @@ def _heard_identify(x: Inputs, e: Event) -> bool:
 
 @detector("identity.cp_opened_ready")
 def _opened(x: Inputs) -> Value:
-    """The first ``chan.opened{lane: cp}``: its ``reason`` and ``ready``, and
-    the identity keys no public ``fact.recorded`` held before it. ``h5_pass``
-    is None with ``no_intake`` (no user lane to ask: not applicable). None: no
-    cp chan.opened carries ``ready`` (S1-SYS-21)."""
+    """The first ``chan.opened{lane: cp}``: its ``reason``, ``ready`` and
+    ``missing`` (the kernel's readiness, ``from`` ``payload``); a bundle whose
+    payload has no ``missing`` gets the identity keys no public
+    ``fact.recorded`` held before it (``from`` ``facts``). ``h5_pass`` is None
+    with ``no_intake`` (no user lane to ask: not applicable). None: no cp
+    chan.opened carries ``ready`` (S1-SYS-21)."""
     opened = [e for e in x.of("chan.opened") if e.payload.get("lane") == "cp"]
     if not opened or "ready" not in opened[0].payload:
         return None
-    at = opened[0]
-    public = {
-        f.payload.get("key")
-        for f in x.of("fact.recorded")
-        if f.seq < at.seq and f.payload.get("scope") == "public"
-    }
-    missing = [k for k in IDENTITY if k not in public]
+    at, source = opened[0], "payload"
+    if "missing" in at.payload:
+        missing = [safe(k) for k in cast(list[object], at.payload["missing"])]
+    else:
+        source = "facts"
+        public = {
+            f.payload.get("key")
+            for f in x.of("fact.recorded")
+            if f.seq < at.seq and f.payload.get("scope") == "public"
+        }
+        missing = [k for k in IDENTITY if k not in public]
     reason, ready = at.payload.get("reason"), safe(at.payload["ready"])
     passed = None if reason == "no_intake" else not missing
     return {"count": len(missing), "seq": at.seq, "reason": safe(reason),
-            "ready": ready, "missing": missing, "h5_pass": passed}  # fmt: skip
+            "ready": ready, "missing": missing, "from": source,
+            "h5_pass": passed}  # fmt: skip
 
 
 @detector("identity.ask_user_per_key")
