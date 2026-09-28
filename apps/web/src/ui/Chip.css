@@ -1,10 +1,12 @@
 @layer components {
+  /* Tags are tinted pills; a tone is never the only signal: every chip carries its words (and often an icon). */
   .pl-chip {
     display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 10px; border-radius: var(--r-pill);
-    font: 550 12.5px/1.2 var(--font-ui); border: 1px solid var(--line); background: var(--surface); color: var(--ink-2);
+    font: 500 13px/1.2 var(--font-ui); white-space: nowrap; background: var(--neutral-tint); color: var(--ink-2);
   }
-  .pl-chip-agent { background: var(--agent-soft); border-color: var(--agent-soft); color: var(--agent); }
-  .pl-chip-guard { background: var(--guard-soft); border-color: var(--guard-soft); color: var(--guard); }
-  .pl-chip-attn { background: var(--attn-soft); border-color: var(--attn-ring); color: var(--attn); }
+  .pl-chip-you { background: var(--you-tint); color: var(--you); }
+  .pl-chip-ok { background: var(--ok-tint); color: var(--ok); }
+  .pl-chip-over { background: var(--over-tint); color: var(--over); }
+  .pl-chip-honest { background: var(--sand); color: var(--ink-2); }
   .pl-chip-sim { background: var(--hatch); border: 1px dashed var(--hatch-line); color: var(--ink-2); }
 }

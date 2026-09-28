@@ -1,8 +1,11 @@
 @layer components {
+  /* the honesty pill: sand, never a warning colour; its words are unchanged */
   .pl-band {
-    display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--s1) var(--s5); padding: 6px var(--s5);
-    margin: 0 calc(-1 * var(--s5)); font-size: var(--fs-meta); color: var(--ink-2); background: var(--hatch); border-bottom: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--s1) var(--s4); width: fit-content; max-width: 100%;
+    margin: var(--s2) auto; padding: 4px 6px 4px 14px; border-radius: var(--r-pill); background: var(--sand); color: var(--ink-2); font: 500 13.5px / 1.3 var(--font-ui);
   }
   .pl-band p { margin: 0; }
   .pl-band-sim { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--ink); }
+  .pl-band-sim .pl-icon { color: var(--ink-3); }
+  @media (max-width: 760px) { .pl-band { margin: var(--s1) auto; border-radius: var(--r-panel); } }
 }

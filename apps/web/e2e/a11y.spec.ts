@@ -4,7 +4,9 @@ import { capturePosts, CSRF, csrfCookie, events, mockSockets, REP_CSRF, repFrame
 
 // UI-8 (redesign §2.4, §3.6, §7 risk 10): axe on Start, Live (an open approval
 // card and a limits card) and Rep, at desktop and phone sizes, 0 serious or
-// critical; reduced motion; the phone's tabs and decision sheet.
+// critical; reduced motion; the phone's tabs and decision sheet. S1-SYS-76: every
+// axe check runs in the light and the dark theme (the emulated OS scheme, no stored choice).
+const THEMES = ["light", "dark"] as const;
 const SIZES = [
   { name: "desktop", width: 1280, height: 800 },
   { name: "phone", width: 390, height: 844 },
@@ -63,6 +65,9 @@ const MANDATE = {
  * layout); the planner's pulse (infinite) is left alone.
  */
 async function audit(page: Page) {
+  // No stored choice: the page's theme is the emulated OS scheme's.
+  const scheme = await page.evaluate(() => (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+  await expect(page.locator("html")).toHaveAttribute("data-theme", scheme);
   await page.evaluate(() =>
     Promise.all(
       document
@@ -110,164 +115,179 @@ async function liveWithCards(page: Page, baseURL: string | undefined, refs = REA
   return { ws, ev };
 }
 
-for (const size of SIZES) {
-  test.describe(`axe at ${size.width}×${size.height}`, () => {
-    test.use({ viewport: { width: size.width, height: size.height } });
+for (const theme of THEMES) {
+  test.describe(`${theme} theme`, () => {
+    test.use({ colorScheme: theme });
 
-    test("start page", async ({ page, baseURL }) => {
-      await csrfCookie(page, baseURL, "pl_op_csrf", "op-token");
-      await page.route("**/api/models", (route) => route.fulfill({ status: 200, json: OPTIONS }));
-      await page.goto("/?start");
-      await expect(page.getByRole("button", { name: /Start/ })).toBeEnabled();
-      await audit(page);
-      await shot(page, `a11y-start-${size.name}`);
+    for (const size of SIZES) {
+      test.describe(`axe at ${size.width}×${size.height}`, () => {
+        test.use({ viewport: { width: size.width, height: size.height } });
+
+        test("start page", async ({ page, baseURL }) => {
+          await csrfCookie(page, baseURL, "pl_op_csrf", "op-token");
+          await page.route("**/api/models", (route) => route.fulfill({ status: 200, json: OPTIONS }));
+          await page.goto("/?start");
+          await expect(page.getByRole("button", { name: /Start/ })).toBeEnabled();
+          await audit(page);
+          await shot(page, `a11y-start-${size.name}-${theme}`);
+        });
+
+        test("live page with an open approval card and a limits card", async ({ page, baseURL }) => {
+          await liveWithCards(page, baseURL);
+          await audit(page);
+          await shot(page, `a11y-live-${size.name}-${theme}`);
+        });
+
+        test("rep page, before and after the call opens", async ({ page, baseURL }) => {
+          await csrfCookie(page, baseURL, "pl_rep_csrf", REP_CSRF);
+          const { connected } = await mockSockets(page);
+          await page.goto(`/?rep=${RUN}`);
+          const ws = await connected;
+          await expect(page.getByRole("textbox", { name: "Say to the agent" })).toBeDisabled();
+          await audit(page);
+          const frame = repFrames();
+          ws.send(frame("chan.opened", { lane: "cp" }));
+          ws.send(frame("utt.delivered", { lane: "cp", text_heard: "Hi, calling about the bill." }));
+          ws.send(frame("utt.final", { lane: "cp", speaker: "partner", text: "We can do $75." }));
+          await expect(page.getByRole("list", { name: "Call transcript" }).getByRole("listitem")).toHaveCount(3);
+          await audit(page);
+          await shot(page, `a11y-rep-${size.name}-${theme}`);
+        });
+      });
+    }
+
+    test.describe("phone (390×844)", () => {
+      test.use({ viewport: { width: 390, height: 844 } });
+
+      test("the decision is a non-modal sheet on every tab, folds to a bar, and never takes focus", async ({ page, baseURL }) => {
+        const { ws, ev } = await liveWithCards(page, baseURL);
+        const tabs = page.getByRole("group", { name: "Show" });
+        const card = page.getByRole("article", { name: "Approval ap-1" });
+        await expect(tabs.getByRole("button", { name: "Chat" })).toHaveAttribute("aria-pressed", "true");
+        await expect(page.locator("body")).toBeFocused(); // the card's arrival moved no focus
+        // Approve full width at the bottom, Decline above it; tap targets of 48px or more. Measured once the card's
+        // pl-rise entry (translateY, 320ms) has finished: mid-transform a 48px button measures 47.9999px.
+        await card.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+        const approve = await card.getByRole("button", { name: "Approve $75/mo" }).boundingBox();
+        const decline = await card.getByRole("button", { name: "Decline" }).boundingBox();
+        expect(approve && decline && approve.y > decline.y && approve.height >= 48 && decline.height >= 48).toBe(true);
+        // The read-back chip is its icon; its words stay for screen readers.
+        await expect(card.getByLabel("Read-back progress").getByRole("listitem").first()).toHaveText("Monthly price $75.00 Read back");
+        // The band's authority line is hidden on a phone; the sheet carries it, where the click is (I6).
+        const promise = page.getByText("Only your clicks can authorize a deal", { exact: true }).filter({ visible: true });
+        await expect(promise).toHaveCount(1);
+
+        // The call tab: the chat is out of view, the card is not.
+        await tabs.getByRole("button", { name: /^Call/ }).click();
+        await expect(page.getByRole("region", { name: "Call", exact: true })).toBeVisible();
+        await expect(page.getByRole("region", { name: "Chat", exact: true })).toBeHidden();
+        await expect(card).toBeVisible();
+        await expect(page.getByRole("article", { name: "Limits m-1" })).toBeHidden();
+        await shot(page, `phone-call-tab-sheet-${theme}`);
+
+        // A new chat line while on Call puts a dot on Chat.
+        await expect(tabs.getByRole("button", { name: "Chat" })).toHaveText("Chat");
+        ws.send(ev("user.msg", "kernel", { text: "Is that the best they can do?" }));
+        await expect(tabs.getByRole("button", { name: "Chat (new)" })).toBeVisible();
+
+        await page.getByRole("button", { name: "Hide the decision" }).click();
+        const bar = page.getByRole("button", { name: "Decision needed · $75/mo · Review" });
+        await expect(bar).toHaveAttribute("aria-expanded", "false");
+        expect((await bar.boundingBox())?.height).toBe(56);
+        await expect(card).toBeHidden();
+        await expect(bar.getByText("Only your click authorizes", { exact: true })).toBeVisible();
+        await expect(promise).toHaveCount(0);
+        await audit(page);
+        await shot(page, `phone-sheet-folded-${theme}`);
+
+        await tabs.getByRole("button", { name: "Steps" }).click();
+        await expect(page.getByRole("region", { name: "Steps" })).toBeVisible();
+        // One column on every tab: the steps take the full width.
+        expect((await page.getByRole("region", { name: "Steps" }).boundingBox())?.width).toBeGreaterThan(300);
+        await expect(page.getByRole("region", { name: "Call", exact: true })).toBeHidden();
+        await bar.click();
+        await expect(card).toBeVisible();
+        await audit(page);
+        await shot(page, `phone-steps-tab-sheet-${theme}`);
+      });
+
+      test("a simulated principal's sheet and folded bar never say only your click authorizes (I6)", async ({ page, baseURL }) => {
+        await liveWithCards(page, baseURL, { ...REAL, simuser: ["test_fake", "sim-user"] });
+        await expect(page.getByRole("article", { name: "Approval ap-1" })).toBeVisible();
+        await expect(page.getByText("Only your clicks can authorize a deal", { exact: true })).toHaveCount(0);
+        await page.getByRole("button", { name: "Hide the decision" }).click();
+        const bar = page.getByRole("button", { name: "Decision needed · $75/mo · Review", exact: true });
+        expect((await bar.boundingBox())?.height).toBe(56);
+        await expect(page.getByText("Only your click authorizes", { exact: true })).toHaveCount(0);
+        await audit(page);
+      });
+
+      test("a pressed tab under the pointer keeps its pressed colours (#216)", async ({ page, baseURL }) => {
+        await liveWithCards(page, baseURL);
+        const call = page.getByRole("group", { name: "Show" }).getByRole("button", { name: /^Call( \(new\))?$/ });
+        await call.click(); // the pointer stays on it
+        await expect(call).toHaveAttribute("aria-pressed", "true");
+        await audit(page);
+        await page.mouse.move(0, 0);
+        await call.hover();
+        await audit(page);
+        expect(await call.evaluate(contrast)).toBeGreaterThanOrEqual(4.5);
+      });
+
+      test("a card decided from the Call tab leaves the sheet and puts a dot on Chat (#216)", async ({ page, baseURL }) => {
+        await capturePosts(page);
+        await liveWithCards(page, baseURL);
+        const tabs = page.getByRole("group", { name: "Show" });
+        await tabs.getByRole("button", { name: /^Call( \(new\))?$/ }).click();
+        await expect(tabs.getByRole("button", { name: /^Chat/ })).toHaveText("Chat");
+        await page.getByRole("article", { name: "Approval ap-1" }).getByRole("button", { name: "Approve $75/mo" }).click();
+        await expect(tabs.getByRole("button", { name: "Chat (new)" })).toBeVisible();
+        await expect(page.getByRole("article", { name: "Approval ap-1" })).toBeHidden(); // back in the chat, out of view
+        await tabs.getByRole("button", { name: /^Chat/ }).click();
+        await expect(page.getByRole("article", { name: "Approval ap-1" }).getByLabel("Approval status")).toHaveText("Sent. Waiting for Guard to record it");
+        await expect(tabs.getByRole("button", { name: "Chat" })).toHaveText("Chat");
+      });
+
+      // With 3+ term rows Approve is below the sheet's fold today (reported to P-WEB; S1-SYS-77 owns the sheet).
+      test("the open sheet shows the whole Approve button (S1-SYS-76)", async ({ page, baseURL }) => {
+        await liveWithCards(page, baseURL);
+        const card = page.getByRole("article", { name: "Approval ap-1" });
+        await expect(card.getByLabel("Read-back progress").getByRole("listitem")).toHaveCount(2);
+        await card.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+        await expect(card.getByRole("button", { name: "Approve $75/mo" })).toBeInViewport({ ratio: 1 });
+      });
+
+      test("the composer is 16px, so a phone does not zoom into it", async ({ page, baseURL }) => {
+        await liveWithCards(page, baseURL);
+        const size = await page.getByRole("textbox", { name: "Message to the assistant" }).evaluate((el) => getComputedStyle(el).fontSize);
+        expect(size).toBe("16px");
+      });
     });
 
-    test("live page with an open approval card and a limits card", async ({ page, baseURL }) => {
-      await liveWithCards(page, baseURL);
-      await audit(page);
-      await shot(page, `a11y-live-${size.name}`);
-    });
+    test.describe("tablet (1024×768)", () => {
+      test.use({ viewport: { width: 1024, height: 768 } });
 
-    test("rep page, before and after the call opens", async ({ page, baseURL }) => {
-      await csrfCookie(page, baseURL, "pl_rep_csrf", REP_CSRF);
-      const { connected } = await mockSockets(page);
-      await page.goto(`/?rep=${RUN}`);
-      const ws = await connected;
-      await expect(page.getByRole("textbox", { name: "Say to the agent" })).toBeDisabled();
-      await audit(page);
-      const frame = repFrames();
-      ws.send(frame("chan.opened", { lane: "cp" }));
-      ws.send(frame("utt.delivered", { lane: "cp", text_heard: "Hi, calling about the bill." }));
-      ws.send(frame("utt.final", { lane: "cp", speaker: "partner", text: "We can do $75." }));
-      await expect(page.getByRole("list", { name: "Call transcript" }).getByRole("listitem")).toHaveCount(3);
-      await audit(page);
-      await shot(page, `a11y-rep-${size.name}`);
+      test("the status line is a strip above chat | call; Steps is a tab beside the call", async ({ page, baseURL }) => {
+        await liveWithCards(page, baseURL);
+        const tabs = page.getByRole("group", { name: "Show" });
+        await expect(tabs.getByRole("button")).toHaveText(["Call", /^Steps/]);
+        await expect(tabs.getByRole("button", { name: "Call" })).toHaveAttribute("aria-pressed", "true");
+        const strip = await page.getByLabel("Status line").boundingBox();
+        const chat = await page.getByRole("region", { name: "Chat", exact: true }).boundingBox();
+        const call = await page.getByRole("region", { name: "Call", exact: true }).boundingBox();
+        expect(strip && chat && call && strip.y < chat.y && chat.x < call.x).toBe(true);
+        await expect(page.getByRole("region", { name: "Steps" })).toBeHidden();
+        await shot(page, `tablet-call-${theme}`);
+        await tabs.getByRole("button", { name: /^Steps/ }).click();
+        await expect(page.getByRole("region", { name: "Steps" })).toBeVisible();
+        await expect(page.getByRole("region", { name: "Call", exact: true })).toBeHidden();
+        await expect(page.getByRole("region", { name: "Chat", exact: true })).toBeVisible();
+        await audit(page);
+        await shot(page, `tablet-steps-${theme}`);
+      });
     });
   });
 }
-
-test.describe("phone (390×844)", () => {
-  test.use({ viewport: { width: 390, height: 844 } });
-
-  test("the decision is a non-modal sheet on every tab, folds to a bar, and never takes focus", async ({ page, baseURL }) => {
-    const { ws, ev } = await liveWithCards(page, baseURL);
-    const tabs = page.getByRole("group", { name: "Show" });
-    const card = page.getByRole("article", { name: "Approval ap-1" });
-    await expect(tabs.getByRole("button", { name: "Chat" })).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator("body")).toBeFocused(); // the card's arrival moved no focus
-    // Approve full width at the bottom, Decline above it; tap targets of 48px or more. Measured once the card's
-    // pl-rise entry (translateY, 320ms) has finished: mid-transform a 48px button measures 47.9999px.
-    await card.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
-    const approve = await card.getByRole("button", { name: "Approve $75/mo" }).boundingBox();
-    const decline = await card.getByRole("button", { name: "Decline" }).boundingBox();
-    expect(approve && decline && approve.y > decline.y && approve.height >= 48 && decline.height >= 48).toBe(true);
-    // The read-back chip is its icon; its words stay for screen readers.
-    await expect(card.getByLabel("Read-back progress").getByRole("listitem").first()).toHaveText("Monthly price $75.00 Read back");
-    // The band's authority line is hidden on a phone; the sheet carries it, where the click is (I6).
-    const promise = page.getByText("Only your clicks can authorize a deal", { exact: true }).filter({ visible: true });
-    await expect(promise).toHaveCount(1);
-
-    // The call tab: the chat is out of view, the card is not.
-    await tabs.getByRole("button", { name: /^Call/ }).click();
-    await expect(page.getByRole("region", { name: "Call", exact: true })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Chat", exact: true })).toBeHidden();
-    await expect(card).toBeVisible();
-    await expect(page.getByRole("article", { name: "Limits m-1" })).toBeHidden();
-    await shot(page, "phone-call-tab-sheet");
-
-    // A new chat line while on Call puts a dot on Chat.
-    await expect(tabs.getByRole("button", { name: "Chat" })).toHaveText("Chat");
-    ws.send(ev("user.msg", "kernel", { text: "Is that the best they can do?" }));
-    await expect(tabs.getByRole("button", { name: "Chat (new)" })).toBeVisible();
-
-    await page.getByRole("button", { name: "Hide the decision" }).click();
-    const bar = page.getByRole("button", { name: "Decision needed · $75/mo · Review" });
-    await expect(bar).toHaveAttribute("aria-expanded", "false");
-    expect((await bar.boundingBox())?.height).toBe(56);
-    await expect(card).toBeHidden();
-    await expect(bar.getByText("Only your click authorizes", { exact: true })).toBeVisible();
-    await expect(promise).toHaveCount(0);
-    await audit(page);
-    await shot(page, "phone-sheet-folded");
-
-    await tabs.getByRole("button", { name: "Steps" }).click();
-    await expect(page.getByRole("region", { name: "Steps" })).toBeVisible();
-    // One column on every tab: the steps take the full width.
-    expect((await page.getByRole("region", { name: "Steps" }).boundingBox())?.width).toBeGreaterThan(300);
-    await expect(page.getByRole("region", { name: "Call", exact: true })).toBeHidden();
-    await bar.click();
-    await expect(card).toBeVisible();
-    await audit(page);
-    await shot(page, "phone-steps-tab-sheet");
-  });
-
-  test("a simulated principal's sheet and folded bar never say only your click authorizes (I6)", async ({ page, baseURL }) => {
-    await liveWithCards(page, baseURL, { ...REAL, simuser: ["test_fake", "sim-user"] });
-    await expect(page.getByRole("article", { name: "Approval ap-1" })).toBeVisible();
-    await expect(page.getByText("Only your clicks can authorize a deal", { exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Hide the decision" }).click();
-    const bar = page.getByRole("button", { name: "Decision needed · $75/mo · Review", exact: true });
-    expect((await bar.boundingBox())?.height).toBe(56);
-    await expect(page.getByText("Only your click authorizes", { exact: true })).toHaveCount(0);
-    await audit(page);
-  });
-
-  test("a pressed tab under the pointer keeps its pressed colours (#216)", async ({ page, baseURL }) => {
-    await liveWithCards(page, baseURL);
-    const call = page.getByRole("group", { name: "Show" }).getByRole("button", { name: /^Call( \(new\))?$/ });
-    await call.click(); // the pointer stays on it
-    await expect(call).toHaveAttribute("aria-pressed", "true");
-    await audit(page);
-    await page.mouse.move(0, 0);
-    await call.hover();
-    await audit(page);
-    expect(await call.evaluate(contrast)).toBeGreaterThanOrEqual(4.5);
-  });
-
-  test("a card decided from the Call tab leaves the sheet and puts a dot on Chat (#216)", async ({ page, baseURL }) => {
-    await capturePosts(page);
-    await liveWithCards(page, baseURL);
-    const tabs = page.getByRole("group", { name: "Show" });
-    await tabs.getByRole("button", { name: /^Call( \(new\))?$/ }).click();
-    await expect(tabs.getByRole("button", { name: /^Chat/ })).toHaveText("Chat");
-    await page.getByRole("article", { name: "Approval ap-1" }).getByRole("button", { name: "Approve $75/mo" }).click();
-    await expect(tabs.getByRole("button", { name: "Chat (new)" })).toBeVisible();
-    await expect(page.getByRole("article", { name: "Approval ap-1" })).toBeHidden(); // back in the chat, out of view
-    await tabs.getByRole("button", { name: /^Chat/ }).click();
-    await expect(page.getByRole("article", { name: "Approval ap-1" }).getByLabel("Approval status")).toHaveText("Sent. Waiting for Guard to record it");
-    await expect(tabs.getByRole("button", { name: "Chat" })).toHaveText("Chat");
-  });
-
-  test("the composer is 16px, so a phone does not zoom into it", async ({ page, baseURL }) => {
-    await liveWithCards(page, baseURL);
-    const size = await page.getByRole("textbox", { name: "Message to the assistant" }).evaluate((el) => getComputedStyle(el).fontSize);
-    expect(size).toBe("16px");
-  });
-});
-
-test.describe("tablet (1024×768)", () => {
-  test.use({ viewport: { width: 1024, height: 768 } });
-
-  test("the status line is a strip above chat | call; Steps is a tab beside the call", async ({ page, baseURL }) => {
-    await liveWithCards(page, baseURL);
-    const tabs = page.getByRole("group", { name: "Show" });
-    await expect(tabs.getByRole("button")).toHaveText(["Call", /^Steps/]);
-    await expect(tabs.getByRole("button", { name: "Call" })).toHaveAttribute("aria-pressed", "true");
-    const strip = await page.getByLabel("Status line").boundingBox();
-    const chat = await page.getByRole("region", { name: "Chat", exact: true }).boundingBox();
-    const call = await page.getByRole("region", { name: "Call", exact: true }).boundingBox();
-    expect(strip && chat && call && strip.y < chat.y && chat.x < call.x).toBe(true);
-    await expect(page.getByRole("region", { name: "Steps" })).toBeHidden();
-    await shot(page, "tablet-call");
-    await tabs.getByRole("button", { name: /^Steps/ }).click();
-    await expect(page.getByRole("region", { name: "Steps" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Call", exact: true })).toBeHidden();
-    await expect(page.getByRole("region", { name: "Chat", exact: true })).toBeVisible();
-    await audit(page);
-    await shot(page, "tablet-steps");
-  });
-});
 
 test("reduced motion: no rise, no pulse, no ring animation", async ({ page, baseURL }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });

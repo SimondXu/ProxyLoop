@@ -1,6 +1,5 @@
 @layer components {
-  .pl-banner { margin: var(--s2) 0; padding: var(--s2) var(--s3); border-radius: var(--r-sm); font-size: var(--fs-small); border: 1px solid; }
-  .pl-banner-danger { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
-  .pl-banner-guard { background: var(--guard-soft); border-color: var(--guard-soft); color: var(--guard); }
-  .pl-banner-attn { background: var(--attn-soft); border-color: var(--attn-ring); color: var(--attn); }
+  .pl-banner { margin: var(--s2) 0; padding: 10px 14px; border-radius: var(--r-panel); font-size: var(--fs-small); font-weight: 500; }
+  .pl-banner-err { background: var(--err-tint); color: var(--err); }
+  .pl-banner-over { background: var(--over-tint); color: var(--over); }
 }
