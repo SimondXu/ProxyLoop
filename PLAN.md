@@ -1528,27 +1528,35 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 - **Objective** (root decision under §0.5a, 2026-09-27): no-deal verification reads only the rep's last partner line since the LAST `ask_final_offer` (`slow/tools.py` `asked_final` = the last ask); a concession or retraction after a closing line reopens it.
 - **Owned paths:** `src/proxyloop/guard/verify.py`, `src/proxyloop/slow/tools.py` (the `asked_final` line), `tests/{guard,slow}/**`.
 - **Acceptance:** real bundles: `e6ada1`@630 and `527345`@535 stay verified; `45d7ed` @1044/1313/1475 are refused. It lands before the smoke #2 battery.
+- **Verify:** `uv run pytest tests/guard tests/slow -q`.
 
 ### S1-SYS-58 Grading follows Guard's last-line closing rule — SYS (P-OBS) — S — done (#206)
 - **Objective** (root decision under §0.5a, 2026-09-27): `obs/grading.py` `_reply` calls Guard's rule, so grading matches `verify_no_deal`; decided before any graded battery data (not a post-data metric change).
 - **Owned paths:** `src/proxyloop/obs/**`, `tests/obs/**`.
+- **Acceptance:** grading's closing reply equals `verify_no_deal`'s on the real finishes (11/11 in #206).
+- **Verify:** `uv run pytest tests/obs -q`.
 
 ### S1-SYS-59 A held FastC turn older than a released verbatim is cancelled — SYS (L-CORE) — S — todo
 - **Objective** (root decision under §0.5a, 2026-09-27): a FastC turn generated before a verbatim was released is cancelled when the verbatim is spoken (counted as `fast.cancelled{reason: verbatim}`) and its trigger is re-queued, so no stale line ("is that your best and final?") follows our decline (run `45d7ed`).
 - **Owned paths:** `src/proxyloop/kernel/lanes.py`, `tests/kernel/**`, `tests/concurrency/**`.
 - **Deps:** S1-SYS-56. Before the battery.
 - **Acceptance** (test-first ✱): ✱ the `45d7ed` shape → no stale line after the decline; ✱ the accept path, the fence and revalidation unchanged; the cancel is counted; no Fast-side text change (rule 12); a watchdog-level ceiling on FastC's pause if none exists.
+- **Verify:** `uv run pytest tests/kernel tests/concurrency -q`; `make check`.
 - **Escalate if:** the cancel reason is a contract enum.
 
 ### S1-SYS-60 The kernel records the served model and adapter shards — SYS (L-CORE) — S — todo
-- **Objective** (root decision under §0.5a, 2026-09-27): `RoleModel.served_model` is recorded from the provider echo, and `adapter_shards` are filled from `/pl/attest` for `-pl-` slots (S1-SYS-14's D4 kernel part), so hosted-Luna bundles can pass `--claim` with their dated echo and C1 bundles can be compared with the training card.
+- **Objective** (root decision under §0.5a, 2026-09-27): `RoleModel.served_model` is recorded from the provider echo, and `adapter_shards` are filled from `/pl/attest` for `-pl-` slots (S1-SYS-14's D4 kernel part), so hosted-Luna bundles can pass `--claim` with their dated echo and C1 bundles can be compared with the training card; the echo check is not loosened.
 - **Owned paths:** `src/proxyloop/kernel/session.py` (the `RoleModel` build), `tests/kernel/**`; the claim-side card comparison in `src/proxyloop/evidence/**` under a grant.
 - **Deps:** S1-SYS-21 and the S1-SYS-55 session-end fix.
-- **Escalate if:** any contract change.
+- **Acceptance:** a hosted-Luna bundle whose recorded `served_model` equals the provider's echo (including a dated id like `gpt-6-luna-2026-09-22`) passes `--claim` as hosted-Fast evidence; a bundle whose echo differs from the recorded `served_model` still fails; the echo check itself is NOT loosened (no aliasing of undated to dated ids; the recorded `served_model` comes from the provider echo at run time); a C1 bundle compares `adapter_shards` to the training card; `make check` green.
+- **Verify:** `uv run pytest tests/kernel tests/evidence -q`; `make check`.
+- **Escalate if:** any contract change, or any change to the echo comparison rule.
 
 ### S1-SYS-61 A rep line before the call opens is refused — SYS (L-CORE) — S — todo
 - **Objective** (root decision under §0.5a, 2026-09-27; review D4 of #202): `kernel/web.py` answers 409 for a human rep line sent before `chan.opened{cp}`, instead of accepting it and delivering it late. The rep page disables its input during INTAKE as part of S1-SYS-54.
 - **Owned paths:** `src/proxyloop/kernel/web.py`, `tests/kernel/**`.
+- **Acceptance:** a human rep line POSTed before `chan.opened{cp}` gets 409 with nothing appended to the log; after `chan.opened` the same POST is accepted; a test for each; `make check` green.
+- **Verify:** `uv run pytest tests/kernel -q`; `make check`.
 
 ### S1-SYS-25 World: identity mismatch, caller left, redial, recheck variants (ADR-0014) — SYS (L-CORE) — M (S–M expected) — todo (deferred until the E2E demo passes)
 - **Objective** (labelled world-semantics changes):
