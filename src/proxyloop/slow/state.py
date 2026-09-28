@@ -29,8 +29,14 @@ WHY = {  # one clause per refusal class (V5)
     "competitor_quote_not_shareable": "no competitor quote the user shared is public",
     "cancel_lever_not_authorized": "cancelling cannot be authorised in this build",
     "guide_slot_not_public": f"{TENURE} is private; the move works without it",
+    "lever_failed_twice": "failed to reach the rep twice",
 }
-WAIT = "sent, not heard yet (wait)"  # a lever on its way to the rep
+DIES = 2  # a lever whose guide died this often is unavailable (root, §0.5a)
+GROUPS = (  # a sent lever's state, the line's wording (S1-SYS-66)
+    ("answered", "heard and answered by the rep"),
+    ("heard", "heard, rep not answered yet (wait)"),
+    ("waiting", "sent, not heard yet (wait)"),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,26 +119,51 @@ def unavailable(bb: Blackboard) -> tuple[tuple[str, str], ...]:
     return tuple(out)
 
 
-Sent = Literal["heard", "waiting"]  # a lever the rep heard, or on its way
+Sent = Literal["answered", "heard", "waiting", "failed"]
+LIVE: tuple[Sent, ...] = ("answered", "heard", "waiting")  # in precedence order
 
 
 def sent(bb: Blackboard, tools: SlowTools) -> dict[str, Sent]:
     """S1-SYS-66: each lever Slow sent, by its GUIDEs' fates (``slow.heard``):
-    heard once any send was heard; waiting while one is queued
-    (``s2f_pending``) or voiced by a turn still playing; a lever whose every
-    send is dead (cancelled, cut, no speech, or never voiced) is left out:
-    available again."""
+    answered once a send was heard and a rep line follows its delivery (at or
+    after its ``Fate.at``: one lever per rep reply); heard while the rep has
+    not answered yet; waiting while one is queued (``s2f_pending``) or voiced
+    by a turn still playing; failed once ``DIES`` sends are dead (cancelled,
+    cut, no speech, or never voiced) and none is live. A lever dead fewer
+    times is left out: available again."""
     mine = [(msg, move.value) for msg, move in tools.guides if move in LEVERS]
     fates = tools.fates if mine else {}
+    lines = bb.channels.get("cp", ChannelState()).lines
     queued = {m.msg_id for m in bb.s2f_pending.get("cp", ())}
-    out: dict[str, Sent] = {}
+    seen: dict[str, list[str]] = {}
     for msg, move in mine:
         fate = fates.get(msg)
         now = fate.state if fate else "playing" if msg in queued else "dead"
-        if now == "heard":
-            out[move] = "heard"
-        elif now == "playing" and out.get(move) != "heard":
-            out[move] = "waiting"
+        if now == "heard" and fate is not None:
+            rest = lines[fate.at :]
+            now = "answered" if any(x.speaker == "partner" for x in rest) else now
+        seen.setdefault(move, []).append("waiting" if now == "playing" else now)
+    out: dict[str, Sent] = {}
+    for move, got in seen.items():
+        live: list[Sent] = [s for s in LIVE if s in got]
+        if live:
+            out[move] = live[0]
+        elif got.count("dead") >= DIES:
+            out[move] = "failed"
+    return out
+
+
+def lever_slots(bb: Blackboard) -> dict[str, str]:
+    """N2: the public fact slot each lever ``lever_denial`` refuses without,
+    the first one it lets through (the same checks ``unavailable`` runs)."""
+    out: dict[str, str] = {}
+    for move in LEVERS:
+        if lever_denial(bb, Guide(move=move)) is None:
+            continue
+        for key in sorted(bb.public.facts):
+            if lever_denial(bb, Guide(move=move, slots=(f"fact:{key}",))) is None:
+                out[move.value] = f"fact:{key}"
+                break
     return out
 
 
@@ -151,22 +182,31 @@ def free_levers(
 
 
 def levers_line(
-    levers: Sequence[tuple[str, str]], sends: Mapping[str, Sent] | None = None
+    levers: Sequence[tuple[str, str]],
+    sends: Mapping[str, Sent] | None = None,
+    slots: Mapping[str, str] | None = None,
 ) -> str:
-    """Available, heard, on its way, then each refusal with its clause; an
+    """Available (with the slot one needs), answered, heard, on its way,
+    then each refusal with its clause and each lever that failed twice; an
     unavailable lever is only that, whatever was sent."""
 
     def what(move: str, code: str) -> str:  # n6: only the slot is unavailable
         slot = f" with fact:{TENURE}" if code == "guide_slot_not_public" else ""
         return f"{move}{slot} unavailable ({code}: {WHY.get(code, code)})"
 
-    sends = sends or {}
+    sends, slots = sends or {}, slots or {}
     usable = [m.value for m in LEVERS if m.value not in _gone(levers)]
-    groups = [f"available: {', '.join(free_levers(levers, sends)) or 'none'}"]
-    for kind, label in (("heard", "heard by the rep"), ("waiting", WAIT)):
+    free = [
+        f"{m} with {slots[m]}" if m in slots else m for m in free_levers(levers, sends)
+    ]
+    groups = [f"available: {', '.join(free) or 'none'}"]
+    for kind, label in GROUPS:
         if said := [m for m in usable if sends.get(m) == kind]:
             groups.append(f"{label}: {', '.join(said)}")
     groups += [what(m, c) for m, c in levers]
+    groups += [
+        what(m, "lever_failed_twice") for m in usable if sends.get(m) == "failed"
+    ]
     return f"levers: {'; '.join(groups)}"
 
 
@@ -217,15 +257,17 @@ class Bar:
     levers: tuple[tuple[str, str], ...]
     readbacks: Mapping[tuple[str, int], Readback]
     sends: Mapping[str, Sent] = field(default_factory=dict[str, Sent])
+    slots: Mapping[str, str] = field(default_factory=dict[str, str])  # N2
 
     @property
     def free(self) -> tuple[str, ...]:  # the levers to try, in order
         return free_levers(self.levers, self.sends)
 
     @property
-    def waiting(self) -> bool:  # a lever is on its way: one per rep reply
+    def waiting(self) -> bool:  # a lever the rep has not answered: one per reply
         gone = _gone(self.levers)
-        return any(v == "waiting" and m not in gone for m, v in self.sends.items())
+        live = ("heard", "waiting")
+        return any(v in live and m not in gone for m, v in self.sends.items())
 
     def offer_note(self, o: OfferPublic) -> str:
         r = self.readbacks.get((o.offer_ref, o.revision))
@@ -248,7 +290,7 @@ class Bar:
         )
 
     def lines(self) -> list[str]:
-        return [self.close.line(), levers_line(self.levers, self.sends)]
+        return [self.close.line(), levers_line(self.levers, self.sends, self.slots)]
 
 
 def bar(bb: Blackboard, kind: Kind, tools: SlowTools) -> Bar:
@@ -259,4 +301,4 @@ def bar(bb: Blackboard, kind: Kind, tools: SlowTools) -> Bar:
         if (o := bb.public.offers.get(key[0])) is not None and o.revision == key[1]
     }
     shut = close(bb, kind, tools.asked_final, tools.told_at, tools.final_pending)
-    return Bar(shut, unavailable(bb), readbacks, sent(bb, tools))
+    return Bar(shut, unavailable(bb), readbacks, sent(bb, tools), lever_slots(bb))

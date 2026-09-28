@@ -184,9 +184,9 @@ PLAYBOOK: dict[state.Kind, str] = {  # V3: the head carries the case's own only
     "the user decides it. A confirmed offer inside the granted mandate: "
     "accept_offer. A confirmed offer outside the granted mandate: first "
     "guide_fast one available lever (the levers line lists them), one lever per "
-    "rep reply; while one is sent but not yet heard, wait. Asking again for a "
-    "lower price or for a final offer is the same request the rep already "
-    "answered: it adds no pressure and is no lever. Only when no lever is "
+    "rep reply; while one is sent and the rep has not answered it, wait. Asking "
+    "again for a lower price or for a final offer is the same request the rep "
+    "already answered: it adds no pressure and is no lever. Only when no lever is "
     "available: request_approval. After the user denies an offer: again one "
     "available lever if any; only when none is left: decline_offer, then "
     "guide_fast(ask_final_offer). Decline an offer otherwise only when it breaks "
@@ -429,9 +429,10 @@ def approval_hint(
         return ""
     ref = f"{o.offer_ref} confirmed, outside mandate → "
     if more is not None and more.waiting:  # S1-SYS-66: one lever per rep reply
-        return f"{ref}wait for the rep to hear the lever sent (levers line)"
+        return f"{ref}wait for the rep to hear and answer the lever sent (levers line)"
     if more is not None and more.free:
-        levers = " or ".join(f"guide_fast({m})" for m in more.free)
+        slot = {m: f', ["{s}"]' for m, s in more.slots.items()}  # N2
+        levers = " or ".join(f"guide_fast({m}{slot.get(m, '')})" for m in more.free)
         return (
             f"{ref}first one lever: {levers}; request_approval only once none is left"
         )
