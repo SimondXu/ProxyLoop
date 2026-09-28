@@ -333,7 +333,8 @@ def judge_export(doc: Obj, arms: dict[str, sc.Arm], args: argparse.Namespace) ->
     for k, at in enumerate(range(0, len(records), size), 1):
         name, chunk = f"judge-{eid[:8]}-{k:03d}", records[at : at + size]
         ids = [f"{name}-{p:02d}" for p in range(len(chunk))]
-        shown = [{"record": i} | s for i, (_, s) in zip(ids, chunk, strict=True)]
+        shown = [{k: v for k, v in ({"record": i} | s).items() if k in SHOWN}
+                 for i, (_, s) in zip(ids, chunk, strict=True)]  # fmt: skip
         head = {"batch": name, "export_id": eid, "rubric": text}
         head["rubric_sha256"] = RUBRIC_SHA
         dump(out_dir / f"{name}.json", head | {"records": shown})

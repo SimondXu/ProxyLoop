@@ -5,6 +5,7 @@ by hand in the comments."""
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import re
 from pathlib import Path
@@ -468,3 +469,21 @@ def test_the_export_id_ties_labels_to_their_inputs(
     more.write_text(more.read_text() + "torn\n")  # the rows changed since the export
     with pytest.raises(SystemExit, match="an export of other items, rows or"):
         scores(tree, *judge)
+
+
+def test_record_ids_are_opaque_and_arms_interleave(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Kills the "arm tag in the id" and "no shuffle" mutants: ids are only the export
+    id and positions, and with seed 1 the four records (two per arm, exported in arm
+    order) come out interleaved."""
+    out, key_path = tree / "batches", tree / "key.json"
+    ws.main(args(tree, "judge-export", "--out-dir", str(out), "--key-out",
+                  str(key_path), "--seed", "1"))  # fmt: skip
+    capsys.readouterr()
+    records = json.loads(key_path.read_text())["records"]
+    ids = sorted(records)  # batch, then position: the order the judge sees
+    assert all(re.fullmatch(r"judge-[0-9a-f]{8}-\d{3}-\d{2}", i) for i in ids)
+    arms = [records[i]["arm"] for i in ids]
+    assert sorted(arms) == [CAND, CAND, INC, INC]
+    assert sum(x != y for x, y in itertools.pairwise(arms)) >= 2
