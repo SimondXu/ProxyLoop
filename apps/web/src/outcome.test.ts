@@ -168,10 +168,11 @@ describe("the verifier's line (completion.decided's typed verdict)", () => {
   const started = (roles: string[]) => ev("session.started", "kernel", { models: Object.fromEntries(roles.map((r) => [r, { ref: { kind: "real_http" } }])) }, "ops");
   const decided = (payload: Ev["payload"], actor = "guard") => ev("completion.decided", actor, payload);
 
-  it("says the simulated company's records when the rep is simulated (provenance.ts), the company's otherwise", () => {
-    expect(verifiedLine([started(["fast_cp", "ear", "mouth"]), decided({ verdict: "ok", reasons: [] })])).toBe("Verified against the simulated company's records");
-    expect(verifiedLine([started(["fast_cp", "slow"]), decided({ verdict: "ok", reasons: [] })])).toBe("Verified against the company's records");
-    expect(verifiedLine([decided({ verdict: "ok", reasons: [] })])).toBe("Verified against the simulated company's records"); // parties unknown
+  it("always says the simulated company's records: the company is simulated in every run", () => {
+    for (const roles of [["fast_cp", "ear", "mouth"], ["fast_cp", "slow"]]) {
+      expect(verifiedLine([started(roles), decided({ verdict: "ok", reasons: [] })])).toBe("Verified against the simulated company's records");
+    }
+    expect(verifiedLine([decided({ verdict: "ok", reasons: [] })])).toBe("Verified against the simulated company's records");
   });
 
   it("is absent on a fail verdict, a missing verdict, a non-Guard verdict, or a display string", () => {

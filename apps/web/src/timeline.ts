@@ -11,7 +11,7 @@ import { callHead, grantOfAccept } from "./conversation";
 import * as C from "./copy";
 import { approvalStatusText, PROGRESS } from "./decision";
 import type { MandateView } from "./mandate";
-import { receiptKind, receiptTitle, simulatedCompany, statusView, statusWords, verifiedAgainst } from "./outcome";
+import { receiptKind, receiptTitle, statusView, statusWords, VERIFIED_AGAINST } from "./outcome";
 import type { Ev } from "./replay";
 import { termRows, usd, whole } from "./terms";
 
@@ -158,7 +158,7 @@ export function timeline(events: Ev[]): Step[] {
       add(e, C.WHO.guard, C.blocked(str(get(e, "intent")), str(get(e, "reason"))), "guard");
     } else if (from(e, "evidence.recorded", ["guard"])) add(e, C.WHO.guard, C.confirmation(str(get(e, "confirmation_id"))), "guard");
     else if (from(e, "completion.decided", ["guard"])) {
-      add(e, C.WHO.guard, get(e, "verdict") === "ok" ? verifiedAgainst(simulatedCompany(events)) : C.STEP.notVerified, "guard");
+      add(e, C.WHO.guard, get(e, "verdict") === "ok" ? VERIFIED_AGAINST : C.STEP.notVerified, "guard");
     }
   }
   for (const m of marks) {

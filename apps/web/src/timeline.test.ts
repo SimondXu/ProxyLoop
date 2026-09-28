@@ -206,23 +206,14 @@ const rows: Row[] = [
     [["Guard", "Blocked: saying yes (not_authorized)"]],
   ],
   [
-    "evidence and verification, with a real rep",
+    "evidence and verification: always the simulated company's records, real models or not",
     () => [
       ev("session.started", "kernel", { models: { fast_cp: { ref: { kind: "real_http" } } } }),
       ev("evidence.recorded", "guard", { evidence_id: "ledger:C-7", kind: "ledger", confirmation_id: "C-7" }),
       ev("completion.decided", "guard", { verdict: "ok", reasons: [] }),
       ev("completion.decided", "guard", { verdict: "fail", reasons: ["x"] }),
     ],
-    [["Guard", "Got confirmation C-7"], ["Guard", "Verified against the company's records"], ["Guard", "Couldn't verify: re-planning"]],
-  ],
-  [
-    "verified with a simulated rep, or parties not known yet: the simulated company's records",
-    () => [
-      ev("completion.decided", "guard", { verdict: "ok", reasons: [] }),
-      ev("session.started", "kernel", { models: { ear: { ref: { kind: "real_http" } }, mouth: { ref: { kind: "real_http" } } } }),
-      ev("completion.decided", "guard", { verdict: "ok", reasons: [] }),
-    ],
-    [["Guard", "Verified against the simulated company's records"], ["Guard", "Verified against the simulated company's records"]],
+    [["Guard", "Got confirmation C-7"], ["Guard", "Verified against the simulated company's records"], ["Guard", "Couldn't verify: re-planning"]],
   ],
   [
     "the main view skips planner internals, model calls, relays and spend",

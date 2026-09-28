@@ -552,7 +552,7 @@ test("receipt: Done. Verified. with the accepted terms, the confirmation, the ve
     "No expiry date Read back",
   ]);
   await expect(receipt.getByText("Confirmation CNF-8841", { exact: true })).toBeVisible();
-  await expect(receipt.getByText("Verified against the company's records", { exact: true })).toBeVisible();
+  await expect(receipt.getByText("Verified against the simulated company's records", { exact: true })).toBeVisible();
   await expect(receipt.getByText(/^Approved by you at \d{1,2}:\d{2}\s[AP]M$/)).toBeVisible();
   // The cost: session.ended's spend, formatted, behind a collapsed details; never a saving.
   const cost = receipt.getByRole("list", { name: "Cost" });
