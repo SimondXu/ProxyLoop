@@ -205,6 +205,21 @@ def test_db_an_unvoiced_ask_never_anchors_the_strict_rule(tmp_path: Path) -> Non
     assert "confirmed" not in _statuses(h)
 
 
+def test_db_a_cut_ask_never_anchors_the_strict_rule(tmp_path: Path) -> None:
+    """#219 D-B: the revision's own ask was cut mid-sentence by a barge-in, so
+    it was never heard whole; the rep's restatement of every slot confirms
+    nothing."""
+    h = Host(tmp_path)
+    h.call()
+    _opened(h)
+    h.rep("cp-1", TERMS)
+    h.act(RECORD | {"offer_slots": _slots("cp-1")}, _ask("save-2"))
+    h.deliver(h.voice(deliver=False), interrupted=True)
+    h.rep("cp-2", TERMS)
+    assert h.bb.public.offers["save-2"].revision == 1
+    assert "confirmed" not in _statuses(h)
+
+
 def test_db_the_strict_rule_opens_after_the_delivery(tmp_path: Path) -> None:
     h = Host(tmp_path)
     h.call()
