@@ -94,10 +94,11 @@ class _Log:
         }
         return self.emit("fast.request", f"fast.{lane}", payload)
 
-    def turn(self, req: Event, msg: str, speech: bool) -> Event:
-        """The cp turn of ``req``: it voices ``msg`` (with or without speech)."""
+    def turn(self, req: Event, msg: str | None, speech: bool) -> Event:
+        """The cp turn of ``req``: it voices ``msg`` (with or without speech);
+        with no ``msg``, an empty turn: it voices nothing and says nothing."""
         gen = str(req.payload["gen_id"])
-        items = [{"kind": "speech", "text": "unheard"}] if speech else []
+        items = [{"kind": "speech", "text": "unheard"}] if speech and msg else []
         payload = {
             "lane": "cp",
             "gen_id": gen,
@@ -107,7 +108,8 @@ class _Log:
             "ttfs_ms": 1,
         }
         turn = self.emit("fast.turn", "fast.cp", payload, req)
-        self.emit("s2f.voiced", "fast.cp", {"msg_id": msg, "gen_id": gen}, turn)
+        if msg is not None:
+            self.emit("s2f.voiced", "fast.cp", {"msg_id": msg, "gen_id": gen}, turn)
         return turn
 
     def say(self, turn: Event, heard_text: str, interrupted: bool) -> Event:
@@ -136,6 +138,10 @@ def _build() -> list[Event]:
       turn cancelled (verbatim) before any sentence (dead: the older cancelled
       GUIDE keeps "Passed to the voice"); g5 voiced, cut before any word
       (dead): voiced, so none of them is superseded, though each is replaced;
+    - e1 superseded: the only cp request before l1 ended in an empty turn (it
+      voiced nothing: a turn ends a request too);
+    - l1 superseded: its cp request ended only after g6 came (a cancel), and
+      an ended request is ended wherever its end falls;
     - g6 not superseded: a cp request before g7 is still open;
     - g7 superseded by g8, across two user-lane messages (never superseded)
       and an open user-lane request (only cp requests count);
@@ -162,7 +168,12 @@ def _build() -> list[Event]:
         "",
         interrupted=True,
     )
+    log.s2f(step, "s2f-e1", "cp", "GUIDE", "hold_for_decision")
+    log.turn(log.request("cp", "cp-e1"), None, speech=False)  # empty turn
+    log.s2f(step, "s2f-l1", "cp", "GUIDE", "decline_offer")
+    late = log.request("cp", "cp-l1")
     log.s2f(step, "s2f-g6", "cp", "GUIDE", "ask_final_offer")
+    log.emit("fast.cancelled", "fast.cp", {"gen_id": "cp-l1", "reason": "epoch"}, late)
     log.request("cp", "cp-g6")  # never ends
     log.s2f(step, "s2f-g7", "cp", "GUIDE", "ask_readback")
     log.s2f(step, "s2f-u1", "user", "TELL_USER")
@@ -220,5 +231,7 @@ def test_the_fixture_reaches_every_branch() -> None:
         "s2f-g3": dead,
         "s2f-g4": dead,
         "s2f-g5": dead,
+        "s2f-e1": heard.Fate("dead", None, superseded=True),
+        "s2f-l1": heard.Fate("dead", None, superseded=True),
         "s2f-g7": heard.Fate("dead", None, superseded=True),
     }

@@ -31,6 +31,8 @@ describe("superseded GUIDEs: the timeline agrees with heard.fates", () => {
       ["s2f-g3", C.PASSED],
       ["s2f-g4", C.PASSED],
       ["s2f-g5", "Cut off before it was said"],
+      ["s2f-e1", C.REPLACED],
+      ["s2f-l1", C.REPLACED],
       ["s2f-g6", C.PASSED],
       ["s2f-g7", C.REPLACED],
       ["s2f-u1", C.PASSED],
