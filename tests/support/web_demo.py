@@ -313,7 +313,7 @@ class SlowScript:
 def rep_ear(request: Request) -> str:
     """Each numbered utterance of the heard block, classified by its words."""
     prompt = _last(request)
-    offers = dict(re.findall(r"(\S+): monthly_price (\S+?)[,;\n]", prompt))
+    offers = dict(re.findall(r"(\S+) \([a-z ]+\): monthly_price (\S+?)[,;\n]", prompt))
     said = re.findall(r"^\d+\. (.*)$", prompt.split("The caller said:", 1)[-1], re.M)
     return ears(*(_heard_act(heard, offers) for heard in said))
 

@@ -8,9 +8,9 @@ scripted person speaks for the agent, the world's SimRep answers."""
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from tests.support import sessions
@@ -30,18 +30,18 @@ from proxyloop.core.fold import fold
 from proxyloop.kernel.channels import Channel, Incoming
 from proxyloop.kernel.session import run_session
 from proxyloop.llm.http import RecordSink
-from proxyloop.obs.detectors import Inputs
-from proxyloop.obs.grading import _strikes
+from proxyloop.obs.detectors import DETECTORS, Inputs
 
+Line = tuple[str, dict[str, Any]]  # what the agent says, and the Ear's act for it
 LINE = "Northwind Mobile, may I have the account holder name?"
-HOLD = ("One moment please.", {"act": "hold_request"})
-REFUSE = ("I'd rather not say.", {"act": "refuse_fact"})
+HOLD: Line = ("One moment please.", {"act": "hold_request"})
+REFUSE: Line = ("I'd rather not say.", {"act": "refuse_fact"})
 FACTS = [
     {"key": "account.holder_name", "value": "Dana Reyes"},
     {"key": "account.last4", "value": "4821"},
 ]
-ID = ("Dana Reyes, last four 4821.", {"act": "provide_fact", "facts": FACTS})
-SUPERVISOR = ("Can I talk to a supervisor?", {"act": "ask_supervisor"})
+ID: Line = ("Dana Reyes, last four 4821.", {"act": "provide_fact", "facts": FACTS})
+SUPERVISOR: Line = ("Can I talk to a supervisor?", {"act": "ask_supervisor"})
 
 
 class Batch(Channel):
@@ -80,7 +80,7 @@ class Listening:
 
 
 def _call(
-    tmp_path: Path, lines: list[tuple[str, dict[str, Any]]], block: bool
+    tmp_path: Path, lines: Sequence[Line], block: bool
 ) -> tuple[str, tuple[Event, ...]]:
     texts = [text for text, _ in lines]
     ear = [sessions.ear("other")]  # the kernel's disclosure line opens the call
@@ -107,9 +107,9 @@ def _call(
 
 
 def _identity(events: tuple[Event, ...]) -> dict[str, Any]:
-    value = _strikes(Inputs(events, None, lambda _: None))
+    value = DETECTORS["identity.strikes"](Inputs(events, None, lambda _: None))
     assert isinstance(value, dict)
-    return value
+    return cast(dict[str, Any], value)
 
 
 def _outcome(reason: str, events: tuple[Event, ...]) -> dict[str, object]:
@@ -146,15 +146,16 @@ def _outcome(reason: str, events: tuple[Event, ...]) -> dict[str, object]:
 )
 def test_a_heard_block_ends_and_strikes_as_its_turns_one_at_a_time(
     tmp_path: Path,
-    lines: list[tuple[str, dict[str, Any]]],
+    lines: list[Line],
     want: dict[str, object],
 ) -> None:
     (tmp_path / "seq").mkdir()
     (tmp_path / "block").mkdir()
     seq = _outcome(*_call(tmp_path / "seq", lines, block=False))
     reason, events = _call(tmp_path / "block", lines, block=True)
-    heard = [e.payload["heard_utt_ids"] for e in events if e.type == "rep.ear"]
-    assert len(heard[-1]) == len(lines) - 1  # not vacuous: one block after the hold
+    *_, last = [e for e in events if e.type == "rep.ear"]
+    heard = cast(list[str], last.payload["heard_utt_ids"])
+    assert len(heard) == len(lines) - 1  # not vacuous: one block after the hold
     block = _outcome(reason, events)
     assert block == seq
     assert {k: block[k] for k in want} == want

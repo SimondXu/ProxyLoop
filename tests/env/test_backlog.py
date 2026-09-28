@@ -389,7 +389,8 @@ def test_t5_a_timer_strike_is_one_strike_and_a_timer_strike_out_hangs_up(
     silence = int(TASK.counterparty.patience.silence_s * 1000)
 
     async def ticks() -> list[Incoming]:
-        out, t = [], 1000
+        out: list[Incoming] = []
+        t = 1000
         for _ in range(TASK.counterparty.patience.strikes):
             channel.floor(True, t)
             t += silence
