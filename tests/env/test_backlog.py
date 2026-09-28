@@ -104,8 +104,10 @@ class Echo(ScriptedLLM):
     """A Mouth that says the policy's template line (always faithful)."""
 
     async def _next(self, request: TextRequest | ToolRequest) -> tuple[str, int]:
+        start = self._clock.monotonic_ms()
         self.calls += 1
-        return request.messages[-1].content.split("Line: ", 1)[1], 0
+        self._clock.advance(1)
+        return request.messages[-1].content.split("Line: ", 1)[1], start
 
 
 class Play:
@@ -162,7 +164,9 @@ class Play:
 
     def snapshot(self) -> dict[str, object]:
         """The policy state, every decision, commit and ledger write."""
-        state = {k: v for k, v in vars(self.rep.policy).items() if k != "ledger"}
+        state: dict[str, object] = {
+            k: v for k, v in vars(self.rep.policy).items() if k != "ledger"
+        }
         decisions = [
             (e.payload["from"], e.payload["to"], e.payload["intent"])
             for e in self.of("rep.policy")
@@ -292,10 +296,13 @@ def test_t5_coalesced_stepping_equals_stepping_each_turn_alone(
     tmp_path: Path, lines: list[Line], alone: int, gap_ms: int
 ) -> None:
     seq, block = _both(tmp_path, lines, alone, gap_ms)
-    assert len(block.ear.requests) < len(seq.ear.requests) or len(lines) - alone < 3
+    assert len(block.ear.requests) <= alone + 2  # the queued lines: one call
     assert block.snapshot() == seq.snapshot()
     heard = [e.payload["utt_id"] for e in block.of("rep.ear")]
-    assert heard == [e.payload["utt_id"] for e in seq.of("rep.ear")]
+    one_by_one = [e.payload["utt_id"] for e in seq.of("rep.ear")]
+    assert heard[: len(one_by_one)] == one_by_one  # the same labels, in order;
+    # a queued line after the call ended is labelled too, but never stepped
+    assert heard == one_by_one or block.rep.policy.done
 
 
 @pytest.mark.xfail(

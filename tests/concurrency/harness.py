@@ -29,7 +29,7 @@ from typing import Literal
 import pytest
 from tests.support.fakes import RepeatingLLM
 from tests.support.manual_clock import ManualClock
-from tests.support.sessions import Gated, act, fake_config, patient_task
+from tests.support.sessions import BlockEar, Gated, act, fake_config, patient_task
 
 from proxyloop.contract.config import SessionConfig, SlowViewMode
 from proxyloop.contract.events import ApprovalPost, Approver, Event
@@ -169,7 +169,8 @@ class Sim:
         def make(role: LLMRole, ref: ModelRef, sink: RecordSink) -> LLMClient:
             said = lines.get(role, ["unused"])
             mark = (until or {}).get(role)
-            client = RepeatingLLM(ref, said, self.vt, False, sink, mark)
+            scripted = BlockEar if role == "ear" else RepeatingLLM
+            client = scripted(ref, said, self.vt, False, sink, mark)
             self.llms[role] = client
             gate = (gates or {}).get(role)
             return client if gate is None else Gated(client, gate)

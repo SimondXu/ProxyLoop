@@ -14,6 +14,7 @@ from tests.env.bus_sink import BusSink
 from tests.support.sessions import fake, patient_task
 from tests.support.web_demo import Reactive, rep_ear, rep_mouth
 
+from proxyloop.contract.llm import LLMCallRecord
 from proxyloop.env.counterparty.simrep import SimRep
 from proxyloop.kernel.channels import SimRepChannel
 
@@ -42,14 +43,18 @@ def test_t9_every_turn_reaches_the_ear_within_one_rep_round(tmp_path: Path) -> N
             await vt.run_for(1000)
         await vt.run_for(120_000)
         assert all(p.done() for p in pending)
-        calls = {e.event_id: e for e in sink.of("llm.call")}
-        waits = {
-            str(e.payload["utt_id"]): int(calls[e.cause_ids[1]].payload["t_start"])
+        calls = {
+            e.event_id: LLMCallRecord.model_validate(e.payload)
+            for e in sink.of("llm.call")
+        }
+        waits = {  # the Ear's start on a turn, from the turn's delivery
+            str(e.payload["utt_id"]): calls[e.cause_ids[1]].t_start
             - said[str(e.payload["utt_id"])]
             for e in sink.of("rep.ear")
         }
         assert set(waits) == set(said)  # every turn was heard and labelled
         assert max(waits.values()) <= ROUND_MS, waits
-        assert ear.calls < TURNS  # the queued turns shared Ear calls
+        ear_calls = [c for c in calls.values() if c.role == "ear"]
+        assert len(ear_calls) < TURNS  # the queued turns shared Ear calls
 
     asyncio.run(case())

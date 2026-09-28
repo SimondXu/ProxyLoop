@@ -14,7 +14,7 @@ from tests.support import sessions
 from proxyloop.contract.events import Event, check_causes
 from proxyloop.contract.llm import LLMCallRecord, LLMUnavailable, ToolCall
 from proxyloop.env import world
-from proxyloop.env.counterparty.ear import Ear, check_act
+from proxyloop.env.counterparty.ear import Ear, EarAct, Heard, check_act
 from proxyloop.env.counterparty.mouth import Mouth, template
 from proxyloop.env.counterparty.policy import PublicIntent
 from proxyloop.env.counterparty.simrep import RepTurn, SimRep
@@ -32,6 +32,11 @@ def _tool(name: str, **args: Any) -> str:
     return json.dumps({"text": "", "tool_calls": [call]})
 
 
+def _cls(**act: Any) -> str:
+    """The Ear's ``classify`` call for a block of one utterance."""
+    return _tool("classify", acts=[act])
+
+
 NAME, LAST4 = "account.holder_name", "account.last4"
 
 
@@ -41,6 +46,14 @@ def _fact(key: str, value: str) -> dict[str, str]:
 
 def _ear(sink: BusSink, *responses: str) -> Ear:
     return Ear(sink.llm(*responses), sink.world, CP.company, CP.identity)
+
+
+def _one(
+    ear: Ear, text: str, cause: str, offers: dict[str, dict[str, str]]
+) -> tuple[EarAct, str]:
+    """Classify one heard utterance (a block of one): its act and ``rep.ear``."""
+    (out,) = asyncio.run(ear.classify([Heard("u1", text, cause, 0)], offers))
+    return out
 
 
 def _world_ok(sink: BusSink) -> list[Event]:
@@ -66,9 +79,9 @@ def test_the_ear_classifies_and_cites_the_heard_line_and_its_call(
 ) -> None:
     sink = BusSink(tmp_path)
     heard = sink.heard("Is that really the best you can do?")
-    ear = _ear(sink, _tool("classify", act="ask_discount"))
+    ear = _ear(sink, _cls(act="ask_discount"))
     text = str(heard.payload["text_heard"])
-    act, ev = asyncio.run(ear.classify("u1", text, heard.event_id, {}))
+    act, ev = _one(ear, text, heard.event_id, {})
     assert act.act == "ask_discount"
     (call,) = sink.of("llm.call")
     (rep_ear,) = sink.of("rep.ear")
@@ -83,11 +96,17 @@ def test_the_ear_classifies_and_cites_the_heard_line_and_its_call(
 @pytest.mark.parametrize(
     ("bad", "why"),
     [
-        (_tool("classify", act="haggle"), "schema"),
-        (_tool("classify", act="cite_competitor", price_usd=55), "number not said"),
-        (_tool("classify", act="accept", offer_ref="loyal-9"), "never offered"),
+        (_cls(act="haggle"), "schema"),
+        (_cls(act="cite_competitor", price_usd=55), "number not said"),
+        (_cls(act="accept", offer_ref="loyal-9"), "never offered"),
         (_tool("reply", text="x", revealed={}), "wrong tool"),
-        (_tool("classify", act="cite_competitor", price_usd="60"), "strict: a string"),
+        (_tool("classify", act="cite_competitor", price_usd=60), "one act, no acts"),
+        (_tool("classify", acts=[]), "no act for the utterance"),
+        (
+            _tool("classify", acts=[{"act": "other"}, {"act": "other"}]),
+            "two acts for one utterance",
+        ),
+        (_cls(act="cite_competitor", price_usd="60"), "strict: a string"),
     ],
 )
 def test_an_invalid_ear_output_is_regenerated_and_counted(
@@ -96,10 +115,8 @@ def test_an_invalid_ear_output_is_regenerated_and_counted(
     sink = BusSink(tmp_path)
     text = "Brightwave offers 60 dollars a month."
     heard = sink.heard(text)
-    good = _tool("classify", act="cite_competitor", price_usd=60)
-    act, _ = asyncio.run(
-        _ear(sink, bad, good).classify("u1", text, heard.event_id, OFFERS)
-    )
+    good = _cls(act="cite_competitor", price_usd=60)
+    act, _ = _one(_ear(sink, bad, good), text, heard.event_id, OFFERS)
     assert act.price_usd == 60, why
     calls, (rep_ear,) = sink.of("llm.call"), sink.of("rep.ear")
     assert len(calls) == 2 and rep_ear.payload["attempts"] == 2
@@ -111,9 +128,9 @@ def test_an_invalid_ear_output_is_regenerated_and_counted(
 def test_three_invalid_ear_outputs_end_the_episode(tmp_path: Path) -> None:
     sink = BusSink(tmp_path)
     heard = sink.heard("hello")
-    ear = _ear(sink, *[_tool("classify", act="haggle")] * 3)
+    ear = _ear(sink, *[_cls(act="haggle")] * 3)
     with pytest.raises(world.WorldError):
-        asyncio.run(ear.classify("u1", "hello", heard.event_id, {}))
+        _one(ear, "hello", heard.event_id, {})
     assert len(sink.of("llm.call")) == 3 and sink.of("rep.ear") == []
 
 
@@ -160,11 +177,11 @@ def test_the_mouth_falls_back_to_the_flagged_template(tmp_path: Path) -> None:
 def test_simrep_commits_heard_and_binds_the_ledger(tmp_path: Path) -> None:
     sink = BusSink(tmp_path)
     ear = [
-        _tool("classify", act="other"),
-        _tool("classify", act="provide_fact", facts=[_fact(NAME, "Dana Reyes")]),
-        _tool("classify", act="provide_fact", facts=[_fact(LAST4, "4821")]),
-        _tool("classify", act="ask_discount"),
-        _tool("classify", act="accept", offer_ref="loyal-1"),
+        _cls(act="other"),
+        _cls(act="provide_fact", facts=[_fact(NAME, "Dana Reyes")]),
+        _cls(act="provide_fact", facts=[_fact(LAST4, "4821")]),
+        _cls(act="ask_discount"),
+        _cls(act="accept", offer_ref="loyal-1"),
     ]
     mouth = [
         "Northwind Mobile here, can I get the account holder name and last 4 digits?",
@@ -313,12 +330,14 @@ def test_the_ear_tool_names_only_offers_said_and_forbids_extra_fields(
 ) -> None:
     sink = BusSink(tmp_path)
     heard = sink.heard("Yes, the 75 one.")
-    ear = _ear(sink, _tool("classify", act="accept", offer_ref="loyal-1"))
-    asyncio.run(ear.classify("u1", "Yes, the 75 one.", heard.event_id, OFFERS))
+    ear = _ear(sink, _cls(act="accept", offer_ref="loyal-1"))
+    _one(ear, "Yes, the 75 one.", heard.event_id, OFFERS)
     (messages,) = [c for k, c in sink.prompts.values() if k == "messages"]
     params = json.loads(messages)["tools"][0]["parameters"]
-    assert params["additionalProperties"] is False
-    assert params["properties"]["offer_ref"]["enum"] == ["loyal-1"]
+    assert params["additionalProperties"] is False and params["required"] == ["acts"]
+    item = params["properties"]["acts"]["items"]
+    assert item["additionalProperties"] is False
+    assert item["properties"]["offer_ref"]["enum"] == ["loyal-1"]
 
 
 @pytest.mark.parametrize("role", ["ear", "mouth"])
@@ -332,7 +351,7 @@ def test_a_timed_out_world_call_is_cancelled_and_its_record_logged(
         if role == "ear":
             ear = Ear(client, sink.world, CP.company, CP.identity)
             ear.timeout_s = 0.05
-            asyncio.run(ear.classify("u1", "hello", heard.event_id, {}))
+            _one(ear, "hello", heard.event_id, {})
         else:
             mouth = Mouth(client, sink.world, CP)
             mouth.timeout_s = 0.05
@@ -345,7 +364,7 @@ def test_a_timed_out_world_call_is_cancelled_and_its_record_logged(
 
 def test_simrep_ticks_nothing_while_a_turn_is_in_flight(tmp_path: Path) -> None:
     sink = BusSink(tmp_path)
-    ear = sink.llm(_tool("classify", act="smalltalk"))
+    ear = sink.llm(_cls(act="smalltalk"))
     mouth = sink.llm(
         "Hi, thanks for calling. Can I get your name and last 4?", hang_s=0.05
     )
@@ -375,8 +394,8 @@ def test_the_ear_takes_every_fact_of_one_utterance(tmp_path: Path) -> None:
     text = "Dana Reyes, last four 4821."
     heard = sink.heard(text)
     facts = [_fact(NAME, "Dana Reyes"), _fact(LAST4, "4821")]
-    ear = _ear(sink, _tool("classify", act="provide_fact", facts=facts))
-    act, _ = asyncio.run(ear.classify("u1", text, heard.event_id, {}))
+    ear = _ear(sink, _cls(act="provide_fact", facts=facts))
+    act, _ = _one(ear, text, heard.event_id, {})
     assert [(f.key, f.value) for f in act.facts] == [
         (NAME, "Dana Reyes"),
         (LAST4, "4821"),
@@ -386,8 +405,12 @@ def test_the_ear_takes_every_fact_of_one_utterance(tmp_path: Path) -> None:
     assert rep_ear.payload["attempts"] == 1
     (messages,) = [c for k, c in sink.prompts.values() if k == "messages"]
     params = json.loads(messages)["tools"][0]["parameters"]["properties"]
-    assert params["facts"]["items"]["properties"]["key"]["enum"] == [NAME, LAST4]
+    item = params["acts"]["items"]["properties"]
+    assert item["facts"]["items"]["properties"]["key"]["enum"] == [NAME, LAST4]
     _world_ok(sink)
+
+
+N, L = _fact(NAME, "Dana"), _fact(LAST4, "4821")
 
 
 def _calls(*calls: tuple[str, dict[str, Any]]) -> str:
@@ -403,23 +426,23 @@ def _calls(*calls: tuple[str, dict[str, Any]]) -> str:
     [
         (
             _calls(
-                ("classify", {"act": "provide_fact", "facts": [_fact(NAME, "Dana")]}),
-                ("classify", {"act": "provide_fact", "facts": [_fact(LAST4, "4821")]}),
+                ("classify", {"acts": [{"act": "provide_fact", "facts": [N]}]}),
+                ("classify", {"acts": [{"act": "provide_fact", "facts": [L]}]}),
             ),
             "parallel calls stay invalid",
         ),
-        (_tool("classify", act="provide_fact", facts=[]), "no fact"),
-        (_tool("classify", act="provide_fact"), "no facts field"),
+        (_cls(act="provide_fact", facts=[]), "no fact"),
+        (_cls(act="provide_fact"), "no facts field"),
         (
-            _tool("classify", act="provide_fact", facts=[_fact(LAST4, "1234")]),
+            _cls(act="provide_fact", facts=[_fact(LAST4, "1234")]),
             "a value not said",
         ),
         (
-            _tool("classify", act="provide_fact", facts=[_fact("account.pin", "4821")]),
+            _cls(act="provide_fact", facts=[_fact("account.pin", "4821")]),
             "an unknown key",
         ),
         (
-            _tool("classify", act="provide_fact", facts=[{"key": LAST4}]),
+            _cls(act="provide_fact", facts=[{"key": LAST4}]),
             "a fact without its value",
         ),
     ],
@@ -431,8 +454,8 @@ def test_an_invalid_fact_output_is_regenerated_and_counted(
     text = "Dana Reyes, last four 4821."
     heard = sink.heard(text)
     facts = [_fact(NAME, "Dana Reyes"), _fact(LAST4, "4821")]
-    good = _tool("classify", act="provide_fact", facts=facts)
-    act, _ = asyncio.run(_ear(sink, bad, good).classify("u1", text, heard.event_id, {}))
+    good = _cls(act="provide_fact", facts=facts)
+    act, _ = _one(_ear(sink, bad, good), text, heard.event_id, {})
     assert len(act.facts) == 2, why
     (rep_ear,) = sink.of("rep.ear")
     assert rep_ear.payload["attempts"] == 2 and len(sink.of("llm.call")) == 2
@@ -441,9 +464,7 @@ def test_an_invalid_fact_output_is_regenerated_and_counted(
 
 def test_identity_refused_three_times_abandons_the_call(tmp_path: Path) -> None:
     sink = BusSink(tmp_path)
-    ear = [_tool("classify", act="smalltalk")] + [
-        _tool("classify", act="refuse_fact")
-    ] * 3
+    ear = [_cls(act="smalltalk")] + [_cls(act="refuse_fact")] * 3
     mouth = [
         "Northwind Mobile, can I get the account holder name and last 4 digits?",
         "I need the account holder name and last 4 digits.",
@@ -597,13 +618,15 @@ def test_a_fact_is_said_only_as_whole_digit_groups_or_whole_tokens(
     call = ToolCall(
         call_id="t",
         name="classify",
-        arguments=json.dumps({"act": "provide_fact", "facts": [_fact(*fact)]}),
+        arguments=json.dumps(
+            {"acts": [{"act": "provide_fact", "facts": [_fact(*fact)]}]}
+        ),
     )
     if said:
-        assert check_act((call,), heard, (), (NAME, LAST4)).facts
+        assert check_act((call,), [heard], (), (NAME, LAST4))[0].facts
     else:
         with pytest.raises(world.Invalid, match="was not said"):
-            check_act((call,), heard, (), (NAME, LAST4))
+            check_act((call,), [heard], (), (NAME, LAST4))
 
 
 def test_identity_strikes_apply_in_rep_chat(tmp_path: Path) -> None:
