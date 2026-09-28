@@ -15,12 +15,19 @@ The chain is stop -> revoke -> replan -> the last status.changed to ESCALATED:
    has no stop marker yet.
 3. **Replan.** Every NEEDS_REPLAN between the revoke and the ESCALATED must
    be the revoke's own; a NEEDS_REPLAN with another cause, such as a later
-   card's expiry, breaks the chain. There are two branches:
-   (a) A card was pending at the revoke (the case was AWAITING_APPROVAL).
-   The chain needs the NEEDS_REPLAN that the revoke's bump caused
-   (``kernel/fence.py`` stales the card), which is ``replan_seq``.
-   (b) No card was pending. The chain holds with no NEEDS_REPLAN of another
-   cause, and ``replan_seq`` is None.
+   card's expiry, breaks the chain. ``replan_seq`` cites the first of them
+   (None when there is none). The branch is the last status before the
+   revoke:
+   (a) A card was pending (AWAITING_APPROVAL). The chain needs the
+   NEEDS_REPLAN that the revoke's bump caused (``kernel/fence.py`` stales
+   the card).
+   (b) No card was pending. The real kernel reaches this when the stop lands
+   while an accept waits (COMMIT_AUTHORIZED): the bump stales the accept
+   line at the floor, and that replan is the revoke's. If the case was
+   already NEEDS_REPLAN at the revoke, that replan must be the stop's too:
+   owned by a qualifying revoke after the stop, or caused by the stop's user
+   fence (a ``speak.revoked{reason: fence}`` after the stop). Otherwise,
+   for example after a card expired, this revoke does not qualify.
 
 A NEEDS_REPLAN is the revoke's in either of two cases:
 
@@ -72,6 +79,25 @@ def _owns(x: Inputs, bumps: list[Event], revoke: Event, replan: Event) -> bool:
     return False
 
 
+def _stop_replan(
+    x: Inputs, bumps: list[Event], replan: Event, after: int, kinds: frozenset[str]
+) -> bool:
+    """Whether a NEEDS_REPLAN already in place at a revoke is the stop's
+    (module doc, 3(b)): owned by a qualifying revoke after the stop, or caused
+    by a ``speak.revoked{fence}`` after it."""
+    if any(
+        after < q.seq < replan.seq and q.payload.get("reason") in kinds
+        and _owns(x, bumps, q, replan)
+        for q in bumps
+    ):  # fmt: skip
+        return True
+    return any(
+        c.type == "speak.revoked" and c.payload.get("reason") == "fence"
+        and c.seq > after
+        for c in _ancestors(x, replan)
+    )  # fmt: skip
+
+
 def stopped(x: Inputs) -> dict[str, object] | None:
     """The user's stop chain before the last ESCALATED (module doc), or None."""
     changes = x.of("status.changed")
@@ -91,10 +117,12 @@ def stopped(x: Inputs) -> dict[str, object] | None:
         ]  # fmt: skip
         if not all(_owns(x, bumps, r, n) for n in replans):
             continue  # another cause replanned the case after this revoke
-        at = [c.payload.get("status") for c in changes if c.seq < r.seq]
-        pending = bool(at) and at[-1] == "AWAITING_APPROVAL"
-        if pending and not replans:
+        at = [c for c in changes if c.seq < r.seq]
+        now = at[-1].payload.get("status") if at else None
+        if now == "AWAITING_APPROVAL" and not replans:
             continue  # (a): the stale card's replan is missing
-        replan = replans[0].seq if pending else None
+        if now == "NEEDS_REPLAN" and not _stop_replan(x, bumps, at[-1], after, kinds):
+            continue  # (b): another cause replanned the case before this revoke
+        replan = replans[0].seq if replans else None
         return {"stop_seq": stop, "revoke_seq": r.seq, "replan_seq": replan}
     return None

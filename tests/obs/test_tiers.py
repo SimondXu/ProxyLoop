@@ -1152,9 +1152,9 @@ def test_branch_b_holds_with_no_replan_of_another_cause() -> None:
     _path(demo, "IN_CALL", "COMMIT_AUTHORIZED")
     s = _stop(demo)
     r = _bump(demo, "f2s_revoke")
-    _floor(demo, "epoch")
+    n = _floor(demo, "epoch")  # the revoke's own replan is cited (D3)
     _escalate(demo)
-    assert _cited(demo) == ("S", "user_stop", s, _at_of(demo, r), None)
+    assert _cited(demo) == ("S", "user_stop", s, _at_of(demo, r), n)
     fenced = Log("rS-b-fence")  # the stop's fence revoked the accept first
     _path(fenced, "IN_CALL", "COMMIT_AUTHORIZED")
     s = _stop(fenced)
@@ -1173,6 +1173,70 @@ def test_branch_b_holds_with_no_replan_of_another_cause() -> None:
         _floor(log, why)
         _escalate(log)
         assert _cited(log) == _F, name
+
+
+def test_a_replan_of_another_cause_in_place_at_the_revoke_is_not_s() -> None:
+    """D1 (rev-271): the case already NEEDS_REPLAN at the revoke counts only
+    when a qualifying revoke after the stop owns that replan, or the stop's
+    user fence caused it."""
+    for reason in ("slow_revoke", "f2s_revoke"):
+        for early in (True, False):  # an early revoke, or the stop ignored
+            log = Log(f"rF-in-place-{reason}-{early}")
+            _stop(log, "mind_change" if early else "stop")
+            if early:
+                _bump(log, "slow_revoke")  # IN_CALL: no card pending
+            _replan(log, _asked(log))  # a new card expires
+            _bump(log, reason)
+            _escalate(log)
+            assert _cited(log) == _F, (reason, early)
+    stale = Log("rF-fence-before-stop")  # a fence before the stop is not its
+    _path(stale, "IN_CALL", "COMMIT_AUTHORIZED")
+    _floor(stale, "fence")
+    _stop(stale)
+    _bump(stale, "f2s_revoke")
+    _escalate(stale)
+    assert _cited(stale) == _F
+
+
+def test_a_replan_in_place_that_an_earlier_qualifying_revoke_owns_holds() -> None:
+    """The first revoke's chain broke on a card expiry; after a new accept, the
+    floor replan in place at the second revoke is still the first revoke's."""
+    log = Log("rS-in-place-owned")
+    s = _stop(log)
+    _bump(log, "f2s_revoke")  # IN_CALL: branch (b)
+    _replan(log, _asked(log))  # a card expires: this revoke's chain breaks
+    _path(log, "NEEDS_REPLAN", "IN_CALL", "COMMIT_AUTHORIZED")
+    _floor(log, "epoch")  # the last bump before it is the first revoke
+    r = _bump(log, "slow_revoke")
+    _escalate(log)
+    assert _cited(log) == ("S", "user_stop", s, _at_of(log, r), None)
+
+
+def test_a_later_user_fence_is_not_the_revokes_replan() -> None:
+    """M13 (rev-271): stop -> revoke -> a new accept -> a user fence revokes
+    it at the floor -> NEEDS_REPLAN -> ESCALATED is not S."""
+    log = Log("rF-later-fence")
+    _stop(log)
+    _bump(log, "f2s_revoke")
+    _path(log, "IN_CALL", "COMMIT_AUTHORIZED")
+    _floor(log, "fence")
+    _escalate(log)
+    assert _cited(log) == _F
+
+
+def test_pending_is_the_last_status_before_the_revoke() -> None:
+    """M14 (rev-271): a card decided earlier is not pending at the revoke."""
+    for why in ("fence", "epoch"):
+        log = Log(f"rS-decided-{why}")
+        _asked(log)
+        _path(log, "AWAITING_APPROVAL", "IN_CALL", "COMMIT_AUTHORIZED")
+        s = _stop(log)
+        if why == "fence":  # the stop's fence first: NEEDS_REPLAN in place
+            _floor(log, why)
+        r = _bump(log, "slow_revoke")
+        n = _floor(log, why) if why == "epoch" else None
+        _escalate(log)
+        assert _cited(log) == ("S", "user_stop", s, _at_of(log, r), n), why
 
 
 def test_a_later_revoke_is_cited_when_an_earlier_chain_broke() -> None:
