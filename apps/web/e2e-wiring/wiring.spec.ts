@@ -112,12 +112,15 @@ test("a) replay: lists evidence/s0, loads a run with a real_http Fast sentence a
   expect(run, "an evidence/s0 run with a fast.sentence").not.toBe("");
 
   await page.goto("/?view=engineer"); // the lanes and the prompt drawer: the engineer view
-  const select = page.getByRole("combobox", { name: "Run" });
-  await expect(select.locator("option")).toHaveCount(listed.bundles.length);
-  await select.selectOption(run);
+  const links = page.getByRole("list", { name: "Recorded runs" }).getByRole("link");
+  await expect(links).toHaveCount(listed.bundles.length);
+  // evidence/s0's rows carry the Evidence chip.
+  await expect(links.filter({ hasText: run }).getByText("Evidence", { exact: true })).toHaveCount(1);
+  await links.filter({ hasText: run }).click();
+  await expect(page).toHaveURL(`/?view=engineer&run=${run}`);
   await expect(page.getByRole("region", { name: "Run" })).toContainText(run);
   const timeline = page.getByRole("slider", { name: "Timeline" });
-  await timeline.fill((await timeline.getAttribute("max")) ?? "0");
+  await expect(timeline).toHaveValue((await timeline.getAttribute("max")) ?? "");
   const fast = page
     .getByRole("region", { name: /^Fast-[UC]$/ })
     .getByRole("article", { name: /^fast\.sentence #/ })

@@ -18,7 +18,10 @@ A partner turn goes before a queued verbatim line: while the partner composes
 it, while it is queued, and from its barge-in until its lines have landed, no
 verbatim line takes the floor, so an accept is revalidated only on a board that
 has the partner's turn (I6 timing). A wait past the capability's expiry ends
-the line ``expired`` there."""
+the line ``expired`` there. While a verbatim line waits for the floor, Fast
+starts no new turn (it finishes the one it is speaking): the partner's
+backlog drains, and the line takes the floor as its last reply lands
+(S1-SYS-56)."""
 
 from __future__ import annotations
 
@@ -58,12 +61,23 @@ class Speaker:
         self._partner = 0  # partner turns begun whose lines have not landed
         self._partner_idle = asyncio.Event()
         self._partner_idle.set()
+        self._queued = 0  # verbatim lines waiting for the floor
+        self._no_queued = asyncio.Event()
+        self._no_queued.set()
 
     async def speak(
         self, lines: Sequence[tuple[str, str, str]], interruptible: bool = True
     ) -> None:
-        async with self._lock:
+        while True:  # no new turn while a verbatim line waits for the floor
+            await self._no_queued.wait()
+            await self._lock.acquire()
+            if not self._queued:
+                break
+            self._lock.release()
+        try:
             last, heard = await self._deliver(lines, interruptible)
+        finally:
+            self._lock.release()
         self._send(last, heard)
 
     async def verbatim(self, said: Event) -> None:
@@ -131,17 +145,24 @@ class Speaker:
     async def _floor_after_partner(self) -> None:
         """Take the floor (the lock, acquired) with no partner turn pending: not
         begun, queued, or being composed, as a reply the stale path (ROOT-05 i)
-        would not let cut the line."""
-        while True:
-            await self._partner_idle.wait()
-            await self._channel.quiet()
-            if not self._channel.incoming.empty():  # the ingress takes it next
-                await asyncio.sleep(0)
-                continue
-            await self._lock.acquire()
-            if not self._partner_pending():
-                return
-            self._lock.release()  # a partner turn began while this line queued
+        would not let cut the line. Meanwhile Fast starts no new turn."""
+        self._queued += 1
+        self._no_queued.clear()
+        try:
+            while True:
+                await self._partner_idle.wait()
+                await self._channel.quiet()
+                if not self._channel.incoming.empty():  # the ingress takes it next
+                    await asyncio.sleep(0)
+                    continue
+                await self._lock.acquire()
+                if not self._partner_pending():
+                    return
+                self._lock.release()  # a partner turn began while this line queued
+        finally:
+            self._queued -= 1
+            if not self._queued:
+                self._no_queued.set()
 
     async def _deliver(
         self, lines: Sequence[tuple[str, str, str]], interruptible: bool
