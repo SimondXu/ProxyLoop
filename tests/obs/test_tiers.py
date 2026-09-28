@@ -700,12 +700,12 @@ def test_diagnose_prints_the_tiers_block_and_json(
 
 
 def _agent_offer(
-    log: Log, price_minor: int, money: dict[str, str] | None = None
+    log: Log, price_minor: int, money: dict[str, str] | None = None, bare: bool = False
 ) -> None:
     """The agent's record of the offer the capability binds (terms_hash th):
-    the price, 24 months and its ``money`` terms in cents (default a $10.00
-    activation fee), as Guard records them."""
-    slots = [
+    the price, 24 months (neither when ``bare``) and its ``money`` terms in
+    cents (default a $10.00 activation fee), as Guard records them."""
+    slots = [] if bare else [
         {"field": "monthly_price", "value": str(price_minor), "unit": "usd_minor",
          "role": "recurring", "status": "confirmed"},
         {"field": "term_months", "value": "24", "unit": "months",
@@ -713,7 +713,7 @@ def _agent_offer(
     ] + [
         {"field": f, "value": v, "unit": "usd_minor", "status": "confirmed",
          "role": "one_time" if f.startswith("fee:") else "credit"}
-        for f, v in (money or {"fee:activation": "1000"}).items()
+        for f, v in (money if money is not None else {"fee:activation": "1000"}).items()
     ]  # fmt: skip
     offer: P = {"offer_ref": "offer-1", "revision": 1, "slots": slots}
     log.add("offer.recorded", "guard", "agent", offer | {"terms_hash": "th"},
@@ -746,13 +746,15 @@ def _confirm_deal(
     fee: str = "10.00",
     bound: dict[str, str] | None = None,
     agent: dict[str, str] | None = None,
+    bare: bool = False,
 ) -> None:
     """test_backlog's shape: the accept is read back, a "yes" commits; the
     ledger binds ``said``, ``months``, the activation ``fee`` (or the
     ``bound`` money terms, ``fee_x`` for ``fee:x``) and a term the agent's
-    record lacks (not compared); the agent recorded ``agent``'s money."""
+    record lacks (not compared); the agent recorded ``agent``'s money (and,
+    unless ``bare``, the price and the months)."""
     _current(log, "85")
-    _agent_offer(log, 6800, agent)
+    _agent_offer(log, 6800, agent, bare)
     grant = _mandate(log, 7000)
     _confirm(log, _accept(log, grant) if released else _yes(log))
     money = bound if bound is not None else {"fee_activation": fee}
@@ -800,9 +802,9 @@ def test_a_confirm_commit_with_another_bound_term_or_on_free_speech_is_x() -> No
 
 
 def test_fees_under_other_names_are_compared_by_amount() -> None:
-    """Fee names are Slow's choice (``fee:<code>``): when the ledger's and the
-    authorized offer's fee names differ, the amounts in cents must be equal
-    as a multiset; when the names agree, per name. Fails closed."""
+    """Fee names are Slow's choice (``fee:<code>``): a name both sides carry is
+    compared by name, and the amounts in cents under the names only one side
+    carries must be equal as a multiset. Fails closed."""
     same = Log("rFs")  # the world's activation fee, recorded as a setup fee
     _confirm_deal(same, bound={"fee_activation": "10"}, agent={"fee:setup": "1000"})
     assert (_tier(same)["tier"], _tier(same)["confirmed_by_free_speech"]) == (
@@ -817,6 +819,13 @@ def test_fees_under_other_names_are_compared_by_amount() -> None:
         ("rFu", {"fee_activation": "10.5"}, {"fee:setup": "1000"}),  # unparseable
         ("rFv", {"fee_activation": "10"}, {"fee:setup": "10.00"}),  # not cents
         ("rFo", {}, {"fee:setup": "1000"}),  # the ledger binds no fee
+        ("rFg", {"fee_activation": "10"}, {}),  # the agent recorded no fee
+        ("rFq", {"fee_activation": "10", "fee_early": "25"},  # a shared name
+         {"fee:activation": "2500", "fee:setup": "1000"}),  # conflicts
+        ("rFe", {"fee_a": "10", "fee_b": "25"},  # the same names, swapped
+         {"fee:a": "2500", "fee:b": "1000"}),
+        ("rFb", {"fee_activation": "10.5"}, {"fee:activation": "10.00"}),  # both
+        ("rFc", {"fee_activation": "10.5"}, {"fee:setup": "10.00"}),  # unparseable
     ):  # fmt: skip
         log = Log(run_id)
         _confirm_deal(log, bound=bound, agent=agent)
@@ -830,6 +839,11 @@ def test_fees_under_other_names_are_compared_by_amount() -> None:
         agent={"fee:early_exit": "2500", "fee:setup": "1000"},
     )
     assert _tier(swapped)["tier"] == "A"
+    only_fee = Log("rF1")  # a fee is the only term both carry: shares none
+    _confirm_deal(only_fee, agent={"fee:activation": "1000"}, bare=True)
+    assert (_tier(only_fee)["tier"], _tier(only_fee)["reason"]) == (
+        "X", "terms_mismatch",
+    )  # fmt: skip
 
 
 def test_credits_under_other_names_are_compared_by_amount() -> None:

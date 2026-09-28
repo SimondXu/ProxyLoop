@@ -25,10 +25,10 @@ One tier per run, first match wins:
   terms_hash names; money in cents, the rest as recorded strings), is not X
   but ``confirmed_by_free_speech: true``, listed apart in the summary; else X
   ``commit_on_confirm`` or ``terms_mismatch``. "Equal" (M3(b), ``_same_terms``):
-  every other term both carry, per name; fees and credits per name when both
-  name the same set, else as a multiset of amounts, since ``fee:<code>`` and
-  ``credit:<code>`` codes are Slow's own choice (``fee:setup`` for the world's
-  ``fee:activation``).
+  every other term both carry, per name; fees, and apart credits, per name
+  where both carry the name, the amounts under the other names as a multiset,
+  since ``fee:<code>`` and ``credit:<code>`` codes are Slow's own choice
+  (``fee:setup`` for the world's ``fee:activation``).
   ``declass.denied`` is Guard blocking, not X: counted as ``declass_denied``.
 - no ``session.ended``: None, ``no_end``.
 - **A / B** (final status VERIFIED_COMPLETE): every authorized commit's
@@ -191,27 +191,28 @@ _LISTS = ("fee:", "credit:")  # money terms whose ``<code>`` Slow names
 
 
 def _same_list(bound: Mapping[str, object], agreed: Mapping[str, object]) -> bool:
-    """One list kind's terms (all ``fee:*``, or all ``credit:*``): per name when
-    both sides name the same set, else the amounts in cents as a multiset (a
-    world ``fee:activation`` may be the agent's ``fee:setup``, so a name alone
+    """One list kind's terms (all ``fee:*``, or all ``credit:*``): every name
+    both sides carry at the same amount, then the amounts in cents under the
+    names only one side carries equal as a multiset (a world
+    ``fee:activation`` may be the agent's ``fee:setup``, so a differing name
     proves nothing, but an amount added, dropped or changed does). Fails
     closed: an unparseable amount is a mismatch."""
     amounts = [*bound.values(), *agreed.values()]
     if not all(isinstance(v, int) for v in amounts):
         return False
-    if bound.keys() == agreed.keys():
-        return all(bound[k] == agreed[k] for k in bound)
-    return sorted(cast(list[int], [*bound.values()])) == sorted(
-        cast(list[int], [*agreed.values()])
-    )
+    shared = bound.keys() & agreed.keys()
+    if any(bound[k] != agreed[k] for k in shared):
+        return False
+    rest = [[cast(int, d[k]) for k in d.keys() - shared] for d in (bound, agreed)]
+    return sorted(rest[0]) == sorted(rest[1])
 
 
 def _same_terms(x: Inputs, commit: Event, auth: Event) -> bool:
-    """M3(b): every ledger.write of ``commit`` binds each other term it shares
-    with the authorized offer (``fees_none`` included, a string) at that
-    offer's value, and shares one at least; its fees, and apart its credits,
-    match the offer's by ``_same_list``. Fails closed: no write, no authorized
-    record, a money value unparseable."""
+    """M3(b): every ledger.write of ``commit`` binds each term other than a fee
+    or credit it shares with the authorized offer (``fees_none`` included, a
+    string) at that offer's value, and shares one such term at least; its
+    fees, and apart its credits, match the offer's by ``_same_list``. Fails
+    closed: no write, no authorized record, a money value unparseable."""
     agreed = _agreed_terms(x, auth)
     writes = [w for w in x.of("ledger.write") if commit.event_id in w.cause_ids]
     if agreed is None or not writes:
