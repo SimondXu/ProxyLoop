@@ -43,7 +43,7 @@ from proxyloop.llm.factory import make_client
 from proxyloop.llm.http import RecordSink
 from proxyloop.serve.api import create_app
 from proxyloop.serve.bundles import find_run
-from proxyloop.serve.cases import LaneKey, StartRefused
+from proxyloop.serve.cases import LaneKey, NotOpen, StartRefused
 from proxyloop.serve.start import OPTION_ID, REASONS, TASK_REF, broken
 
 REF = "cp-direct-discount@1"
@@ -374,6 +374,28 @@ def test_a_user_message_and_a_human_rep_line_become_events(tmp_path: Path) -> No
     arun(case())
 
 
+def test_a_human_rep_line_before_the_call_opens_is_refused(tmp_path: Path) -> None:
+    async def case() -> None:
+        vt = VirtualTime()
+        case = await starter(tmp_path, vt).start_case(REF, {}, "human")
+        k = kernel(case)
+        assert not of(k.bus.events, "chan.opened", lane="cp")  # the intake runs
+        before = k.bus.events
+        with pytest.raises(NotOpen):  # serve: 409 not_open
+            case.rep_utterance("Hello, who is this?")
+        assert k.bus.events == before
+        await vt.run_for(CALLED_MS)  # the deadline opens the call
+        assert of(k.bus.events, "chan.opened", lane="cp")
+        assert not of(k.bus.events, "utt.final", speaker="partner")  # never late
+        case.rep_utterance("Hello, who is this?")  # now accepted
+        await vt.run_for(100)
+        (line,) = of(k.bus.events, "utt.final", speaker="partner")
+        assert line.payload["text"] == "Hello, who is this?"
+        await stop(case)
+
+    arun(case())
+
+
 def test_a_sim_rep_case_has_no_human_rep_ingress(tmp_path: Path) -> None:
     async def case() -> None:
         case = await starter(tmp_path, VirtualTime()).start_case(REF, {}, "sim")
@@ -549,6 +571,31 @@ def test_serve_starts_a_case_and_its_posts_reach_the_kernel(tmp_path: Path) -> N
         assert [x["payload"]["text"] for x in lines if x["type"] == "user.msg"] == [
             said["text"]
         ]
+        live = s._run  # pyright: ignore[reportPrivateUsage]
+        assert live is not None
+        cast(Any, http).portal.call(_cancel, live)
+
+
+def test_serve_refuses_a_rep_line_before_the_call_opens(tmp_path: Path) -> None:
+    vt = VirtualTime()
+    s = starter(tmp_path, vt)
+    app = create_app([tmp_path / "runs"], [ORIGIN], start=s)
+    with TestClient(app, base_url="http://127.0.0.1") as http:
+        body: dict[str, object] = {"task_ref": REF, "models": {}, "rep": "human"}
+        got = post(http, "/api/cases", body, headers(_operator(http)))
+        case_id = got.json()["case_id"]
+        run = tmp_path / "runs" / "live" / case_id / case_id / "events.jsonl"
+        rep, url = headers(login(http, "rep", case_id)), f"/api/cases/{case_id}/rep"
+        line = {"text": "Hello?"}
+        before = run.read_text()
+        got = post(http, url, line, rep)
+        assert (got.status_code, got.json()) == (409, {"error": "not_open"})
+        assert run.read_text() == before  # nothing appended
+        cast(Any, http).portal.call(vt.run_for, CALLED_MS)  # the call is open
+        assert post(http, url, line, rep).is_success
+        said = [x["payload"] for x in _wait_for(run, "utt.final")]
+        heard = [p["text"] for p in said if p.get("speaker") == "partner"]
+        assert heard == [line["text"]]
         live = s._run  # pyright: ignore[reportPrivateUsage]
         assert live is not None
         cast(Any, http).portal.call(_cancel, live)
