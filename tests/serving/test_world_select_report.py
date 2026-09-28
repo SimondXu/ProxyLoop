@@ -215,7 +215,10 @@ def args(t: Path, cmd: str = "score", *extra: str) -> list[str]:
 
 def scores(t: Path, *extra: str) -> Json:
     ns = wr.parser().parse_args(args(t, "score", *extra))
-    judged = wr.judged_labels(ns.judge_key, ns.judge_dir) if ns.judge_dir else None
+    root = sc.load_json(ns.items)["root_hash"]
+    judged = None
+    if ns.judge_dir:
+        judged = wr.judged_labels(ns.judge_key, ns.judge_dir, root, ns.rows)
     return wr.score(ns, judged)
 
 
@@ -337,7 +340,7 @@ def test_judge_export_is_blind(tree: Path, capsys: pytest.CaptureFixture[str]) -
     records: list[Json] = []
     for f in sorted(out.glob("*.json")):
         text, body = f.read_text(), json.loads(f.read_text())
-        assert set(body) == {"batch", "rubric", "rubric_sha256", "records"}
+        assert set(body) == {"batch", "export_id", "rubric", "rubric_sha256", "records"}
         assert body["rubric"] == RUBRIC_TEXT
         for leak in ("gemini", "deepseek", "teamrouter", M1, M2, M3, "offer_ref"):
             assert leak not in text
@@ -432,3 +435,36 @@ def test_a_second_final_row_is_refused(tree: Path) -> None:
     path.write_text(path.read_text() + again)
     with pytest.raises(SystemExit, match="a second final row"):
         scores(tree)
+
+
+def test_the_export_id_ties_labels_to_their_inputs(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out, key_path = tree / "batches", tree / "key.json"
+    ws.main(args(tree, "judge-export", "--out-dir", str(out), "--key-out",
+                  str(key_path), "--seed", "3"))  # fmt: skip
+    capsys.readouterr()
+    key = json.loads(key_path.read_text())
+    eid = key["export_id"]
+    rows = [json.loads(p.read_text()) for p in sorted(out.glob("*.json"))]
+    assert {b["export_id"] for b in rows} == {eid}
+    assert all(r["record"].startswith(f"judge-{eid[:8]}-") for b in rows
+               for r in b["records"])  # fmt: skip
+    shas = sorted(sc.sha256_file(p) for p in tree.glob("*.jsonl"))
+    seeded = {"seed": 3, "rows": shas, "rubric": wr.RUBRIC_SHA}
+    assert eid == sha256_text(json.dumps(seeded, sort_keys=True, separators=(",", ":")))
+    labels = [{"record": i, "note": ""} | dict.fromkeys(sc.JUDGED, True)
+              for i in key["records"]]  # fmt: skip
+    (tree / "judged").mkdir()
+    (tree / "judged" / "labels.json").write_text(json.dumps(labels))
+    judge = ("--judge-dir", str(tree / "judged"), "--judge-key", str(key_path))
+    assert scores(tree, *judge)["arms"][INC]["mouth"]["recorded"]["judged"]
+    for field, value in (("root_hash", "0" * 64), ("rubric_sha256", "1" * 64)):
+        key_path.write_text(json.dumps(key | {field: value}))
+        with pytest.raises(SystemExit, match="an export of other items, rows or"):
+            scores(tree, *judge)
+    key_path.write_text(json.dumps(key))
+    more = tree / "gemini-3.8-flash@low.jsonl"
+    more.write_text(more.read_text() + "torn\n")  # the rows changed since the export
+    with pytest.raises(SystemExit, match="an export of other items, rows or"):
+        scores(tree, *judge)

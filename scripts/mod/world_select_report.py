@@ -26,9 +26,11 @@ fallback template, not an error), one per record with what the Mouth was asked t
 (``intent``, ``say``, ``ask``) and the ``heard`` text, shuffled with ``--seed`` into
 batches of at most 25, with no arm, model or item id. Each batch header carries the
 rubric, ``docs/decisions/data/world-select-mouth-rubric.md`` (refused unless its
-sha256 is ``RUBRIC_SHA``). The key (record -> arm, item id) goes to ``--key-out``,
-outside ``--out-dir``. The judge's labels come back in the rubric's output format:
-arrays of {record, M1..M5: bool, note}, one or more JSON files in ``--judge-dir``.
+sha256 is ``RUBRIC_SHA``) and the export id (``export_id``: seed, rows, rubric), which
+every record id carries. The key (record -> arm, item id) goes to ``--key-out``,
+outside ``--out-dir``; scoring refuses a key of other items, rows or rubric. The
+judge's labels come back in the rubric's output format: arrays of {record, M1..M5:
+bool, note}, in one or more JSON files in ``--judge-dir``.
 No SimUser judge (ADR-0024).
 """
 
@@ -45,6 +47,7 @@ from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
+from proxyloop.contract.base import canonical_json, sha256_text
 from proxyloop.env import world
 from scripts.mod import world_select as ws
 from scripts.mod import world_select_run as wsr
@@ -305,8 +308,11 @@ def judge_export(doc: Obj, arms: dict[str, sc.Arm], args: argparse.Namespace) ->
     if args.key_out.resolve().is_relative_to(out_dir.resolve()):
         raise SystemExit(f"--key-out {args.key_out} is inside --out-dir {out_dir}")
     text = rubric(args.rubric)
-    records: list[tuple[Obj, Obj]] = []
-    left = Counter[str]()
+    eid, records, left = (
+        export_id(args.seed, args.rows),
+        list[tuple[Obj, Obj]](),
+        Counter[str](),
+    )
     for name, arm in sorted(arms.items()):
         for item in sc.role_items(doc, "mouth") if "mouth" in arm.roles else ():
             if (r := arm.row(item, "mouth"))["status"] != "ok" or r["result"][
@@ -321,13 +327,15 @@ def judge_export(doc: Obj, arms: dict[str, sc.Arm], args: argparse.Namespace) ->
             records.append(({"arm": name, "item_id": item["item_id"]}, shown))
     random.Random(args.seed).shuffle(records)
     key: Obj = {"seed": args.seed, "batch_size": size, "root_hash": doc["root_hash"]}
+    key["export_id"] = eid
     key |= {"rubric_sha256": RUBRIC_SHA, "not_exported": dict(sorted(left.items()))}
     key |= {"batches": {}, "records": {}}
     for k, at in enumerate(range(0, len(records), size), 1):
-        name, chunk = f"judge-{k:03d}", records[at : at + size]
+        name, chunk = f"judge-{eid[:8]}-{k:03d}", records[at : at + size]
         ids = [f"{name}-{p:02d}" for p in range(len(chunk))]
         shown = [{"record": i} | s for i, (_, s) in zip(ids, chunk, strict=True)]
-        head = {"batch": name, "rubric": text, "rubric_sha256": RUBRIC_SHA}
+        head = {"batch": name, "export_id": eid, "rubric": text}
+        head["rubric_sha256"] = RUBRIC_SHA
         dump(out_dir / f"{name}.json", head | {"records": shown})
         key["batches"][name] = ids
         key["records"] |= {i: m for i, (m, _) in zip(ids, chunk, strict=True)}
@@ -335,10 +343,28 @@ def judge_export(doc: Obj, arms: dict[str, sc.Arm], args: argparse.Namespace) ->
     return key
 
 
-def judged_labels(key_path: Path, labels: Path) -> dict[str, Obj]:
-    """Arm -> item id -> {M1..M5}, from the judge's label arrays and the export key:
-    every exported record labelled exactly once."""
-    records = cast(Obj, sc.load_json(key_path))["records"]
+def export_id(seed: int, rows: Sequence[Path]) -> str:
+    """An export's id: the sha256 of its seed, its rows files' sha256 set and the
+    rubric's sha256."""
+    shas = sorted(sc.sha256_file(p) for p in rows)
+    return sha256_text(
+        canonical_json({"seed": seed, "rows": shas, "rubric": RUBRIC_SHA})
+    )
+
+
+def judged_labels(
+    key_path: Path, labels: Path, root: str, rows: Sequence[Path]
+) -> dict[str, Obj]:
+    """Arm -> item id -> {M1..M5}, from the judge's label arrays and the export key,
+    which must be this rubric's and, by its export id, these items' and rows' (every
+    record id carries the id): every exported record labelled exactly once."""
+    key = cast(Obj, sc.load_json(key_path))
+    eid, records = key["export_id"], cast(Obj, key["records"])
+    same = (key["root_hash"], key["rubric_sha256"]) == (root, RUBRIC_SHA)
+    if not same or eid != export_id(key["seed"], rows):
+        raise SystemExit(f"{key_path}: an export of other items, rows or rubric")
+    if any(not i.startswith(f"judge-{eid[:8]}-") for i in records):
+        raise SystemExit(f"{key_path}: a record id without the export id {eid[:8]}")
     out: dict[str, Obj] = {}
     seen: set[str] = set()
     for f in sorted(labels.glob("*.json")):
@@ -468,8 +494,11 @@ def main(argv: Sequence[str]) -> None:
     else:
         if (args.judge_dir is None) != (args.judge_key is None):
             raise SystemExit("--judge-dir and --judge-key go together")
+        root = sc.load_json(args.items)["root_hash"]  # score() checks the items
         judged = (
-            judged_labels(args.judge_key, args.judge_dir) if args.judge_dir else None
+            judged_labels(args.judge_key, args.judge_dir, root, args.rows)
+            if args.judge_dir
+            else None
         )
         doc = score(args, judged)
         if args.cmd == "report":
