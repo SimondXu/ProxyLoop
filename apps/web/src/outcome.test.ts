@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { confirmations, ENDPOINT, microUsd, receiptKind, receiptTitle, spendLines, statusView, statusWords, unverifiedCommit } from "./outcome";
+import { confirmations, ENDPOINT, microUsd, receiptKind, receiptTitle, spendLines, statusView, statusWords, unverifiedCommit, verifiedLine } from "./outcome";
 import type { Ev } from "./replay";
 
 let seq = 0;
@@ -161,5 +161,26 @@ describe("the receipt (S1-SYS-51): its variant, cost and confirmation", () => {
   it("confirmation ids come from Guard's evidence.recorded only", () => {
     const rec = (actor: string, id: string) => ev("evidence.recorded", actor, { evidence_id: `ledger:${id}`, kind: "ledger", confirmation_id: id });
     expect(confirmations([rec("guard", "CNF-1"), rec("slow", "CNF-FAKE")])).toEqual(["CNF-1"]);
+  });
+});
+
+describe("the verifier's line (completion.decided's typed verdict)", () => {
+  const started = (roles: string[]) => ev("session.started", "kernel", { models: Object.fromEntries(roles.map((r) => [r, { ref: { kind: "real_http" } }])) }, "ops");
+  const decided = (payload: Ev["payload"], actor = "guard") => ev("completion.decided", actor, payload);
+
+  it("always says the simulated company's records: the company is simulated in every run", () => {
+    for (const roles of [["fast_cp", "ear", "mouth"], ["fast_cp", "slow"]]) {
+      expect(verifiedLine([started(roles), decided({ verdict: "ok", reasons: [] })])).toBe("Verified against the simulated company's records");
+    }
+    expect(verifiedLine([decided({ verdict: "ok", reasons: [] })])).toBe("Verified against the simulated company's records");
+  });
+
+  it("is absent on a fail verdict, a missing verdict, a non-Guard verdict, or a display string", () => {
+    const real = started(["fast_cp"]);
+    expect(verifiedLine([real, decided({ verdict: "fail", reasons: ["no_confirmation"] })])).toBeNull();
+    expect(verifiedLine([real, decided({ reasons: [] })])).toBeNull();
+    expect(verifiedLine([real, decided({ verdict: "ok" }, "slow")])).toBeNull();
+    expect(verifiedLine([real, decided({ verdict: "ok (checked)" })])).toBeNull();
+    expect(verifiedLine([real, decided({ verdict: "ok" }), decided({ verdict: "fail" })])).toBeNull(); // the last one counts
   });
 });
