@@ -108,6 +108,11 @@
       .pl-sheet { top: anchor(--pl-head bottom); bottom: anchor(--pl-dock top); max-height: none; }
       .pl-sheet-folded { top: auto; }
     }
+    /* a short phone (landscape) scrolls the page, so the composer may be below the fold: no anchors, the sheet at the
+       bottom of the screen, its decision row always in view */
+    @media (max-height: 500px) {
+      .pl-sheet { top: auto; bottom: 0; max-height: 85dvh; }
+    }
     .pl-sheet .pl-decision { overflow: visible; border-radius: 0; box-shadow: none; }
     .pl-sheet-bar { flex: none; display: flex; width: 100%; min-height: 56px; flex-direction: column; justify-content: center; gap: 0; line-height: 1.25; border: 0; border-radius: 0; background: var(--you-tint); color: var(--you); }
     .pl-sheet-bar .pl-sheet-promise { font-size: var(--fs-meta); font-weight: 500; }

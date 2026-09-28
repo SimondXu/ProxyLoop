@@ -273,8 +273,14 @@ for (const theme of THEMES) {
         await expect(card).toBeInViewport();
       });
 
-      for (const rows of [2, 3, 5]) {
-        test(`the open sheet shows the whole Approve button with ${rows} term rows (S1-SYS-76 review)`, async ({ page, baseURL }) => {
+      const SHORT = [
+        [667, 375],
+        [740, 360],
+      ] as const;
+      for (const [rows, size] of [...[2, 3, 5].map((n) => [n, null] as const), ...[3, 5].flatMap((n) => SHORT.map((s) => [n, s] as const))]) {
+        const at = size ? ` at ${size[0]}×${size[1]} (a short phone: the page scrolls)` : "";
+        test(`the open sheet shows the whole Approve button with ${rows} term rows${at} (S1-SYS-76 review)`, async ({ page, baseURL }) => {
+          if (size) await page.setViewportSize({ width: size[0], height: size[1] });
           await liveWithCards(page, baseURL, REAL, FIVE.slice(0, rows));
           const card = page.getByRole("article", { name: "Approval ap-1" });
           await expect(card.getByLabel("Read-back progress").getByRole("listitem")).toHaveCount(rows);
