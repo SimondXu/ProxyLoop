@@ -151,3 +151,19 @@ benchmark-report:
 .PHONY: probe-same-state
 probe-same-state:
 	uv run python -m scripts.mod.probe_same_state $(PSS_ARGS)
+
+# S1-MOD-09 (PR1): freeze the world-model selection items from the train bundles under runs/.
+# Offline: no keys, no model call; a sealed test path is refused. CONSTRUCTED (default: the
+# committed constructed items) is copied in, kept apart and flagged; WORLD_SELECT_RUNS is the
+# bundle dir (default runs). The blind Ear batches are
+# exported by hand into an uncommitted dir:
+#   uv run python -m scripts.mod.world_select export --items $(MOD_DATA)/world-select-items.json \
+#       --out-dir runs/world-select-batches --key-out runs/world-select-key.json \
+#       --batch 25 --seed <N>
+CONSTRUCTED ?= $(MOD_DATA)/world-select-constructed.json
+WORLD_SELECT_RUNS ?= runs
+.PHONY: world-select-freeze
+
+world-select-freeze:
+	uv run python -m scripts.mod.world_select freeze --runs $(WORLD_SELECT_RUNS) \
+		--out $(MOD_DATA)/world-select-items.json $(if $(CONSTRUCTED),--constructed $(CONSTRUCTED),)
