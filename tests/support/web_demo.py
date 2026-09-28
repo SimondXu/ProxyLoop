@@ -245,7 +245,9 @@ def _record(facts: Mapping[str, str], utt: str) -> dict[str, object]:
 
 
 class SlowScript:
-    """Slow's steps, from the relays and the status bar of its newest turn."""
+    """Slow's steps, from the relays and the status bar of its newest turn. The
+    ``check_account`` step reads the rep's line in [CONVERSATIONS], so it needs
+    ``slow_view=transcript`` (the demo's default, ADR-0016)."""
 
     def __init__(self) -> None:
         self.asked_identity = False
@@ -263,7 +265,9 @@ class SlowScript:
         offer = re.search(r"o1 r\d+ \(([^)]*)\)", status)
         new = offer is None
         partial = offer is not None and "required slots not recorded" in status
+        revoked = False  # a relayed revoke from the user lane (a stop)
         for lane, note, utt in _RELAY.findall(notes):
+            revoked |= lane == "USER CHAT" and note.partition(" ")[0] == "revoke"
             body = _said_in(note)
             facts = dict(_FACT.findall(body))
             if lane == "USER CHAT" and "account.last4" in facts:
@@ -300,7 +304,7 @@ class SlowScript:
                 {"tool": "check_account", "confirmation_id": conf, "utt_ref": utt}
             )
             calls.append({"tool": "finish", "outcome": "completed", "summary": conf})
-        if "case: NEEDS_REPLAN" in status and "[USER CHAT] revoke" in notes:
+        if "case: NEEDS_REPLAN" in status and revoked:
             calls.append({"tool": "tell_user", "text": _STOPPED})
             calls.append({"tool": "finish", "outcome": "escalate", "summary": "stop"})
         return act("The case, as relayed.", *calls)
