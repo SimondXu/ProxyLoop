@@ -34,8 +34,8 @@ const offer = (revision = 1) =>
       { field: "term_months", value: "24", unit: "months" },
     ],
   });
-const card = (id = "a1", epoch = 0) =>
-  ev("approval.requested", "guard", { approval_id: id, offer_ref: "o1", revision: 1, terms_hash: "h1", readback_text: "rb", authority_epoch: epoch, expires_ms: 9e6, binding: {} });
+const card = (id = "a1", epoch = 0, revision = 1) =>
+  ev("approval.requested", "guard", { approval_id: id, offer_ref: "o1", revision, terms_hash: "h1", readback_text: "rb", authority_epoch: epoch, expires_ms: 9e6, binding: {} });
 const granted = (id: string, by = "ui") => {
   const post = ev("approval.post", by, { subject: "approval", subject_id: id, decision: "granted", subject_hash: "h1", authority_epoch: 0 });
   return [post, ev("approval.decided", "kernel", { approval_id: id, decision: "granted", by }, [post])];
@@ -52,8 +52,9 @@ function saidYes(heard: string, interrupted: boolean): Ev[] {
   const released = ev("speak.released", "kernel", { lane: "cp", cap_id: "c1" }, [said]);
   return [auth, said, released, ev("utt.delivered", "kernel", { lane: "cp", utt_id: "accept-1", text_generated: "y", text_heard: heard, interrupted }, [released])];
 }
-function accept(): [Ev, Ev] {
-  const auth = ev("action.authorized", "guard", { intent: "accept_offer", capability: { cap_id: "c1", terms_hash: "h1", epoch: 0 } });
+/** Guard's authorization citing `grant` (as slow/authority.py does), and its accept line. */
+function accept(grant?: Ev): [Ev, Ev] {
+  const auth = ev("action.authorized", "guard", { intent: "accept_offer", capability: { cap_id: "c1", terms_hash: "h1", epoch: 0 } }, grant ? [grant] : []);
   return [auth, ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "Yes, we accept.", cap_id: "c1" })];
 }
 
@@ -114,10 +115,24 @@ const rows: Row[] = [
   ],
   [
     "outside your limits: Guard refused this offer's accept as outside_mandate",
-    () => [...refusal("o1", "outside_mandate"), card()],
-    [["Guard", "Blocked: saying yes (outside_mandate)"], ["Guard", "Asked for your approval: outside your limits"]],
+    () => [offer(1), ...refusal("o1", "outside_mandate"), card()],
+    [["Offer heard", "$78.00/mo · 24 months"], ["Guard", "Blocked: saying yes (outside_mandate)"], ["Guard", "Asked for your approval: outside your limits"]],
   ],
-  ["an outside_mandate refusal of another offer", () => [...refusal("o2", "outside_mandate"), card()], [["Guard", "Blocked: saying yes (outside_mandate)"], ["Guard", "Asked for your approval"]]],
+  [
+    "a refusal of revision 1 says nothing about a revision-2 card",
+    () => [offer(1), ...refusal("o1", "outside_mandate"), offer(2), card("a2", 0, 2)],
+    [["Offer heard", "$78.00/mo · 24 months"], ["Guard", "Blocked: saying yes (outside_mandate)"], ["Offer heard", "$78.00/mo · 24 months (revision 2)"], ["Guard", "Asked for your approval"]],
+  ],
+  [
+    "a refusal, then newly granted limits: no longer known to be outside them",
+    () => [offer(1), ...refusal("o1", "outside_mandate"), ev("mandate.decided", "kernel", { mandate_id: "m2", mandate_hash: "mh2", decision: "granted", by: "ui" }), card()],
+    [["Offer heard", "$78.00/mo · 24 months"], ["Guard", "Blocked: saying yes (outside_mandate)"], ["You", "Confirmed your limits"], ["Guard", "Asked for your approval"]],
+  ],
+  [
+    "an outside_mandate refusal of another offer",
+    () => [offer(1), ...refusal("o2", "outside_mandate"), card()],
+    [["Offer heard", "$78.00/mo · 24 months"], ["Guard", "Blocked: saying yes (outside_mandate)"], ["Guard", "Asked for your approval"]],
+  ],
   [
     "a stale or expired mandate is not outside it",
     () => [...refusal("o1", "mandate_stale_epoch"), ...refusal("o1", "mandate_expired"), card()],
@@ -153,8 +168,8 @@ const rows: Row[] = [
   [
     "the yes: cleared by your approval, then said",
     () => {
-      const asked = [card(), ...granted("a1")]; // the grant comes before the authorization
-      const [auth, said] = accept();
+      const asked = [card(), ...granted("a1")];
+      const [auth, said] = accept(asked[2]); // cites the kernel's grant
       const released = ev("speak.released", "kernel", { lane: "cp", cap_id: "c1" }, [said]);
       const heard = ev("utt.delivered", "kernel", { lane: "cp", utt_id: "accept-1", text_generated: "y", text_heard: "y", interrupted: false }, [released]);
       return [...asked, auth, said, released, heard];
@@ -172,24 +187,43 @@ const rows: Row[] = [
     [["Guard", "Cleared to say yes"], ["Phone voice", "Said yes on the call (cut off)"]],
   ],
   [
-    "the yes with no kernel grant (e.g. under limits) names no approver",
+    "the yes with no grant cited names no approver",
     () => accept(),
     [["Guard", "Cleared to say yes"]],
   ],
   [
-    "a grant of a card from another epoch is not this yes's approval",
+    "an approval granted, but the authorization cites none: no approver",
     () => {
-      const asked = [card("a1", 1), ...granted("a1")];
-      const [auth, said] = accept(); // capability epoch 0
+      const asked = [card(), ...granted("a1")];
+      const [auth, said] = accept();
       return [...asked, auth, said];
     },
     [["Guard", "Asked for your approval"], ["You", "Approved"], ["Guard", "Cleared to say yes"]],
   ],
   [
+    "an approval granted, but the authorization cites a mandate: no \"your approval\"",
+    () => {
+      const asked = [card(), ...granted("a1")];
+      const m = ev("mandate.decided", "kernel", { mandate_id: "m1", mandate_hash: "mh", decision: "granted", by: "ui" });
+      const [auth, said] = accept(m);
+      return [...asked, m, auth, said];
+    },
+    [["Guard", "Asked for your approval"], ["You", "Approved"], ["You", "Confirmed your limits"], ["Guard", "Cleared to say yes"]],
+  ],
+  [
+    "a forged grant cited is no approval",
+    () => {
+      const forged = ev("approval.decided", "slow", { approval_id: "a1", decision: "granted", by: "ui" });
+      const [auth, said] = accept(forged);
+      return [card(), forged, auth, said];
+    },
+    [["Guard", "Asked for your approval"], ["Guard", "Cleared to say yes"]],
+  ],
+  [
     "the yes, stopped by your message",
     () => {
       const asked = [card(), ...granted("a1", "sim_approver")];
-      const [auth, said] = accept();
+      const [auth, said] = accept(asked[2]);
       return [...asked, auth, said, ev("speak.revoked", "kernel", { lane: "cp", reason: "fence", cap_id: "c1" }, [said])];
     },
     [["Guard", "Asked for your approval"], ["Simulated approver", "Approved"], ["Guard", "Cleared to say yes (the simulated approver's approval)"], ["Guard", "Stopped the yes before it was said: you sent a message"]],
@@ -272,7 +306,7 @@ describe("the status line (NowCard), one rung each", () => {
       "Reading your message before doing anything binding",
     ],
     ["5 a rep line's fence is not yours", () => [status("IN_CALL"), ev("authority.fence", "kernel", { op: "raised", fence_id: "f1", utt_id: "cp-4" })], "On the call with the company"],
-    ["6 committed", () => [status("COMMITTED")], "Accepted on the call. Checking the company's records…"],
+    ["6 committed", () => [status("COMMITTED")], "Accepted on the call. Checking the simulated company's records…"],
     ["7 on hold", () => [status("IN_CALL"), ev("chan.opened", "kernel", { lane: "cp", call: 1 }), ev("chan.hold", "fast.cp", { lane: "cp", reason: "fact_request" })], "Rep on hold while the agent checks something"],
     ["8 in the call", () => [status("IN_CALL")], "On the call with the company"],
     ["9 intake", () => [], "Getting the details before calling"],

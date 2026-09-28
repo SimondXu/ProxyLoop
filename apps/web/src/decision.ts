@@ -83,7 +83,7 @@ export function approvedBy(events: Ev[], v: CardView): string {
 /** After a grant, the case status in words (guard's status.changed); null otherwise. */
 export const PROGRESS: Record<string, string> = {
   COMMIT_AUTHORIZED: "The agent is saying yes on the call…",
-  COMMITTED: "Accepted on the call. Checking the company's records…",
+  COMMITTED: "Accepted on the call. Checking the simulated company's records…",
   EVIDENCE_PENDING: "Confirmation received. Verifying…",
 };
 

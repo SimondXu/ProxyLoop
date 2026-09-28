@@ -4,7 +4,7 @@
 // only PAYLOAD_KEYS: never text_generated, an s2f text or a summary's text
 // (I5), and it never credits a grant that did not happen (I6): "said" needs the
 // kernel's delivery of the same generation, not just the voice's s2f.voiced,
-// and the yes names no approver yet.
+// and the yes names an approver only on the approval grant Guard cites.
 import type { CardView } from "./approval";
 import { from } from "./authority";
 import { callHead, grantOfAccept } from "./conversation";
@@ -52,7 +52,8 @@ export function timeline(events: Ev[]): Step[] {
   const marks: { key: string; msg: string; lane: string }[] = [];
   const voiced = new Map<string, Set<string>>(); // msg_id → every "lane:gen_id" the voice claims it in
   const delivered = new Map<string, Heard>(); // "lane:gen_id" → the best the kernel delivered of it
-  const outside = new Set<string>(); // offer_refs Guard refused to accept as outside_mandate
+  const outside = new Set<string>(); // "offer_ref:revision" Guard refused to accept as outside_mandate
+  const revisions = new Map<string, number>(); // offer_ref → its latest recorded revision
   const userMsgs = new Set<string>();
   const approvals = new Map<string, number>(); // undecided approval_id → its card epoch
   const accepts = new Set<string>(); // cap_ids authorized, neither released nor revoked
@@ -107,6 +108,7 @@ export function timeline(events: Ev[]): Step[] {
     } else if (from(e, "chan.hold", ["fast.cp"]) && get(e, "reason") != null) add(e, C.WHO.phone, C.STEP.hold, "hold");
     else if (from(e, "mandate.proposed", ["guard"])) add(e, C.WHO.planner, C.STEP.proposed, "planner");
     else if (from(e, "mandate.decided", ["kernel"])) {
+      if (get(e, "decision") === "granted") outside.clear(); // new limits: an old refusal says nothing about them
       add(e, get(e, "by") === "ui" ? C.WHO.you : C.WHO.sim, C.limitsDecided(get(e, "decision") === "granted"), "you");
     } else if (from(e, "authority.epoch", ["kernel", "guard"])) {
       epoch = Number(get(e, "new"));
@@ -120,6 +122,7 @@ export function timeline(events: Ev[]): Step[] {
       const price = usd(field(slot("monthly_price"), "value"));
       const months = str(field(slot("term_months"), "value")) || null;
       const rev = Number(get(e, "revision"));
+      revisions.set(str(get(e, "offer_ref")), rev);
       add(e, C.WHO.offer, C.offerText(price, months, rev), "offer", `offer:${str(get(e, "offer_ref"))}:${rev}`);
     } else if (from(e, "readback.updated", ["guard"])) {
       const st = get(e, "slot_statuses");
@@ -129,7 +132,7 @@ export function timeline(events: Ev[]): Step[] {
     } else if (from(e, "approval.requested", ["guard"])) {
       approvals.set(str(get(e, "approval_id")), Number(get(e, "authority_epoch")));
       // "outside your limits" only on Guard's word: its outside_mandate refusal of this offer's accept.
-      add(e, C.WHO.guard, C.STEP.askedApproval + (outside.has(str(get(e, "offer_ref"))) ? C.STEP.outsideLimits : ""), "guard");
+      add(e, C.WHO.guard, C.STEP.askedApproval + (outside.has(`${str(get(e, "offer_ref"))}:${Number(get(e, "revision"))}`) ? C.STEP.outsideLimits : ""), "guard");
     } else if (from(e, "approval.decided", ["kernel"])) {
       approvals.delete(str(get(e, "approval_id")));
       add(e, get(e, "by") === "ui" ? C.WHO.you : C.WHO.sim, C.approvalDecided(get(e, "decision") === "granted"), "you");
@@ -143,8 +146,8 @@ export function timeline(events: Ev[]): Step[] {
       accepts.add(cap);
       // The kernel's approval grant behind this accept (conversation.ts); none (e.g. under limits) names no one.
       const line = events.find((v) => from(v, "speak.verbatim", ["guard"]) && get(v, "kind") === "accept" && get(v, "cap_id") === cap);
-      const grant = line ? grantOfAccept(line, events) : null;
-      add(e, C.WHO.guard, C.cleared(grant ? str(get(grant, "by")) : null), "guard");
+      const grant = line ? grantOfAccept(line, events) : null; // a mandate's grant names no approver
+      add(e, C.WHO.guard, C.cleared(grant?.type === "approval.decided" ? str(get(grant, "by")) : null), "guard");
     } else if (from(e, "speak.released", ["kernel"]) || from(e, "speak.revoked", ["kernel"])) {
       const line = cause(e, "speak.verbatim", ["guard"]);
       if (!line || get(line, "kind") !== "accept") continue;
@@ -154,7 +157,7 @@ export function timeline(events: Ev[]): Step[] {
     else if (from(e, "action.denied", ["guard"]) && str(get(e, "intent")) in C.DENIED) {
       const tool = cause(e, "slow.tool", ["slow"]); // the refused call: which offer
       const ref = tool && get(tool, "name") === "accept_offer" ? str(field(get(tool, "args"), "offer_ref")) : "";
-      if (get(e, "intent") === "accept_offer" && get(e, "reason") === "outside_mandate" && ref) outside.add(ref);
+      if (get(e, "intent") === "accept_offer" && get(e, "reason") === "outside_mandate" && revisions.has(ref)) outside.add(`${ref}:${revisions.get(ref)}`);
       add(e, C.WHO.guard, C.blocked(str(get(e, "intent")), str(get(e, "reason"))), "guard");
     } else if (from(e, "evidence.recorded", ["guard"])) add(e, C.WHO.guard, C.confirmation(str(get(e, "confirmation_id"))), "guard");
     else if (from(e, "completion.decided", ["guard"])) {

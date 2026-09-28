@@ -167,7 +167,7 @@ test.describe("approve", () => {
     expect(of(events, "rep.commit_heard")).toHaveLength(1);
     const strip = await authority(page);
     await expect(strip.getByLabel("Case status")).toHaveText("status COMMITTED");
-    await expect(page.getByLabel("Status line")).toHaveText("Accepted on the call. Checking the company's records…");
+    await expect(page.getByLabel("Status line")).toHaveText("Accepted on the call. Checking the simulated company's records…");
     // The rail's steps from the same run: the approval, your click, Guard's clearance and the heard yes, in order.
     // locator("li"): a folded group's steps count too.
     const steps = page.getByRole("region", { name: "Steps" }).locator("li");

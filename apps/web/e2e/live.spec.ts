@@ -339,7 +339,7 @@ test("conversation view: Verified complete only on Guard's VERIFIED_COMPLETE", a
   ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
   await expect(page.getByLabel("Simulated parties")).toHaveCount(0); // no world rep, no sim user: no sim label
   ws.send(ev("status.changed", "guard", { previous: "COMMIT_AUTHORIZED", status: "COMMITTED" }));
-  await expect(page.getByLabel("Status line")).toHaveText("Accepted on the call. Checking the company's records…");
+  await expect(page.getByLabel("Status line")).toHaveText("Accepted on the call. Checking the simulated company's records…");
   ws.send(ev("status.changed", "fast.user", { previous: "COMMITTED", status: "VERIFIED_COMPLETE" })); // not Guard: ignored
   ws.send(ev("session.ended", "kernel", { reason: "completed", counts: {} }, { stream: "ops" }));
   const banner = page.getByRole("region", { name: "Chat" }).getByRole("region", { name: "Outcome" });
@@ -492,8 +492,11 @@ test("approval card: a fence pauses a granted accept, and a fence revoke says th
   const ws = await connected;
   ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
   ws.send(ev("approval.requested", "guard", CARD));
-  ws.send(ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" }));
-  ws.send(ev("action.authorized", "guard", { intent: {}, capability: { cap_id: "cap-1", terms_hash: CARD.terms_hash, epoch: 2 } }));
+  const granted = ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" });
+  ws.send(granted);
+  // Guard's authorization cites the grant it rests on (slow/authority.py accept_offer).
+  const authorized = JSON.parse(ev("action.authorized", "guard", { intent: {}, capability: { cap_id: "cap-1", terms_hash: CARD.terms_hash, epoch: 2 } }));
+  ws.send(JSON.stringify({ ...authorized, cause_ids: [JSON.parse(granted).event_id] }));
   const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "Yes, we accept.", cap_id: "cap-1" });
   ws.send(said);
   ws.send(ev("authority.fence", "kernel", { op: "raised", fence_id: "fence-1", utt_id: `${RUN}:9` }));
@@ -531,8 +534,11 @@ test("receipt: Done. Verified. with the accepted terms, the confirmation, the ve
   ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
   ws.send(ev("offer.recorded", "guard", OFFER));
   ws.send(ev("approval.requested", "guard", CARD));
-  ws.send(ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" }));
-  ws.send(ev("action.authorized", "guard", { intent: {}, capability: { cap_id: "cap-1", terms_hash: CARD.terms_hash, epoch: 2 } }));
+  const granted = ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" });
+  ws.send(granted);
+  // Guard's authorization cites the grant it rests on (slow/authority.py accept_offer).
+  const authorized = JSON.parse(ev("action.authorized", "guard", { intent: {}, capability: { cap_id: "cap-1", terms_hash: CARD.terms_hash, epoch: 2 } }));
+  ws.send(JSON.stringify({ ...authorized, cause_ids: [JSON.parse(granted).event_id] }));
   const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "Yes, we accept.", cap_id: "cap-1" });
   ws.send(said);
   const released = JSON.parse(ev("speak.released", "kernel", { lane: "cp", cap_id: "cap-1" }));

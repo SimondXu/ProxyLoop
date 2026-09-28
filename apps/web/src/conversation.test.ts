@@ -82,8 +82,9 @@ describe("the conversation fold (events only)", () => {
   });
 
   // Guard's accept line and its release, heard: the tag of that line.
-  const tagOfAccept = (before: Ev[], capability: Record<string, unknown>, authActor = "guard") => {
-    const auth = ev("action.authorized", authActor, { intent: "accept_offer", capability: { cap_id: "cap-1", ...capability } });
+  // `cites`: the grant Guard's authorization cites in cause_ids (slow/authority.py accept_offer).
+  const tagOfAccept = (before: Ev[], capability: Record<string, unknown>, authActor = "guard", cites: Ev[] = []) => {
+    const auth = ev("action.authorized", authActor, { intent: "accept_offer", capability: { cap_id: "cap-1", ...capability } }, cites.map((g) => g.event_id));
     const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "Yes.", cap_id: "cap-1" });
     const released = ev("speak.released", "kernel", { lane: "cp", cap_id: "cap-1" }, [said.event_id]);
     return conversation([...before, auth, said, released, delivered("cp", "Yes.", "Yes.", [released.event_id])]).call[0]?.tag;
@@ -91,9 +92,11 @@ describe("the conversation fold (events only)", () => {
   const card = (id: string, epoch: number) => ev("approval.requested", "guard", { approval_id: id, terms_hash: "t1", authority_epoch: epoch });
   const grant = (id: string, by: string, actor = "kernel") => ev("approval.decided", actor, { approval_id: id, decision: "granted", by });
 
-  it("names who approved an accept: the kernel's grant of the card with the capability's terms and epoch", () => {
-    expect(tagOfAccept([card("ap-1", 2), grant("ap-1", "ui")], { terms_hash: "t1", epoch: 2 })).toBe("Acceptance · approved by you");
-    expect(tagOfAccept([card("ap-1", 2), grant("ap-1", "sim_approver")], { terms_hash: "t1", epoch: 2 })).toBe(
+  it("names who approved an accept: the kernel's grant the authorization cites", () => {
+    const ui = grant("ap-1", "ui");
+    expect(tagOfAccept([card("ap-1", 2), ui], { terms_hash: "t1", epoch: 2 }, "guard", [ui])).toBe("Acceptance · approved by you");
+    const sim = grant("ap-1", "sim_approver");
+    expect(tagOfAccept([card("ap-1", 2), sim], { terms_hash: "t1", epoch: 2 }, "guard", [sim])).toBe(
       "Acceptance · approved by the simulated approver",
     );
     expect(tagOfAccept([card("ap-1", 2)], { terms_hash: "t1", epoch: 2 })).toBe("Acceptance · fixed wording"); // no grant: under your limits
@@ -103,10 +106,26 @@ describe("the conversation fold (events only)", () => {
     expect(tagOfAccept([card("ap-1", 1), grant("ap-1", "ui")], { terms_hash: "t1", epoch: 3 })).toBe("Acceptance · fixed wording");
   });
 
-  it("picks the grant of the card whose epoch matches, among grants for the same terms", () => {
-    const before = [card("ap-1", 1), grant("ap-1", "ui"), card("ap-2", 2), grant("ap-2", "sim_approver")];
-    expect(tagOfAccept(before, { terms_hash: "t1", epoch: 2 })).toBe("Acceptance · approved by the simulated approver");
-    expect(tagOfAccept(before, { terms_hash: "t1", epoch: 1 })).toBe("Acceptance · approved by you");
+  it("picks the grant the authorization cites, among grants for the same terms", () => {
+    const [g1, g2] = [grant("ap-1", "ui"), grant("ap-2", "sim_approver")];
+    const before = [card("ap-1", 1), g1, card("ap-2", 2), g2];
+    expect(tagOfAccept(before, { terms_hash: "t1", epoch: 2 }, "guard", [g2])).toBe("Acceptance · approved by the simulated approver");
+    expect(tagOfAccept(before, { terms_hash: "t1", epoch: 1 }, "guard", [g1])).toBe("Acceptance · approved by you");
+  });
+
+  it("names no approver when the authorization cites a mandate, even with an approval granted", () => {
+    const g = grant("ap-1", "ui");
+    const m = ev("mandate.decided", "kernel", { mandate_id: "m1", mandate_hash: "mh", decision: "granted", by: "ui" });
+    expect(tagOfAccept([card("ap-1", 2), g, m], { terms_hash: "t1", epoch: 2 }, "guard", [m])).toBe("Acceptance · fixed wording");
+  });
+
+  it("names no approver for a cited grant from a forged actor, or a cited denial", () => {
+    for (const actor of ["ui", "slow"]) {
+      const forged = grant("ap-1", "ui", actor);
+      expect(tagOfAccept([card("ap-1", 2), forged], { terms_hash: "t1", epoch: 2 }, "guard", [forged])).toBe("Acceptance · fixed wording");
+    }
+    const denied = ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "denied", by: "ui" });
+    expect(tagOfAccept([card("ap-1", 2), denied], { terms_hash: "t1", epoch: 2 }, "guard", [denied])).toBe("Acceptance · fixed wording");
   });
 
   it("ignores a grant after the authorization, forged grants and a forged authorization, and a missing cap_id", () => {
