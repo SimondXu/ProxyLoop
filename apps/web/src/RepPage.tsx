@@ -13,8 +13,8 @@ import { useEventStream } from "./useEventStream";
 import "./rep.css";
 
 const WHO: Record<RepLine["who"], string> = { agent: "Agent", rep: "You", call: "Call" };
-// serve answers 409 {reason: "not_open"} to a rep line before the call opens; never retried.
-const notOpen = (r: Failed) => (r.status === 409 && r.reason === "not_open" ? "The call hasn't started yet" : undefined);
+// serve answers 409 {error: "not_open"} to a rep line before the call opens (serve/cases.py); never retried.
+const notOpen = (r: Failed) => (r.status === 409 && r.error === "not_open" ? "The call hasn't started yet" : undefined);
 
 export function RepPage({ caseId }: { caseId: string }) {
   const { stream, reconnect } = useEventStream("rep", caseId, parseRepFrame);

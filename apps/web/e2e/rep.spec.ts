@@ -88,7 +88,7 @@ test("rep page: the input waits for the kernel's call opening, and a 409 not_ope
 }) => {
   await csrfCookie(page, baseURL, "pl_rep_csrf", REP_CSRF);
   const { connected } = await mockSockets(page);
-  const posts = await capturePosts(page, 409, { reason: "not_open" });
+  const posts = await capturePosts(page, 409, { error: "not_open" });
   await page.goto(`/?rep=${RUN}`);
   const ws = await connected;
   const frame = repFrames();
