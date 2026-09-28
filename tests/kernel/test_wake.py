@@ -120,7 +120,7 @@ class Call(Sim):
         return [(s, done[n] if n < len(done) else None) for n, s in enumerate(started)]
 
     def strike(self) -> None:
-        self.rep.incoming.put_nowait(Incoming((), strike=True))
+        self.rep.incoming.put_nowait(Incoming((), strike=True, strike_kind="identity"))
 
     def hang_up(self, text: str) -> None:  # the rep closes the call
         self.rep.incoming.put_nowait(Incoming(((text, None),), end="closed"))

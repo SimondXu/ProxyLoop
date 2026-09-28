@@ -36,6 +36,11 @@ as serve requires), ``TASKS``, and a new ``WiringCase`` per start. The task
 picks a failure: ``REFUSING`` maps a task to the ``StartRefused`` reason it
 gets, ``wire-dead-kernel`` raises (serve: 503), and ``broken_options`` makes
 ``model_options`` break serve's promise (two defaults on a lane: serve 500).
+``wire-not-open`` (S1-SYS-54) starts the real kernel instead, through
+``tests.support.web_demo.DemoStarter`` under ``runs``, on a clock that never
+moves and a sleep that never returns: its intake never ends, so its cp call
+never opens and ``kernel.web.WebCase`` refuses a human rep line (serve: 409
+not_open). The run is cancelled with the server's loop.
 """
 
 from __future__ import annotations
@@ -47,11 +52,13 @@ from typing import Literal
 
 from tests.guard.build import offer
 from tests.support.api_cases import ApiCase
+from tests.support.manual_clock import ManualClock
+from tests.support.web_demo import DemoStarter
 
 from proxyloop.contract.events import ApprovalPost
 from proxyloop.contract.state import Blackboard
 from proxyloop.guard.authorize import Denial, decide
-from proxyloop.serve.cases import LaneKey, ModelOption, StartRefused
+from proxyloop.serve.cases import Case, LaneKey, ModelOption, StartRefused
 
 Mode = Literal["ok", "stale", "refuse", "raise", "authority"]
 DECIDE_AFTER_S = 2.0  # long enough for the page to show "sent" first, even loaded
@@ -91,7 +98,8 @@ OPTIONS = tuple(
 )
 REFUSING: dict[str, str] = {"wire-unknown-model": "unknown_model", "wire-busy": "busy"}
 DEAD = "wire-dead-kernel"
-TASKS = ("wire-start", "wire-start-human", *REFUSING, DEAD)
+NOT_OPEN = "wire-not-open"
+TASKS = ("wire-start", "wire-start-human", NOT_OPEN, *REFUSING, DEAD)
 
 
 class WiringCase:
@@ -190,10 +198,11 @@ class WiringCase:
 
 class WiringStarter:
     """Implements ``proxyloop.serve.cases.Starter`` over ``root``: each start
-    seeds a new ``WiringCase`` (mode ``ok``) named ``started-<n>``."""
+    seeds a new ``WiringCase`` (mode ``ok``) named ``started-<n>``, except
+    ``NOT_OPEN``'s, a real kernel's under ``runs`` (a serve root named "runs")."""
 
-    def __init__(self, root: Path) -> None:
-        self.root = root
+    def __init__(self, root: Path, runs: Path | None = None) -> None:
+        self.root, self.runs = root, runs
         self.cases: list[WiringCase] = []
         self.calls: list[tuple[str, dict[LaneKey, str], str]] = []
         self.broken_options = False
@@ -214,7 +223,7 @@ class WiringStarter:
         task_ref: str,
         models: Mapping[LaneKey, str],
         rep: Literal["sim", "human"] = "sim",
-    ) -> WiringCase:
+    ) -> Case:
         self.calls.append((task_ref, dict(models), rep))
         if task_ref == DEAD:
             raise RuntimeError("the kernel is gone")
@@ -227,6 +236,19 @@ class WiringStarter:
             raise StartRefused(
                 "unknown_model" if set(models.values()) - set(lanes) else "wrong_lane"
             )
+        if task_ref == NOT_OPEN:
+            return await self._frozen(rep)
         case = WiringCase(self.root, f"started-{len(self.cases) + 1}")
         self.cases.append(case)
         return case
+
+    async def _frozen(self, rep: Literal["sim", "human"]) -> Case:
+        """The real kernel, stopped in its intake: nothing it awaits returns."""
+        if self.runs is None:
+            raise StartRefused("unavailable")
+
+        async def never(seconds: float) -> None:
+            await asyncio.Event().wait()
+
+        demo = DemoStarter(self.runs, clock=ManualClock(), sleep=never)
+        return await demo.start_case(demo.task_options()[0], {}, rep)

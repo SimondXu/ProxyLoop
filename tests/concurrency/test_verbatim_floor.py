@@ -22,6 +22,7 @@ from tests.support.sessions import ear
 from proxyloop.contract.events import Event
 from proxyloop.env.tasks.loader import load_task
 from proxyloop.env.tasks.schema import Patience
+from proxyloop.evidence.check import check_path
 from proxyloop.kernel.channels import Channel, Incoming
 from proxyloop.kernel.speaker import speech_s
 
@@ -31,6 +32,7 @@ BEST = "That is our best offer."
 LAG_MS = 14_000  # the rep's turn: Ear and Mouth, one heard line at a time
 FAST_MS = round(1000 * speech_s(LONG))  # each FastC turn: ten seconds
 SILENCE_MS = round(1000 * Patience.model_fields["silence_s"].default)
+GEN_MS = 1_000  # a fresh FastC generation (the fakes take a tick; S1-SYS-59)
 
 
 class HearingRep(Channel):
@@ -132,10 +134,12 @@ def _said(sim: Sim, kind: str) -> Event:
 
 async def _fastc_resumes(sim: Sim, released: Event) -> Event:
     """FastC's first line heard after the verbatim line ``released``: it ends
-    no later than that line's speech plus one FastC line after the release
-    (the end of FastC's pause)."""
+    no later than that line's speech plus one FastC generation and line after
+    the release (the end of FastC's pause; a turn held behind the line is
+    stale and generated again, S1-SYS-59)."""
     (said,) = [e for e in sim.events if e.event_id == released.cause_ids[0]]
-    bound = released.t_ms + round(1000 * speech_s(str(said.payload["text"]))) + FAST_MS
+    line_ms = round(1000 * speech_s(str(said.payload["text"])))
+    bound = released.t_ms + line_ms + GEN_MS + FAST_MS
     await sim.vt.run_for(bound - sim.vt.monotonic_ms())
     fast = [
         e
@@ -419,7 +423,8 @@ def test_the_real_rep_does_not_strike_while_a_decline_waits(tmp_path: Path) -> N
 def test_fastc_waiting_behind_a_verbatim_yields_to_the_next(tmp_path: Path) -> None:
     """FastC already waits for the floor behind a verbatim line being said
     when a second one queues: as the first ends, FastC re-checks and yields,
-    so the second line takes the floor then, before FastC's turn."""
+    so the second line takes the floor then, before FastC's turn (which is
+    then stale behind it and cancelled, S1-SYS-59)."""
 
     async def case() -> None:
         sim = Sim(tmp_path)
@@ -444,8 +449,12 @@ def test_fastc_waiting_behind_a_verbatim_yields_to_the_next(tmp_path: Path) -> N
         assert first.type == second.type == "speak.released"
         (line,) = [e for e in sim.events if e.event_id == first.cause_ids[0]]
         (said,) = sim.of("utt.delivered", utt_id=f"decline-{line.seq}")
-        heard = _heard(sim, turn)
-        assert second.t_ms == said.t_ms and said.seq < second.seq < heard.seq
+        assert second.t_ms == said.t_ms and said.seq < second.seq
+        # its turn predates the second line: cancelled after it, never said
+        (cancelled,) = sim.of("fast.cancelled", gen_id=turn.payload["gen_id"])
+        assert cancelled.payload["reason"] == "verbatim"
+        assert cancelled.cause_ids[1] == second.event_id
+        assert not sim.of("utt.delivered", utt_id=turn.payload["utt_id"])
         await sim.stop()
 
     arun(case())
@@ -483,3 +492,88 @@ def test_a_session_end_while_fastc_waits_on_a_verbatim_ends_cleanly(
 def _unheard(sim: Sim) -> list[Event]:  # FastC lines generated, not said
     lines = sim.of("fast.sentence", lane="cp")
     return [e for e in lines if not sim.of("utt.delivered", utt_id=e.payload["utt_id"])]
+
+
+def _gen(utt_id: object) -> str:  # a FastC line's generation
+    return str(utt_id).rsplit("-u", 1)[0]
+
+
+def _basis(sim: Sim, gen: str) -> int:  # the seq its request saw
+    (asked,) = sim.of("fast.request", gen_id=gen)
+    return int(str(asked.payload["basis_seq"]))
+
+
+def test_a_held_fastc_turn_older_than_a_released_decline_is_cancelled(
+    tmp_path: Path,
+) -> None:
+    """S1-SYS-59, the 45d7ed shape: FastC's turn generated while the decline
+    waits is held behind it (S1-SYS-56). Released after it, it would be heard
+    right after "No, thank you" on a board that had no decline. It is
+    cancelled (``fast.cancelled{reason: verbatim}``, citing its turn and the
+    release), never said, and its trigger runs again on the new basis."""
+
+    async def case() -> None:
+        rep = LaggingRep()
+        sim = Sim(tmp_path, {"fast_cp": [LONG]}, rep=rep)
+        await _chatter(sim, rep)
+        sim.act({"tool": "decline_offer", "offer_ref": "o1"})
+        for _ in range(1_000):
+            await sim.vt.run_for(100)
+            if _ends(sim):
+                break
+        (released,) = _ends(sim)
+        assert released.type == "speak.released"
+        held = {_gen(e.payload["utt_id"]) for e in _unheard(sim)}
+        assert held, "no FastC turn waited behind the decline"
+        assert all(_basis(sim, g) < released.seq for g in held)
+        resumed = await _fastc_resumes(sim, released)
+        after = [
+            e
+            for e in sim.of("utt.delivered", lane="cp")
+            if e.seq > released.seq and str(e.payload["utt_id"]).startswith("cp-g")
+        ]
+        assert after and after[0] == resumed
+        assert all(_basis(sim, _gen(e.payload["utt_id"])) > released.seq for e in after)
+        for gen in held:
+            (turn,) = sim.of("fast.turn", gen_id=gen)
+            (cancelled,) = sim.of("fast.cancelled", gen_id=gen)
+            assert cancelled.payload["reason"] == "verbatim"
+            assert cancelled.cause_ids == (turn.event_id, released.event_id)
+            assert cancelled.seq > released.seq
+            (asked,) = sim.of("fast.request", gen_id=gen)
+            asks = sim.of("fast.request", lane="cp")
+            again = next(e for e in asks if e.seq > cancelled.seq)
+            assert again.payload["trigger"] == asked.payload["trigger"]
+        await sim.stop()
+        assert check_path(sim.k.path, "offline").ok
+
+    arun(case())
+
+
+def test_a_held_fastc_turn_behind_a_revoked_line_is_said(tmp_path: Path) -> None:
+    """Only a line the rep heard makes a held turn stale: behind an accept
+    revoked on the floor (``epoch``, nothing said) FastC's turn is said."""
+
+    async def case() -> None:
+        rep = HearingRep()
+        sim = Sim(tmp_path, {"fast_cp": [LONG]}, rep=rep)
+        await _fastc_holds_the_floor(sim)
+        rep.heard.clear()
+        rep.answer = REPLY  # FastC answers it while the accept waits
+        assert sim.accept().startswith("accept_offer: accept line queued")
+        await sim.vt.run_for(1_000)
+        sim.revoke()
+        await sim.vt.run_for(12_000)
+        held = _unheard(sim)
+        assert held and _ends(sim) == []
+        rep.heard.set()
+        await sim.vt.run_for(2 * FAST_MS)  # the rep's reply lands, then FastC's
+        (revoked,) = _ends(sim)
+        assert revoked.type == "speak.revoked"
+        assert all(_heard_before(sim, e, len(sim.events)) for e in held)
+        assert not [
+            e for e in sim.of("fast.cancelled") if e.payload["reason"] == "verbatim"
+        ]
+        await sim.stop()
+
+    arun(case())

@@ -12,11 +12,14 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+from tests.contract.samples import SONNET, call_record
 from tests.kernel.test_session_end import NEW_WORK, Case
 from tests.support.fakes import RepeatingLLM
 
 from proxyloop.contract.llm import LLMUnavailable, ToolRequest, ToolResponse
-from proxyloop.env.world import WorldError
+from proxyloop.env import world
+from proxyloop.env.world import MAX_REGENERATIONS, WorldError
+from proxyloop.kernel import session
 from proxyloop.kernel.session import Kernel
 from proxyloop.kernel.watchdog import Abort
 from proxyloop.llm.spend import RunawaySpend
@@ -133,3 +136,75 @@ def test_a_dead_endpoint_still_records_its_call(tmp_path: Path) -> None:
     case = _loud(tmp_path, _dead, LLMUnavailable)
     calls = [e for e in case.events if e.type == "llm.call" and e.t_ms >= case.t_end]
     assert [c.payload["error"] for c in calls] == ["connection refused"]
+
+
+# S1-SYS-43: session.ended names a world error (type, authored message: rule 15)
+MARKER = "model said: SECRET provider: body"
+
+
+def _bounded_error() -> WorldError:
+    """The WorldError the real ``world.bounded`` raises for an Ear whose every
+    attempt fails its check with an ``Invalid`` quoting model output."""
+
+    async def attempt(n: int) -> str:
+        return MARKER
+
+    def check(raw: str) -> str:
+        raise world.Invalid(raw)
+
+    async def call() -> None:
+        await world.bounded(attempt, check, what="ear", timeout_s=5)
+
+    with pytest.raises(WorldError) as caught:
+        asyncio.run(call())
+    assert MARKER in str(caught.value)  # the world's message does quote it
+    return caught.value
+
+
+def _unknown_shape() -> WorldError:  # not one of the world's heads
+    return WorldError(f"ear failed: {MARKER}")
+
+
+INVALID = f"ear: invalid after {MAX_REGENERATIONS} regenerations"
+TIMEOUT = "mouth: no answer within 60.0 s"
+
+
+@pytest.mark.parametrize(
+    ("make", "expected"),
+    [
+        (_bounded_error, {"message": INVALID}),
+        (lambda: WorldError(TIMEOUT), {"message": TIMEOUT}),
+        (_unknown_shape, {}),
+    ],
+    ids=["invalid", "timeout", "unknown_shape"],
+)
+def test_a_world_error_end_records_its_type_and_authored_message(
+    tmp_path: Path, make: Callable[[], WorldError], expected: dict[str, str]
+) -> None:
+    err = make()  # before the session's loop: bounded runs one of its own
+
+    def fail(k: Kernel, inner: RepeatingLLM) -> None:
+        raise err
+
+    case = _loud(tmp_path, fail, WorldError)
+    (ended,) = [e for e in case.events if e.type == "session.ended"]
+    assert ended.payload["reason"] == "world_error"
+    assert ended.payload["world_error"] == {"type": "WorldError"} | expected
+    assert "SECRET" not in (case.k.path / "events.jsonl").read_text()
+
+
+def test_no_other_end_has_a_world_error_key(tmp_path: Path) -> None:
+    case = _loud(tmp_path, _runaway, RunawaySpend)
+    (ended,) = [e for e in case.events if e.type == "session.ended"]
+    assert "world_error" not in ended.payload
+
+
+def test_a_dead_endpoint_outranks_a_world_error_and_names_none() -> None:
+    """Both in the TaskGroup: ``run`` ends ``llm_unavailable``, and the error it
+    hands ``_close`` makes no ``world_error`` key."""
+    record = call_record(SONNET, usage=None, error="HTTP 503", response_sha=None)
+    dead = LLMUnavailable("endpoint is dead", record)
+    for leaves in ([_bounded_error(), dead], [dead, _bounded_error()]):
+        reason, error = session._outcome(BaseExceptionGroup("both", leaves))  # pyright: ignore[reportPrivateUsage]
+        assert (reason, error) == ("llm_unavailable", dead)
+        assert session._world_error(error) is None  # pyright: ignore[reportPrivateUsage]

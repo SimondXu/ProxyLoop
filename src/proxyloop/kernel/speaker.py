@@ -66,19 +66,26 @@ class Speaker:
         self._no_queued.set()
 
     async def speak(
-        self, lines: Sequence[tuple[str, str, str]], interruptible: bool = True
-    ) -> None:
+        self,
+        lines: Sequence[tuple[str, str, str]],
+        interruptible: bool = True,
+        fresh: Callable[[], bool] | None = None,
+    ) -> bool:
         while True:  # no new turn while a verbatim line waits for the floor
             await self._no_queued.wait()
             await self._lock.acquire()
             if not self._queued:
                 break
             self._lock.release()
+        if fresh is not None and not fresh():  # stale on the floor: not said
+            self._lock.release()
+            return False
         try:
             last, heard = await self._deliver(lines, interruptible)
         finally:
             self._lock.release()
         self._send(last, heard)
+        return True
 
     async def verbatim(self, said: Event) -> None:
         """Guard's accept or decline line: revalidated and released or revoked

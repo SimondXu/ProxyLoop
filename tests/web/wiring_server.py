@@ -7,8 +7,9 @@ Playwright project "wiring" (``apps/web/playwright.wiring.config.ts``) starts
 it. Every case in ``CASES`` is seeded at start, one per flow under test, so no
 test changes another's case and the server needs no control route. The start
 routes (``GET /start``, ``/api/models``, ``POST /api/cases``) run over a
-``WiringStarter``, whose task picks the outcome. Synthetic events go only under
-the tmp directory, removed at exit.
+``WiringStarter``, whose task picks the outcome; its real kernel's case lives
+under the tmp ``runs`` root. Synthetic events go only under the tmp directory,
+removed at exit.
 
 ``--replay`` (S1-SYS-30; ``apps/web/playwright.config.ts``) serves replay only,
 without cases, over ``PL_BUNDLE_DIR`` (default ``tests/web/fixtures``) and two
@@ -65,8 +66,10 @@ def build(
     cases = {
         case_id: WiringCase(root, case_id, mode) for case_id, mode in CASES.items()
     }
-    starter = WiringStarter(root)
-    roots = [root, EVIDENCE]
+    runs = tmp / "runs"  # serve finds live cases only under a root named "runs"
+    runs.mkdir()
+    starter = WiringStarter(root, runs)
+    roots = [root, runs, EVIDENCE]
     app = create_app(roots, [origin], cases=cases.get, web_dir=web_dir, start=starter)
     return app, cases, starter
 
