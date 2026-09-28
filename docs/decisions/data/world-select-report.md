@@ -2,11 +2,12 @@
 
 Internal instrument choice, not a claim; the user decides (ADR-0024).
 
-- git_sha: 4e40bc812508642a52155390ad07c5218b7e3b31
+- git_sha: 9bbec9fdf47c8143148981b967c7fe6acabc0c3d
 - git_dirty: False
 - items_root_hash: 471a0a9151af0c85204b6d49d2977fc14fae50fdfcd77cc2c2401246d61a41cc
 - codebook_sha256: 892c8f686dfcb27d6a4c81a0f672c44226e2e306f625cf895da427534b4b7a38
 - gold_sha256: aec2f545fc4dbbb013ab4f09c2dc25f9a21cc75fe2923a9644eeda75a77e32e1
+- world_max_tokens: 512
 - inputs_sha256.judge_export_id: 8de4b0b9aa80e2e55469145c8fb52b4847345e56e6577a611419b937b5e5a07b
 - inputs_sha256.judge_key: 4faa94a6c197ae86a1b5f4f4be98ff6bfd53b1ff812ceb59668ba7a58ae64997
 - inputs_sha256.judge_labels.judge-8de4b0b9-001.json: 5a231adbe2d8a10810ba29cd9c629be5bfc7c41e7e5370b703911b9b85a96db2
@@ -218,6 +219,7 @@ A `-` cell is null: a rate with no denominator (n = 0), a count not seen, `cost_
 |---|---|---|---|
 | exhausted | 0 | 0 | 0 |
 | fallback | 0.1933 [0.1481, 0.2482] (46/238) | 0.0042 [0.0007, 0.0234] (1/238) | 0.105 [0.0722, 0.1505] (25/238) |
+| fallback_with_length_call | 46 | 0 | 0 |
 | fidelity_ok | 0.8067 [0.7518, 0.8519] (192/238) | 0.9958 [0.9766, 0.9993] (237/238) | 0.895 [0.8495, 0.9278] (213/238) |
 | items | 238 | 238 | 238 |
 | judged.M1 | 0.9948 [0.9711, 0.9991] (191/192) | 1.0 [0.984, 1.0] (237/237) | 0.9202 [0.8759, 0.9496] (196/213) |
@@ -226,10 +228,11 @@ A `-` cell is null: a rate with no denominator (n = 0), a count not seen, `cost_
 | judged.M4 | 1.0 [0.9804, 1.0] (192/192) | 1.0 [0.984, 1.0] (237/237) | 0.9437 [0.9041, 0.9675] (201/213) |
 | judged.M5 | 1.0 [0.9804, 1.0] (192/192) | 1.0 [0.984, 1.0] (237/237) | 1.0 [0.9823, 1.0] (213/213) |
 | judged.no_violation | 0.9948 [0.9711, 0.9991] (191/192) | 0.9747 [0.9459, 0.9883] (231/237) | 0.831 [0.7749, 0.8753] (177/213) |
+| judged_final_call_length | 5 | 16 | 0 |
 | n_excluded_fallback | 46 | 1 | 25 |
 | timeout | 0 | 0 | 0 |
 
-Judged M1-M5 cover non-fallback outputs only; `n_excluded_fallback` counts the fallbacks left out of their denominator (ADR-0024 §5).
+Judged M1-M5 cover non-fallback outputs only; `n_excluded_fallback` counts the fallbacks left out (ADR-0024 §5). `fallback_with_length_call`: fallbacks with a call that stopped at `length`; `judged_final_call_length`: judged outputs whose final call stopped at `length` (their text may be truncated).
 
 ## mouth: constructed
 
@@ -237,6 +240,7 @@ Judged M1-M5 cover non-fallback outputs only; `n_excluded_fallback` counts the f
 |---|---|---|---|
 | exhausted | 0 | 0 | 0 |
 | fallback | 0.1636 [0.0886, 0.2826] (9/55) | 0.0727 [0.0286, 0.1726] (4/55) | 0.1273 [0.063, 0.2402] (7/55) |
+| fallback_with_length_call | 9 | 2 | 0 |
 | fidelity_ok | 0.8364 [0.7174, 0.9114] (46/55) | 0.9273 [0.8274, 0.9714] (51/55) | 0.8727 [0.7598, 0.937] (48/55) |
 | items | 55 | 55 | 55 |
 | judged.M1 | 1.0 [0.9229, 1.0] (46/46) | 1.0 [0.93, 1.0] (51/51) | 1.0 [0.9259, 1.0] (48/48) |
@@ -245,10 +249,11 @@ Judged M1-M5 cover non-fallback outputs only; `n_excluded_fallback` counts the f
 | judged.M4 | 1.0 [0.9229, 1.0] (46/46) | 1.0 [0.93, 1.0] (51/51) | 1.0 [0.9259, 1.0] (48/48) |
 | judged.M5 | 1.0 [0.9229, 1.0] (46/46) | 1.0 [0.93, 1.0] (51/51) | 1.0 [0.9259, 1.0] (48/48) |
 | judged.no_violation | 0.9783 [0.8866, 0.9962] (45/46) | 1.0 [0.93, 1.0] (51/51) | 1.0 [0.9259, 1.0] (48/48) |
+| judged_final_call_length | 0 | 1 | 0 |
 | n_excluded_fallback | 9 | 4 | 7 |
 | timeout | 0 | 0 | 0 |
 
-Judged M1-M5 cover non-fallback outputs only; `n_excluded_fallback` counts the fallbacks left out of their denominator (ADR-0024 §5).
+Judged M1-M5 cover non-fallback outputs only; `n_excluded_fallback` counts the fallbacks left out (ADR-0024 §5). `fallback_with_length_call`: fallbacks with a call that stopped at `length`; `judged_final_call_length`: judged outputs whose final call stopped at `length` (their text may be truncated).
 
 ## simuser: recorded
 
@@ -330,4 +335,4 @@ Judged M1-M5 cover non-fallback outputs only; `n_excluded_fallback` counts the f
 | tokens.simuser.reasoning_tokens | 8547 | 26803 | 102 |
 | torn_lines | 0 | 0 | 0 |
 
-Latency, tokens, `finish_reason` and `timeout_all_repeats` cover every call of every attempt and repeat (`null`: a call with no finish reason, e.g. cancelled); a segment's `timeout` counts repeat 1 only.
+`finish_reason`, `timeout_all_repeats` and tokens cover every call of every attempt and repeat of the final rows (superseded `not_final_rows` left out); latency, those calls without an error. `null`: no finish reason (e.g. cancelled). `length`: stopped at max_tokens, world.MAX_TOKENS = 512 for every arm at the generation commit; the rows do not record the cap, so it is the run's only if world.py did not change since the run. A segment's `timeout` is repeat 1 only.

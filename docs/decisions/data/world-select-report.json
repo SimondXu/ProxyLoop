@@ -1118,6 +1118,7 @@
       "n": 55,
       "rate": 0.1636
      },
+     "fallback_with_length_call": 9,
      "fidelity_ok": {
       "ci95": [
        0.7174,
@@ -1184,6 +1185,7 @@
        "rate": 0.9783
       }
      },
+     "judged_final_call_length": 0,
      "n_excluded_fallback": 9,
      "timeout": 0
     },
@@ -1198,6 +1200,7 @@
       "n": 238,
       "rate": 0.1933
      },
+     "fallback_with_length_call": 46,
      "fidelity_ok": {
       "ci95": [
        0.7518,
@@ -1264,6 +1267,7 @@
        "rate": 0.9948
       }
      },
+     "judged_final_call_length": 5,
      "n_excluded_fallback": 46,
      "timeout": 0
     }
@@ -2462,6 +2466,7 @@
       "n": 55,
       "rate": 0.0727
      },
+     "fallback_with_length_call": 2,
      "fidelity_ok": {
       "ci95": [
        0.8274,
@@ -2528,6 +2533,7 @@
        "rate": 1.0
       }
      },
+     "judged_final_call_length": 1,
      "n_excluded_fallback": 4,
      "timeout": 0
     },
@@ -2542,6 +2548,7 @@
       "n": 238,
       "rate": 0.0042
      },
+     "fallback_with_length_call": 0,
      "fidelity_ok": {
       "ci95": [
        0.9766,
@@ -2608,6 +2615,7 @@
        "rate": 0.9747
       }
      },
+     "judged_final_call_length": 16,
      "n_excluded_fallback": 1,
      "timeout": 0
     }
@@ -3808,6 +3816,7 @@
       "n": 55,
       "rate": 0.1273
      },
+     "fallback_with_length_call": 0,
      "fidelity_ok": {
       "ci95": [
        0.7598,
@@ -3874,6 +3883,7 @@
        "rate": 1.0
       }
      },
+     "judged_final_call_length": 0,
      "n_excluded_fallback": 7,
      "timeout": 0
     },
@@ -3888,6 +3898,7 @@
       "n": 238,
       "rate": 0.105
      },
+     "fallback_with_length_call": 0,
      "fidelity_ok": {
       "ci95": [
        0.8495,
@@ -3954,6 +3965,7 @@
        "rate": 0.831
       }
      },
+     "judged_final_call_length": 0,
      "n_excluded_fallback": 25,
      "timeout": 0
     }
@@ -4043,7 +4055,7 @@
  },
  "codebook_sha256": "892c8f686dfcb27d6a4c81a0f672c44226e2e306f625cf895da427534b4b7a38",
  "git_dirty": false,
- "git_sha": "4e40bc812508642a52155390ad07c5218b7e3b31",
+ "git_sha": "9bbec9fdf47c8143148981b967c7fe6acabc0c3d",
  "gold_counts": {
   "by_source": {
    "adjudicated": 79,
@@ -4212,5 +4224,6 @@
     }
    }
   }
- }
+ },
+ "world_max_tokens": 512
 }
