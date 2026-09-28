@@ -68,12 +68,12 @@ def row(run: runs.Run, x: Inputs) -> Row:
     keys = ("endpoint", "model_id", "reasoning_effort")
     if x.manifest is not None:
         mode = "live" if x.manifest.cfg.live else "not_live"
-        slow_view: str | None = x.manifest.cfg.slow_view.value
+        slow_view: object = x.manifest.cfg.slow_view.value
     else:  # no manifest: the adapter kinds session.started names, labelled
         mode = "kinds:" + "+".join(
             sorted({str(m.get("kind")) for m in models.values()})
         )
-        slow_view = None
+        slow_view = start.get("slow_view")  # S1-SYS-43; None before it
     return {
         "schema": SCHEMA,
         "advisory": BANNER,
