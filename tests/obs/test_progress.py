@@ -304,7 +304,7 @@ def test_diagnose_adds_the_blocks_and_keys(
     write(tmp_path / "rP", r.log, manifest("rP"))
     assert diagnose.main(["--root", str(tmp_path), "--json"]) == 0
     doc = json.loads(capsys.readouterr().out)
-    assert sorted(doc) == ["progress", "runs", "tiers", "watch"]
+    assert sorted(doc) == ["progress", "runs", "tiers", "watch", "world"]
     row = doc["runs"][0]
     assert row["progress"]["furthest"] == "verified"
     assert row["watch"]["label"] == progress.LABEL
