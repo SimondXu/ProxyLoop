@@ -205,7 +205,7 @@ def test_simrep_commits_heard_and_binds_the_ledger(tmp_path: Path) -> None:
         turn = rep.on_agent_utterance(utt_id, text, heard.event_id, i * 1000)
         turns.append(asyncio.run(turn))
     assert [len(t.lines) for t in turns] == [1, 1, 1, 1, 1]
-    assert [t.ended for t in turns] == [False] * 4 + [True]
+    assert [t.end for t in turns] == [""] * 4 + ["closed"]
     (commit,) = sink.of("rep.commit_heard")
     (write,) = sink.of("ledger.write")
     rep_ear = sink.of("rep.ear")[-1]
@@ -623,10 +623,10 @@ def test_a_fact_is_said_only_as_whole_digit_groups_or_whole_tokens(
         ),
     )
     if said:
-        assert check_act((call,), [heard], (), (NAME, LAST4))[0].facts
+        assert check_act((call,), [heard], (), (NAME, LAST4), ())[0].facts
     else:
         with pytest.raises(world.Invalid, match="was not said"):
-            check_act((call,), [heard], (), (NAME, LAST4))
+            check_act((call,), [heard], (), (NAME, LAST4), ())
 
 
 def test_identity_strikes_apply_in_rep_chat(tmp_path: Path) -> None:

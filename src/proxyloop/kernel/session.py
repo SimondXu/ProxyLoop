@@ -491,7 +491,7 @@ class Kernel:
         last, first = opened, [c for _, c in inc.lines if c][:1]
         closing = inc.end == "closed" and key == "cp" and not self.closed
         self.closed |= closing  # before its lines: they trigger no FastC
-        if inc.strike:
+        for _ in range(inc.strikes):  # one chan.strike per strike (S1-SYS-63)
             struck = {"lane": "cp", "kind": inc.strike_kind}
             last = self.emit("chan.strike", "kernel", struck, first).event_id
         for text, cause in inc.lines:

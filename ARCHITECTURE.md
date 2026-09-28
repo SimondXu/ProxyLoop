@@ -469,7 +469,7 @@ Voice confirmation (S5) is labelled "not authenticated consent".
 
   It classifies what the rep **heard** (`text_heard`). Numeric arguments are cross-checked against the offers actually made, and an ambiguous `accept` makes the policy ask for confirmation. The Ear is audited in S2 and re-audited in S4 (EVAL §9).
 
-  The rep hears its whole backlog (ADR-0021). The agent turns heard while a rep turn is in flight form one block, which gets one `classify` call with one act per utterance, each checked against its own utterance, and one `rep.ear` per utterance (`heard_utt_ids` names the block). The policy steps every act in order, as it would one turn at a time. The Mouth voices a run of equal intents without a commit once.
+  The rep hears its whole backlog (ADR-0021). The agent turns heard while a rep turn is in flight form one block, which gets one `classify` call with one act per utterance, each checked against its own utterance, and one `rep.ear` per utterance (`heard_utt_ids` names the block). An `accept` needs an offer the rep made that is still open; with none, the tool does not offer it. The policy steps every act in order, as it would one turn at a time. The Mouth voices a run of equal intents without a commit once. The kernel gets one `chan.strike` per strike and the turn's end: `hangup` only for a strike-out.
 - **Policy** (deterministic, per-family data): `GREET → IDENTIFY → DISCOVER → OFFER(k) → FINAL → CONFIRM → CONFIRMED | TRANSFER | ENDED`.
   - a lever ladder;
   - hidden terms revealed only on `ask_readback`;

@@ -106,15 +106,20 @@ def _call(
     return result.reason, sessions.only_bundle(tmp_path).events
 
 
+def _identity(events: tuple[Event, ...]) -> dict[str, Any]:
+    value = _strikes(Inputs(events, None, lambda _: None))
+    assert isinstance(value, dict)
+    return value
+
+
 def _outcome(reason: str, events: tuple[Event, ...]) -> dict[str, object]:
-    of = [e.type for e in events]
-    identity = _strikes(Inputs(events, None, lambda _: None))
-    assert isinstance(identity, dict)
+    of, identity = [e.type for e in events], _identity(events)
     return {
         "reason": reason,
         "chan.strike": of.count("chan.strike"),
-        "fold cp.strikes": fold(events).channels["cp"].strikes,
-        "obs identity.strikes": identity["count"],
+        "fold cp.strikes": fold(events).channels["cp"].strikes,  # Slow's STATUS
+        "obs identity strikes": len(identity["strikes"]),
+        "obs h5_pass": identity["h5_pass"],
         "chan.closed": of.count("chan.closed"),
     }
 
@@ -154,3 +159,22 @@ def test_a_heard_block_ends_and_strikes_as_its_turns_one_at_a_time(
     assert block == seq
     assert {k: block[k] for k in want} == want
     assert block["fold cp.strikes"] == block["chan.strike"]
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="escalated (S1-SYS-63): obs identity.strikes `count` adds the "
+    "abandonment unless some chan.strike's cause chain reaches the "
+    "IDENTIFY->ENDED rep.policy; a block's strikes all cite its first line "
+    "(kernel _turn), so a strike-out block whose first line is not the hang-up "
+    "counts k + 1 (4 here, 3 one turn at a time); the strikes list is exact",
+)
+def test_obs_counts_a_strike_out_block_as_its_turns_one_at_a_time(
+    tmp_path: Path,
+) -> None:
+    lines = [HOLD, REFUSE, REFUSE, REFUSE]
+    (tmp_path / "seq").mkdir()
+    (tmp_path / "block").mkdir()
+    _, seq = _call(tmp_path / "seq", lines, block=False)
+    _, block = _call(tmp_path / "block", lines, block=True)
+    assert _identity(block)["count"] == _identity(seq)["count"] == 3
