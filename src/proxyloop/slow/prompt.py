@@ -16,7 +16,7 @@ from proxyloop.contract.views import SlowView
 from proxyloop.guard.authorize import Denial, card_blocks, open_offer
 from proxyloop.guard.mandate import mandate_gap
 from proxyloop.guard.readback import missing_required, readback_status
-from proxyloop.slow import asks, offer_slots
+from proxyloop.slow import asks, offer_slots, state
 
 TOOLS = (
     *("ask_user", "tell_user", "wait", "guide_fast", "record_fact", "record_offer"),
@@ -43,7 +43,8 @@ allowed only once each missing one was asked and the user replied.
 - wait(seconds 1-15): wake me again after that long if nothing else happens.
 - guide_fast(move, slots): steer the phone voice; slots are "fact:<key>" or \
 "offer:<ref>.<field>" and must already be public. It takes no text: the phone \
-voice never gets free text from you.
+voice never gets free text from you. A lever the levers line of the status bar \
+lists as unavailable is refused: use another move.
 - record_fact(key, value, utt_ref): a fact with the utt of the relay it came from. \
 Use the canonical key from SHAREABLE FACT KEYS when the fact is one of them, \
 whatever the relay called it. A value the representative said in that utt becomes \
@@ -56,7 +57,13 @@ them, each slot {{field, value, utt_ref}}; its role and unit follow from the fie
 by this table (field → role, unit, value): {offer_slots.TABLE}. \
 Then guide_fast(ask_readback, ["offer:<ref>"]) for that revision: its slots turn \
 [confirmed] in the status bar when the representative repeats them after it. Only a \
-confirmed offer can be approved or accepted.
+confirmed offer can be approved or accepted. The status bar counts the read-back \
+asks of each revision (read-back asked k×): once the representative has read the \
+offer back twice leaving out the same slots as recorded: if a reply states \
+another value for them, record_offer a new revision citing that line; otherwise \
+stop asking, they did not state them (the close playbook says what next). A \
+reply that reads nothing back is no read-back: ask again or ask for the final \
+offer.
 - propose_mandate(envelope): the limits the user stated (max_monthly_price_minor, \
 max_term_months, max_one_time_fees_minor, required_features, forbidden_changes); it \
 grants nothing until the user decides it.
@@ -88,7 +95,7 @@ only for a fact that must not be given: the representative hears a refusal and m
 hang up.
 A rep_turn or heartbeat wake without a new [REP CALL] note means nothing was \
 relayed; read the status bar and act or wait.
-Tool results come back as text; a refusal says why."""
+Tool results come back as text; a refusal says why."""  # noqa: RUF001 (the bar says k times)
 
 _TRANSCRIPT_SWAPS = (  # (the relay_only sentence, the transcript one): ADR-0016
     (
@@ -140,6 +147,24 @@ def _swapped(text: str) -> str:
 
 
 _SYSTEM_TRANSCRIPT = _swapped(SYSTEM)
+
+
+PLAYBOOK: dict[state.Kind, str] = {  # V3: the head carries the case's own only
+    "info_only": "CLOSE PLAYBOOK (info_only: report the offers, accept nothing): "
+    "record each offer the representative states and ask for its read-back; then "
+    "guide_fast(ask_final_offer). Once the close line shows the rep's closing "
+    "reply (or the rep answered it with no new offer), tell_user every offer's "
+    "terms as recorded (naming any slot not stated) and finish(info_only, "
+    "summary) in the same act.",
+    "full": "CLOSE PLAYBOOK (full: a deal within the user's limits, or a verified "
+    "no deal): a confirmed offer inside the granted mandate: accept_offer; outside "
+    "it: request_approval. An offer the user denies, that breaks a hard limit, or "
+    "whose read-back stopped with slots not stated: decline_offer, then "
+    "guide_fast(ask_final_offer). When the close line says finish(no_deal) would "
+    "verify, tell_user the terms offered and why none was taken, and "
+    "finish(no_deal, summary) in the same act; while it says blocked, act on its "
+    "reasons.",
+}
 
 
 def system(mode: SlowViewMode) -> str:
@@ -206,12 +231,19 @@ def note(relay: FastToSlow, quoted: bool = False) -> str:  # [USER CHAT] … (ut
     return f"[{where}] {body} (utt {relay.utt_ref or 'none'})"
 
 
-def status_bar(view: SlowView, now_ms: int, intake: asks.Intake | None = None) -> str:
+def status_bar(
+    view: SlowView,
+    now_ms: int,
+    intake: asks.Intake | None = None,
+    more: state.Bar | None = None,
+) -> str:
     """One ``[STATUS]`` header, then labelled lines (ADR-0018 F-a): the case
     (status, epoch, mandate, fences), offers (slot statuses, read-back, TTL),
     approvals, the facts Slow recorded (values JSON-quoted: no line can be
-    forged), hold and strikes, and with ``intake`` the call's readiness and
-    Slow's keyed asks (ADR-0012). Read-only views of the board and Guard."""
+    forged), hold and strikes, with ``intake`` the call's readiness and
+    Slow's keyed asks (ADR-0012), and with ``more`` each revision's read-back
+    count and the close and levers lines (V3-V5). Read-only views of the
+    board and Guard."""
 
     def secs(t_ms: int) -> str:
         return f"{max(0, t_ms - now_ms) // 1000} s"
@@ -221,6 +253,7 @@ def status_bar(view: SlowView, now_ms: int, intake: asks.Intake | None = None) -
         slots = ", ".join(f"{s.field}={s.value} [{s.status}]" for s in o.slots)
         state = f"{o.status}, read-back {readback_status(o)}{ttl}"
         hints = [approval_hint(view, o, now_ms)]
+        hints.append("" if more is None else more.offer_note(o))
         if gaps := missing_required(o):  # e6ada1: Guard's list, never inferred
             hints.append(
                 f"required slots not recorded: {', '.join(gaps)}; record them "
@@ -263,6 +296,8 @@ def status_bar(view: SlowView, now_ms: int, intake: asks.Intake | None = None) -
     ]
     if intake is not None:
         lines += [asks.readiness_line(intake, now_ms), asks.asks_line(intake, now_ms)]
+    if more is not None:
+        lines += more.lines()
     return "\n".join(lines)
 
 

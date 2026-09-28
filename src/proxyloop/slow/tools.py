@@ -55,7 +55,7 @@ _BEFORE = (  # a token start; an opener only where it starts a token (no $"4821"
 _AFTER = r"(?=[)\"\u201d]?[.,;:!?]?(?:\s|$))"  # a closer, a mark; a space or the end
 _EDGE = r"(?<![\w'\u2019-])", r"(?![\w'\u2019-])"  # a name's word bounds
 MAX_NAME_CHARS = 60
-_IDENTITY = readiness.IDENTITY  # A6: Guard's table now; obs mirrors it
+_IDENTITY = readiness.IDENTITY  # A6: Guard's table; obs imports it too
 NUMBER_WORDS = frozenset(
     """zero one two three four five six seven eight nine ten eleven twelve
     thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty
@@ -87,6 +87,10 @@ class SlowTools:
         # offer revision, and when the final offer was last asked (§9.2, §9.3)
         self.asked: dict[tuple[str, int], int] = {}
         self.asked_final: int | None = None
+        self.told_at: int | None = None  # the cp length at the last tell_user
+        # the cp transcript length at every read-back ask of an offer
+        # revision (ADR-0018 V4, slow.state)
+        self.readbacks: dict[tuple[str, int], list[int]] = {}
         self.received: set[str] = set()  # the relay ids SlowLoop handed to Slow
 
     def act(
@@ -179,7 +183,9 @@ class SlowTools:
                 host.counts["keyless_ask"] += 1  # counted, not deduped
             return self._s2f(lane="user", type="ASK_USER", text=str(a["text"]))
         if name == "tell_user":
-            return self._s2f(lane="user", type="TELL_USER", text=str(a["text"]))
+            told = self._s2f(lane="user", type="TELL_USER", text=str(a["text"]))
+            self.told_at = len(bb.channels["cp"].lines)  # V3: once it is sent
+            return told
         if name == "start_call":  # Guard-checked (ADR-0012 R1)
             return asks.start_call(host)
         if name == "wait":  # its slow.tool arms the timer (kernel.wake)
@@ -299,6 +305,7 @@ class SlowTools:
         for ref in sorted(refs):
             if (o := bb.public.offers.get(ref)) is not None:
                 self.asked.setdefault((ref, o.revision), at)
+                self.readbacks.setdefault((ref, o.revision), []).append(at)
                 tracked.append(f"{ref} r{o.revision}")
         if tracked:
             return Result(

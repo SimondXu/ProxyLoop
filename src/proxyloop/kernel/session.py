@@ -141,6 +141,12 @@ def _outcome(
     return cast(SessionEnd, leaves[0]).reason, None
 
 
+def _reason(err: Exception) -> str:  # the end a task's error makes, as _outcome
+    if isinstance(err, SessionEnd | Abort):
+        return err.reason
+    return next((r for kind, r in _ERRORS.items() if isinstance(err, kind)), "error")
+
+
 def new_run_id() -> str:
     return f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{secrets.token_hex(3)}"
 
@@ -269,7 +275,15 @@ class Kernel:
         return sha
 
     def spawn(self, coro: Coroutine[Any, Any, None]) -> None:
-        self._tg.create_task(coro)
+        task = self._tg.create_task(self._task(coro))
+        task.add_done_callback(lambda _: coro.close())  # if cancelled before it ran
+
+    async def _task(self, coro: Coroutine[Any, Any, None]) -> None:
+        try:
+            await coro
+        except Exception as err:  # any end, loud too: gated before the next task
+            self.end(_reason(err))
+            raise
 
     def expect(self, call_id: str, cause: str) -> None:
         self._causes[call_id] = cause
@@ -294,6 +308,7 @@ class Kernel:
             charge = self.ledger.charge(r)
         except RunawaySpend as err:
             charge, runaway = err.charge, err
+            self.end("budget")  # before anything else runs: no new paid call
         self.emit(
             "spend.charged", "kernel", charge.model_dump(mode="json"), [cause], "ops"
         )
