@@ -10,6 +10,8 @@ one, then task_ref: an issue fixed later shows under its old group, not as
 current, and bundles across agent harness v2 are never pooled (ADR-0018).
 slow_fp changes with any edit under slow/ or guard/, so the groups are
 fine-grained by design.
+After the table, the outcome tiers per family (``obs.tiers``); ``--json``
+prints ``{"runs": [...], "tiers": {...}}``.
 ``--content`` lets the text-reading detectors run; their values stay codes,
 but the rows (``--json``) then also carry the kernel-authored world_error
 message.
@@ -24,7 +26,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
-from proxyloop.obs import runs
+from proxyloop.obs import runs, tiers
 from proxyloop.obs.detectors import BANNER, as_dict, scalar
 from proxyloop.obs.trace import Refused
 from proxyloop.obs.triage import Row, Unreadable, read, row
@@ -62,7 +64,7 @@ def rows(
 
 _TEXT = {  # shown, not summed
     "end_reason": "end", "first_llm_error": "err", "end.status": "status",
-    "approval.path": "approval", "end_world_error": "world",
+    "approval.path": "approval", "end_world_error": "world", "tier": "tier",
 }  # fmt: skip
 # The max, not the sum; guide_to_heard_ms shows its p50 (ms), not its count.
 _MAX = frozenset(
@@ -76,7 +78,7 @@ _MAX = frozenset(
 def _brief(value: object) -> str:
     if isinstance(value, dict):
         d = cast(dict[str, object], value)
-        keys = ("role", "type", "http", "h5_pass", "world_error_type")
+        keys = ("role", "type", "http", "h5_pass", "world_error_type", "tier", "reason")
         return ":".join(str(d[k]) for k in keys if k in d) or "-"
     return str(value)
 
@@ -151,10 +153,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     found, skipped = rows(roots, args.relay_window, args.content)
     notes = [f"skipped: {why}" for why in skipped] + [f"skipped={len(skipped)}"]
     print("\n".join(notes), file=sys.stderr)
+    graded = tiers.summary(found)
     if args.json:
-        print(json.dumps(found, indent=1, sort_keys=True, ensure_ascii=False))
+        doc = {"runs": found, "tiers": graded}
+        print(json.dumps(doc, indent=1, sort_keys=True, ensure_ascii=False))
     else:
-        print(table(found))
+        print(table(found) + "\n" + tiers.block(graded))
     return 0
 
 

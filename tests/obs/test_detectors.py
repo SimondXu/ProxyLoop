@@ -114,6 +114,18 @@ def test_every_detector_equals_the_hand_count(tmp_path: Path) -> None:
             "count": 1, "reason": "unfinished", "end_reason": "abandoned",
             "unused": ["ask_discount", "tenure"],
         },
+        # the tier (test_tiers has its own logs): no status.changed, ended
+        # "abandoned": F; the declass.denied (29) is counted, never X
+        "tier": {
+            "tier": "F", "reason": "abandoned", "status": None,
+            "end_reason": "abandoned", "task_kind": None,
+            "family": "cp-direct-discount", "exhausted": None,
+            "ladder_unfinished": None, "approved_by": None, "unauthorized_seqs": [],
+            "declass_denied": 1, "unit": "usd_minor", "current_price": None,
+            "best_offer_monthly": None, "target_monthly": None,
+            "savings_monthly": None, "savings_annual": None,
+            "pct_below_current_bp": None, "gap_to_target": None,
+        },
         **dict.fromkeys((
             "identity.cp_opened_ready", "identity.ask_user_per_key", "end.status",
             "approval.path", "slow.invalid_args", "slow.act_shape",

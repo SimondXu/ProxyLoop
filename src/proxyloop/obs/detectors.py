@@ -566,3 +566,4 @@ def _holds(x: Inputs) -> Value:
 
 from proxyloop.obs import grading as grading  # noqa: E402  (registers H5)
 from proxyloop.obs import ladder as ladder  # noqa: E402  (registers the ladder)
+from proxyloop.obs import tiers as tiers  # noqa: E402  (registers the tier)
