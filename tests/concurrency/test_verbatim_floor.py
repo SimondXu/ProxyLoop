@@ -449,3 +449,37 @@ def test_fastc_waiting_behind_a_verbatim_yields_to_the_next(tmp_path: Path) -> N
         await sim.stop()
 
     arun(case())
+
+
+def test_a_session_end_while_fastc_waits_on_a_verbatim_ends_cleanly(
+    tmp_path: Path,
+) -> None:
+    """The rep hangs up while a decline waits for the floor and FastC's turn
+    waits behind it: the session ends (S1-SYS-55's end), nothing hangs, and
+    neither line is said."""
+
+    async def case() -> None:
+        rep = LaggingRep()
+        sim = Sim(tmp_path, {"fast_cp": [LONG]}, rep=rep)
+        await _chatter(sim, rep)
+        sim.act({"tool": "decline_offer", "offer_ref": "o1"})
+        waiting: list[Event] = []
+        for _ in range(300):  # until FastC's next turn waits behind it
+            await sim.vt.run_for(100)
+            if waiting := _unheard(sim):
+                break
+        assert waiting and _ends(sim) == [] and rep.busy
+        rep.incoming.put_nowait(Incoming((), end="hangup"))
+        await sim.vt.run_for(5 * LAG_MS)
+        assert sim.k.ended
+        (ended,) = sim.of("session.ended")
+        assert ended.payload["reason"] == "abandoned"
+        assert _ends(sim) == [] and _unheard(sim) == waiting
+        await sim.stop()
+
+    arun(case())
+
+
+def _unheard(sim: Sim) -> list[Event]:  # FastC lines generated, not said
+    lines = sim.of("fast.sentence", lane="cp")
+    return [e for e in lines if not sim.of("utt.delivered", utt_id=e.payload["utt_id"])]
