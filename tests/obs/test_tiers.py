@@ -684,12 +684,13 @@ def test_diagnose_prints_the_tiers_block_and_json(
     out = capsys.readouterr().out.splitlines()
     assert any(line.startswith("  rA ") and "tier=A:mandate" in line for line in out)
     block = out[out.index(f"== tiers git_sha g ({tiers.NOTE})") :]
-    assert block[1:] == [
+    assert block[1:5] == [
         "  cp-direct-discount A=1 F=1 | ab=yes",
         "  ab_every_family=yes declass_denied=0",
         "  confirmed_by_free_speech=0",
         "  inconsistent=0",
     ]
+    assert block[5].startswith("== progress ")  # S1-SYS-86's blocks follow
     assert diagnose.main(["--root", str(tmp_path), "--json"]) == 0
     doc = json.loads(capsys.readouterr().out)
     assert sorted(r["run_id"] for r in doc["runs"]) == ["rA", "rF"]
