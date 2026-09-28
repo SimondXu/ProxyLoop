@@ -99,13 +99,17 @@ def test_an_open_generation_between_the_guides_keeps_it_unsuperseded(
 
 # The parity alphabet: a cp GUIDE (G), a cp END s2f.msg (E), a cp request
 # left open (O), one whose turn ends without voicing (T) or voices the newest
-# cp GUIDE (V), one cancelled (C), a user-lane request left open (R).
-_STEPS = "GEOTVCR"
+# cp GUIDE (V), one cancelled (C), a user-lane request left open (R). Two are
+# still in flight when later steps run (real TTFT is 15-21 s): their end comes
+# after every step, a cancellation (K), or a turn that voices the GUIDE newest
+# at its request (L), so a later GUIDE may come before the end and the voicing.
+_STEPS = "GEOTVCRKL"
 
 
 def _build(pattern: tuple[str, ...]) -> Log:
     log = Log("rP")
     newest: str | None = None
+    late: list[tuple[str, str, str | None, bool]] = []  # _end's arguments
     for i, step in enumerate(pattern):
         gen = f"g{i}"
         if step == "G":
@@ -116,14 +120,26 @@ def _build(pattern: tuple[str, ...]) -> Log:
             s2f(log, f"m{i}", "cp", "END", log.start)
             continue
         r = _request(log, gen, log.start, "user" if step == "R" else "cp")
-        if step in "TV":
-            t = turn(log, "cp", gen, f"c-{gen}", r)
-            if step == "V" and newest is not None:
-                _voiced(log, newest, gen, t)
-        elif step == "C":
-            cancel: dict[str, object] = {"gen_id": gen, "reason": "barge_in"}
-            log.add("fast.cancelled", "fast.cp", "agent", cancel, (r,))
+        end = (gen, r, newest if step in "VL" else None, step in "CK")
+        if step in "KL":
+            late.append(end)
+        elif step in "TVC":
+            _end(log, *end)
+    for end in late:
+        _end(log, *end)
     return log
+
+
+def _end(log: Log, gen: str, request: str, voices: str | None, cut: bool) -> None:
+    """A cp generation's end: fast.cancelled, or its fast.turn (voicing
+    ``voices``, if any); O and R stay open."""
+    if cut:
+        cancel: dict[str, object] = {"gen_id": gen, "reason": "barge_in"}
+        log.add("fast.cancelled", "fast.cp", "agent", cancel, (request,))
+        return
+    t = turn(log, "cp", gen, f"c-{gen}", request)
+    if voices is not None:
+        _voiced(log, voices, gen, t)
 
 
 def test_the_superseded_set_equals_slow_heard_fates() -> None:
