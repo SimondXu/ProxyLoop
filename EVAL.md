@@ -178,6 +178,7 @@ Both are reported per lane. On the user lane latency is **measured only**, and n
 With b = 0.8 and f = 0.4, the ceiling is 8 pp even at r = 1 [GPT-6 Pro]. v3 therefore measures f (A4 and A1) and r (the curve) before setting any bar.
 
 ### 8.2 S1 headroom probe (diagnostic only; never a stop)
+- **Moved to S3** by the user decision of 2026-09-28 (PLAN S1-MOD-03).
 - **Design:** 4 families × 20 instances × {C2, T, F, R, C4}. This is descriptive only: a table with Wilson CIs, published as `s1-headroom.json`.
 - **Why it cannot be a gate:** the Ear is not yet audited, the families are few, and "T − C2" mixes Fast capability with parser and Slow effects.
 

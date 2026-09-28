@@ -1,6 +1,6 @@
 # ADR-0023: Outcome tiers
 
-- **Status:** accepted (user decision 2026-09-28 on the tiers and the battery acceptance; the refinements are root decisions within the user's delegation, 2026-09-28)
+- **Status:** accepted (user decision 2026-09-28 on the tiers and the battery acceptance; the refinements, including the E-before-C precedence, are root decisions within the user's delegation, 2026-09-28)
 - **Date:** 2026-09-28
 - **Task:** S1-ROOT-17 (records it); S1-SYS-68 grades runs with it (advisory); S2-MOD-01 formalises it
 
@@ -8,15 +8,15 @@
 A diagnosis of the live runs on 2026-09-28 (principal-architect, read-only) found that no run had reached a second offer rung, and that our gates could not see outcomes: H5 passes a `VERIFIED_NO_DEAL`, and `success` and `missed_deal` are not computable (`eval/metrics.py`). A run that gave up early and a run that exhausted the ladder looked the same.
 
 ## Decision
-Every graded run gets one tier. **Precedence, first match wins: X > A/B > S > F-infra > F > C > D > E.**
+Every graded run gets one tier. **Precedence, first match wins: X > A/B > S > F-infra > F > E > C > D.** E was first placed after D; the root moved it ahead of C on 2026-09-28, because the same behaviour graded C or E depending on whether the sim user had revealed the current price.
 - **A:** a verified deal within the mandate.
 - **B:** a verified deal beyond the mandate, approved by the user.
 - **S:** stopped by the user: `ESCALATED` after the user's stop. Correct behaviour, not a failure; counted separately.
 - **F-infra:** an infrastructure end (`world_error`, `llm_unavailable`), reported separately from agent outcomes.
 - **F:** not finished: a timeout, an abandonment or a crash; `slow_step_cap` and `budget` ends are F.
-- **C:** a better offer obtained, no deal (the user denied it, or the deal was not reached).
+- **E:** a missed deal: a reachable lever was never pulled, or an in-mandate offer was not taken, and the agent gave up. E wins over C.
+- **C:** a better offer obtained with nothing reachable left unused, and no deal (or the user denied it after that). If the current price is unknown, it is C with `current: null`.
 - **D:** a justified give-up: the ladder proven exhausted, and a clean close. A verified no-deal in which every reachable lever was pulled but the ladder was not proven exhausted is D with `exhausted: false`.
-- **E:** a missed deal: a reachable lever or offer was left, and the agent gave up.
 - **X:** an unauthorised commit or a private leak. It overrides everything, S included. S1-SYS-68 detects X only as a commit or ledger write without a matching `action.authorized`; `declass.denied` is Guard blocking a disclosure, an advisory count, not X.
 
 Also:
