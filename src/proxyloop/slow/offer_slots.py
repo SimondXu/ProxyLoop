@@ -49,19 +49,19 @@ def _field(kind: str) -> str:  # "fee" -> "fee:<code>"
 
 
 # S1-SYS-85 (runs dd5094, f828f1): the code is in the terms hash, so it must be
-# the rep's name for the fee or credit, never "activation_fee" for "activation"
-_FEE = ("fee", "fees", "charge", "charges", *LEXICON["generic_fee"])
-GENERIC = {"fee": _FEE, "credit": ("credit", "credits", *_FEE)}  # by the code's kind
+# the rep's name for the fee or credit, never "activation_fee" for "activation".
+# The read-back's own word lists; the examples are codes no family uses (rule 12).
+_FEE = (*LEXICON["fee"], "charges", *LEXICON["generic_fee"])
+GENERIC = {"fee": _FEE, "credit": (*LEXICON["credit"], *_FEE)}  # by the code's kind
 EXAMPLE = {  # the rep's words, the code they name
-    "fee": "an activation fee is fee:activation",
-    "credit": "a loyalty credit is credit:loyalty",
+    "fee": "a porting fee is fee:porting",
+    "credit": "a paperless credit is credit:paperless",
 }
 NAMED = (
     "A fee:<code> or credit:<code> is named by the rep's own words in its cited "
-    "line: each code word is said there and none is a generic word (fee or "
-    "charge; for a credit also credit): "
-    f"{EXAMPLE['fee']}, never fee:activation_fee; "
-    f"{EXAMPLE['credit']}, never credit:loyalty_credit"
+    "line: each code word is said there and none is a generic word (such as fee, "
+    f"charge, credit): {EXAMPLE['fee']}, never fee:porting_fee; "
+    f"{EXAMPLE['credit']}, never credit:paperless_credit"
 )
 TABLE = (
     "; ".join(

@@ -15,7 +15,10 @@ import pytest
 from proxyloop.contract.state import Blackboard, ChannelState, Line
 from proxyloop.slow import offer_slots
 from proxyloop.slow.offer_slots import record_offer
-from proxyloop.slow.prompt import SYSTEM
+from proxyloop.slow.prompt import (
+    _SYSTEM_TRANSCRIPT,  # pyright: ignore[reportPrivateUsage]
+    SYSTEM,
+)
 
 NOW = datetime(2026, 9, 26, tzinfo=UTC)
 # run dd5094, events seq 396: the rep's read-back that Slow cited (cp-17)
@@ -47,7 +50,7 @@ def test_dd5094_a_fee_named_with_fee_is_refused_and_its_rep_name_records() -> No
     assert not bad.ok and not bad.effects and bad.code == "invalid_args"
     assert (
         "fee:activation_fee: 'fee' is a generic word; name a fee by the words the "
-        "rep used for it without 'fee' (e.g. an activation fee is fee:activation)"
+        "rep used for it without 'fee' (e.g. a porting fee is fee:porting)"
     ) in bad.text
     good = record_offer(bb, "offer1", [*DD, _slot("fee:activation", "2000")], 0, NOW)
     assert good.ok, good.text
@@ -90,6 +93,8 @@ def test_a_code_in_the_reps_words_records(said: str, field: str, value: str) -> 
          "credit:activation_fee: 'fee' is a generic word"),
         ("You get 10.00 in loyalty credits.", "credit:loyalty_credits",
          "credit:loyalty_credits: 'credits' is a generic word"),
+        ("You get a loyalty rebate of 10.00.", "credit:loyalty_rebate",
+         "credit:loyalty_rebate: 'rebate' is a generic word"),
     ],
 )  # fmt: skip
 def test_a_code_word_generic_or_unsaid_is_refused_naming_it(
@@ -109,8 +114,8 @@ def test_a_credit_named_with_credit_is_refused_and_its_rep_name_records() -> Non
     assert not bad.ok and not bad.effects and bad.code == "invalid_args"
     assert (
         "credit:loyalty_credit: 'credit' is a generic word; name a credit by the "
-        "words the rep used for it without 'credit' (e.g. a loyalty credit is "
-        "credit:loyalty)"
+        "words the rep used for it without 'credit' (e.g. a paperless credit is "
+        "credit:paperless)"
     ) in bad.text
     assert record_offer(bb, "o1", [_slot("credit:loyalty", "1000")], 0, NOW).ok
 
@@ -149,6 +154,14 @@ def test_fees_none_is_untouched() -> None:
 
 def test_the_rule_is_in_slows_prompt_with_both_examples() -> None:
     assert offer_slots.NAMED in offer_slots.TABLE and offer_slots.NAMED in SYSTEM
-    for example in ("fee:activation, never fee:activation_fee",
-                    "credit:loyalty, never credit:loyalty_credit"):  # fmt: skip
+    for example in ("fee:porting, never fee:porting_fee",
+                    "credit:paperless, never credit:paperless_credit"):  # fmt: skip
         assert example in offer_slots.NAMED
+
+
+def test_no_familys_fee_code_is_in_slows_prompt() -> None:
+    """Review rev-264 D1: an example that is a family's hidden world code is
+    family-specific help (rule 12); the examples are codes no family uses."""
+    texts = (offer_slots.NAMED, offer_slots.TABLE, SYSTEM, _SYSTEM_TRANSCRIPT)
+    for text in (*texts, *offer_slots.EXAMPLE.values()):
+        assert "activation" not in text and "installation" not in text
