@@ -86,21 +86,22 @@ def h5_bundle(root: Path) -> Path:
     _readback(log, o1, "offer:o1")  # 24: ask 3
     _offer(log, "o2", ("monthly_price",), start)  # 25: never read back
     final: P = {"move": "ask_final_offer", "slots": []}
-    s2f(log, "s2f-f", "cp", "GUIDE", start, guide=final)  # 26
+    ask = s2f(log, "s2f-f", "cp", "GUIDE", start, guide=final)  # 26
+    _voice(log, ask, "cp-gf", False, False)  # 27-30: heard, delivered at 30
     step: P = {"basis_seq": 0, "wake_reasons": []}
-    log.add("slow.step.started", "slow", "agent", step)  # 27
-    _rep_line(log, "PRIV let me check")  # 28
-    _rep_line(log, "PRIV that is our best and final offer")  # 29: the reply
-    log.add("slow.step.started", "slow", "agent", step)  # 30
-    told = s2f(log, "s2f-t", "user", "TELL_USER", start, text="PRIV-terms")  # 31
-    voiced: P = {"msg_id": "s2f-t", "gen_id": "user-g1"}
-    log.add("s2f.voiced", "fast.user", "agent", voiced, (told,))  # 32
-    s2f(log, "s2f-u", "user", "TELL_USER", start, text="PRIV-unheard")  # 33
+    log.add("slow.step.started", "slow", "agent", step)  # 31
+    _rep_line(log, "PRIV let me check")  # 32
+    _rep_line(log, "PRIV that is our best and final offer")  # 33: the reply
     log.add("slow.step.started", "slow", "agent", step)  # 34
-    _tool(log, "finish", True, start, args={"outcome": "no_deal"})  # 35
+    told = s2f(log, "s2f-t", "user", "TELL_USER", start, text="PRIV-terms")  # 35
+    voiced: P = {"msg_id": "s2f-t", "gen_id": "user-g1"}
+    log.add("s2f.voiced", "fast.user", "agent", voiced, (told,))  # 36
+    s2f(log, "s2f-u", "user", "TELL_USER", start, text="PRIV-unheard")  # 37
+    log.add("slow.step.started", "slow", "agent", step)  # 38
+    _tool(log, "finish", True, start, args={"outcome": "no_deal"})  # 39
     status: P = {"previous": "IN_CALL", "status": "VERIFIED_NO_DEAL"}
-    log.add("status.changed", "guard", "agent", status, (start,))  # 36
-    log.add("session.ended", "kernel", "ops", {"reason": "timeout"})  # 37
+    log.add("status.changed", "guard", "agent", status, (start,))  # 40
+    log.add("session.ended", "kernel", "ops", {"reason": "timeout"})  # 41
     return write(root / "rH", log, manifest("rH"))
 
 
@@ -136,7 +137,7 @@ def test_every_h5_detector_equals_the_hand_count(tmp_path: Path) -> None:
             "count": 2, "seqs": [17, 18],
             "by": {"cite_competitor": 1, "tenure_years": 1},
         },
-        "slow.finish_before_offer": {"count": 0, "seq": 35},
+        "slow.finish_before_offer": {"count": 0, "seq": 39},
         # o1's expires and fee (shown without Slow's suffix) are still
         # "heard"; o2 was never read back
         "offer.required_unconfirmed_after_readback": {
@@ -149,17 +150,17 @@ def test_every_h5_detector_equals_the_hand_count(tmp_path: Path) -> None:
         "slow.readback_asks_max_per_revision": {
             "count": 3, "by": {"o1@1": 3}, "h5_pass": False,
         },
-        # 29, the rep's last line between the ask (26) and the finish (35),
-        # matches Guard's closing cues;
-        # steps 30 and 34 come before the finish (35)
+        # 33, the rep's last line between the ask's delivery (30: heard) and
+        # the finish (39), matches Guard's closing cues;
+        # steps 34 and 38 come before the finish (39)
         "close.reply_to_finish_steps": {
-            "count": 2, "reply_seq": 29, "finish_seq": 35, "h5_pass": True,
+            "count": 2, "reply_seq": 33, "finish_seq": 39, "h5_pass": True,
         },
         "end.unclosed_after_reply": {
-            "count": 1, "reply_seq": 29, "end_reason": "timeout",
+            "count": 1, "reply_seq": 33, "end_reason": "timeout",
         },
-        "user.told_terms": {  # 33 was never voiced
-            "count": 1, "seqs": [31], "reply_seq": 29, "h5_pass": True,
+        "user.told_terms": {  # 37 was never voiced
+            "count": 1, "seqs": [35], "reply_seq": 33, "h5_pass": True,
         },
     }  # fmt: skip
 
@@ -479,3 +480,67 @@ def test_a_heard_ask_that_does_not_read_back_leaves_ask_heard_false(
         "ask_heard": {"o1@2": False}, "unasked": [], "unasked_n": 0,
         "h5_pass": False,
     }  # fmt: skip
+
+
+def _revoiced(log: Log, ask: str) -> str:
+    """#230's shape: FastC voices ``ask`` in cp-g1, which is cancelled
+    (``verbatim``) before any line is delivered; its re-run cp-g2 (the same
+    lane and trigger, ``basis_seq`` at the cancellation) voices it again and
+    is delivered whole. Returns cp-g2's sentence id (its delivery comes
+    after the caller's lines)."""
+    msg = str(next(e for e in log.events if e.event_id == ask).payload["msg_id"])
+    run: P = {"lane": "cp", "trigger": "guidance", "view_sha": "v"}
+    run |= {"prompt_sha": "p", "profile": "pl_cp_v3", "model_ref": {}}
+    said = ""
+    for gen in ("cp-g1", "cp-g2"):
+        basis = len(log.events) - 1  # cp-g2: the fast.cancelled
+        request = run | {"gen_id": gen, "basis_seq": basis}
+        asked = log.add("fast.request", "fast.cp", "agent", request, (ask,))
+        spoke = turn(log, "cp", gen, f"c-{gen}", asked)
+        voiced: P = {"msg_id": msg, "gen_id": gen}
+        log.add("s2f.voiced", "fast.cp", "agent", voiced, (spoke,))
+        said = sentence(log, "cp", gen, 0, "PRIV-read", spoke)
+        if gen == "cp-g1":
+            cancelled: P = {"gen_id": gen, "reason": "verbatim"}
+            log.add("fast.cancelled", "fast.cp", "agent", cancelled, (said,))
+    return said
+
+
+def test_a_revoiced_guide_is_heard_once_through_its_second_voicing(
+    tmp_path: Path,
+) -> None:
+    """After #230 a GUIDE has two s2f.voiced: the cancelled turn's and the
+    re-run's. ``guide_to_heard_ms`` counts it once, from the re-run's first
+    delivery (1200 - 200); ``_heard`` anchors it there, as an ask_readback
+    (``ask_heard``) and as an ask_final_offer (the closing reply's window)."""
+    log = Log("rV")
+    ask = _readback(log, _rev(log, "o1", 1), "offer:o1")  # 1-2 (t=200)
+    s = _revoiced(log, ask)  # 3-7 cp-g1 (7: cancelled), 8-11 cp-g2
+    heard(log, "cp", "cp-g2-u0", "PRIV-read", False, s)  # 12 (t=1200)
+    _rev(log, "o1", 2)  # 13
+    run = write(tmp_path / "rV", log, manifest("rV"))
+    x = triage.read(run, runs.Seal(), 0.3)[1]
+    assert detectors.run_all(x)["guide_to_heard_ms"] == {
+        "count": 1, "p50": 1000, "p90": 1000, "unheard": 0, "unknown": 0,
+        "cancelled": 1, "superseded": 0, "ms": [1000],
+    }  # fmt: skip
+    assert _grade(tmp_path / "g", log) == {
+        "count": 1, "offers": {"o1@2": ["monthly_price"]},
+        "ask_heard": {"o1@2": True}, "unasked": [], "unasked_n": 0,
+        "h5_pass": False,
+    }  # fmt: skip
+
+    log = Log("rF")
+    final: P = {"move": "ask_final_offer", "slots": []}
+    ask = s2f(log, "s2f-f", "cp", "GUIDE", log.start, guide=final)  # 1
+    s = _revoiced(log, ask)  # 2-6 cp-g1 (6: cancelled), 7-10 cp-g2
+    _rep_line(log, "PRIV that is our best offer")  # 11: before cp-g2 is heard
+    heard(log, "cp", "cp-g2-u0", "PRIV-read", False, s)  # 12
+    run = write(tmp_path / "rF", log, manifest("rF"))
+    x = triage.read(run, runs.Seal(), content=True)[1]
+    assert grading.closing_reply(x, len(log.events)) is None  # 11 is early
+    _rep_line(log, "PRIV that is our best offer")  # 13
+    run = write(tmp_path / "rF2", log, manifest("rF"))
+    x = triage.read(run, runs.Seal(), content=True)[1]
+    reply = grading.closing_reply(x, len(log.events))
+    assert reply is not None and reply.seq == 13

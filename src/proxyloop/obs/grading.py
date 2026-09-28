@@ -296,32 +296,43 @@ def _reads_back(x: Inputs, g: Event, o: Event) -> bool:
     return g.seq > o.seq or _call(x, g.seq) == _call(x, o.seq)
 
 
-def _heard(x: Inputs) -> set[str]:
-    """The s2f msg ids Guard counts as heard (ADR-0020's anchor), from events
-    alone: an ``s2f.voiced`` whose generation was never ``fast.cancelled``
-    and whose every ``fast.sentence`` (one at least) has an ``utt.delivered``
-    with ``interrupted`` false. No anchor line, no window: advisory only.
-    Not every GUIDE the rep heard: after #225 one voiced by a
-    verbatim-cancelled turn is spoken by the re-run through ``guidance_cp``
-    with no ``s2f.voiced``, so ``guide_to_heard_ms`` may credit it heard
-    while it is not here."""
-    cut = {str(e.payload["gen_id"]) for e in x.of("fast.cancelled")}
-    delivered = {str(e.payload["utt_id"]): e for e in x.of("utt.delivered")}
+def _heard(x: Inputs, before: int | None = None) -> dict[str, int]:
+    """The s2f msg ids Guard counts as heard (ADR-0020's anchor; Slow's
+    ``_heard``, #219), from events alone, each with the seq of the last
+    ``utt.delivered`` of its first heard voicing (event order): an
+    ``s2f.voiced`` whose generation was never ``fast.cancelled`` and whose
+    every ``fast.sentence`` (one at least) has an ``utt.delivered`` with
+    ``interrupted`` false. Guard anchors at the first cp line after that
+    delivery (an index into the transcript); the cp lines with a seq above
+    the stored one are the same lines. ``before``: only events with a smaller
+    seq count (Guard judges a finish with the events so far). Not every
+    GUIDE the rep heard on bundles before #230, or when the GUIDE is no
+    longer its lane's newest: one voiced by a verbatim-cancelled turn is then
+    spoken by the re-run through ``guidance_cp`` with no ``s2f.voiced``, so
+    ``guide_to_heard_ms`` may credit it heard while it is not here (#230's
+    re-run voices it again, and its voicing counts here)."""
+    upto = [e for e in x.events if before is None or e.seq < before]
+    cut = {str(e.payload["gen_id"]) for e in upto if e.type == "fast.cancelled"}
+    delivered = {str(e.payload["utt_id"]): e for e in upto if e.type == "utt.delivered"}
     utts: dict[str, list[str]] = {}
-    for p in (e.payload for e in x.of("fast.sentence")):
+    for p in (e.payload for e in upto if e.type == "fast.sentence"):
         utts.setdefault(str(p["gen_id"]), []).append(str(p["utt_id"]))
 
-    def whole(gen: str) -> bool:
+    def end(gen: str) -> int | None:
         played = [delivered.get(u) for u in utts.get(gen, [])]
-        return bool(played) and all(
-            d is not None and d.payload.get("interrupted") is False for d in played
+        whole = [
+            d for d in played if d is not None and d.payload.get("interrupted") is False
+        ]
+        return (
+            max(d.seq for d in whole) if whole and len(whole) == len(played) else None
         )
 
-    return {
-        str(v.payload["msg_id"])
-        for v in x.of("s2f.voiced")
-        if str(v.payload["gen_id"]) not in cut and whole(str(v.payload["gen_id"]))
-    }
+    out: dict[str, int] = {}
+    for v in (e for e in upto if e.type == "s2f.voiced"):
+        gen = str(v.payload["gen_id"])
+        if gen not in cut and (at := end(gen)) is not None:
+            out.setdefault(str(v.payload["msg_id"]), at)
+    return out
 
 
 @detector("offer.required_unconfirmed_after_readback")
@@ -332,9 +343,10 @@ def _unconfirmed(x: Inputs) -> Value:
     readback.updated (Guard's statuses, per-offer window from a5c897c on;
     the same detector reads per-revision statuses on earlier bundles);
     ``ask_heard``: whether Guard counts one of those asks heard (``_heard``;
-    never changes ``count`` or ``h5_pass``; an ask a verbatim-cancelled turn
-    voiced and its re-run spoke is False here though ``guide_to_heard_ms``
-    may credit it heard); ``unasked``: offers whose latest
+    never changes ``count`` or ``h5_pass``; on bundles before #230, or once
+    the ask is no longer its lane's newest GUIDE, an ask a verbatim-cancelled
+    turn voiced and its re-run spoke is False here though
+    ``guide_to_heard_ms`` may credit it heard); ``unasked``: offers whose latest
     revision was never read back (``unasked_n``; then ``h5_pass`` is None: an
     info_only task need not read back, and the mode is not in the bundle).
     None: no offer.recorded."""
@@ -382,18 +394,26 @@ def _asks_per_revision(x: Inputs) -> Value:
 
 def closing_reply(x: Inputs, at: int) -> Event | None:
     """Guard's closing reply for a ``finish`` at seq ``at`` (verify_no_deal,
-    S1-SYS-57): the rep's last cp line (utt.final, partner) after the last
-    ask_final_offer GUIDE before ``at``, if Guard's closing cues match it. Guard
-    takes the cp transcript from its length when that ask went out; the
-    GUIDE's s2f.msg follows its slow.tool in the same act, so no line lands
-    between. None: no ask, the rep silent since it, or a last line that does
-    not close (a retraction or concession after a closing line reopens it)."""
-    asked = [g.seq for g in _guides(x, "ask_final_offer") if g.seq < at]
+    S1-SYS-57; Slow's ``asked_final``, #227): the rep's last cp line
+    (utt.final, partner) after the anchor, if Guard's closing cues match it.
+    The anchor: the latest ``_heard`` end, with the events before ``at``, of
+    the ask_final_offer GUIDEs sent before ``at``; an ask the rep did not hear
+    (never voiced, cut, or cancelled) neither opens nor restarts the window.
+    obs applies this heard anchor to every bundle: on one from before #227
+    (Guard anchored at the ask's send) it can differ from the verdict Guard
+    recorded then; grouping by slow_fp keeps those runs apart. None: no heard
+    ask, the rep silent since it, or a last line that does not close (a
+    retraction or concession after a closing line reopens it)."""
+    heard = _heard(x, before=at)
+    asks = [
+        str(g.payload["msg_id"]) for g in _guides(x, "ask_final_offer") if g.seq < at
+    ]
+    anchor = max((heard[m] for m in asks if m in heard), default=None)
     said = [
         e
         for e in x.of("utt.final")
-        if asked and asked[-1] < e.seq < at and e.payload.get("lane") == "cp"
-        and e.payload.get("speaker") == "partner"
+        if anchor is not None and anchor < e.seq < at
+        and e.payload.get("lane") == "cp" and e.payload.get("speaker") == "partner"
     ]  # fmt: skip
     last = said[-1] if said else None
     return (
