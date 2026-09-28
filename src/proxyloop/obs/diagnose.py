@@ -13,8 +13,11 @@ fine-grained by design.
 After the table, the outcome tiers per family (``obs.tiers``), per group;
 then, per group, the success-path progress (``obs.progress``) and the watch
 items (``obs.watch``), DIAGNOSTIC blocks (S1-SYS-86): each row also carries
-its ``progress`` and ``watch``. ``--json`` prints ``{"runs": [...], "tiers":
-{<group>: {...}}, "progress": {<group>: {...}}, "watch": {<group>: {...}}}``.
+its ``progress`` and ``watch``; then the world health (``obs.world_health``,
+S1-SYS-89), whose per-run flag (a world artefact in the failure window) the
+table shows beside the tier. ``--json`` prints ``{"runs": [...], "tiers":
+{<group>: {...}}, "progress": {<group>: {...}}, "watch": {<group>: {...}},
+"world": {<group>: {...}}}``; each row carries its ``world``.
 ``--content`` lets the text-reading detectors run; their values stay codes,
 but the rows (``--json``) then also carry the kernel-authored world_error
 message.
@@ -29,7 +32,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
-from proxyloop.obs import progress, runs, tiers, watch
+from proxyloop.obs import progress, runs, tiers, watch, world_health
 from proxyloop.obs.detectors import BANNER, as_dict, scalar
 from proxyloop.obs.trace import Refused
 from proxyloop.obs.triage import Row, Unreadable, read, row
@@ -55,7 +58,9 @@ def rows(
         try:
             at, x = read(Path(run.path), seal, window_s, content)
             out.append(
-                row(at, x) | {"progress": progress.run(x), "watch": watch.run(x)}
+                row(at, x)
+                | {"progress": progress.run(x), "watch": watch.run(x)}
+                | {"world": world_health.run(x)}
             )
         except (Unreadable, Refused) as err:  # one bad bundle never ends the table
             skipped.append(str(err))
@@ -120,6 +125,8 @@ def table(all_rows: Sequence[Row]) -> str:
             for name, value in items:
                 if name in _TEXT:
                     cells.insert(0, f"{_TEXT[name]}={_brief(value)}")
+                    if name == "tier":  # the S1-SYS-89 flag, beside the tier
+                        cells[1:1] = world_health.cells(r.get("world"))
                     continue
                 n = scalar(value)
                 if name == "guide_to_heard_ms":
@@ -165,8 +172,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     graded = {g: tiers.summary(members) for g, members in groups.items()}
     advanced = {g: progress.summary(members) for g, members in groups.items()}
     watched = {g: watch.summary(members) for g, members in groups.items()}
+    health = {g: world_health.summary(members) for g, members in groups.items()}
     if args.json:
         doc = {"runs": found, "tiers": graded, "progress": advanced, "watch": watched}
+        doc["world"] = health
         print(json.dumps(doc, indent=1, sort_keys=True, ensure_ascii=False))
     else:
         print(
@@ -176,6 +185,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     *(tiers.block(s, g) for g, s in graded.items()),
                     *(progress.block(s, g) for g, s in advanced.items()),
                     *(watch.block(s, g) for g, s in watched.items()),
+                    *(world_health.block(s, g) for g, s in health.items()),
                 ]
             )
         )
