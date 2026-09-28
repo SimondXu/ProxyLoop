@@ -188,12 +188,12 @@ def test_approve_on_the_real_kernel_to_verified_complete(tmp_path: Path) -> None
     (told,) = [
         e
         for e in of(log, "utt.final", speaker="partner")
-        if conf in e.payload["text"] and e.seq < closed.seq
+        if conf in body(e)["text"] and e.seq < closed.seq
     ]
     # Slow looks up the id the rep said, citing that line; Guard records it
     (looked,) = of(log, "slow.tool", name="check_account")
-    assert looked.payload["args"]["confirmation_id"] == conf and looked.payload["ok"]
-    assert looked.payload["args"]["utt_ref"] == told.payload["utt_id"]
+    assert body(looked)["args"]["confirmation_id"] == conf and body(looked)["ok"]
+    assert body(looked)["args"]["utt_ref"] == told.payload["utt_id"]
     (evidence,) = of(log, "evidence.recorded", confirmation_id=conf)
     assert evidence.actor == "guard" and evidence.cause_ids[0] == looked.event_id
     assert {write.event_id, told.event_id} <= set(evidence.cause_ids)
@@ -201,7 +201,7 @@ def test_approve_on_the_real_kernel_to_verified_complete(tmp_path: Path) -> None
     assert pending.payload["previous"] == "COMMITTED"
     # only Guard's verifier verdict, on Slow's finish, reaches VERIFIED_COMPLETE
     (finish,) = of(log, "slow.tool", name="finish")
-    assert finish.payload["args"]["outcome"] == "completed" and finish.seq > looked.seq
+    assert body(finish)["args"]["outcome"] == "completed" and finish.seq > looked.seq
     (verdict,) = of(log, "completion.decided")
     assert (verdict.actor, body(verdict)["verdict"]) == ("guard", "ok")
     assert verdict.cause_ids[0] == finish.event_id
@@ -265,7 +265,7 @@ def test_stop_fences_and_the_stale_card_is_refused_by_the_kernel(
     )
     assert bump.event_id in replan.cause_ids
     (finish,) = of(log, "slow.tool", name="finish")
-    assert finish.payload["args"]["outcome"] == "escalate" and finish.seq > replan.seq
+    assert body(finish)["args"]["outcome"] == "escalate" and finish.seq > replan.seq
     (end,) = of(log, "status.changed", previous="NEEDS_REPLAN")
     assert (end.actor, end.payload["status"]) == ("guard", "ESCALATED")
     assert end.cause_ids[0] == finish.event_id
