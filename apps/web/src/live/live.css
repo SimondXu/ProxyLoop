@@ -59,16 +59,48 @@
   .pl-composer textarea { flex: 1; min-height: 48px; padding: 10px var(--s3); resize: none; font-size: var(--fs-chat); line-height: 1.45; }
   .pl-composer-hint { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; }
 
-  /* 761–1180: chat | call, the rail below them in two columns */
+  /* the tabs and the sheet's bar: only below 1181px and 761px (§3.6) */
+  .pl-tabs, .pl-sheet-bar { display: none; }
+  .pl-tabs button { position: relative; flex: 1; justify-content: center; min-height: 48px; }
+  .pl-dot { position: absolute; top: 10px; right: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--attn-ring); }
+
+  /* 761–1180: the status line as a strip above; chat | call, or chat | steps by tab */
   @media (max-width: 1180px) {
     .pl-live { height: auto; }
     .pl-live .pl-work { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .pl-live .pl-col { height: min(80vh, 860px); }
-    .pl-rail { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; overflow: visible; }
+    .pl-work-rail { grid-template-rows: auto auto 1fr; }
+    .pl-work-rail > .pl-tabs { display: flex; grid-area: 2 / 2; gap: var(--s2); }
+    .pl-work-rail > .pl-tabs .pl-tab-chat { display: none; }
+    .pl-work-rail > .pl-col-chat { grid-area: 2 / 1 / 4; }
+    .pl-work-rail > .pl-col-call { grid-area: 3 / 2; }
+    .pl-work-rail > .pl-rail { grid-area: 1 / 1 / 2 / 3; overflow: visible; }
+    .pl-work-rail:not([data-tab="steps"]) > .pl-rail > :not(.pl-now) { display: none; }
+    .pl-work-rail[data-tab="steps"] > .pl-rail { grid-area: 3 / 2; max-height: min(80vh, 860px); overflow-y: auto; }
+    .pl-work-rail[data-tab="steps"] > .pl-col-call { display: none; }
   }
-  /* ≤760: stacked (the bottom sheet is UI-8) */
+  /* ≤760: one column by tab; an open approval card is a bottom sheet on every tab */
   @media (max-width: 760px) {
-    .pl-work, .pl-live .pl-work, .pl-rail { grid-template-columns: minmax(0, 1fr); }
+    .pl-work, .pl-live .pl-work { grid-template-columns: minmax(0, 1fr); }
     .pl-col, .pl-live .pl-col { height: 70vh; }
+    .pl-runid, .pl-band > p:not(.pl-band-sim), .pl-stepper li:not(.pl-step-current), .pl-stepper li::before { display: none; }
+    .pl-work-rail { grid-template-rows: none; }
+    .pl-work-rail > .pl-tabs { grid-area: auto; }
+    .pl-work-rail > .pl-tabs .pl-tab-chat { display: inline-flex; }
+    .pl-work-rail > :is(.pl-col-chat, .pl-col-call, .pl-rail) { grid-area: auto; }
+    .pl-work-rail:not([data-tab="steps"]) > .pl-rail { display: none; }
+    .pl-work-rail[data-tab="steps"] > .pl-rail { grid-area: auto; max-height: none; }
+    .pl-work-rail:not([data-tab="call"]) > .pl-col-call { display: none; }
+    /* out of view but not display:none, so that its sheet stays on screen */
+    .pl-work-rail:not([data-tab="chat"]) > .pl-col-chat { position: absolute; height: 0; border: 0; visibility: hidden; }
+    .pl-sheet { position: fixed; inset: auto 0 0; z-index: 3; max-height: 75dvh; overflow-y: auto; visibility: visible; background: var(--surface); border-radius: var(--r-lg) var(--r-lg) 0 0; box-shadow: var(--e3); }
+    .pl-sheet .pl-decision { border-radius: 0; box-shadow: none; }
+    .pl-sheet-bar { display: flex; width: 100%; min-height: 56px; justify-content: center; border: 0; border-radius: 0; background: var(--attn-soft); color: var(--attn); }
+    .pl-sheet-folded .pl-sheet-body { display: none; }
+    .pl-live:has(.pl-sheet) { padding-bottom: 72px; }
+    .pl-sheet .pl-gcard-actions { flex-direction: column-reverse; }
+    .pl-gcard-actions .pl-btn, .pl-composer .pl-btn, .pl-jump { min-height: 48px; }
+    .pl-composer textarea { font-size: 16px; }
+    .pl-terms .pl-chip:has(.pl-icon) .pl-chip-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   }
 }
