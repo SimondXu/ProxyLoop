@@ -79,6 +79,8 @@ class PublicIntent(Frozen):
     offer_ref: str | None = None
     say: tuple[tuple[str, str], ...] = ()
     ask: tuple[str, ...] = ()  # profile keys the rep asks for
+    # why a ``hang_up``: "identity", an identity strike-out; None, a timer one
+    reason: Literal["identity"] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,7 +218,7 @@ class Policy:
                 self.identity_strikes += 1
                 if self.identity_strikes >= self.spec.patience.strikes:
                     self.state = "ENDED"
-                    return PublicIntent(kind="hang_up"), None
+                    return PublicIntent(kind="hang_up", reason="identity"), None
             known = len(self._verified)
             for fact in facts:  # a wrong value is asked again, not struck
                 value = norm(fact.value)

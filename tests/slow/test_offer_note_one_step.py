@@ -105,3 +105,41 @@ def test_inside_the_mandate_an_unread_read_back_keeps_ask_again(
     assert "guide_fast(mention_tenure)" not in line and "wait" not in line, line
     assert line.endswith(f"{FACTS}; {AGAIN}"), line
     assert line.count(AGAIN) == 1, line
+
+
+# S1-SYS-66 follow-up (root, §0.5a, 2026-09-28): with no lever left and the
+# read-back stuck, mandate_hint defers to the stuck clause instead of
+# "request_approval once confirmed" (a confirmation that will not come), so
+# the offers line carries one next step.
+
+STUCK_STEP = f"{lbr.prompt.OUTSIDE_MANDATE} → read-back stuck (see note)"
+PENDING = "read-back asked: request_approval(save-2) once confirmed"
+
+
+def test_s1_no_lever_and_stuck_defers_to_the_stuck_clause(tmp_path: Path) -> None:
+    h = _stuck(tmp_path)
+    h.act(TENURE)
+    h.voice()
+    _reply(h)  # answered: no lever left (the others are unavailable)
+    line = _offers(h)
+    assert f"{STUCK_STEP}; {STUCK}" in line, line
+    assert "request_approval" not in line, line
+    assert line.count(DECLINE) == 1 and line.endswith(DECLINE), line
+
+
+def test_s2_no_lever_and_not_stuck_keeps_request_approval(tmp_path: Path) -> None:
+    h = _unread(tmp_path)
+    h.act(TENURE)
+    h.voice()
+    _reply(h)  # answered: no lever left, the read-back asked once, unread
+    line = _offers(h)
+    assert f"{lbr.prompt.OUTSIDE_MANDATE} → {PENDING}; {FACTS}" in line, line
+    assert "read-back stuck" not in line and "decline_offer" not in line, line
+
+
+def test_s3_a_free_lever_with_a_stuck_read_back_is_unchanged(
+    tmp_path: Path,
+) -> None:
+    line = _offers(_stuck(tmp_path))
+    assert f"{lbr.prompt.OUTSIDE_MANDATE} → {LEVER}" in line, line
+    assert "read-back stuck" not in line and "decline_offer" not in line, line

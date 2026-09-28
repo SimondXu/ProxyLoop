@@ -467,7 +467,8 @@ def mandate_hint(
     S1-SYS-66 (root review, 2026-09-28): with the bar (``more``), an offer
     outside the mandate gets one available lever before its read-back (wait
     while one is on its way or unanswered); only once none is left, its
-    read-back, then request_approval."""
+    read-back, then request_approval; a stuck read-back defers to the
+    note's stuck clause (one next step per state)."""
     if o.status != "open":
         return ""
     m = view.mandate
@@ -498,6 +499,8 @@ def mandate_hint(
             f"{OUTSIDE_MANDATE} → {FIRST_LEVER}{levers}; "
             "ask_readback only once none is left"
         )
+    if more.stuck(o):  # the note's stuck clause is the one next step
+        return f"{OUTSIDE_MANDATE} → read-back stuck (see note)"
     ref = o.offer_ref
     r = more.readbacks.get((ref, o.revision))
     then = f"request_approval({ref})"

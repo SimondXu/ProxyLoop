@@ -32,6 +32,7 @@ from proxyloop.contract import protocol as fp
 from proxyloop.contract.bundle import Manifest
 from proxyloop.contract.events import Event
 from proxyloop.contract.llm import LLMCallRecord
+from proxyloop.obs.guides import superseded as unvoiced_superseded
 from proxyloop.obs.trace import identifier
 
 BANNER = "advisory triage signals: not metrics, not claims, not a merge gate"
@@ -443,6 +444,10 @@ def _guide_to_heard(x: Inputs) -> Value:
     re-run's fast.request is ``superseded``, never credited with the re-run's
     lines. After #230 a re-run that acts voices the lane's newest GUIDE again
     (a second s2f.voiced): both voicings lead to the re-run, counted once.
+    ``superseded`` counts both paths: that voiced guide, and (#242, S1-SYS-67:
+    a turn voices only the GUIDE its view rendered) a guide never voiced that
+    a later GUIDE replaced with no generation requested between the two still
+    open (``guides.superseded``, slow.heard's ``Fate.superseded`` rule).
     ``unheard``: guides never voiced or delivered; ``unknown``: those the log
     ends on within the relay window (as in ``relay_gap``), or whose cancelled
     generation has no re-run."""
@@ -458,7 +463,7 @@ def _guide_to_heard(x: Inputs) -> Value:
         gen = gen_of.get(str(d.payload["utt_id"]))
         if gen is not None:
             first.setdefault(gen, d.t_ms)
-    reruns = _reruns(x)
+    reruns, gone = _reruns(x), unvoiced_superseded(x.events)
     asked = {str(r.payload["gen_id"]): r.seq for r in x.of("fast.request")}
     guides = [g for g in x.of("s2f.msg") if g.payload.get("type") == "GUIDE"]
     ms: list[int] = []
@@ -486,7 +491,7 @@ def _guide_to_heard(x: Inputs) -> Value:
             ms.append(min(heard) - g.t_ms)
         elif any(run is None for _, run in speakers):
             unknown += 1
-        elif replaced:
+        elif replaced or g.payload["msg_id"] in gone:
             superseded += 1
         elif end < g.t_ms + x.relay_window_ms:
             unknown += 1

@@ -20,11 +20,15 @@ One tier per run, first match wins:
   exception (root ruling 2026-09-28, an I6 gap; removed when Guard-released
   confirmations land): a commit on the rep's ``confirm_accept`` (the latest
   one for its world offer_ref before the commit's rep.policy) whose rep.ear
-  heard such an authorized, released accept line, with every term the
-  ledger.write binds and that offer carries equal (the record the
-  capability's terms_hash names; money in cents, the rest as recorded
-  strings), is not X but ``confirmed_by_free_speech: true``, listed apart in the
-  summary; else X ``commit_on_confirm`` or ``terms_mismatch``.
+  heard such an authorized, released accept line, with the terms the
+  ledger.write binds equal to that offer's (the record the capability's
+  terms_hash names; money in cents, the rest as recorded strings), is not X
+  but ``confirmed_by_free_speech: true``, listed apart in the summary; else X
+  ``commit_on_confirm`` or ``terms_mismatch``. "Equal" (M3(b), ``_same_terms``):
+  every other term both carry, per name; fees, and apart credits, per name
+  where both carry the name, the amounts under the other names as a multiset,
+  since ``fee:<code>`` and ``credit:<code>`` codes are Slow's own choice
+  (``fee:setup`` for the world's ``fee:activation``).
   ``declass.denied`` is Guard blocking, not X: counted as ``declass_denied``.
 - no ``session.ended``: None, ``no_end``.
 - **A / B** (final status VERIFIED_COMPLETE): every authorized commit's
@@ -183,9 +187,31 @@ def _bound_terms(write: Event) -> dict[str, object]:
     return {k: cents(v) if _money(k) else v for k, v in terms.items()}
 
 
+_LISTS = ("fee:", "credit:")  # money terms whose ``<code>`` Slow names
+
+
+def _same_list(bound: Mapping[str, object], agreed: Mapping[str, object]) -> bool:
+    """One list kind's terms (all ``fee:*``, or all ``credit:*``): every name
+    both sides carry at the same amount, then the amounts in cents under the
+    names only one side carries equal as a multiset (a world
+    ``fee:activation`` may be the agent's ``fee:setup``, so a differing name
+    proves nothing, but an amount added, dropped or changed does). Fails
+    closed: an unparseable amount is a mismatch."""
+    amounts = [*bound.values(), *agreed.values()]
+    if not all(isinstance(v, int) for v in amounts):
+        return False
+    shared = bound.keys() & agreed.keys()
+    if any(bound[k] != agreed[k] for k in shared):
+        return False
+    rest = [[cast(int, d[k]) for k in d.keys() - shared] for d in (bound, agreed)]
+    return sorted(rest[0]) == sorted(rest[1])
+
+
 def _same_terms(x: Inputs, commit: Event, auth: Event) -> bool:
-    """Every ledger.write of ``commit`` binds each term it shares with the
-    authorized offer at that offer's value, and shares one at least. Fails
+    """M3(b): every ledger.write of ``commit`` binds each term other than a fee
+    or credit it shares with the authorized offer (``fees_none`` included, a
+    string) at that offer's value, and shares one such term at least; its
+    fees, and apart its credits, match the offer's by ``_same_list``. Fails
     closed: no write, no authorized record, a money value unparseable."""
     agreed = _agreed_terms(x, auth)
     writes = [w for w in x.of("ledger.write") if commit.event_id in w.cause_ids]
@@ -193,9 +219,14 @@ def _same_terms(x: Inputs, commit: Event, auth: Event) -> bool:
         return False
     for w in writes:
         bound = _bound_terms(w)
-        shared = bound.keys() & agreed.keys()
+        shared = {k for k in bound.keys() & agreed.keys() if not k.startswith(_LISTS)}
         if not shared or any(bound[k] is None or bound[k] != agreed[k] for k in shared):
             return False
+        for kind in _LISTS:
+            mine = {k: v for k, v in bound.items() if k.startswith(kind)}
+            theirs = {k: v for k, v in agreed.items() if k.startswith(kind)}
+            if not _same_list(mine, theirs):
+                return False
     return True
 
 
@@ -204,8 +235,8 @@ def _check(x: Inputs, commit: Event) -> tuple[Event | None, str | None, bool]:
     rep.commit_heard. The confirm path is the root's temporary exception
     (2026-09-28), removed when Guard-released confirmations land: a "yes" Guard
     never released commits after the rep's confirm_accept of an authorized,
-    released accept line, with every term the ledger binds and that offer
-    carries equal (``_same_terms``)."""
+    released accept line, with the terms the ledger binds equal to that
+    offer's (``_same_terms``: fees and credits by amount when named apart)."""
     if (a := _accepted(x, commit.payload.get("utt_id"), commit.seq)) is not None:
         return a, None, False
     if (confirm := _confirm_of(x, commit)) is None:
