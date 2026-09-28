@@ -126,9 +126,11 @@ def test_ttl_sub_counts_are_scoped_to_the_expired_offer(case: str) -> None:
 
 
 def test_an_ask_before_the_offer_is_no_readback_in_progress() -> None:
+    """An ask citing this offer's agent ref, sent before the rep made it (the
+    ref is Slow's own name), is no read-back in progress."""
     r = Run()
-    r.guide("ask_readback", "offer:offer-0.monthly_price")  # an earlier offer's
-    r.offer("ask_discount", 0, "save-1")
+    r.guide("ask_readback", "offer:offer-1.monthly_price")  # before the offer
+    r.record(r.offer("ask_discount", 0, "save-1"))  # offer-1 cites save-1
     r.policy("OFFER", "OFFER", "offer_expired", "save-1", 0)
     assert _item(r, "ttl_lost")["during_readback"] == 0
 
@@ -219,6 +221,9 @@ def test_slow_refusals_break_out_naming() -> None:
          "utt_ref": "cp-1"},
         {"field": "fee:porting", "value": "fee:y: 'z' is not in the cited line",
          "utt_ref": "cp-1"},
+        {"field": "fee:porting", "utt_ref": "cp-1",  # a whole phrase echoed
+         "value": "fee:x: 'fee' is a generic word; name a fee by the words the "
+                  "rep used for it without 'fee' (e.g. a porting fee is x)"},
     ],
 )  # fmt: skip
 def test_a_shape_refusal_echoing_the_naming_phrase_is_not_naming(
