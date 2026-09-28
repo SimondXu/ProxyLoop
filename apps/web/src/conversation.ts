@@ -33,27 +33,25 @@ const TAG: Record<string, string> = {
 const BY: Record<string, string> = { ui: "approved by you", sim_approver: "approved by the simulated approver" };
 
 /**
- * The kernel grant behind Guard's accept line: its capability (Guard's
- * action.authorized, same cap_id) → the approval cards with that terms_hash and
- * authority epoch → the kernel's last grant of one of them before the
- * authorization. null for an accept under your limits (no such grant).
+ * The kernel grant behind Guard's accept line: the grant its action.authorized
+ * (same cap_id) cites in cause_ids, as Guard chose it (slow/authority.py
+ * accept_offer): a granted approval.decided or mandate.decided, from the
+ * kernel. Nothing is inferred from cards. null without one.
  */
 export function grantOfAccept(said: Ev, events: Ev[]): Ev | null {
-  const cap = (e: Ev) => (e.payload.capability ?? {}) as { cap_id?: unknown; terms_hash?: unknown; epoch?: unknown };
   const capId = said.payload.cap_id;
-  const auth = typeof capId === "string" ? events.find((e) => from(e, "action.authorized", ["guard"]) && cap(e).cap_id === capId) : undefined;
-  const { terms_hash, epoch } = auth ? cap(auth) : {};
-  if (!auth || typeof terms_hash !== "string" || typeof epoch !== "number") return null;
-  const cards = events.filter((e) => from(e, "approval.requested", ["guard"]) && e.payload.terms_hash === terms_hash && e.payload.authority_epoch === epoch);
-  const ids = new Set(cards.map((e) => e.payload.approval_id));
-  const granted = (e: Ev) => from(e, "approval.decided", ["kernel"]) && e.payload.decision === "granted" && ids.has(e.payload.approval_id);
-  return events.filter((e) => e.seq < auth.seq && granted(e)).at(-1) ?? null;
+  if (typeof capId !== "string") return null;
+  const cap = (e: Ev) => (e.payload.capability ?? {}) as { cap_id?: unknown };
+  const auth = events.find((e) => from(e, "action.authorized", ["guard"]) && cap(e).cap_id === capId);
+  if (!auth) return null;
+  const grant = (e: Ev) => (from(e, "approval.decided", ["kernel"]) || from(e, "mandate.decided", ["kernel"])) && e.payload.decision === "granted";
+  return events.find((e) => auth.cause_ids.includes(e.event_id) && grant(e)) ?? null;
 }
 
-/** The accept's approver (grantOfAccept); an accept under your limits says only "fixed wording". */
+/** The accept's approver: an approval's grant names who; a mandate's, or none, says only "fixed wording". */
 function acceptedBy(said: Ev, events: Ev[]): string {
   const grant = grantOfAccept(said, events);
-  return (grant && BY[str(grant.payload.by)]) ?? "fixed wording";
+  return (grant?.type === "approval.decided" && BY[str(grant.payload.by)]) || "fixed wording";
 }
 
 function tagOf(said: Ev, events: Ev[]): string {

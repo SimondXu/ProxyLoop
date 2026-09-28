@@ -30,8 +30,9 @@ const offer = (extra: Ev["payload"] = {}) =>
     ...extra,
   });
 const none = new Map<string, Posting>();
-const authorized = (cap_id: string, terms_hash: string, epoch: number) =>
-  ev("action.authorized", "guard", { intent: {}, capability: { cap_id, terms_hash, epoch } });
+/** Guard's authorization, citing the grant it rests on (slow/authority.py accept_offer). */
+const authorized = (cap_id: string, terms_hash: string, epoch: number, grant?: Ev) =>
+  ev("action.authorized", "guard", { intent: {}, capability: { cap_id, terms_hash, epoch } }, grant ? [grant.event_id] : []);
 const view = (status: CardStatus, extra: Partial<CardView> = {}): CardView =>
   ({ seq: 1, card: CARD, status, by: null, error: null, reason: null, slots: null, ...extra }) as CardView;
 
@@ -128,7 +129,7 @@ describe("approval card words", () => {
   it("follows the accept Guard minted after this card's grant: held, released or revoked", () => {
     const card = ev("approval.requested", "guard", CARD);
     const decided = ev("approval.decided", "kernel", { approval_id: "a1", decision: "granted", by: "ui" });
-    const auth = authorized("c1", "th", 2);
+    const auth = authorized("c1", "th", 2, decided);
     const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "yes", cap_id: "c1" });
     const [v] = approvalCards([card, decided], none);
     expect(v && acceptOf([card, decided], v).state).toBe("none");
@@ -149,7 +150,7 @@ describe("approval card words", () => {
     const g1 = ev("approval.decided", "kernel", { approval_id: "a1", decision: "granted", by: "ui" });
     const c2 = ev("approval.requested", "guard", CARD2);
     const g2 = ev("approval.decided", "kernel", { approval_id: "a2", decision: "granted", by: "sim_approver" });
-    const auth = authorized("c2", "th2", 2);
+    const auth = authorized("c2", "th2", 2, g2);
     const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "yes", cap_id: "c2" });
     const released = ev("speak.released", "kernel", { lane: "cp", cap_id: "c2" }, [said.event_id]);
     const events = [c1, g1, c2, g2, auth, said, released];

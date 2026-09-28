@@ -1,0 +1,45 @@
+/* The rail (redesign §3.2 AgentRail, mockup .nowcard/.steps/.pills): status line, limits, steps, roles. */
+@layer components {
+  .pl-now { padding: 14px var(--s4); border: 1.5px solid #edcb8e; border-radius: var(--r-lg); background: var(--attn-tint); box-shadow: var(--e1); }
+  .pl-now .pl-label { color: var(--attn); }
+  .pl-now-line { margin: var(--s2) 0 var(--s1); font: 600 20px / 1.2 var(--font-display); font-variation-settings: "SOFT" 30; letter-spacing: -0.01em; }
+  .pl-planner { display: flex; align-items: center; gap: var(--s2); margin: var(--s3) 0 0; padding-top: 10px; border-top: 1px solid #f0ddb8; font-size: var(--fs-meta); color: var(--ink-2); }
+  .pl-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
+  .pl-planner-thinking .pl-pulse { background: var(--agent); animation: pl-pulse 1.2s var(--ease) infinite alternate; }
+
+  .pl-rail-row { display: flex; justify-content: space-between; align-items: center; gap: var(--s2); }
+  .pl-pills { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: var(--s2) 0 0; padding: 0; }
+  .pl-pills li { padding: 7px 10px; border-radius: var(--r-pill); background: var(--sunken); font: 600 13px / 1 var(--font-ui); font-variant-numeric: tabular-nums; }
+  .pl-rail-note { display: flex; align-items: center; gap: 6px; margin: var(--s2) 0 0; }
+
+  .pl-steps { display: flex; flex-direction: column; min-height: 220px; padding: 0; }
+  .pl-rail-h { display: flex; justify-content: space-between; align-items: baseline; margin: 0; padding: 14px var(--s4) var(--s2); font: 600 14px / 1.3 var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--ink); }
+  .pl-rail-h .meta { font-weight: 400; }
+  .pl-steps-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--s4) 14px; }
+  .pl-grp summary, .pl-grp-name { display: flex; justify-content: space-between; align-items: center; margin: 0; padding: var(--s3) 0 var(--s2); font: 600 11.5px / 1 var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+  .pl-grp summary { list-style: none; }
+  .pl-grp summary::-webkit-details-marker { display: none; }
+  .pl-grp-done { font: 500 12.5px / 1 var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--agent); }
+  .pl-st-list { list-style: none; margin: 0; padding: 0; }
+  .pl-st { position: relative; display: grid; grid-template-columns: 30px 1fr; gap: 10px; padding-bottom: var(--s3); }
+  .pl-st::before { content: ""; position: absolute; left: 14px; top: 30px; bottom: 0; width: 1.5px; background: var(--line); }
+  .pl-st:last-child::before { display: none; }
+  .pl-st p { margin: 0; }
+  .pl-st-ic { position: relative; z-index: 1; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--sunken); color: var(--ink-2); }
+  .pl-st-planner .pl-st-ic, .pl-st-voice .pl-st-ic { background: var(--agent-soft); color: var(--agent); }
+  .pl-st-guard .pl-st-ic { background: var(--guard-soft); color: var(--guard); }
+  .pl-st-you .pl-st-ic { background: var(--user-bubble); color: var(--ink); }
+  .pl-st-call .pl-st-ic, .pl-st-hold .pl-st-ic, .pl-st-offer .pl-st-ic { background: var(--rep-soft); color: var(--rep); }
+  .pl-st-who { padding-top: 2px; font-size: 12px; color: var(--ink-3); }
+  .pl-st-t { font: 11.5px / 1 var(--font-mono); }
+  .pl-st-x { margin-top: 2px; font-size: 14px; font-weight: 550; line-height: 1.4; }
+  .pl-st-mark { margin-top: 2px; font-size: 12.5px; color: var(--ink-3); }
+
+  .pl-how { padding: 0 var(--s4); }
+  .pl-how summary { padding: 14px 0 6px; font: 600 14px / 1.3 var(--font-ui); }
+  .pl-how ul { display: grid; gap: var(--s2); list-style: none; margin: 0; padding: 0 0 var(--s3); font-size: var(--fs-small); }
+  .pl-how li { display: flex; gap: var(--s2); align-items: flex-start; }
+  .pl-how code { font-size: 12px; color: var(--ink-3); }
+}
+
+@keyframes pl-pulse { from { opacity: 0.35; } to { opacity: 1; } }

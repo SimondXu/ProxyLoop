@@ -276,7 +276,8 @@ test("conversation view: two panes with the right speakers, heard text only, the
   await expect(page.getByRole("region", { name: "Chat" }).getByLabel("Simulated parties")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Call with the company" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Call" })).toContainText("Rep (simulated)");
-  await expect(page.getByLabel("Status line")).toHaveText("Status: starting (no status yet)");
+  await expect(page.getByLabel("Status line")).toHaveText("Getting the details before calling");
+  await expect(page.getByText("Planner is listening")).toBeVisible(); // outside the live region
 
   const opened = JSON.parse(ev("chan.opened", "kernel", { lane: "cp" })) as { event_id: string };
   ws.send(JSON.stringify(opened));
@@ -306,7 +307,12 @@ test("conversation view: two panes with the right speakers, heard text only, the
     "Agent: The name is on file.",
   ]);
   for (const hidden of ["UNHEARD", "GENERATED-ONLY"]) await expect(page.locator("main")).not.toContainText(hidden);
-  await expect(page.getByLabel("Status line")).toHaveText("Status: on the call");
+  await expect(page.getByLabel("Status line")).toHaveText("On the call with the company");
+  // The rail's steps: fixed wording from Guard's and the kernel's events, never a line's text.
+  await expect(page.getByRole("region", { name: "Steps" }).getByRole("listitem")).toHaveText([
+    /^Call \d{2}:\d{2} Called the company$/,
+    /^Guard \d{2}:\d{2} Opened with the AI disclosure$/,
+  ]);
   for (const pane of ["Chat", "Call"]) await expect(page.getByRole("list", { name: `${pane} transcript` })).toHaveAttribute("aria-live", "polite");
   await expect(page.getByRole("region", { name: "User chat" })).toHaveCount(0); // the engineer lanes are not shown
   await expect(page.getByRole("region", { name: "Outcome" })).toHaveCount(0);
@@ -314,10 +320,11 @@ test("conversation view: two panes with the right speakers, heard text only, the
 
   // session.ended: the status line stops saying "on the call", and the banner never implies success.
   ws.send(ev("session.ended", "kernel", { reason: "abandoned", counts: {} }, { stream: "ops" }));
-  await expect(page.getByLabel("Status line")).toHaveText("Session ended: the rep hung up");
+  await expect(page.getByLabel("Status line")).toHaveText("The rep ended the call.");
   // The receipt is the chat's last item, at session.ended's seq.
   const banner = page.getByRole("region", { name: "Chat" }).getByRole("region", { name: "Outcome" });
   await expect(banner.getByRole("heading")).toHaveText("The rep ended the call.");
+  await expect(page.getByRole("region", { name: "Outcome" })).toHaveCount(1); // the chat's receipt only: none in the rail
   await expect(page.getByRole("list", { name: "Chat transcript" }).getByRole("listitem").last().getByRole("region", { name: "Outcome" })).toBeVisible();
   await expect(banner).toContainText("Reason: abandoned · last case status: IN_CALL");
   await expect(banner).not.toContainText("on the call");
@@ -332,11 +339,12 @@ test("conversation view: Verified complete only on Guard's VERIFIED_COMPLETE", a
   ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
   await expect(page.getByLabel("Simulated parties")).toHaveCount(0); // no world rep, no sim user: no sim label
   ws.send(ev("status.changed", "guard", { previous: "COMMIT_AUTHORIZED", status: "COMMITTED" }));
-  await expect(page.getByLabel("Status line")).toHaveText("Status: accepted on the call, not yet verified");
+  await expect(page.getByLabel("Status line")).toHaveText("Accepted on the call. Checking the simulated company's records…");
   ws.send(ev("status.changed", "fast.user", { previous: "COMMITTED", status: "VERIFIED_COMPLETE" })); // not Guard: ignored
   ws.send(ev("session.ended", "kernel", { reason: "completed", counts: {} }, { stream: "ops" }));
   const banner = page.getByRole("region", { name: "Chat" }).getByRole("region", { name: "Outcome" });
   await expect(banner.getByRole("heading")).toHaveText("Accepted on the call. Not verified yet.");
+  await expect(page.getByRole("region", { name: "Outcome" })).toHaveCount(1);
   await expect(page.getByText("Verified complete", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Done. Verified.", { exact: true })).toHaveCount(0);
 });
@@ -484,8 +492,11 @@ test("approval card: a fence pauses a granted accept, and a fence revoke says th
   const ws = await connected;
   ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
   ws.send(ev("approval.requested", "guard", CARD));
-  ws.send(ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" }));
-  ws.send(ev("action.authorized", "guard", { intent: {}, capability: { cap_id: "cap-1", terms_hash: CARD.terms_hash, epoch: 2 } }));
+  const granted = ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" });
+  ws.send(granted);
+  // Guard's authorization cites the grant it rests on (slow/authority.py accept_offer).
+  const authorized = JSON.parse(ev("action.authorized", "guard", { intent: {}, capability: { cap_id: "cap-1", terms_hash: CARD.terms_hash, epoch: 2 } }));
+  ws.send(JSON.stringify({ ...authorized, cause_ids: [JSON.parse(granted).event_id] }));
   const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "Yes, we accept.", cap_id: "cap-1" });
   ws.send(said);
   ws.send(ev("authority.fence", "kernel", { op: "raised", fence_id: "fence-1", utt_id: `${RUN}:9` }));
@@ -523,8 +534,11 @@ test("receipt: Done. Verified. with the accepted terms, the confirmation, the ve
   ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
   ws.send(ev("offer.recorded", "guard", OFFER));
   ws.send(ev("approval.requested", "guard", CARD));
-  ws.send(ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" }));
-  ws.send(ev("action.authorized", "guard", { intent: {}, capability: { cap_id: "cap-1", terms_hash: CARD.terms_hash, epoch: 2 } }));
+  const granted = ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" });
+  ws.send(granted);
+  // Guard's authorization cites the grant it rests on (slow/authority.py accept_offer).
+  const authorized = JSON.parse(ev("action.authorized", "guard", { intent: {}, capability: { cap_id: "cap-1", terms_hash: CARD.terms_hash, epoch: 2 } }));
+  ws.send(JSON.stringify({ ...authorized, cause_ids: [JSON.parse(granted).event_id] }));
   const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "Yes, we accept.", cap_id: "cap-1" });
   ws.send(said);
   const released = JSON.parse(ev("speak.released", "kernel", { lane: "cp", cap_id: "cap-1" }));
@@ -544,7 +558,7 @@ test("receipt: Done. Verified. with the accepted terms, the confirmation, the ve
     "No expiry date Read back",
   ]);
   await expect(receipt.getByText("Confirmation CNF-8841", { exact: true })).toBeVisible();
-  await expect(receipt.getByText("Verified against the company's records", { exact: true })).toBeVisible();
+  await expect(receipt.getByText("Verified against the simulated company's records", { exact: true })).toBeVisible();
   await expect(receipt.getByText(/^Approved by you at \d{1,2}:\d{2}\s[AP]M$/)).toBeVisible();
   // The cost: session.ended's spend, formatted, behind a collapsed details; never a saving.
   const cost = receipt.getByRole("list", { name: "Cost" });

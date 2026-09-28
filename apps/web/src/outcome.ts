@@ -127,6 +127,15 @@ export function unverifiedCommit(kind: ReceiptKind, events: Ev[]): string | null
   return committed ? "The agent had accepted on the call; this was never verified." : null;
 }
 
+/** The company and its ledger (world.ledger) are simulated in every run, whoever plays the rep. */
+export const VERIFIED_AGAINST = "Verified against the simulated company's records";
+
+/** The verifier's line: Guard's last completion.decided, by its typed verdict ("ok" only); null otherwise. */
+export function verifiedLine(events: Ev[]): string | null {
+  const last = events.findLast((e) => from(e, "completion.decided", ["guard"]));
+  return last?.payload.verdict === "ok" ? VERIFIED_AGAINST : null;
+}
+
 /** Guard's evidence.recorded confirmation ids, in order. */
 export const confirmations = (events: Ev[]): string[] =>
   events.filter((e) => from(e, "evidence.recorded", ["guard"]) && typeof e.payload.confirmation_id === "string").map((e) => String(e.payload.confirmation_id));

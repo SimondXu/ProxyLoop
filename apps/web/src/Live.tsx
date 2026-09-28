@@ -1,8 +1,8 @@
 // The live shell (?live=<run_id>), fed by /ws/live. The sticky header keeps the
 // honesty band, the case title and the phase stepper. By default three columns
 // (ConversationView.tsx, redesign §3.2): the chat, with the limits and approval
-// cards among its lines and the message box; the call; and the rail (the status
-// line, the authority details, the models). With ?view=engineer, the replay's
+// cards among its lines and the message box; the call; and the rail (AgentRail:
+// the status line, limits, steps; then the authority details and the models). With ?view=engineer, the replay's
 // lanes, cards and drawer. It shows only what events say. Models are chosen on
 // the start page (?start); here RunSummary shows the ones session.started names.
 import { useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
@@ -13,6 +13,7 @@ import { approvalCards, type CardView, type Posting } from "./approval";
 import { authorityStrip, type Strip } from "./authority";
 import { parseEvent, unechoed, type Framed, type Sent, type Stream } from "./liveState";
 import { ApprovalCard } from "./live/ApprovalCard";
+import { AgentRail } from "./live/AgentRail";
 import { LimitsCard } from "./live/LimitsCard";
 import { postApproval, postMandate, postMessage, type Decision, type PostResult } from "./liveApi";
 import { mandateCards, type MandateView } from "./mandate";
@@ -94,13 +95,16 @@ export function Live({ runId }: { runId: string }) {
   ].sort((a, b) => a.seq - b.seq);
   const pending = unechoed(sent, echoes).map((s) => s.text);
   const start = events.find((e) => e.type === "session.started" && e.actor === "kernel");
+  const authority = (
+    <details className="authority">
+      <summary>Authority details (raw case status, fence, epoch)</summary>
+      <AuthorityStrip a={strip} />
+    </details>
+  );
   const details = (
     <>
       <StatusBar events={events} />
-      <details className="authority">
-        <summary>Authority details (raw case status, fence, epoch)</summary>
-        <AuthorityStrip a={strip} />
-      </details>
+      {authority}
       <RunSummary events={events} />
     </>
   );
@@ -144,7 +148,9 @@ export function Live({ runId }: { runId: string }) {
             input={{ cards: guardCards, pending, composer: <Composer label={CHAT_LABEL} post={send} hint={CHAT_HINT} /> }}
             rail={
               <>
-                {details}
+                <AgentRail events={events} cards={cards} mandates={mandates} />
+                {authority}
+                <RunSummary events={events} />
                 {link}
               </>
             }
