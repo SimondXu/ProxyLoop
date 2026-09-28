@@ -7,7 +7,17 @@ judge batches and the report. Offline: no key, no model call (ADR-0024).
     python -m scripts.mod.world_select judge-export --rows <jsonl>... --out-dir <dir> \
         --key-out <json outside the out dir> --seed N
 
-``score`` prints (or writes ``--out``) the scores of ``world_select_score``. ``report``
+``score`` prints (or writes ``--out``) the scores: the Ear's (``world_select_score``),
+the Mouth's (fidelity_ok, fallback, timeout, the judged M1..M5 and no-violation rates
+with judge labels; an exhausted Mouth returns its template, ``world.bounded``, so
+exhaustion is the fallback rate), the SimUser's (full-check validity, partial checks,
+exhausted, timeout; invented numbers: digits, ``world.numbers``, in a reply that appear
+nowhere in the request the SimUser saw, read from the bundles under ``--runs``, else
+null; undeclared reveals null: the row does not carry them), latency (the HTTP records
+without error, nearest-rank p50/p95), tokens, cost (only with ``--prices``: {model_id:
+{"in": $/M, "out": $/M}} on prompt and completion tokens) and the served echoes; and
+paired, X - incumbent per segment, Ear consequence-class accuracy and Mouth fidelity_ok
+rate (one seed for every comparison). No decision rule: the user decides. ``report``
 writes them with the git sha to ``docs/decisions/data/world-select-report.json`` and
 renders ``world-select-report.md`` from that JSON (every number read from it).
 
@@ -26,14 +36,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import random
 import subprocess
 import sys
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
+from proxyloop.env import world
 from scripts.mod import world_select as ws
 from scripts.mod import world_select_run as wsr
 from scripts.mod import world_select_score as sc
@@ -44,6 +56,170 @@ REPORT, REPORT_MD = DATA / "world-select-report.json", DATA / "world-select-repo
 RUBRIC = DATA / "world-select-mouth-rubric.md"
 RUBRIC_SHA = "38e858bb40ca275e0b05a9555e74c26c5084d76b6fa88ac596928812f9b48b88"
 SHOWN = ("record", "intent", "say", "ask", "heard", "output")  # a record, and no more
+
+
+def fidelity(row: Obj) -> bool:
+    return row["status"] == "ok" and row["result"]["fidelity_ok"] is True
+
+
+def mouth_metrics(items: Sequence[Obj], arm: sc.Arm, judged: Obj | None) -> Obj:
+    rows = [arm.row(i, "mouth") for i in items]
+    fallback = [r["status"] == "ok" and r["result"]["fallback"] is True for r in rows]
+    status = Counter(r["status"] for r in rows)
+    out: Obj = {
+        "items": len(rows),
+        "fidelity_ok": sc.rate(sum(map(fidelity, rows)), len(rows)),
+    }
+    out |= {"fallback": sc.rate(sum(fallback), len(rows)), "timeout": status["timeout"]}
+    out["exhausted"] = status["exhausted"]
+    if judged is not None:
+        got = [judged[i["item_id"]] for i in items if i["item_id"] in judged]
+        out["judged"] = {
+            m: sc.rate(sum(j[m] for j in got), len(got)) for m in sc.JUDGED
+        }
+        clean = sum(all(j[m] for m in sc.JUDGED) for j in got)
+        out["judged"]["no_violation"] = sc.rate(clean, len(got))
+    return out
+
+
+def simuser_metrics(items: Sequence[Obj], arm: sc.Arm, prompts: Obj | None) -> Obj:
+    rows = [(i, arm.row(i, "simuser")) for i in items]
+    live = [(i, r) for i, r in rows if r["status"] != "not_replayable"]
+    full = [r["status"] == "ok" for _, r in live if r.get("check") == "full"]
+    status = Counter(r["status"] for _, r in rows)
+    out: Obj = {"items": len(rows), "not_replayable": status["not_replayable"]}
+    out["valid_full_check"] = sc.rate(sum(full), len(full))
+    out["partial_check"] = sum(r.get("check") == "partial" for _, r in live)
+    out |= {"exhausted": status["exhausted"], "timeout": status["timeout"]}
+    out |= {"undeclared_reveals": None, "invented_numbers": None}
+    if prompts is not None:
+        ok = [
+            (i, r) for i, r in live if r["status"] == "ok" and i["item_id"] in prompts
+        ]
+        texts = [
+            (prompts[i["item_id"]], r["result"]["reply"].get("text")) for i, r in ok
+        ]
+        new = [world.numbers(t) - world.numbers(p) for p, t in texts if t]
+        out["invented_numbers"] = sc.rate(sum(bool(x) for x in new), len(new))
+        out["invented_numbers"]["numbers"] = sum(len(x) for x in new)
+    return out
+
+
+def simuser_prompts(doc: Obj, runs: Path) -> Obj:
+    """Item id -> the request text the SimUser saw (its frozen prompt sha's)."""
+    rec, out = wsr.Recorded(doc, runs), dict[str, str]()
+    for item in doc["items"]["simuser"]:
+        for o in item["occurrences"]:
+            if (b := rec.bundles.get(o["run_id"])) and item["prompt_sha"] in b.prompts:
+                body = json.loads(b.prompts[item["prompt_sha"]].content)
+                out[item["item_id"]] = "\n".join(m["content"] for m in body["messages"])
+                break
+    return out
+
+
+def pct(values: Sequence[int], q: float) -> int | None:
+    s = sorted(values)
+    return s[max(math.ceil(q * len(s)) - 1, 0)] if s else None
+
+
+def usage(arm: sc.Arm, prices: Obj | None) -> Obj:
+    out: Obj = {"latency_ms": {}, "tokens": {}, "cost_usd": None}
+    echoes: set[str] = set()
+    for role in sorted(arm.roles):
+        recs = [c for (_, r, _), row in sorted(arm.rows.items()) if r == role
+                for a in sc.attempts(row) for c in a.get("records", [])]  # fmt: skip
+        ms = [c["latency_ms"] for c in recs if c.get("error") is None]
+        out["latency_ms"][role] = {
+            "n": len(ms),
+            "p50": pct(ms, 0.5),
+            "p95": pct(ms, 0.95),
+        }
+        kinds = ("prompt_tokens", "completion_tokens", "reasoning_tokens")
+        use = [cast(Obj, c.get("usage") or {}) for c in recs]
+        tok = out["tokens"][role] = {k: sum(u.get(k) or 0 for u in use) for k in kinds}
+        echoes |= {c["echo"] for c in recs if c.get("echo")}
+        if prices is not None:
+            if (p := prices.get(model := arm.model_ref["model_id"])) is None:
+                raise SystemExit(f"--prices has no {model}")
+            cost = tok["prompt_tokens"] * p["in"] + tok["completion_tokens"] * p["out"]
+            out["cost_usd"] = (out["cost_usd"] or {}) | {role: round(cost / 1e6, 6)}
+    return out | {"echoes": sorted(echoes)}
+
+
+def score(args: argparse.Namespace, judged: dict[str, Obj] | None = None) -> Obj:
+    """``args``: items, codebook, gold, gold_sha, rows, runs, prices, incumbent,
+    seed, resamples. ``judged``: arm -> item id -> {M1..M5}."""
+    gold, labels = sc.gold_labels(args.gold, args.gold_sha)
+    doc = sc.checked_items(args.items, gold["items_root_hash"])
+    if (sha := sc.sha256_file(args.codebook)) != gold["codebook_sha256"]:
+        raise SystemExit(f"{args.codebook}: sha256 {sha}, not the gold's")
+    ears = sc.role_items(doc, "ear")
+    need = {
+        (i["item_id"], n) for i in ears for n in range(1, len(sc.utterances(i)) + 1)
+    }
+    if missing := need - labels.keys():
+        raise SystemExit(f"the gold lacks {len(missing)} labels, e.g. {min(missing)}")
+    arms = sc.load_rows(args.rows, doc["root_hash"])
+    if args.incumbent not in arms:
+        raise SystemExit(f"no rows of the incumbent {args.incumbent}")
+    for arm in arms.values():
+        sc.complete(doc, arm)
+    prices = sc.load_json(args.prices) if args.prices else None
+    prompts = simuser_prompts(doc, args.runs) if args.runs else None
+    out: Obj = {"note": sc.NOTE, "incumbent": args.incumbent, "arms": {}}
+    out |= {"items_root_hash": doc["root_hash"], "codebook_sha256": sha}
+    out |= {"gold_sha256": args.gold_sha, "gold_counts": gold.get("counts")}
+    out |= {"bootstrap": {"seed": args.seed, "resamples": args.resamples}}
+    units: dict[str, list[sc.Unit]] = {}
+    for name, arm in sorted(arms.items()):
+        res = {"model_ref": arm.model_ref, "torn_lines": arm.torn} | usage(arm, prices)
+        if "ear" in arm.roles:
+            units[name] = sc.ear_units(doc, labels, arm)
+            segs = sc.by_segment(units[name], lambda u: u.item)
+            res["ear"] = {s: sc.ear_metrics(v, arm) for s, v in segs.items()}
+        if "mouth" in arm.roles:
+            j = None if judged is None else judged.get(name, {})
+            segs = sc.by_segment(sc.role_items(doc, "mouth"), lambda i: i)
+            res["mouth"] = {s: mouth_metrics(v, arm, j) for s, v in segs.items()}
+        if "simuser" in arm.roles:
+            segs = sc.by_segment(sc.role_items(doc, "simuser"), lambda i: i)
+            res["simuser"] = {
+                s: simuser_metrics(v, arm, prompts) for s, v in segs.items()
+            }
+        out["arms"][name] = res
+    return out | {"paired": paired(doc, arms, units, args)}
+
+
+def paired(
+    doc: Obj,
+    arms: dict[str, sc.Arm],
+    ears: dict[str, list[sc.Unit]],
+    args: argparse.Namespace,
+) -> Obj:
+    """X - incumbent: Ear consequence-class accuracy and Mouth fidelity_ok rate."""
+    inc, out = arms[args.incumbent], dict[str, Obj]()
+
+    def boot(units: Iterable[tuple[Obj, float, int]]) -> Obj:
+        clustered = [(sc.cluster(i), d, n) for i, d, n in units]
+        return sc.bootstrap(clustered, args.seed, args.resamples)
+
+    for name, arm in sorted(arms.items()):
+        if arm is inc:
+            continue
+        res: Obj = out.setdefault(name, {})
+        if name in ears and inc.label in ears:
+            ear = zip(ears[name], ears[inc.label], strict=True)
+            units = [
+                (x.item, sum(x.correct) - sum(y.correct), len(x.pairs)) for x, y in ear
+            ]
+            segs = sc.by_segment(units, lambda t: t[0])
+            res["ear_cc_accuracy"] = {s: boot(v) for s, v in segs.items()}
+        if "mouth" in arm.roles & inc.roles:
+            mouth = [(i, fidelity(arm.row(i, "mouth")) - fidelity(inc.row(i, "mouth")),
+                      1) for i in sc.role_items(doc, "mouth")]  # fmt: skip
+            segs = sc.by_segment(mouth, lambda t: t[0])
+            res["mouth_fidelity_ok"] = {s: boot(v) for s, v in segs.items()}
+    return out
 
 
 def dump(path: Path, doc: object) -> None:
@@ -230,7 +406,7 @@ def main(argv: Sequence[str]) -> None:
         judged = (
             judged_labels(args.judge_key, args.judge_dir) if args.judge_dir else None
         )
-        doc = sc.score(args, judged)
+        doc = score(args, judged)
         if args.cmd == "report":
             dump(args.out, doc | {"git_sha": git_sha()})
             args.out_md.write_text(render(sc.load_json(args.out)) + "\n", "utf-8")

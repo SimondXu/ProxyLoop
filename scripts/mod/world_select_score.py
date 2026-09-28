@@ -1,5 +1,7 @@
-"""World-model selection, PR2b-2 (S1-MOD-09): the scores. Offline: no key, no model
-call (ADR-0024). The CLI (``score``, ``report``) is ``world_select_report``'s.
+"""World-model selection, PR2b-2 (S1-MOD-09): the scoring core (the gold as read, the
+rows, the statistics, the Ear metrics). Offline: no key, no model call (ADR-0024).
+``world_select_report`` runs it (``score``, ``report``) and adds the Mouth, SimUser,
+latency, cost and paired parts.
 
 The gold file is read by its schema (version 1; labels with item_id, idx, act,
 offer_ref, price_usd, facts, source, codebook_version, excluded), never rebuilt: its
@@ -18,22 +20,14 @@ is right: alternates earn nothing. Rates carry Wilson 95 % CIs. Argument accurac
 the utterances whose gold act uses the argument and whose predicted act is that act
 (prices as decimals; facts as sets, values case- and space-folded). Frequency weights
 are each recorded item's occurrence count (constructed: 1). Stability: the repeat-2
-act equals repeat 1's, per utterance (an error disagrees). Paired: X - incumbent per
-segment, a percentile bootstrap (the 2.5 % point at index floor(0.025 (B - 1)), the
-97.5 % point at ceil(0.975 (B - 1)); one seed for every comparison) resampling
-clusters: a recorded item's cluster is its first occurrence's run_id; a constructed
-item is its own. No decision rule: the user decides. Mouth: an exhausted Mouth
-returns its template (``world.bounded``), so exhaustion is the fallback rate. SimUser
-invented numbers: digits (``world.numbers``) in a reply that appear nowhere in the
-request the SimUser saw (persona, goal, facts, chat, stop), read from the bundles under
-``--runs`` (without it: null); undeclared reveals are null (the row does not carry
-them). Latency: the HTTP records without error, nearest-rank p50/p95. Cost only with
-``--prices`` ({model_id: {"in": $/M, "out": $/M}}), on prompt and completion tokens.
+act equals repeat 1's, per utterance (an error disagrees). The paired bootstrap
+resamples clusters (a recorded item's cluster is its first occurrence's run_id; a
+constructed item is its own) and reports the 2.5 % point at index floor(0.025 (B - 1))
+and the 97.5 % point at ceil(0.975 (B - 1)).
 """
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import json
 import math
@@ -46,7 +40,6 @@ from pathlib import Path
 from typing import Any, cast
 
 from proxyloop.contract.base import sha256_text
-from proxyloop.env import world
 from scripts.mod import world_select as ws
 from scripts.mod import world_select_run as wsr
 
@@ -319,168 +312,8 @@ def ear_metrics(units: Sequence[Unit], arm: Arm) -> Obj:
     return out
 
 
-def fidelity(row: Obj) -> bool:
-    return row["status"] == "ok" and row["result"]["fidelity_ok"] is True
-
-
-def mouth_metrics(items: Sequence[Obj], arm: Arm, judged: Obj | None) -> Obj:
-    rows = [arm.row(i, "mouth") for i in items]
-    fallback = [r["status"] == "ok" and r["result"]["fallback"] is True for r in rows]
-    status = Counter(r["status"] for r in rows)
-    out: Obj = {
-        "items": len(rows),
-        "fidelity_ok": rate(sum(map(fidelity, rows)), len(rows)),
-    }
-    out |= {"fallback": rate(sum(fallback), len(rows)), "timeout": status["timeout"]}
-    out["exhausted"] = status["exhausted"]
-    if judged is not None:
-        got = [judged[i["item_id"]] for i in items if i["item_id"] in judged]
-        out["judged"] = {m: rate(sum(j[m] for j in got), len(got)) for m in JUDGED}
-        clean = sum(all(j[m] for m in JUDGED) for j in got)
-        out["judged"]["no_violation"] = rate(clean, len(got))
-    return out
-
-
-def simuser_metrics(items: Sequence[Obj], arm: Arm, prompts: Obj | None) -> Obj:
-    rows = [(i, arm.row(i, "simuser")) for i in items]
-    live = [(i, r) for i, r in rows if r["status"] != "not_replayable"]
-    full = [r["status"] == "ok" for _, r in live if r.get("check") == "full"]
-    status = Counter(r["status"] for _, r in rows)
-    out: Obj = {"items": len(rows), "not_replayable": status["not_replayable"]}
-    out["valid_full_check"] = rate(sum(full), len(full))
-    out["partial_check"] = sum(r.get("check") == "partial" for _, r in live)
-    out |= {"exhausted": status["exhausted"], "timeout": status["timeout"]}
-    out |= {"undeclared_reveals": None, "invented_numbers": None}
-    if prompts is not None:
-        ok = [
-            (i, r) for i, r in live if r["status"] == "ok" and i["item_id"] in prompts
-        ]
-        texts = [
-            (prompts[i["item_id"]], r["result"]["reply"].get("text")) for i, r in ok
-        ]
-        new = [world.numbers(t) - world.numbers(p) for p, t in texts if t]
-        out["invented_numbers"] = rate(sum(bool(x) for x in new), len(new))
-        out["invented_numbers"]["numbers"] = sum(len(x) for x in new)
-    return out
-
-
-def simuser_prompts(doc: Obj, runs: Path) -> Obj:
-    """Item id -> the request text the SimUser saw (its frozen prompt sha's)."""
-    rec, out = wsr.Recorded(doc, runs), dict[str, str]()
-    for item in doc["items"]["simuser"]:
-        for o in item["occurrences"]:
-            if (b := rec.bundles.get(o["run_id"])) and item["prompt_sha"] in b.prompts:
-                body = json.loads(b.prompts[item["prompt_sha"]].content)
-                out[item["item_id"]] = "\n".join(m["content"] for m in body["messages"])
-                break
-    return out
-
-
-def pct(values: Sequence[int], q: float) -> int | None:
-    s = sorted(values)
-    return s[max(math.ceil(q * len(s)) - 1, 0)] if s else None
-
-
-def usage(arm: Arm, prices: Obj | None) -> Obj:
-    out: Obj = {"latency_ms": {}, "tokens": {}, "cost_usd": None}
-    echoes: set[str] = set()
-    for role in sorted(arm.roles):
-        recs = [c for (_, r, _), row in sorted(arm.rows.items()) if r == role
-                for a in attempts(row) for c in a.get("records", [])]  # fmt: skip
-        ms = [c["latency_ms"] for c in recs if c.get("error") is None]
-        out["latency_ms"][role] = {
-            "n": len(ms),
-            "p50": pct(ms, 0.5),
-            "p95": pct(ms, 0.95),
-        }
-        kinds = ("prompt_tokens", "completion_tokens", "reasoning_tokens")
-        use = [cast(Obj, c.get("usage") or {}) for c in recs]
-        tok = out["tokens"][role] = {k: sum(u.get(k) or 0 for u in use) for k in kinds}
-        echoes |= {c["echo"] for c in recs if c.get("echo")}
-        if prices is not None:
-            if (p := prices.get(model := arm.model_ref["model_id"])) is None:
-                raise SystemExit(f"--prices has no {model}")
-            cost = tok["prompt_tokens"] * p["in"] + tok["completion_tokens"] * p["out"]
-            out["cost_usd"] = (out["cost_usd"] or {}) | {role: round(cost / 1e6, 6)}
-    return out | {"echoes": sorted(echoes)}
-
-
 def by_segment[T](items: Iterable[T], of: Callable[[T], Obj]) -> dict[str, list[T]]:
     out: dict[str, list[T]] = {}
     for x in items:
         out.setdefault(segment(of(x)), []).append(x)
     return {s: out[s] for s in SEGMENTS if s in out}
-
-
-def score(args: argparse.Namespace, judged: dict[str, Obj] | None = None) -> Obj:
-    """``args``: items, codebook, gold, gold_sha, rows, runs, prices, incumbent,
-    seed, resamples. ``judged``: arm -> item id -> {M1..M5}."""
-    gold, labels = gold_labels(args.gold, args.gold_sha)
-    doc = checked_items(args.items, gold["items_root_hash"])
-    if (sha := sha256_file(args.codebook)) != gold["codebook_sha256"]:
-        raise SystemExit(f"{args.codebook}: sha256 {sha}, not the gold's")
-    ears = role_items(doc, "ear")
-    need = {(i["item_id"], n) for i in ears for n in range(1, len(utterances(i)) + 1)}
-    if missing := need - labels.keys():
-        raise SystemExit(f"the gold lacks {len(missing)} labels, e.g. {min(missing)}")
-    arms = load_rows(args.rows, doc["root_hash"])
-    if args.incumbent not in arms:
-        raise SystemExit(f"no rows of the incumbent {args.incumbent}")
-    for arm in arms.values():
-        complete(doc, arm)
-    prices = load_json(args.prices) if args.prices else None
-    prompts = simuser_prompts(doc, args.runs) if args.runs else None
-    out: Obj = {"note": NOTE, "incumbent": args.incumbent, "arms": {}}
-    out |= {"items_root_hash": doc["root_hash"], "codebook_sha256": sha}
-    out |= {"gold_sha256": args.gold_sha, "gold_counts": gold.get("counts")}
-    out |= {"bootstrap": {"seed": args.seed, "resamples": args.resamples}}
-    units: dict[str, list[Unit]] = {}
-    for name, arm in sorted(arms.items()):
-        res = {"model_ref": arm.model_ref, "torn_lines": arm.torn} | usage(arm, prices)
-        if "ear" in arm.roles:
-            units[name] = ear_units(doc, labels, arm)
-            segs = by_segment(units[name], lambda u: u.item)
-            res["ear"] = {s: ear_metrics(v, arm) for s, v in segs.items()}
-        if "mouth" in arm.roles:
-            j = None if judged is None else judged.get(name, {})
-            segs = by_segment(role_items(doc, "mouth"), lambda i: i)
-            res["mouth"] = {s: mouth_metrics(v, arm, j) for s, v in segs.items()}
-        if "simuser" in arm.roles:
-            segs = by_segment(role_items(doc, "simuser"), lambda i: i)
-            res["simuser"] = {
-                s: simuser_metrics(v, arm, prompts) for s, v in segs.items()
-            }
-        out["arms"][name] = res
-    return out | {"paired": paired(doc, arms, units, args)}
-
-
-def paired(
-    doc: Obj,
-    arms: dict[str, Arm],
-    ears: dict[str, list[Unit]],
-    args: argparse.Namespace,
-) -> Obj:
-    """X - incumbent: Ear consequence-class accuracy and Mouth fidelity_ok rate."""
-    inc, out = arms[args.incumbent], dict[str, Obj]()
-
-    def boot(units: Iterable[tuple[Obj, float, int]]) -> Obj:
-        clustered = [(cluster(i), d, n) for i, d, n in units]
-        return bootstrap(clustered, args.seed, args.resamples)
-
-    for name, arm in sorted(arms.items()):
-        if arm is inc:
-            continue
-        res: Obj = out.setdefault(name, {})
-        if name in ears and inc.label in ears:
-            ear = zip(ears[name], ears[inc.label], strict=True)
-            units = [
-                (x.item, sum(x.correct) - sum(y.correct), len(x.pairs)) for x, y in ear
-            ]
-            segs = by_segment(units, lambda t: t[0])
-            res["ear_cc_accuracy"] = {s: boot(v) for s, v in segs.items()}
-        if "mouth" in arm.roles & inc.roles:
-            mouth = [(i, fidelity(arm.row(i, "mouth")) - fidelity(inc.row(i, "mouth")),
-                      1) for i in role_items(doc, "mouth")]  # fmt: skip
-            segs = by_segment(mouth, lambda t: t[0])
-            res["mouth_fidelity_ok"] = {s: boot(v) for s, v in segs.items()}
-    return out

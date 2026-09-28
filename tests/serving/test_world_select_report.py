@@ -216,7 +216,7 @@ def args(t: Path, cmd: str = "score", *extra: str) -> list[str]:
 def scores(t: Path, *extra: str) -> Json:
     ns = wr.parser().parse_args(args(t, "score", *extra))
     judged = wr.judged_labels(ns.judge_key, ns.judge_dir) if ns.judge_dir else None
-    return sc.score(ns, judged)
+    return wr.score(ns, judged)
 
 
 def rate(k: int, n: int, lo: float, hi: float) -> Json:
@@ -294,13 +294,13 @@ def test_mouth_simuser_calls(tree: Path) -> None:
     reply = {"reply": {"text": "I pay 70, maybe 65."}}
     one = row(INC, "simuser", S1, "ok", reply, check="full")
     arm = sc.Arm(INC, {}, {(S1, "simuser", 1): one})
-    got = sc.simuser_metrics([item], arm, {S1: "limit: 70"})["invented_numbers"]
+    got = wr.simuser_metrics([item], arm, {S1: "limit: 70"})["invented_numbers"]
     assert (got["k"], got["n"], got["numbers"]) == (1, 1, 1)  # 65
 
 
 def test_refusals(tree: Path) -> None:
     with pytest.raises(SystemExit, match="not --gold-sha"):
-        sc.score(wr.parser().parse_args([*args(tree)[:-2], "--gold-sha", "0" * 64]))
+        wr.score(wr.parser().parse_args([*args(tree)[:-2], "--gold-sha", "0" * 64]))
     lines = (tree / "deepseek-flash@low.jsonl").read_text().splitlines()
     kept = [x for x in lines if M2 not in x]
     (tree / "deepseek-flash@low.jsonl").write_text("\n".join(kept) + "\n")
