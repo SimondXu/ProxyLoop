@@ -1,24 +1,37 @@
 """One read-back window per offer (ADR-0020): an ask for any revision of the
-offer, in the same call, confirms a revision when W1-W4 hold. Each negative
-is red if one condition is dropped; the mutation each one pins is named."""
+offer, in the same call, confirms a revision when W1-W4 and W2' hold. Each
+negative is red if one condition is dropped; the mutation each one pins is
+named. A bare index is an ask for a revision with ``o``'s own terms."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 
+import pytest
 from tests.guard.build import READBACK, agent, offer, rep
 
 from proxyloop.contract.state import Line, OfferPublic
-from proxyloop.guard.readback import readback_status, readback_update, slot_statuses
+from proxyloop.guard.readback import (
+    Ask,
+    readback_status,
+    readback_update,
+    slot_statuses,
+)
 
 ASK = agent("a1", "Could you read the full terms back to me?")
 NOTHING = rep("c1", "I can offer you something.")
+Asks = Sequence[int | Ask]
+
+
+def _asks(o: OfferPublic, asks: Asks) -> list[Ask]:
+    terms = {s.field: s.value for s in o.slots}
+    return [a if isinstance(a, Ask) else Ask(a, terms) for a in asks]
 
 
 def _fold(
-    o: OfferPublic, lines: Sequence[Line], asks: Sequence[int], asked_at: int | None
+    o: OfferPublic, lines: Sequence[Line], asks: Asks, asked_at: int | None
 ) -> OfferPublic:
-    update = readback_update(o, lines, asked_at, asks)
+    update = readback_update(o, lines, asked_at, _asks(o, asks))
     statuses = update["slot_statuses"]
     assert isinstance(statuses, dict)
     slots = tuple(s.model_copy(update={"status": statuses[s.field]}) for s in o.slots)
@@ -28,14 +41,14 @@ def _fold(
 def _confirmed(
     o: OfferPublic,
     lines: Sequence[Line],
-    asks: Sequence[int],
+    asks: Asks,
     asked_at: int | None = None,  # this revision's own ask: none by default
 ) -> bool:
     return readback_status(_fold(o, lines, asks, asked_at)) == "confirmed"
 
 
-def _statuses(o: OfferPublic, lines: Sequence[Line], asks: Sequence[int]) -> set[str]:
-    return set(slot_statuses(o, lines, None, asks).values())
+def _statuses(o: OfferPublic, lines: Sequence[Line], asks: Asks) -> set[str]:
+    return set(slot_statuses(o, lines, None, _asks(o, asks)).values())
 
 
 # Positives.
@@ -55,7 +68,8 @@ def test_21988c_confirms_after_one_ask() -> None:
                      "no other changes, and no expiry."),
     ]  # fmt: skip
     assert not _confirmed(r3, lines, asks=())  # today's rule: no ask for r3
-    assert _confirmed(r3, lines, asks=(2,))
+    r1 = Ask(2, {"monthly_price": "7800", "term_months": "24"})  # r1 = r3's
+    assert _confirmed(r3, lines, asks=(r1,))
 
 
 def test_a_hidden_fee_revealed_on_read_back_confirms() -> None:
@@ -64,7 +78,8 @@ def test_a_hidden_fee_revealed_on_read_back_confirms() -> None:
     lines.append(rep("c2", READBACK))  # reveals the $20 activation fee
     r2 = offer(revision=2)
     assert not _confirmed(r2, lines, asks=())
-    assert _confirmed(r2, lines, asks=(2,))
+    r1 = Ask(2, {"monthly_price": "6800", "term_months": "24"})  # no fee field
+    assert _confirmed(r2, lines, asks=(r1,))
 
 
 # Negatives: each stays unconfirmed.
@@ -116,7 +131,7 @@ def test_n5_the_expiry_changes_after_the_ask_and_r1_reverts() -> None:
     lines.append(rep("c3", "Actually, the offer expires on October 1."))
     r2 = offer(expires="2026-10-01T00:00:00Z", revision=2)
     assert not _confirmed(r2, lines, asks=(2,))
-    r1 = slot_statuses(offer(), lines, 2, (2,))
+    r1 = slot_statuses(offer(), lines, 2, _asks(offer(), (2,)))
     assert (
         r1["expires"] != "confirmed"
         and readback_status(_fold(offer(), lines, (2,), 2)) == "unconfirmed"
@@ -177,3 +192,31 @@ def test_a_single_line_check_is_unchanged() -> None:
     assert set(got.values()) == {"confirmed"}
     half = slot_statuses(offer(), (rep("c2", "It is $68 a month."),), 0)
     assert half["monthly_price"] == "confirmed" and half["term_months"] != "confirmed"
+
+
+def test_a_revision_missing_a_required_field_takes_no_window() -> None:
+    """21988c r2 (fees_none, changes_none, expires only): no slot shows as
+    confirmed through the window; the complete r3 still is."""
+    r2 = offer(fee=None, revision=2)
+    r2 = r2.model_copy(update={"slots": r2.slots[2:]})
+    lines = [
+        rep("cp-6", "I can offer a monthly price of 78.00 with a term of 24 months."),
+        agent("g10", "Could you read back every term of that offer?"),
+        rep("cp-10", "It is 78.00 per month for 24 months with no fees. "
+                     "There are no other changes and no expiry."),
+    ]  # fmt: skip
+    assert _statuses(r2, lines, (2,)) <= {"heard", "unknown"}
+    assert _confirmed(offer(monthly="7800", fee=None, revision=3), lines, (2,))
+
+
+@pytest.mark.parametrize("price", ["$68", "sixty-eight dollars"])
+def test_n11_an_answer_that_changes_the_asked_revision(price: str) -> None:
+    """W2': r1 was recorded at $68 from a line with no role cue (so the
+    lexicon never saw a price before the ask); the answer said $60, and r2
+    at $60 differs from the asked revision in a field both carry."""
+    lines = [rep("c1", f"It is {price}, on a 24-month term."), ASK]
+    lines.append(rep("c2", READBACK.replace("$68", "$60")))
+    r1 = Ask(2, {"monthly_price": "6800", "term_months": "24"})
+    r2 = offer(monthly="6000", revision=2)
+    assert not _confirmed(r2, lines, asks=(r1,))
+    assert _confirmed(r2, lines, asks=(2,))  # W2' alone: an ask for $60 confirms

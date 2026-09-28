@@ -24,7 +24,7 @@ from proxyloop.guard import authorize as guard
 from proxyloop.guard import readiness
 from proxyloop.guard.authorize import CaseRef, Denial
 from proxyloop.guard.declass import declassify, numbers
-from proxyloop.guard.readback import readback_update
+from proxyloop.guard.readback import Ask, readback_update
 from proxyloop.kernel.wake import HEARTBEAT_S
 from proxyloop.slow import asks, authority, offer_slots, shape
 from proxyloop.slow.result import Effect, Result, no, refused
@@ -91,9 +91,10 @@ class SlowTools:
         # the cp transcript length at every read-back ask of an offer
         # revision (ADR-0018 V4, slow.state)
         self.readbacks: dict[tuple[str, int], list[int]] = {}
-        # (call, cp transcript length) at every read-back ask of an offer, any
-        # revision: Guard's read-back windows in this call (ADR-0020)
-        self.offer_asks: dict[str, list[tuple[int, int]]] = {}
+        # every read-back ask of an open offer, any revision: its s2f msg id,
+        # the call, the cp transcript length and the asked revision's terms
+        # (field: value, record_offer's): Guard's read-back windows (ADR-0020)
+        self.readback_asks: dict[str, list[tuple[str, int, Ask]]] = {}
         self.received: set[str] = set()  # the relay ids SlowLoop handed to Slow
 
     def act(
@@ -153,12 +154,12 @@ class SlowTools:
         lines = bb.channels["cp"].lines
         rep = [x.utt_id for x in lines if x.speaker == "partner"]
         heard = authority.last(events, "utt.final", "utt_id", rep[-1]) if rep else None
-        call = self._call()
+        windows = self._windows()
         for ref, o in sorted(bb.public.offers.items()):
             if o.status != "open":
                 continue
-            asks = [at for c, at in self.offer_asks.get(ref, ()) if c == call]
-            update = readback_update(o, lines, self.asked.get((ref, o.revision)), asks)
+            asked = self.asked.get((ref, o.revision))
+            update = readback_update(o, lines, asked, windows.get(ref, ()))
             now = {s.field: s.status for s in o.slots}
             if (update["slot_statuses"], update["terms_hash"]) == (now, o.terms_hash):
                 continue
@@ -311,7 +312,11 @@ class SlowTools:
             if (o := bb.public.offers.get(ref)) is not None:
                 self.asked.setdefault((ref, o.revision), at)
                 self.readbacks.setdefault((ref, o.revision), []).append(at)
-                self.offer_asks.setdefault(ref, []).append((self._call(), at))
+                if o.status == "open":
+                    msg = str(sent.effects[0][1]["msg_id"])
+                    terms = {s.field: s.value for s in o.slots}
+                    ask = (msg, self._call(), Ask(at, terms))
+                    self.readback_asks.setdefault(ref, []).append(ask)
                 tracked.append(f"{ref} r{o.revision}")
         if tracked:
             return Result(
@@ -321,6 +326,14 @@ class SlowTools:
             )
         text = f"{sent.text}; no recorded offer cited: cite offer:<ref> to confirm one"
         return Result(True, text, sent.effects)
+
+    def _windows(self) -> dict[str, list[Ask]]:
+        """Each offer's read-back asks in the current cp call."""
+        call = self._call()
+        return {
+            ref: [ask for _, c, ask in asks if c == call]
+            for ref, asks in self.readback_asks.items()
+        }
 
     def _call(self) -> int:
         """The cp calls opened so far (``chan.opened{cp}``): the current one."""
