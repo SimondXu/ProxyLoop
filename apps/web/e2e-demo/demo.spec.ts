@@ -311,9 +311,9 @@ test.describe("stop", () => {
     expect([end.type, end.actor, end.payload.reason]).toEqual(["session.ended", "kernel", "escalate"]);
     expect([of(ended, "action.authorized").length, of(ended, "completion.decided").length]).toEqual([0, 0]);
     await expect(strip.getByLabel("Case status")).toHaveText("status ESCALATED");
-    await expect(page.getByLabel("Status line")).toHaveText("Ended: escalated to a person. Not verified complete.");
+    await expect(page.getByLabel("Status line")).toHaveText("Ended: stopped — back to you. Not verified complete.");
     const receipt = page.getByRole("region", { name: "Chat" }).getByRole("region", { name: "Outcome" });
-    await expect(receipt.getByRole("heading")).toHaveText("Ended: escalated to a person. Not verified complete.");
+    await expect(receipt.getByRole("heading")).toHaveText("Ended: stopped — back to you. Not verified complete.");
     await expect(page.getByRole("list", { name: "Chat transcript" })).toContainText(STOPPED); // Slow's tell_user, voiced before the end
   });
 });
