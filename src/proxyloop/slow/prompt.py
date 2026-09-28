@@ -229,18 +229,25 @@ _HEAD = (  # SlowLoop's task head as a template: tests/slow/test_slow_fp.py pins
 
 
 def fp_inputs(mode: SlowViewMode, kind: state.Kind) -> dict[str, object]:
-    """What ``slow_fp`` hashes (ADR-0018 V6, S1-SYS-43): everything fixed per
-    ``slow_view`` mode and task kind that shapes Slow's requests, namely the
-    mode's system prompt, the ACT tool spec (name, description, JSON schema),
-    the kind's close PLAYBOOK and the task head's fixed wording (``_HEAD``,
-    the brief, kind, keys and playbook left as placeholders). Not the brief or
-    the keys, the status bar or the notes: they vary per run."""
+    """What ``slow_fp`` hashes (ADR-0018 V6, S1-SYS-43), exactly these four:
+    the mode's system prompt (``system(mode)``), the ACT tool spec (name,
+    description, JSON schema), ``PLAYBOOK[kind]`` and the task head's fixed
+    wording (``_HEAD``; the brief, kind, keys and playbook as placeholders).
+    Not hashed, though they shape Slow's requests too: the status bar's and
+    ``state.Bar``'s wording, ``note``, the tool result texts, ``MAX_TOKENS``
+    and ``loop.WINDOW``; per run, the brief, the keys and the notes."""
     return {
         "system": system(mode),
         "act": ACT.model_dump(mode="json"),
         "playbook": PLAYBOOK[kind],
         "head": _HEAD,
     }
+
+
+def slow_fp(mode: SlowViewMode, kind: state.Kind) -> str:
+    """``session.started.slow_fp``: the sha256 of ``fp_inputs`` as canonical
+    JSON, so runs with different Slow harnesses are never pooled."""
+    return base.sha256_text(json.dumps(fp_inputs(mode, kind), sort_keys=True))
 
 
 def note(relay: FastToSlow, quoted: bool = False) -> str:  # [USER CHAT] … (utt u12)

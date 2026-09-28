@@ -15,7 +15,7 @@ from tests.support.sessions import only_bundle, run
 from proxyloop.contract.config import SlowViewMode
 from proxyloop.env.counterparty.simrep import RepTurn, SimRep
 from proxyloop.kernel.channels import Incoming, SimRepChannel
-from proxyloop.kernel.session import slow_fp
+from proxyloop.slow.prompt import slow_fp
 
 
 class _Rep:  # strikes on every heard line and every tick

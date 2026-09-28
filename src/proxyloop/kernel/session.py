@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
-import json
+import re
 import secrets
 import subprocess
 from collections import Counter
@@ -149,20 +149,22 @@ def _reason(err: Exception) -> str:  # the end a task's error makes, as _outcome
     return next((r for kind, r in _ERRORS.items() if isinstance(err, kind)), "error")
 
 
+_AUTHORED = re.compile(  # env/world.py's three WorldError heads, as written there
+    r"\w+: (?:invalid after \d+ regenerations|no answer within [\d.]+ s)"
+    r"|a record for unknown world call '[\w:.-]*'"
+)
+
+
 def _world_error(err: BaseException | None) -> dict[str, str] | None:
-    """A ``WorldError``'s type and authored message (rule 15): the world writes
-    ``<what>: <how>``, and only what follows (an ``Invalid``'s reason, which
-    may quote model output) is dropped: at most two ``": "`` parts are kept."""
+    """A ``WorldError``'s type and authored message (rule 15): one of the
+    world's own heads, cut before what follows (an ``Invalid``'s reason may
+    quote model output); a message of any other shape records the type only."""
     if not isinstance(err, WorldError):
         return None
-    authored = ": ".join(str(err).split(": ")[:2])
-    return {"type": type(err).__name__, "message": authored}
-
-
-def slow_fp(mode: SlowViewMode, kind: Literal["info_only", "full"]) -> str:
-    """``session.started.slow_fp``: the sha256 of ``prompt.fp_inputs`` as
-    canonical JSON (ADR-0018 V6): runs with different Slow harnesses differ."""
-    return sha256_text(json.dumps(prompt.fp_inputs(mode, kind), sort_keys=True))
+    out, msg = {"type": type(err).__name__}, str(err)
+    if (m := _AUTHORED.match(msg)) and msg[m.end() :][:2] in ("", ": "):
+        out["message"] = m.group()
+    return out
 
 
 def new_run_id() -> str:
@@ -401,7 +403,7 @@ class Kernel:
         head = started | {"models": models, "attest": self.attest, "parity": self.p3}
         head["slow_view"] = self.cfg.slow_view.value  # extra keys (S1-SYS-43)
         if self.slow is not None:  # rep-chat has no Slow
-            head["slow_fp"] = slow_fp(self.cfg.slow_view, self.task.mode)
+            head["slow_fp"] = prompt.slow_fp(self.cfg.slow_view, self.task.mode)
         led = self.ledger  # the S0 runaway guard in force (an extra key, §4.2)
         head["runaway"] = {"factor": led.factor, "tokens": led.limit_tokens}
         head["runaway"] |= {"unpriced_calls": led.limit_unpriced_calls}

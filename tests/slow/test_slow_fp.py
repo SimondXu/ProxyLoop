@@ -11,8 +11,8 @@ from tests.slow.test_loop import Idle
 
 from proxyloop.contract.config import SlowViewMode
 from proxyloop.contract.llm import ToolSpec
-from proxyloop.kernel.session import slow_fp
 from proxyloop.slow import prompt
+from proxyloop.slow.prompt import slow_fp
 from proxyloop.slow.tools import FORMATS
 
 T, R = SlowViewMode.TRANSCRIPT, SlowViewMode.RELAY_ONLY
