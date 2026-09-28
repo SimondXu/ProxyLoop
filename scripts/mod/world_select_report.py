@@ -76,7 +76,8 @@ JUDGED_NOTE = (
 )
 CALLS_NOTE = (
     "Latency, tokens, `finish_reason` and `timeout_all_repeats` cover every call of "
-    "every attempt and repeat; a segment's `timeout` counts repeat 1 only."
+    "every attempt and repeat (`null`: a call with no finish reason, e.g. cancelled); "
+    "a segment's `timeout` counts repeat 1 only."
 )
 
 
