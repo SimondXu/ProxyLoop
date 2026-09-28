@@ -126,6 +126,33 @@ async function liveWithCards(page: Page, baseURL: string | undefined, refs = REA
   return { ws, ev };
 }
 
+/**
+ * S1-SYS-78: the approval card beside confirmed limits (the limit column, the price bar, the lists as text rows),
+ * the rep on hold, and the granted limits card; `slots`: the card's terms.
+ */
+async function liveBesideLimits(page: Page, baseURL: string | undefined, slots = FIVE) {
+  await csrfCookie(page, baseURL, "pl_csrf", CSRF);
+  const { connected } = await mockSockets(page);
+  await page.goto(`/?live=${RUN}`);
+  const ws = await connected;
+  const ev = events();
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  ws.send(ev("user.msg", "kernel", { text: "Please lower my internet bill." }));
+  ws.send(ev("mandate.proposed", "guard", { ...MANDATE, max_monthly_price_minor: 6500, max_term_months: null, required_features: ["hotspot"], forbidden_changes: ["speed_tier"] }));
+  ws.send(ev("mandate.decided", "kernel", { mandate_id: "m-1", mandate_hash: MANDATE.mandate_hash, decision: "granted", by: "ui" }));
+  ws.send(ev("authority.epoch", "kernel", { new: 1, reason: "mandate_decided" }));
+  ws.send(ev("chan.opened", "kernel", { lane: "cp" }));
+  ws.send(ev("utt.final", "kernel", { lane: "cp", speaker: "partner", text: "We can do $75 a month for 12 months." }));
+  ws.send(ev("chan.hold", "fast.cp", { lane: "cp", reason: "decision" }));
+  ws.send(ev("offer.recorded", "guard", { ...OFFER, slots }));
+  ws.send(ev("approval.requested", "guard", { ...CARD, authority_epoch: 1, binding: { ...CARD.binding, authority_epoch: 1 } }));
+  const card = page.getByRole("article", { name: "Approval ap-1" });
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
+  await expect(card.getByText(/^The rep is holding · \d+:\d{2}$/)).toBeVisible();
+  await expect(page.getByRole("article", { name: "Limits m-1" }).getByLabel("Limits status")).toHaveText(/^Confirmed by you/);
+  return card;
+}
+
 for (const theme of THEMES) {
   test.describe(`${theme} theme`, () => {
     test.use({ colorScheme: theme });
@@ -151,6 +178,13 @@ for (const theme of THEMES) {
           await liveWithCards(page, baseURL);
           await audit(page);
           await shot(page, `a11y-live-${size.name}-${theme}`);
+        });
+
+        test("live page with an approval card beside confirmed limits, the rep on hold (S1-SYS-78)", async ({ page, baseURL }) => {
+          const card = await liveBesideLimits(page, baseURL);
+          await expect(card.locator(".pl-lbar-l")).toHaveText(["Your limit $65", "This offer $75"]);
+          await audit(page);
+          await shot(page, `a11y-live-limits-${size.name}-${theme}`);
         });
 
         test("rep page, before and after the call opens", async ({ page, baseURL }) => {
@@ -289,6 +323,26 @@ for (const theme of THEMES) {
           await expect(card.getByRole("button", { name: "Approve $75/mo" })).toBeInViewport({ ratio: 1 });
           await expect(card.getByRole("button", { name: "Decline" })).toBeInViewport({ ratio: 1 });
           expect(await card.getByRole("button", { name: "Approve $75/mo" }).evaluate(uncovered)).toBe(true);
+        });
+      }
+
+      for (const [rows, size] of [...[2, 3, 5].map((n) => [n, null] as const), [5, [360, 740]] as const]) {
+        const at = size ? ` at ${size[0]}×${size[1]}` : "";
+        test(`beside confirmed limits, the open sheet shows the whole Approve and Decline with ${rows} term rows${at} (S1-SYS-78)`, async ({
+          page,
+          baseURL,
+        }) => {
+          if (size) await page.setViewportSize({ width: size[0], height: size[1] });
+          const card = await liveBesideLimits(page, baseURL, FIVE.slice(0, rows));
+          await expect(card.getByLabel("Read-back progress").getByRole("listitem")).toHaveCount(rows);
+          await card.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+          for (const name of ["Approve $75/mo", "Decline"]) {
+            await expect(card.getByRole("button", { name })).toBeInViewport({ ratio: 1 });
+            expect(await card.getByRole("button", { name }).evaluate(uncovered)).toBe(true);
+          }
+          expect(await page.evaluate(() => (document.scrollingElement?.scrollWidth ?? Infinity) <= innerWidth)).toBe(true);
+          // The sheet carries the human principal's promise once; the card's own line is not shown twice.
+          await expect(page.getByText("Only your clicks can authorize a deal", { exact: true }).filter({ visible: true })).toHaveCount(1);
         });
       }
 

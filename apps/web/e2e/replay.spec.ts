@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { seriousViolations } from "./axe";
+import { events as liveEvents, started } from "./liveMock";
 
 // Generic over any bundle (PL_BUNDLE_DIR), served by the real API: the committed
 // fixture by default, or an evidence/s0 bundle. No fixture-specific strings.
@@ -218,4 +219,50 @@ test.describe("phone (390×844)", () => {
     ).toBe(true);
     expect(await seriousViolations(page)).toEqual([]);
   });
+});
+
+// S1-SYS-78: a synthetic recording (built here, served by a browser route) whose approval card is still open
+// with the rep on hold at the end. The hold line follows the playback clock only: paused, it stands still.
+test("replay: the open card's hold line follows the playback clock, and stands still while paused", async ({ page }) => {
+  const RUN_ID = "syn-hold-78";
+  const make = liveEvents(RUN_ID);
+  const at = (t_ms: number, ...args: Parameters<typeof make>) => ({ ...(JSON.parse(make(...args)) as object), t_ms });
+  const card = { approval_id: "ap-1", offer_ref: "offer-1", revision: 1, terms_hash: "th-78", readback_text: "Plan at $75/month.", authority_epoch: 0, expires_ms: 90_000, binding: {} };
+  const slots = [{ field: "monthly_price", value: "7500", unit: "usd_minor", status: "confirmed" }];
+  const log = [
+    at(0, "session.started", "kernel", started({ fast_user: ["real_http", "q"], fast_cp: ["real_http", "q"], slow: ["real_http", "s"] }), { stream: "ops" }),
+    at(500, "chan.opened", "kernel", { lane: "cp" }),
+    at(1_000, "chan.hold", "fast.cp", { lane: "cp", reason: "decision" }),
+    at(1_500, "offer.recorded", "guard", { offer_ref: "offer-1", revision: 1, terms_hash: "th-78", slots }),
+    at(2_000, "approval.requested", "guard", card),
+    at(30_000, "utt.final", "kernel", { lane: "cp", speaker: "partner", utt_id: "p", text: "Still there?" }),
+  ];
+  await page.route(`**/api/replay/${RUN_ID}/events`, (route) => route.fulfill({ status: 200, body: log.map((e) => JSON.stringify(e)).join("\n") }));
+  await page.goto(`/?run=${RUN_ID}`);
+  const hold = page.getByRole("article", { name: "Approval ap-1" }).getByText(/^The rep is holding · \d+:\d{2}$/);
+  // It opens paused at the end (30 s): 29 s on hold, on the recorded clock.
+  await expect(page.getByRole("button", { name: "Play" })).toBeVisible();
+  await expect(hold).toHaveText("The rep is holding · 0:29");
+  await page.waitForTimeout(2_000);
+  await expect(hold).toHaveText("The rep is holding · 0:29");
+  // Seeking between events moves it with the clock, not with the latest shown event (approval.requested at 2 s).
+  await page.getByRole("slider", { name: "Timeline" }).fill("10000");
+  await expect(hold).toHaveText("The rep is holding · 0:09");
+  // Play at 4×, then pause: it moved with playback, and then stands still.
+  await page.getByRole("button", { name: "4×" }).click();
+  await page.getByRole("button", { name: "Play" }).click();
+  await expect(hold).not.toHaveText("The rep is holding · 0:09");
+  await page.getByRole("button", { name: "Pause" }).click();
+  // The page follows the slider through useDeferredValue: wait until two reads 300 ms apart agree, then hold it to that.
+  let paused: string | null = null;
+  await expect
+    .poll(async () => {
+      const before = await hold.textContent();
+      await page.waitForTimeout(300);
+      paused = await hold.textContent();
+      return before === paused;
+    })
+    .toBe(true);
+  await page.waitForTimeout(2_000);
+  await expect(hold).toHaveText(paused ?? "");
 });
