@@ -121,7 +121,9 @@
     .pl-sheet-scroll { flex: 1; min-height: 0; overflow-y: auto; }
     /* the decision row is the sheet's footer: Approve stays in view while the terms scroll above it (S1-SYS-76 review);
        a human principal's promise (I6), first in reading order, is shown under the click and wraps */
-    .pl-sheet .pl-gcard-actions { position: sticky; bottom: 0; z-index: 1; flex-direction: column-reverse; background: var(--card); border-top: 1px solid var(--line); }
+    .pl-sheet .pl-gcard-actions { position: sticky; bottom: 0; z-index: 1; flex-direction: column-reverse; flex-wrap: nowrap; align-items: stretch; margin-top: var(--s3); background: var(--card); border-top: 1px solid var(--line); }
+    /* the sheet carries the promise itself (under the click, above): the card's own line would say it twice */
+    .pl-sheet .pl-sign-only { display: none; }
     .pl-sheet-body > .pl-sheet-promise { order: 1; flex: none; display: block; margin: 0; padding: var(--s2) var(--s4); font-size: var(--fs-small); font-weight: 600; color: var(--ink); }
     .pl-gcard-actions .pl-btn, .pl-jump { min-height: 48px; }
     .pl-send { width: 48px; height: 48px; }

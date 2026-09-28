@@ -4,9 +4,9 @@
 import type { CardStatus, CardView } from "./approval";
 import { from } from "./authority";
 import { grantOfAccept } from "./conversation";
-import { inWords, type MandateView } from "./mandate";
+import { inWords, limitRows, type MandateView } from "./mandate";
 import type { Ev } from "./replay";
-import { clock, usd, whole, type TermRow } from "./terms";
+import { clock, offerSlots, READBACK_CHIP, usd, whole, type OfferRev, type TermRow } from "./terms";
 
 /** The decision's wall time, display only. */
 const decidedAt = (events: Ev[], id: string) =>
@@ -47,6 +47,70 @@ const current = (mandates: MandateView[]) => mandates.findLast((v) => v.status =
 export function priceLimit(mandates: MandateView[]): string | null {
   const bound = current(mandates)?.mandate.max_monthly_price_minor;
   return bound == null ? null : `your limit ${usd(bound) ?? bound}`;
+}
+
+/** "Your limit" for a term the mandate in force does not bound. */
+export const NO_LIMIT = "no limit set";
+// A term's bound, by the label limitRows gives it, so the card uses the limits card's own words.
+const BOUND = new Map([
+  ["monthly_price", "Monthly price"],
+  ["term_months", "Contract"],
+  ["fees_none", "One-time fees"],
+]);
+// Terms the mandate constrains only by a list: its text row ("Must include …", "Must not change …") carries it.
+const LISTED = new Map([
+  ["feature", "Must include"],
+  ["applied_change", "Must not change"],
+  ["changes_none", "Must not change"],
+]);
+
+/**
+ * A card row with "Your limit" beside "This offer" (root ruling (a), S1-SYS-78): the
+ * mandate in force's bound as limitRows words it, or NO_LIMIT; null with no granted
+ * mandate. Never a verdict and never a difference: Guard alone judges the mandate.
+ */
+export type OfferRow = TermRow & { limit: string | null };
+
+export function offerRows(rows: TermRow[], mandates: MandateView[]): OfferRow[] {
+  const m = current(mandates)?.mandate;
+  const bounds = new Map(m ? limitRows(m) : []);
+  const limitOf = (field: string): string => {
+    const kind = field.split(":")[0] ?? field;
+    const bound = BOUND.get(kind);
+    if (bound) return bounds.get(bound) ?? NO_LIMIT;
+    if (kind === "fee" && bounds.has("One-time fees")) return "counts toward one-time fees";
+    const listed = LISTED.get(kind);
+    return listed && bounds.has(listed) ? `see “${listed}” below` : NO_LIMIT;
+  };
+  return rows.map((r) => ({ ...r, limit: m ? limitOf(r.field) : null }));
+}
+
+/** The mandate in force's list rows ("Must include …", "Must not change …"): text only, no bar, no verdict. */
+export function limitTextRows(mandates: MandateView[]): [string, string][] {
+  const m = current(mandates)?.mandate;
+  return m ? limitRows(m).filter(([k]) => [...LISTED.values()].includes(k)) : [];
+}
+
+/** "Read back · 3 of 5": the rows Guard read back (READBACK_CHIP's "confirmed"), of all the card's rows. */
+export const readbackCount = (rows: TermRow[]) =>
+  `${READBACK_CHIP.confirmed} · ${rows.filter((r) => r.status === "confirmed").length} of ${rows.length}`;
+
+/**
+ * The limit bar, monthly price only: both amounts as text, and where each sits (per
+ * cent) on a display scale from 0 to 1.2 × the larger, so position is proportional
+ * to the amount and neither mark sits at an edge. No verdict and no difference.
+ */
+export type LimitBar = { limit: string; offer: string; limitAt: number; offerAt: number };
+
+export function limitBar(events: Ev[], card: OfferRev, mandates: MandateView[]): LimitBar | null {
+  const bound = current(mandates)?.mandate.max_monthly_price_minor;
+  const raw = offerSlots(events, card)?.find((s) => s.field === "monthly_price")?.value;
+  const offer = typeof raw === "string" && /^\d+$/.test(raw) ? Number(raw) : null;
+  const [limitText, offerText] = [usd(bound), usd(offer)];
+  if (bound == null || offer == null || !limitText || !offerText) return null;
+  const top = Math.max(bound, offer) * 1.2;
+  const at = (v: number) => (top > 0 ? (v / top) * 100 : 0);
+  return { limit: whole(limitText), offer: whole(offerText), limitAt: at(bound), offerAt: at(offer) };
 }
 
 export function why(mandates: MandateView[]): string {

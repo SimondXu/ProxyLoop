@@ -772,3 +772,81 @@ test("your role: a refused card is shown as unavailable, never as an alert", asy
   await role.locator("summary").click();
   await expect(role).toContainText("Your role is unavailable: 403 csrf");
 });
+
+test("approval card beside confirmed limits (S1-SYS-78, root ruling (a)): each term's limit or 'no limit set', no verdict, the lists as text, one price bar", async ({
+  page,
+  baseURL,
+}) => {
+  await csrfCookie(page, baseURL);
+  const { connected } = await mockSockets(page);
+  const posts = await capturePosts(page, 200, { status: "posted" });
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  const limits = { ...MANDATE, max_term_months: null, required_features: ["hotspot"], forbidden_changes: ["speed_tier"] };
+  ws.send(ev("mandate.proposed", "guard", limits));
+  ws.send(ev("mandate.decided", "kernel", { mandate_id: "m-1", mandate_hash: MANDATE.mandate_hash, decision: "granted", by: "ui" }));
+  ws.send(ev("authority.epoch", "kernel", { new: 2, reason: "mandate_decided" }));
+  const slots = [
+    { field: "monthly_price", value: "7500", unit: "usd_minor", status: "confirmed" },
+    { field: "term_months", value: "12", unit: "months", status: "heard" },
+    { field: "fees_none", value: "true", unit: "bool", status: "confirmed" },
+    { field: "feature:hotspot", value: "true", unit: "bool", status: "confirmed" },
+    { field: "expires", value: "none", unit: "iso", status: "confirmed" },
+  ];
+  ws.send(ev("offer.recorded", "guard", { offer_ref: "offer-1", revision: 1, terms_hash: CARD.terms_hash, slots }));
+  ws.send(ev("approval.requested", "guard", CARD));
+  const card = page.getByRole("article", { name: "Approval ap-1" });
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
+  await expect(card.getByRole("list", { name: "Read-back progress" }).getByRole("listitem")).toHaveText([
+    "Monthly price $75.00 Your limit: up to $65.00 Read back",
+    "Contract length 12 months Your limit: no limit set Heard, not read back",
+    "One-time fees None Your limit: up to $0.00 Read back",
+    "Includes hotspot Your limit: see “Must include” below Read back",
+    "No expiry date Your limit: no limit set Read back",
+  ]);
+  await expect(card.getByText("Read back · 4 of 5")).toBeVisible();
+  // The mandate's lists stay text rows, with no bar and no verdict.
+  await expect(card.getByRole("term")).toHaveText(["Must include", "Must not change"]);
+  await expect(card.getByRole("definition")).toHaveText(["Your limit: hotspot", "Your limit: speed_tier"]);
+  // One bar, monthly price only: both amounts as text by their marks; the graphic is aria-hidden.
+  await expect(card.locator(".pl-lbar")).toHaveCount(1);
+  await expect(card.locator(".pl-lbar-l")).toHaveText(["Your limit $65", "This offer $75"]);
+  await expect(card.locator(".pl-lbar-t")).toHaveAttribute("aria-hidden", "true");
+  // Guard alone judges the mandate: no verdict word and no difference ($10) anywhere on the card.
+  await expect(card).not.toContainText(/\b(within|over|under)\b/i);
+  await expect(card).not.toContainText("$10");
+  await expect(card.getByText("Only your click can authorize a deal", { exact: true })).toBeVisible(); // a human principal
+  // Still one POST per click, and the card moves only on the kernel's decision.
+  await card.getByRole("button", { name: "Approve $75/mo" }).click();
+  await expect(card.getByLabel("Approval status")).toHaveText("Sent. Waiting for Guard to record it");
+  await page.waitForTimeout(300);
+  expect(posts).toHaveLength(1);
+});
+
+test("approval card: the hold line counts up from FastC's chan.hold while the card is open, and goes with the hold (display only)", async ({
+  page,
+  baseURL,
+}) => {
+  await csrfCookie(page, baseURL);
+  const { connected } = await mockSockets(page);
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  ws.send(ev("approval.requested", "guard", CARD));
+  const card = page.getByRole("article", { name: "Approval ap-1" });
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
+  const hold = card.getByText(/^The rep is holding · /);
+  await expect(hold).toHaveCount(0);
+  ws.send(ev("chan.opened", "kernel", { lane: "cp" }));
+  ws.send(ev("chan.hold", "fast.cp", { lane: "cp", reason: "decision" }));
+  ws.send(ev("chan.hold", "slow", { lane: "cp", reason: null })); // not FastC: ends nothing (t_ms +100)
+  await expect(hold).toHaveText("The rep is holding · 0:00");
+  await expect(hold).toHaveText(/^The rep is holding · 0:0[1-3]$/, { timeout: 4000 }); // live: ticks on after the latest event
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision"); // nothing acts on it
+  await expect(card.getByRole("button", { name: "Approve" })).toBeEnabled();
+  ws.send(ev("chan.hold", "fast.cp", { lane: "cp", reason: null }));
+  await expect(hold).toHaveCount(0);
+});

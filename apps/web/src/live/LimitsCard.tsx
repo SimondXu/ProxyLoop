@@ -1,4 +1,4 @@
-// The "Confirm your limits" card (redesign §3.2): Guard's mandate.proposed,
+// The "Confirm your limits" card (redesign §3.2; v4's card language, S1-SYS-78): Guard's mandate.proposed,
 // confirmed only by a click on it, posted once through S1-SYS-41's route. The
 // kernel's mandate.decided alone decides it (I6).
 import { limitRows, limitsStatusText, type MandateStatus, type MandateView } from "../mandate";
@@ -30,13 +30,14 @@ export function LimitsCard({ view, events, decide }: Props) {
         Guard card · limits the planner proposed from your messages
       </p>
       <div className="pl-limits-kick">
-        <span className="pl-label">Your limits</span>
         <Chip tone={open ? "you" : status === "granted" ? "ok" : "neutral"}>
+          <Icon name="you" size="xs" />
           <span aria-label="Limits status">{limitsStatusText(view)}</span>
         </Chip>
+        <span className="pl-label">Your limits</span>
       </div>
       <h3>{title}</h3>
-      <dl className="pl-facts">
+      <dl className="pl-facts pl-limits-facts">
         {limitRows(m).map(([k, v]) => (
           <div key={k}>
             <dt>{k}</dt>

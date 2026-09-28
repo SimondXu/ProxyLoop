@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { approvalCards, type CardStatus, type CardView, type Posting } from "./approval";
-import { acceptOf, approvalStatusText, approvedBy, headline, priceLimit, why } from "./decision";
+import { acceptOf, approvalStatusText, approvedBy, headline, limitBar, limitTextRows, NO_LIMIT, offerRows, priceLimit, readbackCount, why } from "./decision";
 import { mandateCards } from "./mandate";
 import type { Ev } from "./replay";
-import { aboutClock, termRow, termRows, usd } from "./terms";
+import { aboutClock, termRow, termRows, usd, whole } from "./terms";
 
 let seq = 0;
 const ev = (type: string, actor: string, payload: Ev["payload"] = {}, cause_ids: string[] = [], wall?: string): Ev => {
@@ -171,5 +171,89 @@ describe("approval card words", () => {
     const g = ev("approval.decided", "kernel", { approval_id: "a1", decision: "granted", by: "ui" }, [], "2026-09-27T14:30:00Z");
     const [v] = approvalCards([c, g], none);
     expect(v && approvedBy([c, g], v)).toMatch(/^Approved by you at \d{1,2}:\d{2}\s?[AP]M$/);
+  });
+});
+
+describe("the card beside your limits: no verdict and no difference (root ruling (a), S1-SYS-78)", () => {
+  const granted = (bounds: Ev["payload"]) =>
+    mandateCards(
+      [
+        ev("mandate.proposed", "guard", { mandate_id: "m1", mandate_hash: "h", epoch: 1, ...bounds }),
+        ev("mandate.decided", "kernel", { mandate_id: "m1", mandate_hash: "h", decision: "granted", by: "ui" }),
+      ],
+      none,
+    );
+  const offerAt = (price: string) =>
+    offer({ slots: [slot("monthly_price", price, "usd_minor"), slot("term_months", "24", "months"), slot("fees_none", "true", "bool", "heard")] });
+  // No verdict word, no signed amount, and not the difference itself ($13 either way; $0 when equal).
+  const VERDICT = /within|over|under|differ|[+\u2212-]\s?\$|\$13\b|\$0\b/i;
+
+  for (const [name, price] of [["over", "7800"], ["under", "5200"], ["equal to", "6500"]] as const) {
+    it(`an offer ${name} the bound shows the offer, "up to …" and both bar amounts, and nothing else`, () => {
+      const events = [offerAt(price)];
+      const mandates = granted({ max_monthly_price_minor: 6500, max_term_months: 12 });
+      const rows = offerRows(termRows(events, CARD), mandates);
+      const offered = usd(price) ?? "";
+      expect(rows.map((r) => [r.label, r.value, r.limit])).toEqual([
+        ["Monthly price", offered, "up to $65.00"],
+        ["Contract length", "24 months", "up to 12 months"],
+        ["One-time fees", "None", NO_LIMIT],
+      ]);
+      const bar = limitBar(events, CARD, mandates);
+      expect(bar).toMatchObject({ limit: "$65", offer: whole(offered) });
+      expect(bar && bar.limitAt > 0 && bar.limitAt < 100 && bar.offerAt > 0 && bar.offerAt < 100).toBe(true);
+      expect(JSON.stringify([rows, bar])).not.toMatch(VERDICT);
+    });
+  }
+
+  it("places both marks on a 0 … 1.2 × the larger scale: position only, the same place when equal", () => {
+    const over = limitBar([offerAt("7800")], CARD, granted({ max_monthly_price_minor: 6500 }));
+    expect(over?.offerAt).toBeCloseTo(100 / 1.2);
+    expect(over?.limitAt).toBeCloseTo((6500 / 9360) * 100);
+    const equal = limitBar([offerAt("6500")], CARD, granted({ max_monthly_price_minor: 6500 }));
+    expect(equal?.limitAt).toBe(equal?.offerAt);
+  });
+
+  it("has no bar without both a price bound and an offer price, and no limit column without a granted mandate", () => {
+    expect(limitBar([offerAt("7800")], CARD, granted({ max_term_months: 12 }))).toBeNull();
+    expect(limitBar([offerAt("78.5")], CARD, granted({ max_monthly_price_minor: 6500 }))).toBeNull();
+    expect(limitBar([offerAt("7800")], CARD, [])).toBeNull();
+    const proposedOnly = mandateCards([ev("mandate.proposed", "guard", { mandate_id: "m9", mandate_hash: "h9", epoch: 1, max_monthly_price_minor: 6500 })], none);
+    expect(limitBar([offerAt("7800")], CARD, proposedOnly)).toBeNull();
+    expect(offerRows(termRows([offerAt("7800")], CARD), proposedOnly).map((r) => r.limit)).toEqual([null, null, null]);
+    expect(limitTextRows(proposedOnly)).toEqual([]);
+  });
+
+  it("keeps features and forbidden changes as text rows, and points the offer's own such rows at them", () => {
+    const mandates = granted({ max_one_time_fees_minor: 5000, required_features: ["hotspot"], forbidden_changes: ["speed_tier"] });
+    const events = [
+      offer({
+        slots: [
+          slot("fees_none", "false", "bool"),
+          slot("fee:activation", "2000", "usd_minor"),
+          slot("feature:hotspot", "true", "bool"),
+          slot("changes_none", "true", "bool"),
+          slot("expires", "none", "iso"),
+        ],
+      }),
+    ];
+    expect(offerRows(termRows(events, CARD), mandates).map((r) => [r.label, r.limit])).toEqual([
+      ["One-time fees apply", "up to $50.00"],
+      ["Fee: activation", "counts toward one-time fees"],
+      ["Includes", "see \u201cMust include\u201d below"],
+      ["Changes to your plan", "see \u201cMust not change\u201d below"],
+      ["No expiry date", NO_LIMIT],
+    ]);
+    expect(limitTextRows(mandates)).toEqual([
+      ["Must include", "hotspot"],
+      ["Must not change", "speed_tier"],
+    ]);
+    expect(limitBar(events, CARD, mandates)).toBeNull();
+  });
+
+  it("counts the rows Guard read back", () => {
+    const rows = termRows([offerAt("7800")], CARD);
+    expect(readbackCount(rows)).toBe("Read back · 2 of 3");
+    expect(readbackCount([])).toBe("Read back · 0 of 0");
   });
 });
