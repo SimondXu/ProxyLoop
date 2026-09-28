@@ -25,8 +25,12 @@ Constructed Ear items keep their constructed ``gold`` (source ``constructed``, n
 codebook version) unless the user decides. Every label records its ``source`` and
 ``codebook_version``: the first pass's per batch (``FIRST_PASS``), the adjudication's
 and the user's the committed codebook's (its title). A user decision's arguments: the
-ones it gives; else, when its act is the replaced label's, that label's; else those of
-the alternate with its act (on the sheet entry, then on the replaced label). A
+ones it gives (all of them: given any, the others are empty); else, when its act is
+the replaced label's, that label's; else those of the alternate with its act (on the
+sheet entry, then on the replaced label); else none. Its ``args_from`` says which:
+``decision``, the replaced label's source (``adjudicated``, ``annotator`` or
+``constructed``), ``alternate`` or ``none``. An adj entry's ``orig`` must be the
+``--adj-key``'s [batch, pos]. The head records the sha256 of every input file. A
 ``provide_fact`` without facts or a ``cite_competitor`` without a price is refused,
 every such item listed. ``excluded`` labels stay, marked ``excluded: true``; scoring
 leaves them out. The output is deterministic, with sorted keys.
@@ -131,14 +135,19 @@ def read_labels(root: Path, prefix: str) -> dict[tuple[str, int, int], Json]:
 
 
 def decided(d: Json, entry: Json, base: Json) -> Json:
-    """A user decision's label content (its arguments: the module docstring)."""
+    """A user decision's label content and ``args_from`` (the module docstring)."""
     act = d["act"]
     seen = [*entry.get("alternates", []), *base["alternates"]]
     alts = [cast(Json, a) for a in seen if isinstance(a, dict)]
     alts = [a for a in alts if a.get("act") == act]
-    src = base if act == base["act"] else (alts[0] if alts else {})
-    new: Json = {a: d.get(a, src.get(a)) for a in ARGS}
-    return new | {"act": act, "facts": new["facts"] or []}
+    src, since = (
+        (d, "decision") if any(a in d for a in ARGS)
+        else (base, base["source"]) if act == base["act"]
+        else (alts[0], "alternate") if alts
+        else ({}, "none")
+    )  # fmt: skip
+    new: Json = {a: src.get(a) for a in ARGS}
+    return new | {"act": act, "facts": new["facts"] or [], "args_from": since}
 
 
 def gold(
@@ -220,6 +229,8 @@ def gold(
             k = (at(batch, at_pos), index(at_idx, 1, f"{where}: check idx"))
         else:
             k = (adj(e["adj"], e["pos"]), index(e["idx"], 1, f"{where}: idx"))
+            if e.get("orig") != (orig := adj_key[e["adj"]][e["pos"]]):
+                raise SystemExit(f"{where}: orig {e.get('orig')}, --adj-key {orig}")
         heard = said(by_id[k[0]])
         if k[1] > len(heard) or heard[k[1] - 1] != e["text"] or k in done:
             raise SystemExit(f"review_id {d['review_id']}: not its text, or twice")
@@ -227,7 +238,7 @@ def gold(
         new = decided(d, e, out[k])
         if (arg := NEEDS.get(new["act"])) and new[arg] in (None, []):
             lacking.append(f"review_id {d['review_id']} ({k[0]} {k[1]}): {arg}")
-        out[k] = label(new, "user", version)
+        out[k] = label(new, "user", version) | {"args_from": new["args_from"]}
     if lacking:
         raise SystemExit("decisions without their argument: " + "; ".join(lacking))
     listed = [{"item_id": i, "idx": n} | v for (i, n), v in sorted(out.items())]
@@ -255,6 +266,17 @@ def parser() -> argparse.ArgumentParser:
     return ap
 
 
+def inputs_sha256(args: argparse.Namespace) -> Json:
+    """The sha256 of every input file but the items and the codebook (in the head)."""
+    labels = sorted(
+        f for p in ("batch", "adj") for f in args.labels_dir.glob(f"{p}-*.json")
+    )
+    user = {"review": args.review, "decisions": args.user}
+    out: Json = {k: file_sha(v) if v else None for k, v in user.items()}
+    out |= {"batch_key": file_sha(args.batch_key), "adj_key": file_sha(args.adj_key)}
+    return out | {"labels": {f.name: file_sha(f) for f in labels}}
+
+
 def main(argv: Sequence[str]) -> None:
     """``argv`` after ``gold``."""
     args = parser().parse_args(argv)
@@ -267,7 +289,7 @@ def main(argv: Sequence[str]) -> None:
     user = (read(args.user), read(args.review)) if args.user else ((), ())
     keys = read(args.batch_key), read(args.adj_key)
     doc = gold(load_items(args.items), args.labels_dir, *keys, args.codebook, *user)
-    doc["draft"] = args.draft
+    doc |= {"draft": args.draft, "inputs_sha256": inputs_sha256(args)}
     write(args.out, doc)
     summary = doc["counts"] | {"sha256": file_sha(args.out)}
     json.dump(summary, sys.stdout, indent=1, sort_keys=True)

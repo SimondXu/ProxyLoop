@@ -177,10 +177,18 @@ def one(t: Path, d: Json) -> Json:
 def test_user_arguments(tree: Path) -> None:
     same = one(tree, {"review_id": 1, "act": "ask_readback"})
     assert (same["offer_ref"], same["source"]) == ("save-1", "user")  # kept
+    assert same["args_from"] == "adjudicated"
     alt = one(tree, {"review_id": 1, "act": "cite_competitor"})
-    assert alt["price_usd"] == 70  # from the replaced label's alternate
+    assert (alt["price_usd"], alt["args_from"]) == (70, "alternate")
     given = {"review_id": 1, "act": "cite_competitor", "price_usd": 65}
-    assert one(tree, given)["price_usd"] == 65
+    assert (one(tree, given)["price_usd"], one(tree, given)["args_from"]) == (
+        65,
+        "decision",
+    )
+    mixed = one(tree, {"review_id": 1, "act": "ask_readback", "price_usd": 5})
+    assert (mixed["offer_ref"], mixed["price_usd"]) == (None, 5)  # given any: only its
+    other = one(tree, {"review_id": 1, "act": "accept"})
+    assert (other["offer_ref"], other["args_from"]) == (None, "none")
     with pytest.raises(SystemExit, match=r"review_id 1 .*facts; review_id 2 .*price"):
         build(
             tree,
@@ -278,6 +286,14 @@ def test_cli_deterministic(tree: Path, capsys: pytest.CaptureFixture[str]) -> No
     doc = json.loads(text)
     assert text.decode() == json.dumps(doc, indent=1, sort_keys=True) + "\n"
     assert doc["draft"] is False
+    shas = doc["inputs_sha256"]
+    files = {"review": "sheet.json", "decisions": "user.json", "batch_key": "key.json"}
+    for name, path in (files | {"adj_key": "adj-key.json"}).items():
+        assert shas[name] == hashlib.sha256((tree / path).read_bytes()).hexdigest()
+    used = ["adj-001.json", "batch-001.json", "batch-007.json"]  # not check-001.json
+    assert list(shas["labels"]) == used
+    label_sha = hashlib.sha256((tree / "labels/adj-001.json").read_bytes()).hexdigest()
+    assert shas["labels"]["adj-001.json"] == label_sha
     with pytest.raises(SystemExit, match="go together"):
         ws.main(["gold", "--labels-dir", "x", "--batch-key", "y", "--adj-key", "z",
                  "--user", "u"])  # fmt: skip
@@ -357,7 +373,12 @@ def test_cli_draft_only(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert not (tree / "g.json").exists()
     ws.main(cli(tree, tree / "g.json", "--draft"))
     assert "user" not in json.loads(capsys.readouterr().out)["by_source"]
-    assert get(tree, "g.json")["draft"] is True
+    draft = get(tree, "g.json")
+    assert draft["draft"] is True
+    assert (draft["inputs_sha256"]["review"], draft["inputs_sha256"]["decisions"]) == (
+        None,
+        None,
+    )
 
 
 def test_labels_missing_or_extra(tree: Path) -> None:
@@ -383,3 +404,28 @@ def test_first_pass_only_on_recorded_ear_items(tree: Path, item: str) -> None:
     put(tree, "labels/batch-001.json", [*labels, lab("batch-001", 1, 1, "accept")])
     with pytest.raises(SystemExit, match="batch-001 1: not a recorded Ear item"):
         build(tree)
+
+
+def test_args_from_constructed_and_annotator(tree: Path) -> None:
+    sheet = get(tree, "sheet.json")
+    e = {"id": 3, "check": ["batch-007", 1, 1], "text": "Is there anything else?"}
+    put(tree, "sheet.json", [*sheet, e])
+    both = [
+        BOTH[0],
+        {"review_id": 2, "act": "accept"},
+        {"review_id": 3, "act": "other"},
+    ]
+    got = by_key(build(tree, both))
+    assert (got[(C, 1)]["price_usd"], got[(C, 1)]["args_from"]) == (60, "constructed")
+    assert (got[(E, 1)]["source"], got[(E, 1)]["args_from"]) == ("user", "annotator")
+    assert "args_from" not in got[(A, 1)]  # only the user's labels carry it
+
+
+def test_sheet_orig_is_the_adj_key(tree: Path) -> None:
+    sheet = get(tree, "sheet.json")
+    for orig in (["batch-001", 0], None):
+        put(tree, "sheet.json", [sheet[0] | {"orig": orig}, sheet[1]])
+        with pytest.raises(
+            SystemExit, match=r"review_id 1: orig .*--adj-key \['batch-007', 0\]"
+        ):
+            build(tree, BOTH)
