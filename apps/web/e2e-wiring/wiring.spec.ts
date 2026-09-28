@@ -438,7 +438,7 @@ test("o) live: the authority strip and the card's read-back progress, from the s
       "Contract length 24 months Read back",
       "Fee: activation $20.00 Read back",
       "Changes to your plan None Read back",
-      "Offer valid until No expiry Read back",
+      "No expiry date Read back",
     ],
   );
   expect(statuses(own.at(-1)).map(([, s]) => s)).toEqual(Array(5).fill("confirmed"));
