@@ -6,6 +6,10 @@ Generations (§9.4): one whose authority epoch moved while it streamed is stale:
 trigger runs again on the new basis (an unacknowledged APPROVAL_NOTICE once).
 The stream is not aborted. A newer partner line does not cancel a generation
 (#144 credits its relays to its own view; the next generation answers it).
+A turn whose request predates this lane's last ``speak.released`` (a verbatim
+line said, S1-SYS-56 held it for the floor) is stale too (S1-SYS-59): it keeps
+its turn, sentences and relays but is not said (``fast.cancelled{verbatim}``
+after its turn), and its trigger runs again on the new basis.
 Condition R (``teacher_repair_*``): a generation at a decision point goes to the
 teacher, as a ``fast_*`` call with the teacher's model (E1), ``resamples`` noted."""
 
@@ -13,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
@@ -21,6 +25,7 @@ from pydantic import ValidationError
 
 from proxyloop.contract import protocol as fp
 from proxyloop.contract.base import Lane, canonical_json, sha256_text
+from proxyloop.contract.events import Event
 from proxyloop.contract.llm import (
     LLMCallRecord,
     LLMClient,
@@ -93,6 +98,12 @@ class FastLane:
         self._wake = asyncio.Event()
         self._n = 0
         self._retried: set[str] = set()  # GUIDEs re-triggered after an empty turn
+        self._released: Event | None = None  # this lane's last verbatim line said
+        k.bus.subscribe(self._on_event)
+
+    def _on_event(self, e: Event) -> None:
+        if e.type == "speak.released" and e.payload["lane"] == self.lane:
+            self._released = e
 
     def trigger(self, trigger: Trigger, cause: str, acks: tuple[str, ...] = ()) -> None:
         self._add(_Ask(trigger, cause, acks))
@@ -212,8 +223,19 @@ class FastLane:
             utt = {"utt_id": f"{gen_id}-u{n}", "text": item.text}
             said = k.emit("fast.sentence", self._actor, gen | utt, [turn])
             lines.append((f"{gen_id}-u{n}", item.text, said.event_id))
-        if lines:
-            await k.speakers[lane].speak(lines)
+        basis = int(str(asked["basis_seq"]))
+        if lines and not await k.speakers[lane].speak(lines, fresh=self._fresh(basis)):
+            said = self._released  # the floor found a verbatim line said since
+            assert said is not None
+            cancel = {"gen_id": gen_id, "reason": "verbatim"}
+            k.emit("fast.cancelled", self._actor, cancel, [turn, said.event_id])
+            self._again(ask)
+
+    def _fresh(self, basis: int) -> Callable[[], bool]:
+        def fresh() -> bool:  # no verbatim line said since the request's board
+            return self._released is None or self._released.seq <= basis
+
+        return fresh
 
     def _again(self, ask: _Ask) -> None:
         """A stale generation's trigger, first on the new basis (an

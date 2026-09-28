@@ -32,6 +32,7 @@ BEST = "That is our best offer."
 LAG_MS = 14_000  # the rep's turn: Ear and Mouth, one heard line at a time
 FAST_MS = round(1000 * speech_s(LONG))  # each FastC turn: ten seconds
 SILENCE_MS = round(1000 * Patience.model_fields["silence_s"].default)
+GEN_MS = 1_000  # a fresh FastC generation (the fakes take a tick; S1-SYS-59)
 
 
 class HearingRep(Channel):
@@ -133,10 +134,12 @@ def _said(sim: Sim, kind: str) -> Event:
 
 async def _fastc_resumes(sim: Sim, released: Event) -> Event:
     """FastC's first line heard after the verbatim line ``released``: it ends
-    no later than that line's speech plus one FastC line after the release
-    (the end of FastC's pause)."""
+    no later than that line's speech plus one FastC generation and line after
+    the release (the end of FastC's pause; a turn held behind the line is
+    stale and generated again, S1-SYS-59)."""
     (said,) = [e for e in sim.events if e.event_id == released.cause_ids[0]]
-    bound = released.t_ms + round(1000 * speech_s(str(said.payload["text"]))) + FAST_MS
+    line_ms = round(1000 * speech_s(str(said.payload["text"])))
+    bound = released.t_ms + line_ms + GEN_MS + FAST_MS
     await sim.vt.run_for(bound - sim.vt.monotonic_ms())
     fast = [
         e
@@ -420,7 +423,8 @@ def test_the_real_rep_does_not_strike_while_a_decline_waits(tmp_path: Path) -> N
 def test_fastc_waiting_behind_a_verbatim_yields_to_the_next(tmp_path: Path) -> None:
     """FastC already waits for the floor behind a verbatim line being said
     when a second one queues: as the first ends, FastC re-checks and yields,
-    so the second line takes the floor then, before FastC's turn."""
+    so the second line takes the floor then, before FastC's turn (which is
+    then stale behind it and cancelled, S1-SYS-59)."""
 
     async def case() -> None:
         sim = Sim(tmp_path)
@@ -445,8 +449,12 @@ def test_fastc_waiting_behind_a_verbatim_yields_to_the_next(tmp_path: Path) -> N
         assert first.type == second.type == "speak.released"
         (line,) = [e for e in sim.events if e.event_id == first.cause_ids[0]]
         (said,) = sim.of("utt.delivered", utt_id=f"decline-{line.seq}")
-        heard = _heard(sim, turn)
-        assert second.t_ms == said.t_ms and said.seq < second.seq < heard.seq
+        assert second.t_ms == said.t_ms and said.seq < second.seq
+        # its turn predates the second line: cancelled after it, never said
+        (cancelled,) = sim.of("fast.cancelled", gen_id=turn.payload["gen_id"])
+        assert cancelled.payload["reason"] == "verbatim"
+        assert cancelled.cause_ids[1] == second.event_id
+        assert not sim.of("utt.delivered", utt_id=turn.payload["utt_id"])
         await sim.stop()
 
     arun(case())
@@ -495,10 +503,6 @@ def _basis(sim: Sim, gen: str) -> int:  # the seq its request saw
     return int(str(asked.payload["basis_seq"]))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="S1-SYS-59: needs Speaker.speak(lines, fresh=...) -> bool (speaker.py)",
-)
 def test_a_held_fastc_turn_older_than_a_released_decline_is_cancelled(
     tmp_path: Path,
 ) -> None:
