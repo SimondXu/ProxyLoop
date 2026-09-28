@@ -273,6 +273,12 @@ class Bar:
         live = ("heard", "waiting")
         return any(v in live and m not in gone for m, v in self.sends.items())
 
+    def stuck(self, o: OfferPublic) -> bool:
+        """``o``'s revision has slots ``STOP_AFTER`` read-backs omitted: the
+        state ``offer_note``'s stuck clause names (S1-SYS-66 follow-up)."""
+        r = self.readbacks.get((o.offer_ref, o.revision))
+        return r is not None and bool(r.asked and r.stuck)
+
     def offer_note(self, o: OfferPublic, lever: bool = False) -> str:
         """V4 for ``o``'s revision. ``lever``: the offer's hint already names
         its next step, a lever or a wait (#238 D2: one next step per state),
