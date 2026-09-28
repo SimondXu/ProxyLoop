@@ -4,6 +4,7 @@
         --out docs/decisions/data/world-select-items.json [--constructed <json>]
     python -m scripts.mod.world_select export --items <json> --out-dir <dir> \
         --key-out <json outside the out dir> --batch 25 --seed N
+    python -m scripts.mod.world_select run ...  (PR2a, root-run: world_select_run)
 
 ``freeze`` reads every ``train`` bundle under ``--runs`` (``load_bundles``: a sealed
 ``test`` path is refused) and freezes three item sets from the events:
@@ -553,6 +554,11 @@ def _write(path: Path, doc: object) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] == ["run"]:  # PR2a, in its own module (which imports this one)
+        from scripts.mod import world_select_run
+
+        return world_select_run.main(argv[1:])
     ap = argparse.ArgumentParser(prog="python -m scripts.mod.world_select")
     sub = ap.add_subparsers(dest="cmd", required=True)
     f = sub.add_parser("freeze", help="freeze the items from the train bundles")
