@@ -342,7 +342,7 @@ for (const theme of THEMES) {
           }
           expect(await page.evaluate(() => (document.scrollingElement?.scrollWidth ?? Infinity) <= innerWidth)).toBe(true);
           // The sheet carries the human principal's promise once; the card's own line is not shown twice.
-          await expect(page.getByText(/^Only your clicks? can authorize a deal$/).filter({ visible: true })).toHaveCount(1);
+          await expect(page.getByText("Only your clicks can authorize a deal", { exact: true }).filter({ visible: true })).toHaveCount(1);
         });
       }
 

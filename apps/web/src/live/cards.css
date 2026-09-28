@@ -30,6 +30,7 @@
   .pl-decision h3 { margin-top: var(--s3); font-size: var(--fs-decision); }
   .pl-decision-why, .pl-decision-conseq { margin: 6px 0 0; font-size: var(--fs-small); color: var(--ink-2); max-width: 62ch; }
   .pl-decision-conseq { margin: var(--s3) var(--s4) 0; }
+  .pl-decision-note { margin: 4px 0 0; max-width: 62ch; font-size: var(--fs-meta); color: var(--ink-3); }
   .pl-decision-progress { margin: var(--s2) var(--s4) 0; font-weight: 600; color: var(--ink); }
   .pl-terms { list-style: none; margin: 0; padding: 6px var(--s4) 0; }
   .pl-terms li { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: var(--s3); padding: 6px 0; border-top: 1px solid var(--line); font-size: var(--fs-small); }

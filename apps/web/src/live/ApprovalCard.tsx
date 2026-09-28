@@ -16,12 +16,13 @@ import {
   readbackCount,
   STOPPED,
   why,
+  whyNote,
   type LimitBar,
 } from "../decision";
 import { holdElapsed, mmss } from "../hold";
-import { pageMode, type Decision } from "../liveApi";
+import type { Decision } from "../liveApi";
 import type { MandateView } from "../mandate";
-import { honesty } from "../provenance";
+import { HUMAN_PRINCIPAL, honesty } from "../provenance";
 import type { Ev } from "../replay";
 import { aboutClock, READBACK_CHIP, termRows, whole } from "../terms";
 import { Button } from "../ui/Button";
@@ -35,6 +36,9 @@ import "./cards.css";
 const UNDECIDED: CardStatus[] = ["open", "pending", "sent"];
 const CHIP_TONE: Record<string, "ok" | "neutral" | "over"> = { confirmed: "ok", heard: "neutral", unknown: "over" };
 
+/** The hold line's clock: a live page ticks after the latest event; a replay reads the recorded t_ms alone. */
+export type CardClock = "live" | "replay";
+
 type Props = {
   view: CardView;
   events: Ev[];
@@ -42,9 +46,10 @@ type Props = {
   fenced: boolean;
   caseStatus: string | null;
   decide: (v: CardView, d: Decision) => void;
+  clock: CardClock;
 };
 
-export function ApprovalCard({ view, events, mandates, fenced, caseStatus, decide }: Props) {
+export function ApprovalCard({ view, events, mandates, fenced, caseStatus, decide, clock }: Props) {
   const { card, status, error } = view;
   const terms = useMemo(() => termRows(events, card), [events, card]);
   const rows = useMemo(() => offerRows(terms, mandates), [terms, mandates]);
@@ -59,7 +64,8 @@ export function ApprovalCard({ view, events, mandates, fenced, caseStatus, decid
   const progress = status === "granted" && caseStatus ? PROGRESS[caseStatus] : undefined;
   const expiry = aboutClock(events, card.expires_ms);
   const human = honesty(events).principal !== null;
-  const holding = useHold(events, open);
+  const holding = useHold(events, open, clock === "live");
+  const note = whyNote(mandates);
   return (
     <article className={`pl-gcard pl-decision ${status}`} aria-label={`Approval ${card.approval_id}`}>
       <p className="pl-gcard-from">
@@ -83,6 +89,7 @@ export function ApprovalCard({ view, events, mandates, fenced, caseStatus, decid
         </div>
         <h3>{headline(terms)}</h3>
         <p className="pl-decision-why">{why(mandates)}</p>
+        {note && <p className="pl-decision-note">{note}</p>}
       </div>
       {bar && <PriceBar bar={bar} />}
       {rows.length > 0 ? (
@@ -153,7 +160,7 @@ export function ApprovalCard({ view, events, mandates, fenced, caseStatus, decid
         {human && (
           <p className="pl-sign-only">
             <Icon name="private" size="sm" />
-            Only your click can authorize a deal
+            {HUMAN_PRINCIPAL}
           </p>
         )}
         <Button variant="primary" disabled={!open} onClick={() => decide(view, "granted")}>
@@ -202,8 +209,7 @@ function PriceBar({ bar }: { bar: LimitBar }) {
  * A replay reads the recorded t_ms alone. A live page ticks once a second: the latest event's
  * t_ms plus the local time since it arrived. Nothing acts on it.
  */
-function useHold(events: Ev[], open: boolean): string | null {
-  const live = pageMode(location.search).kind === "live";
+function useHold(events: Ev[], open: boolean, live: boolean): string | null {
   const latest = `${events.length}:${events.at(-1)?.event_id ?? ""}`;
   const on = open && live && holdElapsed(events) !== null;
   const [tick, setTick] = useState({ latest, ms: 0 });

@@ -97,6 +97,7 @@ function Recording({ runId, run }: { runId: string; run: Run }) {
             fenced={strip.fences.length > 0}
             caseStatus={strip.status}
             decide={noop}
+            clock="replay"
           />
         </fieldset>
       ),

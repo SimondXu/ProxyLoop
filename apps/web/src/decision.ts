@@ -43,12 +43,6 @@ export function headline(rows: TermRow[]): string {
 // The mandate in force: granted and not superseded, tightened or withdrawn since.
 const current = (mandates: MandateView[]) => mandates.findLast((v) => v.status === "granted");
 
-/** Its price bound, as a label ("your limit $65.00"); never a difference. */
-export function priceLimit(mandates: MandateView[]): string | null {
-  const bound = current(mandates)?.mandate.max_monthly_price_minor;
-  return bound == null ? null : `your limit ${usd(bound) ?? bound}`;
-}
-
 /** "Your limit" for a term the mandate in force does not bound. */
 export const NO_LIMIT = "no limit set";
 // A term's bound, by the label limitRows gives it, so the card uses the limits card's own words.
@@ -118,6 +112,12 @@ export function why(mandates: MandateView[]): string {
   if (!m) return "You haven't set limits, so the agent needs your OK.";
   return `It's outside the limits ${m.by === "ui" ? "you" : "the simulated approver"} confirmed, so the agent can't say yes without you.`;
 }
+
+/** why()'s static sub-line (root copy ruling, S1-SYS-78): Guard, not the rows below, judges the mandate. */
+export const GUARD_CHECKS = "Guard checks every term — price, term, fees, features and changes — not only the numbers shown below.";
+
+/** GUARD_CHECKS only beside why()'s "outside the limits … confirmed" variant, i.e. with a granted mandate; else null. */
+export const whyNote = (mandates: MandateView[]): string | null => (current(mandates) ? GUARD_CHECKS : null);
 
 /** Guard's accept line after this card's grant: none yet, held, released, or revoked (why). */
 export type Accept = { state: "none" | "held" | "released" | "revoked"; reason: string | null };

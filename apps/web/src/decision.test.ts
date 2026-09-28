@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { approvalCards, type CardStatus, type CardView, type Posting } from "./approval";
-import { acceptOf, approvalStatusText, approvedBy, headline, limitBar, limitTextRows, NO_LIMIT, offerRows, priceLimit, readbackCount, why } from "./decision";
+import { acceptOf, approvalStatusText, approvedBy, headline, limitBar, limitTextRows, NO_LIMIT, offerRows, readbackCount, GUARD_CHECKS, why, whyNote } from "./decision";
 import { mandateCards } from "./mandate";
 import type { Ev } from "./replay";
 import { aboutClock, termRow, termRows, usd, whole } from "./terms";
@@ -108,22 +108,27 @@ describe("approval card words", () => {
     expect(approvalStatusText(view("stale", { reason: "guard_new_reason" }), [])).toBe("No longer valid: guard_new_reason");
   });
 
-  it("headline and limit label come from the rows and the granted mandate, with no arithmetic", () => {
+  it("headline and why() come from the rows and the granted mandate, with no arithmetic", () => {
     const rows = termRows([offer()], CARD);
     expect(headline(rows)).toBe("Accept $78 a month for 24 months?");
     expect(headline([])).toBe("Accept this offer?");
     const m = ev("mandate.proposed", "guard", { mandate_id: "m1", mandate_hash: "h", epoch: 1, max_monthly_price_minor: 6500 });
     const granted = [m, ev("mandate.decided", "kernel", { mandate_id: "m1", mandate_hash: "h", decision: "granted", by: "ui" })];
-    expect(priceLimit(mandateCards(granted, none))).toBe("your limit $65.00");
-    expect(priceLimit(mandateCards([m], none))).toBeNull();
     expect(why(mandateCards(granted, none))).toMatch(/^It's outside the limits you confirmed/);
     expect(why([])).toMatch(/^You haven't set limits/);
     const bySim = [m, ev("mandate.decided", "kernel", { mandate_id: "m1", mandate_hash: "h", decision: "granted", by: "sim_approver" })];
     expect(why(mandateCards(bySim, none))).toMatch(/^It's outside the limits the simulated approver confirmed/);
+    // The static sub-line goes with the "outside the limits … confirmed" variant only.
+    expect(GUARD_CHECKS).toBe("Guard checks every term — price, term, fees, features and changes — not only the numbers shown below.");
+    expect([whyNote(mandateCards(granted, none)), whyNote(mandateCards(bySim, none))]).toEqual([GUARD_CHECKS, GUARD_CHECKS]);
+    expect([whyNote([]), whyNote(mandateCards([m], none))]).toEqual([null, null]);
     // A newer proposal replaces the granted one without an epoch bump: no limit from the old one.
     const replaced = mandateCards([...granted, ev("mandate.proposed", "guard", { mandate_id: "m2", mandate_hash: "h2", epoch: 1, max_monthly_price_minor: 5000 })], none);
     expect(replaced.map((v) => v.status)).toEqual(["superseded", "open"]);
-    expect([priceLimit(replaced), why(replaced)]).toEqual([null, "You haven't set limits, so the agent needs your OK."]);
+    expect(why(replaced)).toBe("You haven't set limits, so the agent needs your OK.");
+    expect(whyNote(replaced)).toBeNull();
+    expect(offerRows(rows, replaced).map((r) => r.limit)).toEqual([null, null, null]);
+    expect(limitBar([offer()], CARD, replaced)).toBeNull();
   });
 
   it("follows the accept Guard minted after this card's grant: held, released or revoked", () => {

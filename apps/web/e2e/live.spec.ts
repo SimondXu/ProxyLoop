@@ -773,6 +773,9 @@ test("your role: a refused card is shown as unavailable, never as an alert", asy
   await expect(role).toContainText("Your role is unavailable: 403 csrf");
 });
 
+/** why()'s static sub-line (root copy ruling, S1-SYS-78). */
+const GUARD_CHECKS = "Guard checks every term — price, term, fees, features and changes — not only the numbers shown below.";
+
 test("approval card beside confirmed limits (S1-SYS-78, root ruling (a)): each term's limit or 'no limit set', no verdict, the lists as text, one price bar", async ({
   page,
   baseURL,
@@ -817,7 +820,8 @@ test("approval card beside confirmed limits (S1-SYS-78, root ruling (a)): each t
   // Guard alone judges the mandate: no verdict word and no difference ($10) anywhere on the card.
   await expect(card).not.toContainText(/\b(within|over|under)\b/i);
   await expect(card).not.toContainText("$10");
-  await expect(card.getByText("Only your click can authorize a deal", { exact: true })).toBeVisible(); // a human principal
+  await expect(card.getByText("Only your clicks can authorize a deal", { exact: true })).toBeVisible(); // a human principal
+  await expect(card.getByText(GUARD_CHECKS, { exact: true })).toBeVisible(); // why()'s sub-line: with a granted mandate only
   // Still one POST per click, and the card moves only on the kernel's decision.
   await card.getByRole("button", { name: "Approve $75/mo" }).click();
   await expect(card.getByLabel("Approval status")).toHaveText("Sent. Waiting for Guard to record it");
@@ -840,6 +844,7 @@ test("approval card: the hold line counts up from FastC's chan.hold while the ca
   await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
   const hold = card.getByText(/^The rep is holding · /);
   await expect(hold).toHaveCount(0);
+  await expect(card.getByText(GUARD_CHECKS, { exact: true })).toHaveCount(0); // no granted mandate: no sub-line
   ws.send(ev("chan.opened", "kernel", { lane: "cp" }));
   ws.send(ev("chan.hold", "fast.cp", { lane: "cp", reason: "decision" }));
   ws.send(ev("chan.hold", "slow", { lane: "cp", reason: null })); // not FastC: ends nothing (t_ms +100)
