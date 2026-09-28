@@ -252,21 +252,21 @@ def with_calls(b: Bundle, **update: object) -> Bundle:
 
 def test_adapter_truncated_and_unparseable_turns_are_never_labels(evidence: Path):
     b = bundle(evidence, "both")
-    assert pt.base_turns(b)[0]
+    assert pt.label_turns(b)[0]
     adapter = with_calls(b, served_model_echo="Qwen3.5-9B-pl-pt-00000000")
-    turns, skipped = pt.base_turns(adapter)  # an earlier pull-through's own turns
+    turns, skipped = pt.label_turns(adapter)  # an earlier pull-through's own turns
     assert not turns and skipped["not_base_real_http"] > 0
-    turns, skipped = pt.base_turns(with_calls(b, finish_reason="length"))
+    turns, skipped = pt.label_turns(with_calls(b, finish_reason="length"))
     assert not turns and skipped["finish_length"] > 0
     ref = QWEN.model_dump(mode="json") | {"kind": "recorded_replay"}
     replay = with_calls(b, adapter_kind="recorded_replay", model_ref=ref)
-    assert not pt.base_turns(replay)[0]
+    assert not pt.label_turns(replay)[0]
     bad = dict(b.prompts)
     for e in b.events:
         if e.type == "llm.call" and e.payload["response_sha"]:
             sha = str(e.payload["response_sha"])
             bad[sha] = bad[sha].model_copy(update={"content": "@dance"})
-    turns, skipped = pt.base_turns(Bundle(b.manifest, b.events, bad))
+    turns, skipped = pt.label_turns(Bundle(b.manifest, b.events, bad))
     assert not turns and skipped["empty_or_parse_issue"] > 0
 
 
@@ -300,11 +300,11 @@ def test_speech_after_a_pause_is_a_parse_issue_under_the_turn_s_own_profile(
     """pl_cp_v3 (ADR-0017): a line after @hold is not clean; under the frozen
     pl_cp_v2 the same turn still is, so the grammar is the request's profile's."""
     b = bundle(evidence, "cp")
-    cp = [t for t in pt.base_turns(b)[0] if json.loads(t.view)["lane"] == "cp"]
+    cp = [t for t in pt.label_turns(b)[0] if json.loads(t.view)["lane"] == "cp"]
     assert cp and {t.profile for t in cp} == {lanes.PROFILE["cp"]} == {"pl_cp_v3"}
-    turns, skipped = pt.base_turns(cp_saying(b, SPEECH_AFTER_PAUSE))
+    turns, skipped = pt.label_turns(cp_saying(b, SPEECH_AFTER_PAUSE))
     assert not turns and skipped["empty_or_parse_issue"] >= len(cp)
-    turns, _ = pt.base_turns(cp_saying(b, SPEECH_AFTER_PAUSE, "pl_cp_v2"))
+    turns, _ = pt.label_turns(cp_saying(b, SPEECH_AFTER_PAUSE, "pl_cp_v2"))
     assert len(turns) == len(cp)
     assert {(t.profile, t.raw) for t in turns} == {("pl_cp_v2", SPEECH_AFTER_PAUSE)}
 
@@ -332,9 +332,19 @@ def test_adapter_shas_compare_file_for_file(evidence: Path):
     assert pt.bundle_shards(b, "Qwen3.5-9B-pl-pt-00000000") == {}
 
 
+PROVENANCE = {
+    "label_models": ["openrouter:openai/gpt-6-luna"],
+    "rows": 3,
+    "run_ids": ["r1", "r2"],
+}
+
+
 def write_run(run_dir: Path, fps: dict[str, str]) -> None:
     rows = {"fingerprint": fps, "dataset_hash": "h", "p5": {"ok": True, "rows": 3}}
     rows["adapter_name"] = pt.adapter_name(fps)
+    rows["source"] = "hosted openrouter:openai/gpt-6-luna (teacher_exec)"
+    ref = {"endpoint": "openrouter", "model_id": "openai/gpt-6-luna"}
+    rows["provenance"] = [{"run_id": r, "model_ref": ref} for r in ("r2", "r1", "r2")]
     train = {"run_id": "pt-x", "adapter_sha256": {"adapter_config.json": "a" * 64}}
     train |= {"p5": {"ok": True}, "recipe": {}, "lora": {}, "batch_note": "n"}
     pt.write(run_dir / "rows.json", rows)
@@ -352,9 +362,13 @@ def test_slot_serves_the_adapter_just_trained_or_the_last_verified(
         pt.adapter_name(FPS): "/adapters/train/pt-x/adapter"
     }
     card = pt.adapter_card("full", tmp_path)
+    assert card["source"] == "hosted openrouter:openai/gpt-6-luna (teacher_exec)"
+    assert card["provenance"] == PROVENANCE
     monkeypatch.setattr(pt, "RESULT", tmp_path / "result.json")
     pt.write(pt.RESULT, card | {"claim": "none"})
-    assert pt.adapter_card("verify", tmp_path)["adapter"] == card["adapter"]
+    again = pt.adapter_card("verify", tmp_path)
+    assert again["adapter"] == card["adapter"]
+    assert (again["source"], again["provenance"]) == (card["source"], PROVENANCE)
     pt.write(pt.RESULT, card | {"fingerprint": {"pl_cp_v1": "old"}})
     with pytest.raises(SystemExit, match="MODE=full"):
         pt.adapter_card("verify", tmp_path)
@@ -364,13 +378,18 @@ def test_select_command_writes_the_rows_the_training_entrypoint_reads(
     evidence: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setattr(pt, "load_tokenizer", tok)
-    args = ["select", "--dir", str(tmp_path), "--evidence", str(evidence)]
+    base = ["--source", "base_9b"]
+    args = ["select", "--dir", str(tmp_path), "--evidence", str(evidence), *base]
     assert pt.main(args) == 0
     doc = json.loads((tmp_path / "rows.json").read_text("utf-8"))
     keys = ("source", "dataset_hash", "fingerprint", "adapter_name", "fp8", "rows")
     assert all(k in doc for k in keys) and doc["p5"]["ok"]
+    assert doc["source"] == pt.BASE_9B.label == "base-9B turns (S0 labels, TRAINING §9 E1)"
     assert all(len(r) == 3 for r in doc["rows"])  # (profile, view, turn): sft.train
-    assert pt.main([*args[:2], str(tmp_path / "none"), *args[3:4], "/nonexistent"]) == 1
+    assert len(doc["provenance"]) == len(doc["rows"])
+    assert {p["model_ref"]["model_id"] for p in doc["provenance"]} == {"Qwen3.5-9B"}
+    none = [*args[:2], str(tmp_path / "none"), *args[3:4], "/nonexistent", *base]
+    assert pt.main(none) == 1
 
 
 # --- serving: the trained-adapter slot (ADR-0002) -----------------------------------
@@ -517,6 +536,7 @@ def test_check_passes_only_on_a_claimed_bundle_with_the_adapter_echoed_and_attes
     assert doc["run_id"] == read_bundle(src).manifest.run_id
     if failed is None:
         assert code == 0 and doc["passed"] and not doc["failures"]
+        assert doc["source"].startswith("hosted ") and doc["provenance"] == PROVENANCE
         assert json.loads(pt.RESULT.read_text("utf-8")) == doc
     else:
         assert code == 1 and not doc["passed"] and not doc["checks"][failed]
