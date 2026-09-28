@@ -716,9 +716,32 @@ def _operator(http: TestClient) -> dict[str, str]:
     return cookies
 
 
+def _complete_lines(text: str) -> list[dict[str, Any]]:
+    """Only lines terminated by "\\n" are complete; the kernel may still be
+    mid-write on a trailing partial line, so it is skipped, not parsed. A
+    malformed complete line still raises (no try/except)."""
+    return [json.loads(line) for line in text.split("\n")[:-1]]
+
+
+def test_complete_lines_skips_an_unterminated_trailing_line() -> None:
+    text = '{"type":"a"}\n{"type":"b"'
+    assert _complete_lines(text) == [{"type": "a"}]
+
+
+def test_complete_lines_raises_loudly_on_a_malformed_complete_line() -> None:
+    with pytest.raises(json.JSONDecodeError):
+        _complete_lines('{"type":"a"}\nnot json\n')
+
+
+def test_complete_lines_parses_all_complete_lines() -> None:
+    assert _complete_lines("") == []
+    text = '{"type":"a"}\n{"type":"b"}\n'
+    assert _complete_lines(text) == [{"type": "a"}, {"type": "b"}]
+
+
 def _wait_for(path: Path, type_: str) -> list[dict[str, Any]]:
     for _ in range(500):
-        lines = [json.loads(x) for x in path.read_text().splitlines()]
+        lines = _complete_lines(path.read_text())
         if any(x["type"] == type_ for x in lines):
             return lines
         time.sleep(0.01)
