@@ -1,0 +1,38 @@
+/* The replay (redesign §3.4): the library's rows, the band's prefix, the recording bar and the PlaybackBar. */
+@layer components {
+  .pl-library { max-width: 880px; margin: var(--s6) auto 0; }
+  .pl-library h1 { margin-bottom: var(--s4); font-size: 22px; }
+  .pl-runs { display: flex; flex-direction: column; gap: var(--s2); list-style: none; margin: 0; padding: 0; }
+  .pl-run {
+    display: grid; grid-template-columns: 1fr auto; gap: 2px var(--s4); padding: var(--s3) var(--s4); border: 1px solid var(--line);
+    border-radius: var(--r-md); background: var(--surface); color: var(--ink); text-decoration: none; box-shadow: var(--e1);
+  }
+  .pl-run:hover { color: var(--ink); border-color: var(--line-strong); box-shadow: var(--e2); }
+  .pl-run-title { font: 600 16px / 1.3 var(--font-ui); }
+  .pl-run-id { grid-column: 1; font: var(--fs-meta) / 1.4 var(--font-mono); color: var(--ink-3); }
+  .pl-run-chips { grid-column: 2; grid-row: 1 / span 3; display: flex; gap: var(--s1); align-items: center; }
+
+  /* The band's prefix: the same full-bleed hatch row as the honesty band */
+  .pl-replay-band { display: flex; flex-wrap: wrap; align-items: center; margin: 0 calc(-1 * var(--s5)); background: var(--hatch); border-bottom: 1px solid var(--line); }
+  .pl-replay-band .pl-band { flex: 1; margin: 0; border: 0; background: none; }
+  .pl-replay-tag { margin: 0; padding: 6px 0 6px var(--s5); font: 600 var(--fs-meta) / 1.3 var(--font-ui); color: var(--ink); }
+
+  .pl-recording { margin: 0; padding: var(--s3) var(--s4); border-top: 1px solid var(--line); background: var(--sunken); font-size: var(--fs-meta); color: var(--ink-2); }
+  .pl-rec-card { margin: 0; padding: 0; border: 0; min-width: 0; }
+
+  /* The PlaybackBar: at the page's foot, in view while the page scrolls */
+  .pl-playback { position: sticky; bottom: 0; z-index: 2; margin: var(--s3) calc(-1 * var(--s5)) 0; padding: var(--s2) var(--s5); background: var(--canvas); border-top: 1px solid var(--line); }
+  .pl-pb-row { display: flex; align-items: center; gap: var(--s2); }
+  .pl-pb-speed { min-width: 44px; justify-content: center; padding: 0 var(--s2); }
+  .pl-pb-track { position: relative; flex: 1; min-width: 200px; padding-top: 12px; }
+  .pl-pb-track input { width: 100%; margin: 0; }
+  .pl-pb-marks { position: absolute; inset: 0 8px auto; height: 12px; list-style: none; margin: 0; padding: 0; pointer-events: none; }
+  .pl-pb-mark { position: absolute; top: 0; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: var(--ink-3); }
+  .pl-pb-mark-offer { background: var(--rep); }
+  .pl-pb-mark-approval, .pl-pb-mark-decision { background: var(--attn-ring); }
+  .pl-pb-mark-fence { background: var(--danger); }
+  .pl-pb-mark-outcome { background: var(--guard); }
+  .pl-pb-clock { min-width: 110px; text-align: right; font-size: var(--fs-meta); }
+  .pl-pb-chapters { display: flex; flex-wrap: wrap; gap: var(--s1); list-style: none; margin: var(--s1) 0 0; padding: 0; }
+  .pl-pb-chapters button { min-height: 28px; padding: 0 var(--s3); font-size: var(--fs-meta); }
+}
