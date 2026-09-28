@@ -147,6 +147,11 @@ benchmark-fast:
 benchmark-report:
 	$(BENCH_REPORT) $(foreach r,$(RUNS),--runs $(r))
 
+# S1-MOD-08 same-state Fast probe: root-run (L+G) unless PSS_ARGS includes --plan.
+.PHONY: probe-same-state
+probe-same-state:
+	uv run python -m scripts.mod.probe_same_state $(PSS_ARGS)
+
 # S1-MOD-09 (PR1): freeze the world-model selection items from the train bundles under runs/.
 # Offline: no keys, no model call; a sealed test path is refused. CONSTRUCTED (default: the
 # committed constructed items) is copied in, kept apart and flagged; WORLD_SELECT_RUNS is the
