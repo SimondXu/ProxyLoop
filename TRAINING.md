@@ -142,6 +142,8 @@ Loss is on completion tokens only. P5 runs on the first batch of every run and a
 | `full` | the renderer fingerprint changed, or a new stage opens | (1) choose ≤ 60 real Fast turns from the latest `evidence/` bundles whose fingerprint equals the current one. **S0: base-9B turns** (teacher runs are not allowed before S1's Guard; PLAN §9 E1). **S1 on: teacher turns.** (2) Build rows through §6 and run P5. (3) Train the pull-through recipe on Modal. (4) Load the adapter into the vLLM LoRA slot `Qwen3.5-9B-pl-pt-<fp8>`. (5) Liveness: the mean `prompt_logprobs` difference from base on 5 fixed pairs exceeds 1e-3 nats. (6) Run one product-path session with both lanes on the adapter. (7) `evidence-check --claim`. (8) Write `docs/results/pull-through.json` `{fingerprint, dataset_hash, adapter_shards, liveness, run_id, claim: "none"}` |
 | `verify` | any other contract change | steps 4–8 with the existing adapter |
 
+**Label source (user risk decision 2026-09-28, ADR-0022):** hosted-model outputs may be SFT labels (the Sonnet teacher for real SFT; Luna turns in development, pull-through `PT_SOURCE=hosted`, S1-MOD-07); adapters trained on them are not published.
+
 ## 10. Export and serving artefacts
 - `adapters/<id>/` contains the PEFT config, the adapter files and `adapter_card.json` (dataset hash, recipe, fingerprint, **shard sha256s**, dev results).
 - Serving follows the ADR-0002 ladder. For merged BF16, a merge-equivalence check requires greedy token agreement ≥ 99 % on 200 dev prompts, with prefix caching off. This is a model-equivalence check, **not** an attestation.

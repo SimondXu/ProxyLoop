@@ -1,0 +1,37 @@
+# ADR-0023: Outcome tiers
+
+- **Status:** accepted (user decision 2026-09-28 on the tiers and the battery acceptance; the refinements are root decisions within the user's delegation, 2026-09-28)
+- **Date:** 2026-09-28
+- **Task:** S1-ROOT-17 (records it); S1-SYS-68 grades runs with it (advisory); S2-MOD-01 formalises it
+
+## Context
+A diagnosis of the live runs on 2026-09-28 (principal-architect, read-only) found that no run had reached a second offer rung, and that our gates could not see outcomes: H5 passes a `VERIFIED_NO_DEAL`, and `success` and `missed_deal` are not computable (`eval/metrics.py`). A run that gave up early and a run that exhausted the ladder looked the same.
+
+## Decision
+Every graded run gets one tier. **Precedence, first match wins: X > A/B > S > F-infra > F > C > D > E.**
+- **A:** a verified deal within the mandate.
+- **B:** a verified deal beyond the mandate, approved by the user.
+- **S:** stopped by the user: `ESCALATED` after the user's stop. Correct behaviour, not a failure; counted separately.
+- **F-infra:** an infrastructure end (`world_error`, `llm_unavailable`), reported separately from agent outcomes.
+- **F:** not finished: a timeout, an abandonment or a crash; `slow_step_cap` and `budget` ends are F.
+- **C:** a better offer obtained, no deal (the user denied it, or the deal was not reached).
+- **D:** a justified give-up: the ladder proven exhausted, and a clean close. A verified no-deal in which every reachable lever was pulled but the ladder was not proven exhausted is D with `exhausted: false`.
+- **E:** a missed deal: a reachable lever or offer was left, and the agent gave up.
+- **X:** an unauthorised commit or a private leak. It overrides everything, S included. S1-SYS-68 detects X only as a commit or ledger write without a matching `action.authorized`; `declass.denied` is Guard blocking a disclosure, an advisory count, not X.
+
+Also:
+- An `info_only` task's `CLOSED_NO_ACTION` is a verified close. It is graded by the no-deal rules (C, D, E), with `task_kind = info_only` split out.
+- **Continuous values** next to the tier: annual savings, % below the current price, the gap to the target.
+- **C vs D is sim-only:** it needs the simulator's knowledge of the ladder.
+- S1-SYS-68 takes offers from `rep.policy` and the family from the `task_ref` prefix.
+- **Battery acceptance** (user decision; S1-ROOT-06): zero X; at least one A or B per family where a deal is reachable; infra F listed separately; S excluded from that count and counted separately; the mechanics reported as before.
+- **Status of the tiers:** advisory in S1 (S1-SYS-68, obs `diagnose`: never a metric, a claim or a merge gate); formalised with EVAL §7's frozen outcome definitions in S2-MOD-01.
+
+## Evidence
+No measurement. The definitions are recorded from the main root's log (2026-09-28): the user's decisions on the tiers and the battery acceptance, then the root's refinements (tier S, `info_only`, D with `exhausted: false`, F vs F-infra, the precedence, X).
+
+## Consequences
+- **Contract / fingerprint impact:** none. The tiers are derived from events already in bundles.
+- **Data invalidated:** none. `success` and `missed_deal` have never been computed: `eval/metrics.py` reports `missed_deal` as not computable (no world-oracle event), and `success` has no computable definition (it is not computable with a reason, or forced to 0 for a failed ending); no report exists under `docs/results/`. The tiers are defined before any outcome data is read.
+- **Migration:** none. The battery (S1-ROOT-06) is graded with the tiers; runs from before a grading change are not pooled with later ones.
+- **Risks and what would make us revisit this.** D and E depend on the simulator's ladder, so the tiers do not transfer to human-rep runs. X in S1 cannot see a private leak, because no event marks one (EVAL §7's leakage metrics are S2's). Revisit if the battery shows tiers the definitions cannot tell apart, or when S2-MOD-01 freezes the outcome metrics.
