@@ -1,0 +1,15 @@
+/* The receipt in the chat column (redesign §3.2): a Guard card, its tone from the variant. */
+@layer components {
+  .pl-outcome > h3, .pl-outcome-line { margin-left: var(--s4); margin-right: var(--s4); }
+  .pl-outcome > h3 { margin-bottom: var(--s2); }
+  .pl-outcome-line { margin-top: var(--s1); margin-bottom: 0; font-size: var(--fs-small); color: var(--ink-2); }
+  .pl-outcome-line .pl-mono { font-weight: 600; color: var(--ink); }
+  .pl-outcome > .pl-terms { margin-top: var(--s2); }
+  .pl-outcome > .pl-gcard-tech { margin-top: var(--s3); }
+  .pl-outcome-cost { margin: var(--s2) 0 0; padding-left: var(--s4); }
+  /* "Done. Verified.": a stamp */
+  .pl-outcome-guard { border-color: var(--guard); }
+  .pl-outcome-guard > h3 { display: inline-block; padding: 2px 10px; border: 2px solid var(--guard); border-radius: var(--r-sm); color: var(--guard); transform: rotate(-1.5deg); }
+  .pl-outcome-danger { border-color: var(--danger); background: var(--danger-soft); }
+  .pl-outcome-danger > h3 { color: var(--danger); }
+}

@@ -68,13 +68,14 @@ test("opens in the conversation view: the heard lines at the end, the status lin
   const said = events.filter((e) => e.type === "user.msg" && e.actor === "kernel").map((e) => String(e.payload.text));
   const chat = page.getByRole("list", { name: "Chat transcript" }).getByRole("listitem");
   const call = page.getByRole("list", { name: "Call transcript" }).getByRole("listitem");
-  await expect(chat).toHaveCount(said.length + heard("user").length);
+  await expect(chat.filter({ hasNot: page.getByRole("region", { name: "Outcome" }) })).toHaveCount(said.length + heard("user").length);
   for (const text of [...said, ...heard("user")]) await expect(chat.filter({ hasText: text }).first()).toBeVisible();
   for (const text of heard("cp")) await expect(call.filter({ hasText: text }).first()).toBeAttached();
   const ended = events.find((e) => e.type === "session.ended" && e.actor === "kernel");
   if (ended) {
     await expect(page.getByLabel("Status line")).toHaveText(/^Session ended: /);
-    await expect(page.getByRole("region", { name: "Outcome" })).toContainText(`Reason: ${String(ended.payload.reason)}`);
+    // The receipt, in the chat as in live (S1-SYS-51).
+    await expect(page.getByRole("region", { name: "Chat" }).getByRole("region", { name: "Outcome" })).toContainText(`Reason: ${String(ended.payload.reason)}`);
   } else {
     await expect(page.getByRole("region", { name: "Outcome" })).toHaveCount(0);
   }

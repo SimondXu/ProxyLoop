@@ -57,8 +57,11 @@ export function aboutClock(events: Ev[], tMs: number): string | null {
 /** contract/state.py ReadbackSlot, as offer.recorded carries it. */
 export type OfferSlot = { field: string; value: string; unit: string; status?: string; source_utt?: string | null };
 
+/** An offer revision: an approval card's, or one Guard recorded (offer.recorded). */
+export type OfferRev = Pick<ApprovalCard, "offer_ref" | "revision" | "terms_hash">;
+
 /** The card's own terms: Guard's offer.recorded for its offer revision (its terms_hash must match when set). */
-export function offerSlots(events: Ev[], card: ApprovalCard): OfferSlot[] | null {
+export function offerSlots(events: Ev[], card: OfferRev): OfferSlot[] | null {
   const rec = events.findLast(
     (e) =>
       from(e, "offer.recorded", ["guard"]) &&
@@ -89,10 +92,16 @@ export function termRow(name: string, value: string | undefined): [string, strin
   const label = LABEL[kind] ?? name;
   if (kind === "monthly_price") return [label, usd(v) ?? v];
   if (kind === "fee" || kind === "credit") return [`${label}: ${code}`, usd(v) ?? v];
-  // Booleans (guard/terms.py): a false one is never shown as included.
-  if (kind === "applied_change" || kind === "feature") return [v !== "false" ? label : kind === "feature" ? "Not included" : "No plan change", code ?? v];
+  // Booleans (guard/terms.py): only "true" is included; an empty or malformed one is shown as sent, never as included.
+  if (kind === "applied_change" || kind === "feature") {
+    if (v === "true") return [label, code ?? v];
+    if (v === "false") return [kind === "feature" ? "Not included" : "No plan change", code ?? v];
+    return [name, v];
+  }
   if (kind === "term_months") return [label, v && `${v} months`];
-  if (kind === "expires") return [label, v === "none" ? "No expiry" : ((v && dateTime(v)) ?? v)];
+  if (kind === "expires") return v === "none" ? ["No expiry date", ""] : [label, (v && dateTime(v)) ?? v];
+  // fees_none false: the fees themselves are their own fee:<code> rows.
+  if (kind === "fees_none" && v === "false") return ["One-time fees apply", ""];
   if (kind === "fees_none" || kind === "changes_none") return [label, NONE[v] ?? v];
   return [label, v];
 }
@@ -100,9 +109,10 @@ export function termRow(name: string, value: string | undefined): [string, strin
 export type TermRow = { field: string; label: string; value: string; status: string };
 
 /** The card's rows: Guard's latest read-back of its revision, valued from offer.recorded. */
-export function termRows(events: Ev[], card: ApprovalCard): TermRow[] {
+export function termRows(events: Ev[], card: OfferRev): TermRow[] {
   const offer = offerSlots(events, card) ?? [];
-  const slots = readback(events, card) ?? offer.map((s) => ({ field: s.field, status: s.status ?? "unknown" }));
+  // readback() reads only offer_ref and revision.
+  const slots = readback(events, card as ApprovalCard) ?? offer.map((s) => ({ field: s.field, status: s.status ?? "unknown" }));
   return slots.map(({ field, status }) => {
     const [label, value] = termRow(field, offer.find((s) => s.field === field)?.value);
     return { field, label, value, status };
@@ -114,3 +124,14 @@ export const READBACK_CHIP: Record<string, string> = {
   heard: "Heard, not read back",
   unknown: "Not stated",
 };
+
+/** Each offer's latest revision Guard recorded, in the order the offers were first recorded. */
+export function latestOffers(events: Ev[]): OfferRev[] {
+  const last = new Map<string, OfferRev>();
+  for (const e of events) {
+    if (!from(e, "offer.recorded", ["guard"]) || typeof e.payload.offer_ref !== "string") continue;
+    const { offer_ref, revision, terms_hash } = e.payload;
+    last.set(offer_ref, { offer_ref, revision: Number(revision), terms_hash: String(terms_hash ?? "") });
+  }
+  return [...last.values()];
+}
