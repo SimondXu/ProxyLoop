@@ -1,6 +1,7 @@
-// Light / Dark / System (S1-SYS-76): a radiogroup with a roving tab stop; the rule is theme.ts's.
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { storedChoice, themeController, type ThemeChoice } from "../theme";
+// Light / Dark / System (S1-SYS-76): a radiogroup with a roving tab stop. It only shows the choice and changes it:
+// the one controller (main.tsx, theme.ts) applies the theme and follows the OS on every page, the Rep page included.
+import { createContext, useContext, useRef, useSyncExternalStore, type KeyboardEvent } from "react";
+import type { ThemeChoice, ThemeController } from "../theme";
 import { Icon } from "../ui/Icon";
 
 const CHOICES: { value: ThemeChoice; label: string }[] = [
@@ -10,23 +11,14 @@ const CHOICES: { value: ThemeChoice; label: string }[] = [
 ];
 const STEP: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
 
+export const ThemeContext = createContext<ThemeController | null>(null);
+
 export function ThemeToggle() {
-  const ctl = useRef<ReturnType<typeof themeController> | null>(null);
+  const theme = useContext(ThemeContext);
+  if (!theme) throw new Error("ThemeToggle needs main.tsx's ThemeContext");
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
-  const [choice, setChoice] = useState<ThemeChoice>(() => storedChoice(() => window.localStorage));
-  useEffect(() => {
-    const c = themeController({
-      store: () => window.localStorage,
-      media: window.matchMedia("(prefers-color-scheme: dark)"),
-      setTheme: (t) => document.documentElement.setAttribute("data-theme", t),
-    });
-    ctl.current = c;
-    return c.dispose;
-  }, []);
-  const choose = (c: ThemeChoice) => {
-    ctl.current?.choose(c);
-    setChoice(c);
-  };
+  const choice = useSyncExternalStore(theme.subscribe, theme.choice);
+  const choose = (c: ThemeChoice) => theme.choose(c);
   const onKey = (e: KeyboardEvent, i: number) => {
     const step = STEP[e.key];
     if (step === undefined) return;

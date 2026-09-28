@@ -99,6 +99,16 @@ describe("themeController", () => {
     c.dispose();
     expect(os.listeners.size).toBe(0);
   });
+
+  it("tells its subscribers of a new choice, until they unsubscribe", () => {
+    const { c } = env(() => memory(), media(false));
+    let seen = 0;
+    const off = c.subscribe(() => seen++);
+    c.choose("dark");
+    off();
+    c.choose("light");
+    expect(seen).toBe(1);
+  });
 });
 
 describe("index.html's first-paint script", () => {

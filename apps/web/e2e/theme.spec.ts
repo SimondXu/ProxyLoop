@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { csrfCookie, mockSockets, REP_CSRF, RUN } from "./liveMock";
 
 // The Light / Dark / System toggle (S1-SYS-76) on the replay library, served by the real API.
 const PAGE_BG = { light: "rgb(244, 242, 239)", dark: "rgb(38, 36, 34)" };
@@ -82,4 +83,25 @@ test("with storage that throws, the page renders on the OS scheme and the toggle
   await toggle(page).getByRole("radio", { name: "Light" }).click();
   await expect(html(page)).toHaveAttribute("data-theme", "light");
   expect(await bodyBg(page)).toBe(PAGE_BG.light);
+});
+
+test("the Rep page, which has no toggle, follows the OS while on system and keeps a stored choice", async ({ page, baseURL }) => {
+  await csrfCookie(page, baseURL, "pl_rep_csrf", REP_CSRF);
+  await mockSockets(page);
+  await page.goto(`/?rep=${RUN}`);
+  await expect(page.getByRole("textbox", { name: "Say to the agent" })).toBeVisible();
+  await expect(toggle(page)).toHaveCount(0);
+  await expect(html(page)).toHaveAttribute("data-theme", "light");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(html(page)).toHaveAttribute("data-theme", "dark");
+  expect(await bodyBg(page)).toBe(PAGE_BG.dark);
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(html(page)).toHaveAttribute("data-theme", "light");
+
+  await page.evaluate(() => localStorage.setItem("proxyloop.theme", "dark"));
+  await page.reload();
+  await expect(page.getByRole("textbox", { name: "Say to the agent" })).toBeVisible();
+  await expect(html(page)).toHaveAttribute("data-theme", "dark");
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(html(page)).toHaveAttribute("data-theme", "dark");
 });

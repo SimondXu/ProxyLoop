@@ -22,9 +22,14 @@ export function storedChoice(store: () => Store): ThemeChoice {
 
 export const resolveTheme = (c: ThemeChoice, osDark: boolean): Theme => (c === "system" ? (osDark ? "dark" : "light") : c);
 
-/** Applies the stored choice now, re-applies it when the OS scheme changes while on "system", and saves new choices. */
+/**
+ * Applies the stored choice now, re-applies it when the OS scheme changes while on "system", and saves new choices.
+ * main.tsx makes the one controller for every page; the toggle subscribes to the choice and calls choose.
+ */
+export type ThemeController = ReturnType<typeof themeController>;
 export function themeController({ store, media, setTheme }: { store: () => Store; media: Media; setTheme: (t: Theme) => void }) {
   let choice = storedChoice(store);
+  const subs = new Set<() => void>();
   const apply = () => setTheme(resolveTheme(choice, media.matches));
   const onOs = () => {
     if (choice === "system") apply();
@@ -41,6 +46,11 @@ export function themeController({ store, media, setTheme }: { store: () => Store
         // Storage refused the write: the choice still applies, for this page only.
       }
       apply();
+      subs.forEach((f) => f());
+    },
+    subscribe(f: () => void) {
+      subs.add(f);
+      return () => void subs.delete(f);
     },
     dispose: () => media.removeEventListener("change", onOs),
   };
