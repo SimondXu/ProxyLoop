@@ -424,7 +424,7 @@ def test_the_export_carries_what_the_ear_sees_and_nothing_else(
     log = backlog()
     log.write(tmp_path / "runs", run_dir(sessions, "a"))
     doc = ws.freeze(tmp_path / "runs")
-    key = ws.export(doc, tmp_path / "out", 25, seed=3)
+    key = ws.export(doc, tmp_path / "out", tmp_path / "key.json", 25, seed=3)
     (body,) = [
         json.loads((tmp_path / "out" / f"{name}.json").read_text("utf-8"))
         for name in key["batches"]
@@ -508,7 +508,7 @@ def test_constructed_items_are_flagged_and_kept_apart(
     assert by_name["c-ear-001"]["off_distribution"]  # it names loyal-1
     assert not by_name["c-ear-002"]["off_distribution"]
     assert by_name["c-ear-002"]["company"] == "Crestline Wireless"
-    key = ws.export(doc, tmp_path / "out", 25, seed=0)
+    key = ws.export(doc, tmp_path / "out", tmp_path / "key.json", 25, seed=0)
     assert set(key["batches"]) == {"batch-001", "check-001", "constructed-001"}
     check = json.loads((tmp_path / "out" / "check-001.json").read_text("utf-8"))
     (item,) = check["items"]
@@ -527,7 +527,7 @@ def test_batches_and_their_order_are_seeded(sessions: Path, tmp_path: Path) -> N
     assert len(ears) == 5
 
     def order(seed: int, out: str) -> list[str]:
-        key = ws.export(doc, tmp_path / out, 1, seed)
+        key = ws.export(doc, tmp_path / out, tmp_path / f"{out}.key.json", 1, seed)
         assert all(len(ids) <= 1 for ids in key["batches"].values())
         return [i for ids in key["batches"].values() for i in ids]
 
@@ -538,4 +538,22 @@ def test_batches_and_their_order_are_seeded(sessions: Path, tmp_path: Path) -> N
     seeds = {tuple(order(s, f"s{s}")) for s in range(8)}
     assert len(seeds) > 1  # the seed moves the order
     with pytest.raises(SystemExit):
-        ws.export(doc, tmp_path / "z", ws.MAX_BATCH + 1, 0)
+        ws.export(doc, tmp_path / "z", tmp_path / "z.json", ws.MAX_BATCH + 1, 0)
+
+
+def test_the_key_is_written_only_outside_the_batch_dir(
+    sessions: Path, tmp_path: Path
+) -> None:
+    items = tmp_path / "items.json"
+    ws.main(["freeze", "--runs", str(sessions), "--out", str(items)])
+    out, key = tmp_path / "batches", tmp_path / "keys" / "key.json"
+    for inside in (out / "key.json", out / "sub" / "key.json", out):
+        with pytest.raises(SystemExit, match="inside --out-dir"):
+            ws.export(json.loads(items.read_text("utf-8")), out, inside, 25, 0)
+    assert not out.exists()  # refused before anything was written
+    with pytest.raises(SystemExit):  # --key-out is required
+        ws.main(["export", "--items", str(items), "--out-dir", str(out), "--seed", "0"])
+    args = ["export", "--items", str(items), "--out-dir", str(out), "--seed", "0"]
+    ws.main([*args, "--key-out", str(key)])
+    assert json.loads(key.read_text("utf-8"))["batches"]
+    assert sorted(p.name for p in out.iterdir()) == ["batch-001.json"]

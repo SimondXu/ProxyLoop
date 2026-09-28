@@ -158,7 +158,8 @@ probe-same-state:
 # bundle dir (default runs). The blind Ear batches are
 # exported by hand into an uncommitted dir:
 #   uv run python -m scripts.mod.world_select export --items $(MOD_DATA)/world-select-items.json \
-#       --out-dir runs/world-select-batches --batch 25 --seed <N>
+#       --out-dir runs/world-select-batches --key-out runs/world-select-key.json \
+#       --batch 25 --seed <N>
 CONSTRUCTED ?= $(MOD_DATA)/world-select-constructed.json
 WORLD_SELECT_RUNS ?= runs
 .PHONY: world-select-freeze

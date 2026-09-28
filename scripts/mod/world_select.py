@@ -3,7 +3,7 @@
     python -m scripts.mod.world_select freeze --runs runs \
         --out docs/decisions/data/world-select-items.json [--constructed <json>]
     python -m scripts.mod.world_select export --items <json> --out-dir <dir> \
-        --batch 25 --seed N
+        --key-out <json outside the out dir> --batch 25 --seed N
 
 ``freeze`` reads every ``train`` bundle under ``--runs`` (``load_bundles``: a sealed
 ``test`` path is refused) and freezes three item sets from the events:
@@ -33,8 +33,9 @@
 the sha256 of the sorted item ids. The same inputs give byte-identical JSON.
 
 ``export`` writes blind Ear annotation batches (what the Ear sees, in structured form;
-no world output, model, run or condition) in a seeded order, plus ``key.json``
-mapping each batch position to its item id (not for the annotator). Constructed Ear
+no world output, model, run or condition) in a seeded order, and to ``--key-out``,
+which must lie outside ``--out-dir``, the key mapping each batch position to its
+item id (never given to the annotator with the batches). Constructed Ear
 items with gold go to separate check batches, their gold withheld.
 """
 
@@ -512,9 +513,11 @@ def blind(item: Json, pos: int) -> Json:
     }
 
 
-def export(doc: Json, out_dir: Path, batch: int, seed: int) -> Json:
+def export(doc: Json, out_dir: Path, key_out: Path, batch: int, seed: int) -> Json:
     if not 1 <= batch <= MAX_BATCH:
         raise SystemExit(f"--batch must be 1..{MAX_BATCH}, got {batch}")
+    if key_out.resolve().is_relative_to(out_dir.resolve()):
+        raise SystemExit(f"--key-out {key_out} is inside --out-dir {out_dir}")
     made = cast(list[Json], doc["constructed"]["ear"])
     streams = {
         "batch": list(doc["items"]["ear"]),
@@ -532,7 +535,8 @@ def export(doc: Json, out_dir: Path, batch: int, seed: int) -> Json:
             body = {"batch": name, "items": [blind(i, p) for p, i in enumerate(chunk)]}
             _write(out_dir / f"{name}.json", body)
             key["batches"][name] = [i["item_id"] for i in chunk]
-    _write(out_dir / "key.json", key)
+    key_out.parent.mkdir(parents=True, exist_ok=True)
+    _write(key_out, key)
     return key
 
 
@@ -554,6 +558,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     x = sub.add_parser("export", help="write blind Ear annotation batches")
     x.add_argument("--items", type=Path, required=True)
     x.add_argument("--out-dir", type=Path, required=True)
+    x.add_argument("--key-out", type=Path, required=True, help="outside --out-dir")
     x.add_argument("--batch", type=int, default=MAX_BATCH)
     x.add_argument("--seed", type=int, required=True)
     args = ap.parse_args(argv)
@@ -563,7 +568,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         summary = {"counts": doc["counts"], "root_hash": doc["root_hash"]}
     else:
         doc = cast(Json, json.loads(args.items.read_text("utf-8")))
-        key = export(doc, args.out_dir, args.batch, args.seed)
+        key = export(doc, args.out_dir, args.key_out, args.batch, args.seed)
         summary = {"batches": len(key["batches"]), "root_hash": key["root_hash"]}
     json.dump(summary | {"skipped": doc.get("skipped")}, sys.stdout, indent=1)
     print()
