@@ -331,3 +331,13 @@ def test_p3_runs_before_any_vllm_call_and_a_mismatch_aborts(
     check = report["p3"]["vllm:Qwen3.5-9B"]
     assert check["passed"] is not broken and check["turn"] == found[0].turn
     assert len(sent["tokenize"]) == 2  # the messages and the prompt, once
+
+
+@pytest.mark.parametrize("cap", ["0", "-3"])
+def test_max_views_is_at_least_one(
+    evidence: tuple[Path, Sent], capsys: pytest.CaptureFixture[str], cap: str
+) -> None:
+    args = ["--plan", "--evidence", str(evidence[0]), "--max-views", cap, *MODELS]
+    with pytest.raises(SystemExit) as exit_:
+        pss.main(args)
+    assert exit_.value.code == 2 and "must be at least 1" in capsys.readouterr().err

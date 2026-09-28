@@ -296,13 +296,21 @@ async def parity(
             raise RuntimeError(report["aborted"])
 
 
+def at_least_1(text: str) -> int:
+    if (n := int(text)) < 1:
+        raise argparse.ArgumentTypeError(f"must be at least 1, not {n}")
+    return n
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="scripts.mod.probe_same_state")
     parser.add_argument("--evidence", required=True, help="a dir of train bundles")
     parser.add_argument(
         "--model", action="append", required=True, help=parse_model.__doc__
     )
-    parser.add_argument("--max-views", type=int, required=True, help="a hard cap")
+    parser.add_argument(
+        "--max-views", type=at_least_1, required=True, help="a hard cap"
+    )
     parser.add_argument("--out", help="the report JSON (required without --plan)")
     parser.add_argument("--plan", action="store_true", help="counts only; no call")
     args = parser.parse_args(argv)
