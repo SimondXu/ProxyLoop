@@ -43,6 +43,7 @@ SLOTS = [  # {field, value, utt_ref}: role and unit follow from the field
     {"field": "changes_none", "value": "true", "utt_ref": "cp-1"},
     {"field": "expires", "value": "none", "utt_ref": "cp-1"},
 ]  # fmt: skip
+ASKED = "Could you read the full terms back to me?"  # FastC's read-back ask
 BOUND = {  # the world's ledger binding, in dollars
     "monthly_price": "69.00",
     "fees_none": "true",
@@ -118,6 +119,33 @@ class Host:
     def of(self, type_: str) -> list[Event]:
         return [e for e in self.bus.events if e.type == type_]
 
+    def voice(self, *, spoke: bool = True, deliver: bool = True) -> str:
+        """FastC's turn voicing the newest cp guide (ADR-0013: the only one),
+        with one sentence (delivered whole unless ``deliver`` is False) or with
+        none; its gen id."""
+        (msg,) = [e for e in self.of("s2f.msg") if e.payload["lane"] == "cp"][-1:]
+        gen = f"c-g{len(self.of('fast.turn')) + 1}"
+        said = [{"kind": "speech", "text": ASKED}] if spoke else []
+        turn = {"lane": "cp", "gen_id": gen, "call_id": "c", "ttft_ms": 1}
+        cause = self.emit("fast.turn", "fast.cp", turn | {"ttfs_ms": 1, "items": said},
+                          [msg.event_id])  # fmt: skip
+        voiced = {"msg_id": msg.payload["msg_id"], "gen_id": gen}
+        self.emit("s2f.voiced", "fast.cp", voiced, [cause.event_id])
+        if spoke:
+            line = {"lane": "cp", "gen_id": gen, "utt_id": f"{gen}-u0", "text": ASKED}
+            self.emit("fast.sentence", "fast.cp", line, [cause.event_id])
+            if deliver:
+                self.deliver(gen)
+        return gen
+
+    def deliver(self, gen: str, *, interrupted: bool = False) -> None:
+        """The playout of ``gen``'s sentence: whole, or cut before a word."""
+        (s,) = [e for e in self.of("fast.sentence") if e.payload["gen_id"] == gen]
+        heard = "" if interrupted else ASKED
+        said = {"lane": "cp", "utt_id": s.payload["utt_id"], "text_generated": ASKED}
+        said |= {"text_heard": heard, "interrupted": interrupted}
+        self.emit("utt.delivered", "kernel", said, [s.event_id])
+
     def call(self) -> None:  # chan.opened(cp): INTAKE -> IN_CALL
         moved = {"previous": "INTAKE", "status": "IN_CALL"}
         self.emit("status.changed", "guard", moved, [self.root.event_id])
@@ -132,6 +160,7 @@ def _confirmed(tmp_path: Path) -> Host:
     record = {"tool": "record_offer", "offer_ref": "save-2", "offer_slots": SLOTS}
     out = h.act(record, ask)
     assert out[-1].endswith("read-back asked for save-2 r1"), out
+    h.voice()  # heard whole (#219 D-B)
     h.rep("cp-2", TERMS)
     h.tools.readback()
     offer = h.bb.public.offers["save-2"]
@@ -229,7 +258,7 @@ def test_the_approval_chain_reaches_verified_complete(tmp_path: Path) -> None:
         "speak.released", "utt.delivered", "ledger.write", "evidence.recorded",
         "completion.decided",
     ]  # fmt: skip
-    firsts = [h.of(t)[0].seq for t in chain]
+    firsts = [h.of(t)[-1].seq for t in chain]  # the read-back ask was delivered too
     assert firsts == sorted(firsts)
     held, _ = approval_b(Log(h.bus.events))
     assert held == {"held": True, "accepts": 1, "via_approval": 1, "via_mandate": 0}
@@ -354,6 +383,7 @@ def test_a_read_back_confirms_only_the_revision_it_was_asked_for(
     assert "denied: readback_not_confirmed" in denied and "ask_readback" in denied
     ask = {"tool": "guide_fast", "move": "ask_readback", "slots": ["offer:save-2"]}
     h.act(ask)
+    h.voice()
     h.rep("cp-3", TERMS)
     h.tools.readback()
     assert {s.status for s in h.bb.public.offers["save-2"].slots} == {"confirmed"}
@@ -682,6 +712,7 @@ def test_a_pending_card_for_another_offer_hides_the_hint(
     ]
     ask = {"tool": "guide_fast", "move": "ask_readback", "slots": ["offer:save-3"]}
     h.act({"tool": "record_offer", "offer_ref": "save-3", "offer_slots": s3}, ask)
+    h.voice()
     h.rep("cp-6", seventy)
     h.tools.readback()
     assert {s.status for s in h.bb.public.offers["save-3"].slots} == {"confirmed"}

@@ -84,9 +84,10 @@ class SlowTools:
         self._transcript, self._basis = transcript, None  # the step's view
         self.shareable: dict[str, str] = {}  # recorded shareable values (declass)
         self.finished, self._n, self._mandates = False, 0, 0
-        # the cp transcript length when a read-back was first asked for an
-        # offer revision, and when the final offer was last asked (§9.2, §9.3)
-        self.asked: dict[tuple[str, int], int] = {}
+        # the s2f msg ids of the read-back asks of each offer revision: its
+        # first heard one anchors the strict rule (§9.2, #219 D-B)
+        self.asked: dict[tuple[str, int], list[str]] = {}
+        # the cp transcript length when the final offer was last asked (§9.3)
         self.asked_final: int | None = None
         self.told_at: int | None = None  # the cp length at the last tell_user
         # the cp transcript length at every read-back ask of an offer
@@ -155,11 +156,13 @@ class SlowTools:
         lines = bb.channels["cp"].lines
         rep = [x.utt_id for x in lines if x.speaker == "partner"]
         heard = authority.last(events, "utt.final", "utt_id", rep[-1]) if rep else None
-        windows = self._windows()
+        heard_at = self._heard()
+        windows = self._windows(heard_at)
         for ref, o in sorted(bb.public.offers.items()):
             if o.status != "open":
                 continue
-            asked = self.asked.get((ref, o.revision))
+            mine = self.asked.get((ref, o.revision), ())
+            asked = min((heard_at[m] for m in mine if m in heard_at), default=None)
             update = readback_update(o, lines, asked, windows.get(ref, ()))
             now = {s.field: s.status for s in o.slots}
             if (update["slot_statuses"], update["terms_hash"]) == (now, o.terms_hash):
@@ -306,15 +309,15 @@ class SlowTools:
 
     def _asked(self, bb: st.Blackboard, guide: Guide, sent: Result) -> Result:
         """Track the read-back request of each cited offer's current revision:
-        only rep lines from here on can confirm its slots (§9.2)."""
+        only rep lines after its whole delivery can confirm its slots (§9.2)."""
         refs = {s[6:].partition(".")[0] for s in guide.slots if s.startswith("offer:")}
         at, tracked = len(bb.channels["cp"].lines), list[str]()
+        msg = str(sent.effects[0][1]["msg_id"])
         for ref in sorted(refs):
             if (o := bb.public.offers.get(ref)) is not None:
-                self.asked.setdefault((ref, o.revision), at)
+                self.asked.setdefault((ref, o.revision), []).append(msg)
                 self.readbacks.setdefault((ref, o.revision), []).append(at)
                 if o.status == "open":
-                    msg = str(sent.effects[0][1]["msg_id"])
                     terms = {s.field: s.value for s in o.slots}
                     ask = (msg, self._call(), Ask(at, terms))
                     self.readback_asks.setdefault(ref, []).append(ask)
@@ -328,30 +331,54 @@ class SlowTools:
         text = f"{sent.text}; no recorded offer cited: cite offer:<ref> to confirm one"
         return Result(True, text, sent.effects)
 
-    def _windows(self) -> dict[str, list[Ask]]:
-        """Each offer's read-back asks in the current cp call whose guide was
-        heard (#219 D1): an ``s2f.voiced`` citing a ``fast.turn`` that spoke
-        and was never cancelled. Each opens at the first cp line after its
-        voicing, not at the ask."""
-        call, events = self._call(), self._host.bus.events
+    def _windows(self, heard_at: Mapping[str, int]) -> dict[str, list[Ask]]:
+        """Each offer's read-back asks in the current cp call that the rep
+        heard, each opening at its ``heard_at`` line, not at the ask."""
+        call = self._call()
+        return {
+            ref: [
+                ask._replace(at=heard_at[m])
+                for m, c, ask in asks
+                if c == call and m in heard_at
+            ]
+            for ref, asks in self.readback_asks.items()
+        }
+
+    def _heard(self) -> dict[str, int]:
+        """The s2f msg ids the rep heard (#219 D1, D-A), each with the first cp
+        line after its delivery: an ``s2f.voiced`` citing a ``fast.turn`` that
+        spoke, was never cancelled, and whose every sentence was delivered
+        uninterrupted. Deliberately stricter than the needs ledger's ``heard``
+        (a spoken turn): ``s2f.voiced`` comes before the playout."""
+        events = self._host.bus.events
         turns = {e.event_id: e for e in events if e.type == "fast.turn"}
         cut = {e.payload["gen_id"] for e in events if e.type == "fast.cancelled"}
-        said = {  # a cp line's utt_id -> the seq that appended it
-            str(e.payload["utt_id"]): e.seq
+        sentences: dict[str, list[str]] = {}  # gen id -> its utt ids
+        for p in (e.payload for e in events if e.type == "fast.sentence"):
+            sentences.setdefault(str(p["gen_id"]), []).append(str(p["utt_id"]))
+        cp = [
+            e
             for e in events
             if e.type in ("utt.final", "utt.delivered") and e.payload["lane"] == "cp"
+        ]
+        delivered = {
+            str(e.payload["utt_id"]): e for e in cp if e.type == "utt.delivered"
         }
+        said = {str(e.payload["utt_id"]): e.seq for e in cp}  # a line -> its seq
         seqs = [said[x.utt_id] for x in self._host.bb.channels["cp"].lines]
-        at: dict[str, int] = {}  # s2f msg id -> its window's first line
+        at: dict[str, int] = {}
         for e in events:
             turn = turns.get(e.cause_ids[0]) if e.type == "s2f.voiced" else None
             if turn is None or not spoke(turn) or turn.payload["gen_id"] in cut:
                 continue
-            at.setdefault(str(e.payload["msg_id"]), sum(q < e.seq for q in seqs))
-        return {
-            ref: [ask._replace(at=at[m]) for m, c, ask in asks if c == call and m in at]
-            for ref, asks in self.readback_asks.items()
-        }
+            played = [
+                delivered.get(u) for u in sentences.get(str(turn.payload["gen_id"]), ())
+            ]
+            if not played or any(d is None or d.payload["interrupted"] for d in played):
+                continue  # a cut or still-playing turn: not heard (yet)
+            end = max(d.seq for d in played if d is not None)
+            at.setdefault(str(e.payload["msg_id"]), sum(q <= end for q in seqs))
+        return at
 
     def _call(self) -> int:
         """The cp calls opened so far (``chan.opened{cp}``): the current one."""

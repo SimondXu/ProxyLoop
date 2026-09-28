@@ -32,18 +32,6 @@ def _opened(h: Host, call: int = 1) -> None:
     h.emit("chan.opened", "kernel", said, [h.root.event_id])
 
 
-def _voice(h: Host, spoke: bool = True) -> None:
-    """FastC's turn voicing the newest cp guide (ADR-0013: the only one), with
-    a sentence or with none."""
-    (msg,) = [e for e in h.of("s2f.msg") if e.payload["lane"] == "cp"][-1:]
-    said = [{"kind": "speech", "text": "Could you read it back?"}] if spoke else []
-    turn = {"lane": "cp", "gen_id": "c-g1", "call_id": "c", "ttft_ms": 1}
-    turn |= {"ttfs_ms": 1, "items": said}
-    cause = h.emit("fast.turn", "fast.cp", turn, [msg.event_id])
-    voiced = {"msg_id": msg.payload["msg_id"], "gen_id": "c-g1"}
-    h.emit("s2f.voiced", "fast.cp", voiced, [cause.event_id])
-
-
 def _read_back_r2(h: Host, *before: dict[str, Any], voice: bool = True) -> None:
     """r1 (price, term) from cp-1, the asks in ``before`` (the newest guide
     voiced), the rep's full read-back (cp-2), then r2 recorded from it: the
@@ -52,7 +40,7 @@ def _read_back_r2(h: Host, *before: dict[str, Any], voice: bool = True) -> None:
     r1 = _slots("cp-1", ("monthly_price", "term_months"))
     h.act(RECORD | {"offer_slots": r1}, *before)
     if voice:
-        _voice(h)
+        h.voice()
     h.rep("cp-2", TERMS)
     (r2,) = h.act(RECORD | {"offer_slots": _slots("cp-2")})
     assert r2 == "record_offer: recorded save-2 r2", r2
@@ -65,7 +53,7 @@ def test_one_ask_confirms_the_revision_recorded_from_its_answer(
     h.call()
     _opened(h)
     _read_back_r2(h, _ask("save-2"))
-    assert h.tools.asked == {("save-2", 1): 1}  # r2 has no ask of its own
+    assert h.tools.asked == {("save-2", 1): ["s2f-1"]}  # r2 has no ask of its own
     assert _statuses(h) == {"confirmed"}
 
 
@@ -90,7 +78,7 @@ def test_n7_an_ask_from_an_earlier_call_never_anchors(tmp_path: Path) -> None:
     h.rep("cp-1", PRICE_TERM)
     r1 = _slots("cp-1", ("monthly_price", "term_months"))
     h.act(RECORD | {"offer_slots": r1}, _ask("save-2"))
-    _voice(h)
+    h.voice()
     h.emit("chan.closed", "kernel", {"lane": "cp"}, [h.root.event_id])
     _opened(h, 2)  # a second call: its transcript runs on
     h.rep("cp-2", TERMS)
@@ -135,24 +123,98 @@ def test_n10_an_ask_voiced_by_a_speechless_turn_never_anchors(tmp_path: Path) ->
     h.rep("cp-1", PRICE_TERM)
     r1 = _slots("cp-1", ("monthly_price", "term_months"))
     h.act(RECORD | {"offer_slots": r1}, _ask("save-2"))
-    _voice(h, spoke=False)
+    h.voice(spoke=False)
     h.rep("cp-2", TERMS)
     h.act(RECORD | {"offer_slots": _slots("cp-2")})
     assert "confirmed" not in _statuses(h)
 
 
-def test_the_window_opens_at_the_voicing_not_the_ask(tmp_path: Path) -> None:
-    """The rep's full statement between the ask and its voicing is before
-    the window; only a restatement after the voicing confirms."""
-    h = Host(tmp_path)
+def _asked_r1(h: Host) -> None:
+    """The call, r1 (price, term) from cp-1 and Slow's read-back ask for it."""
     h.call()
     _opened(h)
     h.rep("cp-1", PRICE_TERM)
     r1 = _slots("cp-1", ("monthly_price", "term_months"))
     h.act(RECORD | {"offer_slots": r1}, _ask("save-2"))
+
+
+def test_the_window_opens_after_the_delivery_not_the_ask(tmp_path: Path) -> None:
+    """The rep's full statement between the ask and its delivery is before
+    the window; only a restatement after the whole delivery confirms."""
+    h = Host(tmp_path)
+    _asked_r1(h)
     h.rep("cp-2", TERMS)  # before the ask was spoken
     h.act(RECORD | {"offer_slots": _slots("cp-2")})
-    _voice(h)
+    h.voice()
+    assert "confirmed" not in _statuses(h)
+    h.rep("cp-3", TERMS)
+    assert _statuses(h) == {"confirmed"}
+
+
+def test_da_a_rep_line_between_voicing_and_delivery_never_anchors(
+    tmp_path: Path,
+) -> None:
+    """#219 D-A (backlog): s2f.voiced comes with the fast.turn, before the
+    sentence plays; a stale reply landing in between is no read-back."""
+    h = Host(tmp_path)
+    _asked_r1(h)
+    gen = h.voice(deliver=False)
+    h.rep("cp-2", TERMS)
+    h.deliver(gen)
+    h.act(RECORD | {"offer_slots": _slots("cp-2")})
+    assert "confirmed" not in _statuses(h)
+
+
+def test_da_a_barge_in_cut_never_anchors(tmp_path: Path) -> None:
+    """#219 D-A: the rep barged in and the ask was cut, so it was never heard
+    whole; the rep's statement answers nothing."""
+    h = Host(tmp_path)
+    _asked_r1(h)
+    gen = h.voice(deliver=False)
+    h.rep("cp-2", TERMS)
+    h.deliver(gen, interrupted=True)
+    h.act(RECORD | {"offer_slots": _slots("cp-2")})
+    h.rep("cp-3", TERMS)
+    assert "confirmed" not in _statuses(h)
+
+
+def test_da_a_whole_delivery_then_the_answer_confirms(tmp_path: Path) -> None:
+    h = Host(tmp_path)
+    _asked_r1(h)
+    gen = h.voice(deliver=False)
+    assert "confirmed" not in _statuses(h)
+    h.deliver(gen)
+    h.rep("cp-2", TERMS)
+    h.act(RECORD | {"offer_slots": _slots("cp-2")})
+    assert _statuses(h) == {"confirmed"}
+
+
+def test_db_an_unvoiced_ask_never_anchors_the_strict_rule(tmp_path: Path) -> None:
+    """#219 D-B: the revision's own ask, superseded by a later guide in the same
+    act (ADR-0013), was never spoken; the rep's restatement confirms nothing."""
+    h = Host(tmp_path)
+    h.call()
+    _opened(h)
+    h.rep("cp-1", TERMS)
+    h.act(RECORD | {"offer_slots": _slots("cp-1")}, _ask("save-2"), HOLD)
+    assert not h.of("s2f.voiced")
+    h.rep("cp-2", TERMS)
+    assert "confirmed" not in _statuses(h)
+    h.voice()  # the hold, voiced and heard: still no read-back ask
+    h.rep("cp-3", TERMS)
+    assert "confirmed" not in _statuses(h)
+
+
+def test_db_the_strict_rule_opens_after_the_delivery(tmp_path: Path) -> None:
+    h = Host(tmp_path)
+    h.call()
+    _opened(h)
+    h.rep("cp-1", TERMS)
+    h.act(RECORD | {"offer_slots": _slots("cp-1")}, _ask("save-2"))
+    gen = h.voice(deliver=False)
+    h.rep("cp-2", TERMS)  # said before the ask was heard
+    assert "confirmed" not in _statuses(h)
+    h.deliver(gen)
     assert "confirmed" not in _statuses(h)
     h.rep("cp-3", TERMS)
     assert _statuses(h) == {"confirmed"}
@@ -167,8 +229,8 @@ def test_n10_an_ask_voiced_by_a_cancelled_turn_never_anchors(tmp_path: Path) -> 
     h.rep("cp-1", PRICE_TERM)
     r1 = _slots("cp-1", ("monthly_price", "term_months"))
     h.act(RECORD | {"offer_slots": r1}, _ask("save-2"))
-    _voice(h)
-    cut = {"gen_id": "c-g1", "reason": "verbatim"}
+    h.voice()
+    cut = {"gen_id": h.of("fast.turn")[-1].payload["gen_id"], "reason": "verbatim"}
     h.emit("fast.cancelled", "fast.cp", cut, [h.of("fast.turn")[-1].event_id])
     h.rep("cp-2", TERMS)
     h.act(RECORD | {"offer_slots": _slots("cp-2")})
@@ -197,7 +259,7 @@ def test_n11_an_answer_that_changes_the_asked_revision(tmp_path: Path) -> None:
         {"field": "term_months", "value": "24", "utt_ref": "cp-1"},
     ]
     h.act(RECORD | {"offer_slots": r1}, _ask("save-2"))
-    _voice(h)
+    h.voice()
     h.rep("cp-2", TERMS.replace("$69", "$60"))
     r2 = [s | {"value": "6000"} if s["value"] == "6900" else s for s in SLOTS]
     (text,) = h.act(RECORD | {"offer_slots": [s | {"utt_ref": "cp-2"} for s in r2]})
