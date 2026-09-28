@@ -87,16 +87,19 @@ def test_every_golden_turn_parses_cleanly(name: str) -> None:
 def test_the_fsm_checks_its_own_text_under_the_live_lane_profile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A template that spoke after its pause is a bug under pl_cp_v3 (ADR-0017)."""
+    """A template that spoke after its pause is a bug under pl_cp_v3 (ADR-0017),
+    the live cp profile: the FSM checks under every cp profile, the live one too."""
 
-    late = [Hold(reason="decision"), Speech(text="Sure, one moment.")]
-    monkeypatch.setattr(fsm, "_cp", lambda v: late)
+    def late(_: fsm.Seen) -> list[TurnItem]:
+        return [Hold(reason="decision"), Speech(text="Sure, one moment.")]
+
+    monkeypatch.setattr(fsm, "_cp", late)
     seen = read_view(request(view("cp", "Hello?")).messages)
     assert lanes.PROFILE["cp"] == "pl_cp_v3"
     with pytest.raises(AssertionError, match="speech_after_pause"):
         respond(seen)
-    monkeypatch.setitem(lanes.PROFILE, "cp", "pl_cp_v2")  # the frozen grammar
-    assert respond(seen) == "@hold decision\nSure, one moment."
+    frozen = parse_turn("@hold decision\nSure, one moment.", "cp", "pl_cp_v2")
+    assert not [i for i in frozen if isinstance(i, ParseIssue)]  # v3's rule only
 
 
 def test_hold_for_fact_guidance_ends_the_turn_on_a_fact_request_hold() -> None:
