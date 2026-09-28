@@ -35,4 +35,10 @@
   .pl-pb-clock { min-width: 110px; text-align: right; font-size: var(--fs-meta); }
   .pl-pb-chapters { display: flex; flex-wrap: wrap; gap: var(--s1); list-style: none; margin: var(--s1) 0 0; padding: 0; }
   .pl-pb-chapters button { min-height: 28px; padding: 0 var(--s3); font-size: var(--fs-meta); }
+  /* ≤760: the controls and the clock on one line, the Timeline full width under them */
+  @media (max-width: 760px) {
+    .pl-pb-row { flex-wrap: wrap; }
+    .pl-pb-clock { flex: 1; min-width: 0; }
+    .pl-pb-track { order: 1; flex-basis: 100%; min-width: 0; }
+  }
 }
