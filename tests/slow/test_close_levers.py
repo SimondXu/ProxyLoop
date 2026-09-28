@@ -168,14 +168,15 @@ def test_f11_asks_are_counted_per_revision_and_two_stuck_read_backs_stop(
     o = h.bb.public.offers["save-2"]
     b = _bar(h)
     assert state.unconfirmed(h.bb.public.offers["save-2"]) == {"expires"}
-    assert b.readbacks[("save-2", 1)] == (1, ())
+    assert b.readbacks[("save-2", 1)] == state.Readback(1, (), False)
     assert b.offer_note(o) == "read-back asked 1×"  # noqa: RUF001
     h.act(ASK)
-    assert _bar(h).readbacks[("save-2", 1)] == (2, ())  # the rep has not replied
+    got = _bar(h).readbacks[("save-2", 1)]  # the rep has not replied yet
+    assert got == state.Readback(2, (), False)
     h.rep("cp-3", REP_NO_EXPIRY)
     b = _bar(h)
     o = h.bb.public.offers["save-2"]
-    assert b.readbacks[("save-2", 1)] == (2, ("expires",))
+    assert b.readbacks[("save-2", 1)] == state.Readback(2, ("expires",), False)
     note = b.offer_note(o)
     assert "stop asking" in note and "decline_offer" in note
     assert "decline_offer" not in _bar(h, "info_only").offer_note(o)
@@ -261,3 +262,44 @@ def test_f10_21988c_the_user_is_told_after_the_closing_reply_before_finish(
     assert "tell_user" not in c.line()
     info = state.close(h.bb, "info_only", h.tools.asked_final, h.tools.told_at)
     assert info.told
+
+
+HOW = "Sorry about that. How can I help with the account?"  # 21988c cp-15
+UNDERSTAND = "I completely understand."  # 21988c cp-17
+
+
+def _asked_twice(tmp_path: Path, first: str, second: str) -> Host:
+    from tests.slow.test_authority import SLOTS as FULL
+    from tests.slow.test_authority import TERMS
+
+    h = Host(tmp_path)
+    h.call()
+    h.rep("cp-1", TERMS)
+    record = {"tool": "record_offer", "offer_ref": "save-2", "offer_slots": FULL}
+    h.act(record, ASK)
+    h.rep("cp-2", first)
+    h.act(ASK)
+    h.rep("cp-3", second)
+    return h
+
+
+def test_f11_21988c_no_read_back_reply_is_not_a_stop(tmp_path: Path) -> None:
+    """21988c r3 (D2): after both asks the rep restated nothing, so no slot
+    was omitted from a read-back: no stop and no decline; the bar says the
+    rep has not read the offer back."""
+    h = _asked_twice(tmp_path, HOW, UNDERSTAND)
+    o = h.bb.public.offers["save-2"]
+    b = _bar(h)
+    assert b.readbacks[("save-2", 1)] == state.Readback(2, (), True)
+    note = b.offer_note(o)
+    assert "not read the offer back" in note
+    assert "decline" not in note and "not stated" not in note
+
+
+def test_f11_one_omitting_reply_and_one_non_reply_do_not_stop_yet(
+    tmp_path: Path,
+) -> None:
+    h = _asked_twice(tmp_path, REP_NO_EXPIRY, UNDERSTAND)
+    b = _bar(h)
+    assert b.readbacks[("save-2", 1)] == state.Readback(2, (), True)
+    assert "decline" not in b.offer_note(h.bb.public.offers["save-2"])

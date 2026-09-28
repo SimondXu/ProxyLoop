@@ -7,20 +7,20 @@ closing-cue list, and only as an utt id."""
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
 from proxyloop.contract.messages import Guide, GuideMove
 from proxyloop.contract.state import Blackboard, ChannelState, Line, OfferPublic
-from proxyloop.guard.readback import has_cue
+from proxyloop.guard.readback import has_cue, slot_statuses
 from proxyloop.guard.status import status_change
 from proxyloop.guard.verify import verify_no_deal
 from proxyloop.slow.tools import SlowTools, lever_denial, public_guide
 
 Kind = Literal["info_only", "full"]  # the task's ``mode`` (task data)
-Ask = tuple[int, frozenset[str]]  # a read-back ask: cp lines then, slots unconfirmed
-STOP_AFTER = 2  # read-backs leaving the same slots unconfirmed (V4)
+STOP_AFTER = 2  # read-back replies omitting the same slots (V4, D2)
 LEVERS = (GuideMove.CITE_COMPETITOR, GuideMove.MENTION_TENURE, GuideMove.CANCEL_LEVER)
 TENURE = "tenure_years"  # the one lever fact a user can make public (FORMATS)
 WHY = {  # one clause per refusal class (V5)
@@ -106,17 +106,38 @@ def unconfirmed(o: OfferPublic) -> frozenset[str]:
     return frozenset(s.field for s in o.slots if s.status != "confirmed")
 
 
-def stuck(
-    o: OfferPublic, asks: Sequence[Ask], lines: Sequence[Line]
-) -> tuple[str, ...]:
-    """V4: the slots the last two read-backs both left unconfirmed, once the
-    rep has spoken after the last one; () while the rule does not apply."""
-    if len(asks) < STOP_AFTER or o.status != "open":
-        return ()
-    at, before = asks[-1]
-    if not any(x.speaker == "partner" for x in lines[at:]):
-        return ()
-    return tuple(sorted(before & unconfirmed(o)))
+def restated(o: OfferPublic, line: Line) -> frozenset[str]:
+    """The slots of ``o`` a rep line states with their recorded values:
+    Guard's read-back predicate on that line alone, as if asked before it."""
+    got = slot_statuses(o, (line,), 0)
+    return frozenset(f for f, status in got.items() if status == "confirmed")
+
+
+@dataclass(frozen=True, slots=True)
+class Readback:
+    """V4 (amended, D2) for one offer revision."""
+
+    asked: int  # read-back asks
+    stuck: tuple[str, ...]  # unconfirmed slots two read-back replies omitted
+    unread: bool  # the rep spoke after the last ask but read nothing back
+
+
+def readback(o: OfferPublic, asks: Sequence[int], lines: Sequence[Line]) -> Readback:
+    """Each ask's window runs to the next ask; a read-back reply is a rep line
+    in it that restates at least one slot. A slot is stuck once the replies
+    of two windows restated others but not it; ``unread``: the last window
+    has rep lines but no read-back reply."""
+    left, omitted, replied = unconfirmed(o), Counter[str](), False
+    for at, end in zip(asks, [*asks[1:], len(lines)], strict=True):
+        said = [restated(o, x) for x in lines[at:end] if x.speaker == "partner"]
+        replies = [s for s in said if s]
+        omitted.update(left - frozenset().union(*replies) if replies else ())
+        replied = bool(replies)
+    if o.status != "open" or not left or not asks:
+        return Readback(len(asks), (), False)
+    stuck = tuple(sorted(f for f in left if omitted[f] >= STOP_AFTER))
+    spoke = any(x.speaker == "partner" for x in lines[asks[-1] :])
+    return Readback(len(asks), stuck, spoke and not replied and not stuck)
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,18 +147,22 @@ class Bar:
 
     close: Close
     levers: tuple[tuple[str, str], ...]
-    readbacks: Mapping[tuple[str, int], tuple[int, tuple[str, ...]]]  # k, stuck
+    readbacks: Mapping[tuple[str, int], Readback]
 
     def offer_note(self, o: OfferPublic) -> str:
-        asked, left = self.readbacks.get((o.offer_ref, o.revision), (0, ()))
-        if not asked:
+        r = self.readbacks.get((o.offer_ref, o.revision))
+        if r is None or not r.asked:
             return ""
+        asked, left = r.asked, r.stuck
         said = f"read-back asked {asked}×"  # noqa: RUF001
+        if r.unread:
+            not_read = "the rep has not read the offer back"
+            return f"{said}; {not_read}; ask again or ask_final_offer"
         if not left:
             return said
         then = ", then decline_offer and guide_fast(ask_final_offer)"
         return (
-            f"{said}, still unconfirmed after {asked}: {', '.join(left)} → stop "
+            f"{said}, omitted from {STOP_AFTER} read-backs: {', '.join(left)} → stop "
             "asking; report them to the user as not stated"
             + (then if self.close.kind == "full" else "")
         )
@@ -149,7 +174,7 @@ class Bar:
 def bar(bb: Blackboard, kind: Kind, tools: SlowTools) -> Bar:
     lines = bb.channels.get("cp", ChannelState()).lines
     readbacks = {
-        key: (len(asks), stuck(o, asks, lines))
+        key: readback(o, asks, lines)
         for key, asks in tools.readbacks.items()
         if (o := bb.public.offers.get(key[0])) is not None and o.revision == key[1]
     }
