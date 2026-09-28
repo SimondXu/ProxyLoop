@@ -189,8 +189,9 @@ world-select-run:
 
 # S1-MOD-09 (PR2b-1): assemble the Ear gold ($(MOD_DATA)/world-select-gold.json) from the
 # annotation outputs. Offline: no keys, no model call; the items and the codebook must hash to
-# their frozen values. WSG_ARGS: --labels-dir <dir> --batch-key <json> --adj-key <json>
-# [--user <decisions json> --review <review sheet json>]. Its printed sha256 goes into ADR-0024.
+# their frozen values. WSG_ARGS: --labels-dir <dir> --batch-key <json> --adj-key <json>, plus
+# --user <decisions json> --review <review sheet json>, required for the real gold file (its
+# printed sha256 goes into ADR-0024); for a dry run, --draft --out <scratch path> instead.
 WSG_ARGS ?=
 .PHONY: world-select-gold
 
