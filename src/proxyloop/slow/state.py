@@ -34,7 +34,7 @@ from proxyloop.contract.state import (
 from proxyloop.contract.views import SlowView
 from proxyloop.guard.capability import released_accept
 from proxyloop.guard.declass import spoken
-from proxyloop.guard.readback import has_cue, slot_statuses
+from proxyloop.guard.readback import has_cue, missing_required, slot_statuses
 from proxyloop.guard.status import status_change
 from proxyloop.guard.verify import verify_no_deal
 from proxyloop.slow.tools import SlowTools, lever_denial, public_guide
@@ -382,16 +382,20 @@ class Readback:
     """V4 (amended, D2) for one offer revision."""
 
     asked: int  # read-back asks
-    stuck: tuple[str, ...]  # unconfirmed slots two read-back replies omitted
+    stuck: tuple[str, ...]  # unconfirmed or missing slots two replies omitted
     unread: bool  # the rep spoke after the last ask but read nothing back
 
 
 def readback(o: OfferPublic, asks: Sequence[int], lines: Sequence[Line]) -> Readback:
     """Each ask's window runs to the next ask; a read-back reply is a rep line
     in it that restates at least one slot. A slot is stuck once the replies
-    of two windows restated others but not it; ``unread``: the last window
-    has rep lines but no read-back reply."""
-    left, omitted, replied = unconfirmed(o), Counter[str](), False
+    of two windows restated others but not it; a required field the revision
+    does not record (Guard's ``missing_required``) counts as omitted in each
+    window with a reply (S1-SYS-87: a fee the rep names only by generic words
+    can never be recorded); ``unread``: the last window has rep lines but no
+    read-back reply."""
+    left = unconfirmed(o) | frozenset(missing_required(o))
+    omitted, replied = Counter[str](), False
     for at, end in zip(asks, [*asks[1:], len(lines)], strict=True):
         said = [restated(o, x) for x in lines[at:end] if x.speaker == "partner"]
         replies = [s for s in said if s]

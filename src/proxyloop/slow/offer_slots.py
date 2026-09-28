@@ -17,11 +17,12 @@ from proxyloop.contract import base
 from proxyloop.contract import state as st
 from proxyloop.contract.state import READBACK_FIELD, ReadbackSlot
 from proxyloop.guard.declass import numbers, spoken
-from proxyloop.guard.readback import (  # the read-back's code-word matcher
+from proxyloop.guard.readback import (  # the read-back's clauses and cues
     LEXICON,
     ROLE_OF,
-    _names,  # pyright: ignore[reportPrivateUsage]
-    _words,  # pyright: ignore[reportPrivateUsage]
+    _clauses,  # pyright: ignore[reportPrivateUsage]
+    _qualifiers,  # pyright: ignore[reportPrivateUsage]
+    said,  # the values one clause states for a field
 )
 from proxyloop.slow.authority import UNITS
 from proxyloop.slow.result import Result, no
@@ -59,7 +60,8 @@ EXAMPLE = {  # the rep's words, the code they name
 }
 NAMED = (
     "A fee:<code> or credit:<code> is named by the rep's own words in its cited "
-    "line: each code word is said there and none is a generic word (such as fee, "
+    "line, in lower snake_case: each code word is said there as a whole word "
+    "and none is a generic word (such as fee, "
     f"charge, credit): {EXAMPLE['fee']}, never fee:porting_fee; "
     f"{EXAMPLE['credit']}, never credit:paperless_credit"
 )
@@ -173,7 +175,9 @@ def record_offer(
     if unbound:
         text = f"{'; '.join(unbound)}. {CITE}"
         return no(text, ("declass.denied", {"violations": unbound}))
-    if bad := [p for s in slots for p in _named(s, said.get(str(s.source_utt), ""))]:
+    if bad := [
+        p for s in slots for p in _naming(s, said.get(str(s.source_utt), ""), ref)
+    ]:
         return _invalid(refused(bad))
     if bad := [p for s in slots if (p := value(s))]:
         return _invalid(refused(bad))
@@ -197,25 +201,69 @@ def record_offer(
     return Result(True, text, (("offer.recorded", recorded),))
 
 
+# S1-SYS-87 D2: the code is hashed byte for byte, so it is the world's form
+# (lower snake_case) and each of its words, of any length, is a whole word of
+# the cited line. Guard's ``_names`` is a prefix match that skips words of ≤ 2
+# chars (the read-back's lenient test), so it cannot say "whole word": this is
+# the one local matcher. A number is one word ("20.00": '20' is not a word of
+# it); known edge, no amount rule: "$20" and "20 dollars" do say the word '20'.
+_CODE = re.compile(r"[a-z0-9]+(?:_[a-z0-9]+)*")
+_TOKEN = re.compile(r"[a-z0-9]+(?:[.,][0-9]+)*")
+# S1-SYS-87 D3: guard's ``_qualifiers`` (``_QUALIFIED``) reads the words before
+# a fee or credit word; the Mouth's template names it after ("fee porting:
+# 5.00"), which that helper cannot see, so this mirror reads the word after.
+_AFTER = re.compile(r"\b(?:fees?|charges?|credits?|rebates?)\s+([a-z'-]+)")
+
+
 def _named(slot: st.ReadbackSlot, line: str) -> list[str]:
-    """Why a fee or credit code is not the rep's name for it: a generic word, or
-    a word its cited line does not say (the read-back's matcher); else []."""
-    kind = slot.field.partition(":")[0]
+    """Why a fee or credit code is not the rep's name for it: not lower
+    snake_case, a generic word, or a word its cited line does not say as a
+    whole word; else []."""
+    kind, _, code = slot.field.partition(":")
     if kind not in ("fee", "credit"):
         return []
-    out: list[str] = []
-    for w in _words(slot.field):
+    if not _CODE.fullmatch(code):
+        snake = re.sub(r"[^a-z0-9]+", "_", code.lower()).strip("_")
+        return [f"{slot.field}: a code is lower snake_case ({kind}:{snake})"]
+    words, out = set(_TOKEN.findall(line.lower())), list[str]()
+    for w in code.split("_"):
         if w in GENERIC[kind]:
             out.append(
                 f"{slot.field}: '{w}' is a generic word; name a {kind} by the words "
                 f"the rep used for it without '{w}' (e.g. {EXAMPLE[kind]})"
             )
-        elif not _names(line.lower(), f"{kind}:{w}"):
+        elif w not in words:
             out.append(
-                f"{slot.field}: '{w}' is not in the cited line {slot.source_utt}; "
-                "use the rep's words"
+                f"{slot.field}: '{w}' is not in the cited line {slot.source_utt} "
+                "as a whole word; use the rep's words"
             )
     return out
+
+
+def _naming(slot: st.ReadbackSlot, line: str, ref: str) -> list[str]:
+    """``_named``'s problems; for a code the line refuses anyway, and a fee or
+    credit the rep named only by generic words, the one D3 problem instead.
+    D3 never refuses a code on its own."""
+    out = _named(slot, line)
+    if not out or not _unnamed(slot, line):
+        return out
+    kind = slot.field.partition(":")[0]
+    return [
+        f"{slot.field}: the rep did not name this {kind} (only generic words): "
+        "record_offer the other slots, then guide_fast(ask_readback, "
+        f'["offer:{ref}"]) once more; a {kind} must be named by the rep to be '
+        "recorded"
+    ]
+
+
+def _unnamed(slot: st.ReadbackSlot, line: str) -> bool:
+    """The clauses of ``line`` that state this slot's amount as a fee or credit
+    (guard's ``said``) have no naming word: none before the fee word (guard's
+    ``_qualifiers``) nor right after it that is not generic."""
+    kind = slot.field.partition(":")[0]
+    own = [c for _, _, c in _clauses(line.lower()) if slot.value in said(c, kind)]
+    after = {w for c in own for w in _AFTER.findall(c)} - set(GENERIC[kind])
+    return bool(own) and not after and not any(_qualifiers(c) for c in own)
 
 
 def _invalid(text: str) -> Result:  # the slots' form, not the rep's words
