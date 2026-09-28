@@ -72,6 +72,17 @@ def _set(ledger: Ledger, keys: Iterable[str], **change: Any) -> Ledger:
     return dataclasses.replace(ledger, needs=needs)
 
 
+def spoke(turn: Event) -> bool:
+    """A ``fast.turn`` with a speech item."""
+    items = cast(Sequence[Mapping[str, object]], turn.payload["items"])
+    return any(i.get("kind") == "speech" for i in items)
+
+
+def heard(ledger: Ledger, voiced: Event) -> bool:
+    """An ``s2f.voiced`` cites the last ``fast.turn``, and it spoke."""
+    return ledger.turn is not None and ledger.turn == (voiced.cause_ids[0], True)
+
+
 def step(ledger: Ledger, e: Event) -> Ledger:
     """The ledger after ``e``."""
     p, n = e.payload, ledger.needs
@@ -97,9 +108,7 @@ def step(ledger: Ledger, e: Event) -> Ledger:
         voicing = {**ledger.voicing, str(p["msg_id"]): ask}
         return dataclasses.replace(ledger, asking=asking, voicing=voicing)
     if e.type == "fast.turn":
-        items = cast(Sequence[Mapping[str, object]], p["items"])
-        spoke = any(i.get("kind") == "speech" for i in items)
-        return dataclasses.replace(ledger, turn=(e.event_id, spoke))
+        return dataclasses.replace(ledger, turn=(e.event_id, spoke(e)))
     if e.type == "s2f.voiced" and p["msg_id"] in ledger.voicing:
         voicing = dict(ledger.voicing)
         seq, before = voicing.pop(str(p["msg_id"]))
@@ -109,8 +118,7 @@ def step(ledger: Ledger, e: Event) -> Ledger:
             for k, b in before
             if k in n and n[k].asked_seq == seq and n[k].state == "pending"
         ]
-        heard = ledger.turn is not None and ledger.turn == (e.cause_ids[0], True)
-        if heard:
+        if heard(ledger, e):
             asked = [k for k, _ in mine]
             return _set(ledger, asked, voiced_seq=e.seq)
         needs = dict(n)  # never heard: as before the ask (fail closed)
@@ -122,8 +130,8 @@ def step(ledger: Ledger, e: Event) -> Ledger:
         unvoiced = ledger.unvoiced | {k for k, _ in mine}
         return dataclasses.replace(ledger, needs=needs, unvoiced=unvoiced)
     if e.type == "user.msg":
-        heard = [k for k, x in n.items() if x.state == "pending" and x.voiced_seq]
-        return _set(ledger, heard, state="replied", replied_seq=e.seq)
+        voiced = [k for k, x in n.items() if x.state == "pending" and x.voiced_seq]
+        return _set(ledger, voiced, state="replied", replied_seq=e.seq)
     if e.type == "fact.recorded":  # an answer also ends an unheard ask (n1)
         key = str(p["key"])
         ledger = dataclasses.replace(ledger, unvoiced=ledger.unvoiced - {key})

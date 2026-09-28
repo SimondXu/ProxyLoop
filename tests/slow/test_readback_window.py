@@ -8,7 +8,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, cast
 
-import pytest
 from tests.slow.test_authority import SLOTS, TERMS, Host
 
 RECORD = {"tool": "record_offer", "offer_ref": "save-2"}
@@ -113,14 +112,8 @@ def test_n9_a_later_contradiction_reverts_a_confirmed_status(tmp_path: Path) -> 
 
 
 HOLD: dict[str, Any] = {"tool": "guide_fast", "move": "ask_discount", "slots": []}
-D1 = pytest.mark.xfail(
-    strict=True,
-    reason="#219 D1: only a voiced ask anchors, at the transcript length at its "
-    "voicing by a turn that spoke; needs guard/needs.py's predicate (follow-up)",
-)
 
 
-@D1
 def test_n10_an_ask_never_voiced_never_anchors(tmp_path: Path) -> None:
     """#219 review D1: a newer guide in the same act superseded the ask
     (ADR-0013), so it was never spoken; the rep's unprompted statement of
@@ -134,7 +127,6 @@ def test_n10_an_ask_never_voiced_never_anchors(tmp_path: Path) -> None:
     assert "confirmed" not in _statuses(h)
 
 
-@D1
 def test_n10_an_ask_voiced_by_a_speechless_turn_never_anchors(tmp_path: Path) -> None:
     """S1-SYS-21's rule: a voicing by a turn with no speech was never heard."""
     h = Host(tmp_path)
@@ -149,7 +141,6 @@ def test_n10_an_ask_voiced_by_a_speechless_turn_never_anchors(tmp_path: Path) ->
     assert "confirmed" not in _statuses(h)
 
 
-@D1
 def test_the_window_opens_at_the_voicing_not_the_ask(tmp_path: Path) -> None:
     """The rep's full statement between the ask and its voicing is before
     the window; only a restatement after the voicing confirms."""
@@ -165,6 +156,23 @@ def test_the_window_opens_at_the_voicing_not_the_ask(tmp_path: Path) -> None:
     assert "confirmed" not in _statuses(h)
     h.rep("cp-3", TERMS)
     assert _statuses(h) == {"confirmed"}
+
+
+def test_n10_an_ask_voiced_by_a_cancelled_turn_never_anchors(tmp_path: Path) -> None:
+    """S1-SYS-59's rule: a voicing turn later cancelled (any reason) was never
+    heard, though it had speech."""
+    h = Host(tmp_path)
+    h.call()
+    _opened(h)
+    h.rep("cp-1", PRICE_TERM)
+    r1 = _slots("cp-1", ("monthly_price", "term_months"))
+    h.act(RECORD | {"offer_slots": r1}, _ask("save-2"))
+    _voice(h)
+    cut = {"gen_id": "c-g1", "reason": "verbatim"}
+    h.emit("fast.cancelled", "fast.cp", cut, [h.of("fast.turn")[-1].event_id])
+    h.rep("cp-2", TERMS)
+    h.act(RECORD | {"offer_slots": _slots("cp-2")})
+    assert "confirmed" not in _statuses(h)
 
 
 def test_d5_an_ask_for_a_closed_offer_opens_no_window(tmp_path: Path) -> None:

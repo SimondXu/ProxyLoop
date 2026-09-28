@@ -24,6 +24,7 @@ from proxyloop.guard import authorize as guard
 from proxyloop.guard import readiness
 from proxyloop.guard.authorize import CaseRef, Denial
 from proxyloop.guard.declass import declassify, numbers
+from proxyloop.guard.needs import spoke
 from proxyloop.guard.readback import Ask, readback_update
 from proxyloop.kernel.wake import HEARTBEAT_S
 from proxyloop.slow import asks, authority, offer_slots, shape
@@ -328,10 +329,27 @@ class SlowTools:
         return Result(True, text, sent.effects)
 
     def _windows(self) -> dict[str, list[Ask]]:
-        """Each offer's read-back asks in the current cp call."""
-        call = self._call()
+        """Each offer's read-back asks in the current cp call whose guide was
+        heard (#219 D1): an ``s2f.voiced`` citing a ``fast.turn`` that spoke
+        and was never cancelled. Each opens at the first cp line after its
+        voicing, not at the ask."""
+        call, events = self._call(), self._host.bus.events
+        turns = {e.event_id: e for e in events if e.type == "fast.turn"}
+        cut = {e.payload["gen_id"] for e in events if e.type == "fast.cancelled"}
+        said = {  # a cp line's utt_id -> the seq that appended it
+            str(e.payload["utt_id"]): e.seq
+            for e in events
+            if e.type in ("utt.final", "utt.delivered") and e.payload["lane"] == "cp"
+        }
+        seqs = [said[x.utt_id] for x in self._host.bb.channels["cp"].lines]
+        at: dict[str, int] = {}  # s2f msg id -> its window's first line
+        for e in events:
+            turn = turns.get(e.cause_ids[0]) if e.type == "s2f.voiced" else None
+            if turn is None or not spoke(turn) or turn.payload["gen_id"] in cut:
+                continue
+            at.setdefault(str(e.payload["msg_id"]), sum(q < e.seq for q in seqs))
         return {
-            ref: [ask for _, c, ask in asks if c == call]
+            ref: [ask._replace(at=at[m]) for m, c, ask in asks if c == call and m in at]
             for ref, asks in self.readback_asks.items()
         }
 
