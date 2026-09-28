@@ -51,11 +51,12 @@ def test_every_detector_equals_the_hand_count(tmp_path: Path) -> None:
         "max_consecutive_ok_hold": 2,
         # s2f-1 (t=1400) voiced by cp-g1, whose first delivery is seq 18
         # (t=1800): 1800 - 1400 = 400; s2f-2 (t=2300) is never voiced and
-        # the log runs past 2300 + 1000; s2f-4 (t=3600) is pending when the
-        # log ends at 3800 < 3600 + 1000 (the relay window)
+        # s2f-4 replaced it with no cp fast.request between them (#242:
+        # superseded, as slow.heard.fates has it); s2f-4 (t=3600) is pending
+        # when the log ends at 3800 < 3600 + 1000 (the relay window)
         "guide_to_heard_ms": {
-            "count": 1, "p50": 400, "p90": 400, "unheard": 1, "unknown": 1,
-            "cancelled": 0, "superseded": 0, "ms": [400],
+            "count": 1, "p50": 400, "p90": 400, "unheard": 0, "unknown": 1,
+            "cancelled": 0, "superseded": 1, "ms": [400],
         },
         "end_world_error": {},  # ended "abandoned": known, no world error
         # user.msg 3 (t=300) and 10 (t=1000): no f2s cites them by 300 + 1000
