@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 from tests.obs.bundles import Log, manifest, write
-from tests.obs.triage_bundle import P, s2f
+from tests.obs.triage_bundle import P, heard, s2f, sentence, turn
 
 from proxyloop.obs import detectors, grading, runs, triage
 
@@ -140,8 +140,10 @@ def test_every_h5_detector_equals_the_hand_count(tmp_path: Path) -> None:
         # o1's expires and fee (shown without Slow's suffix) are still
         # "heard"; o2 was never read back
         "offer.required_unconfirmed_after_readback": {
-            "count": 2, "offers": {"o1@1": ["expires", "fee"]}, "unasked": ["o2"],
-            "unasked_n": 1, "h5_pass": None,  # o2 may be info_only: unknown
+            "count": 2, "offers": {"o1@1": ["expires", "fee"]},
+            "ask_heard": {"o1@1": False},  # 21, 23 and 24 were never voiced
+            "unasked": ["o2"], "unasked_n": 1,
+            "h5_pass": None,  # o2 may be info_only: unknown
         },
         # 21, 23 and 24 all went out while expires was unconfirmed
         "slow.readback_asks_max_per_revision": {
@@ -279,27 +281,116 @@ def test_cp_opened_without_a_missing_list_reads_the_facts(
     }  # fmt: skip
 
 
-def _offer_log(run_id: str, revisions: int, asked: int) -> Log:
-    """An offer recorded ``revisions`` times; revision ``asked`` read back."""
-    log = Log(run_id)
-    for rev in range(1, revisions + 1):
-        made = _offer(log, "o1", ("monthly_price",), log.start)
-        log.events[-1] = log.events[-1].model_copy(
-            update={"payload": log.events[-1].payload | {"revision": rev}}
-        )
-        if rev == asked:
-            _readback(log, made, "offer:o1")
-    return log
+def _rev(log: Log, ref: str, revision: int) -> str:
+    """Revision ``revision`` of offer ``ref``, one ``monthly_price`` slot."""
+    made = _offer(log, ref, ("monthly_price",), log.start)
+    log.events[-1] = log.events[-1].model_copy(
+        update={"payload": log.events[-1].payload | {"revision": revision}}
+    )
+    return made
+
+
+def _call(log: Log) -> None:
+    log.add("chan.opened", "kernel", "agent", {"lane": "cp"}, (log.start,))
+
+
+_UNASKED: P = {"count": 0, "offers": {}, "ask_heard": {}, "unasked": ["o1"],
+               "unasked_n": 1, "h5_pass": None}  # fmt: skip
+
+
+def _grade(tmp_path: Path, log: Log) -> object:
+    run = write(tmp_path / log.run_id, log, manifest(log.run_id))
+    return _values(run)["offer.required_unconfirmed_after_readback"]
 
 
 def test_an_offer_never_read_back_does_not_pass(tmp_path: Path) -> None:
-    for run_id, revisions, asked in (("rN", 1, 0), ("r2", 2, 1)):
-        log = _offer_log(run_id, revisions, asked)
-        run = write(tmp_path / run_id, log, manifest(run_id))
-        value = _values(run)["offer.required_unconfirmed_after_readback"]
-        assert value == {
-            "count": 0, "offers": {}, "unasked": ["o1"], "unasked_n": 1,
-            "h5_pass": None,
+    """Never asked (rN); asked only in an earlier cp call (rC: a
+    chan.opened{cp} closes the earlier windows, ADR-0020)."""
+    log = Log("rN")
+    _rev(log, "o1", 1)  # 1
+    assert _grade(tmp_path, log) == _UNASKED
+    log = Log("rC")
+    _call(log)  # 1
+    _readback(log, _rev(log, "o1", 1), "offer:o1")  # 2-3: call 1
+    _call(log)  # 4
+    _rev(log, "o1", 2)  # 5: call 2, no ask of its own
+    assert _grade(tmp_path, log) == _UNASKED
+
+
+def test_an_earlier_revisions_ask_in_the_same_call_grades_the_latest(
+    tmp_path: Path,
+) -> None:
+    """ADR-0020 (21988c's shape): r1 is asked, the answer makes Slow record
+    r2 with no ask of its own; the ask is in r2's call, so r2 is graded on its
+    own statuses (here still ``unknown``)."""
+    log = Log("rW")
+    _call(log)  # 1
+    _readback(log, _rev(log, "o1", 1), "offer:o1.monthly_price")  # 2-3
+    _rev(log, "o1", 2)  # 4
+    assert _grade(tmp_path, log) == {
+        "count": 1, "offers": {"o1@2": ["monthly_price"]},
+        "ask_heard": {"o1@2": False}, "unasked": [], "unasked_n": 0,
+        "h5_pass": False,
+    }  # fmt: skip
+
+
+def test_a_latest_revision_the_window_confirmed_passes(tmp_path: Path) -> None:
+    log = Log("rP")
+    _readback(log, _rev(log, "o1", 1), "offer:o1")  # 1-2
+    r2 = _rev(log, "o1", 2)  # 3
+    update: P = {"offer_ref": "o1", "revision": 2,
+                 "slot_statuses": {"monthly_price": "confirmed"}}  # fmt: skip
+    log.add("readback.updated", "guard", "agent", update, (r2,))  # 4
+    assert _grade(tmp_path, log) == {
+        "count": 0, "offers": {"o1@2": []}, "ask_heard": {"o1@2": False},
+        "unasked": [], "unasked_n": 0, "h5_pass": True,
+    }  # fmt: skip
+
+
+def test_another_offers_ask_does_not_read_back(tmp_path: Path) -> None:
+    log = Log("rO")
+    _rev(log, "o1", 1)  # 1
+    _readback(log, _rev(log, "o2", 1), "offer:o2")  # 2-3: o2 only
+    _rev(log, "o1", 2)  # 4
+    assert _grade(tmp_path, log) == {
+        "count": 1, "offers": {"o2@1": ["monthly_price"]},
+        "ask_heard": {"o2@1": False}, "unasked": ["o1"], "unasked_n": 1,
+        "h5_pass": None,
+    }  # fmt: skip
+
+
+def _voice(log: Log, ask: str, gen: str, cut: bool, cancel: bool) -> None:
+    """FastC voices the ask (s2f.voiced) in ``gen`` and speaks one sentence,
+    delivered whole unless ``cut``; with ``cancel`` the turn is cancelled."""
+    msg = str(next(e for e in log.events if e.event_id == ask).payload["msg_id"])
+    turn(log, "cp", gen, f"c-{gen}", ask)
+    voiced: P = {"msg_id": msg, "gen_id": gen}
+    log.add("s2f.voiced", "fast.cp", "agent", voiced, (log.events[-1].event_id,))
+    s = sentence(log, "cp", gen, 0, "PRIV-read", log.events[-1].event_id)
+    if cancel:
+        cancelled: P = {"gen_id": gen, "reason": "verbatim"}
+        log.add("fast.cancelled", "fast.cp", "agent", cancelled, (s,))
+    else:
+        heard(log, "cp", f"{gen}-u0", "PRIV-read", cut, s)
+
+
+def test_ask_heard_tells_an_unheard_ask_from_an_unanswered_one(
+    tmp_path: Path,
+) -> None:
+    """``ask_heard``: an ask voiced by a turn never cancelled whose every
+    sentence was delivered uncut; it never changes ``count`` or ``h5_pass``."""
+    for run_id, cut, cancel, heard_ in (
+        ("rH", False, False, True), ("rX", True, False, False),
+        ("rZ", False, True, False),
+    ):  # fmt: skip
+        log = Log(run_id)
+        ask = _readback(log, _rev(log, "o1", 1), "offer:o1")  # 1-2
+        _voice(log, ask, "cp-g1", cut, cancel)
+        _rev(log, "o1", 2)
+        assert _grade(tmp_path, log) == {
+            "count": 1, "offers": {"o1@2": ["monthly_price"]},
+            "ask_heard": {"o1@2": heard_}, "unasked": [], "unasked_n": 0,
+            "h5_pass": False,
         }, run_id  # fmt: skip
 
 

@@ -265,6 +265,37 @@ def test_a_guide_voiced_by_a_cancelled_turn_is_heard_through_its_rerun(
     }  # fmt: skip
 
 
+def test_a_turn_requested_before_a_verbatim_delivery_is_heard_through_its_rerun(
+    tmp_path: Path,
+) -> None:
+    """#225's shape (kernel/lanes.py): FastC's request falls between a
+    verbatim line's release and its delivery; the turn still emits its
+    s2f.voiced and fast.sentence, is cancelled ``verbatim`` citing the
+    delivery, leaves no chan.hold, and its trigger is re-queued first, so the
+    re-run's request has ``basis_seq`` equal to the cancellation's seq."""
+    log = Log("rV")
+    guide: dict[str, object] = {"guide": {"move": "identify", "slots": []}}
+    a = s2f(log, "s2f-a", "cp", "GUIDE", log.start, **guide)  # 1 (t=100)
+    out = log.add("speak.released", "kernel", "agent", {"lane": "cp"}, (a,))  # 2
+    t4 = _gen(log, "cp-g1", "guidance", 2, a)  # 3-4: before the delivery
+    voiced: dict[str, object] = {"msg_id": "s2f-a", "gen_id": "cp-g1"}
+    log.add("s2f.voiced", "fast.cp", "agent", voiced, (t4,))  # 5
+    sentence(log, "cp", "cp-g1", 0, "Sure.", t4)  # 6: never said
+    line = heard(log, "cp", "cp-v1", "PRIV-verbatim", False, out)  # 7
+    cancel: dict[str, object] = {"gen_id": "cp-g1", "reason": "verbatim"}
+    log.add("fast.cancelled", "fast.cp", "agent", cancel, (t4, line))  # 8
+    t10 = _gen(log, "cp-g2", "guidance", 8, a)  # 9-10: the re-run, basis 8
+    s11 = sentence(log, "cp", "cp-g2", 0, "Sure.", t10)  # 11
+    heard(log, "cp", "cp-g2-u0", "Sure.", False, s11)  # 12 (t=1200)
+    log.add("session.ended", "kernel", "ops", {"reason": "done"})  # 13
+    x = triage.read(write(tmp_path / "rV", log, manifest("rV")), runs.Seal(), 0.3)[1]
+    # the verbatim delivery (7) is no Fast line; s2f-a is heard at 1200 - 100
+    assert detectors.DETECTORS["guide_to_heard_ms"](x) == {
+        "count": 1, "p50": 1100, "p90": 1100, "unheard": 0, "unknown": 0,
+        "cancelled": 1, "superseded": 0, "ms": [1100],
+    }  # fmt: skip
+
+
 def test_world_error_type_by_default_message_only_with_content(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
