@@ -358,3 +358,28 @@ def test_cli_draft_only(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
     ws.main(cli(tree, tree / "g.json", "--draft"))
     assert "user" not in json.loads(capsys.readouterr().out)["by_source"]
     assert get(tree, "g.json")["draft"] is True
+
+
+def test_labels_missing_or_extra(tree: Path) -> None:
+    labels = get(tree, "labels/batch-001.json")
+    put(tree, "labels/batch-001.json", [*labels, lab("batch-001", 0, 2, "other")])
+    with pytest.raises(
+        SystemExit, match=r"1 labels missing or extra, e.g. \('a+', 2\)"
+    ):
+        build(tree)  # A says one utterance: an extra label refuses too
+    put(tree, "labels/batch-001.json", [])
+    with pytest.raises(
+        SystemExit, match=r"1 labels missing or extra, e.g. \('a+', 1\)"
+    ):
+        build(tree)
+
+
+@pytest.mark.parametrize("item", [C, "f" * 64])  # constructed; not an Ear item
+def test_first_pass_only_on_recorded_ear_items(tree: Path, item: str) -> None:
+    key = get(tree, "key.json")
+    key["batches"] |= {"batch-001": [A, item], "check-001": [D]}
+    put(tree, "key.json", key)
+    labels = get(tree, "labels/batch-001.json")
+    put(tree, "labels/batch-001.json", [*labels, lab("batch-001", 1, 1, "accept")])
+    with pytest.raises(SystemExit, match="batch-001 1: not a recorded Ear item"):
+        build(tree)
