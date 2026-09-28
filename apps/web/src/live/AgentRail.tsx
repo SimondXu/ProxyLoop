@@ -93,7 +93,15 @@ function StepItem({ s }: { s: Step }) {
 }
 
 // Each state's mark (none: the ring is drawn in CSS) and its words for screen readers (Not reached is visible text).
-const MARK: Record<RowState, keyof typeof ICONS | null> = { done: "done", noted: "noted", not_reached: "unreached", current: null, needs_you: null, pending: null };
+const MARK: Record<RowState, keyof typeof ICONS | null> = {
+  done: "done",
+  noted: "noted",
+  not_reached: "unreached",
+  ended: "ended",
+  current: null,
+  needs_you: null,
+  pending: null,
+};
 const SAY: Record<RowState | "other", string> = {
   done: "done",
   noted: "done, with a note",
@@ -101,6 +109,7 @@ const SAY: Record<RowState | "other", string> = {
   needs_you: "needs you",
   pending: "not started",
   not_reached: "",
+  ended: "not finished",
   other: "",
 };
 
@@ -120,7 +129,7 @@ function ToDo({ t }: { t: Todo }) {
       </p>
       <ol className="pl-todo-list" aria-label="To-do">
         {t.rows.map((r) => (
-          <Milestone key={r.key} state={r.state} label={r.label} note={r.note} steps={r.steps} />
+          <Milestone key={r.key} state={r.state} label={r.label} note={r.note} alsoYou={r.alsoYou} steps={r.steps} />
         ))}
       </ol>
       {t.other.length > 0 && (
@@ -134,7 +143,8 @@ function ToDo({ t }: { t: Todo }) {
 }
 
 /** One milestone: its mark, label, note and state words; a button revealing its steps when it has any. */
-function Milestone({ state, label, note, steps }: { state: RowState | "other"; label: string; note: string | null; steps: Step[] }) {
+function Milestone(props: { state: RowState | "other"; label: string; note: string | null; alsoYou?: boolean; steps: Step[] }) {
+  const { state, label, note, alsoYou, steps } = props;
   const [open, setOpen] = useState(false);
   const id = useId();
   const mark = state === "other" ? null : MARK[state];
@@ -145,7 +155,12 @@ function Milestone({ state, label, note, steps }: { state: RowState | "other"; l
       </span>
       <span>
         <span className="pl-td-lb">{label}</span>{" "}
-        {note && <span className="pl-td-nt">{note}</span>}
+        {note && (
+          <span className={alsoYou ? "pl-td-nt pl-td-also" : "pl-td-nt"}>
+            {alsoYou && <Icon name="you" size="xs" />}
+            {note}
+          </span>
+        )}
         {SAY[state] && <span className="pl-sr"> · {SAY[state]}</span>}
       </span>
     </>

@@ -1,5 +1,5 @@
 // The icon set (redesign §2.4): one fixed meaning per icon, named per-icon imports only.
-import { ArrowUp, Check, ChevronDown, Compass, FlaskConical, Hand, Lock, Mic, Minus, Monitor, Moon, Pause, Phone, ShieldCheck, Sun, X, type LucideIcon } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, Compass, FlaskConical, Hand, Lock, Mic, Minus, Monitor, Moon, Pause, Phone, ShieldCheck, Square, Sun, X, type LucideIcon } from "lucide-react";
 
 export const ICONS = {
   guard: ShieldCheck,
@@ -17,6 +17,7 @@ export const ICONS = {
   done: Check,
   noted: X,
   unreached: Minus,
+  ended: Square,
   expand: ChevronDown,
 } satisfies Record<string, LucideIcon>;
 

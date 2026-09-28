@@ -101,12 +101,15 @@ const CASES: Case[] = [
   ["decision: absent without approval.requested", "decision", () => [mandate(), limits("granted"), call(), offer(), ALL()], "absent"],
   ["decision: needs you while the card is open", "decision", () => [call(), offer(), ALL(), card()], { state: "needs_you", note: "Waiting for your decision" }],
   ["decision: still needs you after the click, until approval.decided", "decision", () => [call(), offer(), ALL(), card(), post()], { state: "needs_you", note: "Sent. Waiting for Guard to record it" }],
-  ["decision: pending while the limits are the current need", "decision", () => [mandate(), call(), offer(), card()], { state: "pending", note: "Waiting for your decision" }],
+  // Both wait for you (root ruling): the card is the current need (it expires, the rep holds); the limits say "Also needs you".
+  ["decision: needs you ahead of open limits", "decision", () => [mandate(), call(), offer(), card()], { state: "needs_you", note: "Waiting for your decision" }],
+  ["limits: pending, also needs you, while a card waits", "limits", () => [mandate(), call(), offer(), card()], { state: "pending", note: "Also needs you" }],
   ["decision: current (not you) once the card went stale", "decision", () => [call(), offer(), card(), bump()], { state: "current", note: "No longer valid: your instructions changed" }],
   ["decision: done, approved by your click", "decision", () => [call(), offer(), ALL(), card(), post(), decided("granted", "ui")], { state: "done", note: "Approved by your click" }],
   ["decision: done, approved by the sim approver", "decision", () => [call(), offer(), ALL(), card(), decided("granted", "sim_approver")], { state: "done", note: "Approved by the simulated approver (not you)" }],
   ["decision: declined is done with a note", "decision", () => [call(), offer(), ALL(), card(), decided("denied")], { state: "noted", note: "Declined" }],
-  ["decision: an undecided card at the end is not reached", "decision", () => [call(), offer(), ALL(), card(), ended("timeout")], { state: "not_reached", note: "Not reached" }],
+  ["decision: an undecided card at the end ended early (never 'not reached')", "decision", () => [call(), offer(), ALL(), card(), ended("timeout")], { state: "ended", note: "Ended before your decision" }],
+  ["decision: a card after your click, undecided at the end, ended early", "decision", () => [call(), offer(), ALL(), card(), post(), ended("timeout")], { state: "ended", note: "Ended before your decision" }],
   // 6. Accept on the call
   ["accept: absent in an info case", "accept", () => [call(), offer(), ALL()], "absent"],
   ["accept: pending in an approval case", "accept", () => [mandate(), limits("granted"), call()], { state: "pending" }],
@@ -141,7 +144,8 @@ const CASES: Case[] = [
   ["records: done, matched", "records", () => [...approvedRun(), evidence(), verdict("ok")], { state: "done", note: "Matched the company's records" }],
   ["records: a failed check is done with a note", "records", () => [...approvedRun(), evidence(), verdict("fail")], { state: "noted", note: "Didn't match the company's records" }],
   ["records: new evidence after a failed check reopens it", "records", () => [...approvedRun(), evidence(), verdict("fail"), evidence()], { state: "current" }],
-  ["records: an unfinished check at the end is not reached", "records", () => [...approvedRun(), evidence(), ended("timeout")], { state: "not_reached", note: "Not reached" }],
+  ["records: an unfinished check at the end ended early (never 'not reached')", "records", () => [...approvedRun(), evidence(), ended("timeout")], { state: "ended", note: "Ended before the records check" }],
+  ["records: EVIDENCE_PENDING at the end ended early", "records", () => [...approvedRun(), status("EVIDENCE_PENDING"), ended("timeout")], { state: "ended", note: "Ended before the records check" }],
   // 8. Result (always)
   ["result: pending at the start", "result", () => [], { state: "pending" }],
   ["result: current once every row before it is done", "result", () => [call(), offer(), ALL()], { state: "current" }],
@@ -171,6 +175,33 @@ describe("todo rows × states", () => {
   });
 });
 
+describe("two rows wait for you (root ruling)", () => {
+  it("the card is the one needs-you row; the limits are pending with 'Also needs you', flagged for its icon", () => {
+    const t = run([mandate(), call(), offer(), card()]);
+    expect(t.rows.map((r) => [r.key, r.state, r.alsoYou])).toEqual([
+      ["limits", "pending", true],
+      ["call", "done", false],
+      ["offer", "done", false],
+      ["readback", "pending", false],
+      ["decision", "needs_you", false],
+      ["accept", "pending", false],
+      ["result", "pending", false],
+    ]);
+  });
+
+  it("once the card is decided, the open limits are the needs-you row again", () => {
+    const t = run([mandate(), call(), offer(), card(), decided("granted")]);
+    expect([row(t, "limits")?.state, row(t, "limits")?.note, row(t, "limits")?.alsoYou]).toEqual(["needs_you", "Waiting for your confirmation", false]);
+    expect(t.tag).toEqual({ tone: "you", text: "Needs you · 3 of 7 done" });
+  });
+
+  it("rows that never appeared stay absent at the end", () => {
+    const t = run([mandate(), limits("granted"), call(), offer(), ALL(), ended("timeout")]);
+    expect([row(t, "decision"), row(t, "records")]).toEqual([undefined, undefined]);
+    expect(t.rows.filter((r) => r.state === "ended")).toEqual([]);
+  });
+});
+
 describe("kind", () => {
   it.each([
     ["unknown before anything", () => [], "unknown", ["call", "offer", "readback", "result"]],
@@ -189,6 +220,8 @@ describe("summary tag", () => {
   it.each([
     ["needs you while the limits wait", () => [mandate()], "you", "Needs you · 0 of 6 done"],
     ["needs you while the card is open", () => [call(), offer(), ALL(), card()], "you", "Needs you · 3 of 7 done"],
+    ["needs you while both the limits and the card wait", () => [mandate(), call(), offer(), card()], "you", "Needs you · 2 of 7 done"],
+    ["a decision that ended early is not done", () => [call(), offer(), ALL(), card(), ended("timeout")], "plain", "4 of 7 done"],
     ["plain while the agent works", () => [call()], "plain", "1 of 4 done"],
     ["plain after the kernel decides the card", () => [call(), offer(), ALL(), card(), post(), decided("granted")], "plain", "4 of 7 done"],
     ["all done on VERIFIED_COMPLETE", () => [...approvedRun(), evidence(), verdict("ok"), status("VERIFIED_COMPLETE"), ended()], "ok", "All done · 8 of 8"],
@@ -242,7 +275,7 @@ describe("the root's required runs", () => {
       ["result", "done"],
     ]);
     // Its records row appears only with its events.
-    expect(row(run([call(), offer(), ALL(), evidence(), status(end), ended(reason)]), "records")?.state).toBe("not_reached");
+    expect(row(run([call(), offer(), ALL(), evidence(), status(end), ended(reason)]), "records")?.state).toBe("ended");
   });
 });
 

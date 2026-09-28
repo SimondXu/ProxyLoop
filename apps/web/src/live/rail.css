@@ -37,6 +37,9 @@
   .pl-td-pending .pl-td-lb { color: var(--ink-2); }
   .pl-td-not_reached .pl-td-g { border: 1.5px solid var(--line-2); color: var(--ink-3); }
   .pl-td-not_reached .pl-td-lb { color: var(--ink-3); }
+  .pl-td-ended .pl-td-g { border: 1.5px solid var(--line-2); color: var(--ink-2); }
+  .pl-td-ended .pl-td-lb { color: var(--ink-2); }
+  .pl-td-also { display: flex; align-items: center; gap: 6px; color: var(--you); }
   .pl-td-other .pl-td-lb { color: var(--ink-2); }
   .pl-td-steps { margin: var(--s1) 6px var(--s2) 38px; }
   .pl-todo-rule { margin: 10px 6px 0; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.5; }
