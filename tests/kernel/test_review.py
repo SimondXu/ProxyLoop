@@ -80,7 +80,7 @@ def test_the_disclosure_is_heard_whole_even_if_the_rep_talks(
 def test_a_rep_turn_counts_as_busy_from_its_spawn() -> None:  # nit: busy
     class Stub:
         async def tick(self, t_ms: int) -> RepTurn:
-            return RepTurn((), strike=False, ended=False)
+            return RepTurn((), strike_causes=(), end="")
 
     channel = SimRepChannel(cast(SimRep, Stub()))
     turn = channel.tick(0)
