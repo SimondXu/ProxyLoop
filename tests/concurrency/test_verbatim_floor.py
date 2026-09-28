@@ -453,7 +453,9 @@ def test_fastc_waiting_behind_a_verbatim_yields_to_the_next(tmp_path: Path) -> N
         # its turn predates the second line: cancelled after it, never said
         (cancelled,) = sim.of("fast.cancelled", gen_id=turn.payload["gen_id"])
         assert cancelled.payload["reason"] == "verbatim"
-        assert cancelled.cause_ids[1] == second.event_id
+        (heard,) = [e for e in sim.events if e.cause_ids == (second.event_id,)]
+        assert heard.type == "utt.delivered"
+        assert cancelled.cause_ids[1] == heard.event_id  # the line as heard
         assert not sim.of("utt.delivered", utt_id=turn.payload["utt_id"])
         await sim.stop()
 
@@ -510,7 +512,8 @@ def test_a_held_fastc_turn_older_than_a_released_decline_is_cancelled(
     waits is held behind it (S1-SYS-56). Released after it, it would be heard
     right after "No, thank you" on a board that had no decline. It is
     cancelled (``fast.cancelled{reason: verbatim}``, citing its turn and the
-    release), never said, and its trigger runs again on the new basis."""
+    decline's delivery), never said, and its trigger runs again on the new
+    basis."""
 
     async def case() -> None:
         rep = LaggingRep()
@@ -538,7 +541,8 @@ def test_a_held_fastc_turn_older_than_a_released_decline_is_cancelled(
             (turn,) = sim.of("fast.turn", gen_id=gen)
             (cancelled,) = sim.of("fast.cancelled", gen_id=gen)
             assert cancelled.payload["reason"] == "verbatim"
-            assert cancelled.cause_ids == (turn.event_id, released.event_id)
+            (heard,) = [e for e in sim.events if e.cause_ids == (released.event_id,)]
+            assert cancelled.cause_ids == (turn.event_id, heard.event_id)
             assert cancelled.seq > released.seq
             (asked,) = sim.of("fast.request", gen_id=gen)
             asks = sim.of("fast.request", lane="cp")
