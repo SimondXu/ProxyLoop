@@ -175,7 +175,8 @@ def row(label: str, v: View, raw: str, rec: Rec, failed: Sequence[Rec]) -> Json:
     out["ttft_ms"] = None if first is None else first - rec.t_start
     if rec.error is None:
         out |= analyse(raw, v)
-        out["agrees"] = out["directives"] == analyse(v.raw, v)["directives"]
+        out["reference_directives"] = analyse(v.raw, v)["directives"]
+        out["agrees"] = out["directives"] == out["reference_directives"]
     return out
 
 
@@ -207,6 +208,9 @@ def summarise(rows: Sequence[Json]) -> Json:
     out["spoken_words_p90"] = words[math.ceil(0.9 * len(words)) - 1] if words else None
     out["unsupported_number_share"] = rate(ok, lambda r: bool(r["unsupported_numbers"]))
     out["directive_agreement"] = rate(ok, lambda r: r["agrees"])
+    acting = [r for r in ok if r["reference_directives"]]  # the reference gave one
+    out["directive_agreement_acting_reference"] = rate(acting, lambda r: r["agrees"])
+    out["acting_reference_n"] = len(acting)
     # Unknown usage stays unknown: summed only over the calls that reported it.
     out["usage_unknown"] = len(ok) - len(usage)
     for k in ("prompt_tokens", "completion_tokens"):
@@ -215,11 +219,16 @@ def summarise(rows: Sequence[Json]) -> Json:
 
 
 def summary(rows: Sequence[Json], labels: Sequence[str]) -> Json:
-    """Per model (the recorded reference first), per lane."""
+    """Per model (the recorded reference first), per lane, labelled with the model
+    refs its rows were served by and the served echoes they reported."""
     out: Json = {}
     for m in (REFERENCE, *labels):
         mine = [r for r in rows if r["model"] == m]
-        out[m] = {ln: summarise([r for r in mine if r["lane"] == ln]) for ln in LANES}
+        refs = {json.dumps(r["record"]["model_ref"], sort_keys=True) for r in mine}
+        echoes = {r["record"]["served_model_echo"] for r in mine} - {None}
+        out[m] = {"model_refs": [json.loads(x) for x in sorted(refs)]}
+        out[m]["served_echoes"] = sorted(echoes)
+        out[m] |= {ln: summarise([r for r in mine if r["lane"] == ln]) for ln in LANES}
     return out
 
 

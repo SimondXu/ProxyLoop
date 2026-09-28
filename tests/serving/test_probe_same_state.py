@@ -210,6 +210,13 @@ def test_metrics_on_a_hand_built_answer_set(evidence: tuple[Path, Sent]) -> None
     assert cp["spoken_words_mean"] == 3 and cp["spoken_words_p90"] == 6
     assert cp["unsupported_number_share"] == 1 / 3
     assert cp["directive_agreement"] == 1 / 3  # the reference relays one fact
+    quiet = dataclasses.replace(v, raw="Sure, one moment.")  # no directive in it
+    more = pss.summary([*rows, pss.row("m", quiet, "Okay.", rec, [])], ["m"])["m"]
+    assert more["cp"]["directive_agreement"] == 2 / 4
+    assert more["cp"]["directive_agreement_acting_reference"] == 1 / 3
+    assert more["cp"]["acting_reference_n"] == 3
+    assert s["model_refs"] == [rec.model_ref.model_dump(mode="json")]
+    assert s["served_echoes"] == [rec.served_model_echo] == [QWEN.model_id]
     assert rows[0]["unsupported_numbers"] == ["45"]
     assert rows[0]["sentences"] == 1 and rows[2]["issues"] == [
         "unknown_directive",
