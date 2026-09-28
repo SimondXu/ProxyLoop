@@ -61,6 +61,9 @@ def test_a_the_relayed_stop_makes_the_stop_act_the_one_step(
     fw.stop_relayed(h)
     assert h.bb.public.status is CaseStatus.NEEDS_REPLAN
     assert _line(h, "stop: ", mode) == state.STOP
+    # rev-269b N-3: it says what the board knows (a relayed REVOKE), no more
+    assert state.STOP.startswith("stop: the user withdrew (FastU relayed a REVOKE) ")
+    assert "said stop" not in state.STOP
     close = _line(h, "close: ", mode)
     assert close == (
         "close: final offer not asked; the user stopped the case (stop line): "
