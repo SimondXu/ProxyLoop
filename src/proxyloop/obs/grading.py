@@ -298,7 +298,7 @@ def _reads_back(x: Inputs, g: Event, o: Event) -> bool:
 
 def _heard(x: Inputs, before: int | None = None) -> dict[str, int]:
     """The s2f msg ids Guard counts as heard (ADR-0020's anchor; Slow's
-    ``_heard``, #219), from events alone, each with the seq of the last
+    ``_heard``, #219), from events alone, each with the seq of the last cp
     ``utt.delivered`` of its first heard voicing (event order): an
     ``s2f.voiced`` whose generation was never ``fast.cancelled`` and whose
     every ``fast.sentence`` (one at least) has an ``utt.delivered`` with
@@ -313,7 +313,11 @@ def _heard(x: Inputs, before: int | None = None) -> dict[str, int]:
     re-run voices it again, and its voicing counts here)."""
     upto = [e for e in x.events if before is None or e.seq < before]
     cut = {str(e.payload["gen_id"]) for e in upto if e.type == "fast.cancelled"}
-    delivered = {str(e.payload["utt_id"]): e for e in upto if e.type == "utt.delivered"}
+    delivered = {  # cp only, as Slow's ``fates``
+        str(e.payload["utt_id"]): e
+        for e in upto
+        if e.type == "utt.delivered" and e.payload.get("lane") == "cp"
+    }
     utts: dict[str, list[str]] = {}
     for p in (e.payload for e in upto if e.type == "fast.sentence"):
         utts.setdefault(str(p["gen_id"]), []).append(str(p["utt_id"]))

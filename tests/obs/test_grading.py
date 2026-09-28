@@ -544,3 +544,17 @@ def test_a_revoiced_guide_is_heard_once_through_its_second_voicing(
     x = triage.read(run, runs.Seal(), content=True)[1]
     reply = grading.closing_reply(x, len(log.events))
     assert reply is not None and reply.seq == 13
+
+
+def test_a_user_lane_message_delivered_whole_is_not_heard(tmp_path: Path) -> None:
+    """Only cp deliveries count (Slow's ``fates``): a TELL_USER FastU voiced
+    and delivered whole on the user lane is not in ``_heard``."""
+    log = Log("rU")
+    told = s2f(log, "s2f-t", "user", "TELL_USER", log.start, text="PRIV")  # 1
+    spoke = turn(log, "user", "user-g1", "c-u1", told)  # 2
+    voiced: P = {"msg_id": "s2f-t", "gen_id": "user-g1"}
+    log.add("s2f.voiced", "fast.user", "agent", voiced, (spoke,))  # 3
+    said = sentence(log, "user", "user-g1", 0, "PRIV", spoke)  # 4
+    heard(log, "user", "user-g1-u0", "PRIV", False, said)  # 5
+    x = triage.read(write(tmp_path / "rU", log, manifest("rU")), runs.Seal())[1]
+    assert grading._heard(x) == {}  # pyright: ignore[reportPrivateUsage]

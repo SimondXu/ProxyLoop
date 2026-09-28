@@ -4,7 +4,9 @@ last ask_final_offer the rep heard. The parity test plays one cp script into a
 bundle and into a Blackboard and asks both; obs cannot call Guard (it needs
 kernel state). An ask is ``("ask", how)``: ``""`` voiced and delivered whole
 (heard), ``unvoiced`` never voiced, ``cut`` delivered interrupted,
-``cancelled`` voiced by a cancelled turn."""
+``cancelled`` voiced by a cancelled turn, ``late`` delivered whole only after
+the finish; two lines: ``playing`` only the first delivered, ``split`` both
+(heard) with a rep closing line between the two deliveries."""
 
 from __future__ import annotations
 
@@ -13,7 +15,8 @@ from pathlib import Path
 import pytest
 from tests.guard.build import agent, board, confirm, offer, rep
 from tests.obs.bundles import Log, manifest, write
-from tests.obs.triage_bundle import P, heard, s2f, sentence, turn
+from tests.obs.triage_bundle import P, s2f, sentence, turn
+from tests.obs.triage_bundle import heard as heard_
 
 from proxyloop.contract.state import Line
 from proxyloop.guard.verify import verify_no_deal
@@ -23,12 +26,13 @@ ASK = ("ask", "")  # heard
 UNHEARD = (("ask", "unvoiced"), ("ask", "cut"), ("ask", "cancelled"))
 SAID = ("rep", "I can offer $68 a month.")
 CLOSE = ("rep", "That is our best offer, and I cannot do any better.")
+LINE = "Is that your final offer?"  # the agent's voiced ask
 NO_DEAL = ("finish", "no_deal")  # a successful finish with this outcome
 Script = tuple[tuple[str, str], ...]
 
 
 def _log(script: Script) -> Log:
-    log = Log("rC")
+    log, late = Log("rC"), list[tuple[str, str]]()
     for n, (who, text) in enumerate(script):
         if who == "finish":
             done: P = {"name": "finish", "args": {"outcome": text}}
@@ -37,7 +41,7 @@ def _log(script: Script) -> Log:
         elif who == "ask":
             final: P = {"move": "ask_final_offer", "slots": []}
             ask = s2f(log, f"s2f-{n}", "cp", "GUIDE", log.start, guide=final)
-            _voice(log, f"s2f-{n}", f"cp-g{n}", text, ask)
+            _voice(log, f"s2f-{n}", f"cp-g{n}", text, ask, late)
         elif who == "rep":
             said: P = {"lane": "cp", "speaker": "partner", "utt_id": f"c{n}"}
             log.add("utt.final", "kernel", "agent", said | {"text": text})
@@ -45,25 +49,39 @@ def _log(script: Script) -> Log:
             heard: P = {"lane": "cp", "utt_id": f"c{n}", "text_generated": text}
             heard |= {"text_heard": text, "interrupted": False}
             log.add("utt.delivered", "kernel", "agent", heard, (log.start,))
+    for utt, said_ in late:  # after the script, so after its finish
+        heard_(log, "cp", utt, LINE, False, said_)
     log.add("session.ended", "kernel", "ops", {"reason": "timeout"})
     return log
 
 
-def _voice(log: Log, msg: str, gen: str, how: str, ask: str) -> None:
-    """FastC voices ``msg`` in ``gen`` and speaks one line (``how``: see the
-    module docstring)."""
+def _voice(
+    log: Log, msg: str, gen: str, how: str, ask: str, late: list[tuple[str, str]]
+) -> None:
+    """FastC voices ``msg`` in ``gen`` and speaks one line, two for
+    ``playing`` and ``split`` (``how``: see the module docstring); ``late``
+    collects the deliveries ``_log`` adds after the finish."""
     if how == "unvoiced":
         return
     spoke = turn(log, "cp", gen, f"c-{gen}", ask)
     voiced: P = {"msg_id": msg, "gen_id": gen}
     log.add("s2f.voiced", "fast.cp", "agent", voiced, (spoke,))
-    said = sentence(log, "cp", gen, 0, "Is that your final offer?", spoke)
+    n = 2 if how in ("playing", "split") else 1
+    said = [sentence(log, "cp", gen, i, LINE, spoke) for i in range(n)]
     if how == "cancelled":
         cancelled: P = {"gen_id": gen, "reason": "verbatim"}
-        log.add("fast.cancelled", "fast.cp", "agent", cancelled, (said,))
-    else:
-        text = "Is that your final offer?"
-        heard(log, "cp", f"{gen}-u0", text, how == "cut", said)
+        log.add("fast.cancelled", "fast.cp", "agent", cancelled, (said[0],))
+        return
+    for i, s in enumerate(said):
+        if i and how == "playing":
+            return  # the second line is still to come
+        if i and how == "split":
+            line: P = {"lane": "cp", "speaker": "partner", "utt_id": f"{gen}-r"}
+            log.add("utt.final", "kernel", "agent", line | {"text": CLOSE[1]})
+        if how == "late":
+            late.append((f"{gen}-u{i}", s))
+        else:
+            heard_(log, "cp", f"{gen}-u{i}", LINE, how == "cut", s)
 
 
 def _inputs(tmp_path: Path, script: Script, finish: bool = True) -> detectors.Inputs:
@@ -75,10 +93,12 @@ def _inputs(tmp_path: Path, script: Script, finish: bool = True) -> detectors.In
 def _guard_closed(script: Script) -> bool:
     lines, asked = list[Line](), None
     for n, (who, text) in enumerate(script):
-        if who == "ask" and text in ("", "cut"):  # the agent's line
-            lines.append(agent(f"cp-g{n}-u0", "Is that your final offer?"))
-        if who == "ask":
-            asked = len(lines) if text == "" else asked  # heard: after its line
+        if who == "ask":  # the lines delivered before the finish
+            u0, u1 = agent(f"cp-g{n}-u0", LINE), agent(f"cp-g{n}-u1", LINE)
+            said = {"": [u0], "cut": [u0], "playing": [u0],
+                    "split": [u0, rep(f"cp-g{n}-r", CLOSE[1]), u1]}  # fmt: skip
+            lines += said.get(text, [])
+            asked = len(lines) if text in ("", "split") else asked  # heard
         else:
             lines.append((rep if who == "rep" else agent)(f"c{n}", text))
     declined = confirm(offer()).model_copy(update={"status": "declined"})
@@ -114,6 +134,12 @@ CASES: dict[str, tuple[Script, bool]] = {
     "heard_then_unheard_then_close": (
         (SAID, ASK, ("rep", "Let me check."), ("ask", "cut"), CLOSE), True,
     ),
+    # B is voiced before the finish but heard only after it: A anchors
+    "heard_then_heard_after_finish": ((SAID, ASK, CLOSE, ("ask", "late")), True),
+    # still playing (one of two lines delivered): not heard
+    "playing_then_close": ((SAID, ("ask", "playing"), CLOSE), False),
+    # heard at its last delivery: a closing line between the two is early
+    "closing_inside_a_split_ask": ((SAID, ("ask", "split")), False),
 }  # fmt: skip
 
 
@@ -122,7 +148,7 @@ def test_obs_closing_reply_equals_guards_verdict(tmp_path: Path, case: str) -> N
     script, closed = CASES[case]
     assert _guard_closed(script) is closed
     x = _inputs(tmp_path, script)
-    reply = grading.closing_reply(x, len(x.events))
+    reply = grading.closing_reply(x, x.of("slow.tool")[-1].seq)  # at the finish
     assert (reply is not None) is closed
     if reply is not None:  # the rep's last line, not the first closing one
         assert reply is x.of("utt.final")[-1]
@@ -184,7 +210,7 @@ def test_a_delivery_after_the_finish_does_not_make_the_ask_heard(
     log.add("utt.final", "kernel", "agent", rep_line | {"text": CLOSE[1]})  # 6
     done: P = {"name": "finish", "args": {"outcome": "no_deal"}, "ok": True}
     log.add("slow.tool", "slow", "agent", done | {"result_text": "v"}, (ask,))  # 7
-    heard(log, "cp", "cp-ga-u0", "Final offer?", False, said)  # 8
+    heard_(log, "cp", "cp-ga-u0", "Final offer?", False, said)  # 8
     run = write(tmp_path / "rC", log, manifest("rC"))
     x = triage.read(run, runs.Seal(), content=True)[1]
     assert grading._heard(x) == {"s2f-a": 8}  # pyright: ignore[reportPrivateUsage]
