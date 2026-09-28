@@ -1,16 +1,18 @@
-"""The status bar's ``close:`` and ``levers:`` lines and the read-back ask count
-(ADR-0018 V3-V5, S1-SYS-46). Read-only views of the board and of Slow's own asks:
-each calls Guard's own predicates (``verify_no_deal``, ``has_cue``, the status
-machine) and the lever check ``_guide`` runs, never a partial copy (the #166
+"""The status bar's ``close:``, ``levers:`` and ``identify:`` lines and the
+read-back ask count (ADR-0018 V3-V5, S1-SYS-46, S1-SYS-74). Read-only views of
+the board and of Slow's own asks: each calls Guard's own predicates
+(``verify_no_deal``, ``has_cue``, the status machine) and the lever check
+``_guide`` runs, never a partial copy (the #166
 ``approval_hint`` pattern). Rep text reaches the close line only through Guard's
 closing-cue list, and only as an utt id. The levers line's sent levers are
 Slow's own GUIDEs and their fates (``slow.heard``, S1-SYS-66): state, not
-transcript text."""
+transcript text, as is the identify line: the identify's delivery (S1-SYS-74).
+"""
 
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -37,6 +39,11 @@ GROUPS = (  # a sent lever's state, the line's wording (S1-SYS-66)
     ("heard", "heard, rep not answered yet (wait)"),
     ("waiting", "sent, not heard yet (wait)"),
 )
+IDENTIFY_SENT = {  # the identify's state, the identify line's wording (S1-SYS-74)
+    "answered": "heard by the rep, who has answered since",
+    "heard": "heard by the rep, not answered yet (wait)",
+    "waiting": "sent, not heard yet (wait; do not send it again)",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,8 +130,11 @@ Sent = Literal["answered", "heard", "waiting", "failed"]
 LIVE: tuple[Sent, ...] = ("answered", "heard", "waiting")  # in precedence order
 
 
-def sent(bb: Blackboard, tools: SlowTools) -> dict[str, Sent]:
-    """S1-SYS-66: each lever Slow sent, by its GUIDEs' fates (``slow.heard``):
+def sent(
+    bb: Blackboard, tools: SlowTools, moves: Collection[GuideMove] = LEVERS
+) -> dict[str, Sent]:
+    """S1-SYS-66: each lever (of ``moves``) Slow sent, by its GUIDEs' fates
+    (``slow.heard``):
     answered once a send was heard and a rep line follows its delivery (at or
     after its ``Fate.at``: one lever per rep reply); heard while the rep has
     not answered yet; waiting while one is queued (``s2f_pending``) or voiced
@@ -133,7 +143,7 @@ def sent(bb: Blackboard, tools: SlowTools) -> dict[str, Sent]:
     later GUIDE, S1-SYS-67, though the fold keeps it queued; or neither
     queued nor voiced) was never tried: no death. A lever dead fewer times
     is left out: available again."""
-    mine = [(msg, move.value) for msg, move in tools.guides if move in LEVERS]
+    mine = [(msg, move.value) for msg, move in tools.guides if move in moves]
     fates = tools.fates if mine else {}
     lines = bb.channels.get("cp", ChannelState()).lines
     queued = {m.msg_id for m in bb.s2f_pending.get("cp", ())}
@@ -214,6 +224,13 @@ def levers_line(
     return f"levers: {'; '.join(groups)}"
 
 
+def identify_line(state: Sent | None) -> str | None:
+    """S1-SYS-74: the identify's delivery, only once one is on its way or
+    heard; none sent, or none heard (``failed``), shows no line."""
+    said = IDENTIFY_SENT.get(state or "")
+    return None if said is None else f"identify: {said}"
+
+
 def unconfirmed(o: OfferPublic) -> frozenset[str]:
     return frozenset(s.field for s in o.slots if s.status != "confirmed")
 
@@ -262,6 +279,7 @@ class Bar:
     readbacks: Mapping[tuple[str, int], Readback]
     sends: Mapping[str, Sent] = field(default_factory=dict[str, Sent])
     slots: Mapping[str, str] = field(default_factory=dict[str, str])  # N2
+    identify: Sent | None = None  # the identify's delivery (S1-SYS-74)
 
     @property
     def free(self) -> tuple[str, ...]:  # the levers to try, in order
@@ -306,7 +324,8 @@ class Bar:
         )
 
     def lines(self) -> list[str]:
-        return [self.close.line(), levers_line(self.levers, self.sends, self.slots)]
+        said = [self.close.line(), levers_line(self.levers, self.sends, self.slots)]
+        return said + [x for x in [identify_line(self.identify)] if x]
 
 
 def bar(bb: Blackboard, kind: Kind, tools: SlowTools) -> Bar:
@@ -317,4 +336,6 @@ def bar(bb: Blackboard, kind: Kind, tools: SlowTools) -> Bar:
         if (o := bb.public.offers.get(key[0])) is not None and o.revision == key[1]
     }
     shut = close(bb, kind, tools.asked_final, tools.told_at, tools.final_pending)
-    return Bar(shut, unavailable(bb), readbacks, sent(bb, tools), lever_slots(bb))
+    ident = sent(bb, tools, (GuideMove.IDENTIFY,)).get(GuideMove.IDENTIFY.value)
+    sends, slots = sent(bb, tools), lever_slots(bb)
+    return Bar(shut, unavailable(bb), readbacks, sends, slots, ident)

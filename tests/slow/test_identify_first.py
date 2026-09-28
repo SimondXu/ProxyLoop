@@ -40,7 +40,8 @@ def test_t5_the_playbook_identifies_first_without_being_asked(
 
 def test_t5_no_world_terms_in_what_slow_reads() -> None:
     texts = [*prompt.PLAYBOOK.values(), *(prompt.system(m) for m in SlowViewMode)]
-    texts += [x for s in state.IDENTIFY_SENT for x in [state.identify_line(s)] if x]
+    texts += [x for s in state.LIVE if (x := state.identify_line(s))]
+    assert len(texts) == len(prompt.PLAYBOOK) + len(SlowViewMode) + 3
     for text in texts:
         assert not [w for w in WORLD if w in text], text
 
