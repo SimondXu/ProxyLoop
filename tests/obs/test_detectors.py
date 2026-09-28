@@ -125,6 +125,7 @@ def test_every_detector_equals_the_hand_count(tmp_path: Path) -> None:
             "best_offer_monthly": None, "target_monthly": None,
             "savings_monthly": None, "savings_annual": None,
             "pct_below_current_bp": None, "gap_to_target": None,
+            "confirmed_by_free_speech": False,
         },
         **dict.fromkeys((
             "identity.cp_opened_ready", "identity.ask_user_per_key", "end.status",

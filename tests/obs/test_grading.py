@@ -486,6 +486,44 @@ def test_only_offers_sent_or_accepted_are_graded(tmp_path: Path) -> None:
     assert (graded["superseded_by_lever"], graded["not_committed"]) == ([], ["o2"])
 
 
+def test_superseded_needs_a_lever_after_the_record_and_another_ref(
+    tmp_path: Path,
+) -> None:
+    """Not superseded: a new revision of the same ref after the lever, or a
+    lever before the offer's record; the committed revision is graded, not a
+    later one."""
+    same = Log("rS1")
+    _rev(same, "o1", 1)  # 1
+    _lever(same)  # 2
+    _rev(same, "o1", 2)  # 3: the same ref
+    graded = _grade(tmp_path, same, send=False)
+    assert isinstance(graded, dict)
+    assert (graded["superseded_by_lever"], graded["not_committed"]) == ([], ["o1"])
+
+    early = Log("rS2")
+    _lever(early)  # 1: before o1's record
+    _rev(early, "o1", 1)  # 2
+    _rev(early, "o2", 1)  # 3
+    graded = _grade(tmp_path, early, send=False)
+    assert isinstance(graded, dict)
+    assert (graded["superseded_by_lever"], graded["not_committed"]) == (
+        [], ["o1", "o2"],
+    )  # fmt: skip
+
+    sent = Log("rS3")
+    r1 = _rev(sent, "o1", 1)  # 1
+    _readback(sent, r1, "offer:o1")  # 2
+    _confirm(sent, "o1", r1, monthly_price="confirmed")  # 3
+    _send(sent, "o1", 1)  # 4: r1 sent
+    _call(sent)  # 5: a new call closes r1's window
+    _rev(sent, "o1", 2)  # 6: r2, never sent, never read back
+    assert _grade(tmp_path, sent, send=False) == {
+        "count": 0, "offers": {"o1@1": []}, "ask_heard": {"o1@1": False},
+        "unasked": [], "unasked_n": 0, "h5_pass": True,
+        "superseded_by_lever": [], "not_committed": [],
+    }  # fmt: skip
+
+
 def _voice(
     log: Log, ask: str, gen: str, cut: bool, cancel: bool, speaks: bool = True
 ) -> None:

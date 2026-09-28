@@ -33,8 +33,10 @@ def test_groups_by_sha_newest_first(
     out = capsys.readouterr().out.splitlines()
     assert out[0] == f"# {detectors.BANNER}"
     heads = [line for line in out if line.startswith("== ")]
-    assert heads[-1] == f"== tiers ({tiers.NOTE})"  # the tier block follows
-    assert heads[:-1] == ["== git_sha new  runs=1", "== git_sha old  runs=2"]
+    assert heads == [  # a tier block per group follows the table, same order
+        "== git_sha new  runs=1", "== git_sha old  runs=2",
+        f"== tiers git_sha new ({tiers.NOTE})", f"== tiers git_sha old ({tiers.NOTE})",
+    ]  # fmt: skip
     # a bare run: no end and no step are unknown ("?"), counted per group
     assert "end_reason" not in out[2] and "end=None" in out[2]
     totals = [line for line in out if line.startswith("  sum")]
@@ -85,7 +87,8 @@ def test_groups_by_slow_fp_when_present(
     assert [x for x in out if x.startswith("== ")] == [
         "== git_sha s1  runs=1",
         "== slow_fp fpA  runs=2",
-        f"== tiers ({tiers.NOTE})",
+        f"== tiers git_sha s1 ({tiers.NOTE})",
+        f"== tiers slow_fp fpA ({tiers.NOTE})",
     ]
     totals = [x.split() for x in out if x.startswith("  sum")]
     assert totals and all("max" not in t for t in totals)  # bare runs: no maxima

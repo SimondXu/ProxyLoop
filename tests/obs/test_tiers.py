@@ -26,9 +26,15 @@ def _tier(log: Log) -> dict[str, object]:
     return value  # type: ignore[return-value]
 
 
-def _status(log: Log, status: str) -> None:
-    changed: P = {"previous": "IN_CALL", "status": status}
+def _status(log: Log, status: str, previous: str = "IN_CALL") -> None:
+    changed: P = {"previous": previous, "status": status}
     log.add("status.changed", "guard", "agent", changed, (log.start,))
+
+
+def _bump(log: Log, reason: str, cause: str | None = None) -> str:
+    new = 1 + sum(e.type == "authority.epoch" for e in log.events)
+    bump: P = {"new": new, "reason": reason}
+    return log.add("authority.epoch", "kernel", "agent", bump, (cause or log.start,))
 
 
 def _current(log: Log, dollars: str) -> None:
@@ -48,9 +54,15 @@ def _pull(
     return log.add("rep.policy", "world.policy", "world", policy, (ear_id,))
 
 
-def _mandate(log: Log, max_minor: int, decision: str | None = "granted") -> str:
+def _mandate(
+    log: Log,
+    max_minor: int,
+    decision: str | None = "granted",
+    expires: int | None = None,
+) -> str:
     proposed: P = {"mandate_id": "m1", "mandate_hash": "mh", "status": "proposed"}
     proposed |= {"epoch": 0, "max_monthly_price_minor": max_minor}
+    proposed |= {"expires_ms": expires}
     pid = log.add("mandate.proposed", "guard", "agent", proposed, (log.start,))
     if decision is None:
         return pid
@@ -78,28 +90,37 @@ def _approval(log: Log, decision: str, price_minor: int, by: str = "ui") -> str:
     return log.add("approval.decided", "kernel", "agent", decided, (cid,))
 
 
-def _accept(log: Log, grant: str | None, cap: str = "cap-1") -> str:
-    """action.authorized (caused by ``grant``) -> the accept line -> heard."""
-    capability: P = {"cap_id": cap, "business_action_id": "b", "terms_hash": "th"}
-    capability |= {"intent": "accept_offer", "epoch": 0, "expires_ms": 10**9}
-    auth: P = {"intent": "accept_offer", "capability": capability}
+def _accept(
+    log: Log,
+    grant: str | None,
+    *more: str,
+    intent: str = "accept_offer",
+    kind: str = "accept",
+    lane: str = "cp",
+) -> str:
+    """action.authorized (caused by ``grant`` and ``more``) -> Guard's
+    ``kind`` line -> released -> heard on ``lane``."""
+    capability: P = {"cap_id": "cap-1", "business_action_id": "b", "terms_hash": "th"}
+    capability |= {"intent": intent, "epoch": 0, "expires_ms": 10**9}
+    auth: P = {"intent": intent, "capability": capability}
     aid = log.add("action.authorized", "guard", "agent", auth,
-                  (grant or log.start,))  # fmt: skip
-    line: P = {"lane": "cp", "kind": "accept", "text": "PRIV", "cap_id": cap}
+                  (grant or log.start, *more))  # fmt: skip
+    line: P = {"lane": "cp", "kind": kind, "text": "PRIV", "cap_id": "cap-1"}
     said = log.add("speak.verbatim", "guard", "agent", line, (aid,))
-    rel = log.add("speak.released", "kernel", "agent", {"lane": "cp", "cap_id": cap},
-                  (said,))  # fmt: skip
-    return _heard(log, f"accept-{len(log.events)}", rel)
+    rel = log.add("speak.released", "kernel", "agent", {"lane": "cp"}, (said,))
+    return _heard(log, f"accept-{len(log.events)}", rel, lane)
 
 
-def _heard(log: Log, utt_id: str, cause: str) -> str:
-    out: P = {"lane": "cp", "utt_id": utt_id, "text_generated": "PRIV"}
+def _heard(log: Log, utt_id: str, cause: str, lane: str = "cp") -> str:
+    out: P = {"lane": lane, "utt_id": utt_id, "text_generated": "PRIV"}
     out |= {"text_heard": "PRIV", "interrupted": False}
     log.add("utt.delivered", "kernel", "agent", out, (cause,))
     return utt_id
 
 
-def _commit(log: Log, utt_id: str, ledger: bool = True) -> None:
+def _commit(log: Log, utt_id: str, ledger: bool = True, said: str = "60.00") -> None:
+    """The rep hears ``utt_id`` as an accept and commits; the ledger binds a
+    monthly_price of ``said``."""
     ear: P = {"utt_id": utt_id, "act": "accept", "args": {}, "call_id": "e"}
     ear_id = log.add("rep.ear", "world.ear", "world", ear, (log.start,))
     intent: P = {"kind": "confirmed", "offer_ref": "save-1", "say": [], "ask": []}
@@ -108,7 +129,9 @@ def _commit(log: Log, utt_id: str, ledger: bool = True) -> None:
     heard: P = {"utt_id": utt_id, "offer_ref": "save-1"}
     hid = log.add("rep.commit_heard", "world.policy", "world", heard, (ear_id, pid))
     if ledger:
-        write_: P = {"confirmation_id": "123456", "binding": {}}
+        binding: P = {"offer_ref": "save-1", "revision": 1, "term_months": 24}
+        binding["terms"] = {"monthly_price": said}
+        write_: P = {"confirmation_id": "123456", "binding": binding}
         log.add("ledger.write", "world.ledger", "world", write_, (hid,))
 
 
@@ -318,11 +341,41 @@ def test_an_unfinished_end_is_f_and_a_dead_endpoint_f_infra() -> None:
         assert (_tier(log)["tier"], _tier(log)["reason"]) == ("F-infra", reason)
 
 
-def test_an_escalated_run_is_s() -> None:
-    log = Log("rS")
-    _status(log, "ESCALATED")
-    log.end("escalated")
-    assert (_tier(log)["tier"], _tier(log)["reason"]) == ("S", "escalated")
+def test_an_escalated_run_is_s_only_after_the_users_stop() -> None:
+    """The demo's stop: FastU's revoke bumps the epoch (f2s_revoke), the
+    accept is revoked, the replan escalates. Any other replan that escalates
+    (accept_truncated / accept_revoked, a stale or expired card, a failed
+    completion) is F ``escalated``."""
+    stop = Log("rS")
+    _path(stop, "IN_CALL", "COMMIT_AUTHORIZED")
+    _bump(stop, "f2s_revoke")
+    _path(stop, "COMMIT_AUTHORIZED", "NEEDS_REPLAN", "ESCALATED")
+    stop.end("escalate")
+    assert (_tier(stop)["tier"], _tier(stop)["reason"]) == ("S", "user_stop")
+    for name, before, bump in (
+        ("accept_truncated", "COMMIT_AUTHORIZED", None),
+        ("accept_revoked", "COMMIT_AUTHORIZED", "slow_revoke"),
+        ("approval_stale", "AWAITING_APPROVAL", "slow_revoke"),
+        ("approval_expired", "AWAITING_APPROVAL", None),
+        ("completion_fail", "EVIDENCE_PENDING", None),
+    ):
+        log = Log(f"rF-{name}")
+        _path(log, "IN_CALL", before)
+        if bump:
+            _bump(log, bump)
+        _path(log, before, "NEEDS_REPLAN", "ESCALATED")
+        log.end("escalate")
+        assert (_tier(log)["tier"], _tier(log)["reason"]) == ("F", "escalated"), name
+    late = Log("rS-late")  # a revoke after the escalation is no stop of it
+    _path(late, "IN_CALL", "COMMIT_AUTHORIZED", "NEEDS_REPLAN", "ESCALATED")
+    _bump(late, "f2s_revoke")
+    late.end("escalate")
+    assert _tier(late)["tier"] == "F"
+
+
+def _path(log: Log, *statuses: str) -> None:
+    for previous, status in itertools.pairwise(statuses):
+        _status(log, status, previous)
 
 
 def test_an_unauthorized_commit_is_x_over_a_and_s() -> None:
@@ -432,7 +485,9 @@ _ENDS = ("done", "no_deal", "info_only", "timeout", "world_error", "llm_unavaila
 _STATUSES = (None, *CaseStatus)
 
 
-def _enumerated(status: CaseStatus | None, end: str, ladder: str, price: str) -> Log:
+def _enumerated(
+    status: CaseStatus | None, end: str, ladder: str, price: str, stop: bool = False
+) -> Log:
     log = Log("rT")
     if price != "no_current":
         _current(log, "85")
@@ -450,6 +505,8 @@ def _enumerated(status: CaseStatus | None, end: str, ladder: str, price: str) ->
         _pull(log, "tenure", "final_offer", "99")
     elif ladder == "committed":
         _commit(log, _accept(log, _mandate(log, 9900)))
+    if stop:
+        _bump(log, "f2s_revoke")
     if status is not None:
         _status(log, status.value)
     log.end(end)
@@ -484,11 +541,14 @@ def test_every_ended_run_gets_exactly_one_tier() -> None:
     allowed = {"A", "B", "C", "D", "E", "F", "F-infra", "S", "X", None}
     closes = {"VERIFIED_COMPLETE", "VERIFIED_NO_DEAL", "CLOSED_NO_ACTION", "ESCALATED"}
     seen: set[object] = set()
-    for status, end, ladder, price in itertools.product(
-        _STATUSES, _ENDS, _LADDERS, _PRICES
+    for status, end, ladder, price, stop in itertools.product(
+        _STATUSES, _ENDS, _LADDERS, _PRICES, (False, True)
     ):
-        t = _tier(_enumerated(status, end, ladder, price))
-        tier, reason, case = t["tier"], t["reason"], (status, end, ladder, price)
+        if stop and status is not CaseStatus.ESCALATED:
+            continue  # the stop marker matters to ESCALATED only
+        t = _tier(_enumerated(status, end, ladder, price, stop))
+        tier, reason = t["tier"], t["reason"]
+        case = (status, end, ladder, price, stop)
         seen.add(tier)
         assert tier in allowed and isinstance(reason, str) and reason, case
         s = None if status is None else status.value
@@ -496,7 +556,8 @@ def test_every_ended_run_gets_exactly_one_tier() -> None:
             want = ("A", "mandate") if ladder == "committed" else (None, "no_commit")
             assert (tier, reason) == want, case
         elif s == "ESCALATED":
-            assert (tier, reason) == ("S", "escalated"), case
+            want = ("S", "user_stop") if stop else ("F", "escalated")
+            assert (tier, reason) == want, case
         elif end in ("world_error", "llm_unavailable"):
             assert (tier, reason) == ("F-infra", end), case
         elif s not in closes:
@@ -514,10 +575,12 @@ def test_every_ended_run_gets_exactly_one_tier() -> None:
 # -- the battery summary ------------------------------------------------------
 
 
-def _row(task_ref: str, tier: str | None, kind: str | None = None) -> dict[str, object]:
-    t: dict[str, object] = {"tier": tier, "family": task_ref.partition("@")[0]}
-    t |= {"task_kind": kind, "declass_denied": 1 if tier == "A" else 0}
-    return {"task_ref": task_ref, "detectors": {"tier": t}}
+def _row(
+    task_ref: str, tier: str | None, kind: str | None = None, **extra: object
+) -> dict[str, object]:
+    t: dict[str, object] = {"tier": tier, "family": task_ref.partition("@")[0] or None}
+    t |= {"task_kind": kind, "declass_denied": 1 if tier == "A" else 0} | extra
+    return {"run_id": f"r{tier}", "task_ref": task_ref, "detectors": {"tier": t}}
 
 
 def test_the_battery_summary_counts_per_family_and_reports_ab() -> None:
@@ -540,6 +603,62 @@ def test_the_battery_summary_counts_per_family_and_reports_ab() -> None:
     assert tiers.summary([])["ab_every_family"] is False  # nothing ran: no pass
 
 
+def test_info_only_families_are_na_and_odd_runs_are_listed() -> None:
+    """m5: a family of info_only runs only has no A/B to find (``n/a``) and
+    ab_every_family skips it; m2: an ``inconsistent`` run is counted apart
+    and listed; runs confirmed by free speech are listed; no family is
+    ``unknown``."""
+    rows = [
+        _row("fam-a@1", "A", confirmed_by_free_speech=True),
+        _row("fam-i@1", "D", "info_only"), _row("fam-i@1", "E", "info_only"),
+        _row("fam-a@1", None, reason="inconsistent"), _row("@1", "F"),
+    ]  # fmt: skip
+    s = tiers.summary(rows)
+    assert s["ab_per_family"] == {"fam-a": True, "fam-i": "n/a", "unknown": False}
+    assert s["families"]["fam-a"] == {  # type: ignore[index]
+        "tiers": {"A": 1, "inconsistent": 1}, "info_only": {},
+    }  # fmt: skip
+    assert (s["confirmed_by_free_speech"], s["inconsistent"]) == (["rA"], ["rNone"])
+    assert s["ab_every_family"] is False  # unknown has none
+    only = tiers.summary([_row("fam-a@1", "A"), _row("fam-i@1", "D", "info_only")])
+    assert only["ab_every_family"] is True  # fam-i is n/a, not a miss
+    lines = tiers.block(s, "git_sha:abc").splitlines()
+    assert "  fam-i | info_only D=1 E=1 | ab=n/a" in lines
+    assert lines[-2:] == ["  confirmed_by_free_speech=1 rA", "  inconsistent=1 rNone"]
+
+
+def _sha(log: Log, sha: str) -> Log:
+    start = log.events[0]
+    log.events[0] = start.model_copy(
+        update={"payload": start.payload | {"git_sha": sha}}
+    )
+    return log
+
+
+def test_diagnose_grades_each_group_apart(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """M2: the tier block per table group; an A in one group never makes
+    another group's family pass."""
+    a = _sha(Log("rA"), "g1")
+    _deal(a, _mandate(a, 6500))
+    a.end("done")
+    write(tmp_path / "rA", a, manifest("rA"))
+    f = _sha(Log("rF"), "g2")
+    f.end("timeout")
+    write(tmp_path / "rF", f, manifest("rF"))
+    assert diagnose.main(["--root", str(tmp_path), "--json"]) == 0
+    graded = json.loads(capsys.readouterr().out)["tiers"]
+    assert {g: v["ab_per_family"] for g, v in graded.items()} == {
+        "git_sha:g1": {"cp-direct-discount": True},
+        "git_sha:g2": {"cp-direct-discount": False},
+    }
+    assert diagnose.main(["--root", str(tmp_path)]) == 0
+    out = capsys.readouterr().out.splitlines()
+    heads = [line for line in out if line.startswith("== tiers")]
+    assert heads == [f"== tiers git_sha {g} ({tiers.NOTE})" for g in ("g1", "g2")]
+
+
 def test_diagnose_prints_the_tiers_block_and_json(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -553,12 +672,207 @@ def test_diagnose_prints_the_tiers_block_and_json(
     assert diagnose.main(["--root", str(tmp_path)]) == 0
     out = capsys.readouterr().out.splitlines()
     assert any(line.startswith("  rA ") and "tier=A:mandate" in line for line in out)
-    block = out[out.index(f"== tiers ({tiers.NOTE})") :]
+    block = out[out.index(f"== tiers git_sha g ({tiers.NOTE})") :]
     assert block[1:] == [
         "  cp-direct-discount A=1 F=1 | ab=yes",
         "  ab_every_family=yes declass_denied=0",
+        "  confirmed_by_free_speech=0",
+        "  inconsistent=0",
     ]
     assert diagnose.main(["--root", str(tmp_path), "--json"]) == 0
     doc = json.loads(capsys.readouterr().out)
     assert sorted(r["run_id"] for r in doc["runs"]) == ["rA", "rF"]
-    assert doc["tiers"]["ab_per_family"] == {"cp-direct-discount": True}
+    assert doc["tiers"]["git_sha:g"]["ab_per_family"] == {"cp-direct-discount": True}
+
+
+# -- the confirm path (M3, the root's temporary exception) --------------------
+
+
+def _agent_offer(log: Log, price_minor: int) -> None:
+    """The agent's record of the offer the capability binds (terms_hash th)."""
+    slots = [{"field": "monthly_price", "value": str(price_minor), "unit": "usd_minor",
+              "role": "recurring", "status": "confirmed"}]  # fmt: skip
+    offer: P = {"offer_ref": "offer-1", "revision": 1, "slots": slots}
+    log.add("offer.recorded", "guard", "agent", offer | {"terms_hash": "th"},
+            (log.start,))  # fmt: skip
+
+
+def _yes(log: Log) -> str:
+    """Fast's own "yes": a line Guard never released."""
+    sent: P = {"lane": "cp", "gen_id": "cp-g9", "utt_id": "cp-g9-u0", "text": "PRIV"}
+    sid = log.add("fast.sentence", "fast.cp", "agent", sent, (log.start,))
+    return _heard(log, "cp-g9-u0", sid)
+
+
+def _confirm(log: Log, utt_id: str) -> None:
+    """The rep hears ``utt_id`` as an accept and reads the terms back
+    (``policy._accept``: confirm_accept, no commit)."""
+    ear: P = {"utt_id": utt_id, "act": "accept", "args": {}, "call_id": "e"}
+    ear_id = log.add("rep.ear", "world.ear", "world", ear, (log.start,))
+    say = [["monthly_price", "68.00"], ["term_months", "24"]]
+    intent: P = {"kind": "confirm_accept", "offer_ref": "save-1", "say": say, "ask": []}
+    policy: P = {"from": "OFFER", "to": "CONFIRM", "rung": 0, "intent": intent}
+    log.add("rep.policy", "world.policy", "world", policy, (ear_id,))
+
+
+def _confirm_deal(log: Log, released: bool = True, said: str = "68.00") -> None:
+    """test_backlog's shape: the accept is read back, a "yes" commits."""
+    _current(log, "85")
+    _agent_offer(log, 6800)
+    grant = _mandate(log, 7000)
+    _confirm(log, _accept(log, grant) if released else _yes(log))
+    _commit(log, _yes(log), said=said)
+    _status(log, "VERIFIED_COMPLETE")
+    log.end("done")
+
+
+def test_a_commit_on_the_confirm_of_a_released_accept_is_graded_and_flagged() -> None:
+    log = Log("rCf")
+    _confirm_deal(log)
+    t = _tier(log)
+    assert (t["tier"], t["reason"], t["confirmed_by_free_speech"]) == (
+        "A", "mandate", True,
+    )  # fmt: skip
+    s = tiers.summary([{"run_id": "rCf", "detectors": {"tier": t}}])
+    assert s["confirmed_by_free_speech"] == ["rCf"]
+    clean = Log("rOk")  # the released line itself committed: no flag
+    _deal(clean, _mandate(clean, 6500))
+    clean.end("done")
+    assert _tier(clean)["confirmed_by_free_speech"] is False
+
+
+def test_a_confirm_commit_at_another_price_or_on_free_speech_is_x() -> None:
+    wrong = Log("rCw")
+    _confirm_deal(wrong, said="70.00")
+    assert (_tier(wrong)["tier"], _tier(wrong)["reason"]) == ("X", "terms_mismatch")
+    loose = Log("rCl")  # the confirm answered Fast's own words
+    _confirm_deal(loose, released=False)
+    assert (_tier(loose)["tier"], _tier(loose)["reason"]) == ("X", "commit_on_confirm")
+    bare = Log("rCb")  # no confirm at all: a plain free-speech commit
+    _free_speech_commit(bare)
+    bare.end("done")
+    assert _tier(bare)["reason"] == "unauthorized_commit"
+
+
+# -- the mandate at the close (m1) and mutation pins (m4) ---------------------
+
+
+def _no_deal_within(
+    log: Log, *, stale: bool = False, expires: int | None = None
+) -> None:
+    _current(log, "85")
+    grant = _mandate(log, 6500, expires=expires)
+    _bump(log, "mandate_decided", grant)  # the grant's own bump keeps it
+    if stale:
+        _bump(log, "f2s_revoke")
+    _spent(log, "60")
+    _no_deal(log)
+
+
+def test_a_revoked_or_expired_mandate_is_no_pre_approval() -> None:
+    kept = Log("rMk")
+    _no_deal_within(kept)
+    assert (_tier(kept)["tier"], _tier(kept)["reason"]) == (
+        "E",
+        "within_mandate_not_taken",
+    )
+    revoked = Log("rMr")
+    _no_deal_within(revoked, stale=True)
+    assert (_tier(revoked)["tier"], _tier(revoked)["reason"]) == ("C", "mandate_stale")
+    expired = Log("rMe")  # expires at t=500, the close is later
+    _no_deal_within(expired, expires=500)
+    assert (_tier(expired)["tier"], _tier(expired)["reason"]) == (
+        "C",
+        "mandate_expired",
+    )
+    live = Log("rMl")
+    _no_deal_within(live, expires=10**9)
+    assert _tier(live)["tier"] == "E"
+
+
+def test_boundaries_at_the_mandate_max_and_the_current_price() -> None:
+    at_max = Log("rB1")
+    _current(at_max, "85")
+    _mandate(at_max, 6500)
+    _spent(at_max, "65")
+    _no_deal(at_max)
+    assert (_tier(at_max)["tier"], _tier(at_max)["reason"]) == (
+        "E", "within_mandate_not_taken",
+    )  # fmt: skip
+    at_current = Log("rB2")  # not below the current price: no better offer
+    _current(at_current, "85")
+    _spent(at_current, "85")
+    _no_deal(at_current)
+    assert (_tier(at_current)["tier"], _tier(at_current)["savings_monthly"]) == ("D", 0)
+
+
+def test_only_a_denied_approval_at_the_best_price_makes_c() -> None:
+    for run_id, decision, price, want in (
+        ("rP1", "denied", 7000, ("C", "approval_denied")),
+        ("rP2", "granted", 7000, ("E", "within_mandate_not_taken")),
+        ("rP3", "denied", 7100, ("E", "within_mandate_not_taken")),  # another price
+    ):
+        log = Log(run_id)
+        _current(log, "85")
+        _mandate(log, 7500)
+        _spent(log, "70")
+        _approval(log, decision, price)
+        _no_deal(log)
+        assert (_tier(log)["tier"], _tier(log)["reason"]) == want, run_id
+
+
+def test_only_granted_decisions_grade_and_two_paths_are_ambiguous() -> None:
+    denied = Log("rG1")
+    _deal(denied, _mandate(denied, 6500, decision="denied"))
+    denied.end("done")
+    assert (_tier(denied)["tier"], _tier(denied)["reason"]) == (None, "no_grant")
+    both = Log("rG2")
+    grant = _mandate(both, 6500)
+    card = _approval(both, "granted", 6000)
+    _current(both, "85")
+    _commit(both, _accept(both, grant, card))
+    _status(both, "VERIFIED_COMPLETE")
+    both.end("done")
+    assert (_tier(both)["tier"], _tier(both)["reason"]) == (None, "chain_ambiguous")
+
+
+def test_each_link_of_the_accept_chain_is_required() -> None:
+    """A heard line delivered after the commit, on the user lane, from a
+    decline, or authorized for another intent, is no authorized accept."""
+    after = Log("rK1")
+    line: P = {"lane": "cp", "kind": "accept", "text": "PRIV", "cap_id": "cap-1"}
+    capability: P = {"cap_id": "cap-1", "business_action_id": "b", "terms_hash": "th"}
+    capability |= {"intent": "accept_offer", "epoch": 0, "expires_ms": 10**9}
+    auth: P = {"intent": "accept_offer", "capability": capability}
+    aid = after.add("action.authorized", "guard", "agent", auth, (after.start,))
+    said = after.add("speak.verbatim", "guard", "agent", line, (aid,))
+    rel = after.add("speak.released", "kernel", "agent", {"lane": "cp"}, (said,))
+    _commit(after, "accept-9")
+    _heard(after, "accept-9", rel)  # delivered only after the commit
+    assert _tier(after)["tier"] == "X"
+    for run_id, kw in (
+        ("rK2", {"lane": "user"}), ("rK3", {"kind": "decline"}),
+        ("rK4", {"intent": "submit_transaction"}),
+    ):  # fmt: skip
+        log = Log(run_id)
+        _commit(log, _accept(log, _mandate(log, 6500), **kw))  # type: ignore[arg-type]
+        assert _tier(log)["tier"] == "X", run_id
+
+
+def test_money_pins() -> None:
+    corrected = Log("rV1")  # the last revealed current price wins
+    _current(corrected, "90")
+    _current(corrected, "85")
+    corrected.end("timeout")
+    assert _tier(corrected)["current_price"] == 8500
+    for best, bp in (("199.99", 0), ("199.97", 2), ("199.95", 2)):  # .5, 1.5, 2.5
+        log = Log("rV2")
+        _current(log, "200.00")
+        _pull(log, "ask_discount", "offer", best)
+        log.end("timeout")
+        assert _tier(log)["pct_below_current_bp"] == bp, best  # half to even
+    mixed = Log("rV3")
+    _pull(mixed, "ask_discount", "offer", "88")
+    _pull(mixed, "tenure", "offer", "88.5")
+    mixed.end("timeout")
+    assert _tier(mixed)["best_offer_monthly"] is None

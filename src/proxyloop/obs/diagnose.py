@@ -10,8 +10,8 @@ one, then task_ref: an issue fixed later shows under its old group, not as
 current, and bundles across agent harness v2 are never pooled (ADR-0018).
 slow_fp changes with any edit under slow/ or guard/, so the groups are
 fine-grained by design.
-After the table, the outcome tiers per family (``obs.tiers``); ``--json``
-prints ``{"runs": [...], "tiers": {...}}``.
+After the table, the outcome tiers per family (``obs.tiers``), per group;
+``--json`` prints ``{"runs": [...], "tiers": {<group>: {...}}}``.
 ``--content`` lets the text-reading detectors run; their values stay codes,
 but the rows (``--json``) then also carry the kernel-authored world_error
 message.
@@ -153,12 +153,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     found, skipped = rows(roots, args.relay_window, args.content)
     notes = [f"skipped: {why}" for why in skipped] + [f"skipped={len(skipped)}"]
     print("\n".join(notes), file=sys.stderr)
-    graded = tiers.summary(found)
+    groups: dict[str, list[Row]] = {}
+    for r in found:  # the table's groups, in its order
+        groups.setdefault(group(r), []).append(r)
+    graded = {g: tiers.summary(members) for g, members in groups.items()}
     if args.json:
         doc = {"runs": found, "tiers": graded}
         print(json.dumps(doc, indent=1, sort_keys=True, ensure_ascii=False))
     else:
-        print(table(found) + "\n" + tiers.block(graded))
+        print(
+            "\n".join([table(found), *(tiers.block(s, g) for g, s in graded.items())])
+        )
     return 0
 
 
