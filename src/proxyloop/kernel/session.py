@@ -150,7 +150,8 @@ def _reason(err: Exception) -> str:  # the end a task's error makes, as _outcome
 
 
 _AUTHORED = re.compile(  # env/world.py's three WorldError heads, as written there
-    r"\w+: (?:invalid after \d+ regenerations|no answer within [\d.]+ s)"
+    r"(?:ear|mouth|simuser): "
+    r"(?:invalid after \d+ regenerations|no answer within [\d.]+ s)"
     r"|a record for unknown world call '[\w:.-]*'"
 )
 

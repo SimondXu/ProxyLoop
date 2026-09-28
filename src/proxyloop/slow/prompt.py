@@ -5,6 +5,7 @@ prompt swaps whole sentences of it (ADR-0016)."""
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 from pathlib import Path
@@ -237,13 +238,15 @@ _SOURCES = ("slow", "guard")  # the bar's close/verify semantics come from Guard
 
 def sources_sha(root: Path) -> str:
     """The sha256 over every ``*.py`` under ``root``'s ``slow/`` and ``guard/``,
-    sorted by relative path: each file's path, its length and its bytes. A
-    root without them (an install that ships no sources) raises: an empty
-    hash would pool every such run."""
+    sorted by relative path: each file's path, its length and its bytes.
+    Dot-names and anything but a regular file (an editor's lock link) are
+    skipped. A root without them (an install that ships no sources) raises:
+    an empty hash would pool every such run."""
     files = sorted(
         (f.relative_to(root).as_posix(), f)
         for d in _SOURCES
         for f in (root / d).rglob("*.py")
+        if not f.name.startswith(".") and f.is_file()
     )
     if not files:
         raise RuntimeError(f"no slow/ or guard/ sources under {root}")
@@ -255,17 +258,22 @@ def sources_sha(root: Path) -> str:
     return h.hexdigest()
 
 
+@functools.cache  # once per process: the code it loaded, not a later git pull
+def _package_sources() -> str:
+    return sources_sha(_PACKAGE)
+
+
 def fp_inputs(mode: SlowViewMode, kind: state.Kind) -> dict[str, object]:
     """What ``slow_fp`` hashes (ADR-0018 V6, S1-SYS-43; the main root's M1
     decision): the mode's system prompt (``system(mode)``), the ACT tool spec
     (name, description, JSON schema), ``PLAYBOOK[kind]``, the task head's
-    fixed wording (``_HEAD``), ``MAX_TOKENS``, ``loop.WINDOW`` and
-    ``sources_sha`` of the installed package's ``slow/`` and ``guard/``
-    modules, so the status bar, ``state.Bar``, ``note``, the tool results and
-    Guard's close and verify rules are covered through their source. Any
-    edit under ``slow/`` or ``guard/``, a comment too, changes ``slow_fp``:
-    by design. Not hashed: the per-run brief, keys and notes, and the models
-    (``session.started.models`` names them)."""
+    fixed wording (``_HEAD``), ``MAX_TOKENS``, ``loop.WINDOW`` and the
+    ``slow/`` and ``guard/`` code: ``sources_sha`` of the installed package,
+    read once per process (``_package_sources``). Any edit under ``slow/``
+    or ``guard/``, a comment too, changes ``slow_fp``: by design. Not
+    covered: the contract (``contract_version`` names it), ``kernel/`` and
+    ``core/``, non-``.py`` files, the models (``session.started.models``),
+    and the per-run brief, keys and notes."""
     from proxyloop.slow import loop  # loop imports this module
 
     return {
@@ -275,7 +283,7 @@ def fp_inputs(mode: SlowViewMode, kind: state.Kind) -> dict[str, object]:
         "head": _HEAD,
         "max_tokens": MAX_TOKENS,
         "window": loop.WINDOW,
-        "sources": sources_sha(_PACKAGE),
+        "sources": _package_sources(),
     }
 
 
