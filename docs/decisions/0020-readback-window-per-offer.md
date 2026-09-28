@@ -25,5 +25,5 @@ Statuses are recomputed from the transcript on every `readback()`, never copied,
 ## Consequences
 - **Contract / fingerprint impact:** none. `readback.updated` keeps its payload; no renderer, view or event change.
 - **Metrics:** `readback_completion` and `readback_false_confirm` (EVAL §7) change meaning at this commit. Runs are labelled by their manifest `git_sha`: before the S1-SYS-62 merge, "per-revision read-back"; from it on, "per-offer window". The two are never pooled in one number without that label.
-- **Data invalidated:** none. Old bundles keep their recorded `readback.updated` events.
+- **Data invalidated:** None: readback_completion and readback_false_confirm have never been computed (eval/metrics.py REASONS lists both as unavailable), so no data was seen under the old meaning; this ADR defines the metric before its first computation.
 - **Risks and what would make us revisit this.** W1's implied flags reject a truthful "we switch you to X, no other changes" under the window (the per-revision rule still confirms it after its own ask). Lexicon errors now reach one more path; the Ear audit measures them. Revisit if `readback_false_confirm` rises on "per-offer window" runs.
