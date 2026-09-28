@@ -168,6 +168,26 @@ world-select-freeze:
 	uv run python -m scripts.mod.world_select freeze --runs $(WORLD_SELECT_RUNS) \
 		--out $(MOD_DATA)/world-select-items.json $(if $(CONSTRUCTED),--constructed $(CONSTRUCTED),)
 
+# S1-MOD-09 (PR2b-2): offline, no keys, no model call. world-select-score writes the report
+# ($(MOD_DATA)/world-select-report.{json,md}) from the arms' rows under WORLD_SELECT_OUT (set by
+# the world-select-run block below) and the gold whose sha256 ADR-0024 records: GOLD_SHA=<sha256>.
+# WSS_ARGS: --runs <bundles> (SimUser invented numbers), --prices <json>, --judge-dir <dir>
+# --judge-key <json>. world-select-judge-export writes the blind Mouth batches; WSJ_ARGS:
+# --out-dir <dir> --key-out <json outside it> --seed N. The rubric is the committed
+# $(MOD_DATA)/world-select-mouth-rubric.md.
+WSS_ARGS ?=
+WSJ_ARGS ?=
+.PHONY: world-select-score world-select-judge-export
+
+world-select-score:
+	uv run python -m scripts.mod.world_select report \
+		--gold-sha $(or $(GOLD_SHA),$(error GOLD_SHA=<the gold's sha256> is required)) \
+		--rows $(wildcard $(WORLD_SELECT_OUT)/*.jsonl) $(WSS_ARGS)
+
+world-select-judge-export:
+	uv run python -m scripts.mod.world_select judge-export \
+		--rows $(wildcard $(WORLD_SELECT_OUT)/*.jsonl) $(WSJ_ARGS)
+
 # S1-MOD-09 (PR2a): replay the frozen items through the production world code, one JSONL per
 # arm under WORLD_SELECT_OUT. Root-run (L) unless WSR_ARGS has --plan (no call, no key): run
 # `make world-select-run WSR_ARGS=--plan` first. Keys only from the shell, by name:

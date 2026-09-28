@@ -555,14 +555,14 @@ def _write(path: Path, doc: object) -> None:
 
 def main(argv: Sequence[str] | None = None) -> None:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] in (["score"], ["report"], ["judge-export"]):  # PR2b-2
+        from scripts.mod import world_select_report
+
+        return world_select_report.main(argv)
     if argv[:1] == ["run"]:  # PR2a, in its own module (which imports this one)
         from scripts.mod import world_select_run
 
         return world_select_run.main(argv[1:])
-    if argv[:1] in (["gold"], ["score"], ["report"], ["judge-export"]):  # PR2b
-        from scripts.mod import world_select_score
-
-        return world_select_score.main(argv)
     ap = argparse.ArgumentParser(prog="python -m scripts.mod.world_select")
     sub = ap.add_subparsers(dest="cmd", required=True)
     f = sub.add_parser("freeze", help="freeze the items from the train bundles")
