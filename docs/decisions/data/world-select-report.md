@@ -2,13 +2,53 @@
 
 Internal instrument choice, not a claim; the user decides (ADR-0024).
 
-- git_sha: 33ef3a6974b86306c3a09658737cf05c77dd7523
+- git_sha: 4e40bc812508642a52155390ad07c5218b7e3b31
 - git_dirty: False
 - items_root_hash: 471a0a9151af0c85204b6d49d2977fc14fae50fdfcd77cc2c2401246d61a41cc
 - codebook_sha256: 892c8f686dfcb27d6a4c81a0f672c44226e2e306f625cf895da427534b4b7a38
 - gold_sha256: aec2f545fc4dbbb013ab4f09c2dc25f9a21cc75fe2923a9644eeda75a77e32e1
+- inputs_sha256.judge_export_id: 8de4b0b9aa80e2e55469145c8fb52b4847345e56e6577a611419b937b5e5a07b
+- inputs_sha256.judge_key: 4faa94a6c197ae86a1b5f4f4be98ff6bfd53b1ff812ceb59668ba7a58ae64997
+- inputs_sha256.judge_labels.judge-8de4b0b9-001.json: 5a231adbe2d8a10810ba29cd9c629be5bfc7c41e7e5370b703911b9b85a96db2
+- inputs_sha256.judge_labels.judge-8de4b0b9-002.json: 4d50e663c611065a59666b206db91c0b6eba3471cdb634a6f186ef4af0f389b8
+- inputs_sha256.judge_labels.judge-8de4b0b9-003.json: ff775106fd60622180761cae97f25710df509b66933ab9bde48e4a343f9aee76
+- inputs_sha256.judge_labels.judge-8de4b0b9-004.json: d3bd8d3a2a3eb8d8b85c1e5cc5791939efbf8763e5347072a2d85be99a7b51f2
+- inputs_sha256.judge_labels.judge-8de4b0b9-005.json: 63866eee0e581a041d7669e55bde953be07e467ff2e3b96a5055e431ad28477d
+- inputs_sha256.judge_labels.judge-8de4b0b9-006.json: 32b595b7f2e63a92f49065ac7d5dfccaad5810f5bbd3fa54f07fa98ae6e1234d
+- inputs_sha256.judge_labels.judge-8de4b0b9-007.json: 1f10bb8017aba73d2e22a03d190c946cf5045ae11d70066c0f235ac0b601e284
+- inputs_sha256.judge_labels.judge-8de4b0b9-008.json: ec91ef80d500148af4fee8c58a7fd3e464531f7fb4f75bb44a4d557ca7d30517
+- inputs_sha256.judge_labels.judge-8de4b0b9-009.json: c495e9f40b2f18eb01995ad1c86512a2be371ffe52b39249d3c73e72f1b8cec8
+- inputs_sha256.judge_labels.judge-8de4b0b9-010.json: e6d56918da64033ad7a8a41316d225b3445f9554a87a02d10d3295abb375325f
+- inputs_sha256.judge_labels.judge-8de4b0b9-011.json: 4cacc18ba92d2bab9ab85bfc2ed8b54670bb9ec388df15ccd76a9763683196ee
+- inputs_sha256.judge_labels.judge-8de4b0b9-012.json: cb9890e46d5fdd2016581d4ca06729a1cbe5373746df95725afe483e3864e31c
+- inputs_sha256.judge_labels.judge-8de4b0b9-013.json: 02b011d85738d410a14595e7fefc8c39fe66f25d71818d4bfc553d512d555706
+- inputs_sha256.judge_labels.judge-8de4b0b9-014.json: 16cf13d21a9fbdffcaff8c15ecea790eec5d4278ac407da279690b8b2617d1fc
+- inputs_sha256.judge_labels.judge-8de4b0b9-015.json: e9343d6a90f7125d46aa1455e856acbc2dea80918b2b6a4c6c88e185d60a4763
+- inputs_sha256.judge_labels.judge-8de4b0b9-016.json: fa320230fdf94620b0b824575dcf5bd8b3c52d55813214a1026bc6ccbe6e013e
+- inputs_sha256.judge_labels.judge-8de4b0b9-017.json: 23088ebe6db3f15a463d906fd05c6b90efacfdbafbbb2bcb2650e0b015648800
+- inputs_sha256.judge_labels.judge-8de4b0b9-018.json: 88e28a37fd24fbabedda54d07170a69393ca306ca08b773bb123407cafda7b91
+- inputs_sha256.judge_labels.judge-8de4b0b9-019.json: 4f2d5b8ae59b33a4ee8d9c2b26ef5eb68709e3f62ec92b79aa8457afe29b9413
+- inputs_sha256.judge_labels.judge-8de4b0b9-020.json: 96490a64cf62d9b9937a83f3b62486cecb4c5309b36052da442db2a34dab4c59
+- inputs_sha256.judge_labels.judge-8de4b0b9-021.json: 0587a59f9845995d52a218c848377f36f880673ab7a5736d25a920949a66166f
+- inputs_sha256.judge_labels.judge-8de4b0b9-022.json: 8d044f8ba461f9010d3736cd5d3675a84b43d1c5463aae077f03a815a1df3420
+- inputs_sha256.judge_labels.judge-8de4b0b9-023.json: dbc9b4b1057a02babad6e454b900096bf232ff2656c24529c71bda87cf407734
+- inputs_sha256.judge_labels.judge-8de4b0b9-024.json: 1d635543740c5197fd1f9c4be6aaf90a13c0547d2edb2a94393dbba88dcbea18
+- inputs_sha256.judge_labels.judge-8de4b0b9-025.json: 7039621089e53b0b9ed71536c039903c5f01da0966947f7f3d87d22de6efc91b
+- inputs_sha256.judge_labels.judge-8de4b0b9-026.json: 2c766f9fa2bedf13b1dd40654d40f1186000c5d483c8cf85f4d5090f47858a15
+- inputs_sha256.judge_labels.judge-8de4b0b9-027.json: dd7f1cbd21698cfd4735e8d98ce096b7325c3e5767c4dd19117d55012bc16f23
+- inputs_sha256.judge_labels.judge-8de4b0b9-028.json: 08d3cda868c4def6dcbc9eab0a9f324cd4fb99db27ad87f3f18bab93cc795da8
+- inputs_sha256.judge_labels.judge-8de4b0b9-029.json: d3e9449aba21d87d56d64ce86a79896df7a9df01ead405cefc8c5943d95a6851
+- inputs_sha256.judge_labels.judge-8de4b0b9-030.json: a2498daa5c172830ec214820f0f955eaf1d61df77f506ad3a039e30664152964
+- inputs_sha256.judge_labels.judge-8de4b0b9-031.json: a172f3601ae0cfe33cb6240d920e572b0692d1746dd5ce93fdb8705b201099da
+- inputs_sha256.judge_labels.judge-8de4b0b9-032.json: 0ce443f1c3b8ea7cfb1e1350aab8e3cef7287b5b79febb0f3abae94323ec49fb
+- inputs_sha256.judge_rubric_sha256: 38e858bb40ca275e0b05a9555e74c26c5084d76b6fa88ac596928812f9b48b88
+- inputs_sha256.rows.teamrouter:deepseek-flash@low: b01d4e5e69f21a98bca6f761b57fc5ac39b8aa82d43c7c0434d2210bc833ec42
+- inputs_sha256.rows.teamrouter:gemini-3.8-flash@low: db3feb8d76fa464f26c8e92d14120001e14d7cdc1422d7e661597fea37cc578e
+- inputs_sha256.rows.teamrouter:glm-5.3-flash@low: 3a98a9ee62ccc529c6f5671c5fdd149151a7b737e1a02a2d1c4c64188b93e714
 - incumbent: teamrouter:gemini-3.8-flash@low
 - primary: Ear cc_accuracy
+
+A `-` cell is null: a rate with no denominator (n = 0), a count not seen, `cost_usd` when the report is made without `--prices`, and `undeclared_reveals`, which the rows do not carry.
 
 ## ear: recorded
 
@@ -186,7 +226,10 @@ Internal instrument choice, not a claim; the user decides (ADR-0024).
 | judged.M4 | 1.0 [0.9804, 1.0] (192/192) | 1.0 [0.984, 1.0] (237/237) | 0.9437 [0.9041, 0.9675] (201/213) |
 | judged.M5 | 1.0 [0.9804, 1.0] (192/192) | 1.0 [0.984, 1.0] (237/237) | 1.0 [0.9823, 1.0] (213/213) |
 | judged.no_violation | 0.9948 [0.9711, 0.9991] (191/192) | 0.9747 [0.9459, 0.9883] (231/237) | 0.831 [0.7749, 0.8753] (177/213) |
+| n_excluded_fallback | 46 | 1 | 25 |
 | timeout | 0 | 0 | 0 |
+
+Judged M1-M5 cover non-fallback outputs only; `n_excluded_fallback` counts the fallbacks left out of their denominator (ADR-0024 §5).
 
 ## mouth: constructed
 
@@ -202,7 +245,10 @@ Internal instrument choice, not a claim; the user decides (ADR-0024).
 | judged.M4 | 1.0 [0.9229, 1.0] (46/46) | 1.0 [0.93, 1.0] (51/51) | 1.0 [0.9259, 1.0] (48/48) |
 | judged.M5 | 1.0 [0.9229, 1.0] (46/46) | 1.0 [0.93, 1.0] (51/51) | 1.0 [0.9259, 1.0] (48/48) |
 | judged.no_violation | 0.9783 [0.8866, 0.9962] (45/46) | 1.0 [0.93, 1.0] (51/51) | 1.0 [0.9259, 1.0] (48/48) |
+| n_excluded_fallback | 9 | 4 | 7 |
 | timeout | 0 | 0 | 0 |
+
+Judged M1-M5 cover non-fallback outputs only; `n_excluded_fallback` counts the fallbacks left out of their denominator (ADR-0024 §5).
 
 ## simuser: recorded
 
@@ -240,12 +286,25 @@ Internal instrument choice, not a claim; the user decides (ADR-0024).
 | mouth_fidelity_ok.constructed | -0.0909 [-0.1818, 0.0] (55 clusters) | -0.0545 [-0.1455, 0.0182] (55 clusters) |
 | mouth_fidelity_ok.recorded | -0.1891 [-0.2527, -0.1183] (35 clusters) | -0.1008 [-0.1417, -0.056] (35 clusters) |
 
-## calls: latency, tokens, cost, served echoes
+## calls: latency, tokens, cost, finish reasons, timeouts, served echoes
 
 | metric | teamrouter:deepseek-flash@low | teamrouter:gemini-3.8-flash@low | teamrouter:glm-5.3-flash@low |
 |---|---|---|---|
 | cost_usd | - | - | - |
 | echoes | deepseek-v4-1-flash-260910 | gemini-3.8-flash | glm-5.3-flash |
+| finish_reason.ear.calls | 690 | 754 | 771 |
+| finish_reason.ear.length | 81 | 47 | 0 |
+| finish_reason.ear.null | - | 4 | - |
+| finish_reason.ear.stop | - | 97 | - |
+| finish_reason.ear.tool_calls | 609 | 606 | 771 |
+| finish_reason.mouth.calls | 447 | 328 | 377 |
+| finish_reason.mouth.length | 206 | 38 | 0 |
+| finish_reason.mouth.stop | 241 | 290 | 377 |
+| finish_reason.simuser.calls | 120 | 139 | 233 |
+| finish_reason.simuser.length | 4 | 1 | 0 |
+| finish_reason.simuser.null | - | 1 | - |
+| finish_reason.simuser.stop | - | 26 | - |
+| finish_reason.simuser.tool_calls | 116 | 111 | 233 |
 | latency_ms.ear.n | 690 | 750 | 771 |
 | latency_ms.ear.p50 | 2364 | 3691 | 5249 |
 | latency_ms.ear.p95 | 4941 | 11134 | 11527 |
@@ -257,6 +316,9 @@ Internal instrument choice, not a claim; the user decides (ADR-0024).
 | latency_ms.simuser.p95 | 3831 | 7865 | 11976 |
 | not_final_rows.capped | 0 | 0 | 0 |
 | not_final_rows.unavailable | 0 | 0 | 0 |
+| timeout_all_repeats.ear | 0 | 4 | 0 |
+| timeout_all_repeats.mouth | 0 | 0 | 0 |
+| timeout_all_repeats.simuser | 0 | 1 | 0 |
 | tokens.ear.completion_tokens | 149960 | 360830 | 30389 |
 | tokens.ear.prompt_tokens | 552149 | 399290 | 502676 |
 | tokens.ear.reasoning_tokens | 116786 | 341613 | 7311 |
@@ -268,3 +330,4 @@ Internal instrument choice, not a claim; the user decides (ADR-0024).
 | tokens.simuser.reasoning_tokens | 8547 | 26803 | 102 |
 | torn_lines | 0 | 0 | 0 |
 
+Latency, tokens, `finish_reason` and `timeout_all_repeats` cover every call of every attempt and repeat (`null`: a call with no finish reason, e.g. cancelled); a segment's `timeout` counts repeat 1 only.
