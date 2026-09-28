@@ -184,8 +184,7 @@ class FastLane:
         if k.bb.epoch != epoch:  # stale: cancelled before its first sentence
             cancel = {"gen_id": gen_id, "reason": "epoch"}
             k.emit("fast.cancelled", self._actor, cancel, causes)
-            if not (ask.again and trigger.kind == "approval_card"):
-                self._add(_Ask(trigger, cause, ask.acks, again=True), first=True)
+            self._again(ask)
             return
         first = record.t_first_token
         ttft = None if first is None else first - record.t_start
@@ -215,6 +214,12 @@ class FastLane:
             lines.append((f"{gen_id}-u{n}", item.text, said.event_id))
         if lines:
             await k.speakers[lane].speak(lines)
+
+    def _again(self, ask: _Ask) -> None:
+        """A stale generation's trigger, first on the new basis (an
+        APPROVAL_NOTICE once)."""
+        if not (ask.again and ask.trigger.kind == "approval_card"):
+            self._add(_Ask(ask.trigger, ask.cause, ask.acks, again=True), first=True)
 
     def _relay(
         self, items: list[fp.TurnItem], turn: str, gen_id: str, utt_ref: str | None
