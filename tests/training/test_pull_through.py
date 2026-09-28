@@ -334,7 +334,10 @@ def test_adapter_shas_compare_file_for_file(evidence: Path):
 
 
 PROVENANCE = {
-    "label_models": ["openrouter:openai/gpt-6-luna"],
+    "label_models": [
+        {"endpoint": "openrouter", "model_id": "openai/gpt-6-luna"}
+        | {"reasoning_effort": "none"}
+    ],
     "rows": 3,
     "run_ids": ["r1", "r2"],
 }
@@ -346,6 +349,7 @@ def write_run(run_dir: Path, fps: dict[str, str]) -> None:
     rows["adapter_name"] = pt.adapter_name(fps)
     rows["source"] = "hosted openrouter:openai/gpt-6-luna (teacher_exec)"
     ref = {"endpoint": "openrouter", "model_id": "openai/gpt-6-luna"}
+    ref["reasoning_effort"] = "none"
     rows["provenance"] = [{"run_id": r, "model_ref": ref} for r in ("r2", "r1", "r2")]
     train = {"run_id": "pt-x", "adapter_sha256": {"adapter_config.json": "a" * 64}}
     train |= {"p5": {"ok": True}, "recipe": {}, "lora": {}, "batch_note": "n"}

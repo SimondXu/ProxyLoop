@@ -38,6 +38,7 @@ import httpx
 
 from proxyloop.contract.base import Lane, canonical_json, sha256_text
 from proxyloop.contract.bundle import Bundle, read_bundle
+from proxyloop.contract.events import Event
 from proxyloop.contract.llm import (
     AdapterKind,
     Endpoint,
@@ -159,12 +160,14 @@ def messages_sha(view: FastView, profile: str, rec: LLMCallRecord) -> str:
 
 
 def provenance(
-    run_id: str, event_id: str, lane: str, profile: str, rec: LLMCallRecord
+    run_id: str, turn: Event, lane: str, profile: str, rec: LLMCallRecord
 ) -> Json:
+    """One row's provenance: ``resamples`` is the fast.turn's (a TeacherRepair turn;
+    None when it has none), ``attempt`` the record's HTTP attempt."""
     ref = rec.model_ref
     return {
         "run_id": run_id,
-        "event_id": event_id,
+        "event_id": turn.event_id,
         "lane": lane,
         "profile": profile,
         "model_ref": {
@@ -175,6 +178,8 @@ def provenance(
         "served_model_echo": rec.served_model_echo,
         "request_id": rec.request_id,
         "sampling_sent": rec.sampling_sent,
+        "resamples": turn.payload.get("resamples"),
+        "attempt": rec.attempt,
     }
 
 
@@ -218,7 +223,7 @@ def label_turns(
             if messages_sha(fast_view, profile, rec) != sha:
                 skipped["messages_sha_mismatch"] += 1
                 continue
-        prov = provenance(bundle.manifest.run_id, e.event_id, lane, profile, rec)
+        prov = provenance(bundle.manifest.run_id, e, lane, profile, rec)
         turns.append(Turn(e.event_id, profile, view, raw, sha, prov))
     return turns, skipped
 
@@ -300,13 +305,13 @@ def rows_doc(
 
 
 def provenance_summary(rows: Json) -> Json:
-    """The label models, row count and runs behind a rows.json (the result card)."""
+    """The label models (with their reasoning effort), row count and runs behind a
+    rows.json (the result card)."""
     prov = rows["provenance"]
-    models = {
-        f"{p['model_ref']['endpoint']}:{p['model_ref']['model_id']}" for p in prov
-    }
-    runs = {p["run_id"] for p in prov}
-    return {"label_models": sorted(models), "rows": len(prov), "run_ids": sorted(runs)}
+    refs = {canonical_json(p["model_ref"]): p["model_ref"] for p in prov}
+    models = [refs[k] for k in sorted(refs)]
+    runs = sorted({p["run_id"] for p in prov})
+    return {"label_models": models, "rows": len(prov), "run_ids": runs}
 
 
 def echo_failures(bundle: Bundle, name: str) -> list[str]:

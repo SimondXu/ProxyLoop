@@ -110,7 +110,22 @@ def test_a_hosted_session_yields_rows_that_pass_p5_with_their_provenance(
             "served_model_echo": "openai/gpt-6-luna",
             "request_id": call["request_id"],
             "sampling_sent": call["sampling_sent"],
+            "resamples": None,  # no TeacherRepair in this session
+            "attempt": 0,
         }
+    assert pt.provenance_summary(doc) == {
+        "label_models": [LUNA.model_dump(mode="json", exclude={"kind"})],
+        "rows": len(turns),
+        "run_ids": [b.manifest.run_id],
+    }
+    repaired = tuple(  # a TeacherRepair turn notes its resamples (kernel/lanes.py)
+        e.model_copy(update={"payload": e.payload | {"resamples": 2}})
+        if e.type == "fast.turn"
+        else e
+        for e in b.events
+    )
+    again, _ = pt.label_turns(Bundle(b.manifest, repaired, b.prompts), HOSTED)
+    assert [t.provenance["resamples"] for t in again] == [2] * len(turns)
 
 
 def test_the_select_command_takes_the_source_explicitly(
