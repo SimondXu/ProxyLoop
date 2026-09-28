@@ -303,11 +303,11 @@ def _tails(text: str, start: int, fields: Mapping[str, str]) -> bool:
     heads = [f". {head.format(field=f, kind=k)}" for f, k in fields.items()]
     ends = [end.format(kind=k) for k in fields.values()]
     first = text.find(heads[0], start)
-    rest = text[first + len(heads[0]) :] if first >= 0 else ""
-    size = len(rest) - sum(map(len, ends)) - sum(map(len, heads[1:]))
-    if first < 0 or size < 0 or size % len(heads):
+    if first < 0:
         return False
-    ref = rest[: size // len(heads)]
+    rest = text[first + len(heads[0]) :]
+    size = len(rest) - sum(map(len, ends)) - sum(map(len, heads[1:]))
+    ref = rest[: max(size, 0) // len(heads)]  # the only length that can fit
     rebuilt = "".join(
         f"{ref}{e}{h}" for e, h in zip(ends, [*heads[1:], ""], strict=True)
     )
