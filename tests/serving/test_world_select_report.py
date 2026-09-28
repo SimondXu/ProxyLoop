@@ -351,6 +351,13 @@ def test_judge_export_is_blind(tree: Path, capsys: pytest.CaptureFixture[str]) -
     for lab in labels:  # every candidate record breaks M5
         lab |= {m: meta[lab["record"]]["arm"] == INC or m != "M5" for m in sc.JUDGED}
     (tree / "judged").mkdir()
+    (tree / "judged" / "out.json").write_text(json.dumps(labels[1:]))
+    with pytest.raises(SystemExit, match="1 of 4 exported records unlabelled"):
+        scores(tree, "--judge-dir", str(tree / "judged"), "--judge-key", str(key))
+    (tree / "judged" / "more.json").write_text(json.dumps(labels[:2]))
+    with pytest.raises(SystemExit, match="unknown or labelled twice"):
+        scores(tree, "--judge-dir", str(tree / "judged"), "--judge-key", str(key))
+    (tree / "judged" / "more.json").unlink()
     (tree / "judged" / "out.json").write_text(json.dumps(labels))
     got = scores(tree, "--judge-dir", str(tree / "judged"), "--judge-key", str(key))
     cand = got["arms"][CAND]["mouth"]["recorded"]["judged"]

@@ -336,7 +336,8 @@ def judge_export(doc: Obj, arms: dict[str, sc.Arm], args: argparse.Namespace) ->
 
 
 def judged_labels(key_path: Path, labels: Path) -> dict[str, Obj]:
-    """Arm -> item id -> {M1..M5}, from the judge's label arrays and the export key."""
+    """Arm -> item id -> {M1..M5}, from the judge's label arrays and the export key:
+    every exported record labelled exactly once."""
     records = cast(Obj, sc.load_json(key_path))["records"]
     out: dict[str, Obj] = {}
     seen: set[str] = set()
@@ -351,6 +352,8 @@ def judged_labels(key_path: Path, labels: Path) -> dict[str, Obj]:
             out.setdefault(meta["arm"], {})[meta["item_id"]] = {
                 m: r[m] for m in sc.JUDGED
             }
+    if unlabelled := len(records.keys() - seen):
+        raise SystemExit(f"{unlabelled} of {len(records)} exported records unlabelled")
     return out
 
 
