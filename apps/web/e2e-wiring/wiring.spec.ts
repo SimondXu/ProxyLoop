@@ -448,3 +448,27 @@ test("o) live: the authority strip and the card's read-back progress, from the s
   await expect(card.getByLabel("Fence note")).toHaveText("Paused: reading your new message before anything is accepted.");
   await shot(page, "live-strip");
 });
+
+test("p) rep: before the real kernel's call opens, the input waits, and a rep line is 409 not_open with nothing logged", async ({ page }) => {
+  // wire-not-open runs the real kernel (kernel/web.py), frozen in its intake: its cp call never opens.
+  const got = await start(page, "wire-not-open", "human");
+  expect(got.status).toBe(201);
+  const id = String(got.body.case_id);
+  expect((await entry(page, `/rep/${id}`)).status).toBe(303);
+  const posts: string[] = [];
+  page.on("request", (r) => r.method() === "POST" && posts.push(new URL(r.url()).pathname));
+  await page.goto(`/?rep=${id}`);
+  const input = page.getByRole("textbox", { name: "Say to the agent" });
+  await expect(input).toBeDisabled();
+  await expect(input).toHaveAccessibleDescription("Waiting for the call to start");
+  // Against the real kernel the page can never post before the call opens (chan.opened and
+  // the kernel's open call are one step), so the 409 is serve's guard, sent here by hand.
+  // Its body is the literal e2e/rep.spec.ts mocks for "The call hasn't started yet".
+  const before = await log(page, id);
+  expect(before.filter((e) => e.type === "chan.opened").map((e) => e.payload.lane)).toEqual(["user"]);
+  const rep = await cookie(page, "pl_rep_csrf");
+  expect(await postFrom(page, `/api/cases/${id}/rep`, { text: "Hello, who is this?" }, rep)).toEqual({ status: 409, body: { error: "not_open" } });
+  expect(await log(page, id)).toEqual(before);
+  expect(posts).toEqual([`/api/cases/${id}/rep`]);
+  await expect(input).toBeDisabled();
+});
