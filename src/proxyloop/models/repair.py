@@ -115,6 +115,12 @@ class TeacherRepair:
             async for item in self._teacher.stream_text(request):
                 yield item
             return
+        # Every cp profile renders the same messages, so the request names its
+        # lane only: the grammar is the lane's live profile (ADR-0017), read at
+        # call time because kernel.lanes imports this module.
+        from proxyloop.kernel.lanes import PROFILE
+
+        profile = PROFILE[lane]
         for n in range(self.max_resamples + 1):
             seed = None if request.seed is None else request.seed + n
             attempt = request.model_copy(update={"seed": seed})
@@ -127,7 +133,7 @@ class TeacherRepair:
             if record is None:
                 raise RuntimeError("the teacher's stream ended without its record")
             self.resamples[request.call_id] = n
-            parsed = parse_turn(text, lane)
+            parsed = parse_turn(text, lane, profile)
             if not any(isinstance(i, ParseIssue) for i in parsed):
                 break
         assert record is not None
