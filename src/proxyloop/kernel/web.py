@@ -55,7 +55,7 @@ from proxyloop.kernel.watchdog import Abort
 from proxyloop.llm.http import EndpointEnv, LLMConfigError
 from proxyloop.serve.api import HOST, create_app
 from proxyloop.serve.bundles import default_roots
-from proxyloop.serve.cases import LaneKey, ModelOption, StartRefused
+from proxyloop.serve.cases import LaneKey, ModelOption, NotOpen, StartRefused
 
 REAL = AdapterKind.REAL_HTTP
 # The piloted families, train-only (I9; S1-ROOT-01's pilot lock lists them).
@@ -113,7 +113,8 @@ def _config(family: str, fast: Offer, slow: Offer) -> SessionConfig:
 class WebCase:
     """Implements ``serve.cases.Case`` over one running kernel. Every method
     reads the board or queues, on the kernel's loop, without blocking; after
-    the session ended each ingress raises (serve: 503)."""
+    the session ended each ingress raises (serve: 503), and before the cp call
+    opened (``chan.opened{cp}``) a human rep line raises ``NotOpen`` (409)."""
 
     def __init__(
         self,
@@ -140,6 +141,8 @@ class WebCase:
         if self._rep is None:
             raise RuntimeError("this case's rep is simulated")
         self._live()
+        if self._k.calls.opened is None:  # a line now would land after the call
+            raise NotOpen  # opens (serve: 409); no await before the say
         self._rep.say(text)
 
     def _live(self) -> None:
