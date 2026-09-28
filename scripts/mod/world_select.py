@@ -555,6 +555,10 @@ def _write(path: Path, doc: object) -> None:
 
 def main(argv: Sequence[str] | None = None) -> None:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] in (["score"], ["report"], ["judge-export"]):  # PR2b-2
+        from scripts.mod import world_select_report
+
+        return world_select_report.main(argv)
     if argv[:1] == ["run"]:  # PR2a, in its own module (which imports this one)
         from scripts.mod import world_select_run
 
