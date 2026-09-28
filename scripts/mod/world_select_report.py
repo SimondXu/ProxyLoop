@@ -41,7 +41,7 @@ import random
 import subprocess
 import sys
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
@@ -146,6 +146,13 @@ def usage(arm: sc.Arm, prices: Obj | None) -> Obj:
     return out | {"echoes": sorted(echoes)}
 
 
+def by_segment[T](items: Iterable[T], of: Callable[[T], Obj]) -> dict[str, list[T]]:
+    out: dict[str, list[T]] = {}
+    for x in items:
+        out.setdefault(sc.segment(of(x)), []).append(x)
+    return {s: out[s] for s in sc.SEGMENTS if s in out}
+
+
 def score(args: argparse.Namespace, judged: dict[str, Obj] | None = None) -> Obj:
     """``args``: items, codebook, gold, gold_sha, rows, runs, prices, incumbent,
     seed, resamples. ``judged``: arm -> item id -> {M1..M5}."""
@@ -175,14 +182,14 @@ def score(args: argparse.Namespace, judged: dict[str, Obj] | None = None) -> Obj
         res = {"model_ref": arm.model_ref, "torn_lines": arm.torn} | usage(arm, prices)
         if "ear" in arm.roles:
             units[name] = sc.ear_units(doc, labels, arm)
-            segs = sc.by_segment(units[name], lambda u: u.item)
+            segs = by_segment(units[name], lambda u: u.item)
             res["ear"] = {s: sc.ear_metrics(v, arm) for s, v in segs.items()}
         if "mouth" in arm.roles:
             j = None if judged is None else judged.get(name, {})
-            segs = sc.by_segment(sc.role_items(doc, "mouth"), lambda i: i)
+            segs = by_segment(sc.role_items(doc, "mouth"), lambda i: i)
             res["mouth"] = {s: mouth_metrics(v, arm, j) for s, v in segs.items()}
         if "simuser" in arm.roles:
-            segs = sc.by_segment(sc.role_items(doc, "simuser"), lambda i: i)
+            segs = by_segment(sc.role_items(doc, "simuser"), lambda i: i)
             res["simuser"] = {
                 s: simuser_metrics(v, arm, prompts) for s, v in segs.items()
             }
@@ -212,12 +219,12 @@ def paired(
             units = [
                 (x.item, sum(x.correct) - sum(y.correct), len(x.pairs)) for x, y in ear
             ]
-            segs = sc.by_segment(units, lambda t: t[0])
+            segs = by_segment(units, lambda t: t[0])
             res["ear_cc_accuracy"] = {s: boot(v) for s, v in segs.items()}
         if "mouth" in arm.roles & inc.roles:
             mouth = [(i, fidelity(arm.row(i, "mouth")) - fidelity(inc.row(i, "mouth")),
                       1) for i in sc.role_items(doc, "mouth")]  # fmt: skip
-            segs = sc.by_segment(mouth, lambda t: t[0])
+            segs = by_segment(mouth, lambda t: t[0])
             res["mouth_fidelity_ok"] = {s: boot(v) for s, v in segs.items()}
     return out
 

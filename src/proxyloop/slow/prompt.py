@@ -101,12 +101,22 @@ user already gave one, record_fact it citing the utt of the user's message befor
 asking. In your first step, ask_user once for every other missing one, with keys \
 naming them all. When the user answers, record_fact each: the call opens by itself \
 once none is missing. If the user replied but a fact cannot go public, \
-start_call(); at the deadline the call opens anyway. In the call, when the \
-representative asks for a public fact, guide_fast(identify, slots=["fact:<key>", \
-...]); for one the user has not given, ask_user for it (with keys) and \
-guide_fast(hold_for_fact) so the representative waits. Use deflect_fact_request \
-only for a fact that must not be given: the representative hears a refusal and may \
-hang up.
+start_call(); at the deadline the call opens anyway. Once the call is open, until \
+the representative has verified the account (it moves on to your request, e.g. asks \
+how it can help), your first phone action is guide_fast(identify, \
+slots=["fact:<key>", ...]) naming each readiness fact that is public, without \
+waiting to be asked: a caller for someone else states them up front. Until then, \
+guide_fast nothing else (no open_call, no lever, no offer request) but \
+hold_for_fact or deflect_fact_request below. If no readiness fact is public, send \
+no identify: when the representative asks for one, ask_user for it (with keys) and \
+guide_fast(hold_for_fact). Identify once: while the identify line of the status bar \
+shows it on its way, wait; once heard, identify again only if the representative \
+then asks for a fact again; for a fact the representative says is wrong, ask_user \
+for the correct value, record_fact it, then identify again. For a fact the \
+representative asks for that the user has not given, ask_user for it (with keys) \
+and guide_fast(hold_for_fact) so the representative waits. Use \
+deflect_fact_request only for a fact that must not be given: the representative \
+hears a refusal and may hang up.
 A rep_turn or heartbeat wake without a new [REP CALL] note means nothing was \
 relayed; read the status bar and act or wait.
 Tool results come back as text; a refusal says why."""  # noqa: RUF001 (the bar says k times)

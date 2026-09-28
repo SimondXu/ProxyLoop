@@ -144,6 +144,16 @@ def reasons(e: Event) -> list[str]:
     return list(cast(list[str], e.payload["wake_reasons"]))
 
 
+def opened_then(sim: Call) -> list[tuple[Event, Event | None]]:
+    """The steps after the first: ``Call`` opens the call at once (``ready``),
+    and Slow's first step is the one ``call_opened`` woke then (S1-SYS-74),
+    before any rep line; its heartbeat is armed from there."""
+    (opening, _), *rest = sim.steps()
+    (opened,) = sim.of("chan.opened", lane="cp")
+    assert (reasons(opening), opening.t_ms) == (["call_opened"], opened.t_ms)
+    return rest
+
+
 def one_at_a_time(sim: Call) -> None:
     steps = sim.steps()
     for (s, d), (nxt, _) in pairwise(steps):
@@ -169,9 +179,9 @@ class Host:
         return 0
 
 
-def test_rep_turns_and_strikes_wake_slow_only_while_the_call_is_open(
+def test_the_call_opening_wakes_slow_once_and_rep_turns_and_strikes_only_in_it(
     tmp_path: Path,
-) -> None:
+) -> None:  # S1-SYS-74 flipped the "no wake" pin: chan.opened{cp} wakes (ADR-0012)
     host = Host()
     bus = Bus(tmp_path / "events.jsonl", "r", ManualClock())
     bus.subscribe(wake.Wakes(cast(Kernel, host)).on_event)
@@ -197,21 +207,53 @@ def test_rep_turns_and_strikes_wake_slow_only_while_the_call_is_open(
     emit("chan.opened", lane="user")
     assert host.woken == []
     emit("chan.opened", lane="cp")
+    assert host.woken == ["call_opened"]  # once per call open, before any rep line
     rep()
     emit("chan.strike", lane="cp")
     rep("agent")
-    assert host.woken == ["rep_turn", "strike"]
+    assert host.woken == ["call_opened", "rep_turn", "strike"]
     step()  # in the call: the heartbeat
     assert host.timers == 1
     emit("chan.closed", lane="cp")
     rep()
     emit("chan.strike", lane="cp")
-    assert host.woken == ["rep_turn", "strike", "call_closed"]
+    assert host.woken == ["call_opened", "rep_turn", "strike", "call_closed"]
     step()  # after the call: no heartbeat
     assert host.timers == 1
     step({"tool": "wait", "seconds": 5})  # but a wait still wakes
     assert host.timers == 2
+    emit("chan.opened", lane="cp")  # a second call (ADR-0014) wakes again
+    assert host.woken[-1:] == ["call_opened"] and host.woken.count("call_opened") == 2
     bus.close()
+
+
+@pytest.mark.parametrize("opening", ["ready", "intake_deadline"])
+def test_a_call_opening_wakes_slow_exactly_once(tmp_path: Path, opening: str) -> None:
+    """S1-SYS-74 (ADR-0012's ``call_opened``): Slow steps as the cp call opens,
+    before the rep says anything, whatever opened it."""
+    from tests.kernel.test_calls import DEADLINE, Intake
+
+    sim = Call(tmp_path) if opening == "ready" else Intake(tmp_path)
+
+    async def case() -> None:
+        await sim.start()
+        if opening == "intake_deadline":
+            await sim.vt.run_for(DEADLINE)
+        await sim.vt.run_for(12_000)
+        sim.rep_says("Thanks for calling. Who am I speaking with?")
+        await sim.vt.run_for(20_000)
+        await sim.stop()
+
+    play(case)
+    (opened,) = sim.of("chan.opened", lane="cp")
+    assert opened.payload["reason"] == opening
+    woke = [s for s in sim.of("slow.step.started") if "call_opened" in reasons(s)]
+    assert len(woke) == 1, [reasons(s) for s in sim.of("slow.step.started")]
+    (step,) = woke
+    assert step.seq > opened.seq and int(str(step.payload["basis_seq"])) >= opened.seq
+    assert step.t_ms - opened.t_ms <= 2  # at once: no rep line needed
+    (u,) = sim.of("utt.final", speaker="partner")
+    assert step.seq < u.seq
 
 
 def test_every_wake_reason_in_the_source_is_enumerated() -> None:  # S5b: signals
@@ -248,7 +290,7 @@ def test_wakes_during_a_step_coalesce_into_one_next_step(tmp_path: Path) -> None
         await sim.stop()
 
     play(case)
-    (first, done), (second, _) = sim.steps()
+    (first, done), (second, _) = opened_then(sim)  # the opening ran 0-8 s
     assert reasons(first) == ["rep_turn"]
     assert done is not None and second.t_ms == done.t_ms
     assert reasons(second) == ["rep_turn", "strike"]
@@ -269,7 +311,7 @@ def test_wakes_during_a_step_coalesce_into_one_next_step(tmp_path: Path) -> None
 def test_in_a_call_slow_is_woken_by_its_wait_or_the_heartbeat(
     tmp_path: Path, kind: str, after_ms: int, why: str
 ) -> None:
-    sim = Call(tmp_path, [kind, NOTED])
+    sim = Call(tmp_path, [NOTED, kind, NOTED])
 
     async def case() -> None:
         await sim.start()
@@ -278,7 +320,7 @@ def test_in_a_call_slow_is_woken_by_its_wait_or_the_heartbeat(
         await sim.stop()
 
     play(case)
-    (_, done), (nxt, _), *_ = sim.steps()
+    (_, done), (nxt, _), *_ = opened_then(sim)
     assert done is not None and (nxt.t_ms - done.t_ms, reasons(nxt)) == (
         after_ms,
         [why],
@@ -289,7 +331,8 @@ def test_in_a_call_slow_is_woken_by_its_wait_or_the_heartbeat(
 def test_a_wait_that_is_not_a_json_integer_is_refused(
     tmp_path: Path, seconds: object
 ) -> None:  # review D1: refused and counted, never coerced (rule 12)
-    sim = Call(tmp_path, [act("Waiting.", {"tool": "wait", "seconds": seconds}), NOTED])
+    waits = act("Waiting.", {"tool": "wait", "seconds": seconds})
+    sim = Call(tmp_path, [NOTED, waits, NOTED])
 
     async def case() -> None:
         await sim.start()
@@ -300,7 +343,7 @@ def test_a_wait_that_is_not_a_json_integer_is_refused(
     play(case)
     assert [e.payload["reason"] for e in sim.of("session.ended")] == ["stopped"]
     assert [t.payload["ok"] for t in sim.of("slow.tool", name="wait")] == [False]
-    (_, done), (nxt, _) = sim.steps()
+    (_, done), (nxt, _) = opened_then(sim)
     assert done is not None and nxt.t_ms - done.t_ms == 15_000
     assert reasons(nxt) == ["heartbeat"]
 
@@ -311,7 +354,7 @@ def test_a_wait_that_is_not_a_json_integer_is_refused(
 def test_after_the_call_only_a_wait_wakes_slow(
     tmp_path: Path, kind: str, woken: int
 ) -> None:
-    sim = Call(tmp_path, [kind, NOTED])
+    sim = Call(tmp_path, [NOTED, kind, NOTED])
 
     async def case() -> None:
         await sim.start()
@@ -320,7 +363,7 @@ def test_after_the_call_only_a_wait_wakes_slow(
         await sim.stop()
 
     play(case)
-    (first, done), *rest = sim.steps()
+    (first, done), *rest = opened_then(sim)
     assert reasons(first) == ["call_closed", "rep_turn"]
     assert len(rest) == woken
     if rest:
@@ -329,7 +372,7 @@ def test_after_the_call_only_a_wait_wakes_slow(
 
 # Regressions shaped like the live runs.
 def test_a_refused_guide_then_silence_gets_a_heartbeat_step(tmp_path: Path) -> None:
-    sim = Call(tmp_path, ["refused", NOTED])  # run 655087
+    sim = Call(tmp_path, [NOTED, "refused", NOTED])  # run 655087
 
     async def case() -> None:
         await sim.start()
@@ -339,7 +382,7 @@ def test_a_refused_guide_then_silence_gets_a_heartbeat_step(tmp_path: Path) -> N
 
     play(case)
     assert [t.payload["ok"] for t in sim.of("slow.tool", name="guide_fast")] == [False]
-    (_, done), (nxt, _) = sim.steps()
+    (_, done), (nxt, _) = opened_then(sim)
     assert done is not None and nxt.t_ms - done.t_ms == 15_000
     assert reasons(nxt) == ["heartbeat"]
 
@@ -405,7 +448,7 @@ def test_one_slow_step_per_rep_turn_after_fastc_answers(
         await sim.stop()
 
     play(case)
-    turns, steps = sim.of("utt.final", speaker="partner"), sim.steps()
+    turns, steps = sim.of("utt.final", speaker="partner"), opened_then(sim)
     assert len(turns) == len(steps) == 10  # one step per rep turn, not two
     relays = sim.of("f2s.msg", lane="cp")
     want = ["relay", "rep_turn"] if fast_cp == RELAYING else ["rep_turn"]
@@ -461,7 +504,7 @@ def test_a_cancelled_generation_lets_slow_see_the_line_at_once(
     play(case)
     (u,) = sim.of("utt.final", speaker="partner")
     cancelled, *_ = sim.of("fast.cancelled")
-    first, *_ = sim.steps()
+    first, *_ = opened_then(sim)
     assert (first[0].t_ms - cancelled.t_ms, reasons(first[0])) == (0, ["rep_turn"])
     assert int(str(first[0].payload["basis_seq"])) >= u.seq
     within_the_lag_bound(sim)
@@ -488,8 +531,12 @@ def test_a_generation_with_no_end_still_lets_slow_see_the_line(
 
     play(case)
     assert sim.of("fast.turn", lane="cp") == sim.of("fast.cancelled") == []
-    (u, *_), (first, _) = sim.of("utt.final", speaker="partner"), sim.steps()[0]
-    assert first.t_ms - u.t_ms == 15_000 and reasons(first) == ["heartbeat"]
+    (u, *_), (first, _) = sim.of("utt.final", speaker="partner"), opened_then(sim)[0]
+    # S1-SYS-74: the heartbeat armed at the opening step comes first, never
+    # later than HEARTBEAT_S after the line or the opening step's end if later
+    opening = sim.steps()[0][1]
+    assert opening is not None and reasons(first) == ["heartbeat"]
+    assert first.t_ms <= max(u.t_ms + 15_000, opening.t_ms)
     within_the_lag_bound(sim)
     one_at_a_time(sim)
 
@@ -518,24 +565,25 @@ def test_a_rep_turn_waits_for_the_fastc_generation_that_saw_it(
              model_ref=ref)  # fmt: skip
 
     emit("chan.opened", lane="cp")
+    assert host.woken == ["call_opened"]  # S1-SYS-74: the open wakes, no rep line
     before = bus.bb.seq
     first = rep()
     asked("cp-g1", before)  # a generation that began before the line
     bus.emit("fast.cancelled", "fast.cp", "agent", {"gen_id": "cp-g1",
              "reason": "epoch"}, [root])  # fmt: skip
-    assert host.woken == []
+    assert host.woken == ["call_opened"]
     asked("cp-g2", first.seq)
     second = rep()  # it waits for a later generation
-    assert host.woken == []
+    assert host.woken == ["call_opened"]
     bus.emit("fast.cancelled", "fast.cp", "agent", {"gen_id": "cp-g2",
              "reason": "epoch"}, [root])  # fmt: skip
-    assert host.woken == ["rep_turn"]
+    assert host.woken == ["call_opened", "rep_turn"]
     asked("cp-g3", second.seq)
     rep()  # pending at the close: the close wakes Slow, once
     emit("chan.closed", lane="cp")
     bus.emit("fast.cancelled", "fast.cp", "agent", {"gen_id": "cp-g3",
              "reason": "epoch"}, [root])  # fmt: skip
-    assert host.woken == ["rep_turn", "rep_turn", "call_closed"]
+    assert host.woken == ["call_opened", "rep_turn", "rep_turn", "call_closed"]
     bus.close()
 
 
@@ -639,7 +687,7 @@ def derived_due(events: Sequence[Event]) -> dict[int, tuple[int, str]]:
 
 def test_the_timer_due_time_is_derived_from_the_log(tmp_path: Path) -> None:
     kinds = ["no_tool", wait(4), "refused", wait(9), "normal", "normal", wait(6)]
-    sim = Call(tmp_path, [*kinds, NOTED])
+    sim = Call(tmp_path, [NOTED, *kinds, NOTED])  # NOTED: the opening step
 
     async def case() -> None:
         await sim.start()

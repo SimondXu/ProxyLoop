@@ -23,8 +23,8 @@ INC, CAND = "teamrouter:gemini-3.8-flash@low", "teamrouter:deepseek-flash@low"
 ECHO = {INC: "gemini-3.8-flash", CAND: "deepseek-v4-1-flash-260910"}
 E1, E2, E3, E4, E5, E6 = (f"e{n}" * 32 for n in range(1, 7))
 M1, M2, M3, S1, S2 = ("m1" * 32, "m2" * 32, "m3" * 32, "s1" * 32, "s2" * 32)
-# RUBRIC_TEXT: a fixture copy of docs/decisions/data/world-select-mouth-rubric.md
-# (committed on #257's branch); its sha256 is checked against wr.RUBRIC_SHA below.
+# RUBRIC_TEXT: a copy of docs/decisions/data/world-select-mouth-rubric.md; the test
+# checks it against the committed file and wr.RUBRIC_SHA.
 RUBRIC_TEXT = (
     "# Mouth judge rubric v1 (world-model selection, S1-MOD-09, ADR-0"
     '024)\n\nThe judge sees one simulated customer-service rep line ("t'
@@ -299,6 +299,11 @@ def test_mouth_simuser_calls(tree: Path) -> None:
 
 
 def test_refusals(tree: Path) -> None:
+    draft = json.loads((tree / "gold.json").read_text()) | {"draft": True}
+    (tree / "draft.json").write_text(json.dumps(draft))
+    sha = hashlib.sha256((tree / "draft.json").read_bytes()).hexdigest()
+    with pytest.raises(SystemExit, match="not a final version-1 gold"):
+        sc.gold_labels(tree / "draft.json", sha)
     with pytest.raises(SystemExit, match="not --gold-sha"):
         wr.score(wr.parser().parse_args([*args(tree)[:-2], "--gold-sha", "0" * 64]))
     lines = (tree / "deepseek-flash@low.jsonl").read_text().splitlines()
@@ -318,6 +323,7 @@ def test_refusals(tree: Path) -> None:
 
 def test_judge_export_is_blind(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert hashlib.sha256(RUBRIC_TEXT.encode()).hexdigest() == wr.RUBRIC_SHA
+    assert wr.rubric(wr.RUBRIC) == RUBRIC_TEXT  # the committed rubric passes
     out, key = tree / "batches", tree / "key" / "key.json"
     with pytest.raises(SystemExit, match="inside --out-dir"):
         ws.main(args(tree, "judge-export", "--out-dir", str(out), "--key-out",
