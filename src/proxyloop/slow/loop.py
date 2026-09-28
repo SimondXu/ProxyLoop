@@ -17,7 +17,7 @@ from proxyloop.contract.config import SlowViewMode
 from proxyloop.contract.llm import ChatMessage
 from proxyloop.contract.views import SlowView, view_slow
 from proxyloop.kernel.watchdog import Abort
-from proxyloop.slow import asks, prompt, transcript
+from proxyloop.slow import asks, prompt, state, transcript
 from proxyloop.slow.tools import SlowTools, case_ref
 
 if TYPE_CHECKING:
@@ -39,9 +39,12 @@ class SlowLoop:
         reads = self._mode is SlowViewMode.TRANSCRIPT
         self.tools = SlowTools(host, keys, case_ref(host.task.id), transcript=reads)
         self._cursor = transcript.Cursor()
+        self._kind: state.Kind = host.task.mode  # task data, not the view (V3)
         self._head = (
-            f"TASK: {brief}\nSHAREABLE FACT KEYS (record_fact uses exactly these "
-            f"keys, whatever a relay calls them): {', '.join(sorted(keys))}"
+            f"TASK: {brief}\nTASK KIND: {self._kind}\n"
+            f"SHAREABLE FACT KEYS (record_fact uses exactly these "
+            f"keys, whatever a relay calls them): {', '.join(sorted(keys))}\n"
+            f"{prompt.PLAYBOOK[self._kind]}"
         )
         self._first = ""  # the head with the first step's notes
         self._turns: list[Turn] = []  # the last WINDOW answered turns
@@ -109,7 +112,8 @@ class SlowLoop:
         started = host.emit("slow.step.started", "slow", wake, []).event_id
         wakes = f"[WAKE] {', '.join(reasons)}"
         now = host.bb.t_ms  # Guard's clock
-        bar = prompt.status_bar(view, now, asks.intake(host))
+        more = state.bar(bb, self._kind, self.tools)
+        bar = prompt.status_bar(view, now, asks.intake(host), more)
         reads = self._mode is SlowViewMode.TRANSCRIPT
         relays = [prompt.note(r, quoted=reads) for r in new]
         text = stub = "\n".join([wakes, *relays, bar])

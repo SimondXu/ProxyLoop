@@ -87,6 +87,9 @@ class SlowTools:
         # offer revision, and when the final offer was last asked (§9.2, §9.3)
         self.asked: dict[tuple[str, int], int] = {}
         self.asked_final: int | None = None
+        # every read-back ask of an offer revision: the cp transcript length
+        # and the slots then unconfirmed (ADR-0018 V4, slow.state)
+        self.readbacks: dict[tuple[str, int], list[tuple[int, frozenset[str]]]] = {}
         self.received: set[str] = set()  # the relay ids SlowLoop handed to Slow
 
     def act(
@@ -299,6 +302,8 @@ class SlowTools:
         for ref in sorted(refs):
             if (o := bb.public.offers.get(ref)) is not None:
                 self.asked.setdefault((ref, o.revision), at)
+                left = frozenset(s.field for s in o.slots if s.status != "confirmed")
+                self.readbacks.setdefault((ref, o.revision), []).append((at, left))
                 tracked.append(f"{ref} r{o.revision}")
         if tracked:
             return Result(
