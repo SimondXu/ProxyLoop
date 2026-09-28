@@ -106,13 +106,21 @@ def label(r: Json, source: str, version: str | None) -> Json:
     return out | {"excluded": r["act"] == "excluded"}
 
 
+def index(v: object, low: int, what: str) -> int:
+    """``v`` as a position: a non-bool int ``>= low`` (no negative indexing)."""
+    if isinstance(v, bool) or not isinstance(v, int) or v < low:
+        raise SystemExit(f"{what} {v!r}: not an int >= {low}")
+    return v
+
+
 def read_labels(root: Path, prefix: str) -> dict[tuple[str, int, int], Json]:
     out: dict[tuple[str, int, int], Json] = {}
     for f in sorted(root.glob(f"{prefix}-*.json")):
         for r in cast(list[Json], read(f)):
             if r["batch"] != f.stem:
                 raise SystemExit(f"{f}: a label of batch {r['batch']}")
-            if (at := (r["batch"], r["pos"], r["idx"])) in out:
+            pos, idx = index(r["pos"], 0, f"{f}: pos"), index(r["idx"], 1, f"{f}: idx")
+            if (at := (r["batch"], pos, idx)) in out:
                 raise SystemExit(f"{f}: two labels for {at}")
             out[at] = r
     return out
@@ -142,21 +150,27 @@ def gold(
     sha, version = codebook(book)
     if key["root_hash"] != doc["root_hash"]:
         raise SystemExit(f"--batch-key is for the items {key['root_hash']}")
+    listed = Counter(i for b in key["batches"].values() for i in b)
+    if twice := sorted(i for i, c in listed.items() if c > 1):
+        raise SystemExit(f"--batch-key lists {len(twice)} items twice, e.g. {twice[0]}")
     by_id = {
         i["item_id"]: i for i in (*doc["items"]["ear"], *doc["constructed"]["ear"])
     }
 
-    def at(batch: str, pos: int) -> str:
+    def at(batch: str, pos: object) -> str:
+        n = index(pos, 0, f"--batch-key {batch} pos")
         try:
-            return cast(str, key["batches"][batch][pos])
+            return cast(str, key["batches"][batch][n])
         except (KeyError, IndexError):
-            raise SystemExit(f"--batch-key has no item at {batch} {pos}") from None
+            raise SystemExit(f"--batch-key has no item at {batch} {n}") from None
 
-    def adj(batch: str, pos: int) -> str:
+    def adj(batch: str, pos: object) -> str:
+        n = index(pos, 0, f"--adj-key {batch} pos")
         try:
-            return at(*adj_key[batch][pos])
+            orig = adj_key[batch][n]
         except (KeyError, IndexError):
-            raise SystemExit(f"--adj-key has no item at {batch} {pos}") from None
+            raise SystemExit(f"--adj-key has no item at {batch} {n}") from None
+        return at(*orig)
 
     out: dict[Label, Json] = {}
     for item in doc["constructed"]["ear"]:
@@ -167,6 +181,8 @@ def gold(
             raise SystemExit(f"{b} {pos}: not a recorded Ear item")
         if b not in FIRST_PASS:
             raise SystemExit(f"{b}: no first-pass codebook version")
+        if (iid, n) in out:
+            raise SystemExit(f"{b} {pos} {n}: a second first-pass label for {iid} {n}")
         out[(iid, n)] = label(r, "annotator", FIRST_PASS[b])
     for (b, pos, n), r in read_labels(labels, "adj").items():
         if out.get(k := (adj(b, pos), n), {}).get("source") != "annotator":
@@ -179,11 +195,14 @@ def gold(
     for d in decisions:
         if (e := entries.get(d["review_id"])) is None:
             raise SystemExit(f"review_id {d['review_id']} is not on the sheet")
+        where = f"review_id {d['review_id']}"
         if "check" in e:
-            k = (at(*e["check"][:2]), e["check"][2])
+            batch, at_pos, at_idx = e["check"]
+            k = (at(batch, at_pos), index(at_idx, 1, f"{where}: check idx"))
         else:
-            k = (adj(e["adj"], e["pos"]), e["idx"])
-        if said(by_id[k[0]])[k[1] - 1] != e["text"] or k in done:
+            k = (adj(e["adj"], e["pos"]), index(e["idx"], 1, f"{where}: idx"))
+        heard = said(by_id[k[0]])
+        if k[1] > len(heard) or heard[k[1] - 1] != e["text"] or k in done:
             raise SystemExit(f"review_id {d['review_id']}: not its text, or twice")
         done.add(k)
         new = decided(d, e, out[k])

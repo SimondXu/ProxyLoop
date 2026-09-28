@@ -246,3 +246,66 @@ def test_cli_deterministic(tree: Path, capsys: pytest.CaptureFixture[str]) -> No
     with pytest.raises(SystemExit, match="go together"):
         ws.main(["gold", "--labels-dir", "x", "--batch-key", "y", "--adj-key", "z",
                  "--user", "u"])  # fmt: skip
+
+
+def put(t: Path, name: str, body: object) -> None:
+    (t / name).write_text(json.dumps(body))
+
+
+def get(t: Path, name: str) -> Any:
+    return json.loads((t / name).read_text())
+
+
+@pytest.mark.parametrize(
+    ("pos", "idx", "bad"),
+    [(-1, 1, "pos -1"), (True, 1, "pos True"), (0, 0, "idx 0"), (0, True, "idx True")],
+)
+def test_label_positions_refused(tree: Path, pos: Any, idx: Any, bad: str) -> None:
+    """A pos of -1 would index batch-001's last item: another item's label."""
+    put(tree, "labels/batch-001.json", [lab("batch-001", pos, idx, "other")])
+    with pytest.raises(SystemExit, match=f"{bad}: not an int"):
+        build(tree)
+
+
+def test_sheet_positions_refused(tree: Path) -> None:
+    sheet = get(tree, "sheet.json")
+    put(tree, "sheet.json", [sheet[0], sheet[1] | {"check": ["check-001", -1, 1]}])
+    with pytest.raises(SystemExit, match="check-001 pos -1: not an int"):
+        build(tree, [{"review_id": 2, "act": "other"}])
+    put(tree, "sheet.json", [sheet[0], sheet[1] | {"check": ["check-001", 1, True]}])
+    with pytest.raises(SystemExit, match="check idx True: not an int"):
+        build(tree, [{"review_id": 2, "act": "other"}])
+    put(tree, "sheet.json", [sheet[0] | {"pos": -1}, sheet[1]])
+    with pytest.raises(SystemExit, match="adj-001 pos -1: not an int"):
+        build(tree, [{"review_id": 1, "act": "other"}])
+    put(tree, "sheet.json", [sheet[0] | {"idx": 0}, sheet[1]])
+    with pytest.raises(SystemExit, match="review_id 1: idx 0: not an int"):
+        build(tree, [{"review_id": 1, "act": "other"}])
+
+
+def test_batch_key_ids_unique(tree: Path) -> None:
+    key = get(tree, "key.json")
+    key["batches"]["batch-007"].append(A)
+    put(tree, "key.json", key)
+    with pytest.raises(SystemExit, match="lists 1 items twice"):
+        build(tree)
+
+
+def test_first_pass_label_twice_refused(
+    tree: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Defence in depth behind the unique-id and position checks: two first-pass
+    labels that land on one (item_id, idx) refuse, whatever produced them."""
+    real = wss.read_labels
+
+    class Twice(dict[tuple[str, int, int], Json]):
+        def items(self) -> Any:
+            return [*super().items(), *super().items()]
+
+    def doubled(root: Path, prefix: str) -> dict[tuple[str, int, int], Json]:
+        got = real(root, prefix)
+        return Twice(got) if prefix == "batch" else got
+
+    monkeypatch.setattr(wss, "read_labels", doubled)
+    with pytest.raises(SystemExit, match="a second first-pass label for"):
+        build(tree)
