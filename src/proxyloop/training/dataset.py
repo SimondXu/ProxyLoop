@@ -40,7 +40,7 @@ class Row:
 
 
 def build_row(view: FastView, profile: str, teacher_raw: str, tok: Tokenizer) -> Row:
-    items = parse_turn(teacher_raw, view.lane)
+    items = parse_turn(teacher_raw, view.lane, profile)  # the row's grammar
     if issues := [i.reason for i in items if isinstance(i, ParseIssue)]:
         raise ValueError(f"the teacher turn has parse issues {issues}: not a target")
     return Row(

@@ -22,6 +22,7 @@ These are the repository rules for every coding agent. Product intent and invari
 ## Commands
 - Everyday: `make check`, Python only (lint, typecheck, tests including parity P1/P2/P4 and the counterfactual view test, import contracts, docs-check). CI runs `make web-test` (the web build, unit, e2e and wiring tests) and `make shellcheck` in separate jobs.
 - Focused: `make lint`, `make typecheck`, `make test`, `uv run pytest <path> -q`, `make web-test`.
+- `make test` runs every test in three passes (Makefile): pytest-xdist `-n auto`, the two long property tests `-n 2`, then the `serial` wall-clock group (`tests/conftest.py`) without xdist. A focused `uv run pytest` stays serial unless you add `-n auto`.
 - Offline evidence: `make evidence-check RUN=<dir>` (offline by default); `make replay` (no keys, no GPU).
 - **Root-run** (live keys / GPU / user; the main root, or within their spend envelopes the model root and L-CORE — `CLAUDE.md`): `make smoke-live`, `make demo`, `make llm-smoke`, `make serve-up|serve-down`, `make pull-through`, `make data`, `make relabel`, `make train`, `make curve`, `make eval-*`, `make publish-*`.
 

@@ -11,8 +11,15 @@ lint:
 typecheck:
 	uv run pyright
 
+# test (S1-ROOT-18): every collected test, in three passes that partition the suite:
+# 1. xdist over the rest (`-n auto`: one worker per CPU);
+# 2. tests/concurrency/test_property.py, whose two ~4-minute Hypothesis tests xdist
+#    would queue on one worker: `-n 2` runs one per worker;
+# 3. the `serial` group (tests/conftest.py: wall-clock budgets), without xdist.
 test:
-	uv run pytest -q
+	uv run pytest -q -n auto -m "not serial" --ignore=tests/concurrency/test_property.py
+	uv run pytest -q -n 2 -m "not serial" tests/concurrency/test_property.py
+	uv run pytest -q -m serial
 
 imports:
 	uv run lint-imports

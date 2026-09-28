@@ -28,14 +28,22 @@ from typing import Any, cast
 
 import pytest
 from tests.support.manual_clock import ScaledClock
-from tests.support.web_demo import FAMILY, LABEL, DemoStarter
+from tests.support.web_demo import (
+    FAMILY,
+    LABEL,
+    LATENCY_S,
+    DemoStarter,
+    Reactive,
+    SlowScript,
+)
 
 from proxyloop.contract.bundle import read_bundle
 from proxyloop.contract.events import ApprovalPost, Event
-from proxyloop.contract.llm import AdapterKind
+from proxyloop.contract.llm import AdapterKind, LLMClient, LLMRole, ModelRef
 from proxyloop.evidence.check import check_path
 from proxyloop.guard.authorize import Denial, decide
 from proxyloop.kernel.web import WebCase
+from proxyloop.llm.http import RecordSink
 from proxyloop.serve.cases import StartRefused
 from proxyloop.serve.start import broken
 
@@ -49,6 +57,29 @@ STOP = "actually, stop"
 def starter(tmp_path: Path) -> DemoStarter:
     clock = ScaledClock(SPEED)
     return DemoStarter(tmp_path / "runs", clock=clock, sleep=clock.sleep)
+
+
+class HeldSlow(DemoStarter):
+    """The demo's starter, but Slow's model calls wait while ``slow`` is clear,
+    then take their usual latency on the session's clock. Nothing else changes:
+    the kernel, the other fakes and the scripts are the demo's own. A test holds
+    Slow to act between two kernel events at any runner speed."""
+
+    def __init__(self, runs: Path, clock: ScaledClock) -> None:
+        super().__init__(runs, clock=clock, sleep=clock.sleep)
+        self._session = clock
+        self.slow = asyncio.Event()
+        self.slow.set()
+
+    async def _held(self, seconds: float) -> None:
+        await self.slow.wait()
+        await self._session.sleep(seconds)
+
+    def _make(self, role: LLMRole, ref: ModelRef, sink: RecordSink) -> LLMClient:
+        if role != "slow":
+            return super()._make(role, ref, sink)
+        wait = LATENCY_S["slow"]
+        return Reactive(ref, SlowScript(), self._session, self._held, wait, sink)
 
 
 def events(case: WebCase, tmp_path: Path) -> list[Event]:
@@ -222,12 +253,15 @@ def test_stop_fences_and_the_stale_card_is_refused_by_the_kernel(
     tmp_path: Path,
 ) -> None:
     async def case() -> tuple[list[Event], object]:
-        s = starter(tmp_path)
+        s = HeldSlow(tmp_path / "runs", ScaledClock(SPEED))
         case, log = await to_card(s, tmp_path)
         (card,) = of(log, "approval.requested")
+        # every Slow call from here waits; Slow's loop is serial, so no step
+        # can end the case
+        s.slow.clear()
         case.user_message(STOP)
-        for _ in range(60_000):  # the revoke's epoch bump, as the board folds it:
-            if case.blackboard().epoch:  # before Slow's step on it ends the case
+        for _ in range(60_000):  # the revoke's epoch bump, as the board folds it
+            if case.blackboard().epoch:
                 break
             await asyncio.sleep(0.001)
         got = decide(case.blackboard(), post(card.payload), "ui")  # serve's pre-check
@@ -235,6 +269,7 @@ def test_stop_fences_and_the_stale_card_is_refused_by_the_kernel(
         # would answer 409 stale first, the e2e's path); the kernel decides
         case.post_approval(post(card.payload))
         await until(case, tmp_path, has("action.denied", intent="approval.post"))
+        s.slow.set()  # the post is decided while the case is live; Slow goes on
         return await until(case, tmp_path, has("session.ended")), got
 
     log, got = asyncio.run(case())

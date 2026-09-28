@@ -128,8 +128,10 @@ class Call(Sim):
         self.rep.incoming.put_nowait(Incoming(((text, None),), end="closed"))
 
 
-def play(case: Callable[[], Coroutine[Any, Any, None]]) -> None:
-    asyncio.run(asyncio.wait_for(case(), timeout=60))
+def play(
+    case: Callable[[], Coroutine[Any, Any, None]], *, timeout_s: float = 60
+) -> None:
+    asyncio.run(asyncio.wait_for(case(), timeout=timeout_s))
 
 
 def reasons(e: Event) -> list[str]:
@@ -551,7 +553,8 @@ def test_a_rep_turn_every_2_s_for_720_s_stays_bounded(
         with contextlib.suppress(Abort):
             await sim.stop()
 
-    play(case)
+    # a hang guard, not a speed limit: CPU-bound, ~14 s/param locally, CI up to ~2x
+    play(case, timeout_s=300)
     assert [e.payload["reason"] for e in sim.of("session.ended")] == [ended]
     steps = sim.steps()
     one_at_a_time(sim)
