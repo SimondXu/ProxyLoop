@@ -21,10 +21,11 @@
     font-weight: 600; font-size: var(--fs-small); cursor: pointer;
     transition: background var(--d-state) var(--ease), transform var(--d-press) var(--ease);
   }
-  button:hover:not(:disabled) { background: var(--sunken); }
+  /* hover only where a pointer hovers: a touch screen keeps :hover on the last-tapped button */
+  @media (hover: hover) { button:hover:not(:disabled) { background: var(--sunken); } }
   button:active:not(:disabled) { transform: scale(0.98); }
   button:disabled { cursor: not-allowed; opacity: 0.55; }
-  button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+  button[aria-pressed="true"], button[aria-pressed="true"]:hover:not(:disabled) { background: var(--ink); border-color: var(--ink); color: var(--surface); }
   input:not([type="checkbox"], [type="radio"], [type="range"]), select, textarea {
     min-height: 36px; padding: 0 var(--s3); border: 1px solid var(--line-input); border-radius: var(--r-sm); background: var(--surface);
   }

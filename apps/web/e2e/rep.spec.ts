@@ -9,8 +9,9 @@ test("rep page: its own stream, only what the rep can hear, and it sends a rep u
   const { urls, connected } = await mockSockets(page);
   const posts = await capturePosts(page);
   await page.goto(`/?rep=${RUN}`);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("You're the rep on this call");
   await expect(page.getByRole("note")).toHaveText(
-    "Human rep mode: this page speaks for the rep in a case started from the start page with rep: human.",
+    "The caller is an AI agent (ProxyLoop) acting for a customer. You're playing the company's rep. This page shows only what's said on the call.",
   );
   const ws = await connected;
   const frame = repFrames();
@@ -79,4 +80,47 @@ test("rep page: a gap in the rep stream's seq stops it with a visible error", as
   ws.send(frame("utt.final", { lane: "cp", speaker: "partner", text: "after a gap" }, 1));
   await expect(page.getByRole("alert")).toHaveText("Stream stopped: seq gap: expected 1, got 2");
   await expect(page.getByRole("list", { name: "Call transcript" })).not.toContainText("after a gap");
+});
+
+test("rep page: the input waits for the kernel's call opening, and a 409 not_open says the call hasn't started, never retried", async ({
+  page,
+  baseURL,
+}) => {
+  await csrfCookie(page, baseURL, "pl_rep_csrf", REP_CSRF);
+  const { connected } = await mockSockets(page);
+  const posts = await capturePosts(page, 409, { error: "not_open" });
+  await page.goto(`/?rep=${RUN}`);
+  const ws = await connected;
+  const frame = repFrames();
+  const input = page.getByRole("textbox", { name: "Say to the agent" });
+  const send = page.getByRole("button", { name: "Send" });
+  await expect(input).toBeDisabled();
+  await expect(send).toBeDisabled();
+  await expect(input).toHaveAccessibleDescription("Waiting for the call to start");
+  // Only the kernel's cp opening opens it: another lane's, or another actor's, does not.
+  ws.send(frame("chan.opened", { lane: "user" }));
+  ws.send(JSON.stringify({ ...JSON.parse(frame("chan.opened", { lane: "cp" })), actor: "fast.cp" }));
+  ws.send(frame("utt.delivered", { lane: "cp", text_heard: "Hello, this is an AI agent calling for a customer." }));
+  await expect(page.getByRole("list", { name: "Call transcript" }).getByRole("listitem")).toHaveText([
+    "Agent: Hello, this is an AI agent calling for a customer.",
+  ]);
+  await expect(input).toBeDisabled();
+  ws.send(frame("chan.opened", { lane: "cp" }));
+  await expect(input).toBeEnabled();
+  await expect(page.getByText("Waiting for the call to start")).toHaveCount(0);
+
+  await input.fill("We can do $75.");
+  await send.click();
+  await expect(page.getByRole("alert")).toHaveText("The call hasn't started yet");
+  await page.waitForTimeout(300);
+  expect(posts).toHaveLength(1);
+  await expect(input).toHaveValue("We can do $75."); // kept for the rep's own resend
+  await shot(page, "rep-not-open");
+
+  // The kernel's close disables it again.
+  ws.send(frame("chan.closed", { lane: "cp" }));
+  await expect(input).toBeDisabled();
+  await expect(send).toBeDisabled();
+  await expect(input).toHaveAccessibleDescription("The call has ended");
+  expect(posts).toHaveLength(1);
 });

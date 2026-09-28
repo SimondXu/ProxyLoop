@@ -19,7 +19,8 @@ known case; else 403 ``{"error": "origin" | "csrf"}`` or 404:
   decides, mints or emits a decision (I6).
 - ``POST /api/cases/{case}/messages`` (user) and ``/rep`` (the human rep):
   text into the case's user-lane and cp-lane ingress; if the ingress raises,
-  503 ``unavailable``, logged. Text that is empty after ``strip()`` is 422
+  503 ``unavailable``, logged. A rep line before the cp call opened is 409
+  ``not_open``, not logged. Text that is empty after ``strip()`` is 422
   ``invalid body`` (the kernel refuses it too); accepted text is forwarded as
   sent, not stripped.
 
@@ -107,7 +108,8 @@ class Case(Protocol):
 
     def rep_utterance(self, text: str) -> None:
         """The human rep's line: the kernel emits ``utt.final`` (lane cp,
-        speaker partner)."""
+        speaker partner). Raises ``NotOpen`` before the cp call opened (serve:
+        409 ``not_open``); any other raise is 503 ``unavailable``."""
         ...
 
 
