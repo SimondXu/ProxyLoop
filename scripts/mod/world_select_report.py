@@ -424,7 +424,13 @@ def render(doc: Obj) -> str:
     """The md report, every number rendered from ``doc`` (the report JSON)."""
     arms: dict[str, Obj] = doc["arms"]
     out = ["# World-model selection report (S1-MOD-09, ADR-0024)", "", doc["note"], ""]
-    for k in ("git_sha", "items_root_hash", "codebook_sha256", "gold_sha256"):
+    for k in (
+        "git_sha",
+        "git_dirty",
+        "items_root_hash",
+        "codebook_sha256",
+        "gold_sha256",
+    ):
         out.append(f"- {k}: {doc[k]}")
     out += [f"- incumbent: {doc['incumbent']}", "- primary: Ear cc_accuracy", ""]
     for role in ws.ROLES:
@@ -447,9 +453,20 @@ def render(doc: Obj) -> str:
     return "\n".join(out + table("calls: latency, tokens, cost, served echoes", cols))
 
 
-def git_sha() -> str:
-    run = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ws.REPO, capture_output=True)
-    return run.stdout.decode().strip()
+def git_state() -> Obj:
+    """The checkout's HEAD and whether it has uncommitted changes."""
+
+    def git(*argv: str) -> str:
+        cmd = ["git", *argv]
+        run = subprocess.run(
+            cmd, cwd=ws.REPO, capture_output=True, text=True, check=True
+        )
+        return run.stdout.strip()
+
+    return {
+        "git_sha": git("rev-parse", "HEAD"),
+        "git_dirty": bool(git("status", "--porcelain")),
+    }
 
 
 def parser() -> argparse.ArgumentParser:
@@ -503,7 +520,7 @@ def main(argv: Sequence[str]) -> None:
         )
         doc = score(args, judged)
         if args.cmd == "report":
-            dump(args.out, doc | {"git_sha": git_sha()})
+            dump(args.out, doc | git_state())
             args.out_md.write_text(render(sc.load_json(args.out)) + "\n", "utf-8")
         elif args.out is not None:
             dump(args.out, doc)

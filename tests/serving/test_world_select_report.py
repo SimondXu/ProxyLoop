@@ -389,6 +389,8 @@ def test_report_md_numbers_are_the_json(tree: Path) -> None:
     doc, text = json.loads(out.read_text()), md.read_text()
     assert "not a claim; the user decides" in text
     assert re.fullmatch(r"[0-9a-f]{40}", doc["git_sha"])
+    assert isinstance(doc["git_dirty"], bool)
+    assert f"- git_dirty: {doc['git_dirty']}" in text
     assert md.read_text() == wr.render(doc) + "\n"
     known = numbers(doc)
     rows_ = [
