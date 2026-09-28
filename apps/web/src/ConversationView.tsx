@@ -168,8 +168,8 @@ function TranscriptLine({ l, p, receipt }: { l: Line; p: Parties; receipt?: Tick
 
 /** A Guard card element, keyed, at its event's seq. */
 export type GuardCard = { seq: number; el: ReactElement };
-/** The live page's part of the chat: the Guard cards, the unechoed sends and the composer. */
-export type ChatInput = { cards: GuardCard[]; pending: string[]; composer: ReactNode };
+/** The chat's cards, unechoed sends and composer; `recording`: a replay's, whose composer is the "This is a recording" bar. */
+export type ChatInput = { cards: GuardCard[]; pending: string[]; composer: ReactNode; recording?: boolean };
 
 type ColumnProps = { events: Ev[]; lines: Line[]; p: Parties; announce: boolean };
 
@@ -216,7 +216,7 @@ function ChatPanel({ events, lines, p, announce, input }: ColumnProps & { input?
         </p>
         <SimNote labels={p.simUser ? [SIM_USER] : []} />
       </div>
-      {items.length === 0 && <EmptyState title={input ? "Tell ProxyLoop what you need, in your own words." : "Nothing said in the chat yet."} />}
+      {items.length === 0 && <EmptyState title={input && !input.recording ? "Tell ProxyLoop what you need, in your own words." : "Nothing said in the chat yet."} />}
       <Transcript name="Chat" announce={announce} count={items.length}>
         {items.map((i) => i.el)}
       </Transcript>

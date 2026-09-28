@@ -191,15 +191,23 @@ test.describe("approve", () => {
     expect(listed.bundles.map((b) => b.run_id)).toContain(id);
     // The replay opens in the conversation view; the engineer view (in place) has the lanes.
     await page.goto("/");
-    await page.getByRole("combobox", { name: "Run" }).selectOption(id);
+    await page.getByRole("list", { name: "Recorded runs" }).getByRole("link").filter({ hasText: id }).click();
+    await expect(page).toHaveURL(`/?run=${id}`);
     await expect(page.getByRole("region", { name: "Run" })).toContainText(id);
+    // It opens at the end: the heard yes, the approval card in its final state (no button to click), the steps.
     const timeline = page.getByRole("slider", { name: "Timeline" });
-    await timeline.fill((await timeline.getAttribute("max")) ?? "0");
+    await expect(timeline).toHaveValue((await timeline.getAttribute("max")) ?? "");
     await expect(page.getByRole("list", { name: "Call transcript" })).toContainText(`Agent: ${String(accept.payload.text)}`);
+    const replayCard = page.getByRole("region", { name: "Chat" }).getByRole("article", { name: `Approval ${String(decided.payload.approval_id)}` });
+    await expect(replayCard.getByLabel("Approval status")).toHaveText(/^You approved · \d{1,2}:\d{2}\s[AP]M$/);
+    await expect(replayCard.getByRole("button", { name: "Approve $78/mo" })).toBeDisabled();
+    await expect(page.getByRole("region", { name: "Steps" }).locator("li").filter({ hasText: /^You \d{2}:\d{2} Approved$/ })).toHaveCount(1);
+    const chapters = page.getByRole("list", { name: "Chapters" });
+    for (const name of ["Call starts", "Offer", "Your decision"]) await expect(chapters.getByRole("button", { name, exact: true })).toBeEnabled();
     await expect(page.getByRole("region", { name: "Guard" })).toHaveCount(0);
     await shot(page, "demo-replay-conversation");
     await page.getByRole("link", { name: "Engineer view" }).click();
-    await expect(page).toHaveURL("/?view=engineer");
+    await expect(page).toHaveURL(`/?run=${id}&view=engineer`);
     const guard = page.getByRole("region", { name: "Guard" });
     for (const e of [posted, decided, released as Ev]) {
       await expect(guard.getByRole("article", { name: `${e.type} #${e.seq}` })).toBeVisible();
