@@ -489,3 +489,76 @@ def test_record_ids_are_opaque_and_arms_interleave(
     arms = [records[i]["arm"] for i in ids]
     assert sorted(arms) == [CAND, CAND, INC, INC]
     assert sum(x != y for x, y in itertools.pairwise(arms)) >= 2
+
+
+def test_call_disclosures_cover_every_attempt_and_repeat() -> None:
+    """finish_reason over every call record; timeouts over every repeat."""
+
+    def rec(why: str | None, err: str | None = None) -> Json:
+        return {"latency_ms": 5, "finish_reason": why, "error": err}
+
+    one = [{"records": [rec("length"), rec("tool_calls")]}, {"records": [rec("stop")]}]
+    arm = sc.Arm(INC, {}, {
+        (E1, "ear", 1): {"status": "ok", "attempts": one},
+        (E1, "ear", 2): {"status": "timeout",
+                         "attempts": [{"records": [rec(None, "cancelled")]}]},
+        (E2, "ear", 1): {"status": "timeout", "attempts": []},
+        (M1, "mouth", 1): {"status": "ok", "attempts": [{"records": [rec("stop")]}]},
+    })  # fmt: skip
+    got = wr.usage(arm, None)
+    assert got["finish_reason"] == {
+        "ear": {"calls": 4, "length": 1, "tool_calls": 1, "stop": 1, "null": 1},
+        "mouth": {"calls": 1, "length": 0, "stop": 1},  # length always present
+    }
+    assert got["timeout_all_repeats"] == {"ear": 2, "mouth": 0}
+    assert got["latency_ms"]["ear"]["n"] == 3  # unchanged: errored calls left out
+
+
+def test_report_discloses_inputs_fallbacks_and_note(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    plain = scores(tree)
+    assert plain["note"] == sc.NOTE
+    files = {INC: "gemini-3.8-flash@low.jsonl", CAND: "deepseek-flash@low.jsonl"}
+    shas = {a: [sc.sha256_file(tree / f)] for a, f in files.items()}
+    assert plain["inputs_sha256"] == {"rows": shas}  # no judging: rows only
+    assert "n_excluded_fallback" not in plain["arms"][INC]["mouth"]["recorded"]
+    assert plain["arms"][CAND]["timeout_all_repeats"]["ear"] == 1  # E5
+    out, key = tree / "batches", tree / "key.json"
+    ws.main(args(tree, "judge-export", "--out-dir", str(out), "--key-out",
+                  str(key), "--seed", "1"))  # fmt: skip
+    capsys.readouterr()
+    meta = json.loads(key.read_text())
+    labels = [{"record": i, "note": ""} | dict.fromkeys(sc.JUDGED, True)
+              for i in meta["records"]]  # fmt: skip
+    (tree / "judged").mkdir()
+    (tree / "judged" / "labels.json").write_text(json.dumps(labels))
+    judge = ["--judge-dir", str(tree / "judged"), "--judge-key", str(key)]
+    note = ["--note", "Post hoc / exploratory."]
+    rep, md = tree / "report.json", tree / "report.md"
+    ws.main(args(tree, "report", "--out", str(rep), "--out-md", str(md), *judge, *note))
+    doc, text = json.loads(rep.read_text()), md.read_text()
+    assert doc["note"] == f"{sc.NOTE} Post hoc / exploratory."
+    assert doc["note"] in text.splitlines()[:3]
+    assert doc["inputs_sha256"] == {
+        "rows": shas,
+        "judge_key": sc.sha256_file(key),
+        "judge_export_id": meta["export_id"],
+        "judge_rubric_sha256": wr.RUBRIC_SHA,
+        "judge_labels": {"labels.json": sc.sha256_file(tree / "judged/labels.json")},
+    }
+    assert f"- inputs_sha256.rows.{INC}: {shas[INC][0]}" in text
+    assert f"- inputs_sha256.judge_export_id: {meta['export_id']}" in text
+    # The incumbent's M3 fell back (constructed); the candidate's M2 timed out (not
+    # a fallback): judged n + n_excluded_fallback + timeout = items.
+    inc, cand = doc["arms"][INC]["mouth"], doc["arms"][CAND]["mouth"]
+    assert inc["constructed"]["n_excluded_fallback"] == 1
+    assert inc["constructed"]["judged"]["M1"]["n"] == 0
+    assert inc["recorded"]["n_excluded_fallback"] == 0
+    assert cand["recorded"]["n_excluded_fallback"] == 0
+    assert cand["recorded"]["judged"]["M1"]["n"] == 1
+    assert text.count(wr.JUDGED_NOTE) == 2  # under both judged Mouth tables
+    assert "| n_excluded_fallback | 0 | 0 |" in text
+    assert "| finish_reason.ear.calls |" in text
+    assert "| timeout_all_repeats.ear | 1 | 0 |" in text  # the candidate's E5
+    assert wr.DASH_NOTE in text and wr.CALLS_NOTE in text
