@@ -47,14 +47,19 @@ export const STEP = {
   outsideLimits: ": outside your limits",
   paused: "Your message paused commitments",
   pausedRead: "Your message paused commitments; the agent read it",
-  saidYes: "Said yes on the call",
-  saidYesCut: "Said yes on the call (cut off)",
   kept: "Kept a private detail from being said",
   verified: "Verified against the company's records",
   notVerified: "Couldn't verify: re-planning",
 } as const;
 
-export const said = (lane: string) => (lane === "cp" ? "✓ Said on the call" : "✓ Said in the chat");
+/** A planner message's mark by its best delivery: whole, cut off after some words, or before any. */
+export const said = (lane: string, heard: "whole" | "partial" | "none") =>
+  heard === "none" ? "Cut off before it was said" : `✓ Said ${lane === "cp" ? "on the call" : "in the chat"}${heard === "partial" ? " (cut off)" : ""}`;
+export const SAID_YES = {
+  whole: "Said yes on the call",
+  partial: "Said yes on the call (cut off)",
+  none: "Started to say yes; the rep cut in",
+} as const;
 export const PASSED = "Passed to the voice";
 
 export const limitsDecided = (granted: boolean) => (granted ? "Confirmed your limits" : "Declined your limits");

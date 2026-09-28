@@ -1,7 +1,8 @@
 // The live page's rail (redesign §3.2 AgentRail): the status line with the
 // planner's pulse, the limits in force, the steps (timeline.ts) and how the
-// roles work. Everything is derived from events through timeline.ts and the
-// cards' own views; nothing here reads a payload.
+// roles work. It reads no payload itself: the steps and the status line come
+// from timeline.ts, the limits from the mandate views (mandate.ts), the models
+// from runHeader (replay.ts).
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CardView } from "../approval";
 import * as C from "../copy";

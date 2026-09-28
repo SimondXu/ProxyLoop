@@ -9,7 +9,7 @@ import type { CardView } from "./approval";
 import { from } from "./authority";
 import { callHead } from "./conversation";
 import * as C from "./copy";
-import { PROGRESS } from "./decision";
+import { approvalStatusText, PROGRESS } from "./decision";
 import type { MandateView } from "./mandate";
 import { statusView, statusWords } from "./outcome";
 import type { Ev } from "./replay";
@@ -21,13 +21,18 @@ export const PAYLOAD_KEYS = [
   "kind", "cap_id", "capability", "capability.cap_id", "capability.terms_hash", "capability.epoch", "intent",
   "offer_ref", "revision", "slots", "slots[].field", "slots[].value", "slots[].status", "slot_statuses", "terms_hash",
   "approval_id", "authority_epoch", "decision", "by", "confirmation_id", "verdict", "reasons", "status", "interrupted",
-  "models",
+  "models", "name", "args", "args.offer_ref",
+  "text_heard", // only whether it is empty (heard()): a cut-off line is not "said"; never shown
 ] as const;
 type Key = (typeof PAYLOAD_KEYS)[number];
 
 const get = (e: Ev, k: Key): unknown => e.payload[k];
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const field = (v: unknown, k: string): unknown => (typeof v === "object" && v !== null ? (v as Record<string, unknown>)[k] : undefined);
+/** A delivery as heard: whole, cut off after some words, or cut off before any. */
+type Heard = "whole" | "partial" | "none";
+const heard = (e: Ev): Heard => (get(e, "interrupted") === false ? "whole" : str(get(e, "text_heard")) ? "partial" : "none");
+const RANK: Record<Heard, number> = { none: 0, partial: 1, whole: 2 };
 
 export type StepIcon = "planner" | "voice" | "you" | "call" | "guard" | "hold" | "offer";
 /** One step. `kind`: the s2f type for a planner message, else the event type. `mark`: said or only passed on. */
@@ -45,14 +50,14 @@ export function timeline(events: Ev[]): Step[] {
   const steps: Step[] = [];
   const at = new Map<string, number>(); // a merged step's key → its index
   const marks: { key: string; msg: string; lane: string }[] = [];
-  const voiced = new Map<string, string>(); // msg_id → "lane:gen_id", as the voice claims
-  const delivered = new Set<string>(); // "lane:gen_id" the kernel delivered
+  const voiced = new Map<string, Set<string>>(); // msg_id → every "lane:gen_id" the voice claims it in
+  const delivered = new Map<string, Heard>(); // "lane:gen_id" → the best the kernel delivered of it
+  const outside = new Set<string>(); // offer_refs Guard refused to accept as outside_mandate
   const userMsgs = new Set<string>();
   const approvals = new Map<string, number>(); // undecided approval_id → its card epoch
   const accepts = new Set<string>(); // cap_ids authorized, neither released nor revoked
   let calls = 0;
   let open = false;
-  let limits = false; // a granted mandate in force
   let epoch = 0;
   const group = () => (calls === 0 ? C.GROUP.before : open ? C.callGroup(calls) : C.GROUP.after);
   const add = (e: Ev, who: string, text: string, icon: StepIcon, key = String(e.seq), kind = e.type) => {
@@ -78,15 +83,19 @@ export function timeline(events: Ev[]): Step[] {
       add(e, s.who, text, s.icon, String(e.seq), type);
       marks.push({ key: String(e.seq), msg: str(get(e, "msg_id")), lane });
     } else if (e.type === "s2f.voiced" && FAST.includes(e.actor)) {
-      voiced.set(str(get(e, "msg_id")), `${e.actor.slice("fast.".length)}:${str(get(e, "gen_id"))}`);
+      const gen = str(get(e, "gen_id"));
+      const msg = str(get(e, "msg_id"));
+      if (gen) voiced.set(msg, (voiced.get(msg) ?? new Set()).add(`${e.actor.slice("fast.".length)}:${gen}`));
     } else if (from(e, "utt.delivered", ["kernel"])) {
       const sentence = cause(e, "fast.sentence", [`fast.${lane}`]);
-      if (sentence) delivered.add(`${lane}:${str(get(sentence, "gen_id"))}`);
+      const gen = sentence ? str(get(sentence, "gen_id")) : "";
+      const was = delivered.get(`${lane}:${gen}`);
+      if (gen && (was === undefined || RANK[heard(e)] > RANK[was])) delivered.set(`${lane}:${gen}`, heard(e));
       const released = cause(e, "speak.released", ["kernel"]);
       const line = released && cause(released, "speak.verbatim", ["guard"]);
       const kind = line ? str(get(line, "kind")) : "";
       if (kind === "disclosure") add(e, C.WHO.guard, C.STEP.disclosure, "guard");
-      else if (kind === "accept") add(e, C.WHO.phone, get(e, "interrupted") === true ? C.STEP.saidYesCut : C.STEP.saidYes, "voice");
+      else if (kind === "accept") add(e, C.WHO.phone, C.SAID_YES[heard(e)], "voice");
     } else if (from(e, "chan.opened", ["kernel"]) && lane === "cp") {
       const n = get(e, "call");
       calls = typeof n === "number" ? n : calls + 1;
@@ -98,14 +107,11 @@ export function timeline(events: Ev[]): Step[] {
     } else if (from(e, "chan.hold", ["fast.cp"]) && get(e, "reason") != null) add(e, C.WHO.phone, C.STEP.hold, "hold");
     else if (from(e, "mandate.proposed", ["guard"])) add(e, C.WHO.planner, C.STEP.proposed, "planner");
     else if (from(e, "mandate.decided", ["kernel"])) {
-      const granted = get(e, "decision") === "granted";
-      limits = granted;
-      add(e, get(e, "by") === "ui" ? C.WHO.you : C.WHO.sim, C.limitsDecided(granted), "you");
+      add(e, get(e, "by") === "ui" ? C.WHO.you : C.WHO.sim, C.limitsDecided(get(e, "decision") === "granted"), "you");
     } else if (from(e, "authority.epoch", ["kernel", "guard"])) {
       epoch = Number(get(e, "new"));
       const reason = str(get(e, "reason"));
       if (reason === "mandate_decided") continue;
-      limits = false;
       const { who, text } = C.epochText(reason);
       add(e, who, text, who === C.WHO.you ? "you" : "planner");
     } else if (from(e, "offer.recorded", ["guard"])) {
@@ -122,7 +128,8 @@ export function timeline(events: Ev[]): Step[] {
       add(e, C.WHO.guard, text, "guard", `readback:${str(get(e, "offer_ref"))}:${String(get(e, "revision"))}`);
     } else if (from(e, "approval.requested", ["guard"])) {
       approvals.set(str(get(e, "approval_id")), Number(get(e, "authority_epoch")));
-      add(e, C.WHO.guard, C.STEP.askedApproval + (limits ? C.STEP.outsideLimits : ""), "guard");
+      // "outside your limits" only on Guard's word: its outside_mandate refusal of this offer's accept.
+      add(e, C.WHO.guard, C.STEP.askedApproval + (outside.has(str(get(e, "offer_ref"))) ? C.STEP.outsideLimits : ""), "guard");
     } else if (from(e, "approval.decided", ["kernel"])) {
       approvals.delete(str(get(e, "approval_id")));
       add(e, get(e, "by") === "ui" ? C.WHO.you : C.WHO.sim, C.approvalDecided(get(e, "decision") === "granted"), "you");
@@ -143,6 +150,9 @@ export function timeline(events: Ev[]): Step[] {
       if (e.type === "speak.revoked") add(e, C.WHO.guard, C.stoppedYes(str(get(e, "reason"))), "guard");
     } else if (from(e, "screen.redacted", ["guard"]) || from(e, "declass.denied", ["guard"])) add(e, C.WHO.guard, C.STEP.kept, "guard");
     else if (from(e, "action.denied", ["guard"]) && str(get(e, "intent")) in C.DENIED) {
+      const tool = cause(e, "slow.tool", ["slow"]); // the refused call: which offer
+      const ref = tool && get(tool, "name") === "accept_offer" ? str(field(get(tool, "args"), "offer_ref")) : "";
+      if (get(e, "intent") === "accept_offer" && get(e, "reason") === "outside_mandate" && ref) outside.add(ref);
       add(e, C.WHO.guard, C.blocked(str(get(e, "intent")), str(get(e, "reason"))), "guard");
     } else if (from(e, "evidence.recorded", ["guard"])) add(e, C.WHO.guard, C.confirmation(str(get(e, "confirmation_id"))), "guard");
     else if (from(e, "completion.decided", ["guard"])) {
@@ -150,10 +160,10 @@ export function timeline(events: Ev[]): Step[] {
     }
   }
   for (const m of marks) {
-    const gen = voiced.get(m.msg);
-    const said = gen !== undefined && gen.startsWith(`${m.lane}:`) && delivered.has(gen);
+    const gens = [...(voiced.get(m.msg) ?? [])].filter((g) => g.startsWith(`${m.lane}:`));
+    const best = gens.map((g) => delivered.get(g)).reduce<Heard | undefined>((a, b) => (b !== undefined && (a === undefined || RANK[b] > RANK[a]) ? b : a), undefined);
     const step = steps[at.get(m.key) ?? -1];
-    if (step) step.mark = said ? C.said(m.lane) : C.PASSED;
+    if (step) step.mark = best === undefined ? C.PASSED : C.said(m.lane, best);
   }
   return steps;
 }
@@ -185,10 +195,12 @@ export function now(events: Ev[], steps: Step[], cards: CardView[], mandates: Ma
   if (outcome) return outcome.title;
   const card = cards.findLast((v) => v.status === "open");
   if (card) return C.NOW.approve(cardTerms(events, card));
+  const answered = cards.findLast((v) => v.status === "pending" || v.status === "sent"); // after your click: never "waiting for you"
+  if (answered) return approvalStatusText(answered, events);
   if (mandates.some((v) => v.status === "open")) return C.NOW.limits;
   const ask = steps.findLast((s) => s.kind === "ASK_USER");
   const replied = (seq: number) => events.some((e) => from(e, "user.msg", ["kernel"]) && e.seq > seq);
-  if (ask && ask.mark !== C.PASSED && !replied(ask.seq)) return C.NOW.reply;
+  if (ask?.mark?.startsWith("✓") && !replied(ask.seq)) return C.NOW.reply;
   const users = new Set<string>();
   const raised = new Set<string>();
   let status: string | null = null;

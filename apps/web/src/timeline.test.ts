@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approvalCards } from "./approval";
+import { approvalCards, type Posting } from "./approval";
 import { mandateCards } from "./mandate";
 import type { Ev } from "./replay";
 import { groups, now, PAYLOAD_KEYS, planner, timeline } from "./timeline";
@@ -12,9 +12,9 @@ const ev = (type: string, actor: string, payload: Ev["payload"] = {}, causes: Ev
 };
 
 /** A generation the voice spoke and the kernel delivered (fast.sentence → utt.delivered). */
-function delivery(lane: string, gen: string): Ev[] {
+function delivery(lane: string, gen: string, heard = "h", interrupted = false): Ev[] {
   const s = ev("fast.sentence", `fast.${lane}`, { lane, gen_id: gen, utt_id: `${gen}-u0`, text: "unheard" });
-  return [s, ev("utt.delivered", "kernel", { lane, utt_id: `${gen}-u0`, text_generated: "g", text_heard: "h", interrupted: false }, [s])];
+  return [s, ev("utt.delivered", "kernel", { lane, utt_id: `${gen}-u0`, text_generated: "g", text_heard: heard, interrupted }, [s])];
 }
 const s2f = (lane: string, type: string, msg: string, extra: Ev["payload"] = {}, actor = "guard") =>
   ev("s2f.msg", actor, { msg_id: msg, lane, type, text: lane === "user" ? "a question" : "", guide: null, approval_id: null, ...extra });
@@ -41,6 +41,17 @@ const granted = (id: string, by = "ui") => {
   return [post, ev("approval.decided", "kernel", { approval_id: id, decision: "granted", by }, [post])];
 };
 const mandate = () => ev("mandate.proposed", "guard", { mandate_id: "m1", mandate_hash: "mh", status: "proposed", epoch: 0, max_monthly_price_minor: 6500 });
+/** Slow's refused accept_offer call for `ref`, and Guard's refusal citing it. */
+const refusal = (ref: string, reason: string) => {
+  const tool = ev("slow.tool", "slow", { name: "accept_offer", args: { offer_ref: ref }, result_text: "denied", ok: false });
+  return [tool, ev("action.denied", "guard", { intent: "accept_offer", reason }, [tool])];
+};
+/** Guard's accept line, released and delivered as heard. */
+function saidYes(heard: string, interrupted: boolean): Ev[] {
+  const [auth, said] = accept();
+  const released = ev("speak.released", "kernel", { lane: "cp", cap_id: "c1" }, [said]);
+  return [auth, said, released, ev("utt.delivered", "kernel", { lane: "cp", utt_id: "accept-1", text_generated: "y", text_heard: heard, interrupted }, [released])];
+}
 function accept(): [Ev, Ev] {
   const auth = ev("action.authorized", "guard", { intent: "accept_offer", capability: { cap_id: "c1", terms_hash: "h1", epoch: 0 } });
   return [auth, ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "Yes, we accept.", cap_id: "c1" })];
@@ -53,8 +64,27 @@ const rows: Row[] = [
   ["ASK_USER delivered under another gen", () => [s2f("user", "ASK_USER", "m1"), voiced("user", "m1", "g1"), ...delivery("user", "g2")], [["Planner", "Asked you a question", "Passed to the voice"]]],
   ["voiced by a forged actor", () => [s2f("user", "ASK_USER", "m1"), voiced("user", "m1", "g1", "slow"), ...delivery("user", "g1")], [["Planner", "Asked you a question", "Passed to the voice"]]],
   ["voiced by the other lane's voice", () => [s2f("user", "ASK_USER", "m1"), voiced("user", "m1", "g1", "fast.cp"), ...delivery("user", "g1")], [["Planner", "Asked you a question", "Passed to the voice"]]],
+  ["ASK_USER cut off before any word", () => [s2f("user", "ASK_USER", "m1"), voiced("user", "m1", "g1"), ...delivery("user", "g1", "", true)], [["Planner", "Asked you a question", "Cut off before it was said"]]],
+  ["ASK_USER cut off after some words", () => [s2f("user", "ASK_USER", "m1"), voiced("user", "m1", "g1"), ...delivery("user", "g1", "Could you", true)], [["Planner", "Asked you a question", "✓ Said in the chat (cut off)"]]],
+  [
+    "a message voiced in two generations: the whole one counts",
+    () => [s2f("user", "ASK_USER", "m1"), voiced("user", "m1", "g1"), ...delivery("user", "g1", "", true), voiced("user", "m1", "g2"), ...delivery("user", "g2")],
+    [["Planner", "Asked you a question", "✓ Said in the chat"]],
+  ],
+  ["an empty gen_id never matches", () => [s2f("user", "ASK_USER", "m1"), voiced("user", "m1", ""), ...delivery("user", "")], [["Planner", "Asked you a question", "Passed to the voice"]]],
   ["TELL_USER", () => [s2f("user", "TELL_USER", "m1")], [["Planner", "Updated you in the chat", "Passed to the voice"]]],
+  ["TELL_USER cut off before any word", () => [s2f("user", "TELL_USER", "m1"), voiced("user", "m1", "g1"), ...delivery("user", "g1", "", true)], [["Planner", "Updated you in the chat", "Cut off before it was said"]]],
   ["GUIDE said on the call", () => [s2f("cp", "GUIDE", "m1", { guide: { move: "identify", slots: [] } }), voiced("cp", "m1", "c1"), ...delivery("cp", "c1")], [["Planner → phone voice", "Verify your identity", "✓ Said on the call"]]],
+  [
+    "GUIDE cut off before any word",
+    () => [s2f("cp", "GUIDE", "m1", { guide: { move: "identify", slots: [] } }), voiced("cp", "m1", "c1"), ...delivery("cp", "c1", "", true)],
+    [["Planner → phone voice", "Verify your identity", "Cut off before it was said"]],
+  ],
+  [
+    "GUIDE cut off after some words",
+    () => [s2f("cp", "GUIDE", "m1", { guide: { move: "identify", slots: [] } }), voiced("cp", "m1", "c1"), ...delivery("cp", "c1", "The name", true)],
+    [["Planner → phone voice", "Verify your identity", "✓ Said on the call (cut off)"]],
+  ],
   ["GUIDE unknown move, raw", () => [s2f("cp", "GUIDE", "m1", { guide: { move: "sing_a_song", slots: [] } })], [["Planner → phone voice", "sing_a_song", "Passed to the voice"]]],
   ["s2f.msg from a forged actor", () => [s2f("user", "ASK_USER", "m1", {}, "slow")], []],
   ["APPROVAL_NOTICE and END are not steps", () => [s2f("user", "APPROVAL_NOTICE", "m1", { approval_id: "a1" }), s2f("user", "END", "m2")], []],
@@ -78,9 +108,28 @@ const rows: Row[] = [
   ],
   ["approval asked without limits, approved by you", () => [card(), ...granted("a1")], [["Guard", "Asked for your approval"], ["You", "Approved"]]],
   [
-    "approval asked outside granted limits",
+    "granted limits alone are no evidence the offer is outside them",
     () => [ev("mandate.decided", "kernel", { mandate_id: "m1", mandate_hash: "mh", decision: "granted", by: "ui" }), ev("authority.epoch", "kernel", { new: 1, reason: "mandate_decided" }), card("a1", 1)],
-    [["You", "Confirmed your limits"], ["Guard", "Asked for your approval: outside your limits"]],
+    [["You", "Confirmed your limits"], ["Guard", "Asked for your approval"]],
+  ],
+  [
+    "outside your limits: Guard refused this offer's accept as outside_mandate",
+    () => [...refusal("o1", "outside_mandate"), card()],
+    [["Guard", "Blocked: saying yes (outside_mandate)"], ["Guard", "Asked for your approval: outside your limits"]],
+  ],
+  ["an outside_mandate refusal of another offer", () => [...refusal("o2", "outside_mandate"), card()], [["Guard", "Blocked: saying yes (outside_mandate)"], ["Guard", "Asked for your approval"]]],
+  [
+    "a stale or expired mandate is not outside it",
+    () => [...refusal("o1", "mandate_stale_epoch"), ...refusal("o1", "mandate_expired"), card()],
+    [["Guard", "Blocked: saying yes (mandate_stale_epoch)"], ["Guard", "Blocked: saying yes (mandate_expired)"], ["Guard", "Asked for your approval"]],
+  ],
+  [
+    "an outside_mandate refusal from a forged actor",
+    () => {
+      const tool = ev("slow.tool", "slow", { name: "accept_offer", args: { offer_ref: "o1" } });
+      return [tool, ev("action.denied", "slow", { intent: "accept_offer", reason: "outside_mandate" }, [tool]), card()];
+    },
+    [["Guard", "Asked for your approval"]],
   ],
   [
     "your message pauses a pending approval, merged once read",
@@ -111,6 +160,16 @@ const rows: Row[] = [
       return [...asked, auth, said, released, heard];
     },
     [["Guard", "Asked for your approval"], ["You", "Approved"], ["Guard", "Cleared to say yes"], ["Phone voice", "Said yes on the call"]],
+  ],
+  [
+    "the yes, cut off before any word",
+    () => saidYes("", true),
+    [["Guard", "Cleared to say yes"], ["Phone voice", "Started to say yes; the rep cut in"]],
+  ],
+  [
+    "the yes, cut off after some words",
+    () => saidYes("Yes, we accept", true),
+    [["Guard", "Cleared to say yes"], ["Phone voice", "Said yes on the call (cut off)"]],
   ],
   [
     "the yes names no approver (attribution waits for grantOfAccept)",
@@ -177,13 +236,15 @@ describe("timeline: one row per event type", () => {
 });
 
 describe("the status line (NowCard), one rung each", () => {
-  const line = (events: Ev[]) => now(events, timeline(events), approvalCards(events, new Map()), mandateCards(events, new Map()));
+  const line = (events: Ev[], posts: Map<string, Posting> = new Map()) =>
+    now(events, timeline(events), approvalCards(events, posts), mandateCards(events, new Map()));
   const status = (s: string) => ev("status.changed", "guard", { previous: "INTAKE", status: s });
 
   it.each<[string, () => Ev[], string]>([
     ["1 ended: the outcome title", () => [card(), ev("session.ended", "kernel", { reason: "abandoned" })], "Ended: the rep hung up. Not verified complete."],
     ["2 an open approval", () => [status("IN_CALL"), offer(), card()], "Waiting for you: approve or decline $78/mo for 24 months"],
     ["2 an approval already decided does not wait", () => [status("IN_CALL"), offer(), card(), ...granted("a1")], "On the call with the company"],
+    ["2 a card after your click, before Guard records it", () => [status("IN_CALL"), offer(), card(), ev("approval.post", "ui", { subject: "approval", subject_id: "a1", decision: "granted" })], "Sent. Waiting for Guard to record it"],
     ["3 limits to confirm", () => [mandate()], "Waiting for you: confirm your limits"],
     ["4 a said question with no reply", () => [s2f("user", "ASK_USER", "m1"), voiced("user", "m1", "g1"), ...delivery("user", "g1")], "Waiting for your reply in the chat"],
     ["4 a question only passed to the voice does not wait", () => [s2f("user", "ASK_USER", "m1")], "Getting the details before calling"],
@@ -206,6 +267,10 @@ describe("the status line (NowCard), one rung each", () => {
     ["a forged status moves nothing", () => [ev("status.changed", "slow", { status: "COMMITTED" })], "Getting the details before calling"],
   ])("%s", (_name, build, want) => {
     expect(line(build())).toBe(want);
+  });
+
+  it("2 a card whose answer is being sent says so, never waiting for you", () => {
+    expect(line([status("IN_CALL"), offer(), card()], new Map([["a1", "pending"]]))).toBe("Sending your answer…");
   });
 });
 
@@ -253,12 +318,13 @@ describe("the allow-list: the rail reads only PAYLOAD_KEYS", () => {
       ev("speak.revoked", "kernel", { lane: "cp", reason: "fence", cap_id: "c1" }, [said]),
       ev("declass.denied", "guard", { violations: [SENTINEL] }),
       ev("action.denied", "guard", { intent: "share_fact", reason: "protected" }),
+      ...refusal("o1", "outside_mandate").map((e) => (e.type === "slow.tool" ? { ...e, payload: { ...e.payload, result_text: SENTINEL } } : e)),
       ev("evidence.recorded", "guard", { confirmation_id: "C-1" }),
       ev("completion.decided", "guard", { verdict: "ok", reasons: [] }),
       ev("status.changed", "guard", { previous: "IN_CALL", status: "COMMITTED" }),
     ];
   }
-  const NESTED = new Set(["guide", "capability", "slots"]);
+  const NESTED = new Set(["guide", "capability", "slots", "args"]);
 
   /** The events with every payload key read recorded (nested ones dotted, array items as []). */
   function watched(events: Ev[], read: Set<string>): Ev[] {
@@ -279,21 +345,35 @@ describe("the allow-list: the rail reads only PAYLOAD_KEYS", () => {
   }
 
   it("names no free-text key", () => {
-    for (const k of ["text", "text_generated", "text_heard", "readback_text", "violations", "facts"]) expect(PAYLOAD_KEYS).not.toContain(k);
+    for (const k of ["text", "text_generated", "readback_text", "violations", "facts", "result_text", "args.text"]) expect(PAYLOAD_KEYS).not.toContain(k);
   });
 
-  it("reads nothing outside the list, and no sentinel reaches a step, the status line or the planner line", () => {
-    const events = run();
+  /** An open card whose status line reads its terms (cardTerms → termRows), and a run that ended. */
+  const openCard = () => [ev("status.changed", "guard", { status: "IN_CALL" }), offer(), card(), ev("user.msg", "kernel", { text: SENTINEL })];
+  const ended = () => [...run(), ev("session.ended", "kernel", { reason: "abandoned", counts: {}, note: SENTINEL })];
+
+  it.each([
+    ["the whole run", run, "Waiting for your reply in the chat"],
+    ["an open card", openCard, "Waiting for you: approve or decline $78/mo for 24 months"],
+    ["the end", ended, "Ended: the rep hung up. Not verified complete."],
+  ])("%s: reads nothing outside the list, and no sentinel reaches a step, the status line or the planner line", (_n, build, status) => {
+    const events = build();
     const read = new Set<string>();
     const w = watched(events, read);
     const cards = approvalCards(events, new Map());
     const mandates = mandateCards(events, new Map());
     const steps = timeline(w);
-    const out = [steps, now(w, steps, cards, mandates), planner(w), now(w, steps, [], [])];
+    const line = now(w, steps, cards, mandates);
+    expect(line).toBe(status); // the path under test was taken
+    const out = [steps, line, planner(w), now(w, steps, [], [])];
     expect([...read].filter((k) => !(PAYLOAD_KEYS as readonly string[]).includes(k))).toEqual([]);
-    // the watch sees nested reads too, so a free-text read would show here
-    for (const k of ["guide.move", "slots[].value", "capability.cap_id", "gen_id"]) expect(read.has(k)).toBe(true);
     expect(JSON.stringify(out)).not.toContain(SENTINEL);
-    expect(steps.length).toBeGreaterThan(15); // the run reached the branches
+  });
+
+  it("the whole run reaches the branches, and the watch sees nested reads", () => {
+    const read = new Set<string>();
+    const steps = timeline(watched(run(), read));
+    for (const k of ["guide.move", "slots[].value", "capability.cap_id", "gen_id", "args.offer_ref"]) expect(read.has(k)).toBe(true);
+    expect(steps.length).toBeGreaterThan(15);
   });
 });
