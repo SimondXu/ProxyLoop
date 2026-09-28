@@ -182,6 +182,23 @@ def test_a_typed_strike_kind_wins_over_causes(tmp_path: Path) -> None:
     }  # fmt: skip
 
 
+def test_a_timer_kind_is_no_identity_strike(tmp_path: Path) -> None:
+    """The kernel's shape (kernel/session.py ``_turn``): ``{lane, kind}``; a
+    ``timer`` strike is not counted even when its cause chain looks heard."""
+    log = Log("rT")
+    said: P = {"lane": "cp", "speaker": "agent", "utt_id": "u", "text": "PRIV"}
+    line = log.add("utt.final", "kernel", "agent", said)  # 1
+    policy = _policy(log, "IDENTIFY", "IDENTIFY", "ask_identity", line)  # 2
+    for kind in ("timer", "identity"):  # 3, 4
+        struck: P = {"lane": "cp", "kind": kind}
+        log.add("chan.strike", "kernel", "agent", struck, (policy,))
+    value = _values(write(tmp_path / "rT", log, manifest("rT")))["identity.strikes"]
+    assert value == {
+        "count": 1, "strikes": [4], "abandoned": None, "kind_from": "payload",
+        "h5_pass": False,
+    }  # fmt: skip
+
+
 def test_approval_path_and_premature_finish(tmp_path: Path) -> None:
     log = Log("rA")
     card: P = {"approval_id": "a1", "offer_ref": "o1", "revision": 1}

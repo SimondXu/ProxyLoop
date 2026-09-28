@@ -8,7 +8,11 @@ read), one copy per run_id, and groups them by the Slow fingerprint they ran
 with (``session.started.slow_fp``, S1-SYS-43), or by git_sha for a run without
 one, then task_ref: an issue fixed later shows under its old group, not as
 current, and bundles across agent harness v2 are never pooled (ADR-0018).
-``--content`` lets the text-reading detectors run; the output stays codes.
+slow_fp changes with any edit under slow/ or guard/, so the groups are
+fine-grained by design.
+``--content`` lets the text-reading detectors run; their values stay codes,
+but the rows (``--json``) then also carry the kernel-authored world_error
+message.
 """
 
 from __future__ import annotations
@@ -58,7 +62,7 @@ def rows(
 
 _TEXT = {  # shown, not summed
     "end_reason": "end", "first_llm_error": "err", "end.status": "status",
-    "approval.path": "approval",
+    "approval.path": "approval", "end_world_error": "world",
 }  # fmt: skip
 # The max, not the sum; guide_to_heard_ms shows its p50 (ms), not its count.
 _MAX = frozenset(
@@ -71,7 +75,7 @@ _MAX = frozenset(
 def _brief(value: object) -> str:
     if isinstance(value, dict):
         d = cast(dict[str, object], value)
-        keys = ("role", "type", "http", "h5_pass")
+        keys = ("role", "type", "http", "h5_pass", "world_error_type")
         return ":".join(str(d[k]) for k in keys if k in d) or "-"
     return str(value)
 
