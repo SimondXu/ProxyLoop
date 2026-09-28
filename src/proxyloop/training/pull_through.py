@@ -104,13 +104,14 @@ def base_turns(bundle: Bundle) -> tuple[list[Turn], Counter[str]]:
             continue
         raw = bundle.prompts[rec.response_sha].content
         lane: Lane = "user" if req["lane"] == "user" else "cp"
-        items = parse_turn(raw, lane)
+        profile = str(req["profile"])  # the grammar the turn was served under
+        items = parse_turn(raw, lane, profile)
         if not items or any(isinstance(i, ParseIssue) for i in items):
             skipped["empty_or_parse_issue"] += 1
             continue
         view = bundle.prompts[str(req["view_sha"])].content
         sha = str(req["prompt_sha"])
-        turns.append(Turn(e.event_id, str(req["profile"]), view, raw, sha))
+        turns.append(Turn(e.event_id, profile, view, raw, sha))
     return turns, skipped
 
 

@@ -23,6 +23,8 @@ from proxyloop.contract.protocol import (
 )
 from proxyloop.contract.state import CaseStatus
 from proxyloop.contract.views import FastView
+from proxyloop.kernel import lanes
+from proxyloop.models import fsm
 from proxyloop.models.fsm import (
     CHECKING,
     NOTED,
@@ -80,6 +82,24 @@ def test_every_golden_turn_parses_cleanly(name: str) -> None:
     v, messages = GOLDENS[name]
     items = parse_turn(respond(read_view(messages)), v.lane)
     assert items and not [i for i in items if isinstance(i, ParseIssue)]
+
+
+def test_the_fsm_checks_its_own_text_under_the_live_lane_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A template that spoke after its pause is a bug under pl_cp_v3 (ADR-0017),
+    the live cp profile: the FSM checks under every cp profile, the live one too."""
+
+    def late(_: fsm.Seen) -> list[TurnItem]:
+        return [Hold(reason="decision"), Speech(text="Sure, one moment.")]
+
+    monkeypatch.setattr(fsm, "_cp", late)
+    seen = read_view(request(view("cp", "Hello?")).messages)
+    assert lanes.PROFILE["cp"] == "pl_cp_v3"
+    with pytest.raises(AssertionError, match="speech_after_pause"):
+        respond(seen)
+    frozen = parse_turn("@hold decision\nSure, one moment.", "cp", "pl_cp_v2")
+    assert not [i for i in frozen if isinstance(i, ParseIssue)]  # v3's rule only
 
 
 def test_hold_for_fact_guidance_ends_the_turn_on_a_fact_request_hold() -> None:

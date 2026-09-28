@@ -15,6 +15,7 @@ from tests.support.fakes import ScriptedLLM, fake_ref
 from proxyloop.contract.config import AblationId
 from proxyloop.contract.llm import LLMCallRecord, ToolRequest
 from proxyloop.contract.views import FastView
+from proxyloop.kernel import lanes
 from proxyloop.models.repair import (
     DecisionPoint,
     TeacherRepair,
@@ -156,6 +157,25 @@ def test_the_lane_is_the_rendered_profile_s() -> None:
     repair, teacher = _repair(["Hello.\n@hold offer", "Hello."], records)
     asyncio.run(assert_text_conformance(repair, request(view("user", "Hi"))))
     assert teacher.calls == 2
+
+
+SPEECH_AFTER_PAUSE = "@hold decision\nSure, one moment."
+
+
+def test_speech_after_a_pause_is_resampled_under_the_live_cp_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The request carries no profile (every cp profile renders the same
+    messages), so the grammar is the live lane profile's: pl_cp_v3 (ADR-0017)."""
+
+    assert lanes.PROFILE["cp"] == "pl_cp_v3"
+    repair, teacher = _repair([SPEECH_AFTER_PAUSE, VALID], [])
+    asyncio.run(assert_text_conformance(repair, request(CP_OFFER)))
+    assert (teacher.calls, repair.resamples) == (2, {"fast_cp:0": 1})
+    monkeypatch.setitem(lanes.PROFILE, "cp", "pl_cp_v2")  # the frozen grammar
+    repair, teacher = _repair([SPEECH_AFTER_PAUSE, VALID], [])
+    asyncio.run(assert_text_conformance(repair, request(CP_OFFER)))
+    assert (teacher.calls, repair.resamples) == (1, {"fast_cp:0": 0})
 
 
 def test_a_dead_teacher_aborts_loudly() -> None:
