@@ -4,11 +4,12 @@
 // listener heard (conversation.ts), with the speaker in its text ("You: …"), if
 // only for screen readers. The six engineer lanes and the prompt drawer are
 // behind ?view=engineer.
-import { useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
 import { callHead, conversation, SIM_USER, simLabels, speakerName, type Line, type Parties } from "./conversation";
 import { receipts, type Receipt as Tick } from "./fenceTicks";
 import { Receipt } from "./live/Receipt";
 import { statusView } from "./outcome";
+import { timeline } from "./timeline";
 import type { Ev } from "./replay";
 import { BrandMark } from "./ui/BrandMark";
 import { Card } from "./ui/Card";
@@ -77,14 +78,55 @@ export function StatusBar({ events }: { events: Ev[] }) {
   );
 }
 
+type Tab = "chat" | "call" | "steps";
+const WIDE = "(min-width: 761px)";
+const onWide = (f: () => void) => {
+  const m = matchMedia(WIDE);
+  m.addEventListener("change", f);
+  return () => m.removeEventListener("change", f);
+};
+const TABS: [Tab, string][] = [
+  ["chat", "Chat"],
+  ["call", "Call"],
+  ["steps", "Steps"],
+];
+
 /**
  * The chat and call columns, and the live page's rail when given. `announce`:
  * the transcripts are aria-live (live mode only: a replay seek must not read out every line).
+ * With a rail, the tabs (redesign §3.6; CSS shows them only below 1181px) pick the column in view,
+ * with a dot on a tab that got new items while out of view.
  */
 export function Panes({ events, p, announce, input, rail }: { events: Ev[]; p: Parties; announce: boolean; input?: ChatInput; rail?: ReactNode }) {
   const c = useMemo(() => conversation(events), [events]);
+  const steps = useMemo(() => timeline(events).length, [events]);
+  const [picked, setTab] = useState<Tab>("chat");
+  // Above 760px the chat is always in view, so its tab is the call's.
+  const wide = useSyncExternalStore(onWide, () => matchMedia(WIDE).matches);
+  const tab = wide && picked === "chat" ? "call" : picked;
+  // What each tab shows, in short: a change while out of view is a dot. A card's status is part of the chat's.
+  const marks: Record<Tab, string> = { chat: `${c.chat.length}:${(input?.cards ?? []).map((k) => k.status ?? "").join()}`, call: `${c.call.length}`, steps: `${steps}` };
+  const [seen, setSeen] = useState(() => marks);
+  const pick = (t: Tab) => {
+    setSeen((s) => ({ ...s, [tab]: marks[tab], [t]: marks[t] }));
+    setTab(t);
+  };
   return (
-    <div className={`pl-work${rail ? " pl-work-rail" : ""}`}>
+    <div className={`pl-work${rail ? " pl-work-rail" : ""}`} data-tab={rail ? tab : undefined}>
+      {rail && (
+        <div className="pl-tabs" role="group" aria-label="Show">
+          {TABS.map(([t, name]) => (
+            <button key={t} type="button" className={`pl-tab-${t}`} aria-pressed={t === tab} onClick={() => pick(t)}>
+              {name}
+              {t !== tab && marks[t] !== seen[t] && (
+                <span className="pl-dot">
+                  <span className="pl-sr"> (new)</span>
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
       <ChatPanel events={events} lines={c.chat} p={p} announce={announce} input={input} />
       <CallPanel events={events} lines={c.call} p={p} announce={announce} />
       {rail && (
@@ -166,10 +208,10 @@ function TranscriptLine({ l, p, receipt }: { l: Line; p: Parties; receipt?: Tick
   );
 }
 
-/** A Guard card element, keyed, at its event's seq. */
-export type GuardCard = { seq: number; el: ReactElement };
-/** The live page's part of the chat: the Guard cards, the unechoed sends and the composer. */
-export type ChatInput = { cards: GuardCard[]; pending: string[]; composer: ReactNode };
+/** A Guard card element, keyed, at its event's seq, with its status when known (a change marks the chat tab). */
+export type GuardCard = { seq: number; status?: string; el: ReactElement };
+/** The chat's cards, unechoed sends and composer; `recording`: a replay's, whose composer is the "This is a recording" bar. */
+export type ChatInput = { cards: GuardCard[]; pending: string[]; composer: ReactNode; recording?: boolean };
 
 type ColumnProps = { events: Ev[]; lines: Line[]; p: Parties; announce: boolean };
 
@@ -207,7 +249,7 @@ function ChatPanel({ events, lines, p, announce, input }: ColumnProps & { input?
       : []),
   ].sort((a, b) => a.seq - b.seq);
   return (
-    <Card className="pl-col" aria-label="Chat">
+    <Card className="pl-col pl-col-chat" aria-label="Chat">
       <div className="pl-colhead">
         <h2>Chat with ProxyLoop</h2>
         <p className="meta">
@@ -216,7 +258,7 @@ function ChatPanel({ events, lines, p, announce, input }: ColumnProps & { input?
         </p>
         <SimNote labels={p.simUser ? [SIM_USER] : []} />
       </div>
-      {items.length === 0 && <EmptyState title={input ? "Tell ProxyLoop what you need, in your own words." : "Nothing said in the chat yet."} />}
+      {items.length === 0 && <EmptyState title={input && !input.recording ? "Tell ProxyLoop what you need, in your own words." : "Nothing said in the chat yet."} />}
       <Transcript name="Chat" announce={announce} count={items.length}>
         {items.map((i) => i.el)}
       </Transcript>
@@ -243,7 +285,7 @@ function CallPanel({ events, lines, p, announce }: ColumnProps) {
   const head = useMemo(() => callHead(events), [events]);
   const state = head.calls === 0 ? null : !head.open ? "Call ended" : head.calls > 1 ? `Call ${head.calls} of ${head.calls}` : "Connected";
   return (
-    <Card className="pl-col" aria-label="Call">
+    <Card className="pl-col pl-col-call" aria-label="Call">
       <div className="pl-colhead">
         <div className="pl-colhead-row">
           <h2>

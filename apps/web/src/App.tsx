@@ -1,15 +1,10 @@
-import { memo, useCallback, useEffect, useMemo, useReducer, useState } from "react";
-import { listBundles, loadPrompt, loadRun, type BundleInfo, type PromptRecord, type Run } from "./bundleSource";
-import { endOf, indexEvents, LANES, laneOf, modelLabel, runHeader, selectRun, shasOf, summary, type Ev, type Index, type Lane } from "./replay";
-import { parties } from "./conversation";
-import { Panes, StatusBar, useView } from "./ConversationView";
-import { honesty } from "./provenance";
+import { memo, useCallback, useMemo, useState } from "react";
+import { loadPrompt, type PromptRecord } from "./bundleSource";
+import { LANES, laneOf, modelLabel, runHeader, shasOf, summary, type Ev, type Index, type Lane } from "./replay";
+import { ReplayLibrary } from "./replay/ReplayLibrary";
+import { ReplayPage } from "./replay/ReplayPage";
 import { AppShell } from "./shell/AppShell";
-import { HonestyBand } from "./shell/HonestyBand";
-import { Banner } from "./ui/Banner";
 import { Card as Panel } from "./ui/Card";
-import { EmptyState } from "./ui/EmptyState";
-import { usePlayback, type Speed } from "./usePlayback";
 
 export type Drill = { label: string; sha: string; record?: PromptRecord | null; note?: string };
 export type Open = (label: string, sha: string) => void;
@@ -31,115 +26,10 @@ export function useDrill(runId: string, unavailable?: string) {
   return { drill, open, close: () => setDrill(null) };
 }
 
+/** The replay (redesign §3.4): the library at `/`, one recorded run at `?run=<id>`. */
 export function App() {
-  const [bundles, setBundles] = useState<BundleInfo[]>([]);
-  // A switch clears the run and the error at once; a late load for an earlier selection is dropped.
-  const [{ runId, request, run, error }, dispatch] = useReducer(selectRun, {
-    runId: "",
-    request: 0,
-    run: null,
-    error: "",
-  });
-
-  useEffect(() => {
-    listBundles()
-      .then((list) => {
-        setBundles(list);
-        dispatch({ type: "select", runId: list[0]?.run_id ?? "" });
-      })
-      .catch((e: unknown) => dispatch({ type: "failed", request: 0, error: String(e) }));
-  }, []);
-
-  useEffect(() => {
-    if (!runId) return;
-    loadRun(runId)
-      .then((r) => dispatch({ type: "loaded", request, run: r }))
-      .catch((e: unknown) => dispatch({ type: "failed", request, error: String(e) }));
-  }, [runId, request]);
-  const { engineer, link } = useView();
-
-  return (
-    <AppShell>
-      <header className="bar">
-        <h1>ProxyLoop replay</h1>
-        {link}
-        <label>
-          Run{" "}
-          <select aria-label="Run" value={runId} onChange={(e) => dispatch({ type: "select", runId: e.target.value })}>
-            {bundles.map((b) => (
-              <option key={b.run_id} value={b.run_id}>
-                {b.run_id} {b.task_ref ?? ""} {b.complete ? "" : "(incomplete)"}
-              </option>
-            ))}
-          </select>
-        </label>
-      </header>
-      {error && (
-        <Banner tone="danger" role="alert">
-          {error}
-        </Banner>
-      )}
-      {!error && bundles.length === 0 && <EmptyState title="No recorded runs yet." />}
-      {run && <Replay key={runId} runId={runId} run={run} engineer={engineer} />}
-    </AppShell>
-  );
-}
-
-function Replay({ runId, run, engineer }: { runId: string; run: Run; engineer: boolean }) {
-  const index = useMemo(() => indexEvents(run.events), [run]);
-  const end = useMemo(() => endOf(run.events), [run]);
-  // From the whole log, not the time-filtered one: the sim labels are on every frame, also before session.started's t_ms (I11).
-  const who = useMemo(() => parties(run.events), [run]);
-  const h = useMemo(() => honesty(run.events), [run]);
-  const clock = usePlayback(end);
-  const [god, setGod] = useState(false);
-  const { drill, open, close } = useDrill(runId);
-
-  const shown = run.events.filter((e) => e.t_ms <= clock.t);
-
-  return (
-    <>
-      <div className="pl-sticky">
-        <HonestyBand h={h} />
-        <section className="bar" aria-label="Controls">
-          <button type="button" onClick={clock.toggle}>
-            {clock.playing ? "Pause" : "Play"}
-          </button>
-          {([1, 4] as Speed[]).map((s) => (
-            <button key={s} type="button" aria-pressed={clock.speed === s} onClick={() => clock.setSpeed(s)}>
-              {s}×
-            </button>
-          ))}
-          <input
-            type="range"
-            aria-label="Timeline"
-            min={0}
-            max={end}
-            value={Math.round(clock.t)}
-            onChange={(e) => clock.seek(Number(e.target.value))}
-          />
-          <output aria-label="Clock">
-            {(clock.t / 1000).toFixed(1)} s / {(end / 1000).toFixed(1)} s · {shown.length}/{run.events.length} events
-          </output>
-          {engineer && (
-            <label>
-              <input type="checkbox" checked={god} onChange={(e) => setGod(e.target.checked)} /> God-view
-            </label>
-          )}
-        </section>
-        <StatusBar events={shown} />
-      </div>
-      <RunSummary events={run.events} />
-      {engineer ? (
-        <>
-          <Lanes shown={shown} index={index} god={god} open={open} />
-          {drill && <Drawer drill={drill} close={close} />}
-        </>
-      ) : (
-        <Panes events={shown} p={who} announce={false} />
-      )}
-    </>
-  );
+  const runId = new URLSearchParams(location.search).get("run");
+  return <AppShell>{runId ? <ReplayPage key={runId} runId={runId} /> : <ReplayLibrary />}</AppShell>;
 }
 
 /** The replay lanes; the live shell renders the same ones over the WebSocket. */

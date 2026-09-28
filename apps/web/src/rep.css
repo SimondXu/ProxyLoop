@@ -1,0 +1,7 @@
+/* The rep page (redesign §3.3): one column; the transcript classes are in styles.css. */
+@layer components {
+  .rep h1 { font-size: 28px; margin-right: auto; }
+  .pl-rep-about { margin: 0 0 var(--s3); color: var(--ink-2); }
+  .pl-rep-hint { margin-top: var(--s3); font-size: var(--fs-small); color: var(--ink-2); }
+  .pl-rep-hint p { margin: var(--s1) 0 0; }
+}
