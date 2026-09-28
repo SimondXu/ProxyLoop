@@ -30,8 +30,12 @@
   ``approval.decided``/``mandate.decided``; a refusal is the restrict-only
   ``action.denied{intent: approval.post}`` citing the card or proposal (M1).
 - **The sim approver** (#143) decides a card at once, then the SimUser's
-  ``after_card`` trigger runs; the grant is posted ``delay_s`` after the card
-  and never before that stop is delivered (N6).
+  ``after_card`` trigger runs; the grant is posted ``delay_s`` after the card,
+  never before that stop is delivered (N6), and never before every user fence
+  up at its delivery has cleared (S1-SYS-84): a Slow step saw FastU's turn on
+  the stop, so a relayed revoke has staled the card first. The wait ends at
+  the card's expiry (the post is then refused). Ordering only: no grant
+  lands earlier, and with no stop nothing waits.
 - **Status.** A decided card moves AWAITING_APPROVAL back to IN_CALL, and
   NEEDS_REPLAN goes back to IN_CALL once Slow completed a step that saw it.
   A pending card an ``authority.epoch`` stales moves AWAITING_APPROVAL to
@@ -269,18 +273,37 @@ class Authority:
             return
         card = ApprovalCard.model_validate(e.payload)
         post = approver.decide(card, k.bb.public.offers[card.offer_ref])  # first
-        k.spawn(
-            self._later(post, e.t_ms, user.trigger("after_card", e.event_id, e.t_ms))
-        )
+        stop = user.trigger("after_card", e.event_id, e.t_ms)
+        k.spawn(self._later(post, e.t_ms, stop, card.expires_ms))
 
-    async def _later(self, post: Post, t_ms: int, stop: Stop | None) -> None:
+    async def _later(
+        self, post: Post, t_ms: int, stop: Stop | None, until: int | None = None
+    ) -> None:
+        """``until``: the card's expiry, which bounds the wait on its stop."""
         k = self._k
         delivered = None if stop is None else await stop
         if (wait := t_ms + round(1000 * post.delay_s) - k.now()) > 0:
             await k.sleep(wait / 1000)
         if delivered is not None:
             await delivered.wait()  # N6: the grant never lands before the stop
+            if until is not None:
+                await self._seen(until)
         self.post(post.post, "sim_approver")
+
+    async def _seen(self, until: int) -> None:
+        """Until every user fence up now (the stop's among them: raised as its
+        ``user.msg`` was emitted, before its delivery) has cleared, or the bus
+        clock reaches ``until``."""
+        k = self._k
+        up = {f for f, (lane, *_) in self._raised.items() if lane == "user"}
+        while up & self._raised.keys() and (left := until - k.now()) > 0:
+            moved = asyncio.ensure_future(self.moved())
+            timer = asyncio.ensure_future(k.sleep(left / 1000))
+            try:
+                await asyncio.wait((moved, timer), return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                moved.cancel()
+                timer.cancel()
 
     def _trigger(self, e: Event) -> None:
         user = self._k.channels.get("user")
