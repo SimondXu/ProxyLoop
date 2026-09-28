@@ -71,11 +71,12 @@ export async function mockSockets(page: Page) {
 
 export type Captured = { method: string; path: string; body: unknown; csrf: string | null };
 
-/** Captures every POST to /api/cases/** and answers with `status` and `body`. */
+/** Captures every POST to /api/cases/** and answers with `status` and `body`; a GET (the role card) goes on. */
 export async function capturePosts(page: Page, status = 200, body: unknown = {}) {
   const posts: Captured[] = [];
   await page.route("**/api/cases/**", async (route) => {
     const req = route.request();
+    if (req.method() !== "POST") return route.fallback();
     posts.push({
       method: req.method(),
       path: new URL(req.url()).pathname,

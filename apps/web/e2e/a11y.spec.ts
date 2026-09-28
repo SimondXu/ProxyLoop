@@ -156,7 +156,9 @@ test.describe("phone (390×844)", () => {
     const card = page.getByRole("article", { name: "Approval ap-1" });
     await expect(tabs.getByRole("button", { name: "Chat" })).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator("body")).toBeFocused(); // the card's arrival moved no focus
-    // Approve full width at the bottom, Decline above it; tap targets of 48px or more.
+    // Approve full width at the bottom, Decline above it; tap targets of 48px or more. Measured once the card's
+    // pl-rise entry (translateY, 320ms) has finished: mid-transform a 48px button measures 47.9999px.
+    await card.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
     const approve = await card.getByRole("button", { name: "Approve $75/mo" }).boundingBox();
     const decline = await card.getByRole("button", { name: "Decline" }).boundingBox();
     expect(approve && decline && approve.y > decline.y && approve.height >= 48 && decline.height >= 48).toBe(true);
