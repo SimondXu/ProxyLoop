@@ -2,9 +2,11 @@
 words can never be recorded, so the read-back "asked k times" stop rule counts a
 revision's required fields that are not recorded (Guard's
 ``missing_required``) as omitted in each read-back window that got a reply;
-after ``STOP_AFTER`` such windows the existing stuck clause is the one next
-step. A fee stated and recorded in the first window is a new revision: that
-window is never held against it (cp-hidden-fee-readback's success path)."""
+after ``STOP_AFTER`` such windows the stuck clause is the one next step, and
+it says "not recorded", never "not stated" (I11: the rep may have stated the
+fee without naming it; rev-274 D4). A fee stated and recorded in the first
+window is a new revision: that window is never held against it
+(cp-hidden-fee-readback's success path)."""
 
 from __future__ import annotations
 
@@ -22,8 +24,12 @@ GENERIC = (  # the read-back names the fee only by generic words
     "It is $55 a month on a 12-month term, an upfront fee of $99, no other "
     "changes, and the offer does not expire."
 )
-STUCK = "omitted from 2 read-backs: fee:*|fees_none → not stated as recorded"
-STOP = "otherwise stop asking, report them to the user as not stated"
+STUCK = "omitted from 2 read-backs: fee:*|fees_none → not recorded: if a reply "
+STOP = (
+    "otherwise stop asking, report them to the user as not recorded (for a fee "
+    "the rep stated without naming it: its amount, as an unnamed fee), then "
+    "decline_offer and guide_fast(ask_final_offer)"
+)
 
 
 def _hidden(tmp_path: Path) -> Host:
@@ -60,7 +66,12 @@ def test_the_generic_fee_loop_ends_in_the_stuck_clause(tmp_path: Path) -> None:
     utt = _rep(h, GENERIC)
     fields = fw._fields(55, 12, ("upfront", 99))  # pyright: ignore[reportPrivateUsage]
     got = _record(h, fields, utt)
-    assert "fee:upfront: the rep did not name this fee (only generic words)" in got
+    assert "fee:upfront: 'upfront' is a generic word" in got, got
+    assert got.endswith(
+        "fee:upfront: if the rep named this fee by no specific word, record_offer "
+        'the other slots, then guide_fast(ask_readback, ["offer:promo-1"]) once '
+        "more; a fee must be named by the rep to be recorded"
+    ), got
     # the refusal's step: record the other slots, ask the read-back once more
     rest = {f: v for f, v in fields.items() if not f.startswith("fee:")}
     assert _record(h, rest, utt).startswith("record_offer: recorded promo-1 r2")
@@ -72,6 +83,10 @@ def test_the_generic_fee_loop_ends_in_the_stuck_clause(tmp_path: Path) -> None:
     _rep(h, GENERIC)
     entry = _promo(h)
     assert STUCK in entry and STOP in entry, entry
+    assert "not stated" not in entry, entry  # the rep stated $99 (I11)
+    # rev-274 D3: the inside offer's step defers to the stuck clause: one step
+    assert "inside the granted mandate → read-back stuck (see note)" in entry
+    assert fw.next_steps(h) == {"ask_final_offer"}, _bar(h)
     r = state.bar(h.bb, "full", h.tools).readbacks[("promo-1", 2)]
     assert r.asked == 2 and r.stuck == ("fee:*|fees_none",), r
 
@@ -113,3 +128,23 @@ def test_a_partial_revision_read_back_whole_is_not_stuck(tmp_path: Path) -> None
     r = state.bar(h.bb, "full", h.tools).readbacks[("promo-1", 2)]
     assert r.asked == 2 and r.stuck == (), r
     assert "stuck" not in _promo(h) and "stop asking" not in _promo(h), _promo(h)
+
+
+def test_a_recorded_slot_omitted_twice_is_still_not_stated(tmp_path: Path) -> None:
+    """rev-274 D4: only a field never recorded reads "not recorded"; a
+    recorded slot two read-backs omitted keeps "not stated", and a revision
+    with both names each."""
+    h = _hidden(tmp_path)
+    for _ in range(2):
+        _rep(h, "Yes, it is $55 a month.")  # the term omitted, fees unrecorded
+        fw.ask_readback("promo-1")(h)
+    entry = _promo(h)
+    unrec = "applied_change:*|changes_none, expires, fee:*|fees_none"
+    both = (
+        f"omitted from 2 read-backs: {unrec}, term_months → term_months not "
+        f"stated as recorded, {unrec} not recorded: if a reply states them, "
+        "record_offer a new revision citing that line; otherwise stop asking, "
+        f"report them to the user: term_months as not stated, {unrec} as not "
+        "recorded (for a fee"
+    )
+    assert both in entry, entry

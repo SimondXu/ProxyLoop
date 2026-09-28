@@ -105,6 +105,7 @@ def test_a_code_word_generic_or_unsaid_is_refused_naming_it(
     assert not result.ok and not result.effects and result.code == "invalid_args"
     assert why in result.text, result.text
     assert offer_slots.NAMED in result.text  # the rule, with the table
+    assert result.text.endswith(f". {field}: {_tail(field)}"), result.text
 
 
 def test_a_credit_named_with_credit_is_refused_and_its_rep_name_records() -> None:
@@ -202,7 +203,7 @@ def test_d2_a_code_not_in_the_worlds_form_is_refused_naming_the_rule(
     result = record_offer(_bb(said), "o1", [_slot(field, "2000")], 0, NOW)
     assert not result.ok and not result.effects and result.code == "invalid_args"
     assert why in result.text, result.text
-    assert "did not name" not in result.text  # the rep did name it
+    assert result.text.endswith(f". {field}: {_tail(field)}"), result.text
 
 
 TEMPLATE = (  # the Mouth's template line, as a fidelity fallback voices it
@@ -232,66 +233,89 @@ def test_d2_the_worlds_form_in_the_reps_words_records(
     assert result.ok, result.text
 
 
-# S1-SYS-87 D3 (root option (a)): a line that names the fee only by generic
-# words refuses every code; the refusal says so instead of implying words.
+# S1-SYS-87 D3 (rev-274, L-CORE): no guess at whether the rep named the fee.
+# Every naming refusal ends with one conditional tail per refused slot, after
+# the table; the per-word texts before it still point at the rep's word.
 
 
-def _unnamed(kind: str, ref: str = "o1") -> str:
+def _tail(field: str, ref: str = "o1") -> str:
+    kind = field.partition(":")[0]
     return (
-        f"the rep did not name this {kind} (only generic words): record_offer "
-        f'the other slots, then guide_fast(ask_readback, ["offer:{ref}"]) once '
-        f"more; a {kind} must be named by the rep to be recorded"
+        f"if the rep named this {kind} by no specific word, record_offer the "
+        f'other slots, then guide_fast(ask_readback, ["offer:{ref}"]) once more; '
+        f"a {kind} must be named by the rep to be recorded"
     )
 
 
+GENERIC_WORD = (
+    "fee:activation_fee: 'fee' is a generic word; name a fee by the words the "
+    "rep used for it without 'fee'"
+)
+
+
 @pytest.mark.parametrize(
-    ("said", "field"),
-    [
-        ("There is an upfront fee of 20.00.", "fee:upfront"),
-        ("There is an upfront fee of 20.00.", "fee:setup"),
-        ("There is a one-time charge of 20.00.", "fee:one_time"),
-        ("There is a one-time fee of 20.00.", "fee:activation"),
-        ("It is 75.00 per month, plus an upfront fee of 20.00.", "fee:monthly"),
-        ("There is a credit of 20.00 on your first bill.", "credit:welcome"),
+    "said",
+    [  # rev-274 D1: the rep names the fee away from the fee word
+        "Activation is a one-time fee of 20.00.",
+        "There is a fee of 20.00 for activation.",
+        "For activation there is a one-time fee of 20.00.",
     ],
-)  # fmt: skip
-def test_d3_a_fee_named_only_by_generic_words_says_so(said: str, field: str) -> None:
-    kind = field.partition(":")[0]
-    result = record_offer(_bb(said), "o1", [_slot(field, "2000")], 0, NOW)
-    assert not result.ok and not result.effects and result.code == "invalid_args"
-    assert f"{field}: {_unnamed(kind)}" in result.text, result.text
-    assert "use the rep's words" not in result.text  # no words to use
-    assert "a generic word; name a" not in result.text
-
-
-def test_d3_names_the_offer_ref_it_records() -> None:
-    bb = _bb("There is an upfront fee of 20.00.")
-    result = record_offer(bb, "promo-1", [_slot("fee:upfront", "2000")], 0, NOW)
-    assert _unnamed("fee", "promo-1") in result.text, result.text
-
-
-def test_d3_a_line_with_a_generic_and_a_naming_word_records_the_naming_word() -> None:
-    bb = _bb("There is an upfront activation fee of 20.00.")
-    bad = record_offer(bb, "o1", [_slot("fee:upfront", "2000")], 0, NOW)
-    assert "fee:upfront: 'upfront' is a generic word" in bad.text, bad.text
-    assert "did not name" not in bad.text
+)
+def test_a_fee_named_away_from_the_fee_word_points_at_the_word(said: str) -> None:
+    bb = _bb(said)
+    bad = record_offer(bb, "o1", [_slot("fee:activation_fee", "2000")], 0, NOW)
+    assert not bad.ok and not bad.effects and bad.code == "invalid_args"
+    assert GENERIC_WORD in bad.text, bad.text
+    assert bad.text.endswith(f". fee:activation_fee: {_tail('fee:x')}"), bad.text
     assert record_offer(bb, "o1", [_slot("fee:activation", "2000")], 0, NOW).ok
 
 
-def test_d3_the_template_names_its_fee_after_the_fee_word() -> None:
-    """The Mouth voices "fee porting: 5.00": the name follows the fee word, so
-    a wrong code on that line gets the word refusal, never "not named"."""
-    result = record_offer(_bb(TEMPLATE), "o1", [_slot("fee:setup", "500")], 0, NOW)
-    assert not result.ok
+@pytest.mark.parametrize(
+    ("said", "field", "why"),
+    [
+        ("There is an upfront fee of 20.00.", "fee:upfront",
+         "fee:upfront: 'upfront' is a generic word"),
+        ("There is a one-time charge of 20.00.", "fee:one_time",
+         "fee:one_time: 'one' is a generic word"),
+        ("There is a one-time fee of 20.00.", "fee:activation",
+         "fee:activation: 'activation' is not in the cited line cp-1"),
+        # rev-274 D2: the reviewer's generic-only wordings
+        ("There is an upfront fee on your first bill of 20.00.", "fee:upfront",
+         "fee:upfront: 'upfront' is a generic word"),
+        ("There is an upfront fee, 20.00.", "fee:setup",
+         "fee:setup: 'setup' is not in the cited line cp-1"),
+        ("A one-time fee applies, 20 dollars.", "fee:one_time",
+         "fee:one_time: 'one' is a generic word"),
+        ("There is a credit of 20.00 on your first bill.", "credit:welcome",
+         "credit:welcome: 'welcome' is not in the cited line cp-1"),
+    ],
+)  # fmt: skip
+def test_a_generic_only_fee_gets_the_word_text_and_the_tail(
+    said: str, field: str, why: str
+) -> None:
+    result = record_offer(_bb(said), "o1", [_slot(field, "2000")], 0, NOW)
+    assert not result.ok and not result.effects and result.code == "invalid_args"
+    assert why in result.text, result.text
+    assert result.text.endswith(f". {field}: {_tail(field)}"), result.text
+
+
+def test_the_tail_names_the_offer_ref_once_per_refused_slot() -> None:
+    said = "There is an activation fee of 20.00 and an upfront fee of 10.00."
+    slots = [
+        _slot("fee:activation", "2000"),
+        _slot("fee:upfront_fee", "1000"),  # two problems, one tail
+    ]
+    result = record_offer(_bb(said), "promo-1", slots, 0, NOW)
+    assert not result.ok, result.text
+    tail = f"fee:upfront_fee: {_tail('fee:x', 'promo-1')}"
+    assert result.text.endswith(f". {tail}") and result.text.count(tail) == 1
+    assert "fee:activation: if the rep" not in result.text  # the good slot
+
+
+def test_the_template_names_its_fee_after_the_fee_word() -> None:
+    """The Mouth voices "fee porting: 5.00"; a wrong code there points at the
+    rep's word, and the right code records."""
+    bb = _bb(TEMPLATE)
+    result = record_offer(bb, "o1", [_slot("fee:setup", "500")], 0, NOW)
     assert "fee:setup: 'setup' is not in the cited line cp-1" in result.text
-    assert "did not name" not in result.text, result.text
-
-
-def test_d3_reads_the_clause_that_states_the_fee() -> None:
-    """Another fee's name elsewhere in the line does not name this one."""
-    said = "There is an activation fee of 20.00, and an upfront fee of 10.00."
-    bb = _bb(said)
-    result = record_offer(bb, "o1", [_slot("fee:upfront", "1000")], 0, NOW)
-    assert _unnamed("fee") in result.text, result.text
-    named = record_offer(bb, "o1", [_slot("fee:setup", "2000")], 0, NOW)
-    assert "'setup' is not in the cited line" in named.text, named.text
+    assert record_offer(bb, "o1", [_slot("fee:porting", "500")], 0, NOW).ok

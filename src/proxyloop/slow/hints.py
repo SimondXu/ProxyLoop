@@ -302,6 +302,8 @@ def _inside_step(view: SlowView, b: OfferPublic, now_ms: int, more: state.Bar) -
     if readback_status(b) == "confirmed":
         dry = accept_offer(_board(view, now_ms), ref, _CASE)
         return "" if isinstance(dry, Denial) else then
+    if more.stuck(b):  # the note's stuck clause is the one next step
+        return "read-back stuck (see note)"
     if r is not None and r.asked:
         return f"read-back asked: {then} once confirmed"
     return f'guide_fast(ask_readback, ["offer:{ref}"]), then {then}'

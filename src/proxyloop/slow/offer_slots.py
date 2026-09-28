@@ -17,13 +17,7 @@ from proxyloop.contract import base
 from proxyloop.contract import state as st
 from proxyloop.contract.state import READBACK_FIELD, ReadbackSlot
 from proxyloop.guard.declass import numbers, spoken
-from proxyloop.guard.readback import (  # the read-back's clauses and cues
-    LEXICON,
-    ROLE_OF,
-    _clauses,  # pyright: ignore[reportPrivateUsage]
-    _qualifiers,  # pyright: ignore[reportPrivateUsage]
-    said,  # the values one clause states for a field
-)
+from proxyloop.guard.readback import LEXICON, ROLE_OF
 from proxyloop.slow.authority import UNITS
 from proxyloop.slow.result import Result, no
 
@@ -175,10 +169,10 @@ def record_offer(
     if unbound:
         text = f"{'; '.join(unbound)}. {CITE}"
         return no(text, ("declass.denied", {"violations": unbound}))
-    if bad := [
-        p for s in slots for p in _naming(s, said.get(str(s.source_utt), ""), ref)
-    ]:
-        return _invalid(refused(bad))
+    named = {s.field: _named(s, said.get(str(s.source_utt), "")) for s in slots}
+    if bad := [p for problems in named.values() for p in problems]:
+        tails = [f"{f}: {unnamed(f, ref)}" for f, problems in named.items() if problems]
+        return _invalid(f"{refused(bad)}. {'. '.join(tails)}")
     if bad := [p for s in slots if (p := value(s))]:
         return _invalid(refused(bad))
     prev = bb.public.offers.get(ref)
@@ -209,10 +203,6 @@ def record_offer(
 # it); known edge, no amount rule: "$20" and "20 dollars" do say the word '20'.
 _CODE = re.compile(r"[a-z0-9]+(?:_[a-z0-9]+)*")
 _TOKEN = re.compile(r"[a-z0-9]+(?:[.,][0-9]+)*")
-# S1-SYS-87 D3: guard's ``_qualifiers`` (``_QUALIFIED``) reads the words before
-# a fee or credit word; the Mouth's template names it after ("fee porting:
-# 5.00"), which that helper cannot see, so this mirror reads the word after.
-_AFTER = re.compile(r"\b(?:fees?|charges?|credits?|rebates?)\s+([a-z'-]+)")
 
 
 def _named(slot: st.ReadbackSlot, line: str) -> list[str]:
@@ -240,30 +230,17 @@ def _named(slot: st.ReadbackSlot, line: str) -> list[str]:
     return out
 
 
-def _naming(slot: st.ReadbackSlot, line: str, ref: str) -> list[str]:
-    """``_named``'s problems; for a code the line refuses anyway, and a fee or
-    credit the rep named only by generic words, the one D3 problem instead.
-    D3 never refuses a code on its own."""
-    out = _named(slot, line)
-    if not out or not _unnamed(slot, line):
-        return out
-    kind = slot.field.partition(":")[0]
-    return [
-        f"{slot.field}: the rep did not name this {kind} (only generic words): "
-        "record_offer the other slots, then guide_fast(ask_readback, "
-        f'["offer:{ref}"]) once more; a {kind} must be named by the rep to be '
-        "recorded"
-    ]
-
-
-def _unnamed(slot: st.ReadbackSlot, line: str) -> bool:
-    """The clauses of ``line`` that state this slot's amount as a fee or credit
-    (guard's ``said``) have no naming word: none before the fee word (guard's
-    ``_qualifiers``) nor right after it that is not generic."""
-    kind = slot.field.partition(":")[0]
-    own = [c for _, _, c in _clauses(line.lower()) if slot.value in said(c, kind)]
-    after = {w for c in own for w in _AFTER.findall(c)} - set(GENERIC[kind])
-    return bool(own) and not after and not any(_qualifiers(c) for c in own)
+def unnamed(field: str, ref: str) -> str:
+    """S1-SYS-87 D3 (rev-274): every naming refusal ends with this conditional
+    tail, after the table (``obs.watch`` reads the problem list before it): a
+    fee the rep named by no specific word can never be recorded, and the
+    read-back stop rule (``state.readback``) bounds asking for it."""
+    kind = field.partition(":")[0]
+    return (
+        f"if the rep named this {kind} by no specific word, record_offer the "
+        f'other slots, then guide_fast(ask_readback, ["offer:{ref}"]) once more; '
+        f"a {kind} must be named by the rep to be recorded"
+    )
 
 
 def _invalid(text: str) -> Result:  # the slots' form, not the rep's words

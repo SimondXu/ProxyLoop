@@ -41,6 +41,9 @@ from proxyloop.slow.tools import SlowTools, lever_denial, public_guide
 
 Kind = Literal["info_only", "full"]  # the task's ``mode`` (task data)
 STOP_AFTER = 2  # read-back replies omitting the same slots (V4, D2)
+UNNAMED_FEE = (
+    "for a fee the rep stated without naming it: its amount, as an unnamed fee"
+)
 LEVERS = (GuideMove.CITE_COMPETITOR, GuideMove.MENTION_TENURE, GuideMove.CANCEL_LEVER)
 TENURE = "tenure_years"  # the one lever fact a user can make public (FORMATS)
 WHY = {  # one clause per refusal class (V5)
@@ -458,11 +461,22 @@ class Bar:
         if lever:
             return omitted
         then = ", then decline_offer and guide_fast(ask_final_offer)"
+        # S1-SYS-87 D4 (I11): a required field never recorded may have been
+        # stated (a fee the rep named by no specific word): "not recorded"
+        missing = set(missing_required(o))
+        unrec = ", ".join(f for f in left if f in missing)
+        stated = ", ".join(f for f in left if f not in missing)
+        what, told = "not stated as recorded", " as not stated"
+        if unrec:
+            what, told = "not recorded", f" as not recorded ({UNNAMED_FEE})"
+        if unrec and stated:
+            what = f"{stated} not stated as recorded, {unrec} {what}"
+            told = f": {stated} as not stated, {unrec}{told}"
+        value = "another value for them" if not unrec else "them"
         return (
-            f"{omitted} → not stated as recorded: if a reply states another "
-            "value for them, record_offer a new revision citing that line; "
-            "otherwise stop asking, report them to the user as not stated"
-            + (then if self.close.kind == "full" else "")
+            f"{omitted} → {what}: if a reply states {value}, record_offer a new "
+            "revision citing that line; otherwise stop asking, report them to "
+            f"the user{told}" + (then if self.close.kind == "full" else "")
         )
 
     def lines(self, outside: bool = True, unrecorded: Sequence[str] = ()) -> list[str]:
