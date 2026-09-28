@@ -1,10 +1,12 @@
 """What became of each voiced s2f message (#219 D1, D-A): heard by the rep,
 still playing, or dead. Only cp deliveries count, so a user-lane message is
-never heard here. A pure read of the event log; ``SlowTools`` delegates to it."""
+never heard here; a cp GUIDE superseded before any turn voiced it is dead
+(S1-SYS-67). A pure read of the event log; ``SlowTools`` delegates to it."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from itertools import pairwise
 from typing import Literal, NamedTuple
 
 from proxyloop.contract.events import Event
@@ -76,7 +78,7 @@ def fates(events: Sequence[Event], lines: Sequence[Line]) -> dict[str, Fate]:
         for e in events
         if e.type == "s2f.msg" and e.payload["lane"] == "cp" and e.payload.get("guide")
     ]
-    for old, new in zip(guides, guides[1:], strict=False):
+    for old, new in pairwise(guides):
         msg = str(old.payload["msg_id"])
         rendered = any(old.seq < q < new.seq and g not in ended for q, g in asked)
         if msg not in out and not rendered:  # superseded, never voiced
