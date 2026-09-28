@@ -341,14 +341,14 @@ The source is `docs/results/spend.json`, generated from `spend.charged` events a
 - #238 (SYS, S1-SYS-66): the `authority.py:39` text.
 - For S2-MOD-01 (ADR-0023): the tiers grade `slow_step_cap` and `budget` ends as F, while EVAL §7 counts `budget` endings as infrastructure errors; S2-MOD-01 reconciles the two axes.
 - #243 (SYS (P-OBS), S1-SYS-68): the fee-name comparison is done in #248 (shared names 1:1, the rest as a cents multiset, failing closed); `applied_change`/`changes_none` have the same naming gap.
-- #242 (SYS, S1-SYS-67): D4 and D5 of its round-2 review (the main root's log records only their ids).
+- #242 (SYS, S1-SYS-67), round-2 review: D4 the S1-SYS-67 equivalence test covers `heard.py` only (through `Host.voice`), not the kernel voicing path; D5 "read-back asked" appears twice in the no-lever offer line.
 - S1-SYS-74's diagnosis: the L-class stale refusal → a look at it against ADR-0021.
 - #243 m3: ADR-0020's H5 line was stale (done in S1-ROOT-19).
 - ARCHITECTURE §10.1 drift: `refuse_fact` has no key, and the Ear's numbers are checked against the utterance (done in S1-ROOT-19).
 - An import-linter contract "eval never imports obs": the docstrings claimed it and nothing enforced it (done in S1-ROOT-19, `eval-is-not-obs`).
 - #250 (SYS (P-OBS)): `obs/detectors.py` is near the 600-line limit, so the next detector goes in its own module (#253, in review).
 - World: the sim ladder's `ttl_s` 180 per offer is unrealistic (real offers last the call or a date); a world-semantics change, decided after the battery shows its effect.
-- TeamRouter billing (a correction to the earlier "no billing API" note): `GET /v1/billing/balance` works, and `/v1/billing/costs`, `/v1/billing/requests/{id}` and `/v1/usage` exist, so per-request TeamRouter pricing is possible (a spend-envelope precondition; an L-CORE ledger follow-up candidate).
+- TeamRouter billing (a correction to the earlier "no billing API" note, ADR-0005 corrected in S1-ROOT-19): `GET /v1/billing/balance` works, and `/v1/billing/costs`, `/v1/billing/requests/{id}` and `/v1/usage` exist, so per-request TeamRouter pricing is possible (a spend-envelope precondition; an L-CORE ledger follow-up candidate).
 
 ---
 
@@ -1170,7 +1170,7 @@ S1 SYS/MOD tasks may start after S0-ROOT-05; S1 pure tasks and product-lane work
 
 ### S1-ROOT-19 ADR-0024 and ROOT sync after #240–#251 — ROOT — S — doing
 - **Objective:** record ADR-0024 (the world-model selection method, proposed; the model root's text; its rule-3 exception is a root decision), committed before the paid world-select run; the statuses of #238 and #240–#251; the new blocks S1-SYS-69…74 and S1-MOD-09; the user decisions since S1-ROOT-17; the §0.9 items; an ADR-0023 addendum (S1-SYS-68's rulings); ADR-0020's stale H5 line (#243 m3); the two ARCHITECTURE §10.1 drifts; an import-linter contract "eval never imports obs".
-- **Owned paths:** `PLAN.md`; `docs/decisions/0024-world-model-selection-method.md` (new); `docs/decisions/0023-outcome-tiers.md` (an addendum) and `docs/decisions/0020-readback-window-per-offer.md` (one line); `ARCHITECTURE.md` (two lines of §10.1); `.importlinter` (one contract).
+- **Owned paths:** `PLAN.md`; `docs/decisions/0024-world-model-selection-method.md` (new); `docs/decisions/0023-outcome-tiers.md` (an addendum) and `docs/decisions/0020-readback-window-per-offer.md` (one line); `ARCHITECTURE.md` (two lines of §10.1); `.importlinter` (one contract); `docs/decisions/0005-world-model.md` (one line, the TeamRouter billing correction; grant, root 2026-09-28).
 - **Acceptance:** `make docs-check`, `uv run lint-imports` (the new contract kept) and `make check` green; no contract, NORTH_STAR, AGENTS, CLAUDE, `src/`, `tests/` or evidence change.
 
 ### S1-SYS-12 Spend report and run index — SYS (P-OBS) — M (re-sized from S, root decision under §0.5a, 2026-09-27) — done (#175)
