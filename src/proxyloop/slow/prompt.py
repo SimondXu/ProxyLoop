@@ -18,11 +18,16 @@ from proxyloop.contract.messages import FastToSlow, GuideMove
 from proxyloop.contract.state import OfferPublic
 from proxyloop.contract.views import SlowView
 from proxyloop.guard.readback import missing_required, readback_status
-from proxyloop.slow import asks, offer_slots, state
+from proxyloop.slow import asks, hints, offer_slots, state
 from proxyloop.slow.hints import FIRST_LEVER, HARD_LIMITS, WAIT_LEVER, approval_hint
 from proxyloop.slow.hints import HARD_LIMIT as HARD_LIMIT
 from proxyloop.slow.hints import OUTSIDE_MANDATE as OUTSIDE_MANDATE
 from proxyloop.slow.hints import mandate_hint as mandate_hint
+
+PROPOSE = (  # the case line with no mandate yet (S1-SYS-82 F-f)
+    "once the user has stated limits: propose_mandate with every bound they "
+    "stated, fees included"
+)
 
 TOOLS = (
     *("ask_user", "tell_user", "wait", "guide_fast", "record_fact", "record_offer"),
@@ -71,10 +76,12 @@ another value for them, record_offer a new revision citing that line; otherwise 
 stop asking, they did not state them (the close playbook says what next). A \
 reply that reads nothing back is no read-back: ask again or ask for the final \
 offer.
-- propose_mandate(envelope): the mandate's bounds the user stated \
-(max_monthly_price_minor, \
-max_term_months, max_one_time_fees_minor, required_features, forbidden_changes); it \
-grants nothing until the user decides it.
+- propose_mandate(envelope): every bound the user stated, fees included \
+(max_monthly_price_minor, max_term_months, max_one_time_fees_minor, \
+required_features, forbidden_changes; a stated no-fees limit is \
+max_one_time_fees_minor 0); leave out a bound the user did not state. A \
+mandate missing a bound the user stated is looser than their limits: they deny \
+it. It grants nothing until the user decides it.
 - tighten_mandate(changes): stricter bounds, never looser; the user re-grants them. \
 revoke(reason): withdraw every grant at once, e.g. when the user says stop.
 - request_approval(offer_ref): ask the user to approve a confirmed offer; the chat \
@@ -93,8 +100,10 @@ Readiness: the phone call opens only once the facts it needs are public (the \
 readiness line of the status bar; e.g. the account holder name and last 4). If the \
 user already gave one, record_fact it citing the utt of the user's message before \
 asking. In your first step, ask_user once for every other missing one, with keys \
-naming them all. When the user answers, record_fact each: the call opens by itself \
-once none is missing. If the user replied but a fact cannot go public, \
+naming them all. Once the user has stated their limits and no mandate is \
+proposed, propose_mandate with every bound they stated, fees included. When \
+the user answers, record_fact each: the call opens by itself once none is \
+missing. If the user replied but a fact cannot go public, \
 start_call(); at the deadline the call opens anyway. Once the call is open, until \
 the representative has verified the account (it moves on to your request, e.g. asks \
 how it can help), your first phone action is guide_fast(identify, \
@@ -110,7 +119,10 @@ for the correct value, record_fact it, then identify again. For a fact the \
 representative asks for that the user has not given, ask_user for it (with keys) \
 and guide_fast(hold_for_fact) so the representative waits. Use \
 deflect_fact_request only for a fact that must not be given: the representative \
-hears a refusal and may hang up.
+hears a refusal and may hang up. Once the representative has verified the \
+account, your first request is guide_fast(ask_discount), the request for a lower \
+monthly price (the request line says when), and a lever only after the first \
+offer (the levers line).
 A rep_turn or heartbeat wake without a new [REP CALL] note means nothing was \
 relayed; read the status bar and act or wait.
 Tool results come back as text; a refusal says why."""  # noqa: RUF001 (the bar says k times)
@@ -179,16 +191,21 @@ PLAYBOOK: dict[state.Kind, str] = {  # V3: the head carries the case's own only
     f"{'; '.join(HARD_LIMITS.values())}; no approval can lift it. A price, term "
     "or fee above the user's mandate is outside the mandate, not a hard limit: "
     "the user decides it. An offer inside the granted mandate: its read-back, "
-    "then accept_offer once confirmed. An offer outside the granted mandate "
+    "then accept_offer once confirmed. While another open offer comes first "
+    "(inside the granted mandate, or cheaper and confirmed: the offers line "
+    "says so), a worse offer gets no step of its own. An offer outside the "
+    "granted mandate "
     "(the offers line says so), recorded or confirmed: first guide_fast one "
     "available lever (the levers line lists them), before asking for its "
     "read-back; one lever per rep reply; while one is sent and the rep has not "
     "answered it, wait. Asking again for a lower price or for a final offer is "
     "the same request the rep already answered: it adds no pressure and is no "
     "lever. Only when no lever is available: its read-back, then "
-    "request_approval. Ask for a read-back only of an offer you mean to accept "
-    "or to send for approval. After the user denies an offer: again one "
-    "available lever if any; only when none is left: decline_offer, then "
+    "request_approval; once the user approves it, accept_offer. Ask for a "
+    "read-back only of an offer you mean to accept or to send for approval. "
+    "After the user denies an offer: if another open offer comes first, that "
+    "offer's step; otherwise again one available lever if any; only when none "
+    "is left: decline_offer, then "
     "guide_fast(ask_final_offer). Decline an offer otherwise only when it breaks "
     "a hard limit (the offers line says so) or its read-back stopped with slots "
     "not stated: decline_offer, then guide_fast(ask_final_offer). When the close "
@@ -354,18 +371,20 @@ def status_bar(
         ttl = "" if o.expires_ms is None else f", expires in {secs(o.expires_ms)}"
         slots = ", ".join(f"{s.field}={s.value} [{s.status}]" for s in o.slots)
         state = f"{o.status}, read-back {readback_status(o)}{ttl}"
-        hints = [approval_hint(view, o, now_ms, more)]
-        hints.append(mandate_hint(view, o, now_ms, more))
-        lever = any(FIRST_LEVER in h or WAIT_LEVER in h for h in hints)  # #238 D2
-        hints.append("" if more is None else more.offer_note(o, lever))
+        head = f"{o.offer_ref} r{o.revision} ({state}): {slots}"
+        if more is not None and (b := hints.better(view, o, now_ms)):  # F-e
+            said = [hints.defer_hint(view, *b, now_ms, more), more.offer_note(o, True)]
+            return head + "".join(f"; {h}" for h in said if h)
+        said = [approval_hint(view, o, now_ms, more)]
+        said.append(mandate_hint(view, o, now_ms, more))
+        lever = any(FIRST_LEVER in h or WAIT_LEVER in h for h in said)  # #238 D2
+        said.append("" if more is None else more.offer_note(o, lever))
         if gaps := missing_required(o):  # e6ada1: Guard's list, never inferred
-            hints.append(
+            said.append(
                 f"required slots not recorded: {', '.join(gaps)}; record them "
                 "from the rep line that states them"
             )
-        return f"{o.offer_ref} r{o.revision} ({state}): {slots}" + "".join(
-            f"; {h}" for h in hints if h
-        )
+        return head + "".join(f"; {h}" for h in said if h)
 
     def fact(key: str, value: str, scope: str) -> str:
         return f"{key}={json.dumps(value, ensure_ascii=True)} [{scope}]"
@@ -376,6 +395,8 @@ def status_bar(
     )
     m = view.mandate
     mandate = "none" if m is None else f"{m.mandate_id} {m.status} (epoch {m.epoch})"
+    if m is None and more is not None and more.close.kind == "full":  # F-f
+        mandate += f" ({PROPOSE})"
     card = view.pending_approval
     approvals = [f"{a.approval_id} {a.decision}" for a in view.approvals]
     if card is not None:

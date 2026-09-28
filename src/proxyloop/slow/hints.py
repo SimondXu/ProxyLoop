@@ -1,18 +1,27 @@
-"""The offers line's per-offer hints (S1-SYS-28, S1-SYS-46, S1-SYS-66):
-Guard's verdicts on an open offer (``open_offer``, ``card_blocks``,
-``hard_violations``, ``mandate_gap``) and the one next step they imply, read
-from the status bar's view and ``state.Bar``. Read-only: nothing is sent."""
+"""The offers line's per-offer hints (S1-SYS-28, S1-SYS-46, S1-SYS-66,
+S1-SYS-82): Guard's verdicts on an open offer (``open_offer``, ``card_blocks``,
+``hard_violations``, ``mandate_gap``, ``accept_offer``) and the one next step
+they imply, read from the status bar's view and ``state.Bar``. Read-only:
+nothing is sent."""
 
 from __future__ import annotations
 
 from proxyloop.contract.state import (
     Blackboard,
+    Mandate,
     OfferPublic,
     PrivateState,
+    PublicState,
     ReadbackSlot,
 )
 from proxyloop.contract.views import SlowView
-from proxyloop.guard.authorize import Denial, card_blocks, open_offer
+from proxyloop.guard.authorize import (
+    CaseRef,
+    Denial,
+    accept_offer,
+    card_blocks,
+    open_offer,
+)
 from proxyloop.guard.mandate import hard_violations, mandate_gap
 from proxyloop.guard.policy import UNSUPPORTED_APPLIED_CHANGE
 from proxyloop.guard.readback import ROLE_OF, readback_status
@@ -27,6 +36,8 @@ HARD_LIMITS = {  # guard.mandate.hard_violations's classes: no approval lifts th
 }
 HARD_LIMIT = "breaks a hard limit"
 OUTSIDE_MANDATE = "outside mandate: needs the user's approval once confirmed"
+DEFER = "outside mandate; no step for it now: "  # F-e: a better open offer's turn
+_CASE = CaseRef("case", "account", "principal")  # a dry run binds nothing
 
 
 def approval_hint(
@@ -37,21 +48,22 @@ def approval_hint(
     outside the granted mandate needs the user's approval; shown until a card
     or a decision for its terms exists in this epoch. Nothing is sent.
     S1-SYS-66: with the bar (``more``), a lever on its way means wait, and an
-    available lever comes first; request_approval once none is left."""
+    available lever comes first; request_approval once none is left.
+    S1-SYS-82 F-d: once the user approved it (``approved``), accept_offer."""
     got = open_offer(o, view.mandate, now_ms, bool(view.fences))
     card = view.pending_approval
     of_card = [x for x in view.offers if card and x.offer_ref == card.offer_ref]
     blocked = card_blocks(card, of_card[0] if of_card else None, view.epoch, now_ms)
     if isinstance(got, Denial) or blocked:  # Guard would refuse the card
         return ""
+    if approved(view, o, now_ms):
+        return f"{o.offer_ref} confirmed, approved → accept_offer({o.offer_ref})"
     terms = got[1]
     cards = [] if view.pending_approval is None else [view.pending_approval]
     for a in (*cards, *view.approvals):
         if (a.terms_hash, a.authority_epoch) == (o.terms_hash, view.epoch):
             return ""
-    mine = PrivateState(mandate=view.mandate)
-    bb = Blackboard(t_ms=now_ms, epoch=view.epoch, private=mine)
-    if mandate_gap(bb, terms) != "outside_mandate":
+    if _gap(view, now_ms, terms) != "outside_mandate":
         return ""
     ref = f"{o.offer_ref} confirmed, outside mandate → "
     if more is not None and more.waiting:  # S1-SYS-66: one lever per rep reply
@@ -89,26 +101,16 @@ def mandate_hint(
     while one is on its way or unanswered); only once none is left, its
     read-back, then request_approval; a stuck read-back defers to the
     note's stuck clause (one next step per state)."""
-    if o.status != "open":
+    if o.status != "open" or (got := _verdict(view, o)) is None:
         return ""
-    m = view.mandate
-    complete = offer_terms(o)
-    terms = complete or _as_recorded(o)
-    if terms is None:
-        return ""
-    if complete is None and m is not None:  # a read-back may still add it
-        have = {s.field for s in o.slots}
-        stated = tuple(f for f in m.required_features if f"feature:{f}" in have)
-        m = m.model_copy(update={"required_features": stated})
+    terms, m = got
     if hard := hard_violations(terms, m):
         return f"{HARD_LIMIT}: {', '.join(hard)}"
     got = open_offer(o, view.mandate, now_ms, bool(view.fences))
     waiting = isinstance(got, Denial) and got.reason == "readback_not_confirmed"
     if not waiting or readback_status(o) == "confirmed":
         return ""  # allowed (approval_hint's), or refused for good
-    mine = PrivateState(mandate=view.mandate)
-    bb = Blackboard(t_ms=now_ms, epoch=view.epoch, private=mine)
-    if mandate_gap(bb, terms) != "outside_mandate":
+    if _gap(view, now_ms, terms) != "outside_mandate":
         return ""
     if more is None:
         return OUTSIDE_MANDATE
@@ -128,6 +130,133 @@ def mandate_hint(
         return f"{OUTSIDE_MANDATE} → read-back asked: {then} once confirmed"
     ask = f'guide_fast(ask_readback, ["offer:{ref}"])'
     return f"{OUTSIDE_MANDATE} → {ask}, then {then}"
+
+
+def _verdict(view: SlowView, o: OfferPublic) -> tuple[Terms, Mandate | None] | None:
+    """The terms Guard's verdicts judge (complete, else ``_as_recorded``) and
+    the mandate to judge them by: for a revision still incomplete, a required
+    feature not yet stated is not yet missing (a read-back may still add it)."""
+    m, complete = view.mandate, offer_terms(o)
+    terms = complete or _as_recorded(o)
+    if terms is None:
+        return None
+    if complete is None and m is not None:
+        have = {s.field for s in o.slots}
+        stated = tuple(f for f in m.required_features if f"feature:{f}" in have)
+        m = m.model_copy(update={"required_features": stated})
+    return terms, m
+
+
+def _gap(view: SlowView, now_ms: int, terms: Terms) -> str | None:
+    """``mandate_gap`` of ``terms`` against the view's mandate, now."""
+    mine = PrivateState(mandate=view.mandate)
+    bb = Blackboard(t_ms=now_ms, epoch=view.epoch, private=mine)
+    return mandate_gap(bb, terms)
+
+
+def _board(view: SlowView, now_ms: int) -> Blackboard:
+    """The view's board as Guard's accept rule reads it. The view holds no
+    capabilities: an accept already authorised has moved the case out of
+    IN_CALL, which the rule refuses first."""
+    public = PublicState(
+        status=view.status, offers={x.offer_ref: x for x in view.offers}
+    )
+    mine = PrivateState(
+        mandate=view.mandate,
+        pending_approval=view.pending_approval,
+        approvals={a.approval_id: a for a in view.approvals},
+    )
+    return Blackboard(
+        t_ms=now_ms, epoch=view.epoch, fences=view.fences, public=public, private=mine
+    )
+
+
+def _decided(view: SlowView, o: OfferPublic, decision: str) -> bool:
+    """The user decided ``o``'s terms so in this epoch."""
+    return any(
+        a.decision == decision
+        and (a.terms_hash, a.authority_epoch) == (o.terms_hash, view.epoch)
+        for a in view.approvals
+    )
+
+
+def approved(view: SlowView, o: OfferPublic, now_ms: int) -> bool:
+    """S1-SYS-82 F-d: the user granted ``o``'s terms in this epoch and Guard's
+    ``accept_offer`` rule would pass now (a dry run on ``_board``)."""
+    if not _decided(view, o, "granted"):
+        return False
+    return not isinstance(
+        accept_offer(_board(view, now_ms), o.offer_ref, _CASE), Denial
+    )
+
+
+def _open(o: OfferPublic, now_ms: int) -> bool:
+    return o.status == "open" and (o.expires_ms is None or o.expires_ms > now_ms)
+
+
+def better(
+    view: SlowView, o: OfferPublic, now_ms: int
+) -> tuple[OfferPublic, bool] | None:
+    """S1-SYS-82 F-e: the open offer that beats ``o``, an open offer outside
+    the granted mandate (breaking no hard limit, not approved), and whether
+    it is inside the mandate: the cheapest open offer inside it (its price
+    recorded, no hard limit broken), else the cheapest one Guard's
+    ``open_offer`` passes (confirmed) that is cheaper than ``o``. An offer
+    whose terms the user denied in this epoch beats nothing."""
+    got = _verdict(view, o)
+    if not _open(o, now_ms) or got is None or approved(view, o, now_ms):
+        return None
+    terms, m = got
+    if hard_violations(terms, m) or _gap(view, now_ms, terms) != "outside_mandate":
+        return None
+    rivals = [
+        b
+        for b in view.offers
+        if b.offer_ref != o.offer_ref
+        and _open(b, now_ms)
+        and not _decided(view, b, "denied")
+    ]
+    inside: list[tuple[int, OfferPublic]] = []
+    for b in rivals:
+        v = _verdict(view, b)
+        priced = any(s.field == "monthly_price" for s in b.slots)
+        if v is None or not priced or hard_violations(*v):
+            continue
+        if _gap(view, now_ms, v[0]) is None:
+            inside.append((v[0].monthly_price_minor, b))
+    if inside:
+        return min(inside, key=lambda x: x[0])[1], True
+    cheaper: list[tuple[int, OfferPublic]] = []
+    for b in rivals:
+        ok = open_offer(b, view.mandate, now_ms, bool(view.fences))
+        if (
+            not isinstance(ok, Denial)
+            and ok[1].monthly_price_minor < terms.monthly_price_minor
+        ):
+            cheaper.append((ok[1].monthly_price_minor, b))
+    return (min(cheaper, key=lambda x: x[0])[1], False) if cheaper else None
+
+
+def defer_hint(
+    view: SlowView, b: OfferPublic, inside: bool, now_ms: int, more: state.Bar
+) -> str:
+    """S1-SYS-82 F-e: a worse offer's one hint, naming the offer ``b`` that
+    comes first. A cheaper confirmed ``b`` names its own step on its entry;
+    one inside the mandate has none there, so this names it: its read-back,
+    then accept_offer, or accept_offer once confirmed (Guard's accept rule
+    passing; otherwise nothing: the case has moved on)."""
+    ref = b.offer_ref
+    if not inside:
+        return f"{DEFER}{ref} (cheaper, confirmed) comes first"
+    first = f"{DEFER}{ref} (inside the granted mandate) comes first"
+    then = f"accept_offer({ref})"
+    r = more.readbacks.get((ref, b.revision))
+    if readback_status(b) == "confirmed":
+        dry = accept_offer(_board(view, now_ms), ref, _CASE)
+        return first if isinstance(dry, Denial) else f"{first} → {then}"
+    if r is not None and r.asked:
+        return f"{first} → read-back asked: {then} once confirmed"
+    return f'{first} → guide_fast(ask_readback, ["offer:{ref}"]), then {then}'
 
 
 def _as_recorded(o: OfferPublic) -> Terms | None:

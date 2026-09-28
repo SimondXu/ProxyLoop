@@ -44,6 +44,10 @@ IDENTIFY_SENT = {  # the identify's state, the identify line's wording (S1-SYS-7
     "heard": "heard by the rep, not answered yet (wait)",
     "waiting": "sent, not heard yet (wait; do not send it again)",
 }
+ASK_DISCOUNT = (  # S1-SYS-82 F-a: the first request once the account is verified
+    "once the rep has verified the account, the one next phone step: "
+    "guide_fast(ask_discount) (ask for a lower monthly price)"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,10 +178,13 @@ def _states(bb: Blackboard, tools: SlowTools, msgs: Sequence[str]) -> dict[str, 
     return out
 
 
-def identify_sent(bb: Blackboard, tools: SlowTools) -> Sent | None:
+def identify_sent(
+    bb: Blackboard, tools: SlowTools, move: GuideMove = GuideMove.IDENTIFY
+) -> Sent | None:
     """S1-SYS-74 D2: the newest identify Slow sent (not superseded), alone: a
-    second one on its way after the first was answered shows as on its way."""
-    mine = [msg for msg, move in tools.guides if move == GuideMove.IDENTIFY]
+    second one on its way after the first was answered shows as on its way.
+    ``move``: the same for another move (``ask_discount``, S1-SYS-82)."""
+    mine = [msg for msg, m in tools.guides if m == move]
     now = list(_states(bb, tools, mine).values())[-1:]
     return next((s for s in LIVE if s in now), None)
 
@@ -214,10 +221,13 @@ def levers_line(
     levers: Sequence[tuple[str, str]],
     sends: Mapping[str, Sent] | None = None,
     slots: Mapping[str, str] | None = None,
+    offered: bool = True,
 ) -> str:
     """Available (with the slot one needs), answered, heard, on its way,
     then each refusal with its clause and each lever that failed twice; an
-    unavailable lever is only that, whatever was sent."""
+    unavailable lever is only that, whatever was sent. Before any offer is
+    recorded (``offered`` False) the free ones are "after the first offer":
+    no lever is a next step yet (S1-SYS-82 F-a)."""
 
     def what(move: str, code: str) -> str:  # n6: only the slot is unavailable
         slot = f" with fact:{TENURE}" if code == "guide_slot_not_public" else ""
@@ -228,7 +238,8 @@ def levers_line(
     free = [
         f"{m} with {slots[m]}" if m in slots else m for m in free_levers(levers, sends)
     ]
-    groups = [f"available: {', '.join(free) or 'none'}"]
+    label = "available" if offered else "after the first offer"
+    groups = [f"{label}: {', '.join(free) or 'none'}"]
     for kind, label in GROUPS:
         if said := [m for m in usable if sends.get(m) == kind]:
             groups.append(f"{label}: {', '.join(said)}")
@@ -244,6 +255,20 @@ def identify_line(state: Sent | None) -> str | None:
     heard; none sent, or none heard (``failed``), shows no line."""
     said = IDENTIFY_SENT.get(state or "")
     return None if said is None else f"identify: {said}"
+
+
+def request_line(
+    identify: Sent | None, offered: bool, discount: Sent | None
+) -> str | None:
+    """S1-SYS-82 F-a: until an offer is recorded, the ask_discount's delivery
+    once one is on its way or heard; before that, once the identify is
+    answered, the discount ask as the one next phone step. No line after the
+    first offer, or before the identify is answered and none is sent."""
+    if offered:
+        return None
+    if (said := IDENTIFY_SENT.get(discount or "")) is not None:
+        return f"request: ask_discount {said}"
+    return f"request: {ASK_DISCOUNT}" if identify == "answered" else None
 
 
 def unconfirmed(o: OfferPublic) -> frozenset[str]:
@@ -295,6 +320,8 @@ class Bar:
     sends: Mapping[str, Sent] = field(default_factory=dict[str, Sent])
     slots: Mapping[str, str] = field(default_factory=dict[str, str])  # N2
     identify: Sent | None = None  # the identify's delivery (S1-SYS-74)
+    offered: bool = True  # an offer was recorded (S1-SYS-82 F-a)
+    discount: Sent | None = None  # the ask_discount's delivery (S1-SYS-82)
 
     @property
     def free(self) -> tuple[str, ...]:  # the levers to try, in order
@@ -339,8 +366,10 @@ class Bar:
         )
 
     def lines(self) -> list[str]:
-        said = [self.close.line(), levers_line(self.levers, self.sends, self.slots)]
-        return said + [x for x in [identify_line(self.identify)] if x]
+        levers = levers_line(self.levers, self.sends, self.slots, self.offered)
+        ident = identify_line(self.identify)
+        ask = request_line(self.identify, self.offered, self.discount)
+        return [self.close.line(), levers, *(x for x in (ident, ask) if x)]
 
 
 def bar(bb: Blackboard, kind: Kind, tools: SlowTools) -> Bar:
@@ -353,4 +382,6 @@ def bar(bb: Blackboard, kind: Kind, tools: SlowTools) -> Bar:
     shut = close(bb, kind, tools.asked_final, tools.told_at, tools.final_pending)
     ident = identify_sent(bb, tools)
     sends, slots = sent(bb, tools), lever_slots(bb)
-    return Bar(shut, unavailable(bb), readbacks, sends, slots, ident)
+    offered = bool(bb.public.offers)
+    asked = identify_sent(bb, tools, GuideMove.ASK_DISCOUNT)
+    return Bar(shut, unavailable(bb), readbacks, sends, slots, ident, offered, asked)
