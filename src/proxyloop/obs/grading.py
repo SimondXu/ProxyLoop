@@ -339,28 +339,68 @@ def _heard(x: Inputs, before: int | None = None) -> dict[str, int]:
     return out
 
 
+def _committed(x: Inputs) -> dict[str, set[object]]:
+    """Per agent offer_ref, the revisions Slow sent for approval (its
+    ``approval.requested``) or accepted (an ``action.authorized{accept_offer}``
+    whose capability's terms_hash that revision's readback.updated or record
+    carries: the accept line itself names no offer)."""
+    out: dict[str, set[object]] = {}
+    for c in x.of("approval.requested"):
+        out.setdefault(str(c.payload.get("offer_ref")), set()).add(
+            c.payload.get("revision")
+        )
+    hashes = {
+        as_dict(a.payload.get("capability")).get("terms_hash")
+        for a in x.of("action.authorized")
+        if a.payload.get("intent") == "accept_offer"
+    } - {None}
+    for e in x.of("readback.updated", "offer.recorded"):
+        if e.payload.get("terms_hash") in hashes:
+            ref = str(e.payload.get("offer_ref"))
+            out.setdefault(ref, set()).add(e.payload.get("revision"))
+    return out
+
+
+def _superseded(x: Inputs, ref: str, last: Event) -> bool:
+    """A lever GUIDE (``_LEVER_MOVES``) after the offer's latest record, then
+    an offer.recorded of a different offer_ref (#238: Slow levers an
+    out-of-mandate offer before its read-back; the better one is a new ref)."""
+    levers = [g.seq for m in _LEVER_MOVES for g in _guides(x, m) if g.seq > last.seq]
+    return bool(levers) and any(
+        o.seq > min(levers) and o.payload.get("offer_ref") != ref
+        for o in x.of("offer.recorded")
+    )
+
+
 @detector("offer.required_unconfirmed_after_readback")
 def _unconfirmed(x: Inputs) -> Value:
-    """Per offer read back (``_reads_back``: an ask_readback citing it after
-    its latest revision's record, or in that record's cp call): the latest
-    revision's slots not ``confirmed`` at the log's end, from its record and
-    readback.updated (Guard's statuses, per-offer window from a5c897c on;
-    the same detector reads per-revision statuses on earlier bundles);
-    ``ask_heard``: whether Guard counts one of those asks heard (``_heard``;
-    never changes ``count`` or ``h5_pass``; on bundles before #230, or once
-    the ask is no longer its lane's newest GUIDE, an ask a verbatim-cancelled
-    turn voiced and its re-run spoke is False here though
-    ``guide_to_heard_ms`` may credit it heard); ``unasked``: offers whose latest
-    revision was never read back (``unasked_n``; then ``h5_pass`` is None: an
-    info_only task need not read back, and the mode is not in the bundle).
-    None: no offer.recorded."""
+    """Per offer Slow committed to (``_committed``: sent for approval or
+    accepted), its latest committed revision's slots not ``confirmed`` at the
+    log's end, if an ask read it back (``_reads_back``: an ask_readback citing
+    it after that revision's record, or in that record's cp call), from its
+    record and readback.updated (Guard's statuses, per-offer window from
+    a5c897c on; the same detector reads per-revision statuses on earlier
+    bundles); ``ask_heard``: whether Guard counts one of those asks heard
+    (``_heard``; never changes ``count`` or ``h5_pass``; on bundles before
+    #230, or once the ask is no longer its lane's newest GUIDE, an ask a
+    verbatim-cancelled turn voiced and its re-run spoke is False here though
+    ``guide_to_heard_ms`` may credit it heard); ``unasked``: committed offers
+    never read back (``unasked_n``), a failure: read-back is mandatory before
+    an accept or an approval (P-OBS default, S1-SYS-68). Out of scope, listed
+    only: ``superseded_by_lever`` (``_superseded``) and ``not_committed``
+    (neither). ``h5_pass`` None: no offer in scope. None: no offer.recorded."""
     offers = _revisions(x)
     if not offers:
         return None
     asked, out, unasked = _asked(x), dict[str, list[object]](), list[object]()
-    heard, ask_heard = _heard(x), dict[str, bool]()
+    heard, ask_heard, committed = _heard(x), dict[str, bool](), _committed(x)
+    superseded, idle = list[object](), list[object]()
     for ref, revs in sorted(offers.items()):
-        last = revs[-1]
+        sent = [o for o in revs if o.payload["revision"] in committed.get(ref, ())]
+        if not sent:
+            (superseded if _superseded(x, ref, revs[-1]) else idle).append(safe(ref))
+            continue
+        last = sent[-1]
         mine = [g for g, _ in asked.get(ref, []) if _reads_back(x, g, last)]
         if not mine:
             unasked.append(safe(ref))
@@ -374,10 +414,10 @@ def _unconfirmed(x: Inputs) -> Value:
         out[key] = left
         ask_heard[key] = any(str(g.payload["msg_id"]) in heard for g in mine)
     count = sum(map(len, out.values()))
-    passed = None if unasked else not count
+    passed = None if not (out or unasked) else not (count or unasked)
     return {"count": count, "offers": out, "ask_heard": ask_heard,
-            "unasked": unasked, "unasked_n": len(unasked),
-            "h5_pass": passed}  # fmt: skip
+            "unasked": unasked, "unasked_n": len(unasked), "h5_pass": passed,
+            "superseded_by_lever": superseded, "not_committed": idle}  # fmt: skip
 
 
 @detector("slow.readback_asks_max_per_revision")

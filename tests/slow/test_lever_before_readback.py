@@ -124,7 +124,7 @@ def test_t3_a_recorded_offer_inside_the_mandate_is_read_back_as_today(
     assert pb.index("read-back", inside) < pb.index("accept_offer", inside)
 
 
-# T4: a lever on its way or heard but not answered -> wait, no read-back yet
+# T4: a lever on its way or heard but not answered -> wait, ask_readback not yet
 
 
 @pytest.mark.parametrize("heard", [False, True])
@@ -137,6 +137,7 @@ def test_t4_a_lever_waiting_means_wait_not_a_read_back(
         h.voice()
     step = _step(h)
     assert step.startswith("wait for the rep to hear and answer the lever"), step
+    assert "; ask_readback not yet" in step, step  # #242 D3
     assert "ask_readback" not in step.split("; ", 1)[0]
     assert ASK_READBACK not in step and "request_approval" not in step
     assert "guide_fast(" not in step
