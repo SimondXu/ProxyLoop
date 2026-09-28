@@ -41,6 +41,7 @@ from proxyloop.obs.detectors import Inputs
 TEXT_EMPTY = sha256_text("")
 TOOLS_EMPTY = sha256_text(tool_response_content("", ()))
 _AGENT = {"fast_user": "fast.user", "fast_cp": "fast.cp", "slow": "slow"}
+K = dict[str, Any]
 
 
 def call(
@@ -115,6 +116,11 @@ def status(log: Log, to: str) -> int:
 
 def inputs(log: Log) -> Inputs:
     return Inputs(log.events, None, lambda _: None)
+
+
+def art(seq: int, kind: str, role: str, detail: str | None = None) -> K:
+    """An artefact in the window that is not the failure event itself."""
+    return {"seq": seq, "kind": kind, "role": role, "detail": detail, "self": False}
 
 
 def roles(log: Log) -> Any:
@@ -233,7 +239,6 @@ def test_world_error_head_is_the_kernels(role: str, timeout: bool, detail: str) 
 
 # -- the whole run's counts ---------------------------------------------------
 
-K = dict[str, Any]
 COUNTS: list[tuple[str, list[K], str, str, object]] = [
     ("each record, a retry too", [{}, {"call_id": "ear:x"}, {"call_id": "ear:x"}],
      "ear", "calls", 3),
@@ -358,9 +363,7 @@ def test_the_window_inside_and_the_nearest_before() -> None:
         "session.ended", fail, edge,
     )  # fmt: skip
     assert got["count"] == 1 and got["seqs"] == [inside]
-    assert got["artefacts"] == [
-        {"seq": inside, "kind": "fidelity_fallback", "role": "mouth", "detail": None}
-    ]
+    assert got["artefacts"] == [art(inside, "fidelity_fallback", "mouth")]
     assert got["nearest_before"] == {"seq": near, "kind": "fidelity_fallback",
                                      "role": "mouth", "detail": None,
                                      "agent_turns": 1}  # fmt: skip
@@ -406,7 +409,8 @@ def test_no_agent_event_opens_at_the_start() -> None:
     assert got["after_seq"] is None and got["seqs"] == [a, fail]
     assert got["nearest_before"] is None
     assert got["artefacts"][1] == {"seq": fail, "kind": "world_error", "role": "ear",
-                                   "detail": "exhausted"}  # fmt: skip
+                                   "detail": "exhausted", "self": True}  # fmt: skip
+    assert got["artefacts"][0]["self"] is False
 
 
 def test_a_terminal_status_first_is_the_failure() -> None:
@@ -517,16 +521,20 @@ def test_diagnose_shows_the_flag_beside_the_tier(
         row = next(line for line in out if f" {run_id} " in line).split()
         at = next(i for i, c in enumerate(row) if c.startswith("tier="))
         return list(
-            itertools.takewhile(lambda c: c.startswith("world_"), row[at + 1 :])
+            itertools.takewhile(lambda c: c.startswith("artefact_"), row[at + 1 :])
         )
 
-    assert beside("rW") == ["world_window=3"]
-    assert beside("rB") == ["world_before=2:fidelity_fallback:0t"]
+    assert beside("rW") == ["artefact_window=3"]
+    assert beside("rB") == ["artefact_before=2:fidelity_fallback:0t"]
     assert beside("rQ") == []
     head = f"== world git_sha g ({world_health.LABEL})"
     block = out[out.index(head) :]
-    assert block[1] == "  fam-a runs=3 flagged=3 in_window=1 nearest_before=1"
-    assert block[2].split()[:3] == ["ear", "calls=3", "finish_length=0"]
+    assert block[1] == f"  legend: {world_health.LEGEND}"
+    assert "length_empty" in block[1] and "fidelity_ok false" in block[1]
+    assert block[2] == (
+        "  fam-a runs=3 flagged=3 in_window=1 world_failure=0 nearest_before=1"
+    )
+    assert block[3].split()[:3] == ["ear", "calls=3", "finish_length=0"]
     assert "    window rW seqs=[3]" in block
     assert "    before rB 2:fidelity_fallback:0t" in block
     assert diagnose.main(["--root", str(tmp_path), "--json"]) == 0
@@ -543,7 +551,7 @@ def test_summary_counts_unknowns_apart() -> None:
          "world": {"roles": {"ear": {"calls": 2, "exhausted": None}}, "window": None}},
         {"run_id": "r2", "detectors": {"tier": {"family": "fam"}},
          "world": {"roles": {"ear": {"calls": 1, "exhausted": 1}},
-                   "window": {"tier": "F", "count": 0, "seqs": [],
+                   "window": {"tier": "F", "count": 0, "seqs": [], "artefacts": [],
                               "nearest_before": {"seq": 4, "kind": "k",
                                                  "agent_turns": 2}}}},
     ]  # fmt: skip
@@ -553,3 +561,160 @@ def test_summary_counts_unknowns_apart() -> None:
     assert fam["nearest_before"] == {"r2": {"seq": 4, "kind": "k", "agent_turns": 2}}
     ear = fam["roles"]["ear"]
     assert (ear["calls"], ear["exhausted"], ear["exhausted_unknown"]) == (3, 1, 1)
+
+
+# -- rev-273: the rulings and the review fixes --------------------------------
+
+TAILS = [
+    "ear: invalid after 2 regenerations: ear: invalid after 2 regenerations",
+    "simuser: no answer within 60.0 s; model said simuser: no answer within 1 s",
+    "model text ear: invalid after 2 regenerations",
+    "mouth: invalid after 2 regenerations.",
+]
+
+
+@pytest.mark.parametrize("message", TAILS)
+def test_model_text_around_a_head_matches_nothing(message: str) -> None:
+    """R1: only a whole kernel-authored head is read; a tail after it (an
+    Invalid's reason may quote model output) voids it."""
+    log = Log("r")
+    seq = end(log, "world_error", message)
+    got = world_health.artefacts(inputs(log))
+    assert got == [{"seq": seq, "kind": "world_error", "role": None, "detail": None}]
+    assert roles(log)["ear"]["exhausted"] is None
+
+
+def _dies(log: Log, role: LLMRole, recovered: LLMRole | None = None) -> int:
+    """``recovered`` fails once and succeeds on its retry; ``role`` fails for
+    good; the session ends llm_unavailable after a teardown cancellation."""
+    if recovered is not None:
+        call(log, recovered, error="ConnectTimeout: ", call_id="again")
+        call(log, recovered, call_id="again")
+    seq = call(log, role, error="ConnectError: All connection attempts failed")
+    call(log, "slow", error="cancelled")
+    end(log, "llm_unavailable")
+    return seq
+
+
+@pytest.mark.parametrize("role", ["ear", "mouth", "simuser"])
+def test_a_world_endpoint_dying_is_an_artefact(role: LLMRole) -> None:
+    """R2: the failing call is a world actor's."""
+    log = Log("r")
+    agent(log)
+    dead = _dies(log, role)
+    got = window(log, "F-infra")
+    assert got["artefacts"] == [art(dead, "llm_unavailable", role)]
+
+
+@pytest.mark.parametrize("role", ["fast_cp", "fast_user", "slow"])
+def test_an_agent_endpoint_dying_never_is(role: LLMRole) -> None:
+    """R2: the failing call is the agent's, even after a world call that a
+    retry recovered."""
+    log = Log("r")
+    _dies(log, role, recovered="ear")
+    assert world_health.artefacts(inputs(log)) == []
+    assert window(log, "F-infra")["count"] == 0
+
+
+def test_a_world_call_failing_is_no_artefact_without_the_end() -> None:
+    log = Log("r")
+    call(log, "mouth", error="ConnectError: x")
+    end(log, "abandoned")
+    assert world_health.artefacts(inputs(log)) == []
+
+
+def test_teardown_cancellations_are_no_edge() -> None:
+    """The reviewer's log: the Mouth fallback is in the window, not behind a
+    cancelled call the teardown wrote."""
+    log = Log("r")
+    edge = agent(log, "fast.request", "fast.cp")
+    fell = fallback(log)
+    call(log, "fast_cp", error="cancelled")
+    fail = end(log, "abandoned")
+    got = window(log)
+    assert (got["after_seq"], got["seqs"], got["failure_seq"]) == (edge, [fell], fail)
+
+
+def test_a_fast_cancelled_is_no_edge() -> None:
+    log = Log("r")
+    edge = agent(log)
+    fell = fallback(log)
+    agent(log, "fast.cancelled", "fast.user")
+    call(log, "slow", error="cancelled")
+    end(log)
+    assert (window(log)["after_seq"], window(log)["seqs"]) == (edge, [fell])
+
+
+def test_an_agent_call_that_failed_is_an_edge() -> None:
+    log = Log("r")
+    fallback(log)
+    edge = call(log, "fast_cp", error="ConnectError: x")
+    end(log, "llm_unavailable")
+    assert (window(log, "F-infra")["after_seq"], window(log)["count"]) == (edge, 0)
+
+
+def test_no_turn_after_a_terminal_status_counts() -> None:
+    log = Log("r")
+    call(log, "ear", finish="length", sha=TOOLS_EMPTY)
+    agent(log, "fast.request", "fast.cp")
+    fail = status(log, "VERIFIED_NO_DEAL")
+    agent(log, "fast.request", "fast.cp")  # after the failure event
+    end(log, "no_deal")
+    got = window(log, "E")
+    assert got["failure_seq"] == fail and got["nearest_before"]["agent_turns"] == 1
+
+
+def test_a_rep_mouth_without_fidelity_ok_is_no_fallback() -> None:
+    log = Log("r")
+    result(log, "rep.mouth", 3)  # legacy: fidelity_ok unset
+    assert roles(log)["mouth"]["fidelity_fallback"] == {"count": 0, "seqs": []}
+    assert world_health.artefacts(inputs(log)) == []
+
+
+def test_zero_reasoning_tokens_count() -> None:
+    log = Log("r")
+    call(log, reasoning=0)
+    call(log, reasoning=0)
+    call(log, reasoning=8)
+    got = roles(log)["ear"]
+    assert (got["reasoning_n"], got["reasoning_tokens_p50"]) == (3, 0)
+
+
+def test_an_unknown_window_shows_a_question_mark() -> None:
+    log = Log("r")
+    fallback(log)
+    flag = window(log, "X")  # no failure event yet
+    assert world_health.cells({"window": flag}) == ["artefact_window=?"]
+
+
+def test_the_failure_itself_is_marked_self() -> None:
+    log = Log("r")
+    agent(log)
+    fell = fallback(log)
+    fail = end(log, "world_error", "mouth: no answer within 60.0 s")
+    flag = window(log, "F-infra")
+    assert world_health.cells({"window": flag}) == [
+        f"artefact_window={fell},{fail}:self"
+    ]
+    rows: list[Any] = [{"run_id": "r", "detectors": {"tier": {"family": "f"}},
+                        "world": {"roles": {}, "window": flag}}]  # fmt: skip
+    families: Any = world_health.summary(rows)["families"]
+    fam = families["f"]
+    assert (fam["in_window"], fam["world_failure"]) == ({"r": [fell]}, ["r"])
+    alone = Log("r")
+    agent(alone)
+    end(alone, "world_error", "mouth: no answer within 60.0 s")
+    rows[0]["world"]["window"] = window(alone, "F-infra")
+    families = world_health.summary(rows)["families"]
+    fam = families["f"]
+    assert (fam["in_window"], fam["world_failure"]) == ({}, ["r"])
+
+
+def test_a_rep_ear_without_call_id_makes_attempts_unknown() -> None:
+    log = Log("r")
+    result(log, "rep.ear", 3, call_id="e1")
+    result(log, "rep.ear", 1, call_id=None)
+    result(log, "rep.ear", 2, call_id=None)
+    result(log, "rep.mouth", 2, fidelity_ok=True)
+    got = world_health.roles(inputs(log))
+    assert got["ear"]["attempts_gt1"] is None and got["mouth"]["attempts_gt1"] == 1

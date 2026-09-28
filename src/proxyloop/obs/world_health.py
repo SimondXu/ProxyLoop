@@ -13,39 +13,52 @@ actor ``world.<role>``), over the whole run:
 - ``finish_length``, ``errors`` (an error other than ``cancelled``) and
   ``cancelled`` (never a failure): ``detectors``' per-role counts.
   ``length_empty``: the ``finish_length`` calls with no visible output, told
-  by ``response_sha`` alone: the hash of an empty streamed text or of a tool
-  response with no text and no tool call (``_EMPTY``); a whitespace-only
-  output counts as visible (a limitation: only the text could tell).
+  by ``response_sha`` alone (a substitute: the record has no output-length
+  field): the hash of an empty streamed text or of a tool response with no
+  text and no tool call (``_EMPTY``, pinned to the real ChatClient); a
+  whitespace-only output counts as visible. Not ``detectors``'
+  ``empty_length``, which reads Fast turns' parsed speech.
 - ``reasoning_tokens_p50`` over the calls whose usage carries
-  ``reasoning_tokens`` (``reasoning_n``); ``latency_p50_ms`` and
+  ``reasoning_tokens`` (``reasoning_n``; 0 counts); ``latency_p50_ms`` and
   ``latency_p95_ms`` (``t_end - t_start``) over the calls with no error
   (``latency_n``); nearest rank, None with no data.
 - ``attempts_gt1``: result events whose ``attempts`` (the world's
   regenerations, not the record's HTTP ``attempt``) is over 1: rep.ear once
   per call (its ``call_id``: one call classifies a block, one rep.ear per
-  line), rep.mouth, user.sim (a silent SimUser reply emits none: unseen).
+  line; None: a rep.ear without one), rep.mouth, user.sim (a silent SimUser
+  reply emits none: unseen).
 - ``exhausted``: the Mouth's ``fidelity_fallback`` count (rep.mouth
-  ``fidelity_ok: false``: every regeneration failed, the template was
-  spoken); for the Ear and the SimUser, whether the session.ended
-  ``world_error`` head names the role and ``invalid after N regenerations``
-  (0 or 1; None: a world_error end without the kernel-authored head, a
-  bundle from before S1-SYS-43). Only the head's codes are read, never its
-  text (``kernel/session.py`` ``_AUTHORED``; test_world_health pins it).
+  ``fidelity_ok: false``, a substitute: no event names the fallback; a
+  rep.mouth without the key is none); for the Ear and the SimUser, whether
+  the session.ended ``world_error`` head names the role and ``invalid after N
+  regenerations`` (0 or 1; None: a world_error end without a head, a bundle
+  from before S1-SYS-43). Documented exception (root ruling R1, rev-273): the
+  kernel-authored message is read without ``--content``, only as a whole
+  (``fullmatch``) against the heads ``kernel/session.py`` ``_AUTHORED`` lets
+  through, ``<role>: invalid after N regenerations`` or ``<role>: no answer
+  within S s``; anything after a head (``Invalid``'s reason may quote model
+  output) matches nothing. Role and detail codes only are emitted.
 
 ``window`` (root ruling on S1-SYS-89, ADR-0023 unchanged: no tier moves): on
 tiers F, F-infra, E and X only, else None. The failure event is the first
 status.changed to a terminal status (``guard.status.TERMINAL``) when the case
 got there before the session.ended, else the session.ended; ``after_seq`` is
 the last event Slow or Fast wrote before it (actor ``slow``, ``fast.user``,
-``fast.cp``; None: none, the window opens at the log's start). The window
-``(after_seq, failure_seq]`` lists the world artefacts in it: ``length_empty``
-(a world llm.call), ``fidelity_fallback`` (a rep.mouth) and ``world_error``
-(the session.ended; ``detail`` ``exhausted`` or ``timeout`` from its head, else
-None). A co-occurring artefact does not prove the world caused the failure:
-it is shown for a human to judge. ``nearest_before``: the last artefact at or
-before ``after_seq`` with ``agent_turns``, the agent turns begun after it and
-before the failure event (fast.request, slow.step.started), or None.
-``count`` None: an X run with no failure event yet.
+``fast.cp``) that is no cancellation (``_cancelled``: an llm.call
+``error: cancelled``, which the TaskGroup's teardown writes for every call in
+flight, or a fast.cancelled); None: none, the window opens at the log's
+start. The window ``(after_seq, failure_seq]`` lists the world artefacts in
+it: ``length_empty`` (a world llm.call), ``fidelity_fallback`` (a rep.mouth),
+``world_error`` (the session.ended; ``detail`` ``exhausted`` or ``timeout``
+from its head, else None) and ``llm_unavailable`` (root ruling R2: an
+``llm_unavailable`` end whose failing call, the first llm.call whose last
+record for its call_id failed, a world actor made; that llm.call). ``self``:
+the artefact is the failure event itself. A co-occurring artefact does not
+prove the world caused the failure: it is shown for a human to judge.
+``nearest_before``: the last artefact at or before ``after_seq`` with
+``agent_turns``, the agent turns begun after it and before the failure event
+(fast.request, slow.step.started), or None. ``count`` None: an X run with no
+failure event yet.
 """
 
 from __future__ import annotations
@@ -74,6 +87,11 @@ _HEAD = re.compile(
     r"(ear|mouth|simuser): (?:(invalid after \d+ regenerations)"
     r"|no answer within [\d.]+ s)"
 )
+LEGEND = (
+    "length_empty = a finish_reason length call whose response_sha is that of "
+    "an empty response (pinned to the real ChatClient); Mouth fallback = "
+    "rep.mouth fidelity_ok false"
+)
 _SUMMED = ("calls", "finish_length", "length_empty", "errors", "cancelled",
            "attempts_gt1", "exhausted")  # fmt: skip
 _rank = guide_timing._rank  # pyright: ignore[reportPrivateUsage]
@@ -99,16 +117,19 @@ def _world_errors(x: Inputs) -> list[Event]:
     ]
 
 
-def _attempts(x: Inputs) -> dict[str, int]:
-    seen, out = set[object](), dict[str, int]()
+def _attempts(x: Inputs) -> dict[str, int | None]:
+    seen, out = set[object](), dict[str, int | None]()
     out.update(dict.fromkeys(ROLES, 0))
     for e in x.of(*_RESULTS):
         key = e.payload.get("call_id") if e.type == "rep.ear" else e.event_id
-        attempts = e.payload.get("attempts")
+        attempts, role = e.payload.get("attempts"), _RESULTS[e.type]
+        if key is None:  # a rep.ear with no call_id: its call cannot be told
+            out[role] = None
         if (e.type, key) in seen or not isinstance(attempts, int):
             continue
         seen.add((e.type, key))
-        out[_RESULTS[e.type]] += attempts > 1
+        if (n := out[role]) is not None:
+            out[role] = n + (attempts > 1)
     return out
 
 
@@ -172,7 +193,32 @@ def artefacts(x: Inputs) -> list[dict[str, object]]:
     ]
     found += [_artefact(s, "fidelity_fallback", "mouth") for s in _fallbacks(x)]
     found += [_artefact(e.seq, "world_error", *_head(e)) for e in _world_errors(x)]
+    found += _unavailable(x)
     return sorted(found, key=lambda a: cast(int, a["seq"]))
+
+
+def _unavailable(x: Inputs) -> list[dict[str, object]]:
+    """R2: an llm_unavailable end's failing call, when a world actor made it."""
+    ends = x.of("session.ended")
+    if not ends or ends[0].payload.get("reason") != "llm_unavailable":
+        return []
+    calls = [e for e in x.of("llm.call") if e.seq < ends[0].seq]
+    last = {e.payload.get("call_id"): e for e in calls}  # a retry replaces it
+    failed = [
+        e for e in calls
+        if last[e.payload.get("call_id")] is e
+        and e.payload.get("error") not in (None, "cancelled")
+    ]  # fmt: skip
+    if not failed or not failed[0].actor.startswith("world."):
+        return []
+    role = str(failed[0].payload.get("role"))
+    return [_artefact(failed[0].seq, "llm_unavailable", role)]
+
+
+def _cancelled(e: Event) -> bool:
+    """A cancellation, never the window's edge: the teardown's llm.calls."""
+    cancelled = e.type == "llm.call" and e.payload.get("error") == "cancelled"
+    return cancelled or e.type == "fast.cancelled"
 
 
 def _failure(x: Inputs) -> Event | None:
@@ -192,10 +238,16 @@ def window(x: Inputs, tier: object) -> dict[str, object] | None:
         return out | {"failure": None, "failure_seq": None, "after_seq": None,
                       "count": None, "seqs": list[int](), "artefacts": list[object](),
                       "nearest_before": None}  # fmt: skip
-    agent = [e.seq for e in x.events if e.actor in AGENT and e.seq < fail.seq]
+    agent = [
+        e.seq for e in x.events
+        if e.actor in AGENT and e.seq < fail.seq and not _cancelled(e)
+    ]  # fmt: skip
     after = agent[-1] if agent else None
     found = [(cast(int, a["seq"]), a) for a in artefacts(x)]
-    inside = [a for s, a in found if (after is None or s > after) and s <= fail.seq]
+    inside = [
+        a | {"self": s == fail.seq}
+        for s, a in found if (after is None or s > after) and s <= fail.seq
+    ]  # fmt: skip
     nearest: dict[str, object] | None = None
     if before := [a for s, a in found if after is not None and s <= after]:
         since = cast(int, before[-1]["seq"])
@@ -216,15 +268,18 @@ def run(x: Inputs) -> dict[str, object]:
 def summary(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
     """Per family over one diagnose group's rows: the runs, the per-role sums
     (``exhausted`` None in a run is counted in ``exhausted_unknown``), the
-    runs the flag ran on (``flagged``), and those with an artefact in the
-    window or one before it, by run id."""
+    runs the flag ran on (``flagged``); by run id, those with an artefact in
+    the window other than the failure itself (``in_window``, its seqs), those
+    whose failure event is one (``world_failure``) and those with one before
+    the window."""
     fams: dict[str, dict[str, object]] = {}
     for r in rows:
         w = as_dict(r.get("world"))
         if not w:
             continue
         fam = fams.setdefault(family(r), {
-            "runs": 0, "flagged": 0, "in_window": {}, "nearest_before": {},
+            "runs": 0, "flagged": 0, "in_window": {}, "world_failure": [],
+            "nearest_before": {},
             "roles": {role: {k: 0 for k in _SUMMED} for role in ROLES},
         })  # fmt: skip
         fam["runs"] = cast(int, fam["runs"]) + 1
@@ -238,24 +293,29 @@ def summary(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
         if flag := as_dict(w.get("window")):
             fam["flagged"] = cast(int, fam["flagged"]) + 1
             run_id = str(r.get("run_id"))
-            if flag.get("count"):
-                as_dict(fam["in_window"])[run_id] = flag["seqs"]
+            found = [as_dict(a) for a in cast(list[object], flag["artefacts"])]
+            if seqs := [a["seq"] for a in found if not a["self"]]:
+                as_dict(fam["in_window"])[run_id] = seqs
+            if any(a["self"] for a in found):
+                cast(list[str], fam["world_failure"]).append(run_id)
             if near := as_dict(flag.get("nearest_before")):
                 as_dict(fam["nearest_before"])[run_id] = {
                     k: near[k] for k in ("seq", "kind", "agent_turns")
                 }
-    return {"label": LABEL, "families": dict(sorted(fams.items()))}
+    return {"label": LABEL, "legend": LEGEND, "families": dict(sorted(fams.items()))}
 
 
 def cells(value: object) -> list[str]:
-    """The table cells beside the tier: the window's seqs (``?``: unknown) and
-    the nearest artefact before it (``seq:kind:turns``); none when empty."""
+    """The table cells beside the tier: the window's seqs (``:self``: the
+    failure event itself; ``?``: unknown) and the nearest artefact before it
+    (``seq:kind:turns``); none when empty."""
     flag, out = as_dict(as_dict(value).get("window")), list[str]()
     if flag and flag.get("count") != 0:
-        seqs = ",".join(map(str, cast(list[object], flag.get("seqs"))))
-        out.append(f"world_window={'?' if flag.get('count') is None else seqs}")
+        found = [as_dict(a) for a in cast(list[object], flag.get("artefacts"))]
+        seqs = ",".join(f"{a['seq']}{':self' * bool(a['self'])}" for a in found)
+        out.append(f"artefact_window={'?' if flag.get('count') is None else seqs}")
     if near := as_dict(flag.get("nearest_before")):
-        out.append(f"world_before={_near(near)}")
+        out.append(f"artefact_before={_near(near)}")
     return out
 
 
@@ -267,15 +327,18 @@ def _near(value: object) -> str:
 def block(s: Mapping[str, object], group: str) -> str:
     """The human block diagnose prints per group, after the watch block."""
     kind, _, value = group.partition(":")
-    out = [f"== world {kind} {value[:12]} ({LABEL})"]
+    out = [f"== world {kind} {value[:12]} ({LABEL})", f"  legend: {LEGEND}"]
     for fam, c in as_dict(s["families"]).items():
         d = as_dict(c)
         win, near = as_dict(d["in_window"]), as_dict(d["nearest_before"])
+        failed = cast(list[str], d["world_failure"])
         out.append(f"  {fam} runs={d['runs']} flagged={d['flagged']} "
-                   f"in_window={len(win)} nearest_before={len(near)}")  # fmt: skip
+                   f"in_window={len(win)} world_failure={len(failed)} "
+                   f"nearest_before={len(near)}")  # fmt: skip
         for role, counts in as_dict(d["roles"]).items():
             items = (f"{k}={n}" for k, n in as_dict(counts).items())
             out.append(" ".join([f"    {role}", *items]))
         out += [f"    window {rid} seqs={seqs}" for rid, seqs in win.items()]
+        out += [f"    world_failure {rid}" for rid in failed]
         out += [f"    before {rid} {_near(n)}" for rid, n in near.items()]
     return "\n".join(out)
