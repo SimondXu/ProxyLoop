@@ -93,6 +93,16 @@ def ear(act: str, **args: object) -> str:
     return json.dumps({"text": "", "tool_calls": [call]})
 
 
+def ears(*items: Mapping[str, object]) -> str:
+    """An Ear ``classify`` call for a heard block: one act per utterance."""
+    call = {
+        "call_id": "t",
+        "name": "classify",
+        "arguments": json.dumps({"acts": [dict(item) for item in items]}),
+    }
+    return json.dumps({"text": "", "tool_calls": [call]})
+
+
 def act(private: str, *calls: Mapping[str, object], public: str | None = None) -> str:
     body: dict[str, object] = {"private_summary": private, "calls": list(calls)}
     if public is not None:
