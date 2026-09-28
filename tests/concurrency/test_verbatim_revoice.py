@@ -139,8 +139,8 @@ def test_r2_a_final_offer_ask_is_revoiced_and_heard_after_the_rerun(
     tmp_path: Path,
 ) -> None:
     """R2: the ask_final_offer voiced by a cancelled turn is voiced again by
-    its re-run; ``_heard`` (which S1-SYS-57's ``asked_final`` reads) maps it
-    to the first cp line after the re-run's delivery."""
+    its re-run; ``_heard`` maps it, and S1-SYS-57's ``asked_final`` anchors,
+    at the first cp line after the re-run's delivery."""
 
     async def case() -> None:
         sim = Sim(tmp_path)
@@ -154,6 +154,7 @@ def test_r2_a_final_offer_ask_is_revoiced_and_heard_after_the_rerun(
         ids = [x.utt_id for x in sim.bb.channels["cp"].lines]
         assert at > ids.index(f"decline-{decline.seq}") + 1  # after the decline
         assert sim.tools._heard()[msg] == at  # pyright: ignore[reportPrivateUsage]
+        assert sim.tools.asked_final == at
         _once_per_turn(sim)
         await sim.stop()
 
