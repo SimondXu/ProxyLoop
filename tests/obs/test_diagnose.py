@@ -10,7 +10,7 @@ from tests.obs.bundles import Log, manifest, write
 from tests.obs.triage_bundle import bare, bundle
 
 from proxyloop.contract.bundle import EVENTS
-from proxyloop.obs import detectors, diagnose
+from proxyloop.obs import detectors, diagnose, tiers
 
 
 def test_groups_by_sha_newest_first(
@@ -33,10 +33,14 @@ def test_groups_by_sha_newest_first(
     out = capsys.readouterr().out.splitlines()
     assert out[0] == f"# {detectors.BANNER}"
     heads = [line for line in out if line.startswith("== ")]
-    assert heads == ["== git_sha new  runs=1", "== git_sha old  runs=2"]
+    assert heads == [  # a tier block per group follows the table, same order
+        "== git_sha new  runs=1", "== git_sha old  runs=2",
+        f"== tiers git_sha new ({tiers.NOTE})", f"== tiers git_sha old ({tiers.NOTE})",
+    ]  # fmt: skip
     # a bare run: no end and no step are unknown ("?"), counted per group
     assert "end_reason" not in out[2] and "end=None" in out[2]
-    assert "slow_max_step_gap_ms:?x2" in out[-1]
+    totals = [line for line in out if line.startswith("  sum")]
+    assert "slow_max_step_gap_ms:?x2" in totals[-1]
 
 
 def test_a_bad_bundle_is_skipped_not_fatal(
@@ -83,6 +87,8 @@ def test_groups_by_slow_fp_when_present(
     assert [x for x in out if x.startswith("== ")] == [
         "== git_sha s1  runs=1",
         "== slow_fp fpA  runs=2",
+        f"== tiers git_sha s1 ({tiers.NOTE})",
+        f"== tiers slow_fp fpA ({tiers.NOTE})",
     ]
     totals = [x.split() for x in out if x.startswith("  sum")]
     assert totals and all("max" not in t for t in totals)  # bare runs: no maxima
@@ -93,7 +99,8 @@ def test_totals_label_sums_and_maxima(
 ) -> None:
     bundle(tmp_path)
     assert diagnose.main(["--root", str(tmp_path)]) == 0
-    total = capsys.readouterr().out.splitlines()[-1].split()
+    lines = capsys.readouterr().out.splitlines()
+    total = [x for x in lines if x.startswith("  sum")][-1].split()
     sums, maxima = total[: total.index("max")], total[total.index("max") :]
     assert sums[0] == "sum" and "llm_calls=5" in sums
     assert "slow_max_step_gap_ms=2900" in maxima  # a max, not under "sum"
@@ -108,6 +115,12 @@ def test_unasked_offers_show_as_their_own_cell(
     offer: dict[str, object] = {"offer_ref": "o1", "revision": 1, "slots": slots}
     offer["terms_hash"] = None
     log.add("offer.recorded", "guard", "agent", offer, (log.start,))
+    card: dict[str, object] = {"approval_id": "a1", "offer_ref": "o1", "revision": 1}
+    card |= {"terms_hash": "h", "readback_text": "R", "authority_epoch": 0}
+    binding = {"offer_ref": "o1", "revision": 1, "authority_epoch": 0}
+    card |= {"expires_ms": 9, "binding": binding | {"account_ref": "a",
+             "principal_ref": "p", "purpose": "x"}}  # fmt: skip
+    log.add("approval.requested", "guard", "agent", card, (log.start,))  # in scope
     write(tmp_path / "rO", log, manifest("rO"))
     assert diagnose.main(["--root", str(tmp_path)]) == 0
     out = capsys.readouterr().out

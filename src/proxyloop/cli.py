@@ -36,6 +36,7 @@ from proxyloop.evidence.check import ENDED_OK, check_path
 from proxyloop.kernel.session import ChannelSpec, ClientFactory, run_session
 from proxyloop.llm.factory import make_client
 from proxyloop.llm.http import RecordSink
+from proxyloop.llm.relay import ChatClient
 
 REAL = AdapterKind.REAL_HTTP
 FAST, FAST_ENDPOINT = "Qwen3.5-9B", "vllm"  # today's defaults
@@ -43,6 +44,11 @@ SLOW, SLOW_ENDPOINT = "claude-sonnet-5", "relay"
 WORLD = "gemini-3.8-flash"  # ADR-0005
 WORLD_ROLES = ("ear", "mouth", "simuser")
 WORLD_EFFORT = "low"  # provisional: ADR-0005; S1 probe decides
+WorldSpec = tuple[Endpoint, str, ReasoningEffort | None]  # --world-model's value
+WORLD_ENDPOINTS: tuple[Endpoint, ...] = ChatClient.ENDPOINTS  # vLLM serves no world
+WORLD_SPEC: WorldSpec = ("teamrouter", WORLD, None)  # today's world, every role
+_WORLD_ENDPOINTS: dict[str, Endpoint] = {e: e for e in WORLD_ENDPOINTS}
+_EFFORTS: dict[str, ReasoningEffort] = {e: e for e in get_args(ReasoningEffort)}
 TEAMROUTER_SLOW_EFFORT = "low"  # provisional until S0-ROOT-12; the user's setting
 HOSTED_FAST_EFFORT = "low"  # provisional until S0-ROOT-12; the user's setting
 OPENROUTER_FAST_EFFORT = "none"  # user decision 2026-09-27 (S1-SYS-26): Luna
@@ -77,6 +83,34 @@ CONDITIONS: dict[str, tuple[ModelRef, ModelRef | None]] = {
 }
 
 
+def world_spec(spec: str) -> WorldSpec:
+    """``<endpoint>:<model_id>[@<effort>]``: the effort splits off at the last
+    '@', the endpoint at the first ':' (a model id may hold ':'). Anything else
+    is an argparse error: no fallback to today's world (AGENTS 6)."""
+
+    head, at, tail = spec.rpartition("@")
+    head, effort = (head, _EFFORTS.get(tail)) if at else (spec, None)
+    if at and effort is None:
+        raise argparse.ArgumentTypeError(f"effort {tail!r} in {spec!r}")
+    name, colon, model_id = head.partition(":")
+    if not colon or (endpoint := _WORLD_ENDPOINTS.get(name)) is None:
+        raise argparse.ArgumentTypeError(
+            f"{spec!r}: the endpoint must be one of {', '.join(WORLD_ENDPOINTS)}"
+        )
+    if not model_id:
+        raise argparse.ArgumentTypeError(f"{spec!r} names no model")
+    return endpoint, model_id, effort
+
+
+def _world(args: argparse.Namespace, role: str) -> ModelRef:
+    """Effort: ``--<role>-effort`` > the spec's ``@effort`` > ``--world-effort``."""
+
+    spec = getattr(args, f"{role}_model") or args.world_model or WORLD_SPEC
+    endpoint, model_id, effort = spec
+    effort = getattr(args, f"{role}_effort") or effort or args.world_effort
+    return _ref(endpoint, model_id, effort)
+
+
 def _fast(args: argparse.Namespace) -> ModelRef:
     fast_effort = args.fast_effort
     if args.fast_endpoint != "vllm" and fast_effort is None:
@@ -95,12 +129,7 @@ def live_config(args: argparse.Namespace) -> SessionConfig:
     slow_effort = args.slow_effort  # the relay's Slow keeps the provider's default
     if args.slow_endpoint == "teamrouter" and slow_effort is None:
         slow_effort = TEAMROUTER_SLOW_EFFORT
-    world = {
-        role: _ref(
-            "teamrouter", WORLD, getattr(args, f"{role}_effort") or args.world_effort
-        )
-        for role in WORLD_ROLES
-    }
+    world = {role: _world(args, role) for role in WORLD_ROLES}
     return SessionConfig(
         fast_user=fast,
         fast_cp=fast,
@@ -181,8 +210,22 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--mode", help="a family mode; unset: the family's default")
         p.add_argument("--instance", type=int, default=0, help="0: the file itself")
         efforts, endpoints = get_args(ReasoningEffort), get_args(Endpoint)
+        p.add_argument(
+            "--world-model",
+            type=world_spec,
+            metavar="ENDPOINT:MODEL[@EFFORT]",
+            help=f"every world role; unset: teamrouter:{WORLD}. ENDPOINT: "
+            f"{', '.join(WORLD_ENDPOINTS)}. Effort, first set wins: --<role>-effort,"
+            " the role's @EFFORT, --world-effort",
+        )
         p.add_argument("--world-effort", default=WORLD_EFFORT, choices=efforts)
-        for role in WORLD_ROLES:  # per role; unset: --world-effort
+        for role in WORLD_ROLES:  # per role; unset: --world-model / --world-effort
+            p.add_argument(
+                f"--{role}-model",
+                type=world_spec,
+                metavar="ENDPOINT:MODEL[@EFFORT]",
+                help=f"{role} only; unset: --world-model (the whole spec)",
+            )
             p.add_argument(f"--{role}-effort", choices=efforts)
         p.add_argument("--condition", choices=CONDITIONS, help="EVAL §4.1 Fast")
         p.add_argument("--fast-model", default=FAST, help="a ModelRef model_id")

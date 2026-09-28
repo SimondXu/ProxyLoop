@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import random
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, Self
 
@@ -188,6 +188,42 @@ class SimUser:
             return None
         return await self._reply(False, cause, stop, STOP_DELAY_S)
 
+    def request(
+        self,
+        chat: Sequence[str],
+        facts: Mapping[str, str],
+        stop: Stop | None,
+        cause: str,
+        n: int,
+    ) -> ToolRequest:
+        """The exact request ``_reply`` sends for attempt ``n``; pure. ``chat``:
+        the lines so far ("Assistant: ..." / "You: ..."); ``facts``: the
+        profile facts as the user holds them now; ``stop``: this reply is it."""
+
+        now = ""
+        if stop is not None:
+            now = f"\n\nNow, in this reply: {stop.text_hint.strip()}"
+            if stop.change:
+                said = "; ".join(f"{k}: {v}" for k, v in sorted(stop.change.items()))
+                now += f" Say your changed facts exactly: {said}."
+        lines = "\n".join(chat) or "(empty: write your opening request)"
+        known = "\n".join(f"{k}: {v}" for k, v in sorted(facts.items()))
+        goal = self._task.goal(facts).strip()
+        system = SYSTEM.format(persona=self._persona, goal=goal, facts=known)
+        messages = (
+            ChatMessage(role="system", content=system),
+            ChatMessage(role="user", content=f"Chat so far:\n{lines}{now}"),
+        )
+        return ToolRequest(
+            call_id=f"simuser:{cause}:{n}",
+            role="simuser",
+            messages=messages,
+            tools=(self._tool,),
+            tool_choice="reply",
+            max_tokens=world.MAX_TOKENS,
+            temperature=TEMPERATURE,
+        )
+
     async def _reply(
         self,
         opening: bool,
@@ -195,36 +231,18 @@ class SimUser:
         stop: Stop | None,
         delay_s: tuple[float, float] | None = None,
     ) -> SimReply | None:
-        now = ""
         if stop is not None:
             self._fired = True
             if self.approver is not None:
                 self.approver.stop(stop.change)
-            now = f"\n\nNow, in this reply: {stop.text_hint.strip()}"
-            if stop.change:
-                said = "; ".join(f"{k}: {v}" for k, v in sorted(stop.change.items()))
-                now += f" Say your changed facts exactly: {said}."
-        chat = "\n".join(self._chat) or "(empty: write your opening request)"
-        facts = "\n".join(f"{k}: {v}" for k, v in sorted(self._facts.items()))
-        goal = self._task.goal(self._facts).strip()
-        system = SYSTEM.format(persona=self._persona, goal=goal, facts=facts)
-        messages = (
-            ChatMessage(role="system", content=system),
-            ChatMessage(role="user", content=f"Chat so far:\n{chat}{now}"),
-        )
-        call_ids = [f"simuser:{cause}:{n}" for n in range(world.MAX_REGENERATIONS + 1)]
+        requests = [
+            self.request(self._chat, self._facts, stop, cause, n)
+            for n in range(world.MAX_REGENERATIONS + 1)
+        ]
+        call_ids = [r.call_id for r in requests]
 
         async def attempt(n: int) -> tuple[ToolCall, ...]:
-            request = ToolRequest(
-                call_id=call_ids[n],
-                role="simuser",
-                messages=messages,
-                tools=(self._tool,),
-                tool_choice="reply",
-                max_tokens=world.MAX_TOKENS,
-                temperature=TEMPERATURE,
-            )
-            return await self._world.tools(self._client, request, cause)
+            return await self._world.tools(self._client, requests[n], cause)
 
         out, attempts, _ = await world.bounded(
             attempt,
