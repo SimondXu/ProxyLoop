@@ -23,6 +23,7 @@ from tests.concurrency.harness import (
     called,
     settle,
 )
+from tests.kernel.test_calls import Clocked
 from tests.support.fakes import RepeatingLLM
 from tests.support.sessions import fake_config, patient_task
 
@@ -60,7 +61,7 @@ class Case:
 
     def __init__(self, root: Path, *keys: str) -> None:
         self.vt = SameInstant()
-        self.ch = {key: Channel() for key in keys}
+        self.ch = {key: Clocked() if key == "cp" else Channel() for key in keys}
 
         def make(role: LLMRole, ref: ModelRef, sink: RecordSink) -> LLMClient:
             said = SCRIPTS.get(role, ["unused"])
@@ -178,9 +179,11 @@ def test_a_timeout_starts_no_new_work(
     monkeypatch.setattr(watchdog, "MAX_SESSION_S", 20.0)
 
     def end(c: Case) -> None:
-        opened = c.k.calls.opened
-        assert opened is not None
-        due = (opened.t_ms + 20_000) // 1_000 * 1_000 + 1_000  # the first tick past
+        opened, ticks = c.k.calls.opened, cast(Clocked, c.ch["cp"]).ticks
+        assert opened is not None and ticks
+        # the first tick past, in the watchdog's phase: the fake calls' 1 ms
+        # steps shift it (S1-SYS-74: Slow's call_opened step at the start)
+        due = ticks[-1] + 1_000 * ((opened.t_ms + 20_000 - ticks[-1]) // 1_000 + 1)
         c.t_end = due
         c.says("user", "Any news?", due_ms=due)
 
