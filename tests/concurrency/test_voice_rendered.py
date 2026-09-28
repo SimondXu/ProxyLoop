@@ -52,7 +52,7 @@ def _voices_only(sim: Sim, a: str, b: str) -> None:
     (voiced,) = sim.of("s2f.voiced", msg_id=b)
     assert voiced.cause_ids == (turn.event_id,)
     fates = _fates(sim)
-    assert fates[a] == heard.Fate("dead", None)  # superseded: never heard
+    assert fates[a] == heard.Fate("dead", None, superseded=True)  # superseded: never heard
     assert fates[b].state == "heard"
     assert a not in sim.tools._heard()  # pyright: ignore[reportPrivateUsage]
 
