@@ -60,6 +60,34 @@ def test_one_utterance_can_give_every_identity_fact() -> None:
     assert (done.to, done.intent.kind, p.strikes) == ("DISCOVER", "how_can_help", 0)
 
 
+def test_identity_given_before_the_greeting_is_answered_verifies_at_once() -> None:
+    """S1-SYS-74 pins policy.py's GREET branch: the agent states the identity
+    up front, before answering the rep's greeting: ``provide_fact`` in GREET
+    falls through to IDENTIFY and verifies there, with no strike."""
+    p = _policy()
+    assert p.state == "GREET"
+    done = _say(p, "provide_fact", facts={NAME: "Dana Reyes", LAST4: "4821"})
+    assert (done.from_, done.to, done.intent.kind) == (
+        "GREET",
+        "DISCOVER",
+        "how_can_help",
+    )
+    assert (p.strikes, p.identity_strikes, done.strike) == (0, 0, False)
+
+
+def test_one_identity_fact_before_the_greeting_asks_only_for_the_rest() -> None:
+    p = _policy()
+    part = _say(p, "provide_fact", facts={NAME: "Dana Reyes"})
+    assert (part.from_, part.to, part.intent.kind) == (
+        "GREET",
+        "IDENTIFY",
+        "ask_identity",
+    )
+    assert part.intent.ask == (LAST4,) and p.strikes == 0
+    done = _say(p, "provide_fact", facts={LAST4: "4821"})
+    assert (done.to, done.intent.kind, p.strikes) == ("DISCOVER", "how_can_help", 0)
+
+
 def test_identity_patience_abandons_after_the_last_strike() -> None:
     p = _policy()
     _say(p, "smalltalk")  # the greeting: no strike

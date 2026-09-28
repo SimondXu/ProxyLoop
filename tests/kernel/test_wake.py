@@ -169,9 +169,9 @@ class Host:
         return 0
 
 
-def test_rep_turns_and_strikes_wake_slow_only_while_the_call_is_open(
+def test_the_call_opening_wakes_slow_once_and_rep_turns_and_strikes_only_in_it(
     tmp_path: Path,
-) -> None:
+) -> None:  # S1-SYS-74 flipped the "no wake" pin: chan.opened{cp} wakes (ADR-0012)
     host = Host()
     bus = Bus(tmp_path / "events.jsonl", "r", ManualClock())
     bus.subscribe(wake.Wakes(cast(Kernel, host)).on_event)
@@ -197,21 +197,53 @@ def test_rep_turns_and_strikes_wake_slow_only_while_the_call_is_open(
     emit("chan.opened", lane="user")
     assert host.woken == []
     emit("chan.opened", lane="cp")
+    assert host.woken == ["call_opened"]  # once per call open, before any rep line
     rep()
     emit("chan.strike", lane="cp")
     rep("agent")
-    assert host.woken == ["rep_turn", "strike"]
+    assert host.woken == ["call_opened", "rep_turn", "strike"]
     step()  # in the call: the heartbeat
     assert host.timers == 1
     emit("chan.closed", lane="cp")
     rep()
     emit("chan.strike", lane="cp")
-    assert host.woken == ["rep_turn", "strike", "call_closed"]
+    assert host.woken == ["call_opened", "rep_turn", "strike", "call_closed"]
     step()  # after the call: no heartbeat
     assert host.timers == 1
     step({"tool": "wait", "seconds": 5})  # but a wait still wakes
     assert host.timers == 2
+    emit("chan.opened", lane="cp")  # a second call (ADR-0014) wakes again
+    assert host.woken[-1:] == ["call_opened"] and host.woken.count("call_opened") == 2
     bus.close()
+
+
+@pytest.mark.parametrize("opening", ["ready", "intake_deadline"])
+def test_a_call_opening_wakes_slow_exactly_once(tmp_path: Path, opening: str) -> None:
+    """S1-SYS-74 (ADR-0012's ``call_opened``): Slow steps as the cp call opens,
+    before the rep says anything, whatever opened it."""
+    from tests.kernel.test_calls import DEADLINE, Intake
+
+    sim = Call(tmp_path) if opening == "ready" else Intake(tmp_path)
+
+    async def case() -> None:
+        await sim.start()
+        if opening == "intake_deadline":
+            await sim.vt.run_for(DEADLINE)
+        await sim.vt.run_for(12_000)
+        sim.rep_says("Thanks for calling. Who am I speaking with?")
+        await sim.vt.run_for(20_000)
+        await sim.stop()
+
+    play(case)
+    (opened,) = sim.of("chan.opened", lane="cp")
+    assert opened.payload["reason"] == opening
+    woke = [s for s in sim.of("slow.step.started") if "call_opened" in reasons(s)]
+    assert len(woke) == 1, [reasons(s) for s in sim.of("slow.step.started")]
+    (step,) = woke
+    assert step.seq > opened.seq and int(str(step.payload["basis_seq"])) >= opened.seq
+    assert step.t_ms - opened.t_ms <= 2  # at once: no rep line needed
+    (u,) = sim.of("utt.final", speaker="partner")
+    assert step.seq < u.seq
 
 
 def test_every_wake_reason_in_the_source_is_enumerated() -> None:  # S5b: signals
