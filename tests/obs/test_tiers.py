@@ -118,9 +118,17 @@ def _heard(log: Log, utt_id: str, cause: str, lane: str = "cp") -> str:
     return utt_id
 
 
-def _commit(log: Log, utt_id: str, ledger: bool = True, said: str = "60.00") -> None:
+def _commit(
+    log: Log,
+    utt_id: str,
+    ledger: bool = True,
+    said: str = "60.00",
+    months: int = 24,
+    **terms: str,
+) -> None:
     """The rep hears ``utt_id`` as an accept and commits; the ledger binds a
-    monthly_price of ``said``."""
+    monthly_price of ``said``, ``months`` and ``terms`` (``fee_x`` is
+    ``fee:x``)."""
     ear: P = {"utt_id": utt_id, "act": "accept", "args": {}, "call_id": "e"}
     ear_id = log.add("rep.ear", "world.ear", "world", ear, (log.start,))
     intent: P = {"kind": "confirmed", "offer_ref": "save-1", "say": [], "ask": []}
@@ -129,8 +137,9 @@ def _commit(log: Log, utt_id: str, ledger: bool = True, said: str = "60.00") -> 
     heard: P = {"utt_id": utt_id, "offer_ref": "save-1"}
     hid = log.add("rep.commit_heard", "world.policy", "world", heard, (ear_id, pid))
     if ledger:
-        binding: P = {"offer_ref": "save-1", "revision": 1, "term_months": 24}
-        binding["terms"] = {"monthly_price": said}
+        binding: P = {"offer_ref": "save-1", "revision": 1, "term_months": months}
+        more = {k.replace("fee_", "fee:", 1): v for k, v in terms.items()}
+        binding["terms"] = {"monthly_price": said} | more
         write_: P = {"confirmation_id": "123456", "binding": binding}
         log.add("ledger.write", "world.ledger", "world", write_, (hid,))
 
@@ -474,6 +483,8 @@ def test_money_is_parsed_exactly_to_cents() -> None:
     # the key names and the money pattern obs duplicates, pinned to env/contract
     assert tiers.MONEY.pattern == MONEY[1:-1]
     assert re.match(READBACK_FIELD, tiers.MONTHLY) and money_term(tiers.MONTHLY)
+    for field in ("monthly_price", "fee:x", "credit:y", "term_months", "expires"):
+        assert tiers._money(field) == money_term(field), field  # pyright: ignore[reportPrivateUsage]
 
 
 # -- totality -----------------------------------------------------------------
@@ -689,9 +700,16 @@ def test_diagnose_prints_the_tiers_block_and_json(
 
 
 def _agent_offer(log: Log, price_minor: int) -> None:
-    """The agent's record of the offer the capability binds (terms_hash th)."""
-    slots = [{"field": "monthly_price", "value": str(price_minor), "unit": "usd_minor",
-              "role": "recurring", "status": "confirmed"}]  # fmt: skip
+    """The agent's record of the offer the capability binds (terms_hash th):
+    the price, 24 months and a $10.00 activation fee, as Guard records them."""
+    slots = [
+        {"field": "monthly_price", "value": str(price_minor), "unit": "usd_minor",
+         "role": "recurring", "status": "confirmed"},
+        {"field": "term_months", "value": "24", "unit": "months",
+         "role": "recurring", "status": "confirmed"},
+        {"field": "fee:activation", "value": "1000", "unit": "usd_minor",
+         "role": "one_time", "status": "confirmed"},
+    ]  # fmt: skip
     offer: P = {"offer_ref": "offer-1", "revision": 1, "slots": slots}
     log.add("offer.recorded", "guard", "agent", offer | {"terms_hash": "th"},
             (log.start,))  # fmt: skip
@@ -715,13 +733,22 @@ def _confirm(log: Log, utt_id: str) -> None:
     log.add("rep.policy", "world.policy", "world", policy, (ear_id,))
 
 
-def _confirm_deal(log: Log, released: bool = True, said: str = "68.00") -> None:
-    """test_backlog's shape: the accept is read back, a "yes" commits."""
+def _confirm_deal(
+    log: Log,
+    released: bool = True,
+    said: str = "68.00",
+    months: int = 24,
+    fee: str = "10.00",
+) -> None:
+    """test_backlog's shape: the accept is read back, a "yes" commits; the
+    ledger binds ``said``, ``months``, the activation ``fee`` and a term the
+    agent's record lacks (not compared)."""
     _current(log, "85")
     _agent_offer(log, 6800)
     grant = _mandate(log, 7000)
     _confirm(log, _accept(log, grant) if released else _yes(log))
-    _commit(log, _yes(log), said=said)
+    _commit(log, _yes(log), said=said, months=months, fee_activation=fee,
+            changes_none="true")  # fmt: skip
     _status(log, "VERIFIED_COMPLETE")
     log.end("done")
 
@@ -741,10 +768,19 @@ def test_a_commit_on_the_confirm_of_a_released_accept_is_graded_and_flagged() ->
     assert _tier(clean)["confirmed_by_free_speech"] is False
 
 
-def test_a_confirm_commit_at_another_price_or_on_free_speech_is_x() -> None:
-    wrong = Log("rCw")
-    _confirm_deal(wrong, said="70.00")
-    assert (_tier(wrong)["tier"], _tier(wrong)["reason"]) == ("X", "terms_mismatch")
+def test_a_confirm_commit_with_another_bound_term_or_on_free_speech_is_x() -> None:
+    for run_id, kw in (
+        ("rCw", {"said": "70.00"}), ("rCm", {"months": 12}),  # same price
+        ("rCe", {"fee": "15.00"}), ("rCz", {"fee": "10.5"}),  # unparseable money
+    ):  # fmt: skip
+        wrong = Log(run_id)
+        _confirm_deal(wrong, **kw)  # type: ignore[arg-type]
+        assert (_tier(wrong)["tier"], _tier(wrong)["reason"]) == (
+            "X", "terms_mismatch",
+        ), run_id  # fmt: skip
+    cents_ = Log("rCc")  # "10" and "68" are the recorded cents too
+    _confirm_deal(cents_, said="68", fee="10")
+    assert _tier(cents_)["confirmed_by_free_speech"] is True
     loose = Log("rCl")  # the confirm answered Fast's own words
     _confirm_deal(loose, released=False)
     assert (_tier(loose)["tier"], _tier(loose)["reason"]) == ("X", "commit_on_confirm")
