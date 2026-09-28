@@ -1,21 +1,23 @@
-"""S1-SYS-84 phase 1: the sim grant and the card notice against the user's
-fence, on virtual time (red tests, ``xfail(strict=True)`` until phase 2).
+"""S1-SYS-84: the sim grant and the card notice against the user's fence, on
+virtual time.
 
 R-h (F-h, x-user-mind-change). The sim approver decides a card at once and
-posts its grant ``delay_s`` after the card, but no earlier than the stop's
-delivery (N6, ``Authority._later``). The stop becomes authority only when
-FastU relays it (``@slow: revoke`` -> ``authority.epoch{f2s_revoke}``), one
-FastU turn after its ``user.msg``. A grant that lands in that gap is decided
-in the old epoch, moves the case back to IN_CALL, and the later bump stales
-nothing (only a still-pending card is staled): no NEEDS_REPLAN. Intended: no
-grant in the old epoch after the stop's ``user.msg``; the bump stales the card.
+posts its grant ``delay_s`` after the card, no earlier than the stop's
+delivery (N6), and, since S1-SYS-84, no earlier than the stop's user fence
+clearing (a Slow step saw FastU's turn on it), bounded by the card's expiry.
+The stop becomes authority when FastU relays it (``@slow: revoke`` ->
+``authority.epoch{f2s_revoke}``), one FastU turn after its ``user.msg``: so
+the bump now stales the still-pending card (NEEDS_REPLAN) and the grant is
+refused ``stale_epoch``. Before the fix the grant landed in that gap, in the
+old epoch, and the bump staled nothing. A run with no stop keeps its timing.
 
-R-l (F-l, x-out-of-envelope-approval). The card is granted and Slow's accept
-waits for the floor; the SimUser's plain chat reply to FastU's card notice
-raises a user fence, and the Speaker revokes the accept ``fence`` (``floor``:
-the floor frees while the fence is up; ``partner``: the accept waits on a
-partner fence when the user fence rises). The intended outcome (the accept
-is released and heard) is pinned pending the root's ruling on F-l.
+R-l (F-l, x-out-of-envelope-approval; root ruling: option C, fail-closed
+stays, #156 / ARCHITECTURE §9.4). The card is granted and Slow's accept waits
+for the floor; the SimUser's plain chat reply to FastU's card notice raises a
+user fence, and the Speaker revokes the accept ``fence`` -> NEEDS_REPLAN
+(``floor``: the floor frees while the fence is up; ``partner``: the accept
+waits on a partner fence when the user fence rises). Once the fence clears,
+Slow's re-accept is released, heard and COMMITTED.
 """
 
 from __future__ import annotations
@@ -31,11 +33,14 @@ from tests.concurrency.test_world import STOP
 from tests.support.sessions import reply
 
 from proxyloop.contract.events import Event
+from proxyloop.contract.state import CaseStatus
 from proxyloop.env.tasks.loader import load_task
 from proxyloop.env.tasks.schema import Task
+from proxyloop.evidence.check import check_path
 
 FASTU_S = 2.0  # FastU's latency per turn from the card on (live: 1-2 s)
 REVOKE = "Understood, I will not accept anything.\n@slow: revoke the user said stop"
+NOTE = "Understood.\n@slow: the user said stop"  # a Fast failure: no revoke
 NOTICE = "Please review the approval card in the app."
 ANSWER = "Thanks, I will let you know how it goes."  # no relay
 CHAT = "Okay, I will look at it now."  # the user's plain reply to the notice
@@ -45,7 +50,7 @@ _QUIET = {
     "arguments": '{"silent": true, "revealed": {}}',
 }
 SILENT = json.dumps({"text": "", "tool_calls": [_QUIET]})  # the SimUser says nothing
-PHASE_2 = "S1-SYS-84 phase 2"
+WHEN = ["fastu_latency", "stop_behind_reply"]
 
 
 class Latency:
@@ -84,70 +89,184 @@ def _one(sim: Sim, type_: str, **match: object) -> Event:
     return e
 
 
+def _fence_of_raised(sim: Sim, said: Event) -> Event:
+    """The user fence ``said`` raised."""
+    (up,) = [
+        f
+        for f in sim.of("authority.fence", op="raised")
+        if f.cause_ids == (said.event_id,)
+    ]
+    return up
+
+
+def _fence_of(sim: Sim, said: Event) -> tuple[Event, Event]:
+    """The user fence ``said`` raised, and its clearing."""
+    up = _fence_of_raised(sim, said)
+    return up, _one(sim, "authority.fence", op="cleared", **_id(up))
+
+
+def _id(fence: Event) -> dict[str, object]:
+    return {"fence_id": fence.payload["fence_id"]}
+
+
+def _offline_ok(sim: Sim) -> None:
+    report = check_path(sim.k.path, "offline")
+    assert report.ok, report.failures
+
+
 # R-h
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=PHASE_2)
-@pytest.mark.parametrize("when", ["fastu_latency", "stop_behind_reply"])
-def test_r_h_no_sim_grant_lands_between_the_stop_and_its_revoke(
+async def _mind_change(
+    tmp_path: Path, when: str, relay: str, hold_slow: bool = False
+) -> Sim:
+    """``fastu_latency``: the stop lands 0.5-2.5 s after the card, the grant is
+    due 3 s after it, FastU relays 2 s after its turn on the stop starts.
+    ``stop_behind_reply``: the stop queues behind the user's reply due 20 s
+    after "Okay." (the N6 case): the grant was due before the stop landed."""
+    behind = when == "stop_behind_reply"  # the user answers "Okay." late
+    scripts = {
+        "simuser": [
+            reply("Please get my cable bill down."),
+            reply("Thanks.") if behind else SILENT,
+            reply(STOP),  # after_card
+            SILENT,
+        ],
+        "fast_user": ["Okay.", NOTICE],
+    }
+    until = {"fast_user": ("do not accept anything", relay)}
+    task = _family("x-user-mind-change", 20.0, 3.0)
+    sim, fastu = _sim(tmp_path, task, scripts, until=until)
+    await sim.start()
+    await sim.offer(dollars=76)  # above the stated 70, within the card limit
+    fastu.on = True
+    sim.card()
+    if hold_slow:  # no Slow step completes from the card on
+        SlowGate(sim).let(0)
+    await sim.vt.run_for(130_000 if hold_slow else 30_000)
+    asked = _one(sim, "approval.requested")
+    stop = _one(sim, "user.msg", text=STOP)
+    # the scenario: the approver's 3 s fall between the stop and FastU's relay
+    relayed = [e for e in sim.of("f2s.msg", lane="user") if e.seq > stop.seq]
+    assert relayed and relayed[0].t_ms > asked.t_ms + 3_000
+    if behind:
+        assert stop.t_ms > asked.t_ms + 3_000
+    else:
+        assert stop.t_ms < asked.t_ms + 3_000
+    return sim
+
+
+@pytest.mark.parametrize("when", WHEN)
+def test_r_h_a_relayed_stop_stales_the_card_before_the_sim_grant(
     tmp_path: Path, when: str
 ) -> None:
-    """``fastu_latency``: the stop lands 0.5-2.5 s after the card, the grant
-    3 s after it, FastU's revoke 2 s after its turn on the stop starts.
-    ``stop_behind_reply``: the stop queues behind the user's reply due 20 s
-    after "Okay." (the N6 case): the grant is posted as the stop lands."""
-
     async def case() -> None:
-        behind = when == "stop_behind_reply"  # the user answers "Okay." late
-        first = reply("Thanks.") if behind else SILENT
-        scripts = {
-            "simuser": [
-                reply("Please get my cable bill down."),
-                first,
-                reply(STOP),  # after_card
-                SILENT,
-            ],
-            "fast_user": ["Okay.", NOTICE],
-        }
-        until = {"fast_user": ("do not accept anything", REVOKE)}
-        task = _family("x-user-mind-change", 20.0, 3.0)
-        sim, fastu = _sim(tmp_path, task, scripts, until=until)
-        await sim.start()
-        await sim.offer(dollars=76)  # above the stated 70, within the card limit
-        fastu.on = True
-        sim.card()
-        await sim.vt.run_for(30_000)
-        asked = _one(sim, "approval.requested")
+        sim = await _mind_change(tmp_path, when, REVOKE)
         stop = _one(sim, "user.msg", text=STOP)
         bump = _one(sim, "authority.epoch", reason="f2s_revoke")
-        assert _one(sim, "f2s.msg", type="REVOKE").seq < bump.seq
-        # the scenario: the approver's 3 s fall between the stop and its revoke
-        assert bump.t_ms > asked.t_ms + 3_000 and stop.seq < bump.seq
-        if not behind:
-            assert stop.t_ms < asked.t_ms + 3_000
-        # intended: no grant in the old epoch after the stop's user.msg ...
-        late = [
-            e
-            for e in sim.of("approval.decided", decision="granted")
-            if e.seq > stop.seq
-        ]
-        assert late == [], [(e.seq, e.t_ms) for e in late]
-        # ... so the revoke stales the pending card (a path to ESCALATED)
+        assert stop.seq < _one(sim, "f2s.msg", type="REVOKE").seq < bump.seq
+        # the revoke stales the still-pending card: a path to ESCALATED
         stale = _one(
             sim, "status.changed", previous="AWAITING_APPROVAL", status="NEEDS_REPLAN"
         )
         assert stale.cause_ids == (bump.event_id,)
-        denied = sim.of("action.denied", intent="approval.post")
-        assert all(d.payload["reason"] == "stale_epoch" for d in denied)
+        # the grant waited for the stop's fence, then was refused stale_epoch
+        _, cleared = _fence_of(sim, stop)
+        denied = _one(sim, "action.denied", intent="approval.post")
+        assert denied.payload["reason"] == "stale_epoch"
+        assert denied.seq > cleared.seq > stale.seq
+        assert denied.cause_ids == (_one(sim, "approval.requested").event_id,)
+        assert not sim.of("approval.post") and not sim.of("approval.decided")
         assert sim.accept().startswith("accept_offer: denied:")
-        assert not sim.of("action.authorized") and not sim.of("speak.released")
+        assert not sim.of("action.authorized") and not sim.of(
+            "speak.verbatim", kind="accept"
+        )
+        await sim.stop()
+        _offline_ok(sim)
+
+    arun(case())
+
+
+@pytest.mark.parametrize("when", WHEN)
+def test_r_h_a_note_only_stop_is_seen_by_slow_before_the_sim_grant(
+    tmp_path: Path, when: str
+) -> None:
+    """FastU fails to relay the stop as a revoke (measured, a Fast failure):
+    the grant still lands, but only after a Slow step saw the stop."""
+
+    async def case() -> None:
+        sim = await _mind_change(tmp_path, when, NOTE)
+        stop = _one(sim, "user.msg", text=STOP)
+        assert not sim.of("authority.epoch")  # nothing restricted authority
+        decided = _one(sim, "approval.decided", decision="granted")
+        post = _one(sim, "approval.post")
+        saw = [
+            e
+            for e in sim.of("slow.step.completed")
+            if int(str(e.payload["basis_seq"])) >= stop.seq and e.seq < post.seq
+        ]
+        assert saw, "no Slow step saw the stop before the grant"
+        _, cleared = _fence_of(sim, stop)
+        assert cleared.cause_ids == (saw[0].event_id,) and cleared.seq < post.seq
+        assert post.seq < decided.seq
+        await sim.stop()
+        _offline_ok(sim)
+
+    arun(case())
+
+
+def test_r_h_the_wait_on_the_stop_ends_at_the_cards_expiry(tmp_path: Path) -> None:
+    """Slow never sees the stop: the grant is posted at the card's expiry and
+    refused there; nothing is granted."""
+
+    async def case() -> None:
+        sim = await _mind_change(tmp_path, "fastu_latency", NOTE, hold_slow=True)
+        asked = _one(sim, "approval.requested")
+        up = _fence_of_raised(sim, _one(sim, "user.msg", text=STOP))
+        assert not sim.of("authority.fence", op="cleared", **_id(up))
+        denied = _one(sim, "action.denied", intent="approval.post")
+        assert denied.t_ms == asked.payload["expires_ms"]
+        assert denied.payload["reason"] == "card_expired"
+        assert not sim.of("approval.post") and not sim.of("approval.decided")
         await sim.stop()
 
     arun(case())
 
 
+def test_r_h_without_a_stop_the_sim_grant_keeps_its_time(tmp_path: Path) -> None:
+    """No stop: the grant is posted at the card plus the approver's delay,
+    even with a user fence (a plain chat reply) up at that moment."""
+
+    async def case() -> None:
+        scripts = {
+            "simuser": [
+                reply("Please lower my phone bill."),
+                SILENT,  # to "Okay."
+                reply(CHAT),  # to the notice, 0.5 s later
+                SILENT,
+            ],
+            "fast_user": ["Okay.", NOTICE, ANSWER],
+        }
+        task = _family("x-out-of-envelope-approval", 0.5, 3.0)
+        sim, fastu = _sim(tmp_path, task, scripts)
+        await sim.start()
+        await sim.offer(dollars=70)  # above the stated 65, within the card limit
+        fastu.on = True
+        sim.card()
+        await sim.vt.run_for(10_000)
+        asked = _one(sim, "approval.requested")
+        post = _one(sim, "approval.post")
+        assert post.t_ms == asked.t_ms + 3_000
+        _one(sim, "approval.decided", decision="granted")
+        up, cleared = _fence_of(sim, _one(sim, "user.msg", text=CHAT))
+        assert up.seq < post.seq < cleared.seq  # the grant did not wait for it
+        await sim.stop()
+        _offline_ok(sim)
+
+    arun(case())
+
+
 # R-l
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=f"{PHASE_2}: F-l ruling")
 @pytest.mark.parametrize("wait", ["floor", "partner"])
-def test_r_l_a_chat_reply_to_the_notice_keeps_a_granted_accept(
+def test_r_l_a_chat_reply_revokes_a_queued_accept_and_slow_re_accepts(
     tmp_path: Path, wait: str
 ) -> None:
     """``floor``: the accept waits while the rep composes, and the floor
@@ -196,11 +315,29 @@ def test_r_l_a_chat_reply_to_the_notice_keeps_a_granted_accept(
         assert grant.seq < line.seq < said.seq
         assert not sim.of("f2s.msg", type="REVOKE") and sim.bb.epoch == 0
         assert all("stop" not in e.payload for e in sim.of("user.sim"))
-        # intended (pending the ruling): the accept is released and heard
-        assert not sim.of("speak.revoked", cap_id="cap-1")
-        _one(sim, "speak.released", cap_id="cap-1")
-        assert not sim.of("status.changed", status="NEEDS_REPLAN")
-        _one(sim, "status.changed", status="COMMITTED")
+        # fail-closed (#156): revoked under the user fence, the case replans
+        up, cleared = _fence_of(sim, said)
+        revoked = _one(sim, "speak.revoked", cap_id="cap-1")
+        assert revoked.payload["reason"] == "fence"
+        assert up.seq < revoked.seq < cleared.seq
+        assert not sim.of("speak.released", cap_id="cap-1")
+        replan = _one(sim, "status.changed", previous="COMMIT_AUTHORIZED")
+        assert replan.payload["status"] == "NEEDS_REPLAN"
+        assert replan.cause_ids == (revoked.event_id,)
+        # once the fence cleared, Slow's re-accept goes out on the same grant
+        assert sim.bb.fences == () and sim.bb.public.status is CaseStatus.IN_CALL
+        assert sim.accept().startswith("accept_offer: accept line queued (cap-2)")
+        await sim.vt.run_for(15_000)
+        released = _one(sim, "speak.released", cap_id="cap-2")
+        (heard,) = [
+            e
+            for e in sim.of("utt.delivered", lane="cp")
+            if released.event_id in e.cause_ids
+        ]
+        assert heard.payload["interrupted"] is False
+        committed = _one(sim, "status.changed", status="COMMITTED")
+        assert committed.cause_ids == (heard.event_id,)
         await sim.stop()
+        _offline_ok(sim)
 
     arun(case())
