@@ -3,6 +3,7 @@
 - **Status:** accepted (user decision 2026-09-27: build our own runtime harness around Slow before the browser demo, with no external agent framework; the design is the principal-architect's, adopted by the root under PLAN §0.5a, 2026-09-27)
 - **Date:** 2026-09-27
 - **Task:** S1-ROOT-12 (records); S1-SYS-45 (v2-A: V1, V2), S1-SYS-21 (F-a…F-d), S1-SYS-46 (v2-B: V3, V4, V5) and S1-SYS-43 (V6) build it; S1-SYS-47 (P-OBS) adds the detectors
+- **Amended (2026-09-27, root decision under §0.5a):** V4 fires only when the rep gave a read-back reply that omitted the slots; when the rep restated nothing the bar asks for another read-back or `ask_final_offer` instead of steering to decline.
 
 ## Context
 - **No framework.** The agent-reliability review (plan-v3 handoff `2026-09-27-agent-reliability-harness.md`, "Verdict") rejected an agent framework or SDK for Slow and Fast: none of the defects it found was an orchestration, durability or tracing gap, and every candidate collides with I1, I2, rule 12, ADR-0006 or ADR-0009. What fails is design and integration gaps, world bugs, Slow's tool ergonomics and a minority of real model mistakes. We build a thin in-house harness on existing seams.
