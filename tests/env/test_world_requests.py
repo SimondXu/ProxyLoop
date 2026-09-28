@@ -1,7 +1,8 @@
 """Byte identity of the world's requests (S1-SYS-70): what the Ear, the Mouth
 and the SimUser send, per attempt, for recorded shapes. ``world_requests.json``
 holds each request as it was sent before the builders were extracted; a case
-fails if the sent request drifts by one byte."""
+fails if the sent request drifts by one byte, or if the builder (``Ear.request``,
+``Mouth.request``, ``SimUser.request``) called alone does not return it."""
 
 from __future__ import annotations
 
@@ -236,3 +237,85 @@ def test_the_snapshot_covers_every_case() -> None:
 @pytest.mark.parametrize("case", sorted(CASES))
 def test_the_world_sends_the_recorded_request(case: str, tmp_path: Path) -> None:
     assert sent(case, tmp_path) == _snapshot()[case]
+
+
+# -- the builders, called alone -----------------------------------------------
+
+Build = Callable[[BusSink, Capturing, str, int], Request]
+
+
+def _ear(
+    texts: tuple[str, ...], offers: dict[str, dict[str, str]], open_: set[str]
+) -> Build:
+    def build(sink: BusSink, client: Capturing, cause: str, n: int) -> Request:
+        block = [Heard(f"u{i}", t, cause, i) for i, t in enumerate(texts, 1)]
+        return Ear(client, sink.world, CP.company, CP.identity).request(
+            block, offers, open_, n
+        )
+
+    return build
+
+
+def _mouth_built(kind: str) -> Build:
+    def build(sink: BusSink, client: Capturing, cause: str, n: int) -> Request:
+        mouth = Mouth(client, sink.world, CP)
+        return mouth.request(INTENTS[kind], MOUTH_HEARD[kind], cause, n)
+
+    return build
+
+
+def _user(
+    task: Task, chat: list[str], changed: bool = False, stop: bool = False
+) -> Build:
+    facts = dict(task.profile.facts) | (CHANGE if changed else {})
+
+    def build(sink: BusSink, client: Capturing, cause: str, n: int) -> Request:
+        user = SimUser(task, client, sink.world, seed=7)
+        return user.request(chat, facts, task.stop if stop else None, cause, n)
+
+    return build
+
+
+OPENED = ["You: Please lower my TV bill."]
+MIND = _mind_change_task()
+TURNS = [f"Assistant: {t}" for t in SIM_AGENT]
+REPLIED = [*TURNS[:2], "You: Actually, up to 74 a month is fine.", TURNS[2]]
+BUILDS: dict[str, list[Build]] = {
+    "ear_one": [_ear(("Is that really the best you can do?",), {}, set())],
+    "ear_three_regenerated": [_ear(EAR_THREE, OFFERS, {"loyal-2"})] * 2,
+    **{f"mouth_{k}": [_mouth_built(k)] * len(MOUTH_LINES[k]) for k in INTENTS},
+    "simuser_chat": [
+        _user(USER, []),
+        *[_user(USER, [*OPENED, "Assistant: What is the account name?"])] * 2,
+    ],
+    "simuser_stop": [_user(USER, []), _user(USER, OPENED, stop=True)],
+    "simuser_mind_change": [
+        _user(MIND, TURNS[:1]),
+        _user(MIND, TURNS[:2], changed=True, stop=True),
+        _user(MIND, REPLIED, changed=True),
+    ],
+}
+
+
+@pytest.mark.parametrize("case", sorted(CASES))
+def test_the_builder_alone_returns_the_recorded_request(
+    case: str, tmp_path: Path
+) -> None:
+    """``request(...)`` is the sent request, byte for byte, and pure: it sends
+    nothing, emits nothing and stores nothing."""
+
+    recorded = _snapshot()[case]
+    assert len(BUILDS[case]) == len(recorded)
+    sink = BusSink(tmp_path)
+    client = Capturing(sink)
+    before = tuple(sink.bus.events)
+    for build, want in zip(BUILDS[case], recorded, strict=True):
+        call_id: str = json.loads(want)["call_id"]
+        role, rest = call_id.split(":", 1)
+        cause, n = rest.rsplit(":", 1)
+        request = build(sink, client, cause, int(n))
+        assert request.role == role
+        assert _dump(request) == want
+        assert _dump(build(sink, client, cause, int(n))) == want  # deterministic
+    assert client.sent == [] and client.calls == 0
+    assert sink.bus.events == before and sink.prompts == {}
