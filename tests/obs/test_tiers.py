@@ -9,11 +9,13 @@ import itertools
 import json
 import re
 from pathlib import Path
+from typing import get_args
 
 import pytest
 from tests.obs.bundles import Log, manifest, write
 from tests.obs.triage_bundle import P
 
+from proxyloop.contract.events import EpochBump
 from proxyloop.contract.state import READBACK_FIELD, CaseStatus
 from proxyloop.env.tasks.schema import MONEY, money_term
 from proxyloop.obs import detectors, diagnose, tiers
@@ -980,3 +982,106 @@ def test_money_pins() -> None:
     _pull(mixed, "tenure", "offer", "88.5")
     mixed.end("timeout")
     assert _tier(mixed)["best_offer_monthly"] is None
+
+
+# -- the user's stop (S1-SYS-90, ADR-0023: S = the user stopped) --------------
+# A user-originated stop, then a revoke of that lane's authority by FastU
+# (f2s_revoke) or Slow (slow_revoke), both before the last ESCALATED. In a sim
+# run the stop evidence is the world's user.sim{stop} and the revoke follows
+# it; with no such stop (the UI) only an f2s_revoke counts, and a bare
+# slow_revoke is never S.
+
+
+def _stop(log: Log, kind: str | None = "stop") -> int:
+    """A sim user's reply; ``kind`` its ``stop`` (``simuser._reply``), None for
+    an ordinary reply. Returns its seq."""
+    sim: dict[str, object] = {"text": "PRIV", "revealed": {}, "delay_s": 1.0}
+    if kind is not None:
+        sim["stop"] = kind
+    log.add("user.sim", "world.simuser", "world", sim, (log.start,))
+    return len(log.events) - 1
+
+
+def _revoke(log: Log, reason: str) -> int:
+    _bump(log, reason)
+    return len(log.events) - 1
+
+
+def _escalate(log: Log) -> None:
+    _path(log, "COMMIT_AUTHORIZED", "NEEDS_REPLAN", "ESCALATED")
+    log.end("escalate")
+
+
+def _graded(log: Log) -> tuple[object, ...]:
+    t = _tier(log)
+    return t["tier"], t["reason"], t.get("stop_seq"), t.get("revoke_seq")
+
+
+def _run(name: str, *steps: tuple[str, str | None]) -> tuple[Log, list[int]]:
+    """A run to COMMIT_AUTHORIZED, then ``steps`` in order (``("sim", kind)``
+    a user.sim, ``("epoch", reason)`` a bump), then the escalation."""
+    log = Log(name)
+    _path(log, "IN_CALL", "COMMIT_AUTHORIZED")
+    seqs = [_stop(log, arg) if what == "sim" else _revoke(log, str(arg))
+            for what, arg in steps]  # fmt: skip
+    _escalate(log)
+    return log, seqs
+
+
+def test_a_sim_stop_then_either_lanes_revoke_is_s_citing_both_seqs() -> None:
+    for kind in ("stop", "mind_change"):
+        for reason in ("f2s_revoke", "slow_revoke"):
+            log, (s, r) = _run(f"rS-{kind}-{reason}", ("sim", kind), ("epoch", reason))
+            assert _graded(log) == ("S", "user_stop", s, r), (kind, reason)
+
+
+def test_the_first_revoke_after_the_stop_is_cited() -> None:
+    log, (_, s, r, _) = _run(
+        "rS-first", ("epoch", "f2s_revoke"), ("sim", "stop"),
+        ("epoch", "slow_revoke"), ("epoch", "f2s_revoke"),
+    )  # fmt: skip
+    assert _graded(log) == ("S", "user_stop", s, r)
+
+
+def test_a_revoke_without_a_stop_after_it_is_f() -> None:
+    cases = {
+        "no-stop": (("sim", None), ("epoch", "slow_revoke")),  # a plain reply
+        "f2s-before": (("epoch", "f2s_revoke"), ("sim", "stop")),  # Q3: order
+        "slow-before": (("epoch", "slow_revoke"), ("sim", "mind_change")),
+        "not-a-revoke": (("sim", "stop"), ("epoch", "tighten_mandate")),
+        "bare-stop": (("sim", "stop"),),
+    }
+    for name, steps in cases.items():
+        log, _ = _run(f"rF-{name}", *steps)
+        assert _graded(log) == ("F", "escalated", None, None), name
+
+
+def test_a_revoke_after_the_last_escalation_is_no_stop_of_it() -> None:
+    log = Log("rF-late")
+    _path(log, "IN_CALL", "COMMIT_AUTHORIZED")
+    _stop(log)
+    _path(log, "COMMIT_AUTHORIZED", "NEEDS_REPLAN", "ESCALATED")
+    _revoke(log, "slow_revoke")
+    _revoke(log, "f2s_revoke")
+    log.end("escalate")
+    assert _graded(log) == ("F", "escalated", None, None)
+
+
+def test_a_ui_run_stops_only_by_fastus_revoke() -> None:
+    """No user.sim stop (the UI, or a sim reply that is no stop): the
+    f2s_revoke is the evidence (stop_seq None); a UI stop relayed only as a
+    NOTE, which Slow revokes, grades F until the UI carries a stop marker."""
+    ui, (r,) = _run("rS-ui", ("epoch", "f2s_revoke"))
+    assert _graded(ui) == ("S", "user_stop", None, r)
+    reply, (_, r2) = _run("rS-reply", ("sim", None), ("epoch", "f2s_revoke"))
+    assert _graded(reply) == ("S", "user_stop", None, r2)
+    bare, _ = _run("rF-ui-slow", ("epoch", "slow_revoke"))
+    assert _graded(bare) == ("F", "escalated", None, None)
+
+
+def test_the_stop_and_revoke_names_match_the_world_and_the_contract() -> None:
+    # simuser._reply writes stop: "stop" | "mind_change" (tests/env/test_stop
+    # pins the payloads); obs may not import env.
+    assert frozenset({"stop", "mind_change"}) == tiers.STOPS
+    reasons = set(get_args(EpochBump.model_fields["reason"].annotation))
+    assert tiers.REVOKES == frozenset({"f2s_revoke", "slow_revoke"}) <= reasons

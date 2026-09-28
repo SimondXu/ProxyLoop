@@ -37,9 +37,12 @@ One tier per run, first match wins:
   (``slow/authority.py`` ``_grant_event``; ``eval.metrics._chain``'s idea).
   None when there is no commit (``no_commit``), a grant is not cited
   (``no_grant``) or the accepts disagree (``chain_ambiguous``).
-- **S**: ESCALATED after the user's stop, an ``authority.epoch{f2s_revoke}``
-  before it (correct, and never an A/B); any other ESCALATED (a replan that
-  gave up) is **F** ``escalated``.
+- **S** (S1-SYS-90): ESCALATED after the user's stop (correct, and never an
+  A/B), citing ``stop_seq`` and ``revoke_seq``: before the last
+  status.changed to ESCALATED, a sim ``user.sim{stop: stop|mind_change}``
+  (world truth) and after it an ``authority.epoch{f2s_revoke|slow_revoke}``;
+  in a run with no such stop (the UI), an ``f2s_revoke`` (stop_seq None).
+  Any other ESCALATED (a replan that gave up) is **F** ``escalated``.
 - **F-infra**: the end reason is ``world_error`` or ``llm_unavailable``.
 - **F**: any other status not in ``CLOSES``; the reason is the end reason.
 - VERIFIED_NO_DEAL or CLOSED_NO_ACTION (``task_kind: info_only`` with an
@@ -85,6 +88,8 @@ CLOSES = frozenset(
 INFRA = frozenset({"world_error", "llm_unavailable"})
 NOTE = "advisory: reported, never a gate"
 _OFFERS = frozenset({"offer", "final_offer"})
+STOPS = frozenset({"stop", "mind_change"})  # user.sim ``stop`` (simuser._reply)
+REVOKES = frozenset({"f2s_revoke", "slow_revoke"})  # FastU's or Slow's revoke
 Grade = tuple[str | None, str, dict[str, object]]
 
 
@@ -446,16 +451,23 @@ def _grade(x: Inputs, status: object, end: object, v: Mapping[str, object]) -> G
     return tier, reason, extra | {"confirmed_by_free_speech": flagged}
 
 
-def _stopped(x: Inputs) -> bool:
-    """The user's stop: an authority.epoch{f2s_revoke} (FastU's revoke,
-    kernel/fence.py) before the status.changed to ESCALATED."""
+def _stopped(x: Inputs) -> dict[str, object] | None:
+    """The user's stop and the revoke that followed it, before the last
+    status.changed to ESCALATED (module doc), as {stop_seq, revoke_seq}; None:
+    no stop. A sim stop needs a revoke after it by either lane; with none (UI)
+    only FastU's revoke (kernel/fence.py) counts."""
     esc = [
         e.seq for e in x.of("status.changed") if e.payload.get("status") == "ESCALATED"
     ]
-    return bool(esc) and any(
-        b.seq < esc[-1] and b.payload.get("reason") == "f2s_revoke"
-        for b in x.of("authority.epoch")
-    )
+    stops = [e.seq for e in x.of("user.sim") if e.payload.get("stop") in STOPS]
+    after, reasons = (stops[0], REVOKES) if stops else (-1, {"f2s_revoke"})
+    revokes = [
+        b.seq for b in x.of("authority.epoch")
+        if esc and after < b.seq < esc[-1] and b.payload.get("reason") in reasons
+    ]  # fmt: skip
+    if not revokes:
+        return None
+    return {"stop_seq": stops[0] if stops else None, "revoke_seq": revokes[0]}
 
 
 def _graded(
@@ -470,7 +482,8 @@ def _graded(
     if status == "VERIFIED_COMPLETE":
         return _grant(x, auths)
     if status == "ESCALATED":  # else a replan that gave up: not the user's stop
-        return ("S", "user_stop", {}) if _stopped(x) else ("F", "escalated", {})
+        cited = _stopped(x)
+        return ("S", "user_stop", cited) if cited else ("F", "escalated", {})
     if end in INFRA:
         return "F-infra", str(end), {}
     if status not in CLOSES:
