@@ -24,6 +24,11 @@ from scripts.mod import world_select as ws
 
 Json = dict[str, Any]
 OFFER = [["monthly_price", "75.00"], ["term_months", "12"]]
+FINAL = [["monthly_price", "68.00"], ["term_months", "24"]]
+MADE: dict[str, tuple[str | None, list[list[str]]]] = {
+    "offer": ("loyal-1", OFFER),
+    "final_offer": ("loyal-2", FINAL),
+}
 
 
 @pytest.fixture(scope="module")
@@ -109,7 +114,8 @@ class Log:
 
     def turn(self, heard: Sequence[str], start: int, end: int, *kinds: str) -> None:
         """One rep turn over a heard block: one Ear call, a rep.ear per utterance,
-        then a decision per kind (an offer makes loyal-1) and its line."""
+        then a decision per kind (an offer makes loyal-1, a final offer loyal-2)
+        and its line."""
         call = self.call("ear", heard[-1], start, start + 10)
         ears = [
             self.emit(
@@ -122,7 +128,7 @@ class Log:
             for h in heard
         ]
         for kind in kinds:
-            ref, say = ("loyal-1", OFFER) if kind == "offer" else (None, [])
+            ref, say = MADE.get(kind, (None, []))
             intent = {"kind": kind, "offer_ref": ref, "say": say, "ask": []}
             policy = self.emit(
                 "rep.policy",
@@ -154,14 +160,15 @@ class Log:
 
 def backlog(run_id: str = "r-backlog") -> Log:
     """Recorded one turn at a time (pre-ADR-0021): U2 and U3 are heard while U1's
-    turn is in flight, U4 long after; U1's turn makes loyal-1, which lapses."""
+    turn is in flight, U4 long after; U1's turn makes loyal-1, which lapses, and
+    U2's turn makes loyal-2."""
     log = Log(run_id)
     u1 = log.say("Can you lower the price?", 0)
     u2 = log.say("Could you read back", 300)
     u2b = log.say("every term of it?", 350)  # the same delivery: joined
     u3 = log.say("And is that final?", 600)
     log.turn([u1], 10, 1000, "offer")
-    log.turn([u2b], 1000, 2000, "readback")
+    log.turn([u2b], 1000, 2000, "final_offer")
     log.turn([u3], 2000, 2500, "no_better")
     log.expire(4000)
     u4 = log.say("We", 5000, heard="")  # cut before a word: nothing heard
@@ -222,7 +229,7 @@ def test_the_same_heard_line_is_one_item_with_every_occurrence(
         i for i in ear_items(doc, "single") if "lower" in i["utterances"][0].lower()
     ]
     assert len(lower) == 2  # the same text, but loyal-1 open vs lapsed: two contexts
-    assert {len(i["offers"]) for i in lower} == {0, 1}
+    assert {len(i["offers"]) for i in lower} == {0, 2}
     same = Log("r-same")  # the same text in the same context: one item
     u1 = same.say("Can you lower the price?", 0)
     same.turn([u1], 10, 100, "clarify")
@@ -255,9 +262,16 @@ def test_blocks_are_rebuilt_as_adr_0021_d1_groups_them(
         "Could you read back every term of it?",
         "And is that final?",
     ]
+    # ADR-0021 D2: the offers made before its FIRST utterance, not loyal-2, which
+    # U2's own turn made (a block never lists what it unlocked)
     assert block["offers"] == [{"ref": "loyal-1", "terms": OFFER, "open": True}]
+    u3 = singles[("And is that final?",)]["offers"]  # heard alone: after loyal-2
+    assert [o["ref"] for o in u3] == ["loyal-1", "loyal-2"]
     lapsed = singles[("Can  you LOWER the price?",)]["offers"]
-    assert lapsed == [{"ref": "loyal-1", "terms": OFFER, "open": False}]
+    assert lapsed == [
+        {"ref": "loyal-1", "terms": OFFER, "open": False},
+        {"ref": "loyal-2", "terms": FINAL, "open": True},
+    ]
     assert singles[("Can you lower the price?",)]["offers"] == []  # made after it
     assert doc["counts"]["recorded"]["ear_block"] == {"unique": 1, "occurrences": 1}
 
