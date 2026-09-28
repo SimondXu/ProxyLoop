@@ -11,12 +11,20 @@ from proxyloop.contract import base
 from proxyloop.contract.config import SlowViewMode
 from proxyloop.contract.llm import ToolSpec
 from proxyloop.contract.messages import FastToSlow, GuideMove
-from proxyloop.contract.state import Blackboard, OfferPublic, PrivateState
+from proxyloop.contract.state import (
+    Blackboard,
+    OfferPublic,
+    PrivateState,
+    ReadbackSlot,
+)
 from proxyloop.contract.views import SlowView
 from proxyloop.guard.authorize import Denial, card_blocks, open_offer
-from proxyloop.guard.mandate import mandate_gap
-from proxyloop.guard.readback import missing_required, readback_status
+from proxyloop.guard.mandate import hard_violations, mandate_gap
+from proxyloop.guard.policy import UNSUPPORTED_APPLIED_CHANGE
+from proxyloop.guard.readback import ROLE_OF, missing_required, readback_status
+from proxyloop.guard.terms import Terms, offer_terms
 from proxyloop.slow import asks, offer_slots, state
+from proxyloop.slow.authority import UNITS
 
 TOOLS = (
     *("ask_user", "tell_user", "wait", "guide_fast", "record_fact", "record_offer"),
@@ -149,6 +157,14 @@ def _swapped(text: str) -> str:
 _SYSTEM_TRANSCRIPT = _swapped(SYSTEM)
 
 
+HARD_LIMITS = {  # guard.mandate.hard_violations's classes: no approval lifts them
+    "required_feature_missing": "a feature the user requires is missing",
+    "forbidden_change_present": "a change the user forbade is applied",
+    UNSUPPORTED_APPLIED_CHANGE: "a change this build cannot support is applied",
+}
+HARD_LIMIT = "breaks a hard limit"
+OUTSIDE_MANDATE = "outside mandate: needs the user's approval once confirmed"
+
 PLAYBOOK: dict[state.Kind, str] = {  # V3: the head carries the case's own only
     "info_only": "CLOSE PLAYBOOK (info_only: report the offers, accept nothing): "
     "record each offer the representative states and ask for its read-back; then "
@@ -156,10 +172,14 @@ PLAYBOOK: dict[state.Kind, str] = {  # V3: the head carries the case's own only
     "reply (or the rep answered it with no new offer), tell_user every offer's "
     "terms as recorded (naming any slot not stated) and finish(info_only, "
     "summary) in the same act.",
-    "full": "CLOSE PLAYBOOK (full: a deal within the user's limits, or a verified "
-    "no deal): a confirmed offer inside the granted mandate: accept_offer; outside "
-    "it: request_approval. An offer the user denies, that breaks a hard limit, or "
-    "whose read-back stopped with slots not stated: decline_offer, then "
+    "full": "CLOSE PLAYBOOK (full: a deal the mandate or the user's approval covers, "
+    "or a verified no deal): a hard limit is only one of these: "
+    f"{'; '.join(HARD_LIMITS.values())}; no approval can lift it. A price, term "
+    "or fee above the user's mandate is outside the mandate, not a hard limit: "
+    "the user decides it. A confirmed offer inside the granted mandate: "
+    "accept_offer; outside it: request_approval. Decline an offer only once the "
+    "user denies it, it breaks a hard limit (the offers line says so), or its "
+    "read-back stopped with slots not stated: decline_offer, then "
     "guide_fast(ask_final_offer). When the close line says finish(no_deal) would "
     "verify, tell_user the terms offered and why none was taken, and "
     "finish(no_deal, summary) in the same act; while it says blocked, act on its "
@@ -252,7 +272,7 @@ def status_bar(
         ttl = "" if o.expires_ms is None else f", expires in {secs(o.expires_ms)}"
         slots = ", ".join(f"{s.field}={s.value} [{s.status}]" for s in o.slots)
         state = f"{o.status}, read-back {readback_status(o)}{ttl}"
-        hints = [approval_hint(view, o, now_ms)]
+        hints = [approval_hint(view, o, now_ms), mandate_hint(view, o, now_ms)]
         hints.append("" if more is None else more.offer_note(o))
         if gaps := missing_required(o):  # e6ada1: Guard's list, never inferred
             hints.append(
@@ -322,3 +342,48 @@ def approval_hint(view: SlowView, o: OfferPublic, now_ms: int) -> str:
     if mandate_gap(bb, terms) != "outside_mandate":
         return ""
     return f"{o.offer_ref} confirmed, outside mandate → request_approval({o.offer_ref})"
+
+
+def mandate_hint(view: SlowView, o: OfferPublic, now_ms: int) -> str:
+    """S1-SYS-46 (run cc160a): Guard's verdicts on an open offer's terms.
+    A ``hard_violations`` class breaks a hard limit, confirmed or not; a
+    revision not yet confirmed that ``mandate_gap`` finds outside the
+    granted mandate needs the user's approval once confirmed (a confirmed
+    one is ``approval_hint``'s). Read-only; nothing is sent."""
+    if o.status != "open":
+        return ""
+    confirmed = readback_status(o) == "confirmed"
+    terms = offer_terms(o) if confirmed else _as_recorded(o, view)
+    if terms is None:
+        return ""
+    if hard := hard_violations(terms, view.mandate):
+        return f"{HARD_LIMIT}: {', '.join(hard)}"
+    mine = PrivateState(mandate=view.mandate)
+    bb = Blackboard(t_ms=now_ms, epoch=view.epoch, private=mine)
+    if confirmed or mandate_gap(bb, terms) != "outside_mandate":
+        return ""
+    return OUTSIDE_MANDATE
+
+
+def _as_recorded(o: OfferPublic, view: SlowView) -> Terms | None:
+    """``offer_terms`` of the slots recorded so far, each unstated one
+    neutral: price and term 0 (above no bound), no fee, no change, no
+    expiry, and a required feature not yet stated is not yet missing."""
+    have = {s.field: s.value for s in o.slots}
+    listed = {f.partition(":")[0] for f in have if ":" in f}
+    changed = {f.partition(":")[0] for f, v in have.items() if v == "true"}
+    fill = {"monthly_price": "0", "term_months": "0", "expires": "none"}
+    if "fee" not in listed:
+        fill["fees_none"] = "true"
+    if "applied_change" not in changed:
+        fill["changes_none"] = "true"
+    required = () if view.mandate is None else view.mandate.required_features
+    fill |= {f"feature:{f}": "true" for f in required}
+    extra: list[ReadbackSlot] = []
+    for field, value in fill.items():
+        kind = field.partition(":")[0]
+        slot = {"field": field, "value": value, "role": ROLE_OF[kind]}
+        if field not in have:
+            unit = UNITS.get(kind, "bool")
+            extra.append(ReadbackSlot.model_validate(slot | {"unit": unit}))
+    return offer_terms(o.model_copy(update={"slots": (*o.slots, *extra)}))
