@@ -1,0 +1,8 @@
+/* The principal's "Your role" card (YourRole.tsx): the start page's section and the live page's fold. */
+@layer components {
+  .pl-role h2, .pl-role summary { font-weight: 600; }
+  .pl-role h2 { margin: 0 0 var(--s2); font-size: var(--fs-card); }
+  .pl-role-body > p { margin: var(--s1) 0 0; }
+  .pl-role-body > .pl-label { margin-top: var(--s3); }
+  .pl-role-body > .pl-facts { margin-top: var(--s1); }
+}

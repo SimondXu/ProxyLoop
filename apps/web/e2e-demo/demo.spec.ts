@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Response } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Response } from "@playwright/test";
 import { PORTS } from "./ports";
 
 // The S1 browser demo end to end over the real kernel (S1-SYS-32): tests/web/demo_server.py
@@ -72,12 +72,28 @@ async function start(page: Page, rep: "sim" | "human"): Promise<string> {
     await expect(page.getByRole("combobox", { name: title }).locator("option")).toHaveText([/^stub · test_fake · \S+-fake · /]);
   }
   await expect(page.getByRole("radiogroup", { name: "Task" }).locator("code")).toHaveText(["x-out-of-envelope-approval@1"]);
+  await yourRole(page.getByRole("region", { name: "Your role" }));
   await page.getByRole("radio", { name: rep === "sim" ? "Simulated rep" : "A person" }).check();
   const [res] = await Promise.all([page.waitForResponse(isPost(/^\/api\/cases$/)), page.getByRole("button", { name: "Start" }).click()]);
   expect(res.status()).toBe(201);
   if (rep === "human") return String(((await res.json()) as { case_id: string }).case_id);
   await expect(page).toHaveURL(/\/\?live=/);
   return new URL(page.url()).searchParams.get("live") ?? "";
+}
+
+/**
+ * The principal's role card (S1-SYS-65) from the real kernel's allow-list over the family's instance: the persona, the
+ * goal's numbers, the identity facts and what they would approve (the hidden limits, not the stated 65); never the
+ * rep's name, ladder prices or patience.
+ */
+async function yourRole(role: Locator) {
+  await expect(role).toContainText("Marcus Bell, a high-school teacher");
+  await expect(role).toContainText("at most 65 dollars a month");
+  await expect(role).toContainText("Your provider: Crestline Wireless");
+  await expect(role.locator("dl").first()).toHaveText("Account holder nameMarcus BellAccount last45190");
+  await expect(role.getByRole("heading", { name: "What you would approve" })).toBeVisible();
+  await expect(role).toContainText("Monthly priceup to $72.00");
+  for (const hidden of ["Alex", "78.00", "69.00", "retention agent", "save-1"]) await expect(role).not.toContainText(hidden);
 }
 
 /** The live page names only test_fake models, for every role session.started lists. */
@@ -334,6 +350,9 @@ test.describe("human rep", () => {
     await expect(page).toHaveURL(`/?live=${id}`);
     await onlyFakes(page, ["fast_user", "fast_cp", "slow"]);
     await expect(page.getByRole("heading", { name: "Call with the company" })).toBeVisible();
+    const role = page.locator("details.pl-role"); // the principal's page: its case's own card, folded
+    await role.locator("summary").click();
+    await yourRole(role);
     await expect(page.getByLabel("Simulated parties")).toHaveCount(0);
     await expect(page.getByRole("region", { name: "Call" })).not.toContainText("(simulated)"); // a person, not the world
 
@@ -372,5 +391,6 @@ test.describe("human rep", () => {
     expect(repSockets).toEqual([`/ws/rep/${id}?from_seq=0`]);
     const api = repHttp.filter((p) => p.startsWith("/api/") || p.startsWith("/ws/"));
     expect(api).toEqual([`/api/cases/${id}/rep`, `/api/cases/${id}/rep`]); // the two lines it sent, and nothing else
+    expect(repHttp.filter((p) => p.endsWith("/card"))).toEqual([]); // never the principal's role card (S1-SYS-65)
   });
 });

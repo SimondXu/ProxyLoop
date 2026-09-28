@@ -607,3 +607,47 @@ for (const [slug, status, reason, heading] of VARIANTS) {
     await shot(page, `receipt-${slug}`);
   });
 }
+
+// S1-SYS-65: the principal's role card, folded in the rail, from GET /api/cases/{case}/card (a synthetic card).
+const ROLE = {
+  company: "Example Mobile",
+  persona: "Sam Doe, a teacher.",
+  goal: "Pay at most 60 dollars a month.",
+  facts: [
+    { key: "account.holder_name", value: "Sam Doe", identity: true, shareable: true },
+    { key: "budget.max_monthly_usd", value: "60", identity: false, shareable: false },
+  ],
+  approval: { max_monthly_price_usd: "64.00", max_term_months: 12, max_one_time_fees_usd: "0" },
+  stop: null,
+};
+
+test("your role: the live page folds the case's role card, read with GET only", async ({ page, baseURL }) => {
+  await csrfCookie(page, baseURL);
+  const { connected } = await mockSockets(page);
+  const asked: string[] = [];
+  await page.route(`**/api/cases/${RUN}/card`, (route) => {
+    asked.push(route.request().method());
+    return route.fulfill({ status: 200, json: ROLE });
+  });
+  await page.goto(`/?live=${RUN}`);
+  (await connected).send(events()("session.started", "kernel", started(REAL), { stream: "ops" }));
+  const role = page.locator("details.pl-role");
+  await expect(role.locator("summary")).toHaveText("Your role");
+  await expect(role).not.toHaveAttribute("open"); // folded until the user opens it
+  await role.locator("summary").click();
+  await expect(role).toContainText("Sam Doe, a teacher.");
+  await expect(role).toContainText("Pay at most 60 dollars a month.");
+  await expect(role.getByRole("heading", { name: "What you would approve" })).toBeVisible();
+  await expect(role.locator("dl").nth(2)).toContainText("Monthly priceup to $64.00");
+  expect(asked).toEqual(["GET"]);
+});
+
+test("your role: a refused card is shown as unavailable, never as an alert", async ({ page, baseURL }) => {
+  await csrfCookie(page, baseURL);
+  await mockSockets(page);
+  await page.route(`**/api/cases/${RUN}/card`, (route) => route.fulfill({ status: 403, json: { error: "csrf" } }));
+  await page.goto(`/?live=${RUN}`);
+  const role = page.locator("details.pl-role");
+  await role.locator("summary").click();
+  await expect(role).toContainText("Your role is unavailable: 403 csrf");
+});
