@@ -205,10 +205,11 @@ def read_view(messages: Sequence[ChatMessage]) -> Seen:
 
 
 def _parsed(text: str, lane: Lane) -> list[tuple[TurnItem, ...]]:
-    """The FSM's own ``text`` under every contract profile of ``lane``. Every cp
-    profile renders the same messages, so the request names no profile, and this
-    module may not import ``kernel.lanes`` (it reaches env; import-linter): the
-    live one (ADR-0017 ``pause_ends_speech`` on pl_cp_v3) is among them."""
+    """The FSM's own ``text`` under every contract profile of ``lane``. The
+    request carries no profile name, pl_cp_v2 and the live pl_cp_v3 render
+    byte-identical messages, and this module may not import ``kernel.lanes`` (it
+    reaches env; import-linter): the live one (ADR-0017 ``pause_ends_speech`` on
+    pl_cp_v3) is among them."""
 
     return [parse_turn(text, lane, n) for n, p in PROFILES.items() if p.lane == lane]
 

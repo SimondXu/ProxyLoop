@@ -115,9 +115,10 @@ class TeacherRepair:
             async for item in self._teacher.stream_text(request):
                 yield item
             return
-        # Every cp profile renders the same messages, so the request names its
-        # lane only: the grammar is the lane's live profile (ADR-0017), read at
-        # call time because kernel.lanes imports this module.
+        # The request carries no profile name, and pl_cp_v2 and the live pl_cp_v3
+        # render byte-identical messages, so it names its lane only: the grammar
+        # is the lane's live profile (ADR-0017), read at call time because
+        # kernel.lanes imports this module.
         from proxyloop.kernel.lanes import PROFILE
 
         profile = PROFILE[lane]
