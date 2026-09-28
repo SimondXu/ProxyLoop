@@ -63,7 +63,9 @@ class Turn:
     gen_id: str
     lane: str
     record: LLMCallRecord | None  # the turn's llm.call, final attempt
-    items: tuple[fp.TurnItem, ...] | None  # the raw response parsed; None: missing
+    # the raw response in the BASE grammar on purpose (the raw output); a
+    # detector that needs the live parse re-parses with ``profile``
+    items: tuple[fp.TurnItem, ...] | None  # None: missing
     text: str | None  # the raw response; None: missing
     profile: str | None  # its fast.request's profile; None: no fast.request
 
@@ -288,18 +290,27 @@ def _speech_after_pause(x: Inputs) -> Value:
 
 @detector("empty_length")
 def _empty_length(x: Inputs) -> Value:
-    """Fast turns cut at the length cap whose response holds no speech item;
-    ``unknown``: no llm.call record, or no response to parse."""
+    """Fast turns cut at the length cap whose response, parsed in its
+    fast.request ``profile``'s grammar, holds no speech item (on pl_cp_v3 a
+    line after a Hold/Wait is no speech, ADR-0017); ``unknown``: no llm.call
+    record, no response, or a missing or unknown profile (as in
+    ``speech_after_pause``); ``count`` None: every capped turn is unknown."""
     turns: list[int] = []
     unknown: list[int] = []
-    for t in x.turns:
-        if t.record is not None and t.record.finish_reason != "length":
-            continue
-        if t.record is None or t.items is None:
+    capped = [
+        t for t in x.turns if t.record is None or t.record.finish_reason == "length"
+    ]
+    for t in capped:
+        spec = fp.PROFILES.get(t.profile or "")
+        if t.record is None or t.text is None or spec is None or spec.lane != t.lane:
             unknown.append(t.seq)
-        elif not any(isinstance(i, fp.Speech) for i in t.items):
+        elif not any(
+            isinstance(i, fp.Speech)
+            for i in fp.parse_turn(t.text, spec.lane, t.profile)
+        ):
             turns.append(t.seq)
-    return {"count": len(turns), "turns": turns, "unknown": unknown}
+    count = None if unknown and len(unknown) == len(capped) else len(turns)
+    return {"count": count, "turns": turns, "unknown": unknown}
 
 
 @detector("unterminated_voiced")
@@ -425,13 +436,16 @@ def _guide_to_heard(x: Inputs) -> Value:
     voicing generation that was cancelled (``fast.cancelled``; S1-SYS-59's
     ``verbatim`` comes after its s2f.voiced) is replaced by its re-run
     (``_reruns``), followed through further cancellations; ``cancelled``:
-    guides with such a generation. The re-run voices no s2f.voiced for it (the
+    guides with such a generation. On bundles before #230, or when the GUIDE
+    is no longer its lane's newest, the re-run voices no s2f.voiced for it (the
     fold dropped it from ``s2f_pending``): its view shows only the newest GUIDE
     (``guidance_cp``), so a guide another GUIDE on its lane followed before the
     re-run's fast.request is ``superseded``, never credited with the re-run's
-    lines. ``unheard``: guides never voiced or delivered; ``unknown``: those
-    the log ends on within the relay window (as in ``relay_gap``), or whose
-    cancelled generation has no re-run."""
+    lines. After #230 a re-run that acts voices the lane's newest GUIDE again
+    (a second s2f.voiced): both voicings lead to the re-run, counted once.
+    ``unheard``: guides never voiced or delivered; ``unknown``: those the log
+    ends on within the relay window (as in ``relay_gap``), or whose cancelled
+    generation has no re-run."""
     gens: dict[str, list[str]] = {}
     for v in x.of("s2f.voiced"):
         gens.setdefault(str(v.payload["msg_id"]), []).append(str(v.payload["gen_id"]))

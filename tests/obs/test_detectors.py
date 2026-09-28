@@ -41,10 +41,11 @@ def test_every_detector_equals_the_hand_count(tmp_path: Path) -> None:
         "llm_calls": 5,  # seqs 4, 12, 24, 26, 27
         "llm_cancelled": {"slow": 1},  # s2
         "llm_errors": {"slow": 1},  # s1; a cancellation is not an error
-        # cp-g2 (seq 25) is capped and "@hold fact_request" holds no speech;
-        # cp-g1 is capped too but speaks
-        # turn 28 has no llm.call, so its cap is unknown, not "not capped"
-        "empty_length": {"count": 1, "turns": [25], "unknown": [28]},
+        # cp-g1 (13) and cp-g2 (25) are capped, but no fast.request names
+        # their grammar (test_empty_length_follows_the_profile has them);
+        # turn 28 has no llm.call, so its cap is unknown, not "not capped";
+        # every capped turn is unknown, so the count is None, not a clean 0
+        "empty_length": {"count": None, "turns": [], "unknown": [13, 25, 28]},
         "hold_repeats": 3,  # session.ended counts
         # rep.policy 19 ok_hold, 20 ok_hold, 21 ask_identity, 22 ok_hold: 2
         "max_consecutive_ok_hold": 2,
@@ -223,6 +224,28 @@ def test_speech_after_pause_follows_the_profile(tmp_path: Path) -> None:
         "count": 3, "items": 2, "issues": 1,
         "turns": [[3, 2], [6, 1]],  # v2's turn (seq 3), v3's (seq 6)
         "unknown": [9, 11],  # pl_cp_v9 is no profile; the last has no request
+    }  # fmt: skip
+
+
+def test_empty_length_follows_the_profile(tmp_path: Path) -> None:
+    """A capped turn whose only speech follows ``@hold``: empty live on
+    pl_cp_v3 (pause_ends_speech, ADR-0017), not on the base grammar (v2); a
+    missing profile is unknown; a turn not capped is not read."""
+    log = Log("rE")
+    for n, profile in enumerate(("pl_cp_v3", "pl_cp_v2", None, "pl_cp_v3")):
+        gen, cap = f"cp-g{n}", "stop" if n == 3 else "length"
+        if profile is not None:
+            request: dict[str, object] = {"lane": "cp", "gen_id": gen}
+            request |= {"trigger": "t", "view_sha": "v", "prompt_sha": "p"}
+            request |= {"profile": profile, "model_ref": {}, "basis_seq": 0}
+            log.add("fast.request", "kernel", "agent", request)
+        c = call(log, "fast_cp", QWEN, f"c{n}", finish_reason=cap)
+        turn(log, "cp", gen, f"c{n}", c)
+    run = write(tmp_path / "rE", log, manifest("rE"))
+    prompts(run, {f"resp-c{n}": "@hold fact_request\nStray one." for n in range(4)})
+    x = triage.read(run, runs.Seal())[1]
+    assert detectors.DETECTORS["empty_length"](x) == {
+        "count": 1, "turns": [3], "unknown": [8],  # v3's turn (3); no request (8)
     }  # fmt: skip
 
 
