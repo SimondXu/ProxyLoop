@@ -120,7 +120,7 @@ export function StartPage() {
               <Icon name="simulated" size="sm" />
               <span>
                 The company is simulated and no real company is called; the rep is simulated unless a person plays it. A run with
-                live models calls paid model APIs.
+                live models calls paid model APIs, and each run's cost appears on its receipt.
               </span>
             </p>
             <details className="pl-card pl-start-adv">

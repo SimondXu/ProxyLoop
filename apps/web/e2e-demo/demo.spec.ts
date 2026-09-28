@@ -124,7 +124,7 @@ async function toCard(page: Page) {
     "Contract length 24 months Read back",
     "One-time fees None Read back",
     "Changes to your plan None Read back",
-    "Offer valid until No expiry Read back",
+    "No expiry date Read back",
   ]);
   const events = await log(page, id);
   one(events, "chan.opened", { lane: "cp" }); // the call happens, in either readiness order
@@ -182,6 +182,8 @@ test.describe("approve", () => {
     const call = page.getByRole("list", { name: "Call transcript" });
     await expect(call).toContainText(`Agent: ${String(accept.payload.text)}`);
     await expect(call.getByRole("listitem").filter({ hasText: "AI disclosure · fixed wording" })).toHaveCount(1);
+    // The accept's capability binds it to this card (decision.ts, conversation.ts): your grant, on the real kernel's events.
+    await expect(call.getByRole("listitem").filter({ hasText: "Acceptance · approved by you" })).toHaveCount(1);
     await shot(page, "demo-live-conversation");
 
     // c) the replay UI, from /api/bundles: the same run and the same chain.

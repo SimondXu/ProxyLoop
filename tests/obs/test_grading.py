@@ -145,7 +145,8 @@ def test_every_h5_detector_equals_the_hand_count(tmp_path: Path) -> None:
         "slow.readback_asks_max_per_revision": {
             "count": 3, "by": {"o1@1": 3}, "h5_pass": False,
         },
-        # 29 is the first rep line after 26 that Guard's closing cues match;
+        # 29, the rep's last line between the ask (26) and the finish (35),
+        # matches Guard's closing cues;
         # steps 30 and 34 come before the finish (35)
         "close.reply_to_finish_steps": {
             "count": 2, "reply_seq": 29, "finish_seq": 35, "h5_pass": True,
