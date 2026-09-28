@@ -1,9 +1,8 @@
 """Success-path progress (S1-SYS-86): how far each run got toward success.
 
-DIAGNOSTIC — not a claim or metric: reported, never a gate, never imported by
-``proxyloop.eval``, and no number of it goes into a doc (rule 13). Events
-only, from fixed emitters (never model text), and one generic ladder for every
-family, never a per-family table.
+DIAGNOSTIC — not a claim or metric: never a gate, never imported by
+``proxyloop.eval``, no number of it in a doc (rule 13). Events only, from fixed
+emitters, and one generic ladder for every family.
 
 The ladder, in order; each milestone is one pure fold, the seq of its first
 trigger event (None: not reached):
@@ -12,9 +11,12 @@ trigger event (None: not reached):
    the run's identity strikes travel with it (``identity.strikes``).
 2. ``discount_asked``: a cp GUIDE ``ask_discount`` (s2f.msg).
 3. ``offer_recorded``: an offer.recorded.
-4. ``lever_sent``: a cp GUIDE with a lever move (``grading._LEVER_MOVES``)
-   after the first offer.recorded.
-5. ``lever_heard``: a rep.ear lever act (``ladder.LEVERS``) after it.
+4. ``slow_lever_sent``: Slow's cp GUIDE with a lever move
+   (``grading._LEVER_MOVES``) after the first offer.recorded.
+5. ``world_lever_heard``: a rep.ear lever act (``ladder.LEVERS``) on a cp line
+   delivered (utt.delivered) after the world's first rep.policy offer, never
+   anchored at the rep.ear's own seq: the Ear lags a turn (``detectors`` doc).
+   It may differ from 4 (``LEGEND``).
 6. ``later_rung``: a rep.policy offer or final_offer at rung >= 1 (#239).
 7. ``readback_confirmed``: the H5 read-back scope (#243,
    ``offer.required_unconfirmed_after_readback``) passes: every offer sent for
@@ -51,12 +53,17 @@ from proxyloop.obs.detectors import DETECTORS, Inputs, as_dict, safe
 
 LABEL = "DIAGNOSTIC — not a claim or metric"
 MILESTONES = (
-    "identified", "discount_asked", "offer_recorded", "lever_sent",
-    "lever_heard", "later_rung", "readback_confirmed", "approval_requested",
+    "identified", "discount_asked", "offer_recorded", "slow_lever_sent",
+    "world_lever_heard", "later_rung", "readback_confirmed", "approval_requested",
     "approval_decided", "accept_released", "commit_heard", "verified",
 )  # fmt: skip
 OPTIONAL = frozenset({"approval_requested", "approval_decided"})
-BY_OUTCOME = frozenset({"lever_sent", "lever_heard", "later_rung"})
+BY_OUTCOME = frozenset({"slow_lever_sent", "world_lever_heard", "later_rung"})
+LEGEND = (
+    "slow_lever_sent = Slow's lever GUIDE; world_lever_heard = the world's Ear "
+    "heard a lever act on a line delivered after the first offer (may differ: "
+    "the codebook maps a final-offer ask to ask_discount; Ear misreads)"
+)
 _LEVER_MOVES = grading._LEVER_MOVES  # pyright: ignore[reportPrivateUsage]
 _TAKES = ladder._TAKES  # pyright: ignore[reportPrivateUsage]
 
@@ -96,9 +103,17 @@ def _lever_sent(x: Inputs) -> int | None:
     return _after_first_offer(x, _cp_guides(x, _LEVER_MOVES))
 
 
-def _lever_heard(x: Inputs) -> int | None:
-    ears = [e for e in x.of("rep.ear") if e.payload.get("act") in ladder.LEVERS]
-    return _after_first_offer(x, ears)
+def _lever_heard(x: Inputs) -> int | None:  # module doc: the Ear lags
+    offers = _offered(x)
+    delivered: dict[object, int] = {}
+    for d in x.of("utt.delivered"):
+        if d.payload.get("lane") == "cp":
+            delivered.setdefault(d.payload.get("utt_id"), d.seq)
+    return _first([
+        e for e in x.of("rep.ear")
+        if offers and e.payload.get("act") in ladder.LEVERS
+        and delivered.get(e.payload.get("utt_id"), -1) > offers[0].seq
+    ])  # fmt: skip
 
 
 def _rung(e: Event) -> int | None:
@@ -168,15 +183,15 @@ def _verified(x: Inputs) -> int | None:
 
 FOLDS: dict[str, Callable[[Inputs], int | None]] = {
     "identified": _identified, "discount_asked": _discount,
-    "offer_recorded": _offer, "lever_sent": _lever_sent,
-    "lever_heard": _lever_heard, "later_rung": _later_rung,
+    "offer_recorded": _offer, "slow_lever_sent": _lever_sent,
+    "world_lever_heard": _lever_heard, "later_rung": _later_rung,
     "readback_confirmed": _readback, "approval_requested": _requested,
     "approval_decided": _decided, "accept_released": _released,
     "commit_heard": _commit, "verified": _verified,
 }  # fmt: skip
 
 
-def _policy_of_line(x: Inputs, utt: object) -> Event | None:
+def policy_of_line(x: Inputs, utt: object) -> Event | None:
     """The rep.policy a cp partner line voiced: utt.final -> rep.mouth ->
     rep.policy, by their causes."""
     for line in x.of("utt.final"):
@@ -206,7 +221,7 @@ def committed_rung(x: Inputs) -> int | None:
         ):
             continue
         for slot in map(as_dict, cast(list[object], o.payload.get("slots") or [])):
-            p = _policy_of_line(x, slot.get("source_utt"))
+            p = policy_of_line(x, slot.get("source_utt"))
             ref = (
                 None if p is None else as_dict(p.payload.get("intent")).get("offer_ref")
             )
@@ -214,6 +229,21 @@ def committed_rung(x: Inputs) -> int | None:
     if not rungs or None in rungs:
         return None
     return max(cast(list[int], rungs))
+
+
+def world_refs(x: Inputs, ref: object, revision: object = None) -> set[object]:
+    """The world offer_refs the rep lines cited by agent offer ``ref``'s
+    records (of ``revision``, or any) name: slot ``source_utt`` ->
+    ``policy_of_line`` -> its intent's offer_ref."""
+    out = set[object]()
+    for o in x.of("offer.recorded"):
+        p = o.payload
+        if p.get("offer_ref") != ref or revision not in (None, p.get("revision")):
+            continue
+        for slot in map(as_dict, cast(list[object], p.get("slots") or [])):
+            if (line := policy_of_line(x, slot.get("source_utt"))) is not None:
+                out.add(as_dict(line.payload.get("intent")).get("offer_ref"))
+    return out - {None}
 
 
 def run(x: Inputs) -> dict[str, object]:
@@ -285,7 +315,7 @@ def summary(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
 def block(s: Mapping[str, object], group: str) -> str:
     """The human block diagnose prints per group, after the tiers."""
     kind, _, value = group.partition(":")
-    out = [f"== progress {kind} {value[:12]} ({LABEL})"]
+    out = [f"== progress {kind} {value[:12]} ({LABEL})", f"  legend: {LEGEND}"]
     for fam, c in as_dict(s["families"]).items():
         c = as_dict(c)
         reached = as_dict(c["reached"])

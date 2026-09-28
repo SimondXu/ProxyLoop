@@ -27,12 +27,15 @@ def _status(out: Any) -> dict[str, str]:
 
 def test_the_ladder_is_ordered_and_generic() -> None:
     assert progress.MILESTONES == (
-        "identified", "discount_asked", "offer_recorded", "lever_sent",
-        "lever_heard", "later_rung", "readback_confirmed", "approval_requested",
+        "identified", "discount_asked", "offer_recorded", "slow_lever_sent",
+        "world_lever_heard", "later_rung", "readback_confirmed", "approval_requested",
         "approval_decided", "accept_released", "commit_heard", "verified",
     )  # fmt: skip
     assert frozenset({"approval_requested", "approval_decided"}) == progress.OPTIONAL
-    assert frozenset({"lever_sent", "lever_heard", "later_rung"}) == progress.BY_OUTCOME
+    assert (
+        frozenset({"slow_lever_sent", "world_lever_heard", "later_rung"})
+        == progress.BY_OUTCOME
+    )
 
 
 def test_a_full_path_reaches_every_milestone() -> None:
@@ -50,8 +53,8 @@ def test_a_full_path_reaches_every_milestone() -> None:
 CASES = [
     ("ask_discount", "discount_asked"),
     ("record", "offer_recorded"),
-    ("lever_guide", "lever_sent"),
-    ("lever_ear", "lever_heard"),
+    ("lever_guide", "slow_lever_sent"),
+    ("lever_ear", "world_lever_heard"),
     ("readback", "readback_confirmed"),
     ("decide", "approval_decided"),
     ("release", "accept_released"),
@@ -132,14 +135,17 @@ def test_no_committed_offer_needs_the_levers() -> None:
     r.guide("ask_discount")
     r.record(r.offer("ask_discount", 0, "save-1"))
     r.guide("mention_tenure")
-    r.policy("OFFER", "OFFER", "no_better", None, 0, r.ear("tenure", "lever-x"))
+    r.policy("OFFER", "OFFER", "no_better", None, 0,
+             r.ear("tenure", r.spoken("lever-x")))  # fmt: skip
     r.end("timeout")
     out = _run(r)
     status = _status(out)
     assert out["committed_rung"] is None
-    assert status["lever_sent"] == status["lever_heard"] == "reached"
+    assert status["slow_lever_sent"] == status["world_lever_heard"] == "reached"
     assert status["later_rung"] == "missing"
-    assert out["first_missing"] == "later_rung" and out["furthest"] == "lever_heard"
+    assert (
+        out["first_missing"] == "later_rung" and out["furthest"] == "world_lever_heard"
+    )
 
 
 def test_identified_is_the_move_past_identity() -> None:
@@ -158,7 +164,66 @@ def test_a_lever_before_the_first_offer_is_not_a_lever_sent() -> None:
     r.record(r.offer("ask_discount", 0, "save-1"))
     r.end("timeout")
     status = _status(_run(r))
-    assert status["lever_sent"] == status["lever_heard"] == "missing"
+    assert status["slow_lever_sent"] == status["world_lever_heard"] == "missing"
+
+
+def test_a_lagged_ear_label_is_not_a_lever_heard_after_the_offer() -> None:
+    """rev-270 (run bdfcc0): the agent's line is delivered before the rep's
+    first offer, the Ear labels it a lever after that offer; the anchor is the
+    line's delivery, so it is not a lever heard after the first offer."""
+    r = Run()
+    r.identify()
+    said = r.spoken("cp-g8-u1")  # before the offer
+    r.record(r.offer("ask_discount", 0, "save-1"))
+    r.ear("ask_discount", said)  # the Ear's label lands a turn later
+    r.end("timeout")
+    assert _status(_run(r))["world_lever_heard"] == "missing"
+    r2 = Run()
+    r2.identify()
+    r2.record(r2.offer("ask_discount", 0, "save-1"))
+    r2.ear("tenure", r2.spoken("cp-g9-u1"))  # said and labelled after the offer
+    r2.end("timeout")
+    assert _status(_run(r2))["world_lever_heard"] == "reached"
+
+
+def _two_rungs(r: Run) -> tuple[str, str]:
+    """The rep's rung-0 and rung-1 offer lines (world save-1, save-2)."""
+    r.identify()
+    first = r.offer("ask_discount", 0, "save-1")
+    second = r.say(r.policy("OFFER", "FINAL", "final_offer", "save-2", 1,
+                            r.ear("tenure", r.spoken("lever-2"))))  # fmt: skip
+    return first, second
+
+
+def test_the_committed_rung_is_the_highest_of_two_revisions() -> None:
+    r = Run()
+    first, second = _two_rungs(r)
+    r.record(first, "offer-1", 1, "th1")
+    r.request("offer-1", 1, "th1")  # rung 0, sent for approval
+    r.record(second, "offer-1", 2, "th2")
+    r.verbatim(r.authorize(r.start, "th2"))  # rung 1, accepted
+    r.end("done")
+    assert _run(r)["committed_rung"] == 1
+
+
+def test_one_revision_citing_both_rungs_is_the_higher() -> None:
+    r = Run()
+    first, second = _two_rungs(r)
+    r.record(first, "offer-1", 1, "th", second)
+    r.request()
+    r.end("done")
+    out = _run(r)
+    assert out["committed_rung"] == 1
+    assert _status(out)["later_rung"] == "reached"
+
+
+def test_one_unknown_slot_makes_the_committed_rung_unknown() -> None:
+    r = Run()
+    first, _ = _two_rungs(r)
+    r.record(first, "offer-1", 1, "th", "cp-99")  # the second slot: no rep line
+    r.request()
+    r.end("done")
+    assert _run(r)["committed_rung"] is None
 
 
 def test_an_unknown_committed_rung_keeps_the_levers_needed() -> None:
@@ -172,7 +237,7 @@ def test_an_unknown_committed_rung_keeps_the_levers_needed() -> None:
     r.end("timeout")
     out = _run(r)
     assert out["committed_rung"] is None
-    assert _status(out)["lever_sent"] == "missing"
+    assert _status(out)["slow_lever_sent"] == "missing"
 
 
 def test_a_denied_card_is_decided_and_the_accept_missing() -> None:
@@ -219,10 +284,15 @@ def test_summary_counts_runs_per_family_and_labels_itself() -> None:
     assert a["runs"] == 2 and a["reached"]["commit_heard"] == 1
     assert a["reached"]["accept_released"] == 2
     assert a["first_missing"] == {"commit_heard": 1}
-    assert b["not_needed"] == {"later_rung": 1, "lever_heard": 1, "lever_sent": 1}
+    assert b["not_needed"] == {
+        "later_rung": 1,
+        "world_lever_heard": 1,
+        "slow_lever_sent": 1,
+    }
     text = progress.block(s, "slow_fp:abcdef0123456789")
     lines = text.splitlines()
     assert lines[0] == f"== progress slow_fp abcdef012345 ({progress.LABEL})"
+    assert lines[1] == f"  legend: {progress.LEGEND}"
     assert any(x.startswith("  fam-a runs=2 ") for x in lines)
     assert "first_missing commit_heard=1" in text
 

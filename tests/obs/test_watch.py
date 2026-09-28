@@ -35,13 +35,16 @@ def _granted(r: Run) -> str:
         (False, "fence", "accept", True, 0, 0),  # no grant before it
         (True, "expired", "accept", True, 0, 0),  # not a fence
         (True, "fence", "decline", True, 0, 0),  # not an accept line
+        ("denied", "fence", "accept", True, 0, 0),  # a denied card is no grant
     ],
 )
 def test_revoked_after_grant(
-    grant: bool, reason: str, kind: str, again: bool, count: int, reaccepted: int
-) -> None:
+    grant: bool | str, reason: str, kind: str, again: bool, count: int,
+    reaccepted: int,
+) -> None:  # fmt: skip
     r = Run()
-    auth = r.authorize(_granted(r) if grant else r.start)
+    card = r.decide(r.request(), "denied") if grant == "denied" else None
+    auth = r.authorize(card or (_granted(r) if grant else r.start))
     said = r.verbatim(auth)
     if kind != "accept":
         r.log.events[-1].payload["kind"] = kind
@@ -97,6 +100,31 @@ def test_a_mandate_grant_is_not_an_approval_grant() -> None:
     assert _item(r, "revoked_after_grant")["count"] == 0
 
 
+@pytest.mark.parametrize("case", ["denied", "late_grant", "other_offer"])
+def test_ttl_sub_counts_are_scoped_to_the_expired_offer(case: str) -> None:
+    """rev-270: a denied card is no grant (M14); a grant after the expiry is
+    not after it (M15); a grant, an ask and a rep read-back of another world
+    offer are not this offer's (M17, B2 scoping)."""
+    r = Run()
+    r.identify()
+    r.record(r.offer("ask_discount", 0, "save-1"))
+    if case == "denied":
+        r.decide(r.request(), "denied")
+    if case == "other_offer":
+        utt = r.say(r.policy("OFFER", "OFFER", "offer", "save-9", 1,
+                             r.ear("tenure", r.spoken("lever-9"))))  # fmt: skip
+        r.record(utt, "offer-9")
+        r.decide(r.request("offer-9"))
+        r.guide("ask_readback", "offer:offer-9.monthly_price")
+        r.policy("OFFER", "OFFER", "readback", "save-9", 1)
+    r.policy("OFFER", "OFFER", "offer_expired", "save-1", 0)
+    if case == "late_grant":
+        r.decide(r.request())
+    got = _item(r, "ttl_lost")
+    assert got["count"] == 1
+    assert got["after_grant"] == 0 and got["during_readback"] == 0
+
+
 def test_an_ask_before_the_offer_is_no_readback_in_progress() -> None:
     r = Run()
     r.guide("ask_readback", "offer:offer-0.monthly_price")  # an earlier offer's
@@ -134,6 +162,14 @@ def test_identity_strikes_and_their_hang_up() -> None:
     assert got["count"] == 2 and got["strikes"] == [r.seq(s1)]
     assert got["hang_up"] == r.seq(end) and got["hang_up_reason"] == "identity"
     assert got["seqs"] == [r.seq(s1), r.seq(end)]
+
+
+def test_a_hang_up_outside_identify_is_not_an_identity_hang_up() -> None:
+    r = Run()
+    r.identify()
+    r.policy("OFFER", "ENDED", "hang_up", cause=r.start)  # a timer hang-up later
+    got = _item(r, "identity_strikes")
+    assert got["count"] == 0 and got["hang_up"] is None and got["seqs"] == []
 
 
 def test_no_rep_policy_is_not_observable() -> None:
@@ -176,6 +212,28 @@ def test_slow_refusals_break_out_naming() -> None:
     assert got["naming"] == {"count": 2, "seqs": [r.seq(g), r.seq(u)], "by": by}
 
 
+@pytest.mark.parametrize(
+    "slot",
+    [
+        {"field": "fee:x: 'fee' is a generic word; name a", "value": "1",
+         "utt_ref": "cp-1"},
+        {"field": "fee:porting", "value": "fee:y: 'z' is not in the cited line",
+         "utt_ref": "cp-1"},
+    ],
+)  # fmt: skip
+def test_a_shape_refusal_echoing_the_naming_phrase_is_not_naming(
+    slot: dict[str, str],
+) -> None:
+    """rev-270: a model's field or value echoed by a shape refusal never
+    counts: the naming phrases must be the whole problem list, from its start."""
+    problem = offer_slots.shape(slot)
+    assert problem is not None
+    r = Run()
+    r.tool("record_offer", False, "invalid_args", offer_slots.refused([problem]))
+    got = _item(r, "slow_refusals")
+    assert got["count"] == 1 and got["naming"] == {"count": 0, "seqs": [], "by": {}}
+
+
 def test_a_credit_naming_refusal_is_named_credit() -> None:
     r = Run()
     text = _naming_text("credit:paperless_credit", "a paperless credit of $5")
@@ -183,6 +241,10 @@ def test_a_credit_naming_refusal_is_named_credit() -> None:
     naming = _item(r, "slow_refusals")["naming"]
     assert naming == {"count": 1, "seqs": [r.seq(refusal)],
                       "by": {"credit:generic_word": 1}}  # fmt: skip
+    both = _naming_text("credit:paperless_credit", "a credit of $5")  # 2 problems
+    r.tool("record_offer", False, "invalid_args", both)
+    by = _item(r, "slow_refusals")["naming"]["by"]
+    assert by == {"credit:generic_word": 2, "credit:not_said": 1}
 
 
 # B7: S1-SYS-72 activation: confirm_accept after a released accept, and a
@@ -277,6 +339,14 @@ def test_stop_to_grant(outcome: str) -> None:
                     "never": None}[outcome],
         "delay_ms": delay,
     }]  # fmt: skip
+
+
+def test_a_sim_post_before_the_stop_is_not_paired() -> None:
+    r = Run()
+    card = r.request()
+    r.post(card, "granted", "sim_approver")  # decided before the stop fired
+    _stop(r, card)
+    assert _item(r, "stop_to_grant")["stops"][0]["post"] is None
 
 
 def test_a_stop_without_a_card_pairs_the_next_sim_post() -> None:

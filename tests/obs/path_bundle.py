@@ -58,6 +58,13 @@ class Run:
         self.log.add("utt.final", "kernel", "agent", line, (said,))
         return utt
 
+    def spoken(self, utt: str) -> str:
+        """An agent line delivered on the cp lane; its utt id."""
+        out: P = {"lane": "cp", "utt_id": utt, "text_generated": "PRIV"}
+        out |= {"text_heard": "PRIV", "interrupted": False}
+        self.log.add("utt.delivered", "kernel", "agent", out, (self.start,))
+        return utt
+
     def identify(self) -> str:
         return self.policy("IDENTIFY", "DISCOVER", "how_can_help", cause=self.start)
 
@@ -76,10 +83,15 @@ class Run:
         return self.log.add("s2f.msg", "guard", "agent", msg, (self.start,))
 
     def record(
-        self, utt: str, ref: str = "offer-1", rev: int = 1, th: str = "th"
-    ) -> str:
-        slots = [{"field": "monthly_price", "value": "6000", "status": "unknown",
-                  "source_utt": utt}]  # fmt: skip
+        self, utt: str, ref: str = "offer-1", rev: int = 1, th: str = "th",
+        *more: str,
+    ) -> str:  # fmt: skip
+        """One slot per cited line: monthly_price cites ``utt``, then
+        term_months and fees_none cite ``more``."""
+        fields = (("monthly_price", "6000"), ("term_months", "12"),
+                  ("fees_none", "true"))  # fmt: skip
+        slots = [{"field": f, "value": v, "status": "unknown", "source_utt": u}
+                 for (f, v), u in zip(fields, (utt, *more), strict=False)]  # fmt: skip
         offer: P = {"offer_ref": ref, "revision": rev, "slots": slots}
         offer["terms_hash"] = th
         return self.log.add("offer.recorded", "guard", "agent", offer, (self.start,))
@@ -182,7 +194,7 @@ def success(skip: frozenset[str] = frozenset(), rung: int = 1) -> Run:
         if "lever_guide" not in skip:
             r.guide("mention_tenure")
         lever = "clarify" if "lever_ear" in skip else "tenure"
-        ear = r.ear(lever, f"lever-{len(r.log.events)}")
+        ear = r.ear(lever, r.spoken(f"lever-{len(r.log.events)}"))
         if "later_rung" not in skip:
             utt = r.say(r.policy("OFFER", "FINAL", "final_offer", "save-2", 1, ear))
         if "record" not in skip:

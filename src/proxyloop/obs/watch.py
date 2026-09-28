@@ -11,9 +11,14 @@ bundle cannot tell, never 0).
   (approval.decided; a mandate grant is not one); ``reaccepted``: those
   followed by a speak.released accept line.
 - ``ttl_lost`` (B2): rep.policy{intent: offer_expired} (the world expires only
-  open offers); ``after_grant``: a granted card before it; ``during_readback``: a cp
-  ask_readback GUIDE, or a rep.policy readback/confirm_accept of that world
-  offer, between the rep.policy that made the offer and the expiry.
+  open offers). Both sub-counts are scoped to the expired world offer through
+  the agent's records (``progress.world_refs``: slot source_utt -> utt.final
+  -> rep.mouth -> rep.policy offer_ref): ``after_grant``, a granted card for a
+  revision whose record cites that offer, before the expiry;
+  ``during_readback``, a cp ask_readback GUIDE citing an agent offer whose
+  records cite it, or a rep.policy readback/confirm_accept of it, between the
+  rep.policy that made the offer and the expiry. A card or ask whose record
+  cites no rep line obs can follow counts for no offer.
 - ``readback_asks`` (B3): ask_readback GUIDEs per offer revision while it had
   a slot not confirmed (``slow.readback_asks_max_per_revision``'s count, with
   its seqs); a revision with 2 or more is flagged (ADR-0020 W2's e2 rule).
@@ -21,9 +26,12 @@ bundle cannot tell, never 0).
   identity}) and the IDENTIFY -> ENDED hang-up with its intent ``reason``.
 - ``slow_refusals`` (B5): slow.tool{ok: false} by ``code`` (``none``: an
   uncoded one) and tool; ``naming``: record_offer ``invalid_args`` refusals
-  for a fee or credit code that is not the rep's name for it (S1-SYS-85), by the
-  refusal text ``slow/offer_slots.py`` authors (a fixed emitter, never a
-  model's text; tests pin it), by kind and ``generic_word``/``not_said``.
+  for a fee or credit code that is not the rep's name for it (S1-SYS-85), by
+  kind and ``generic_word``/``not_said``. Documented exception (root ruling,
+  rev-270): it reads ``result_text`` without ``--content``, matching only the
+  anchored ``slow/offer_slots.py``-authored phrases (the whole problem list,
+  from its start, is ``_named``'s: a model's field or value a shape refusal
+  echoes never matches; tests pin it), and emits codes and counts, never text.
 - ``sys72_activation`` (B7): a rep.policy{confirm_accept} whose rep.ear heard
   a Guard-released accept line (``tiers._accepted``), and each commit that
   only the confirm path holds (``tiers._check``: confirmed_by_free_speech).
@@ -48,16 +56,23 @@ from typing import cast
 from proxyloop.contract.events import Event
 from proxyloop.obs import grading, tiers
 from proxyloop.obs.detectors import DETECTORS, Inputs, as_dict, safe
-from proxyloop.obs.progress import LABEL, family
+from proxyloop.obs.progress import LABEL, family, world_refs
 
 # ``slow.result.Code``; obs may not import slow (.importlinter), test_watch pins.
 CODES = frozenset({"invalid_args", "unknown_tool", "act_shape"})
-# ``slow/offer_slots.py`` ``_named``'s two refusals; test_watch pins the text.
-_NAMING = re.compile(
-    r"\b(fee|credit):[A-Za-z0-9_.:-]+: '[^']*' is "
-    r"(a generic word; name a|not in the cited line)"
+# ``slow/offer_slots.py``: ``refused`` of ``_named``'s two problems, the
+# whole problem list anchored at its start; test_watch pins the text.
+_PROBLEM = (
+    r"{o}fee|credit):[A-Za-z0-9_.:-]+: '[a-z0-9]+' is (?:{o}a generic word); "
+    r"name a (?:fee|credit) by the words the rep used for it without "
+    r"'[a-z0-9]+' \(e\.g\. [^()]*\)|{o}not in the cited line) [^;]+; use the "
+    r"rep's words)"
 )
-_WHY = {"a generic word; name a": "generic_word", "not in the cited line": "not_said"}
+_ONE = re.compile(_PROBLEM.format(o="("))
+_ANY = _PROBLEM.format(o="(?:")
+_NAMING = re.compile(
+    rf"record_offer refused, nothing recorded: {_ANY}(?:; {_ANY})*\. Each slot is "
+)
 Item = dict[str, object]
 
 
@@ -99,13 +114,35 @@ def _ref(e: Event) -> object:
     return as_dict(e.payload.get("intent")).get("offer_ref")
 
 
+def _granted_offers(x: Inputs) -> list[tuple[int, set[object]]]:
+    """Each granted card's seq and the world offers its revision cites."""
+    cards = {
+        c.payload.get("approval_id"): c.payload for c in x.of("approval.requested")
+    }
+    out = list[tuple[int, set[object]]]()
+    for g in _grants(x):
+        card = cards.get(g.payload.get("approval_id")) or {}
+        refs = world_refs(x, card.get("offer_ref"), card.get("revision"))
+        out.append((g.seq, refs))
+    return out
+
+
+def _asked_offers(x: Inputs) -> list[tuple[int, set[object]]]:
+    """Each cp ask_readback GUIDE's seq and the world offers its cited agent
+    offers (``offer:<ref>.<field>`` slots) cite."""
+    out = list[tuple[int, set[object]]]()
+    for g in x.of("s2f.msg"):
+        guide = as_dict(g.payload.get("guide"))
+        if g.payload.get("lane") != "cp" or guide.get("move") != "ask_readback":
+            continue
+        slots = [str(s) for s in cast(list[object], guide.get("slots") or [])]
+        agent = {s[6:].partition(".")[0] for s in slots if s.startswith("offer:")}
+        out.append((g.seq, set[object]().union(*(world_refs(x, a) for a in agent))))
+    return out
+
+
 def _ttl(x: Inputs) -> Item:
-    policy, grants = x.of("rep.policy"), [g.seq for g in _grants(x)]
-    asks = [
-        g.seq for g in x.of("s2f.msg")
-        if g.payload.get("lane") == "cp"
-        and as_dict(g.payload.get("guide")).get("move") == "ask_readback"
-    ]  # fmt: skip
+    policy, grants, asked = x.of("rep.policy"), _granted_offers(x), _asked_offers(x)
     seqs, after, during = list[int](), 0, 0
     for e in policy:
         if _kind(e) != "offer_expired":
@@ -115,8 +152,9 @@ def _ttl(x: Inputs) -> Item:
         since = made[-1] if made else -1
         reads = [p.seq for p in policy if _ref(p) == _ref(e)
                  and _kind(p) in ("readback", "confirm_accept")]  # fmt: skip
+        asks = [s for s, refs in asked if _ref(e) in refs]
         seqs.append(e.seq)
-        after += any(g < e.seq for g in grants)
+        after += any(s < e.seq and _ref(e) in refs for s, refs in grants)
         during += any(since < s < e.seq for s in [*asks, *reads])
     return {"count": len(seqs), "seqs": seqs, "after_grant": after,
             "during_readback": during}  # fmt: skip
@@ -158,8 +196,11 @@ def _refusals(x: Inputs) -> Item:
         codes["none" if code is None else str(code) if code in CODES else "other"] += 1
         tools[grading._name(e)] += 1  # pyright: ignore[reportPrivateUsage]
         if name == "record_offer" and code == "invalid_args":
-            found = _NAMING.findall(str(e.payload.get("result_text", "")))
-            why.update(f"{kind}:{_WHY[w]}" for kind, w in found)
+            whole = _NAMING.match(str(e.payload.get("result_text", "")))
+            found = _ONE.findall(whole.group(0)) if whole else []
+            why.update(
+                f"{k}:{'generic_word' if g else 'not_said'}" for k, g, _ in found
+            )
             naming += [e.seq] * bool(found)
     return {"count": len(refused), "seqs": [e.seq for e in refused],
             "by_code": dict(sorted(codes.items())),
