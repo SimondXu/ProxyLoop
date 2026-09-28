@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from proxyloop.env import world
+from proxyloop.env import reference, world
 from proxyloop.env.counterparty.ear import EarAct
 from proxyloop.env.counterparty.policy import Policy
 from proxyloop.env.reference import FAMILY_CHECKS, completable
@@ -35,9 +35,17 @@ def test_fifty_instances_per_family_are_completable(family: str) -> None:
         one = instance(task, seed)
         verdict = completable(one)
         assert verdict.ok, f"{one.id}: {verdict}"
+        pulled = [s for s in verdict.path if s.startswith("cite_competitor")]
+        assert not pulled, f"{one.id}: {verdict}"  # the agent cannot reach it
         assert check(one), f"{one.id} lacks its family's hazard"
         hashes.add(instance_hash(one))
     assert len(hashes) == 50
+
+
+def test_the_reference_pulls_only_levers_the_agent_can_reach() -> None:
+    """S1-SYS-66 P3: Slow's cite_competitor needs a competitor quote the user
+    shared (Guard's lever_denial), so the proof never assumes it."""
+    assert "cite_competitor" not in reference.LEVERS
 
 
 Edit = Callable[[dict[str, Any]], object]

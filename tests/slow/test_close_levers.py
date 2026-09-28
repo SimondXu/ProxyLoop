@@ -244,7 +244,8 @@ def test_f12_levers_lists_only_what_guide_fast_would_refuse(tmp_path: Path) -> N
 
 
 def test_f12_no_unavailable_lever_says_so() -> None:
-    assert state.levers_line(()) == "levers: all available"
+    got = state.levers_line(())  # S1-SYS-66: the available ones, by name
+    assert got == "levers: available: cite_competitor, mention_tenure, cancel_lever"
 
 
 TELL = {"tool": "tell_user", "text": "Their best is $78 a month; no deal."}
