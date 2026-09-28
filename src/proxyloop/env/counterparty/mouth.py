@@ -25,7 +25,7 @@ LINES: dict[IntentKind, str] = {
     "no_better": "I am afraid I cannot do better than what I offered.",
     "readback": "Here are the full terms:",
     "confirm_accept": "To confirm, do you accept these terms?",
-    "confirmed": "Done, the offer is accepted. Your confirmation number is:",
+    "confirmed": "Done, the offer is accepted. Your confirmation number is",
     "ack_decline": "Understood.",
     "offer_unavailable": "Sorry, that offer is no longer available.",
     "offer_expired": "",  # silent
@@ -35,7 +35,10 @@ LINES: dict[IntentKind, str] = {
     "hang_up": "I cannot hear you, so I am ending the call. Goodbye.",
     "clarify": "Sorry, how can I help with your account?",
 }
-IDENTIFIERS = frozenset({"confirmation"})  # voiced verbatim, never as a number
+IDENTITY_HANG_UP = (  # a ``hang_up`` for an identity strike-out, not a timer one
+    "I'm unable to verify the account, so I'll have to end the call. Goodbye."
+)
+IDENTIFIERS = frozenset({"confirmation"})  # voiced verbatim, unlabelled, not a number
 NONE = {  # read-back terms that state an absence (ARCHITECTURE §9.2)
     ("fees_none", "true"): "no fees",
     ("changes_none", "true"): "no other changes",
@@ -54,13 +57,16 @@ def _label(key: str) -> str:
 def _term(key: str, value: str) -> str:
     if (absent := NONE.get((key, value))) is not None:
         return absent
+    if key in IDENTIFIERS:  # "... number is 048213": the value only, once
+        return value
     if key == "term_months":  # "12 months": the unit after the number, as spoken
         return f"term: {value} months"
     return f"{_label(key)}: {value}"
 
 
 def template(intent: PublicIntent, company: str) -> str:
-    line = LINES[intent.kind].format(company=company)
+    said = IDENTITY_HANG_UP if intent.reason == "identity" else LINES[intent.kind]
+    line = said.format(company=company)
     if intent.ask:
         line += " Please give your " + " and ".join(map(_label, intent.ask)) + "."
     values = "; ".join(_term(k, v) for k, v in intent.say)

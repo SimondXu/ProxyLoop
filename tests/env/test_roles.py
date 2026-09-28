@@ -257,6 +257,7 @@ def test_a_silence_strike_is_an_uncaused_policy_event_and_a_check_in(
         "offer_ref": None,
         "say": [],
         "ask": [],
+        "reason": None,  # S1-SYS-73: set only on an identity strike-out
     }
     assert sink.of("rep.mouth")[0].cause_ids[0] == policy.event_id
     _world_ok(sink)
