@@ -99,8 +99,14 @@ async function yourRole(role: Locator) {
   for (const hidden of ["Alex", "78.00", "69.00", "retention agent", "save-1"]) await expect(role).not.toContainText(hidden);
 }
 
+/** The rail's folded Technical details (S1-SYS-77): open it (idempotent). */
+async function technical(page: Page) {
+  await page.locator("details.pl-tech").evaluate((d: HTMLDetailsElement) => (d.open = true));
+}
+
 /** The live page names only test_fake models, for every role session.started lists. */
 async function onlyFakes(page: Page, roles: string[]) {
+  await technical(page);
   const models = page.getByRole("region", { name: "Run" }).getByRole("list", { name: "Models" }).getByRole("listitem");
   await expect(models).toHaveCount(roles.length);
   const shown = await models.allTextContents();
@@ -108,8 +114,9 @@ async function onlyFakes(page: Page, roles: string[]) {
   for (const t of shown) expect(t).toMatch(/^\w+: test_fake \w+-fake$/);
 }
 
-/** The authority strip sits behind a disclosure in the sticky header: open it (idempotent). */
+/** The authority strip sits behind a disclosure in Technical details: open both (idempotent). */
 async function authority(page: Page) {
+  await technical(page);
   await page.locator("details.authority").evaluate((d: HTMLDetailsElement) => (d.open = true));
   return page.getByRole("region", { name: "Authority" });
 }
@@ -124,11 +131,9 @@ async function say(page: Page, text: string) {
 async function toCard(page: Page) {
   const id = await start(page, "sim");
   await onlyFakes(page, ["fast_user", "fast_cp", "slow", "ear", "mouth"]);
-  // The world's rep is labelled on every frame: the honesty band and the call column; not the chat (the user is the person here).
+  // The world's rep is labelled on every frame: the honesty band (and each call card, below); not the chat (the user is the person here).
   await expect(page.getByRole("note", { name: "Simulated parties" })).toHaveText(SIM_REP);
-  await expect(page.getByRole("region", { name: "Call" }).getByLabel("Simulated parties")).toHaveText(SIM_REP);
-  await expect(page.getByRole("region", { name: "Chat" }).getByLabel("Simulated parties")).toHaveCount(0);
-  await expect(page.getByRole("region", { name: "Call" })).toContainText("Rep (simulated)");
+  await expect(page.getByText("Simulated user", { exact: true })).toHaveCount(0);
   // Every model is a test_fake: the band says so (I8), before any model would have spoken.
   await expect(page.getByText("Scripted test run · no models called")).toBeVisible();
   await say(page, TASK_SAID);
@@ -159,6 +164,10 @@ async function toCard(page: Page) {
   const terms = (offer?.payload.slots ?? []) as { field: string }[];
   expect(terms.map((t) => t.field)).toEqual(["monthly_price", "term_months", "fees_none", "changes_none", "expires"]);
   await expect(card.getByLabel("Readback")).toHaveText(String(requested.payload.readback_text));
+  // The call is a card in the stream (S1-SYS-77), split where the chat interleaves: each part names the simulated rep.
+  const calls = page.getByRole("group", { name: "Call with the company" });
+  await expect(calls.first()).toContainText("Rep (simulated)");
+  for (const part of await calls.all()) await expect(part.getByLabel("Simulated parties")).toHaveText(SIM_REP);
   await expect((await authority(page)).getByLabel("Case status")).toHaveText("status AWAITING_APPROVAL");
   await expect(page.getByLabel("Status line")).toHaveText("Waiting for you: approve or decline $78/mo for 24 months");
   return { id, card, requested };
@@ -230,11 +239,12 @@ test.describe("approve", () => {
     ]) {
       await expect(steps.filter({ hasText: step })).toHaveCount(1);
     }
-    const call = page.getByRole("list", { name: "Call transcript" });
-    await expect(call).toContainText(`Agent: ${String(accept.payload.text)}`);
-    await expect(call.getByRole("listitem").filter({ hasText: "AI disclosure · fixed wording" })).toHaveCount(1);
+    // Every call part's lines (the call card splits where the chat interleaves, S1-SYS-77).
+    const call = page.getByRole("list", { name: "Call transcript" }).getByRole("listitem");
+    await expect(call.filter({ hasText: `Agent: ${String(accept.payload.text)}` })).toHaveCount(1);
+    await expect(call.filter({ hasText: "AI disclosure · fixed wording" })).toHaveCount(1);
     // The accept's capability binds it to this card (decision.ts, conversation.ts): your grant, on the real kernel's events.
-    await expect(call.getByRole("listitem").filter({ hasText: "Acceptance · approved by you" })).toHaveCount(1);
+    await expect(call.filter({ hasText: "Acceptance · approved by you" })).toHaveCount(1);
     await shot(page, "demo-live-conversation");
 
     // c) the replay UI, from /api/bundles: the same run and the same chain.
@@ -244,11 +254,12 @@ test.describe("approve", () => {
     await page.goto("/");
     await page.getByRole("list", { name: "Recorded runs" }).getByRole("link").filter({ hasText: id }).click();
     await expect(page).toHaveURL(`/?run=${id}`);
+    await technical(page);
     await expect(page.getByRole("region", { name: "Run" })).toContainText(id);
     // It opens at the end: the heard yes, the approval card in its final state (no button to click), the steps.
     const timeline = page.getByRole("slider", { name: "Timeline" });
     await expect(timeline).toHaveValue((await timeline.getAttribute("max")) ?? "");
-    await expect(page.getByRole("list", { name: "Call transcript" })).toContainText(`Agent: ${String(accept.payload.text)}`);
+    await expect(page.getByRole("list", { name: "Call transcript" }).getByRole("listitem").filter({ hasText: `Agent: ${String(accept.payload.text)}` })).toHaveCount(1);
     const replayCard = page.getByRole("region", { name: "Chat" }).getByRole("article", { name: `Approval ${String(decided.payload.approval_id)}` });
     await expect(replayCard.getByLabel("Approval status")).toHaveText(/^You approved · \d{1,2}:\d{2}\s[AP]M$/);
     await expect(replayCard.getByRole("button", { name: "Approve $78/mo" })).toBeDisabled();
@@ -352,12 +363,10 @@ test.describe("human rep", () => {
     await started.getByRole("link", { name: "open the live page" }).click();
     await expect(page).toHaveURL(`/?live=${id}`);
     await onlyFakes(page, ["fast_user", "fast_cp", "slow"]);
-    await expect(page.getByRole("heading", { name: "Call with the company" })).toBeVisible();
     const role = page.locator("details.pl-role"); // the principal's page: its case's own card, folded
     await role.locator("summary").click();
     await yourRole(role);
     await expect(page.getByLabel("Simulated parties")).toHaveCount(0);
-    await expect(page.getByRole("region", { name: "Call" })).not.toContainText("(simulated)"); // a person, not the world
 
     // The user's own words and the case agent's private summary never reach the rep.
     const secret = "My limit is 65 dollars a month, keep that between us.";
@@ -368,6 +377,10 @@ test.describe("human rep", () => {
     const transcript = rep.getByRole("list", { name: "Call transcript" });
     await expect(transcript.getByRole("listitem").nth(1)).toHaveText(/^Agent: Hello, this is an AI assistant/, FLOW);
     await expect(transcript).toContainText("Agent: The account holder is", FLOW); // Guard-shared facts, not the user's words
+    // The live page's call card (S1-SYS-77: from chan.opened): a person, not the world.
+    const calls = page.getByRole("group", { name: "Call with the company" });
+    await expect(calls.first()).toBeVisible();
+    for (const part of await calls.all()) await expect(part).not.toContainText("(simulated)");
 
     const offer = "I can offer you 70 dollars a month on a 24-month term.";
     const readback = "Here are the full terms: 70 dollars a month; a 24-month term; no fees; no other changes; no expiry.";

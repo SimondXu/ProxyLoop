@@ -10,7 +10,7 @@ import { approvalCards, type Posting } from "../approval";
 import { authorityStrip } from "../authority";
 import { loadRun, type Run } from "../bundleSource";
 import { parties } from "../conversation";
-import { Panes, useView } from "../ConversationView";
+import { Panes, TechDetails, useView } from "../ConversationView";
 import { AgentRail } from "../live/AgentRail";
 import { ApprovalCard } from "../live/ApprovalCard";
 import { LimitsCard } from "../live/LimitsCard";
@@ -103,6 +103,14 @@ function Recording({ runId, run }: { runId: string; run: Run }) {
     })),
   ].sort((a, b) => a.seq - b.seq);
 
+  const title = (
+    <>
+      <h1>{start ? taskName(String(start.payload.task_ref)) : "Recorded run"}</h1>
+      <span className="meta pl-runid">{runId}</span>
+      <PhaseStepper events={shown} />
+    </>
+  );
+
   return (
     <div className={engineer ? "pl-replay" : "pl-live pl-replay"}>
       <div className="pl-sticky">
@@ -110,17 +118,15 @@ function Recording({ runId, run }: { runId: string; run: Run }) {
           <p className="pl-replay-tag">Replay of a recorded run</p>
           <HonestyBand h={h} />
         </div>
-        <header className="bar">
-          <h1>{start ? taskName(String(start.payload.task_ref)) : "Recorded run"}</h1>
-          <span className="meta pl-runid">{runId}</span>
-          <PhaseStepper events={shown} />
-          {engineer && link}
-          {engineer && (
+        {engineer && (
+          <header className="bar">
+            {title}
+            {link}
             <label>
               <input type="checkbox" checked={god} onChange={(e) => setGod(e.target.checked)} /> God-view
             </label>
-          )}
-        </header>
+          </header>
+        )}
       </div>
       {engineer ? (
         <Suspense fallback={<Skeleton label="Loading the engineer view…" />}>
@@ -131,16 +137,19 @@ function Recording({ runId, run }: { runId: string; run: Run }) {
           events={shown}
           p={who}
           announce={false}
+          head={title}
           input={{
             cards: guardCards,
             pending: [],
             recording: true,
             composer: <p className="pl-recording">This is a recording: nothing here is sent, and no card can be clicked.</p>,
           }}
-          rail={
+          details={
             <>
               <AgentRail events={shown} cards={cards} mandates={mandates} />
-              <RunSummary events={events} />
+              <TechDetails>
+                <RunSummary events={events} />
+              </TechDetails>
               {link}
             </>
           }

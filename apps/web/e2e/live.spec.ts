@@ -6,8 +6,13 @@ const REAL: Record<string, [string, string]> = {
   fast_cp: ["real_http", "qwen3.5-9b"],
   slow: ["real_http", "claude-sonnet-5"],
 };
-/** The authority strip sits behind a disclosure in the sticky header: open it (idempotent). */
+/** The rail's folded Technical details (S1-SYS-77): open it (idempotent). */
+async function technical(page: Page) {
+  await page.locator("details.pl-tech").evaluate((d: HTMLDetailsElement) => (d.open = true));
+}
+/** The authority strip sits behind a disclosure in Technical details: open both (idempotent). */
 async function authority(page: Page) {
+  await technical(page);
   await page.locator("details.authority").evaluate((d: HTMLDetailsElement) => (d.open = true));
   return page.getByRole("region", { name: "Authority" });
 }
@@ -177,6 +182,7 @@ test("the live page shows the session's models read-only, with their kind: they 
       stream: "ops",
     }),
   );
+  await technical(page); // the run summary is in the rail's Technical details (S1-SYS-77)
   const models = page.getByRole("list", { name: "Models" });
   await expect(models.getByRole("listitem")).toHaveText(["fast_user: real_http qwen3.5-9b", "fast_cp: test_fake fast_cp-fake"]);
   await expect(page.getByRole("combobox")).toHaveCount(0);
@@ -264,23 +270,25 @@ test("a seq gap stops the stream with a visible error", async ({ page }) => {
 const SIM: Record<string, [string, string]> = { ...REAL, ear: ["real_http", "gemini-3.8-flash"], mouth: ["real_http", "gemini-3.8-flash"] };
 const SIM_REP = "Simulated rep; no real company was called";
 
-test("conversation view: two panes with the right speakers, heard text only, the sim labels, the status line and the banner", async ({ page }) => {
+test("conversation view: one stream with the right speakers, heard text only, the sim labels, the status line and the banner", async ({ page }) => {
   const { connected } = await mockSockets(page);
   await page.goto(`/?live=${RUN}`);
   const ev = events();
   const ws = await connected;
   ws.send(ev("session.started", "kernel", started(SIM), { stream: "ops" }));
-  // Every frame names the simulated rep: the page header and the call column; the chat column names only a simulated user.
+  // Every frame names the simulated rep: the page's band, and each call card once the call opens; only a simulated user labels the chat.
   await expect(page.getByRole("note", { name: "Simulated parties" })).toHaveText(SIM_REP);
-  await expect(page.getByRole("region", { name: "Call" }).getByLabel("Simulated parties")).toHaveText(SIM_REP);
-  await expect(page.getByRole("region", { name: "Chat" }).getByLabel("Simulated parties")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Call with the company" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Call" })).toContainText("Rep (simulated)");
+  await expect(page.getByText("Simulated user", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Status line")).toHaveText("Getting the details before calling");
   await expect(page.getByText("Planner is listening")).toBeVisible(); // outside the live region
 
   const opened = JSON.parse(ev("chan.opened", "kernel", { lane: "cp" })) as { event_id: string };
   ws.send(JSON.stringify(opened));
+  // The call is a card in the stream from chan.opened (S1-SYS-77): its header names the simulated rep.
+  const calls = page.getByRole("group", { name: "Call with the company" });
+  await expect(calls).toHaveCount(1);
+  await expect(calls.getByLabel("Simulated parties")).toHaveText(SIM_REP);
+  await expect(calls).toContainText("Rep (simulated)");
   ws.send(ev("status.changed", "guard", { previous: "INTAKE", status: "IN_CALL" }));
   const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "disclosure", text: "Hello, an AI assistant is calling." });
   ws.send(said);
@@ -296,7 +304,9 @@ test("conversation view: two panes with the right speakers, heard text only, the
   ws.send(ev("utt.final", "kernel", { lane: "cp", speaker: "partner", utt_id: "cp-1", text: "What is the account name?" }));
   ws.send(heard("cp", "The name is on file.", "The name is on file."));
 
-  await expect(page.getByRole("list", { name: "Chat transcript" }).getByRole("listitem")).toHaveText([
+  // The chat's own lines are the stream's items outside the call cards; every call line is in a "Call transcript" list.
+  const chat = page.getByRole("list", { name: "Chat transcript" });
+  await expect(chat.locator(":scope > li:not([aria-hidden])").filter({ hasNot: page.getByRole("group") })).toHaveText([
     "You: Please lower my bill.",
     "Assistant: I will call them now — cut off",
   ]);
@@ -306,6 +316,11 @@ test("conversation view: two panes with the right speakers, heard text only, the
     "Rep (simulated): What is the account name?",
     "Agent: The name is on file.",
   ]);
+  // The chat lines fell between call lines: the call card is split in time order, and each part but the last says so.
+  await expect(calls).toHaveCount(2);
+  await expect(calls.first()).toContainText("continues below");
+  await expect(calls.last()).not.toContainText("continues below");
+  await expect(calls.last().getByRole("list", { name: "Call transcript" })).toContainText("Rep (simulated): What is the account name?");
   for (const hidden of ["UNHEARD", "GENERATED-ONLY"]) await expect(page.locator("main")).not.toContainText(hidden);
   await expect(page.getByLabel("Status line")).toHaveText("On the call with the company");
   // The rail's steps: fixed wording from Guard's and the kernel's events, never a line's text.
@@ -313,7 +328,9 @@ test("conversation view: two panes with the right speakers, heard text only, the
     /^Call \d{2}:\d{2} Called the company$/,
     /^Guard \d{2}:\d{2} Opened with the AI disclosure$/,
   ]);
-  for (const pane of ["Chat", "Call"]) await expect(page.getByRole("list", { name: `${pane} transcript` })).toHaveAttribute("aria-live", "polite");
+  // One live region: the stream. The call's lists are inside it, never live regions of their own (no double read-out).
+  await expect(chat).toHaveAttribute("aria-live", "polite");
+  for (const list of await page.getByRole("list", { name: "Call transcript" }).all()) await expect(list).not.toHaveAttribute("aria-live", /.*/);
   await expect(page.getByRole("region", { name: "User chat" })).toHaveCount(0); // the engineer lanes are not shown
   await expect(page.getByRole("region", { name: "Outcome" })).toHaveCount(0);
   await shot(page, "live-conversation");
@@ -329,6 +346,108 @@ test("conversation view: two panes with the right speakers, heard text only, the
   await expect(banner).toContainText("Reason: abandoned · last case status: IN_CALL");
   await expect(banner).not.toContainText("on the call");
   await shot(page, "live-ended");
+});
+
+// S1-SYS-77: the v4 stream and the Task details rail.
+test("v4 stream: the call card holds the rep's line, a message sent during the call splits it, the card decides by click only, and the rail", async ({
+  page,
+  baseURL,
+}) => {
+  await csrfCookie(page, baseURL);
+  const { connected } = await mockSockets(page);
+  const posts = await capturePosts(page);
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  ws.send(ev("session.started", "kernel", started(SIM), { stream: "ops" }));
+  ws.send(ev("chan.opened", "kernel", { lane: "cp" }));
+  ws.send(ev("utt.final", "kernel", { lane: "cp", speaker: "partner", utt_id: "cp-1", text: "We can do $75 a month." }));
+  const calls = page.getByRole("group", { name: "Call with the company" });
+  await expect(calls.getByRole("list", { name: "Call transcript" }).getByRole("listitem")).toHaveText([
+    "Call: call connected",
+    "Rep (simulated): We can do $75 a month.",
+  ]);
+  await expect(calls.getByText("Connected", { exact: true })).toBeVisible();
+
+  // A message sent during the call: its user.msg falls between two call lines, so the call card splits in time order.
+  await page.getByRole("textbox", { name: "Message to the assistant" }).fill("Ask for $70.");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect.poll(() => posts.map((p) => p.path)).toEqual([`/api/cases/${RUN}/messages`]);
+  ws.send(ev("user.msg", "kernel", { text: "Ask for $70." }));
+  ws.send(ev("utt.final", "kernel", { lane: "cp", speaker: "partner", utt_id: "cp-2", text: "Let me check." }));
+  const stream = page.getByRole("list", { name: "Chat transcript" }).locator(":scope > li:not([aria-hidden])");
+  await expect(stream).toHaveText([/^Call with the company.*continues below.*We can do \$75 a month\.$/, "You: Ask for $70.", /^Call with the company.*Let me check\.$/]);
+  await expect(calls.last()).not.toContainText("continues below");
+  // The call's state is on its last part only.
+  await expect(calls.first().getByText("Connected", { exact: true })).toHaveCount(0);
+  await expect(calls.last().getByText("Connected", { exact: true })).toBeVisible();
+  await shot(page, "live-split-call");
+
+  // The approval card sits among the lines and waits; words in the chat move nothing, only a click posts (I6).
+  ws.send(ev("approval.requested", "guard", CARD));
+  const card = page.getByRole("article", { name: "Approval ap-1" });
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
+  await expect(page.getByText("Needs you", { exact: true })).toBeVisible();
+  ws.send(ev("user.msg", "kernel", { text: "yes, approve it" }));
+  await expect(stream.last()).toHaveText("You: yes, approve it");
+  await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
+  expect(posts).toHaveLength(1);
+  await card.getByRole("button", { name: "Approve" }).click();
+  await expect(card.getByLabel("Approval status")).toHaveText("Sent. Waiting for Guard to record it");
+  expect(posts.map((p) => p.path)).toEqual([`/api/cases/${RUN}/messages`, `/api/cases/${RUN}/approvals/ap-1`]);
+
+  // The Task details rail: Now, the limits, the steps; the authority area is folded in Technical details.
+  const rail = page.getByRole("complementary", { name: "Task details" });
+  await expect(rail.getByLabel("Status line")).toBeVisible();
+  await expect(rail.getByRole("region", { name: "Your limits (summary)" })).toBeVisible();
+  await expect(rail.getByRole("region", { name: "Steps" })).toBeVisible();
+  await expect(rail.getByRole("region", { name: "Authority" })).toBeHidden();
+  await rail.getByText("Technical details", { exact: true }).click();
+  await rail.getByText("Authority details (raw case status, fence, epoch)").click();
+  await expect(rail.getByRole("region", { name: "Authority" })).toBeVisible();
+  await expect(rail.getByRole("region", { name: "Run" })).toBeVisible();
+});
+
+test("aria-live: one polite announcement per new heard line; a split re-announces nothing", async ({ page }) => {
+  const { connected } = await mockSockets(page);
+  await page.goto(`/?live=${RUN}`);
+  const ev = events();
+  const ws = await connected;
+  const rep = (id: string, text: string) => ev("utt.final", "kernel", { lane: "cp", speaker: "partner", utt_id: id, text });
+  ws.send(ev("session.started", "kernel", started(SIM), { stream: "ops" }));
+  ws.send(ev("chan.opened", "kernel", { lane: "cp" }));
+  ws.send(rep("cp-1", "First offer."));
+  const calls = page.getByRole("group", { name: "Call with the company" });
+  await expect(calls.getByRole("listitem")).toHaveCount(2);
+  // What a screen reader is handed: each node added, or text changed, under a polite live region, not under
+  // aria-live off (a card, a call header) or aria-hidden (a time).
+  await page.getByRole("list", { name: "Chat transcript" }).evaluate((list) => {
+    const said: string[] = [];
+    Object.assign(window, { said });
+    new MutationObserver((ms) => {
+      for (const m of ms) {
+        for (const n of m.type === "childList" ? [...m.addedNodes] : [m.target]) {
+          const el = n instanceof Element ? n : n.parentElement;
+          if (!el || el.closest("[aria-live]")?.getAttribute("aria-live") !== "polite" || el.closest('[aria-hidden="true"]')) continue;
+          said.push(n.textContent ?? "");
+        }
+      }
+    }).observe(list, { childList: true, subtree: true, characterData: true });
+  });
+  const first = await calls.first().elementHandle();
+  ws.send(ev("user.msg", "kernel", { text: "Is that the best?" }));
+  await expect(page.getByRole("list", { name: "Chat transcript" })).toContainText("You: Is that the best?");
+  ws.send(rep("cp-2", "Second offer."));
+  await expect(calls).toHaveCount(2);
+  ws.send(rep("cp-3", "Third offer."));
+  await expect(calls.last().getByRole("listitem")).toHaveCount(2);
+  const said = await page.evaluate(() => (window as unknown as { said: string[] }).said);
+  expect(said).toHaveLength(3);
+  expect(said[0]).toBe("You: Is that the best?");
+  expect(said[1]).toMatch(/Rep \(simulated\): Second offer\.$/);
+  expect(said[2]).toBe("Rep (simulated): Third offer.");
+  for (const t of said) expect(t).not.toContain("First offer.");
+  expect(await first?.evaluate((el) => el.isConnected)).toBe(true); // the earlier part was kept, not rebuilt
 });
 
 test("conversation view: Verified complete only on Guard's VERIFIED_COMPLETE", async ({ page }) => {
