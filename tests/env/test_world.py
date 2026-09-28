@@ -14,7 +14,7 @@ from tests.support.fakes import ScriptedLLM, fake_ref
 
 from proxyloop.contract.llm import LLMUnavailable, TextRequest
 from proxyloop.env import world
-from proxyloop.env.counterparty.ear import Ear
+from proxyloop.env.counterparty.ear import Ear, Heard
 from proxyloop.env.counterparty.mouth import fidelity_ok, template
 from proxyloop.env.counterparty.policy import PublicIntent
 
@@ -147,7 +147,7 @@ def test_a_whole_call_timeout_aborts_the_ear_loudly(tmp_path: Path) -> None:
     ear = Ear(sink.llm(*[invalid] * 3, hang_s=0.04), sink.world, "Co", ("k",))
     ear.timeout_s = 0.1
     with pytest.raises(world.WorldError, match="ear: no answer within"):
-        asyncio.run(ear.classify("u1", "hello", heard.event_id, {}))
+        asyncio.run(ear.classify([Heard("u1", "hello", heard.event_id, 0)], {}, ()))
     *done, cut = sink.of("llm.call")  # how many ended in time depends on timing
     assert cut.payload["error"] == "cancelled"
     assert all(c.payload["error"] is None for c in done)

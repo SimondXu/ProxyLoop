@@ -144,6 +144,11 @@ class Policy:
 
         return {ref: dict(o.spec.terms) for ref, o in self.offers.items()}
 
+    def open_offers(self) -> frozenset[str]:
+        """The offers made that are still open (not expired, not accepted)."""
+
+        return frozenset(r for r, o in self.offers.items() if o.status == "open")
+
     def floor(self, free: bool, t_ms: int) -> None:
         """Either party took the floor, or released it: silence counts only
         while it is free."""

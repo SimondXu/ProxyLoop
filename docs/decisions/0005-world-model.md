@@ -4,6 +4,7 @@
 - **Date:** 2026-09-26
 - **Task:** S0-ROOT-08
 - **Supersedes in part:** ADR-0001 Decision 2 (world = `gpt-5.4-mini-2026-03-17`).
+- **Amended by ADR-0021:** Decision 5's "one classify per utterance" becomes one `classify` call per heard block, with one act per utterance.
 
 ## Context
 The world roles (Ear, Mouth, SimUser) need a hosted model outside both agent families (Claude = Slow, teacher and the Haiku baseline; Qwen = Fast). ADR-0001 chose `gpt-5.4-mini` on the relay. On 2026-09-26 the user overruled that and kept the world on Gemini, as the plan specified. The model is Gemini Flash 3.8, reached through TeamRouter with a separate key the user supplies, not through the relay. On the relay, Gemini had no working tools or schemas (ADR-0001), so we probed the TeamRouter route with the same script before recording it.
