@@ -13,30 +13,30 @@ with the production checks. No other retry: a dead endpoint (``LLMUnavailable``)
 writes its row and aborts the run (AGENTS rule 6).
 
 - **ear**: every item (``Ear.request``, ``check_act``; ids from the item id), called.
-- **mouth**: every Mouth item (``Mouth.request``, ``fidelity_ok``; exhausted, the
-  template, ``fallback: true``, as live). An arm whose ref is the recorded run's mouth
-  ref reuses a recorded output, no call, when the rebuilt prompt sha equals an
-  occurrence's and its ``fidelity_ok`` is true (``world_select.MOUTH_REUSE``).
+- **mouth**: every item (``Mouth.request``, ``fidelity_ok``; exhausted, the template,
+  ``fallback: true``, as live), called.
 - **simuser**: a recorded item replays its request by reference (``prompts.jsonl``,
   sha-checked; no chat state to rebuild it from: ``request_source: recorded``), one
-  call, no check (no facts, opening or stop in the item); the recorded arm reuses its
-  first attempt. A constructed item (its chat only prose) makes no call: its row is
-  ``not_replayable``, left out of the scoring (the root's decision (c)).
+  call, no check (no facts, opening or stop in the item). A constructed item (its
+  chat only prose) makes no call: its row is ``not_replayable``, left out of the
+  scoring (the root's decision (c)).
+
+Every arm calls, the recorded incumbent too: no recorded output stands for a result.
 
 Row (one JSON line, ``pl.world-select-row/1``; PR2b's scorer takes the last final row
 per (item_id, role, repeat)): ``arm``, ``model_ref``, ``items_root_hash``, ``role``,
 ``item_id``, ``constructed``, ``repeat`` (2: ``--repeat-subset``), ``status`` (final:
-``ok``, ``exhausted``, ``timeout``, ``reused``, ``not_replayable``; ``unavailable`` is
-re-run on resume),
-``reused``, ``request_sha`` (attempt 0's prompt sha), ``elapsed_ms`` (wall),
+``ok``, ``exhausted``, ``timeout``, ``not_replayable``; ``unavailable`` is re-run on
+resume), ``recorded_ref`` (per occurrence, ``{run_id, response_shas}`` of the recorded
+incumbent's calls: informational, never a result), ``request_sha`` (attempt 0's
+prompt sha), ``elapsed_ms`` (wall),
 ``attempts`` (per model attempt ``{n, raw, valid, reason, records}``: ``raw`` the tool
 calls ``[{name, arguments}]`` or the streamed text; ``valid``/``reason`` the check's
 verdict; ``records`` per HTTP attempt ``{http_attempt, echo, usage, latency_ms,
 ttft_ms, finish_reason, error, prompt_sha, response_sha, sampling_sent}``), ``result``
-(null unless ok/reused; ear ``{acts}``, mouth ``{text, fidelity_ok, fallback,
-attempts}``, simuser ``{calls, recorded_output}``). Mouth rows add
-``prompt_sha_match`` (null when constructed); simuser rows ``request_source``; reused
-rows ``source {run_id, event_id}`` and ``recorded_records``; an aborted row ``error``.
+(null unless ok; ear ``{acts}``, mouth ``{text, fidelity_ok, fallback, attempts}``,
+simuser ``{calls}``). Mouth rows add ``prompt_sha_match`` (null when constructed);
+simuser rows ``request_source``; an aborted row ``error``.
 """
 
 from __future__ import annotations
@@ -77,7 +77,7 @@ from scripts.mod import world_select as ws
 Json = dict[str, Any]
 ROW_SCHEMA = "pl.world-select-row/1"
 ITEMS = ws.REPO / "docs/decisions/data/world-select-items.json"
-FINAL = frozenset({"ok", "exhausted", "timeout", "reused", "not_replayable"})
+FINAL = frozenset({"ok", "exhausted", "timeout", "not_replayable"})
 ROLES = ws.ROLES
 TRIES = world.MAX_REGENERATIONS + 1
 UNUSED = cast(Any, None)  # the builders are pure: their client and writer stay unused
@@ -156,9 +156,11 @@ class Recorded:
             ids = list(events[ev].cause_ids[1:])
         return [LLMCallRecord.model_validate(events[i].payload) for i in ids]
 
-    def ref(self, role: str, run_id: str) -> ModelRef | None:
-        b = self.bundles.get(run_id)
-        return None if b is None else b.manifest.models[cast(Any, role)].ref
+    def recorded_ref(self, w: Work) -> list[Json]:
+        """The recorded incumbent's response shas per occurrence (informational)."""
+        occs: list[Json] = w.item.get("occurrences", [])
+        return [{"run_id": o["run_id"], "response_shas": [c.response_sha for c in
+                 self.calls(w.role, o)]} for o in occs]  # fmt: skip
 
 
 def counterparty(rec: Recorded, item: Json) -> CounterpartySpec:
@@ -218,18 +220,6 @@ def mouth_requests(
     intent, mouth = mouth_intent(item, spec.company), Mouth(UNUSED, UNUSED, spec)
     requests = [mouth.request(intent, item["heard"], tag, n) for n in range(TRIES)]
     return intent, template(intent, spec.company), requests
-
-
-def reuse_of(rec: Recorded, w: Work, arm: Arm, sha: str = "") -> Json | None:
-    """The occurrence the arm reuses: one recorded by the arm's own ref and, for the
-    Mouth, with this prompt sha and ``fidelity_ok`` true (``MOUTH_REUSE``)."""
-    occs: list[Json] = [] if w.item.get("constructed") else w.item["occurrences"]
-    for occ in occs:
-        mouth_ok = occ.get("prompt_sha") == sha and occ.get("fidelity_ok") is True
-        own = rec.ref(w.role, occ["run_id"]) == arm.ref
-        if own and (w.role == "simuser" or mouth_ok):
-            return occ
-    return None
 
 
 def simuser_request(rec: Recorded, item: Json, tag: str) -> ToolRequest:
@@ -369,10 +359,6 @@ class Replay:
         row["prompt_sha_match"] = (
             None if made else sha in {o["prompt_sha"] for o in occs}
         )
-        if (occ := reuse_of(self.rec, w, arm, sha)) is not None:
-            result = {"text": occ["output"], "fidelity_ok": True, "fallback": False}
-            result["attempts"] = occ["attempts"]
-            return self.reuse(row, occ, occ["event_id"], result)
 
         def check(text: str) -> str:  # Mouth.say's check
             if not text or not fidelity_ok(text, intent):
@@ -389,27 +375,12 @@ class Replay:
             return row.update(status="not_replayable")
         request = simuser_request(self.rec, w.item, w.tag)
         row["request_source"] = "recorded"  # the items hold no chat state to rebuild
-        if (occ := reuse_of(self.rec, w, arm)) is not None:
-            prompts = self.rec.bundles[occ["run_id"]].prompts
-            first = json.loads(prompts[occ["response_shas"][0]].content)  # attempt 0
-            calls = [ToolCall.model_validate(c) for c in first["tool_calls"]]
-            result = {"calls": tool_calls(calls), "recorded_output": occ["output"]}
-            return self.reuse(row, occ, occ["llm_calls"][0], result)
 
         def check(calls: tuple[ToolCall, ...]) -> tuple[ToolCall, ...]:
             return calls  # none: the item holds no facts, opening or stop
 
         if done := await self.bounded(row, [request], self.tools, check):
-            result = {"calls": tool_calls(done[0]), "recorded_output": None}
-            row |= {"status": "ok", "result": result}
-
-    def reuse(self, row: Json, occ: Json, event_id: str, result: Json) -> None:
-        records = self.rec.calls(row["role"], occ)
-        if row["role"] == "simuser":
-            records = records[:1]  # the first attempt, as a candidate's one call
-        row |= {"status": "reused", "reused": True, "result": result}
-        row["source"] = {"run_id": occ["run_id"], "event_id": event_id}
-        row["recorded_records"] = [summary(r) for r in records]
+            row |= {"status": "ok", "result": {"calls": tool_calls(done[0])}}
 
 
 def done_keys(path: Path) -> set[tuple[str, str, int]]:
@@ -440,7 +411,7 @@ async def run_arm(
     )
     replay = Replay(client, sink, rec, timeout_s)
     gate = asyncio.Semaphore(args.concurrency)
-    base: Json = {"schema": ROW_SCHEMA, "arm": arm.label, "reused": False}
+    base: Json = {"schema": ROW_SCHEMA, "arm": arm.label}
     base |= {"model_ref": arm.ref.model_dump(mode="json")}
     base |= {"items_root_hash": rec.doc["root_hash"], "status": None, "result": None}
     roles = {"ear": replay.ear, "mouth": replay.mouth, "simuser": replay.simuser}
@@ -452,6 +423,7 @@ async def run_arm(
                 row = base | {"role": w.role, "item_id": w.item["item_id"]}
                 constructed = bool(w.item.get("constructed"))
                 row |= {"constructed": constructed, "repeat": w.repeat, "attempts": []}
+                row["recorded_ref"] = rec.recorded_ref(w)
                 start = time.monotonic()
                 try:
                     await roles[w.role](w, row, arm)
@@ -488,43 +460,33 @@ def estimate(found: Sequence[Json | None]) -> Json:
 
 
 def plan(rec: Recorded, todo: Sequence[Work], arms: Sequence[Arm]) -> Json:
-    """Calls per arm and role (one per item; up to ``TRIES`` for the Ear and the
-    Mouth), reuses, and a token estimate from the recorded usage. No call."""
+    """Calls per arm and role (one per item; up to ``TRIES`` with regenerations) and a
+    token estimate from the recorded usage. No call."""
     usage: dict[tuple[str, str, int], Json | None] = {}
-    sha: dict[tuple[str, str, int], str] = {}
+    mismatch = 0
     for w in todo:
         recs = [c for o in w.item.get("occurrences", []) for c in rec.calls(w.role, o)]
         use = next((c.usage for c in recs if c.usage is not None), None)
         usage[w.key] = use.model_dump(mode="json") if use is not None else None
-        if w.role == "mouth":
+        if w.role == "mouth" and not w.item.get("constructed"):
             request = mouth_requests(rec, w.item, w.tag)[2][0]
-            sha[w.key] = sha256_text(llm.request_content(request))
-    mismatch = sum(
-        sha[w.key] not in {o["prompt_sha"] for o in w.item["occurrences"]}
-        for w in todo
-        if w.role == "mouth" and not w.item.get("constructed")
-    )
+            shas = {o["prompt_sha"] for o in w.item["occurrences"]}
+            mismatch += sha256_text(llm.request_content(request)) not in shas
+    called = [w for w in todo if w.replayable]
+    calls = Counter(w.role for w in called)
+    per_arm: Json = {
+        "calls": dict(calls),
+        "max_calls": {
+            r: n * (1 if r == "simuser" else TRIES) for r, n in calls.items()
+        },
+    }
+    per_arm["tokens"] = {
+        r: estimate([usage[w.key] for w in called if w.role == r]) for r in calls
+    }
     out: Json = {"items_root_hash": rec.doc["root_hash"], "bundles": len(rec.bundles)}
     out["simuser_not_replayable"] = sum(not w.replayable for w in todo)
-    out |= {"mouth_prompt_sha_mismatch": mismatch, "est_rule": EST_RULE, "arms": {}}
-    for arm in arms:
-        called = [
-            w for w in todo if w.replayable
-            and (w.role == "ear" or reuse_of(rec, w, arm, sha.get(w.key, "")) is None)
-        ]  # fmt: skip
-        calls = Counter(w.role for w in called)
-        out["arms"][arm.label] = {
-            "calls": dict(calls),
-            "max_calls": {
-                r: n * (1 if r == "simuser" else TRIES) for r, n in calls.items()
-            },
-            "reused": dict(Counter(w.role for w in todo if w.replayable) - calls),
-            "tokens": {
-                r: estimate([usage[w.key] for w in called if w.role == r])
-                for r in calls
-            },
-        }
-    return out
+    out |= {"mouth_prompt_sha_mismatch": mismatch, "est_rule": EST_RULE}
+    return out | {"arms": {arm.label: per_arm for arm in arms}}
 
 
 def roles_arg(text: str) -> list[str]:

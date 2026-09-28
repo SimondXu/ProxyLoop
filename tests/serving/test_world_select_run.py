@@ -387,53 +387,56 @@ def test_a_timeout_bounds_the_whole_call(items: Path, tmp_path: Path) -> None:
     assert row["attempts"][0]["records"][0]["error"] == "cancelled"
 
 
-def test_the_incumbent_mouth_reuses_on_a_sha_match_and_candidates_call(
-    items: Path, tmp_path: Path
+def test_every_arm_calls_the_mouth_the_incumbent_too(
+    items: Path, tmp_path: Path, like: Path
 ) -> None:
     wrong = "I can offer 80 a month."  # fails fidelity: the template stands in
-    full = "Our offer is 75.00 a month for 12 months."
-    wire = Wire(
-        echo=ECHO, mouth=[full, "Our offer is 75.00 a month.", wrong, wrong, wrong]
-    )
+    full, short = "Our offer is 75.00 a month for 12 months.", "It is 75.00 a month."
+    wire = Wire(echo=ECHO, mouth=[short, full, short, wrong, wrong, wrong])
     arms = (INCUMBENT, CANDIDATE)
     report = wsr.run(
         args(items, tmp_path, "--roles", "mouth", "--concurrency", "1", arms=arms),
         transports=wire.transports(),
     )
-    mine = by_item(tmp_path)
-    assert mine["m1"]["status"] == "reused" and mine["m1"]["reused"] is True
-    assert (
-        mine["m1"]["prompt_sha_match"] is True
-        and mine["m1"]["result"]["text"] == "I can offer 75.00 a month."
+    assert len(wire.bodies) == 2 + 1 + 3  # no recorded output stands in for a call
+    cp = ws.task_of(manifest(like)["task_ref"]).counterparty
+    built = Mouth(wsr.UNUSED, wsr.UNUSED, cp).request(INTENT, HEARD, "x", 0)
+    sent = wire.bodies[0]
+    assert sent["messages"] == [
+        {"role": m.role, "content": m.content} for m in built.messages
+    ]
+    assert (sent["temperature"], sent["max_tokens"]) == (
+        built.temperature,
+        built.max_tokens,
     )
-    assert mine["m1"]["source"]["run_id"] == "r-1" and mine["m1"]["recorded_records"]
-    assert mine["c-m1"]["prompt_sha_match"] is None and not mine["c-m1"]["reused"]
+    mine = by_item(tmp_path)
+    assert mine["m1"]["status"] == "ok" and mine["m1"]["prompt_sha_match"] is True
+    assert mine["m1"]["result"]["text"] == short and "reused" not in mine["m1"]
+    recorded = mine["m1"]["recorded_ref"]  # informational: the recorded output's sha
+    assert recorded == [{"run_id": "r-1", "response_shas": [None]}]
+    assert (
+        mine["c-m1"]["prompt_sha_match"] is None and mine["c-m1"]["recorded_ref"] == []
+    )
     theirs = by_item(tmp_path, CANDIDATE)
     assert theirs["m1"]["result"] == {
-        "text": "Our offer is 75.00 a month.",
+        "text": short,
         "fidelity_ok": True,
         "fallback": False,
         "attempts": 1,
     }
     assert theirs["m1"]["attempts"][0]["records"][0]["echo"] == ECHO
     fell = theirs["c-m1"]
-    assert fell["result"]["fallback"] is True and fell["result"]["text"].startswith(
-        "I can offer you this:"
-    )
-    assert (
-        fell["status"] == "ok" and [t["valid"] for t in fell["attempts"]] == [False] * 3
-    )
-    assert (
-        len(wire.bodies) == 1 + 1 + 3
-    )  # the incumbent's constructed item, the candidate's two
-    assert report[INCUMBENT] == {"skipped_final": 0, "mouth:reused": 1, "mouth:ok": 1}
+    assert fell["result"]["fallback"] is True
+    assert fell["result"]["text"].startswith("I can offer you this:")
+    assert [t["valid"] for t in fell["attempts"]] == [False] * 3
+    assert fell["status"] == "ok"
+    assert report[INCUMBENT] == {"skipped_final": 0, "mouth:ok": 2}
 
 
-def test_a_mouth_sha_mismatch_calls_the_incumbent(items: Path, tmp_path: Path) -> None:
+def test_a_mouth_sha_mismatch_is_recorded(items: Path, tmp_path: Path) -> None:
     doc = json.loads(items.read_text("utf-8"))
-    doc["items"]["mouth"][0]["occurrences"][0]["prompt_sha"] = (
-        "0" * 64
-    )  # an older Mouth
+    older = "0" * 64  # an older Mouth's prompt
+    doc["items"]["mouth"][0]["occurrences"][0]["prompt_sha"] = older
     items.write_text(json.dumps(doc), "utf-8")
     wire = Wire(mouth=["Our offer is 75.00 a month."])
     wsr.run(
@@ -441,19 +444,15 @@ def test_a_mouth_sha_mismatch_calls_the_incumbent(items: Path, tmp_path: Path) -
         transports=wire.transports(),
     )
     row = by_item(tmp_path)["m1"]
-    assert (
-        row["reused"] is False
-        and row["prompt_sha_match"] is False
-        and row["status"] == "ok"
-    )
+    assert row["prompt_sha_match"] is False and row["status"] == "ok"
     plan = wsr.run(args(items, tmp_path, "--roles", "mouth", "--plan"))
     assert plan["mouth_prompt_sha_mismatch"] == 1
 
 
-def test_simuser_replays_the_recorded_request_and_the_incumbent_reuses(
+def test_simuser_replays_the_recorded_request_for_every_arm(
     items: Path, tmp_path: Path, like: Path
 ) -> None:
-    wire = Wire(reply=[REPLY])
+    wire = Wire(reply=[REPLY, REPLY])
     arms = (INCUMBENT, CANDIDATE)
     wsr.run(
         args(items, tmp_path, "--roles", "simuser", arms=arms),
@@ -463,22 +462,19 @@ def test_simuser_replays_the_recorded_request_and_the_incumbent_reuses(
     built = SimUser(task, wsr.UNUSED, wsr.UNUSED, 0).request(
         ["Assistant: What do you pay now?"], dict(task.profile.facts), None, "c", 0
     )
-    (sent,) = wire.bodies  # the candidate's; the constructed item makes no call
-    assert sent["messages"] == [
-        {"role": m.role, "content": m.content} for m in built.messages
-    ]
-    assert sent["tool_choice"]["function"]["name"] == "reply"
-    theirs, prose = by_item(tmp_path, CANDIDATE)["s1"], by_item(tmp_path)["c-s1"]
-    assert prose["status"] == "not_replayable" and prose["attempts"] == []
-    assert prose["result"] is None and prose["constructed"] is True
-    assert theirs["request_source"] == "recorded" and theirs[
-        "request_sha"
-    ] == sha256_text(request_content(built))
-    assert theirs["result"]["calls"] == [{"name": "reply", "arguments": REPLY}]
-    mine = by_item(tmp_path)["s1"]
-    assert mine["status"] == "reused" and mine["result"]["calls"] == [
-        {"name": "reply", "arguments": REPLY}
-    ]
+    assert len(wire.bodies) == 2  # both arms; the constructed item makes no call
+    for sent in wire.bodies:
+        assert sent["messages"] == [
+            {"role": m.role, "content": m.content} for m in built.messages
+        ]
+        assert sent["tool_choice"]["function"]["name"] == "reply"
+    for arm in arms:
+        row, prose = by_item(tmp_path, arm)["s1"], by_item(tmp_path, arm)["c-s1"]
+        assert prose["status"] == "not_replayable" and prose["attempts"] == []
+        assert prose["result"] is None and prose["constructed"] is True
+        assert row["request_sha"] == sha256_text(request_content(built))
+        assert row["result"]["calls"] == [{"name": "reply", "arguments": REPLY}]
+        assert row["recorded_ref"][0]["response_shas"][0] is not None
     again = wsr.run(
         args(items, tmp_path, "--roles", "simuser", "--resume", arms=(CANDIDATE,))
     )  # every row is final, not_replayable too: no call
@@ -506,9 +502,8 @@ def test_plan_makes_no_call_and_needs_no_key(
     )
     assert wire.bodies == [] and not (tmp_path / "out").exists()
     assert plan["simuser_not_replayable"] == 1
-    assert plan["arms"][INCUMBENT]["calls"] == {"ear": 3, "mouth": 1}
-    assert plan["arms"][INCUMBENT]["reused"] == {"mouth": 1, "simuser": 1}
-    assert plan["arms"][CANDIDATE]["calls"] == {"ear": 3, "mouth": 2, "simuser": 1}
+    for arm in arms:  # plain calls: the incumbent calls as every arm does
+        assert plan["arms"][arm]["calls"] == {"ear": 3, "mouth": 2, "simuser": 1}
     assert plan["arms"][CANDIDATE]["max_calls"] == {"ear": 9, "mouth": 6, "simuser": 1}
     tokens = plan["arms"][CANDIDATE]["tokens"]["ear"]
     assert tokens["with_usage"] in (1, 2) and tokens["prompt_tokens"] == 300 * 3
