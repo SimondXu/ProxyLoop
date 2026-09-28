@@ -22,6 +22,7 @@ from proxyloop.env.user.simuser import SimUser
 from proxyloop.env.world import World
 
 End = Literal["", "hangup", "closed", "quit"]
+StrikeKind = Literal["identity", "timer"]  # a heard line's, or the clock's
 type Turn = CoroutineType[Any, Any, None]
 
 
@@ -32,6 +33,11 @@ class Incoming:  # One partner turn: lines with the world event behind each, if 
     strike: bool = False
     end: End = ""
     delivered: asyncio.Event | None = None  # set once its lines are emitted
+    strike_kind: StrikeKind | None = None  # chan.strike's ``kind`` (S1-SYS-43)
+
+    def __post_init__(self) -> None:
+        if self.strike != (self.strike_kind is not None):
+            raise ValueError("a strike, and only a strike, has a kind")
 
 
 class Channel:  # The base: a partner that never speaks first and has no clock
@@ -96,6 +102,9 @@ class SimUserChannel(Channel):  # replies delay_s after each message
 
 
 class SimRepChannel(Channel):  # hears text_heard; ticks on a free floor
+    """A strike's kind by the rep call that made it: a heard utterance strikes
+    only for identity, a tick only for the clock (``env.counterparty.policy``)."""
+
     def __init__(self, rep: SimRep) -> None:
         super().__init__()
         self._rep = rep
@@ -104,15 +113,15 @@ class SimRepChannel(Channel):  # hears text_heard; ticks on a free floor
         heard = (
             self._rep.on_agent_utterance(utt_id, text, cause, t_ms) if text else None
         )
-        return self._run(heard)
+        return self._run(heard, "identity")
 
     def tick(self, t_ms: int) -> Turn:
-        return self._run(self._rep.tick(t_ms))
+        return self._run(self._rep.tick(t_ms), "timer")
 
     def floor(self, free: bool, t_ms: int) -> None:
         self._rep.floor(free, t_ms)
 
-    def _run(self, turn: Coroutine[Any, Any, RepTurn] | None) -> Turn:
+    def _run(self, turn: Coroutine[Any, Any, RepTurn] | None, kind: StrikeKind) -> Turn:
         self.composing(1)  # busy from the spawn: a tick never overlaps a turn
 
         async def run() -> None:
@@ -123,7 +132,10 @@ class SimRepChannel(Channel):  # hears text_heard; ticks on a free floor
                 end: End = ("hangup" if done.strike else "closed") if done.ended else ""
                 if done.lines or end or done.strike:
                     lines = tuple((text, ev) for text, ev in done.lines)
-                    inc = Incoming(lines, strike=done.strike, end=end)
+                    struck = kind if done.strike else None
+                    inc = Incoming(
+                        lines, strike=done.strike, end=end, strike_kind=struck
+                    )
                     self.incoming.put_nowait(inc)  # queued before it is quiet
             finally:
                 self.composing(-1)

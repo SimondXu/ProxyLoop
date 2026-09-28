@@ -6,6 +6,7 @@ import { parties, simLabels } from "./conversation";
 import type { Ev } from "./replay";
 
 export const HUMAN_PRINCIPAL = "Only your clicks can authorize a deal";
+export const HUMAN_PRINCIPAL_SHORT = "Only your click authorizes"; // the phone's folded decision bar
 export const LIVE = "Live models";
 export const SCRIPTED = "Scripted test run · no models called";
 export const RECORDED = "Recorded replay";
