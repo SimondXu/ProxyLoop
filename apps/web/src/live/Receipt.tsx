@@ -14,7 +14,7 @@ import "./cards.css";
 import "./receipt.css";
 
 const NO_POSTS = new Map<string, Posting>();
-const TONE: Record<string, "danger" | "guard" | "neutral"> = { verified: "guard", endpoint: "danger", error: "danger" };
+const TONE: Record<string, "err" | "ok" | "neutral"> = { verified: "ok", endpoint: "err", error: "err" };
 
 function Terms({ label, rows }: { label: string; rows: TermRow[] }) {
   return (
@@ -22,7 +22,7 @@ function Terms({ label, rows }: { label: string; rows: TermRow[] }) {
       {rows.map((r) => (
         <li key={r.field}>
           <span className="pl-term-label">{r.label}</span> <span className="pl-term-value">{r.value}</span>{" "}
-          <Chip tone={r.status === "confirmed" ? "guard" : "neutral"}>{READBACK_CHIP[r.status] ?? r.status}</Chip>
+          <Chip tone={r.status === "confirmed" ? "ok" : "neutral"}>{READBACK_CHIP[r.status] ?? r.status}</Chip>
         </li>
       ))}
     </ul>

@@ -17,7 +17,7 @@ import "./cards.css";
 // A raised fence does not block the approval (guard.decide does not check fences);
 // it holds the accept (ARCHITECTURE §9.4), so the card says so while that matters.
 const UNDECIDED: CardStatus[] = ["open", "pending", "sent"];
-const CHIP_TONE: Record<string, "guard" | "neutral" | "attn"> = { confirmed: "guard", heard: "neutral", unknown: "attn" };
+const CHIP_TONE: Record<string, "ok" | "neutral" | "over"> = { confirmed: "ok", heard: "neutral", unknown: "over" };
 
 type Props = {
   view: CardView;
@@ -46,7 +46,7 @@ export function ApprovalCard({ view, events, mandates, fenced, caseStatus, decid
         Guard card · your approval is needed
       </p>
       <div className="pl-decision-top">
-        <Chip tone={open ? "attn" : status === "granted" ? "agent" : "neutral"}>
+        <Chip tone={open ? "you" : status === "granted" ? "ok" : "neutral"}>
           <Icon name="you" size="xs" />
           <span aria-label="Approval status">{approvalStatusText(view, events)}</span>
         </Chip>
@@ -78,12 +78,12 @@ export function ApprovalCard({ view, events, mandates, fenced, caseStatus, decid
       </p>
       {expiry && <p className="meta">This card is valid until {expiry}; it changes only when Guard says so.</p>}
       {paused && (
-        <p className="pl-banner pl-banner-attn" aria-label="Fence note">
+        <p className="pl-banner pl-banner-over" aria-label="Fence note">
           {PAUSED}
         </p>
       )}
       {accept.state === "revoked" && accept.reason === "fence" && (
-        <p className="pl-banner pl-banner-danger" role="note">
+        <p className="pl-banner pl-banner-err" role="note">
           {STOPPED}
         </p>
       )}
