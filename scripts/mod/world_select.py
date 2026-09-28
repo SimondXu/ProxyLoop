@@ -76,8 +76,9 @@ ELIGIBILITY = (
     "Bundles under --runs read by training.pull_through.load_bundles (a path with a "
     "'test' part is refused or skipped), manifest split == 'train' only, with "
     f"real_http for every Fast and world role ({', '.join(REAL_ROLES)}) in the "
-    "manifest's reality; each bundle's offline evidence-check status is recorded "
-    "and disclosed, never a filter. Ear: every "
+    "manifest's reality, and a task instance (company, identity keys, ladder) "
+    "whose hash is still the manifest's instance_hash; each bundle's offline "
+    "evidence-check status is recorded and disclosed, never a filter. Ear: every "
     "cp-lane utterance a rep.ear classified (its utt.delivered lines of one delivery, "
     "text_heard joined), deduplicated on (whitespace/case-normalised text, offers "
     "made before it with terms and open status, company, identity keys); blocks: the "
@@ -378,6 +379,7 @@ def freeze(runs: Path, extra: Path | None = None) -> Json:
     ear, mouth, sim = Pool(), Pool(), Pool()
     bundles: list[Json] = []
     skipped = {"bundles_not_train": 0, "bundles_not_real_http": 0}
+    skipped["bundles_task_instance_differs"] = 0
     skipped["ear_not_cp_delivered"] = 0
     skipped_runs: dict[str, list[str]] = {}
     for b, events_sha in sorted(load(runs), key=lambda x: x[0].manifest.run_id):
@@ -388,6 +390,8 @@ def freeze(runs: Path, extra: Path | None = None) -> Json:
             why = "bundles_not_train"
         elif any(m.reality.get(r) is not AdapterKind.REAL_HTTP for r in REAL_ROLES):
             why = "bundles_not_real_http"
+        elif instance_hash(task_of(m.task_ref)) != m.instance_hash:
+            why = "bundles_task_instance_differs"  # the YAML moved since the run
         if why:
             skipped[why] += 1
             skipped_runs.setdefault(why, []).append(m.run_id)
@@ -400,7 +404,7 @@ def freeze(runs: Path, extra: Path | None = None) -> Json:
                 "events_sha256": events_sha,
                 "task_ref": m.task_ref,
                 "git_sha": m.git_sha,
-                "task_instance_matches": instance_hash(task) == m.instance_hash,
+                "task_instance_matches": True,  # else skipped above
                 "simuser_eligible": eligible,
                 "reality": reality,
                 "evidence_check": {"ok": report.ok, "failures": list(report.failures)},

@@ -7241,7 +7241,7 @@
    }
   }
  },
- "eligibility": "Bundles under --runs read by training.pull_through.load_bundles (a path with a 'test' part is refused or skipped), manifest split == 'train' only, with real_http for every Fast and world role (fast_user, fast_cp, ear, mouth, simuser) in the manifest's reality; each bundle's offline evidence-check status is recorded and disclosed, never a filter. Ear: every cp-lane utterance a rep.ear classified (its utt.delivered lines of one delivery, text_heard joined), deduplicated on (whitespace/case-normalised text, offers made before it with terms and open status, company, identity keys); blocks: the ADR-0021 D1 replay on the recorded clock, 2+ utterances. Mouth: every rep.mouth, deduplicated on its semantic inputs; intents ask_identity, ok_hold, greet, check_in capped at 15 unique items each by a seeded draw (seed 0). SimUser: every SimUser request of a bundle whose git_sha descends from 9e4e796. Constructed items are flagged and never pooled with recorded ones. An Ear item whose text names an offer ref (the family ladder's or its own) is off_distribution: true and scored apart.",
+ "eligibility": "Bundles under --runs read by training.pull_through.load_bundles (a path with a 'test' part is refused or skipped), manifest split == 'train' only, with real_http for every Fast and world role (fast_user, fast_cp, ear, mouth, simuser) in the manifest's reality, and a task instance (company, identity keys, ladder) whose hash is still the manifest's instance_hash; each bundle's offline evidence-check status is recorded and disclosed, never a filter. Ear: every cp-lane utterance a rep.ear classified (its utt.delivered lines of one delivery, text_heard joined), deduplicated on (whitespace/case-normalised text, offers made before it with terms and open status, company, identity keys); blocks: the ADR-0021 D1 replay on the recorded clock, 2+ utterances. Mouth: every rep.mouth, deduplicated on its semantic inputs; intents ask_identity, ok_hold, greet, check_in capped at 15 unique items each by a seeded draw (seed 0). SimUser: every SimUser request of a bundle whose git_sha descends from 9e4e796. Constructed items are flagged and never pooled with recorded ones. An Ear item whose text names an offer ref (the family ladder's or its own) is off_distribution: true and scored apart.",
  "evidence_check": {
   "failing_bundles": [
    "20260926T213824Z-0e8a9c",
@@ -31766,6 +31766,7 @@
  "skipped": {
   "bundles_not_real_http": 1,
   "bundles_not_train": 0,
+  "bundles_task_instance_differs": 0,
   "ear_not_cp_delivered": 0
  },
  "skipped_runs": {

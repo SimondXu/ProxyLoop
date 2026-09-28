@@ -20,6 +20,7 @@ from tests.support.sessions import run
 
 from proxyloop.contract.bundle import EVENTS, MANIFEST, PROMPTS
 from proxyloop.contract.events import Event
+from proxyloop.env.tasks.loader import instance_hash
 from scripts.mod import world_select as ws
 
 Json = dict[str, Any]
@@ -34,14 +35,18 @@ MADE: dict[str, tuple[str | None, list[list[str]]]] = {
 @pytest.fixture(scope="module")
 def sessions(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Two fake sessions with the same scripts: the same heard lines twice. Their
-    manifests say real_http for every role, as freeze requires (the only way a
-    test bundle reaches the item set)."""
+    manifests say real_http for every role and carry the family's own instance
+    hash (the sessions ran a patient copy of it), as freeze requires: the only way
+    a test bundle reaches the item set."""
     root = tmp_path_factory.mktemp("runs")
     for name in ("a", "b"):
         run(root / name, SCRIPTS, until=UNTIL)
         d = run_dir(root, name)
         roles = {*manifest(d)["reality"], *ws.REAL_ROLES}
-        rewrite(d, reality=dict.fromkeys(sorted(roles), "real_http"))
+        task = instance_hash(ws.task_of(manifest(d)["task_ref"]))
+        rewrite(
+            d, reality=dict.fromkeys(sorted(roles), "real_http"), instance_hash=task
+        )
     return root
 
 
@@ -338,6 +343,21 @@ def test_a_bundle_not_real_http_for_a_fast_or_world_role_is_skipped(
     assert doc["bundles"] == [] and all(not doc["items"][r] for r in ws.ROLES)
     kept = ws.freeze(sessions)["bundles"]  # all real_http: kept, reality recorded
     assert [b["reality"]["ear"] for b in kept] == ["real_http", "real_http"]
+
+
+def test_a_bundle_whose_task_instance_moved_is_skipped(
+    sessions: Path, tmp_path: Path
+) -> None:
+    moved = tmp_path / "moved"
+    shutil.copytree(run_dir(sessions, "a"), moved)
+    rewrite(moved, instance_hash="0" * 64)
+    shutil.copytree(run_dir(sessions, "b"), tmp_path / "b")
+    doc = ws.freeze(tmp_path)
+    assert doc["skipped"]["bundles_task_instance_differs"] == 1
+    assert doc["skipped_runs"]["bundles_task_instance_differs"] == [
+        manifest(moved)["run_id"]
+    ]
+    assert [b["task_instance_matches"] for b in doc["bundles"]] == [True]
 
 
 def test_the_offline_evidence_check_is_disclosed_not_a_filter(
