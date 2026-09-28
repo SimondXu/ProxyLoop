@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
+from collections.abc import Collection
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, cast
@@ -56,10 +57,10 @@ Sent = dict[str, list[bytes]]
 
 
 def recording(
-    sent: Sent, endpoint: str, reply: list[str], broken: bool = False
+    sent: Sent, endpoint: str, reply: list[str], broken: Collection[str] = ()
 ) -> httpx.MockTransport:
     """The endpoint's stream for ``reply``; every generation body it received is kept.
-    vLLM's /tokenize answers as FakeTokenizer (``broken``: not for the prompt)."""
+    vLLM's /tokenize answers as FakeTokenizer, except for a ``broken`` prompt."""
 
     def handle(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/tokenize":
@@ -67,7 +68,7 @@ def recording(
             sent.setdefault("tokenize", []).append(request.content)
             chat = body.get("messages")
             text = FakeTokenizer().apply_chat_template(chat) if chat else body["prompt"]
-            bad = [0] if broken and not chat else []
+            bad = [0] if not chat and body["prompt"] in broken else []
             return httpx.Response(200, json={"tokens": FakeTokenizer.ids(text) + bad})
         sent.setdefault(endpoint, []).append(request.content)
         if endpoint == "vllm":
@@ -320,24 +321,40 @@ def test_arm_order_is_shuffled_but_deterministic(evidence: tuple[Path, Sent]) ->
     assert orders == [tuple(pss.arm_order(x, labels)) for x in many]
 
 
-@pytest.mark.parametrize("broken", [False, True])
-def test_p3_runs_before_any_vllm_call_and_a_mismatch_aborts(
-    evidence: tuple[Path, Sent], monkeypatch: pytest.MonkeyPatch, broken: bool
+@pytest.mark.parametrize("broken", [None, "user", "cp"])
+def test_p3_checks_each_lane_before_any_vllm_call_and_a_mismatch_aborts(
+    evidence: tuple[Path, Sent], monkeypatch: pytest.MonkeyPatch, broken: str | None
 ) -> None:
+    """As the kernel: one view per lane; the served template wrong for one lane's
+    prompt alone (the second, cp, included) aborts before any completion."""
     set_env(monkeypatch, "vllm")
-    found, sent, report = views(evidence[0]), Sent(), dict[str, Any]()
-    seams = {"vllm": recording(sent, "vllm", ["Okay."], broken)}
-    run = pss.probe(found, {"vllm:Qwen3.5-9B": QWEN}, FakeTokenizer(), report, seams)
+    found, sent, report, tok = (
+        views(evidence[0]),
+        Sent(),
+        dict[str, Any](),
+        FakeTokenizer(),
+    )
+    first = {ln: next(v for v in found if v.lane == ln) for ln in pss.LANES}
+    bad = [
+        render_prompt(v.view, v.profile, tok) for ln, v in first.items() if ln == broken
+    ]
+    seams = {"vllm": recording(sent, "vllm", ["Okay."], bad)}
+    run = pss.probe(found, {"vllm:Qwen3.5-9B": QWEN}, tok, report, seams)
     if broken:
-        with pytest.raises(RuntimeError, match="P3 failed for vllm"):
+        with pytest.raises(RuntimeError, match=f"P3 failed for vllm.*'{broken}'"):
             asyncio.run(run)
         assert "vllm" not in sent and report["aborted"].startswith("P3 failed")
     else:
         asyncio.run(run)
         assert len(sent["vllm"]) == len(found) and "aborted" not in report
-    check = report["p3"]["vllm:Qwen3.5-9B"]
-    assert check["passed"] is not broken and check["turn"] == found[0].turn
-    assert len(sent["tokenize"]) == 2  # the messages and the prompt, once
+    checks = report["p3"]["vllm:Qwen3.5-9B"]
+    assert {ln: c["turn"] for ln, c in checks.items()} == {
+        ln: v.turn for ln, v in first.items()
+    }
+    assert {ln: c["passed"] for ln, c in checks.items()} == {
+        ln: ln != broken for ln in pss.LANES
+    }
+    assert len(sent["tokenize"]) == 4  # per lane: the messages and the prompt
 
 
 @pytest.mark.parametrize("cap", ["0", "-3"])

@@ -285,23 +285,29 @@ async def parity(
     clients: Mapping[str, llm.LLMClient], views: Sequence[View], tok: Tok, report: Json
 ) -> None:
     """The kernel's session-start P3 (``kernel.lanes.p3``: vLLM /tokenize of the
-    messages and of the prompt == the pinned tokenizer's ids) on the sample's first
-    view, before any call; a failure aborts (§12). Its result goes into the report."""
+    messages and of the prompt == the pinned tokenizer's ids), as the kernel runs it:
+    one view per lane (each lane's profile renders its own system text), here the
+    sample's first view of each lane present, before any call. Every lane's result goes
+    into ``report["p3"][model][lane]``; any failure then aborts (§12)."""
     report["p3"] = checks = dict[str, Json]()
+    firsts = {lane: next((v for v in views if v.lane == lane), None) for lane in LANES}
     for m, client in clients.items():
-        if not isinstance(client, VLLMClient) or not views:
+        if not isinstance(client, VLLMClient):
             continue
         if tok is None:
             raise RuntimeError("P3 needs the pinned tokenizer")
-        checks[m] = {"run_id": views[0].run_id, "turn": views[0].turn, "passed": False}
-        try:
-            checks[m]["passed"] = await p3(client, views[0].view, tok)
-        except Exception as err:  # /tokenize cannot answer: dead, never skipped
-            checks[m]["error"] = type(err).__name__  # its text may name the host
-            report["aborted"] = f"P3 for {m}: {type(err).__name__}"
-            raise
-        if not checks[m]["passed"]:
-            report["aborted"] = f"P3 failed for {m}: /tokenize != the pinned tokenizer"
+        checks[m] = {}
+        for lane, v in ((ln, v) for ln, v in firsts.items() if v is not None):
+            check: Json = {"run_id": v.run_id, "turn": v.turn}
+            checks[m][lane] = check
+            try:
+                check["passed"] = await p3(client, v.view, tok)
+            except Exception as err:  # /tokenize cannot answer: dead, never skipped
+                check |= {"passed": False, "error": type(err).__name__}  # no host
+                report["aborted"] = f"P3 for {m}: {type(err).__name__}"
+                raise
+        if failed := [ln for ln, c in checks[m].items() if not c["passed"]]:
+            report["aborted"] = f"P3 failed for {m} on {failed}: /tokenize != the pin"
             raise RuntimeError(report["aborted"])
 
 
