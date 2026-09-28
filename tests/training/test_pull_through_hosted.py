@@ -157,9 +157,10 @@ def with_views(b: Bundle, lane: str, change: Callable[[Json], Json]) -> Bundle:
     return Bundle(b.manifest, b.events, prompts)
 
 
-def with_profile(b: Bundle, lane: str, profile: str) -> Bundle:
+def with_requests(b: Bundle, lane: str, **update: object) -> Bundle:
+    """``b`` with every ``lane`` fast.request payload updated (a copy)."""
     events = tuple(
-        e.model_copy(update={"payload": e.payload | {"profile": profile}})
+        e.model_copy(update={"payload": e.payload | update})
         if e.type == "fast.request" and e.payload["lane"] == lane
         else e
         for e in b.events
@@ -196,17 +197,21 @@ def test_hosted_turns_from_another_model_or_unclean_are_skipped_and_counted(
     assert counts["empty_or_parse_issue"] >= n_cp
 
 
-def test_a_hosted_turn_whose_view_or_profile_changed_after_the_call_is_skipped(
-    hosted: Path,
-):
+def test_a_hosted_turn_whose_view_or_sent_messages_differ_is_skipped(hosted: Path):
     b = luna(hosted)
     clean, _ = skipped(b)
     n_cp = sum(lane_of(t) == "cp" for t in clean)
     edited = with_views(b, "cp", lambda v: v | {"brief": v["brief"] + " Be brief."})
-    for changed in (edited, with_profile(b, "cp", "pl_cp_v2")):
+    other = with_requests(b, "cp", prompt_sha=sha256_text("other messages"))
+    for changed in (edited, other):
         turns, counts = skipped(changed)
         assert {lane_of(t) for t in turns} == {"user"}
         assert counts["messages_sha_mismatch"] == n_cp
+    # pl_cp_v2 renders as pl_cp_v3 does (only the grammar differs): the identity
+    # holds, and the turn is parsed under the recorded profile.
+    turns, counts = skipped(with_requests(b, "cp", profile="pl_cp_v2"))
+    assert len(turns) == len(clean) and "messages_sha_mismatch" not in counts
+    assert {t.profile for t in turns if lane_of(t) == "cp"} == {"pl_cp_v2"}
 
 
 def test_make_full_needs_an_explicit_label_source_even_under_dry_run():

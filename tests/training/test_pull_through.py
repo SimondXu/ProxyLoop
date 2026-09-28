@@ -231,7 +231,8 @@ def test_an_evidence_root_inside_a_sealed_test_dir_is_refused(
     monkeypatch.setattr(pt, "load_tokenizer", tok)
     for root in (sealed, sealed / "families"):  # PT_EVIDENCE=.../test/...
         with pytest.raises(SystemExit, match="sealed test dir"):
-            pt.main(["select", "--dir", str(tmp_path / "out"), "--evidence", str(root)])
+            out = ["--dir", str(tmp_path / "out"), "--source", "base_9b"]
+            pt.main(["select", *out, "--evidence", str(root)])
     link = tmp_path / "innocent"
     link.symlink_to(sealed / "families")
     with pytest.raises(SystemExit, match="sealed test dir"):
@@ -340,7 +341,8 @@ PROVENANCE = {
 
 
 def write_run(run_dir: Path, fps: dict[str, str]) -> None:
-    rows = {"fingerprint": fps, "dataset_hash": "h", "p5": {"ok": True, "rows": 3}}
+    rows: dict[str, Any] = {"fingerprint": fps, "dataset_hash": "h"}
+    rows["p5"] = {"ok": True, "rows": 3}
     rows["adapter_name"] = pt.adapter_name(fps)
     rows["source"] = "hosted openrouter:openai/gpt-6-luna (teacher_exec)"
     ref = {"endpoint": "openrouter", "model_id": "openai/gpt-6-luna"}
@@ -384,7 +386,9 @@ def test_select_command_writes_the_rows_the_training_entrypoint_reads(
     doc = json.loads((tmp_path / "rows.json").read_text("utf-8"))
     keys = ("source", "dataset_hash", "fingerprint", "adapter_name", "fp8", "rows")
     assert all(k in doc for k in keys) and doc["p5"]["ok"]
-    assert doc["source"] == pt.BASE_9B.label == "base-9B turns (S0 labels, TRAINING §9 E1)"
+    assert (
+        doc["source"] == pt.BASE_9B.label == "base-9B turns (S0 labels, TRAINING §9 E1)"
+    )
     assert all(len(r) == 3 for r in doc["rows"])  # (profile, view, turn): sft.train
     assert len(doc["provenance"]) == len(doc["rows"])
     assert {p["model_ref"]["model_id"] for p in doc["provenance"]} == {"Qwen3.5-9B"}
