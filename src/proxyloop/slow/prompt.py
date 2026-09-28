@@ -15,20 +15,19 @@ from proxyloop.contract import base
 from proxyloop.contract.config import SlowViewMode
 from proxyloop.contract.llm import ToolSpec
 from proxyloop.contract.messages import FastToSlow, GuideMove
-from proxyloop.contract.state import (
-    Blackboard,
-    OfferPublic,
-    PrivateState,
-    ReadbackSlot,
-)
+from proxyloop.contract.state import OfferPublic
 from proxyloop.contract.views import SlowView
-from proxyloop.guard.authorize import Denial, card_blocks, open_offer
-from proxyloop.guard.mandate import hard_violations, mandate_gap
-from proxyloop.guard.policy import UNSUPPORTED_APPLIED_CHANGE
-from proxyloop.guard.readback import ROLE_OF, missing_required, readback_status
-from proxyloop.guard.terms import Terms, offer_terms
-from proxyloop.slow import asks, offer_slots, state
-from proxyloop.slow.authority import UNITS
+from proxyloop.guard.readback import missing_required, readback_status
+from proxyloop.slow import asks, hints, offer_slots, state
+from proxyloop.slow.hints import FIRST_LEVER, HARD_LIMITS, WAIT_LEVER, approval_hint
+from proxyloop.slow.hints import HARD_LIMIT as HARD_LIMIT
+from proxyloop.slow.hints import OUTSIDE_MANDATE as OUTSIDE_MANDATE
+from proxyloop.slow.hints import mandate_hint as mandate_hint
+
+PROPOSE = (  # the case line with no mandate yet (S1-SYS-82 F-f)
+    "once the user has stated limits: propose_mandate with every bound they "
+    "stated, fees included"
+)
 
 TOOLS = (
     *("ask_user", "tell_user", "wait", "guide_fast", "record_fact", "record_offer"),
@@ -77,10 +76,12 @@ another value for them, record_offer a new revision citing that line; otherwise 
 stop asking, they did not state them (the close playbook says what next). A \
 reply that reads nothing back is no read-back: ask again or ask for the final \
 offer.
-- propose_mandate(envelope): the mandate's bounds the user stated \
-(max_monthly_price_minor, \
-max_term_months, max_one_time_fees_minor, required_features, forbidden_changes); it \
-grants nothing until the user decides it.
+- propose_mandate(envelope): every bound the user stated, fees included \
+(max_monthly_price_minor, max_term_months, max_one_time_fees_minor, \
+required_features, forbidden_changes; a stated no-fees limit is \
+max_one_time_fees_minor 0); leave out a bound the user did not state. A \
+mandate missing a bound the user stated is looser than their limits: they deny \
+it. It grants nothing until the user decides it.
 - tighten_mandate(changes): stricter bounds, never looser; the user re-grants them. \
 revoke(reason): withdraw every grant at once, e.g. when the user says stop.
 - request_approval(offer_ref): ask the user to approve a confirmed offer; the chat \
@@ -99,8 +100,10 @@ Readiness: the phone call opens only once the facts it needs are public (the \
 readiness line of the status bar; e.g. the account holder name and last 4). If the \
 user already gave one, record_fact it citing the utt of the user's message before \
 asking. In your first step, ask_user once for every other missing one, with keys \
-naming them all. When the user answers, record_fact each: the call opens by itself \
-once none is missing. If the user replied but a fact cannot go public, \
+naming them all. In a full case (TASK KIND full), once the user has stated \
+their limits and no mandate is proposed, propose_mandate with every bound they \
+stated, fees included. When the user answers, record_fact each: the call \
+opens by itself once none is missing. If the user replied but a fact cannot go public, \
 start_call(); at the deadline the call opens anyway. Once the call is open, until \
 the representative has verified the account (it moves on to your request, e.g. asks \
 how it can help), your first phone action is guide_fast(identify, \
@@ -116,7 +119,11 @@ for the correct value, record_fact it, then identify again. For a fact the \
 representative asks for that the user has not given, ask_user for it (with keys) \
 and guide_fast(hold_for_fact) so the representative waits. Use \
 deflect_fact_request only for a fact that must not be given: the representative \
-hears a refusal and may hang up.
+hears a refusal and may hang up. Once the representative has verified the \
+account, your first request is guide_fast(ask_discount), the request for a lower \
+monthly price (the request line says when), and a lever only after the first \
+offer, or once the rep has answered the discount ask without one (the levers \
+line).
 A rep_turn or heartbeat wake without a new [REP CALL] note means nothing was \
 relayed; read the status bar and act or wait.
 Tool results come back as text; a refusal says why."""  # noqa: RUF001 (the bar says k times)
@@ -173,14 +180,6 @@ def _swapped(text: str) -> str:
 _SYSTEM_TRANSCRIPT = _swapped(SYSTEM)
 
 
-HARD_LIMITS = {  # guard.mandate.hard_violations's classes: no approval lifts them
-    "required_feature_missing": "a feature the user requires is missing",
-    "forbidden_change_present": "a change the user forbade is applied",
-    UNSUPPORTED_APPLIED_CHANGE: "a change this build cannot support is applied",
-}
-HARD_LIMIT = "breaks a hard limit"
-OUTSIDE_MANDATE = "outside mandate: needs the user's approval once confirmed"
-
 PLAYBOOK: dict[state.Kind, str] = {  # V3: the head carries the case's own only
     "info_only": "CLOSE PLAYBOOK (info_only: report the offers, accept nothing): "
     "record each offer the representative states and ask for its read-back; then "
@@ -193,16 +192,22 @@ PLAYBOOK: dict[state.Kind, str] = {  # V3: the head carries the case's own only
     f"{'; '.join(HARD_LIMITS.values())}; no approval can lift it. A price, term "
     "or fee above the user's mandate is outside the mandate, not a hard limit: "
     "the user decides it. An offer inside the granted mandate: its read-back, "
-    "then accept_offer once confirmed. An offer outside the granted mandate "
+    "then accept_offer once confirmed. While another open offer comes first "
+    "(inside the granted mandate, or no worse on price, term and fees as "
+    "recorded and better on one: the offers line says so), a worse offer gets "
+    "no step of its own. An offer outside the "
+    "granted mandate "
     "(the offers line says so), recorded or confirmed: first guide_fast one "
     "available lever (the levers line lists them), before asking for its "
     "read-back; one lever per rep reply; while one is sent and the rep has not "
     "answered it, wait. Asking again for a lower price or for a final offer is "
     "the same request the rep already answered: it adds no pressure and is no "
     "lever. Only when no lever is available: its read-back, then "
-    "request_approval. Ask for a read-back only of an offer you mean to accept "
-    "or to send for approval. After the user denies an offer: again one "
-    "available lever if any; only when none is left: decline_offer, then "
+    "request_approval; once the user approves it, accept_offer. Ask for a "
+    "read-back only of an offer you mean to accept or to send for approval. "
+    "After the user denies an offer: if another open offer comes first, that "
+    "offer's step; otherwise again one available lever if any; only when none "
+    "is left: decline_offer, then "
     "guide_fast(ask_final_offer). Decline an offer otherwise only when it breaks "
     "a hard limit (the offers line says so) or its read-back stopped with slots "
     "not stated: decline_offer, then guide_fast(ask_final_offer). When the close "
@@ -368,18 +373,21 @@ def status_bar(
         ttl = "" if o.expires_ms is None else f", expires in {secs(o.expires_ms)}"
         slots = ", ".join(f"{s.field}={s.value} [{s.status}]" for s in o.slots)
         state = f"{o.status}, read-back {readback_status(o)}{ttl}"
-        hints = [approval_hint(view, o, now_ms, more)]
-        hints.append(mandate_hint(view, o, now_ms, more))
-        lever = any(FIRST_LEVER in h or WAIT_LEVER in h for h in hints)  # #238 D2
-        hints.append("" if more is None else more.offer_note(o, lever))
+        head = f"{o.offer_ref} r{o.revision} ({state}): {slots}"
+        if more is not None and (b := hints.better(view, o, now_ms)):  # F-e
+            said = [hints.defer_hint(view, *b, now_ms, more), more.offer_note(o, True)]
+            return head + "".join(f"; {h}" for h in said if h)
+        said = [approval_hint(view, o, now_ms, more)]
+        said.append(mandate_hint(view, o, now_ms, more))
+        said.append("" if more is None else hints.inside_hint(view, o, now_ms, more))
+        lever = any(FIRST_LEVER in h or WAIT_LEVER in h for h in said)  # #238 D2
+        said.append("" if more is None else more.offer_note(o, lever))
         if gaps := missing_required(o):  # e6ada1: Guard's list, never inferred
-            hints.append(
+            said.append(
                 f"required slots not recorded: {', '.join(gaps)}; record them "
                 "from the rep line that states them"
             )
-        return f"{o.offer_ref} r{o.revision} ({state}): {slots}" + "".join(
-            f"; {h}" for h in hints if h
-        )
+        return head + "".join(f"; {h}" for h in said if h)
 
     def fact(key: str, value: str, scope: str) -> str:
         return f"{key}={json.dumps(value, ensure_ascii=True)} [{scope}]"
@@ -390,6 +398,8 @@ def status_bar(
     )
     m = view.mandate
     mandate = "none" if m is None else f"{m.mandate_id} {m.status} (epoch {m.epoch})"
+    if m is None and more is not None and more.close.kind == "full":  # F-f
+        mandate += f" ({PROPOSE})"
     card = view.pending_approval
     approvals = [f"{a.approval_id} {a.decision}" for a in view.approvals]
     if card is not None:
@@ -415,128 +425,5 @@ def status_bar(
     if intake is not None:
         lines += [asks.readiness_line(intake, now_ms), asks.asks_line(intake, now_ms)]
     if more is not None:
-        lines += more.lines()
+        lines += more.lines(hints.needs_lever(view, now_ms))
     return "\n".join(lines)
-
-
-def approval_hint(
-    view: SlowView, o: OfferPublic, now_ms: int, more: state.Bar | None = None
-) -> str:
-    """S1-SYS-28 (run ed5063): an offer Guard would put on a card (its
-    ``open_offer`` and ``card_blocks`` rules) that its mandate check finds
-    outside the granted mandate needs the user's approval; shown until a card
-    or a decision for its terms exists in this epoch. Nothing is sent.
-    S1-SYS-66: with the bar (``more``), a lever on its way means wait, and an
-    available lever comes first; request_approval once none is left."""
-    got = open_offer(o, view.mandate, now_ms, bool(view.fences))
-    card = view.pending_approval
-    of_card = [x for x in view.offers if card and x.offer_ref == card.offer_ref]
-    blocked = card_blocks(card, of_card[0] if of_card else None, view.epoch, now_ms)
-    if isinstance(got, Denial) or blocked:  # Guard would refuse the card
-        return ""
-    terms = got[1]
-    cards = [] if view.pending_approval is None else [view.pending_approval]
-    for a in (*cards, *view.approvals):
-        if (a.terms_hash, a.authority_epoch) == (o.terms_hash, view.epoch):
-            return ""
-    mine = PrivateState(mandate=view.mandate)
-    bb = Blackboard(t_ms=now_ms, epoch=view.epoch, private=mine)
-    if mandate_gap(bb, terms) != "outside_mandate":
-        return ""
-    ref = f"{o.offer_ref} confirmed, outside mandate → "
-    if more is not None and more.waiting:  # S1-SYS-66: one lever per rep reply
-        return f"{ref}{WAIT_LEVER}"
-    if levers := _free(more):
-        return f"{ref}{FIRST_LEVER}{levers}; request_approval only once none is left"
-    return f"{ref}request_approval({o.offer_ref})"
-
-
-WAIT_LEVER = "wait for the rep to hear and answer the lever sent (levers line)"
-FIRST_LEVER = "first one lever: "  # a hint's lever step (S1-SYS-66)
-
-
-def _free(more: state.Bar | None) -> str:
-    """The available levers as ``guide_fast`` calls, each with the public
-    fact slot it needs (N2); empty without the bar or when none is left."""
-    if more is None:
-        return ""
-    slot = {m: f', ["{s}"]' for m, s in more.slots.items()}
-    return " or ".join(f"guide_fast({m}{slot.get(m, '')})" for m in more.free)
-
-
-def mandate_hint(
-    view: SlowView, o: OfferPublic, now_ms: int, more: state.Bar | None = None
-) -> str:
-    """S1-SYS-46 (run cc160a): Guard's verdicts on an open offer's terms.
-    Its ``hard_violations`` classes break a hard limit whatever else holds
-    (fenced, expired, confirmed or not); for a revision still incomplete, a
-    required feature not yet stated is not yet missing. Otherwise, only
-    when ``open_offer`` refuses it as not yet confirmed and ``mandate_gap``
-    finds it outside the granted mandate, it needs the user's approval once
-    confirmed (a confirmed one is ``approval_hint``'s). Read-only.
-    S1-SYS-66 (root review, 2026-09-28): with the bar (``more``), an offer
-    outside the mandate gets one available lever before its read-back (wait
-    while one is on its way or unanswered); only once none is left, its
-    read-back, then request_approval; a stuck read-back defers to the
-    note's stuck clause (one next step per state)."""
-    if o.status != "open":
-        return ""
-    m = view.mandate
-    complete = offer_terms(o)
-    terms = complete or _as_recorded(o)
-    if terms is None:
-        return ""
-    if complete is None and m is not None:  # a read-back may still add it
-        have = {s.field for s in o.slots}
-        stated = tuple(f for f in m.required_features if f"feature:{f}" in have)
-        m = m.model_copy(update={"required_features": stated})
-    if hard := hard_violations(terms, m):
-        return f"{HARD_LIMIT}: {', '.join(hard)}"
-    got = open_offer(o, view.mandate, now_ms, bool(view.fences))
-    waiting = isinstance(got, Denial) and got.reason == "readback_not_confirmed"
-    if not waiting or readback_status(o) == "confirmed":
-        return ""  # allowed (approval_hint's), or refused for good
-    mine = PrivateState(mandate=view.mandate)
-    bb = Blackboard(t_ms=now_ms, epoch=view.epoch, private=mine)
-    if mandate_gap(bb, terms) != "outside_mandate":
-        return ""
-    if more is None:
-        return OUTSIDE_MANDATE
-    if more.waiting:
-        return f"{OUTSIDE_MANDATE} → {WAIT_LEVER}; ask_readback not yet"
-    if levers := _free(more):
-        return (
-            f"{OUTSIDE_MANDATE} → {FIRST_LEVER}{levers}; "
-            "ask_readback only once none is left"
-        )
-    if more.stuck(o):  # the note's stuck clause is the one next step
-        return f"{OUTSIDE_MANDATE} → read-back stuck (see note)"
-    ref = o.offer_ref
-    r = more.readbacks.get((ref, o.revision))
-    then = f"request_approval({ref})"
-    if r is not None and r.asked:  # one pending: not asked again
-        return f"{OUTSIDE_MANDATE} → read-back asked: {then} once confirmed"
-    ask = f'guide_fast(ask_readback, ["offer:{ref}"])'
-    return f"{OUTSIDE_MANDATE} → {ask}, then {then}"
-
-
-def _as_recorded(o: OfferPublic) -> Terms | None:
-    """``offer_terms`` of the slots recorded so far, each unstated one
-    neutral: price and term 0 (above no bound), no fee, no change, no
-    expiry. Features are only those recorded."""
-    have = {s.field: s.value for s in o.slots}
-    listed = {f.partition(":")[0] for f in have if ":" in f}
-    changed = {f.partition(":")[0] for f, v in have.items() if v == "true"}
-    fill = {"monthly_price": "0", "term_months": "0", "expires": "none"}
-    if "fee" not in listed:
-        fill["fees_none"] = "true"
-    if "applied_change" not in changed:
-        fill["changes_none"] = "true"
-    extra = [
-        ReadbackSlot.model_validate(
-            {"field": f, "value": v, "role": ROLE_OF[f], "unit": UNITS.get(f, "bool")}
-        )
-        for f, v in fill.items()
-        if f not in have
-    ]
-    return offer_terms(o.model_copy(update={"slots": (*o.slots, *extra)}))

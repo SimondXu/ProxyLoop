@@ -20,6 +20,15 @@ const OPTIONS = {
   ],
   tasks: ["cp-direct-discount"],
 };
+/** A synthetic GET /api/tasks/card answer (S1-SYS-65 shape) for the start page's "Your role". */
+const ROLE_CARD = {
+  company: "Example Mobile",
+  persona: "A synthetic account holder.",
+  goal: "Pay less every month.",
+  facts: [{ key: "account.last4", value: "1234", identity: true, shareable: true }],
+  approval: { max_monthly_price_usd: "64.00", max_term_months: 12, max_one_time_fees_usd: "0" },
+  stop: null,
+};
 const REAL: Record<string, [string, string]> = {
   fast_user: ["real_http", "qwen3.5-9b"],
   fast_cp: ["real_http", "qwen3.5-9b"],
@@ -125,11 +134,15 @@ for (const theme of THEMES) {
       test.describe(`axe at ${size.width}×${size.height}`, () => {
         test.use({ viewport: { width: size.width, height: size.height } });
 
-        test("start page", async ({ page, baseURL }) => {
+        test("start page, then another task chosen with its role card open", async ({ page, baseURL }) => {
           await csrfCookie(page, baseURL, "pl_op_csrf", "op-token");
-          await page.route("**/api/models", (route) => route.fulfill({ status: 200, json: OPTIONS }));
+          await page.route("**/api/models", (route) => route.fulfill({ status: 200, json: { ...OPTIONS, tasks: [...OPTIONS.tasks, "x-user-mind-change"] } }));
+          await page.route("**/api/tasks/card?*", (route) => route.fulfill({ status: 200, json: ROLE_CARD }));
           await page.goto("/?start");
           await expect(page.getByRole("button", { name: /Start/ })).toBeEnabled();
+          await audit(page);
+          await page.getByRole("radio", { name: /X user mind change/ }).check(); // S1-SYS-81: the selected card's ring and check
+          await expect(page.getByRole("region", { name: "Your role" })).toContainText("Pay less every month.");
           await audit(page);
           await shot(page, `a11y-start-${size.name}-${theme}`);
         });

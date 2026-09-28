@@ -406,6 +406,7 @@ class Arm:
     rows: dict[RowKey, Obj]
     torn: int = 0
     left: Counter[str] = field(default_factory=Counter[str])  # unavailable, capped
+    files: list[Path] = field(default_factory=list[Path])  # the rows files
 
     def row(self, item: Obj, role: str, repeat: int = 1) -> Obj:
         return self.rows[(item["item_id"], role, repeat)]
