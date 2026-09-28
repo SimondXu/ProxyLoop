@@ -34,13 +34,16 @@ from proxyloop.contract.state import (
 from proxyloop.contract.views import SlowView
 from proxyloop.guard.capability import released_accept
 from proxyloop.guard.declass import spoken
-from proxyloop.guard.readback import has_cue, slot_statuses
+from proxyloop.guard.readback import has_cue, missing_required, slot_statuses
 from proxyloop.guard.status import status_change
 from proxyloop.guard.verify import verify_no_deal
 from proxyloop.slow.tools import SlowTools, lever_denial, public_guide
 
 Kind = Literal["info_only", "full"]  # the task's ``mode`` (task data)
 STOP_AFTER = 2  # read-back replies omitting the same slots (V4, D2)
+UNNAMED_FEE = (
+    "for a fee the rep stated without naming it: its amount, as an unnamed fee"
+)
 LEVERS = (GuideMove.CITE_COMPETITOR, GuideMove.MENTION_TENURE, GuideMove.CANCEL_LEVER)
 TENURE = "tenure_years"  # the one lever fact a user can make public (FORMATS)
 WHY = {  # one clause per refusal class (V5)
@@ -382,16 +385,20 @@ class Readback:
     """V4 (amended, D2) for one offer revision."""
 
     asked: int  # read-back asks
-    stuck: tuple[str, ...]  # unconfirmed slots two read-back replies omitted
+    stuck: tuple[str, ...]  # unconfirmed or missing slots two replies omitted
     unread: bool  # the rep spoke after the last ask but read nothing back
 
 
 def readback(o: OfferPublic, asks: Sequence[int], lines: Sequence[Line]) -> Readback:
     """Each ask's window runs to the next ask; a read-back reply is a rep line
     in it that restates at least one slot. A slot is stuck once the replies
-    of two windows restated others but not it; ``unread``: the last window
-    has rep lines but no read-back reply."""
-    left, omitted, replied = unconfirmed(o), Counter[str](), False
+    of two windows restated others but not it; a required field the revision
+    does not record (Guard's ``missing_required``) counts as omitted in each
+    window with a reply (S1-SYS-87: a fee the rep names only by generic words
+    can never be recorded); ``unread``: the last window has rep lines but no
+    read-back reply."""
+    left = unconfirmed(o) | frozenset(missing_required(o))
+    omitted, replied = Counter[str](), False
     for at, end in zip(asks, [*asks[1:], len(lines)], strict=True):
         said = [restated(o, x) for x in lines[at:end] if x.speaker == "partner"]
         replies = [s for s in said if s]
@@ -454,11 +461,22 @@ class Bar:
         if lever:
             return omitted
         then = ", then decline_offer and guide_fast(ask_final_offer)"
+        # S1-SYS-87 D4 (I11): a required field never recorded may have been
+        # stated (a fee the rep named by no specific word): "not recorded"
+        missing = set(missing_required(o))
+        unrec = ", ".join(f for f in left if f in missing)
+        stated = ", ".join(f for f in left if f not in missing)
+        what, told = "not stated as recorded", " as not stated"
+        if unrec:
+            what, told = "not recorded", f" as not recorded ({UNNAMED_FEE})"
+        if unrec and stated:
+            what = f"{stated} not stated as recorded, {unrec} {what}"
+            told = f": {stated} as not stated, {unrec}{told}"
+        value = "another value for them" if not unrec else "them"
         return (
-            f"{omitted} → not stated as recorded: if a reply states another "
-            "value for them, record_offer a new revision citing that line; "
-            "otherwise stop asking, report them to the user as not stated"
-            + (then if self.close.kind == "full" else "")
+            f"{omitted} → {what}: if a reply states {value}, record_offer a new "
+            "revision citing that line; otherwise stop asking, report them to "
+            f"the user{told}" + (then if self.close.kind == "full" else "")
         )
 
     def lines(self, outside: bool = True, unrecorded: Sequence[str] = ()) -> list[str]:
