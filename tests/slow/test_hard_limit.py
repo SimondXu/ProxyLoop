@@ -128,11 +128,13 @@ def test_a_forbidden_change_shows_the_hard_class_not_outside_mandate(
 def test_a_confirmed_offer_outside_the_mandate_keeps_the_approval_hint(
     tmp_path: Path,
 ) -> None:
-    """#166's hint covers the confirmed case: no second signal, no decline."""
+    """#166's hint covers the confirmed case: no second signal, no decline.
+    S1-SYS-66: with the bar, an available lever comes first."""
     h = _confirmed(tmp_path)  # $69
     _mandate(h, 6500)
     line = _offers_line(h)
-    assert HINT in line
+    assert "save-2 confirmed, outside mandate → first" in line
+    assert "guide_fast(mention_tenure)" in line and HINT not in line
     assert prompt.OUTSIDE_MANDATE not in line and prompt.HARD_LIMIT not in line
     assert "decline" not in line
 
