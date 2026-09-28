@@ -1,7 +1,7 @@
 # ADR-0020: One read-back window per offer
 
 - **Status:** accepted (main-root decision D1, 2026-09-27, §0.5a, on the architect's adversarial analysis)
-- **Date:** 2026-09-28
+- **Date:** 2026-09-27
 - **Task:** S1-SYS-62
 
 ## Context

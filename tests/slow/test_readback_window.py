@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
 from tests.slow.test_authority import SLOTS, TERMS, Host
 
 RECORD = {"tool": "record_offer", "offer_ref": "save-2"}
@@ -217,6 +218,42 @@ def test_db_a_cut_ask_never_anchors_the_strict_rule(tmp_path: Path) -> None:
     h.deliver(h.voice(deliver=False), interrupted=True)
     h.rep("cp-2", TERMS)
     assert h.bb.public.offers["save-2"].revision == 1
+    assert "confirmed" not in _statuses(h)
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_a_two_sentence_ask_cut_in_its_second_never_anchors(
+    tmp_path: Path, strict: bool
+) -> None:
+    """#219 D-A/D-B: the ask turn's first sentence played whole, the rep barged
+    into the second; the question was never heard whole, so the rep's
+    restatement of every slot confirms nothing (``strict``: the revision's own
+    ask; else the window, for a revision recorded from the answer)."""
+    h = Host(tmp_path)
+    h.call()
+    _opened(h)
+    h.rep("cp-1", TERMS if strict else PRICE_TERM)
+    r1 = _slots("cp-1", () if strict else ("monthly_price", "term_months"))
+    h.act(RECORD | {"offer_slots": r1}, _ask("save-2"))
+    (msg,) = [e for e in h.of("s2f.msg") if e.payload["lane"] == "cp"][-1:]
+    said = ["Thanks.", "Could you read it all back?"]
+    turn = {"lane": "cp", "gen_id": "c-g1", "call_id": "c", "ttft_ms": 1}
+    turn |= {"ttfs_ms": 1, "items": [{"kind": "speech", "text": t} for t in said]}
+    cause = h.emit("fast.turn", "fast.cp", turn, [msg.event_id])
+    voiced = {"msg_id": msg.payload["msg_id"], "gen_id": "c-g1"}
+    h.emit("s2f.voiced", "fast.cp", voiced, [cause.event_id])
+    for n, (text, heard) in enumerate(zip(said, [said[0], "Could"], strict=True)):
+        line = {"lane": "cp", "gen_id": "c-g1", "utt_id": f"c-g1-u{n}", "text": text}
+        sentence = h.emit("fast.sentence", "fast.cp", line, [cause.event_id])
+        played = {"lane": "cp", "utt_id": f"c-g1-u{n}", "text_generated": text}
+        played |= {"text_heard": heard, "interrupted": n == 1}
+        if n == 1:
+            h.rep("cp-2", TERMS)  # the barge-in
+        h.emit("utt.delivered", "kernel", played, [sentence.event_id])
+    h.rep("cp-3", TERMS)
+    if not strict:
+        h.act(RECORD | {"offer_slots": _slots("cp-3")})
+    assert h.bb.public.offers["save-2"].revision == (1 if strict else 2)
     assert "confirmed" not in _statuses(h)
 
 
