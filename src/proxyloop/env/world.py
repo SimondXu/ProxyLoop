@@ -28,7 +28,10 @@ from proxyloop.contract.llm import LLMCallRecord, LLMClient, TextRequest, ToolRe
 MAX_REGENERATIONS = 2
 # One call, all its attempts (D6); 60 s = the old worst case (3 x 20 s).
 TIMEOUT_S = 60.0  # provisional until S0-ROOT-12 + the user's confirmation
-MAX_TOKENS = 512  # bounds neither reasoning nor latency here (ADR-0005 Risks)
+# Only a guard against runaway output; it bounds neither reasoning nor latency
+# (latency: reasoning_effort + TIMEOUT_S, ADR-0005 D6). 2048 because some routes
+# count reasoning inside max_tokens (S1-ROOT-21, #265).
+MAX_TOKENS = 2048
 
 
 class WorldError(Exception):
