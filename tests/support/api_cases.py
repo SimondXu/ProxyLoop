@@ -28,7 +28,13 @@ from proxyloop.core.bus import Bus
 from proxyloop.guard.authorize import Denial, decide, request_approval
 from proxyloop.guard.mandate import proposal
 from proxyloop.guard.terms import offer_terms_hash
-from proxyloop.serve.cases import LaneKey, ModelOption, StartRefused
+from proxyloop.serve.cases import (
+    LaneKey,
+    ModelOption,
+    RoleCard,
+    RoleFact,
+    StartRefused,
+)
 
 _KEYS = "cfg_hash task_ref instance_hash models renderer_fp contract_version git_sha"
 _STARTED = dict.fromkeys([*_KEYS.split(), "attest", "parity"], "x")
@@ -212,6 +218,22 @@ class FakeStarter:
 
     def task_options(self) -> Sequence[str]:
         return self.tasks
+
+    def role_card(self, task_ref: str) -> RoleCard:
+        """A card that names its task_ref (in its goal), for an offered one."""
+        if task_ref not in self.tasks:
+            raise StartRefused("unknown_task")
+        fact = RoleFact(
+            key="account.last4", value="0000", identity=True, shareable=True
+        )
+        return RoleCard(
+            company="Fake Mobile",
+            persona="A fake principal.",
+            goal=f"The goal of {task_ref}.",
+            facts=[fact],
+            approval=None,
+            stop=None,
+        )
 
     async def start_case(
         self, task_ref: str, models: Mapping[LaneKey, str], rep: str = "sim"

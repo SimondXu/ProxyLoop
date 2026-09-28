@@ -35,6 +35,7 @@ from proxyloop.contract.llm import (
 )
 from proxyloop.contract.state import ApprovalCard
 from proxyloop.core.bus import Bus
+from proxyloop.env.tasks.loader import load_task, resolve, task_ref_of
 from proxyloop.kernel import calls, session, web
 from proxyloop.kernel.channels import HumanWebChannel, Incoming
 from proxyloop.kernel.session import ClientFactory, Kernel, RunResult
@@ -520,6 +521,164 @@ def test_task_options_are_the_training_families_only(
     assert set(loaded) == set(TRAINING)  # no other family file was opened
 
 
+# The principal's role card (S1-SYS-65): an allow-list over a training instance.
+
+CARD_KEYS = {"company", "persona", "goal", "facts", "approval", "stop"}
+FACT_KEYS = {"key", "value", "identity", "shareable"}
+LIMIT_KEYS = {"max_monthly_price_usd", "max_term_months", "max_one_time_fees_usd"}
+STOP_KEYS = {"trigger", "text_hint", "change"}
+
+
+def _card_refs() -> list[str]:
+    """Every training family's offered ref, a seeded instance of it (shifted
+    prices and limits), and cp-direct-discount's full mode."""
+    refs: list[str] = []
+    for family in TRAINING:
+        version = load_task(family).version
+        refs += [task_ref_of(family, version, None, s) for s in (0, 3)]
+    return [*refs, task_ref_of("cp-direct-discount", 1, "full", 0)]
+
+
+CARD_REFS = _card_refs()
+
+
+def test_a_role_card_of_a_held_out_family_is_refused_unopened(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    s = Starter(tmp_path / "runs")  # its own training loads happen here
+    opened: list[str] = []
+    monkeypatch.setattr(web, "resolve", opened.append)  # any call is recorded
+    monkeypatch.setattr(web, "load_task", opened.append)
+    with pytest.raises(StartRefused) as refused:
+        s.role_card("x-held-out-family@1")
+    assert (refused.value.reason, opened) == ("unknown_task", [])
+
+
+@pytest.mark.parametrize(
+    "task_ref", ["cp-direct-discount", "cp-direct-discount@9", "cp-direct-discount@1:x"]
+)
+def test_a_role_card_of_a_bad_ref_is_unknown_task(
+    tmp_path: Path, task_ref: str
+) -> None:
+    with pytest.raises(StartRefused) as refused:
+        Starter(tmp_path / "runs").role_card(task_ref)
+    assert refused.value.reason == "unknown_task"
+
+
+def _leaves(value: object) -> list[str]:
+    """Every string and number in a JSON value (booleans are its flags)."""
+    if isinstance(value, dict):
+        return [x for v in cast(dict[str, object], value).values() for x in _leaves(v)]
+    if isinstance(value, list):
+        return [x for v in cast(list[object], value) for x in _leaves(v)]
+    if isinstance(value, bool) or value is None:
+        return []
+    return [str(value)]
+
+
+def _said(value: str, texts: list[str]) -> bool:
+    """``value`` appears in ``texts`` as a whole token ("24" in "24 months",
+    never in "4821"; "75.00" or its "75" never inside "175" or "75.5")."""
+    token = re.compile(rf"(?<![\w.]){re.escape(value)}(?![\w]|\.\d)")
+    return any(token.search(t) for t in texts)
+
+
+def _cp_values(task_ref: str) -> set[str]:
+    """The counterparty's values, apart from its company's name: the ladder's
+    refs, terms and hidden fields (their names and values, and a price's
+    whole dollars), its persona, patience and ledger; plus gold, probes and
+    the three briefs."""
+    task = resolve(task_ref)
+    cp = task.counterparty.model_dump(mode="json", exclude={"company", "identity"})
+    values = set(_leaves(cp))
+    for offer in task.counterparty.ladder:
+        values |= set(offer.all_terms)  # "fee:installation" names a hidden fee
+    values |= {v.split(".")[0] for v in set(values) if re.fullmatch(r"\d+\.\d+", v)}
+    values |= {task.gold.check, *task.probes}
+    return values | {task.fast_brief_user, task.fast_brief_cp, task.slow_brief}
+
+
+def _principal_knows(task_ref: str) -> list[str]:
+    """What the principal legitimately knows, from the task itself: the fact
+    values, the approval limits, and the words of its persona, goal and stop."""
+    task = resolve(task_ref)
+    known = [*task.profile.facts.values(), task.profile.persona]
+    known.append(task.goal(task.profile.facts))
+    if task.principal is not None:
+        known += _leaves(task.principal.model_dump(mode="json"))
+    if task.stop is not None:
+        known += _leaves(task.stop.model_dump(mode="json"))
+    return known
+
+
+@pytest.mark.parametrize("task_ref", CARD_REFS)
+def test_the_role_card_keys_are_exactly_the_allow_list(
+    tmp_path: Path, task_ref: str
+) -> None:
+    card = Starter(tmp_path / "runs").role_card(task_ref).model_dump(mode="json")
+    assert set(card) == CARD_KEYS
+    assert card["facts"] and all(set(f) == FACT_KEYS for f in card["facts"])
+    assert card["approval"] is None or set(card["approval"]) == LIMIT_KEYS
+    assert card["stop"] is None or set(card["stop"]) == STOP_KEYS
+
+
+def test_the_allow_list_covers_an_approval_and_a_stop(tmp_path: Path) -> None:
+    cards = [Starter(tmp_path / "runs").role_card(r) for r in CARD_REFS]
+    assert any(c.approval is not None for c in cards)
+    assert any(c.stop is not None for c in cards)
+    assert any(c.approval is None for c in cards)  # information only
+
+
+@pytest.mark.parametrize("task_ref", CARD_REFS)
+def test_no_counterparty_value_reaches_the_role_card(
+    tmp_path: Path, task_ref: str
+) -> None:
+    """Rule: a counterparty value the principal also knows (a fact, a limit, a
+    word of its own persona, goal or stop; e.g. the term "24" of a 24-month
+    budget) is not evidence of a leak and is left out; every other one must
+    not appear, as a whole token, in any string or number of the card."""
+    card = Starter(tmp_path / "runs").role_card(task_ref).model_dump(mode="json")
+    texts, known = _leaves(card), _principal_knows(task_ref)
+    checked = {v for v in _cp_values(task_ref) if not _said(v, known)}
+    task = resolve(task_ref)
+    for offer in task.counterparty.ladder:  # the prices are checked, never excused
+        assert offer.all_terms["monthly_price"] in checked
+    assert task.counterparty.persona in checked
+    leaked = sorted(v for v in checked if _said(v, texts))
+    assert leaked == []
+    price = task.counterparty.ladder[0].all_terms["monthly_price"]
+    assert _said(price, [*texts, f"an offer at {price} a month"])  # it would see one
+
+
+def test_the_role_card_is_the_principal_s_view_of_the_instance(
+    tmp_path: Path,
+) -> None:
+    s = Starter(tmp_path / "runs")
+    info = s.role_card(REF)  # information only: nothing to approve
+    assert (info.company, info.approval, info.stop) == ("Northwind Mobile", None, None)
+    assert info.persona.startswith("Dana Reyes, a busy nurse")
+    flags = {f.key: (f.identity, f.shareable) for f in info.facts}
+    assert flags["account.last4"] == (True, True)
+    assert flags["competitor.price_usd"] == (False, True)
+    assert flags["plan.current_price_usd"] == (False, False)
+    hidden_fee = s.role_card("cp-hidden-fee-readback@1").approval  # the envelope
+    assert hidden_fee is not None
+    assert hidden_fee.model_dump() == {
+        "max_monthly_price_usd": "65",
+        "max_term_months": 12,
+        "max_one_time_fees_usd": "0",
+    }
+    out = s.role_card("x-out-of-envelope-approval@1").approval  # the limits
+    assert out is not None and out.max_monthly_price_usd == "72.00"
+    stop = s.role_card("x-user-mind-change@1").stop
+    assert stop is not None and (stop.trigger, stop.change) == ("after_card", None)
+    seeded = "cp-hidden-fee-readback@1#3"  # the instance's shifted numbers
+    task = resolve(seeded)
+    card = s.role_card(seeded)
+    assert card.goal == task.goal(task.profile.facts).strip()
+    assert {f.key: f.value for f in card.facts} == task.profile.facts
+
+
 # The seam as serve drives it.
 
 
@@ -596,6 +755,35 @@ def test_serve_refuses_a_rep_line_before_the_call_opens(tmp_path: Path) -> None:
         said = [x["payload"] for x in _wait_for(run, "utt.final")]
         heard = [p["text"] for p in said if p.get("speaker") == "partner"]
         assert heard == [line["text"]]
+        live = s._run  # pyright: ignore[reportPrivateUsage]
+        assert live is not None
+        cast(Any, http).portal.call(_cancel, live)
+
+
+def test_serve_gives_the_role_card_of_a_training_task_and_of_a_started_case(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vt = VirtualTime()
+    s = starter(tmp_path, vt)
+    app = create_app([tmp_path / "runs"], [ORIGIN], start=s)
+    card = s.role_card(REF).model_dump(mode="json")
+    with TestClient(app, base_url="http://127.0.0.1") as http:
+        op = headers(_operator(http))
+        opened: list[str] = []
+        with monkeypatch.context() as m:  # rule 11: a held-out ref opens nothing
+            m.setattr(web, "resolve", opened.append)
+            got = get(http, "/api/tasks/card?ref=x-held-out-family@1", op)
+            assert (got.status_code, got.json()["reason"]) == (400, "unknown_task")
+        assert opened == []
+        got = get(http, f"/api/tasks/card?ref={REF}", op)
+        assert (got.status_code, got.json()) == (200, card)
+        body: dict[str, object] = {"task_ref": REF, "models": {}, "rep": "human"}
+        case_id = post(http, "/api/cases", body, op).json()["case_id"]
+        url = f"/api/cases/{case_id}/card"
+        got = get(http, url, headers(login(http, "rep", case_id)))
+        assert got.status_code == 403
+        got = get(http, url, headers(login(http, "user", case_id)))
+        assert (got.status_code, got.json()) == (200, card)  # its seq 0's task_ref
         live = s._run  # pyright: ignore[reportPrivateUsage]
         assert live is not None
         cast(Any, http).portal.call(_cancel, live)

@@ -130,6 +130,45 @@ class ModelOption(BaseModel):
     default: bool  # exactly one default per lane
 
 
+class _Card(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+class RoleFact(_Card):
+    key: str
+    value: str
+    identity: bool  # the company checks it (counterparty.identity)
+    shareable: bool  # it may be told to the company (disclosure.shareable)
+
+
+class RoleLimits(_Card):
+    """What the principal would approve on a card: never a target (None:
+    unbounded)."""
+
+    max_monthly_price_usd: str | None
+    max_term_months: int | None
+    max_one_time_fees_usd: str | None
+
+
+class RoleStop(_Card):
+    trigger: str
+    text_hint: str
+    change: dict[str, str] | None
+
+
+class RoleCard(_Card):
+    """The principal's "Your role" card: only what the principal knows (I4),
+    from a training task's resolved instance (AGENTS rule 11). An allow-list:
+    nothing of the rep's or the world's hidden state."""
+
+    company: str  # who the principal's provider is
+    persona: str
+    goal: str
+    facts: list[RoleFact]
+    approval: RoleLimits | None  # None: information only (no principal)
+    stop: RoleStop | None
+
+
 class StartRefused(Exception):
     """Kernel refuses a start; serve answers 400 {"error": "start", "reason":
     reason}, or 409 when reason == "busy"."""
@@ -153,6 +192,13 @@ class Starter(Protocol):
 
     def task_options(self) -> Sequence[str]:
         """Training families only (AGENTS rule 11), in a stable order."""
+        ...
+
+    def role_card(self, task_ref: str) -> RoleCard:
+        """The principal's card for ``task_ref``'s resolved instance. Raises
+        ``StartRefused("unknown_task")`` for a ref not offered, without
+        opening its file. It may read the task's file: serve calls it in a
+        worker thread."""
         ...
 
     async def start_case(
