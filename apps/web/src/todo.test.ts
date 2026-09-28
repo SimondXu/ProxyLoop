@@ -235,6 +235,45 @@ describe("started rows at the end (reviewer MINOR-1): ended with their progress,
   });
 });
 
+describe("a second accept after a replan (delta review R1)", () => {
+  /** Limits granted, an accept (c1 or c2) authorized and its line; `release`: the kernel releases it, heard whole. */
+  function acceptOn(cap: string, release: boolean, grant: Ev): Ev[] {
+    const auth = ev("action.authorized", "guard", { intent: "accept_offer", capability: { cap_id: cap, terms_hash: "h", epoch: 1 } }, [grant]);
+    const line = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "Yes.", cap_id: cap });
+    if (!release) return [auth, line];
+    const rel = ev("speak.released", "kernel", { lane: "cp", cap_id: cap }, [line]);
+    return [auth, line, rel, heard(rel)];
+  }
+
+  it("R1: a first yes released, a replan, a second accept held at the end: only the latest yes is unsaid", () => {
+    const m = mandate();
+    const g = limits("granted");
+    const first = [m, g, call(), offer(), ALL(), ...acceptOn("c1", true, g)];
+    const replan = [status("COMMITTED"), evidence(), verdict("fail"), status("NEEDS_REPLAN"), status("IN_CALL"), offer("o2", 1, "h2")];
+    const events = [...first, ...replan, ...acceptOn("c2", false, g), ended("timeout")];
+    expect(events.length).toBeLessThan(20);
+    const r = row(run(events), "accept");
+    expect([r?.state, r?.note]).toEqual(["ended", "Ended before the latest yes was said"]);
+  });
+
+  it("with no earlier release, the held accept at the end is still 'Ended before the yes was said'", () => {
+    const m = mandate();
+    const g = limits("granted");
+    const events = [m, g, call(), offer(), ALL(), ...acceptOn("c1", false, g), status("NEEDS_REPLAN"), offer("o2", 1, "h2"), ...acceptOn("c2", false, g), ended("timeout")];
+    const r = row(run(events), "accept");
+    expect([r?.state, r?.note]).toEqual(["ended", "Ended before the yes was said"]);
+  });
+
+  it("an earlier line released by a wrong actor does not count", () => {
+    const m = mandate();
+    const g = limits("granted");
+    const [a1, l1] = acceptOn("c1", false, g);
+    const forged = ev("speak.released", "guard", { lane: "cp", cap_id: "c1" }, [l1 as Ev]);
+    const events = [m, g, call(), offer(), ALL(), a1 as Ev, l1 as Ev, forged, offer("o2", 1, "h2"), ...acceptOn("c2", false, g), ended("timeout")];
+    expect(row(run(events), "accept")?.note).toBe("Ended before the yes was said");
+  });
+});
+
 describe("state words for screen readers (reviewer MINOR-2)", () => {
   it.each([
     [{ state: "pending", started: false, alsoYou: false }, "not started"],

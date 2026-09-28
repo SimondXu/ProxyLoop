@@ -53,7 +53,9 @@ const ENDED: Partial<Record<RowKey, string>> = {
   accept: "Ended before the yes was said",
   records: "Ended before the records check",
 };
-const endedNote = (key: RowKey, note: string | null) => ENDED[key] ?? (note ? `${note} · ended before it was finished` : "Ended before it was finished");
+// After a replan Guard may authorize a second accept (other terms): if an earlier accept line was released, only the latest yes is unsaid.
+const LATEST_YES_UNSAID = "Ended before the latest yes was said";
+const endedNote = (r: Raw) => r.ended ?? ENDED[r.key] ?? (r.note ? `${r.note} · ended before it was finished` : "Ended before it was finished");
 export const RULE = "Checked off only when it actually happens on the call, not when the assistant says so.";
 const MATCHED = "Matched the company's records";
 const NOT_MATCHED = "Didn't match the company's records";
@@ -64,7 +66,7 @@ const PLAIN_END = new Set(["verified", "no_deal", "info_only"]);
 const NO_POSTS: ReadonlyMap<string, Posting> = new Map();
 
 /** A row before the pass that picks the current one: where it started (seq) and how far it got. */
-type Raw = { key: RowKey; start: number | null; done: boolean; noted: boolean; you: boolean; note: string | null };
+type Raw = { key: RowKey; start: number | null; done: boolean; noted: boolean; you: boolean; note: string | null; ended?: string };
 
 /** A row's state in words for screen readers; "" where its visible note already says it (Not reached). */
 export function stateWords(r: Pick<TodoRow, "state" | "started" | "alsoYou">): string {
@@ -148,7 +150,11 @@ export function todo(events: Ev[], steps: Step[]): Todo {
       // How the yes was heard: the rail's own step for its delivery (timeline.ts), if it has arrived.
       const yes = steps.findLast((s) => auth !== undefined && s.seq > auth.seq && s.kind === "utt.delivered" && SAID_YES.includes(s.text))?.text ?? null;
       add("accept", start, { done: true, noted: yes === C.SAID_YES.none, note: yes });
-    } else add("accept", start);
+    } else {
+      // An earlier accept line the kernel released (lineFate): a yes was said, just not this one.
+      const earlier = events.some((e) => guard(e, "speak.verbatim") && e.payload.kind === "accept" && lineFate(events, e).state === "released");
+      add("accept", start, earlier ? { ended: LATEST_YES_UNSAID } : {});
+    }
   }
 
   // 7. The records check: only once its events appear; the verdict on the latest check is Guard's first
@@ -186,7 +192,7 @@ export function todo(events: Ev[], steps: Step[]): Todo {
   const out = raws.map((r, i): TodoRow => {
     const st = state(r, i);
     const alsoYou = st === "pending" && r.you;
-    const note = st === "not_reached" ? NOT_REACHED : st === "ended" ? endedNote(r.key, r.note) : alsoYou ? ALSO_YOU : r.note;
+    const note = st === "not_reached" ? NOT_REACHED : st === "ended" ? endedNote(r) : alsoYou ? ALSO_YOU : r.note;
     return { key: r.key, label: LABEL[r.key], state: st, note, started: r.start !== null, alsoYou, steps: under(i) };
   });
   const n = out.length;
