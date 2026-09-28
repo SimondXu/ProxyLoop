@@ -40,6 +40,8 @@ def test_groups_by_sha_newest_first(
         f"== progress git_sha old ({progress.LABEL})",
         f"== watch git_sha new ({progress.LABEL})",
         f"== watch git_sha old ({progress.LABEL})",
+        f"== world git_sha new ({progress.LABEL})",  # S1-SYS-89
+        f"== world git_sha old ({progress.LABEL})",
     ]  # fmt: skip
     # a bare run: no end and no step are unknown ("?"), counted per group
     assert "end_reason" not in out[2] and "end=None" in out[2]
@@ -97,6 +99,8 @@ def test_groups_by_slow_fp_when_present(
         f"== progress slow_fp fpA ({progress.LABEL})",
         f"== watch git_sha s1 ({progress.LABEL})",
         f"== watch slow_fp fpA ({progress.LABEL})",
+        f"== world git_sha s1 ({progress.LABEL})",  # S1-SYS-89
+        f"== world slow_fp fpA ({progress.LABEL})",
     ]
     totals = [x.split() for x in out if x.startswith("  sum")]
     assert totals and all("max" not in t for t in totals)  # bare runs: no maxima

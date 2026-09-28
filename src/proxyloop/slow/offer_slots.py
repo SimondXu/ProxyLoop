@@ -17,12 +17,7 @@ from proxyloop.contract import base
 from proxyloop.contract import state as st
 from proxyloop.contract.state import READBACK_FIELD, ReadbackSlot
 from proxyloop.guard.declass import numbers, spoken
-from proxyloop.guard.readback import (  # the read-back's code-word matcher
-    LEXICON,
-    ROLE_OF,
-    _names,  # pyright: ignore[reportPrivateUsage]
-    _words,  # pyright: ignore[reportPrivateUsage]
-)
+from proxyloop.guard.readback import LEXICON, ROLE_OF
 from proxyloop.slow.authority import UNITS
 from proxyloop.slow.result import Result, no
 
@@ -59,7 +54,8 @@ EXAMPLE = {  # the rep's words, the code they name
 }
 NAMED = (
     "A fee:<code> or credit:<code> is named by the rep's own words in its cited "
-    "line: each code word is said there and none is a generic word (such as fee, "
+    "line, in lower snake_case: each code word is said there as a whole word "
+    "and none is a generic word (such as fee, "
     f"charge, credit): {EXAMPLE['fee']}, never fee:porting_fee; "
     f"{EXAMPLE['credit']}, never credit:paperless_credit"
 )
@@ -173,8 +169,10 @@ def record_offer(
     if unbound:
         text = f"{'; '.join(unbound)}. {CITE}"
         return no(text, ("declass.denied", {"violations": unbound}))
-    if bad := [p for s in slots for p in _named(s, said.get(str(s.source_utt), ""))]:
-        return _invalid(refused(bad))
+    named = {s.field: _named(s, said.get(str(s.source_utt), "")) for s in slots}
+    if bad := [p for problems in named.values() for p in problems]:
+        tails = [f"{f}: {unnamed(f, ref)}" for f, problems in named.items() if problems]
+        return _invalid(f"{refused(bad)}. {'. '.join(tails)}")
     if bad := [p for s in slots if (p := value(s))]:
         return _invalid(refused(bad))
     prev = bb.public.offers.get(ref)
@@ -197,25 +195,52 @@ def record_offer(
     return Result(True, text, (("offer.recorded", recorded),))
 
 
+# S1-SYS-87 D2: the code is hashed byte for byte, so it is the world's form
+# (lower snake_case) and each of its words, of any length, is a whole word of
+# the cited line. Guard's ``_names`` is a prefix match that skips words of ≤ 2
+# chars (the read-back's lenient test), so it cannot say "whole word": this is
+# the one local matcher. A number is one word ("20.00": '20' is not a word of
+# it); known edge, no amount rule: "$20" and "20 dollars" do say the word '20'.
+_CODE = re.compile(r"[a-z0-9]+(?:_[a-z0-9]+)*")
+_TOKEN = re.compile(r"[a-z0-9]+(?:[.,][0-9]+)*")
+
+
 def _named(slot: st.ReadbackSlot, line: str) -> list[str]:
-    """Why a fee or credit code is not the rep's name for it: a generic word, or
-    a word its cited line does not say (the read-back's matcher); else []."""
-    kind = slot.field.partition(":")[0]
+    """Why a fee or credit code is not the rep's name for it: not lower
+    snake_case, a generic word, or a word its cited line does not say as a
+    whole word; else []."""
+    kind, _, code = slot.field.partition(":")
     if kind not in ("fee", "credit"):
         return []
-    out: list[str] = []
-    for w in _words(slot.field):
+    if not _CODE.fullmatch(code):
+        snake = re.sub(r"[^a-z0-9]+", "_", code.lower()).strip("_")
+        return [f"{slot.field}: a code is lower snake_case ({kind}:{snake})"]
+    words, out = set(_TOKEN.findall(line.lower())), list[str]()
+    for w in code.split("_"):
         if w in GENERIC[kind]:
             out.append(
                 f"{slot.field}: '{w}' is a generic word; name a {kind} by the words "
                 f"the rep used for it without '{w}' (e.g. {EXAMPLE[kind]})"
             )
-        elif not _names(line.lower(), f"{kind}:{w}"):
+        elif w not in words:
             out.append(
-                f"{slot.field}: '{w}' is not in the cited line {slot.source_utt}; "
-                "use the rep's words"
+                f"{slot.field}: '{w}' is not in the cited line {slot.source_utt} "
+                "as a whole word; use the rep's words"
             )
     return out
+
+
+def unnamed(field: str, ref: str) -> str:
+    """S1-SYS-87 D3 (rev-274): every naming refusal ends with this conditional
+    tail, after the table (``obs.watch`` reads the problem list before it): a
+    fee the rep named by no specific word can never be recorded, and the
+    read-back stop rule (``state.readback``) bounds asking for it."""
+    kind = field.partition(":")[0]
+    return (
+        f"if the rep named this {kind} by no specific word, record_offer the "
+        f'other slots, then guide_fast(ask_readback, ["offer:{ref}"]) once more; '
+        f"a {kind} must be named by the rep to be recorded"
+    )
 
 
 def _invalid(text: str) -> Result:  # the slots' form, not the rep's words
