@@ -197,6 +197,8 @@ def test_hosted_turns_from_another_model_or_unclean_are_skipped_and_counted(
     turns, counts = skipped(cp_saying(b, SPEECH_AFTER_PAUSE))  # pl_cp_v3: not clean
     assert not [t for t in turns if lane_of(t) == "cp"]
     assert counts["empty_or_parse_issue"] >= n_cp
+    turns, counts = skipped(with_calls(b, prompt_sha=sha256_text("other request")))
+    assert not turns and counts == {"call_prompt_mismatch": n}
     for update in ({"error": "cancelled"}, {"response_sha": None}):
         turns, counts = skipped(with_calls(b, **update))
         assert not turns and counts["cancelled_or_no_response"] >= n
@@ -226,11 +228,21 @@ def test_a_hosted_turn_whose_view_or_sent_messages_differ_is_skipped(hosted: Pat
     clean, _ = skipped(b)
     n_cp = sum(lane_of(t) == "cp" for t in clean)
     edited = with_views(b, "cp", lambda v: v | {"brief": v["brief"] + " Be brief."})
-    other = with_requests(b, "cp", prompt_sha=sha256_text("other messages"))
-    for changed in (edited, other):
+    sha = sha256_text("other messages")
+    asked = with_requests(b, "cp", prompt_sha=sha)  # its record still hashes the view's
+    turns, counts = skipped(asked)
+    assert {lane_of(t) for t in turns} == {"user"}
+    assert counts == {"call_prompt_mismatch": n_cp}
+    answered = tuple(  # the record agrees with the request, the view does not
+        e.model_copy(update={"payload": e.payload | {"prompt_sha": sha}})
+        if e.type == "llm.call" and e.payload["role"] == "fast_cp"
+        else e
+        for e in asked.events
+    )
+    for changed in (edited, Bundle(b.manifest, answered, b.prompts)):
         turns, counts = skipped(changed)
         assert {lane_of(t) for t in turns} == {"user"}
-        assert counts["messages_sha_mismatch"] == n_cp
+        assert counts == {"messages_sha_mismatch": n_cp}
     # pl_cp_v2 renders as pl_cp_v3 does (only the grammar differs): the identity
     # holds, and the turn is parsed under the recorded profile.
     turns, counts = skipped(with_requests(b, "cp", profile="pl_cp_v2"))

@@ -182,8 +182,9 @@ def label_turns(
     bundle: Bundle, source: Source = BASE_9B
 ) -> tuple[list[Turn], Counter[str]]:
     """Complete Fast turns ``source`` served over real HTTP; skips are counted. A hosted
-    turn must also re-render to the messages it was sent (its identity check); a
-    base-9B turn's prompt is checked in ``p5_rows``, under the tokenizer."""
+    turn's record must hash the request's messages, which must re-render from the
+    stored view and profile (its identity check); a base-9B turn's prompt is checked
+    in ``p5_rows``, under the tokenizer."""
     events, skipped = bundle.events, Counter[str]()
     asked = {e.payload["gen_id"]: e.payload for e in events if e.type == "fast.request"}
     cancelled = {e.payload["gen_id"] for e in events if e.type == "fast.cancelled"}
@@ -196,6 +197,9 @@ def label_turns(
             continue
         if reason := unqualified(rec, source):
             skipped[reason] += 1
+            continue
+        if source.kind == "hosted" and rec.prompt_sha != req["prompt_sha"]:
+            skipped["call_prompt_mismatch"] += 1  # the record answered another request
             continue
         if rec.finish_reason != "stop":
             skipped[f"finish_{rec.finish_reason}"] += 1
