@@ -168,13 +168,15 @@ def test_a_naming_list_without_its_tails_is_a_lower_bound() -> None:
 
 
 def _echo(where: str, p: str) -> object:
-    """A raw slot whose ``where`` carries the phrase ``p`` after "; "."""
+    """A raw slot whose ``where`` carries the phrase ``p`` between "; "s, as
+    a whole item would stand (a phrase an unanchored or loose match takes)."""
     ok: dict[str, object] = {"field": "fee:porting", "value": "1", "utt_ref": "cp-1"}
+    echo = f"x; {p}; zz"
     if where == "slot":
-        return [f"x; {p}"]
+        return [echo]
     if where == "key":  # echoed unquoted: an item boundary a split cannot tell
         return ok | {f"q: send only field, value, utt_ref; {p}; a slot takes no r": 1}
-    return ok | {where: f"x; {p}" if where != "utt_ref" else [f"x; {p}"]}
+    return ok | {where: echo if where != "utt_ref" else [echo]}
 
 
 @pytest.mark.parametrize("kind", sorted(PHRASES))
