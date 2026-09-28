@@ -46,7 +46,7 @@ NO_DEAL = {"tool": "finish", "outcome": "no_deal", "summary": "no deal"}
 
 
 def _close(h: Host, kind: state.Kind = "full") -> state.Close:
-    return state.close(h.bb, kind, h.tools.asked_final)
+    return state.close(h.bb, kind, h.tools.asked_final, h.tools.told_at)
 
 
 def _offered(tmp_path: Path) -> Host:
@@ -125,7 +125,8 @@ def _head(kind: state.Kind) -> str:
     host = SimpleNamespace(cfg=SimpleNamespace(slow_view=mode))
     host.task = SimpleNamespace(id="case-1", mode=kind)
     client = RepeatingLLM(fake("slow"), ["unused"], ManualClock())
-    loop = SlowLoop(cast("Kernel", host), client, "brief", frozenset({"k"}))
+    keys = frozenset({"competitor.price_usd", "tenure_years"})
+    loop = SlowLoop(cast("Kernel", host), client, "brief", keys)
     return cast(str, cast(Any, loop)._head)
 
 
@@ -137,6 +138,8 @@ def test_f10_the_head_carries_the_task_kind_and_its_own_playbook_only(
     other = "full" if kind == "info_only" else "info_only"
     assert f"\nTASK KIND: {kind}\n" in head
     assert prompt.PLAYBOOK[kind] in head and prompt.PLAYBOOK[other] not in head
+    # 21988c: share_fact on competitor keys; the head names what can go public
+    assert "only tenure_years can go public" in head
 
 
 REP_NO_EXPIRY = "It is $69 a month on a 24-month term, no fees, no other changes."
@@ -232,3 +235,29 @@ def test_f12_levers_lists_only_what_guide_fast_would_refuse(tmp_path: Path) -> N
 
 def test_f12_no_unavailable_lever_says_so() -> None:
     assert state.levers_line(()) == "levers: all available"
+
+
+TELL = {"tool": "tell_user", "text": "Their best is $78 a month; no deal."}
+BYE = "Understood, have a good day."  # 21988c cp-25: the closing reply
+
+
+def test_f10_21988c_the_user_is_told_after_the_closing_reply_before_finish(
+    tmp_path: Path,
+) -> None:
+    """21988c (user.told_terms failed): Slow told the user at 267 s, before
+    the rep's closing reply (cp-25 at 402 s), then finished. The close line
+    keeps telling the user pending until a tell_user after that reply."""
+    h = _offered(tmp_path)
+    h.act(FINAL)
+    h.rep("cp-16", BEST)
+    h.act(TELL, DECLINE)  # told before the closing reply that counts
+    h.rep("cp-25", BYE)
+    c = _close(h)
+    assert (c.reply, c.reasons, c.told) == ("cp-25", (), False)
+    assert "tell_user" in c.line()
+    h.act(TELL)
+    c = _close(h)
+    assert (c.reply, c.reasons, c.told) == ("cp-25", (), True)
+    assert "tell_user" not in c.line()
+    info = state.close(h.bb, "info_only", h.tools.asked_final, h.tools.told_at)
+    assert info.told

@@ -38,6 +38,7 @@ class Close:
     asked: bool  # guide_fast(ask_final_offer) went out
     reply: str | None  # the utt id of the rep's closing reply, by Guard's cues
     reasons: tuple[str, ...]  # why the kind's finish is refused; () it passes
+    told: bool  # a tell_user went out after the closing reply
 
     @property
     def outcome(self) -> str:
@@ -51,17 +52,25 @@ class Close:
         else:
             can = f"blocked: {', '.join(self.reasons)}"
         said = said or "no closing reply"
+        if self.reply and not self.told:  # pending until told (user.told_terms)
+            said += "; tell_user the terms and the outcome before finish"
         return f"close: {asked}; {said}; finish({self.outcome}) {can}"
 
 
-def close(bb: Blackboard, kind: Kind, asked_final: int | None) -> Close:
+def close(
+    bb: Blackboard, kind: Kind, asked_final: int | None, told_at: int | None = None
+) -> Close:
     """The rep's last line since the last ask (the whole call before one) is
-    a closing reply iff Guard's cue list says so; ``full`` dry-runs
-    ``authority.finish(no_deal)``: its status check, then ``verify_no_deal``
-    with the same ``asked_final``."""
+    a closing reply iff Guard's cue list says so; the user counts as told once
+    a tell_user went out after it (``told_at``: the cp length then). ``full``
+    dry-runs ``authority.finish(no_deal)``: its status check, then
+    ``verify_no_deal`` with the same ``asked_final``."""
     lines = bb.channels.get("cp", ChannelState()).lines
-    rep = [x for x in lines[asked_final or 0 :] if x.speaker == "partner"]
-    reply = rep[-1].utt_id if rep and has_cue(rep[-1].text, "closing") else None
+    start = asked_final or 0
+    rep = [n for n, x in enumerate(lines) if n >= start and x.speaker == "partner"]
+    last = lines[rep[-1]] if rep else None
+    reply = last.utt_id if last and has_cue(last.text, "closing") else None
+    told = reply is not None and told_at is not None and told_at > rep[-1]
     trigger = "info_only" if kind == "info_only" else "no_deal_verified"
     if status_change(bb, trigger) is None:
         reasons: tuple[str, ...] = (f"case_is:{bb.public.status.value}",)
@@ -69,7 +78,7 @@ def close(bb: Blackboard, kind: Kind, asked_final: int | None) -> Close:
         reasons = ()
     else:
         reasons = verify_no_deal(bb, asked_final).reasons
-    return Close(kind, asked_final is not None, reply, reasons)
+    return Close(kind, asked_final is not None, reply, reasons, told)
 
 
 def unavailable(bb: Blackboard) -> tuple[tuple[str, str], ...]:
@@ -144,4 +153,5 @@ def bar(bb: Blackboard, kind: Kind, tools: SlowTools) -> Bar:
         for key, asks in tools.readbacks.items()
         if (o := bb.public.offers.get(key[0])) is not None and o.revision == key[1]
     }
-    return Bar(close(bb, kind, tools.asked_final), unavailable(bb), readbacks)
+    shut = close(bb, kind, tools.asked_final, tools.told_at)
+    return Bar(shut, unavailable(bb), readbacks)
