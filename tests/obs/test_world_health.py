@@ -8,6 +8,7 @@ world_error head and the agent actors."""
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 from pathlib import Path
 from typing import Any, get_args
@@ -248,7 +249,8 @@ COUNTS: list[tuple[str, list[K], str, str, object]] = [
      "length_empty", 1),
     ("empty but not cut is not length_empty", [{"sha": TEXT_EMPTY}], "ear",
      "length_empty", 0),
-    ("errors", [{"error": "HTTP 500"}, {"error": "cancelled"}], "ear", "errors", 1),
+    ("errors", [{"error": "HTTP 500"}, {"error": "x"}, {"error": "cancelled"}], "ear",
+     "errors", 2),
     ("cancelled is no error", [{"error": "cancelled"}], "ear", "cancelled", 1),
     ("reasoning p50", [{"reasoning": 30}, {"reasoning": 10}, {"reasoning": 20},
      {}], "ear", "reasoning_tokens_p50", 20),
@@ -389,6 +391,13 @@ def test_a_world_event_is_not_the_edge() -> None:
     assert window(log)["seqs"] == [a]
 
 
+def test_an_agent_call_cut_empty_is_no_world_artefact() -> None:
+    log = Log("r")
+    call(log, "fast_cp", finish="length", sha=TEXT_EMPTY)
+    call(log, "slow", finish="length", sha=TOOLS_EMPTY)
+    assert world_health.artefacts(inputs(log)) == []
+
+
 def test_no_agent_event_opens_at_the_start() -> None:
     log = Log("r")
     a = call(log, "mouth", finish="length", sha=TEXT_EMPTY)
@@ -507,7 +516,9 @@ def test_diagnose_shows_the_flag_beside_the_tier(
     def beside(run_id: str) -> list[str]:
         row = next(line for line in out if f" {run_id} " in line).split()
         at = next(i for i, c in enumerate(row) if c.startswith("tier="))
-        return [c for c in row[at + 1 :] if c.startswith("world_")]
+        return list(
+            itertools.takewhile(lambda c: c.startswith("world_"), row[at + 1 :])
+        )
 
     assert beside("rW") == ["world_window=3"]
     assert beside("rB") == ["world_before=2:fidelity_fallback:0t"]
