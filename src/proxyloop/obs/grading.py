@@ -6,8 +6,9 @@ reports its raw value; ``h5_pass`` is ADR-0018's target applied to this one
 run, advisory too (the battery-wide targets are the reader's); ``count`` is
 the one number diagnose shows. A signal the bundle's code does not emit
 yet (``chan.opened.ready``, ``ask_user`` keys, a ``slow.tool`` code) gives
-None, never 0. The closing reply is found with Guard's closing cues on the
-rep's lines, so the three ``close`` detectors run only with ``content``.
+None, never 0. The closing reply follows Guard's rule (``closing_reply``)
+on the rep's lines, so the three ``close`` detectors run only with
+``content``.
 """
 
 from __future__ import annotations
@@ -17,11 +18,10 @@ from typing import cast
 
 from proxyloop.contract.events import Event
 from proxyloop.guard.readback import has_cue
+from proxyloop.guard.readiness import IDENTITY
 from proxyloop.obs.detectors import Inputs, Value, as_dict, detector, safe
 from proxyloop.obs.trace import TOOL_NAMES
 
-# slow/tools.py ``_IDENTITY`` (obs cannot import slow, ADR-0008)
-IDENTITY = ("account.holder_name", "account.last4")
 _LEVER_MOVES = frozenset({"ask_discount", "cite_competitor", "mention_tenure",
                           "cancel_lever"})  # fmt: skip
 _LEVER_FACTS = ("competitor", "tenure_years", "authorization.cancel_lever")
@@ -86,22 +86,33 @@ def _heard_identify(x: Inputs, e: Event) -> bool:
 
 @detector("identity.cp_opened_ready")
 def _opened(x: Inputs) -> Value:
-    """The first ``chan.opened{lane: cp}``: its ``ready`` and the identity keys
-    no public ``fact.recorded`` held before it. None: no cp chan.opened carries
-    ``ready`` (S1-SYS-21)."""
+    """The first ``chan.opened{lane: cp}``: its ``reason``, ``ready`` and
+    ``missing`` list (``from`` ``payload``: the kernel's ``required()`` keys,
+    the shareable IDENTITY keys plus learned rows); a payload without a
+    ``missing`` list gets the IDENTITY keys no public ``fact.recorded`` held
+    before it (``from`` ``facts``). The two measure different key sets: split
+    cross-run tables by ``from``. ``h5_pass`` is None
+    with ``no_intake`` (no user lane to ask: not applicable). None: no cp
+    chan.opened carries ``ready`` (S1-SYS-21)."""
     opened = [e for e in x.of("chan.opened") if e.payload.get("lane") == "cp"]
     if not opened or "ready" not in opened[0].payload:
         return None
-    at = opened[0]
-    public = {
-        f.payload.get("key")
-        for f in x.of("fact.recorded")
-        if f.seq < at.seq and f.payload.get("scope") == "public"
-    }
-    missing = [k for k in IDENTITY if k not in public]
-    ready = safe(at.payload["ready"])
-    return {"count": len(missing), "seq": at.seq, "ready": ready,
-            "missing": missing, "h5_pass": not missing}  # fmt: skip
+    at, source = opened[0], "payload"
+    if isinstance(listed := at.payload.get("missing"), list):
+        missing = [safe(k) for k in cast(list[object], listed)]
+    else:
+        source = "facts"
+        public = {
+            f.payload.get("key")
+            for f in x.of("fact.recorded")
+            if f.seq < at.seq and f.payload.get("scope") == "public"
+        }
+        missing = [k for k in IDENTITY if k not in public]
+    reason, ready = at.payload.get("reason"), safe(at.payload["ready"])
+    passed = None if reason == "no_intake" else not missing
+    return {"count": len(missing), "seq": at.seq, "reason": safe(reason),
+            "ready": ready, "missing": missing, "from": source,
+            "h5_pass": passed}  # fmt: skip
 
 
 @detector("identity.ask_user_per_key")
@@ -150,11 +161,31 @@ def _approval(x: Inputs) -> Value:
 def _invalid(x: Inputs) -> Value:
     """slow.tool events whose ``code`` is ``invalid_args``, by tool name. None:
     no slow.tool carries ``code``: the refusal text is never parsed."""
+    coded = _coded(x, "invalid_args")
+    if coded is None:
+        return None
+    n = Counter(_name(e) for e in coded)
+    return {"count": n.total(), "by_tool": dict(sorted(n.items()))}
+
+
+def _coded(x: Inputs, code: str) -> list[Event] | None:
+    """slow.tool events whose ``code`` is ``code``; None: no slow.tool carries
+    ``code`` (a bundle from before S1-SYS-21). The switch is per bundle: once
+    any slow.tool carries ``code``, an uncoded one (on main only slow/loop.py's
+    ``_NO_TOOL``) is judged by its absent code, never by its name."""
     tools = _tools(x)
     if not any("code" in e.payload for e in tools):
         return None
-    n = Counter(_name(e) for e in tools if e.payload.get("code") == "invalid_args")
-    return {"count": n.total(), "by_tool": dict(sorted(n.items()))}
+    return [e for e in tools if e.payload.get("code") == code]
+
+
+@detector("slow.act_shape")
+def _act_shape(x: Inputs) -> Value:
+    """slow.tool events whose ``code`` is ``act_shape``: an act refused whole
+    (JSON or schema) or one malformed calls item. None: no ``code``."""
+    coded = _coded(x, "act_shape")
+    return None if coded is None else {"count": len(coded),
+                                       "seqs": [e.seq for e in coded]}  # fmt: skip
 
 
 def _name(e: Event) -> str:
@@ -164,13 +195,16 @@ def _name(e: Event) -> str:
 
 @detector("slow.unknown_tool")
 def _unknown(x: Inputs) -> Value:
-    """slow.tool events whose ``name`` is none of Slow's tools (e.g. ``None``,
-    a calls item without a tool). None: no slow.tool."""
-    tools = _tools(x)
+    """slow.tool events whose ``code`` is ``unknown_tool``; in a bundle
+    without ``code``, those whose ``name`` is none of Slow's tools (e.g.
+    ``None``, a calls item without a tool); ``from``: ``code`` or ``name``.
+    None: no slow.tool."""
+    tools, coded = _tools(x), _coded(x, "unknown_tool")
     if not tools:
         return None
-    seqs = [e.seq for e in tools if _name(e) == "unknown"]
-    return {"count": len(seqs), "seqs": seqs}
+    seen = coded if coded is not None else [e for e in tools if _name(e) == "unknown"]
+    return {"count": len(seen), "seqs": [e.seq for e in seen],
+            "from": "name" if coded is None else "code"}  # fmt: skip
 
 
 @detector("slow.lever_refusals")
@@ -288,43 +322,71 @@ def _asks_per_revision(x: Inputs) -> Value:
     return {"count": top, "by": dict(sorted(n.items())), "h5_pass": top <= 2}
 
 
+def closing_reply(x: Inputs, at: int) -> Event | None:
+    """Guard's closing reply for a ``finish`` at seq ``at`` (verify_no_deal,
+    S1-SYS-57): the rep's last cp line (utt.final, partner) after the last
+    ask_final_offer GUIDE before ``at``, if Guard's closing cues match it. Guard
+    takes the cp transcript from its length when that ask went out; the
+    GUIDE's s2f.msg follows its slow.tool in the same act, so no line lands
+    between. None: no ask, the rep silent since it, or a last line that does
+    not close (a retraction or concession after a closing line reopens it)."""
+    asked = [g.seq for g in _guides(x, "ask_final_offer") if g.seq < at]
+    said = [
+        e
+        for e in x.of("utt.final")
+        if asked and asked[-1] < e.seq < at and e.payload.get("lane") == "cp"
+        and e.payload.get("speaker") == "partner"
+    ]  # fmt: skip
+    last = said[-1] if said else None
+    return (
+        last if last and has_cue(str(last.payload.get("text", "")), "closing") else None
+    )
+
+
+def _finish(x: Inputs) -> int | None:
+    """The first successful ``finish(no_deal)`` slow.tool's seq: the one call
+    verify_no_deal judged (a deal finish goes through verify_completion)."""
+    done = [
+        e.seq
+        for e in _tools(x, "finish")
+        if e.payload.get("ok") is True
+        and as_dict(e.payload.get("args")).get("outcome") == "no_deal"
+    ]
+    return done[0] if done else None
+
+
 def _reply(x: Inputs) -> Event | None:
-    """The rep's closing reply: its first cp line (utt.final, partner) after the
-    first ask_final_offer GUIDE that Guard's closing cues match."""
-    asked = _guides(x, "ask_final_offer")
-    return next(
-        (
-            e
-            for e in x.of("utt.final")
-            if asked and e.seq > asked[0].seq and e.payload.get("lane") == "cp"
-            and e.payload.get("speaker") == "partner"
-            and has_cue(str(e.payload.get("text", "")), "closing")
-        ),
-        None,
-    )  # fmt: skip
+    """The closing reply the three ``close`` detectors share: ``closing_reply``
+    at the first successful ``finish(no_deal)`` (Guard judged it there), or at
+    the log's end when there is none (asks and lines after the finish are
+    ignored). None without ``content``."""
+    if not x.content:
+        return None
+    done = _finish(x)
+    return closing_reply(x, len(x.events) if done is None else done)
 
 
 @detector("close.reply_to_finish_steps")
 def _to_finish(x: Inputs) -> Value:
     """Slow steps (slow.step.started) after the closing reply up to the first
-    successful ``finish`` after it (``finish_seq`` None: none; the steps then
-    run to the log's end). None: no ``content``, or no closing reply."""
-    reply = _reply(x) if x.content else None
+    successful ``finish(no_deal)``, which bounds the reply (``finish_seq``
+    None: none, even with a deal finish; the steps then run to the log's
+    end). None: no ``content``, or no closing reply."""
+    reply = _reply(x)
     if reply is None:
         return None
-    done = [e.seq for e in _tools(x, "finish") if e.payload.get("ok") is True
-            and e.seq > reply.seq]  # fmt: skip
-    stop = done[0] if done else len(x.events)
+    done = _finish(x)
+    stop = len(x.events) if done is None else done
     steps = sum(reply.seq < e.seq < stop for e in x.of("slow.step.started"))
-    return {"count": steps, "reply_seq": reply.seq, "finish_seq": stop if done
-            else None, "h5_pass": bool(done) and steps <= 2}  # fmt: skip
+    return {"count": steps, "reply_seq": reply.seq, "finish_seq": done,
+            "h5_pass": done is not None and steps <= 2}  # fmt: skip
 
 
 @detector("end.unclosed_after_reply")
 def _unclosed(x: Inputs) -> Value:
     """1 if session.ended's reason is timeout or slow_step_cap after the
     closing reply, else 0. None: no ``content``, no reply, or no end."""
-    reply, ends = _reply(x) if x.content else None, x.of("session.ended")
+    reply, ends = _reply(x), x.of("session.ended")
     if reply is None or not ends:
         return None
     reason = ends[-1].payload.get("reason")
@@ -335,9 +397,10 @@ def _unclosed(x: Inputs) -> Value:
 @detector("user.told_terms")
 def _told(x: Inputs) -> Value:
     """User-lane TELL_USER s2f.msg events after the closing reply that FastU
-    voiced (s2f.voiced); what they said is not read. None: no ``content``, or
-    no closing reply."""
-    reply = _reply(x) if x.content else None
+    voiced (s2f.voiced); what they said is not read. Anchored to the closing
+    reply Guard verified, so a tell before the final close is premature and
+    not counted (527345). None: no ``content``, or no closing reply."""
+    reply = _reply(x)
     if reply is None:
         return None
     voiced = {str(v.payload["msg_id"]) for v in x.of("s2f.voiced")}

@@ -6,7 +6,8 @@
 // behind ?view=engineer.
 import { useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { callHead, conversation, SIM_USER, simLabels, speakerName, type Line, type Parties } from "./conversation";
-import { receipts, type Receipt } from "./fenceTicks";
+import { receipts, type Receipt as Tick } from "./fenceTicks";
+import { Receipt } from "./live/Receipt";
 import { statusView } from "./outcome";
 import type { Ev } from "./replay";
 import { BrandMark } from "./ui/BrandMark";
@@ -124,11 +125,11 @@ function Transcript({ name, announce, count, children }: { name: string; announc
   );
 }
 
-const RECEIPT: Record<Receipt, string> = { pausing: "Pausing commitments…", read: "✓ Read by the agent" };
+const RECEIPT: Record<Tick, string> = { pausing: "Pausing commitments…", read: "✓ Read by the agent" };
 const AVATAR: Partial<Record<Line["who"], string>> = { agent: "AI", rep: "R" };
 
 /** One heard line: ours (you, the agent) on the right, the other side's on the left, a call event centred. */
-function TranscriptLine({ l, p, receipt }: { l: Line; p: Parties; receipt?: Receipt }) {
+function TranscriptLine({ l, p, receipt }: { l: Line; p: Parties; receipt?: Tick }) {
   const name = speakerName(l.who, p);
   if (l.who === "call") {
     return (
@@ -174,11 +175,14 @@ type ColumnProps = { events: Ev[]; lines: Line[]; p: Parties; announce: boolean 
 
 /**
  * The chat: your messages with their read receipts (fenceTicks.ts), the chat
- * voice's heard lines, and the Guard cards in event order among them. A card is
+ * voice's heard lines, and the Guard cards in event order among them; at
+ * session.ended, the receipt (live/Receipt.tsx), in live and replay alike. A card is
  * Guard's, not the agent's: its own "Guard card · …" line, no avatar.
  */
 function ChatPanel({ events, lines, p, announce, input }: ColumnProps & { input?: ChatInput }) {
   const ticks = useMemo(() => receipts(events), [events]);
+  const { outcome } = useMemo(() => statusView(events), [events]);
+  const ended = outcome && events.findLast((e) => e.type === "session.ended" && e.actor === "kernel");
   const items = [
     ...lines.map((l) => ({ seq: l.seq, el: <TranscriptLine key={l.id} l={l} p={p} receipt={l.who === "you" ? ticks.get(l.id) : undefined} /> })),
     ...(input?.cards ?? []).map((c) => ({
@@ -189,6 +193,18 @@ function ChatPanel({ events, lines, p, announce, input }: ColumnProps & { input?
         </li>
       ),
     })),
+    ...(outcome && ended
+      ? [
+          {
+            seq: ended.seq,
+            el: (
+              <li key="outcome" className="pl-line-card" aria-live="off">
+                <Receipt events={events} outcome={outcome} />
+              </li>
+            ),
+          },
+        ]
+      : []),
   ].sort((a, b) => a.seq - b.seq);
   return (
     <Card className="pl-col" aria-label="Chat">

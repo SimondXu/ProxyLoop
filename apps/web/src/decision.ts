@@ -3,6 +3,7 @@
 // this module only names it. Every input is a fixed-emitter event.
 import type { CardStatus, CardView } from "./approval";
 import { from } from "./authority";
+import { grantOfAccept } from "./conversation";
 import { inWords, type MandateView } from "./mandate";
 import type { Ev } from "./replay";
 import { clock, usd, whole, type TermRow } from "./terms";
@@ -60,12 +61,23 @@ export type Accept = { state: "none" | "held" | "released" | "revoked"; reason: 
 export function acceptOf(events: Ev[], v: CardView): Accept {
   const decided = events.find((e) => from(e, "approval.decided", ["kernel"]) && e.payload.approval_id === v.card.approval_id);
   if (!decided || decided.payload.decision !== "granted") return { state: "none", reason: null };
-  const said = events.find((e) => from(e, "speak.verbatim", ["guard"]) && e.payload.kind === "accept" && e.seq > decided.seq);
+  // This card's accept: the grant behind it (conversation.ts grantOfAccept) is this card's own,
+  // so with two granted cards an accept never attaches to the other one.
+  const said = events.find(
+    (e) => from(e, "speak.verbatim", ["guard"]) && e.payload.kind === "accept" && grantOfAccept(e, events)?.event_id === decided.event_id,
+  );
   if (!said) return { state: "none", reason: null };
   const after = (type: string) => events.find((e) => from(e, type, ["kernel"]) && e.cause_ids.includes(said.event_id));
   if (after("speak.released")) return { state: "released", reason: null };
   const revoked = after("speak.revoked");
   return revoked ? { state: "revoked", reason: String(revoked.payload.reason) } : { state: "held", reason: null };
+}
+
+/** Who approved a granted card, for the receipt: "you" only on the kernel's grant by the UI. */
+export function approvedBy(events: Ev[], v: CardView): string {
+  if (v.by !== "ui") return v.by === "sim_approver" ? "Approved by the simulated approver (not you)" : `Approved by ${v.by ?? "unknown"}`;
+  const time = clock(decidedAt(events, v.card.approval_id));
+  return `Approved by you${time ? ` at ${time}` : ""}`;
 }
 
 /** After a grant, the case status in words (guard's status.changed); null otherwise. */

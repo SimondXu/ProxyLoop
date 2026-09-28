@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { approvalCards, type CardStatus, type CardView, type Posting } from "./approval";
-import { acceptOf, approvalStatusText, headline, priceLimit, why } from "./decision";
+import { acceptOf, approvalStatusText, approvedBy, headline, priceLimit, why } from "./decision";
 import { mandateCards } from "./mandate";
 import type { Ev } from "./replay";
 import { aboutClock, termRow, termRows, usd } from "./terms";
@@ -30,6 +30,8 @@ const offer = (extra: Ev["payload"] = {}) =>
     ...extra,
   });
 const none = new Map<string, Posting>();
+const authorized = (cap_id: string, terms_hash: string, epoch: number) =>
+  ev("action.authorized", "guard", { intent: {}, capability: { cap_id, terms_hash, epoch } });
 const view = (status: CardStatus, extra: Partial<CardView> = {}): CardView =>
   ({ seq: 1, card: CARD, status, by: null, error: null, reason: null, slots: null, ...extra }) as CardView;
 
@@ -45,7 +47,13 @@ describe("terms (display only, rule 13)", () => {
     expect(termRow("applied_change:plan_x", "false")).toEqual(["No plan change", "plan_x"]);
     expect(termRow("feature:hotspot", "true")).toEqual(["Includes", "hotspot"]);
     expect(termRow("feature:hotspot", "false")).toEqual(["Not included", "hotspot"]);
-    expect(termRow("expires", "none")).toEqual(["Offer valid until", "No expiry"]);
+    // Only "true" is included: an empty or malformed boolean is shown as sent.
+    expect(termRow("feature:hotspot", "")).toEqual(["feature:hotspot", ""]);
+    expect(termRow("feature:hotspot", "yes")).toEqual(["feature:hotspot", "yes"]);
+    expect(termRow("applied_change:plan_x", "")).toEqual(["applied_change:plan_x", ""]);
+    expect(termRow("fees_none", "false")).toEqual(["One-time fees apply", ""]);
+    expect(termRow("fees_none", "maybe")).toEqual(["One-time fees", "maybe"]);
+    expect(termRow("expires", "none")).toEqual(["No expiry date", ""]);
     expect(termRow("expires", "2026-10-01T00:00:00Z")[1]).toMatch(/^[A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2}\s?[AP]M$/);
     expect(termRow("monthly_price", "78.5")).toEqual(["Monthly price", "78.5"]); // not whole cents: as sent
     expect(usd(6500)).toBe("$65.00");
@@ -120,15 +128,47 @@ describe("approval card words", () => {
   it("follows the accept Guard minted after this card's grant: held, released or revoked", () => {
     const card = ev("approval.requested", "guard", CARD);
     const decided = ev("approval.decided", "kernel", { approval_id: "a1", decision: "granted", by: "ui" });
+    const auth = authorized("c1", "th", 2);
     const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "yes", cap_id: "c1" });
     const [v] = approvalCards([card, decided], none);
     expect(v && acceptOf([card, decided], v).state).toBe("none");
-    expect(v && acceptOf([card, decided, said], v).state).toBe("held");
+    expect(v && acceptOf([card, decided, auth, said], v).state).toBe("held");
     const revoked = ev("speak.revoked", "kernel", { lane: "cp", reason: "fence", cap_id: "c1" }, [said.event_id]);
-    expect(v && acceptOf([card, decided, said, revoked], v)).toEqual({ state: "revoked", reason: "fence" });
+    expect(v && acceptOf([card, decided, auth, said, revoked], v)).toEqual({ state: "revoked", reason: "fence" });
     const released = ev("speak.released", "kernel", { lane: "cp", cap_id: "c1" }, [said.event_id]);
-    expect(v && acceptOf([card, decided, said, released], v).state).toBe("released");
+    expect(v && acceptOf([card, decided, auth, said, released], v).state).toBe("released");
     const fake = ev("speak.released", "fast.cp", { lane: "cp" }, [said.event_id]);
-    expect(v && acceptOf([card, decided, said, fake], v).state).toBe("held");
+    expect(v && acceptOf([card, decided, auth, said, fake], v).state).toBe("held");
+    // No capability of this card's terms and epoch behind the accept: not this card's.
+    expect(v && acceptOf([card, decided, said, released], v).state).toBe("none");
+  });
+
+  it("binds the accept to its own card: with two granted cards, progress never attaches to the other one", () => {
+    const CARD2 = { ...CARD, approval_id: "a2", offer_ref: "offer-2", terms_hash: "th2" };
+    const c1 = ev("approval.requested", "guard", CARD);
+    const g1 = ev("approval.decided", "kernel", { approval_id: "a1", decision: "granted", by: "ui" });
+    const c2 = ev("approval.requested", "guard", CARD2);
+    const g2 = ev("approval.decided", "kernel", { approval_id: "a2", decision: "granted", by: "sim_approver" });
+    const auth = authorized("c2", "th2", 2);
+    const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "yes", cap_id: "c2" });
+    const released = ev("speak.released", "kernel", { lane: "cp", cap_id: "c2" }, [said.event_id]);
+    const events = [c1, g1, c2, g2, auth, said, released];
+    const [v1, v2] = approvalCards(events, none);
+    expect(v1 && acceptOf(events, v1).state).toBe("none");
+    expect(v2 && acceptOf(events, v2).state).toBe("released");
+    expect(v2 && approvedBy(events, v2)).toBe("Approved by the simulated approver (not you)");
+    // A capability minted before the grant does not carry it.
+    const minted = authorized("c3", "th2", 2);
+    const grant = ev("approval.decided", "kernel", { approval_id: "a2", decision: "granted", by: "ui" });
+    const early = [c2, minted, grant, ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "yes", cap_id: "c3" })];
+    const [e2] = approvalCards(early, none);
+    expect(e2 && acceptOf(early, e2).state).toBe("none");
+  });
+
+  it("names you as the approver only on the kernel's grant by the UI, with its time", () => {
+    const c = ev("approval.requested", "guard", CARD);
+    const g = ev("approval.decided", "kernel", { approval_id: "a1", decision: "granted", by: "ui" }, [], "2026-09-27T14:30:00Z");
+    const [v] = approvalCards([c, g], none);
+    expect(v && approvedBy([c, g], v)).toMatch(/^Approved by you at \d{1,2}:\d{2}\s?[AP]M$/);
   });
 });
