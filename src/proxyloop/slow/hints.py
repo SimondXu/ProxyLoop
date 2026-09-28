@@ -38,7 +38,7 @@ HARD_LIMIT = "breaks a hard limit"
 OUTSIDE_MANDATE = "outside mandate: needs the user's approval once confirmed"
 DEFER = "outside mandate; no step for it now: "  # F-e: a better open offer's turn
 INSIDE = "inside the granted mandate"  # why an offer comes first (F-e)
-CHEAPER = "cheaper, confirmed"
+DENIED = "no worse on every term, denied by the user: the after-denial rule applies"
 DOMINATES = "no worse on price, term and fees as recorded, better on one"
 _CASE = CaseRef("case", "account", "principal")  # a dry run binds nothing
 
@@ -109,6 +109,8 @@ def mandate_hint(
     terms, m = got
     if hard := hard_violations(terms, m):
         return f"{HARD_LIMIT}: {', '.join(hard)}"
+    if _decided(view, o, "denied"):  # round 4: the after-denial rule's
+        return ""
     got = open_offer(o, view.mandate, now_ms, bool(view.fences))
     waiting = isinstance(got, Denial) and got.reason == "readback_not_confirmed"
     if not waiting or readback_status(o) == "confirmed":
@@ -217,24 +219,19 @@ def better(
     """S1-SYS-82 F-e: the open offer that beats ``o``, an open offer outside
     the granted mandate (breaking no hard limit, not approved), and why: the
     cheapest open offer inside it (its price recorded, no hard limit
-    broken); else the cheapest one Guard's ``open_offer`` passes (confirmed)
-    that is cheaper than ``o``; else (L-CORE, round 2) the cheapest one no
-    worse than ``o`` on price, term and fees as recorded and better on one
-    (dominance: a fee a read-back reveals can end it). An offer whose terms
-    the user denied in this epoch beats nothing."""
+    broken); else (L-CORE, rounds 2 and 4) the cheapest one no worse than
+    ``o`` on price, term and fees as recorded and better on one (dominance,
+    confirmed or not: a fee a read-back reveals can end it). An offer whose
+    terms the user denied in this epoch beats nothing, but when it dominates
+    ``o``, ``o`` gets no step either: the after-denial rule applies."""
     got = _verdict(view, o)
     if not _open(o, now_ms) or got is None or approved(view, o, now_ms):
         return None
     terms, m = got
     if hard_violations(terms, m) or _gap(view, now_ms, terms) != "outside_mandate":
         return None
-    rivals = [
-        b
-        for b in view.offers
-        if b.offer_ref != o.offer_ref
-        and _open(b, now_ms)
-        and not _decided(view, b, "denied")
-    ]
+    others = [b for b in view.offers if b.offer_ref != o.offer_ref and _open(b, now_ms)]
+    rivals = [b for b in others if not _decided(view, b, "denied")]
     inside: list[tuple[int, OfferPublic]] = []
     for b in rivals:
         v = _verdict(view, b)
@@ -245,25 +242,18 @@ def better(
             inside.append((v[0].monthly_price_minor, b))
     if inside:
         return min(inside, key=lambda x: x[0])[1], INSIDE
-    cheaper: list[tuple[int, OfferPublic]] = []
-    for b in rivals:
-        ok = open_offer(b, view.mandate, now_ms, bool(view.fences))
-        if (
-            not isinstance(ok, Denial)
-            and ok[1].monthly_price_minor < terms.monthly_price_minor
-        ):
-            cheaper.append((ok[1].monthly_price_minor, b))
-    if cheaper:
-        return min(cheaper, key=lambda x: x[0])[1], CHEAPER
     mine = _costs(o, terms)
     beats: list[tuple[tuple[int, int, int], OfferPublic]] = []
-    for b in rivals:
+    for b in others:
         v = _verdict(view, b)
         if mine is None or v is None or hard_violations(*v):
             continue
         if (theirs := _costs(b, v[0])) is not None and _dominates(theirs, mine):
             beats.append((theirs, b))
-    return (min(beats, key=lambda x: x[0])[1], DOMINATES) if beats else None
+    if not beats:
+        return None
+    b = min(beats, key=lambda x: x[0])[1]
+    return b, DENIED if _decided(view, b, "denied") else DOMINATES
 
 
 def needs_lever(view: SlowView, now_ms: int) -> bool:
@@ -290,6 +280,8 @@ def defer_hint(
     then accept_offer, or accept_offer once confirmed (Guard's accept rule
     passing; otherwise nothing: the case has moved on)."""
     ref = b.offer_ref
+    if why == DENIED:  # round 4: no step comes first; the playbook's rule
+        return f"{DEFER}{ref} {why}"
     if why != INSIDE:  # b's own entry names its step
         return f"{DEFER}{ref} ({why}) comes first"
     first = f"{DEFER}{ref} ({INSIDE}) comes first"

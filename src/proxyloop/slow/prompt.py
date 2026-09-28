@@ -100,10 +100,10 @@ Readiness: the phone call opens only once the facts it needs are public (the \
 readiness line of the status bar; e.g. the account holder name and last 4). If the \
 user already gave one, record_fact it citing the utt of the user's message before \
 asking. In your first step, ask_user once for every other missing one, with keys \
-naming them all. Once the user has stated their limits and no mandate is \
-proposed, propose_mandate with every bound they stated, fees included. When \
-the user answers, record_fact each: the call opens by itself once none is \
-missing. If the user replied but a fact cannot go public, \
+naming them all. In a full case (TASK KIND full), once the user has stated \
+their limits and no mandate is proposed, propose_mandate with every bound they \
+stated, fees included. When the user answers, record_fact each: the call \
+opens by itself once none is missing. If the user replied but a fact cannot go public, \
 start_call(); at the deadline the call opens anyway. Once the call is open, until \
 the representative has verified the account (it moves on to your request, e.g. asks \
 how it can help), your first phone action is guide_fast(identify, \
@@ -122,7 +122,8 @@ deflect_fact_request only for a fact that must not be given: the representative 
 hears a refusal and may hang up. Once the representative has verified the \
 account, your first request is guide_fast(ask_discount), the request for a lower \
 monthly price (the request line says when), and a lever only after the first \
-offer (the levers line).
+offer, or once the rep has answered the discount ask without one (the levers \
+line).
 A rep_turn or heartbeat wake without a new [REP CALL] note means nothing was \
 relayed; read the status bar and act or wait.
 Tool results come back as text; a refusal says why."""  # noqa: RUF001 (the bar says k times)
@@ -192,9 +193,9 @@ PLAYBOOK: dict[state.Kind, str] = {  # V3: the head carries the case's own only
     "or fee above the user's mandate is outside the mandate, not a hard limit: "
     "the user decides it. An offer inside the granted mandate: its read-back, "
     "then accept_offer once confirmed. While another open offer comes first "
-    "(inside the granted mandate; or cheaper and confirmed; or no worse on "
-    "price, term and fees as recorded and better on one: the offers line says "
-    "so), a worse offer gets no step of its own. An offer outside the "
+    "(inside the granted mandate, or no worse on price, term and fees as "
+    "recorded and better on one: the offers line says so), a worse offer gets "
+    "no step of its own. An offer outside the "
     "granted mandate "
     "(the offers line says so), recorded or confirmed: first guide_fast one "
     "available lever (the levers line lists them), before asking for its "

@@ -45,8 +45,13 @@ IDENTIFY_SENT = {  # the identify's state, the identify line's wording (S1-SYS-7
     "waiting": "sent, not heard yet (wait; do not send it again)",
 }
 ASK_DISCOUNT = (  # S1-SYS-82 F-a: the first request once the account is verified
-    "once the rep has verified the account, the one next phone step: "
-    "guide_fast(ask_discount) (ask for a lower monthly price)"
+    "once the rep has verified the account (it moves on to your request): "
+    "guide_fast(ask_discount) (ask for a lower monthly price); while the rep "
+    "still asks for a fact, the identify rules apply"
+)
+DISCOUNT_ANSWERED = (  # round 4: a note, not a step (the levers line has it)
+    "ask_discount answered: if the rep stated an offer, record_offer it; "
+    "otherwise one lever (levers line)"
 )
 
 
@@ -221,16 +226,12 @@ def levers_line(
     levers: Sequence[tuple[str, str]],
     sends: Mapping[str, Sent] | None = None,
     slots: Mapping[str, str] | None = None,
-    offered: bool = True,
-    outside: bool = True,
+    label: str = "available",
 ) -> str:
     """Available (with the slot one needs), answered, heard, on its way,
     then each refusal with its clause and each lever that failed twice; an
-    unavailable lever is only that, whatever was sent. The free ones are
-    "available" (a next step) only once an offer is recorded (``offered``,
-    S1-SYS-82 F-a) and while an open offer outside the mandate has no
-    better offer before it (``outside``, round 3); otherwise they are
-    "after the first offer" or "for an offer outside the mandate"."""
+    unavailable lever is only that, whatever was sent. ``label``: how the
+    free ones are listed ("available" is a next step; ``Bar.lines``)."""
 
     def what(move: str, code: str) -> str:  # n6: only the slot is unavailable
         slot = f" with fact:{TENURE}" if code == "guide_slot_not_public" else ""
@@ -241,8 +242,6 @@ def levers_line(
     free = [
         f"{m} with {slots[m]}" if m in slots else m for m in free_levers(levers, sends)
     ]
-    label = "available" if outside else "for an offer outside the mandate"
-    label = label if offered else "after the first offer"
     groups = [f"{label}: {', '.join(free) or 'none'}"]
     for kind, label in GROUPS:
         if said := [m for m in usable if sends.get(m) == kind]:
@@ -270,6 +269,8 @@ def request_line(
     first offer, or before the identify is answered and none is sent."""
     if offered:
         return None
+    if discount == "answered":
+        return f"request: {DISCOUNT_ANSWERED}"
     if (said := IDENTIFY_SENT.get(discount or "")) is not None:
         return f"request: ask_discount {said}"
     return f"request: {ASK_DISCOUNT}" if identify == "answered" else None
@@ -370,9 +371,16 @@ class Bar:
         )
 
     def lines(self, outside: bool = True) -> list[str]:
-        """``outside``: a lever can be the next step (``levers_line``)."""
-        free = (self.levers, self.sends, self.slots, self.offered, outside)
-        levers = levers_line(*free)
+        """The free levers are "available" (a next step) once the discount
+        ask was answered without an offer (round 4) or, after an offer,
+        while ``outside``: an open offer outside the mandate has no better
+        offer before it (round 3); otherwise "after the first offer" or "for
+        an offer outside the mandate" (S1-SYS-82)."""
+        label = "available" if outside else "for an offer outside the mandate"
+        if not self.offered:
+            opened = self.discount == "answered"
+            label = "available" if opened else "after the first offer"
+        levers = levers_line(self.levers, self.sends, self.slots, label)
         ident = identify_line(self.identify)
         ask = request_line(self.identify, self.offered, self.discount)
         return [self.close.line(), levers, *(x for x in (ident, ask) if x)]

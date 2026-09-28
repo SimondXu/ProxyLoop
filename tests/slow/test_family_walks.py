@@ -16,7 +16,9 @@ import pytest
 from tests.slow import test_discount_first as first
 from tests.slow.test_authority import Host
 
-from proxyloop.slow import hints
+from proxyloop.contract.config import SlowViewMode
+from proxyloop.contract.views import view_slow
+from proxyloop.slow import hints, prompt, state
 
 _bar, _line, _verified = first._bar, first._line, first._verified  # pyright: ignore[reportPrivateUsage]
 TENURE, DISCOUNT = first.TENURE, first.DISCOUNT
@@ -41,17 +43,17 @@ def _targets(text: str) -> set[str]:
 
 def next_steps(h: Host) -> set[str]:
     """What each next step the bar names acts on: a read-back, approval,
-    accept or decline of an offer, or the record_offer its missing slots
-    call for, is that offer; a guide_fast is its move; ask_final_offer and
-    propose_mandate are themselves; each available lever is its move. The
-    close line's finish verdict is no step."""
+    accept or decline of an offer is that offer; a guide_fast is its move;
+    ask_final_offer and propose_mandate are themselves; each available lever
+    is its move. The close line's finish verdict is no step, nor is the
+    "required slots not recorded … record them from the rep line that
+    states them" clause: a note, conditional on a line that states them
+    (round 4, review minor (e))."""
     out: set[str] = set()
     for line in _bar(h).splitlines():
         if line.startswith("offers: "):
             for entry in ENTRY.split(line.removeprefix("offers: ")):
                 out |= _targets(entry)
-                if "; record them" in entry:
-                    out.add(entry.split(" ", 1)[0])
         elif line.startswith("levers: available: "):
             free = line.removeprefix("levers: available: ").split(";", 1)[0]
             out |= {m.split(" ", 1)[0] for m in free.split(", ") if m != "none"}
@@ -176,6 +178,10 @@ def granted(h: Host) -> None:
 
 
 # each family: its mandate, then (state, the step to it, the one next step)
+# each family (tasks/families/*.yaml): its mandate, then (state, the step to
+# it, the one next step). The rep states price and term; the read-back
+# states the hidden slots, and Slow records them as a new revision.
+ACTIVATION = ("activation", 20)
 WALKS: dict[str, tuple[dict[str, int], list[tuple[str, Step | None, str | None]]]] = {
     "cp-direct-discount": (
         {"cap": 7000, "max_term_months": 24, "max_one_time_fees_minor": 2500},
@@ -184,17 +190,13 @@ WALKS: dict[str, tuple[dict[str, int], list[tuple[str, Step | None, str | None]]
             ("discount asked", SENT, None),
             (
                 "loyal-1 outside",
-                offer("loyal-1", 75, 12, ("activation", 20)),
+                offer("loyal-1", 75, 12, None, False),
                 "mention_tenure",
             ),
             ("tenure sent", LEVER, None),
-            ("loyal-2 inside", offer("loyal-2", 68, 24, ("activation", 20)), "loyal-2"),
+            ("loyal-2 inside", offer("loyal-2", 68, 24, None, False), "loyal-2"),
             ("loyal-2 read-back asked", ask_readback("loyal-2"), "loyal-2"),
-            (
-                "loyal-2 confirmed",
-                read_back("loyal-2", 68, 24, ("activation", 20)),
-                "loyal-2",
-            ),
+            ("loyal-2 read back", reveal("loyal-2", 68, 24, ACTIVATION), "loyal-2"),
             ("accept queued", accept("loyal-2"), None),
         ],
     ),
@@ -203,21 +205,22 @@ WALKS: dict[str, tuple[dict[str, int], list[tuple[str, Step | None, str | None]]
         [
             ("verified", None, "ask_discount"),
             ("discount asked", SENT, None),
-            (
-                "promo-1 price and term",
-                offer("promo-1", 55, 12, None, False),
-                "promo-1",
-            ),
-            ("promo-1 read-back asked", ask_readback("promo-1"), "promo-1"),
+            # no bar step: an inside offer alone carries no hint (S1-SYS-66
+            # T3); its read-back comes from the playbook. Reported, round 4.
+            ("promo-1 inside", offer("promo-1", 55, 12, None, False), None),
+            ("promo-1 read-back asked", ask_readback("promo-1"), None),
             (
                 "promo-1 fee revealed",
                 reveal("promo-1", 55, 12, ("installation", 99)),
                 "mention_tenure",
             ),
             ("tenure sent", LEVER, None),
-            ("promo-2 inside", offer("promo-2", 62, 12), "promo-2"),
+            ("promo-2 inside", offer("promo-2", 62, 12, None, False), "promo-2"),
             ("promo-2 read-back asked", ask_readback("promo-2"), "promo-2"),
-            ("promo-2 confirmed", read_back("promo-2", 62, 12), "promo-2"),
+            ("promo-2 read back", reveal("promo-2", 62, 12, None), "promo-2"),
+            # Guard leaves r2 unconfirmed here: its own read-back confirms it
+            ("promo-2 r2 read-back asked", ask_readback("promo-2"), "promo-2"),
+            ("promo-2 r2 read back", read_back("promo-2", 62, 12), "promo-2"),
             ("accept queued", accept("promo-2"), None),
         ],
     ),
@@ -226,11 +229,11 @@ WALKS: dict[str, tuple[dict[str, int], list[tuple[str, Step | None, str | None]]
         [
             ("verified", None, "ask_discount"),
             ("discount asked", SENT, None),
-            ("save-1 outside", offer("save-1", 78, 24), "mention_tenure"),
+            ("save-1 outside", offer("save-1", 78, 24, None, False), "mention_tenure"),
             ("tenure sent", LEVER, None),
-            ("save-2 outside, dominates", offer("save-2", 69, 24), "save-2"),
+            ("save-2 dominates", offer("save-2", 69, 24, None, False), "save-2"),
             ("save-2 read-back asked", ask_readback("save-2"), "save-2"),
-            ("save-2 confirmed", read_back("save-2", 69, 24), "save-2"),
+            ("save-2 read back", reveal("save-2", 69, 24, None), "save-2"),
             ("card pending", request("save-2"), None),
             ("approval granted", granted, "save-2"),
             ("accept queued", accept("save-2"), None),
@@ -241,11 +244,11 @@ WALKS: dict[str, tuple[dict[str, int], list[tuple[str, Step | None, str | None]]
         [
             ("verified", None, "ask_discount"),
             ("discount asked", SENT, None),
-            ("keep-1 outside", offer("keep-1", 76, 12), "mention_tenure"),
+            ("keep-1 outside", offer("keep-1", 76, 12, None, False), "mention_tenure"),
             ("tenure sent", LEVER, None),
-            ("keep-2 outside, dominates", offer("keep-2", 73, 12), "keep-2"),
+            ("keep-2 dominates", offer("keep-2", 73, 12, None, False), "keep-2"),
             ("keep-2 read-back asked", ask_readback("keep-2"), "keep-2"),
-            ("keep-2 confirmed", read_back("keep-2", 73, 12), "keep-2"),
+            ("keep-2 read back", reveal("keep-2", 73, 12, None), "keep-2"),
             ("card pending", request("keep-2"), None),
         ],
     ),
@@ -349,9 +352,9 @@ def test_v_a_fee_revealed_on_the_read_back_ends_the_dominance(
     $40 fee (above keep-1's none as recorded): keep-2 r2 is recorded from
     that line, not yet confirmed (a new revision needs its own read-back),
     and neither dominates, so neither comes first and both entries show
-    their read-back (two steps: reported to L-CORE, round 2). Once keep-2
-    r2 is read back and confirmed, the existing cheaper-and-confirmed rule
-    puts it first: the one next step is request_approval(keep-2)."""
+    their read-back. Once keep-2 r2 is read back and confirmed, still
+    neither dominates (round 4, review M1: no cheaper-by-price rule, the
+    approver would deny the fee): both keep a step until one is decided."""
     h = _two(tmp_path, ("keep-1", 76, 12), ("keep-2", 73, 12), 7000, 12)
     ask_readback("keep-2")(h)
     assert _entry(h, "keep-1").endswith(
@@ -363,12 +366,11 @@ def test_v_a_fee_revealed_on_the_read_back_ends_the_dominance(
     assert next_steps(h) == {"keep-1", "keep-2"}
     ask_readback("keep-2")(h)
     read_back("keep-2", 73, 12, ("setup", 40))(h)
-    assert _entry(h, "keep-1").endswith(
-        f"{hints.DEFER}keep-2 ({hints.CHEAPER}) comes first"
-    ), _entry(h, "keep-1")
+    assert "comes first" not in _line(h, "offers: ")
     step = "keep-2 confirmed, outside mandate → request_approval(keep-2)"
     assert step in _entry(h, "keep-2"), _entry(h, "keep-2")
-    assert next_steps(h) == {"keep-2"}
+    # known two-step state until one offer is decided: §0.9, no fix in this PR
+    assert next_steps(h) == {"keep-1", "keep-2"}
 
 
 def test_v_neither_dominates_neither_comes_first(tmp_path: Path) -> None:
@@ -399,7 +401,7 @@ def test_l_an_inside_offer_alone_lists_no_lever_step(tmp_path: Path) -> None:
     h.act(DISCOUNT)
     offer("promo-1", 55, 12, None, False)(h)
     assert _levers(h).startswith(FOR_OUTSIDE), _levers(h)
-    assert next_steps(h) == {"promo-1"}
+    assert next_steps(h) == set()  # the playbook's read-back (reported, round 4)
 
 
 def test_l_inside_and_outside_open_the_inside_one_comes_first(
@@ -473,3 +475,100 @@ def test_l_no_mandate_at_all_shows_the_lever_and_propose_mandate(
     # two steps as before round 3, on no family trajectory (the mandate is
     # granted in the intake): reported, no fix in this PR
     assert next_steps(h) == {"mention_tenure", "propose_mandate"}
+
+
+# round 4 (review rev-263 with L-CORE decisions)
+
+
+def test_m2_the_discount_ask_answered_without_an_offer_frees_the_levers(
+    tmp_path: Path,
+) -> None:
+    h = _verified(tmp_path, 6500, max_term_months=24, max_one_time_fees_minor=0)
+    h.act(DISCOUNT)
+    h.voice()
+    h.rep("cp-2", "Let me see what I can do for you.")  # answered, no offer
+    assert _line(h, "request: ") == f"request: {state.DISCOUNT_ANSWERED}"
+    assert _levers(h).startswith("levers: available: mention_tenure; ")
+    assert next_steps(h) == {"mention_tenure"}
+
+
+def test_b_while_the_rep_still_asks_for_a_fact_the_identify_rules_apply(
+    tmp_path: Path,
+) -> None:
+    """Any rep line answers the identify; the request line is conditional on
+    the rep moving on. Here it asks for the holder's name: Slow records it
+    and identifies again (the identify rules), and no ask_discount shows."""
+    h = _verified(tmp_path, 6500)
+    h.rep("cp-2", "Can you also confirm the account holder's full name?")
+    ask = _line(h, "request: ")
+    assert ask.endswith("while the rep still asks for a fact, the identify rules apply")
+    said = h.emit("user.msg", "kernel", {"text": "The name is Dana Reyes."})
+    name = {"tool": "record_fact", "key": "account.holder_name", "value": "Dana Reyes"}
+    h.act(name | {"utt_ref": said.event_id})
+    slots = ["fact:account.last4", "fact:account.holder_name"]
+    h.act({"tool": "guide_fast", "move": "identify", "slots": slots})
+    bar = _bar(h)
+    assert "identify: sent, not heard yet (wait; do not send it again)" in bar
+    assert "request: " not in bar and "ask_discount" not in bar, bar
+    assert next_steps(h) == set()
+
+
+CHANGE = ("plan_change", "with a plan change")
+
+
+def _changed(h: Host, ref: str, price: int, term: int) -> None:
+    """The rep states ``ref`` with a plan change the user forbade."""
+    text = f"It is ${price} a month on a {term}-month term, {CHANGE[1]}."
+    fields = _fields(price, term, None, False) | {f"applied_change:{CHANGE[0]}": "true"}
+    _record(h, ref, text, fields)
+
+
+def _forbidding(tmp_path: Path) -> Host:
+    h = Host(tmp_path)
+    first._mandate(h, 6500, max_term_months=24, forbidden_changes=[CHANGE[0]])  # pyright: ignore[reportPrivateUsage]
+    h.call()
+    _record(h, "save-1", _said(78, 24, None, False), _fields(78, 24, None, False))
+    return h
+
+
+def test_c1_a_rival_breaking_a_hard_limit_is_not_inside(tmp_path: Path) -> None:
+    h = _forbidding(tmp_path)
+    _changed(h, "save-2", 60, 24)  # $60 is under the cap, but forbidden
+    assert "comes first" not in _entry(h, "save-1"), _entry(h, "save-1")
+
+
+def test_c2_a_rival_breaking_a_hard_limit_dominates_nothing(tmp_path: Path) -> None:
+    h = _forbidding(tmp_path)
+    _changed(h, "save-2", 69, 24)  # outside by price, dominant, but forbidden
+    assert "comes first" not in _entry(h, "save-1"), _entry(h, "save-1")
+
+
+def test_c3_an_approved_offer_is_not_deferred(tmp_path: Path) -> None:
+    """save-3 62/24 inside the mandate is open; save-2 69/24 is confirmed and
+    approved: its accept is the step, it does not defer to save-3."""
+    h = Host(tmp_path)
+    first._mandate(h, 6500, max_term_months=24, max_one_time_fees_minor=0)  # pyright: ignore[reportPrivateUsage]
+    h.call()
+    _record(h, "save-3", _said(62, 24, None, False), _fields(62, 24, None, False))
+    _record(h, "save-2", _said(69, 24, None), _fields(69, 24, None))
+    ask_readback("save-2")(h)
+    read_back("save-2", 69, 24)(h)
+    request("save-2")(h)
+    granted(h)
+    entry = _entry(h, "save-2")
+    assert "save-2 confirmed, approved → accept_offer(save-2)" in entry, entry
+    assert "comes first" not in entry
+
+
+def test_d_the_readiness_mandate_rule_is_for_full_cases_only(
+    tmp_path: Path,
+) -> None:
+    for mode in SlowViewMode:
+        flat = " ".join(prompt.system(mode).split())
+        (at,) = [m.start() for m in re.finditer("propose_mandate with every", flat)]
+        assert flat[at - 120 : at].count("In a full case (TASK KIND full)") == 1
+    h = Host(tmp_path)
+    h.emit("user.msg", "kernel", {"text": "At most $65 a month, no fees."})
+    more = state.bar(h.bb, "info_only", h.tools)
+    view = view_slow(h.bb, SlowViewMode.RELAY_ONLY, "b")
+    assert "propose_mandate" not in prompt.status_bar(view, h.now(), None, more)

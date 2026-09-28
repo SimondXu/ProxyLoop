@@ -121,8 +121,9 @@ def _verified(tmp_path: Path, cap: int = 6500, **bounds: int) -> Host:
 
 
 VERIFIED = (
-    "request: once the rep has verified the account, the one next phone step: "
-    "guide_fast(ask_discount) (ask for a lower monthly price)"
+    "request: once the rep has verified the account (it moves on to your "
+    "request): guide_fast(ask_discount) (ask for a lower monthly price); while "
+    "the rep still asks for a fact, the identify rules apply"
 )
 ANSWERED = "identify: heard by the rep, who has answered since"
 NOT_YET = f"levers: after the first offer: mention_tenure; {REFUSED}"
@@ -194,7 +195,10 @@ def test_1_the_system_prompt_opens_with_the_discount_ask() -> None:
             "Once the representative has verified the account, your first request "
             "is guide_fast(ask_discount)"
         ), rule
-        assert "a lever only after the first offer (the levers line)" in rule
+        assert (
+            "a lever only after the first offer, or once the rep has answered "
+            "the discount ask without one (the levers line)" in rule
+        )
 
 
 # (2) first offer outside the mandate, a lever free -> mention_tenure
@@ -314,8 +318,9 @@ def _envelope(tmp_path: Path) -> Host:
     return h
 
 
-DEFER_CHEAPER = (
-    "outside mandate; no step for it now: save-2 (cheaper, confirmed) comes first"
+DEFER_CHEAPER = (  # round 4: save-2 69/24 dominates save-1 78/24
+    "outside mandate; no step for it now: save-2 (no worse on price, term and "
+    "fees as recorded, better on one) comes first"
 )
 
 
@@ -404,9 +409,11 @@ def test_6_the_after_denial_rule_defers_to_a_better_open_offer() -> None:
     )
 
 
-def test_6_a_denied_cheaper_offer_is_not_better(tmp_path: Path) -> None:
-    """save-2 ($69) confirmed and denied; save-1 ($78) recorded later: the
-    denied one is no better offer, save-1 keeps its own step."""
+def test_6_an_offer_a_denied_one_dominates_gets_no_step(tmp_path: Path) -> None:
+    """Review minor (a), round 4: save-2 ($69/24) confirmed and denied,
+    save-1 ($78/24) recorded later, no lever left: save-1 is no better than
+    what the user denied, so it gets no read-back or approval step; the
+    after-denial rule (decline, then ask_final_offer) is the one step."""
     h = auth._confirmed(tmp_path)  # pyright: ignore[reportPrivateUsage]
     _mandate(h, 6500, max_term_months=24, max_one_time_fees_minor=0)
     _tenure_answered(h)
@@ -414,8 +421,12 @@ def test_6_a_denied_cheaper_offer_is_not_better(tmp_path: Path) -> None:
     _deny(h)
     _offer(h, "save-1", 78, 24)
     offers = _line(h, "offers: ")
-    assert "comes first" not in offers, offers
-    assert 'guide_fast(ask_readback, ["offer:save-1"])' in offers, offers
+    assert offers.endswith(
+        "outside mandate; no step for it now: save-2 no worse on every term, "
+        "denied by the user: the after-denial rule applies"
+    ), offers
+    assert "comes first" not in offers and 'save-1"])' not in offers, offers
+    assert _steps(h) == set()
 
 
 # (7) intake: the user stated limits, fees included, and no mandate yet
@@ -451,8 +462,9 @@ def test_7_the_prompt_asks_for_every_stated_bound_fees_included() -> None:
         assert "leave out a bound the user did not state" in doc
         ready = flat[flat.index("Readiness:") :]
         assert (
-            "Once the user has stated their limits and no mandate is proposed, "
-            "propose_mandate with every bound they stated, fees included" in ready
+            "In a full case (TASK KIND full), once the user has stated their "
+            "limits and no mandate is proposed, propose_mandate with every bound "
+            "they stated, fees included" in ready
         )
 
 
