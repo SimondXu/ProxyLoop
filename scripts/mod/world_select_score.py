@@ -59,9 +59,7 @@ GOLD = DATA / "world-select-gold.json"
 ITEMS_ROOT = "471a0a9151af0c85204b6d49d2977fc14fae50fdfcd77cc2c2401246d61a41cc"
 CODEBOOK_SHA = "892c8f686dfcb27d6a4c81a0f672c44226e2e306f625cf895da427534b4b7a38"
 # The codebook each first-pass batch was labelled under (model root, 2026-09-28).
-FIRST_PASS = {f"batch-{n:03d}": "v1.0" if n <= 6 else "v1.1" for n in range(1, 18)} | {
-    f"check-{n:03d}": "v1.1" for n in range(1, 8)
-}
+FIRST_PASS = {f"batch-{n:03d}": "v1.0" if n <= 6 else "v1.1" for n in range(1, 18)}
 LABEL_ACTS = (*ws.ACTS, "excluded")
 ARGS = ("offer_ref", "price_usd", "facts")
 NEEDS = {"provide_fact": "facts", "cite_competitor": "price_usd"}
