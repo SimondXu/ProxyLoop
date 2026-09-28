@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
-from tests.kernel.test_session import SCRIPTS, UNTIL, _of
+from tests.kernel.test_session import SCRIPTS, UNTIL
 from tests.support.sessions import act, only_bundle, run
 
 from proxyloop.contract.bundle import Bundle
+from proxyloop.contract.events import Event
 from proxyloop.core.fold import fold
 from proxyloop.slow import heard
 
@@ -22,6 +24,10 @@ TWO = act(
     {"tool": "guide_fast", "move": "ask_final_offer"},
 )
 WAIT = act("Waiting.", {"tool": "wait", "seconds": 5})
+
+
+def _of(events: tuple[Event, ...], type_: str) -> list[Event]:
+    return [e for e in events if e.type == type_]
 
 
 def _rendered(b: Bundle, turn_id: str) -> list[str]:
@@ -37,7 +43,9 @@ def test_a_turn_voices_only_the_guide_its_view_rendered(tmp_path: Path) -> None:
     run(tmp_path, SCRIPTS | {"slow": [TWO, WAIT]}, until=UNTIL)
     b = only_bundle(tmp_path)
     guides = {
-        str(e.payload["msg_id"]): str(e.payload["guide"]["move"])
+        str(e.payload["msg_id"]): str(
+            cast(dict[str, object], e.payload["guide"])["move"]
+        )
         for e in _of(b.events, "s2f.msg")
         if e.payload.get("guide")
     }
