@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { csrfToken, getOptions, paths, startCase } from "./liveApi";
 import { AppShell } from "./shell/AppShell";
-import { defaults, maybeStarted, parseOffer, START_LANES, startError, taskName, type Offer } from "./start";
+import { dayPart, defaults, maybeStarted, parseOffer, START_LANES, startError, taskName, type Offer } from "./start";
 import "./StartPage.css";
 import { Banner } from "./ui/Banner";
 import { Button } from "./ui/Button";
 import "./ui/Card.css"; // the setup boxes and the started note are cards
+import { Chip } from "./ui/Chip";
 import { EmptyState } from "./ui/EmptyState";
 import { Icon } from "./ui/Icon";
 import { Skeleton } from "./ui/Skeleton";
@@ -37,6 +38,7 @@ export function StartPage() {
   const [started, setStarted] = useState<string | null>(null);
   const claimed = useRef(false); // a double click never starts twice
   const role = useRoleCard("task", task); // the chosen task's principal: the person who plays it
+  const [part] = useState(() => dayPart(new Date())); // the local clock at load; no name (there is no principal-name field)
 
   useEffect(() => {
     void getOptions().then((r) => {
@@ -70,115 +72,141 @@ export function StartPage() {
 
   return (
     <AppShell>
-      <div className="pl-start-hero">
-        <span className="pl-start-kicker">New case</span>
-        <h1>What should ProxyLoop handle?</h1>
-        <p>Pick a task. ProxyLoop chats with you first, calls the (simulated) company, and asks before anything binding happens.</p>
-      </div>
-      {!hasCookie() && (
-        <Banner tone="over" role="note">
-          No operator cookie: <a href={paths.start}>open /start</a> first.
-        </Banner>
-      )}
-      {offer === null && (
-        <div className="pl-card">
-          <Skeleton label="Loading the options…" />
+      <div className="pl-start-page">
+        <div className="pl-start-hero">
+          <h1>
+            Good <em>{part}</em>
+          </h1>
+          <p>Pick a task. ProxyLoop chats with you first, calls the (simulated) company, and asks before anything binding happens.</p>
         </div>
-      )}
-      {typeof offer === "string" && (
-        <Banner tone="err" role="alert">
-          Options unavailable: {offer}
-        </Banner>
-      )}
-      {offer !== null && typeof offer !== "string" && (
-        <form className="pl-start" aria-label="Start a session" onSubmit={submit}>
-          {offer.tasks.length === 0 ? (
-            <EmptyState title="No tasks offered." />
-          ) : (
-            <div className="pl-start-main">
-              <div className="pl-tasks" role="radiogroup" aria-label="Task">
-                {offer.tasks.map((t) => (
-                  <label key={t} className="pl-task">
-                    <input type="radio" name="task" value={t} checked={task === t} onChange={() => setTask(t)} />
-                    <span className="pl-task-card">
-                      <span className="pl-task-name">{taskName(t)}</span> <code>{t}</code>
-                    </span>
-                  </label>
-                ))}
+        {!hasCookie() && (
+          <Banner tone="over" role="note">
+            No operator cookie: <a href={paths.start}>open /start</a> first.
+          </Banner>
+        )}
+        {offer === null && (
+          <div className="pl-card">
+            <Skeleton label="Loading the options…" />
+          </div>
+        )}
+        {typeof offer === "string" && (
+          <Banner tone="err" role="alert">
+            Options unavailable: {offer}
+          </Banner>
+        )}
+        {offer !== null && typeof offer !== "string" && (
+          <form className="pl-start" aria-label="Start a session" onSubmit={submit}>
+            {offer.tasks.length === 0 ? (
+              <EmptyState title="No tasks offered." />
+            ) : (
+              <div className="pl-start-main">
+                <div className="pl-tasks" role="radiogroup" aria-label="Task">
+                  {offer.tasks.map((t, i) => (
+                    <label key={t} className="pl-task">
+                      {/* the name stays the task's name and ref; the tag is its description */}
+                      <input
+                        type="radio"
+                        name="task"
+                        value={t}
+                        checked={task === t}
+                        onChange={() => setTask(t)}
+                        aria-labelledby={`pl-task-${i}-name pl-task-${i}-ref`}
+                        aria-describedby={`pl-task-${i}-tag`}
+                      />
+                      <span className="pl-task-card">
+                        <span className="pl-task-top">
+                          {/* every task is a call; checked, the tile shows a check mark instead (StartPage.css) */}
+                          <span className="pl-task-tile">
+                            <Icon name="call" />
+                          </span>
+                          {/* all we know: /api/models lists only tasks this demo runs (no task-metadata API) */}
+                          <Chip tone="ok" id={`pl-task-${i}-tag`}>
+                            <Icon name="simulated" size="xs" />
+                            Runs in this demo
+                          </Chip>
+                        </span>
+                        <span className="pl-task-name" id={`pl-task-${i}-name`}>
+                          {taskName(t)}
+                        </span>{" "}
+                        <code id={`pl-task-${i}-ref`}>{t}</code>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {task && (
+                  <section className="pl-card pl-role" aria-label="Your role">
+                    <h2>Your role</h2>
+                    <p className="meta">You play the account holder in the chat. This is what they know and want.</p>
+                    <YourRole card={role} />
+                  </section>
+                )}
               </div>
-              {task && (
-                <section className="pl-card pl-role" aria-label="Your role">
-                  <h2>Your role</h2>
-                  <p className="meta">You play the account holder in the chat. This is what they know and want.</p>
-                  <YourRole card={role} />
-                </section>
+            )}
+            <div className="pl-start-setup">
+              <div className="pl-card">
+                <h2 id="pl-rep-title">Who plays the company's rep?</h2>
+                <div className="pl-seg" role="radiogroup" aria-labelledby="pl-rep-title">
+                  {REP_MODES.map(({ mode, title, hint }) => (
+                    <label key={mode}>
+                      <input type="radio" name="rep" value={mode} checked={rep === mode} onChange={() => setRep(mode)} />
+                      {title} {hint && <small>{hint}</small>}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <p className="pl-card pl-start-honest">
+                <Icon name="simulated" size="sm" />
+                <span>
+                  The company is simulated and no real company is called; the rep is simulated unless a person plays it. A run with
+                  live models calls paid model APIs, and each run's cost appears on its receipt.
+                </span>
+              </p>
+              <details className="pl-card pl-start-adv">
+                <summary>Advanced: models</summary>
+                {START_LANES.map(({ lane, title }) => {
+                  const own = offer.options.filter((o) => o.lane === lane);
+                  return (
+                    <label key={lane} className="pl-field">
+                      {title}
+                      <select
+                        value={models[lane] ?? ""}
+                        disabled={own.length === 0}
+                        onChange={(e) => setModels((m) => ({ ...m, [lane]: e.target.value }))}
+                      >
+                        {own.length === 0 && <option value="">none offered</option>}
+                        {own.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.label} · {o.model_id} · {o.endpoint}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  );
+                })}
+              </details>
+              <Button variant="primary" type="submit" className="pl-start-go" disabled={busy || !task}>
+                Start the case <span aria-hidden="true">→</span>
+              </Button>
+              {error && (
+                <Banner tone="err" role="alert">
+                  Not started: {error}
+                </Banner>
               )}
             </div>
-          )}
-          <div className="pl-start-setup">
-            <div className="pl-card">
-              <h2 id="pl-rep-title">Who plays the company's rep?</h2>
-              <div className="pl-seg" role="radiogroup" aria-labelledby="pl-rep-title">
-                {REP_MODES.map(({ mode, title, hint }) => (
-                  <label key={mode}>
-                    <input type="radio" name="rep" value={mode} checked={rep === mode} onChange={() => setRep(mode)} />
-                    {title} {hint && <small>{hint}</small>}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <p className="pl-card pl-start-honest">
-              <Icon name="simulated" size="sm" />
-              <span>
-                The company is simulated and no real company is called; the rep is simulated unless a person plays it. A run with
-                live models calls paid model APIs, and each run's cost appears on its receipt.
-              </span>
-            </p>
-            <details className="pl-card pl-start-adv">
-              <summary>Advanced: models</summary>
-              {START_LANES.map(({ lane, title }) => {
-                const own = offer.options.filter((o) => o.lane === lane);
-                return (
-                  <label key={lane} className="pl-field">
-                    {title}
-                    <select
-                      value={models[lane] ?? ""}
-                      disabled={own.length === 0}
-                      onChange={(e) => setModels((m) => ({ ...m, [lane]: e.target.value }))}
-                    >
-                      {own.length === 0 && <option value="">none offered</option>}
-                      {own.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.label} · {o.model_id} · {o.endpoint}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                );
-              })}
-            </details>
-            <Button variant="primary" type="submit" className="pl-start-go" disabled={busy || !task}>
-              Start the case <span aria-hidden="true">→</span>
-            </Button>
-            {error && (
-              <Banner tone="err" role="alert">
-                Not started: {error}
-              </Banner>
-            )}
-          </div>
-        </form>
-      )}
-      {started && (
-        <section className="pl-card pl-started" aria-label="Started">
-          <p>Case {started} started with a human rep. Open the rep page in a new tab first, then the live page.</p>
-          <a className="pl-started-link" href={paths.repSession(started)} target="_blank" rel="noopener">
-            Open the rep page (new tab)
-          </a>
-          <a className="pl-started-link" href={paths.liveSession(started)}>
-            Open the live page
-          </a>
-        </section>
-      )}
+          </form>
+        )}
+        {started && (
+          <section className="pl-card pl-started" aria-label="Started">
+            <p>Case {started} started with a human rep. Open the rep page in a new tab first, then the live page.</p>
+            <a className="pl-started-link" href={paths.repSession(started)} target="_blank" rel="noopener">
+              Open the rep page (new tab)
+            </a>
+            <a className="pl-started-link" href={paths.liveSession(started)}>
+              Open the live page
+            </a>
+          </section>
+        )}
+      </div>
     </AppShell>
   );
 }
