@@ -70,13 +70,8 @@ export function offerText(price: string | null, months: string | null, revision:
 export const readbackText = (confirmed: number, total: number) =>
   total > 0 && confirmed === total ? `All ${total} terms read back and confirmed` : `Read-back: ${confirmed} of ${total} confirmed`;
 
-// acceptedBy (conversation.ts) → whose grant cleared the yes.
-const CLEARED: Record<string, string> = {
-  "approved by you": "your approval",
-  "approved by the simulated approver": "the simulated approver's approval",
-  "fixed wording": "within the confirmed limits",
-};
-export const cleared = (by: string) => `Cleared to say yes (${CLEARED[by] ?? by})`;
+// Whose grant cleared the yes is not shown yet: it comes from conversation.ts's grantOfAccept (S1-SYS-51).
+export const CLEARED = "Cleared to say yes";
 
 // speak.revoked reasons (guard/capability.py revalidate, kernel/speaker.py).
 const REVOKED: Record<string, string> = {

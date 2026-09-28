@@ -3,10 +3,11 @@
 // with an actor check; an event from any other actor moves nothing. It reads
 // only PAYLOAD_KEYS: never text_generated, an s2f text or a summary's text
 // (I5), and it never credits a grant that did not happen (I6): "said" needs the
-// kernel's delivery of the same generation, not just the voice's s2f.voiced.
+// kernel's delivery of the same generation, not just the voice's s2f.voiced,
+// and the yes names no approver yet.
 import type { CardView } from "./approval";
 import { from } from "./authority";
-import { acceptedBy, callHead } from "./conversation";
+import { callHead } from "./conversation";
 import * as C from "./copy";
 import { PROGRESS } from "./decision";
 import type { MandateView } from "./mandate";
@@ -133,8 +134,8 @@ export function timeline(events: Ev[]): Step[] {
     } else if (from(e, "action.authorized", ["guard"]) && get(e, "intent") === "accept_offer") {
       const cap = str(field(get(e, "capability"), "cap_id"));
       accepts.add(cap);
-      const line = events.find((v) => from(v, "speak.verbatim", ["guard"]) && get(v, "kind") === "accept" && get(v, "cap_id") === cap);
-      if (line) add(e, C.WHO.guard, C.cleared(acceptedBy(line, events)), "guard");
+      // Attribution gap, on purpose: no grant is named until S1-SYS-51's grantOfAccept is wired here.
+      add(e, C.WHO.guard, C.CLEARED, "guard");
     } else if (from(e, "speak.released", ["kernel"]) || from(e, "speak.revoked", ["kernel"])) {
       const line = cause(e, "speak.verbatim", ["guard"]);
       if (!line || get(line, "kind") !== "accept") continue;

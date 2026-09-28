@@ -110,12 +110,12 @@ const rows: Row[] = [
       const heard = ev("utt.delivered", "kernel", { lane: "cp", utt_id: "accept-1", text_generated: "y", text_heard: "y", interrupted: false }, [released]);
       return [...asked, auth, said, released, heard];
     },
-    [["Guard", "Asked for your approval"], ["You", "Approved"], ["Guard", "Cleared to say yes (your approval)"], ["Phone voice", "Said yes on the call"]],
+    [["Guard", "Asked for your approval"], ["You", "Approved"], ["Guard", "Cleared to say yes"], ["Phone voice", "Said yes on the call"]],
   ],
   [
-    "the yes under limits: no grant is credited",
+    "the yes names no approver (attribution waits for grantOfAccept)",
     () => accept(),
-    [["Guard", "Cleared to say yes (within the confirmed limits)"]],
+    [["Guard", "Cleared to say yes"]],
   ],
   [
     "the yes, stopped by your message",
@@ -124,7 +124,7 @@ const rows: Row[] = [
       const [auth, said] = accept();
       return [...asked, auth, said, ev("speak.revoked", "kernel", { lane: "cp", reason: "fence", cap_id: "c1" }, [said])];
     },
-    [["Guard", "Asked for your approval"], ["Simulated approver", "Approved"], ["Guard", "Cleared to say yes (the simulated approver's approval)"], ["Guard", "Stopped the yes before it was said: you sent a message"]],
+    [["Guard", "Asked for your approval"], ["Simulated approver", "Approved"], ["Guard", "Cleared to say yes"], ["Guard", "Stopped the yes before it was said: you sent a message"]],
   ],
   ["a forged authorization", () => [ev("action.authorized", "slow", { intent: "accept_offer", capability: { cap_id: "c1" } })], []],
   ["private details kept", () => [ev("screen.redacted", "guard", {}), ev("declass.denied", "guard", { violations: ["$65"] }), ev("declass.denied", "slow", { violations: [] })], [["Guard", "Kept a private detail from being said"], ["Guard", "Kept a private detail from being said"]]],
