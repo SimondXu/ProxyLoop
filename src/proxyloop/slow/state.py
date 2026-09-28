@@ -7,9 +7,10 @@ the board and of Slow's own asks: each calls Guard's own predicates
 closing-cue list, and only as an utt id. The levers line's sent levers are
 Slow's own GUIDEs and their fates (``slow.heard``, S1-SYS-66): state, not
 transcript text, as is the identify line: the identify's delivery (S1-SYS-74).
-The stop line (S1-SYS-83) reads the board: FastU's typed REVOKE relay, the
-case status and the released accepts. The close line's unrecorded amounts
-read only what Slow's view holds of the closing reply: its line as heard
+The stop line (S1-SYS-83) reads the case status, the released accepts and
+the cause of the current NEEDS_REPLAN on the bus (as ``sent`` reads fates):
+state, never transcript text. The close line's unrecorded amounts read only
+what Slow's view holds of the closing reply: its line as heard
 (``transcript``) and the cp relays citing it (both modes).
 """
 
@@ -21,6 +22,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Literal
 
+from proxyloop.contract.events import Event
 from proxyloop.contract.messages import Guide, GuideMove
 from proxyloop.contract.state import (
     Blackboard,
@@ -31,7 +33,7 @@ from proxyloop.contract.state import (
 )
 from proxyloop.contract.views import SlowView
 from proxyloop.guard.capability import released_accept
-from proxyloop.guard.declass import spoken
+from proxyloop.guard.declass import numbers, spoken
 from proxyloop.guard.readback import has_cue, slot_statuses
 from proxyloop.guard.status import status_change
 from proxyloop.guard.verify import verify_no_deal
@@ -115,13 +117,19 @@ class Close:
             can = f"blocked: {', '.join(self.reasons)}"
         said = said or "no closing reply"
         final = self.asked and self.reply and not self.reasons  # finish passes
-        if final and unrecorded and self.kind == "full":  # F-m: an offer unrecorded
-            said += (
-                f" states {', '.join(unrecorded)}, which no recorded offer "
-                "carries: record_offer it first"
+        tell = final and not self.told  # user.told_terms: only a final outcome
+        if final and unrecorded and self.kind == "full":  # F-m, Guard's verdict kept
+            then = (
+                "tell_user the terms and the outcome before finish, and "
+                if tell
+                else ""
             )
-            return f"close: {asked}; {said}; finish({self.outcome}) not before that"
-        if final and not self.told:  # user.told_terms: only a final outcome
+            return (
+                f"close: {asked}; {said} states {', '.join(unrecorded)}, which no "
+                "recorded offer carries: if it is an offer the rep made, "
+                f"record_offer it first; otherwise {then}finish({self.outcome}) {can}"
+            )
+        if tell:
             said += "; tell_user the terms and the outcome before finish"
         return f"close: {asked}; {said}; finish({self.outcome}) {can}"
 
@@ -156,14 +164,24 @@ def close(
     return Close(kind, asked_final is not None, reply, reasons, told, pending)
 
 
-def stopped(bb: Blackboard) -> bool:
-    """S1-SYS-83 F-i: FastU relayed the user's stop as a revoke (a typed
-    REVOKE relay: in the view of either mode), the case is NEEDS_REPLAN
-    (the revoke staled a pending card, or it replans for another reason) and
-    no accept was released: finish(escalate) is open for this one step."""
-    revoked = any(r.type == "REVOKE" for r in bb.f2s_pending)
-    replan = bb.public.status is CaseStatus.NEEDS_REPLAN
-    return replan and revoked and not released_accept(bb)
+def stopped(bb: Blackboard, events: Sequence[Event]) -> bool:
+    """S1-SYS-83 F-i: the current NEEDS_REPLAN (the last ``status.changed``)
+    was caused by an ``authority.epoch{f2s_revoke}``, FastU's relayed stop
+    staling the pending card, and no accept was released: finish(escalate)
+    is open for this one step. Any other replan (a card expiring, a revoked
+    accept, Slow's own revoke) shows no stop line, whatever was relayed
+    before it (review rev-269 M1: relays are never drained)."""
+    if bb.public.status is not CaseStatus.NEEDS_REPLAN or released_accept(bb):
+        return False
+    moves = [e for e in events if e.type == "status.changed"]
+    if not moves or moves[-1].payload.get("status") != CaseStatus.NEEDS_REPLAN:
+        return False
+    causes = set(moves[-1].cause_ids)
+    return any(
+        e.event_id in causes and e.payload.get("reason") == "f2s_revoke"
+        for e in events
+        if e.type == "authority.epoch"
+    )
 
 
 def closing_said(view: SlowView, reply: str | None) -> list[str]:
@@ -177,14 +195,19 @@ def closing_said(view: SlowView, reply: str | None) -> list[str]:
     return said + [" ".join((r.text, *(v for _, v in r.facts))) for r in relays]
 
 
-def unrecorded(offers: Iterable[OfferPublic], said: Iterable[str]) -> tuple[str, ...]:
+def unrecorded(
+    offers: Iterable[OfferPublic], said: Iterable[str], facts: Iterable[str] = ()
+) -> tuple[str, ...]:
     """F-m: the money amounts ``said`` states (Guard's ``spoken``, the one
-    money extraction) that no recorded offer's money slot carries."""
+    money extraction) that no recorded offer's money slot carries, other
+    than $0 and any number in a recorded fact's value (``facts``: a current
+    price, a competitor's; rev-269 M2)."""
     carried = {
         Decimal(s.value) / 100 for o in offers for s in o.slots if s.unit == "usd_minor"
     }
+    known = {Decimal(0), *(n for value in facts for n in numbers(value))}
     amounts = {n for text in said for n in spoken(text, "usd_minor")}
-    return tuple(f"${n}" for n in sorted(amounts - carried))
+    return tuple(f"${n}" for n in sorted(amounts - carried - known))
 
 
 def unavailable(bb: Blackboard) -> tuple[tuple[str, str], ...]:
@@ -473,7 +496,8 @@ def bar(bb: Blackboard, kind: Kind, tools: SlowTools) -> Bar:
     sends, slots = sent(bb, tools), lever_slots(bb)
     offered = bool(bb.public.offers)
     asked = identify_sent(bb, tools, GuideMove.ASK_DISCOUNT)
+    events = tools._host.bus.events  # pyright: ignore[reportPrivateUsage]
     return Bar(
         shut, unavailable(bb), readbacks, sends, slots, ident, offered, asked,
-        stopped(bb),
+        stopped(bb, events),
     )  # fmt: skip

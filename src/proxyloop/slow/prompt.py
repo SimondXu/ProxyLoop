@@ -94,14 +94,18 @@ look up the confirmation id they said, exactly as a [REP CALL] relay gave it.
 accepted terms; "no_deal" after guide_fast(ask_final_offer) and the \
 representative's final answer, with every offer declined; "info_only" when the task \
 is only to report the offers to the user (accept nothing); "escalate" when a failed \
-accept cannot be replanned, or on the user's stop (below).
+accept cannot be replanned, or on the user's stop with a card pending or the case \
+NEEDS_REPLAN (below).
 Calls run in order, so a guide_fast may cite a fact recorded earlier in the same act.
-The user's stop: when the user says stop or withdraws, end the case in ONE act: \
+The user's stop: when the user says stop or withdraws while a card is pending \
+(AWAITING_APPROVAL) or the case is NEEDS_REPLAN, end the case in ONE act: \
 revoke(reason) unless the case is already NEEDS_REPLAN, tell_user that nothing was \
 accepted and the case is stopped, then finish(escalate, summary). The revoke stales \
-a pending card, which replans the case (NEEDS_REPLAN) at once, so the finish in the \
-same act can escalate; once a step that saw NEEDS_REPLAN completes, the case is \
-back IN_CALL and can no longer be escalated (the stop line of the status bar).
+the pending card, which replans the case (NEEDS_REPLAN) at once, so the finish in \
+the same act can escalate; once a step that saw NEEDS_REPLAN completes, the case is \
+back IN_CALL and can no longer be escalated (the stop line of the status bar). In \
+any other state, revoke(reason) and tell_user that every grant is withdrawn and \
+nothing will be accepted without the user's new approval; do not call finish.
 Readiness: the phone call opens only once the facts it needs are public (the \
 readiness line of the status bar; e.g. the account holder name and last 4). If the \
 user already gave one, record_fact it citing the utt of the user's message before \
@@ -437,6 +441,7 @@ def status_bar(
         lines += [asks.readiness_line(intake, now_ms), asks.asks_line(intake, now_ms)]
     if more is not None:  # F-m: the closing reply as Slow's view holds it
         said = state.closing_said(view, more.close.reply)
-        amounts = state.unrecorded(view.offers, said)
+        known = [f.value for f in (*view.public_facts, *view.case_facts)]
+        amounts = state.unrecorded(view.offers, said, known)
         lines += more.lines(hints.needs_lever(view, now_ms), amounts)
     return "\n".join(lines)

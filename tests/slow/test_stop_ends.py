@@ -105,32 +105,102 @@ def test_a_no_stop_line_without_a_relayed_revoke(tmp_path: Path) -> None:
     h = _card(tmp_path)
     stale = {"previous": "AWAITING_APPROVAL", "status": "NEEDS_REPLAN"}
     h.emit("status.changed", "guard", stale, [h.root.event_id])
-    assert not state.stopped(h.bb)
+    assert not state.stopped(h.bb, h.bus.events)
+    assert "\nstop: " not in _bar(h)
+
+
+def _revoked_early(h: Host) -> None:
+    """FastU relays a revoke while the case is IN_CALL (any mind change about
+    anything pending): the kernel bumps the epoch, and nothing stales."""
+    said = h.emit("user.msg", "kernel", {"text": "Hold on, not that one."})
+    relay = {"msg_id": f"r1:{len(h.bus.events)}", "lane": "user", "gen_id": "u"}
+    relay |= {"utt_ref": said.event_id, "type": "REVOKE", "text": "hold on"}
+    got = h.emit("f2s.msg", "fast.user", relay, [said.event_id])
+    bump = {"new": h.bb.epoch + 1, "reason": "f2s_revoke"}
+    h.emit("authority.epoch", "kernel", bump, [got.event_id])
+    assert h.bb.public.status is CaseStatus.IN_CALL
+
+
+def _read_back(tmp_path: Path) -> Host:
+    """x-user-mind-change's walk to keep-2 read back (IN_CALL, no card)."""
+    mandate, states = fw.WALKS["x-user-mind-change"]
+    bounds = dict(mandate)
+    h = fw._verified(tmp_path, bounds.pop("cap"), **bounds)  # pyright: ignore[reportPrivateUsage]
+    for name, step, _ in states:
+        if step is not None:
+            step(h)
+        if name == "keep-2 read back":
+            return h
+    raise AssertionError("the walk has no keep-2 read back state")
+
+
+def test_a_an_early_revoke_then_a_new_card_expiring_shows_no_stop_line(
+    tmp_path: Path,
+) -> None:
+    """rev-269 M1: relays are never drained; an early REVOKE, then a card in
+    the new epoch that expires: the replan is the expiry's, no stop line."""
+    h = _read_back(tmp_path)
+    _revoked_early(h)
+    fw.request("keep-2")(h)
+    card = h.bb.private.pending_approval
+    assert card is not None and card.authority_epoch == h.bb.epoch
+    (asked,) = h.of("approval.requested")
+    expired = {"previous": "AWAITING_APPROVAL", "status": "NEEDS_REPLAN"}
+    h.emit("status.changed", "guard", expired, [asked.event_id])
+    assert not state.stopped(h.bb, h.bus.events)
+    assert "\nstop: " not in _bar(h)
+
+
+def test_a_a_revoked_accept_after_an_early_revoke_shows_no_stop_line(
+    tmp_path: Path,
+) -> None:
+    """rev-269 M1 and case (e): the replan is the revoked accept's
+    (``accept_revoked``, caused by ``speak.revoked``), not a revoke's."""
+    h = _read_back(tmp_path)
+    _revoked_early(h)
+    fw.request("keep-2")(h)
+    fw.granted(h)
+    fw.accept("keep-2")(h)
+    assert h.bb.public.status is CaseStatus.COMMIT_AUTHORIZED
+    (cap,) = h.bb.capabilities
+    (minted,) = h.of("action.authorized")
+    why = {"cap_id": cap, "reason": "fence"}
+    revoked = h.emit("speak.revoked", "kernel", why, [minted.event_id])
+    back = {"previous": "COMMIT_AUTHORIZED", "status": "NEEDS_REPLAN"}
+    h.emit("status.changed", "guard", back, [revoked.event_id])
+    assert not state.stopped(h.bb, h.bus.events)
     assert "\nstop: " not in _bar(h)
 
 
 def test_a_no_stop_line_after_a_released_accept(tmp_path: Path) -> None:
     h = _card(tmp_path)
     fw.stop_relayed(h)
-    assert state.stopped(h.bb)
+    assert state.stopped(h.bb, h.bus.events)
     cap = Capability(
         cap_id="cap-1", business_action_id="b", intent="accept_offer",
         terms_hash="t", epoch=1, expires_ms=1, consumed=True,
     )  # fmt: skip
     released = h.bb.model_copy(update={"capabilities": {"cap-1": cap}})
-    assert not state.stopped(released)
+    assert not state.stopped(released, h.bus.events)
 
 
 @pytest.mark.parametrize("mode", [R, T])
 def test_a_the_prompt_says_the_stop_act(mode: SlowViewMode) -> None:
     flat = " ".join(prompt.system(mode).split())
-    assert "or on the user's stop (below)" in flat
+    assert "or on the user's stop with a card pending or the case NEEDS_REPLAN" in flat
     assert (
-        "The user's stop: when the user says stop or withdraws, end the case in "
+        "The user's stop: when the user says stop or withdraws while a card is "
+        "pending (AWAITING_APPROVAL) or the case is NEEDS_REPLAN, end the case in "
         "ONE act: revoke(reason) unless the case is already NEEDS_REPLAN, "
         "tell_user that nothing was accepted and the case is stopped, then "
         "finish(escalate, summary)."
     ) in flat
+    other = (  # rev-269 M3: from IN_CALL no finish can pass: claim no stop
+        "In any other state, revoke(reason) and tell_user that every grant is "
+        "withdrawn and nothing will be accepted without the user's new approval; "
+        "do not call finish."
+    )
+    assert other in flat
     full = prompt.PLAYBOOK["full"]
     assert "the user's stop comes first: while the stop line shows, its act is " in full
     assert "stop line" not in prompt.PLAYBOOK["info_only"]
@@ -177,12 +247,16 @@ def test_m_an_unrecorded_amount_in_the_heard_reply_blocks_would_verify(
 ) -> None:
     h = _closed(tmp_path, UNRECORDED)
     close = _line(h, "close: ", T)
-    assert close == (
+    assert close == (  # rev-269 M2: conditional, Guard's verdict kept
         "close: final offer asked; the rep's closing reply cp-10 states $69, which "
-        "no recorded offer carries: record_offer it first; finish(no_deal) not "
-        "before that"
+        "no recorded offer carries: if it is an offer the rep made, record_offer "
+        "it first; otherwise tell_user the terms and the outcome before finish, "
+        "and finish(no_deal) would verify"
     )
-    assert "would verify" not in close
+    h.act({"tool": "tell_user", "text": "No deal: the $78 offer was over your limit."})
+    assert _line(h, "close: ", T).endswith(
+        "record_offer it first; otherwise finish(no_deal) would verify"
+    )
 
 
 def test_m_relay_only_sees_the_amount_only_as_relayed(tmp_path: Path) -> None:
@@ -207,3 +281,49 @@ def test_m_a_reply_restating_a_recorded_amount_still_verifies(tmp_path: Path) ->
 def test_m_unrecorded_reads_money_only() -> None:
     assert state.unrecorded((), ["a 24-month term, 12 months"]) == ()
     assert state.unrecorded((), ["$69.50 or 70 dollars"]) == ("$69.50", "$70")
+
+
+MENTIONS = {  # rev-269 M2: non-offer amounts in a closing reply
+    "competitor": "That is the best offer I can provide; I cannot match "
+    "Brightwave's $60.",
+    "current": "That is the best offer I can provide, or you stay at your current $85.",
+    "zero": "That is the best offer I can provide, and the setup fee is $0.",
+}
+
+
+@pytest.mark.parametrize("said", list(MENTIONS))
+def test_m_a_fact_amount_or_zero_is_no_unrecorded_offer(
+    tmp_path: Path, said: str
+) -> None:
+    """The user's current price and the competitor's price are recorded facts
+    (private or public), and $0 is no offer: the verdict line is unchanged."""
+    h = _closed(tmp_path, MENTIONS[said])
+    msg = "I pay $85 a month now; Brightwave offered me $60."
+    told = h.emit("user.msg", "kernel", {"text": msg})
+    for key, value in (
+        ("competitor.price_usd", "60"),
+        ("plan.current_price_usd", "85"),
+    ):
+        (got,) = h.act(
+            {
+                "tool": "record_fact",
+                "key": key,
+                "value": value,
+                "utt_ref": told.event_id,
+            }
+        )
+        assert got.startswith("record_fact: recorded"), got
+    for mode in (R, T):
+        close = _line(h, "close: ", mode)
+        assert close.endswith("finish(no_deal) would verify"), close
+        assert "record_offer" not in close, close
+
+
+def test_m_is_for_full_cases_only(tmp_path: Path) -> None:
+    """rev-269 M5b: an info_only close reports offers and records none after
+    the fact; its line is Guard's verdict whatever the reply states."""
+    h = _closed(tmp_path, UNRECORDED)
+    more = state.bar(h.bb, "info_only", h.tools)
+    bar = prompt.status_bar(view_slow(h.bb, T, "b"), h.now(), None, more)
+    (close,) = [x for x in bar.splitlines() if x.startswith("close: ")]
+    assert close.endswith("finish(info_only) allowed") and "$69" not in close, close
