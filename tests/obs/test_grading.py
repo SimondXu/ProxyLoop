@@ -1,7 +1,7 @@
 """The H5 grading detectors (``obs.grading``) against hand counts on one
 fixture bundle, with each event's seq in a comment (``t_ms = seq * 100``). It
 carries the signals S1-SYS-21/43/45 add (``chan.opened.ready``, ``ask_user``
-keys, a ``slow.tool`` code) to test the logic; without them the detectors are
+keys, ``slow.tool`` codes) to test the logic; without them the detectors are
 None (``test_detectors``)."""
 
 from __future__ import annotations
@@ -57,7 +57,8 @@ def h5_bundle(root: Path) -> Path:
     log.add("chan.opened", "kernel", "agent", {"lane": "user"}, (start,))  # 1
     fact: P = {"key": "account.holder_name", "value": "PRIV-name", "scope": "public"}
     log.add("fact.recorded", "guard", "agent", fact, (start,))  # 2
-    opened: P = {"lane": "cp", "ready": "ready"}
+    opened: P = {"lane": "cp", "call": 1, "reason": "intake_deadline"}
+    opened |= {"missing": ["account.last4"], "ready": False}
     log.add("chan.opened", "kernel", "agent", opened, (start,))  # 3: last4 missing
     heard: P = {"lane": "cp", "utt_id": "u", "text_generated": "PRIV-g"}
     heard |= {"text_heard": "PRIV-h", "interrupted": False}
@@ -70,7 +71,7 @@ def h5_bundle(root: Path) -> Path:
     both = {"text": "PRIV-q", "keys": ["account.last4", "account.holder_name"]}
     _tool(log, "ask_user", True, start, args=both)  # 13
     _tool(log, "ask_user", False, start, args=keys)  # 14: refused, not counted
-    _tool(log, "None", False, start)  # 15: unknown tool
+    _tool(log, "None", False, start, code="unknown_tool")  # 15
     _tool(log, "record_offer", False, start, code="invalid_args")  # 16
     _tool(log, "guide_fast", False, start, args={"move": "cite_competitor"})  # 17
     _tool(log, "share_fact", False, start, args={"key": "tenure_years"})  # 18
@@ -117,8 +118,8 @@ def test_every_h5_detector_equals_the_hand_count(tmp_path: Path) -> None:
             "h5_pass": False,
         },
         "identity.cp_opened_ready": {
-            "count": 1, "seq": 3, "ready": "ready", "missing": ["account.last4"],
-            "h5_pass": False,
+            "count": 1, "seq": 3, "reason": "intake_deadline", "ready": False,
+            "missing": ["account.last4"], "from": "payload", "h5_pass": False,
         },
         # 12 and 13 ask for last4, 13 for the holder name too; 14 was refused
         "identity.ask_user_per_key": {
@@ -128,7 +129,8 @@ def test_every_h5_detector_equals_the_hand_count(tmp_path: Path) -> None:
         "end.status": "VERIFIED_NO_DEAL",
         "approval.path": None,  # no approval.requested
         "slow.invalid_args": {"count": 1, "by_tool": {"record_offer": 1}},
-        "slow.unknown_tool": {"count": 1, "seqs": [15]},
+        "slow.act_shape": {"count": 0, "seqs": []},
+        "slow.unknown_tool": {"count": 1, "seqs": [15], "from": "code"},
         # 19 is identity, not a lever
         "slow.lever_refusals": {
             "count": 2, "seqs": [17, 18],
@@ -202,10 +204,62 @@ def test_approval_path_and_premature_finish(tmp_path: Path) -> None:
     assert values["slow.finish_before_offer"] == {"count": 1, "seq": 1}
 
 
-def test_identity_keys_mirror_slow() -> None:
-    from proxyloop.slow import tools  # the test may import slow; obs may not
+def test_refusal_codes_win_over_tool_names(tmp_path: Path) -> None:
+    log = Log("rC")
+    _tool(log, "act", False, log.start, code="act_shape")  # 1: refused whole
+    _tool(log, "act", False, log.start, code="act_shape")  # 2: an item
+    _tool(log, "frobnicate", False, log.start, code="unknown_tool")  # 3
+    _tool(log, "None", False, log.start, code="act_shape")  # 4: not unknown_tool
+    _tool(log, "share_fact", False, log.start, code=None)  # 5: a Guard denial
+    values = _values(write(tmp_path / "rC", log, manifest("rC")))
+    assert values["slow.act_shape"] == {"count": 3, "seqs": [1, 2, 4]}
+    assert values["slow.unknown_tool"] == {"count": 1, "seqs": [3], "from": "code"}
+    assert values["slow.invalid_args"] == {"count": 0, "by_tool": {}}
 
-    assert grading.IDENTITY == tools._IDENTITY  # pyright: ignore[reportPrivateUsage]
+
+def test_no_intake_is_not_graded(tmp_path: Path) -> None:
+    log = Log("rO")
+    opened: P = {"lane": "cp", "call": 1, "reason": "no_intake"}
+    opened |= {"missing": list(grading.IDENTITY), "ready": False}
+    log.add("chan.opened", "kernel", "agent", opened, (log.start,))  # 1
+    value = _values(write(tmp_path / "rO", log, manifest("rO")))
+    assert value["identity.cp_opened_ready"] == {
+        "count": 2, "seq": 1, "reason": "no_intake", "ready": False,
+        "missing": list(grading.IDENTITY), "from": "payload", "h5_pass": None,
+    }  # fmt: skip
+
+
+def test_cp_opened_prefers_the_kernel_readiness(tmp_path: Path) -> None:
+    log = Log("rR")
+    fact: P = {"key": "account.last4", "value": "PRIV-4", "scope": "public"}
+    log.add("fact.recorded", "guard", "agent", fact, (log.start,))  # 1
+    # the kernel needs only what the task may share: nothing missing
+    opened: P = {"lane": "cp", "call": 1, "reason": "ready"}
+    opened |= {"missing": [], "ready": True}
+    log.add("chan.opened", "kernel", "agent", opened, (log.start,))  # 2
+    value = _values(write(tmp_path / "rR", log, manifest("rR")))
+    assert value["identity.cp_opened_ready"] == {
+        "count": 0, "seq": 2, "reason": "ready", "ready": True, "missing": [],
+        "from": "payload", "h5_pass": True,
+    }  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "extra", [{}, {"missing": None}, {"missing": "account.last4"}]
+)  # no missing (before the payload had it), or one that is not a list
+def test_cp_opened_without_a_missing_list_reads_the_facts(
+    tmp_path: Path, extra: P
+) -> None:
+    log = Log("rF")
+    fact: P = {"key": "account.last4", "value": "PRIV-4", "scope": "public"}
+    log.add("fact.recorded", "guard", "agent", fact, (log.start,))  # 1
+    opened: P = {"lane": "cp", "ready": "ready"} | extra
+    log.add("chan.opened", "kernel", "agent", opened, (log.start,))  # 2
+    value = _values(write(tmp_path / "rF", log, manifest("rF")))
+    assert value["identity.cp_opened_ready"] == {
+        "count": 1, "seq": 2, "reason": None, "ready": "ready",
+        "missing": ["account.holder_name"], "from": "facts", "h5_pass": False,
+    }  # fmt: skip
 
 
 def _offer_log(run_id: str, revisions: int, asked: int) -> Log:
