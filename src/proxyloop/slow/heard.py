@@ -1,10 +1,12 @@
 """What became of each voiced s2f message (#219 D1, D-A): heard by the rep,
 still playing, or dead. Only cp deliveries count, so a user-lane message is
-never heard here. A pure read of the event log; ``SlowTools`` delegates to it."""
+never heard here; a cp GUIDE superseded before any turn voiced it is dead
+(S1-SYS-67). A pure read of the event log; ``SlowTools`` delegates to it."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from itertools import pairwise
 from typing import Literal, NamedTuple
 
 from proxyloop.contract.events import Event
@@ -18,6 +20,7 @@ _RANK: dict[State, int] = {"dead": 0, "playing": 1, "heard": 2}
 class Fate(NamedTuple):
     state: State
     at: int | None  # heard: the first cp line after its delivery; else None
+    superseded: bool = False  # dead unvoiced: a later cp GUIDE replaced it
 
 
 def fates(events: Sequence[Event], lines: Sequence[Line]) -> dict[str, Fate]:
@@ -28,7 +31,12 @@ def fates(events: Sequence[Event], lines: Sequence[Line]) -> dict[str, Fate]:
     spoke, was not cancelled, and has no sentence cut but not every sentence
     delivered yet; else dead (cancelled, cut, or no speech). Deliberately
     stricter than the needs ledger's ``heard`` (a spoken turn):
-    ``s2f.voiced`` comes before the playout. ``lines``: the cp transcript."""
+    ``s2f.voiced`` comes before the playout. A cp GUIDE never voiced is dead
+    too once a later cp GUIDE superseded it and no generation requested while
+    it was the newest is still open: a turn voices only the GUIDE its view
+    rendered (S1-SYS-67), so it can never be voiced; only such a fate is
+    ``superseded`` (Slow replaced it: no failure to reach the rep). ``lines``:
+    the cp transcript."""
     turns = {e.event_id: e for e in events if e.type == "fast.turn"}
     cut = {e.payload["gen_id"] for e in events if e.type == "fast.cancelled"}
     sentences: dict[str, list[str]] = {}  # gen id -> its utt ids
@@ -61,6 +69,22 @@ def fates(events: Sequence[Event], lines: Sequence[Line]) -> dict[str, Fate]:
         msg = str(e.payload["msg_id"])
         if msg not in out or _RANK[fate.state] > _RANK[out[msg].state]:
             out[msg] = fate
+    ended = cut | {str(t.payload["gen_id"]) for t in turns.values()}
+    asked = [
+        (e.seq, str(e.payload["gen_id"]))
+        for e in events
+        if e.type == "fast.request" and e.payload["lane"] == "cp"
+    ]
+    guides = [
+        e
+        for e in events
+        if e.type == "s2f.msg" and e.payload["lane"] == "cp" and e.payload.get("guide")
+    ]
+    for old, new in pairwise(guides):
+        msg = str(old.payload["msg_id"])
+        rendered = any(old.seq < q < new.seq and g not in ended for q, g in asked)
+        if msg not in out and not rendered:  # superseded, never voiced
+            out[msg] = Fate("dead", None, superseded=True)
     return out
 
 

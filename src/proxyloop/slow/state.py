@@ -128,9 +128,11 @@ def sent(bb: Blackboard, tools: SlowTools) -> dict[str, Sent]:
     answered once a send was heard and a rep line follows its delivery (at or
     after its ``Fate.at``: one lever per rep reply); heard while the rep has
     not answered yet; waiting while one is queued (``s2f_pending``) or voiced
-    by a turn still playing; failed once ``DIES`` sends are dead (cancelled,
-    cut, no speech, or never voiced) and none is live. A lever dead fewer
-    times is left out: available again."""
+    by a turn still playing; failed once ``DIES`` voicings died (cancelled,
+    cut, no speech) and none is live. A send never voiced (superseded by a
+    later GUIDE, S1-SYS-67, though the fold keeps it queued; or neither
+    queued nor voiced) was never tried: no death. A lever dead fewer times
+    is left out: available again."""
     mine = [(msg, move.value) for msg, move in tools.guides if move in LEVERS]
     fates = tools.fates if mine else {}
     lines = bb.channels.get("cp", ChannelState()).lines
@@ -138,7 +140,9 @@ def sent(bb: Blackboard, tools: SlowTools) -> dict[str, Sent]:
     seen: dict[str, list[str]] = {}
     for msg, move in mine:
         fate = fates.get(msg)
-        now = fate.state if fate else "playing" if msg in queued else "dead"
+        if fate is not None and fate.superseded:
+            continue  # Slow replaced it before any turn: never tried
+        now = fate.state if fate else "playing" if msg in queued else "unvoiced"
         if now == "heard" and fate is not None:
             rest = lines[fate.at :]
             now = "answered" if any(x.speaker == "partner" for x in rest) else now
@@ -269,23 +273,29 @@ class Bar:
         live = ("heard", "waiting")
         return any(v in live and m not in gone for m, v in self.sends.items())
 
-    def offer_note(self, o: OfferPublic) -> str:
+    def offer_note(self, o: OfferPublic, lever: bool = False) -> str:
+        """V4 for ``o``'s revision. ``lever``: the offer's hint already names
+        its next step, a lever or a wait (#238 D2: one next step per state),
+        so an unread or stuck read-back keeps its facts but not "ask again"
+        or the stuck clause's decline (#242 D1)."""
         r = self.readbacks.get((o.offer_ref, o.revision))
         if r is None or not r.asked:
             return ""
         asked, left = r.asked, r.stuck
         said = f"read-back asked {asked}×"  # noqa: RUF001
         if r.unread:
-            not_read = "the rep has not read the offer back"
-            return f"{said}; {not_read}; ask again or ask_final_offer"
+            not_read = f"{said}; the rep has not read the offer back"
+            return not_read if lever else f"{not_read}; ask again or ask_final_offer"
         if not left:
             return said
+        omitted = f"{said}, omitted from {STOP_AFTER} read-backs: {', '.join(left)}"
+        if lever:
+            return omitted
         then = ", then decline_offer and guide_fast(ask_final_offer)"
         return (
-            f"{said}, omitted from {STOP_AFTER} read-backs: {', '.join(left)} → "
-            "not stated as recorded: if a reply states another value for them, "
-            "record_offer a new revision citing that line; otherwise stop asking, "
-            "report them to the user as not stated"
+            f"{omitted} → not stated as recorded: if a reply states another "
+            "value for them, record_offer a new revision citing that line; "
+            "otherwise stop asking, report them to the user as not stated"
             + (then if self.close.kind == "full" else "")
         )
 
