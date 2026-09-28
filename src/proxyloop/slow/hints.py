@@ -37,6 +37,9 @@ HARD_LIMITS = {  # guard.mandate.hard_violations's classes: no approval lifts th
 HARD_LIMIT = "breaks a hard limit"
 OUTSIDE_MANDATE = "outside mandate: needs the user's approval once confirmed"
 DEFER = "outside mandate; no step for it now: "  # F-e: a better open offer's turn
+INSIDE = "inside the granted mandate"  # why an offer comes first (F-e)
+CHEAPER = "cheaper, confirmed"
+DOMINATES = "no worse on price, term and fees as recorded, better on one"
 _CASE = CaseRef("case", "account", "principal")  # a dry run binds nothing
 
 
@@ -194,15 +197,31 @@ def _open(o: OfferPublic, now_ms: int) -> bool:
     return o.status == "open" and (o.expires_ms is None or o.expires_ms > now_ms)
 
 
+def _costs(o: OfferPublic, terms: Terms) -> tuple[int, int, int] | None:
+    """(monthly price, term, one-time fees) as recorded; None until the
+    price and the term are recorded (an unstated fee counts as none)."""
+    have = {s.field for s in o.slots}
+    if not {"monthly_price", "term_months"} <= have:
+        return None
+    fees = sum(f.amount_minor for f in terms.fees)
+    return terms.monthly_price_minor, terms.term_months, fees
+
+
+def _dominates(b: tuple[int, int, int], o: tuple[int, int, int]) -> bool:
+    return all(x <= y for x, y in zip(b, o, strict=True)) and b != o
+
+
 def better(
     view: SlowView, o: OfferPublic, now_ms: int
-) -> tuple[OfferPublic, bool] | None:
+) -> tuple[OfferPublic, str] | None:
     """S1-SYS-82 F-e: the open offer that beats ``o``, an open offer outside
-    the granted mandate (breaking no hard limit, not approved), and whether
-    it is inside the mandate: the cheapest open offer inside it (its price
-    recorded, no hard limit broken), else the cheapest one Guard's
-    ``open_offer`` passes (confirmed) that is cheaper than ``o``. An offer
-    whose terms the user denied in this epoch beats nothing."""
+    the granted mandate (breaking no hard limit, not approved), and why: the
+    cheapest open offer inside it (its price recorded, no hard limit
+    broken); else the cheapest one Guard's ``open_offer`` passes (confirmed)
+    that is cheaper than ``o``; else (L-CORE, round 2) the cheapest one no
+    worse than ``o`` on price, term and fees as recorded and better on one
+    (dominance: a fee a read-back reveals can end it). An offer whose terms
+    the user denied in this epoch beats nothing."""
     got = _verdict(view, o)
     if not _open(o, now_ms) or got is None or approved(view, o, now_ms):
         return None
@@ -225,7 +244,7 @@ def better(
         if _gap(view, now_ms, v[0]) is None:
             inside.append((v[0].monthly_price_minor, b))
     if inside:
-        return min(inside, key=lambda x: x[0])[1], True
+        return min(inside, key=lambda x: x[0])[1], INSIDE
     cheaper: list[tuple[int, OfferPublic]] = []
     for b in rivals:
         ok = open_offer(b, view.mandate, now_ms, bool(view.fences))
@@ -234,21 +253,31 @@ def better(
             and ok[1].monthly_price_minor < terms.monthly_price_minor
         ):
             cheaper.append((ok[1].monthly_price_minor, b))
-    return (min(cheaper, key=lambda x: x[0])[1], False) if cheaper else None
+    if cheaper:
+        return min(cheaper, key=lambda x: x[0])[1], CHEAPER
+    mine = _costs(o, terms)
+    beats: list[tuple[tuple[int, int, int], OfferPublic]] = []
+    for b in rivals:
+        v = _verdict(view, b)
+        if mine is None or v is None or hard_violations(*v):
+            continue
+        if (theirs := _costs(b, v[0])) is not None and _dominates(theirs, mine):
+            beats.append((theirs, b))
+    return (min(beats, key=lambda x: x[0])[1], DOMINATES) if beats else None
 
 
 def defer_hint(
-    view: SlowView, b: OfferPublic, inside: bool, now_ms: int, more: state.Bar
+    view: SlowView, b: OfferPublic, why: str, now_ms: int, more: state.Bar
 ) -> str:
     """S1-SYS-82 F-e: a worse offer's one hint, naming the offer ``b`` that
-    comes first. A cheaper confirmed ``b`` names its own step on its entry;
+    comes first. Any other ``b`` names its own step on its entry;
     one inside the mandate has none there, so this names it: its read-back,
     then accept_offer, or accept_offer once confirmed (Guard's accept rule
     passing; otherwise nothing: the case has moved on)."""
     ref = b.offer_ref
-    if not inside:
-        return f"{DEFER}{ref} (cheaper, confirmed) comes first"
-    first = f"{DEFER}{ref} (inside the granted mandate) comes first"
+    if why != INSIDE:  # b's own entry names its step
+        return f"{DEFER}{ref} ({why}) comes first"
+    first = f"{DEFER}{ref} ({INSIDE}) comes first"
     then = f"accept_offer({ref})"
     r = more.readbacks.get((ref, b.revision))
     if readback_status(b) == "confirmed":
