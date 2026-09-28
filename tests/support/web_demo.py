@@ -44,7 +44,7 @@ from typing import Literal
 
 from tests.support.fakes import RepeatingLLM
 from tests.support.manual_clock import ManualClock
-from tests.support.sessions import act, ear, fake_config
+from tests.support.sessions import act, ears, fake_config
 
 from proxyloop.contract.llm import (
     LLMClient,
@@ -311,14 +311,19 @@ class SlowScript:
 
 
 def rep_ear(request: Request) -> str:
+    """Each numbered utterance of the heard block, classified by its words."""
     prompt = _last(request)
-    heard = prompt.split("The caller said: ", 1)[-1]
-    offers = dict(re.findall(r"(\S+): monthly_price (\S+?)[,;\n]", prompt))
+    offers = dict(re.findall(r"(\S+) \([a-z ]+\): monthly_price (\S+?)[,;\n]", prompt))
+    said = re.findall(r"^\d+\. (.*)$", prompt.split("The caller said:", 1)[-1], re.M)
+    return ears(*(_heard_act(heard, offers) for heard in said))
+
+
+def _heard_act(heard: str, offers: Mapping[str, str]) -> dict[str, object]:
     if "we accept" in heard:
         named = [ref for ref, price in offers.items() if f"${price}" in heard]
         args: dict[str, object] = {"price_usd": float(_money(heard) or 0)}
         args |= {"offer_ref": named[0]} if named else {}
-        return ear("accept", **args)
+        return {"act": "accept"} | args
     name = re.search(r"holder is ([A-Z][a-z]+(?: [A-Z][a-z]+)+)", heard)
     last4 = re.search(r"\b(\d{4})\b", heard)
     if name and last4:
@@ -326,14 +331,14 @@ def rep_ear(request: Request) -> str:
             {"key": "account.holder_name", "value": name[1]},
             {"key": "account.last4", "value": last4[1]},
         ]
-        return ear("provide_fact", facts=facts)
+        return {"act": "provide_fact", "facts": facts}
     if "one moment" in heard:
-        return ear("hold_request")
+        return {"act": "hold_request"}
     if "lower monthly price" in heard:
-        return ear("ask_discount")
+        return {"act": "ask_discount"}
     if "read back" in heard:
-        return ear("ask_readback")
-    return ear("other")
+        return {"act": "ask_readback"}
+    return {"act": "other"}
 
 
 def rep_mouth(request: Request) -> str:

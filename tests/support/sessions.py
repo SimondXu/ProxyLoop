@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from tests.support.fakes import RepeatingLLM
@@ -85,12 +86,50 @@ def reply(text: str, **revealed: str) -> str:
 
 
 def ear(act: str, **args: object) -> str:
+    """An Ear ``classify`` call with one act: a block of one utterance."""
+    return ears({"act": act} | args)
+
+
+def ears(*items: Mapping[str, object]) -> str:
+    """An Ear ``classify`` call for a heard block: one act per utterance."""
     call = {
         "call_id": "t",
         "name": "classify",
-        "arguments": json.dumps({"act": act} | args),
+        "arguments": json.dumps({"acts": [dict(item) for item in items]}),
     }
     return json.dumps({"text": "", "tool_calls": [call]})
+
+
+_UTTERANCE = re.compile(r"^\d+\. ", re.M)  # a numbered line of the Ear's prompt
+
+
+def _acts(raw: str) -> list[object] | None:
+    """The acts of a scripted single ``classify`` call; None: any other answer."""
+    calls = json.loads(raw)["tool_calls"]
+    if len(calls) != 1 or calls[0]["name"] != "classify":
+        return None
+    try:
+        args: object = json.loads(calls[0]["arguments"])
+    except json.JSONDecodeError:
+        return None
+    acts = cast(dict[str, object], args).get("acts") if isinstance(args, dict) else None
+    return cast(list[object], acts) if isinstance(acts, list) else None
+
+
+class BlockEar(RepeatingLLM):
+    """The Ear's script, one act per heard utterance whatever the blocks
+    (ADR-0021): a request listing n utterances takes scripted answers until
+    they hold n acts, and answers them as one ``classify`` call. Any other
+    scripted answer (an invalid one) is given as it is."""
+
+    async def _next(self, request: TextRequest | ToolRequest) -> tuple[str, int]:
+        raw, start = await super()._next(request)
+        acts, want = _acts(raw), len(_UTTERANCE.findall(request.messages[-1].content))
+        if acts is None:
+            return raw, start
+        while len(acts) < want and (more := _acts((await super()._next(request))[0])):
+            acts += more
+        return ears(*cast(list[Mapping[str, object]], acts)), start
 
 
 def act(private: str, *calls: Mapping[str, object], public: str | None = None) -> str:
@@ -140,7 +179,8 @@ def clients(
                 ref, live=False, clock=now, on_record=sink, transport=vllm
             )
         script, stop = scripts.get(role, ["unused"]), until.get(role)
-        client = RepeatingLLM(ref, script, clock, role in dead, sink, stop)
+        scripted = BlockEar if role == "ear" else RepeatingLLM
+        client = scripted(ref, script, clock, role in dead, sink, stop)
         gate = (gates or {}).get(role)
         return client if gate is None else Gated(client, gate)
 
