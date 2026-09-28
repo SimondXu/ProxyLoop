@@ -1,0 +1,811 @@
+[
+ {
+  "id": 1,
+  "adj": "adj-001",
+  "pos": 1,
+  "idx": 1,
+  "orig": [
+   "batch-002",
+   3
+  ],
+  "company": "Northwind Mobile",
+  "offers": [],
+  "text": "I don’t have the account holder’s name or account last four available. Could you let me know another way to discuss general monthly-price offers without sharing those details?",
+  "block": null,
+  "opus_act": "refuse_fact",
+  "opus_old": "refuse_fact",
+  "alternates": [
+   "ask_discount"
+  ],
+  "conf": 3,
+  "rationale": "Unable to give ID; asks another way to discuss offers, no explicit lower price (ruling m)."
+ },
+ {
+  "id": 2,
+  "adj": "adj-001",
+  "pos": 4,
+  "idx": 1,
+  "orig": [
+   "batch-009",
+   16
+  ],
+  "company": "Crestline Wireless",
+  "offers": [
+   {
+    "open": true,
+    "ref": "save-1",
+    "terms": {
+     "monthly_price": "78.00",
+     "term_months": "24"
+    }
+   }
+  ],
+  "text": "Could you check whether there’s a way to lower the monthly price on this account? Please read back every term of any offer before we make a decision.",
+  "block": null,
+  "opus_act": "ask_readback",
+  "opus_old": "ask_readback",
+  "alternates": [
+   "ask_discount",
+   "ask_readback"
+  ],
+  "conf": 3,
+  "rationale": "Read back every term outranks discount; any offer does not pick out save-1."
+ },
+ {
+  "id": 3,
+  "adj": "adj-001",
+  "pos": 10,
+  "idx": 1,
+  "orig": [
+   "batch-009",
+   23
+  ],
+  "company": "Northwind Mobile",
+  "offers": [],
+  "text": "I’m sorry, I don’t have the account holder’s name or account details available. Could you tell me what options you can share without verifying the account?",
+  "block": null,
+  "opus_act": "refuse_fact",
+  "opus_old": "refuse_fact",
+  "alternates": [
+   "ask_discount"
+  ],
+  "conf": 3,
+  "rationale": "Unable to give ID; asks what options without verifying, no explicit lower price (ruling m)."
+ },
+ {
+  "id": 4,
+  "adj": "adj-001",
+  "pos": 17,
+  "idx": 1,
+  "orig": [
+   "batch-007",
+   14
+  ],
+  "company": "Northwind Mobile",
+  "offers": [
+   {
+    "open": true,
+    "ref": "loyal-1",
+    "terms": {
+     "monthly_price": "75.00",
+     "term_months": "12"
+    }
+   }
+  ],
+  "text": "I’m calling to see whether there’s a lower monthly price available on Dana’s account. Could you share the best offer and its full terms?",
+  "block": null,
+  "opus_act": "ask_discount",
+  "opus_old": "ask_discount",
+  "alternates": [
+   "provide_fact"
+  ],
+  "conf": 3,
+  "rationale": "Lower price and best offer; Dana is a bare first name inside another act (ruling c2)."
+ },
+ {
+  "id": 5,
+  "adj": "adj-001",
+  "pos": 22,
+  "idx": 1,
+  "orig": [
+   "batch-013",
+   13
+  ],
+  "company": "Northwind Mobile",
+  "offers": [],
+  "text": "Yes, I’m here. I can’t provide the account details, but could you share any general offers and their full terms without verification? I’m only gathering information, not accepting anything.",
+  "block": null,
+  "opus_act": "ask_discount",
+  "opus_old": "refuse_fact",
+  "alternates": [
+   "refuse_fact"
+  ],
+  "conf": 3,
+  "rationale": "Refuses ID; asks any offers and full terms with none listed (ruling k)."
+ },
+ {
+  "id": 6,
+  "adj": "adj-002",
+  "pos": 4,
+  "idx": 1,
+  "orig": [
+   "batch-016",
+   14
+  ],
+  "company": "Crestline Wireless",
+  "offers": [
+   {
+    "open": true,
+    "ref": "save-1",
+    "terms": {
+     "monthly_price": "78.00",
+     "term_months": "24"
+    }
+   }
+  ],
+  "text": "Could you check what lower monthly-price options are available for this account? Please read back every term of any offer before we make a decision.",
+  "block": null,
+  "opus_act": "ask_readback",
+  "opus_old": "ask_readback",
+  "alternates": [
+   "ask_discount",
+   "ask_readback"
+  ],
+  "conf": 3,
+  "rationale": "Lower options plus full readback of any offer; offer listed so readback outranks; no single ref."
+ },
+ {
+  "id": 7,
+  "adj": "adj-002",
+  "pos": 12,
+  "idx": 1,
+  "orig": [
+   "batch-009",
+   6
+  ],
+  "company": "Crestline Wireless",
+  "offers": [
+   {
+    "open": true,
+    "ref": "save-1",
+    "terms": {
+     "monthly_price": "78.00",
+     "term_months": "24"
+    }
+   }
+  ],
+  "text": "I’m calling to ask whether you can lower the monthly price on this account. If there’s an offer, please read back all of its terms before any decision. I’m calling to ask whether you can lower the monthly price on this account. If there’s an offer, please read back all of its terms before any decision.",
+  "block": null,
+  "opus_act": "ask_readback",
+  "opus_old": "ask_readback",
+  "alternates": [
+   "ask_discount",
+   "ask_readback"
+  ],
+  "conf": 3,
+  "rationale": "Lower-price request plus conditional full readback; offer listed so readback outranks (k)."
+ },
+ {
+  "id": 8,
+  "adj": "adj-002",
+  "pos": 16,
+  "idx": 1,
+  "orig": [
+   "batch-009",
+   22
+  ],
+  "company": "Northwind Mobile",
+  "offers": [],
+  "text": "I don’t have those account details available, so I can’t complete verification. Could you tell me whether there are any general offers you can share without verifying the account?",
+  "block": null,
+  "opus_act": "ask_discount",
+  "opus_old": "ask_discount",
+  "alternates": [
+   "refuse_fact"
+  ],
+  "conf": 3,
+  "rationale": "Unable to verify but asks for any offers (j, k no-offer); ask_discount outranks refuse_fact (m)."
+ },
+ {
+  "id": 9,
+  "adj": "adj-002",
+  "pos": 17,
+  "idx": 1,
+  "orig": [
+   "batch-005",
+   8
+  ],
+  "company": "Northwind Mobile",
+  "offers": [
+   {
+    "open": true,
+    "ref": "loyal-1",
+    "terms": {
+     "monthly_price": "75.00",
+     "term_months": "12"
+    }
+   }
+  ],
+  "text": "Could you check whether there’s a way to lower the monthly price and tell me the best offer, including all of its terms? We’re only gathering information today and won’t make any changes. Could you check whether there’s a way to lower the monthly price and tell me the best offer, including all of its terms? We’re only gathering information today and won’t make any changes.",
+  "block": null,
+  "opus_act": "ask_readback",
+  "opus_old": "ask_discount",
+  "alternates": [
+   "ask_discount",
+   "ask_readback"
+  ],
+  "conf": 3,
+  "rationale": "Lower price plus best offer with all terms; offer listed so readback outranks; no ref named."
+ },
+ {
+  "id": 10,
+  "adj": "adj-002",
+  "pos": 20,
+  "idx": 1,
+  "orig": [
+   "batch-012",
+   0
+  ],
+  "company": "Crestline Wireless",
+  "offers": [],
+  "text": "I’m getting that",
+  "block": [
+   "I’m getting that",
+   "I’m getting that detail from my customer; could you hold for a moment?"
+  ],
+  "opus_act": "other",
+  "opus_old": "other",
+  "alternates": [
+   "hold_request"
+  ],
+  "conf": 3,
+  "rationale": "Truncated retrieval statement with no explicit wait words; filler."
+ },
+ {
+  "id": 11,
+  "adj": "adj-002",
+  "pos": 22,
+  "idx": 1,
+  "orig": [
+   "batch-008",
+   9
+  ],
+  "company": "Crestline Wireless",
+  "offers": [
+   {
+    "open": true,
+    "ref": "save-1",
+    "terms": {
+     "monthly_price": "78.00",
+     "term_months": "24"
+    }
+   }
+  ],
+  "text": "I’m calling to ask whether you can lower the monthly price on this account. If there’s an offer, please read back all of its terms before we decide.",
+  "block": null,
+  "opus_act": "ask_readback",
+  "opus_old": "ask_discount",
+  "alternates": [
+   "ask_discount",
+   "ask_readback"
+  ],
+  "conf": 3,
+  "rationale": "Lower-price request plus conditional full readback; offer listed so readback outranks (k)."
+ },
+ {
+  "id": 12,
+  "adj": "adj-002",
+  "pos": 23,
+  "idx": 1,
+  "orig": [
+   "batch-008",
+   1
+  ],
+  "company": "Crestline Wireless",
+  "offers": [],
+  "text": "I’m getting that",
+  "block": null,
+  "opus_act": "other",
+  "opus_old": "other",
+  "alternates": [
+   "hold_request"
+  ],
+  "conf": 3,
+  "rationale": "Truncated retrieval statement with no explicit wait words; filler."
+ },
+ {
+  "id": 13,
+  "adj": "adj-003",
+  "pos": 1,
+  "idx": 1,
+  "orig": [
+   "batch-006",
+   2
+  ],
+  "company": "Northwind Mobile",
+  "offers": [],
+  "text": "I don’t have the account holder’s name or the last four digits, so I can’t provide those. Is there another way to verify the account so I can ask about a lower monthly price? I’ll need to check with my customer before making any decision.",
+  "block": null,
+  "opus_act": "ask_discount",
+  "opus_old": "refuse_fact",
+  "alternates": [
+   "refuse_fact"
+  ],
+  "conf": 3,
+  "rationale": "Cannot give identity values but explicitly seeks a lower monthly price; ruling m favours ask_discount."
+ },
+ {
+  "id": 14,
+  "adj": "adj-003",
+  "pos": 2,
+  "idx": 1,
+  "orig": [
+   "batch-005",
+   21
+  ],
+  "company": "Northwind Mobile",
+  "offers": [],
+  "text": "I don’t have those details, so I can’t verify the account. Are you able to share any general offers without account verification?",
+  "block": null,
+  "opus_act": "ask_discount",
+  "opus_old": "ask_discount",
+  "alternates": [
+   "refuse_fact"
+  ],
+  "conf": 3,
+  "rationale": "Unable to verify, asks rep to share offers (rulings j/m); refuse_fact defensible, no explicit lower price."
+ },
+ {
+  "id": 15,
+  "adj": "adj-003",
+  "pos": 3,
+  "idx": 1,
+  "orig": [
+   "batch-013",
+   1
+  ],
+  "company": "Crestline Wireless",
+  "offers": [
+   {
+    "open": true,
+    "ref": "save-1",
+    "terms": {
+     "monthly_price": "78.00",
+     "term_months": "24"
+    }
+   }
+  ],
+  "text": "Thanks. I have the terms as seventy-eight dollars per month for twenty-four months, with no fees, no service changes, and no expiry. Please confirm whether there are any other terms of the offer.",
+  "block": [
+   "Thanks. I have the terms as seventy-eight dollars per month for twenty-four months, with no fees, no service changes, and no expiry. Please confirm whether there are any other terms of the offer.",
+   "Is this your best and final offer? Is this your best and final offer?"
+  ],
+  "opus_act": "ask_readback",
+  "opus_old": "other",
+  "alternates": [
+   "other"
+  ],
+  "conf": 3,
+  "rationale": "Asks for any remaining terms of the single listed offer (ruling k); other defensible as confirmation."
+ },
+ {
+  "id": 16,
+  "adj": "adj-003",
+  "pos": 5,
+  "idx": 1,
+  "orig": [
+   "batch-010",
+   1
+  ],
+  "company": "Northwind Mobile",
+  "offers": [],
+  "text": "I’m still here. Could you let me know whether there’s another way to discuss available lower-price offers without those details? I’ll need to check with my customer before sharing anything.",
+  "block": null,
+  "opus_act": "ask_discount",
+  "opus_old": "ask_discount",
+  "alternates": [
+   "refuse_fact",
+   "other"
+  ],
+  "conf": 3,
+  "rationale": "Withholds details pending customer but explicitly asks about lower-price offers (ruling m)."
+ },
+ {
+  "id": 17,
+  "adj": "adj-003",
+  "pos": 8,
+  "idx": 1,
+  "orig": [
+   "batch-004",
+   5
+  ],
+  "company": "Northwind Mobile",
+  "offers": [
+   {
+    "open": true,
+    "ref": "loyal-1",
+    "terms": {
+     "monthly_price": "75.00",
+     "term_months": "12"
+    }
+   }
+  ],
+  "text": "I’m calling on Dana’s behalf to see if there’s a way to lower the monthly price. Could you tell me the best available offer and all of its terms? I’m calling on Dana’s behalf to see if there’s a way to lower the monthly price. Could you tell me the best available offer and all of its terms?",
+  "block": null,
+  "opus_act": "provide_fact",
+  "opus_old": "provide_fact",
+  "alternates": [
+   "ask_discount"
+  ],
+  "conf": 2,
+  "rationale": "'Calling on Dana's behalf' identifies the account (c2) but is a bare first name; else ask_discount."
+ },
+ {
+  "id": 18,
+  "adj": "adj-003",
+  "pos": 12,
+  "idx": 1,
+  "orig": [
+   "batch-014",
+   8
+  ],
+  "company": "Northwind Mobile",
+  "offers": [],
+  "text": "I don’t have the account holder’s name or the last four digits available, so I can’t provide those. Is there another way to proceed with asking about available lower monthly offers?",
+  "block": null,
+  "opus_act": "ask_discount",
+  "opus_old": "refuse_fact",
+  "alternates": [
+   "refuse_fact"
+  ],
+  "conf": 3,
+  "rationale": "Cannot give identity values, explicitly asks about lower monthly offers (ruling m)."
+ },
+ {
+  "id": 19,
+  "adj": "adj-003",
+  "pos": 17,
+  "idx": 1,
+  "orig": [
+   "batch-003",
+   7
+  ],
+  "company": "Crestline Wireless",
+  "offers": [
+   {
+    "open": true,
+    "ref": "save-1",
+    "terms": {
+     "monthly_price": "78.00",
+     "term_months": "24"
+    }
+   }
+  ],
+  "text": "Is there any way to lower the monthly price further? I have the offer terms as seventy-eight dollars per month for twenty-four months, with no fees, no service changes, and no expiry; please confirm that’s the complete offer.",
+  "block": null,
+  "opus_act": "ask_readback",
+  "opus_old": "ask_discount",
+  "alternates": [
+   "ask_discount"
+  ],
+  "conf": 3,
+  "rationale": "Asks confirmation of the complete terms of the listed offer (k), outranking ask_discount; ask_discount defensible."
+ },
+ {
+  "id": 20,
+  "adj": "adj-003",
+  "pos": 20,
+  "idx": 1,
+  "orig": [
+   "batch-010",
+   20
+  ],
+  "company": "Crestline Wireless",
+  "offers": [
+   {
+    "open": true,
+    "ref": "save-1",
+    "terms": {
+     "monthly_price": "78.00",
+     "term_months": "24"
+    }
+   }
+  ],
+  "text": "Could you let me know whether there’s an option to lower the monthly price? Please read back all the terms of any offer before we make a decision.",
+  "block": null,
+  "opus_act": "ask_discount",
+  "opus_old": "ask_readback",
+  "alternates": [
+   "ask_readback"
+  ],
+  "conf": 3,
+  "rationale": "Asks to lower price; readback of 'any offer' is prospective and picks no listed offer."
+ },
+ {
+  "id": 21,
+  "adj": "adj-004",
+  "pos": 0,
+  "idx": 1,
+  "orig": [
+   "batch-001",
+   5
+  ],
+  "company": "Northwind Mobile",
+  "offers": [],
+  "text": "Yes, I’m still here. I can’t provide those account details, but could you tell me whether there’s a way to discuss general monthly-price offers without them?",
+  "block": null,
+  "opus_act": "refuse_fact",
+  "opus_old": "refuse_fact",
+  "alternates": [
+   "ask_discount"
+  ],
+  "conf": 3,
+  "rationale": "Cannot give details; asks about process, no explicit lower/better price request (m)."
+ },
+ {
+  "id": 22,
+  "adj": "adj-004",
+  "pos": 4,
+  "idx": 1,
+  "orig": [
+   "batch-008",
+   21
+  ],
+  "company": "Northwind Mobile",
+  "offers": [],
+  "text": "I’m only calling to gather information about ways to lower the monthly bill, and",
+  "block": null,
+  "opus_act": "ask_discount",
+  "opus_old": "ask_discount",
+  "alternates": [
+   "other"
+  ],
+  "conf": 3,
+  "rationale": "Cut off; states purpose of lowering the bill, weak discount request."
+ },
+ {
+  "id": 23,
+  "adj": "adj-004",
+  "pos": 7,
+  "idx": 1,
+  "orig": [
+   "batch-010",
+   10
+  ],
+  "company": "Northwind Mobile",
+  "offers": [],
+  "text": "I don’t have the account holder’s name or account’s last four digits available. Could you let me know another way to proceed with checking lower monthly-price offers?",
+  "block": null,
+  "opus_act": "ask_discount",
+  "opus_old": "ask_discount",
+  "alternates": [
+   "refuse_fact"
+  ],
+  "conf": 3,
+  "rationale": "Lacks identity and asks about lower monthly-price offers (m); could be process-only."
+ },
+ {
+  "id": 24,
+  "check": [
+   "check-001",
+   8,
+   1
+  ],
+  "company": "Lumen Home Internet",
+  "offers": [
+   {
+    "ref": "promo-1",
+    "terms": {
+     "monthly_price": "55.00",
+     "term_months": "12"
+    },
+    "open": true
+   }
+  ],
+  "text": "We'd take the 55 as long as there's no installation charge. Is there one?",
+  "block": null,
+  "opus_act": "ask_discount",
+  "alternates": [
+   "other"
+  ],
+  "conf": 3,
+  "rationale": "Conditional acceptance on no fee, like the accept near-miss; not accept. Fee question alone is other."
+ },
+ {
+  "id": 25,
+  "check": [
+   "check-001",
+   24,
+   1
+  ],
+  "company": "Northwind Mobile",
+  "offers": [
+   {
+    "ref": "loyal-1",
+    "terms": {
+     "monthly_price": "75.00",
+     "term_months": "12"
+    },
+    "open": true
+   }
+  ],
+  "text": "So that's 75 for 12 months, right?",
+  "block": null,
+  "opus_act": "other",
+  "alternates": [
+   "ask_readback"
+  ],
+  "conf": 3,
+  "rationale": "Confirmation question on terms, not a request to repeat all terms; not accept."
+ },
+ {
+  "id": 26,
+  "check": [
+   "check-005",
+   10,
+   2
+  ],
+  "company": "Lumen Home Internet",
+  "offers": [
+   {
+    "ref": "promo-1",
+    "terms": {
+     "monthly_price": "55.00",
+     "term_months": "12"
+    },
+    "open": true
+   }
+  ],
+  "text": "Fine, we'll take the 62 one.",
+  "block": [
+   "Fibrelink's at 58.",
+   "Fine, we'll take the 62 one."
+  ],
+  "opus_act": "other",
+  "alternates": [
+   "accept"
+  ],
+  "conf": 3,
+  "rationale": "Accepts a 62 offer that matches no listed offer; accept requires a listed offer."
+ },
+ {
+  "id": 27,
+  "check": [
+   "batch-004",
+   0,
+   1
+  ],
+  "text": "Thanks. I’m only gathering information, so I can’t make any changes. Are there any other fees, conditions, or plan changes attached to this offer?",
+  "note": "round-2 consensus (GPT label; Claude conceded)"
+ },
+ {
+  "id": 28,
+  "check": [
+   "batch-006",
+   19,
+   1
+  ],
+  "text": "Thanks. Is there any service change, and what would the monthly rate be after the twelve-month term?",
+  "note": "round-2 consensus (GPT label; Claude conceded)"
+ },
+ {
+  "id": 29,
+  "check": [
+   "batch-007",
+   6,
+   1
+  ],
+  "text": "Could you clarify whether the twelve-month offer has any fees or plan changes, and what the monthly price would be after the term? I’m only gathering information, not accepting it.",
+  "note": "round-2 consensus (GPT label; Claude conceded)"
+ },
+ {
+  "id": 30,
+  "check": [
+   "batch-007",
+   15,
+   1
+  ],
+  "text": "I’m only looking to understand the offer, not make any changes. Could you clarify whether the seventy-five dollars is the total monthly price and whether any fees or conditions apply to the twelve-month term?",
+  "note": "round-2 consensus (GPT label; Claude conceded)"
+ },
+ {
+  "id": 31,
+  "check": [
+   "batch-008",
+   0,
+   1
+  ],
+  "text": "Thanks for confirming. I’m only gathering information; could you clarify whether the offer changes Dana’s current plan, what the monthly price would be after twelve months, and when the offer expires?",
+  "note": "round-2 consensus (GPT label; Claude conceded)"
+ },
+ {
+  "id": 32,
+  "check": [
+   "batch-009",
+   12,
+   1
+  ],
+  "text": "Could you clarify whether the offer changes Dana’s current plan, what the monthly price would be after twelve months, and when the offer expires? I’m only gathering information, not accepting anything.",
+  "note": "round-2 consensus (GPT label; Claude conceded)"
+ },
+ {
+  "id": 33,
+  "check": [
+   "batch-010",
+   16,
+   1
+  ],
+  "text": "Thank you. Could you confirm whether there are any fees or plan changes, and what the price becomes after the twelve-month term? I’m only gathering the details, not accepting an offer. Thank you. Could you confirm whether there are any fees or plan changes, and what the price becomes after the twelve-month term? I’m only gathering the details, not accepting an offer.",
+  "note": "round-2 consensus (GPT label; Claude conceded)"
+ },
+ {
+  "id": 34,
+  "check": [
+   "batch-012",
+   14,
+   1
+  ],
+  "text": "Could you confirm whether this offer changes Dana’s current plan, what the monthly price would be after the twelve-month term, and when the offer expires? I’m only gathering information and am not accepting anything.",
+  "note": "round-2 consensus (GPT label; Claude conceded)"
+ },
+ {
+  "id": 35,
+  "check": [
+   "batch-015",
+   4,
+   1
+  ],
+  "text": "I’m gathering the details only, so I can’t make any changes. Are there any other fees, conditions, or plan changes attached to this offer?",
+  "note": "round-2 consensus (GPT label; Claude conceded)"
+ },
+ {
+  "id": 36,
+  "check": [
+   "batch-001",
+   22,
+   1
+  ],
+  "text": "Is that your best and final offer? And just to confirm, does the seventy-eight dollars a month cover the current service, with no fees or service changes and no expiration date?",
+  "note": "round-2 consensus (GPT label; Claude conceded)"
+ },
+ {
+  "id": 37,
+  "check": [
+   "batch-009",
+   8,
+   1
+  ],
+  "text": "Could you confirm whether there are any other fees, conditions, or plan changes, and when this offer expires? Is this your best and final offer?",
+  "note": "round-2 consensus (GPT label; Claude conceded)"
+ },
+ {
+  "id": 38,
+  "check": [
+   "batch-011",
+   4,
+   1
+  ],
+  "text": "Thank you. Are there any service changes or an offer expiry date, and is there any way to lower the monthly price further? I’m only gathering information and won’t accept the offer today.",
+  "note": "round-2 consensus (GPT label; Claude conceded)"
+ },
+ {
+  "id": 39,
+  "check": [
+   "batch-013",
+   16,
+   1
+  ],
+  "text": "Just to confirm, are there any other fees, conditions, or plan changes, and when does this offer expire? And is this your best and final offer?",
+  "note": "round-2 consensus (GPT label; Claude conceded)"
+ },
+ {
+  "id": 40,
+  "check": [
+   "batch-010",
+   5,
+   1
+  ],
+  "text": "Could you read me the full terms of the currently available best offer, including the monthly price, term, fees, any conditions or plan changes, and its expiration date? I’m only gathering information and won’t make any changes.",
+  "note": "round-2 consensus (GPT label; Claude conceded)"
+ }
+]
