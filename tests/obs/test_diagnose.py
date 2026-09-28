@@ -10,7 +10,7 @@ from tests.obs.bundles import Log, manifest, write
 from tests.obs.triage_bundle import bare, bundle
 
 from proxyloop.contract.bundle import EVENTS
-from proxyloop.obs import detectors, diagnose, tiers
+from proxyloop.obs import detectors, diagnose, progress, tiers
 
 
 def test_groups_by_sha_newest_first(
@@ -33,9 +33,13 @@ def test_groups_by_sha_newest_first(
     out = capsys.readouterr().out.splitlines()
     assert out[0] == f"# {detectors.BANNER}"
     heads = [line for line in out if line.startswith("== ")]
-    assert heads == [  # a tier block per group follows the table, same order
-        "== git_sha new  runs=1", "== git_sha old  runs=2",
+    assert heads == [  # a tier block per group follows the table, same order,
+        "== git_sha new  runs=1", "== git_sha old  runs=2",  # then the S1-SYS-86
         f"== tiers git_sha new ({tiers.NOTE})", f"== tiers git_sha old ({tiers.NOTE})",
+        f"== progress git_sha new ({progress.LABEL})",  # diagnostic blocks
+        f"== progress git_sha old ({progress.LABEL})",
+        f"== watch git_sha new ({progress.LABEL})",
+        f"== watch git_sha old ({progress.LABEL})",
     ]  # fmt: skip
     # a bare run: no end and no step are unknown ("?"), counted per group
     assert "end_reason" not in out[2] and "end=None" in out[2]
@@ -89,6 +93,10 @@ def test_groups_by_slow_fp_when_present(
         "== slow_fp fpA  runs=2",
         f"== tiers git_sha s1 ({tiers.NOTE})",
         f"== tiers slow_fp fpA ({tiers.NOTE})",
+        f"== progress git_sha s1 ({progress.LABEL})",
+        f"== progress slow_fp fpA ({progress.LABEL})",
+        f"== watch git_sha s1 ({progress.LABEL})",
+        f"== watch slow_fp fpA ({progress.LABEL})",
     ]
     totals = [x.split() for x in out if x.startswith("  sum")]
     assert totals and all("max" not in t for t in totals)  # bare runs: no maxima
