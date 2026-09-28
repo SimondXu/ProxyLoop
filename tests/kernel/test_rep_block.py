@@ -1,9 +1,12 @@
 """A SimRep turn for a heard block reaches the kernel as the same turns heard
-one at a time would (S1-SYS-63, ADR-0021): one ``chan.strike`` per strike; a
+one at a time would (S1-SYS-63, ADR-0021): one ``chan.strike`` per strike,
+each citing its own decision's event (its voiced line's ``rep.mouth``, or its
+``rep.policy`` when its line was voiced once for a run of equal intents); a
 transfer after a strike closes the call (``chan.closed``), it is no hang-up;
 a strike-out hangs up. The fold's ``cp.strikes`` (Slow's STATUS line) and obs
-``identity.strikes`` equal the one-turn-at-a-time run. Rep-chat sessions: a
-scripted person speaks for the agent, the world's SimRep answers."""
+``identity.strikes`` equal the one-turn-at-a-time run. A turn of one decision
+cites exactly what it did before: its first line's cause. Rep-chat sessions:
+a scripted person speaks for the agent, the world's SimRep answers."""
 
 from __future__ import annotations
 
@@ -13,10 +16,11 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from tests.kernel.test_session import SCRIPTS as SESSION
 from tests.support import sessions
 from tests.support.manual_clock import ScaledClock
 
-from proxyloop.contract.events import Event
+from proxyloop.contract.events import Event, check_causes
 from proxyloop.contract.llm import (
     LLMCallRecord,
     LLMClient,
@@ -27,6 +31,7 @@ from proxyloop.contract.llm import (
     ToolResponse,
 )
 from proxyloop.core.fold import fold
+from proxyloop.env.tasks.schema import Task
 from proxyloop.kernel.channels import Channel, Incoming
 from proxyloop.kernel.session import run_session
 from proxyloop.llm.http import RecordSink
@@ -162,14 +167,6 @@ def test_a_heard_block_ends_and_strikes_as_its_turns_one_at_a_time(
     assert block["fold cp.strikes"] == block["chan.strike"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="escalated (S1-SYS-63): obs identity.strikes `count` adds the "
-    "abandonment unless some chan.strike's cause chain reaches the "
-    "IDENTIFY->ENDED rep.policy; a block's strikes all cite its first line "
-    "(kernel _turn), so a strike-out block whose first line is not the hang-up "
-    "counts k + 1 (4 here, 3 one turn at a time); the strikes list is exact",
-)
 def test_obs_counts_a_strike_out_block_as_its_turns_one_at_a_time(
     tmp_path: Path,
 ) -> None:
@@ -179,3 +176,92 @@ def test_obs_counts_a_strike_out_block_as_its_turns_one_at_a_time(
     _, seq = _call(tmp_path / "seq", lines, block=False)
     _, block = _call(tmp_path / "block", lines, block=True)
     assert _identity(block)["count"] == _identity(seq)["count"] == 3
+
+
+def _first_line_cause(events: tuple[Event, ...], strike: Event) -> tuple[str, ...]:
+    """What a ``chan.strike`` cited before S1-SYS-63 (a): its turn's first
+    line's cause (the kernel emits a turn's strikes, then its lines)."""
+    line = next(
+        e
+        for e in events
+        if e.seq > strike.seq
+        and e.type == "utt.final"
+        and e.payload["speaker"] == "partner"
+    )
+    return line.cause_ids
+
+
+def _one_decision_strikes_cite_their_first_line(events: tuple[Event, ...]) -> None:
+    by_id = {e.event_id: e for e in events}
+    strikes = [e for e in events if e.type == "chan.strike"]
+    assert strikes  # not vacuous
+    for strike in strikes:
+        assert strike.cause_ids == _first_line_cause(events, strike)
+        (cause,) = strike.cause_ids
+        assert by_id[cause].type == "rep.mouth"
+    check_causes(events)
+
+
+@pytest.mark.parametrize(
+    "lines",
+    [[HOLD, REFUSE, SUPERVISOR], [HOLD, REFUSE, REFUSE, REFUSE]],
+    ids=["a strike, then a transfer", "a strike-out"],
+)
+def test_a_turn_of_one_identity_strike_cites_its_first_line_as_before(
+    tmp_path: Path, lines: list[Line]
+) -> None:
+    _, events = _call(tmp_path, lines, block=False)
+    _one_decision_strikes_cite_their_first_line(events)
+
+
+def test_a_timer_strike_cites_its_first_line_as_before(tmp_path: Path) -> None:
+    """The world's own SimRep over a silent agent: its silence strikes."""
+    data = sessions.patient_task().model_dump(mode="json")
+    data["counterparty"]["patience"]["silence_s"] = 10
+    scripts = SESSION | {"fast_cp": ["@wait"], "fast_user": ["Okay."]}
+    sessions.run(tmp_path, scripts, task=Task.model_validate(data))
+    events = sessions.only_bundle(tmp_path).events
+    assert {e.payload["kind"] for e in events if e.type == "chan.strike"} == {"timer"}
+    _one_decision_strikes_cite_their_first_line(events)
+
+
+@pytest.mark.parametrize(
+    ("lines", "voiced"),
+    [
+        pytest.param(
+            [HOLD, REFUSE, REFUSE, ID, SUPERVISOR],
+            ["rep.policy", "rep.mouth"],
+            id="two strikes, the first voiced with the second",
+        ),
+        pytest.param(
+            [HOLD, REFUSE, REFUSE, REFUSE],
+            ["rep.policy", "rep.mouth", "rep.mouth"],
+            id="a strike-out",
+        ),
+    ],
+)
+def test_each_strike_of_a_block_cites_its_own_decision(
+    tmp_path: Path, lines: list[Line], voiced: list[str]
+) -> None:
+    """The i-th ``chan.strike`` cites the i-th struck decision: its voiced
+    line's ``rep.mouth``, or its ``rep.policy`` when its line was voiced once
+    for it and the next equal intent (ADR-0021 D4)."""
+    _, events = _call(tmp_path, lines, block=True)
+    by_id = {e.event_id: e for e in events}
+    refused = {
+        e.event_id
+        for e in events
+        if e.type == "rep.ear" and e.payload["act"] == "refuse_fact"
+    }
+    struck = [
+        e for e in events if e.type == "rep.policy" and set(e.cause_ids) & refused
+    ]
+    mouths = {e.cause_ids[0]: e for e in events if e.type == "rep.mouth"}
+    want = [
+        mouths[p.event_id].event_id if p.event_id in mouths else p.event_id
+        for p in struck
+    ]
+    strikes = [e for e in events if e.type == "chan.strike"]
+    assert [s.cause_ids for s in strikes] == [(w,) for w in want]
+    assert [by_id[w].type for w in want] == voiced  # not vacuous: both kinds
+    check_causes(events)

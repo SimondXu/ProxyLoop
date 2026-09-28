@@ -68,6 +68,10 @@ ACCEPT68: Line = (  # loyal-2's price; loyal-2 is unlocked in the same block
     "We accept, at $68 a month.",
     {"act": "accept", "price_usd": 68},
 )
+ACCEPT75: Line = (  # loyal-1's price, before loyal-1 is made
+    "We accept, at $75 a month.",
+    {"act": "accept", "price_usd": 75},
+)
 DECLINE: Line = ("No, thank you.", {"act": "decline"})
 REFUSE: Line = ("I'd rather not say.", {"act": "refuse_fact"})
 HOLD: Line = ("One moment please.", {"act": "hold_request"})
@@ -120,7 +124,8 @@ class Play:
     """One SimRep over ``lines``: the first ``alone`` lines are heard one turn
     at a time; then one line is in flight (its Ear call held) and the rest are
     heard while it is, so they queue behind it; then each of ``after`` alone.
-    ``alone = len(lines)``: every line alone (the sequential reference)."""
+    ``alone = len(lines)``: every line alone (the sequential reference).
+    ``script``: the Ear's answers, when not one right answer per call."""
 
     def __init__(
         self,
@@ -129,13 +134,15 @@ class Play:
         alone: int,
         gap_ms: int = 1000,
         after: Sequence[Line] = (),
+        script: Sequence[str] | None = None,
     ) -> None:
         self.sink = sink = BusSink(tmp_path)
-        items = [act for _, act in lines]
-        script = [ears(a) for a in items[: alone + 1]]
-        if alone + 1 < len(items):
-            script.append(ears(*items[alone + 1 :]))
-        script += [ears(act) for _, act in after]
+        if script is None:
+            items = [act for _, act in lines]
+            script = [ears(a) for a in items[: alone + 1]]
+            if alone + 1 < len(items):
+                script.append(ears(*items[alone + 1 :]))
+            script += [ears(act) for _, act in after]
         hold = alone if alone < len(lines) else None
         self.ear = Held(sink.llm(*script), hold)
         self.mouth = Echo(fake_ref(), [], on_record=sink.world.record)
@@ -251,7 +258,7 @@ def test_t1_the_queued_turns_are_one_ear_call_and_the_read_back_is_answered(
         "no_better",
         "readback",
     ]
-    assert turns[3] == RepTurn((), 0, "")  # already heard with turn 2
+    assert turns[3] == RepTurn((), (), "")  # already heard with turn 2
     *_, answer = turns[2].lines
     assert answer[0].startswith("Here are the full terms:")
     assert "fee activation: 20.00" in answer[0]  # the hidden term, on read-back
@@ -279,7 +286,7 @@ def test_t2_a_queued_accept_is_committed_before_the_read_back(
     assert commit.cause_ids == (accept_ear.event_id, policy.event_id)
     assert write.cause_ids == (commit.event_id,)
     assert block.rep.policy.state == "CONFIRMED" and block.turns[3].end == "closed"
-    assert block.turns[4] == RepTurn((), 0, "")  # the call was already over
+    assert block.turns[4] == RepTurn((), (), "")  # the call was already over
     assert block.snapshot() == seq.snapshot()
 
 
@@ -375,8 +382,10 @@ def test_t5_k_strikes_in_one_block_are_k_strikes_for_the_kernel(
     seq, block = _both(tmp_path, [OTHER, *[REFUSE] * k, ID], alone=0)
     (turn,) = [t for t in block.turns if t.strikes]
     assert turn.strikes == k and turn.end == ("hangup" if k == 3 else "")
+    assert len(turn.strike_causes) == k  # one cause per strike, in order
     inc = incoming(turn)
     assert inc is not None and inc.strikes == k and inc.end == turn.end
+    assert inc.strike_causes == turn.strike_causes
     assert kernel_view(block.turns) == kernel_view(seq.turns) == (k, turn.end)
 
 
@@ -405,9 +414,10 @@ def test_t5_a_timer_strike_is_one_strike_and_a_timer_strike_out_hangs_up(
 def test_t5_an_accept_of_an_offer_unlocked_in_the_same_block_is_read_back(
     tmp_path: Path,
 ) -> None:
-    """ADR-0021 (ruling 1): the accept was said before the caller could hear
-    the offer its block unlocked, so it does not commit; the rep reads the
-    terms back and asks to confirm, and a following confirm commits."""
+    """ADR-0021 (ruling 1, D2 with offers already made): the accept was said
+    before the caller could hear the offer its block unlocked, so it does not
+    commit; the rep reads the terms back and asks to confirm, and a following
+    confirm commits."""
     lines = [ID, DISCOUNT, OTHER, CANCEL, ACCEPT68]
     play = Play(tmp_path, lines, alone=2, after=[YES])
     turns = play.run()
@@ -428,6 +438,55 @@ def test_t5_an_accept_of_an_offer_unlocked_in_the_same_block_is_read_back(
     assert commit.cause_ids[0] == yes_ear.event_id
     assert write.cause_ids == (commit.event_id,)
     assert turns[5].end == "closed"
+
+
+def test_d2_an_accept_in_the_block_that_makes_the_first_offer_is_clarified(
+    tmp_path: Path,
+) -> None:
+    """ADR-0021 (D2, no offer made before the block): ``accept`` is not in
+    the Ear's enum, so an accept is invalid (a counted regeneration); the
+    utterance is heard as something else, and the rep asks what they mean."""
+    lines = [ID, OTHER, DISCOUNT, ACCEPT75]
+    script = [ears(ID[1]), ears(OTHER[1]), ears(DISCOUNT[1], ACCEPT75[1])]
+    script.append(ears(DISCOUNT[1], OTHER[1]))
+    play = Play(tmp_path, lines, alone=1, script=script)
+    turns = play.run()
+    assert len(play.ear.requests) == 4  # ID, OTHER, the block twice
+    assert "accept" not in _act_enum(play.ear.requests[2])
+    assert play.ear.heard(2) == f"\n1. {DISCOUNT[0]}\n2. {ACCEPT75[0]}"
+    *_, lever, heard = play.of("rep.ear")
+    assert (heard.payload["act"], heard.payload["attempts"]) == ("other", 2)
+    assert lever.payload["attempts"] == 2
+    assert _intents(play, "rep.policy")[-2:] == ["offer", "clarify"]
+    assert _intents(play, "rep.mouth")[-2:] == ["offer", "clarify"]
+    assert not play.of("rep.commit_heard") and play.rep.policy.state == "OFFER"
+    assert turns[2].end == "" and len(turns[2].lines) == 2
+
+
+def test_d1_an_accept_of_a_lapsed_offer_is_heard_and_told_it_is_unavailable(
+    tmp_path: Path,
+) -> None:
+    """ADR-0021 D2a: an accept needs an offer the rep made (one the caller
+    could have heard), open or not. loyal-1 (ttl 180 s) lapsed before the
+    accept: the Ear may still say accept, and the rep says the offer is no
+    longer available."""
+    play = Play(tmp_path, [ID, DISCOUNT, OTHER, ACCEPT1], alone=4, gap_ms=200_000)
+    turns = play.run()
+    assert play.rep.policy.open_offers() == frozenset()  # none open
+    last = play.ear.requests[-1]
+    assert _act_enum(last) == list(get_args(ear.Act))  # accept: an offer was made
+    assert last.messages[-1].content.startswith(
+        "Offers you made: loyal-1 (no longer open): monthly_price 75.00"
+    )
+    *_, accepted = play.of("rep.ear")
+    assert (accepted.payload["act"], accepted.payload["attempts"]) == ("accept", 1)
+    unavailable = {"kind": "offer_unavailable", "offer_ref": "loyal-1"}
+    intent = cast(dict[str, Any], play.of("rep.policy")[-1].payload["intent"])
+    assert {k: intent[k] for k in unavailable} == unavailable
+    mouth = play.of("rep.mouth")[-1]
+    assert mouth.cause_ids[0] == play.of("rep.policy")[-1].event_id
+    assert turns[3].lines == ((mouth.payload["text"], mouth.event_id),)  # told
+    assert not play.of("rep.commit_heard") and not play.of("ledger.write")
 
 
 def test_t6_equal_decisions_in_a_row_are_voiced_once(tmp_path: Path) -> None:
@@ -476,7 +535,7 @@ def test_t8_a_compound_ask_labelled_read_back_gets_the_terms(tmp_path: Path) -> 
     system = play.ear.requests[-1].messages[0].content
     assert (
         "If one utterance does several things, its act is the first of them in "
-        "this order: accept (only of an offer you made that is still open), "
+        "this order: accept (only of an offer you made), "
         "decline, provide_fact, ask_readback, then ask_discount, "
         "cite_competitor, cancel_intent, tenure, then the rest."
     ) in system
@@ -533,7 +592,7 @@ def _act_enum(request: ToolRequest) -> list[str]:
     return list(params["properties"]["acts"]["items"]["properties"]["act"]["enum"])
 
 
-def test_f7_the_ear_may_say_accept_only_while_an_offer_is_open(
+def test_f7_the_ear_may_say_accept_only_once_an_offer_is_made(
     tmp_path: Path,
 ) -> None:
     play = Play(tmp_path, [OTHER, ID, DISCOUNT, READBACK], alone=4)
@@ -544,7 +603,7 @@ def test_f7_the_ear_may_say_accept_only_while_an_offer_is_open(
         without,  # GREET
         without,  # IDENTIFY
         without,  # DISCOVER: no offer made yet
-        acts,  # loyal-1 is open
+        acts,  # loyal-1 is made
     ]
     prompts = [r.messages[-1].content for r in play.ear.requests]
     assert prompts[2].startswith("Offers you made: none\n")
@@ -552,14 +611,15 @@ def test_f7_the_ear_may_say_accept_only_while_an_offer_is_open(
         "Offers you made: loyal-1 (open): monthly_price 75.00, term_months 12\n"
     )
     system = play.ear.requests[0].messages[0].content
-    assert "accept (an offer you made that is still open:" in system
+    assert "accept (an offer you made: offer_ref if clear" in system
+    assert "still open" not in system
 
 
-def test_f7_an_accept_with_no_open_offer_is_regenerated_and_the_facts_verified(
+def test_f7_an_accept_with_no_offer_made_is_regenerated_and_the_facts_verified(
     tmp_path: Path,
 ) -> None:
     """ "Sure, yes, it's Dana Reyes, 4821" while identifying is a disclosure:
-    no offer is open, so an accept is invalid (a counted regeneration) and
+    no offer was made, so an accept is invalid (a counted regeneration) and
     the facts are verified, with no identity strike."""
     sink = BusSink(tmp_path)
     said = "Sure, yes, it's Dana Reyes, 4821."

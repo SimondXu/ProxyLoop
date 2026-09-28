@@ -121,7 +121,13 @@ class Call(Sim):
 
     def strike(self) -> None:
         self.rep.incoming.put_nowait(
-            Incoming((), strike=True, strike_kind="identity", strikes=1)
+            Incoming(
+                (),
+                strike=True,
+                strike_kind="identity",
+                strikes=1,
+                strike_causes=(None,),
+            )
         )
 
     def hang_up(self, text: str) -> None:  # the rep closes the call

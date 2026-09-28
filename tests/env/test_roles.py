@@ -248,7 +248,7 @@ def test_a_silence_strike_is_an_uncaused_policy_event_and_a_check_in(
     sink = BusSink(tmp_path)
     mouth = sink.llm("Hello, are you still there?")
     rep = SimRep(TASK, sink.llm(), mouth, sink.world)
-    assert asyncio.run(rep.tick(1_000)) == RepTurn((), 0, "")
+    assert asyncio.run(rep.tick(1_000)) == RepTurn((), (), "")
     turn = asyncio.run(rep.tick(int(CP.patience.silence_s * 1000)))
     assert turn.strikes == 1 and turn.lines[0][0] == "Hello, are you still there?"
     (policy,) = sink.of("rep.policy")
@@ -381,11 +381,11 @@ def test_simrep_ticks_nothing_while_a_turn_is_in_flight(tmp_path: Path) -> None:
         return await turn, busy
 
     turn, busy = asyncio.run(race())
-    assert busy == RepTurn((), 0, "") and len(turn.lines) == 1
+    assert busy == RepTurn((), (), "") and len(turn.lines) == 1
     assert asyncio.run(rep.tick(late)).lines == ()  # the rep's line holds the floor
     rep.floor(True, late)
     silence = int(CP.patience.silence_s * 1000)
-    assert asyncio.run(rep.tick(late + silence - 1)) == RepTurn((), 0, "")
+    assert asyncio.run(rep.tick(late + silence - 1)) == RepTurn((), (), "")
     assert rep.policy.strikes == 0
 
 
@@ -495,7 +495,7 @@ def test_identity_refused_three_times_abandons_the_call(tmp_path: Path) -> None:
 def test_a_struck_out_rep_turn_is_a_hang_up_for_the_kernel() -> None:
     class Rep:  # the kernel's channel over a rep whose last strike ended the call
         async def on_agent_utterance(self, *args: object) -> RepTurn:
-            return RepTurn((("Goodbye.", "ev"),), strikes=1, end="hangup")
+            return RepTurn((("Goodbye.", "ev"),), strike_causes=("ev",), end="hangup")
 
     channel = SimRepChannel(cast(SimRep, Rep()))
     asyncio.run(channel.send("No.", "u1", "c", 0))
@@ -623,10 +623,10 @@ def test_a_fact_is_said_only_as_whole_digit_groups_or_whole_tokens(
         ),
     )
     if said:
-        assert check_act((call,), [heard], (), (NAME, LAST4), ())[0].facts
+        assert check_act((call,), [heard], (), (NAME, LAST4))[0].facts
     else:
         with pytest.raises(world.Invalid, match="was not said"):
-            check_act((call,), [heard], (), (NAME, LAST4), ())
+            check_act((call,), [heard], (), (NAME, LAST4))
 
 
 def test_identity_strikes_apply_in_rep_chat(tmp_path: Path) -> None:

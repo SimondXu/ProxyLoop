@@ -20,10 +20,10 @@ from proxyloop.slow.prompt import slow_fp
 
 class _Rep:  # strikes on every heard line and every tick
     async def on_agent_utterance(self, *args: object) -> RepTurn:
-        return RepTurn((), strikes=1, end="")
+        return RepTurn((), strike_causes=("ev",), end="")
 
     async def tick(self, t_ms: int) -> RepTurn:
-        return RepTurn((), strikes=1, end="")
+        return RepTurn((), strike_causes=("ev",), end="")
 
 
 def test_a_heard_line_strikes_for_identity_and_a_tick_for_the_timer() -> None:
@@ -49,6 +49,24 @@ def test_a_strike_has_a_kind_and_only_a_strike_has_one(
 ) -> None:
     with pytest.raises(ValueError, match="only a strike"):
         Incoming((), strike=strike, strike_kind=kind, strikes=strikes)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("strikes", "causes"),
+    [(2, ("a",)), (1, ("a", "b")), (0, ("a",))],
+    ids=["fewer_causes", "more_causes", "a_cause_but_no_strike"],
+)
+def test_each_strike_has_one_cause(strikes: int, causes: tuple[str, ...]) -> None:
+    """S1-SYS-63: a chan.strike per strike, each citing its own cause."""
+    kind = "identity" if strikes else None
+    with pytest.raises(ValueError, match="only a strike"):
+        Incoming(
+            (),
+            strike=strikes > 0,
+            strike_kind=kind,
+            strikes=strikes,
+            strike_causes=causes,
+        )
 
 
 def test_session_started_names_the_slow_harness(tmp_path: Path) -> None:
