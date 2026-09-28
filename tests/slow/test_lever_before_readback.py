@@ -11,6 +11,7 @@ confirmed read-back (Guard). The test plays the kernel."""
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from tests.slow import test_authority as auth
@@ -33,7 +34,7 @@ ASK_READBACK = 'guide_fast(ask_readback, ["offer:save-2"])'
 SIGNAL = f"{prompt.OUTSIDE_MANDATE} → "
 
 
-def _recorded(tmp_path: Path, cap: int = 6500, *calls: dict[str, object]) -> Host:
+def _recorded(tmp_path: Path, cap: int = 6500, *calls: dict[str, Any]) -> Host:
     """save-2 ($69) recorded, not read back, against a granted ``cap``."""
     h = Host(tmp_path)
     _mandate(h, cap)
@@ -89,6 +90,7 @@ def test_t2_no_lever_left_asks_the_read_back_then_request_approval(
     assert asked.endswith("read-back asked for save-2 r1"), asked
     h.voice()
     h.rep("cp-9", auth.TERMS)  # read back whole: confirmed
+    h.tools.readback()
     line = _offers(h)
     assert HINT in line and prompt.OUTSIDE_MANDATE not in line, line
     (card,) = h.act({"tool": "request_approval", "offer_ref": "save-2"})
