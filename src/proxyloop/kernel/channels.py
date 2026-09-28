@@ -35,10 +35,13 @@ class Incoming:  # One partner turn: lines with the world event behind each, if 
     delivered: asyncio.Event | None = None  # set once its lines are emitted
     strike_kind: StrikeKind | None = None  # chan.strike's ``kind`` (S1-SYS-43)
     strikes: int = 0  # one chan.strike each (a SimRep block's, S1-SYS-63)
+    strike_causes: tuple[str | None, ...] = ()  # the world event behind each, if any
 
     def __post_init__(self) -> None:
         if not self.strike == (self.strikes > 0) == (self.strike_kind is not None):
             raise ValueError("a strike, and only a strike, has a kind and a count")
+        if len(self.strike_causes) != self.strikes:
+            raise ValueError("only a strike has a cause, and each strike has one")
 
 
 class Channel:  # The base: a partner that never speaks first and has no clock
@@ -105,7 +108,7 @@ class SimUserChannel(Channel):  # replies delay_s after each message
 class SimRepChannel(Channel):  # hears text_heard; ticks on a free floor
     """A strike's kind by the rep call that made it: a heard utterance strikes
     only for identity, a tick only for the clock (``env.counterparty.policy``).
-    A rep turn's end kind and strike count pass through as they are."""
+    A rep turn's end kind and strikes (each with its cause) pass through."""
 
     def __init__(self, rep: SimRep) -> None:
         super().__init__()
@@ -135,7 +138,12 @@ class SimRepChannel(Channel):  # hears text_heard; ticks on a free floor
                     lines = tuple((text, ev) for text, ev in done.lines)
                     n, struck = done.strikes, kind if done.strikes else None
                     inc = Incoming(
-                        lines, strike=n > 0, end=done.end, strike_kind=struck, strikes=n
+                        lines,
+                        strike=n > 0,
+                        end=done.end,
+                        strike_kind=struck,
+                        strikes=n,
+                        strike_causes=done.strike_causes,
                     )
                     self.incoming.put_nowait(inc)  # queued before it is quiet
             finally:

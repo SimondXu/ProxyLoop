@@ -7,7 +7,9 @@ decision ``rep.policy`` [its utterance's ``rep.ear``], on a commit
 ``rep.commit_heard`` and ``ledger.write``, then ``llm.call``s and
 ``rep.mouth`` [``rep.policy``]. The policy steps every utterance's act, in
 order, exactly as it would one turn at a time. The kernel emits the returned
-lines as ``utt.final``, one ``chan.strike`` per strike, and the end.
+lines as ``utt.final``, one ``chan.strike`` per strike (each citing its own
+decision's ``rep.mouth``, or its ``rep.policy`` when a run of equal intents
+was voiced once), and the end.
 """
 
 from __future__ import annotations
@@ -30,10 +32,16 @@ Step = tuple[Decision, str, tuple[str, str] | None]
 @dataclass(frozen=True, slots=True)
 class RepTurn:
     lines: tuple[tuple[str, str], ...]  # (text, its rep.mouth event_id)
-    strikes: int  # the block's identity strikes, or the tick's timer strike
+    # per strike (the block's identity strikes, or the tick's timer strike),
+    # in order, its decision's event: its line's rep.mouth, else its rep.policy
+    strike_causes: tuple[str, ...]
     # how this turn ended the call: "hangup" a strike-out, "closed" any other
     # end (confirmed, transferred); "" the call goes on, or was already over
     end: Literal["", "hangup", "closed"]
+
+    @property
+    def strikes(self) -> int:
+        return len(self.strike_causes)
 
 
 class SimRep:
@@ -61,7 +69,7 @@ class SimRep:
         async with self._turn:
             block, self._heard = self._heard, []
             if not block or self.policy.done:
-                return RepTurn((), 0, "")
+                return RepTurn((), (), "")
             policy = self.policy
             acts = await self.ear.classify(block, policy.made(), policy.open_offers())
             steps: list[Step] = [
@@ -73,7 +81,7 @@ class SimRep:
 
     async def tick(self, t_ms: int) -> RepTurn:
         if self._turn.locked():  # a rep turn is in flight: the floor is not free
-            return RepTurn((), 0, "")
+            return RepTurn((), (), "")
         async with self._turn:
             return await self._run([(d, "", None) for d in self.policy.tick(t_ms)])
 
@@ -87,6 +95,7 @@ class SimRep:
         without a commit once, at its last (ADR-0021 D4)."""
 
         lines: list[tuple[str, str]] = []
+        struck: list[str] = []
         for i, (d, heard, ear) in enumerate(steps):
             payload: dict[str, object] = {"from": d.from_, "to": d.to, "rung": d.rung}
             payload["intent"] = d.intent.model_dump(mode="json")
@@ -108,10 +117,14 @@ class SimRep:
                     }
                     self._world.emit("ledger.write", "world.ledger", write, [heard_ev])
             again = i + 1 < len(steps) and steps[i + 1][0].intent == d.intent
-            if d.intent.kind != "offer_expired" and (d.commit is not None or not again):
+            said = d.intent.kind != "offer_expired" and (
+                d.commit is not None or not again
+            )
+            if said:
                 lines.append(await self.mouth.say(d.intent, heard, ev))
-        strikes = sum(d.strike for d, _, _ in steps)
+            if d.strike:  # its line, or its decision when the next one voices both
+                struck.append(lines[-1][1] if said else ev)
         if not steps or not self.policy.done:
-            return RepTurn(tuple(lines), strikes, "")
+            return RepTurn(tuple(lines), tuple(struck), "")
         hung_up = steps[-1][0].intent.kind == "hang_up"  # the decision that ended it
-        return RepTurn(tuple(lines), strikes, "hangup" if hung_up else "closed")
+        return RepTurn(tuple(lines), tuple(struck), "hangup" if hung_up else "closed")

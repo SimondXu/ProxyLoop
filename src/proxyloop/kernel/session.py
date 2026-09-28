@@ -488,12 +488,12 @@ class Kernel:
                     raise end
 
     def _turn(self, key: str, inc: Incoming, opened: str) -> tuple[str, bool]:
-        last, first = opened, [c for _, c in inc.lines if c][:1]
+        last = opened
         closing = inc.end == "closed" and key == "cp" and not self.closed
         self.closed |= closing  # before its lines: they trigger no FastC
-        for _ in range(inc.strikes):  # one chan.strike per strike (S1-SYS-63)
+        for c in inc.strike_causes:  # one chan.strike per strike, its own cause
             struck = {"lane": "cp", "kind": inc.strike_kind}
-            last = self.emit("chan.strike", "kernel", struck, first).event_id
+            last = self.emit("chan.strike", "kernel", struck, [c] if c else []).event_id
         for text, cause in inc.lines:
             last = self._line(key, text, [cause] if cause else [])
         return last, closing
