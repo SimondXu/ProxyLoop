@@ -6,43 +6,42 @@ world code, one JSONL of rows per arm. Root-run (L); ``--plan``: no call, no key
         [--roles ear,mouth,simuser] [--limit N] [--repeat-subset N --seed S] \
         [--concurrency K] [--resume] [--plan]
 
-An arm is ``<endpoint>:<model_id>[@effort]`` (``cli.world_spec``); its client is
-``make_client``'s, live, keys and URLs only from ``PL_<ENDPOINT>_*``, never written.
-The production builders make the requests; ``world.bounded`` itself runs the attempts
-with the production checks. No other retry: a dead endpoint (``LLMUnavailable``)
-writes its row and aborts the run (AGENTS rule 6).
+An arm is ``<endpoint>:<model_id>[@effort]`` (``cli.world_spec``), its client
+``make_client``'s (live; keys and URLs only from ``PL_<ENDPOINT>_*``, never written).
+Every arm calls, the recorded incumbent too. The production builders make the
+requests; ``world.bounded`` runs the attempts with the production checks; no other
+retry: a dead endpoint (``LLMUnavailable``) writes its row and aborts (AGENTS rule 6).
 
 - **ear**: every item (``Ear.request``, ``check_act``; ids from the item id), called.
 - **mouth**: every item (``Mouth.request``, ``fidelity_ok``; exhausted, the template,
   ``fallback: true``, as live), called.
-- **simuser**: a recorded item replays its request by reference (``prompts.jsonl``,
-  sha-checked; no chat state to rebuild it from: ``request_source: recorded``), one
-  call, no check (no facts, opening or stop in the item). A constructed item (its
-  chat only prose) makes no call: its row is ``not_replayable``, left out of the
-  scoring (the root's decision (c)).
-
-Every arm calls, the recorded incumbent too: no recorded output stands for a result.
+- **simuser**: a recorded item's request (``prompts.jsonl``, by sha) rebuilt with
+  ``SimUser.request`` (``simuser_replay``), checked by ``check_reply`` (``check:
+  full``); if it does not rebuild, the recorded content, checked by ``fact_free``
+  (``check: partial`` and ``check_reason``). A constructed item (its chat only prose)
+  makes no call: its row is ``not_replayable``, left out of the scoring (decision (c)).
 
 Row (one JSON line, ``pl.world-select-row/1``; PR2b's scorer takes the last final row
 per (item_id, role, repeat)): ``arm``, ``model_ref``, ``items_root_hash``, ``role``,
 ``item_id``, ``constructed``, ``repeat`` (2: ``--repeat-subset``), ``status`` (final:
 ``ok``, ``exhausted``, ``timeout``, ``not_replayable``; ``unavailable`` is re-run on
 resume), ``recorded_ref`` (per occurrence, ``{run_id, response_shas}`` of the recorded
-incumbent's calls: informational, never a result), ``request_sha`` (attempt 0's
-prompt sha), ``elapsed_ms`` (wall),
-``attempts`` (per model attempt ``{n, raw, valid, reason, records}``: ``raw`` the tool
-calls ``[{name, arguments}]`` or the streamed text; ``valid``/``reason`` the check's
-verdict; ``records`` per HTTP attempt ``{http_attempt, echo, usage, latency_ms,
-ttft_ms, finish_reason, error, prompt_sha, response_sha, sampling_sent}``), ``result``
-(null unless ok; ear ``{acts}``, mouth ``{text, fidelity_ok, fallback, attempts}``,
-simuser ``{calls}``). Mouth rows add ``prompt_sha_match`` (null when constructed);
-simuser rows ``request_source``; an aborted row ``error``.
+incumbent's calls: informational, never a result), ``request_sha`` (attempt 0's prompt
+sha), ``elapsed_ms`` (wall), ``attempts`` (per model attempt ``{n, raw, valid, reason,
+records}``: ``raw`` the tool calls ``[{name, arguments}]`` or the streamed text;
+``valid``/``reason`` the check's verdict; ``records`` per HTTP attempt ``{http_attempt,
+echo, usage, latency_ms, ttft_ms, finish_reason, error, prompt_sha, response_sha,
+sampling_sent}``), ``result`` (null unless ok; ear ``{acts}``, mouth ``{text,
+fidelity_ok, fallback, attempts}``, simuser ``{reply}``, the ``SimOut``). Mouth rows add
+``prompt_sha_match`` (null when constructed); simuser rows ``request_source``,
+``check``, ``check_reason``; an aborted row ``error``.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import itertools
 import json
 import random
 import re
@@ -51,10 +50,12 @@ import time
 from collections import Counter, defaultdict
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any, cast
 
 import httpx
+from pydantic import ValidationError
 
 from proxyloop.cli import world_spec
 from proxyloop.contract import llm
@@ -68,8 +69,8 @@ from proxyloop.env.counterparty.ear import Ear, EarAct, Heard, check_act
 from proxyloop.env.counterparty.mouth import Mouth, fidelity_ok, template
 from proxyloop.env.counterparty.policy import IntentKind, PublicIntent
 from proxyloop.env.tasks.loader import load_task
-from proxyloop.env.tasks.schema import CounterpartySpec
-from proxyloop.env.user.simuser import TEMPERATURE
+from proxyloop.env.tasks.schema import CounterpartySpec, Stop
+from proxyloop.env.user.simuser import SimOut, SimUser, check_reply
 from proxyloop.llm.factory import make_client
 from proxyloop.llm.http import HTTPAdapter
 from scripts.mod import world_select as ws
@@ -81,6 +82,7 @@ FINAL = frozenset({"ok", "exhausted", "timeout", "not_replayable"})
 ROLES = ws.ROLES
 TRIES = world.MAX_REGENERATIONS + 1
 UNUSED = cast(Any, None)  # the builders are pure: their client and writer stay unused
+Check = Callable[[tuple[ToolCall, ...]], SimOut]  # a SimUser reply's check
 Sink = defaultdict[str, list[LLMCallRecord]]  # the arm client's records, by call id
 PLAIN = ("finish_reason", "error", "prompt_sha", "response_sha", "sampling_sent")
 EST_RULE = "per role, the mean first recorded usage per item called, times its items"
@@ -95,11 +97,7 @@ class Arm:
 
 def parse_arm(spec: str) -> Arm:
     endpoint, model_id, effort = world_spec(spec)
-    ref = {
-        "kind": llm.AdapterKind.REAL_HTTP,
-        "endpoint": endpoint,
-        "model_id": model_id,
-    }
+    ref = {"kind": "real_http", "endpoint": endpoint, "model_id": model_id}
     label = f"{endpoint}:{model_id}" + (f"@{effort}" if effort else "")
     file = re.sub(r"[^A-Za-z0-9._@-]", "_", label) + ".jsonl"
     return Arm(label, ModelRef.model_validate(ref | {"reasoning_effort": effort}), file)
@@ -196,11 +194,7 @@ def mouth_intent(item: Json, company: str) -> PublicIntent:
     """As recorded; a constructed one's ``say`` (stored key-sorted) in the order its
     frozen ``template`` shows each term as rendered today (the line may be older)."""
     if not item.get("constructed"):
-        i = item["intent"]
-        say, ask = tuple((k, v) for k, v in i["say"]), tuple(i["ask"])
-        return PublicIntent(
-            kind=i["kind"], offer_ref=i.get("offer_ref"), say=say, ask=ask
-        )
+        return PublicIntent.model_validate(item["intent"])
     kind, ref = cast(IntentKind, item["intent"]), item["offer_ref"]
     bare = len(template(PublicIntent(kind=kind), company)) + 1  # the line and a space
     at = {kv: item["template"].find(template(PublicIntent(kind=kind, say=(kv,)),
@@ -222,27 +216,67 @@ def mouth_requests(
     return intent, template(intent, spec.company), requests
 
 
-def simuser_request(rec: Recorded, item: Json, tag: str) -> ToolRequest:
-    """The recorded request by its prompt sha, with SimUser's pinned max_tokens and
-    temperature; its content must hash to the recorded sha."""
+def simuser_replay(
+    rec: Recorded, item: Json, tag: str
+) -> tuple[list[ToolRequest], str, Check, str | None]:
+    """The requests per attempt, their source, the check and why it is partial. The
+    recorded request (by its prompt sha) is rebuilt with ``SimUser.request`` from its
+    task: the facts as the user holds them (the profile's, or with the mind change),
+    the stop (if the request says the task's), the chat (the recorded lines as one
+    block; none: the opening). When that reproduces the sha, the check is
+    ``check_reply`` with those inputs; else the recorded content and ``fact_free``."""
     sha = item["prompt_sha"]
-    held = [b.prompts[sha] for o in item["occurrences"]
+    held = [(o, b.prompts[sha]) for o in item["occurrences"]
             if (b := rec.bundles.get(o["run_id"])) and sha in b.prompts]  # fmt: skip
     if not held:
         raise SystemExit(f"simuser {item['item_id']}: no bundle holds prompt {sha}")
-    body = json.loads(held[0].content)
-    request = ToolRequest(
-        call_id=f"simuser:{tag}:0",
-        role="simuser",
-        messages=tuple(llm.ChatMessage.model_validate(m) for m in body["messages"]),
-        tools=tuple(llm.ToolSpec.model_validate(t) for t in body["tools"]),
-        tool_choice=body["tool_choice"],
-        max_tokens=world.MAX_TOKENS,
-        temperature=TEMPERATURE,
-    )
-    if sha256_text(llm.request_content(request)) != sha:
+    task = ws.task_of(rec.task_ref[held[0][0]["run_id"]])
+    sim, body = SimUser(task, UNUSED, UNUSED, 0), json.loads(held[0][1].content)
+    user, stop = body["messages"][-1]["content"], task.stop
+    profile = dict(task.profile.facts)
+    changed = [profile | stop.change] if stop and stop.change else []
+    stops: list[Stop | None] = [stop, None] if stop else [None]
+    for facts, now in itertools.product([profile, *changed], stops):
+        marked = sim.request(["\0"], facts, now, tag, 0).messages[-1].content
+        head, tail = marked.split("\0")
+        opening = sim.request([], facts, now, tag, 0).messages[-1].content == user
+        chat = [] if opening else [user[len(head) : len(user) - len(tail)]]
+        requests = [sim.request(chat, facts, now, tag, n) for n in range(TRIES)]
+        if user.startswith(head) and user.endswith(tail) and sha_of(requests[0]) == sha:
+            check = partial(check_reply, facts=facts, opening=opening, stop=now)
+            return requests, "rebuilt", check, None
+    base = sim.request([], profile, None, tag, 0)  # the builder's sampling
+    tools = tuple(llm.ToolSpec.model_validate(t) for t in body["tools"])
+    messages = tuple(llm.ChatMessage.model_validate(m) for m in body["messages"])
+    fields = {"messages": messages, "tools": tools, "tool_choice": body["tool_choice"]}
+    ids = [f"simuser:{tag}:{n}" for n in range(TRIES)]
+    requests = [base.model_copy(update=fields | {"call_id": i}) for i in ids]
+    if sha_of(requests[0]) != sha:
         raise SystemExit(f"simuser {item['item_id']}: the replayed request differs")
-    return request
+    why = "the request does not rebuild from its task's facts and stop"
+    return requests, "recorded", fact_free(user == base.messages[-1].content), why
+
+
+def fact_free(opening: bool) -> Check:
+    """``check_reply``'s checks that need no facts or stop: one ``reply`` call, the
+    ``SimOut`` schema, no silent opening."""
+
+    def check(calls: tuple[ToolCall, ...]) -> SimOut:
+        if len(calls) != 1 or calls[0].name != "reply":
+            raise world.Invalid("expected exactly one reply call")
+        try:
+            out = SimOut.model_validate_json(calls[0].arguments)
+        except ValidationError as err:
+            raise world.Invalid(f"schema: {err.errors()[0]['msg']}") from err
+        if out.silent and opening:
+            raise world.Invalid("the opening request cannot be silent")
+        return out
+
+    return check
+
+
+def sha_of(request: llm.TextRequest | ToolRequest) -> str:
+    return sha256_text(llm.request_content(request))
 
 
 def work(doc: Json, args: argparse.Namespace) -> list[Work]:
@@ -373,14 +407,11 @@ class Replay:
     async def simuser(self, w: Work, row: Json, arm: Arm) -> None:
         if not w.replayable:
             return row.update(status="not_replayable")
-        request = simuser_request(self.rec, w.item, w.tag)
-        row["request_source"] = "recorded"  # the items hold no chat state to rebuild
-
-        def check(calls: tuple[ToolCall, ...]) -> tuple[ToolCall, ...]:
-            return calls  # none: the item holds no facts, opening or stop
-
-        if done := await self.bounded(row, [request], self.tools, check):
-            row |= {"status": "ok", "result": {"calls": tool_calls(done[0])}}
+        requests, source, check, why = simuser_replay(self.rec, w.item, w.tag)
+        row |= {"request_source": source, "check": "partial" if why else "full"}
+        row |= {"check_reason": why} if why else {}
+        if done := await self.bounded(row, requests, self.tools, check):
+            row |= {"status": "ok", "result": {"reply": done[0].model_dump()}}
 
 
 def done_keys(path: Path) -> set[tuple[str, str, int]]:
@@ -476,9 +507,7 @@ def plan(rec: Recorded, todo: Sequence[Work], arms: Sequence[Arm]) -> Json:
     calls = Counter(w.role for w in called)
     per_arm: Json = {
         "calls": dict(calls),
-        "max_calls": {
-            r: n * (1 if r == "simuser" else TRIES) for r, n in calls.items()
-        },
+        "max_calls": {r: n * TRIES for r, n in calls.items()},
     }
     per_arm["tokens"] = {
         r: estimate([usage[w.key] for w in called if w.role == r]) for r in calls
@@ -533,11 +562,14 @@ def run(
         raise SystemExit(f"--runs {args.runs}: the Mouth and SimUser need its bundles")
     rec = Recorded(json.loads(args.items.read_text("utf-8")), runs)
     todo = work(rec.doc, args)
+    sources = Counter[str]()  # SimUser requests rebuilt or recorded
     for w in todo if runs is not None else ():  # a data defect aborts before a call
-        if w.role != "ear" and w.replayable:
-            (mouth_requests if w.role == "mouth" else simuser_request)(rec, w.item, "")
+        if w.role == "mouth":
+            mouth_requests(rec, w.item, "")
+        elif w.role == "simuser" and w.replayable:
+            sources[simuser_replay(rec, w.item, "")[1]] += 1
     if args.plan:
-        return plan(rec, todo, args.arm)
+        return plan(rec, todo, args.arm) | {"simuser_request_source": dict(sources)}
     if args.out_dir is None:
         raise SystemExit("--out-dir is required without --plan")
     args.out_dir.mkdir(parents=True, exist_ok=True)

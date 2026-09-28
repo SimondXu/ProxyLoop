@@ -10,7 +10,7 @@ import argparse
 import asyncio
 import hashlib
 import json
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, cast
 
@@ -63,6 +63,12 @@ BLOCK = ["I am calling for Dana.", "Could you read back loyal-1 in full?"]
 ACTS = json.dumps({"acts": [{"act": "other"}, {"act": "ask_readback"}]})
 SINGLE = json.dumps({"acts": [{"act": "ask_discount"}]})
 REPLY = json.dumps({"text": "I pay 70 now.", "revealed": {}})
+ASKED = "Assistant: What do you pay now?"
+SIMS: list[tuple[str, list[str], dict[str, str]]] = [
+    ("s0", [], {}),  # the opening (no chat yet), the profile's facts
+    ("s1", [ASKED], {}),
+    ("s2", ["Assistant: hi"], {"account.pin": "0000"}),
+]
 
 
 @pytest.fixture(scope="module")
@@ -123,23 +129,29 @@ def build(tmp: Path, like: Path) -> Path:
         [policy, call(log, "mouth", policy, mouth_sha)],
         8,
     )
-    sim = SimUser(task, wsr.UNUSED, wsr.UNUSED, 0).request(
-        ["Assistant: What do you pay now?"], dict(task.profile.facts), None, "c", 0
-    )
-    content = request_content(sim)
     response = tool_response_content(
         "", (ToolCall(call_id="t", name="reply", arguments=REPLY),)
     )
-    sim_call = call(log, "simuser", u1, sha256_text(content), response)
-    out: Json = {"text": "I pay 70 now.", "revealed": {}, "delay_s": 1.0}
-    log.emit("user.sim", "world.simuser", out, [u1, sim_call], 9)
+    sims: list[Json] = []
+    for item_id, chat, facts in SIMS:  # s2: facts the task never had, no rebuild
+        builder = SimUser(task, wsr.UNUSED, wsr.UNUSED, 0)
+        content = request_content(
+            builder.request(chat, facts or dict(task.profile.facts), None, "c", 0)
+        )
+        sim_call = call(log, "simuser", u1, sha256_text(content), response)
+        out: Json = {"text": "I pay 70 now.", "revealed": {}, "delay_s": 1.0}
+        log.emit("user.sim", "world.simuser", out, [u1, sim_call], 9)
+        recorded = {"llm_calls": [sim_call], "response_shas": [sha256_text(response)]}
+        recorded |= {"run_id": "r-1", "output": {"text": "I pay 70 now."}}
+        sims.append({"item_id": item_id, "prompt_sha": sha256_text(content)})
+        sims[-1] |= {"occurrences": [recorded], "content": content}
     runs = tmp / "runs"
     d = log.write(runs, like)
     models = m["models"] | {
         r: {"ref": GEMINI.model_dump(mode="json")} for r in ws.ROLES
     }
     (d / MANIFEST).write_text(json.dumps(manifest(d) | {"models": models}), "utf-8")
-    prompts = [("messages", content), ("response", response)]
+    prompts = [("response", response)] + [("messages", i.pop("content")) for i in sims]
     (d / PROMPTS).write_text(
         "".join(
             json.dumps({"sha": sha256_text(c), "kind": k, "content": c}) + "\n"
@@ -178,20 +190,7 @@ def build(tmp: Path, like: Path) -> Path:
                 ],
             }
         ],
-        "simuser": [
-            {
-                "item_id": "s1",
-                "prompt_sha": sha256_text(content),
-                "occurrences": [
-                    occ
-                    | {
-                        "llm_calls": [sim_call],
-                        "response_shas": [sha256_text(response)],
-                        "output": {"text": "I pay 70 now.", "revealed": {}},
-                    }
-                ],
-            }
-        ],
+        "simuser": sims,
     }
     say = {"term_months": "12", "monthly_price": "75.00"}
     made_intent = PublicIntent(
@@ -449,10 +448,10 @@ def test_a_mouth_sha_mismatch_is_recorded(items: Path, tmp_path: Path) -> None:
     assert plan["mouth_prompt_sha_mismatch"] == 1
 
 
-def test_simuser_replays_the_recorded_request_for_every_arm(
+def test_simuser_rebuilds_the_recorded_request_for_every_arm(
     items: Path, tmp_path: Path, like: Path
 ) -> None:
-    wire = Wire(reply=[REPLY, REPLY])
+    wire = Wire(reply=always(REPLY))
     arms = (INCUMBENT, CANDIDATE)
     wsr.run(
         args(items, tmp_path, "--roles", "simuser", arms=arms),
@@ -460,31 +459,96 @@ def test_simuser_replays_the_recorded_request_for_every_arm(
     )
     task = ws.task_of(manifest(like)["task_ref"])
     built = SimUser(task, wsr.UNUSED, wsr.UNUSED, 0).request(
-        ["Assistant: What do you pay now?"], dict(task.profile.facts), None, "c", 0
+        [ASKED], dict(task.profile.facts), None, "c", 0
     )
-    assert len(wire.bodies) == 2  # both arms; the constructed item makes no call
-    for sent in wire.bodies:
-        assert sent["messages"] == [
-            {"role": m.role, "content": m.content} for m in built.messages
-        ]
-        assert sent["tool_choice"]["function"]["name"] == "reply"
+    assert len(wire.bodies) == 2 * 3  # both arms; the constructed item makes no call
+    sent = [b for b in wire.bodies if ASKED in json.dumps(b)]
+    assert len(sent) == 2 and all(
+        b["messages"]
+        == [{"role": m.role, "content": m.content} for m in built.messages]
+        for b in sent
+    )
     for arm in arms:
-        row, prose = by_item(tmp_path, arm)["s1"], by_item(tmp_path, arm)["c-s1"]
+        rows_ = by_item(tmp_path, arm)
+        prose, row = rows_["c-s1"], rows_["s1"]
         assert prose["status"] == "not_replayable" and prose["attempts"] == []
         assert prose["result"] is None and prose["constructed"] is True
+        assert row["request_source"] == "rebuilt" and row["check"] == "full"
         assert row["request_sha"] == sha256_text(request_content(built))
-        assert row["result"]["calls"] == [{"name": "reply", "arguments": REPLY}]
+        reply: Json = {"silent": False, "text": "I pay 70 now.", "revealed": {}}
+        assert row["result"] == {"reply": reply}
         assert row["recorded_ref"][0]["response_shas"][0] is not None
+        assert rows_["s0"]["check"] == "full" and rows_["s2"]["check"] == "partial"
+        assert rows_["s2"]["request_source"] == "recorded"
+        assert "does not rebuild" in rows_["s2"]["check_reason"]
     again = wsr.run(
         args(items, tmp_path, "--roles", "simuser", "--resume", arms=(CANDIDATE,))
     )  # every row is final, not_replayable too: no call
-    assert again[CANDIDATE] == {"skipped_final": 2}
+    assert again[CANDIDATE] == {"skipped_final": 4}
     prompts = tmp_path / "runs" / "r-1" / PROMPTS
     moved = prompts.read_text("utf-8").replace("What do you pay", "What do you owe")
     prompts.write_text(moved, "utf-8")
     (tmp_path / "out").rename(tmp_path / "first")
     with pytest.raises(SystemExit, match="the replayed request differs"):
         wsr.run(args(items, tmp_path, "--roles", "simuser", arms=(CANDIDATE,)))
+
+
+def always(reply: str) -> Callable[[Json], str]:
+    return lambda _: reply
+
+
+def replies(*arguments: str) -> httpx.Response:
+    """One tool response holding a ``reply`` call per argument (none: no call)."""
+    body = tool_body(GEMINI.model_id, "reply", "{}")
+    call = body["choices"][0]["message"]["tool_calls"][0]
+    calls = [call | {"id": f"t{i}", "function": {"name": "reply", "arguments": a}}
+             for i, a in enumerate(arguments)]  # fmt: skip
+    body["choices"][0]["message"]["tool_calls"] = calls
+    return httpx.Response(200, json=body)
+
+
+def test_simuser_replies_go_through_check_reply_under_the_bound(
+    items: Path, tmp_path: Path
+) -> None:
+    silent = json.dumps({"silent": True, "revealed": {}})
+    unknown = json.dumps(
+        {"text": "My pin is 0000.", "revealed": {"account.pin": "0000"}}
+    )
+    script = {  # per item: its attempts, in order
+        "s0": [silent, "not json", REPLY],  # the opening: silent is invalid
+        "s1": [replies(), replies(REPLY, REPLY), unknown],  # the task has no pin
+        "s2": [unknown],  # partial: no facts to hold the reveal against
+    }
+
+    def reply(body: Json) -> str | httpx.Response:
+        text = json.dumps(body)
+        key = "s1" if ASKED in text else "s2" if "Assistant: hi" in text else "s0"
+        return script[key].pop(0)
+
+    wire = Wire(reply=reply)
+    wsr.run(
+        args(items, tmp_path, "--roles", "simuser", "--limit", "3"),
+        transports=wire.transports(),
+    )
+    got = by_item(tmp_path)
+    opening = got["s0"]["attempts"]
+    assert [t["valid"] for t in opening] == [False, False, True]
+    assert opening[0]["reason"] == "the opening request cannot be silent"
+    assert opening[1]["reason"].startswith("schema")
+    assert got["s0"]["status"] == "ok"
+    tries = got["s1"]["attempts"]
+    assert (
+        got["s1"]["status"] == "exhausted" and len(tries) == world.MAX_REGENERATIONS + 1
+    )
+    assert [t["reason"] for t in tries] == [
+        "expected exactly one reply call",
+        "expected exactly one reply call",
+        "revealed unknown keys ['account.pin']",
+    ]
+    assert tries[1]["raw"] == [{"name": "reply", "arguments": REPLY}] * 2
+    assert got["s2"]["status"] == "ok" and got["s2"]["check"] == "partial"
+    assert got["s2"]["result"]["reply"]["revealed"] == {"account.pin": "0000"}
+    assert all(not v for v in script.values())
 
 
 def test_plan_makes_no_call_and_needs_no_key(
@@ -503,8 +567,8 @@ def test_plan_makes_no_call_and_needs_no_key(
     assert wire.bodies == [] and not (tmp_path / "out").exists()
     assert plan["simuser_not_replayable"] == 1
     for arm in arms:  # plain calls: the incumbent calls as every arm does
-        assert plan["arms"][arm]["calls"] == {"ear": 3, "mouth": 2, "simuser": 1}
-    assert plan["arms"][CANDIDATE]["max_calls"] == {"ear": 9, "mouth": 6, "simuser": 1}
+        assert plan["arms"][arm]["calls"] == {"ear": 3, "mouth": 2, "simuser": 3}
+    assert plan["arms"][CANDIDATE]["max_calls"] == {"ear": 9, "mouth": 6, "simuser": 9}
     tokens = plan["arms"][CANDIDATE]["tokens"]["ear"]
     assert tokens["with_usage"] in (1, 2) and tokens["prompt_tokens"] == 300 * 3
 
