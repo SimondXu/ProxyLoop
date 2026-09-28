@@ -151,6 +151,26 @@ def test_a_an_early_revoke_then_a_new_card_expiring_shows_no_stop_line(
     assert "\nstop: " not in _bar(h)
 
 
+def test_a_slows_own_revoke_staling_the_card_shows_no_stop_line(
+    tmp_path: Path,
+) -> None:
+    """Only FastU's relayed stop (``f2s_revoke``) opens the stop line: a card
+    Slow's own revoke staled (the SYSTEM clause's act, which finishes in the
+    same act) replans without one, even after an earlier relayed REVOKE."""
+    h = _read_back(tmp_path)
+    _revoked_early(h)
+    fw.request("keep-2")(h)
+    (got,) = h.act({"tool": "revoke", "reason": "the user said stop"})
+    assert got.startswith("revoke: revoked"), got
+    (bump,) = [
+        e for e in h.of("authority.epoch") if e.payload["reason"] == "slow_revoke"
+    ]
+    stale = {"previous": "AWAITING_APPROVAL", "status": "NEEDS_REPLAN"}
+    h.emit("status.changed", "guard", stale, [bump.event_id])
+    assert not state.stopped(h.bb, h.bus.events)
+    assert "\nstop: " not in _bar(h)
+
+
 def test_a_a_revoked_accept_after_an_early_revoke_shows_no_stop_line(
     tmp_path: Path,
 ) -> None:
