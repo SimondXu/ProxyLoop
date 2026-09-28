@@ -182,8 +182,11 @@ def test_slow_context_is_bounded_and_keeps_every_call_with_its_result(
         lines = messages[-1]["content"].splitlines()  # F-a: one bar, labelled
         assert [x for x in lines if x.startswith("[STATUS]")] == ["[STATUS]"]
         bar = lines[lines.index("[STATUS]") :]
-        assert bar[-2].startswith("readiness: call not open; missing: ")
-        assert bar[-1] == "asks: none"
+        labels = [x.partition(":")[0] for x in bar[1:]]
+        assert labels == ["case", "offers", "approvals", "facts", "hold",
+                          "readiness", "asks", "close", "levers"]  # fmt: skip
+        assert bar[-4].startswith("readiness: call not open; missing: ")
+        assert bar[-3] == "asks: none"
         for m in messages:  # one bar per step's notes, in history too
             said = str(m.get("content") or "").splitlines()
             assert sum(x.startswith("[STATUS]") for x in said) <= 1
