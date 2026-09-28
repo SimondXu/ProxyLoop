@@ -91,8 +91,11 @@ async function yourRole(role: Locator) {
   await expect(role).toContainText("at most 65 dollars a month");
   await expect(role).toContainText("Your provider: Crestline Wireless");
   await expect(role.locator("dl").first()).toHaveText("Account holder nameMarcus BellAccount last45190");
+  await expect(role.getByRole("heading", { name: "Other facts you know" })).toBeVisible();
+  await expect(role.locator("dl").nth(1)).toContainText("Budget max monthly usd65"); // the limits you give when asked
   await expect(role.getByRole("heading", { name: "What you would approve" })).toBeVisible();
   await expect(role).toContainText("Monthly priceup to $72.00");
+  await expect(role).toContainText("When your assistant asks for your limits, give the ones in your goal.");
   for (const hidden of ["Alex", "78.00", "69.00", "retention agent", "save-1"]) await expect(role).not.toContainText(hidden);
 }
 

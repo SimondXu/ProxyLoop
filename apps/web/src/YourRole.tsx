@@ -52,8 +52,7 @@ export function YourRole({ card }: { card: RoleCard | string | null }) {
       <h3 className="pl-label">Your goal</h3>
       <p>{card.goal}</p>
       <Rows title="Give these when asked" rows={facts.identity} />
-      <Rows title="Other facts you may share" rows={facts.shareable} />
-      <Rows title="Facts you keep to yourself" rows={facts.private} />
+      <Rows title="Other facts you know" rows={facts.other} />
       {card.approval === null ? (
         <>
           <h3 className="pl-label">What you would approve</h3>
@@ -66,6 +65,7 @@ export function YourRole({ card }: { card: RoleCard | string | null }) {
             If the assistant asks you to approve a deal, approve it only within these, and decline anything outside them. This is not a target
             to aim for.
           </p>
+          <p className="meta">When your assistant asks for your limits, give the ones in your goal. These are only for answering an approval card.</p>
         </>
       )}
       {card.stop && (

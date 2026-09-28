@@ -638,7 +638,9 @@ test("your role: the live page folds the case's role card, read with GET only", 
   await expect(role).toContainText("Sam Doe, a teacher.");
   await expect(role).toContainText("Pay at most 60 dollars a month.");
   await expect(role.getByRole("heading", { name: "What you would approve" })).toBeVisible();
+  await expect(role.locator("dl").nth(1)).toHaveText("Budget max monthly usd60"); // under "Other facts you know"
   await expect(role.locator("dl").nth(2)).toContainText("Monthly priceup to $64.00");
+  await expect(role).toContainText("These are only for answering an approval card.");
   expect(asked).toEqual(["GET"]);
 });
 

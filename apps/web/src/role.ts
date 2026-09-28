@@ -56,14 +56,13 @@ export function approvalRows(a: RoleLimits): [string, string][] {
   return rows;
 }
 
-/** The facts as labelled rows: those the company checks (give them when asked), the others you may share, and the private ones. */
+/**
+ * The facts as labelled rows: those the company checks (give them when asked), then every other fact you know.
+ * (`shareable` is what your assistant may pass on to the company, not what you may tell your assistant.)
+ */
 export function factRows(facts: RoleFact[]) {
   const rows = (keep: (f: RoleFact) => boolean): [string, string][] => facts.filter(keep).map((f) => [factLabel(f.key), f.value]);
-  return {
-    identity: rows((f) => f.identity),
-    shareable: rows((f) => !f.identity && f.shareable),
-    private: rows((f) => !f.identity && !f.shareable),
-  };
+  return { identity: rows((f) => f.identity), other: rows((f) => !f.identity) };
 }
 
 const WHEN: Record<string, string> = {

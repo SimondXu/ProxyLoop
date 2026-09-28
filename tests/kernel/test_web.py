@@ -36,6 +36,7 @@ from proxyloop.contract.llm import (
 from proxyloop.contract.state import ApprovalCard
 from proxyloop.core.bus import Bus
 from proxyloop.env.tasks.loader import load_task, resolve, task_ref_of
+from proxyloop.env.tasks.schema import Task
 from proxyloop.kernel import calls, session, web
 from proxyloop.kernel.channels import HumanWebChannel, Incoming
 from proxyloop.kernel.session import ClientFactory, Kernel, RunResult
@@ -583,12 +584,11 @@ def _said(value: str, texts: list[str]) -> bool:
     return any(token.search(t) for t in texts)
 
 
-def _cp_values(task_ref: str) -> set[str]:
+def _cp_values(task: Task) -> set[str]:
     """The counterparty's values, apart from its company's name: the ladder's
     refs, terms and hidden fields (their names and values, and a price's
     whole dollars), its persona, patience and ledger; plus gold, probes and
     the three briefs."""
-    task = resolve(task_ref)
     cp = task.counterparty.model_dump(mode="json", exclude={"company", "identity"})
     values = set(_leaves(cp))
     for offer in task.counterparty.ladder:
@@ -598,17 +598,29 @@ def _cp_values(task_ref: str) -> set[str]:
     return values | {task.fast_brief_user, task.fast_brief_cp, task.slow_brief}
 
 
-def _principal_knows(task_ref: str) -> list[str]:
-    """What the principal legitimately knows, from the task itself: the fact
-    values, the approval limits, and the words of its persona, goal and stop."""
-    task = resolve(task_ref)
-    known = [*task.profile.facts.values(), task.profile.persona]
-    known.append(task.goal(task.profile.facts))
-    if task.principal is not None:
-        known += _leaves(task.principal.model_dump(mode="json"))
-    if task.stop is not None:
-        known += _leaves(task.stop.model_dump(mode="json"))
-    return known
+# The one counterparty value excused because the principal's goal text says it,
+# by family, with the reason: cp-hidden-fee-readback's goal ends "(none at
+# all)" (no one-time fees), and its ladder has the hidden term expires: none.
+GOAL_SAYS = {"cp-hidden-fee-readback": {"none"}}
+
+
+def _principal_values(task: Task) -> set[str]:
+    """The principal's STRUCTURED values, exactly: its profile facts, its
+    approval limits and its stop's changed facts. Never a word of the card's
+    free text (persona, goal, stop hint): a value planted there must fail."""
+    known = set(task.profile.facts.values())
+    if task.principal is not None and task.principal.limits is not None:
+        known |= set(_leaves(task.principal.limits.model_dump(mode="json")))
+    if task.stop is not None and task.stop.change:
+        known |= set(task.stop.change.values())
+    return known | GOAL_SAYS.get(task.family, set())
+
+
+def _leaks(task: Task, card: object) -> list[str]:
+    """The counterparty values the card says as a whole token, apart from
+    those equal to one of the principal's own structured values."""
+    checked = _cp_values(task) - _principal_values(task)
+    return sorted(v for v in checked if _said(v, _leaves(card)))
 
 
 @pytest.mark.parametrize("task_ref", CARD_REFS)
@@ -633,21 +645,35 @@ def test_the_allow_list_covers_an_approval_and_a_stop(tmp_path: Path) -> None:
 def test_no_counterparty_value_reaches_the_role_card(
     tmp_path: Path, task_ref: str
 ) -> None:
-    """Rule: a counterparty value the principal also knows (a fact, a limit, a
-    word of its own persona, goal or stop; e.g. the term "24" of a 24-month
-    budget) is not evidence of a leak and is left out; every other one must
-    not appear, as a whole token, in any string or number of the card."""
+    """Rule: a counterparty value exactly equal to one of the principal's
+    structured values (a fact, a limit, a changed fact; e.g. the term "24" of
+    a 24-month budget) is not evidence of a leak and is left out, as is
+    ``GOAL_SAYS``; every other one must not appear, as a whole token, in any
+    string or number of the card, its free text included."""
     card = Starter(tmp_path / "runs").role_card(task_ref).model_dump(mode="json")
-    texts, known = _leaves(card), _principal_knows(task_ref)
-    checked = {v for v in _cp_values(task_ref) if not _said(v, known)}
     task = resolve(task_ref)
+    checked = _cp_values(task) - _principal_values(task)
     for offer in task.counterparty.ladder:  # the prices are checked, never excused
         assert offer.all_terms["monthly_price"] in checked
     assert task.counterparty.persona in checked
-    leaked = sorted(v for v in checked if _said(v, texts))
-    assert leaked == []
-    price = task.counterparty.ladder[0].all_terms["monthly_price"]
-    assert _said(price, [*texts, f"an offer at {price} a month"])  # it would see one
+    assert _leaks(task, card) == []
+
+
+def test_a_counterparty_value_planted_in_the_card_s_free_text_is_caught(
+    tmp_path: Path,
+) -> None:
+    """The review's attack: the hidden fee, a hidden term's name and the hold
+    patience written into the persona must fail the check."""
+    ref = "cp-hidden-fee-readback@1"
+    task = resolve(ref)
+    card = Starter(tmp_path / "runs").role_card(ref).model_dump(mode="json")
+    card["persona"] += (
+        " Knows Lumen hides a 99 dollar fee:installation, reads fees_none on"
+        " read-back, and gives up after 30 seconds on hold."
+    )
+    assert {"99", "fee:installation", "fees_none", "30"} <= set(_leaks(task, card))
+    card["goal"] += " The first offer is 55.00 a month."
+    assert "55.00" in _leaks(task, card)
 
 
 def test_the_role_card_is_the_principal_s_view_of_the_instance(

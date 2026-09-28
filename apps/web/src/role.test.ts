@@ -35,11 +35,13 @@ describe("the principal's role card (GET /api/tasks/card, /api/cases/{case}/card
     expect(parseRoleCard({ ...CARD, stop: { trigger: "after_card", text_hint: "x", change: { a: 1 } } })).toBe("a malformed stop on the card");
   });
 
-  it("groups the facts: give when asked (identity), may share, keep to yourself", () => {
+  it("groups the facts: give these when asked (identity), then every other fact you know, budget included", () => {
     expect(factRows(CARD.facts)).toEqual({
       identity: [["Account holder name", "Sam Doe"]],
-      shareable: [["Competitor price usd", "55"]],
-      private: [["Budget max monthly usd", "60"]],
+      other: [
+        ["Competitor price usd", "55"],
+        ["Budget max monthly usd", "60"],
+      ],
     });
     expect(factLabel("tenure_years")).toBe("Tenure years");
   });

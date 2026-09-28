@@ -28,6 +28,7 @@ from tests.serve.client import (
 )
 from tests.support.api_cases import ApiCase, FakeStarter
 
+from proxyloop.contract.bundle import EVENTS, MANIFEST
 from proxyloop.serve.api import create_app
 from proxyloop.serve.bundles import Run
 from proxyloop.serve.cases import LaneKey, ModelOption, RoleCard
@@ -791,3 +792,44 @@ def test_without_a_starter_the_card_routes_are_404(tmp_path: Path) -> None:
     cookies = {"cookie": f"{OP[0]}=s; {OP[1]}=t; pl_session=s; pl_csrf=t"}
     assert get(http, CARD_OF + TASKS[0], cookies).status_code == 404
     assert get(http, f"/api/cases/{CASE}/card", cookies).status_code == 404
+
+
+def _first_lines(tmp_path: Path) -> list[str]:
+    """A real session.started line, then a real user.msg line."""
+    donor = ApiCase(tmp_path / "donor", "donor").start()
+    donor.emit("user.msg", {"text": "hi"}, "kernel")
+    donor.close()
+    return (tmp_path / "donor" / "donor" / EVENTS).read_text().splitlines()
+
+
+SEQ_0: dict[str, Callable[[list[str]], str | None]] = {
+    "no events.jsonl": lambda lines: None,
+    "an empty file": lambda lines: "",
+    "a first line not session.started": lambda lines: lines[1] + "\n",
+    "a partial first line": lambda lines: lines[0][: len(lines[0]) // 2],
+}
+
+
+@pytest.mark.parametrize("first", SEQ_0.values(), ids=SEQ_0.keys())
+def test_a_case_card_without_a_readable_seq_0_is_404(
+    env: Env,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    first: Callable[[list[str]], str | None],
+) -> None:
+    content = first(_first_lines(tmp_path))
+    case = _start_as(env, "live-9", TASKS[0])
+    try:
+        user = login(env.http, "user", "live-9")  # while its seq 0 is readable
+        run = env.root / "live" / "live-9" / "live-9"
+        (run / MANIFEST).write_text('{"split": "train"}')  # still servable
+        if content is None:
+            (run / EVENTS).unlink()
+        else:
+            (run / EVENTS).write_text(content)
+        asked = _spy_cards(env, monkeypatch)
+        got = _card(env, "/api/cases/live-9/card", user)
+        assert got == (404, {"error": "unknown case"})
+        assert asked == []
+    finally:
+        case.close()
