@@ -1,0 +1,184 @@
+[
+ {
+  "review_id": 1,
+  "act": "refuse_fact"
+ },
+ {
+  "review_id": 2,
+  "act": "ask_readback"
+ },
+ {
+  "review_id": 3,
+  "act": "refuse_fact"
+ },
+ {
+  "review_id": 4,
+  "act": "ask_discount"
+ },
+ {
+  "review_id": 5,
+  "act": "ask_discount"
+ },
+ {
+  "review_id": 6,
+  "act": "ask_readback"
+ },
+ {
+  "review_id": 7,
+  "act": "ask_readback"
+ },
+ {
+  "review_id": 8,
+  "act": "ask_discount"
+ },
+ {
+  "review_id": 9,
+  "act": "ask_discount"
+ },
+ {
+  "review_id": 10,
+  "act": "other"
+ },
+ {
+  "review_id": 11,
+  "act": "ask_readback"
+ },
+ {
+  "review_id": 12,
+  "act": "other"
+ },
+ {
+  "review_id": 13,
+  "act": "refuse_fact"
+ },
+ {
+  "review_id": 14,
+  "act": "ask_discount"
+ },
+ {
+  "review_id": 15,
+  "act": "ask_readback",
+  "offer_ref": "save-1"
+ },
+ {
+  "review_id": 16,
+  "act": "ask_discount"
+ },
+ {
+  "review_id": 17,
+  "act": "provide_fact",
+  "facts": [
+   {
+    "key": "account.holder_name",
+    "value": "Dana"
+   }
+  ]
+ },
+ {
+  "review_id": 18,
+  "act": "ask_discount"
+ },
+ {
+  "review_id": 19,
+  "act": "ask_readback",
+  "offer_ref": "save-1"
+ },
+ {
+  "review_id": 20,
+  "act": "ask_readback"
+ },
+ {
+  "review_id": 21,
+  "act": "refuse_fact"
+ },
+ {
+  "review_id": 22,
+  "act": "ask_discount"
+ },
+ {
+  "review_id": 23,
+  "act": "ask_discount"
+ },
+ {
+  "review_id": 24,
+  "act": "other"
+ },
+ {
+  "review_id": 25,
+  "act": "ask_readback",
+  "offer_ref": "loyal-1"
+ },
+ {
+  "review_id": 26,
+  "act": "other"
+ },
+ {
+  "review_id": 27,
+  "act": "ask_readback",
+  "offer_ref": "loyal-1"
+ },
+ {
+  "review_id": 28,
+  "act": "ask_readback",
+  "offer_ref": "loyal-1"
+ },
+ {
+  "review_id": 29,
+  "act": "ask_readback",
+  "offer_ref": "loyal-1"
+ },
+ {
+  "review_id": 30,
+  "act": "ask_readback",
+  "offer_ref": "loyal-1"
+ },
+ {
+  "review_id": 31,
+  "act": "ask_readback",
+  "offer_ref": "loyal-1"
+ },
+ {
+  "review_id": 32,
+  "act": "ask_readback",
+  "offer_ref": "loyal-1"
+ },
+ {
+  "review_id": 33,
+  "act": "ask_readback",
+  "offer_ref": "loyal-1"
+ },
+ {
+  "review_id": 34,
+  "act": "ask_readback",
+  "offer_ref": "loyal-1"
+ },
+ {
+  "review_id": 35,
+  "act": "ask_readback",
+  "offer_ref": "loyal-1"
+ },
+ {
+  "review_id": 36,
+  "act": "ask_readback",
+  "offer_ref": "save-1"
+ },
+ {
+  "review_id": 37,
+  "act": "ask_readback",
+  "offer_ref": "loyal-1"
+ },
+ {
+  "review_id": 38,
+  "act": "ask_readback",
+  "offer_ref": "loyal-1"
+ },
+ {
+  "review_id": 39,
+  "act": "ask_readback",
+  "offer_ref": "loyal-1"
+ },
+ {
+  "review_id": 40,
+  "act": "ask_discount"
+ }
+]
