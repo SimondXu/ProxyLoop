@@ -306,9 +306,9 @@ def test_r3a_an_empty_turn_voices_no_guide_and_retriggers_once(
         await sim.vt.run_for(10_000)
         second = sim.of("s2f.msg", type="GUIDE")[1].payload["msg_id"]
         voiced = sim.of("fast.turn", lane="cp")[-1].event_id
-        for msg_id in (first, second):  # the speaking turn voices both
-            (ack,) = sim.of("s2f.voiced", msg_id=msg_id)
-            assert ack.cause_ids == (voiced,)
+        (ack,) = sim.of("s2f.voiced", msg_id=second)  # the one its view rendered
+        assert ack.cause_ids == (voiced,)
+        assert not sim.of("s2f.voiced", msg_id=first)  # superseded (S1-SYS-67)
         assert len(sim.of("fast.request", lane="cp", trigger="guidance")) == 3
         assert sim.k.counts["guide_retrigger"] == 1
         await sim.stop()

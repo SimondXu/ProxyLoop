@@ -244,6 +244,38 @@ class Ear:
         description = "One act per utterance, in order."
         return ToolSpec(name="classify", description=description, parameters=schema)
 
+    def request(
+        self,
+        block: Sequence[Heard],
+        offers: Mapping[str, Mapping[str, str]],
+        open_offers: Collection[str],
+        n: int,
+    ) -> ToolRequest:
+        """The exact request ``classify`` sends for attempt ``n``; pure."""
+
+        made = "; ".join(
+            f"{ref} ({'open' if ref in open_offers else 'no longer open'}): "
+            + ", ".join(f"{k} {v}" for k, v in terms.items())
+            for ref, terms in offers.items()
+        )
+        said = "".join(
+            f"\n{i}. " + " ".join(h.text.splitlines()) for i, h in enumerate(block, 1)
+        )
+        prompt = f"Offers you made: {made or 'none'}\nThe caller said:{said}"
+        messages = (
+            ChatMessage(role="system", content=self._system),
+            ChatMessage(role="user", content=prompt),
+        )
+        return ToolRequest(
+            call_id=f"ear:{block[-1].event_id}:{n}",
+            role="ear",
+            messages=messages,
+            tools=(self._tool(offers.keys()),),
+            tool_choice="classify",
+            max_tokens=world.MAX_TOKENS,
+            temperature=0,
+        )
+
     async def classify(
         self,
         block: Sequence[Heard],
@@ -255,36 +287,15 @@ class Ear:
         ``offers``: every offer made, with its terms; ``open_offers``: those
         still open when the block is heard."""
 
-        made = "; ".join(
-            f"{ref} ({'open' if ref in open_offers else 'no longer open'}): "
-            + ", ".join(f"{k} {v}" for k, v in terms.items())
-            for ref, terms in offers.items()
-        )
-        said = "".join(
-            f"\n{n}. " + " ".join(h.text.splitlines()) for n, h in enumerate(block, 1)
-        )
-        prompt = f"Offers you made: {made or 'none'}\nThe caller said:{said}"
-        messages = (
-            ChatMessage(role="system", content=self._system),
-            ChatMessage(role="user", content=prompt),
-        )
         cause = block[-1].event_id  # the call answers the block, heard to its end
-        tool, call_ids = (
-            self._tool(offers.keys()),
-            [f"ear:{cause}:{n}" for n in range(world.MAX_REGENERATIONS + 1)],
-        )
+        requests = [
+            self.request(block, offers, open_offers, n)
+            for n in range(world.MAX_REGENERATIONS + 1)
+        ]
+        call_ids = [r.call_id for r in requests]
 
         async def attempt(n: int) -> tuple[ToolCall, ...]:
-            request = ToolRequest(
-                call_id=call_ids[n],
-                role="ear",
-                messages=messages,
-                tools=(tool,),
-                tool_choice="classify",
-                max_tokens=world.MAX_TOKENS,
-                temperature=0,
-            )
-            return await self._world.tools(self._client, request, cause)
+            return await self._world.tools(self._client, requests[n], cause)
 
         heard = [h.text for h in block]
         acts, attempts, _ = await world.bounded(
