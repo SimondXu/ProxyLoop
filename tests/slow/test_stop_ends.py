@@ -303,40 +303,58 @@ def test_m_unrecorded_reads_money_only() -> None:
     assert state.unrecorded((), ["$69.50 or 70 dollars"]) == ("$69.50", "$70")
 
 
-MENTIONS = {  # rev-269 M2: non-offer amounts in a closing reply
-    "competitor": "That is the best offer I can provide; I cannot match "
-    "Brightwave's $60.",
-    "current": "That is the best offer I can provide, or you stay at your current $85.",
-    "zero": "That is the best offer I can provide, and the setup fee is $0.",
-}
+MENTIONS = {  # rev-269 M2, rev-269b N-1: amounts that may not be offers
+    "competitor": ("That is the best offer I can provide; I cannot match "
+                   "Brightwave's $60.", "$60"),
+    "current": ("That is the best offer I can provide, or you stay at your "
+                "current $85.", "$85"),
+    "zero": ("That is the best offer I can provide, and the setup fee is $0.", None),
+}  # fmt: skip
+FACTS = (("competitor.price_usd", "60"), ("plan.current_price_usd", "85"))
+
+
+def _facts(h: Host, msg: str, facts: tuple[tuple[str, str], ...]) -> None:
+    """The user states ``facts`` in ``msg``; Slow records each from it."""
+    told = h.emit("user.msg", "kernel", {"text": msg})
+    for key, value in facts:
+        call = {"tool": "record_fact", "key": key, "value": value}
+        (got,) = h.act(call | {"utt_ref": told.event_id})
+        assert got.startswith("record_fact: recorded"), got
+
+
+def _noted(amount: str) -> str:
+    return (
+        f"close: final offer asked; the rep's closing reply cp-10 states {amount}, "
+        "which no recorded offer carries: if it is an offer the rep made, "
+        "record_offer it first; otherwise tell_user the terms and the outcome "
+        "before finish, and finish(no_deal) would verify"
+    )
 
 
 @pytest.mark.parametrize("said", list(MENTIONS))
-def test_m_a_fact_amount_or_zero_is_no_unrecorded_offer(
+def test_m_a_fact_amount_gets_the_conditional_note_and_zero_none(
     tmp_path: Path, said: str
 ) -> None:
-    """The user's current price and the competitor's price are recorded facts
-    (private or public), and $0 is no offer: the verdict line is unchanged."""
-    h = _closed(tmp_path, MENTIONS[said])
-    msg = "I pay $85 a month now; Brightwave offered me $60."
-    told = h.emit("user.msg", "kernel", {"text": msg})
-    for key, value in (
-        ("competitor.price_usd", "60"),
-        ("plan.current_price_usd", "85"),
-    ):
-        (got,) = h.act(
-            {
-                "tool": "record_fact",
-                "key": key,
-                "value": value,
-                "utt_ref": told.event_id,
-            }
-        )
-        assert got.startswith("record_fact: recorded"), got
-    for mode in (R, T):
-        close = _line(h, "close: ", mode)
-        assert close.endswith("finish(no_deal) would verify"), close
-        assert "record_offer" not in close, close
+    """$0 is no offer: the plain verdict line. A current or a competitor's
+    price the user stated (recorded facts) may still be an offer: the
+    conditional note, with Guard's verdict kept (rev-269b N-1)."""
+    text, amount = MENTIONS[said]
+    h = _closed(tmp_path, text)
+    _facts(h, "I pay $85 a month now; Brightwave offered me $60.", FACTS)
+    plain = _line(h, "close: ", R)  # relay_only: no relay of cp-10
+    assert plain.endswith("finish(no_deal) would verify"), plain
+    assert "record_offer" not in plain, plain
+    close = _line(h, "close: ", T)
+    assert close == (plain if amount is None else _noted(amount)), close
+
+
+def test_m_an_offer_at_the_users_limit_gets_the_note(tmp_path: Path) -> None:
+    """rev-269b N-1: "$70 a month" with budget.max_monthly_usd=70 recorded
+    (private) is an offer inside the mandate at its limit: not hidden."""
+    h = _closed(tmp_path, "That is the best offer I can provide: $70 a month.")
+    _facts(h, "I can pay at most $70 a month.", (("budget.max_monthly_usd", "70"),))
+    assert h.bb.private.case_facts["budget.max_monthly_usd"].value == "70"
+    assert _line(h, "close: ", T) == _noted("$70")
 
 
 def test_m_is_for_full_cases_only(tmp_path: Path) -> None:

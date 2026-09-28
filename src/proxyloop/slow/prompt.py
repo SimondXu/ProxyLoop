@@ -441,7 +441,6 @@ def status_bar(
         lines += [asks.readiness_line(intake, now_ms), asks.asks_line(intake, now_ms)]
     if more is not None:  # F-m: the closing reply as Slow's view holds it
         said = state.closing_said(view, more.close.reply)
-        known = [f.value for f in (*view.public_facts, *view.case_facts)]
-        amounts = state.unrecorded(view.offers, said, known)
+        amounts = state.unrecorded(view.offers, said)
         lines += more.lines(hints.needs_lever(view, now_ms), amounts)
     return "\n".join(lines)

@@ -33,7 +33,7 @@ from proxyloop.contract.state import (
 )
 from proxyloop.contract.views import SlowView
 from proxyloop.guard.capability import released_accept
-from proxyloop.guard.declass import numbers, spoken
+from proxyloop.guard.declass import spoken
 from proxyloop.guard.readback import has_cue, slot_statuses
 from proxyloop.guard.status import status_change
 from proxyloop.guard.verify import verify_no_deal
@@ -73,7 +73,8 @@ ONCE_MOVED_ON = (
     f"available once the rep has moved on to your request ({IDENTIFY_RULES})"
 )
 STOP = (  # S1-SYS-83 F-i: the one step, and only this step can take it
-    "stop: the user said stop and no accept was released: in this one act, "
+    "stop: the user withdrew (FastU relayed a REVOKE) and no accept was "
+    "released: in this one act, "
     "tell_user that nothing was accepted and the case is stopped, then "
     "finish(escalate, summary); once this step completes the case is back "
     "IN_CALL and can no longer be escalated"
@@ -195,19 +196,17 @@ def closing_said(view: SlowView, reply: str | None) -> list[str]:
     return said + [" ".join((r.text, *(v for _, v in r.facts))) for r in relays]
 
 
-def unrecorded(
-    offers: Iterable[OfferPublic], said: Iterable[str], facts: Iterable[str] = ()
-) -> tuple[str, ...]:
+def unrecorded(offers: Iterable[OfferPublic], said: Iterable[str]) -> tuple[str, ...]:
     """F-m: the money amounts ``said`` states (Guard's ``spoken``, the one
-    money extraction) that no recorded offer's money slot carries, other
-    than $0 and any number in a recorded fact's value (``facts``: a current
-    price, a competitor's; rev-269 M2)."""
+    money extraction) that no recorded offer's money slot carries, but $0.
+    A fact's value is not left out (rev-269b N-1): an offer at the user's
+    limit or at a competitor's price is still an offer; the close line says
+    it conditionally."""
     carried = {
         Decimal(s.value) / 100 for o in offers for s in o.slots if s.unit == "usd_minor"
     }
-    known = {Decimal(0), *(n for value in facts for n in numbers(value))}
     amounts = {n for text in said for n in spoken(text, "usd_minor")}
-    return tuple(f"${n}" for n in sorted(amounts - carried - known))
+    return tuple(f"${n}" for n in sorted(amounts - carried - {Decimal(0)}))
 
 
 def unavailable(bb: Blackboard) -> tuple[tuple[str, str], ...]:
