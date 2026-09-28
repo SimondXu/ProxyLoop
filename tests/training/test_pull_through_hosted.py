@@ -181,10 +181,12 @@ def test_hosted_turns_from_another_model_or_unclean_are_skipped_and_counted(
     n, n_cp = len(clean), sum(lane_of(t) == "cp" for t in clean)
     assert n and n_cp and not none
     other = LUNA.model_dump(mode="json") | {"model_id": "openai/gpt-6-sol"}
+    replay = LUNA.model_dump(mode="json") | {"kind": "recorded_replay"}
     for update in (
         {"model_ref": other, "requested_model": "openai/gpt-6-sol"}
         | {"served_model_echo": "openai/gpt-6-sol"},
         {"model_ref": LUNA.model_dump(mode="json") | {"endpoint": "relay"}},
+        {"model_ref": replay, "adapter_kind": "recorded_replay"},  # same id and echo
     ):
         turns, counts = skipped(with_calls(b, **update))
         assert not turns and counts["not_label_model"] >= n
@@ -195,6 +197,28 @@ def test_hosted_turns_from_another_model_or_unclean_are_skipped_and_counted(
     turns, counts = skipped(cp_saying(b, SPEECH_AFTER_PAUSE))  # pl_cp_v3: not clean
     assert not [t for t in turns if lane_of(t) == "cp"]
     assert counts["empty_or_parse_issue"] >= n_cp
+    for update in ({"error": "cancelled"}, {"response_sha": None}):
+        turns, counts = skipped(with_calls(b, **update))
+        assert not turns and counts["cancelled_or_no_response"] >= n
+    turns, counts = skipped(cancelled_after_its_turn(b, clean[0]))
+    assert turns == clean[1:] and counts == {"cancelled_or_no_response": 1}
+
+
+def cancelled_after_its_turn(b: Bundle, t: pt.Turn) -> Bundle:
+    """``b`` with ``t``'s generation cancelled after its turn: its line lost the floor
+    to a verbatim line (S1-SYS-59's ``fast.cancelled{verbatim}``). A copy."""
+    turn = next(e for e in b.events if e.event_id == t.event_id)
+    last = b.events[-1]
+    cancel = turn.model_copy(
+        update={
+            "seq": last.seq + 1,
+            "event_id": f"{b.manifest.run_id}:{last.seq + 1}",
+            "type": "fast.cancelled",
+            "cause_ids": (turn.event_id,),
+            "payload": {"gen_id": turn.payload["gen_id"], "reason": "verbatim"},
+        }
+    )
+    return Bundle(b.manifest, (*b.events, cancel), b.prompts)
 
 
 def test_a_hosted_turn_whose_view_or_sent_messages_differ_is_skipped(hosted: Path):
