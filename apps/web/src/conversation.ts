@@ -38,7 +38,7 @@ const BY: Record<string, string> = { ui: "approved by you", sim_approver: "appro
  * last grant of one of them before the authorization. An accept under your
  * limits (no such grant) says only "fixed wording".
  */
-function acceptedBy(said: Ev, events: Ev[]): string {
+export function acceptedBy(said: Ev, events: Ev[]): string {
   const cap = (e: Ev) => (e.payload.capability ?? {}) as { cap_id?: unknown; terms_hash?: unknown; epoch?: unknown };
   const capId = said.payload.cap_id;
   const auth = typeof capId === "string" ? events.find((e) => from(e, "action.authorized", ["guard"]) && cap(e).cap_id === capId) : undefined;

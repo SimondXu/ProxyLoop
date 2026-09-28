@@ -139,7 +139,7 @@ async function toCard(page: Page) {
   expect(terms.map((t) => t.field)).toEqual(["monthly_price", "term_months", "fees_none", "changes_none", "expires"]);
   await expect(card.getByLabel("Readback")).toHaveText(String(requested.payload.readback_text));
   await expect((await authority(page)).getByLabel("Case status")).toHaveText("status AWAITING_APPROVAL");
-  await expect(page.getByLabel("Status line")).toHaveText("Status: waiting for your approval");
+  await expect(page.getByLabel("Status line")).toHaveText("Waiting for you: approve or decline $78/mo for 24 months");
   return { id, card, requested };
 }
 
@@ -167,7 +167,18 @@ test.describe("approve", () => {
     expect(of(events, "rep.commit_heard")).toHaveLength(1);
     const strip = await authority(page);
     await expect(strip.getByLabel("Case status")).toHaveText("status COMMITTED");
-    await expect(page.getByLabel("Status line")).toHaveText("Status: accepted on the call, not yet verified");
+    await expect(page.getByLabel("Status line")).toHaveText("Accepted on the call. Checking the company's records…");
+    // The rail's steps from the same run: the approval, your click, Guard's clearance and the heard yes, in order.
+    // locator("li"): a folded group's steps count too.
+    const steps = page.getByRole("region", { name: "Steps" }).locator("li");
+    for (const step of [
+      /^Guard \d{2}:\d{2} Asked for your approval$/,
+      /^You \d{2}:\d{2} Approved$/,
+      /^Guard \d{2}:\d{2} Cleared to say yes \(your approval\)$/,
+      /^Phone voice \d{2}:\d{2} Said yes on the call$/,
+    ]) {
+      await expect(steps.filter({ hasText: step })).toHaveCount(1);
+    }
     const call = page.getByRole("list", { name: "Call transcript" });
     await expect(call).toContainText(`Agent: ${String(accept.payload.text)}`);
     await expect(call.getByRole("listitem").filter({ hasText: "AI disclosure · fixed wording" })).toHaveCount(1);

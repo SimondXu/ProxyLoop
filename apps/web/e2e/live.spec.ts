@@ -276,7 +276,8 @@ test("conversation view: two panes with the right speakers, heard text only, the
   await expect(page.getByRole("region", { name: "Chat" }).getByLabel("Simulated parties")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Call with the company" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Call" })).toContainText("Rep (simulated)");
-  await expect(page.getByLabel("Status line")).toHaveText("Status: starting (no status yet)");
+  await expect(page.getByLabel("Status line")).toHaveText("Getting the details before calling");
+  await expect(page.getByText("Planner is listening")).toBeVisible(); // outside the live region
 
   const opened = JSON.parse(ev("chan.opened", "kernel", { lane: "cp" })) as { event_id: string };
   ws.send(JSON.stringify(opened));
@@ -306,7 +307,12 @@ test("conversation view: two panes with the right speakers, heard text only, the
     "Agent: The name is on file.",
   ]);
   for (const hidden of ["UNHEARD", "GENERATED-ONLY"]) await expect(page.locator("main")).not.toContainText(hidden);
-  await expect(page.getByLabel("Status line")).toHaveText("Status: on the call");
+  await expect(page.getByLabel("Status line")).toHaveText("On the call with the company");
+  // The rail's steps: fixed wording from Guard's and the kernel's events, never a line's text.
+  await expect(page.getByRole("region", { name: "Steps" }).getByRole("listitem")).toHaveText([
+    /^Call \d{2}:\d{2} Called the company$/,
+    /^Guard \d{2}:\d{2} Opened with the AI disclosure$/,
+  ]);
   for (const pane of ["Chat", "Call"]) await expect(page.getByRole("list", { name: `${pane} transcript` })).toHaveAttribute("aria-live", "polite");
   await expect(page.getByRole("region", { name: "User chat" })).toHaveCount(0); // the engineer lanes are not shown
   await expect(page.getByRole("region", { name: "Outcome" })).toHaveCount(0);
@@ -314,7 +320,7 @@ test("conversation view: two panes with the right speakers, heard text only, the
 
   // session.ended: the status line stops saying "on the call", and the banner never implies success.
   ws.send(ev("session.ended", "kernel", { reason: "abandoned", counts: {} }, { stream: "ops" }));
-  await expect(page.getByLabel("Status line")).toHaveText("Session ended: the rep hung up");
+  await expect(page.getByLabel("Status line")).toHaveText("Ended: the rep hung up. Not verified complete.");
   const banner = page.getByRole("region", { name: "Outcome" });
   await expect(banner.getByRole("heading")).toHaveText("Ended: the rep hung up. Not verified complete.");
   await expect(banner).toContainText("Reason: abandoned · last case status: IN_CALL");
@@ -330,7 +336,7 @@ test("conversation view: Verified complete only on Guard's VERIFIED_COMPLETE", a
   ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
   await expect(page.getByLabel("Simulated parties")).toHaveCount(0); // no world rep, no sim user: no sim label
   ws.send(ev("status.changed", "guard", { previous: "COMMIT_AUTHORIZED", status: "COMMITTED" }));
-  await expect(page.getByLabel("Status line")).toHaveText("Status: accepted on the call, not yet verified");
+  await expect(page.getByLabel("Status line")).toHaveText("Accepted on the call. Checking the company's records…");
   ws.send(ev("status.changed", "fast.user", { previous: "COMMITTED", status: "VERIFIED_COMPLETE" })); // not Guard: ignored
   ws.send(ev("session.ended", "kernel", { reason: "completed", counts: {} }, { stream: "ops" }));
   const banner = page.getByRole("region", { name: "Outcome" });
