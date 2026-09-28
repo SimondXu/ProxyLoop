@@ -46,5 +46,11 @@ export function repLine(e: RepFrame): RepLine | null {
   return null;
 }
 
-/** The call is open once a chan.opened passes the allow-list (the kernel's, on the cp lane): the rep may speak. */
-export const callOpened = (frames: RepFrame[]) => frames.some((e) => e.type === "chan.opened" && repLine(e) !== null);
+/**
+ * The call as the rep may speak in it: the latest chan.opened or chan.closed that passes the allow-list
+ * (the kernel's, on the cp lane). "none" before any; the rep may speak only while it is "open".
+ */
+export function callState(frames: RepFrame[]): "none" | "open" | "ended" {
+  const last = frames.findLast((e) => (e.type === "chan.opened" || e.type === "chan.closed") && repLine(e) !== null);
+  return last === undefined ? "none" : last.type === "chan.opened" ? "open" : "ended";
+}

@@ -104,10 +104,11 @@ export function Panes({ events, p, announce, input, rail }: { events: Ev[]; p: P
   // Above 760px the chat is always in view, so its tab is the call's.
   const wide = useSyncExternalStore(onWide, () => matchMedia(WIDE).matches);
   const tab = wide && picked === "chat" ? "call" : picked;
-  const counts: Record<Tab, number> = { chat: c.chat.length + (input?.cards.length ?? 0), call: c.call.length, steps };
-  const [seen, setSeen] = useState<Record<Tab, number>>({ chat: 0, call: 0, steps: 0 });
+  // What each tab shows, in short: a change while out of view is a dot. A card's status is part of the chat's.
+  const marks: Record<Tab, string> = { chat: `${c.chat.length}:${(input?.cards ?? []).map((k) => k.status).join()}`, call: `${c.call.length}`, steps: `${steps}` };
+  const [seen, setSeen] = useState(() => marks);
   const pick = (t: Tab) => {
-    setSeen((s) => ({ ...s, [tab]: counts[tab], [t]: counts[t] }));
+    setSeen((s) => ({ ...s, [tab]: marks[tab], [t]: marks[t] }));
     setTab(t);
   };
   return (
@@ -117,7 +118,7 @@ export function Panes({ events, p, announce, input, rail }: { events: Ev[]; p: P
           {TABS.map(([t, name]) => (
             <button key={t} type="button" className={`pl-tab-${t}`} aria-pressed={t === tab} onClick={() => pick(t)}>
               {name}
-              {t !== tab && counts[t] > seen[t] && (
+              {t !== tab && marks[t] !== seen[t] && (
                 <span className="pl-dot">
                   <span className="pl-sr"> (new)</span>
                 </span>
@@ -207,8 +208,8 @@ function TranscriptLine({ l, p, receipt }: { l: Line; p: Parties; receipt?: Tick
   );
 }
 
-/** A Guard card element, keyed, at its event's seq. */
-export type GuardCard = { seq: number; el: ReactElement };
+/** A Guard card element, keyed, at its event's seq, with its status (a change marks the chat tab). */
+export type GuardCard = { seq: number; status: string; el: ReactElement };
 /** The live page's part of the chat: the Guard cards, the unechoed sends and the composer. */
 export type ChatInput = { cards: GuardCard[]; pending: string[]; composer: ReactNode };
 

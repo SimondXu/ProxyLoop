@@ -79,7 +79,7 @@ export function Live({ runId }: { runId: string }) {
   const { engineer, link } = useView();
   // Guard cards in event order: among the chat's lines, or above the input in the engineer view.
   const guardCards = [
-    ...mandates.map((v) => ({ seq: v.seq, el: <LimitsCard key={`m:${v.mandate.mandate_id}`} view={v} events={events} decide={decideMandate} /> })),
+    ...mandates.map((v) => ({ seq: v.seq, status: v.status, el: <LimitsCard key={`m:${v.mandate.mandate_id}`} view={v} events={events} decide={decideMandate} /> })),
     ...cards.map((v) => {
       const card = (
         <ApprovalCard
@@ -92,10 +92,10 @@ export function Live({ runId }: { runId: string }) {
           decide={decide}
         />
       );
-      if (v.status !== "open") return { seq: v.seq, el: card };
+      if (v.status !== "open") return { seq: v.seq, status: v.status, el: card };
       const price = termRows(events, v.card).find((r) => r.field === "monthly_price")?.value;
       const bar = `Decision needed${price ? ` · ${whole(price)}/mo` : ""} · Review`;
-      return { seq: v.seq, el: <Sheet key={`a:${v.card.approval_id}`} bar={bar}>{card}</Sheet> };
+      return { seq: v.seq, status: v.status, el: <Sheet key={`a:${v.card.approval_id}`} bar={bar}>{card}</Sheet> };
     }),
   ].sort((a, b) => a.seq - b.seq);
   const pending = unechoed(sent, echoes).map((s) => s.text);
@@ -257,7 +257,14 @@ export function Composer({
         {label}
       </label>
       <div className="pl-composer-box">
-        <textarea id={id} rows={2} value={text} placeholder={label} disabled={!!closed} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} />
+        <textarea
+          id={id}
+          rows={2}
+          value={text}
+          placeholder={label}
+          disabled={!!closed}
+          aria-describedby={closed ? `${id}-closed` : undefined}
+          onChange={(e) => setText(e.target.value)} onKeyDown={onKey} />
         <Button variant="primary" type="submit" disabled={busy || !!closed}>
           Send
         </Button>
@@ -268,7 +275,11 @@ export function Composer({
           {hint}
         </p>
       )}
-      {closed && <p className="meta">{closed}</p>}
+      {closed && (
+        <p className="meta" id={`${id}-closed`}>
+          {closed}
+        </p>
+      )}
       {error && <p role="alert">{error}</p>}
       {pending.length > 0 && (
         <ul aria-label="Pending" className="meta">

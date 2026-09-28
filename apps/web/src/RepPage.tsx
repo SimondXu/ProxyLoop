@@ -2,12 +2,12 @@
 // said (rep.ts), from the rep's own filtered stream (/ws/rep, never /ws/live).
 // The rep enters through GET /rep/{case_id} (liveApi.ts), which sets its cookies.
 // No AppShell: the operator's navigation and the principal's band are not the rep's.
-// The rep speaks only once the kernel has opened the call (S1-SYS-61).
+// The rep speaks only while the kernel's call is open (S1-SYS-61).
 import { useMemo, useState } from "react";
 import { Composer, Connection } from "./Live";
 import { unechoed, type Sent } from "./liveState";
 import { postRep, type Failed } from "./liveApi";
-import { callOpened, parseRepFrame, repLine, type RepLine } from "./rep";
+import { callState, parseRepFrame, repLine, type RepLine } from "./rep";
 import { Chip } from "./ui/Chip";
 import { useEventStream } from "./useEventStream";
 import "./rep.css";
@@ -19,7 +19,7 @@ const notOpen = (r: Failed) => (r.status === 409 && r.reason === "not_open" ? "T
 export function RepPage({ caseId }: { caseId: string }) {
   const { stream, reconnect } = useEventStream("rep", caseId, parseRepFrame);
   const lines = useMemo(() => stream.events.map(repLine).filter((l) => l !== null), [stream.events]);
-  const open = useMemo(() => callOpened(stream.events), [stream.events]);
+  const call = useMemo(() => callState(stream.events), [stream.events]);
   const [sent, setSent] = useState<Sent[]>([]);
   const send = async (text: string) => {
     const after = stream.next;
@@ -51,7 +51,7 @@ export function RepPage({ caseId }: { caseId: string }) {
         label="Say to the agent"
         post={send}
         pending={pending.map((s) => s.text)}
-        closed={open ? undefined : "Waiting for the call to start"}
+        closed={call === "open" ? undefined : call === "ended" ? "The call has ended" : "Waiting for the call to start"}
         explain={notOpen}
       />
       <details className="pl-rep-hint">

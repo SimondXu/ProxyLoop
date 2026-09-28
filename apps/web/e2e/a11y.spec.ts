@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { CSRF, csrfCookie, events, mockSockets, REP_CSRF, repFrames, RUN, shot, started } from "./liveMock";
+import { capturePosts, CSRF, csrfCookie, events, mockSockets, REP_CSRF, repFrames, RUN, shot, started } from "./liveMock";
 
 // UI-8 (redesign §2.4, §3.6, §7 risk 10): axe on Start, Live (an open approval
 // card and a limits card) and Rep, at desktop and phone sizes, 0 serious or
@@ -74,6 +74,20 @@ async function audit(page: Page) {
   const r = await new AxeBuilder({ page }).analyze();
   const bad = r.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   expect(bad.map((v) => `${v.id} (${v.impact}): ${v.nodes.map((n) => `${n.target.join(" ")} ${n.failureSummary ?? ""}`).join("; ")}`)).toEqual([]);
+}
+
+/** WCAG contrast of an element's text on its own background (both opaque rgb). */
+function contrast(el: Element): number {
+  const s = getComputedStyle(el);
+  const lum = (c: string) => {
+    const [r, g, b] = (c.match(/\d+(\.\d+)?/g) ?? []).slice(0, 3).map((v) => {
+      const x = Number(v) / 255;
+      return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * (r ?? 0) + 0.7152 * (g ?? 0) + 0.0722 * (b ?? 0);
+  };
+  const [hi, lo] = [lum(s.color), lum(s.backgroundColor)].sort((a, b) => b - a);
+  return ((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05);
 }
 
 /** A live page with the user's message, a call line, a limits card and an open approval card for $75/mo. */
@@ -179,6 +193,32 @@ test.describe("phone (390×844)", () => {
     await expect(card).toBeVisible();
     await audit(page);
     await shot(page, "phone-steps-tab-sheet");
+  });
+
+  test("a pressed tab under the pointer keeps its pressed colours (#216)", async ({ page, baseURL }) => {
+    await liveWithCards(page, baseURL);
+    const call = page.getByRole("group", { name: "Show" }).getByRole("button", { name: /^Call( \(new\))?$/ });
+    await call.click(); // the pointer stays on it
+    await expect(call).toHaveAttribute("aria-pressed", "true");
+    await audit(page);
+    await page.mouse.move(0, 0);
+    await call.hover();
+    await audit(page);
+    expect(await call.evaluate(contrast)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  test("a card decided from the Call tab leaves the sheet and puts a dot on Chat (#216)", async ({ page, baseURL }) => {
+    await capturePosts(page);
+    await liveWithCards(page, baseURL);
+    const tabs = page.getByRole("group", { name: "Show" });
+    await tabs.getByRole("button", { name: /^Call( \(new\))?$/ }).click();
+    await expect(tabs.getByRole("button", { name: /^Chat/ })).toHaveText("Chat");
+    await page.getByRole("article", { name: "Approval ap-1" }).getByRole("button", { name: "Approve $75/mo" }).click();
+    await expect(tabs.getByRole("button", { name: "Chat (new)" })).toBeVisible();
+    await expect(page.getByRole("article", { name: "Approval ap-1" })).toBeHidden(); // back in the chat, out of view
+    await tabs.getByRole("button", { name: /^Chat/ }).click();
+    await expect(page.getByRole("article", { name: "Approval ap-1" }).getByLabel("Approval status")).toHaveText("Sent. Waiting for Guard to record it");
+    await expect(tabs.getByRole("button", { name: "Chat" })).toHaveText("Chat");
   });
 
   test("the composer is 16px, so a phone does not zoom into it", async ({ page, baseURL }) => {

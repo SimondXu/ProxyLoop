@@ -96,7 +96,7 @@ test("rep page: the input waits for the kernel's call opening, and a 409 not_ope
   const send = page.getByRole("button", { name: "Send" });
   await expect(input).toBeDisabled();
   await expect(send).toBeDisabled();
-  await expect(page.getByText("Waiting for the call to start")).toBeVisible();
+  await expect(input).toHaveAccessibleDescription("Waiting for the call to start");
   // Only the kernel's cp opening opens it: another lane's, or another actor's, does not.
   ws.send(frame("chan.opened", { lane: "user" }));
   ws.send(JSON.stringify({ ...JSON.parse(frame("chan.opened", { lane: "cp" })), actor: "fast.cp" }));
@@ -116,4 +116,11 @@ test("rep page: the input waits for the kernel's call opening, and a 409 not_ope
   expect(posts).toHaveLength(1);
   await expect(input).toHaveValue("We can do $75."); // kept for the rep's own resend
   await shot(page, "rep-not-open");
+
+  // The kernel's close disables it again.
+  ws.send(frame("chan.closed", { lane: "cp" }));
+  await expect(input).toBeDisabled();
+  await expect(send).toBeDisabled();
+  await expect(input).toHaveAccessibleDescription("The call has ended");
+  expect(posts).toHaveLength(1);
 });
