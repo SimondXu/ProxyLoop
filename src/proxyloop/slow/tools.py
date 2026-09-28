@@ -91,6 +91,9 @@ class SlowTools:
         # the cp transcript length at every read-back ask of an offer
         # revision (ADR-0018 V4, slow.state)
         self.readbacks: dict[tuple[str, int], list[int]] = {}
+        # (call, cp transcript length) at every read-back ask of an offer, any
+        # revision: Guard's read-back windows in this call (ADR-0020)
+        self.offer_asks: dict[str, list[tuple[int, int]]] = {}
         self.received: set[str] = set()  # the relay ids SlowLoop handed to Slow
 
     def act(
@@ -150,10 +153,12 @@ class SlowTools:
         lines = bb.channels["cp"].lines
         rep = [x.utt_id for x in lines if x.speaker == "partner"]
         heard = authority.last(events, "utt.final", "utt_id", rep[-1]) if rep else None
+        call = self._call()
         for ref, o in sorted(bb.public.offers.items()):
             if o.status != "open":
                 continue
-            update = readback_update(o, lines, self.asked.get((ref, o.revision)))
+            asks = [at for c, at in self.offer_asks.get(ref, ()) if c == call]
+            update = readback_update(o, lines, self.asked.get((ref, o.revision)), asks)
             now = {s.field: s.status for s in o.slots}
             if (update["slot_statuses"], update["terms_hash"]) == (now, o.terms_hash):
                 continue
@@ -306,6 +311,7 @@ class SlowTools:
             if (o := bb.public.offers.get(ref)) is not None:
                 self.asked.setdefault((ref, o.revision), at)
                 self.readbacks.setdefault((ref, o.revision), []).append(at)
+                self.offer_asks.setdefault(ref, []).append((self._call(), at))
                 tracked.append(f"{ref} r{o.revision}")
         if tracked:
             return Result(
@@ -315,6 +321,13 @@ class SlowTools:
             )
         text = f"{sent.text}; no recorded offer cited: cite offer:<ref> to confirm one"
         return Result(True, text, sent.effects)
+
+    def _call(self) -> int:
+        """The cp calls opened so far (``chan.opened{cp}``): the current one."""
+        events = self._host.bus.events
+        return sum(
+            e.type == "chan.opened" and e.payload["lane"] == "cp" for e in events
+        )
 
     def _s2f(self, **fields: Any) -> Result:
         self._n += 1
