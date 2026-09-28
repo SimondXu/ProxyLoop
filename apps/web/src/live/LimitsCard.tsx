@@ -31,7 +31,7 @@ export function LimitsCard({ view, events, decide }: Props) {
       </p>
       <div className="pl-limits-kick">
         <span className="pl-label">Your limits</span>
-        <Chip tone={open ? "attn" : status === "granted" ? "agent" : "neutral"}>
+        <Chip tone={open ? "you" : status === "granted" ? "ok" : "neutral"}>
           <span aria-label="Limits status">{limitsStatusText(view)}</span>
         </Chip>
       </div>

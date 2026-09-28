@@ -1,5 +1,6 @@
 @layer components {
-  .pl-btn { min-height: 40px; padding: 0 var(--s5); font-size: var(--fs-ui); }
-  .pl-btn-primary { background: var(--agent); border-color: var(--agent); color: var(--on-agent); }
-  .pl-btn-primary:hover:not(:disabled) { background: var(--agent-hover); }
+  .pl-btn { min-height: 44px; padding: 0 var(--s5); font-size: var(--fs-ui); }
+  /* the primary pill is ink; only a Guard card waiting for you fills it with the brand (cards.css) */
+  .pl-btn-primary { background: var(--pill); border-color: transparent; color: var(--on-pill); font-weight: 600; }
+  @media (hover: hover) { .pl-btn-primary:hover:not(:disabled) { background: var(--pill); opacity: 0.88; } }
 }

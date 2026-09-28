@@ -17,7 +17,12 @@ from proxyloop.contract import base
 from proxyloop.contract import state as st
 from proxyloop.contract.state import READBACK_FIELD, ReadbackSlot
 from proxyloop.guard.declass import numbers, spoken
-from proxyloop.guard.readback import ROLE_OF
+from proxyloop.guard.readback import (  # the read-back's code-word matcher
+    LEXICON,
+    ROLE_OF,
+    _names,  # pyright: ignore[reportPrivateUsage]
+    _words,  # pyright: ignore[reportPrivateUsage]
+)
 from proxyloop.slow.authority import UNITS
 from proxyloop.slow.result import Result, no
 
@@ -43,9 +48,27 @@ def _field(kind: str) -> str:  # "fee" -> "fee:<code>"
     return kind if re.fullmatch(READBACK_FIELD, kind) else f"{kind}:<code>"
 
 
-TABLE = "; ".join(
-    f"{_field(kind)} → {role}, {_unit(kind)}, {_FORM[_unit(kind)]}"
-    for kind, role in ROLE_OF.items()
+# S1-SYS-85 (runs dd5094, f828f1): the code is in the terms hash, so it must be
+# the rep's name for the fee or credit, never "activation_fee" for "activation".
+# The read-back's own word lists; the examples are codes no family uses (rule 12).
+_FEE = (*LEXICON["fee"], "charges", *LEXICON["generic_fee"])
+GENERIC = {"fee": _FEE, "credit": (*LEXICON["credit"], *_FEE)}  # by the code's kind
+EXAMPLE = {  # the rep's words, the code they name
+    "fee": "a porting fee is fee:porting",
+    "credit": "a paperless credit is credit:paperless",
+}
+NAMED = (
+    "A fee:<code> or credit:<code> is named by the rep's own words in its cited "
+    "line: each code word is said there and none is a generic word (such as fee, "
+    f"charge, credit): {EXAMPLE['fee']}, never fee:porting_fee; "
+    f"{EXAMPLE['credit']}, never credit:paperless_credit"
+)
+TABLE = (
+    "; ".join(
+        f"{_field(kind)} → {role}, {_unit(kind)}, {_FORM[_unit(kind)]}"
+        for kind, role in ROLE_OF.items()
+    )
+    + f". {NAMED}"
 )
 
 
@@ -150,6 +173,8 @@ def record_offer(
     if unbound:
         text = f"{'; '.join(unbound)}. {CITE}"
         return no(text, ("declass.denied", {"violations": unbound}))
+    if bad := [p for s in slots for p in _named(s, said.get(str(s.source_utt), ""))]:
+        return _invalid(refused(bad))
     if bad := [p for s in slots if (p := value(s))]:
         return _invalid(refused(bad))
     prev = bb.public.offers.get(ref)
@@ -170,6 +195,27 @@ def record_offer(
         f", expires at t={expires} ms" if expires else ""
     )
     return Result(True, text, (("offer.recorded", recorded),))
+
+
+def _named(slot: st.ReadbackSlot, line: str) -> list[str]:
+    """Why a fee or credit code is not the rep's name for it: a generic word, or
+    a word its cited line does not say (the read-back's matcher); else []."""
+    kind = slot.field.partition(":")[0]
+    if kind not in ("fee", "credit"):
+        return []
+    out: list[str] = []
+    for w in _words(slot.field):
+        if w in GENERIC[kind]:
+            out.append(
+                f"{slot.field}: '{w}' is a generic word; name a {kind} by the words "
+                f"the rep used for it without '{w}' (e.g. {EXAMPLE[kind]})"
+            )
+        elif not _names(line.lower(), f"{kind}:{w}"):
+            out.append(
+                f"{slot.field}: '{w}' is not in the cited line {slot.source_utt}; "
+                "use the rep's words"
+            )
+    return out
 
 
 def _invalid(text: str) -> Result:  # the slots' form, not the rep's words

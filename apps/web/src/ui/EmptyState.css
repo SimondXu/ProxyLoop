@@ -1,4 +1,4 @@
 @layer components {
-  .pl-empty { padding: var(--s8) var(--s4); text-align: center; color: var(--ink-3); border: 1px dashed var(--line-strong); border-radius: var(--r-md); }
-  .pl-empty-title { margin: 0; font: 560 var(--fs-card) / 1.25 var(--font-display); color: var(--ink-2); }
+  .pl-empty { padding: var(--s8) var(--s4); text-align: center; color: var(--ink-3); border: 1px dashed var(--line-ui); border-radius: var(--r-mid); }
+  .pl-empty-title { margin: 0; font: 600 var(--fs-card) / 1.25 var(--font-ui); color: var(--ink-2); }
 }
