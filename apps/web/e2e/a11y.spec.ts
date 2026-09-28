@@ -1,5 +1,5 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { seriousViolations } from "./axe";
 import { capturePosts, CSRF, csrfCookie, events, mockSockets, REP_CSRF, repFrames, RUN, shot, started } from "./liveMock";
 
 // UI-8 (redesign §2.4, §3.6, §7 risk 10): axe on Start, Live (an open approval
@@ -60,25 +60,12 @@ const MANDATE = {
   decided_by: null,
 };
 
-/**
- * axe on the page at rest: entrance animations (finite) have run or were cancelled (their element left the
- * layout); the planner's pulse (infinite) is left alone.
- */
+/** axe on the page at rest (./axe.ts waits for the entrance animations). */
 async function audit(page: Page) {
   // No stored choice: the page's theme is the emulated OS scheme's.
   const scheme = await page.evaluate(() => (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
   await expect(page.locator("html")).toHaveAttribute("data-theme", scheme);
-  await page.evaluate(() =>
-    Promise.all(
-      document
-        .getAnimations()
-        .filter((a) => a.effect?.getTiming().iterations !== Infinity)
-        .map((a) => a.finished.catch(() => undefined)),
-    ),
-  );
-  const r = await new AxeBuilder({ page }).analyze();
-  const bad = r.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
-  expect(bad.map((v) => `${v.id} (${v.impact}): ${v.nodes.map((n) => `${n.target.join(" ")} ${n.failureSummary ?? ""}`).join("; ")}`)).toEqual([]);
+  expect(await seriousViolations(page)).toEqual([]);
 }
 
 /** WCAG contrast of an element's text on its own background (both opaque rgb). */
@@ -226,6 +213,8 @@ for (const theme of THEMES) {
         await expect(steps).toBeVisible();
         expect((await steps.boundingBox())?.width).toBeGreaterThan(300);
         await expect(page.getByRole("button", { name: "Close" })).toBeFocused();
+        // The drawer opens under the sticky band: the sim label stays in view on every frame (I8, I11).
+        expect(await page.getByRole("note", { name: "Simulated parties" }).evaluate(uncovered)).toBe(true);
         await audit(page);
         await shot(page, `phone-details-${theme}`);
         await page.keyboard.press("Escape");
@@ -296,6 +285,11 @@ for (const theme of THEMES) {
         }
         await expect(approve).toBeInViewport({ ratio: 1 });
         await shot(page, `phone-360-sheet-${theme}`);
+        // The Task details drawer opens under the band: the sim label is not covered (I8, I11).
+        await page.getByRole("button", { name: "Task details" }).click();
+        await expect(page.getByRole("region", { name: "Steps" })).toBeVisible();
+        expect(await page.getByRole("note", { name: "Simulated parties" }).evaluate(uncovered)).toBe(true);
+        await shot(page, `phone-360-details-${theme}`);
       });
 
       test("the composer is 16px, so a phone does not zoom into it", async ({ page, baseURL }) => {
@@ -309,10 +303,15 @@ for (const theme of THEMES) {
       test.use({ viewport: { width: 1024, height: 768 } });
 
       test("one stream, the card inline; the rail is a drawer behind the Task details button", async ({ page, baseURL }) => {
-        await liveWithCards(page, baseURL);
+        const { ws, ev } = await liveWithCards(page, baseURL);
         const details = page.getByRole("button", { name: "Task details" });
         await expect(details).toHaveAttribute("aria-expanded", "false");
         await expect(page.getByRole("region", { name: "Steps" })).toBeHidden();
+        // Closed, the drawer keeps its status line in the accessibility tree (visually hidden), so changes are announced.
+        const status = page.getByRole("status", { name: "Status line" });
+        await expect(status).toHaveAttribute("aria-live", "polite");
+        ws.send(ev("session.ended", "kernel", { reason: "abandoned", counts: {} }, { stream: "ops" }));
+        await expect(status).toHaveText("The rep ended the call.");
         await expect(page.getByRole("button", { name: "Hide the decision" })).toBeHidden(); // no sheet from 768px
         await expect(page.getByRole("article", { name: "Approval ap-1" })).toBeVisible();
         expect((await page.getByRole("region", { name: "Chat", exact: true }).boundingBox())?.width).toBeLessThanOrEqual(760);
@@ -322,6 +321,26 @@ for (const theme of THEMES) {
         await expect(page.getByLabel("Status line")).toBeVisible();
         await audit(page);
         await shot(page, `tablet-details-${theme}`);
+        // Escape closes it wherever the focus is, here in the composer outside the drawer.
+        await page.getByRole("textbox", { name: "Message to the assistant" }).focus();
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("region", { name: "Steps" })).toBeHidden();
+        await expect(details).toHaveAttribute("aria-expanded", "false");
+      });
+    });
+
+    test.describe("landscape phone (844×390)", () => {
+      test.use({ viewport: { width: 844, height: 390 } });
+
+      test("a short viewport scrolls the page instead of squeezing the stream", async ({ page, baseURL }) => {
+        await liveWithCards(page, baseURL);
+        expect((await page.getByRole("list", { name: "Chat transcript" }).boundingBox())?.height).toBeGreaterThanOrEqual(200);
+        const card = page.getByRole("article", { name: "Approval ap-1" });
+        await card.getByRole("button", { name: "Approve $75/mo" }).scrollIntoViewIfNeeded();
+        await expect(card.getByRole("button", { name: "Approve $75/mo" })).toBeInViewport({ ratio: 1 });
+        await expect(card.getByRole("heading")).toBeAttached();
+        await audit(page);
+        await shot(page, `landscape-phone-${theme}`);
       });
     });
   });

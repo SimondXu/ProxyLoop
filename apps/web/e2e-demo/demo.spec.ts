@@ -133,7 +133,7 @@ async function toCard(page: Page) {
   await onlyFakes(page, ["fast_user", "fast_cp", "slow", "ear", "mouth"]);
   // The world's rep is labelled on every frame: the honesty band (and each call card, below); not the chat (the user is the person here).
   await expect(page.getByRole("note", { name: "Simulated parties" })).toHaveText(SIM_REP);
-  await expect(page.getByText("Simulated user", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Chat" }).locator(':scope > [aria-label="Simulated parties"]')).toHaveCount(0);
   // Every model is a test_fake: the band says so (I8), before any model would have spoken.
   await expect(page.getByText("Scripted test run · no models called")).toBeVisible();
   await say(page, TASK_SAID);

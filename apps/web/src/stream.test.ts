@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { callHead } from "./conversation";
 import type { Ev } from "./replay";
 import { stream, type Item } from "./stream";
 
@@ -77,6 +78,14 @@ describe("the stream: chat lines, cards and the call, by seq", () => {
     const items = stream(es, []);
     expect(shape(items)).toEqual(["call 1.1 last: call connected | We accept", "chat: On it"]);
     expect(JSON.stringify(items)).not.toContain("$70");
+  });
+
+  it("numbers calls only by the kernel's chan.opened, as callHead does: lines before any open are call 0", () => {
+    const es = [rep("Early line."), closed(), opened(), rep("Hello.")];
+    const items = stream(es, []);
+    expect(shape(items)).toEqual(["call 0.1 last ended: Early line. | call ended", "call 1.1 last: call connected | Hello."]);
+    const latest = items.findLast((i) => i.kind === "call");
+    expect(latest?.kind === "call" && latest.part.call).toBe(callHead(es).calls);
   });
 
   it("puts a centred time before the first item with a wall clock, then after three minutes or more", () => {

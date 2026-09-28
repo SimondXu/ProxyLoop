@@ -4,7 +4,7 @@
 // listener heard (conversation.ts), with the speaker in its text ("You: …"), if
 // only for screen readers. The six engineer lanes and the prompt drawer are
 // behind ?view=engineer.
-import { Fragment, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { from } from "./authority";
 import { callHead, SIM_USER, simLabels, speakerName, type CallHead, type Line, type Parties } from "./conversation";
 import { receipts, type Receipt as Tick } from "./fenceTicks";
@@ -116,6 +116,13 @@ export function Panes({ events, p, announce, input, head, details }: { events: E
     // The drawer takes focus when opened and gives it back to its button when closed.
     requestAnimationFrame(() => (on ? close : toggle).current?.focus());
   };
+  // Escape closes the open drawer wherever the focus is.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && show(false);
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, [open]);
   return (
     <div className="pl-case" data-details={open ? "open" : undefined}>
       <div className="pl-casehead">
@@ -126,7 +133,7 @@ export function Panes({ events, p, announce, input, head, details }: { events: E
         </button>
       </div>
       <Stream events={events} p={p} announce={announce} input={input} />
-      <aside id={id} className="pl-details" aria-labelledby={`${id}-h`} onKeyDown={(e) => open && e.key === "Escape" && show(false)}>
+      <aside id={id} className="pl-details" aria-labelledby={`${id}-h`}>
         <div className="pl-details-head">
           <h2 id={`${id}-h`}>Task details</h2>
           <button type="button" ref={close} className="pl-details-close" onClick={() => show(false)}>
@@ -212,7 +219,7 @@ const clock = (ms: number) => `${Math.floor(ms / 60_000)}:${String(Math.floor(ms
 function CallCard({ part, head, p }: { part: CallPart; head: CallHead; p: Parties }) {
   const id = useId();
   const latest = part.call === head.calls;
-  const state = !part.last ? null : !latest || !head.open ? "Call ended" : head.calls > 1 ? `Call ${head.calls} of ${head.calls}` : "Connected";
+  const state = !part.last || part.call === 0 ? null : !latest || !head.open ? "Call ended" : head.calls > 1 ? `Call ${head.calls} of ${head.calls}` : "Connected";
   return (
     <div className="pl-call" role="group" aria-labelledby={id}>
       <div className="pl-call-h" aria-live="off">

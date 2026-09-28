@@ -1,5 +1,5 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { seriousViolations } from "./axe";
 
 // Generic over any bundle (PL_BUNDLE_DIR), served by the real API: the committed
 // fixture by default, or an evidence/s0 bundle. No fixture-specific strings.
@@ -102,13 +102,18 @@ test("opens a run at its end in the conversation view: the heard lines, the rece
   ];
   expect(labels.length, "a replayable bundle runs against the sim world").toBeGreaterThan(0);
   // Each call card's header names the simulated parties (S1-SYS-77: the call is a card in the stream from its chan.opened).
-  for (const part of await page.getByRole("group", { name: "Call with the company" }).all()) {
+  const calls = page.getByRole("group", { name: "Call with the company" });
+  if (events.some((e) => e.type === "chan.opened" && e.actor === "kernel" && e.payload.lane === "cp")) await expect(calls).not.toHaveCount(0);
+  for (const part of await calls.all()) {
     await expect(part.getByLabel("Simulated parties")).toHaveText(labels.join(" · "));
   }
   // The chat itself is labelled only for a simulated user.
-  const chatSim = chatRegion.getByText("Simulated user", { exact: true });
-  if (roles.includes("simuser")) await expect(chatSim).toHaveCount(1);
-  else await expect(chatSim).toHaveCount(0);
+  // Its SimNote is the chat region's own child, before the call cards: the first "Simulated parties" label in it.
+  const chatSim = chatRegion.locator(':scope > [aria-label="Simulated parties"]');
+  if (roles.includes("simuser")) {
+    await expect(chatSim).toHaveText("Simulated user");
+    await expect(chatRegion.getByLabel("Simulated parties", { exact: true }).first()).toHaveText("Simulated user");
+  } else await expect(chatSim).toHaveCount(0);
 
   // I11: at 00:00, before session.started's t_ms, every frame already names the simulated parties (from the whole log).
   await timeline.fill("0");
@@ -211,7 +216,6 @@ test.describe("phone (390×844)", () => {
         return hit !== null && el.contains(hit);
       }),
     ).toBe(true);
-    const r = await new AxeBuilder({ page }).analyze();
-    expect(r.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id)).toEqual([]);
+    expect(await seriousViolations(page)).toEqual([]);
   });
 });

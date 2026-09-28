@@ -5,7 +5,7 @@ import { conversation, type Line } from "./conversation";
 import type { Ev } from "./replay";
 import { clock } from "./terms";
 
-/** A call's part: `call` counts calls from 1, `part` the call's parts from 1; `ended`: it holds the chan.closed line. */
+/** A call's part: `call` counts the kernel's chan.opened as callHead does (0: lines before any), `part` from 1; `ended`: it holds chan.closed. */
 export type CallPart = { call: number; part: number; last: boolean; ended: boolean; lines: Line[] };
 /** `time`: a centred time of day to show before the item, or null. */
 export type Item<T> = { seq: number; time: string | null } & (
@@ -48,7 +48,7 @@ export function stream<T extends { seq: number }>(events: Ev[], items: T[]): Ite
       continue;
     }
     const type = bySeq.get(x.seq)?.type;
-    if (type === "chan.opened" || calls === 0) {
+    if (type === "chan.opened") {
       calls += 1;
       current = null;
     }

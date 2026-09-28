@@ -278,7 +278,8 @@ test("conversation view: one stream with the right speakers, heard text only, th
   ws.send(ev("session.started", "kernel", started(SIM), { stream: "ops" }));
   // Every frame names the simulated rep: the page's band, and each call card once the call opens; only a simulated user labels the chat.
   await expect(page.getByRole("note", { name: "Simulated parties" })).toHaveText(SIM_REP);
-  await expect(page.getByText("Simulated user", { exact: true })).toHaveCount(0);
+  // The chat's own sim label (its SimNote, outside the call cards) is there only for a simulated user.
+  await expect(page.getByRole("region", { name: "Chat" }).locator(':scope > [aria-label="Simulated parties"]')).toHaveCount(0);
   await expect(page.getByLabel("Status line")).toHaveText("Getting the details before calling");
   await expect(page.getByText("Planner is listening")).toBeVisible(); // outside the live region
 
@@ -402,6 +403,7 @@ test("v4 stream: the call card holds the rep's line, a message sent during the c
   await expect(rail.getByRole("region", { name: "Your limits (summary)" })).toBeVisible();
   await expect(rail.getByRole("region", { name: "Steps" })).toBeVisible();
   await expect(rail.getByRole("region", { name: "Authority" })).toBeHidden();
+  await expect(page.locator("details.pl-tech details.authority")).toHaveCount(1);
   await rail.getByText("Technical details", { exact: true }).click();
   await rail.getByText("Authority details (raw case status, fence, epoch)").click();
   await expect(rail.getByRole("region", { name: "Authority" })).toBeVisible();
@@ -419,8 +421,8 @@ test("aria-live: one polite announcement per new heard line; a split re-announce
   ws.send(rep("cp-1", "First offer."));
   const calls = page.getByRole("group", { name: "Call with the company" });
   await expect(calls.getByRole("listitem")).toHaveCount(2);
-  // What a screen reader is handed: each node added, or text changed, under a polite live region, not under
-  // aria-live off (a card, a call header) or aria-hidden (a time).
+  // What a screen reader is handed: the text of each node added, or text changed, under a polite live region, less
+  // what sits under aria-live off (a card, a call header) or aria-hidden (a time).
   await page.getByRole("list", { name: "Chat transcript" }).evaluate((list) => {
     const said: string[] = [];
     Object.assign(window, { said });
@@ -429,7 +431,9 @@ test("aria-live: one polite announcement per new heard line; a split re-announce
         for (const n of m.type === "childList" ? [...m.addedNodes] : [m.target]) {
           const el = n instanceof Element ? n : n.parentElement;
           if (!el || el.closest("[aria-live]")?.getAttribute("aria-live") !== "polite" || el.closest('[aria-hidden="true"]')) continue;
-          said.push(n.textContent ?? "");
+          const copy = n.cloneNode(true);
+          if (copy instanceof Element) for (const quiet of copy.querySelectorAll('[aria-live="off"], [aria-hidden="true"]')) quiet.remove();
+          said.push(copy.textContent ?? "");
         }
       }
     }).observe(list, { childList: true, subtree: true, characterData: true });
@@ -442,11 +446,7 @@ test("aria-live: one polite announcement per new heard line; a split re-announce
   ws.send(rep("cp-3", "Third offer."));
   await expect(calls.last().getByRole("listitem")).toHaveCount(2);
   const said = await page.evaluate(() => (window as unknown as { said: string[] }).said);
-  expect(said).toHaveLength(3);
-  expect(said[0]).toBe("You: Is that the best?");
-  expect(said[1]).toMatch(/Rep \(simulated\): Second offer\.$/);
-  expect(said[2]).toBe("Rep (simulated): Third offer.");
-  for (const t of said) expect(t).not.toContain("First offer.");
+  expect(said).toEqual(["You: Is that the best?", "Rep (simulated): Second offer.", "Rep (simulated): Third offer."]);
   expect(await first?.evaluate((el) => el.isConnected)).toBe(true); // the earlier part was kept, not rebuilt
 });
 
