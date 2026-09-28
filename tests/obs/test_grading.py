@@ -7,6 +7,7 @@ None (``test_detectors``)."""
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 from tests.obs.bundles import Log, manifest, write
@@ -138,13 +139,12 @@ def test_every_h5_detector_equals_the_hand_count(tmp_path: Path) -> None:
             "by": {"cite_competitor": 1, "tenure_years": 1},
         },
         "slow.finish_before_offer": {"count": 0, "seq": 39},
-        # o1's expires and fee (shown without Slow's suffix) are still
-        # "heard"; o2 was never read back
+        # neither o1 (read back) nor o2 was sent for approval or accepted:
+        # out of scope (test_a_levered_offer_is_superseded_and_the_sent_one_graded
+        # grades a committed one)
         "offer.required_unconfirmed_after_readback": {
-            "count": 2, "offers": {"o1@1": ["expires", "fee"]},
-            "ask_heard": {"o1@1": False},  # 21, 23 and 24 were never voiced
-            "unasked": ["o2"], "unasked_n": 1,
-            "h5_pass": None,  # o2 may be info_only: unknown
+            "count": 0, "offers": {}, "ask_heard": {}, "unasked": [], "unasked_n": 0,
+            "h5_pass": None, "superseded_by_lever": [], "not_committed": ["o1", "o2"],
         },
         # 21, 23 and 24 all went out while expires was unconfirmed
         "slow.readback_asks_max_per_revision": {
@@ -296,12 +296,39 @@ def _call(log: Log) -> None:
 
 
 _UNASKED: P = {"count": 0, "offers": {}, "ask_heard": {}, "unasked": ["o1"],
-               "unasked_n": 1, "h5_pass": None}  # fmt: skip
+               "unasked_n": 1, "h5_pass": False}  # fmt: skip
+_OUT: P = {"superseded_by_lever": [], "not_committed": []}
 
 
-def _grade(tmp_path: Path, log: Log) -> object:
+def _send(log: Log, ref: str, revision: int) -> str:
+    """Slow sends ``ref``'s ``revision`` for approval (approval.requested)."""
+    card: P = {"approval_id": f"a-{len(log.events)}", "offer_ref": ref}
+    card |= {"revision": revision, "terms_hash": "h", "readback_text": "PRIV"}
+    card |= {"authority_epoch": 0, "expires_ms": 10**9}
+    binding: P = {"offer_ref": ref, "revision": revision, "authority_epoch": 0}
+    card["binding"] = binding | {"account_ref": "a", "principal_ref": "p",
+                                 "purpose": "x"}  # fmt: skip
+    return log.add("approval.requested", "guard", "agent", card, (log.start,))
+
+
+def _grade(tmp_path: Path, log: Log, send: bool = True) -> object:
+    """The detector's value, ``send``: with the latest revision of every
+    offer sent for approval first (in scope), and the out-of-scope lists
+    (``_OUT``, empty then) left out."""
+    if send:
+        latest: dict[str, int] = {}
+        for e in log.events:
+            if e.type == "offer.recorded":
+                latest[str(e.payload["offer_ref"])] = int(str(e.payload["revision"]))
+        for ref, revision in sorted(latest.items()):
+            _send(log, ref, revision)
     run = write(tmp_path / log.run_id, log, manifest(log.run_id))
-    return _values(run)["offer.required_unconfirmed_after_readback"]
+    value = _values(run)["offer.required_unconfirmed_after_readback"]
+    if send:
+        assert isinstance(value, dict)
+        value = cast(dict[str, object], value)
+        assert {k: value.pop(k) for k in _OUT} == _OUT
+    return value
 
 
 def test_an_offer_never_read_back_does_not_pass(tmp_path: Path) -> None:
@@ -390,7 +417,110 @@ def test_another_offers_ask_does_not_read_back(tmp_path: Path) -> None:
     assert _grade(tmp_path, log) == {
         "count": 1, "offers": {"o2@1": ["monthly_price"]},
         "ask_heard": {"o2@1": False}, "unasked": ["o1"], "unasked_n": 1,
-        "h5_pass": None,
+        "h5_pass": False,  # o1 was sent for approval with no read-back
+    }  # fmt: skip
+
+
+def _lever(log: Log) -> str:
+    guide: P = {"move": "ask_discount", "slots": []}
+    return s2f(log, f"lv-{len(log.events)}", "cp", "GUIDE", log.start, guide=guide)
+
+
+def _confirm(log: Log, ref: str, cause: str, **statuses: str) -> str:
+    update: P = {"offer_ref": ref, "revision": 1, "slot_statuses": statuses}
+    return log.add("readback.updated", "guard", "agent", update | {"terms_hash": "t"},
+                   (cause,))  # fmt: skip
+
+
+def test_a_levered_offer_is_superseded_and_the_sent_one_graded(
+    tmp_path: Path,
+) -> None:
+    """a806fc after #238: save-1 (offer-1) is levered before its read-back,
+    the better save-2 arrives as offer-2, is read back and sent for approval:
+    offer-1 is out of scope (superseded_by_lever), offer-2 graded."""
+    log = Log("rS")
+    _offer(log, "offer-1", ("monthly_price",), log.start)  # 1
+    _lever(log)  # 2: ask_discount
+    o2 = _offer(log, "offer-2", ("monthly_price", "fee:PRIV9"), log.start)  # 3
+    _readback(log, o2, "offer:offer-2")  # 4
+    _confirm(log, "offer-2", o2, monthly_price="confirmed", **{"fee:PRIV9": "heard"})
+    _send(log, "offer-2", 1)  # 6
+    assert _grade(tmp_path, log, send=False) == {
+        "count": 1, "offers": {"offer-2@1": ["fee"]},
+        "ask_heard": {"offer-2@1": False}, "unasked": [], "unasked_n": 0,
+        "h5_pass": False, "superseded_by_lever": ["offer-1"], "not_committed": [],
+    }  # fmt: skip
+
+
+def test_only_offers_sent_or_accepted_are_graded(tmp_path: Path) -> None:
+    """Never sent nor accepted, not levered past: not_committed, and no offer
+    in scope is None; an accepted offer (its capability's terms_hash on its
+    readback.updated) with no read-back ask fails; one sent for approval and
+    then levered past stays in scope."""
+    idle = Log("rI")
+    _readback(idle, _offer(idle, "o1", ("monthly_price",), idle.start), "offer:o1")
+    assert _grade(tmp_path, idle, send=False) == {
+        "count": 0, "offers": {}, "ask_heard": {}, "unasked": [], "unasked_n": 0,
+        "h5_pass": None, "superseded_by_lever": [], "not_committed": ["o1"],
+    }  # fmt: skip
+
+    took = Log("rT")
+    o1 = _offer(took, "o1", ("monthly_price",), took.start)  # 1
+    _confirm(took, "o1", o1, monthly_price="heard")  # 2: terms_hash "t"
+    capability: P = {"cap_id": "c", "business_action_id": "b", "terms_hash": "t"}
+    capability |= {"intent": "accept_offer", "epoch": 0, "expires_ms": 10**9}
+    auth: P = {"intent": "accept_offer", "capability": capability}
+    took.add("action.authorized", "guard", "agent", auth, (took.start,))  # 3
+    graded = _grade(tmp_path, took, send=False)
+    assert isinstance(graded, dict)
+    assert (graded["unasked"], graded["h5_pass"]) == (["o1"], False)
+
+    kept = Log("rK")
+    _readback(kept, _rev(kept, "o1", 1), "offer:o1")  # 1-2
+    _send(kept, "o1", 1)  # 3
+    _lever(kept)  # 4
+    _rev(kept, "o2", 1)  # 5
+    graded = _grade(tmp_path, kept, send=False)
+    assert isinstance(graded, dict)
+    assert graded["offers"] == {"o1@1": ["monthly_price"]}
+    assert (graded["superseded_by_lever"], graded["not_committed"]) == ([], ["o2"])
+
+
+def test_superseded_needs_a_lever_after_the_record_and_another_ref(
+    tmp_path: Path,
+) -> None:
+    """Not superseded: a new revision of the same ref after the lever, or a
+    lever before the offer's record; the committed revision is graded, not a
+    later one."""
+    same = Log("rS1")
+    _rev(same, "o1", 1)  # 1
+    _lever(same)  # 2
+    _rev(same, "o1", 2)  # 3: the same ref
+    graded = _grade(tmp_path, same, send=False)
+    assert isinstance(graded, dict)
+    assert (graded["superseded_by_lever"], graded["not_committed"]) == ([], ["o1"])
+
+    early = Log("rS2")
+    _lever(early)  # 1: before o1's record
+    _rev(early, "o1", 1)  # 2
+    _rev(early, "o2", 1)  # 3
+    graded = _grade(tmp_path, early, send=False)
+    assert isinstance(graded, dict)
+    assert (graded["superseded_by_lever"], graded["not_committed"]) == (
+        [], ["o1", "o2"],
+    )  # fmt: skip
+
+    sent = Log("rS3")
+    r1 = _rev(sent, "o1", 1)  # 1
+    _readback(sent, r1, "offer:o1")  # 2
+    _confirm(sent, "o1", r1, monthly_price="confirmed")  # 3
+    _send(sent, "o1", 1)  # 4: r1 sent
+    _call(sent)  # 5: a new call closes r1's window
+    _rev(sent, "o1", 2)  # 6: r2, never sent, never read back
+    assert _grade(tmp_path, sent, send=False) == {
+        "count": 0, "offers": {"o1@1": []}, "ask_heard": {"o1@1": False},
+        "unasked": [], "unasked_n": 0, "h5_pass": True,
+        "superseded_by_lever": [], "not_committed": [],
     }  # fmt: skip
 
 

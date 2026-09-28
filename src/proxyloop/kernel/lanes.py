@@ -12,9 +12,11 @@ not at its release; S1-SYS-56 held the turn for the floor) is stale too
 (S1-SYS-59): it keeps its turn, sentences and relays but is not said
 (``fast.cancelled{verbatim}`` after its turn), and its trigger runs again on the
 new basis. Its ``chan.hold`` is emitted only as its lines take the floor, so a
-cancelled turn leaves no hold the rep never heard. The GUIDEs it voiced (their
-``s2f.voiced`` came before its speech) are voiced again by the re-run, if the
-re-run acts and each is still the lane's newest GUIDE: the rep heard it there.
+cancelled turn leaves no hold the rep never heard. A turn voices only the GUIDE
+its view rendered, the lane's newest (S1-SYS-67): an older pending one is
+superseded, never voiced. The GUIDE it voiced (its ``s2f.voiced`` came before
+its speech) is voiced again by the re-run, if the re-run acts and it is still
+the lane's newest GUIDE: the rep heard it there.
 Condition R (``teacher_repair_*``): a generation at a decision point goes to the
 teacher, as a ``fast_*`` call with the teacher's model (E1), ``resamples`` noted."""
 
@@ -173,8 +175,9 @@ class FastLane:
         self._n += 1
         gen_id = f"{lane}-g{self._n}"
         gen: dict[str, object] = {"lane": lane, "gen_id": gen_id}
-        guides = [m.msg_id for m in k.bb.s2f_pending.get(lane, ()) if m.guide]
-        guides += [g for g in ask.guides if g == self._guide and g not in guides]
+        pending = {m.msg_id for m in k.bb.s2f_pending.get(lane, ()) if m.guide}
+        g = self._guide  # the only GUIDE the view renders (``guidance_cp``)
+        guides = [g] if g is not None and (g in pending or g in ask.guides) else []
         view, epoch = self.view(trigger), k.bb.epoch
         repair = k.teacher is not None and substitutes(view, k.cfg.ablations)
         client: LLMClient = k.teacher if repair and k.teacher else self.client
