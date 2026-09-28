@@ -29,13 +29,16 @@ One tier per run, first match wins:
 - **F-infra**: the end reason is ``world_error`` or ``llm_unavailable``.
 - **F**: any other status not in ``CLOSES``; the reason is the end reason.
 - VERIFIED_NO_DEAL or CLOSED_NO_ACTION (``task_kind: info_only`` with an
-  ``info_only`` end or CLOSED_NO_ACTION): an authorized commit is
-  ``inconsistent`` (None); a better offer than the current price is **C**
-  unless ``within_mandate_not_taken`` (**E**); else by the ladder flag
-  (``ladder.py`` ``no_deal_ladder_unfinished``): ``exhausted`` **D**
-  (``exhausted: true``), ``all_pulled`` **D** (``exhausted: false``, never
-  E), ``unfinished`` or ``no_ladder`` **E**; no rep.policy: None,
-  ``no_policy``.
+  ``info_only`` end or CLOSED_NO_ACTION), E before C before D: an authorized
+  commit is ``inconsistent`` (None, unreachable). An offer is "better" when
+  it is below the current price, or the current price is unknown (then the
+  savings are None). **E** (a miss, whatever was offered): a better offer
+  ``within_mandate_not_taken``, or the ladder flag (``ladder.py``
+  ``no_deal_ladder_unfinished``) ``unfinished`` or ``no_ladder``. **C**: a
+  better offer beyond the agent's authority (``no_mandate``,
+  ``above_mandate``, ``approval_denied``). **D**: the flag ``exhausted``
+  (``exhausted: true``) or ``all_pulled`` (``exhausted: false``). Left over,
+  only with no rep.policy (no flag, no offer): None, ``no_policy``.
 
 Money is integer cents (``unit: usd_minor``) from exact decimal strings,
 None when an input is absent or unparseable, never guessed;
@@ -65,13 +68,6 @@ CLOSES = frozenset(
 INFRA = frozenset({"world_error", "llm_unavailable"})
 NOTE = "advisory: reported, never a gate"
 _OFFERS = frozenset({"offer", "final_offer"})
-_BY_FLAG: dict[object, tuple[str | None, str, bool | None]] = {
-    "exhausted": ("D", "exhausted", True),
-    "all_pulled": ("D", "all_pulled", False),
-    "unfinished": ("E", "unfinished", None),
-    "no_ladder": ("E", "no_ladder", None),
-    "committed": (None, "inconsistent", None),  # unreachable: X or an authorized
-}  # commit, which no verified no-deal follows
 Grade = tuple[str | None, str, dict[str, object]]
 
 
@@ -263,21 +259,24 @@ def _outside(x: Inputs, best: int) -> str:
 
 
 def _no_deal(x: Inputs, v: Mapping[str, object]) -> Grade:
+    """E, then C, then D (ADR-0023 as amended 2026-09-28): a miss outranks
+    any offer obtained."""
     flag = as_dict(DETECTORS["no_deal_ladder_unfinished"](x))
     extra: dict[str, object] = {"ladder_unfinished": flag.get("count")}
     reason = flag.get("reason")
+    if reason == "committed":  # unreachable: an accept was heard
+        return None, "inconsistent", extra
     best, current = v["best_offer_monthly"], v["current_price"]
-    if (
-        reason != "committed"
-        and isinstance(best, int)
-        and isinstance(current, int)
-        and (best < current)
-    ):
-        if within_mandate_not_taken(x, best):
-            return "E", "within_mandate_not_taken", extra
+    better = isinstance(best, int) and (not isinstance(current, int) or best < current)
+    if better and isinstance(best, int) and within_mandate_not_taken(x, best):
+        return "E", "within_mandate_not_taken", extra
+    if reason in ("unfinished", "no_ladder"):
+        return "E", str(reason), extra
+    if better and isinstance(best, int):
         return "C", _outside(x, best), extra
-    tier, why, exhausted = _BY_FLAG.get(reason, (None, "no_policy", None))
-    return tier, why, extra | {"exhausted": exhausted}
+    if reason in ("exhausted", "all_pulled"):
+        return "D", str(reason), extra | {"exhausted": reason == "exhausted"}
+    return None, "no_policy", extra  # no rep.policy: no ladder, no offer
 
 
 def _grade(x: Inputs, status: object, end: object, v: Mapping[str, object]) -> Grade:

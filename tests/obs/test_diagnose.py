@@ -112,6 +112,12 @@ def test_unasked_offers_show_as_their_own_cell(
     offer: dict[str, object] = {"offer_ref": "o1", "revision": 1, "slots": slots}
     offer["terms_hash"] = None
     log.add("offer.recorded", "guard", "agent", offer, (log.start,))
+    card: dict[str, object] = {"approval_id": "a1", "offer_ref": "o1", "revision": 1}
+    card |= {"terms_hash": "h", "readback_text": "R", "authority_epoch": 0}
+    binding = {"offer_ref": "o1", "revision": 1, "authority_epoch": 0}
+    card |= {"expires_ms": 9, "binding": binding | {"account_ref": "a",
+             "principal_ref": "p", "purpose": "x"}}  # fmt: skip
+    log.add("approval.requested", "guard", "agent", card, (log.start,))  # in scope
     write(tmp_path / "rO", log, manifest("rO"))
     assert diagnose.main(["--root", str(tmp_path)]) == 0
     out = capsys.readouterr().out

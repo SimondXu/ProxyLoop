@@ -176,26 +176,33 @@ def _no_deal(log: Log, status: str = "VERIFIED_NO_DEAL", end: str = "no_deal") -
     log.end(end)
 
 
+def _spent(log: Log, price: str) -> None:
+    """ask_discount answered with ``price``, then tenure ``no_better``: the
+    ladder is proven exhausted, so no lever flag makes the run E."""
+    _pull(log, "ask_discount", "offer", price)
+    _pull(log, "tenure", "no_better")
+
+
 def test_a_better_offer_outside_the_mandate_is_c() -> None:
     above = Log("rC1")
     _current(above, "85")
     _mandate(above, 6500)
-    _pull(above, "ask_discount", "offer", "70")
+    _spent(above, "70")
     _no_deal(above)
     t = _tier(above)
-    assert (t["tier"], t["reason"], t["ladder_unfinished"]) == ("C", "above_mandate", 1)
-    assert t["gap_to_target"] == 500
+    assert (t["tier"], t["reason"], t["ladder_unfinished"]) == ("C", "above_mandate", 0)
+    assert (t["gap_to_target"], t["exhausted"]) == (500, None)
 
     none = Log("rC2")
     _current(none, "85")
-    _pull(none, "ask_discount", "offer", "70")
+    _spent(none, "70")
     _no_deal(none)
     assert (_tier(none)["tier"], _tier(none)["reason"]) == ("C", "no_mandate")
 
     denied = Log("rC3")
     _current(denied, "85")
     _mandate(denied, 7500)
-    _pull(denied, "ask_discount", "offer", "70")
+    _spent(denied, "70")
     _approval(denied, "denied", 7000)
     _no_deal(denied)
     assert (_tier(denied)["tier"], _tier(denied)["reason"]) == ("C", "approval_denied")
@@ -203,10 +210,54 @@ def test_a_better_offer_outside_the_mandate_is_c() -> None:
     ungranted = Log("rC4")  # proposed, never granted: nothing was pre-approved
     _current(ungranted, "85")
     _mandate(ungranted, 7500, decision="denied")
-    _pull(ungranted, "ask_discount", "offer", "70")
+    _spent(ungranted, "70")
     _no_deal(ungranted)
     assert (_tier(ungranted)["tier"], _tier(ungranted)["reason"]) == ("C", "no_mandate")
     assert _tier(ungranted)["target_monthly"] == 7500  # the proposal, still shown
+
+    unknown = Log("rC5")  # the user never said the current price: still C
+    _mandate(unknown, 6500)
+    _spent(unknown, "78")
+    _no_deal(unknown)
+    t = _tier(unknown)
+    assert (t["tier"], t["reason"], t["best_offer_monthly"]) == (
+        "C",
+        "above_mandate",
+        7800,
+    )
+    assert (t["current_price"], t["savings_monthly"], t["pct_below_current_bp"]) == (
+        None, None, None,
+    )  # fmt: skip
+
+
+def test_a_miss_outranks_a_better_offer() -> None:
+    """E before C: a reachable lever never pulled (bdfcc0's shape: $78 over a
+    $65 mandate, tenure never pulled) is a miss whatever was offered."""
+    log = Log("rEc")
+    _current(log, "90")
+    _mandate(log, 6500)
+    _pull(log, "ask_discount", "offer", "78")
+    _no_deal(log)
+    t = _tier(log)
+    assert (t["tier"], t["reason"], t["ladder_unfinished"]) == ("E", "unfinished", 1)
+    assert (t["savings_monthly"], t["gap_to_target"]) == (1200, 1300)
+
+
+def test_all_pulled_is_c_with_a_better_offer_and_d_without_one() -> None:
+    better = Log("rAp1")
+    _current(better, "85")
+    _pull(better, "ask_discount", "offer", "80")
+    _pull(better, "tenure", "final_offer", "79")
+    _no_deal(better)
+    assert (_tier(better)["tier"], _tier(better)["reason"]) == ("C", "no_mandate")
+    bare = Log("rAp2")  # both levers heard past identity, no offer made
+    _current(bare, "85")
+    _pull(bare, "ask_discount", "clarify", move="DISCOVER>DISCOVER")
+    _pull(bare, "tenure", "clarify", move="DISCOVER>DISCOVER")
+    _no_deal(bare)
+    t = _tier(bare)
+    assert (t["tier"], t["reason"], t["exhausted"]) == ("D", "all_pulled", False)
+    assert t["best_offer_monthly"] is None
 
 
 def test_a_better_offer_within_the_mandate_not_taken_is_e() -> None:
@@ -375,7 +426,7 @@ def test_money_is_parsed_exactly_to_cents() -> None:
 # -- totality -----------------------------------------------------------------
 
 _LADDERS = ("none", "no_ladder", "unfinished", "exhausted", "all_pulled", "committed")
-_PRICES = ("worse", "better_no_mandate", "within", "above")
+_PRICES = ("worse", "better_no_mandate", "within", "above", "no_current")
 _ENDS = ("done", "no_deal", "info_only", "timeout", "world_error", "llm_unavailable",
          "abandoned")  # fmt: skip
 _STATUSES = (None, *CaseStatus)
@@ -383,10 +434,12 @@ _STATUSES = (None, *CaseStatus)
 
 def _enumerated(status: CaseStatus | None, end: str, ladder: str, price: str) -> Log:
     log = Log("rT")
-    _current(log, "85")
+    if price != "no_current":
+        _current(log, "85")
     if price in ("within", "above"):
         _mandate(log, 6500)
-    offer = {"worse": "90", "better_no_mandate": "70", "within": "60", "above": "70"}
+    offer = {"worse": "90", "better_no_mandate": "70", "within": "60", "above": "70",
+             "no_current": "70"}  # fmt: skip
     if ladder == "no_ladder":
         _pull(log, "ask_discount", "ask_identity", None, move="IDENTIFY>IDENTIFY")
     elif ladder != "none":
@@ -403,16 +456,28 @@ def _enumerated(status: CaseStatus | None, end: str, ladder: str, price: str) ->
     return log
 
 
-# The verified no-deal mapping (main-root ruling 2026-09-28), by ladder flag
-# reason when no better offer decides it: all_pulled is D, never E.
-_NO_DEAL = {
+# The verified no-deal mapping (main-root rulings 2026-09-28): E before C
+# before D; all_pulled is D (C with a better offer), never E.
+_FLAG = {
     "exhausted": ("D", "exhausted", True),
     "all_pulled": ("D", "all_pulled", False),
-    "unfinished": ("E", "unfinished", None),
-    "no_ladder": ("E", "no_ladder", None),
-    "committed": (None, "inconsistent", None),
-    "none": (None, "no_policy", None),
 }
+
+
+def _no_deal_want(ladder: str, price: str) -> tuple[str | None, str, bool | None]:
+    offered = ladder not in ("none", "no_ladder")
+    if ladder == "committed":
+        return None, "inconsistent", None
+    if offered and price == "within":
+        return "E", "within_mandate_not_taken", None
+    if ladder in ("unfinished", "no_ladder"):
+        return "E", ladder, None
+    if offered and price != "worse":  # better, or the current price unknown
+        return "C", "above_mandate" if price == "above" else "no_mandate", None
+    if ladder in _FLAG:
+        return _FLAG[ladder]
+    assert ladder == "none"  # the only no-deal close with no offer, E or D
+    return None, "no_policy", None
 
 
 def test_every_ended_run_gets_exactly_one_tier() -> None:
@@ -437,16 +502,7 @@ def test_every_ended_run_gets_exactly_one_tier() -> None:
         elif s not in closes:
             assert (tier, reason) == ("F", end), case
         else:
-            no_offer = ladder in ("none", "no_ladder")
-            if ladder == "committed":
-                want3 = _NO_DEAL["committed"]
-            elif not no_offer and price in ("better_no_mandate", "above"):
-                why = "no_mandate" if price == "better_no_mandate" else "above_mandate"
-                want3 = ("C", why, None)
-            elif not no_offer and price == "within":
-                want3 = ("E", "within_mandate_not_taken", None)
-            else:
-                want3 = _NO_DEAL[ladder]
+            want3 = _no_deal_want(ladder, price)
             assert (tier, reason, t["exhausted"]) == want3, case
             kind = (
                 "info_only" if end == "info_only" or s == "CLOSED_NO_ACTION" else None
