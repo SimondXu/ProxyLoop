@@ -154,9 +154,9 @@ def by_segment[T](items: Iterable[T], of: Callable[[T], Obj]) -> dict[str, list[
 
 
 def load_rows(paths: Iterable[Path], root: str) -> dict[str, sc.Arm]:
-    """Per arm, the final row per key (item_id, role, repeat); refused: a key whose
-    last row is not final (unavailable or capped: re-run it). ``left`` counts the
-    unavailable and capped rows."""
+    """Per arm, the one final row per key (item_id, role, repeat), across all files;
+    refused: a second final row, or a key whose last row is not final (unavailable or
+    capped: re-run it). ``left`` counts the unavailable and capped rows."""
     arms: dict[str, sc.Arm] = {}
     last: dict[tuple[str, sc.RowKey], str] = {}
     for path in paths:
@@ -173,6 +173,8 @@ def load_rows(paths: Iterable[Path], root: str) -> dict[str, sc.Arm]:
             seen.add(arm.label)
             key = (r["item_id"], r["role"], r["repeat"])
             last[(arm.label, key)] = r["status"]
+            if r["status"] in wsr.FINAL and key in arm.rows:  # no best-of-N (rule 12)
+                raise SystemExit(f"{path}: a second final row for {arm.label} {key}")
             if r["status"] in wsr.FINAL:
                 arm.rows[key] = r
             else:

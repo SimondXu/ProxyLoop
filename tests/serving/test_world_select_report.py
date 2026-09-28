@@ -412,3 +412,16 @@ def test_open_keys_and_role_sets(tree: Path) -> None:
     with pytest.raises(SystemExit, match="arms not on the roles"):
         scores(tree, "--roles", "ear,mouth")
     assert set(scores(tree, "--roles", "ear,mouth,simuser")["arms"]) == {INC, CAND}
+
+
+def test_a_second_final_row_is_refused(tree: Path) -> None:
+    """No best-of-N through the scorer: one final row per key, across all files."""
+    again = json.dumps(ear(CAND, E2, a("accept", offer_ref="save-1"), 250)) + "\n"
+    (tree / "extra.jsonl").write_text(again)
+    with pytest.raises(SystemExit, match=r"a second final row for .*deepseek"):
+        scores(tree)
+    path = tree / "deepseek-flash@low.jsonl"
+    (tree / "extra.jsonl").unlink()
+    path.write_text(path.read_text() + again)
+    with pytest.raises(SystemExit, match="a second final row"):
+        scores(tree)
