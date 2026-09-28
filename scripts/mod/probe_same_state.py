@@ -5,12 +5,12 @@ Diagnostic only, open-loop (``ABOUT``). Views: the recorded Fast turns (both lan
 the train bundles on the current fingerprints, whole runs newest first, up to
 ``--max-views`` (``collect``), with the recorded answer as the reference. Calls go
 through the production adapter (``make_client``, live) in the kernel's request shape
-(``build_request``). No session, kernel, world or Slow runs, and no retry here: the
-adapter's own rule (one retry of a connection failure before the first token) shows
-under ``failed_attempts``. A failed call raises ``LLMUnavailable``: its row is written
-with the partial report, and the run aborts (AGENTS rule 6). Keys and URLs stay in
-``PL_<ENDPOINT>_*`` and are never written. Numbers: see ``NUMBER_RULE``; number words
-are not seen. p90: nearest rank.
+(``build_request``), after the kernel's P3 (``parity``). No session, kernel, world or
+Slow runs, and no retry here: the adapter's own rule (one retry of a connection failure
+before the first token) shows under ``failed_attempts``. A failed call raises
+``LLMUnavailable``: its row is written with the partial report, and the run aborts
+(AGENTS rule 6). Keys and URLs stay in ``PL_<ENDPOINT>_*`` and are never written.
+Numbers: see ``NUMBER_RULE``; number words are not seen. p90: nearest rank.
 """
 
 from __future__ import annotations
@@ -39,9 +39,10 @@ from proxyloop.contract.bundle import Bundle
 from proxyloop.contract.config import Sampling
 from proxyloop.contract.views import FastView
 from proxyloop.core.clock import WallClock
-from proxyloop.kernel.lanes import load_tokenizer  # the kernel's pinned tokenizer
+from proxyloop.kernel.lanes import load_tokenizer, p3  # the kernel's pin and P3
 from proxyloop.llm.factory import make_client
 from proxyloop.llm.http import HTTPAdapter
+from proxyloop.llm.vllm import VLLMClient
 from proxyloop.training import pull_through as pt
 
 Json = dict[str, Any]
@@ -238,8 +239,9 @@ async def probe(
     report: Json,
     transports: Mapping[str, httpx.AsyncBaseTransport] | None = None,
 ) -> Json:
-    """Every (view, model) call, one at a time; ``report`` keeps the rows even when a
-    dead endpoint aborts the run. ``transports``: per endpoint, a test seam."""
+    """P3 once per vLLM candidate, then every (view, model) call, one at a time;
+    ``report`` keeps the rows even when a dead endpoint or P3 aborts the run.
+    ``transports``: per endpoint, a test seam."""
     sunk: list[Rec] = []  # every attempt's record, as the adapter sinks it
     rows = [row(REFERENCE, v, v.raw, v.reference, []) for v in views]
     report |= {"rows": rows}
@@ -249,6 +251,7 @@ async def probe(
         t = seams.get(str(ref.endpoint))
         clients[m] = make_client(ref, live=True, clock=ms, on_record=sink, transport=t)
     try:
+        await parity(clients, views, tok, report)
         for v in views:
             for m in arm_order(v, list(models)):
                 request, text = build_request(v, clients[m].ref, tok), ""
@@ -267,6 +270,30 @@ async def probe(
             if isinstance(c, HTTPAdapter):
                 await c.aclose()
     return report
+
+
+async def parity(
+    clients: Mapping[str, llm.LLMClient], views: Sequence[View], tok: Tok, report: Json
+) -> None:
+    """The kernel's session-start P3 (``kernel.lanes.p3``: vLLM /tokenize of the
+    messages and of the prompt == the pinned tokenizer's ids) on the sample's first
+    view, before any call; a failure aborts (§12). Its result goes into the report."""
+    report["p3"] = checks = dict[str, Json]()
+    for m, client in clients.items():
+        if not isinstance(client, VLLMClient) or not views:
+            continue
+        if tok is None:
+            raise RuntimeError("P3 needs the pinned tokenizer")
+        checks[m] = {"run_id": views[0].run_id, "turn": views[0].turn, "passed": False}
+        try:
+            checks[m]["passed"] = await p3(client, views[0].view, tok)
+        except Exception as err:  # /tokenize cannot answer: dead, never skipped
+            checks[m]["error"] = type(err).__name__  # its text may name the host
+            report["aborted"] = f"P3 for {m}: {type(err).__name__}"
+            raise
+        if not checks[m]["passed"]:
+            report["aborted"] = f"P3 failed for {m}: /tokenize != the pinned tokenizer"
+            raise RuntimeError(report["aborted"])
 
 
 def main(argv: list[str] | None = None) -> int:

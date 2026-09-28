@@ -55,10 +55,20 @@ USER_REPLY = SCRIPTS["fast_user"][0]
 Sent = dict[str, list[bytes]]
 
 
-def recording(sent: Sent, endpoint: str, reply: list[str]) -> httpx.MockTransport:
-    """The endpoint's stream for ``reply``; every body it received is kept."""
+def recording(
+    sent: Sent, endpoint: str, reply: list[str], broken: bool = False
+) -> httpx.MockTransport:
+    """The endpoint's stream for ``reply``; every generation body it received is kept.
+    vLLM's /tokenize answers as FakeTokenizer (``broken``: not for the prompt)."""
 
     def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/tokenize":
+            body: dict[str, Any] = json.loads(request.content)
+            sent.setdefault("tokenize", []).append(request.content)
+            chat = body.get("messages")
+            text = FakeTokenizer().apply_chat_template(chat) if chat else body["prompt"]
+            bad = [0] if broken and not chat else []
+            return httpx.Response(200, json={"tokens": FakeTokenizer.ids(text) + bad})
         sent.setdefault(endpoint, []).append(request.content)
         if endpoint == "vllm":
             return stream_response(sse(*completion_chunks(QWEN, reply)))
@@ -301,3 +311,23 @@ def test_arm_order_is_shuffled_but_deterministic(evidence: tuple[Path, Sent]) ->
     orders = [tuple(pss.arm_order(x, labels)) for x in many]
     assert len(set(orders)) > 1 and len({o[0] for o in orders}) == 3
     assert orders == [tuple(pss.arm_order(x, labels)) for x in many]
+
+
+@pytest.mark.parametrize("broken", [False, True])
+def test_p3_runs_before_any_vllm_call_and_a_mismatch_aborts(
+    evidence: tuple[Path, Sent], monkeypatch: pytest.MonkeyPatch, broken: bool
+) -> None:
+    set_env(monkeypatch, "vllm")
+    found, sent, report = views(evidence[0]), Sent(), dict[str, Any]()
+    seams = {"vllm": recording(sent, "vllm", ["Okay."], broken)}
+    run = pss.probe(found, {"vllm:Qwen3.5-9B": QWEN}, FakeTokenizer(), report, seams)
+    if broken:
+        with pytest.raises(RuntimeError, match="P3 failed for vllm"):
+            asyncio.run(run)
+        assert "vllm" not in sent and report["aborted"].startswith("P3 failed")
+    else:
+        asyncio.run(run)
+        assert len(sent["vllm"]) == len(found) and "aborted" not in report
+    check = report["p3"]["vllm:Qwen3.5-9B"]
+    assert check["passed"] is not broken and check["turn"] == found[0].turn
+    assert len(sent["tokenize"]) == 2  # the messages and the prompt, once
