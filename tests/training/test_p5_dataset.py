@@ -134,6 +134,18 @@ def test_teacher_turn_with_a_parse_issue_is_not_a_training_target():
             build_row(fast_view, profile, raw, tok())
 
 
+def test_speech_after_a_pause_is_a_target_only_under_a_profile_that_allows_it():
+    """The row's own profile names the grammar (ADR-0017): pl_cp_v3 rejects a
+    line after @hold, the frozen pl_cp_v2 does not; the view is the same."""
+    raw = "@hold decision\nSure, one moment."
+    v3 = [v for p, v in golden() if p == "pl_cp_v3"]
+    fast_view = FastView.model_validate_json(v3[0])
+    with pytest.raises(ValueError, match=r"parse issues.*speech_after_pause"):
+        build_row(fast_view, "pl_cp_v3", raw, tok())
+    row = build_row(fast_view, "pl_cp_v2", raw, tok())
+    assert row.profile == "pl_cp_v2" and row.completion.endswith(IM_END)
+
+
 def test_over_long_row_raises_instead_of_being_dropped():
     row, _ = smoke()[0]
     long = Row(row.profile, row.fingerprint, row.prompt, "word " * MAX_SEQ_TOKENS)

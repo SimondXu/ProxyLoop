@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { confirmations, ENDPOINT, microUsd, receiptKind, receiptTitle, spendLines, statusView, statusWords, unverifiedCommit, verifiedLine } from "./outcome";
+import { confirmations, ENDPOINT, microUsd, reasonWords, receiptKind, receiptTitle, spendLines, statusView, statusWords, unverifiedCommit, verifiedLine } from "./outcome";
 import type { Ev } from "./replay";
 
 let seq = 0;
@@ -17,6 +17,12 @@ describe("the status line (guard's status.changed)", () => {
     expect(statusView(inCall).line).toBe("Status: on the call");
     expect(statusView([...inCall, status("IN_CALL", "AWAITING_APPROVAL")]).line).toBe("Status: waiting for your approval");
     expect(statusView([status("COMMIT_AUTHORIZED", "COMMITTED")]).line).toBe("Status: accepted on the call, not yet verified");
+  });
+
+  it("says ESCALATED as what happened, never that a person takes over (a stop or a failed accept, sim or real)", () => {
+    expect(statusWords("ESCALATED")).toBe("stopped — back to you");
+    expect(reasonWords("escalate")).toBe(statusWords("ESCALATED"));
+    expect(statusView([status("NEEDS_REPLAN", "ESCALATED")]).line).toBe("Status: stopped — back to you");
   });
 
   it("renders an unknown status raw, never hidden", () => {
@@ -56,7 +62,7 @@ describe("the outcome banner (session.ended + the last status and completion.dec
     ["stopped", "COMMITTED", "Ended: stopped. Not verified complete."],
     ["no_deal", "IN_CALL", "Ended: no deal was made. Not verified complete."],
     ["info_only", "CLOSED_NO_ACTION", "Ended: information only, no action taken. Not verified complete."],
-    ["escalate", "ESCALATED", "Ended: escalated to a person. Not verified complete."],
+    ["escalate", "ESCALATED", "Ended: stopped — back to you. Not verified complete."],
     ["llm_unavailable", "IN_CALL", "Ended: a model endpoint was unavailable. Not verified complete."],
     ["completed", "COMMITTED", "Ended: the agent reported it complete. Not verified complete."],
     ["completed", "NEEDS_REPLAN", "Ended: the agent reported it complete. Not verified complete."],
@@ -109,6 +115,7 @@ describe("the receipt (S1-SYS-51): its variant, cost and confirmation", () => {
     ["IN_CALL", "stopped", "stopped", "Stopped: the session was stopped. Not completed."],
     ["IN_CALL", "llm_unavailable", "endpoint", ENDPOINT],
     ["IN_CALL", "error", "error", "An error stopped the case. Not completed."],
+    ["ESCALATED", "escalate", "ended", "Ended: stopped — back to you. Not verified complete."],
     ["IN_CALL", "p3_failed", "ended", "Ended: p3_failed. Not verified complete."],
     ["NEEDS_REPLAN", "completed", "ended", "Ended: the agent reported it complete. Not verified complete."],
   ])("%s + session.ended{%s} → %s", (last, reason, kind, title) => {

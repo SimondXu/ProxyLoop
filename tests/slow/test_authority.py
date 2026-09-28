@@ -512,6 +512,7 @@ def test_no_deal_needs_the_final_offer_asked_and_a_closing_reply(
     (early,) = h.act(finish)
     assert "final_offer_not_asked" in early and not h.ended
     h.act({"tool": "guide_fast", "move": "ask_final_offer"})
+    h.voice()  # heard whole: it anchors the window (S1-SYS-57)
     h.rep("cp-1", "I am afraid I cannot do better than what I offered.")
     (done,) = h.act(finish)
     assert done == "finish: verified no deal" and h.ended == ["no_deal"]
@@ -526,8 +527,10 @@ def test_no_deal_judges_the_rep_after_the_last_final_offer_ask(
     finish = {"tool": "finish", "outcome": "no_deal", "summary": "no deal"}
     ask = {"tool": "guide_fast", "move": "ask_final_offer"}
     h.act(ask)
+    h.voice()  # each ask heard whole
     h.rep("cp-1", "I am afraid I cannot do better than what I offered.")
     h.act(ask)  # a second ask: the window starts again here
+    h.voice()
     (early,) = h.act(finish)
     assert "no_closing_reply" in early and not h.ended
     h.rep("cp-2", "That is our best offer.")

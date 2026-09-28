@@ -278,20 +278,75 @@ def _asked(x: Inputs) -> dict[str, list[tuple[Event, Event]]]:
     return out
 
 
+def _call(x: Inputs, seq: int) -> int:
+    """The cp call open at ``seq``: the ``chan.opened{lane: cp}`` before it
+    (Guard's ``_call``: a new cp call closes the earlier read-back windows)."""
+    opened = x.of("chan.opened")
+    return sum(e.seq < seq and e.payload.get("lane") == "cp" for e in opened)
+
+
+def _reads_back(x: Inputs, g: Event, o: Event) -> bool:
+    """Whether Slow's ask ``g`` (an ask_readback GUIDE citing o's offer, any
+    revision) reads back revision ``o``: sent after o's record, while o was
+    current (the per-revision rule), or in o's cp call (ADR-0020's per-offer
+    window). "Asked" is Slow's attempt, deliberately not Guard's stricter
+    heard anchor: ``h5_pass`` None means no read-back was attempted, and an
+    ask that never reached the rep is a mechanic failure that must stay
+    visible as unconfirmed slots (``ask_heard`` tells the two apart)."""
+    return g.seq > o.seq or _call(x, g.seq) == _call(x, o.seq)
+
+
+def _heard(x: Inputs) -> set[str]:
+    """The s2f msg ids Guard counts as heard (ADR-0020's anchor), from events
+    alone: an ``s2f.voiced`` whose generation was never ``fast.cancelled``
+    and whose every ``fast.sentence`` (one at least) has an ``utt.delivered``
+    with ``interrupted`` false. No anchor line, no window: advisory only.
+    Not every GUIDE the rep heard: after #225 one voiced by a
+    verbatim-cancelled turn is spoken by the re-run through ``guidance_cp``
+    with no ``s2f.voiced``, so ``guide_to_heard_ms`` may credit it heard
+    while it is not here."""
+    cut = {str(e.payload["gen_id"]) for e in x.of("fast.cancelled")}
+    delivered = {str(e.payload["utt_id"]): e for e in x.of("utt.delivered")}
+    utts: dict[str, list[str]] = {}
+    for p in (e.payload for e in x.of("fast.sentence")):
+        utts.setdefault(str(p["gen_id"]), []).append(str(p["utt_id"]))
+
+    def whole(gen: str) -> bool:
+        played = [delivered.get(u) for u in utts.get(gen, [])]
+        return bool(played) and all(
+            d is not None and d.payload.get("interrupted") is False for d in played
+        )
+
+    return {
+        str(v.payload["msg_id"])
+        for v in x.of("s2f.voiced")
+        if str(v.payload["gen_id"]) not in cut and whole(str(v.payload["gen_id"]))
+    }
+
+
 @detector("offer.required_unconfirmed_after_readback")
 def _unconfirmed(x: Inputs) -> Value:
-    """Per offer read back (an ask_readback cites its current revision): the
-    latest revision's slots not ``confirmed`` at the log's end; ``unasked``:
-    offers whose latest revision was never read back (``unasked_n``; then
-    ``h5_pass`` is None: an info_only task need not read back, and the mode
-    is not in the bundle). None: no offer.recorded."""
+    """Per offer read back (``_reads_back``: an ask_readback citing it after
+    its latest revision's record, or in that record's cp call): the latest
+    revision's slots not ``confirmed`` at the log's end, from its record and
+    readback.updated (Guard's statuses, per-offer window from a5c897c on;
+    the same detector reads per-revision statuses on earlier bundles);
+    ``ask_heard``: whether Guard counts one of those asks heard (``_heard``;
+    never changes ``count`` or ``h5_pass``; an ask a verbatim-cancelled turn
+    voiced and its re-run spoke is False here though ``guide_to_heard_ms``
+    may credit it heard); ``unasked``: offers whose latest
+    revision was never read back (``unasked_n``; then ``h5_pass`` is None: an
+    info_only task need not read back, and the mode is not in the bundle).
+    None: no offer.recorded."""
     offers = _revisions(x)
     if not offers:
         return None
     asked, out, unasked = _asked(x), dict[str, list[object]](), list[object]()
+    heard, ask_heard = _heard(x), dict[str, bool]()
     for ref, revs in sorted(offers.items()):
         last = revs[-1]
-        if not any(o is last for _, o in asked.get(ref, [])):
+        mine = [g for g, _ in asked.get(ref, []) if _reads_back(x, g, last)]
+        if not mine:
             unasked.append(safe(ref))
             continue
         left = [  # "fee:<suffix>" → "fee": the suffix is Slow's choice
@@ -299,11 +354,14 @@ def _unconfirmed(x: Inputs) -> Value:
             for f, s in _statuses(x, last).items()
             if s != "confirmed"
         ]
-        out[f"{safe(ref)}@{last.payload['revision']}"] = left
+        key = f"{safe(ref)}@{last.payload['revision']}"
+        out[key] = left
+        ask_heard[key] = any(str(g.payload["msg_id"]) in heard for g in mine)
     count = sum(map(len, out.values()))
     passed = None if unasked else not count
-    return {"count": count, "offers": out, "unasked": unasked,
-            "unasked_n": len(unasked), "h5_pass": passed}  # fmt: skip
+    return {"count": count, "offers": out, "ask_heard": ask_heard,
+            "unasked": unasked, "unasked_n": len(unasked),
+            "h5_pass": passed}  # fmt: skip
 
 
 @detector("slow.readback_asks_max_per_revision")

@@ -49,8 +49,9 @@ def verify_completion(bb: Blackboard) -> CompletionDecision:
 def verify_no_deal(bb: Blackboard, asked_final_at: int | None) -> CompletionDecision:
     """(a) every offer declined, denied at approval, or hard-violating; (b) the
     rep's last line since the last ``guide(ask_final_offer)`` matches the
-    closing lexicon (``asked_final_at``: the cp transcript length when that ask
-    went out), so a concession or retraction after a closing line reopens it;
+    closing lexicon (``asked_final_at``: the first cp line after the last ask
+    the rep heard, ``slow/tools.py`` ``asked_final``), so a concession or
+    retraction after a closing line reopens it;
     (c) no accept released. The world's "was a deal reachable" is never read."""
     reasons: list[str] = []
     denied = {

@@ -9,8 +9,9 @@ import { PORTS } from "./ports";
 //
 // Readiness is asserted order-agnostically (S1-SYS-21's gate or main's call at the start): the
 // call happens and the identity facts are public before the rep's offer. After the approved
-// accept the rep confirms and closes the call, and on main the case stays COMMITTED (no
-// confirmation is relayed after the close, so Slow cannot check the account): the run does not end here.
+// accept the rep confirms with an id and closes the call; the scripted Slow looks that id up in the
+// simulated ledger (check_account) and finishes, and only Guard's verifier moves the case to
+// VERIFIED_COMPLETE (S1-SYS-44). A stop escalates the stale case and ends the session (S1-SYS-44).
 type Ev = { seq: number; event_id: string; type: string; actor: string; cause_ids: string[]; payload: Record<string, unknown> };
 
 // The family's synthetic principal (tasks/families/x-out-of-envelope-approval.yaml).
@@ -18,6 +19,7 @@ const TASK_SAID = "Please lower my Crestline Wireless bill.";
 const IDENTITY = "My name is Marcus Bell and my account ends in 5190.";
 const ASK = "The company needs the account holder name and the last 4 digits."; // the scripted Slow's ask_user
 const STOP = "actually, stop";
+const STOPPED = "Stopped as you asked: nothing was accepted."; // the scripted Slow's tell_user on the stop
 const FLOW = { timeout: 90_000 }; // wall-clock speech, holds and two read-backs
 const SIM_REP = "Simulated rep; no real company was called";
 
@@ -146,7 +148,7 @@ async function toCard(page: Page) {
 test.describe("approve", () => {
   test.use({ baseURL: `http://127.0.0.1:${PORTS.approve}` });
 
-  test("a, c) start → chat → identity → read-back → card → Approve → kernel decides → accept released and heard; the replay shows the same chain", async ({
+  test("a, c) start → chat → identity → read-back → card → Approve → kernel decides → accept released and heard → verified complete; the replay shows the same chain", async ({
     page,
   }) => {
     const { id, card } = await toCard(page);
@@ -154,7 +156,7 @@ test.describe("approve", () => {
     expect([res.status(), await res.json()]).toEqual([200, { status: "posted" }]);
     await expect(card.getByLabel("Approval status")).toHaveText(/^You approved · \d{1,2}:\d{2}\s[AP]M$/, FLOW);
 
-    const events = await until(page, id, (e) => of(e, "chan.closed", { lane: "cp" }).length > 0);
+    const events = await until(page, id, (e) => of(e, "session.ended").length > 0);
     const posted = one(events, "approval.post");
     const decided = one(events, "approval.decided");
     expect([posted.actor, decided.actor, decided.payload.by, decided.payload.decision]).toEqual(["ui", "kernel", "ui", "granted"]);
@@ -165,9 +167,39 @@ test.describe("approve", () => {
     const [heard] = causedBy(events, "utt.delivered", released as Ev);
     expect(heard?.payload.text_heard).toBe(accept.payload.text);
     expect(of(events, "rep.commit_heard")).toHaveLength(1);
+    // The heard yes commits the case; the rep says a confirmation id (the simulated ledger's write) and closes the call.
+    expect(causedBy(events, "status.changed", heard as Ev).map((e) => [e.actor, e.payload.status])).toEqual([["guard", "COMMITTED"]]);
+    const write = one(events, "ledger.write");
+    const conf = String(write.payload.confirmation_id);
+    const [told] = of(events, "utt.final", { speaker: "partner" }).filter((e) => String(e.payload.text).includes(conf));
+    expect(told?.seq).toBeLessThan(one(events, "chan.closed", { lane: "cp" }).seq);
+    // Slow looks that id up, citing the rep's line; Guard records the evidence, and only its verifier's verdict completes the case.
+    const looked = one(events, "slow.tool", { name: "check_account" });
+    expect(looked.payload.args).toMatchObject({ confirmation_id: conf, utt_ref: told?.payload.utt_id });
+    const evidence = one(events, "evidence.recorded", { confirmation_id: conf });
+    expect([evidence.actor, evidence.cause_ids]).toEqual(["guard", [looked.event_id, write.event_id, (told as Ev).event_id]]);
+    const finish = one(events, "slow.tool", { name: "finish" });
+    expect(finish.payload.args).toMatchObject({ outcome: "completed" });
+    const verdict = one(events, "completion.decided");
+    expect([verdict.actor, verdict.payload.verdict, verdict.cause_ids[0]]).toEqual(["guard", "ok", finish.event_id]);
+    const statuses = of(events, "status.changed").map((e) => [e.actor, e.payload.previous, e.payload.status]);
+    expect(statuses.slice(-3)).toEqual([
+      ["guard", "COMMIT_AUTHORIZED", "COMMITTED"],
+      ["guard", "COMMITTED", "EVIDENCE_PENDING"],
+      ["guard", "EVIDENCE_PENDING", "VERIFIED_COMPLETE"],
+    ]);
+    const ended = events.at(-1) as Ev;
+    expect([ended.type, ended.actor, ended.payload.reason]).toEqual(["session.ended", "kernel", "completed"]);
     const strip = await authority(page);
-    await expect(strip.getByLabel("Case status")).toHaveText("status COMMITTED");
-    await expect(page.getByLabel("Status line")).toHaveText("Accepted on the call. Checking the simulated company's records…");
+    await expect(strip.getByLabel("Case status")).toHaveText("status VERIFIED_COMPLETE");
+    await expect(page.getByLabel("Status line")).toHaveText("Done. Verified.");
+    // The receipt (live/Receipt.tsx, outcome.ts): the verified variant, the id the rep said, Guard's verifier and your approval.
+    const receipt = page.getByRole("region", { name: "Chat" }).getByRole("region", { name: "Outcome" });
+    await expect(receipt.getByRole("heading")).toHaveText("Done. Verified.");
+    await expect(receipt).toContainText(`Confirmation ${conf}`);
+    await expect(receipt).toContainText("Verified against the simulated company's records");
+    await expect(receipt).toContainText(/Approved by you at \d{1,2}:\d{2}\s[AP]M/);
+    await expect(receipt.getByLabel("Accepted terms").getByRole("listitem")).toHaveCount(5);
     // The rail's steps from the same run: the approval, your click, Guard's clearance and the heard yes, in order.
     // locator("li"): a folded group's steps count too.
     const steps = page.getByRole("region", { name: "Steps" }).locator("li");
@@ -221,7 +253,7 @@ test.describe("approve", () => {
 test.describe("stop", () => {
   test.use({ baseURL: `http://127.0.0.1:${PORTS.stop}` });
 
-  test("b) a stop while the card is pending raises the fence, the revoke stales the card, a post of it is refused, and no accept is minted", async ({
+  test("b) a stop while the card is pending raises the fence, the revoke stales the card, a post of it is refused, no accept is minted, and the case escalates", async ({
     page,
   }) => {
     const { id, card, requested } = await toCard(page);
@@ -233,19 +265,8 @@ test.describe("stop", () => {
     await expect(card.getByLabel("Approval status")).toHaveText("No longer valid: your instructions changed", FLOW);
     await expect(card.getByRole("button", { name: "Approve" })).toBeDisabled();
     await expect(strip.getByLabel("Epoch")).toHaveText("epoch 1");
-
-    const events = await until(page, id, (e) => {
-      const stop = of(e, "user.msg", { text: STOP })[0];
-      const fence = stop && causedBy(e, "authority.fence", stop)[0];
-      return !!fence && of(e, "authority.fence", { op: "cleared", fence_id: fence.payload.fence_id }).length > 0;
-    });
-    const stop = one(events, "user.msg", { text: STOP });
-    const [raised] = causedBy(events, "authority.fence", stop);
-    expect(raised?.payload.op).toBe("raised");
-    const revoke = one(events, "f2s.msg", { type: "REVOKE" });
-    expect(one(events, "authority.epoch", { reason: "f2s_revoke" }).cause_ids).toEqual([revoke.event_id]);
-    await expect(strip.getByLabel("Fence")).toHaveText(`fence cleared (${String(raised?.payload.fence_id)})`);
-    // Approve the stale card anyway, from the page with the user's token (the button is disabled):
+    // Approve the stale card anyway, from the page with the user's token (the button is disabled),
+    // while the case is live (Slow's step on the revoke ends it: serve then no longer knows the case):
     // serve's guard.decide pre-check answers 409 stale for the moved epoch, and nothing reaches the kernel.
     const token = (await page.context().cookies()).find((c) => c.name === "pl_csrf")?.value ?? "";
     expect(token).not.toBe("");
@@ -259,12 +280,41 @@ test.describe("stop", () => {
       { path, body, token },
     );
     expect(got).toEqual({ status: 409, body: { error: "stale", reason: "stale_epoch" } });
+
+    const events = await until(page, id, (e) => {
+      const stop = of(e, "user.msg", { text: STOP })[0];
+      const fence = stop && causedBy(e, "authority.fence", stop)[0];
+      return !!fence && of(e, "authority.fence", { op: "cleared", fence_id: fence.payload.fence_id }).length > 0;
+    });
+    const stop = one(events, "user.msg", { text: STOP });
+    const [raised] = causedBy(events, "authority.fence", stop);
+    expect(raised?.payload.op).toBe("raised");
+    const revoke = one(events, "f2s.msg", { type: "REVOKE" });
+    expect(one(events, "authority.epoch", { reason: "f2s_revoke" }).cause_ids).toEqual([revoke.event_id]);
+    await expect(strip.getByLabel("Fence")).toHaveText(`fence cleared (${String(raised?.payload.fence_id)})`);
     const after = await log(page, id);
     expect([of(after, "approval.post").length, of(after, "approval.decided").length]).toEqual([0, 0]);
     // The accept is never minted, so never released: the only released line is the disclosure.
     expect(of(after, "action.authorized")).toHaveLength(0);
     expect(of(after, "speak.verbatim").map((e) => e.payload.kind)).toEqual(["disclosure"]);
     expect(of(after, "speak.released")).toHaveLength(1);
+    // The stale card replans the case (S1-SYS-38); Slow's step on it escalates, which ends the session (no timeout).
+    const ended = await until(page, id, (e) => of(e, "session.ended").length > 0);
+    const replan = one(ended, "status.changed", { previous: "AWAITING_APPROVAL", status: "NEEDS_REPLAN" });
+    expect(replan.cause_ids).toContain(one(ended, "authority.epoch", { reason: "f2s_revoke" }).event_id);
+    const finish = one(ended, "slow.tool", { name: "finish" });
+    expect(finish.payload.args).toMatchObject({ outcome: "escalate" });
+    const escalated = one(ended, "status.changed", { previous: "NEEDS_REPLAN" });
+    expect([escalated.actor, escalated.payload.status, escalated.cause_ids[0]]).toEqual(["guard", "ESCALATED", finish.event_id]);
+    expect(of(ended, "status.changed").at(-1)).toBe(escalated);
+    const end = ended.at(-1) as Ev;
+    expect([end.type, end.actor, end.payload.reason]).toEqual(["session.ended", "kernel", "escalate"]);
+    expect([of(ended, "action.authorized").length, of(ended, "completion.decided").length]).toEqual([0, 0]);
+    await expect(strip.getByLabel("Case status")).toHaveText("status ESCALATED");
+    await expect(page.getByLabel("Status line")).toHaveText("Ended: stopped — back to you. Not verified complete.");
+    const receipt = page.getByRole("region", { name: "Chat" }).getByRole("region", { name: "Outcome" });
+    await expect(receipt.getByRole("heading")).toHaveText("Ended: stopped — back to you. Not verified complete.");
+    await expect(page.getByRole("list", { name: "Chat transcript" })).toContainText(STOPPED); // Slow's tell_user, voiced before the end
   });
 });
 

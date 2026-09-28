@@ -79,6 +79,7 @@ def test_f10_e6ada1_restated_terms_after_the_last_ask_block_no_deal(
     assert (c.asked, c.reply) == (False, None) and "tell_user" not in c.line()
     assert set(c.reasons) == {"offer_open:offer-1", "final_offer_not_asked"}
     h.act(FINAL)
+    h.voice()  # heard whole: it anchors the window (S1-SYS-57)
     h.rep("cp-13", RESTATED)
     c = _close(h)
     assert (c.asked, c.reply) == (True, None)
@@ -99,6 +100,7 @@ def test_f10_527345_a_closing_reply_and_a_declined_offer_verify(
     h = _offered(tmp_path)
     h.rep("cp-9", "I understand, but that is the best rate I can offer.")
     h.act(FINAL)
+    h.voice()  # heard whole: it anchors the window (S1-SYS-57)
     h.rep("cp-10", BEST)
     c = _close(h)
     assert (c.asked, c.reply, c.reasons) == (True, "cp-10", ("offer_open:offer-1",))
@@ -118,6 +120,7 @@ def test_f10_info_only_finish_is_allowed_only_in_the_call(tmp_path: Path) -> Non
     c = _close(h, "info_only")
     assert (c.reply, c.reasons) == (None, ()) and "tell_user" not in c.line()
     h.act(FINAL)
+    h.voice()  # heard whole: it anchors the window (S1-SYS-57)
     h.rep("cp-2", BEST)
     c = _close(h, "info_only")
     assert (c.outcome, c.reply, c.reasons) == ("info_only", "cp-2", ())
@@ -256,6 +259,7 @@ def test_f10_21988c_the_user_is_told_after_the_closing_reply_before_finish(
     keeps telling the user pending until a tell_user after that reply."""
     h = _offered(tmp_path)
     h.act(FINAL)
+    h.voice()  # heard whole: it anchors the window (S1-SYS-57)
     h.rep("cp-16", BEST)
     h.act(TELL, DECLINE)  # told before the closing reply that counts
     h.rep("cp-25", BYE)
@@ -339,6 +343,7 @@ def test_f10_the_tell_hint_waits_until_finish_would_pass(tmp_path: Path) -> None
     """Round 3: never tell the user an outcome that is not final yet."""
     h = _offered(tmp_path)
     h.act(FINAL)
+    h.voice()  # heard whole: it anchors the window (S1-SYS-57)
     h.rep("cp-10", BEST)
     c = _close(h)
     assert (c.reply, c.reasons) == ("cp-10", ("offer_open:offer-1",))
@@ -346,3 +351,124 @@ def test_f10_the_tell_hint_waits_until_finish_would_pass(tmp_path: Path) -> None
     h.act(DECLINE)
     c = _close(h)
     assert (c.reasons, c.told) == ((), False) and "tell_user" in c.line()
+
+
+# S1-SYS-57 (heard): the window opens at the last ask_final_offer the rep
+# HEARD, by #219's rule (SlowTools._heard): voiced by a turn that spoke, was
+# never cancelled and whose every sentence was delivered uncut; it opens at the
+# first cp line after that delivery. A superseded, cancelled, cut or
+# still-playing ask does not anchor.
+CONCEDE = "Actually, I can waive the activation fee."  # no closing cue
+NOT_ASKED = ("final_offer_not_asked",)
+NO_REPLY = ("no_closing_reply",)
+
+
+def _declined(tmp_path: Path) -> Host:
+    """offer-1 stated, recorded and declined: only the ask and reply remain."""
+    h = _offered(tmp_path)
+    h.act(DECLINE)
+    return h
+
+
+def _refused(h: Host, reasons: tuple[str, ...]) -> None:
+    c = _agrees(h)
+    assert c.reasons == reasons and not h.ended
+    asked = "not asked" if reasons == NOT_ASKED else "asked"
+    assert c.line().startswith(f"close: final offer {asked}; ")
+
+
+def test_r1_a_final_ask_never_voiced_does_not_anchor(tmp_path: Path) -> None:
+    """Superseded before FastC voiced it: the rep never heard it, so a closing
+    line after it is no reply to it."""
+    h = _declined(tmp_path)
+    h.act(FINAL)
+    h.rep("cp-10", BEST)
+    assert _close(h).asked is False
+    _refused(h, NOT_ASKED)
+
+
+@pytest.mark.parametrize("delivered", [False, True])
+def test_r2_a_final_ask_voiced_by_a_cancelled_turn_does_not_anchor(
+    tmp_path: Path, delivered: bool
+) -> None:
+    h = _declined(tmp_path)
+    h.act(FINAL)
+    gen = h.voice(deliver=delivered)
+    turn = h.of("fast.turn")[-1].event_id  # it spoke, then was cancelled
+    h.emit("fast.cancelled", "fast.cp", {"gen_id": gen, "reason": "verbatim"}, [turn])
+    h.rep("cp-10", BEST)
+    _refused(h, NOT_ASKED)
+
+
+def test_r3_a_final_ask_cut_mid_sentence_does_not_anchor(tmp_path: Path) -> None:
+    h = _declined(tmp_path)
+    h.act(FINAL)
+    gen = h.voice(deliver=False)
+    h.deliver(gen, interrupted=True)
+    h.rep("cp-10", BEST)
+    _refused(h, NOT_ASKED)
+
+
+@pytest.mark.parametrize("when", ["playing", "before_voiced"])
+def test_r4_a_rep_line_said_before_the_ask_was_heard_is_no_reply(
+    tmp_path: Path, when: str
+) -> None:
+    """527345 seq 334-369: the rep's "best offer" came before FastC voiced
+    the ask (or while it played); the window opens after its last sentence."""
+    h = _declined(tmp_path)
+    h.act(FINAL)
+    if when == "playing":
+        gen = h.voice(deliver=False)
+        h.rep("cp-10", BEST)
+        h.deliver(gen)
+    else:
+        h.rep("cp-10", BEST)
+        h.voice()
+    assert _close(h).asked is True
+    _refused(h, NO_REPLY)
+
+
+@pytest.mark.parametrize("second", ["unvoiced", "cut"])
+def test_r5_an_unheard_later_ask_leaves_the_heard_one_anchoring(
+    tmp_path: Path, second: str
+) -> None:
+    h = _declined(tmp_path)
+    h.act(FINAL)
+    h.voice()
+    h.rep("cp-10", BEST)
+    h.act(FINAL)
+    if second == "cut":
+        h.deliver(h.voice(deliver=False), interrupted=True)
+    c = _agrees(h)
+    assert (c.reply, c.reasons) == ("cp-10", ()) and h.ended == ["no_deal"]
+
+
+def test_g1_a_heard_ask_and_a_closing_reply_after_it_verify(tmp_path: Path) -> None:
+    h = _declined(tmp_path)
+    h.act(FINAL)
+    h.voice()
+    h.rep("cp-10", BEST)
+    h.rep("cp-11", RESTATED)  # 45d7ed: the rep's last line does not close
+    _refused(h, NO_REPLY)
+    h.rep("cp-12", BEST)
+    c = _agrees(h)
+    assert (c.reply, c.reasons) == ("cp-12", ()) and h.ended == ["no_deal"]
+
+
+def test_g2_a_later_heard_ask_moves_the_window_forward(tmp_path: Path) -> None:
+    h = _declined(tmp_path)
+    h.act(FINAL)
+    h.voice()
+    h.rep("cp-10", BEST)
+    assert _close(h).reply == "cp-10"
+    h.rep("cp-11", CONCEDE)  # a concession after the closing line reopens it
+    assert _close(h).reasons == NO_REPLY
+    h.act(FINAL)
+    h.voice()
+    h.rep("cp-12", BEST)
+    h.act(FINAL)
+    h.voice()  # heard: cp-12 answered the previous ask, not this one
+    _refused(h, NO_REPLY)
+    h.rep("cp-13", BEST)
+    c = _agrees(h)
+    assert (c.reply, c.reasons) == ("cp-13", ()) and h.ended == ["no_deal"]

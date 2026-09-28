@@ -18,7 +18,8 @@ const STATUS: Record<string, string> = {
   NEEDS_REPLAN: "the last step did not go through; re-planning",
   VERIFIED_COMPLETE: "verified complete",
   VERIFIED_NO_DEAL: "verified: no deal was made",
-  ESCALATED: "escalated to a person",
+  // Reached by a user's stop or a failed accept that cannot be replanned; nobody takes the case over (sim or real).
+  ESCALATED: "stopped — back to you",
   ABANDONED: "abandoned: the call ended without a result",
   CLOSED_NO_ACTION: "closed: information only, no action taken",
 };
@@ -28,7 +29,7 @@ const REASON: Record<string, string> = {
   completed: "the agent reported it complete",
   no_deal: "no deal was made",
   info_only: "information only, no action taken",
-  escalate: "escalated to a person",
+  escalate: "stopped — back to you", // as ESCALATED: no person takes over
   timeout: "the session timed out",
   abandoned: "the rep hung up",
   stopped: "stopped",

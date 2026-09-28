@@ -5,15 +5,17 @@ sped-up clock, and the bundle passes ``evidence.check`` offline.
 What the kernel on main does, asserted as it is:
 - readiness, in either order (S1-SYS-21's gate or main's call at the start):
   the call happens and the identity facts are public before the rep's offer;
-- approve: the accept is released and heard, the rep confirms and closes the
-  call, and the case stays COMMITTED: no FastC turn follows the closing line,
-  so no confirmation is relayed and Slow cannot ``check_account``. The run is
-  then stopped here (``stopped``), never shown as completed;
+- approve: the accept is released and heard, the rep confirms with an id
+  (``ledger.write``) and closes the call; Slow reads the id in the REP line and
+  ``check_account``s it (COMMITTED → EVIDENCE_PENDING), then ``finish``es:
+  Guard's ``completion.decided`` ok is what reaches VERIFIED_COMPLETE, and the
+  session ends ``completed`` (S1-SYS-44);
 - stop: the fence rises on the user's message, FastU's revoke moves the epoch,
   the card goes stale, a post of it is refused by the kernel (``action.denied``
   ``stale_epoch``) and no accept is ever minted; the epoch bump moves the
-  case AWAITING_APPROVAL → NEEDS_REPLAN, and Slow's next step back to IN_CALL
-  (S1-SYS-38); it never reaches COMMIT_AUTHORIZED.
+  case AWAITING_APPROVAL → NEEDS_REPLAN (S1-SYS-38), and Slow's step on it
+  escalates (NEEDS_REPLAN → ESCALATED): the session ends ``escalate``, not at
+  a timeout (S1-SYS-44); it never reaches COMMIT_AUTHORIZED.
 """
 
 from __future__ import annotations
@@ -26,14 +28,22 @@ from typing import Any, cast
 
 import pytest
 from tests.support.manual_clock import ScaledClock
-from tests.support.web_demo import FAMILY, LABEL, DemoStarter
+from tests.support.web_demo import (
+    FAMILY,
+    LABEL,
+    LATENCY_S,
+    DemoStarter,
+    Reactive,
+    SlowScript,
+)
 
 from proxyloop.contract.bundle import read_bundle
 from proxyloop.contract.events import ApprovalPost, Event
-from proxyloop.contract.llm import AdapterKind
+from proxyloop.contract.llm import AdapterKind, LLMClient, LLMRole, ModelRef
 from proxyloop.evidence.check import check_path
 from proxyloop.guard.authorize import Denial, decide
 from proxyloop.kernel.web import WebCase
+from proxyloop.llm.http import RecordSink
 from proxyloop.serve.cases import StartRefused
 from proxyloop.serve.start import broken
 
@@ -47,6 +57,29 @@ STOP = "actually, stop"
 def starter(tmp_path: Path) -> DemoStarter:
     clock = ScaledClock(SPEED)
     return DemoStarter(tmp_path / "runs", clock=clock, sleep=clock.sleep)
+
+
+class HeldSlow(DemoStarter):
+    """The demo's starter, but Slow's model calls wait while ``slow`` is clear,
+    then take their usual latency on the session's clock. Nothing else changes:
+    the kernel, the other fakes and the scripts are the demo's own. A test holds
+    Slow to act between two kernel events at any runner speed."""
+
+    def __init__(self, runs: Path, clock: ScaledClock) -> None:
+        super().__init__(runs, clock=clock, sleep=clock.sleep)
+        self._session = clock
+        self.slow = asyncio.Event()
+        self.slow.set()
+
+    async def _held(self, seconds: float) -> None:
+        await self.slow.wait()
+        await self._session.sleep(seconds)
+
+    def _make(self, role: LLMRole, ref: ModelRef, sink: RecordSink) -> LLMClient:
+        if role != "slow":
+            return super()._make(role, ref, sink)
+        wait = LATENCY_S["slow"]
+        return Reactive(ref, SlowScript(), self._session, self._held, wait, sink)
 
 
 def events(case: WebCase, tmp_path: Path) -> list[Event]:
@@ -98,13 +131,6 @@ def stop_fence(log: list[Event]) -> Event:
     return fence
 
 
-def stop_cleared(log: list[Event]) -> bool:
-    if not of(log, "user.msg", text=STOP):
-        return False
-    fence = stop_fence(log).payload["fence_id"]
-    return bool(of(log, "authority.fence", op="cleared", fence_id=fence))
-
-
 def post(card: dict[str, Any]) -> ApprovalPost:
     return ApprovalPost(
         subject="approval",
@@ -143,7 +169,7 @@ def test_a_refused_start_names_its_reason(
     assert not (tmp_path / "runs").exists()
 
 
-def test_approve_on_the_real_kernel_up_to_the_closed_call(tmp_path: Path) -> None:
+def test_approve_on_the_real_kernel_to_verified_complete(tmp_path: Path) -> None:
     async def case() -> list[Event]:
         s = starter(tmp_path)
         case, log = await to_card(s, tmp_path)
@@ -151,9 +177,7 @@ def test_approve_on_the_real_kernel_up_to_the_closed_call(tmp_path: Path) -> Non
             await s.start_case(TASK, {})
         (card,) = of(log, "approval.requested")
         case.post_approval(post(card.payload))
-        await until(case, tmp_path, has("chan.closed", lane="cp"))
-        await s.stop()
-        return events(case, tmp_path)
+        return await until(case, tmp_path, has("session.ended"))
 
     log = asyncio.run(case())
     ids = {e.event_id: e for e in log}
@@ -185,11 +209,39 @@ def test_approve_on_the_real_kernel_up_to_the_closed_call(tmp_path: Path) -> Non
     (heard,) = [e for e in of(log, "utt.delivered") if released.event_id in e.cause_ids]
     assert heard.payload["text_heard"] == said.payload["text"]
     assert ids[said.cause_ids[0]].type == "slow.tool"
-    # the rep commits and closes the call; the case stays COMMITTED (the wall)
-    assert of(log, "rep.commit_heard") and of(log, "ledger.write")
+    # the rep commits, says the id and closes the call: the case is COMMITTED
+    (commit,) = of(log, "rep.commit_heard")
+    (write,) = of(log, "ledger.write")
+    (committed,) = of(log, "status.changed", status="COMMITTED")
+    assert heard.event_id in committed.cause_ids and commit.seq > heard.seq
+    closed = of(log, "chan.closed", lane="cp")[0]
+    conf = write.payload["confirmation_id"]
+    (told,) = [
+        e
+        for e in of(log, "utt.final", speaker="partner")
+        if conf in body(e)["text"] and e.seq < closed.seq
+    ]
+    # Slow looks up the id the rep said, citing that line; Guard records it
+    (looked,) = of(log, "slow.tool", name="check_account")
+    assert body(looked)["args"]["confirmation_id"] == conf and body(looked)["ok"]
+    assert body(looked)["args"]["utt_ref"] == told.payload["utt_id"]
+    (evidence,) = of(log, "evidence.recorded", confirmation_id=conf)
+    assert evidence.actor == "guard" and evidence.cause_ids[0] == looked.event_id
+    assert {write.event_id, told.event_id} <= set(evidence.cause_ids)
+    (pending,) = of(log, "status.changed", status="EVIDENCE_PENDING")
+    assert pending.payload["previous"] == "COMMITTED"
+    # only Guard's verifier verdict, on Slow's finish, reaches VERIFIED_COMPLETE
+    (finish,) = of(log, "slow.tool", name="finish")
+    assert body(finish)["args"]["outcome"] == "completed" and finish.seq > looked.seq
+    (verdict,) = of(log, "completion.decided")
+    assert (verdict.actor, body(verdict)["verdict"]) == ("guard", "ok")
+    assert verdict.cause_ids[0] == finish.event_id
+    (done,) = of(log, "status.changed", status="VERIFIED_COMPLETE")
+    assert (done.actor, done.payload["previous"]) == ("guard", "EVIDENCE_PENDING")
+    assert done.cause_ids[0] == finish.event_id
     statuses = [e.payload["status"] for e in of(log, "status.changed")]
-    assert statuses[-1] == "COMMITTED" and not of(log, "completion.decided")
-    assert log[-1].payload["reason"] == "stopped"
+    assert statuses[-3:] == ["COMMITTED", "EVIDENCE_PENDING", "VERIFIED_COMPLETE"]
+    assert (log[-1].type, log[-1].payload["reason"]) == ("session.ended", "completed")
     run = tmp_path / "runs" / "live" / log[0].run_id / log[0].run_id
     assert check_path(run, "offline").failures == ()
     manifest = read_bundle(run).manifest
@@ -201,19 +253,24 @@ def test_stop_fences_and_the_stale_card_is_refused_by_the_kernel(
     tmp_path: Path,
 ) -> None:
     async def case() -> tuple[list[Event], object]:
-        s = starter(tmp_path)
+        s = HeldSlow(tmp_path / "runs", ScaledClock(SPEED))
         case, log = await to_card(s, tmp_path)
         (card,) = of(log, "approval.requested")
+        # every Slow call from here waits; Slow's loop is serial, so no step
+        # can end the case
+        s.slow.clear()
         case.user_message(STOP)
-        await until(case, tmp_path, has("authority.epoch", reason="f2s_revoke"))
-        await until(case, tmp_path, stop_cleared)
+        for _ in range(60_000):  # the revoke's epoch bump, as the board folds it
+            if case.blackboard().epoch:
+                break
+            await asyncio.sleep(0.001)
         got = decide(case.blackboard(), post(card.payload), "ui")  # serve's pre-check
         # the card, approved after the stop: straight to the kernel's queue (serve
         # would answer 409 stale first, the e2e's path); the kernel decides
         case.post_approval(post(card.payload))
         await until(case, tmp_path, has("action.denied", intent="approval.post"))
-        await s.stop()
-        return events(case, tmp_path), got
+        s.slow.set()  # the post is decided while the case is live; Slow goes on
+        return await until(case, tmp_path, has("session.ended")), got
 
     log, got = asyncio.run(case())
     (stop,) = of(log, "user.msg", text=STOP)
@@ -236,12 +293,22 @@ def test_stop_fences_and_the_stale_card_is_refused_by_the_kernel(
     )
     kinds = {e.payload["kind"] for e in of(log, "speak.verbatim")}
     assert kinds == {"disclosure"} and len(of(log, "speak.released")) == 1
-    # the stale card replans (S1-SYS-38): the bump moves it to NEEDS_REPLAN,
-    # Slow's next step back to IN_CALL; nothing is ever authorized
+    # the stale card replans (S1-SYS-38): the bump moves it to NEEDS_REPLAN;
+    # Slow's step on it escalates, and the session ends there (S1-SYS-44)
     (replan,) = of(
         log, "status.changed", previous="AWAITING_APPROVAL", status="NEEDS_REPLAN"
     )
     assert bump.event_id in replan.cause_ids
-    resumed = of(log, "status.changed", previous="NEEDS_REPLAN", status="IN_CALL")
-    assert resumed and resumed[0].seq > replan.seq
+    (finish,) = of(log, "slow.tool", name="finish")
+    assert body(finish)["args"]["outcome"] == "escalate" and finish.seq > replan.seq
+    (end,) = of(log, "status.changed", previous="NEEDS_REPLAN")
+    assert (end.actor, end.payload["status"]) == ("guard", "ESCALATED")
+    assert end.cause_ids[0] == finish.event_id
     assert not of(log, "status.changed", status="COMMIT_AUTHORIZED")
+    assert (log[-1].type, log[-1].payload["reason"]) == ("session.ended", "escalate")
+    # Slow told the user in the same act; FastU voiced it before the end
+    (tell,) = of(log, "s2f.msg", type="TELL_USER")
+    heard = of(log, "utt.delivered", lane="user", text_heard=tell.payload["text"])
+    assert tell.seq < finish.seq and len(heard) == 1 and heard[0].seq < log[-1].seq
+    run = tmp_path / "runs" / "live" / log[0].run_id / log[0].run_id
+    assert check_path(run, "offline").failures == ()
