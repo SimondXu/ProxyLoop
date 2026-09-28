@@ -121,3 +121,95 @@ test("the start page shows the chosen task's role card: what you know, and what 
   expect(asked).toEqual(["cp-direct-discount", "x-user-mind-change"]);
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
+
+// S1-SYS-81: the v4 landing over the same data. The cards say only what /api/models gives: the task's name (from its
+// ref), the ref and "Runs in this demo" (every task it lists runs here); no company, category or saving.
+const THREE = ["cp-direct-discount", "x-user-mind-change", "x-out-of-envelope-approval@1"];
+const NAMES = ["Cp direct discount", "X user mind change", "X out of envelope approval"];
+
+test("the Task radiogroup keeps its name, arrow keys and card names; each card shows only its name, ref and tag", async ({ page, baseURL }) => {
+  await csrfCookie(page, baseURL, "pl_op_csrf", "op-token");
+  await answer(page, { status: 200, json: { ...OPTIONS, tasks: THREE } }, { status: 201, json: {} });
+  await page.goto("/?start");
+  const group = page.getByRole("radiogroup", { name: "Task" });
+  const radios = group.getByRole("radio");
+  await expect(radios).toHaveCount(3);
+  for (const [i, ref] of THREE.entries()) {
+    const radio = radios.nth(i);
+    await expect(radio).toHaveAccessibleName(`${NAMES[i]} ${ref}`); // the name as before; the tag is its description
+    await expect(radio).toHaveAccessibleDescription("Runs in this demo");
+    const card = page.locator(".pl-task").nth(i);
+    await expect(card.getByText("Runs in this demo", { exact: true })).toBeVisible();
+    // the rendered text is exactly {taskName(ref), ref, the tag}: nothing the API did not return
+    const pieces = await card.evaluate((el) => {
+      const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      const out: string[] = [];
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) if (n.textContent?.trim()) out.push(n.textContent.trim());
+      return out.sort();
+    });
+    expect(pieces).toEqual([NAMES[i], ref, "Runs in this demo"].sort());
+  }
+  await expect(radios.nth(0)).toBeChecked();
+  await radios.nth(0).focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(radios.nth(1)).toBeChecked();
+  await expect(radios.nth(1)).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(radios.nth(0)).toBeChecked();
+  await page.keyboard.press("ArrowLeft"); // wraps
+  await expect(radios.nth(2)).toBeChecked();
+  // not a hue alone: the checked card's tile swaps the phone for a check mark (and the ring doubles), visible in both themes
+  const tile = (i: number) =>
+    page.locator(".pl-task-tile").nth(i).evaluate((el) => {
+      const after = getComputedStyle(el, "::after");
+      return {
+        check: after.content,
+        phone: el.querySelector("svg") ? getComputedStyle(el.querySelector("svg") as Element).display : "gone",
+        stroke: parseFloat(after.borderRightWidth),
+        inked: after.borderRightColor !== getComputedStyle(el).backgroundColor,
+      };
+    });
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", scheme);
+    const on = await tile(2);
+    expect(on).toMatchObject({ check: '""', phone: "none", inked: true });
+    expect(on.stroke).toBeGreaterThan(0);
+    expect(await tile(0)).toMatchObject({ check: "none", phone: "block" });
+  }
+});
+
+test("the greeting follows the local clock and names nobody", async ({ page, baseURL }) => {
+  await csrfCookie(page, baseURL, "pl_op_csrf", "op-token");
+  await answer(page, { status: 200, json: OPTIONS }, { status: 201, json: {} });
+  for (const [time, word] of [
+    ["2026-09-28T04:59:00", "evening"],
+    ["2026-09-28T09:30:00", "morning"],
+    ["2026-09-28T12:00:00", "afternoon"],
+  ] as const) {
+    await page.clock.setFixedTime(new Date(time)); // local time, as the page reads it
+    await page.goto("/?start");
+    const h1 = page.getByRole("heading", { level: 1 });
+    await expect(h1).toHaveText(`Good ${word}: start a new case`); // the last words are sr-only: the page's purpose (WCAG 2.4.6)
+    await expect(h1).toHaveAccessibleName(/new case/);
+  }
+});
+
+test.describe("at 390 wide", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+  test("the cards stack, nothing scrolls sideways, and Start stays reachable", async ({ page, baseURL }) => {
+    await csrfCookie(page, baseURL, "pl_op_csrf", "op-token");
+    await answer(page, { status: 200, json: { ...OPTIONS, tasks: THREE } }, { status: 201, json: {} });
+    await page.goto("/?start");
+    await expect(page.getByRole("radiogroup", { name: "Task" }).getByRole("radio")).toHaveCount(3);
+    const boxes = await page.locator(".pl-task").evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON() as DOMRect));
+    expect(boxes).toHaveLength(3);
+    expect(new Set(boxes.map((b) => Math.round(b.x))).size).toBe(1);
+    for (const [i, b] of boxes.slice(1).entries()) expect(b.y).toBeGreaterThanOrEqual((boxes[i]?.bottom ?? Infinity) - 1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    const go = page.getByRole("button", { name: "Start" });
+    await go.scrollIntoViewIfNeeded();
+    await expect(go).toBeInViewport();
+    await expect(go).toBeEnabled();
+  });
+});
