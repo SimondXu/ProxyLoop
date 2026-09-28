@@ -118,7 +118,11 @@ def test_t3_a_recorded_offer_inside_the_mandate_is_read_back_as_today(
 ) -> None:
     h = _recorded(tmp_path, 7000)
     line = _offers(h)
-    assert "outside mandate" not in line and "guide_fast(" not in line, line
+    # re-pinned by root decision 2026-09-29 (S1-SYS-82 e1): read back the
+    # offer Slow means to accept, including an inside one (#238)
+    assert "outside mandate" not in line, line
+    step = f"inside the granted mandate → {ASK_READBACK}, then accept_offer(save-2)"
+    assert line.endswith(step), line
     pb = prompt.PLAYBOOK["full"]
     inside = pb.index("inside the granted mandate")
     assert pb.index("read-back", inside) < pb.index("accept_offer", inside)

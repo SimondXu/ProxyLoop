@@ -38,7 +38,10 @@ HARD_LIMIT = "breaks a hard limit"
 OUTSIDE_MANDATE = "outside mandate: needs the user's approval once confirmed"
 DEFER = "outside mandate; no step for it now: "  # F-e: a better open offer's turn
 INSIDE = "inside the granted mandate"  # why an offer comes first (F-e)
-DENIED = "no worse on every term, denied by the user: the after-denial rule applies"
+DENIED = (
+    "no worse on price, term and fees, denied by the user: the after-denial "
+    "rule applies"
+)
 DOMINATES = "no worse on price, term and fees as recorded, better on one"
 _CASE = CaseRef("case", "account", "principal")  # a dry run binds nothing
 
@@ -232,14 +235,7 @@ def better(
         return None
     others = [b for b in view.offers if b.offer_ref != o.offer_ref and _open(b, now_ms)]
     rivals = [b for b in others if not _decided(view, b, "denied")]
-    inside: list[tuple[int, OfferPublic]] = []
-    for b in rivals:
-        v = _verdict(view, b)
-        priced = any(s.field == "monthly_price" for s in b.slots)
-        if v is None or not priced or hard_violations(*v):
-            continue
-        if _gap(view, now_ms, v[0]) is None:
-            inside.append((v[0].monthly_price_minor, b))
+    inside = [(p, b) for b in rivals if (p := _inside(view, b, now_ms)) is not None]
     if inside:
         return min(inside, key=lambda x: x[0])[1], INSIDE
     mine = _costs(o, terms)
@@ -271,28 +267,60 @@ def needs_lever(view: SlowView, now_ms: int) -> bool:
     return False
 
 
+def _inside(view: SlowView, b: OfferPublic, now_ms: int) -> int | None:
+    """``b``'s monthly price when it is inside the granted mandate as
+    recorded (its price recorded, no hard limit broken), else None."""
+    v = _verdict(view, b)
+    priced = any(s.field == "monthly_price" for s in b.slots)
+    if v is None or not priced or hard_violations(*v):
+        return None
+    return v[0].monthly_price_minor if _gap(view, now_ms, v[0]) is None else None
+
+
+def inside_hint(view: SlowView, o: OfferPublic, now_ms: int, more: state.Bar) -> str:
+    """S1-SYS-82 e1 (root, 2026-09-29): the cheapest open offer inside the
+    granted mandate, not yet confirmed, names its own read-back step (the
+    one ``defer_hint`` names for it)."""
+    if not _open(o, now_ms) or readback_status(o) == "confirmed":
+        return ""
+    live = [
+        b for b in view.offers if _open(b, now_ms) and not _decided(view, b, "denied")
+    ]
+    inside = [(p, b) for b in live if (p := _inside(view, b, now_ms)) is not None]
+    if not inside or min(inside, key=lambda x: x[0])[1] is not o:
+        return ""
+    return f"{INSIDE} → {_inside_step(view, o, now_ms, more)}"
+
+
+def _inside_step(view: SlowView, b: OfferPublic, now_ms: int, more: state.Bar) -> str:
+    """An inside offer's step: its read-back, then accept_offer; or
+    accept_offer once confirmed (Guard's accept rule passing; otherwise
+    none: the case has moved on)."""
+    ref = b.offer_ref
+    then = f"accept_offer({ref})"
+    r = more.readbacks.get((ref, b.revision))
+    if readback_status(b) == "confirmed":
+        dry = accept_offer(_board(view, now_ms), ref, _CASE)
+        return "" if isinstance(dry, Denial) else then
+    if r is not None and r.asked:
+        return f"read-back asked: {then} once confirmed"
+    return f'guide_fast(ask_readback, ["offer:{ref}"]), then {then}'
+
+
 def defer_hint(
     view: SlowView, b: OfferPublic, why: str, now_ms: int, more: state.Bar
 ) -> str:
     """S1-SYS-82 F-e: a worse offer's one hint, naming the offer ``b`` that
-    comes first. Any other ``b`` names its own step on its entry;
-    one inside the mandate has none there, so this names it: its read-back,
-    then accept_offer, or accept_offer once confirmed (Guard's accept rule
-    passing; otherwise nothing: the case has moved on)."""
+    comes first, and for one inside the mandate its step (``_inside_step``);
+    any other ``b`` names its own step on its entry."""
     ref = b.offer_ref
     if why == DENIED:  # round 4: no step comes first; the playbook's rule
         return f"{DEFER}{ref} {why}"
     if why != INSIDE:  # b's own entry names its step
         return f"{DEFER}{ref} ({why}) comes first"
     first = f"{DEFER}{ref} ({INSIDE}) comes first"
-    then = f"accept_offer({ref})"
-    r = more.readbacks.get((ref, b.revision))
-    if readback_status(b) == "confirmed":
-        dry = accept_offer(_board(view, now_ms), ref, _CASE)
-        return first if isinstance(dry, Denial) else f"{first} → {then}"
-    if r is not None and r.asked:
-        return f"{first} → read-back asked: {then} once confirmed"
-    return f'{first} → guide_fast(ask_readback, ["offer:{ref}"]), then {then}'
+    step = _inside_step(view, b, now_ms, more)
+    return f"{first} → {step}" if step else first
 
 
 def _as_recorded(o: OfferPublic) -> Terms | None:

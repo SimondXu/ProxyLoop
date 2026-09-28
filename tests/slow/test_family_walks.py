@@ -205,10 +205,8 @@ WALKS: dict[str, tuple[dict[str, int], list[tuple[str, Step | None, str | None]]
         [
             ("verified", None, "ask_discount"),
             ("discount asked", SENT, None),
-            # no bar step: an inside offer alone carries no hint (S1-SYS-66
-            # T3); its read-back comes from the playbook. Reported, round 4.
-            ("promo-1 inside", offer("promo-1", 55, 12, None, False), None),
-            ("promo-1 read-back asked", ask_readback("promo-1"), None),
+            ("promo-1 inside", offer("promo-1", 55, 12, None, False), "promo-1"),
+            ("promo-1 read-back asked", ask_readback("promo-1"), "promo-1"),
             (
                 "promo-1 fee revealed",
                 reveal("promo-1", 55, 12, ("installation", 99)),
@@ -401,7 +399,12 @@ def test_l_an_inside_offer_alone_lists_no_lever_step(tmp_path: Path) -> None:
     h.act(DISCOUNT)
     offer("promo-1", 55, 12, None, False)(h)
     assert _levers(h).startswith(FOR_OUTSIDE), _levers(h)
-    assert next_steps(h) == set()  # the playbook's read-back (reported, round 4)
+    step = (  # e1 (round 5): the step; the required-slots note stays a note
+        'inside the granted mandate → guide_fast(ask_readback, ["offer:promo-1"]), '
+        "then accept_offer(promo-1); required slots not recorded"
+    )
+    assert step in _entry(h, "promo-1"), _entry(h, "promo-1")
+    assert next_steps(h) == {"promo-1"}
 
 
 def test_l_inside_and_outside_open_the_inside_one_comes_first(
@@ -488,8 +491,28 @@ def test_m2_the_discount_ask_answered_without_an_offer_frees_the_levers(
     h.voice()
     h.rep("cp-2", "Let me see what I can do for you.")  # answered, no offer
     assert _line(h, "request: ") == f"request: {state.DISCOUNT_ANSWERED}"
-    assert _levers(h).startswith("levers: available: mention_tenure; ")
-    assert next_steps(h) == {"mention_tenure"}
+    # round 5 (D1): the lever is the step once the rep has moved on; the bar
+    # cannot tell that from a rep still asking for a fact, so it is
+    # conditional (not counted as an unconditional step)
+    assert _levers(h).startswith(f"levers: {state.ONCE_MOVED_ON}: mention_tenure; ")
+    assert next_steps(h) == set()
+
+
+def test_d1_a_rep_still_asking_for_a_fact_makes_no_lever_a_step(
+    tmp_path: Path,
+) -> None:
+    """Review D1 probe: verified, the rep asks for another fact, the discount
+    ask is heard, and the rep says it still needs the name: the lever is not
+    the one step (an identity strike); the identify rules apply."""
+    h = _verified(tmp_path, 6500, max_term_months=24, max_one_time_fees_minor=0)
+    h.rep("cp-2", "Can you also confirm the account holder's full name?")
+    h.act(DISCOUNT)
+    h.voice()
+    h.rep("cp-3", "I still need the account holder's full name first.")
+    ask = _line(h, "request: ")
+    assert ask.endswith("while the rep still asks for a fact, the identify rules apply")
+    assert not _levers(h).startswith("levers: available: "), _levers(h)
+    assert next_steps(h) == set()
 
 
 def test_b_while_the_rep_still_asks_for_a_fact_the_identify_rules_apply(

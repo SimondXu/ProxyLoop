@@ -44,14 +44,17 @@ IDENTIFY_SENT = {  # the identify's state, the identify line's wording (S1-SYS-7
     "heard": "heard by the rep, not answered yet (wait)",
     "waiting": "sent, not heard yet (wait; do not send it again)",
 }
+IDENTIFY_RULES = "while the rep still asks for a fact, the identify rules apply"
 ASK_DISCOUNT = (  # S1-SYS-82 F-a: the first request once the account is verified
     "once the rep has verified the account (it moves on to your request): "
-    "guide_fast(ask_discount) (ask for a lower monthly price); while the rep "
-    "still asks for a fact, the identify rules apply"
+    f"guide_fast(ask_discount) (ask for a lower monthly price); {IDENTIFY_RULES}"
 )
 DISCOUNT_ANSWERED = (  # round 4: a note, not a step (the levers line has it)
     "ask_discount answered: if the rep stated an offer, record_offer it; "
-    "otherwise one lever (levers line)"
+    f"otherwise one lever (levers line); {IDENTIFY_RULES}"
+)
+ONCE_MOVED_ON = (
+    f"available once the rep has moved on to your request ({IDENTIFY_RULES})"
 )
 
 
@@ -378,8 +381,8 @@ class Bar:
         an offer outside the mandate" (S1-SYS-82)."""
         label = "available" if outside else "for an offer outside the mandate"
         if not self.offered:
-            opened = self.discount == "answered"
-            label = "available" if opened else "after the first offer"
+            opened = self.discount == "answered"  # round 5: conditional
+            label = ONCE_MOVED_ON if opened else "after the first offer"
         levers = levers_line(self.levers, self.sends, self.slots, label)
         ident = identify_line(self.identify)
         ask = request_line(self.identify, self.offered, self.discount)

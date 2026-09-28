@@ -422,7 +422,7 @@ def test_6_an_offer_a_denied_one_dominates_gets_no_step(tmp_path: Path) -> None:
     _offer(h, "save-1", 78, 24)
     offers = _line(h, "offers: ")
     assert offers.endswith(
-        "outside mandate; no step for it now: save-2 no worse on every term, "
+        "outside mandate; no step for it now: save-2 no worse on price, term and fees, "
         "denied by the user: the after-denial rule applies"
     ), offers
     assert "comes first" not in offers and 'save-1"])' not in offers, offers

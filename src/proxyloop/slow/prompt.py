@@ -379,6 +379,7 @@ def status_bar(
             return head + "".join(f"; {h}" for h in said if h)
         said = [approval_hint(view, o, now_ms, more)]
         said.append(mandate_hint(view, o, now_ms, more))
+        said.append("" if more is None else hints.inside_hint(view, o, now_ms, more))
         lever = any(FIRST_LEVER in h or WAIT_LEVER in h for h in said)  # #238 D2
         said.append("" if more is None else more.offer_note(o, lever))
         if gaps := missing_required(o):  # e6ada1: Guard's list, never inferred
