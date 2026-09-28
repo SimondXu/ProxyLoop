@@ -48,7 +48,6 @@ export const STEP = {
   paused: "Your message paused commitments",
   pausedRead: "Your message paused commitments; the agent read it",
   kept: "Kept a private detail from being said",
-  verified: "Verified against the company's records",
   notVerified: "Couldn't verify: re-planning",
 } as const;
 
@@ -75,8 +74,9 @@ export function offerText(price: string | null, months: string | null, revision:
 export const readbackText = (confirmed: number, total: number) =>
   total > 0 && confirmed === total ? `All ${total} terms read back and confirmed` : `Read-back: ${confirmed} of ${total} confirmed`;
 
-// Whose grant cleared the yes is not shown yet: it comes from conversation.ts's grantOfAccept (S1-SYS-51).
-export const CLEARED = "Cleared to say yes";
+// Whose approval cleared the yes: the kernel grant's `by` (conversation.ts grantOfAccept); none names no one.
+const CLEARED: Record<string, string> = { ui: " (your approval)", sim_approver: " (the simulated approver's approval)" };
+export const cleared = (by: string | null) => `Cleared to say yes${(by && CLEARED[by]) ?? ""}`;
 
 // speak.revoked reasons (guard/capability.py revalidate, kernel/speaker.py).
 const REVOKED: Record<string, string> = {

@@ -159,7 +159,7 @@ const rows: Row[] = [
       const heard = ev("utt.delivered", "kernel", { lane: "cp", utt_id: "accept-1", text_generated: "y", text_heard: "y", interrupted: false }, [released]);
       return [...asked, auth, said, released, heard];
     },
-    [["Guard", "Asked for your approval"], ["You", "Approved"], ["Guard", "Cleared to say yes"], ["Phone voice", "Said yes on the call"]],
+    [["Guard", "Asked for your approval"], ["You", "Approved"], ["Guard", "Cleared to say yes (your approval)"], ["Phone voice", "Said yes on the call"]],
   ],
   [
     "the yes, cut off before any word",
@@ -172,9 +172,18 @@ const rows: Row[] = [
     [["Guard", "Cleared to say yes"], ["Phone voice", "Said yes on the call (cut off)"]],
   ],
   [
-    "the yes names no approver (attribution waits for grantOfAccept)",
+    "the yes with no kernel grant (e.g. under limits) names no approver",
     () => accept(),
     [["Guard", "Cleared to say yes"]],
+  ],
+  [
+    "a grant of a card from another epoch is not this yes's approval",
+    () => {
+      const asked = [card("a1", 1), ...granted("a1")];
+      const [auth, said] = accept(); // capability epoch 0
+      return [...asked, auth, said];
+    },
+    [["Guard", "Asked for your approval"], ["You", "Approved"], ["Guard", "Cleared to say yes"]],
   ],
   [
     "the yes, stopped by your message",
@@ -183,7 +192,7 @@ const rows: Row[] = [
       const [auth, said] = accept();
       return [...asked, auth, said, ev("speak.revoked", "kernel", { lane: "cp", reason: "fence", cap_id: "c1" }, [said])];
     },
-    [["Guard", "Asked for your approval"], ["Simulated approver", "Approved"], ["Guard", "Cleared to say yes"], ["Guard", "Stopped the yes before it was said: you sent a message"]],
+    [["Guard", "Asked for your approval"], ["Simulated approver", "Approved"], ["Guard", "Cleared to say yes (the simulated approver's approval)"], ["Guard", "Stopped the yes before it was said: you sent a message"]],
   ],
   ["a forged authorization", () => [ev("action.authorized", "slow", { intent: "accept_offer", capability: { cap_id: "c1" } })], []],
   ["private details kept", () => [ev("screen.redacted", "guard", {}), ev("declass.denied", "guard", { violations: ["$65"] }), ev("declass.denied", "slow", { violations: [] })], [["Guard", "Kept a private detail from being said"], ["Guard", "Kept a private detail from being said"]]],
@@ -197,9 +206,23 @@ const rows: Row[] = [
     [["Guard", "Blocked: saying yes (not_authorized)"]],
   ],
   [
-    "evidence and verification",
-    () => [ev("evidence.recorded", "guard", { evidence_id: "ledger:C-7", kind: "ledger", confirmation_id: "C-7" }), ev("completion.decided", "guard", { verdict: "ok", reasons: [] }), ev("completion.decided", "guard", { verdict: "fail", reasons: ["x"] })],
+    "evidence and verification, with a real rep",
+    () => [
+      ev("session.started", "kernel", { models: { fast_cp: { ref: { kind: "real_http" } } } }),
+      ev("evidence.recorded", "guard", { evidence_id: "ledger:C-7", kind: "ledger", confirmation_id: "C-7" }),
+      ev("completion.decided", "guard", { verdict: "ok", reasons: [] }),
+      ev("completion.decided", "guard", { verdict: "fail", reasons: ["x"] }),
+    ],
     [["Guard", "Got confirmation C-7"], ["Guard", "Verified against the company's records"], ["Guard", "Couldn't verify: re-planning"]],
+  ],
+  [
+    "verified with a simulated rep, or parties not known yet: the simulated company's records",
+    () => [
+      ev("completion.decided", "guard", { verdict: "ok", reasons: [] }),
+      ev("session.started", "kernel", { models: { ear: { ref: { kind: "real_http" } }, mouth: { ref: { kind: "real_http" } } } }),
+      ev("completion.decided", "guard", { verdict: "ok", reasons: [] }),
+    ],
+    [["Guard", "Verified against the simulated company's records"], ["Guard", "Verified against the simulated company's records"]],
   ],
   [
     "the main view skips planner internals, model calls, relays and spend",
@@ -241,7 +264,7 @@ describe("the status line (NowCard), one rung each", () => {
   const status = (s: string) => ev("status.changed", "guard", { previous: "INTAKE", status: s });
 
   it.each<[string, () => Ev[], string]>([
-    ["1 ended: the outcome title", () => [card(), ev("session.ended", "kernel", { reason: "abandoned" })], "Ended: the rep hung up. Not verified complete."],
+    ["1 ended: the receipt's title", () => [card(), ev("session.ended", "kernel", { reason: "abandoned" })], "The rep ended the call."],
     ["2 an open approval", () => [status("IN_CALL"), offer(), card()], "Waiting for you: approve or decline $78/mo for 24 months"],
     ["2 an approval already decided does not wait", () => [status("IN_CALL"), offer(), card(), ...granted("a1")], "On the call with the company"],
     ["2 a card after your click, before Guard records it", () => [status("IN_CALL"), offer(), card(), ev("approval.post", "ui", { subject: "approval", subject_id: "a1", decision: "granted" })], "Sent. Waiting for Guard to record it"],
@@ -355,7 +378,7 @@ describe("the allow-list: the rail reads only PAYLOAD_KEYS", () => {
   it.each([
     ["the whole run", run, "Waiting for your reply in the chat"],
     ["an open card", openCard, "Waiting for you: approve or decline $78/mo for 24 months"],
-    ["the end", ended, "Ended: the rep hung up. Not verified complete."],
+    ["the end", ended, "The rep ended the call."],
   ])("%s: reads nothing outside the list, and no sentinel reaches a step, the status line or the planner line", (_n, build, status) => {
     const events = build();
     const read = new Set<string>();

@@ -7,11 +7,11 @@
 // and the yes names no approver yet.
 import type { CardView } from "./approval";
 import { from } from "./authority";
-import { callHead } from "./conversation";
+import { callHead, grantOfAccept } from "./conversation";
 import * as C from "./copy";
 import { approvalStatusText, PROGRESS } from "./decision";
 import type { MandateView } from "./mandate";
-import { statusView, statusWords } from "./outcome";
+import { receiptKind, receiptTitle, simulatedCompany, statusView, statusWords, verifiedAgainst } from "./outcome";
 import type { Ev } from "./replay";
 import { termRows, usd, whole } from "./terms";
 
@@ -141,8 +141,10 @@ export function timeline(events: Ev[]): Step[] {
     } else if (from(e, "action.authorized", ["guard"]) && get(e, "intent") === "accept_offer") {
       const cap = str(field(get(e, "capability"), "cap_id"));
       accepts.add(cap);
-      // Attribution gap, on purpose: no grant is named until S1-SYS-51's grantOfAccept is wired here.
-      add(e, C.WHO.guard, C.CLEARED, "guard");
+      // The kernel's approval grant behind this accept (conversation.ts); none (e.g. under limits) names no one.
+      const line = events.find((v) => from(v, "speak.verbatim", ["guard"]) && get(v, "kind") === "accept" && get(v, "cap_id") === cap);
+      const grant = line ? grantOfAccept(line, events) : null;
+      add(e, C.WHO.guard, C.cleared(grant ? str(get(grant, "by")) : null), "guard");
     } else if (from(e, "speak.released", ["kernel"]) || from(e, "speak.revoked", ["kernel"])) {
       const line = cause(e, "speak.verbatim", ["guard"]);
       if (!line || get(line, "kind") !== "accept") continue;
@@ -156,7 +158,7 @@ export function timeline(events: Ev[]): Step[] {
       add(e, C.WHO.guard, C.blocked(str(get(e, "intent")), str(get(e, "reason"))), "guard");
     } else if (from(e, "evidence.recorded", ["guard"])) add(e, C.WHO.guard, C.confirmation(str(get(e, "confirmation_id"))), "guard");
     else if (from(e, "completion.decided", ["guard"])) {
-      add(e, C.WHO.guard, get(e, "verdict") === "ok" ? C.STEP.verified : C.STEP.notVerified, "guard");
+      add(e, C.WHO.guard, get(e, "verdict") === "ok" ? verifiedAgainst(simulatedCompany(events)) : C.STEP.notVerified, "guard");
     }
   }
   for (const m of marks) {
@@ -192,7 +194,7 @@ function cardTerms(events: Ev[], v: CardView): string | null {
 /** The status line (redesign §3.2 NowCard): the first rung that holds. `cards`/`mandates` are the page's views. */
 export function now(events: Ev[], steps: Step[], cards: CardView[], mandates: MandateView[]): string {
   const { outcome } = statusView(events);
-  if (outcome) return outcome.title;
+  if (outcome) return receiptTitle(receiptKind(outcome), outcome); // the receipt's own title
   const card = cards.findLast((v) => v.status === "open");
   if (card) return C.NOW.approve(cardTerms(events, card));
   const answered = cards.findLast((v) => v.status === "pending" || v.status === "sent"); // after your click: never "waiting for you"

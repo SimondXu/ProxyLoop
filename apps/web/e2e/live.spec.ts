@@ -324,6 +324,7 @@ test("conversation view: two panes with the right speakers, heard text only, the
   // The receipt is the chat's last item, at session.ended's seq.
   const banner = page.getByRole("region", { name: "Chat" }).getByRole("region", { name: "Outcome" });
   await expect(banner.getByRole("heading")).toHaveText("The rep ended the call.");
+  await expect(page.getByRole("region", { name: "Outcome" })).toHaveCount(1); // the chat's receipt only: none in the rail
   await expect(page.getByRole("list", { name: "Chat transcript" }).getByRole("listitem").last().getByRole("region", { name: "Outcome" })).toBeVisible();
   await expect(banner).toContainText("Reason: abandoned · last case status: IN_CALL");
   await expect(banner).not.toContainText("on the call");
@@ -343,6 +344,7 @@ test("conversation view: Verified complete only on Guard's VERIFIED_COMPLETE", a
   ws.send(ev("session.ended", "kernel", { reason: "completed", counts: {} }, { stream: "ops" }));
   const banner = page.getByRole("region", { name: "Chat" }).getByRole("region", { name: "Outcome" });
   await expect(banner.getByRole("heading")).toHaveText("Accepted on the call. Not verified yet.");
+  await expect(page.getByRole("region", { name: "Outcome" })).toHaveCount(1);
   await expect(page.getByText("Verified complete", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Done. Verified.", { exact: true })).toHaveCount(0);
 });

@@ -17,9 +17,8 @@ import { AgentRail } from "./live/AgentRail";
 import { LimitsCard } from "./live/LimitsCard";
 import { postApproval, postMandate, postMessage, type Decision, type PostResult } from "./liveApi";
 import { mandateCards, type MandateView } from "./mandate";
-import { statusView } from "./outcome";
 import { honesty } from "./provenance";
-import { indexEvents, type Ev } from "./replay";
+import { indexEvents } from "./replay";
 import { AppShell } from "./shell/AppShell";
 import { HonestyBand } from "./shell/HonestyBand";
 import { PhaseStepper } from "./shell/PhaseStepper";
@@ -150,7 +149,6 @@ export function Live({ runId }: { runId: string }) {
             rail={
               <>
                 <AgentRail events={events} cards={cards} mandates={mandates} />
-                <Outcome events={events} />
                 {authority}
                 <RunSummary events={events} />
                 {link}
@@ -187,21 +185,6 @@ export function Connection<T extends Framed>({
       )}
       {stream.phase === "error" && <p role="alert">Stream stopped: {stream.message}</p>}
     </>
-  );
-}
-
-/** The outcome banner, once session.ended arrives (S1-SYS-51 moves it into the chat). */
-function Outcome({ events }: { events: Ev[] }) {
-  const { outcome } = useMemo(() => statusView(events), [events]);
-  if (!outcome) return null;
-  return (
-    <section className={`outcome${outcome.verified ? " verified" : ""}`} aria-label="Outcome">
-      <h2>{outcome.title}</h2>
-      <p>
-        Reason: {outcome.reason} · last case status: {outcome.status ?? "none"}
-        {outcome.verdict ? ` · verifier: ${outcome.verdict}` : ""}
-      </p>
-    </section>
   );
 }
 

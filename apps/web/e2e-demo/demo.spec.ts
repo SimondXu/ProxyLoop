@@ -174,7 +174,7 @@ test.describe("approve", () => {
     for (const step of [
       /^Guard \d{2}:\d{2} Asked for your approval$/,
       /^You \d{2}:\d{2} Approved$/,
-      /^Guard \d{2}:\d{2} Cleared to say yes$/,
+      /^Guard \d{2}:\d{2} Cleared to say yes \(your approval\)$/,
       /^Phone voice \d{2}:\d{2} Said yes on the call$/,
     ]) {
       await expect(steps.filter({ hasText: step })).toHaveCount(1);

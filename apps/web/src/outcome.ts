@@ -4,6 +4,8 @@
 // evidence-bound verifier reaches a VERIFIED_* status); an unknown status or
 // reason is shown raw, never hidden.
 import { from } from "./authority";
+import { SIM_REP, UNKNOWN_PARTIES } from "./conversation";
+import { honesty } from "./provenance";
 import type { Ev } from "./replay";
 
 // contract/state.py CaseStatus, in plain words.
@@ -125,6 +127,19 @@ export function unverifiedCommit(kind: ReceiptKind, events: Ev[]): string | null
   if (kind === "committed" || kind === "verified") return null;
   const committed = events.some((e) => from(e, "status.changed", ["guard"]) && UNVERIFIED_COMMIT.includes(String(e.payload.status)));
   return committed ? "The agent had accepted on the call; this was never verified." : null;
+}
+
+/** Whether the company on the call is simulated, by the honesty band's labels (provenance.ts); unknown parties count as simulated. */
+export function simulatedCompany(events: Ev[]): boolean {
+  const { sim } = honesty(events);
+  return sim.includes(SIM_REP) || sim.includes(UNKNOWN_PARTIES);
+}
+export const verifiedAgainst = (simulated: boolean) => `Verified against the ${simulated ? "simulated " : ""}company's records`;
+
+/** The verifier's line: Guard's last completion.decided, by its typed verdict ("ok" only); null otherwise. */
+export function verifiedLine(events: Ev[]): string | null {
+  const last = events.findLast((e) => from(e, "completion.decided", ["guard"]));
+  return last?.payload.verdict === "ok" ? verifiedAgainst(simulatedCompany(events)) : null;
 }
 
 /** Guard's evidence.recorded confirmation ids, in order. */
