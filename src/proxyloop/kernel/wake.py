@@ -3,10 +3,12 @@
 takes one step at a time; wakes that arrive during a step merge into the next.
 
 Every wake source, by its fixed reason (never text):
-- here: ``relay`` (``f2s.msg``); while the cp call is open (``chan.opened{cp}``
-  to ``chan.closed{cp}``) ``rep_turn`` (a partner ``utt.final``, below) and
-  ``strike`` (``chan.strike``); ``call_closed`` (``chan.closed{cp}``); ``timer``
-  and ``heartbeat`` (below);
+- here: ``relay`` (``f2s.msg``); ``call_opened`` (``chan.opened{cp}``, once
+  per call opened, whatever opened it: ADR-0012, S1-SYS-74), so Slow can
+  steer the call before the rep's first line; while the cp call is open
+  (``chan.opened{cp}`` to ``chan.closed{cp}``) ``rep_turn`` (a partner
+  ``utt.final``, below) and ``strike`` (``chan.strike``); ``call_closed``
+  (``chan.closed{cp}``); ``timer`` and ``heartbeat`` (below);
 - in ``kernel.fence.Authority``: ``fence`` (a ``user.msg`` fence is bound),
   ``replan`` (NEEDS_REPLAN), ``approval.decided``, ``mandate.decided``,
   ``speak.revoked`` and ``approval_denied`` (``action.denied{approval.post}``).
@@ -43,7 +45,8 @@ if TYPE_CHECKING:
 
 HEARTBEAT_S = 15  # root decision (S1-SYS-29): under the rep's hold_s of 30 s
 REASONS = frozenset(
-    {"relay", "rep_turn", "strike", "call_closed", "timer", "heartbeat"}
+    {"relay", "call_opened", "rep_turn", "strike", "call_closed", "timer"}
+    | {"heartbeat"}
     | {"fence", "replan", "approval.decided", "mandate.decided", "speak.revoked"}
     | {"approval_denied"}
 )
@@ -66,6 +69,7 @@ class Wakes:
             self._wake("relay")
         elif e.type == "chan.opened" and cp:
             self._call = True
+            self._wake("call_opened")
         elif e.type == "chan.closed" and cp:
             if self._lines or self._gens:  # FastC will not answer them now
                 self._wake("rep_turn")

@@ -625,6 +625,26 @@ def test_identify_is_public_only_once_both_identity_facts_are() -> None:
     assert not public_guide(_public(bb, L4), guide)
 
 
+@pytest.mark.parametrize("slots", [[], None, ["offer:save-2.monthly_price"]])
+def test_an_identify_with_no_fact_slot_is_refused_and_nothing_is_sent(
+    slots: list[str] | None,
+) -> None:
+    """S1-SYS-74 D1: the renderer accepts identify with no slot and FastC
+    would be told to identify with nothing: refused, with what to do instead."""
+    bb = _public(_told()[0], H, L4)  # identity facts public: still refused
+    tools = SlowTools(cast("Kernel", SimpleNamespace(bb=bb)), KEYS, CASE)
+    call: dict[str, object] = {"tool": "guide_fast", "move": "identify"}
+    call |= {} if slots is None else {"slots": slots}
+    result = tools._run("guide_fast", call)  # pyright: ignore[reportPrivateUsage]
+    assert not result.ok and not tools.guides
+    assert result.effects == (
+        ("action.denied", {"intent": "guide_fast", "reason": "identify_without_facts"}),
+    )
+    assert "ask_user" in result.text and "hold_for_fact" in result.text
+    ok, _, sent = _guide(bb, move="identify", slots=[f"fact:{H}", f"fact:{L4}"])
+    assert ok and len(sent) == 1  # with its facts: sent
+
+
 def test_a_hold_for_fact_is_a_public_guide() -> None:
     """The cp profile Slow judges with (pl_cp_v2, ADR-0011) renders the move."""
     assert public_guide(BB, Guide(move=GuideMove.HOLD_FOR_FACT))

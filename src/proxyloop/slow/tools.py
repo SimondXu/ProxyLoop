@@ -303,6 +303,16 @@ class SlowTools:
             return no(
                 text, ("action.denied", {"intent": "guide_fast", "reason": reason})
             )
+        stated = [s for s in guide.slots if s.startswith("fact:")]
+        if guide.move == GuideMove.IDENTIFY and not stated:  # S1-SYS-74 D1
+            text = (  # else FastC is told to identify with nothing, and refuses
+                "identify names each public identity fact as fact:<key> (the "
+                "facts line lists the public ones); if none is public, send no "
+                "identify: when the representative asks, ask_user for it and "
+                "guide_fast(hold_for_fact)"
+            )
+            denied = {"intent": "guide_fast", "reason": "identify_without_facts"}
+            return no(text, ("action.denied", denied))
         if public_guide(bb, guide):
             sent = self._s2f(lane="cp", type="GUIDE", guide=guide)
             self.guides.append((str(sent.effects[0][1]["msg_id"]), guide.move))
