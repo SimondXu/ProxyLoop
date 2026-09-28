@@ -427,6 +427,18 @@ def test_a_terminal_status_first_is_the_failure() -> None:
     )  # fmt: skip
 
 
+def test_the_first_terminal_status_is_the_failure() -> None:
+    log = Log("r")
+    agent(log)
+    a = fallback(log)
+    fail = status(log, "VERIFIED_NO_DEAL")
+    fallback(log)
+    status(log, "CLOSED_NO_ACTION")  # a second terminal status: not the failure
+    end(log, "no_deal")
+    got = window(log, "E")
+    assert (got["failure_seq"], got["seqs"]) == (fail, [a])
+
+
 def test_the_end_first_is_the_failure() -> None:
     log = Log("r")
     agent(log)
@@ -601,6 +613,7 @@ def test_a_world_endpoint_dying_is_an_artefact(role: LLMRole) -> None:
     """R2: the failing call is a world actor's."""
     log = Log("r")
     agent(log)
+    call(log, "fast_cp", error="cancelled")  # a cancellation is no failure
     dead = _dies(log, role)
     got = window(log, "F-infra")
     assert got["artefacts"] == [art(dead, "llm_unavailable", role)]
