@@ -30,14 +30,19 @@ def _ear(log: Log, act: str) -> str:
     return log.add("rep.ear", "world.ear", "world", payload, (log.start,))
 
 
-def _policy(log: Log, kind: str, rung: int | None, *causes: str) -> str:
+def _policy(
+    log: Log, kind: str, rung: int | None, *causes: str, move: str = "OFFER>OFFER"
+) -> str:
+    frm, _, to = move.partition(">")
     intent: P = {"kind": kind, "offer_ref": None, "say": [], "ask": []}
-    payload: P = {"from": "OFFER", "to": "OFFER", "intent": intent, "rung": rung}
+    payload: P = {"from": frm, "to": to, "intent": intent, "rung": rung}
     return log.add("rep.policy", "world.policy", "world", payload, causes)
 
 
-def _pull(log: Log, act: str, kind: str, rung: int | None) -> str:
-    return _policy(log, kind, rung, _ear(log, act))
+def _pull(
+    log: Log, act: str, kind: str, rung: int | None, move: str = "OFFER>OFFER"
+) -> str:
+    return _policy(log, kind, rung, _ear(log, act), move=move)
 
 
 def _commit(log: Log, policy: str) -> None:
@@ -65,7 +70,8 @@ def test_a_repeated_lever_is_no_better_and_proves_nothing() -> None:
     assert values["repeated_lever_no_better"] == {"count": 1, "seqs": [4]}
     # no commit, not exhausted, tenure never heard
     assert values["no_deal_ladder_unfinished"] == {
-        "count": 1, "end_reason": "timeout", "unused": ["tenure"],
+        "count": 1, "reason": "unfinished", "end_reason": "timeout",
+        "unused": ["tenure"],
     }  # fmt: skip
 
 
@@ -85,7 +91,7 @@ def test_a_new_lever_past_the_last_rung_shows_the_ladder_length() -> None:
     }  # fmt: skip
     assert values["repeated_lever_no_better"] == {"count": 0, "seqs": []}
     assert values["no_deal_ladder_unfinished"] == {
-        "count": 0, "end_reason": "done", "unused": [],
+        "count": 0, "reason": "exhausted", "end_reason": "done", "unused": [],
     }  # fmt: skip
 
 
@@ -94,7 +100,9 @@ def test_a_commit_or_a_spent_ladder_is_no_unfinished_no_deal() -> None:
     _commit(committed, _pull(committed, "ask_discount", "offer", 0))
     committed.end("done")
     flag = _values(committed)["no_deal_ladder_unfinished"]
-    assert flag == {"count": 0, "end_reason": "done", "unused": ["tenure"]}
+    assert flag == {
+        "count": 0, "reason": "committed", "end_reason": "done", "unused": ["tenure"],
+    }  # fmt: skip
 
     spent = Log("r4")  # a one-rung ladder: the second new lever proves it
     _pull(spent, "ask_discount", "offer", 0)
@@ -105,7 +113,7 @@ def test_a_commit_or_a_spent_ladder_is_no_unfinished_no_deal() -> None:
         "count": 1, "ladder_exhausted": True, "ladder_len": 1,
     }  # fmt: skip
     assert values["no_deal_ladder_unfinished"] == {
-        "count": 0, "end_reason": "timeout", "unused": [],
+        "count": 0, "reason": "exhausted", "end_reason": "timeout", "unused": [],
     }  # fmt: skip
 
 
@@ -119,7 +127,7 @@ def test_both_reachable_levers_heard_is_no_unfinished_no_deal() -> None:
         "count": 2, "ladder_exhausted": False, "ladder_len": None,
     }  # fmt: skip
     assert values["no_deal_ladder_unfinished"] == {
-        "count": 0, "end_reason": "timeout", "unused": [],
+        "count": 0, "reason": "all_pulled", "end_reason": "timeout", "unused": [],
     }  # fmt: skip
 
 
@@ -133,15 +141,17 @@ def test_an_unreachable_lever_is_heard_but_never_unused() -> None:
         "count": 1, "levers": ["cite_competitor"], "taken": ["cite_competitor"],
     }  # fmt: skip
     assert values["no_deal_ladder_unfinished"] == {
-        "count": 1, "end_reason": "timeout", "unused": ["ask_discount", "tenure"],
+        "count": 1, "reason": "unfinished", "end_reason": "timeout",
+        "unused": ["ask_discount", "tenure"],
     }  # fmt: skip
 
 
-def test_a_lever_before_identity_is_heard_not_pulled() -> None:
+def test_a_lever_before_identity_is_heard_not_pulled_and_no_ladder() -> None:
     """While identifying the rep answers a lever with ask_identity: heard,
-    never taken, never a rung."""
+    never taken, never a rung; abandoned there, the ladder never opened."""
     log = Log("r7")
-    _pull(log, "ask_discount", "ask_identity", None)
+    _pull(log, "ask_discount", "ask_identity", None, move="IDENTIFY>IDENTIFY")
+    _policy(log, "hang_up", None, move="IDENTIFY>ENDED")  # a strike-out
     log.end("abandoned")
     values = _values(log)
     assert values["rungs_reached"] == {
@@ -151,6 +161,24 @@ def test_a_lever_before_identity_is_heard_not_pulled() -> None:
         "count": 1, "levers": ["ask_discount"], "taken": [],
     }  # fmt: skip
     assert values["repeated_lever_no_better"] == {"count": 0, "seqs": []}
+    assert values["no_deal_ladder_unfinished"] == {
+        "count": 0, "reason": "no_ladder", "end_reason": "abandoned",
+        "unused": ["ask_discount", "tenure"],
+    }  # fmt: skip
+
+
+def test_a_lever_said_only_while_identifying_is_unused() -> None:
+    log = Log("r10")
+    _pull(log, "ask_discount", "ask_identity", None, move="IDENTIFY>IDENTIFY")
+    _policy(log, "how_can_help", None, move="IDENTIFY>DISCOVER")  # identity passed
+    log.end("timeout")
+    values = _values(log)
+    heard = values["levers_heard"]
+    assert heard == {"count": 1, "levers": ["ask_discount"], "taken": []}
+    assert values["no_deal_ladder_unfinished"] == {
+        "count": 1, "reason": "unfinished", "end_reason": "timeout",
+        "unused": ["ask_discount", "tenure"],
+    }  # fmt: skip
 
 
 def test_no_rep_policy_is_unknown_and_no_end_leaves_the_flag_unknown() -> None:
@@ -209,3 +237,6 @@ def test_the_detectors_read_the_real_policy() -> None:
     assert isinstance(heard, dict) and heard["taken"] == sorted(policy._levers)  # pyright: ignore[reportPrivateUsage]
     assert heard["levers"] == ["ask_discount", "cite_competitor", "tenure"]
     assert values["repeated_lever_no_better"] == {"count": 1, "seqs": [8]}
+    assert values["no_deal_ladder_unfinished"] == {
+        "count": 0, "reason": "exhausted", "end_reason": "timeout", "unused": [],
+    }  # fmt: skip
