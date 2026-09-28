@@ -94,8 +94,18 @@ look up the confirmation id they said, exactly as a [REP CALL] relay gave it.
 accepted terms; "no_deal" after guide_fast(ask_final_offer) and the \
 representative's final answer, with every offer declined; "info_only" when the task \
 is only to report the offers to the user (accept nothing); "escalate" when a failed \
-accept cannot be replanned.
+accept cannot be replanned, or on the user's stop with a card pending or the case \
+NEEDS_REPLAN (below).
 Calls run in order, so a guide_fast may cite a fact recorded earlier in the same act.
+The user's stop: when the user says stop or withdraws while a card is pending \
+(AWAITING_APPROVAL) or the case is NEEDS_REPLAN, end the case in ONE act: \
+revoke(reason) unless the case is already NEEDS_REPLAN, tell_user that nothing was \
+accepted and the case is stopped, then finish(escalate, summary). The revoke stales \
+the pending card, which replans the case (NEEDS_REPLAN) at once, so the finish in \
+the same act can escalate; once a step that saw NEEDS_REPLAN completes, the case is \
+back IN_CALL and can no longer be escalated (the stop line of the status bar). In \
+any other state, revoke(reason) and tell_user that every grant is withdrawn and \
+nothing will be accepted without the user's new approval; do not call finish.
 Readiness: the phone call opens only once the facts it needs are public (the \
 readiness line of the status bar; e.g. the account holder name and last 4). If the \
 user already gave one, record_fact it citing the utt of the user's message before \
@@ -188,7 +198,9 @@ PLAYBOOK: dict[state.Kind, str] = {  # V3: the head carries the case's own only
     "terms as recorded (naming any slot not stated) and finish(info_only, "
     "summary) in the same act.",
     "full": "CLOSE PLAYBOOK (full: a deal the mandate or the user's approval covers, "
-    "or a verified no deal): a hard limit is only one of these: "
+    "or a verified no deal): the user's stop comes first: while the stop line "
+    "shows, its act is the one step, and nothing is accepted, asked or declined. "
+    "A hard limit is only one of these: "
     f"{'; '.join(HARD_LIMITS.values())}; no approval can lift it. A price, term "
     "or fee above the user's mandate is outside the mandate, not a hard limit: "
     "the user decides it. An offer inside the granted mandate: its read-back, "
@@ -374,6 +386,8 @@ def status_bar(
         slots = ", ".join(f"{s.field}={s.value} [{s.status}]" for s in o.slots)
         state = f"{o.status}, read-back {readback_status(o)}{ttl}"
         head = f"{o.offer_ref} r{o.revision} ({state}): {slots}"
+        if more is not None and more.stop:  # S1-SYS-83: the stop line's step only
+            return head
         if more is not None and (b := hints.better(view, o, now_ms)):  # F-e
             said = [hints.defer_hint(view, *b, now_ms, more), more.offer_note(o, True)]
             return head + "".join(f"; {h}" for h in said if h)
@@ -403,10 +417,11 @@ def status_bar(
     card = view.pending_approval
     approvals = [f"{a.approval_id} {a.decision}" for a in view.approvals]
     if card is not None:
-        approvals.append(
-            f"{card.approval_id} for {card.offer_ref} r{card.revision} pending, "
-            f"expires in {secs(card.expires_ms)}"
-        )
+        of = f"{card.approval_id} for {card.offer_ref} r{card.revision}"
+        if card.authority_epoch < view.epoch:  # S1-SYS-83 F-i (b)
+            approvals.append(f"{of} stale (authority changed; it cannot be granted)")
+        else:
+            approvals.append(f"{of} pending, expires in {secs(card.expires_ms)}")
     hold = view.cp_hold
     held = (
         "none"
@@ -424,6 +439,8 @@ def status_bar(
     ]
     if intake is not None:
         lines += [asks.readiness_line(intake, now_ms), asks.asks_line(intake, now_ms)]
-    if more is not None:
-        lines += more.lines(hints.needs_lever(view, now_ms))
+    if more is not None:  # F-m: the closing reply as Slow's view holds it
+        said = state.closing_said(view, more.close.reply)
+        amounts = state.unrecorded(view.offers, said)
+        lines += more.lines(hints.needs_lever(view, now_ms), amounts)
     return "\n".join(lines)
