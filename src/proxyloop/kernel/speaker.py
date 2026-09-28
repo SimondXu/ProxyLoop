@@ -77,10 +77,9 @@ class Speaker:
             if not self._queued:
                 break
             self._lock.release()
-        if fresh is not None and not fresh():  # stale on the floor: not said
-            self._lock.release()
-            return False
         try:
+            if fresh is not None and not fresh():  # stale on the floor: not said
+                return False
             last, heard = await self._deliver(lines, interruptible)
         finally:
             self._lock.release()

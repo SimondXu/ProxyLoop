@@ -6,10 +6,13 @@ Generations (§9.4): one whose authority epoch moved while it streamed is stale:
 trigger runs again on the new basis (an unacknowledged APPROVAL_NOTICE once).
 The stream is not aborted. A newer partner line does not cancel a generation
 (#144 credits its relays to its own view; the next generation answers it).
-A turn whose request predates this lane's last ``speak.released`` (a verbatim
-line said, S1-SYS-56 held it for the floor) is stale too (S1-SYS-59): it keeps
-its turn, sentences and relays but is not said (``fast.cancelled{verbatim}``
-after its turn), and its trigger runs again on the new basis.
+A turn whose request predates this lane's last verbatim line heard (the
+``utt.delivered`` of a ``speak.released``: the line enters the transcript there,
+not at its release; S1-SYS-56 held the turn for the floor) is stale too
+(S1-SYS-59): it keeps its turn, sentences and relays but is not said
+(``fast.cancelled{verbatim}`` after its turn), and its trigger runs again on the
+new basis. Its ``chan.hold`` is emitted only as its lines take the floor, so a
+cancelled turn leaves no hold the rep never heard.
 Condition R (``teacher_repair_*``): a generation at a decision point goes to the
 teacher, as a ``fast_*`` call with the teacher's model (E1), ``resamples`` noted."""
 
@@ -98,12 +101,17 @@ class FastLane:
         self._wake = asyncio.Event()
         self._n = 0
         self._retried: set[str] = set()  # GUIDEs re-triggered after an empty turn
-        self._released: Event | None = None  # this lane's last verbatim line said
+        self._released: str | None = None  # this lane's last verbatim line released
+        self._heard: Event | None = None  # and its delivery: the line in the transcript
         k.bus.subscribe(self._on_event)
 
     def _on_event(self, e: Event) -> None:
-        if e.type == "speak.released" and e.payload["lane"] == self.lane:
-            self._released = e
+        if e.payload.get("lane") != self.lane:
+            return
+        if e.type == "speak.released":
+            self._released = e.event_id
+        elif e.type == "utt.delivered" and self._released in e.cause_ids:
+            self._heard = e
 
     def trigger(self, trigger: Trigger, cause: str, acks: tuple[str, ...] = ()) -> None:
         self._add(_Ask(trigger, cause, acks))
@@ -216,26 +224,35 @@ class FastLane:
             k.emit("s2f.voiced", self._actor, voiced, [turn])
         self._relay(items, turn, gen_id, utt_ref)
         held = next((i.reason for i in items if isinstance(i, fp.Hold)), None)
-        if lane == "cp" and held != ((hold := k.bb.public.cp_hold) and hold.reason):
-            k.emit("chan.hold", self._actor, {"lane": "cp", "reason": held}, [turn])
         lines: list[tuple[str, str, str]] = []
         for n, item in enumerate(i for i in items if isinstance(i, fp.Speech)):
             utt = {"utt_id": f"{gen_id}-u{n}", "text": item.text}
             said = k.emit("fast.sentence", self._actor, gen | utt, [turn])
             lines.append((f"{gen_id}-u{n}", item.text, said.event_id))
-        basis = int(str(asked["basis_seq"]))
-        if lines and not await k.speakers[lane].speak(lines, fresh=self._fresh(basis)):
-            said = self._released  # the floor found a verbatim line said since
+        if not lines:
+            self._hold(held, turn)
+            return
+        fresh = self._fresh(int(str(asked["basis_seq"])), held, turn)
+        if not await k.speakers[lane].speak(lines, fresh=fresh):
+            said = self._heard  # the floor found a verbatim line heard since
             assert said is not None
             cancel = {"gen_id": gen_id, "reason": "verbatim"}
             k.emit("fast.cancelled", self._actor, cancel, [turn, said.event_id])
             self._again(ask)
 
-    def _fresh(self, basis: int) -> Callable[[], bool]:
-        def fresh() -> bool:  # no verbatim line said since the request's board
-            return self._released is None or self._released.seq <= basis
+    def _fresh(self, basis: int, held: str | None, turn: str) -> Callable[[], bool]:
+        def fresh() -> bool:  # no verbatim line heard since the request's board
+            if self._heard is not None and self._heard.seq > basis:
+                return False
+            self._hold(held, turn)  # the turn takes the floor: its hold with it
+            return True
 
         return fresh
+
+    def _hold(self, held: str | None, turn: str) -> None:  # cp's hold, if it changed
+        k, hold = self._k, self._k.bb.public.cp_hold
+        if self.lane == "cp" and held != (hold and hold.reason):
+            k.emit("chan.hold", self._actor, {"lane": "cp", "reason": held}, [turn])
 
     def _again(self, ask: _Ask) -> None:
         """A stale generation's trigger, first on the new basis (an
