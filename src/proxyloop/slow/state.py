@@ -35,10 +35,11 @@ class Close:
     """V3: where the close stands, and whether ``finish`` would pass now."""
 
     kind: Kind
-    asked: bool  # guide_fast(ask_final_offer) went out
+    asked: bool  # the rep heard a guide_fast(ask_final_offer) (tools.asked_final)
     reply: str | None  # the utt id of the rep's closing reply, by Guard's cues
     reasons: tuple[str, ...]  # why the kind's finish is refused; () it passes
     told: bool  # a tell_user went out after the closing reply
+    pending: bool  # the newest final ask is not heard yet (final_pending)
 
     @property
     def outcome(self) -> str:
@@ -46,6 +47,11 @@ class Close:
 
     def line(self) -> str:
         asked = "final offer asked" if self.asked else "final offer not asked"
+        if self.pending:  # M1: queued or playing; asking again would repeat it
+            asked = (
+                "final offer asked, not yet heard by the rep (wait for it; do not "
+                "ask again)"
+            )
         said = f"the rep's closing reply {self.reply}" if self.reply else ""
         if not self.reasons:
             can = "allowed" if self.kind == "info_only" else "would verify"
@@ -59,14 +65,19 @@ class Close:
 
 
 def close(
-    bb: Blackboard, kind: Kind, asked_final: int | None, told_at: int | None = None
+    bb: Blackboard,
+    kind: Kind,
+    asked_final: int | None,
+    told_at: int | None = None,
+    pending: bool = False,
 ) -> Close:
     """The rep's last line since the last ask_final_offer is a closing reply
     iff Guard's cue list says so (none before an ask: verify_no_deal's
     window, M1); the user counts as told once
     a tell_user went out after it (``told_at``: the cp length then). ``full``
     dry-runs ``authority.finish(no_deal)``: its status check, then
-    ``verify_no_deal`` with the same ``asked_final``."""
+    ``verify_no_deal`` with the same ``asked_final``. ``pending``: the newest
+    ask_final_offer is sent but not heard yet (``SlowTools.final_pending``)."""
     lines = bb.channels.get("cp", ChannelState()).lines
     since = () if asked_final is None else range(asked_final, len(lines))
     rep = [n for n in since if lines[n].speaker == "partner"]
@@ -80,7 +91,7 @@ def close(
         reasons = ()
     else:
         reasons = verify_no_deal(bb, asked_final).reasons
-    return Close(kind, asked_final is not None, reply, reasons, told)
+    return Close(kind, asked_final is not None, reply, reasons, told, pending)
 
 
 def unavailable(bb: Blackboard) -> tuple[tuple[str, str], ...]:
@@ -186,5 +197,5 @@ def bar(bb: Blackboard, kind: Kind, tools: SlowTools) -> Bar:
         for key, asks in tools.readbacks.items()
         if (o := bb.public.offers.get(key[0])) is not None and o.revision == key[1]
     }
-    shut = close(bb, kind, tools.asked_final, tools.told_at)
+    shut = close(bb, kind, tools.asked_final, tools.told_at, tools.final_pending)
     return Bar(shut, unavailable(bb), readbacks)

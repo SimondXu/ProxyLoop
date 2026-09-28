@@ -24,7 +24,6 @@ from proxyloop.contract.messages import Guide, GuideMove, SlowToFast
 from proxyloop.contract.state import Line
 from proxyloop.guard.needs import spoke
 
-RED = pytest.mark.xfail(strict=True, reason="S1-SYS-57 M1: the pending final ask")
 PENDING = (
     "close: final offer asked, not yet heard by the rep (wait for it; do not ask "
     "again); "
@@ -83,7 +82,6 @@ def _refused_now(h: Host) -> None:
     assert "final_offer_not_asked" in got and not h.ended
 
 
-@RED
 def test_m1a_a_sent_unvoiced_final_ask_is_pending(tmp_path: Path) -> None:
     h = _declined(tmp_path)
     h.act(FINAL)
@@ -93,7 +91,6 @@ def test_m1a_a_sent_unvoiced_final_ask_is_pending(tmp_path: Path) -> None:
     assert _line(h) == WAIT  # still queued: never ask again
 
 
-@RED
 def test_m1b_a_final_ask_still_playing_is_pending(tmp_path: Path) -> None:
     """527345 seq 346-369: u0 delivered, u1 still playing when Slow steps."""
     h = _declined(tmp_path)
@@ -107,7 +104,6 @@ def test_m1b_a_final_ask_still_playing_is_pending(tmp_path: Path) -> None:
     assert _line(h) == HEARD
 
 
-@RED
 @pytest.mark.parametrize("how", ["cancelled", "cut", "silent"])
 def test_m1c_a_dead_final_ask_is_not_pending(tmp_path: Path, how: str) -> None:
     """Cancelled, cut or voiced without speech: the rep will never hear it,
@@ -125,7 +121,6 @@ def test_m1c_a_dead_final_ask_is_not_pending(tmp_path: Path, how: str) -> None:
     _refused_now(h)
 
 
-@RED
 @pytest.mark.parametrize("newer", ["queued", "playing"])
 def test_m1d_an_older_heard_ask_anchors_while_a_newer_one_is_pending(
     tmp_path: Path, newer: str
@@ -140,13 +135,13 @@ def test_m1d_an_older_heard_ask_anchors_while_a_newer_one_is_pending(
     if newer == "playing":
         _two(h)
     assert (h.tools.final_pending, h.tools.asked_final) == (True, anchor)
-    said = "the rep's closing reply cp-10; finish(no_deal) would verify"
-    assert _line(h).startswith(PENDING + said)  # the rest as before
+    said = "the rep's closing reply cp-10; tell_user the terms and the outcome "
+    said += "before finish; finish(no_deal) would verify"
+    assert _line(h) == PENDING + said  # the rest as before
     c = _agrees(h)  # Guard anchors at the older, heard ask
     assert (c.reply, c.reasons) == ("cp-10", ()) and h.ended == ["no_deal"]
 
 
-@RED
 @pytest.mark.parametrize("how", ["cancelled", "cut"])
 def test_m1f_a_playing_ask_that_dies_is_no_longer_pending(
     tmp_path: Path, how: str
@@ -165,7 +160,6 @@ def test_m1f_a_playing_ask_that_dies_is_no_longer_pending(
     assert _line(h) == DEAD
 
 
-@RED
 def test_m1e_a_final_ask_heard_whole_is_asked(tmp_path: Path) -> None:
     h = _declined(tmp_path)
     h.act(FINAL)

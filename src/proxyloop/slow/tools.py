@@ -24,10 +24,10 @@ from proxyloop.guard import authorize as guard
 from proxyloop.guard import readiness
 from proxyloop.guard.authorize import CaseRef, Denial
 from proxyloop.guard.declass import declassify, numbers
-from proxyloop.guard.needs import spoke
 from proxyloop.guard.readback import Ask, readback_update
 from proxyloop.kernel.wake import HEARTBEAT_S
 from proxyloop.slow import asks, authority, offer_slots, shape
+from proxyloop.slow import heard as delivery
 from proxyloop.slow.result import Effect, Result, no, refused
 
 if TYPE_CHECKING:
@@ -104,6 +104,19 @@ class SlowTools:
         ask_final_offer the rep heard (``_heard``, #219); None if none was."""
         at = self._heard()
         return max((at[m] for m in self.final_asks if m in at), default=None)
+
+    @property
+    def final_pending(self) -> bool:
+        """The newest ask_final_offer is on its way to the rep: still queued
+        (``s2f_pending``) or voiced by a turn still playing (``slow.heard``),
+        not once heard, nor once dead (cancelled or cut: Slow may ask again)."""
+        if not self.final_asks:
+            return False
+        last, bb = self.final_asks[-1], self._host.bb
+        fate = delivery.fates(self._host.bus.events, bb.channels["cp"].lines).get(last)
+        if fate is not None:
+            return fate.state == "playing"
+        return any(m.msg_id == last for m in bb.s2f_pending.get("cp", ()))
 
     def act(
         self, call: ToolCall, causes: Sequence[str], *, basis: int
@@ -351,40 +364,10 @@ class SlowTools:
         }
 
     def _heard(self) -> dict[str, int]:
-        """The s2f msg ids the rep heard (#219 D1, D-A), each with the first cp
-        line after its delivery: an ``s2f.voiced`` citing a ``fast.turn`` that
-        spoke, was never cancelled, and whose every sentence was delivered
-        uninterrupted. Deliberately stricter than the needs ledger's ``heard``
-        (a spoken turn): ``s2f.voiced`` comes before the playout."""
-        events = self._host.bus.events
-        turns = {e.event_id: e for e in events if e.type == "fast.turn"}
-        cut = {e.payload["gen_id"] for e in events if e.type == "fast.cancelled"}
-        sentences: dict[str, list[str]] = {}  # gen id -> its utt ids
-        for p in (e.payload for e in events if e.type == "fast.sentence"):
-            sentences.setdefault(str(p["gen_id"]), []).append(str(p["utt_id"]))
-        cp = [
-            e
-            for e in events
-            if e.type in ("utt.final", "utt.delivered") and e.payload["lane"] == "cp"
-        ]
-        delivered = {
-            str(e.payload["utt_id"]): e for e in cp if e.type == "utt.delivered"
-        }
-        said = {str(e.payload["utt_id"]): e.seq for e in cp}  # a line -> its seq
-        seqs = [said[x.utt_id] for x in self._host.bb.channels["cp"].lines]
-        at: dict[str, int] = {}
-        for e in events:
-            turn = turns.get(e.cause_ids[0]) if e.type == "s2f.voiced" else None
-            if turn is None or not spoke(turn) or turn.payload["gen_id"] in cut:
-                continue
-            played = [
-                delivered.get(u) for u in sentences.get(str(turn.payload["gen_id"]), ())
-            ]
-            if not played or any(d is None or d.payload["interrupted"] for d in played):
-                continue  # a cut or still-playing turn: not heard (yet)
-            end = max(d.seq for d in played if d is not None)
-            at.setdefault(str(e.payload["msg_id"]), sum(q <= end for q in seqs))
-        return at
+        """The s2f msg ids the rep heard, each with the first cp line after its
+        delivery (``slow.heard``, #219 D1, D-A)."""
+        lines = self._host.bb.channels["cp"].lines
+        return delivery.heard_at(self._host.bus.events, lines)
 
     def _call(self) -> int:
         """The cp calls opened so far (``chan.opened{cp}``): the current one."""
