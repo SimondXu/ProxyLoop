@@ -114,6 +114,7 @@ def test_f4_the_84f731_act_is_refused_and_bare_slots_confirm(tmp_path: Path) -> 
         "recurring",
         "months",
     )  # derived from Guard's ROLE_OF and the ledger's UNITS
+    h.voice()
     h.rep("cp-12", READBACK_84)
     h.tools.readback()
     statuses = {s.field: s.status for s in h.bb.public.offers["offer_1"].slots}
@@ -189,6 +190,7 @@ def test_e6ada1_the_bar_names_required_slots_not_recorded(tmp_path: Path) -> Non
     ]
     recorded, _ = h.act(_record("offer-1", two), _ask("offer-1"))
     assert recorded == "record_offer: recorded offer-1 r1", recorded
+    h.voice()
     h.rep("cp-13", READBACK_E6)
     h.tools.readback()
     bar = _bar(h)
@@ -207,6 +209,7 @@ def test_e6ada1_the_bar_names_required_slots_not_recorded(tmp_path: Path) -> Non
     h.tools.readback()
     assert NOT_RECORDED not in _bar(h)
     assert h.bb.public.offers["offer-1"].terms_hash  # Guard hashes the terms
+    h.voice()
     h.rep("cp-15", AGAIN_E6)
     h.tools.readback()
     assert readback_status(h.bb.public.offers["offer-1"]) == "confirmed"

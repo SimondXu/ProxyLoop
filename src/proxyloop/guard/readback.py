@@ -4,7 +4,8 @@ Lexical and conservative. A rep line splits into clauses; a clause states a
 value for a field only through that field's role cue, and a negation cue
 within 4 tokens of the value turns it into "none". A slot is ``heard`` in its
 own ``source_utt``, and ``confirmed`` once a rep clause at or after the
-read-back request states exactly its value and no later clause states another.
+read-back request states exactly its value and no later clause states another,
+or when one read-back window of the offer confirms every slot (ADR-0020).
 ``LEXICON`` is the one data table; the root calibrates it against real FastC
 cp transcripts, and the Ear audit measures its errors (EVAL §9).
 """
@@ -14,7 +15,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from proxyloop.contract.state import Line, OfferPublic, ReadbackSlot
 from proxyloop.guard.terms import offer_terms_hash
@@ -263,6 +264,22 @@ def _key(slot: ReadbackSlot) -> str:
     return day.group("iso")[5:] if day and day.group("iso") else UNDATED + "slot"
 
 
+Stated = list[tuple[int, str, int, int, set[str]]]  # line, utt, span, values
+
+
+def _stated(
+    field: str, lines: Sequence[Line], others: Mapping[str, str] | None = None
+) -> Stated:
+    """Every rep clause that states a value for ``field``, in order."""
+    return [
+        (i, line.utt_id, start, end, values)
+        for i, line in enumerate(lines)
+        if line.speaker == "partner"
+        for start, end, clause in _clauses(line.text)
+        if (values := said(clause, field, others))
+    ]
+
+
 def slot_status(
     slot: ReadbackSlot,
     lines: Sequence[Line],
@@ -275,14 +292,11 @@ def slot_status(
     kind = slot.field.partition(":")[0]
     if ROLE_OF.get(kind) != slot.role:
         return "unknown"
+    return _status(slot, _stated(slot.field, lines, others), asked_at)
+
+
+def _status(slot: ReadbackSlot, stated: Stated, asked_at: int | None) -> Status:
     want = {_key(slot)}
-    stated = [
-        (i, line.utt_id, start, end, values)
-        for i, line in enumerate(lines)
-        if line.speaker == "partner"
-        for start, end, clause in _clauses(line.text)
-        if (values := said(clause, slot.field, others))
-    ]
     if asked_at is not None:
         later = [values for i, *_, values in stated if i >= asked_at]
         first = next((n for n, values in enumerate(later) if values == want), None)
@@ -297,25 +311,94 @@ def slot_status(
     return "heard" if heard else "unknown"
 
 
+def _implied(offer: OfferPublic) -> dict[str, str]:
+    """The completeness flags a revision implies without a slot: fees_none is
+    false if it lists a fee, changes_none if it lists an applied change."""
+    fields = {s.field for s in offer.slots}
+    kinds = {f.partition(":")[0] for f in fields}
+    flags = (("fees_none", "fee"), ("changes_none", "applied_change"))
+    return {f: "false" for f, kind in flags if kind in kinds and f not in fields}
+
+
+class Ask(NamedTuple):
+    """A read-back request for some revision of an offer."""
+
+    at: int  # the index of the first cp line after it
+    terms: Mapping[str, str]  # the asked revision's slots (record_offer's binding)
+
+
+def _unchanged(ask: Ask, offer: OfferPublic) -> bool:
+    """W2': every field the asked revision and ``offer`` both carry has one
+    value in both, as Guard recorded them (no lexicon)."""
+    return all(ask.terms.get(s.field, s.value) == s.value for s in offer.slots)
+
+
+def _anchors(
+    ask: int, slots: Sequence[tuple[str, Stated]], implied: Sequence[tuple[str, Stated]]
+) -> bool:
+    """W1-W4 for one ask (ADR-0020); ``slots``/``implied``: (value, stated)."""
+    after = [[(i, v) for i, *_, v in s if i >= ask] for _, s in slots]
+    if not after or not all(after):  # W3: every slot restated since the ask
+        return False
+    top = max(xs[0][0] for xs in after)  # the last slot first stated since
+    for (want, stated), xs in zip(slots, after, strict=True):
+        before = [v for i, *_, v in stated if i < ask]
+        if any(v != {want} for _, v in xs):  # W1: stable since the ask
+            return False
+        if before and before[-1] != {want}:  # W2: no change across the ask
+            return False
+        if xs[-1][0] < top:  # W3: stated together
+            return False
+    return all(  # W1, the implied flags
+        v == {want} for want, s in implied for i, *_, v in s if i >= ask
+    )
+
+
 def slot_statuses(
-    offer: OfferPublic, lines: Sequence[Line], asked_at: int | None
+    offer: OfferPublic,
+    lines: Sequence[Line],
+    asked_at: int | None,
+    asks: Sequence[Ask] = (),
 ) -> dict[str, Status]:
+    """Each slot's status: today's rule from this revision's ``asked_at``, or
+    confirmed with all others by one ask in ``asks`` (every read-back request
+    for any revision of the offer in this call) for which W1-W4 and W2' hold,
+    if no required field is missing (ADR-0020).
+    Recomputed from the transcript each time."""
+
     def others(slot: ReadbackSlot) -> dict[str, str]:
         kind = slot.field.partition(":")[0]
         same = [s for s in offer.slots if s.field.partition(":")[0] == kind]
         return {s.field: s.value for s in same if s.field != slot.field}
 
-    return {s.field: slot_status(s, lines, asked_at, others(s)) for s in offer.slots}
+    def status(slot: ReadbackSlot, stated: Stated) -> Status:
+        if ROLE_OF.get(slot.field.partition(":")[0]) != slot.role:
+            return "unknown"
+        return "confirmed" if window else _status(slot, stated, asked_at)
+
+    stated = [_stated(s.field, lines, others(s)) for s in offer.slots]
+    roles = all(ROLE_OF.get(s.field.partition(":")[0]) == s.role for s in offer.slots)
+    slots = [(_key(s), x) for s, x in zip(offer.slots, stated, strict=True)]
+    implied = [(v, _stated(f, lines)) for f, v in _implied(offer).items()]
+    window = (
+        roles
+        and not missing_required(offer)  # a partial revision never takes the window
+        and any(_unchanged(a, offer) and _anchors(a.at, slots, implied) for a in asks)
+    )
+    return {s.field: status(s, x) for s, x in zip(offer.slots, stated, strict=True)}
 
 
 def readback_update(
-    offer: OfferPublic, lines: Sequence[Line], asked_at: int | None
+    offer: OfferPublic,
+    lines: Sequence[Line],
+    asked_at: int | None,
+    asks: Sequence[Ask] = (),
 ) -> dict[str, object]:
     """The ``readback.updated`` payload Guard emits on a rep ``utt.final``."""
     return {
         "offer_ref": offer.offer_ref,
         "revision": offer.revision,
-        "slot_statuses": slot_statuses(offer, lines, asked_at),
+        "slot_statuses": slot_statuses(offer, lines, asked_at, asks),
         "terms_hash": offer_terms_hash(offer),
     }
 

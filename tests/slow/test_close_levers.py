@@ -168,6 +168,7 @@ def test_f11_asks_are_counted_per_revision_and_two_stuck_read_backs_stop(
     h.rep("cp-1", TERMS)
     record = {"tool": "record_offer", "offer_ref": "save-2", "offer_slots": FULL}
     h.act(record, ASK)
+    h.voice()
     h.rep("cp-2", REP_NO_EXPIRY)
     o = h.bb.public.offers["save-2"]
     b = _bar(h)
@@ -177,6 +178,7 @@ def test_f11_asks_are_counted_per_revision_and_two_stuck_read_backs_stop(
     h.act(ASK)
     got = _bar(h).readbacks[("save-2", 1)]  # the rep has not replied yet
     assert got == state.Readback(2, (), False)
+    h.voice()
     h.rep("cp-3", REP_NO_EXPIRY)
     b = _bar(h)
     o = h.bb.public.offers["save-2"]
