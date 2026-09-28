@@ -231,7 +231,7 @@ test.describe("approve", () => {
     // The rail's to-do (S1-SYS-79) from the same run: nothing in progress after the end, the Result row is the receipt's title,
     // and under the rows the approval, your click, Guard's clearance and the heard yes. locator("li"): a folded row's steps count too.
     const todo = page.getByRole("list", { name: "To-do" });
-    await expect(todo.getByRole("listitem").filter({ hasText: /· (in progress|needs you|not started)/ })).toHaveCount(0);
+    await expect(todo.getByRole("listitem").filter({ hasText: /· (in progress|needs you|also needs you|waiting|not started)/ })).toHaveCount(0);
     await expect(todo.getByRole("listitem").filter({ hasText: /^Result/ })).toHaveText("Result Done. Verified. · done", { useInnerText: true });
     await expect(todo.getByRole("listitem").filter({ hasText: /^Get your decision/ })).toHaveText("Get your decision Approved by your click · done", { useInnerText: true });
     const steps = page.getByRole("region", { name: "To-do" }).locator("li");

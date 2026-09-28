@@ -25,11 +25,12 @@ export const PAYLOAD_KEYS = [
 export type RowKey = "limits" | "call" | "offer" | "readback" | "decision" | "accept" | "records" | "result";
 /**
  * "noted": done, with a note that it did not go the plain way (declined, stopped, didn't match).
- * "ended": a decision or records check that was reached but the session ended before it finished (never done).
+ * "ended": a row that started (its start event exists) but the session ended before it was done (never done).
+ * "not_reached": a row that never started before the end.
  */
 export type RowState = "done" | "noted" | "current" | "needs_you" | "pending" | "not_reached" | "ended";
-/** `alsoYou`: a pending row that waits for you too while another row is the current one (its note says so). */
-export type TodoRow = { key: RowKey; label: string; state: RowState; note: string | null; alsoYou: boolean; steps: Step[] };
+/** `started`: its start event exists. `alsoYou`: a pending row that waits for you too while another row is current (its note says so). */
+export type TodoRow = { key: RowKey; label: string; state: RowState; note: string | null; started: boolean; alsoYou: boolean; steps: Step[] };
 export type Tag = { tone: "you" | "ok" | "plain"; text: string };
 export type Todo = { kind: "approval" | "info" | "unknown"; rows: TodoRow[]; other: Step[]; tag: Tag };
 
@@ -45,8 +46,14 @@ export const LABEL: Record<RowKey, string> = {
 };
 export const NOT_REACHED = "Not reached";
 export const ALSO_YOU = "Also needs you";
-// Rows 5 and 7 appear only once reached, so an unfinished one at the end ended early: never "Not reached", never done.
-const ENDED: Partial<Record<RowKey, string>> = { decision: "Ended before your decision", records: "Ended before the records check" };
+// A row that started but was not done at the end ended early (never "Not reached", never done): its own words,
+// else its progress note with ENDED_LATE after it.
+const ENDED: Partial<Record<RowKey, string>> = {
+  decision: "Ended before your decision",
+  accept: "Ended before the yes was said",
+  records: "Ended before the records check",
+};
+const endedNote = (key: RowKey, note: string | null) => ENDED[key] ?? (note ? `${note} · ended before it was finished` : "Ended before it was finished");
 export const RULE = "Checked off only when it actually happens on the call, not when the assistant says so.";
 const MATCHED = "Matched the company's records";
 const NOT_MATCHED = "Didn't match the company's records";
@@ -58,6 +65,20 @@ const NO_POSTS: ReadonlyMap<string, Posting> = new Map();
 
 /** A row before the pass that picks the current one: where it started (seq) and how far it got. */
 type Raw = { key: RowKey; start: number | null; done: boolean; noted: boolean; you: boolean; note: string | null };
+
+/** A row's state in words for screen readers; "" where its visible note already says it (Not reached). */
+export function stateWords(r: Pick<TodoRow, "state" | "started" | "alsoYou">): string {
+  if (r.state === "pending") return r.alsoYou ? "also needs you" : r.started ? "waiting" : "not started";
+  const words: Record<Exclude<RowState, "pending">, string> = {
+    done: "done",
+    noted: "done, with a note",
+    current: "in progress",
+    needs_you: "needs you",
+    ended: "not finished",
+    not_reached: "",
+  };
+  return words[r.state];
+}
 
 export function todo(events: Ev[], steps: Step[]): Todo {
   const guard = (e: Ev, type: string) => from(e, type, ["guard"]);
@@ -118,7 +139,8 @@ export function todo(events: Ev[], steps: Step[]): Todo {
   const auth = events.findLast(accept);
   if (auth || kind === "approval") {
     const cap = (auth?.payload.capability ?? {}) as { cap_id?: unknown };
-    const line = auth && events.find((e) => guard(e, "speak.verbatim") && e.payload.kind === "accept" && e.payload.cap_id === cap.cap_id);
+    const capId = typeof cap.cap_id === "string" ? cap.cap_id : null; // as grantOfAccept: no cap id, no line
+    const line = capId !== null && events.find((e) => guard(e, "speak.verbatim") && e.payload.kind === "accept" && e.payload.cap_id === capId);
     const fate = line ? lineFate(events, line).state : null;
     const start = first(accept);
     if (fate === "revoked") add("accept", start, { done: true, noted: true, note: STOPPED });
@@ -129,12 +151,14 @@ export function todo(events: Ev[], steps: Step[]): Todo {
     } else add("accept", start);
   }
 
-  // 7. The records check: only once its events appear; the last of them says where it stands.
+  // 7. The records check: only once its events appear; the verdict on the latest check is Guard's first
+  // completion.decided after it (a later one, e.g. a no-deal finish after a replan, judges no records).
   const checked = first(checking);
-  if (checked !== null) {
-    const check = events.findLast((e) => checking(e) || guard(e, "completion.decided"));
+  const lastCheck = events.findLast(checking);
+  if (checked !== null && lastCheck) {
+    const check = events.find((e) => guard(e, "completion.decided") && e.seq > lastCheck.seq);
     const ok = check?.payload.verdict === "ok";
-    if (check && guard(check, "completion.decided")) add("records", checked, { done: true, noted: !ok, note: ok ? MATCHED : NOT_MATCHED });
+    if (check) add("records", checked, { done: true, noted: !ok, note: ok ? MATCHED : NOT_MATCHED });
     else add("records", checked);
   }
 
@@ -152,7 +176,7 @@ export function todo(events: Ev[], steps: Step[]): Todo {
   const reached = raws.reduce((m, r, i) => (r.done || r.start !== null ? i : m), 0);
   const current = end ? -1 : waiting >= 0 ? waiting : raws.findIndex((r, i) => i >= reached && !r.done);
   const state = (r: Raw, i: number): RowState =>
-    r.done ? (r.noted ? "noted" : "done") : end ? (ENDED[r.key] ? "ended" : "not_reached") : i !== current ? "pending" : r.you ? "needs_you" : "current";
+    r.done ? (r.noted ? "noted" : "done") : end ? (r.start !== null ? "ended" : "not_reached") : i !== current ? "pending" : r.you ? "needs_you" : "current";
 
   // Each Step under the row that started last at or before it; before any row started, under "Other steps".
   const starts = raws.flatMap((r, i) => (r.start === null ? [] : [{ i, at: r.start }])).sort((a, b) => a.at - b.at);
@@ -162,8 +186,8 @@ export function todo(events: Ev[], steps: Step[]): Todo {
   const out = raws.map((r, i): TodoRow => {
     const st = state(r, i);
     const alsoYou = st === "pending" && r.you;
-    const note = st === "not_reached" ? NOT_REACHED : st === "ended" ? (ENDED[r.key] ?? null) : alsoYou ? ALSO_YOU : r.note;
-    return { key: r.key, label: LABEL[r.key], state: st, note, alsoYou, steps: under(i) };
+    const note = st === "not_reached" ? NOT_REACHED : st === "ended" ? endedNote(r.key, r.note) : alsoYou ? ALSO_YOU : r.note;
+    return { key: r.key, label: LABEL[r.key], state: st, note, started: r.start !== null, alsoYou, steps: under(i) };
   });
   const n = out.length;
   const k = out.filter((r) => r.state === "done" || r.state === "noted").length;

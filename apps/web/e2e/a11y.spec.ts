@@ -179,8 +179,12 @@ for (const theme of THEMES) {
           await audit(page);
           await shot(page, `a11y-live-${size.name}-${theme}`);
           if (size.name === "desktop") {
-            // The rail's to-do with a row open (S1-SYS-79): its steps under it.
-            await page.getByRole("list", { name: "To-do" }).getByRole("button", { name: /^Call the company/ }).click();
+            // The rail's to-do with a row open (S1-SYS-79): its steps under it. The card is the needs-you row; the open
+            // limits say "Also needs you" in words (visible and for screen readers), with an icon.
+            const todo = page.getByRole("list", { name: "To-do" });
+            await expect(todo.getByRole("listitem").filter({ hasText: /^Set your limits/ })).toHaveText("Set your limits Also needs you · also needs you", { useInnerText: true });
+            await expect(todo.getByRole("listitem").filter({ hasText: /^Get your decision/ })).toHaveText("Get your decision Waiting for your decision · needs you", { useInnerText: true });
+            await todo.getByRole("button", { name: /^Call the company/ }).click();
             await expect(page.getByRole("list", { name: "Call the company: steps" }).getByRole("listitem")).toHaveCount(1);
             await audit(page);
           }

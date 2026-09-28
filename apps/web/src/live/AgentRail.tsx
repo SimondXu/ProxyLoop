@@ -10,7 +10,7 @@ import * as C from "../copy";
 import { limitRows, limitsStatusText, type MandateView } from "../mandate";
 import { runHeader, type Ev } from "../replay";
 import { now, planner, timeline, type Step, type StepIcon } from "../timeline";
-import { RULE, todo, type RowState, type Todo } from "../todo";
+import { RULE, stateWords, todo, type RowState, type Todo } from "../todo";
 import { Card } from "../ui/Card";
 import { Chip } from "../ui/Chip";
 import { Icon, type ICONS } from "../ui/Icon";
@@ -92,7 +92,7 @@ function StepItem({ s }: { s: Step }) {
   );
 }
 
-// Each state's mark (none: the ring is drawn in CSS) and its words for screen readers (Not reached is visible text).
+// Each state's mark (none: the ring is drawn in CSS); its words for screen readers are todo.ts stateWords.
 const MARK: Record<RowState, keyof typeof ICONS | null> = {
   done: "done",
   noted: "noted",
@@ -101,16 +101,6 @@ const MARK: Record<RowState, keyof typeof ICONS | null> = {
   current: null,
   needs_you: null,
   pending: null,
-};
-const SAY: Record<RowState | "other", string> = {
-  done: "done",
-  noted: "done, with a note",
-  current: "in progress",
-  needs_you: "needs you",
-  pending: "not started",
-  not_reached: "",
-  ended: "not finished",
-  other: "",
 };
 
 /** The to-do (v4 soft panel): the summary tag, one disclosure per milestone, then any steps before the first one. */
@@ -129,12 +119,12 @@ function ToDo({ t }: { t: Todo }) {
       </p>
       <ol className="pl-todo-list" aria-label="To-do">
         {t.rows.map((r) => (
-          <Milestone key={r.key} state={r.state} label={r.label} note={r.note} alsoYou={r.alsoYou} steps={r.steps} />
+          <Milestone key={r.key} state={r.state} label={r.label} note={r.note} say={stateWords(r)} alsoYou={r.alsoYou} steps={r.steps} />
         ))}
       </ol>
       {t.other.length > 0 && (
         <ul className="pl-todo-list">
-          <Milestone state="other" label="Other steps" note={`${t.other.length} before the first milestone`} steps={t.other} />
+          <Milestone state="other" say="" label="Other steps" note={`${t.other.length} before the first milestone`} steps={t.other} />
         </ul>
       )}
       <p className="meta pl-todo-rule">{RULE}</p>
@@ -143,8 +133,8 @@ function ToDo({ t }: { t: Todo }) {
 }
 
 /** One milestone: its mark, label, note and state words; a button revealing its steps when it has any. */
-function Milestone(props: { state: RowState | "other"; label: string; note: string | null; alsoYou?: boolean; steps: Step[] }) {
-  const { state, label, note, alsoYou, steps } = props;
+function Milestone(props: { state: RowState | "other"; label: string; note: string | null; say: string; alsoYou?: boolean; steps: Step[] }) {
+  const { state, label, note, say, alsoYou, steps } = props;
   const [open, setOpen] = useState(false);
   const id = useId();
   const mark = state === "other" ? null : MARK[state];
@@ -161,7 +151,7 @@ function Milestone(props: { state: RowState | "other"; label: string; note: stri
             {note}
           </span>
         )}
-        {SAY[state] && <span className="pl-sr"> · {SAY[state]}</span>}
+        {say && <span className="pl-sr"> · {say}</span>}
       </span>
     </>
   );

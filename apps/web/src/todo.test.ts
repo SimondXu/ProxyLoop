@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { STOPPED } from "./decision";
 import { parseJsonl, type Ev } from "./replay";
 import { timeline, type Step } from "./timeline";
-import { PAYLOAD_KEYS, todo, type RowKey, type RowState, type Todo } from "./todo";
+import { PAYLOAD_KEYS, stateWords, todo, type RowKey, type RowState, type Todo } from "./todo";
 
 let seq = 0;
 const ev = (type: string, actor: string, payload: Ev["payload"] = {}, causes: Ev[] = []): Ev => {
@@ -79,6 +79,7 @@ const CASES: Case[] = [
   ["limits: done, confirmed by the sim approver", "limits", () => [mandate(), limits("granted", "sim_approver")], { state: "done", note: "Confirmed by the simulated approver (not you)" }],
   ["limits: declined is done with a note", "limits", () => [mandate(), limits("denied")], { state: "noted", note: "Declined your limits" }],
   ["limits: not reached after the end", "limits", () => [call(), offer(), card(), ended("timeout")], { state: "not_reached", note: "Not reached" }],
+  ["limits: proposed, undecided at the end, ended early", "limits", () => [mandate(), ended("timeout")], { state: "ended", note: "Waiting for your confirmation · ended before it was finished" }],
   // 2. Call the company
   ["call: current at the start", "call", () => [], { state: "current" }],
   ["call: pending while the limits wait for you", "call", () => [mandate()], { state: "pending" }],
@@ -96,7 +97,8 @@ const CASES: Case[] = [
   ["readback: current, partly read back", "readback", () => [call(), offer(), readback("confirmed", "heard")], { state: "current", note: "Read back · 1 of 2" }],
   ["readback: done, every term read back", "readback", () => [call(), offer(), ALL()], { state: "done", note: "Read back · 2 of 2" }],
   ["readback: a newer offer reopens it", "readback", () => [call(), offer(), ALL(), offer("o1", 2, "h2")], { state: "current", note: "Read back · 0 of 2" }],
-  ["readback: not reached after the end", "readback", () => [call(), offer(), readback("confirmed", "heard"), ended("abandoned")], { state: "not_reached", note: "Not reached" }],
+  ["readback: started, unfinished at the end, ended early", "readback", () => [call(), offer(), readback("confirmed", "heard"), ended("abandoned")], { state: "ended", note: "Read back · 1 of 2 · ended before it was finished" }],
+  ["readback: never started before the end is not reached", "readback", () => [call(), offer(), ended("abandoned")], { state: "not_reached", note: "Not reached" }],
   // 5. Get your decision (only once Guard asks)
   ["decision: absent without approval.requested", "decision", () => [mandate(), limits("granted"), call(), offer(), ALL()], "absent"],
   ["decision: needs you while the card is open", "decision", () => [call(), offer(), ALL(), card()], { state: "needs_you", note: "Waiting for your decision" }],
@@ -137,6 +139,22 @@ const CASES: Case[] = [
     { state: "noted", note: STOPPED },
   ],
   ["accept: not reached after the end", "accept", () => [mandate(), limits("granted"), call(), ended("abandoned")], { state: "not_reached", note: "Not reached" }],
+  [
+    "accept: a held accept at the end ended early",
+    "accept",
+    () => [mandate(), limits("granted"), call(), offer(), ALL(), authorized(), said(), ended("timeout")],
+    { state: "ended", note: "Ended before the yes was said" },
+  ],
+  [
+    "accept: a capability without a cap id matches no line (as grantOfAccept)",
+    "accept",
+    () => {
+      const auth = ev("action.authorized", "guard", { intent: "accept_offer", capability: { terms_hash: "h1", epoch: 0 } });
+      const line = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "Yes." });
+      return [mandate(), limits("granted"), call(), offer(), ALL(), auth, line, released(line)];
+    },
+    { state: "current" },
+  ],
   // 7. Check the company's records (only when its events appear)
   ["records: absent without its events", "records", () => [...approvedRun()], "absent"],
   ["records: current on EVIDENCE_PENDING", "records", () => [...approvedRun(), status("EVIDENCE_PENDING")], { state: "current" }],
@@ -144,6 +162,19 @@ const CASES: Case[] = [
   ["records: done, matched", "records", () => [...approvedRun(), evidence(), verdict("ok")], { state: "done", note: "Matched the company's records" }],
   ["records: a failed check is done with a note", "records", () => [...approvedRun(), evidence(), verdict("fail")], { state: "noted", note: "Didn't match the company's records" }],
   ["records: new evidence after a failed check reopens it", "records", () => [...approvedRun(), evidence(), verdict("fail"), evidence()], { state: "current" }],
+  // The verdict is the first completion.decided after the latest check: a later finish (a no-deal after a replan) judges no records.
+  [
+    "records: fail, replan, a later ok completion does not turn it into Matched",
+    "records",
+    () => [...approvedRun(), evidence(), verdict("fail"), status("NEEDS_REPLAN"), verdict("ok")],
+    { state: "noted", note: "Didn't match the company's records" },
+  ],
+  [
+    "records: fail, replan, then a no-deal end: still Didn't match",
+    "records",
+    () => [...approvedRun(), evidence(), verdict("fail"), status("NEEDS_REPLAN"), verdict("ok"), status("VERIFIED_NO_DEAL"), ended("no_deal")],
+    { state: "noted", note: "Didn't match the company's records" },
+  ],
   ["records: an unfinished check at the end ended early (never 'not reached')", "records", () => [...approvedRun(), evidence(), ended("timeout")], { state: "ended", note: "Ended before the records check" }],
   ["records: EVIDENCE_PENDING at the end ended early", "records", () => [...approvedRun(), status("EVIDENCE_PENDING"), ended("timeout")], { state: "ended", note: "Ended before the records check" }],
   // 8. Result (always)
@@ -172,6 +203,62 @@ describe("todo rows × states", () => {
     const over = events.some((e) => e.type === "session.ended" && e.actor === "kernel");
     expect(live).toHaveLength(over ? 0 : 1);
     if (over) expect(t.rows.filter((r) => r.state === "pending")).toEqual([]);
+  });
+});
+
+describe("started rows at the end (reviewer MINOR-1): ended with their progress, never 'Not reached'", () => {
+  it("A11b: an info run with 1 of 2 terms read back, then CLOSED_NO_ACTION", () => {
+    const t = run([call(), offer(), readback("confirmed", "heard"), status("CLOSED_NO_ACTION"), ended("info_only")]);
+    expect(t.rows.map((r) => [r.key, r.state, r.note])).toEqual([
+      ["call", "done", null],
+      ["offer", "done", "1 offer heard · latest $78/mo for 24 months"],
+      ["readback", "ended", "Read back · 1 of 2 · ended before it was finished"],
+      ["result", "done", "Here's what they offered · nothing accepted (information only)"],
+    ]);
+    expect(t.tag).toEqual({ tone: "plain", text: "3 of 4 done" });
+  });
+
+  it("A11: a granted card, then a newer offer, then no_deal: rows 4 and 6 ended with their notes", () => {
+    const before = [call(), offer(), ALL(), card()];
+    const d = decided("granted");
+    const events = [...before, d, authorized(d), offer("o1", 2, "h2"), status("VERIFIED_NO_DEAL"), ended("no_deal")];
+    const t = run(events);
+    expect(t.rows.map((r) => [r.key, r.state, r.note])).toEqual([
+      ["limits", "not_reached", "Not reached"],
+      ["call", "done", null],
+      ["offer", "done", "1 offer heard · latest $78/mo for 24 months"],
+      ["readback", "ended", "Read back · 0 of 2 · ended before it was finished"],
+      ["decision", "done", "Approved by your click"],
+      ["accept", "ended", "Ended before the yes was said"],
+      ["result", "done", "No deal. Nothing was accepted."],
+    ]);
+  });
+});
+
+describe("state words for screen readers (reviewer MINOR-2)", () => {
+  it.each([
+    [{ state: "pending", started: false, alsoYou: false }, "not started"],
+    [{ state: "pending", started: true, alsoYou: false }, "waiting"],
+    [{ state: "pending", started: true, alsoYou: true }, "also needs you"],
+    [{ state: "current", started: true, alsoYou: false }, "in progress"],
+    [{ state: "needs_you", started: true, alsoYou: false }, "needs you"],
+    [{ state: "done", started: true, alsoYou: false }, "done"],
+    [{ state: "noted", started: true, alsoYou: false }, "done, with a note"],
+    [{ state: "ended", started: true, alsoYou: false }, "not finished"],
+    [{ state: "not_reached", started: false, alsoYou: false }, ""], // its visible note says "Not reached"
+  ] as const)("%o → %s", (r, words) => expect(stateWords(r)).toBe(words));
+
+  it("the rows carry what the words need: a started pending row, and the limits waiting behind a card", () => {
+    const regress = run([call(), offer(), ALL(), card(), offer("o1", 2, "h2")]);
+    expect([row(regress, "readback")?.state, row(regress, "readback")?.started].map(String)).toEqual(["pending", "true"]);
+    const words = (t: Todo, key: RowKey) => {
+      const r = row(t, key);
+      return r ? stateWords(r) : null;
+    };
+    expect(words(regress, "readback")).toBe("waiting");
+    const both = run([mandate(), call(), offer(), card()]);
+    expect(words(both, "limits")).toBe("also needs you");
+    expect(words(both, "readback")).toBe("not started");
   });
 });
 
