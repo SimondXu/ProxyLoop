@@ -276,7 +276,8 @@ class Bar:
     def offer_note(self, o: OfferPublic, lever: bool = False) -> str:
         """V4 for ``o``'s revision. ``lever``: the offer's hint already names
         its next step, a lever or a wait (#238 D2: one next step per state),
-        so an unread read-back keeps its facts but not "ask again"."""
+        so an unread or stuck read-back keeps its facts but not "ask again"
+        or the stuck clause's decline (#242 D1)."""
         r = self.readbacks.get((o.offer_ref, o.revision))
         if r is None or not r.asked:
             return ""
@@ -287,12 +288,14 @@ class Bar:
             return not_read if lever else f"{not_read}; ask again or ask_final_offer"
         if not left:
             return said
+        omitted = f"{said}, omitted from {STOP_AFTER} read-backs: {', '.join(left)}"
+        if lever:
+            return omitted
         then = ", then decline_offer and guide_fast(ask_final_offer)"
         return (
-            f"{said}, omitted from {STOP_AFTER} read-backs: {', '.join(left)} → "
-            "not stated as recorded: if a reply states another value for them, "
-            "record_offer a new revision citing that line; otherwise stop asking, "
-            "report them to the user as not stated"
+            f"{omitted} → not stated as recorded: if a reply states another "
+            "value for them, record_offer a new revision citing that line; "
+            "otherwise stop asking, report them to the user as not stated"
             + (then if self.close.kind == "full" else "")
         )
 

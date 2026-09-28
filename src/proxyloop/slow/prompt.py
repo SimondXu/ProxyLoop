@@ -492,7 +492,7 @@ def mandate_hint(
     if more is None:
         return OUTSIDE_MANDATE
     if more.waiting:
-        return f"{OUTSIDE_MANDATE} → {WAIT_LEVER}; no read-back yet"
+        return f"{OUTSIDE_MANDATE} → {WAIT_LEVER}; ask_readback not yet"
     if levers := _free(more):
         return (
             f"{OUTSIDE_MANDATE} → {FIRST_LEVER}{levers}; "
