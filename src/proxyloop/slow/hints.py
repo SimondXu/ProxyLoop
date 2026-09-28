@@ -266,6 +266,21 @@ def better(
     return (min(beats, key=lambda x: x[0])[1], DOMINATES) if beats else None
 
 
+def needs_lever(view: SlowView, now_ms: int) -> bool:
+    """S1-SYS-82 round 3: a lever can be the next step: an open offer the
+    granted mandate does not cover (no mandate granted counts), breaking no
+    hard limit, not approved, and with no better open offer before it."""
+    for o in view.offers:
+        got = _verdict(view, o)
+        if not _open(o, now_ms) or got is None or hard_violations(*got):
+            continue
+        if _gap(view, now_ms, got[0]) is None or approved(view, o, now_ms):
+            continue
+        if better(view, o, now_ms) is None:
+            return True
+    return False
+
+
 def defer_hint(
     view: SlowView, b: OfferPublic, why: str, now_ms: int, more: state.Bar
 ) -> str:

@@ -222,12 +222,15 @@ def levers_line(
     sends: Mapping[str, Sent] | None = None,
     slots: Mapping[str, str] | None = None,
     offered: bool = True,
+    outside: bool = True,
 ) -> str:
     """Available (with the slot one needs), answered, heard, on its way,
     then each refusal with its clause and each lever that failed twice; an
-    unavailable lever is only that, whatever was sent. Before any offer is
-    recorded (``offered`` False) the free ones are "after the first offer":
-    no lever is a next step yet (S1-SYS-82 F-a)."""
+    unavailable lever is only that, whatever was sent. The free ones are
+    "available" (a next step) only once an offer is recorded (``offered``,
+    S1-SYS-82 F-a) and while an open offer outside the mandate has no
+    better offer before it (``outside``, round 3); otherwise they are
+    "after the first offer" or "for an offer outside the mandate"."""
 
     def what(move: str, code: str) -> str:  # n6: only the slot is unavailable
         slot = f" with fact:{TENURE}" if code == "guide_slot_not_public" else ""
@@ -238,7 +241,8 @@ def levers_line(
     free = [
         f"{m} with {slots[m]}" if m in slots else m for m in free_levers(levers, sends)
     ]
-    label = "available" if offered else "after the first offer"
+    label = "available" if outside else "for an offer outside the mandate"
+    label = label if offered else "after the first offer"
     groups = [f"{label}: {', '.join(free) or 'none'}"]
     for kind, label in GROUPS:
         if said := [m for m in usable if sends.get(m) == kind]:
@@ -365,8 +369,10 @@ class Bar:
             + (then if self.close.kind == "full" else "")
         )
 
-    def lines(self) -> list[str]:
-        levers = levers_line(self.levers, self.sends, self.slots, self.offered)
+    def lines(self, outside: bool = True) -> list[str]:
+        """``outside``: a lever can be the next step (``levers_line``)."""
+        free = (self.levers, self.sends, self.slots, self.offered, outside)
+        levers = levers_line(*free)
         ident = identify_line(self.identify)
         ask = request_line(self.identify, self.offered, self.discount)
         return [self.close.line(), levers, *(x for x in (ident, ask) if x)]

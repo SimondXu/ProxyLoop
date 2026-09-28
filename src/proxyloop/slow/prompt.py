@@ -423,5 +423,5 @@ def status_bar(
     if intake is not None:
         lines += [asks.readiness_line(intake, now_ms), asks.asks_line(intake, now_ms)]
     if more is not None:
-        lines += more.lines()
+        lines += more.lines(hints.needs_lever(view, now_ms))
     return "\n".join(lines)

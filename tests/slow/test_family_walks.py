@@ -252,25 +252,7 @@ WALKS: dict[str, tuple[dict[str, int], list[tuple[str, Step | None, str | None]]
 }
 
 
-HIDDEN_FEE_TWO_STEPS = pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "reported to L-CORE (round 2): promo-1 recorded with price and term "
-        "only is inside the mandate as recorded, and the levers line still "
-        "lists mention_tenure as available: two steps in 2 states"
-    ),
-)
-
-
-@pytest.mark.parametrize(
-    "family",
-    [
-        pytest.param(f, marks=HIDDEN_FEE_TWO_STEPS)
-        if f == "cp-hidden-fee-readback"
-        else f
-        for f in WALKS
-    ],
-)
+@pytest.mark.parametrize("family", list(WALKS))
 def test_each_family_walks_with_one_next_step_per_state(
     tmp_path: Path, family: str
 ) -> None:
@@ -377,7 +359,8 @@ def test_v_a_fee_revealed_on_the_read_back_ends_the_dominance(
     )
     reveal("keep-2", 73, 12, ("setup", 40))(h)
     assert "comes first" not in _line(h, "offers: ")
-    assert next_steps(h) == {"keep-1", "keep-2"}  # the reported state
+    # known two-step state, on no family trajectory: §0.9, no fix in this PR
+    assert next_steps(h) == {"keep-1", "keep-2"}
     ask_readback("keep-2")(h)
     read_back("keep-2", 73, 12, ("setup", 40))(h)
     assert _entry(h, "keep-1").endswith(
@@ -397,3 +380,96 @@ def test_v_neither_dominates_neither_comes_first(tmp_path: Path) -> None:
     h.act(TENURE)
     offer("keep-2", 73, 12, ("setup", 40))(h)
     assert "comes first" not in _line(h, "offers: ")
+
+
+# round 3 (L-CORE): the levers line lists free levers as "available" (a step)
+# only while an open offer outside the mandate has no better offer before it
+
+
+def _levers(h: Host) -> str:
+    return _line(h, "levers: ")
+
+
+FOR_OUTSIDE = "levers: for an offer outside the mandate: mention_tenure; "
+
+
+def test_l_an_inside_offer_alone_lists_no_lever_step(tmp_path: Path) -> None:
+    """cp-hidden-fee-readback: promo-1 55/12, no fee said yet, is inside."""
+    h = _verified(tmp_path, 6500, max_term_months=12, max_one_time_fees_minor=0)
+    h.act(DISCOUNT)
+    offer("promo-1", 55, 12, None, False)(h)
+    assert _levers(h).startswith(FOR_OUTSIDE), _levers(h)
+    assert next_steps(h) == {"promo-1"}
+
+
+def test_l_inside_and_outside_open_the_inside_one_comes_first(
+    tmp_path: Path,
+) -> None:
+    """loyal-1 outside, loyal-2 inside, mention_tenure never sent: no lever."""
+    h = _verified(tmp_path, 7000, max_term_months=24, max_one_time_fees_minor=2500)
+    h.act(DISCOUNT)
+    offer("loyal-1", 75, 12, ("activation", 20))(h)
+    fee = ("activation", 20)
+    _record(h, "loyal-2", _said(68, 24, fee), _fields(68, 24, fee))
+    assert _levers(h).startswith(FOR_OUTSIDE), _levers(h)
+    assert next_steps(h) == {"loyal-2"}
+
+
+def test_l_a_lever_on_its_way_is_unchanged(tmp_path: Path) -> None:
+    h = _verified(tmp_path, 6500, max_term_months=24, max_one_time_fees_minor=0)
+    h.act(DISCOUNT)
+    offer("save-1", 78, 24)(h)
+    assert _levers(h).startswith("levers: available: mention_tenure; ")
+    h.act(TENURE)
+    line = _levers(h)
+    assert line.startswith("levers: available: none; ") and "(wait)" in line, line
+    assert next_steps(h) == set()
+
+
+def test_l_after_a_denial_with_no_inside_offer_the_lever_is_available(
+    tmp_path: Path,
+) -> None:
+    h = first.auth._confirmed(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    first._mandate(h, 6500)  # pyright: ignore[reportPrivateUsage]
+    h.act({"tool": "request_approval", "offer_ref": "save-2"})
+    first._deny(h)  # pyright: ignore[reportPrivateUsage]
+    assert _levers(h).startswith("levers: available: mention_tenure; ")
+    assert next_steps(h) == {"mention_tenure"}
+
+
+def _no_grant(tmp_path: Path, propose: bool) -> Host:
+    """The call open and verified with no mandate granted (``propose``: one
+    proposed, the user has not decided it), then save-1 recorded."""
+    h = Host(tmp_path)
+    if propose:
+        envelope = {"max_monthly_price_minor": 6500, "max_term_months": 24}
+        h.act({"tool": "propose_mandate", "envelope": envelope})
+    said = h.emit("user.msg", "kernel", {"text": "My last 4 are 4821."})
+    record = {"tool": "record_fact", "key": "account.last4", "value": "4821"}
+    h.act(record | {"utt_ref": said.event_id})
+    h.call()
+    h.act(first.LAST4)
+    h.voice()
+    h.rep("cp-1", "Thank you, the account is verified. How can I help?")
+    h.act(DISCOUNT)
+    offer("save-1", 78, 24)(h)
+    return h
+
+
+def test_l_no_mandate_granted_keeps_the_lever_available(tmp_path: Path) -> None:
+    """No granted mandate covers the offer, so a lever stays a step, as
+    before round 3: with a proposal pending it is the one step; with none,
+    the case line's propose_mandate shows too (unchanged by round 3)."""
+    h = _no_grant(tmp_path, propose=True)
+    assert _levers(h).startswith("levers: available: mention_tenure; ")
+    assert next_steps(h) == {"mention_tenure"}
+
+
+def test_l_no_mandate_at_all_shows_the_lever_and_propose_mandate(
+    tmp_path: Path,
+) -> None:
+    h = _no_grant(tmp_path, propose=False)
+    assert _levers(h).startswith("levers: available: mention_tenure; ")
+    # two steps as before round 3, on no family trajectory (the mandate is
+    # granted in the intake): reported, no fix in this PR
+    assert next_steps(h) == {"mention_tenure", "propose_mandate"}
