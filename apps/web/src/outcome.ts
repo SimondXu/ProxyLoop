@@ -116,11 +116,16 @@ export function receiptTitle(kind: ReceiptKind, o: Outcome): string {
   }[kind];
 }
 
-/** A note when Guard recorded an accept that nothing verified, on a receipt whose title does not say so. */
-export const unverifiedCommit = (kind: ReceiptKind, o: Outcome): string | null =>
-  kind !== "committed" && kind !== "verified" && o.status !== null && UNVERIFIED_COMMIT.includes(o.status)
-    ? "The agent had accepted on the call; this was never verified."
-    : null;
+/**
+ * A note when Guard recorded an accept that nothing verified, on a receipt whose title does not say so.
+ * Any guard status.changed to COMMITTED or EVIDENCE_PENDING counts, not only the last: a hang-up moves
+ * COMMITTED to ABANDONED.
+ */
+export function unverifiedCommit(kind: ReceiptKind, events: Ev[]): string | null {
+  if (kind === "committed" || kind === "verified") return null;
+  const committed = events.some((e) => from(e, "status.changed", ["guard"]) && UNVERIFIED_COMMIT.includes(String(e.payload.status)));
+  return committed ? "The agent had accepted on the call; this was never verified." : null;
+}
 
 /** Guard's evidence.recorded confirmation ids, in order. */
 export const confirmations = (events: Ev[]): string[] =>
@@ -130,12 +135,14 @@ export const confirmations = (events: Ev[]): string[] =>
 export function spendLines(events: Ev[]): string[] {
   const end = events.findLast((e) => from(e, "session.ended", ["kernel"]));
   const s = end?.payload.spend;
-  if (typeof s !== "object" || s === null) return ["This run recorded no cost."];
+  const none = ["No cost was recorded for this run."];
+  if (typeof s !== "object" || s === null) return none;
   const { priced_micro_usd: priced, unpriced_calls: unpriced, gpu_time_calls: gpu } = s as Record<string, unknown>;
-  const lines = [`Priced model calls: ${typeof priced === "number" && Number.isInteger(priced) ? microUsd(priced) : String(priced)}`];
+  const lines: string[] = [];
+  if (priced != null) lines.push(`Priced model calls: ${typeof priced === "number" && Number.isInteger(priced) ? microUsd(priced) : String(priced)}`);
   if (typeof unpriced === "number" && unpriced > 0) lines.push(`${unpriced} call${unpriced === 1 ? "" : "s"} unpriced`);
   if (typeof gpu === "number" && gpu > 0) lines.push(`${gpu} GPU call${gpu === 1 ? "" : "s"}, billed by Modal and not counted here`);
-  return lines;
+  return lines.length > 0 ? lines : none;
 }
 
 /** Micro-USD as dollars, exact (six places at most); formatting only. */

@@ -31,7 +31,7 @@ function Terms({ label, rows }: { label: string; rows: TermRow[] }) {
 
 export function Receipt({ events, outcome }: { events: Ev[]; outcome: Outcome }) {
   const kind = receiptKind(outcome);
-  const note = unverifiedCommit(kind, outcome);
+  const note = unverifiedCommit(kind, events);
   // VERIFIED_COMPLETE: the granted card whose accept Guard released on the call.
   const approved = useMemo(
     () => approvalCards(events, NO_POSTS).findLast((v) => v.status === "granted" && acceptOf(events, v).state === "released"),

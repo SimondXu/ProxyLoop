@@ -124,12 +124,21 @@ describe("the receipt (S1-SYS-51): its variant, cost and confirmation", () => {
   });
 
   it("says Guard's unverified accept on a receipt that stopped short, and nowhere else", () => {
-    const stopped = outcomeOf([status("COMMIT_AUTHORIZED", "COMMITTED"), endedWith("timeout")]);
-    expect(unverifiedCommit(receiptKind(stopped), stopped)).toBe("The agent had accepted on the call; this was never verified.");
-    const committed = outcomeOf([status("COMMIT_AUTHORIZED", "COMMITTED"), endedWith("completed")]);
-    expect(unverifiedCommit(receiptKind(committed), committed)).toBeNull(); // its title says so
-    const inCallStop = outcomeOf([...inCall, endedWith("timeout")]);
-    expect(unverifiedCommit(receiptKind(inCallStop), inCallStop)).toBeNull();
+    const NOTE = "The agent had accepted on the call; this was never verified.";
+    const stoppedLog = [status("COMMIT_AUTHORIZED", "COMMITTED"), endedWith("timeout")];
+    expect(unverifiedCommit(receiptKind(outcomeOf(stoppedLog)), stoppedLog)).toBe(NOTE);
+    const committedLog = [status("COMMIT_AUTHORIZED", "COMMITTED"), endedWith("completed")];
+    expect(unverifiedCommit(receiptKind(outcomeOf(committedLog)), committedLog)).toBeNull(); // its title says so
+    const inCallLog = [...inCall, endedWith("timeout")];
+    expect(unverifiedCommit(receiptKind(outcomeOf(inCallLog)), inCallLog)).toBeNull();
+    // Guard's hang_up moves COMMITTED to ABANDONED: the earlier COMMITTED still gets its note.
+    const hungUp = [status("COMMIT_AUTHORIZED", "COMMITTED"), status("COMMITTED", "ABANDONED"), endedWith("abandoned")];
+    const o = outcomeOf(hungUp);
+    expect(receiptTitle(receiptKind(o), o)).toBe("The rep ended the call.");
+    expect(unverifiedCommit(receiptKind(o), hungUp)).toBe(NOTE);
+    // A COMMITTED that Guard did not emit is not an accept.
+    const fake = [status("IN_CALL", "COMMITTED", "fast.cp"), ...inCall, endedWith("timeout")];
+    expect(unverifiedCommit(receiptKind(outcomeOf(fake)), fake)).toBeNull();
   });
 
   it("formats session.ended's spend only: priced, unpriced and GPU calls; no total, no savings", () => {
@@ -141,7 +150,10 @@ describe("the receipt (S1-SYS-51): its variant, cost and confirmation", () => {
       "Priced model calls: $2.50",
       "1 call unpriced",
     ]);
-    expect(spendLines([endedWith("completed")])).toEqual(["This run recorded no cost."]);
+    expect(spendLines([endedWith("completed")])).toEqual(["No cost was recorded for this run."]);
+    // No priced_micro_usd: no priced line, never "undefined".
+    expect(spendLines([endedWith("completed", { unpriced_calls: 2 })])).toEqual(["2 calls unpriced"]);
+    expect(spendLines([endedWith("completed", { tokens: 5 })])).toEqual(["No cost was recorded for this run."]);
     expect(spendLines([endedWith("completed", { priced_micro_usd: "12" })])).toEqual(["Priced model calls: 12"]); // not an integer: as sent
     expect(microUsd(0)).toBe("$0.00");
   });
