@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { statusView, statusWords } from "./outcome";
+import { confirmations, ENDPOINT, microUsd, receiptKind, receiptTitle, spendLines, statusView, statusWords, unverifiedCommit } from "./outcome";
 import type { Ev } from "./replay";
 
 let seq = 0;
@@ -83,5 +83,71 @@ describe("the outcome banner (session.ended + the last status and completion.dec
 
   it("reads session.ended from the kernel only", () => {
     expect(statusView([...inCall, ev("session.ended", "slow", { reason: "completed" }, "ops")]).outcome).toBeNull();
+  });
+});
+
+describe("the receipt (S1-SYS-51): its variant, cost and confirmation", () => {
+  const outcomeOf = (events: Ev[]) => {
+    const o = statusView(events).outcome;
+    if (!o) throw new Error("no outcome");
+    return o;
+  };
+  const endedWith = (reason: string, spend?: Ev["payload"]) =>
+    ev("session.ended", "kernel", { reason, counts: {}, ...(spend ? { spend } : {}) }, "ops");
+
+  it.each([
+    ["VERIFIED_COMPLETE", "completed", "verified", "Done. Verified."],
+    ["COMMITTED", "completed", "committed", "Accepted on the call. Not verified yet."],
+    ["EVIDENCE_PENDING", "completed", "committed", "Accepted on the call. Not verified yet."],
+    ["VERIFIED_NO_DEAL", "no_deal", "no_deal", "No deal. Nothing was accepted."],
+    ["CLOSED_NO_ACTION", "info_only", "info_only", "Here's what they offered · nothing accepted (information only)"],
+    ["ABANDONED", "abandoned", "abandoned", "The rep ended the call."],
+    ["IN_CALL", "abandoned", "abandoned", "The rep ended the call."],
+    ["IN_CALL", "timeout", "stopped", "Stopped: the session timed out. Not completed."],
+    ["IN_CALL", "slow_step_cap", "stopped", "Stopped: the planner's step limit was reached. Not completed."],
+    ["IN_CALL", "budget", "stopped", "Stopped: the spend limit was reached. Not completed."],
+    ["IN_CALL", "stopped", "stopped", "Stopped: the session was stopped. Not completed."],
+    ["IN_CALL", "llm_unavailable", "endpoint", ENDPOINT],
+    ["IN_CALL", "error", "error", "An error stopped the case. Not completed."],
+    ["IN_CALL", "p3_failed", "ended", "Ended: p3_failed. Not verified complete."],
+    ["NEEDS_REPLAN", "completed", "ended", "Ended: the agent reported it complete. Not verified complete."],
+  ])("%s + session.ended{%s} → %s", (last, reason, kind, title) => {
+    const o = outcomeOf([status("IN_CALL", last), endedWith(reason)]);
+    expect(receiptKind(o)).toBe(kind);
+    expect(receiptTitle(receiptKind(o), o)).toBe(title);
+    if (kind !== "verified") expect(receiptTitle(receiptKind(o), o)).not.toMatch(/verified\.|^Done/i);
+  });
+
+  it("an unknown status and reason are shown raw", () => {
+    const o = outcomeOf([status("IN_CALL", "SOMETHING_NEW"), endedWith("brand_new")]);
+    expect(receiptTitle(receiptKind(o), o)).toBe("Ended: brand_new. Not verified complete.");
+  });
+
+  it("says Guard's unverified accept on a receipt that stopped short, and nowhere else", () => {
+    const stopped = outcomeOf([status("COMMIT_AUTHORIZED", "COMMITTED"), endedWith("timeout")]);
+    expect(unverifiedCommit(receiptKind(stopped), stopped)).toBe("The agent had accepted on the call; this was never verified.");
+    const committed = outcomeOf([status("COMMIT_AUTHORIZED", "COMMITTED"), endedWith("completed")]);
+    expect(unverifiedCommit(receiptKind(committed), committed)).toBeNull(); // its title says so
+    const inCallStop = outcomeOf([...inCall, endedWith("timeout")]);
+    expect(unverifiedCommit(receiptKind(inCallStop), inCallStop)).toBeNull();
+  });
+
+  it("formats session.ended's spend only: priced, unpriced and GPU calls; no total, no savings", () => {
+    const spend = { priced_micro_usd: 12_345, priced_by_role: {}, unpriced_calls: 3, unpriced_by_role: {}, gpu_time_calls: 1, tokens: 900 };
+    const lines = spendLines([endedWith("completed", spend)]);
+    expect(lines).toEqual(["Priced model calls: $0.012345", "3 calls unpriced", "1 GPU call, billed by Modal and not counted here"]);
+    expect(lines.join(" ")).not.toMatch(/sav|total/i);
+    expect(spendLines([endedWith("completed", { priced_micro_usd: 2_500_000, unpriced_calls: 1, gpu_time_calls: 0 })])).toEqual([
+      "Priced model calls: $2.50",
+      "1 call unpriced",
+    ]);
+    expect(spendLines([endedWith("completed")])).toEqual(["This run recorded no cost."]);
+    expect(spendLines([endedWith("completed", { priced_micro_usd: "12" })])).toEqual(["Priced model calls: 12"]); // not an integer: as sent
+    expect(microUsd(0)).toBe("$0.00");
+  });
+
+  it("confirmation ids come from Guard's evidence.recorded only", () => {
+    const rec = (actor: string, id: string) => ev("evidence.recorded", actor, { evidence_id: `ledger:${id}`, kind: "ledger", confirmation_id: id });
+    expect(confirmations([rec("guard", "CNF-1"), rec("slow", "CNF-FAKE")])).toEqual(["CNF-1"]);
   });
 });

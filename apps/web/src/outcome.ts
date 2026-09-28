@@ -72,3 +72,72 @@ export function statusView(events: Ev[]): StatusView {
       : `Ended: ${reasonWords(reason)}. Not verified complete.`;
   return { line: `Session ended: ${reasonWords(reason)}`, outcome: { title, verified, reason, status, verdict } };
 }
+
+// The receipt (redesign §3.2, S1-SYS-51): which variant session.ended closes on.
+// Guard's terminal status comes first, then the kernel's reason. Only a
+// VERIFIED_COMPLETE says "Verified"; an unknown status or reason is shown raw.
+export type ReceiptKind = "verified" | "committed" | "no_deal" | "info_only" | "abandoned" | "stopped" | "endpoint" | "error" | "ended";
+
+// Why a session stopped short (session.ended reasons).
+const STOP: Record<string, string> = {
+  timeout: "the session timed out",
+  slow_step_cap: "the planner's step limit was reached",
+  budget: "the spend limit was reached",
+  stopped: "the session was stopped",
+};
+// Guard has recorded an accept on the call, but no verifier has confirmed it.
+const UNVERIFIED_COMMIT = ["COMMITTED", "EVIDENCE_PENDING"];
+
+export const ENDPOINT = "A model endpoint stopped responding, so the case stopped. ProxyLoop never switches to a backup model.";
+
+export function receiptKind(o: Outcome): ReceiptKind {
+  if (o.status === "VERIFIED_COMPLETE") return "verified";
+  if (o.status === "VERIFIED_NO_DEAL") return "no_deal";
+  if (o.status === "CLOSED_NO_ACTION") return "info_only";
+  if (o.reason === "llm_unavailable") return "endpoint";
+  if (o.reason === "error") return "error";
+  if (o.status === "ABANDONED" || o.reason === "abandoned") return "abandoned";
+  if (o.reason in STOP) return "stopped";
+  if (o.status !== null && UNVERIFIED_COMMIT.includes(o.status)) return "committed";
+  return "ended";
+}
+
+export function receiptTitle(kind: ReceiptKind, o: Outcome): string {
+  return {
+    verified: "Done. Verified.",
+    committed: "Accepted on the call. Not verified yet.",
+    no_deal: "No deal. Nothing was accepted.",
+    info_only: "Here's what they offered · nothing accepted (information only)",
+    abandoned: "The rep ended the call.",
+    stopped: `Stopped: ${STOP[o.reason] ?? o.reason}. Not completed.`,
+    endpoint: ENDPOINT,
+    error: "An error stopped the case. Not completed.",
+    ended: o.title,
+  }[kind];
+}
+
+/** A note when Guard recorded an accept that nothing verified, on a receipt whose title does not say so. */
+export const unverifiedCommit = (kind: ReceiptKind, o: Outcome): string | null =>
+  kind !== "committed" && kind !== "verified" && o.status !== null && UNVERIFIED_COMMIT.includes(o.status)
+    ? "The agent had accepted on the call; this was never verified."
+    : null;
+
+/** Guard's evidence.recorded confirmation ids, in order. */
+export const confirmations = (events: Ev[]): string[] =>
+  events.filter((e) => from(e, "evidence.recorded", ["guard"]) && typeof e.payload.confirmation_id === "string").map((e) => String(e.payload.confirmation_id));
+
+/** session.ended.spend (kernel/session.py, SpendLedger.totals), formatted only: no sums, no savings (rule 13). */
+export function spendLines(events: Ev[]): string[] {
+  const end = events.findLast((e) => from(e, "session.ended", ["kernel"]));
+  const s = end?.payload.spend;
+  if (typeof s !== "object" || s === null) return ["This run recorded no cost."];
+  const { priced_micro_usd: priced, unpriced_calls: unpriced, gpu_time_calls: gpu } = s as Record<string, unknown>;
+  const lines = [`Priced model calls: ${typeof priced === "number" && Number.isInteger(priced) ? microUsd(priced) : String(priced)}`];
+  if (typeof unpriced === "number" && unpriced > 0) lines.push(`${unpriced} call${unpriced === 1 ? "" : "s"} unpriced`);
+  if (typeof gpu === "number" && gpu > 0) lines.push(`${gpu} GPU call${gpu === 1 ? "" : "s"}, billed by Modal and not counted here`);
+  return lines;
+}
+
+/** Micro-USD as dollars, exact (six places at most); formatting only. */
+export const microUsd = (micro: number): string =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 6 }).format(micro / 1_000_000);
