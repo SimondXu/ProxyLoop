@@ -1,35 +1,33 @@
-"""World-model selection, PR2a (S1-MOD-09): replay the frozen items through the
-production world code, one JSONL of rows per arm. Root-run (L); ``--plan`` makes no
-network call and needs no key.
+"""World-model selection, PR2a (S1-MOD-09): the frozen items through the production
+world code, one JSONL of rows per arm. Root-run (L); ``--plan``: no call, no key.
 
     python -m scripts.mod.world_select run --items <items json> --runs runs \
         --out-dir <dir> --arm teamrouter:gemini-3.8-flash@low [--arm ...] \
         [--roles ear,mouth,simuser] [--limit N] [--repeat-subset N --seed S] \
         [--concurrency K] [--resume] [--plan]
 
-An arm is ``<endpoint>:<model_id>[@effort]`` (``cli.world_spec``), its client the
-production one (``llm.factory.make_client``, live), keys and URLs only from
-``PL_<ENDPOINT>_*`` and never written. Requests come from the production builders; the
-attempt loop is ``world.bounded`` itself (``MAX_REGENERATIONS``, the whole-call
-``TIMEOUT_S``) with the production checks. No retry beyond it: a dead endpoint
-(``LLMUnavailable``) writes its row and aborts the run (AGENTS rule 6).
+An arm is ``<endpoint>:<model_id>[@effort]`` (``cli.world_spec``); its client is
+``make_client``'s, live, keys and URLs only from ``PL_<ENDPOINT>_*``, never written.
+The production builders make the requests; ``world.bounded`` itself runs the attempts
+with the production checks. No other retry: a dead endpoint (``LLMUnavailable``)
+writes its row and aborts the run (AGENTS rule 6).
 
-- **ear**: every Ear item (``Ear.request``, ``check_act``), its ``Heard`` ids derived
-  from the item id; always called.
+- **ear**: every item (``Ear.request``, ``check_act``; ids from the item id), called.
 - **mouth**: every Mouth item (``Mouth.request``, ``fidelity_ok``; exhausted, the
   template, ``fallback: true``, as live). An arm whose ref is the recorded run's mouth
   ref reuses a recorded output, no call, when the rebuilt prompt sha equals an
   occurrence's and its ``fidelity_ok`` is true (``world_select.MOUTH_REUSE``).
-- **simuser**: a recorded item replays its recorded request by reference (from the
-  bundle's ``prompts.jsonl``, sha-checked; the items hold no chat state to rebuild it
-  from: ``request_source: recorded``), one call, no check (no facts, opening or stop
-  in the item); the recorded arm reuses the recorded first attempt. Constructed
-  SimUser items hold their chat only as prose: not replayable, counted by ``--plan``.
+- **simuser**: a recorded item replays its request by reference (``prompts.jsonl``,
+  sha-checked; no chat state to rebuild it from: ``request_source: recorded``), one
+  call, no check (no facts, opening or stop in the item); the recorded arm reuses its
+  first attempt. A constructed item (its chat only prose) makes no call: its row is
+  ``not_replayable``, left out of the scoring (the root's decision (c)).
 
 Row (one JSON line, ``pl.world-select-row/1``; PR2b's scorer takes the last final row
 per (item_id, role, repeat)): ``arm``, ``model_ref``, ``items_root_hash``, ``role``,
 ``item_id``, ``constructed``, ``repeat`` (2: ``--repeat-subset``), ``status`` (final:
-``ok``, ``exhausted``, ``timeout``, ``reused``; ``unavailable`` is re-run on resume),
+``ok``, ``exhausted``, ``timeout``, ``reused``, ``not_replayable``; ``unavailable`` is
+re-run on resume),
 ``reused``, ``request_sha`` (attempt 0's prompt sha), ``elapsed_ms`` (wall),
 ``attempts`` (per model attempt ``{n, raw, valid, reason, records}``: ``raw`` the tool
 calls ``[{name, arguments}]`` or the streamed text; ``valid``/``reason`` the check's
@@ -45,7 +43,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import itertools
 import json
 import random
 import re
@@ -80,26 +77,20 @@ from scripts.mod import world_select as ws
 Json = dict[str, Any]
 ROW_SCHEMA = "pl.world-select-row/1"
 ITEMS = ws.REPO / "docs/decisions/data/world-select-items.json"
-FINAL = frozenset({"ok", "exhausted", "timeout", "reused"})
+FINAL = frozenset({"ok", "exhausted", "timeout", "reused", "not_replayable"})
 ROLES = ws.ROLES
 TRIES = world.MAX_REGENERATIONS + 1
 UNUSED = cast(Any, None)  # the builders are pure: their client and writer stay unused
 Sink = defaultdict[str, list[LLMCallRecord]]  # the arm client's records, by call id
 PLAIN = ("finish_reason", "error", "prompt_sha", "response_sha", "sampling_sent")
-EST_RULE = (
-    "per role called, the mean over its items of the first recorded attempt's usage "
-    "(the first occurrence with one), times its items"
-)
+EST_RULE = "per role, the mean first recorded usage per item called, times its items"
 
 
 @dataclass(frozen=True)
 class Arm:
     label: str
     ref: ModelRef
-
-    @property
-    def file(self) -> str:
-        return re.sub(r"[^A-Za-z0-9._@-]", "_", self.label) + ".jsonl"
+    file: str  # its JSONL under --out-dir
 
 
 def parse_arm(spec: str) -> Arm:
@@ -110,7 +101,8 @@ def parse_arm(spec: str) -> Arm:
         "model_id": model_id,
     }
     label = f"{endpoint}:{model_id}" + (f"@{effort}" if effort else "")
-    return Arm(label, ModelRef.model_validate(ref | {"reasoning_effort": effort}))
+    file = re.sub(r"[^A-Za-z0-9._@-]", "_", label) + ".jsonl"
+    return Arm(label, ModelRef.model_validate(ref | {"reasoning_effort": effort}), file)
 
 
 @dataclass(frozen=True)
@@ -122,6 +114,10 @@ class Work:
     @property
     def key(self) -> tuple[str, str, int]:
         return (self.item["item_id"], self.role, self.repeat)
+
+    @property
+    def replayable(self) -> bool:  # a constructed SimUser item holds only prose
+        return self.role != "simuser" or not self.item.get("constructed")
 
     @property
     def tag(self) -> str:  # the synthetic event id stem, unique per item and repeat
@@ -195,8 +191,8 @@ def ear_inputs(
 
 
 def mouth_intent(item: Json, company: str) -> PublicIntent:
-    """A recorded intent as recorded; a constructed one with ``say`` in the order its
-    ``template`` shows (the frozen file keeps ``say`` as a key-sorted map)."""
+    """As recorded; a constructed one's ``say`` (stored key-sorted) in the order its
+    frozen ``template`` shows each term as rendered today (the line may be older)."""
     if not item.get("constructed"):
         i = item["intent"]
         say, ask = tuple((k, v) for k, v in i["say"]), tuple(i["ask"])
@@ -204,12 +200,14 @@ def mouth_intent(item: Json, company: str) -> PublicIntent:
             kind=i["kind"], offer_ref=i.get("offer_ref"), say=say, ask=ask
         )
     kind, ref = cast(IntentKind, item["intent"]), item["offer_ref"]
-    fits = [PublicIntent(kind=kind, offer_ref=ref, say=say, ask=tuple(item["ask"]))
-            for say in itertools.permutations(item["say"].items())]  # fmt: skip
-    fits = [i for i in fits if template(i, company) == item["template"]]
-    if len(fits) != 1:
-        raise SystemExit(f"mouth {item['name']}: {len(fits)} say orders fit template")
-    return fits[0]
+    bare = len(template(PublicIntent(kind=kind), company)) + 1  # the line and a space
+    at = {kv: item["template"].find(template(PublicIntent(kind=kind, say=(kv,)),
+                                             company)[bare:-1])
+          for kv in item["say"].items()}  # fmt: skip
+    if min(at.values(), default=0) < 0 or len(set(at.values())) != len(at):
+        raise SystemExit(f"mouth {item['name']}: its template shows no say order")
+    say = tuple(sorted(at, key=at.__getitem__))
+    return PublicIntent(kind=kind, offer_ref=ref, say=say, ask=tuple(item["ask"]))
 
 
 def mouth_requests(
@@ -262,7 +260,7 @@ def work(doc: Json, args: argparse.Namespace) -> list[Work]:
     ``--repeat-subset`` Ear items drawn with ``--seed``, again, as repeat 2."""
     out: list[Work] = []
     for role in args.roles:
-        made: list[Json] = [] if role == "simuser" else doc["constructed"][role]
+        made: list[Json] = doc["constructed"][role]
         out += [Work(role, i, 1) for i in [*doc["items"][role], *made][: args.limit]]
     ears = sorted((w.item for w in out if w.role == "ear"), key=lambda i: i["item_id"])
     if (n := args.repeat_subset or 0) > len(ears):
@@ -387,6 +385,8 @@ class Replay:
             row |= {"status": "ok", "result": result | {"attempts": attempts}}
 
     async def simuser(self, w: Work, row: Json, arm: Arm) -> None:
+        if not w.replayable:
+            return row.update(status="not_replayable")
         request = simuser_request(self.rec, w.item, w.tag)
         row["request_source"] = "recorded"  # the items hold no chat state to rebuild
         if (occ := reuse_of(self.rec, w, arm)) is not None:
@@ -414,8 +414,7 @@ class Replay:
 
 def done_keys(path: Path) -> set[tuple[str, str, int]]:
     lines = path.read_text("utf-8").splitlines() if path.exists() else []
-    rows = [json.loads(line) for line in lines if line]
-    return {(r["item_id"], r["role"], r["repeat"]) for r in rows
+    return {(r["item_id"], r["role"], r["repeat"]) for r in map(json.loads, lines)
             if r["status"] in FINAL}  # fmt: skip
 
 
@@ -506,12 +505,12 @@ def plan(rec: Recorded, todo: Sequence[Work], arms: Sequence[Arm]) -> Json:
         if w.role == "mouth" and not w.item.get("constructed")
     )
     out: Json = {"items_root_hash": rec.doc["root_hash"], "bundles": len(rec.bundles)}
-    out["simuser_constructed_not_replayable"] = len(rec.doc["constructed"]["simuser"])
+    out["simuser_not_replayable"] = sum(not w.replayable for w in todo)
     out |= {"mouth_prompt_sha_mismatch": mismatch, "est_rule": EST_RULE, "arms": {}}
     for arm in arms:
         called = [
-            w for w in todo
-            if w.role == "ear" or reuse_of(rec, w, arm, sha.get(w.key, "")) is None
+            w for w in todo if w.replayable
+            and (w.role == "ear" or reuse_of(rec, w, arm, sha.get(w.key, "")) is None)
         ]  # fmt: skip
         calls = Counter(w.role for w in called)
         out["arms"][arm.label] = {
@@ -519,7 +518,7 @@ def plan(rec: Recorded, todo: Sequence[Work], arms: Sequence[Arm]) -> Json:
             "max_calls": {
                 r: n * (1 if r == "simuser" else TRIES) for r, n in calls.items()
             },
-            "reused": dict(Counter(w.role for w in todo) - calls),
+            "reused": dict(Counter(w.role for w in todo if w.replayable) - calls),
             "tokens": {
                 r: estimate([usage[w.key] for w in called if w.role == r])
                 for r in calls
@@ -573,7 +572,7 @@ def run(
     rec = Recorded(json.loads(args.items.read_text("utf-8")), runs)
     todo = work(rec.doc, args)
     for w in todo if runs is not None else ():  # a data defect aborts before a call
-        if w.role != "ear":
+        if w.role != "ear" and w.replayable:
             (mouth_requests if w.role == "mouth" else simuser_request)(rec, w.item, "")
     if args.plan:
         return plan(rec, todo, args.arm)

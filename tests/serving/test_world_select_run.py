@@ -463,20 +463,26 @@ def test_simuser_replays_the_recorded_request_and_the_incumbent_reuses(
     built = SimUser(task, wsr.UNUSED, wsr.UNUSED, 0).request(
         ["Assistant: What do you pay now?"], dict(task.profile.facts), None, "c", 0
     )
-    (sent,) = wire.bodies  # the candidate's; the constructed item is not replayable
+    (sent,) = wire.bodies  # the candidate's; the constructed item makes no call
     assert sent["messages"] == [
         {"role": m.role, "content": m.content} for m in built.messages
     ]
     assert sent["tool_choice"]["function"]["name"] == "reply"
-    (theirs,) = rows(tmp_path, CANDIDATE)
+    theirs, prose = by_item(tmp_path, CANDIDATE)["s1"], by_item(tmp_path)["c-s1"]
+    assert prose["status"] == "not_replayable" and prose["attempts"] == []
+    assert prose["result"] is None and prose["constructed"] is True
     assert theirs["request_source"] == "recorded" and theirs[
         "request_sha"
     ] == sha256_text(request_content(built))
     assert theirs["result"]["calls"] == [{"name": "reply", "arguments": REPLY}]
-    (mine,) = rows(tmp_path)
+    mine = by_item(tmp_path)["s1"]
     assert mine["status"] == "reused" and mine["result"]["calls"] == [
         {"name": "reply", "arguments": REPLY}
     ]
+    again = wsr.run(
+        args(items, tmp_path, "--roles", "simuser", "--resume", arms=(CANDIDATE,))
+    )  # every row is final, not_replayable too: no call
+    assert again[CANDIDATE] == {"skipped_final": 2}
     prompts = tmp_path / "runs" / "r-1" / PROMPTS
     moved = prompts.read_text("utf-8").replace("What do you pay", "What do you owe")
     prompts.write_text(moved, "utf-8")
@@ -499,7 +505,7 @@ def test_plan_makes_no_call_and_needs_no_key(
         transports=wire.transports(),
     )
     assert wire.bodies == [] and not (tmp_path / "out").exists()
-    assert plan["simuser_constructed_not_replayable"] == 1
+    assert plan["simuser_not_replayable"] == 1
     assert plan["arms"][INCUMBENT]["calls"] == {"ear": 3, "mouth": 1}
     assert plan["arms"][INCUMBENT]["reused"] == {"mouth": 1, "simuser": 1}
     assert plan["arms"][CANDIDATE]["calls"] == {"ear": 3, "mouth": 2, "simuser": 1}
@@ -579,3 +585,23 @@ def test_the_cli_dispatches_run_and_refuses_a_moved_item(
     items.write_text(json.dumps(doc), "utf-8")
     with pytest.raises(SystemExit, match="root_hash"):
         wsr.run(args(items, tmp_path, "--plan"))
+
+
+def test_a_constructed_say_order_survives_a_rewording() -> None:
+    """The frozen template of a ``confirmed`` item predates S1-SYS-73's wording: the
+    order still comes from where each term stands in it; the line is today's."""
+    stale = (
+        "Done, the offer is accepted. Your confirmation number is: confirmation: "
+        "048213; monthly price: 76.00."
+    )
+    item: Json = {"constructed": True, "name": "c", "intent": "confirmed", "ask": []}
+    item |= {"offer_ref": "keep-1", "template": stale}
+    item["say"] = {"confirmation": "048213", "monthly_price": "76.00"}  # key-sorted
+    intent = wsr.mouth_intent(item, "Summit")
+    assert intent.say == (("confirmation", "048213"), ("monthly_price", "76.00"))
+    assert template(intent, "Summit").endswith(
+        "number is 048213; monthly price: 76.00."
+    )
+    item["say"] = {"monthly_price": "99.00"}  # a term its template does not show
+    with pytest.raises(SystemExit, match="no say order"):
+        wsr.mouth_intent(item, "Summit")
