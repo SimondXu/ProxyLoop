@@ -3,8 +3,8 @@
   .pl-start-page { max-width: 1120px; margin: 0 auto; }
   /* v4 hero: the greeting in the UI face, one serif-italic word (the time of day), the subline in --ink-2 */
   .pl-start-hero { margin: var(--s14) 0 var(--s8); }
-  .pl-start-hero h1 { font: 500 40px / 1.2 var(--font-ui); letter-spacing: -0.022em; }
-  .pl-start-hero em { font: italic 500 46px / 1 var(--font-serif); letter-spacing: -0.01em; }
+  .pl-start-hero h1 { font: 500 40px / 1.2 var(--font-ui); letter-spacing: -0.022em; } /* its purpose is in sr-only words */
+  .pl-start-daypart { font: italic 500 46px / 1 var(--font-serif); letter-spacing: -0.01em; }
   .pl-start-hero p { margin: var(--s2) 0 0; color: var(--ink-2); font-size: 20px; line-height: 1.45; letter-spacing: -0.01em; max-width: 680px; }
 
   .pl-start { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); gap: var(--s6); align-items: start; padding-bottom: var(--s14); }
@@ -19,7 +19,7 @@
   .pl-task-card {
     display: flex; flex-direction: column; gap: var(--s1); height: 100%; min-height: 148px; padding: 18px 18px 20px; border-radius: 18px;
     background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow-card);
-    transition: border-color var(--d-state) var(--ease), box-shadow var(--d-state) var(--ease), transform var(--d-enter) var(--ease);
+    transition: transform var(--d-enter) var(--ease); /* the ring changes at once, with the tile's check mark */
   }
   .pl-task-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: var(--s3); }
   .pl-task-tile { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border-radius: 11px; background: var(--sunk); color: var(--ink-2); }
@@ -63,7 +63,7 @@
     .pl-start, .pl-tasks { grid-template-columns: 1fr; }
     .pl-start-hero { margin: var(--s8) 0 var(--s6); }
     .pl-start-hero h1 { font-size: 30px; }
-    .pl-start-hero em { font-size: 35px; }
+    .pl-start-daypart { font-size: 35px; }
     .pl-start-hero p { font-size: 17px; }
     .pl-task-card { min-height: 0; }
   }

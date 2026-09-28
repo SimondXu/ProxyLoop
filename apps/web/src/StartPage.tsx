@@ -75,7 +75,8 @@ export function StartPage() {
       <div className="pl-start-page">
         <div className="pl-start-hero">
           <h1>
-            Good <em>{part}</em>
+            Good <span className="pl-start-daypart">{part}</span>
+            <span className="pl-sr">: start a new case</span>
           </h1>
           <p>Pick a task. ProxyLoop chats with you first, calls the (simulated) company, and asks before anything binding happens.</p>
         </div>

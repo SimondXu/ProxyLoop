@@ -158,14 +158,25 @@ test("the Task radiogroup keeps its name, arrow keys and card names; each card s
   await expect(radios.nth(0)).toBeChecked();
   await page.keyboard.press("ArrowLeft"); // wraps
   await expect(radios.nth(2)).toBeChecked();
-  // not a hue alone: the checked card's tile swaps the phone for a check mark (and the ring doubles)
+  // not a hue alone: the checked card's tile swaps the phone for a check mark (and the ring doubles), visible in both themes
   const tile = (i: number) =>
-    page.locator(".pl-task-tile").nth(i).evaluate((el) => ({
-      check: getComputedStyle(el, "::after").content,
-      phone: el.querySelector("svg") ? getComputedStyle(el.querySelector("svg") as Element).display : "gone",
-    }));
-  expect(await tile(2)).toEqual({ check: '""', phone: "none" });
-  expect(await tile(0)).toEqual({ check: "none", phone: "block" });
+    page.locator(".pl-task-tile").nth(i).evaluate((el) => {
+      const after = getComputedStyle(el, "::after");
+      return {
+        check: after.content,
+        phone: el.querySelector("svg") ? getComputedStyle(el.querySelector("svg") as Element).display : "gone",
+        stroke: parseFloat(after.borderRightWidth),
+        inked: after.borderRightColor !== getComputedStyle(el).backgroundColor,
+      };
+    });
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", scheme);
+    const on = await tile(2);
+    expect(on).toMatchObject({ check: '""', phone: "none", inked: true });
+    expect(on.stroke).toBeGreaterThan(0);
+    expect(await tile(0)).toMatchObject({ check: "none", phone: "block" });
+  }
 });
 
 test("the greeting follows the local clock and names nobody", async ({ page, baseURL }) => {
@@ -178,7 +189,9 @@ test("the greeting follows the local clock and names nobody", async ({ page, bas
   ] as const) {
     await page.clock.setFixedTime(new Date(time)); // local time, as the page reads it
     await page.goto("/?start");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(`Good ${word}`);
+    const h1 = page.getByRole("heading", { level: 1 });
+    await expect(h1).toHaveText(`Good ${word}: start a new case`); // the last words are sr-only: the page's purpose (WCAG 2.4.6)
+    await expect(h1).toHaveAccessibleName(/new case/);
   }
 });
 
