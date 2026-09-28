@@ -12,7 +12,9 @@ not at its release; S1-SYS-56 held the turn for the floor) is stale too
 (S1-SYS-59): it keeps its turn, sentences and relays but is not said
 (``fast.cancelled{verbatim}`` after its turn), and its trigger runs again on the
 new basis. Its ``chan.hold`` is emitted only as its lines take the floor, so a
-cancelled turn leaves no hold the rep never heard.
+cancelled turn leaves no hold the rep never heard. The GUIDEs it voiced (their
+``s2f.voiced`` came before its speech) are voiced again by the re-run, if the
+re-run acts and each is still the lane's newest GUIDE: the rep heard it there.
 Condition R (``teacher_repair_*``): a generation at a decision point goes to the
 teacher, as a ``fast_*`` call with the teacher's model (E1), ``resamples`` noted."""
 
@@ -89,6 +91,7 @@ class _Ask:  # a pending trigger
     trigger: Trigger
     cause: str
     acks: tuple[str, ...] = ()  # the APPROVAL_NOTICEs it voices
+    guides: tuple[str, ...] = ()  # GUIDEs a turn cancelled {verbatim} voiced
     again: bool = False  # it is re-run after a stale generation
 
 
@@ -103,6 +106,7 @@ class FastLane:
         self._retried: set[str] = set()  # GUIDEs re-triggered after an empty turn
         self._released: str | None = None  # this lane's last verbatim line released
         self._heard: Event | None = None  # and its delivery: the line in the transcript
+        self._guide: str | None = None  # the msg id of this lane's newest GUIDE
         k.bus.subscribe(self._on_event)
 
     def _on_event(self, e: Event) -> None:
@@ -112,17 +116,20 @@ class FastLane:
             self._released = e.event_id
         elif e.type == "utt.delivered" and self._released in e.cause_ids:
             self._heard = e
+        elif e.type == "s2f.msg" and e.payload.get("guide"):
+            self._guide = str(e.payload["msg_id"])
 
     def trigger(self, trigger: Trigger, cause: str, acks: tuple[str, ...] = ()) -> None:
         self._add(_Ask(trigger, cause, acks))
         self._wake.set()
 
     def _add(self, ask: _Ask, first: bool = False) -> None:
-        """One of each kind (the newest absorbs the older one's acks); each
-        Slow message once."""
+        """One of each kind (the newest absorbs the older one's acks and
+        guides); each Slow message once."""
         kind = ask.trigger.kind
         same = [a for a in self._pending if a.trigger.kind == kind != "slow_msg"]
         ask.acks = (*(x for a in same for x in a.acks), *ask.acks)
+        ask.guides = (*(x for a in same for x in a.guides), *ask.guides)
         self._pending = [a for a in self._pending if a not in same]
         self._pending.insert(0, ask) if first else self._pending.append(ask)
 
@@ -167,6 +174,7 @@ class FastLane:
         gen_id = f"{lane}-g{self._n}"
         gen: dict[str, object] = {"lane": lane, "gen_id": gen_id}
         guides = [m.msg_id for m in k.bb.s2f_pending.get(lane, ()) if m.guide]
+        guides += [g for g in ask.guides if g == self._guide and g not in guides]
         view, epoch = self.view(trigger), k.bb.epoch
         repair = k.teacher is not None and substitutes(view, k.cfg.ablations)
         client: LLMClient = k.teacher if repair and k.teacher else self.client
@@ -214,12 +222,13 @@ class FastLane:
         turn = k.emit("fast.turn", self._actor, turned, causes).event_id
         slow_msg = [trigger.msg_id] if trigger.msg_id else []
         if guides and not _acts(items):  # R3a: an empty turn voices no GUIDE
-            if again := [g for g in guides if g not in self._retried]:
+            new = [g for g in guides if g not in ask.guides]  # not a carried one
+            if again := [g for g in new if g not in self._retried]:
                 self._retried |= set(again)  # re-triggered once per message
                 k.counts["guide_retrigger"] += 1  # in session.ended's counts
                 self.trigger(Trigger(kind="guidance"), turn)
             guides = []
-        for msg_id in [*guides, *slow_msg, *ask.acks]:
+        for msg_id in dict.fromkeys([*guides, *slow_msg, *ask.acks]):
             voiced = {"msg_id": msg_id, "gen_id": gen_id}
             k.emit("s2f.voiced", self._actor, voiced, [turn])
         self._relay(items, turn, gen_id, utt_ref)
@@ -238,6 +247,7 @@ class FastLane:
             assert said is not None
             cancel = {"gen_id": gen_id, "reason": "verbatim"}
             k.emit("fast.cancelled", self._actor, cancel, [turn, said.event_id])
+            ask.guides = tuple(guides)  # voiced, but never heard: voiced again
             self._again(ask)
 
     def _fresh(self, basis: int, held: str | None, turn: str) -> Callable[[], bool]:
@@ -256,9 +266,10 @@ class FastLane:
 
     def _again(self, ask: _Ask) -> None:
         """A stale generation's trigger, first on the new basis (an
-        APPROVAL_NOTICE once)."""
+        APPROVAL_NOTICE once), with the GUIDEs to voice again."""
         if not (ask.again and ask.trigger.kind == "approval_card"):
-            self._add(_Ask(ask.trigger, ask.cause, ask.acks, again=True), first=True)
+            again = _Ask(ask.trigger, ask.cause, ask.acks, ask.guides, again=True)
+            self._add(again, first=True)
 
     def _relay(
         self, items: list[fp.TurnItem], turn: str, gen_id: str, utt_ref: str | None
