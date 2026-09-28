@@ -248,6 +248,15 @@ for (const theme of THEMES) {
         await expect(tabs.getByRole("button", { name: "Chat" })).toHaveText("Chat");
       });
 
+      // With 3+ term rows Approve is below the sheet's fold today (reported to P-WEB; S1-SYS-77 owns the sheet).
+      test("the open sheet shows the whole Approve button (S1-SYS-76)", async ({ page, baseURL }) => {
+        await liveWithCards(page, baseURL);
+        const card = page.getByRole("article", { name: "Approval ap-1" });
+        await expect(card.getByLabel("Read-back progress").getByRole("listitem")).toHaveCount(2);
+        await card.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+        await expect(card.getByRole("button", { name: "Approve $75/mo" })).toBeInViewport({ ratio: 1 });
+      });
+
       test("the composer is 16px, so a phone does not zoom into it", async ({ page, baseURL }) => {
         await liveWithCards(page, baseURL);
         const size = await page.getByRole("textbox", { name: "Message to the assistant" }).evaluate((el) => getComputedStyle(el).fontSize);
