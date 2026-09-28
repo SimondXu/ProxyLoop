@@ -204,6 +204,16 @@ def read_view(messages: Sequence[ChatMessage]) -> Seen:
     )
 
 
+def _parsed(text: str, lane: Lane) -> list[tuple[TurnItem, ...]]:
+    """The FSM's own ``text`` under every contract profile of ``lane``. The
+    request carries no profile name, pl_cp_v2 and the live pl_cp_v3 render
+    byte-identical messages, and this module may not import ``kernel.lanes`` (it
+    reaches env; import-linter): the live one (ADR-0017 ``pause_ends_speech`` on
+    pl_cp_v3) is among them."""
+
+    return [parse_turn(text, lane, n) for n, p in PROFILES.items() if p.lane == lane]
+
+
 def _say(lane: Lane, *texts: str) -> list[TurnItem]:
     """Canonical sentences only: anything the parser would not re-read as the
     same sentence is dropped (the FSM's own text; never a model's)."""
@@ -212,7 +222,9 @@ def _say(lane: Lane, *texts: str) -> list[TurnItem]:
     for text in texts:
         flat = re.sub(r"\s+", " ", text.replace("@", "")).strip()
         for sentence in re.split(r"(?<=[.!?])\s+", flat):
-            if sentence and parse_turn(sentence, lane) == (Speech(text=sentence),):
+            if not sentence:
+                continue
+            if all(p == (Speech(text=sentence),) for p in _parsed(sentence, lane)):
                 out.append(Speech(text=sentence))
     return out
 
@@ -398,7 +410,8 @@ def respond(seen: Seen) -> str:
 
     items = (_cp(seen) if seen.lane == "cp" else _user(seen)) or [Wait()]
     text = format_turn(tuple(items))
-    issues = [i for i in parse_turn(text, seen.lane) if isinstance(i, ParseIssue)]
+    parsed = _parsed(text, seen.lane)
+    issues = [i for turn in parsed for i in turn if isinstance(i, ParseIssue)]
     if issues:  # the FSM's own templates: a bug, never hidden
         raise AssertionError(f"the FSM wrote unparseable text: {issues}")
     return text

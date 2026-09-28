@@ -270,6 +270,45 @@ def test_adapter_truncated_and_unparseable_turns_are_never_labels(evidence: Path
     assert not turns and skipped["empty_or_parse_issue"] > 0
 
 
+SPEECH_AFTER_PAUSE = "@hold decision\nSure, one moment."
+
+
+def cp_saying(b: Bundle, raw: str, profile: str | None = None) -> Bundle:
+    """``b`` with every Fast response ``raw`` and, given ``profile``, every cp
+    request recorded under it (a copy, never written)."""
+    shas = {
+        str(e.payload["response_sha"])
+        for e in b.events
+        if e.type == "llm.call" and e.payload["role"] in pt.FAST_ROLES
+    }
+    prompts = {
+        s: r.model_copy(update={"content": raw}) if s in shas else r
+        for s, r in b.prompts.items()
+    }
+    events = tuple(
+        e.model_copy(update={"payload": e.payload | {"profile": profile}})
+        if profile and e.type == "fast.request" and e.payload["lane"] == "cp"
+        else e
+        for e in b.events
+    )
+    return Bundle(b.manifest, events, prompts)
+
+
+def test_speech_after_a_pause_is_a_parse_issue_under_the_turn_s_own_profile(
+    evidence: Path,
+):
+    """pl_cp_v3 (ADR-0017): a line after @hold is not clean; under the frozen
+    pl_cp_v2 the same turn still is, so the grammar is the request's profile's."""
+    b = bundle(evidence, "cp")
+    cp = [t for t in pt.base_turns(b)[0] if json.loads(t.view)["lane"] == "cp"]
+    assert cp and {t.profile for t in cp} == {lanes.PROFILE["cp"]} == {"pl_cp_v3"}
+    turns, skipped = pt.base_turns(cp_saying(b, SPEECH_AFTER_PAUSE))
+    assert not turns and skipped["empty_or_parse_issue"] >= len(cp)
+    turns, _ = pt.base_turns(cp_saying(b, SPEECH_AFTER_PAUSE, "pl_cp_v2"))
+    assert len(turns) == len(cp)
+    assert {(t.profile, t.raw) for t in turns} == {("pl_cp_v2", SPEECH_AFTER_PAUSE)}
+
+
 def test_echo_check_needs_both_lanes_on_the_adapter(evidence: Path):
     both, cp_only = bundle(evidence, "both"), bundle(evidence, "cp")
     assert pt.echo_failures(both, config.SERVED_NAME) == []
