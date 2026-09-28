@@ -95,7 +95,7 @@ export function Live({ runId }: { runId: string }) {
       if (v.status !== "open") return { seq: v.seq, status: v.status, el: card };
       const price = termRows(events, v.card).find((r) => r.field === "monthly_price")?.value;
       const bar = `Decision needed${price ? ` · ${whole(price)}/mo` : ""} · Review`;
-      return { seq: v.seq, status: v.status, el: <Sheet key={`a:${v.card.approval_id}`} bar={bar}>{card}</Sheet> };
+      return { seq: v.seq, status: v.status, el: <Sheet key={`a:${v.card.approval_id}`} bar={bar} human={h.principal !== null}>{card}</Sheet> };
     }),
   ].sort((a, b) => a.seq - b.seq);
   const pending = unechoed(sent, echoes).map((s) => s.text);

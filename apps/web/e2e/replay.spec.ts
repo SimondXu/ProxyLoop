@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
 // Generic over any bundle (PL_BUNDLE_DIR), served by the real API: the committed
@@ -183,4 +184,29 @@ test("plays on t_ms at 4×: Play at the end starts from 00:00", async ({ page })
   await expect(page.getByLabel("Clock")).not.toHaveText(/^00:00 \//);
   await expect(page.getByRole("button", { name: "Play" })).toBeVisible({ timeout: 20_000 });
   await expect(timeline).toHaveValue(max);
+});
+
+test.describe("phone (390×844)", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("the PlaybackBar wraps: no sideways scroll, the Timeline and the chat's last line in view, uncovered", async ({ page }) => {
+    await openFirst(page);
+    const timeline = page.getByRole("slider", { name: "Timeline" });
+    await expect(timeline).toBeInViewport();
+    expect(await page.evaluate(() => (document.scrollingElement?.scrollWidth ?? Infinity) <= window.innerWidth)).toBe(true);
+    // Scrolled to the page's end, as a reader would: the sticky PlaybackBar sits under the columns, over nothing.
+    await page.evaluate(() => window.scrollTo(0, document.scrollingElement?.scrollHeight ?? 0));
+    const last = page.getByRole("list", { name: "Chat transcript" }).locator(":scope > li").last();
+    await expect(last).toBeInViewport();
+    await expect(timeline).toBeInViewport();
+    expect(
+      await last.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return hit !== null && el.contains(hit);
+      }),
+    ).toBe(true);
+    const r = await new AxeBuilder({ page }).analyze();
+    expect(r.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id)).toEqual([]);
+  });
 });
