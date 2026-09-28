@@ -79,6 +79,7 @@ def test_f10_e6ada1_restated_terms_after_the_last_ask_block_no_deal(
     assert (c.asked, c.reply) == (False, None) and "tell_user" not in c.line()
     assert set(c.reasons) == {"offer_open:offer-1", "final_offer_not_asked"}
     h.act(FINAL)
+    h.voice()  # heard whole: it anchors the window (S1-SYS-57)
     h.rep("cp-13", RESTATED)
     c = _close(h)
     assert (c.asked, c.reply) == (True, None)
@@ -99,6 +100,7 @@ def test_f10_527345_a_closing_reply_and_a_declined_offer_verify(
     h = _offered(tmp_path)
     h.rep("cp-9", "I understand, but that is the best rate I can offer.")
     h.act(FINAL)
+    h.voice()  # heard whole: it anchors the window (S1-SYS-57)
     h.rep("cp-10", BEST)
     c = _close(h)
     assert (c.asked, c.reply, c.reasons) == (True, "cp-10", ("offer_open:offer-1",))
@@ -118,6 +120,7 @@ def test_f10_info_only_finish_is_allowed_only_in_the_call(tmp_path: Path) -> Non
     c = _close(h, "info_only")
     assert (c.reply, c.reasons) == (None, ()) and "tell_user" not in c.line()
     h.act(FINAL)
+    h.voice()  # heard whole: it anchors the window (S1-SYS-57)
     h.rep("cp-2", BEST)
     c = _close(h, "info_only")
     assert (c.outcome, c.reply, c.reasons) == ("info_only", "cp-2", ())
@@ -256,6 +259,7 @@ def test_f10_21988c_the_user_is_told_after_the_closing_reply_before_finish(
     keeps telling the user pending until a tell_user after that reply."""
     h = _offered(tmp_path)
     h.act(FINAL)
+    h.voice()  # heard whole: it anchors the window (S1-SYS-57)
     h.rep("cp-16", BEST)
     h.act(TELL, DECLINE)  # told before the closing reply that counts
     h.rep("cp-25", BYE)
@@ -339,6 +343,7 @@ def test_f10_the_tell_hint_waits_until_finish_would_pass(tmp_path: Path) -> None
     """Round 3: never tell the user an outcome that is not final yet."""
     h = _offered(tmp_path)
     h.act(FINAL)
+    h.voice()  # heard whole: it anchors the window (S1-SYS-57)
     h.rep("cp-10", BEST)
     c = _close(h)
     assert (c.reply, c.reasons) == ("cp-10", ("offer_open:offer-1",))
