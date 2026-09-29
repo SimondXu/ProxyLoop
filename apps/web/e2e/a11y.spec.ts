@@ -394,23 +394,17 @@ for (const theme of THEMES) {
         expect(rules).toEqual([]);
         const card = page.getByRole("article", { name: "Approval ap-1" });
         await card.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+        // The sheet's box against the measured rects themselves: it fills the gap between the header and the dock.
         const placed = () =>
           page.evaluate(() => {
-            const px = (n: number) => `${Math.ceil(n)}px`;
-            const sheet = document.querySelector<HTMLElement>(".pl-sheet");
-            const head = document.querySelector(".pl-casehead")?.getBoundingClientRect();
-            const dock = document.querySelector(".pl-dock")?.getBoundingClientRect();
-            const box = sheet?.getBoundingClientRect();
-            return {
-              style: [sheet?.style.top, sheet?.style.bottom],
-              measured: [head && px(head.bottom), dock && px(document.documentElement.clientHeight - dock.top)],
-              between: !!(box && head && dock && box.top >= head.bottom - 0.5 && box.bottom <= dock.top + 0.5),
-            };
+            const rect = (q: string) => document.querySelector(q)?.getBoundingClientRect();
+            const [sheet, head, dock] = [rect(".pl-sheet"), rect(".pl-casehead"), rect(".pl-dock")];
+            if (!sheet || !head || !dock) return null;
+            return { top: sheet.top - head.bottom, gap: dock.top - sheet.bottom, bottom: sheet.bottom };
           });
+        const fills = (p: Awaited<ReturnType<typeof placed>>) => !!p && p.top >= 0 && p.top < 1 && p.gap >= 0 && p.gap < 1;
         const check = async () => {
-          const p = await placed();
-          expect(p.style).toEqual(p.measured);
-          expect(p.between).toBe(true);
+          await expect.poll(async () => fills(await placed())).toBe(true);
           for (const el of [page.getByRole("textbox", { name: "Message to the assistant" }), page.getByRole("button", { name: "Send" }), page.getByRole("button", { name: "Task details" })]) {
             expect(await el.evaluate(uncovered)).toBe(true);
           }
@@ -419,23 +413,29 @@ for (const theme of THEMES) {
         };
         await check();
         await shot(page, `phone-sheet-no-anchor-${theme}`);
-        // The dock grows (a refused send's reason under the composer): the sheet's bottom follows it (the dock's ResizeObserver).
-        const before = (await placed()).style[1];
+        // The dock grows (a refused send's reason under the composer): the sheet's bottom follows it.
+        const before = (await placed())?.bottom;
         await page.getByRole("textbox", { name: "Message to the assistant" }).fill("Is that the best they can do?");
         await page.getByRole("button", { name: "Send" }).click();
         await expect(page.getByRole("alert")).toHaveText("Not delivered: 503 unavailable");
-        await expect.poll(async () => (await placed()).style[1]).not.toBe(before);
+        await expect.poll(async () => (await placed())?.bottom).not.toBe(before);
+        await check();
+        // The header moves with nothing resized (the reviewer's probe): the sheet follows, Task details stays uncovered.
+        const was = (await placed())?.bottom;
+        await page.addStyleTag({ content: ".pl-live { margin-top: 40px; }" });
+        await expect.poll(async () => (await page.locator(".pl-sheet").boundingBox())?.y).toBe(
+          Math.ceil((await page.locator(".pl-casehead").evaluate((h) => h.getBoundingClientRect().bottom)) ?? 0),
+        );
+        expect((await placed())?.bottom).not.toBe(was);
         await check();
         // A smaller phone: measured again on resize.
         await page.setViewportSize({ width: 360, height: 740 });
-        await expect.poll(async () => (await placed()).style[1]).toBe((await placed()).measured[1]);
         await check();
         // Folded, the bar sits on the composer with its own height.
         await page.getByRole("button", { name: "Hide the decision" }).click();
         const bar = page.getByRole("button", { name: "Decision needed · $75/mo · Review" });
         expect((await bar.boundingBox())?.height).toBe(56);
-        const folded = await placed();
-        expect(folded.style).toEqual(["", folded.measured[1]]);
+        await expect.poll(async () => { const p = await placed(); return !!p && p.gap >= 0 && p.gap < 1; }).toBe(true);
         expect(await bar.evaluate(uncovered)).toBe(true);
       });
 

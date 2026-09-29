@@ -85,7 +85,7 @@
   .pl-sheet-bar, .pl-sheet-body > .pl-sheet-promise { display: none; }
 
   /* a short viewport (a landscape phone): the page scrolls instead of squeezing the stream */
-  @media (max-height: 500px) {
+  @media (height <= 500px) {
     .pl-live { height: auto; }
     .pl-tx { flex: none; overflow: visible; }
   }
@@ -108,7 +108,7 @@
     .pl-sheet { position: fixed; inset: auto 0 0; z-index: 3; display: flex; flex-direction: column; max-height: 70dvh; overflow: hidden; background: var(--card); border-radius: var(--r-card) var(--r-card) 0 0; box-shadow: var(--shadow-pop); }
     /* a short phone (landscape) scrolls the page, so the composer may be below the fold: not placed (Sheet.tsx), the
        sheet at the bottom of the screen, its decision row always in view */
-    @media (max-height: 500px) {
+    @media (height <= 500px) {
       .pl-sheet { top: auto; bottom: 0; max-height: 85dvh; }
     }
     .pl-sheet .pl-decision { overflow: visible; border-radius: 0; box-shadow: none; }

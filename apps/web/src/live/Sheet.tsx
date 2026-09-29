@@ -27,8 +27,9 @@ export function Sheet({ bar, human, children }: { bar: string; human: boolean; c
 }
 
 /**
- * Sets the sheet's inline top/bottom from its case's header and dock, measured again when either (or the case) changes
- * size, the window resizes or scrolls, or the viewport enters or leaves PLACED; outside PLACED it clears them.
+ * Sets the sheet's inline box from its case's header and dock (sheetBox.ts): every frame while it is open, since the
+ * header can move without anything resizing; folded, when either (or the case) changes size, the window resizes or
+ * scrolls. Outside PLACED it clears them.
  */
 function usePlace(ref: RefObject<HTMLDivElement | null>, folded: boolean) {
   useLayoutEffect(() => {
@@ -36,19 +37,30 @@ function usePlace(ref: RefObject<HTMLDivElement | null>, folded: boolean) {
     const box = el?.closest(".pl-case");
     const head = box?.querySelector(".pl-casehead");
     const dock = box?.querySelector(".pl-dock");
-    if (!el || !box || !head || !dock) return;
+    const bar = el?.querySelector(".pl-sheet-bar");
+    if (!el || !box || !head || !dock || !bar) return;
     const mq = matchMedia(PLACED);
+    let last = "";
     const place = () => {
-      const viewport = document.documentElement.clientHeight;
-      Object.assign(el.style, mq.matches ? sheetBox(head.getBoundingClientRect(), dock.getBoundingClientRect(), viewport, folded) : UNPLACED);
+      const b = mq.matches ? sheetBox(head.getBoundingClientRect(), dock.getBoundingClientRect(), folded ? bar.getBoundingClientRect().height : null) : UNPLACED;
+      const key = Object.values(b).join();
+      if (key !== last) Object.assign(el.style, b);
+      last = key;
     };
     place();
+    let frame = 0;
+    const follow = () => {
+      place();
+      frame = requestAnimationFrame(follow);
+    };
+    if (!folded) frame = requestAnimationFrame(follow);
     const seen = new ResizeObserver(place);
     for (const x of [box, head, dock]) seen.observe(x);
     mq.addEventListener("change", place);
     addEventListener("resize", place);
     addEventListener("scroll", place, { passive: true });
     return () => {
+      cancelAnimationFrame(frame);
       seen.disconnect();
       mq.removeEventListener("change", place);
       removeEventListener("resize", place);

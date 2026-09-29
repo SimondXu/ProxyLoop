@@ -85,14 +85,20 @@ def test_the_rep_page_reads_only_its_allow_listed_sources() -> None:
     assert named == REP_IMPORTS
     assert styles == REP_STYLES
     assert len(re.findall(r"^import ", text, re.M)) == len(named) + len(styles)
-    rest = text
+    # Every use of the stream, outside comments, is one of these; nothing else names it
+    # or its events (no destructuring, no alias, no spread).
+    rest = re.sub(r"//[^\n]*", "", text)
     for allowed in (
+        "const { stream, reconnect } = useEventStream(",
         "stream.events.map(repLine)",
         "callState(stream.events)",
         "[stream.events]",
+        "stream.next",
+        "stream={stream}",
     ):
         rest = rest.replace(allowed, "")
-    assert "stream.events" not in rest
+    assert re.search(r"\bstream\b", rest) is None
+    assert re.search(r"\bevents\b", rest) is None
     assert re.search(r"<Connection[^>]*\bcount\b", text) is None  # no raw event count
     assert re.findall(r"\bpost\w*\(", text) == ["postRep("]
 

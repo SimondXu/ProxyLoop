@@ -47,6 +47,8 @@ test("rep page: its own stream, only what the rep can hear, and it sends a rep u
   const call = page.getByRole("group", { name: "Call with the agent" });
   await expect(call.getByText("Connected", { exact: true })).toBeVisible();
   await expect(call.locator(".pl-who")).toHaveText(["The agent", "You"]);
+  const ink = await call.locator(".pl-line-agent .pl-bubble").evaluate((el) => getComputedStyle(el).color);
+  await expect(call.locator(".pl-line-rep .pl-bubble")).toHaveCSS("color", ink); // the rep's own lines at full ink, not dimmed
   await expect(call.locator("strong, b")).toHaveCount(0);
   await expect(call.getByText("The agent: the AI caller · You: the company's rep")).toBeVisible();
   const header = page.locator("header");
