@@ -392,6 +392,10 @@ def test_the_override_is_sent_and_shown_in_the_report(
     assert {json.loads(b)["max_tokens"] for b in sent["relay"]} == {2048}
     mine = [r for r in report["rows"] if r["model"] != pss.REFERENCE]
     assert len(mine) == len(found)
+    over = [json.loads(b)["max_tokens"] for b in sent["relay"]]
+    assert [r["max_tokens_sent"] for r in mine] == over == [2048] * len(found)
+    refs = [r for r in report["rows"] if r["model"] == pss.REFERENCE]
+    assert {r["max_tokens_sent"] for r in refs} == {160}
     # The record's sampling_sent (contract SamplingKey) does not carry max_tokens:
     # the report-level override and the wire body above are what show it.
     assert all("max_tokens" not in r["record"]["sampling_sent"] for r in mine)
@@ -399,6 +403,9 @@ def test_the_override_is_sent_and_shown_in_the_report(
     plain = asyncio.run(pss.probe(found, models, None, {}, seams))
     assert plain["max_tokens_override"] is None
     assert {json.loads(b)["max_tokens"] for b in sent["relay"]} == {160}
+    rows = [r for r in plain["rows"] if r["model"] != pss.REFERENCE]
+    wire = [json.loads(b)["max_tokens"] for b in sent["relay"]]
+    assert [r["max_tokens_sent"] for r in rows] == wire  # in call order
 
 
 def test_plan_shows_the_override(

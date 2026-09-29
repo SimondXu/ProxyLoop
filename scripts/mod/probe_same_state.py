@@ -174,9 +174,21 @@ def analyse(raw: str, v: View) -> Json:
     }
 
 
-def row(label: str, v: View, raw: str, rec: Rec, failed: Sequence[Rec]) -> Json:
+def row(
+    label: str,
+    v: View,
+    raw: str,
+    rec: Rec,
+    failed: Sequence[Rec],
+    sent_max_tokens: int | None = None,
+) -> Json:
+    """``max_tokens_sent``: what the call's body carried (``sampling_sent`` has no
+    max_tokens); None: the session's, which the recorded (reference) call sent."""
     first = rec.t_first_token
     out: Json = {"model": label, "run_id": v.run_id, "turn": v.turn, "lane": v.lane}
+    out["max_tokens_sent"] = (
+        v.sampling.max_tokens if sent_max_tokens is None else sent_max_tokens
+    )
     out |= {"raw": raw, "error": rec.error, "record": rec.model_dump(mode="json")}
     out["failed_attempts"] = [r.model_dump(mode="json") for r in failed]
     out["ttft_ms"] = None if first is None else first - rec.t_start
@@ -284,10 +296,12 @@ async def probe(
                     async for delta in clients[m].stream_text(request):
                         text += delta if isinstance(delta, str) else ""
                 except llm.LLMUnavailable as dead:  # recorded, then abort (rule 6)
-                    rows.append(row(m, v, text, dead.record, sunk[:-1]))
+                    rows.append(
+                        row(m, v, text, dead.record, sunk[:-1], request.max_tokens)
+                    )
                     report["aborted"] = str(dead)
                     raise
-                rows.append(row(m, v, text, sunk[-1], sunk[:-1]))
+                rows.append(row(m, v, text, sunk[-1], sunk[:-1], request.max_tokens))
     finally:
         report["summary"] = summary(rows, list(models))
         for c in clients.values():
